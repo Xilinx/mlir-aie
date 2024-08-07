@@ -515,7 +515,7 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
       words[7] |= (op.getLockAcqEnable() & 0x1) << 12;
       words[7] |= (op.getLockAcqVal() & 0xef) << 5;
       words[7] |= op.getLockAcqId() & 0xf;
-    } else if (tm.isMemTile(op.getColumn(), op.getRow())){
+    } else if (tm.isMemTile(op.getColumn(), op.getRow())) {
       bd_addr = (op.getColumn() << tm.getColumnShift()) |
                 (op.getRow() << tm.getRowShift()) | (0xA0000 + bd_id * 0x20);
       // DMA_BDX_0
@@ -558,10 +558,10 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
       words[7] |= (op.getLockAcqEnable() & 0x1) << 15;
       words[7] |= (op.getLockAcqVal() & 0x7f) << 8;
       words[7] |= op.getLockAcqId() & 0xff;
-    }
-    else{
-      //TODO: DMA BD configuration for Compute Tiles
-      op->emitError("Run-time DMA configuration is supported only for ShimTiles and MemTiles currently.");
+    } else {
+      // TODO: DMA BD configuration for Compute Tiles
+      op->emitError("Run-time DMA configuration is supported only for "
+                    "ShimTiles and MemTiles currently.");
       return failure();
     }
     MemRefType memrefType = MemRefType::get({8}, rewriter.getI32Type());
