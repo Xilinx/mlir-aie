@@ -234,7 +234,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         // CHECK: scf.yield %[[ACC]] : vector<16xi16>
         affine.yield %80 : vector<16xi16>
       }
-      // CHECK: vector.transfer_write %[[ACCn]], %[[MC]][%[[I]], %[[J]]] : vector<16xi16>, memref<?x64xi16>
+      // CHECK: vector.transfer_write %[[ACCn]], %[[MC]][%[[I]], %[[J]]] {in_bounds = [true]} : vector<16xi16>, memref<?x64xi16>
       vector.transfer_write %1, %arg2[%arg3, %arg4] : vector<16xi16>, memref<?x64xi16>
     }
   }

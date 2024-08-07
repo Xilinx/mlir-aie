@@ -54,9 +54,12 @@ struct SetInboundsToReadStoreOpPattern : public RewritePattern {
     // TODO: We are currently setting all `vector.transfer_read` and
     // TODO: `vector.transfer_write` as "in bounds". We need to add
     // TODO: an analysis to verify that this is true before doing so.
-    if (writeOrReadOp.getInBounds() || writeOrReadOp.getTransferRank() == 0) {
+    auto inBounds =
+        writeOrReadOp.getInBounds().template getAsValueRange<BoolAttr>();
+    if (std::all_of(inBounds.begin(), inBounds.end(),
+                    [](bool v) { return v; }) ||
+        writeOrReadOp.getTransferRank() == 0)
       return failure();
-    }
 
     SmallVector<bool, 4> bools(writeOrReadOp.getTransferRank(), true);
     auto inBoundsAttr = rewriter.getBoolArrayAttr(bools);

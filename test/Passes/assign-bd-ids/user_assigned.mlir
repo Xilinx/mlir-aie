@@ -16,10 +16,10 @@
 // CHECK:  %[[VAL_2:.*]] = aie.tile(0, 2)
 // CHECK:  %[[VAL_3:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "double_buffer"} : memref<32xi32>
 // CHECK:  %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) : memref<32xi32>
-// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>, 0) {bd_id = 0 : i32, next_bd_id = 1 : i32}
+// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 0 : i32, next_bd_id = 1 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 1 : i32, next_bd_id = 2 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 2 : i32, next_bd_id = 0 : i32}
-// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>, 0) {bd_id = 3 : i32, next_bd_id = 4 : i32}
+// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 3 : i32, next_bd_id = 4 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 4 : i32, next_bd_id = 5 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 5 : i32, next_bd_id = 3 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_4]] : memref<32xi32>) {bd_id = 0 : i32}
@@ -159,10 +159,10 @@ module @aie_module  {
 // CHECK:  %[[VAL_2:.*]] = aie.tile(0, 2)
 // CHECK:  %[[VAL_3:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "double_buffer"} : memref<32xi32>
 // CHECK:  %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) : memref<32xi32>
-// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>, 0) {bd_id = 5 : i32, next_bd_id = 4 : i32}
+// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 5 : i32, next_bd_id = 4 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 4 : i32, next_bd_id = 3 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 3 : i32, next_bd_id = 5 : i32}
-// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>, 0) {bd_id = 2 : i32, next_bd_id = 1 : i32}
+// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 2 : i32, next_bd_id = 1 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 1 : i32, next_bd_id = 0 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 0 : i32, next_bd_id = 2 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_4]] : memref<32xi32>) {bd_id = 0 : i32}

@@ -17,12 +17,12 @@
 
 echo "Setting up RyzenAI developement tools..."
 if [[ $WSL_DISTRO_NAME == "" ]]; then
-  XRTSMI=`which xrt-smi`
-  if ! test -f "$XRTSMI"; then
+  XBUTIL=`which xbutil`
+  if ! test -f "$XBUTIL"; then 
     echo "XRT is not installed"
     return 1
   fi
-  NPU=`/opt/xilinx/xrt/bin/xrt-smi examine | grep RyzenAI`
+  NPU=`/opt/xilinx/xrt/bin/xbutil examine | grep RyzenAI`
   if [[ $NPU == *"RyzenAI"* ]]; then
     echo "Ryzen AI NPU found:"
     echo $NPU
