@@ -243,11 +243,11 @@ You will...
     sudo dpkg -i xrt_plugin.2.18.0_ubuntu22.04-x86_64-amdxdna.deb
     ```
     
-1. Check that the NPU is working if the device appears with xrt-smi:
+1. Check that the NPU is working if the device appears with xbutil:
    
    ```bash
    source /opt/xilinx/xrt/setup.sh
-   xrt-smi examine
+   xbutil examine
    ```
 
    > At the bottom of the output you should see:
