@@ -1550,7 +1550,179 @@ BufferOp DMABDOp::getBufferOp() {
   return cast<BufferOp>(getBuffer().getDefiningOp());
 }
 
+// let assemblyFormat = [{
+//   `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,`
+//   $dimensions^)? (`,` $pad_dimensions^)? (`,` `pad_value` `=` $pad_value^)?
+//   `)` attr-dict
+// }];
+ParseResult DMABDOp::parse(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::UnresolvedOperand bufferRawOperand{};
+  ::llvm::ArrayRef<OpAsmParser::UnresolvedOperand> bufferOperands(
+      &bufferRawOperand, 1);
+  ::llvm::SMLoc bufferOperandsLoc;
+  (void)bufferOperandsLoc;
+  Type bufferRawType{};
+  ::llvm::ArrayRef<Type> bufferTypes(&bufferRawType, 1);
+  IntegerAttr offsetAttr;
+  IntegerAttr lenAttr;
+  ::xilinx::AIE::BDDimLayoutArrayAttr dimensionsAttr;
+  ::xilinx::AIE::BDPadLayoutArrayAttr pad_dimensionsAttr;
+  IntegerAttr pad_valueAttr;
+  if (parser.parseLParen())
+    return failure();
+
+  bufferOperandsLoc = parser.getCurrentLocation();
+  if (parser.parseOperand(bufferRawOperand))
+    return failure();
+  if (parser.parseColon())
+    return failure();
+  if (parser.parseCustomTypeWithFallback(bufferRawType))
+    return failure();
+
+  // offset
+  if (succeeded(parser.parseOptionalComma())) {
+    if (parser.parseCustomAttributeWithFallback(
+            offsetAttr, parser.getBuilder().getIntegerType(32))) {
+      return failure();
+    }
+    if (!offsetAttr)
+      offsetAttr = parser.getBuilder().getIntegerAttr(
+          parser.getBuilder().getIntegerType(32), 0);
+    result.getOrAddProperties<DMABDOp::Properties>().offset = offsetAttr;
+  }
+
+  // len
+  if (succeeded(parser.parseOptionalComma())) {
+    if (parser.parseCustomAttributeWithFallback(
+            lenAttr, parser.getBuilder().getIntegerType(32))) {
+      return failure();
+    }
+    if (lenAttr)
+      result.getOrAddProperties<DMABDOp::Properties>().len = lenAttr;
+  }
+
+  // dimensions
+  if (succeeded(parser.parseOptionalComma())) {
+    if (parser.parseCustomAttributeWithFallback(dimensionsAttr, Type{})) {
+      return failure();
+    }
+    if (dimensionsAttr)
+      result.getOrAddProperties<DMABDOp::Properties>().dimensions =
+          dimensionsAttr;
+  }
+
+  // pad_dimensions
+  if (succeeded(parser.parseOptionalComma())) {
+    if (parser.parseCustomAttributeWithFallback(pad_dimensionsAttr, Type{})) {
+      return failure();
+    }
+    if (pad_dimensionsAttr)
+      result.getOrAddProperties<DMABDOp::Properties>().pad_dimensions =
+          pad_dimensionsAttr;
+  }
+
+  // pad_value
+  if (succeeded(parser.parseOptionalComma())) {
+    if (parser.parseKeyword("pad_value"))
+      return failure();
+    if (parser.parseEqual())
+      return failure();
+
+    if (parser.parseCustomAttributeWithFallback(
+            pad_valueAttr, parser.getBuilder().getIntegerType(32))) {
+      return failure();
+    }
+    if (pad_valueAttr)
+      result.getOrAddProperties<DMABDOp::Properties>().pad_value =
+          pad_valueAttr;
+  }
+  if (parser.parseRParen())
+    return failure();
+
+  auto loc = parser.getCurrentLocation();
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+  if (failed(verifyInherentAttrs(result.name, result.attributes, [&]() {
+        return parser.emitError(loc)
+               << "'" << result.name.getStringRef() << "' op ";
+      })))
+    return failure();
+
+  if (parser.resolveOperands(bufferOperands, bufferTypes, bufferOperandsLoc,
+                             result.operands))
+    return failure();
+
+  return success();
+}
+
+void DMABDOp::print(::mlir::OpAsmPrinter &printer) {
+  printer << "(";
+  printer << getBuffer();
+  printer << ' ' << ":";
+  printer << ' ';
+  {
+    auto type = getBuffer().getType();
+    if (auto validType = ::llvm::dyn_cast<::mlir::MemRefType>(type))
+      printer.printStrippedAttrOrType(validType);
+    else
+      printer << type;
+  }
+  if (getLenAttr() ||
+      getOffsetAttr() !=
+          ::mlir::OpBuilder((*this)->getContext())
+              .getIntegerAttr(
+                  ::mlir::OpBuilder((*this)->getContext()).getIntegerType(32),
+                  0)) {
+    printer << ",";
+    printer << ' ';
+    printer.printAttributeWithoutType(getOffsetAttr());
+  }
+  if (getLenAttr()) {
+    printer << ",";
+    printer << ' ';
+    printer.printAttributeWithoutType(getLenAttr());
+  }
+  if (getDimensionsAttr()) {
+    printer << ",";
+    printer << ' ';
+    printer.printStrippedAttrOrType(getDimensionsAttr());
+  }
+  if (getPadDimensionsAttr()) {
+    printer << ",";
+    printer << ' ';
+    printer.printStrippedAttrOrType(getPadDimensionsAttr());
+  }
+  if ((getPadValueAttr() &&
+       getPadValueAttr() !=
+           ::mlir::OpBuilder((*this)->getContext())
+               .getIntegerAttr(
+                   ::mlir::OpBuilder((*this)->getContext()).getIntegerType(32),
+                   0))) {
+    printer << ",";
+    printer << ' ' << "pad_value";
+    printer << ' ' << "=";
+    printer << ' ';
+    printer.printAttributeWithoutType(getPadValueAttr());
+  }
+  printer << ")";
+  ::llvm::SmallVector<::llvm::StringRef, 2> elidedAttrs;
+  elidedAttrs.push_back("offset");
+  elidedAttrs.push_back("len");
+  elidedAttrs.push_back("dimensions");
+  elidedAttrs.push_back("pad_dimensions");
+  elidedAttrs.push_back("pad_value");
+  printer.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
+}
+
 LogicalResult DMABDOp::verify() {
+  // Skip verification of the BDOp outside of mem operations.
+  // BDOps may appear elsewhere and subsequent lowerings will place them in the
+  // correct mem ops.
+  Operation *p = (*this)->getParentOp();
+  if (!llvm::isa<MemOp, MemTileDMAOp, ShimDMAOp, DMAOp>(*p)) {
+    return success();
+  }
+
   if (!isa<BufferOp, ExternalBufferOp>(getBuffer().getDefiningOp()))
     return emitOpError(
         "BDs only support BufferOp or ExternalBufferOp operands.");
@@ -1653,8 +1825,8 @@ LogicalResult DMABDOp::verify() {
     if (auto baseAddr = getBufferOp().getAddress(); baseAddr.has_value()) {
       int offsetInBytes = *baseAddr + getOffsetInBytes();
       if (offsetInBytes % 4)
-        return emitOpError(
-                   "bd address must be 4 byte (32b) aligned; got base+offset: ")
+        return emitOpError("bd address must be 4 byte (32b) aligned; got "
+                           "base+offset: ")
                << offsetInBytes << " (bytes)";
     }
   }
@@ -1674,8 +1846,8 @@ int MemTileDMAOp::colIndex() { return getTileOp().colIndex(); }
 int MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
 /// Returns the region on the current operation that is callable. This may
-/// return nullptr in the case of an external callable object, e.g. an external
-/// function.
+/// return nullptr in the case of an external callable object, e.g. an
+/// external function.
 Region *MemTileDMAOp::getCallableRegion() { return &getBody(); }
 
 //===----------------------------------------------------------------------===//
@@ -1910,7 +2082,8 @@ LogicalResult UseLockOp::verify() {
     return (*this)->emitOpError(
         "AcquireGreaterEqual is not supported in AIE1.");
 
-  // Otherwise, AIE.useLock should be inside MemOp, MemTileDMAOp, or ShimDMAOp,
+  // Otherwise, AIE.useLock should be inside MemOp, MemTileDMAOp, or
+  // ShimDMAOp,
   if (HasSomeParent<MemOp, MemTileDMAOp, ShimDMAOp>::verifyTrait(*this)
           .succeeded()) {
     if (!(*this)->getBlock())
@@ -1922,8 +2095,8 @@ LogicalResult UseLockOp::verify() {
           "used in a DMA block that have multiple locks.");
 
     if (AcquireReleaseOneStateInDMABlock::verifyTrait(*this).failed())
-      return (*this)->emitOpError(
-          "acquires/releases the lock in a DMA block from/to multiple states.");
+      return (*this)->emitOpError("acquires/releases the lock in a DMA block "
+                                  "from/to multiple states.");
 
     if (HasSomeParent<MemOp>::verifyTrait(*this).succeeded() &&
         AccessesLocalLocks::verifyTrait(*this).failed())
@@ -1978,6 +2151,88 @@ WireBundle getConnectingBundle(WireBundle dir) {
 }
 
 } // namespace xilinx::AIE
+
+//===----------------------------------------------------------------------===//
+// BDChainOp
+//===----------------------------------------------------------------------===//
+
+ParseResult BDChainOp::parse(OpAsmParser &parser, OperationState &result) {
+  SmallVector<OpAsmParser::Argument> entryArgs;
+  auto &builder = parser.getBuilder();
+
+  // Symbol name, e.g. @my_chain
+  StringAttr symNameAttr;
+  if (parser.parseSymbolName(symNameAttr, SymbolTable::getSymbolAttrName(),
+                             result.attributes)) {
+    return failure();
+  }
+
+  // Entry arguments (placeholders), e.g. (%addr: memref<1xi32>)
+  ParseResult argParseResult = parser.parseCommaSeparatedList(
+      OpAsmParser::Delimiter::Paren, [&]() -> ParseResult {
+        OpAsmParser::Argument argument;
+        if (parser.parseArgument(argument, true, true)) {
+          return failure();
+        }
+        entryArgs.push_back(argument);
+        return success();
+      });
+  if (argParseResult) {
+    return argParseResult;
+  }
+
+  // Store entry arg types in op attributes
+  SmallVector<::mlir::Type> entryArgTypes;
+  entryArgTypes.reserve(entryArgs.size());
+  for (auto entryArg : entryArgs) {
+    entryArgTypes.push_back(entryArg.type);
+  }
+  result.addAttribute(getEntryArgTypesAttrAttrName(result.name),
+                      TypeAttr::get(builder.getTupleType(entryArgTypes)));
+
+  // BD Chain Body
+  auto *body = result.addRegion();
+  ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, false);
+  if (bodyParseResult) {
+    return bodyParseResult;
+  }
+
+  return success();
+}
+
+void BDChainOp::print(OpAsmPrinter &printer) {
+
+  auto taskName =
+      (*this)
+          ->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
+          .getValue();
+  printer << ' ';
+  printer.printSymbolName(taskName);
+
+  ArrayRef<Type> entryArgTypes = this->getEntryArgTypesAttr().getTypes();
+  Region &body = getRegion();
+  assert(body.getNumArguments() == entryArgTypes.size());
+  printer << '(';
+  for (unsigned i = 0, n = entryArgTypes.size(); i < n; i++) {
+    if (i > 0) {
+      printer << ", ";
+    }
+    printer.printRegionArgument(body.getArgument(i));
+  }
+  printer << ')';
+
+  printer << ' ';
+  printer.printRegion(body, false, true);
+}
+
+LogicalResult BDChainOp::verify() {
+  Region &body = getRegion();
+  if (body.getNumArguments() != getEntryArgTypesAttr().getTypes().size()) {
+    return emitOpError(
+        "Number of region arguments and argument types mismatch.");
+  }
+  return success();
+}
 
 // Include implementations for custom attributes
 #define GET_ATTRDEF_CLASSES
