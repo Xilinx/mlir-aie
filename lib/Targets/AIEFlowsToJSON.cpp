@@ -74,6 +74,12 @@ void translateSwitchboxes(DeviceOp targetOp, raw_ostream &output) {
     }
   }
 
+  std::map<TileID, ShimMuxOp> shimMuxes;
+  for (ShimMuxOp shimMuxOp : targetOp.getOps<ShimMuxOp>()) {
+    shimMuxes[{shimMuxOp.colIndex(), shimMuxOp.rowIndex()}] = shimMuxOp;
+  }
+
+  int totalPathLength = 0;
   // for each switchbox, write name, coordinates, and routing demand info
   for (SwitchboxOp switchboxOp : targetOp.getOps<SwitchboxOp>()) {
     int col = switchboxOp.colIndex();
@@ -93,10 +99,15 @@ void translateSwitchboxes(DeviceOp targetOp, raw_ostream &output) {
     uint32_t connectCounts[10];
     for (auto &connectCount : connectCounts)
       connectCount = 0;
+
+    std::set<Port> ports;
     for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>())
-      connectCounts[int(connectOp.getDestBundle())]++;
+      ports.insert(connectOp.destPort());
     for (MasterSetOp masterSetOp : switchboxOp.getOps<MasterSetOp>())
-      connectCounts[int(masterSetOp.destPort().bundle)]++;
+      ports.insert(masterSetOp.destPort());
+    for (Port port : ports) {
+      connectCounts[int(port.bundle)]++;
+    }
 
     switchString += "\"northbound\": " +
                     std::to_string(connectCounts[int(WireBundle::North)]) +
@@ -111,7 +122,35 @@ void translateSwitchboxes(DeviceOp targetOp, raw_ostream &output) {
                     std::to_string(connectCounts[int(WireBundle::West)]) + "\n";
     switchString += "},\n";
     output << switchString;
+
+    // calculate total path length
+    totalPathLength += connectCounts[int(WireBundle::North)];
+    totalPathLength += connectCounts[int(WireBundle::East)];
+    totalPathLength += connectCounts[int(WireBundle::South)];
+    totalPathLength += connectCounts[int(WireBundle::West)];
+
+    // deduct shim muxes from total path length
+    if (shimMuxes.count({col, row})) {
+      auto shimMuxOp = shimMuxes[{col, row}];
+      std::set<Port> ports;
+      for (ConnectOp connectOp : shimMuxOp.getOps<ConnectOp>()) {
+        Port port = connectOp.sourcePort();
+        if (port.bundle == WireBundle::North) {
+          ports.insert(port);
+        }
+      }
+      for (PacketRulesOp packetRulesOp : shimMuxOp.getOps<PacketRulesOp>()) {
+        Port port = packetRulesOp.sourcePort();
+        if (port.bundle == WireBundle::North) {
+          ports.insert(port);
+        }
+      }
+      totalPathLength -= ports.size();
+    }
   }
+
+  // write total path length to JSON
+  output << "\"total_path_length\": " << totalPathLength << ",\n";
 }
 
 void translateCircuitFlows(DeviceOp targetOp, int &flowCount,
