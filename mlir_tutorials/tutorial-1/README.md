@@ -42,7 +42,7 @@ AIE.core(%tile14) {
 %buff0 = AIE.buffer(%tile14) : memref<256xi32>
 %buff1 = AIE.buffer(%tile14) : memref<256xi32>
 ```
-The association between these declarations and the physical AI Engine tile components can be seen here. For more details on mlir-aie dialect syntax, you can refer to the online reference document [here](https://xilinx.github.io/mlir-aie/AIEDialect.html).
+The association between these declarations and the physical AI Engine tile components can be seen here. For more details on mlir-aie dialect syntax, you can refer to the online reference document [here](https://xilinx.github.io/mlir-aie/AIE.html).
 <img src="../images/diagram1.png" width="1000">
 
 A third key component of a tile is the `lock` which is critical for synchronizing data between tiles and one another, and between tiles and the host controller. While not a physically large component, it plays a critical role in facilitating efficient and correct data communication.
@@ -114,7 +114,7 @@ Notice the familiar design pattern of:
 
 The acquire value must match the current lock state in order for the acquire to succeed. The release value can be either 0 or 1. 
 
-We will be introducing more components and the ways these components are customized in subsequent tutorials. Additional syntax for these MLIR-based AI Engine components can be found in the github<area>.io docs [here](https://xilinx.github.io/mlir-aie/AIEDialect.html).
+We will be introducing more components and the ways these components are customized in subsequent tutorials. Additional syntax for these MLIR-based AI Engine components can be found in the github<area>.io docs [here](https://xilinx.github.io/mlir-aie/AIE.html).
 
 ## <ins>Tutorial 1 Lab</ins>
 

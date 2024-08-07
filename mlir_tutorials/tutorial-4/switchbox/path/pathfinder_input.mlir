@@ -9,40 +9,70 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-canonicalize-device %s | aie-opt --aie-create-pathfinder-flows | FileCheck %s
-// CHECK: %15 = aie.switchbox(%3) {
-// CHECK:      aie.connect<DMA : 0, North : 0>
-// CHECK:      aie.connect<East : 0, DMA : 0>
-// CHECK:    }
-// CHECK:    %16 = aie.switchbox(%4) {
-// CHECK:      aie.connect<South : 0, East : 0>
-// CHECK:    }
-// CHECK:    %17 = aie.switchbox(%7) {
-// CHECK:      aie.connect<West : 0, East : 0>
-// CHECK:      aie.connect<East : 0, South : 0>
-// CHECK:    }
-// CHECK:    %18 = aie.switchbox(%10) {
-// CHECK:      aie.connect<West : 0, East : 0>
-// CHECK:      aie.connect<East : 0, West : 0>
-// CHECK:      aie.connect<South : 0, East : 1>
-// CHECK:      aie.connect<East : 1, South : 0>
-// CHECK:    }
-// CHECK:    %19 = aie.switchbox(%13) {
-// CHECK:      aie.connect<West : 0, DMA : 0>
-// CHECK:      aie.connect<DMA : 0, West : 0>
-// CHECK:      aie.connect<West : 1, North : 0>
-// CHECK:      aie.connect<North : 0, West : 1>
-// CHECK:    }
-// CHECK:    %20 = aie.switchbox(%6) {
-// CHECK:      aie.connect<North : 0, West : 0>
-// CHECK:    }
-// CHECK:    %21 = aie.switchbox(%9) {
-// CHECK:      aie.connect<DMA : 0, North : 0>
-// CHECK:      aie.connect<North : 0, DMA : 0>
-// CHECK:    }
-// CHECK:    %22 = aie.switchbox(%14) {
-// CHECK:      aie.connect<South : 0, DMA : 0>
-// CHECK:      aie.connect<DMA : 0, South : 0>
-// CHECK:    }
+// CHECK: %[[VAL_0:.*]] = aie.tile(0, 1)
+// CHECK: %[[VAL_1:.*]] = aie.switchbox(%[[VAL_0]]) {
+// CHECK: }
+// CHECK: %[[VAL_2:.*]] = aie.tile(0, 2)
+// CHECK: %[[VAL_3:.*]] = aie.switchbox(%[[VAL_2]]) {
+// CHECK: }
+// CHECK: %[[VAL_4:.*]] = aie.tile(0, 3)
+// CHECK: %[[VAL_5:.*]] = aie.switchbox(%[[VAL_4]]) {
+// CHECK: }
+// CHECK: %[[VAL_6:.*]] = aie.tile(1, 1)
+// CHECK: %[[VAL_7:.*]] = aie.tile(1, 2)
+// CHECK: %[[VAL_8:.*]] = aie.tile(1, 3)
+// CHECK: %[[VAL_9:.*]] = aie.switchbox(%[[VAL_8]]) {
+// CHECK: }
+// CHECK: %[[VAL_10:.*]] = aie.tile(2, 1)
+// CHECK: %[[VAL_11:.*]] = aie.tile(2, 2)
+// CHECK: %[[VAL_12:.*]] = aie.tile(2, 3)
+// CHECK: %[[VAL_13:.*]] = aie.switchbox(%[[VAL_12]]) {
+// CHECK: }
+// CHECK: %[[VAL_14:.*]] = aie.tile(3, 1)
+// CHECK: %[[VAL_15:.*]] = aie.tile(3, 2)
+// CHECK: %[[VAL_16:.*]] = aie.tile(3, 3)
+// CHECK: %[[VAL_17:.*]] = aie.tile(4, 1)
+// CHECK: %[[VAL_18:.*]] = aie.switchbox(%[[VAL_17]]) {
+// CHECK: }
+// CHECK: %[[VAL_19:.*]] = aie.tile(4, 2)
+// CHECK: %[[VAL_20:.*]] = aie.tile(4, 3)
+// CHECK: %[[VAL_21:.*]] = aie.switchbox(%[[VAL_6]]) {
+// CHECK:   aie.connect<DMA : 0, North : 1>
+// CHECK:   aie.connect<East : 2, DMA : 0>
+// CHECK: }
+// CHECK: %[[VAL_22:.*]] = aie.switchbox(%[[VAL_7]]) {
+// CHECK:   aie.connect<South : 1, East : 1>
+// CHECK: }
+// CHECK: %[[VAL_23:.*]] = aie.switchbox(%[[VAL_11]]) {
+// CHECK:   aie.connect<West : 1, East : 1>
+// CHECK:   aie.connect<East : 2, South : 2>
+// CHECK: }
+// CHECK: %[[VAL_24:.*]] = aie.switchbox(%[[VAL_15]]) {
+// CHECK:   aie.connect<West : 1, East : 1>
+// CHECK:   aie.connect<East : 1, West : 2>
+// CHECK:   aie.connect<South : 1, East : 3>
+// CHECK:   aie.connect<North : 2, South : 2>
+// CHECK: }
+// CHECK: %[[VAL_25:.*]] = aie.switchbox(%[[VAL_19]]) {
+// CHECK:   aie.connect<West : 1, DMA : 0>
+// CHECK:   aie.connect<DMA : 0, West : 1>
+// CHECK:   aie.connect<West : 3, North : 0>
+// CHECK: }
+// CHECK: %[[VAL_26:.*]] = aie.switchbox(%[[VAL_10]]) {
+// CHECK:   aie.connect<North : 2, West : 2>
+// CHECK: }
+// CHECK: %[[VAL_27:.*]] = aie.switchbox(%[[VAL_14]]) {
+// CHECK:   aie.connect<DMA : 0, North : 1>
+// CHECK:   aie.connect<North : 2, DMA : 0>
+// CHECK: }
+// CHECK: %[[VAL_28:.*]] = aie.switchbox(%[[VAL_20]]) {
+// CHECK:   aie.connect<South : 0, DMA : 0>
+// CHECK:   aie.connect<DMA : 0, West : 0>
+// CHECK: }
+// CHECK: %[[VAL_29:.*]] = aie.switchbox(%[[VAL_16]]) {
+// CHECK:   aie.connect<East : 0, South : 2>
+// CHECK: }
+
 
 module @pathfinder{
 %t01 = aie.tile(0, 1)

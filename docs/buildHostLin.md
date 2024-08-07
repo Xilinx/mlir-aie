@@ -122,7 +122,7 @@ You will...
 
     ```bash
     cd $LINUX_SRC_DIR
-    make olddefconfig
+    make O=$LINUX_BUILD_DIR olddefconfig
     ./scripts/config --file $LINUX_BUILD_DIR/.config --disable MODULE_SIG
     ./scripts/config --file $LINUX_BUILD_DIR/.config --disable SYSTEM_TRUSTED_KEYS
     ./scripts/config --file $LINUX_BUILD_DIR/.config --disable SYSTEM_REVOCATION_KEYS

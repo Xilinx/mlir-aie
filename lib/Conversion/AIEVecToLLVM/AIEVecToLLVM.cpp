@@ -838,11 +838,22 @@ public:
 
     Value result = op.getResult();
     VectorType resultType = cast<VectorType>(result.getType());
+    VectorType flatResTy = getFlattenedVectorType(resultType);
     Type resultScaTy = resultType.getElementType();
     unsigned resultBitWidth = resultScaTy.getIntOrFloatBitWidth();
     int resultLanes = getVectorLaneSize(resultType);
     int resultVectorSize = resultBitWidth * resultLanes;
 
+    Value opSrcVal = adaptor.getSource();
+    auto srcVecTy = cast<VectorType>(opSrcVal.getType());
+    auto fltSrcVecTy = getFlattenedVectorType(srcVecTy);
+    if (srcVecTy != fltSrcVecTy)
+      opSrcVal =
+          rewriter
+              .create<vector::ShapeCastOp>(op.getLoc(), fltSrcVecTy, opSrcVal)
+              .getResult();
+
+    // create xllvm intrinsic
     // Integer types
     Value upsIntrOp = nullptr;
     if (llvm::isa<IntegerType>(resultScaTy)) {
@@ -853,8 +864,7 @@ public:
           loc, rewriter.getI32Type(),
           rewriter.getI32IntegerAttr(op.getShift()));
 
-      // create xllvm intrinsic
-      SmallVector<Value> operands({adaptor.getSource(), shiftCst, signCst});
+      SmallVector<Value> operands({opSrcVal, shiftCst, signCst});
       if (resultVectorSize == 512) {
         if (resultBitWidth == 32) {
           // v16int16 -> v16acc32
@@ -874,7 +884,7 @@ public:
                    rewriter.getI32Type(), rewriter.getI32Type()}));
         }
       } else if (resultVectorSize == 1024) {
-        Value src = adaptor.getSource();
+        Value src = opSrcVal;
         VectorType srcType = cast<VectorType>(src.getType());
         Type srcScaType = srcType.getElementType();
         unsigned srcBitWidth = srcScaType.getIntOrFloatBitWidth();
@@ -920,7 +930,7 @@ public:
         upsIntrOp = rewriter.create<xllvm::Vector16BF16ToV16AccFloatIntrOp>(
             loc, VectorType::get({8}, rewriter.getI64Type()),
             forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getSource()},
+                rewriter, loc, {opSrcVal},
                 {VectorType::get({16}, rewriter.getBF16Type())}));
       } else if (resultVectorSize == 1024) {
         // v32bfloat16 -> v32accfloat
@@ -947,8 +957,8 @@ public:
                   rewriter, loc, {extOp},
                   {VectorType::get({16}, rewriter.getBF16Type())}));
         };
-        auto resLo = extractUps(adaptor.getSource(), indexZeroCst);
-        auto resHi = extractUps(adaptor.getSource(), indexOneCst);
+        auto resLo = extractUps(opSrcVal, indexZeroCst);
+        auto resHi = extractUps(opSrcVal, indexOneCst);
         // Concat the two 512-bit vector to a 1024-bit vector.
         // Note that given sources a0 and a1, the result is [a1; a0].
         upsIntrOp = rewriter.create<xllvm::ConcatI1024I512IntrOp>(
@@ -966,12 +976,14 @@ public:
     }
 
     // create bitcast for result if needed
-    if (op.getResult().getType() != upsIntrOp.getType()) {
-      rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
-                                                   upsIntrOp);
-    } else {
-      rewriter.replaceOp(op, upsIntrOp);
-    }
+    if (flatResTy != upsIntrOp.getType())
+      upsIntrOp = rewriter.create<LLVM::BitcastOp>(loc, flatResTy, upsIntrOp);
+
+    if (flatResTy != resultType)
+      upsIntrOp =
+          rewriter.create<vector::ShapeCastOp>(loc, resultType, upsIntrOp);
+
+    rewriter.replaceOp(op, upsIntrOp);
 
     return success();
   }
@@ -1424,11 +1436,11 @@ public:
 };
 
 class SelectOpConversion
-    : public mlir::ConvertOpToLLVMPattern<aievec::SelectOp> {
+    : public mlir::ConvertOpToLLVMPattern<aievec::aie1::SelectOp> {
 public:
-  using ConvertOpToLLVMPattern<aievec::SelectOp>::ConvertOpToLLVMPattern;
+  using ConvertOpToLLVMPattern<aievec::aie1::SelectOp>::ConvertOpToLLVMPattern;
 
-  static std::string getIntrinsicName(aievec::SelectOp op) {
+  static std::string getIntrinsicName(aievec::aie1::SelectOp op) {
     auto xbuffType = cast<VectorType>(op.getXbuff().getType());
     std::stringstream ss;
     ss << "llvm.aie.prim." << getVectorTypeString(xbuffType) << ".select";
@@ -1436,7 +1448,7 @@ public:
   }
 
   LogicalResult
-  matchAndRewrite(aievec::SelectOp op, OpAdaptor adaptor,
+  matchAndRewrite(aievec::aie1::SelectOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto module = op->getParentOfType<ModuleOp>();
     MLIRContext *context = rewriter.getContext();

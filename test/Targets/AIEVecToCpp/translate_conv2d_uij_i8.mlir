@@ -42,8 +42,8 @@ func.func @conv2d_0(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memre
       %15 = aievec.srs %13, %c10 : vector<16xi48>, i32, vector<16xi16>
       %16 = aievec.srs %14, %c10 : vector<16xi48>, i32, vector<16xi16>
       %17 = aievec.concat %15, %16 : vector<16xi16>, vector<32xi16>
-      %18 = aievec.select %17 {select = "0xcccccccc", xoffsets = "0x0c080400", xoffsets_hi = "0x0", xsquare = "0x1010", xstart = "0", yoffsets = "0x0c080400", yoffsets_hi = "0x0", ysquare = "0x1010", ystart = "4"} : vector<32xi16>, vector<32xi16>
-      %19 = aievec.ext %18 {index = 0 : i8} : vector<32xi16>, vector<16xi16>
+      %18 = aievec_aie1.select %17 {select = "0xcccccccc", xoffsets = "0x0c080400", xoffsets_hi = "0x0", xsquare = "0x1010", xstart = "0", yoffsets = "0x0c080400", yoffsets_hi = "0x0", ysquare = "0x1010", ystart = "4"} : vector<32xi16>, vector<32xi16>
+      %19 = aievec_aie1.ext %18 {index = 0 : i8} : vector<32xi16>, vector<16xi16>
       %20 = aievec.pack %19 : vector<16xi16>, vector<16xi8>
       vector.transfer_write %20, %arg2[%arg3, %arg4] : vector<16xi8>, memref<16x256xi8>
     }
@@ -126,8 +126,8 @@ func.func @conv2d_1(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memre
       %13 = aievec.srs %11, %c10 : vector<16xi48>, i32, vector<16xi16>
       %14 = aievec.srs %12, %c10 : vector<16xi48>, i32, vector<16xi16>
       %15 = aievec.concat %13, %14 : vector<16xi16>, vector<32xi16>
-      %16 = aievec.select %15 {select = "0xcccccccc", xoffsets = "0x0c080400", xoffsets_hi = "0x0", xsquare = "0x1010", xstart = "0", yoffsets = "0x0c080400", yoffsets_hi = "0x0", ysquare = "0x1010", ystart = "4"} : vector<32xi16>, vector<32xi16>
-      %17 = aievec.ext %16 {index = 0 : i8} : vector<32xi16>, vector<16xi16>
+      %16 = aievec_aie1.select %15 {select = "0xcccccccc", xoffsets = "0x0c080400", xoffsets_hi = "0x0", xsquare = "0x1010", xstart = "0", yoffsets = "0x0c080400", yoffsets_hi = "0x0", ysquare = "0x1010", ystart = "4"} : vector<32xi16>, vector<32xi16>
+      %17 = aievec_aie1.ext %16 {index = 0 : i8} : vector<32xi16>, vector<16xi16>
       %18 = aievec.pack %17 : vector<16xi16>, vector<16xi8>
       vector.transfer_write %18, %arg2[%arg3, %arg4] : vector<16xi8>, memref<16x256xi8>
     }

@@ -8,10 +8,24 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s
-// CHECK: %[[T01:.*]] = aie.tile(0, 1)
-// CHECK: %[[T12:.*]] = aie.tile(1, 2)
-// CHECK: aie.flow(%[[T01]], DMA : 0, %[[T12]], Core : 1)
+// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s -o %t.opt
+// RUN: FileCheck %s --check-prefix=CHECK1 < %t.opt
+// RUN: aie-translate --aie-flows-to-json %t.opt | FileCheck %s --check-prefix=CHECK2
+
+// CHECK1: %[[T01:.*]] = aie.tile(0, 1)
+// CHECK1: %[[T12:.*]] = aie.tile(1, 2)
+// CHECK1: %[[T02:.*]] = aie.tile(0, 2)
+// CHECK1: aie.packet_flow(16) {
+// CHECK1:   aie.packet_source<%[[T01]], Core : 0>
+// CHECK1:   aie.packet_dest<%[[T12]], Core : 0>
+// CHECK1: }
+// CHECK1: aie.packet_flow(16) {
+// CHECK1:   aie.packet_source<%[[T01]], Core : 0>
+// CHECK1:   aie.packet_dest<%[[T02]], DMA : 1>
+// CHECK1: }
+// CHECK1: aie.flow(%[[T01]], DMA : 0, %[[T12]], Core : 1)
+
+// CHECK2: "total_path_length": 5
 
 module {
   aie.device(xcvc1902) {
@@ -20,9 +34,9 @@ module {
     %02 = aie.tile(0, 2)
     aie.flow(%01, DMA : 0, %12, Core : 1)
     aie.packet_flow(0x10) {
-      aie.packet_source < %01, Core : 0>
-      aie.packet_dest < %12, Core : 0>
-      aie.packet_dest < %02, DMA : 1>
+      aie.packet_source<%01, Core : 0>
+      aie.packet_dest<%12, Core : 0>
+      aie.packet_dest< %02, DMA : 1>
     }
   }
 }
