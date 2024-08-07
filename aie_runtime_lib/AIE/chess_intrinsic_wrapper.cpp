@@ -25,3 +25,12 @@ extern "C" void llvm___aie___lock___acquire___reg(unsigned id, unsigned val) {
 extern "C" void llvm___aie___lock___release___reg(unsigned id, unsigned val) {
   release(id, val);
 }
+
+extern "C" int llvm___aie___get___ss(int stream) { return get_ss(stream); }
+extern "C" float llvm___aie___getf___ss(int stream) { return getf_ss(stream); }
+extern "C" int llvm___aie___get___ss0___tlast() { return get_ss0_tlast(); }
+extern "C" int llvm___aie___get___ss1___tlast() { return get_ss1_tlast(); }
+extern "C" int llvm___aie___get___wss0___tlast() { return get_wss0_tlast(); }
+extern "C" int llvm___aie___get___wss1___tlast() { return get_wss1_tlast(); }
+extern "C" void llvm___aie___put___ms(int idx_ms, int a) { put_ms(idx_ms, a); }
+//extern "C" void llvm___aie___put___ms___tlast(int idx_ms, int a, int tlast) { put_ms(idx_ms, a, tlast); }
