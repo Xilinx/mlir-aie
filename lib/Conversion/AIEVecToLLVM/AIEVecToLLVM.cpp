@@ -1436,11 +1436,11 @@ public:
 };
 
 class SelectOpConversion
-    : public mlir::ConvertOpToLLVMPattern<aievec::SelectOp> {
+    : public mlir::ConvertOpToLLVMPattern<aievec::aie1::SelectOp> {
 public:
-  using ConvertOpToLLVMPattern<aievec::SelectOp>::ConvertOpToLLVMPattern;
+  using ConvertOpToLLVMPattern<aievec::aie1::SelectOp>::ConvertOpToLLVMPattern;
 
-  static std::string getIntrinsicName(aievec::SelectOp op) {
+  static std::string getIntrinsicName(aievec::aie1::SelectOp op) {
     auto xbuffType = cast<VectorType>(op.getXbuff().getType());
     std::stringstream ss;
     ss << "llvm.aie.prim." << getVectorTypeString(xbuffType) << ".select";
@@ -1448,7 +1448,7 @@ public:
   }
 
   LogicalResult
-  matchAndRewrite(aievec::SelectOp op, OpAdaptor adaptor,
+  matchAndRewrite(aievec::aie1::SelectOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto module = op->getParentOfType<ModuleOp>();
     MLIRContext *context = rewriter.getContext();
