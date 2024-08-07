@@ -454,8 +454,8 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
 
     if (!foundMatchedDest) {
       bool foundAMSelValue = false;
-      for (int a = 0; a < numArbiters; a++) {
-        for (int i = 0; i < numMsels; i++) {
+      for (int i = 0; i < numMsels; i++) {
+        for (int a = 0; a < numArbiters; a++) {
           amselValue = a + i * numArbiters;
           if (masterAMSels.count({tileOp, amselValue}) == 0) {
             foundAMSelValue = true;
