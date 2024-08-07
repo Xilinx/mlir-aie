@@ -43,7 +43,6 @@ and aie.packet_rules operations.
 ```
 -route-circuit : Flag to enable aie.flow lowering.
 -route-packet  : Flag to enable aie.packetflow lowering.
--keep-flow-op  : Flag to not erase aie.flow/packetflow after its lowering,used for routing visualization.
 ```
 ### `-aie-find-flows`
 
