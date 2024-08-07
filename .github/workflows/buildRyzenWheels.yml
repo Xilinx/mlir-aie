@@ -70,11 +70,16 @@ jobs:
           export XRT_ROOT=/opt/xilinx/xrt
           export AIE_PROJECT_COMMIT=$(git rev-parse --short HEAD)
           export DATETIME=$(date +"%Y%m%d%H")
+          export REQUIRED_LLVM_WHEEL_VERSION=$VERSION \
           
-          pushd utils/mlir_aie_wheels
+          pushd utils/packaging/mlir_aie_wheels
           
           pip install wheel auditwheel patchelf importlib_metadata
-          CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
+          CIBW_ARCHS=x86_64 \
+            pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation \
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro/ \
+            -f https://github.com/makslevental/mlir-python-extras/releases/expanded_assets/0.0.6
+    
           
           popd
           
@@ -169,9 +174,9 @@ jobs:
           export AIE_PROJECT_COMMIT=$(git rev-parse --short HEAD)
           export DATETIME=$(date +"%Y%m%d%H")
           
-          cp python/requirements.txt utils/mlir_aie_wheels/python_bindings
+          cp python/requirements.txt utils/packaging/mlir_aie_wheels/python_bindings
           
-          pushd utils/mlir_aie_wheels/python_bindings
+          pushd utils/packaging/mlir_aie_wheels/python_bindings
           
           pip install wheel auditwheel patchelf
           CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
