@@ -111,3 +111,17 @@ module {
    }
   }
 }
+
+// -----
+
+// CHECK: runtime_sequence
+// CHECK: aiex.npu.maskwrite32 {address = 3147552 : ui32, mask = 65535 : ui32, value = 321 : ui32}
+module {
+  aie.device(npu1_1col) {
+    %tile03 = aie.tile(0,3)
+    %s = aie.buffer(%tile03) {address = 1024 : i32, sym_name = "stuff"} : memref<128xi32>
+    aiex.runtime_sequence() {
+      aiex.npu.maskwrite32 {buffer = @stuff, address = 200 : ui32, value = 321 : ui32, mask = 0xffff : ui32}
+    }
+  }
+}
