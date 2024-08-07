@@ -824,51 +824,6 @@ Effects: `MemoryEffects::Effect{}`
 | `result` | vector of any type values
 
 
-### `aievec.select` (::xilinx::aievec::SelectOp)
-
-_AIE vector lane selection_
-
-AMD-specific vector lane selection operation. It selects between the
-first set of lanes or the second one according to the value in 'select'. 
-If the bit in select is 0(1), it returns the value in the first(second) 
-set of lanes.
-`$result = `select32($select, $xbuff, $xstart, $xoffsets, $ystart, $yoffsets)`
-
-Traits: `AlwaysSpeculatableImplTrait`
-
-Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
-
-Effects: `MemoryEffects::Effect{}`
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>select</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>xstart</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>xoffsets</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>xoffsets_hi</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>xsquare</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>ystart</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>yoffsets</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>yoffsets_hi</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>ysquare</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-</table>
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `xbuff` | vector of any type values
-| `ybuff` | vector of any type values
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `result` | vector of any type values
-
-
 ### `aievec.shift` (::xilinx::aievec::ShiftOp)
 
 _AIE2 concat and shift_

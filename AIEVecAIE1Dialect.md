@@ -48,6 +48,45 @@ Effects: `MemoryEffects::Effect{}`
 | `result` | vector of any type values
 
 
+### `aievec_aie1.ext` (::xilinx::aievec::aie1::ExtOp)
+
+_AIE ext_
+
+AMD-specific vector extract intrinsic. Selects contiguous lanes from 
+the source vector, and transfers the data from those lanes to the 
+result. The lane selection is controlled by index. There are two cases:
+1. Extracted vector fills half of the original vector lanes (e.g. extract v64int8 from v128int8)
+2. Extracted vector fills a fourth of the original vector lanes (e.g. extract v32int8 from v128int8)
+In the first case, index can be 0 or 1. Index 0 extracts the lower half, and index 1 extracts the upper half.
+In the second case, index can be 0 to 3. Index 0 extracts the lowest quarter, index 1 the next quarter, and so on.
+`$result = ext($source, $index)`
+
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>index</code></td><td>::mlir::IntegerAttr</td><td>8-bit signless integer attribute whose minimum value is 0 whose maximum value is 8</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `source` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
+
 ### `aievec_aie1.mac` (::xilinx::aievec::aie1::FMAOp)
 
 _AIE vector fused multiply-add_
@@ -145,6 +184,51 @@ Effects: `MemoryEffects::Effect{}`
 | `result` | vector of any type values
 
 
+### `aievec_aie1.select` (::xilinx::aievec::aie1::SelectOp)
+
+_AIE vector lane selection_
+
+AMD-specific vector lane selection operation. It selects between the
+first set of lanes or the second one according to the value in 'select'. 
+If the bit in select is 0(1), it returns the value in the first(second) 
+set of lanes.
+`$result = `select32($select, $xbuff, $xstart, $xoffsets, $ystart, $yoffsets)`
+
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>select</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>xstart</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>xoffsets</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>xoffsets_hi</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>xsquare</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>ystart</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>yoffsets</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>yoffsets_hi</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>ysquare</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `xbuff` | vector of any type values
+| `ybuff` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
+
 ### `aievec_aie1.sub` (::xilinx::aievec::aie1::SubOp)
 
 _AIE1 vector subtract_
@@ -186,4 +270,112 @@ Effects: `MemoryEffects::Effect{}`
 | :----: | ----------- |
 | `result` | vector of any type values
 
+
+## Enums
+
+### AIEArch
+
+AIE Architecture
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| AIE1 | `1` | AIE1 |
+| AIE2 | `2` | AIE2 |
+
+### AIEDevice
+
+AIE Device
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| xcvc1902 | `1` | xcvc1902 |
+| xcve2302 | `2` | xcve2302 |
+| xcve2802 | `3` | xcve2802 |
+| npu1 | `4` | npu1 |
+| npu1_1col | `5` | npu1_1col |
+| npu1_2col | `6` | npu1_2col |
+| npu1_3col | `7` | npu1_3col |
+| npu1_4col | `8` | npu1_4col |
+
+### CascadeDir
+
+Directions for cascade
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| South | `3` | South |
+| West | `4` | West |
+| North | `5` | North |
+| East | `6` | East |
+
+### DMAChannelDir
+
+DMA Channel direction
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| S2MM | `0` | S2MM |
+| MM2S | `1` | MM2S |
+
+### LockAction
+
+lock acquire/release
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| Acquire | `0` | Acquire |
+| AcquireGreaterEqual | `2` | AcquireGreaterEqual |
+| Release | `1` | Release |
+
+### LockBlocking
+
+lock operation is blocking
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| NonBlocking | `0` | NonBlocking |
+| Blocking | `1` | Blocking |
+
+### ObjectFifoPort
+
+Ports of an object FIFO
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| Produce | `0` | Produce |
+| Consume | `1` | Consume |
+
+### WireBundle
+
+Bundle of wires
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| Core | `0` | Core |
+| DMA | `1` | DMA |
+| FIFO | `2` | FIFO |
+| South | `3` | South |
+| West | `4` | West |
+| North | `5` | North |
+| East | `6` | East |
+| PLIO | `7` | PLIO |
+| NOC | `8` | NOC |
+| Trace | `9` | Trace |
+| Ctrl | `10` | Ctrl |
 
