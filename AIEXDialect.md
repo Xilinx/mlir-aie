@@ -816,6 +816,38 @@ has executed all of its tasks.
 </table>
 
 
+### `aiex.npu.maskwrite32` (::xilinx::AIEX::NpuMaskWrite32Op)
+
+_Write a masked 32-bit value to the AIE array_
+
+
+Syntax:
+
+```
+operation ::= `aiex.npu.maskwrite32` attr-dict
+```
+
+NPU mask write32 operator writes a masked 32bit value to the AIE array.
+If 'buffer' is present then 'address' is interpreted as an offset into the
+aie.buffer with symbol name 'buffer'.
+If 'column' and 'row' are present then 'address' is interpreted as an offset
+into the memory space of aie.tile(column, row).
+If 'buffer' is not present and 'column' and 'row' are not present then
+'address' is interpreted as a full 32-bit address in the AIE array.
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>mask</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>buffer</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+
 ### `aiex.npu.push_queue` (::xilinx::AIEX::NpuPushQueueOp)
 
 _Bd queue push operator_
