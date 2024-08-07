@@ -105,11 +105,12 @@ def main(opts):
     if not os.path.exists(log_folder):
         os.makedirs(log_folder)
 
-    num_iter = 1
+    num_iter = 10
     npu_time_total = 0
     npu_time_min = 9999999
     npu_time_max = 0
-    trace_size = 16384
+    #trace_size = 16384
+    trace_size = 32768
     enable_trace = True
     trace_file = "log/trace_" + design + ".txt"
     # ------------------------------------------------------
@@ -588,9 +589,10 @@ def main(opts):
 
         print("full_output shape: ", full_output.shape)        
         aie_output = full_output[:3920]
-        if i == 0:
+        #if i == 0:
+        if i == 9:
             trace_buffer = full_output[3920:].view(np.uint32)
-        print("trace shape: ", trace_buffer.shape, ", size: ", trace_buffer.size)
+        #print("trace shape: ", trace_buffer.shape, ", size: ", trace_buffer.size)
 
         # ------------------------------------------------------
         # Reorder output data-layout
@@ -627,18 +629,6 @@ def main(opts):
         # trace_buffer = full_output[3920:]
         print("trace_buffer shape: ",trace_buffer.shape)
         print("trace_buffer dtype: ",trace_buffer.dtype)
-        print("0: ", trace_buffer[0])
-        print("1: ", trace_buffer[1])
-        print("2: ", trace_buffer[2])
-        print("3: ", trace_buffer[3])
-        print("4: ", trace_buffer[4])
-        print("5: ", trace_buffer[5])
-        print("6: ", trace_buffer[6])
-        print("7: ", trace_buffer[7])
-        print("8: ", trace_buffer[8])
-        print("9: ", trace_buffer[9])
-        print("10: ", trace_buffer[10])
-        print("11: ", trace_buffer[11])
         # write_out_trace(trace_buffer, str(opts.trace_file))
         write_out_trace(trace_buffer, "trace.txt")
 
