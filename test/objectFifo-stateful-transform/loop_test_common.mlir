@@ -1,4 +1,4 @@
-//===- loop_test.aie.mlir --------------------------------------*- MLIR -*-===//
+//===- loop_test_common.mlir ------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -64,36 +64,23 @@
 // CHECK:               func.call @some_work(%[[BUFF_1]], %[[ARG0]]) : (memref<16xi32>, index) -> ()
 // CHECK-NEXT:          aie.use_lock(%[[LOCK_1]], Release, 1)
 // CHECK-NEXT:        }
-// CHECK:             %[[C1_0:.+]] = arith.constant 1 : index
-// CHECK:             %[[C4_1:.+]] = arith.constant 4 : index
-// CHECK:             scf.for %[[ARG0:.+]] = %[[C1]] to %[[C1_0]] step %[[C4_1]] {
-// CHECK-NEXT:          aie.use_lock(%[[LOCK_2]], Acquire, 0)
-// CHECK-NEXT:          func.call @some_work(%[[BUFF_2]], %[[ARG0]]) : (memref<16xi32>, index) -> ()
-// CHECK-NEXT:          aie.use_lock(%[[LOCK_2]], Release, 1)
-// CHECK-DAG:           %[[C1_2:.*]] = arith.constant 1 : index
-// CHECK-DAG:           %[[MUL_0:.*]] = arith.muli %[[C1]], %[[C1_2]] : index
-// CHECK-DAG:           %[[ADD_0:.*]] = arith.addi %[[ARG0]], %[[MUL_0]] : index
-// CHECK-DAG:           aie.use_lock(%[[LOCK_3]], Acquire, 0)
-// CHECK:               func.call @some_work(%[[BUFF_3]], %[[ADD_0]]) : (memref<16xi32>, index) -> ()
-// CHECK-NEXT:          aie.use_lock(%[[LOCK_3]], Release, 1)
-// CHECK-DAG:           %[[C2_3:.*]] = arith.constant 2 : index
-// CHECK-DAG:           %[[MUL_1:.*]] = arith.muli %[[C1]], %[[C2_3]] : index
-// CHECK-DAG:           %[[ADD_1:.*]] = arith.addi %[[ARG0]], %[[MUL_1]] : index
-// CHECK-DAG:           aie.use_lock(%[[LOCK_0]], Acquire, 0)
-// CHECK:               func.call @some_work(%[[BUFF_0]], %[[ADD_1]]) : (memref<16xi32>, index) -> ()
-// CHECK-NEXT:          aie.use_lock(%[[LOCK_0]], Release, 1)
-// CHECK-DAG:           %[[C3:.*]] = arith.constant 3 : index
-// CHECK-DAG:           %[[MUL_2:.*]] = arith.muli %[[C1]], %[[C3]] : index
-// CHECK-DAG:           %[[ADD_2:.*]] = arith.addi %[[ARG0]], %[[MUL_2]] : index
-// CHECK-DAG:           aie.use_lock(%[[LOCK_1]], Acquire, 0)
-// CHECK:               func.call @some_work(%[[BUFF_1]], %[[ADD_2]]) : (memref<16xi32>, index) -> ()
-// CHECK-NEXT:          aie.use_lock(%[[LOCK_1]], Release, 1)
-// CHECK-NEXT:        }
-// CHECK:             scf.for %[[ARG0:.+]] = %[[C1_0]] to %[[C4]] step %[[C1]] {
-// CHECK-DAG:           aie.use_lock(%[[LOCK_2]], Acquire, 0)
-// CHECK:               func.call @some_work(%[[BUFF_2]], %[[ARG0]]) : (memref<16xi32>, index) -> ()
-// CHECK-NEXT:          aie.use_lock(%[[LOCK_2]], Release, 1)
-// CHECK-NEXT:        }
+// CHECK:             %[[C3:.*]] = arith.constant 3 : index
+// CHECK:             aie.use_lock(%[[LOCK_2]], Acquire, 0)
+// CHECK:             func.call @some_work(%[[BUFF_2]], %[[C1]]) : (memref<16xi32>, index) -> ()
+// CHECK:             aie.use_lock(%[[LOCK_2]], Release, 1)
+// CHECK:             %[[C1_0:.*]] = arith.constant 1 : index
+// CHECK:             %[[MUL_0:.*]] = arith.muli %c1, %[[C1_0]] : index
+// CHECK:             %[[ADD_0:.*]] = arith.addi %c1, %[[MUL_0]] : index
+// CHECK:             aie.use_lock(%[[LOCK_3]], Acquire, 0)
+// CHECK:             func.call @some_work(%[[BUFF_3]], %[[ADD_0]]) : (memref<16xi32>, index) -> ()
+// CHECK:             aie.use_lock(%[[LOCK_3]], Release, 1)
+// CHECK:             %[[C2_1:.*]] = arith.constant 2 : index
+// CHECK:             %[[MUL_1:.*]] = arith.muli %c1, %[[C2_1]] : index
+// CHECK:             %[[ADD_1:.*]] = arith.addi %c1, %[[MUL_1]] : index
+// CHECK:             aie.use_lock(%[[LOCK_0]], Acquire, 0)
+// CHECK:             func.call @some_work(%[[BUFF_0]], %[[ADD_1]]) : (memref<16xi32>, index) -> ()
+// CHECK:             aie.use_lock(%[[LOCK_0]], Release, 1)
+
 module {
   aie.device(xcvc1902) {
     %tile12 = aie.tile(1, 2)

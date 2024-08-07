@@ -72,21 +72,10 @@ struct AIEPathfinderPass : AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
 
   typedef std::pair<mlir::Operation *, Port> PhysPort;
 
-  typedef struct {
-    SwitchboxOp sw;
-    Port sourcePort;
-    Port destPort;
-  } SwConnection;
-
   bool findPathToDest(SwitchSettings settings, TileID currTile,
                       WireBundle currDestBundle, int currDestChannel,
                       TileID finalTile, WireBundle finalDestBundle,
                       int finalDestChannel);
-
-  SwitchboxOp getSwitchbox(DeviceOp &d, int col, int row);
-
-  mlir::Operation *getOrCreateTile(mlir::OpBuilder &builder, int col, int row);
-  SwitchboxOp getOrCreateSwitchbox(mlir::OpBuilder &builder, TileOp tile);
 };
 
 } // namespace xilinx::AIE

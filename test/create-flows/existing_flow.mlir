@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
-// CHECK: module
+
 // CHECK:    %[[T02:.*]] = aie.tile(0, 2)
 // CHECK:    %[[T12:.*]] = aie.tile(1, 2)
 // CHECK:    %[[T22:.*]] = aie.tile(2, 2)
@@ -16,11 +16,11 @@
 // CHECK:    }
 // CHECK:    %{{.*}} = aie.switchbox(%[[T12]]) {
 // CHECK:      aie.connect<West : 0, East : 0>
-// CHECK:      aie.connect<DMA : 0, East : 1>
+// CHECK:      aie.connect<DMA : 0, East : [[ID1:[0-9]+]]>
 // CHECK:    }
 // CHECK:    %{{.*}} = aie.switchbox(%[[T22]]) {
 // CHECK:      aie.connect<West : 0, East : 0>
-// CHECK:      aie.connect<West : 1, DMA : 0>
+// CHECK:      aie.connect<West : [[ID1]], DMA : 0>
 // CHECK:    }
 // CHECK:    %{{.*}} = aie.switchbox(%[[T32]]) {
 // CHECK:      aie.connect<West : 0, DMA : 0>

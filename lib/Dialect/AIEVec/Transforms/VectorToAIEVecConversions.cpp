@@ -1766,12 +1766,12 @@ struct LowerVectorExtractStridedSliceOpAIEv1Pattern
       return failure();
 
     int64_t offset = cast<IntegerAttr>(adaptor.getOffsets()[0]).getInt();
-    auto selectOp = rewriter.create<aievec::SelectOp>(
+    auto selectOp = rewriter.create<aievec::aie1::SelectOp>(
         extractOp.getLoc(), vType, adaptor.getVector(),
         buildAttributeListForRotationSelectOp(rewriter, vType, offset));
-    rewriter.replaceOpWithNewOp<aievec::ExtOp>(extractOp, extractOp.getType(),
-                                               selectOp.getResult(),
-                                               rewriter.getI8IntegerAttr(0));
+    rewriter.replaceOpWithNewOp<aievec::aie1::ExtOp>(
+        extractOp, extractOp.getType(), selectOp.getResult(),
+        rewriter.getI8IntegerAttr(0));
     return success();
   }
 };
