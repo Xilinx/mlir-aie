@@ -1905,7 +1905,7 @@ struct ComputeExpOpByLUTLLVMPattern : OpConversionPattern<math::ExpOp> {
     auto moduleOp = expOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
-
+ 
     SymbolTable st = SymbolTable(moduleOp);
     func::FuncOp fn_op_lookup = st.lookup<func::FuncOp>(funcName);
 
