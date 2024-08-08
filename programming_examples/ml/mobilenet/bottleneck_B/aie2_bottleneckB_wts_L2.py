@@ -70,7 +70,10 @@ class bottleneckBCore:
                  _weightsInBN10_1,_weightsInBN10_2,_weightsInBN10_3, _weightsInBN11_1,_weightsInBN11_2,_weightsInBN11_3, _weightsInBN12_1,_weightsInBN12_2,_weightsInBN12_3,
                  _rtpBN10_1,_rtpBN10_2,_rtpBN10_3,_rtpBN11_1,_rtpBN11_2,_rtpBN11_3,_rtpBN12_1,_rtpBN12_2,_rtpBN12_3,
                  _skipMemTile,
-                 _actIn, _actOut,):
+                 _actIn, _actOut, bn10_scaleFactor1,bn10_scaleFactor2,bn10_scaleFactor3,
+                 bn11_scaleFactor1,bn11_scaleFactor2,bn11_scaleFactor3,bn11_scaleFactorAdd,
+                 bn12_scaleFactor1,bn12_scaleFactor2,bn12_scaleFactor3,):
+                 #_actIn, _actOut,):
 
         self.computeTileBN10_1 = _computeTileBN10_1
         self.computeTileBN10_2 = _computeTileBN10_2
@@ -138,9 +141,10 @@ class bottleneckBCore:
 
 
 
-        enableTrace = True
-        trace_size = 16384
-        traceSizeInInt32s = trace_size // 4
+        # enableTrace = True
+        # #trace_size = 16384
+        # trace_size = 32768
+        # traceSizeInInt32s = trace_size // 4
 
 
         # define types
@@ -227,7 +231,9 @@ class bottleneckBCore:
         OF_b10_act_layer1_layer2 = object_fifo("OF_b10_act_layer1_layer2", self.computeTileBN10_1, [self.computeTileBN10_2], 4,b10_layer2_in,via_DMA=True) 
         OF_b10_act_layer2_layer3 = object_fifo("OF_b10_act_layer2_layer3", self.computeTileBN10_2, [self.computeTileBN10_3], 2,b10_layer3_in) 
         # ************************ bneck11 ************************ 
-        OF_b10_layer3_bn_11_layer1 = object_fifo("OF_b10_layer3_bn_11_layer1", self.computeTileBN10_3, [self.computeTileBN11_1,self.skipMemTile], [2, 2, 4], b11_layer1_in) 
+#        OF_b10_layer3_bn_11_layer1 = object_fifo("OF_b10_layer3_bn_11_layer1", self.computeTileBN10_3, [self.computeTileBN11_1,self.skipMemTile], [2, 2, 4], b11_layer1_in) 
+        OF_b10_layer3_bn_11_layer1 = object_fifo("OF_b10_layer3_bn_11_layer1", self.computeTileBN10_3, [self.computeTileBN11_1,self.skipMemTile], [2, 2, 6], b11_layer1_in) 
+
         OF_b11_skip = object_fifo("OF_b11_skip", self.skipMemTile, [self.computeTileBN11_3], 2,b11_layer1_in) 
         object_fifo_link(OF_b10_layer3_bn_11_layer1,OF_b11_skip ) 
         OF_b11_act_layer1_layer2 = object_fifo("OF_b11_act_layer1_layer2", self.computeTileBN11_1, [self.computeTileBN11_2], 4,b11_layer2_in,via_DMA=True) 
@@ -253,7 +259,8 @@ class bottleneckBCore:
             for _ in for_(sys.maxsize):
 
                 
-                scale = memref.load(self.rtpBN10_layer1, [0])
+                #scale = memref.load(self.rtpBN10_layer1, [0])
+                scale = bn10_scaleFactor1
                 for _ in for_(b10_InH1):
                     element0ActivactionsIn = self.actIn.acquire(
                         ObjectFifoPort.Consume, 1
@@ -283,7 +290,8 @@ class bottleneckBCore:
         # # # Compute tile 3
         @core(self.computeTileBN10_2, "bn10_conv2dk3_dw.o")
         def core_body():
-            scale = 7
+            #scale = 7
+            scale = bn10_scaleFactor2
             element0Weights = self.weightsInBN10_layer2.acquire(ObjectFifoPort.Consume, 1)
             for _ in for_(sys.maxsize):
 
@@ -385,7 +393,8 @@ class bottleneckBCore:
             for _ in for_(0xFFFFFFFF):
                 
 
-                scale = memref.load(self.rtpBN10_layer3, [0])
+                #scale = memref.load(self.rtpBN10_layer3, [0])
+                scale = bn10_scaleFactor3
                 # scale = memref.load(rtpself.computeTileBN10_1, [0])
 
                 for _ in for_(b10_InH3):
@@ -420,7 +429,8 @@ class bottleneckBCore:
 
                 # acquire weights once
                 
-                scale = memref.load(self.rtpBN11_layer1, [0])
+                #scale = memref.load(self.rtpBN11_layer1, [0])
+                scale = bn11_scaleFactor1
                 for _ in for_(b10_InH1):
                     element0ActivactionsIn = OF_b10_layer3_bn_11_layer1.acquire(
                         ObjectFifoPort.Consume, 1
@@ -450,7 +460,9 @@ class bottleneckBCore:
         # # # # # # Compute tile 3
         @core(self.computeTileBN11_2, "bn11_conv2dk3_dw.o")
         def core_body():
-            scale = 8
+            #scale = 8
+            scale = bn11_scaleFactor2
+
             element0Weights = self.weightsInBN11_layer2.acquire(ObjectFifoPort.Consume, 1)
             for _ in for_(sys.maxsize):
 
@@ -549,8 +561,10 @@ class bottleneckBCore:
             for _ in for_(0xFFFFFFFF):
                 
 
-                scale = memref.load(self.rtpBN11_layer3 , [0])
-                skipScale = memref.load(self.rtpBN11_layer3 , [1])
+                #scale = memref.load(self.rtpBN11_layer3 , [0])
+                scale = bn11_scaleFactor3
+                #skipScale = memref.load(self.rtpBN11_layer3 , [1])
+                skipScale = bn11_scaleFactorAdd
                 # scale = memref.load(rtpself.computeTileBN10_1, [0])
 
                 for _ in for_(b10_InH3):
@@ -591,7 +605,8 @@ class bottleneckBCore:
 
                 # acquire weights once
                 
-                scale = memref.load(self.rtpBN12_layer1, [0])
+                #scale = memref.load(self.rtpBN12_layer1, [0])
+                scale = bn12_scaleFactor1
                 for _ in for_(b10_InH1):
                     element0ActivactionsIn = OF_b11_layer3_bn_12_layer1.acquire(
                         ObjectFifoPort.Consume, 1
@@ -620,7 +635,8 @@ class bottleneckBCore:
 
         @core(self.computeTileBN12_2, "bn12_conv2dk3_dw_stride2.o")
         def core_body():
-            scale = 8
+            #scale = 8
+            scale = bn12_scaleFactor2
             element0Weights = self.weightsInBN12_layer2.acquire(ObjectFifoPort.Consume, 1)
             for _ in for_(sys.maxsize):
 
@@ -698,7 +714,8 @@ class bottleneckBCore:
             for _ in for_(0xFFFFFFFF):
                 
 
-                scale = memref.load(self.rtpBN12_layer3, [0])
+                #scale = memref.load(self.rtpBN12_layer3, [0])
+                scale = bn12_scaleFactor3
                 # scale = memref.load(rtpself.computeTileBN10_1, [0])
 
                 for _ in for_(b12_InH2):
@@ -751,7 +768,10 @@ def mobilenetV3_bn_10_11_12(start_row = 2, start_col = 0, bn10_scaleFactor1=10,b
     b12_OutC3 = 80
 
     enableTrace = True
-    trace_size = 16384
+    # enableTrace = False
+    # trace_size = 16384
+    trace_size = 32768
+    # trace_size = 0
     traceSizeInInt32s = trace_size // 4
 
     @device(AIEDevice.npu1_3col)
@@ -871,7 +891,11 @@ def mobilenetV3_bn_10_11_12(start_row = 2, start_col = 0, bn10_scaleFactor1=10,b
         bottleneckBCore(bn10_tile_1,bn10_tile_2,bn10_tile_3,bn11_tile_1,bn11_tile_2,bn11_tile_3,bn12_tile_1,bn12_tile_2,bn12_tile_3,
                         bn10_1_wts_OF_L3L1,bn10_2_wts_OF_L3L1,bn10_3_wts_OF_L3L1,bn11_1_wts_OF_L3L1,bn11_2_wts_OF_L3L1,bn11_3_wts_OF_L3L1,bn12_1_wts_OF_L3L1,bn12_2_wts_OF_L3L1,bn12_3_wts_OF_L3L1,
                         bn10_1_rtp,bn10_2_rtp,bn10_3_rtp,bn11_1_rtp,bn11_2_rtp,bn11_3_rtp,bn12_1_rtp,bn12_2_rtp,bn12_3_rtp,
-                        MemTile01,act_in,act_out )
+						MemTile01,act_in,act_out,bn10_scaleFactor1,bn10_scaleFactor2,bn10_scaleFactor3,
+                           bn11_scaleFactor1,bn11_scaleFactor2,bn11_scaleFactor3,bn11_scaleFactorAdd,
+                           bn12_scaleFactor1,bn12_scaleFactor2,bn12_scaleFactor3,  )
+                        #MemTile01,act_in,act_out )
+
 
 
         # # instruction stream generation
@@ -902,7 +926,8 @@ def mobilenetV3_bn_10_11_12(start_row = 2, start_col = 0, bn10_scaleFactor1=10,b
 
         # Set up a circuit-switched flow from core to shim for tracing information
         if trace_size > 0:
-            flow(bn10_tile_1, WireBundle.Trace, 0, ShimTile00, WireBundle.DMA, 1)
+            #flow(bn10_tile_1, WireBundle.Trace, 0, ShimTile00, WireBundle.DMA, 1)
+            flow(bn11_tile_3, WireBundle.Trace, 0, ShimTile00, WireBundle.DMA, 1)
 
 
         totalWeightsSize32b_complete = (
@@ -932,14 +957,139 @@ def mobilenetV3_bn_10_11_12(start_row = 2, start_col = 0, bn10_scaleFactor1=10,b
             N_in_bytes = b12_InW2 * b12_InH2 * b12_OutC3
 
             if trace_size > 0:
+
                 trace_utils.configure_simple_tracing_aie2(
-                    bn10_tile_1,
+                    #bn10_tile_1,
+                    bn11_tile_3,
                     ShimTile00,
                     ddr_id=2,
                     size=trace_size,
                     offset=N_in_bytes,
+                    # events = [0x4B, 0x22, 0x21, 0x25, 0x2D, 0x2C, 0x1A, 0x4F]
+                    events = [0x4B, 0x22, 0x21, 0x53, 0x2D, 0x2C, 0x1A, 0x4F]
                 )
 
+                def master(port):
+                    return port | (1 << 5)
+
+                def slave(port):
+                    return port
+
+                npu_write32(
+                    #column=int(bn10_tile_1.col),
+                    #row=int(bn10_tile_1.row),
+                    column=int(bn11_tile_3.col),
+                    row=int(bn11_tile_3.row),
+                    address=0x3FF00,
+                    value=trace_utils.pack4bytes(0, master(2), slave(1), master(1)),  # port 1 is FIFO0?
+                )
+
+                # mytile = bn10_tile_1
+                # myshim = ShimTile00
+                # trace_channel = 1
+                # trace_bd_id = 13
+                # trace_ddr_id = 2
+                # trace_offset = N_in_bytes
+                # start = 0x1
+                # stop = 0x0
+                # events = [0x4B, 0x22, 0x21, 0x53, 0x2D, 0x2C, 0x1A, 0x4F]
+                # events = (events + [0] * 8)[:8]
+                # # 0x340D0: Trace Control 0
+                # #          0xAABB---C
+                # #            AA        <- Event to stop trace capture
+                # #              BB      <- Event to start trace capture
+                # #                   C  <- Trace mode, 00=event=time, 01=event-PC, 10=execution
+                # # Configure so that "Event 1" (always true) causes tracing to start
+                # npu_write32(
+                #     column=int(mytile.col),
+                #     row=int(mytile.row),
+                #     address=0x340D0,
+                #     value=trace_utils.pack4bytes(stop, start, 0, 0),
+                # )
+                # # 0x340D4: Trace Control 1
+                # # This is used to control packet routing.  For the moment
+                # # only deal with the simple case of circuit routing.
+                # npu_write32(
+                #     column=int(mytile.col),
+                #     row=int(mytile.row),
+                #     address=0x340D4,
+                #     value=0,
+                # )
+                # # 0x340E0: Trace Event Group 1  (Which events to trace)
+                # #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
+                # npu_write32(
+                #     column=int(mytile.col),
+                #     row=int(mytile.row),
+                #     address=0x340E0,
+                #     value=trace_utils.pack4bytes(*events[0:4]),
+                # )
+                # # 0x340E4: Trace Event Group 2  (Which events to trace)
+                # #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
+                # npu_write32(
+                #     column=int(mytile.col),
+                #     row=int(mytile.row),
+                #     address=0x340E4,
+                #     value=trace_utils.pack4bytes(*events[4:8]),
+                # )
+
+                # # 0x3FF00: Stream switch event port selection 0
+                # def master(port):
+                #     return port | (1 << 5)
+
+                # def slave(port):
+                #     return port
+
+                # npu_write32(
+                #     column=int(mytile.col),
+                #     row=int(mytile.row),
+                #     address=0x3FF00,
+                #     value=trace_utils.pack4bytes(0, 0, slave(1), master(1)),  # port 1 is FIFO0?
+                # )
+                # npu_write32(
+                #     column=int(mytile.col),
+                #     row=int(mytile.row),
+                #     address=0x3FF04,
+                #     value=trace_utils.pack4bytes(0, 0, 0, 0),
+                # )
+
+                # # Configure a buffer descriptor to write tracing information that has been routed into this shim tile
+                # # out to host DDR memory
+                # npu_writebd_shimtile(
+                #     bd_id=trace_bd_id,
+                #     buffer_length=trace_size,
+                #     buffer_offset=trace_offset,
+                #     enable_packet=0,
+                #     out_of_order_id=0,
+                #     packet_id=0,
+                #     packet_type=0,
+                #     column=int(myshim.col),
+                #     column_num=1,
+                #     d0_size=0,
+                #     d0_stride=0,
+                #     d1_size=0,
+                #     d1_stride=0,
+                #     d2_stride=0,
+                #     ddr_id=trace_ddr_id,
+                #     iteration_current=0,
+                #     iteration_size=0,
+                #     iteration_stride=0,
+                #     lock_acq_enable=0,
+                #     lock_acq_id=0,
+                #     lock_acq_val=0,
+                #     lock_rel_id=0,
+                #     lock_rel_val=0,
+                #     next_bd=0,
+                #     use_next_bd=0,
+                #     valid_bd=1,
+                # )
+                # # configure S2MM channel
+                # npu_write32(
+                #     column=int(myshim.col),
+                #     row=int(myshim.row),
+                #     address=0x1D204 if trace_channel == 0 else 0x1D20C,
+                #     value=trace_bd_id,
+                # )
+                
             npu_dma_memcpy_nd(
                 metadata="act_in",
                 bd_id=0,

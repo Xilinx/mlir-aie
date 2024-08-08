@@ -105,13 +105,15 @@ def main(opts):
     if not os.path.exists(log_folder):
         os.makedirs(log_folder)
 
-    num_iter = 10
+    num_iter = 1
     npu_time_total = 0
     npu_time_min = 9999999
     npu_time_max = 0
-    #trace_size = 16384
-    trace_size = 32768
     enable_trace = True
+    # enable_trace = False
+    # trace_size = 16384
+    trace_size = 32768
+    # trace_size = 0
     trace_file = "log/trace_" + design + ".txt"
     # ------------------------------------------------------
     # Configure this to match your design's buffer size
@@ -571,7 +573,7 @@ def main(opts):
     bn12_total_wts = np.concatenate((bn12_wts1, bn12_wts2, bn12_wts3), axis=None)
     total_wts = np.concatenate((bn10_total_wts,bn11_total_wts,bn12_total_wts), axis=None)
     total_wts.tofile(log_folder + "/after_weights_mem_fmt_final.txt", sep=",", format="%d")
-    print(total_wts.shape)
+    print("wts shape:", total_wts.shape)
     # ------------------------------------------------------
     # Main run loop
     # ------------------------------------------------------
@@ -588,16 +590,20 @@ def main(opts):
         times.append(npu_time)
 
         print("full_output shape: ", full_output.shape)        
-        aie_output = full_output[:3920]
+        aie_output = full_output[:3920].view(np.int8)
+        print("aie_output shape: ", aie_output.shape)        
         #if i == 0:
-        if i == 9:
-            trace_buffer = full_output[3920:].view(np.uint32)
+        if trace_size > 0:
+			#if i == 9:
+            if i == 0:
+            	trace_buffer = full_output[3920:].view(np.uint32)
         #print("trace shape: ", trace_buffer.shape, ", size: ", trace_buffer.size)
 
         # ------------------------------------------------------
         # Reorder output data-layout
         # ------------------------------------------------------
         temp_out = aie_output.reshape(shape_out)
+        print("aie_output re-shape: ", temp_out.shape)        
         temp_out = ds.reorder_mat(temp_out, "CDYX", "YCXD")
         ofm_mem_fmt = temp_out.reshape(shape_out_final)
         ofm_mem_fmt.tofile(

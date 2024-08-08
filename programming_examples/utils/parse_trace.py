@@ -779,6 +779,8 @@ def lookup_event_name_by_type(trace_type, code):
             event = "PortRunning0"
         elif code == 79:  # 0x4F:
             event = "PortRunning1"
+        elif code == 83:  # 0x4F:
+            event = "PortRunning2"
         else:
             event = "Unknown"
     # Mem traces
