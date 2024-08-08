@@ -20,13 +20,13 @@
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
@@ -1905,23 +1905,25 @@ struct ComputeExpOpByLUTLLVMPattern : OpConversionPattern<math::ExpOp> {
     auto moduleOp = expOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
- 
+
     SymbolTable st = SymbolTable(moduleOp);
     func::FuncOp fn_op_lookup = st.lookup<func::FuncOp>(funcName);
 
     func::FuncOp fn_op;
     VectorType v16bf16Ty = mlir::VectorType::get({16}, rewriter.getBF16Type());
     VectorType v8i64Ty = mlir::VectorType::get({8}, rewriter.getI64Type());
-    //if the function is already declared, use the existing function, don't declare multiple times
-    if (fn_op_lookup != NULL){
-        fn_op = fn_op_lookup;
-    }
-    else{
+    // if the function is already declared, use the existing function, don't
+    // declare multiple times
+    if (fn_op_lookup != NULL) {
+      fn_op = fn_op_lookup;
+    } else {
       StringAttr t1 = rewriter.getStringAttr("sym_visibility");
       StringAttr t2 = rewriter.getStringAttr("private");
-      NamedAttribute funcAccess = NamedAttribute(t1,t2);
-      FunctionType fn_type = mlir::FunctionType::get(rewriter.getContext(), TypeRange{v16bf16Ty}, TypeRange{v8i64Ty});
-      fn_op = rewriter.create<func::FuncOp>(moduleOp.getLoc(), funcName, fn_type, funcAccess);
+      NamedAttribute funcAccess = NamedAttribute(t1, t2);
+      FunctionType fn_type = mlir::FunctionType::get(
+          rewriter.getContext(), TypeRange{v16bf16Ty}, TypeRange{v8i64Ty});
+      fn_op = rewriter.create<func::FuncOp>(moduleOp.getLoc(), funcName,
+                                            fn_type, funcAccess);
     }
 
     rewriter.setInsertionPoint(expOp);
@@ -1929,7 +1931,8 @@ struct ComputeExpOpByLUTLLVMPattern : OpConversionPattern<math::ExpOp> {
     SmallVector<Value> expOperands = {adaptor.getOperand()};
 
     Type accTypeNative = getVectorOpDestType(srcType, /*AIEML =*/true);
-    auto callOp = rewriter.create<func::CallOp>(expOp.getLoc(), fn_op, expOperands);
+    auto callOp =
+        rewriter.create<func::CallOp>(expOp.getLoc(), fn_op, expOperands);
     auto resCastOp = rewriter.create<vector::BitCastOp>(
         expOp.getLoc(), accTypeNative, callOp.getResults());
     auto shiftParamOp = rewriter.create<arith::ConstantOp>(
