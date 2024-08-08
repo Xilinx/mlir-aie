@@ -24,7 +24,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 2
           submodules: "true"
@@ -34,7 +34,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang-tidy ninja-build clang libelf-dev
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
@@ -114,7 +114,7 @@ jobs:
 
     steps:
       - name: Get the project repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 2
           submodules: "true"
@@ -125,7 +125,7 @@ jobs:
           clangformat: 17.0.1
 
       - name: Setup Python env
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
@@ -191,12 +191,12 @@ jobs:
 
     steps:
       - name: Get the project repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 2
           submodules: "true"
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
