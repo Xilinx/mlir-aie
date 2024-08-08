@@ -188,8 +188,8 @@ def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
   }];
 
   let parameters = (ins
-    "uint16_t" : $type,
-    "uint16_t" : $header
+    "uint16_t" : $pkt_type,
+    "uint16_t" : $pkt_id
   );
 
   let assemblyFormat = "`<` struct(params) `>`";

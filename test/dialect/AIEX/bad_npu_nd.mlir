@@ -243,9 +243,9 @@ module {
       %c2 = arith.constant 2 : i64
       %c3 = arith.constant 3 : i64
       %c8 = arith.constant 8 : i64
-      aiex.npu.dma_memcpy_nd (0, 0, %a[%c1,%c0,%c0,%c0][%c1,%c1,%c1,%c2][%c0,%c0,%c0,%c1], packet = <header = 31, type = 7>) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi32>
+      aiex.npu.dma_memcpy_nd (0, 0, %a[%c1,%c0,%c0,%c0][%c1,%c1,%c1,%c2][%c0,%c0,%c0,%c1], packet = <pkt_id = 31, pkt_type = 7>) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi32>
       // expected-error@+1 {{Packet ID field can only hold 5 bits.}}
-      aiex.npu.dma_memcpy_nd (0, 0, %a[%c1,%c0,%c0,%c0][%c2,%c1,%c1,%c2][%c0,%c0,%c0,%c1], packet = <header = 32, type = 2>) { metadata = @objectfifo, id = 1 : i64 } : memref<8xi32>
+      aiex.npu.dma_memcpy_nd (0, 0, %a[%c1,%c0,%c0,%c0][%c2,%c1,%c1,%c2][%c0,%c0,%c0,%c1], packet = <pkt_id = 32, pkt_type = 2>) { metadata = @objectfifo, id = 1 : i64 } : memref<8xi32>
     }
     aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
   }
@@ -264,7 +264,7 @@ module {
       %c3 = arith.constant 3 : i64
       %c8 = arith.constant 8 : i64
       // expected-error@+1 {{Packet type field can only hold 3 bits.}}
-      aiex.npu.dma_memcpy_nd (0, 0, %a[%c1,%c0,%c0,%c0][%c2,%c1,%c1,%c2][%c0,%c0,%c0,%c1], packet = <header = 2, type = 8>) { metadata = @objectfifo, id = 1 : i64 } : memref<8xi32>
+      aiex.npu.dma_memcpy_nd (0, 0, %a[%c1,%c0,%c0,%c0][%c2,%c1,%c1,%c2][%c0,%c0,%c0,%c1], packet = <pkt_id = 2, pkt_type = 8>) { metadata = @objectfifo, id = 1 : i64 } : memref<8xi32>
     }
     aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
   }

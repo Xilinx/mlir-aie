@@ -402,9 +402,9 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
 
   // packet header
   if (auto packetInfo = getPacket()) {
-    if (packetInfo->getType() > 7)
+    if (packetInfo->getPktType() > 7)
       return emitOpError("Packet type field can only hold 3 bits.");
-    if (packetInfo->getHeader() > 31)
+    if (packetInfo->getPktId() > 31)
       return emitOpError("Packet ID field can only hold 5 bits.");
   }
 
