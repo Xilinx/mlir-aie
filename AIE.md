@@ -2271,6 +2271,29 @@ Syntax:
 | const_pad_before | `uint16_t` |  |
 | const_pad_after | `uint16_t` |  |
 
+### PacketInfoAttr
+
+
+    Tuple encoding the type and header of a packet;
+  
+
+Syntax:
+
+```
+#aie.packet_info<
+  uint16_t,   # pkt_type
+  uint16_t   # pkt_id
+>
+```
+
+
+#### Parameters:
+
+| Parameter | C++ type | Description |
+| :-------: | :-------: | ----------- |
+| pkt_type | `uint16_t` |  |
+| pkt_id | `uint16_t` |  |
+
 ## Type constraints
 
 ### AIE ObjectFifoSubview type

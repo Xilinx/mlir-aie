@@ -686,7 +686,8 @@ Syntax:
 operation ::= `aiex.npu.dma_memcpy_nd` `(` $x `,` $y `,` $memref ``
               custom<DynamicIndexList>($offsets, $static_offsets) ``
               custom<DynamicIndexList>($sizes, $static_sizes) ``
-              custom<DynamicIndexList>($strides, $static_strides) `)`
+              custom<DynamicIndexList>($strides, $static_strides) ``
+              (`,` `packet` `=` $packet^)? `)`
               attr-dict `:` type($memref)
 ```
 
@@ -747,6 +748,11 @@ Note that this is for convenience of the user only.
 The hardware only supports a single static offset, and this offset is calculated at compile time.
 Thus, all offsets can be equivalently expressed with the lowest dimension only.
 
+#### Packet Header Attribute
+The optional `packet` attribute defines the packet header and packet type that gets issued per DMA BD.
+If the attribute is set, then every time the DMA BD gets issued, a packet header is generated prior to the transmission of data.
+The packet header is used to guide arbitration throughout a packet-routed data flow, where each switch box arbitrates the data packet to stream to a successor based on the packet header.
+
 
 Traits: `AttrSizedOperandSegments`
 
@@ -761,6 +767,9 @@ Interfaces: `MyOffsetSizeAndStrideOpInterface`
 <tr><td><code>static_offsets</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 4 elements</td></tr>
 <tr><td><code>static_sizes</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 4 elements</td></tr>
 <tr><td><code>static_strides</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 4 elements</td></tr>
+<tr><td><code>packet</code></td><td>::xilinx::AIE::PacketInfoAttr</td><td>
+    Tuple encoding the type and header of a packet;
+  </td></tr>
 <tr><td><code>metadata</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 <tr><td><code>id</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>issue_token</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
