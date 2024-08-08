@@ -372,8 +372,8 @@ public:
     // enable_packet
     if (auto packetInfo = op.getPacket()) {
       enable_packet = IntegerAttr::get(i32ty, 1);
-      packet_type = IntegerAttr::get(i32ty, (*packetInfo).getType());
-      packet_id = IntegerAttr::get(i32ty, (*packetInfo).getHeader());
+      packet_type = IntegerAttr::get(i32ty, packetInfo->getType());
+      packet_id = IntegerAttr::get(i32ty, packetInfo->getHeader());
     }
 
     // out_of_order_id
