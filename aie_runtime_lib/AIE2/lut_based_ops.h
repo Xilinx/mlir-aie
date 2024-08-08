@@ -22,7 +22,8 @@ alignas(aie::vector_decl_align) extern int16 exp_flut_ab[512];
 alignas(aie::vector_decl_align) extern int16 exp_flut_cd[512];
 alignas(aie::vector_decl_align) extern unsigned char m_inv_lut[128];
 
-extern "C" __attribute__((always_inline)) v16accfloat getExpBf16(v16bfloat16 x) {
+extern "C" __attribute__((always_inline)) v16accfloat
+getExpBf16(v16bfloat16 x) {
   bfloat16 __aie_dm_resource_a *ilut_ab =
       (bfloat16 __aie_dm_resource_a *)exp_ilut_ab;
   bfloat16 __aie_dm_resource_b *ilut_cd =
