@@ -1901,7 +1901,7 @@ struct ComputeExpOpByLUTLLVMPattern : OpConversionPattern<math::ExpOp> {
     if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
       return failure();
 
-    StringRef funcName = "_Z10getExpBf16Dv16_u6__bf16";
+    StringRef funcName = "getExpBf16";
     auto moduleOp = expOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
