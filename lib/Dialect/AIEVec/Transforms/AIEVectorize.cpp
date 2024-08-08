@@ -966,11 +966,11 @@ static Operation *generateMulOp(T mulOp, AIEOpAttributes &opAttr,
 // subsumed by the same interval. The updOps will have to be inserted at the
 // head of region if the region has multiple blocks, or closer to the readOp
 // otherwise.
-static aievec::UPDOp
-generateUPDOp(TransferReadOp readOp,
-              mlir::DenseMap<std::tuple<IntervalReuse *, int32_t, int32_t>,
-                             std::pair<aievec::UPDOp, int8_t>> &memToUpdMap,
-              Region &region, VectState *state) {
+static aievec::aie1::UPDOp generateUPDOp(
+    TransferReadOp readOp,
+    mlir::DenseMap<std::tuple<IntervalReuse *, int32_t, int32_t>,
+                   std::pair<aievec::aie1::UPDOp, int8_t>> &memToUpdMap,
+    Region &region, VectState *state) {
   // Get the read access extent and interval of this read operation
   IntervalReuse *iv = state->getIntervalForOperation(readOp);
   auto extent = iv->getAccessExtent(readOp);
@@ -1007,7 +1007,7 @@ generateUPDOp(TransferReadOp readOp,
           : mid;
 
   // Find if we have already created upd op idx=0/idx=1 for this interval
-  aievec::UPDOp updOp = nullptr;
+  aievec::aie1::UPDOp updOp = nullptr;
   // initial value 0 of updIndices means neither upd op idx=0 nor idx=1 were
   // created.
   int8_t updIndices = 0;
@@ -1064,7 +1064,7 @@ generateUPDOp(TransferReadOp readOp,
     if (lb <= start && ub >= end && (updIndices & idx) == 0) {
       // Generate the upd instruction, and link it with a previous upd op
       // corresponding to the same read.
-      updOp = state->builder.create<aievec::UPDOp>(
+      updOp = state->builder.create<aievec::aie1::UPDOp>(
           readOp.getLoc(), updVecType, readOp.getSource(), indices,
           start - offset, idx - 1,
           updOp ? updOp.getResult() : TypedValue<VectorType>(nullptr));
@@ -2146,8 +2146,8 @@ static bool canFuseMulFMAOpsForInt16(Operation *Op) {
   }
 
   // Check 6. The def of two operands are upd operations
-  auto lUpdOp = dyn_cast<aievec::UPDOp>(lhs.getDefiningOp());
-  auto rUpdOp = dyn_cast<aievec::UPDOp>(rhs.getDefiningOp());
+  auto lUpdOp = dyn_cast<aievec::aie1::UPDOp>(lhs.getDefiningOp());
+  auto rUpdOp = dyn_cast<aievec::aie1::UPDOp>(rhs.getDefiningOp());
 
   if (!lUpdOp || !rUpdOp) {
     return false;
@@ -2179,9 +2179,10 @@ static void fuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
   // lhs of current FMAOp should be an upd operation with 512-bit vector width.
   // For AIE-ML, we can directly load 512 bits vectors. Thus, we can delete the
   // upd operation with index 1.
-  auto lUpdOp = dyn_cast<aievec::UPDOp>(lhs.getDefiningOp());
+  auto lUpdOp = dyn_cast<aievec::aie1::UPDOp>(lhs.getDefiningOp());
   if (lUpdOp.getIndex() == 1) {
-    auto lUpdOp0 = dyn_cast<aievec::UPDOp>(lUpdOp.getVector().getDefiningOp());
+    auto lUpdOp0 =
+        dyn_cast<aievec::aie1::UPDOp>(lUpdOp.getVector().getDefiningOp());
     lUpdOp->replaceAllUsesWith(lUpdOp0);
     lUpdOp->erase();
   }
@@ -2189,7 +2190,8 @@ static void fuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
   // 2. Deal with the rhs:
   // Since vector size of current FMAOp rhs is 256 bits, we need to generate a
   // concat op to make the vector size to 512 bits.
-  auto rUpdOp = dyn_cast<aievec::UPDOp>(curOp->getOperand(1).getDefiningOp());
+  auto rUpdOp =
+      dyn_cast<aievec::aie1::UPDOp>(curOp->getOperand(1).getDefiningOp());
   state->builder.setInsertionPointAfter(rUpdOp);
   AIEVecAttributes rstat = getOperandVecStats(curOp, state, 1);
   assert(rstat.vecSizeInBits % 256 == 0);
@@ -2434,16 +2436,17 @@ static void insertUPDOpsInLoop(affine::AffineForOp forOp, VectState *state) {
   // achieving that. The value also has an 8-bit field, whose first/second bit
   // is set if upd op idx=0/idx=1 is already created for this interval.
   mlir::DenseMap<std::tuple<IntervalReuse *, int32_t, int32_t>,
-                 std::pair<aievec::UPDOp, int8_t>>
+                 std::pair<aievec::aie1::UPDOp, int8_t>>
       memToUpdMap;
   // A map from a read operation to its corresponding UPD operation. The idea
   // is that multiple read ops will derive from the same bigger vector
   // register.
-  mlir::DenseMap<Operation *, aievec::UPDOp> readOpToUpdMap;
+  mlir::DenseMap<Operation *, aievec::aie1::UPDOp> readOpToUpdMap;
   // Iterate over all the transfer_read ops within this loop
   Region &region = forOp.getRegion();
   for (TransferReadOp readOp : region.getOps<TransferReadOp>()) {
-    aievec::UPDOp updOp = generateUPDOp(readOp, memToUpdMap, region, state);
+    aievec::aie1::UPDOp updOp =
+        generateUPDOp(readOp, memToUpdMap, region, state);
     readOpToUpdMap[readOp] = updOp;
   }
 
