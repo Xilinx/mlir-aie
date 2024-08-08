@@ -478,10 +478,17 @@ LogicalResult ObjectFifoCreateOp::verify() {
                      "on shim tile producers");
   }
 
-  if (getMemtileRepeat().has_value())
+  if (getMemtileRepeat().has_value()) {
     if (!getProducerTileOp().isMemTile())
       return emitError("`memtile_repeat` can only be used with a mem tile "
                        "producer");
+  }
+
+  if (getViaSharedMem().has_value()) {
+    if (getConsumerTiles().size() > 1)
+      return emitError(
+          "`via_shared_mem` can only be used in 1-to-1 object FIFOs");
+  }
 
   return success();
 }
