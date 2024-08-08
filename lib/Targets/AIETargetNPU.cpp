@@ -29,6 +29,7 @@ using namespace xilinx::AIEX;
 
 #define TXN_OPC_WRITE 0x0
 #define TXN_OPC_BLOCKWRITE 0x1
+#define TXN_OPC_MASKWRITE 0x3
 #define TXN_OPC_TCT 0x80
 #define TXN_OPC_DDR_PATCH 0x81
 
@@ -69,7 +70,11 @@ void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
 void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
 
   auto words = reserveAndGetTail(instructions, 6);
-  const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
+
+  if (op.getBuffer()) {
+    op.emitOpError("Cannot translate symbolic address");
+    return;
+  }
 
   // XAIE_IO_WRITE
   words[0] = TXN_OPC_WRITE;
@@ -77,12 +82,41 @@ void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
   words[2] = op.getAddress();
   auto col = op.getColumn();
   auto row = op.getRow();
-  if (col && row)
+  if (col && row) {
+    const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
     words[2] = ((*col & 0xff) << tm.getColumnShift()) |
                ((*row & 0xff) << tm.getRowShift()) | (words[2] & 0xFFFFF);
+  }
   words[3] = 0;
   words[4] = op.getValue();                   // Value
   words[5] = words.size() * sizeof(uint32_t); // Operation Size
+}
+
+void appendMaskWrite32(std::vector<uint32_t> &instructions,
+                       NpuMaskWrite32Op op) {
+
+  auto words = reserveAndGetTail(instructions, 7);
+
+  if (op.getBuffer()) {
+    op.emitOpError("Cannot translate symbolic address");
+    return;
+  }
+
+  // XAIE_IO_MASKWRITE
+  words[0] = TXN_OPC_MASKWRITE;
+  words[1] = 0;
+  words[2] = op.getAddress();
+  auto col = op.getColumn();
+  auto row = op.getRow();
+  if (col && row) {
+    const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
+    words[2] = ((*col & 0xff) << tm.getColumnShift()) |
+               ((*row & 0xff) << tm.getRowShift()) | (words[2] & 0xFFFFF);
+  }
+  words[3] = 0;
+  words[4] = op.getValue(); // Value
+  words[5] = op.getMask();
+  words[6] = words.size() * sizeof(uint32_t); // Operation Size
 }
 
 void appendAddressPatch(std::vector<uint32_t> &instructions,
@@ -138,11 +172,19 @@ void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
     return;
   }
 
-  // XAIE_IO_BLOCKWRITE
   auto words = reserveAndGetTail(instructions, data.size() + 4);
+
+  // XAIE_IO_BLOCKWRITE
   words[0] = TXN_OPC_BLOCKWRITE;
   words[1] = 0;
   words[2] = op.getAddress();
+  auto col = op.getColumn();
+  auto row = op.getRow();
+  if (col && row) {
+    const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
+    words[2] = ((*col & 0xff) << tm.getColumnShift()) |
+               ((*row & 0xff) << tm.getRowShift()) | (words[2] & 0xFFFFF);
+  }
   words[3] = words.size() * sizeof(uint32_t); // Operation Size
 
   unsigned i = 4;
@@ -180,6 +222,10 @@ std::vector<uint32_t> xilinx::AIE::AIETranslateToNPU(ModuleOp module) {
           .Case<NpuBlockWriteOp>([&](auto op) {
             count++;
             appendBlockWrite(instructions, op);
+          })
+          .Case<NpuMaskWrite32Op>([&](auto op) {
+            count++;
+            appendMaskWrite32(instructions, op);
           })
           .Case<NpuAddressPatchOp>([&](auto op) {
             count++;

@@ -102,7 +102,7 @@ func.func @conv2d (%A: memref<18x288xi8>, %B: memref<48xi8>, %C: memref<16x256xi
 //CHECK-NEXT:        %15 = aievec.srs %13, %c10_i32 : vector<16xi48>, i32, vector<16xi16>
 //CHECK-NEXT:        %16 = aievec.srs %14, %c10_i32 : vector<16xi48>, i32, vector<16xi16>
 //CHECK-NEXT:        %17 = aievec.concat %15, %16 : vector<16xi16>, vector<32xi16>
-//CHECK-NEXT:        %18 = aievec.select %17 {select = "0xcccccccc", xoffsets = "0x0c080400", xoffsets_hi = "0x0", xsquare = "0x1010", xstart = "0", yoffsets = "0x0c080400", yoffsets_hi = "0x0", ysquare = "0x1010", ystart = "4"} : vector<32xi16>, vector<32xi16>
-//CHECK-NEXT:        %19 = aievec.ext %18 {index = 0 : i8} : vector<32xi16>, vector<16xi16>
+//CHECK-NEXT:        %18 = aievec_aie1.select %17 {select = "0xcccccccc", xoffsets = "0x0c080400", xoffsets_hi = "0x0", xsquare = "0x1010", xstart = "0", yoffsets = "0x0c080400", yoffsets_hi = "0x0", ysquare = "0x1010", ystart = "4"} : vector<32xi16>, vector<32xi16>
+//CHECK-NEXT:        %19 = aievec_aie1.ext %18 {index = 0 : i8} : vector<32xi16>, vector<16xi16>
 //CHECK-NEXT:        %20 = aievec.pack %19 : vector<16xi16>, vector<16xi8>
 //CHECK-NEXT:        vector.transfer_write %20, %arg2[%arg3, %arg4] : vector<16xi8>, memref<16x256xi8>
