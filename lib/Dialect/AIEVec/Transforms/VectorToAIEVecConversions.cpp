@@ -2017,6 +2017,49 @@ struct ComputeExpOpByLUTPattern : OpConversionPattern<math::ExpOp> {
 //  %1 = arith.truncf %0 : f32 to bf16
 // to -
 //  %0 = emitc.call "getInvBf16"(%0) : f32 -> bf16;
+struct ComputeInvOpByLUTLLVMPattern : OpConversionPattern<arith::DivFOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::DivFOp divOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type srcType = adaptor.getLhs().getType();
+    if (!divOp->hasOneUse() || isa<VectorType>(srcType) ||
+        !isa<FloatType>(srcType))
+      return failure();
+
+    if (!isNarrowingOp(*divOp->getUsers().begin()))
+      return failure();
+
+    auto fType = cast<FloatType>(srcType);
+    if (fType.getWidth() != 32)
+      return failure();
+
+    auto constOp = dyn_cast<arith::ConstantOp>(divOp.getLhs().getDefiningOp());
+    if (!constOp ||
+        cast<FloatAttr>(constOp.getValue()).getValue().convertToDouble() !=
+            1.0f)
+      return failure();
+
+    StringRef funcName = "getInvBf16";
+    auto moduleOp = divOp->getParentOfType<mlir::ModuleOp>();
+    Type floatTy = rewriter.getF32Type();
+    Type bfloat16Ty = rewriter.getBF16Type();
+    func::FuncOp fn_op =
+        getOrGenerateFuncOp(rewriter, moduleOp, funcName, TypeRange{floatTy},
+                            TypeRange{bfloat16Ty});
+
+    auto truncOp = cast<arith::TruncFOp>(*divOp->getUsers().begin());
+
+    rewriter.setInsertionPoint(truncOp);
+    SmallVector<Value> invOperands = {adaptor.getRhs()};
+    rewriter.replaceOpWithNewOp<func::CallOp>(truncOp, fn_op, invOperands);
+    rewriter.eraseOp(divOp);
+
+    return success();
+  }
+};
+
 struct ComputeInvOpByLUTPattern : OpConversionPattern<arith::DivFOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -3095,6 +3138,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       >(patterns.getContext(), 128, 1024, 256, 1024);
     patterns.add<
         ComputeExpOpByLUTPattern,
+        ComputeInvOpByLUTPattern,
         LowerVectorAddFOpToAIEVecAddElemOp,
         LowerVectorSubFOpToAIEVecSubElemOp,
         LowerVectorAddIOpToAIEVecAddElemOp,
@@ -3102,11 +3146,11 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       >(patterns.getContext());
   } else if (backend == TargetBackend::LLVMIR){
       patterns.add<
-      ComputeExpOpByLUTLLVMPattern
+      ComputeExpOpByLUTLLVMPattern,
+      ComputeInvOpByLUTLLVMPattern
       >(patterns.getContext());
   }
   patterns.add<
-      ComputeInvOpByLUTPattern,
       ComputeTanhOpByLUTPattern,
       ComputeSqrtOpPattern,
       ComputeRsqrtOpPattern,
