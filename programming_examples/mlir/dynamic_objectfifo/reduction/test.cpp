@@ -25,8 +25,11 @@
 #define KERNEL_NAME "MLIR_AIE"
 #endif
 
-#define INPUT_SIZE  (1024 * sizeof(int))  // in bytes
-#define OUTPUT_SIZE (512 * sizeof(int)) // in bytes
+#define INPUT_SIZE  (100 * sizeof(int)) // in bytes
+#define OUTPUT_SIZE (50 * sizeof(int))  // in bytes
+#define WIDTH_SIZE  (10 * sizeof(int))  // in bytes
+#define INPUT_ROWS  INPUT_SIZE / WIDTH_SIZE
+#define OUTPUT_ROWS OUTPUT_SIZE / WIDTH_SIZE
 
 std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
   std::ifstream instr_file(instr_path);
@@ -80,8 +83,14 @@ int main(int argc, const char *argv[]) {
       xrt::bo(device, OUTPUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   int *buf_input = bo_input.map<int *>();
-  for (int i = 0; i < INPUT_SIZE / sizeof(buf_input[0]); i++) {
-    buf_input[i] = 1;
+  std::cout << std::endl << "Input: " << std::endl;
+  for (int i = 0; i < INPUT_ROWS; i++) {   
+    std::cout << "row " << i << " : "; 
+    for (int j = 0; j < WIDTH_SIZE / sizeof(buf_input[0]); j++) {
+      buf_input[i * INPUT_ROWS + j] = i;
+      std::cout << buf_input[i * INPUT_ROWS + j] << " ";
+    }
+    std::cout << std::endl;
   }
   int *buf_output = bo_output.map<int *>();
   memset(buf_output, 0, OUTPUT_SIZE);
@@ -105,11 +114,16 @@ int main(int argc, const char *argv[]) {
   bo_output.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   bool pass = true;
-  for(int i = 0; i < OUTPUT_SIZE/sizeof(buf_output[0]); i++) {
-    std::cout << buf_output[i] << " ";
-    pass &= buf_output[i] == 2;
+  std::cout << std::endl << "Output: " << std::endl;
+  for(int i = 0; i < OUTPUT_ROWS; i++) {
+    std::cout << "row " << i << " : ";
+    for (int j = 0; j < WIDTH_SIZE / sizeof(buf_output[0]); j++) {
+      std::cout << buf_output[i * OUTPUT_ROWS + j] << " ";
+      pass &= buf_output[i * OUTPUT_ROWS + j] == 2;
+    }
+    std::cout << std::endl;
   }
-  std::cout << std::endl;
+  std::cout << std::endl << std::endl;
   std::cout << (pass ? "PASS!" : "FAIL.") << std::endl;
 
   return 0;

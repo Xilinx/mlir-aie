@@ -16,7 +16,7 @@ void sum(const T_in *__restrict inA, const T_in *__restrict inB, T_out *__restri
 
 extern "C" {
 
-void sum_64_i32(const int *__restrict inA, const int *__restrict inB, int *__restrict out) {
-  sum<int, int, 64>(inA, inB, out);
+void sum_10_i32(const int *__restrict inA, const int *__restrict inB, int *__restrict out) {
+  sum<int, int, 10>(inA, inB, out);
 }
 }
