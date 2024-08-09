@@ -24,9 +24,8 @@ module {
     aie.flow(%tile_0_2, DMA : 0, %tile_0_0, DMA : 0)
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
-      %c4294967295 = arith.constant 4294967295 : index
+      %c4294967295 = arith.constant 10 : index
       %c1 = arith.constant 1 : index
-      %c4294967294 = arith.constant 4294967294 : index
       %c2 = arith.constant 2 : index
       %c3 = arith.constant 3 : index
 
@@ -96,9 +95,10 @@ module {
           
         } else {
           %relss = scf.if %is_last_iter -> (index) {
-            func.call @sum_10_i32(%input_0, %input_0, %output_fifo_buff) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
-            aie.use_lock(%input_fifo_cons_prod_lock, Release, 1)
-            %rels = arith.constant 1 : index // # released objects
+            aie.use_lock(%input_fifo_cons_cons_lock, AcquireGreaterEqual, 1)
+            func.call @sum_10_i32(%input_0, %input_1, %output_fifo_buff) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+            aie.use_lock(%input_fifo_cons_prod_lock, Release, 2)
+            %rels = arith.constant 2 : index // # released objects
             scf.yield %rels : index
 
           } else {
