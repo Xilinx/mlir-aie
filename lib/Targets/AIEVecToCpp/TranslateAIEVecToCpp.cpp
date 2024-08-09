@@ -572,8 +572,9 @@ static LogicalResult printOperation(CppEmitter &emitter,
 // Print AIE dialect ops
 //===----------------------------------------------------------------------===//
 
-// Print the AIE dialect UPD op
-static LogicalResult printOperation(CppEmitter &emitter, aievec::UPDOp updOp) {
+// Print the UPD intrinsic
+template <typename T>
+static LogicalResult printUpdOperation(CppEmitter &emitter, T updOp) {
   Value source = updOp.getSource();
   // If the source is not already emitted, error out
   if (!emitter.hasValueInScope(source))
@@ -680,6 +681,21 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPDOp updOp) {
   }
 
   return success();
+}
+
+// Generate the aie2 ext intrinsic
+static LogicalResult printOperation(CppEmitter &emitter, aievec::UPDOp updOp) {
+  if (!emitter.aie2())
+    return failure();
+  return printUpdOperation<aievec::UPDOp>(emitter, updOp);
+}
+
+// Generate the aie1 ext intrinsic
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::aie1::UPDOp updOp) {
+  if (emitter.aie2())
+    return failure();
+  return printUpdOperation<aievec::aie1::UPDOp>(emitter, updOp);
 }
 
 // Print the UPS intrinsic
@@ -3288,7 +3304,7 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
           // AievecAie1 ops
           .Case<aievec::aie1::AddOp, aievec::aie1::SubOp, aievec::aie1::FMAOp,
                 aievec::aie1::MulOp, aievec::aie1::SelectOp,
-                aievec::aie1::ExtOp>(
+                aievec::aie1::ExtOp, aievec::aie1::UPDOp>(
               [&](auto op) { return printOperation(*this, op); })
           // Aievec ops
           .Case<AddElemOp, ConcatOp, ExtOp, PackOp, SRSOp, SubElemOp, UPDOp,

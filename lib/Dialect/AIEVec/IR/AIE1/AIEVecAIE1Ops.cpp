@@ -537,6 +537,104 @@ ParseResult ExtOp::parse(OpAsmParser &parser, OperationState &result) {
   return parser.addTypeToList(resultType, result.types);
 }
 
+//===----------------------------------------------------------------------===//
+// UPDOp
+//===----------------------------------------------------------------------===//
+
+// Print out UPD op.
+void UPDOp::print(OpAsmPrinter &p) {
+  // Print the source memref
+  p << " " << getSource() << "[" << getIndices() << "]";
+  // Now print the optional vector that links upd idx=1 with idx=0
+  if (getVector())
+    p << ", " << getVector();
+
+  // Print the attributes, but don't print the operand segment sizes
+  SmallVector<StringRef, 3> elidedAttrs;
+  elidedAttrs.push_back(UPDOp::getOperandSegmentSizeAttr());
+  p.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
+
+  // And now print the types
+  p << " : " << getSource().getType() << ", " << getResult().getType();
+}
+
+// Verify UPD op.
+LogicalResult UPDOp::verify() {
+  // Verify the types: source is memref, and result is vector
+  MemRefType sourceType = llvm::dyn_cast<MemRefType>(getSource().getType());
+  VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
+  if (!sourceType)
+    return emitError("requires memref type");
+  if (!resultType)
+    return emitError("requires vector type");
+  if (getIndices().empty())
+    return emitError("upd source cannot come from scalar value");
+
+  // If this UPD op is linked to another UPD op, then verify that the linked
+  // vector and the result vector match.
+  if (getVector()) {
+    Type vecType = llvm::dyn_cast<VectorType>(getVector().getType());
+    if (vecType != resultType)
+      return emitError("result types of linked UPD ops do not match");
+  }
+  return success();
+}
+
+// Parse UPD op.
+ParseResult UPDOp::parse(OpAsmParser &parser, OperationState &result) {
+  auto &builder = parser.getBuilder();
+  llvm::SMLoc typesLoc;
+  SmallVector<Type, 2> types;
+  OpAsmParser::UnresolvedOperand source, vector;
+  SmallVector<OpAsmParser::UnresolvedOperand, 8> indices;
+
+  // Parse the source, indices, and optional vector
+  if (parser.parseOperand(source) ||
+      parser.parseOperandList(indices, OpAsmParser::Delimiter::Square))
+    return failure();
+  ParseResult hasVector = parser.parseOptionalComma();
+  if (hasVector.succeeded() && parser.parseOperand(vector))
+    return failure();
+
+  // Parse all the attributes and types
+  if (parser.parseOptionalAttrDict(result.attributes) ||
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
+    return failure();
+
+  if (result.attributes.getAttrs().size() != 2)
+    return parser.emitError(typesLoc, "requires two attributes");
+
+  // Assert that there are two types (memref source and vector result)
+  if (types.size() != 2)
+    return parser.emitError(typesLoc, "requires two types");
+
+  // Some verification
+  auto memrefType = llvm::dyn_cast<MemRefType>(types[0]);
+  if (!memrefType)
+    return parser.emitError(typesLoc, "requires memref type");
+  VectorType vectorType = llvm::dyn_cast<VectorType>(types[1]);
+  if (!vectorType)
+    return parser.emitError(typesLoc, "requires vector type");
+  auto indicesType = builder.getIndexType();
+
+  // Populate the source and indices in result
+  if (parser.resolveOperand(source, memrefType, result.operands) ||
+      parser.resolveOperands(indices, indicesType, result.operands))
+    return failure();
+  // Populate optional vector in result
+  if (hasVector.succeeded())
+    if (parser.resolveOperand(vector, vectorType, result.operands))
+      return failure();
+
+  // Populate operand size attribute in result
+  result.addAttribute(UPDOp::getOperandSegmentSizeAttr(),
+                      builder.getDenseI32ArrayAttr(
+                          {1, static_cast<int32_t>(indices.size()),
+                           static_cast<int32_t>(hasVector.succeeded())}));
+
+  return parser.addTypeToList(vectorType, result.types);
+}
+
 } // namespace xilinx::aievec::aie1
 
 // #define GET_ATTRDEF_CLASSES

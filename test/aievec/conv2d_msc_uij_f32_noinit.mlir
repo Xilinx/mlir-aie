@@ -69,8 +69,8 @@ func.func @conv2d (%A: memref<2048x2048xf32>, %B: memref<9xf32>, %C: memref<2046
 
 //CHECK-NEXT: %c8 = arith.constant 8 : index
 //CHECK-NEXT: %c0 = arith.constant 0 : index
-//CHECK-NEXT: %0 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : i32} : memref<9xf32>, vector<8xf32>
-//CHECK-NEXT: %1 = aievec.upd %arg1[%c8] {index = 0 : i8, offset = 0 : i32} : memref<9xf32>, vector<8xf32>
+//CHECK-NEXT: %0 = aievec_aie1.upd %arg1[%c0] {index = 0 : i8, offset = 0 : i32} : memref<9xf32>, vector<8xf32>
+//CHECK-NEXT: %1 = aievec_aie1.upd %arg1[%c8] {index = 0 : i8, offset = 0 : i32} : memref<9xf32>, vector<8xf32>
 //CHECK-NEXT: %c0_0 = arith.constant 0 : index
 //CHECK-NEXT: %c2046 = arith.constant 2046 : index
 //CHECK-NEXT: %c1 = arith.constant 1 : index
@@ -83,21 +83,21 @@ func.func @conv2d (%A: memref<2048x2048xf32>, %B: memref<9xf32>, %C: memref<2046
 //CHECK-NEXT: %c2046_3 = arith.constant 2046 : index
 //CHECK-NEXT: %c8_4 = arith.constant 8 : index
 //CHECK-NEXT: scf.for %arg4 = %c0_2 to %c2046_3 step %c8_4 {
-//CHECK-NEXT: %4 = aievec.upd %arg0[%arg3, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<2048x2048xf32>, vector<16xf32>
+//CHECK-NEXT: %4 = aievec_aie1.upd %arg0[%arg3, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<2048x2048xf32>, vector<16xf32>
 //CHECK-NEXT: %5 = aievec_aie1.mul %4, %0 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "0"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
 //CHECK-NEXT: %c1_5 = arith.constant 1 : index
 //CHECK-NEXT: %6 = arith.addi %arg4, %c1_5 : index
-//CHECK-NEXT: %7 = aievec.upd %arg0[%arg3, %6], %4 {index = 1 : i8, offset = 224 : i32} : memref<2048x2048xf32>, vector<16xf32>
+//CHECK-NEXT: %7 = aievec_aie1.upd %arg0[%arg3, %6], %4 {index = 1 : i8, offset = 224 : i32} : memref<2048x2048xf32>, vector<16xf32>
 //CHECK-NEXT: %8 = aievec_aie1.mac %7, %0, %5 {fmsub = true, xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "1"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
 //CHECK-NEXT: %9 = aievec_aie1.mac %7, %0, %8 {fmsub = true, xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "2"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
-//CHECK-NEXT: %10 = aievec.upd %arg0[%2, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<2048x2048xf32>, vector<16xf32>
+//CHECK-NEXT: %10 = aievec_aie1.upd %arg0[%2, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<2048x2048xf32>, vector<16xf32>
 //CHECK-NEXT: %11 = aievec_aie1.mac %10, %0, %9 {fmsub = true, xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "3"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
-//CHECK-NEXT: %12 = aievec.upd %arg0[%2, %6], %10 {index = 1 : i8, offset = 224 : i32} : memref<2048x2048xf32>, vector<16xf32>
+//CHECK-NEXT: %12 = aievec_aie1.upd %arg0[%2, %6], %10 {index = 1 : i8, offset = 224 : i32} : memref<2048x2048xf32>, vector<16xf32>
 //CHECK-NEXT: %13 = aievec_aie1.mac %12, %0, %11 {fmsub = true, xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "4"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
 //CHECK-NEXT: %14 = aievec_aie1.mac %12, %0, %13 {fmsub = true, xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "5"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
-//CHECK-NEXT: %15 = aievec.upd %arg0[%3, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<2048x2048xf32>, vector<16xf32>
+//CHECK-NEXT: %15 = aievec_aie1.upd %arg0[%3, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<2048x2048xf32>, vector<16xf32>
 //CHECK-NEXT: %16 = aievec_aie1.mac %15, %0, %14 {fmsub = true, xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "6"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
-//CHECK-NEXT: %17 = aievec.upd %arg0[%3, %6], %15 {index = 1 : i8, offset = 224 : i32} : memref<2048x2048xf32>, vector<16xf32>
+//CHECK-NEXT: %17 = aievec_aie1.upd %arg0[%3, %6], %15 {index = 1 : i8, offset = 224 : i32} : memref<2048x2048xf32>, vector<16xf32>
 //CHECK-NEXT: %18 = aievec_aie1.mac %17, %0, %16 {fmsub = true, xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "7"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
 //CHECK-NEXT: %19 = aievec_aie1.mac %17, %1, %18 {fmsub = true, xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "0"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
 //CHECK-NEXT: vector.transfer_write %19, %arg2[%arg3, %arg4] : vector<8xf32>, memref<2046x2046xf32>

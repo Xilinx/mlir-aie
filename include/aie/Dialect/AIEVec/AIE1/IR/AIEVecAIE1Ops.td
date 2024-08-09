@@ -329,4 +329,33 @@ def AIEVecAIE1_ExtOp:
   }];
 }
 
+def AIEVecAIE1_UPDOp:
+  AIEVecAIE1_Op<"upd", [
+    Pure,
+    AttrSizedOperandSegments
+  ]>,
+  Arguments<(ins AnyShaped:$source,
+                 Variadic<Index>:$indices,
+                 DefaultValuedAttr<AIEI32Attr, "0">:$offset,
+                 DefaultValuedAttr<ConfinedAttr<AIEI8Attr,
+                        [IntMinValue<0>, IntMaxValue<1>]>, "0">:$index,
+                 Optional<AnyVector>:$vector)>, 
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE upd";
+  let description = [{
+    AMD-specific update intrinsic. General upd intrinsic updates contiguous
+    lanes of the result vector from a smaller source vector. This form of 
+    upd intrinsic combines the load of data from memory into a vector 
+    register, and then updating the lanes of the result vector using it. 
+    `$result = upd($source[$indices], $offset, $index)`
+  }];
+  let builders = [
+    OpBuilder<(ins "mlir::Type":$resultType, "mlir::Value":$source,
+                   "mlir::ValueRange":$indices,
+                   "int32_t":$offset, "int8_t":$index),
+    [{build($_builder, $_state, resultType, source, indices, 
+                   offset, index, nullptr);}]>
+  ];
+}
+
 #endif // AIEVEC_AIE1_OPS

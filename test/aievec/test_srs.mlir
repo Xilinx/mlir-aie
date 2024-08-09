@@ -4,14 +4,14 @@
 func.func @conv2d (%A: memref<128xi32>, %B: memref<8xi32>, %C: memref<126xi32>) {
     //CHECK-NEXT: %c0 = arith.constant 0 : index
     //CHECK-NEXT: %c0_i32 = arith.constant 0 : i32
-    //CHECK-NEXT: %0 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : i32} : memref<8xi32>, vector<8xi32>
+    //CHECK-NEXT: %0 = aievec_aie1.upd %arg1[%c0] {index = 0 : i8, offset = 0 : i32} : memref<8xi32>, vector<8xi32>
     //CHECK-NEXT: %c0_0 = arith.constant 0 : index
     //CHECK-NEXT: %c126 = arith.constant 126 : index
     //CHECK-NEXT: %c8 = arith.constant 8 : index
     //CHECK-NEXT: scf.for %arg3 = %c0_0 to %c126 step %c8 {
     affine.for %arg3 = 0 to 126 {
-      //CHECK-NEXT: %1 = aievec.upd %arg2[%arg3] {index = 0 : i8, offset = 0 : i32} : memref<126xi32>, vector<8xi32>
-      //CHECK-NEXT: %2 = aievec.upd %arg0[%arg3] {index = 0 : i8, offset = 0 : i32} : memref<128xi32>, vector<8xi32>
+      //CHECK-NEXT: %1 = aievec_aie1.upd %arg2[%arg3] {index = 0 : i8, offset = 0 : i32} : memref<126xi32>, vector<8xi32>
+      //CHECK-NEXT: %2 = aievec_aie1.upd %arg0[%arg3] {index = 0 : i8, offset = 0 : i32} : memref<128xi32>, vector<8xi32>
       //CHECK-NEXT: %3 = aievec.ups %1 {shift = 0 : i8} : vector<8xi32>, vector<8xi80>
       %ci = affine.load %C[%arg3] : memref<126xi32>
       %a = affine.load %A[%arg3] : memref<128xi32>
