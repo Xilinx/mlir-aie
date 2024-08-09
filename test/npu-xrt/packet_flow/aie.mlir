@@ -40,9 +40,10 @@ module {
       aie.packet_source<%tile_0_1, DMA : 1>
       aie.packet_dest<%tile_0_0, DMA : 0>
     }
-
-    // TODO: Replace below with packet flow once we have shim dma op issuing packet headers.
-    aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
+    aie.packet_flow(3) {
+      aie.packet_source<%tile_0_0, DMA : 0>
+      aie.packet_dest<%tile_0_1, DMA : 0>
+    }
 
     %core_0_2 = aie.core(%tile_0_2) {
       %c8 = arith.constant 8 : index
@@ -67,13 +68,13 @@ module {
 
     aie.shim_dma_allocation @objFifo_in0(MM2S, 0, 0)
 
-    aiex.runtime_sequence(%arg0: memref<61x56xi8>, %arg1: memref<32xi8>, %arg2: memref<64x64xi8>) {
+    aiex.runtime_sequence(%arg0: memref<64x64xi8>, %arg1: memref<32xi8>, %arg2: memref<64x64xi8>) {
       %c0_i64 = arith.constant 0 : i64
       %c1_i64 = arith.constant 1 : i64
       %c56_i64 = arith.constant 56 : i64
       %c61_i64 = arith.constant 61 : i64
       %c64_i64 = arith.constant 64 : i64
-      aiex.npu.dma_memcpy_nd (0, 0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c0_i64, %c64_i64, %c1_i64]) {id = 0 : i64, metadata = @objFifo_in0} : memref<61x56xi8>
+      aiex.npu.dma_memcpy_nd (0, 0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c0_i64, %c64_i64, %c1_i64], packet = <pkt_id = 3, pkt_type = 0>) {id = 0 : i64, metadata = @objFifo_in0} : memref<64x64xi8>
       aiex.npu.dma_memcpy_nd (0, 0, %arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c0_i64, %c64_i64, %c1_i64]) {id = 1 : i64, metadata = @objFifo_out0, issue_token = true} : memref<64x64xi8>
       aiex.npu.dma_wait { symbol = @objFifo_out0 }
     }
