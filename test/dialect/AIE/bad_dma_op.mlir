@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt %s 2>&1 | FileCheck %s
+// RUN: not aie-opt -split-input-file %s 2>&1 | FileCheck %s
 
 // CHECK: error: 'aie.dma' op DMAOp can only appear in single block region
 module {
@@ -30,5 +30,23 @@ module {
       aie.end
     }
 
+  }
+}
+
+// -----
+
+// CHECK: error: 'aie.dma_bd' op Packet ID field can only hold 5 bits.
+module {
+  aie.device(npu1_4col) {
+    %tile14 = aie.tile(1, 4)
+    %buf14 = aie.buffer(%tile14) { sym_name = "buf14" } : memref<128xi32>
+    %mem14 = aie.mem(%tile14) {
+      %srcDma = aie.dma_start("MM2S", 0, ^bd0, ^end)
+      ^bd0:
+        aie.dma_bd(%buf14 : memref<128xi32>, 0, 128, [<size = 1, stride = 128>]) {packet = #aie.packet_info<pkt_type = 7, pkt_id = 33>}
+        aie.next_bd ^end
+      ^end: 
+        aie.end
+    }
   }
 }
