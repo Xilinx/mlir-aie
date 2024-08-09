@@ -303,7 +303,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
             # We are limited in the number of BDs. After synchronizing, we can reuse BDs.
             # We only transfer 6 rows of tiles at once before starting a new transfer block.
             tb_max_n_rows = (
-                6  # tb = transfer block; block of transfers before sync call
+                4  # tb = transfer block; block of transfers before sync call
             )
             for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
                 for pingpong in [0, 1]:
@@ -419,7 +419,9 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                             )
                     if tb > 0 or (tb == 0 and pingpong > 0):
                         for col in range(n_aie_cols):
-                            npu_sync(column=col, row=0, direction=0, channel=0)
+                            npu_sync(
+                                column=col, row=0, direction=0, channel=0
+                            )  # C done
             for col in range(n_aie_cols):
                 npu_sync(column=col, row=0, direction=0, channel=0)
 
