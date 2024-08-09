@@ -88,7 +88,7 @@ jobs:
           unzip -q mlir-*.whl
 
       - name: Ccache for C++ compilation
-        uses: hendrikmuhs/ccache-action@ca3acd2731eef11f1572ccb126356c2f9298d35e
+        uses: hendrikmuhs/ccache-action@v1.2
         with:
           # Since there are now several compilation jobs running in parallel,
           # use a different key per job to avoid a ccache writing race condition
