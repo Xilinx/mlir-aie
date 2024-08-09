@@ -50,7 +50,7 @@ module {
             %2 = aie.objectfifo.acquire @input_fifo(Consume, 2) : !aie.objectfifosubview<memref<10xi32>>
             %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
             %4 = aie.objectfifo.subview.access %2[1] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-            func.call @sum_64_i32(%input_0, %input_0, %output_fifo_buff) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+            func.call @sum_64_i32(%3, %4, %1) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
             aie.use_lock(%input_fifo_cons_prod_lock, Release, 1)
           }
         }
