@@ -319,10 +319,6 @@ def main(opts):
         block_13_inp_scale1 / block_14_skip_add
     )  # After addition | clip -128-->127
 
-
-
-   
-
     print("********************BN13*******************************")
     print("combined_scale after conv1x1:", block_13_combined_scale1.item())
     print("combined_scale after conv3x3:", block_13_combined_scale2.item())
