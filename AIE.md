@@ -562,6 +562,9 @@ is 0). All counts are expressed in multiples of the element width.
 <tr><td><code>pad_dimensions</code></td><td>::xilinx::AIE::BDPadLayoutArrayAttr</td><td></td></tr>
 <tr><td><code>pad_value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>packet</code></td><td>::xilinx::AIE::PacketInfoAttr</td><td>
+    Tuple encoding the type and header of a packet;
+  </td></tr>
 <tr><td><code>next_bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
