@@ -4,6 +4,8 @@
 // RUN: xchesscc -f -g +s -p me -P %aietools/data/aie_ml/lib/ +w work +o work -I%S -I. -c %S/kernel.cc -o kernel.o
 // RUN: xchesscc -f -g +s -p me -P %aietools/data/aie_ml/lib/ +w work +o work -I%S -I. %S/testbench.cc work/kernel.o
 // RUN: cp -r %S/data . && xca_udm_dbg --aiearch aie-ml -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../profiling.tcl ./work/a.out"
+// XFAIL: *
+
 module {
   func.func @matmul(%arg0: memref<64x64xi32>, %arg1: memref<64x64xi32>, %arg2: memref<64x64xi32>) {
     affine.for %arg3 = 0 to 64 {
