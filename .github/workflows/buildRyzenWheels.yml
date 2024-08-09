@@ -83,7 +83,7 @@ jobs:
           mv "$WHL_FN" "`echo $WHL_FN | sed "s/cp310-cp310/py3-none/"`"
 
       - name: Upload mlir_aie
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           path: wheelhouse/repaired_wheel/mlir_aie*whl
           name: mlir_aie
@@ -188,7 +188,7 @@ jobs:
 
       - name: Upload wheels
         if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           path: wheelhouse/repaired_wheel/aie_python_bindings*.whl
           name: ryzen_ai_wheel
