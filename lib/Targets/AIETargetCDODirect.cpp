@@ -248,6 +248,8 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
                                  std::optional<int> nextBdId) {
   std::optional<int> packetType;
   std::optional<int> packetID;
+
+  // Below should go
   auto maybePacketOps = block.getOps<DMABDPACKETOp>();
   if (!maybePacketOps.empty()) {
     assert(llvm::range_size(maybePacketOps) == 1 &&
@@ -361,6 +363,11 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
     auto enableNextBd = 1;
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetNextBd, &dmaTileBd,
                             nextBdId.value(), enableNextBd);
+  }
+
+  if (auto packetInfo = bdOp.getPacket()) {
+    packetType = packetInfo->getPktType();
+    packetID = packetInfo->getPktId();
   }
 
   if (packetID) {
