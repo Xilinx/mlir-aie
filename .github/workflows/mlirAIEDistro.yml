@@ -310,7 +310,7 @@ jobs:
         ls wheelhouse/mlir_aie*whl | Rename-Item -NewName {$_ -replace 'cp310-cp310', 'py3-none' }
 
     - name: Upload distro wheels
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
         name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
