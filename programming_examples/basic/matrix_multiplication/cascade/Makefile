@@ -8,7 +8,7 @@
 # 
 ##===----------------------------------------------------------------------===##
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-subdir=whole_array
+subdir=cascade
 targetname=matrixMultiplication
 
 M?=512
@@ -25,6 +25,6 @@ target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
 
 include ${srcdir}/../makefile-common
 
-build/mm_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
+build/mm_${m}x${k}x${n}.o: ${kernels_dir}/cascade_mm.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}

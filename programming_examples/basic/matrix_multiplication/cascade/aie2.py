@@ -89,18 +89,18 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
     # rows, s.t. each of the n_rows compute cores in a column receives a
     # contiguous (m, k)-sized block of A.
     assert (
-        M % (m * n_aie_rows) == 0
-    ), """A must be tileable into (m * n_aie_rows, k)-sized blocks"""
+        M % m == 0
+    ), """A must be tileable into (m, k * n_aie_rows)-sized blocks"""
 
     # Both A and B are tiled in the K dimension into size k.
-    assert K % k == 0
+    assert K % (k * n_aie_rows) == 0
 
     # Input matrix B:
     # Conceptually, we do the same as with A, but instead of broadcasting
     # across columns we broadcast across rows and distribute across columns.
     assert (
         N % (n * n_aie_cols) == 0
-    ), """B must be tileable into (k, n * n_aie_cols)-sized blocks"""
+    ), """B must be tileable into (k * n_aie_rows, n * n_aie_cols)-sized blocks"""
 
     # r, s, t are the dimensions required by the microkernel MAC instructions.
     assert m % r == 0
@@ -138,17 +138,16 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
         zero_scalar = external_func(
             f"zero_scalar_{dtype_out_str}", inputs=[C_l1_memref_ty]
         )
-        zero = external_func(f"zero_{dtype_out_str}", inputs=[C_l1_memref_ty])
-        matmul_scalar = external_func(
-            f"matmul_scalar_{dtype_in_str}_{dtype_out_str}",
+        matmul_scalar_cascade_get_only = external_func(
+            f"matmul_scalar_cascade_get_only_{dtype_in_str}_{dtype_out_str}",
             inputs=[A_l1_memref_ty, B_l1_memref_ty, C_l1_memref_ty],
         )
-        matmul_scalar_cascade = external_func(
-            f"matmul_scalar_cascade_{dtype_in_str}_{dtype_out_str}",
-            inputs=[A_l1_memref_ty, B_l1_memref_ty, C_l1_memref_ty, T.i32()],
+        matmul_scalar_cascade_put_only = external_func(
+            f"matmul_scalar_cascade_put_only_{dtype_in_str}_{dtype_out_str}",
+            inputs=[A_l1_memref_ty, B_l1_memref_ty, C_l1_memref_ty],
         )
-        matmul = external_func(
-            f"matmul_{dtype_in_str}_{dtype_out_str}",
+        matmul_scalar_cascade_put_get = external_func(
+            f"matmul_scalar_cascade_put_get_{dtype_in_str}_{dtype_out_str}",
             inputs=[A_l1_memref_ty, B_l1_memref_ty, C_l1_memref_ty],
         )
 
@@ -283,7 +282,9 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                                 )
                             else:
                                 elem_out = C_l1l2_buffers[row][col]
-                            call(zero_scalar, [elem_out])
+
+                            if row == 0:
+                                call(zero_scalar, [elem_out])
 
                             for _ in for_(K // k // n_aie_rows):
                                 elem_in_a = A_l2l1_fifos[row].acquire(
@@ -294,18 +295,18 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                                 )
                                 if row == 0:
                                     call(
-                                        matmul_scalar_cascade,
-                                        [elem_in_a, elem_in_b, elem_out, 1],
+                                        matmul_scalar_cascade_get_only,
+                                        [elem_in_a, elem_in_b, elem_out]
                                     )
                                 elif row == n_aie_rows - 1:
                                     call(
-                                        matmul_scalar_cascade,
-                                        [elem_in_a, elem_in_b, elem_out, -1],
+                                        matmul_scalar_cascade_put_only,
+                                        [elem_in_a, elem_in_b, elem_out]
                                     )
                                 else:
                                     call(
-                                        matmul_scalar_cascade,
-                                        [elem_in_a, elem_in_b, elem_out, 0],
+                                        matmul_scalar_cascade_put_get,
+                                        [elem_in_a, elem_in_b, elem_out],
                                     )
 
                                 A_l2l1_fifos[row].release(ObjectFifoPort.Consume, 1)

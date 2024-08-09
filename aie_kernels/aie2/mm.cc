@@ -39,31 +39,6 @@ void matmul_scalar(T_in *a, T_in *b, T_out *c) {
   event1();
 }
 
-template <typename T_in, typename T_out, int rowA, int colA, int colB>
-void matmul_scalar_cascade(T_in *a, T_in *b, T_out *c,
-                           const int32_t cascade_mode) {
-  event0();
-  for (int row = 0; row < rowA; row++) {
-    for (int col = 0; col < colB; col++) {
-      T_out running_sum = 0;
-      if (cascade_mode >= 0) {
-        v32int32 v32 = get_scd_v32int32();
-        running_sum += ext_elem(v32, 0);
-      }
-      for (int i = 0; i < colA; i++) {
-        running_sum += a[row * colA + i] * b[i * colB + col];
-      }
-      if (cascade_mode <= 0) {
-        v32int32 v32 = undef_v32int32();
-        v32 = upd_elem(v32, 0, running_sum);
-        put_mcd(v32);
-      }
-      c[row * colB + col] += running_sum;
-    }
-  }
-  event1();
-}
-
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t>
 void matmul_vectorized(const T_in *__restrict pA, const T_in *__restrict pB,
@@ -478,15 +453,6 @@ extern "C" {
                                                             c_out);            \
   }
 
-#define matmul_scalar_cascade_c_func(ctype_in, mlir_type_in, ctype_out,        \
-                                     mlir_type_out, r, s, t)                   \
-  void matmul_scalar_cascade_##mlir_type_in##_##mlir_type_out(                 \
-      ctype_in *a_in, ctype_in *b_in, ctype_out *c_out,                        \
-      const int32_t cascade_mode) {                                            \
-    matmul_scalar_cascade<ctype_in, ctype_out, DIM_M, DIM_K, DIM_N>(           \
-        a_in, b_in, c_out, cascade_mode);                                      \
-  }
-
 #define zero_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,              \
                                mlir_type_out, r, s, t)                         \
   void zero_##mlir_type_out(ctype_out *c_out) {                                \
@@ -500,7 +466,6 @@ extern "C" {
   }
 
 combos(matmul_vectorized_c_func) combos(matmul_scalar_c_func)
-    combos(matmul_scalar_cascade_c_func) combos(zero_vectorized_c_func)
-        combos(zero_scalar_c_func)
+    combos(zero_vectorized_c_func) combos(zero_scalar_c_func)
 
 } // extern "C"
