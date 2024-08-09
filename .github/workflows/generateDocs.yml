@@ -45,7 +45,7 @@ jobs:
 
       - name: Ccache for C++ compilation
         # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
-        uses: hendrikmuhs/ccache-action@ca3acd2731eef11f1572ccb126356c2f9298d35e
+        uses: hendrikmuhs/ccache-action@v1.2
         with:
           key: ${{ runner.os }}-releaseasserts-${{ steps.get-submodule-hash.outputs.hash }}
           max-size: 1G
