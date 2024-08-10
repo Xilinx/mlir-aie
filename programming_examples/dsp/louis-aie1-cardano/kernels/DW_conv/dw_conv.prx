@@ -1,0 +1,11 @@
+
+<project name="Project" processor="me">
+    <file type="c" name="main.cc" path="src"/>
+    <issinit>fileinput add SS0 0 -field -file ./data/AInWIn.txt -interval_files {} -position 0 -type {} -radix decimal -filter {} -break_on_wrap 0 -cycle_based 0 -format integer -gen_vcd_event 0 -structured 0 -bin_nbr_bytes 1 -bin_lsb_first 0
+    fileinput add SS1 0 -field -file ./data/AOut.txt -interval_files {} -position 0 -type {} -radix decimal -filter {} -break_on_wrap 0 -cycle_based 0 -format integer -gen_vcd_event 0 -structured 0 -bin_nbr_bytes 1 -bin_lsb_first 0
+    </issinit>
+    <option id="cpp.define" value="__AIENGINE__" inherit="1"/>
+    <option id="cpp.include" value="&lt;CARDANO_ROOT&gt;/include ./src ./include" inherit="1"/>
+    <option id="project.name" value="dwconv"/>
+    <option id="project.type" value="exe"/>
+</project>
