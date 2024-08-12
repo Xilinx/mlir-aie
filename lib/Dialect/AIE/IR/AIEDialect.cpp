@@ -1830,6 +1830,12 @@ LogicalResult DMABDOp::verify() {
                << offsetInBytes << " (bytes)";
     }
   }
+  if (auto packetInfo = getPacket()) {
+    if (packetInfo->getPktType() > 7)
+      return emitOpError("Packet type field can only hold 3 bits.");
+    if (packetInfo->getPktId() > 31)
+      return emitOpError("Packet ID field can only hold 5 bits.");
+  }
 
   if (!getLen() && !getBuffer().getType().hasStaticShape())
     return emitOpError() << "buffer with dynamic shape requires static length.";
