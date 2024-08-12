@@ -34,6 +34,7 @@ extern "C" {
 #include <cstdint> // uint
 #include <cstdlib> // calloc
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <map>
 #include <optional>
@@ -485,8 +486,8 @@ struct AIEControl {
     TRY_XAIE_API_FATAL_ERROR(XAie_UpdateNpiAddr, &devInst, NPI_ADDR);
   }
 
-  LogicalResult addAieElfToCDO(uint8_t col, uint8_t row,
-                               const StringRef elfPath, bool aieSim) {
+  LogicalResult addAieElf(uint8_t col, uint8_t row, const StringRef elfPath,
+                          bool aieSim) {
     // loadSym: Load symbols from .map file. This argument is not used when
     // __AIESIM__ is not defined.
     TRY_XAIE_API_LOGICAL_RESULT(XAie_LoadElf, &devInst, XAie_TileLoc(col, row),
@@ -494,8 +495,8 @@ struct AIEControl {
     return success();
   }
 
-  LogicalResult addAieElfsToCDO(DeviceOp &targetOp, const StringRef workDirPath,
-                                bool aieSim) {
+  LogicalResult addAieElfs(DeviceOp &targetOp, const StringRef workDirPath,
+                           bool aieSim) {
     for (auto tileOp : targetOp.getOps<TileOp>())
       if (tileOp.isShimNOCorPLTile()) {
         // Resets no needed with V2 kernel driver
@@ -510,7 +511,7 @@ struct AIEControl {
             fileName = (llvm::Twine("core_") + std::to_string(col) + "_" +
                         std::to_string(row) + ".elf")
                            .str();
-          if (failed(addAieElfToCDO(
+          if (failed(addAieElf(
                   col, row,
                   (llvm::Twine(workDirPath) + std::string(1, ps) + fileName)
                       .str(),
@@ -521,7 +522,7 @@ struct AIEControl {
     return success();
   }
 
-  LogicalResult addInitConfigToCDO(DeviceOp &targetOp) {
+  LogicalResult addInitConfig(DeviceOp &targetOp) {
     for (auto tileOp : targetOp.getOps<TileOp>()) {
       auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
       if (!tileOp.isShimTile() && tileOp.getCoreOp()) {
@@ -734,7 +735,7 @@ struct AIEControl {
     return success();
   }
 
-  LogicalResult addCoreEnableToCDO(DeviceOp &targetOp) {
+  LogicalResult addCoreEnable(DeviceOp &targetOp) {
     // Start execution of all the cores.
     for (auto tileOp : targetOp.getOps<TileOp>()) {
       auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
@@ -786,21 +787,21 @@ LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_elfs.bin")
               .str(),
           [&ctl, &targetOp, &workDirPath, &aieSim] {
-            return ctl.addAieElfsToCDO(targetOp, workDirPath, aieSim);
+            return ctl.addAieElfs(targetOp, workDirPath, aieSim);
           })))
     return failure();
 
   if (failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_init.bin")
               .str(),
-          [&ctl, &targetOp] { return ctl.addInitConfigToCDO(targetOp); })))
+          [&ctl, &targetOp] { return ctl.addInitConfig(targetOp); })))
     return failure();
 
   if (enableCores &&
       failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_enable.bin")
               .str(),
-          [&ctl, &targetOp] { return ctl.addCoreEnableToCDO(targetOp); })))
+          [&ctl, &targetOp] { return ctl.addCoreEnable(targetOp); })))
     return failure();
 
   return success();
@@ -813,22 +814,21 @@ LogicalResult generateCDOUnified(AIEControl &ctl, const StringRef workDirPath,
       (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo.bin").str(),
       [&ctl, &targetOp, &workDirPath, &aieSim, &enableCores] {
         if (!targetOp.getOps<CoreOp>().empty() &&
-            failed(ctl.addAieElfsToCDO(targetOp, workDirPath, aieSim)))
+            failed(ctl.addAieElfs(targetOp, workDirPath, aieSim)))
           return failure();
-        if (failed(ctl.addInitConfigToCDO(targetOp)))
+        if (failed(ctl.addInitConfig(targetOp)))
           return failure();
         if (enableCores && !targetOp.getOps<CoreOp>().empty() &&
-            failed(ctl.addCoreEnableToCDO(targetOp)))
+            failed(ctl.addCoreEnable(targetOp)))
           return failure();
         return success();
       });
 }
 
-LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
-                                      byte_ordering endianness,
-                                      bool emitUnified, bool cdoDebug,
-                                      bool aieSim, bool xaieDebug,
-                                      bool enableCores) {
+LogicalResult translateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
+                                   byte_ordering endianness, bool emitUnified,
+                                   bool cdoDebug, bool aieSim, bool xaieDebug,
+                                   bool enableCores) {
 
   auto devOps = m.getOps<DeviceOp>();
   assert(llvm::range_size(devOps) == 1 &&
@@ -854,16 +854,70 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
   }();
   return result;
 }
-// Not sure why but defining this with xilinx::AIE will create a duplicate
-// symbol in libAIETargets.a that then doesn't actually match the header?
-namespace xilinx::AIE {
-LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
-                                      bool bigEndian, bool emitUnified,
-                                      bool cdoDebug, bool aieSim,
-                                      bool xaieDebug, bool enableCores) {
+
+LogicalResult generateTxn(AIEControl &ctl, const StringRef workDirPath,
+                          DeviceOp &targetOp, bool aieSim, bool enableElfs,
+                          bool enableInit, bool enableCores) {
+  if (enableElfs && !targetOp.getOps<CoreOp>().empty() &&
+      failed(ctl.addAieElfs(targetOp, workDirPath, aieSim)))
+    return failure();
+  if (enableInit && failed(ctl.addInitConfig(targetOp)))
+    return failure();
+  if (enableCores && !targetOp.getOps<CoreOp>().empty() &&
+      failed(ctl.addCoreEnable(targetOp)))
+    return failure();
+  return success();
+}
+
+LogicalResult translateToTxn(ModuleOp m, llvm::StringRef workDirPath,
+                             bool aieSim, bool xaieDebug, bool enableCores) {
+
+  auto devOps = m.getOps<DeviceOp>();
+  if (llvm::range_size(devOps) > 1)
+    return m.emitError("only exactly 1 device op supported.");
+
+  DeviceOp targetOp = *devOps.begin();
+  const BaseNPUTargetModel &targetModel =
+      (const BaseNPUTargetModel &)targetOp.getTargetModel();
+
+  if (!targetModel.isNPU())
+    return failure();
+
+  AIEControl ctl(aieSim, xaieDebug, targetModel);
+
+  // start collecting transations
+  XAie_StartTransaction(&ctl.devInst, XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
+
+  auto result =
+      generateTxn(ctl, workDirPath, targetOp, aieSim, false, true, true);
+
+  // Export the transactions to a buffer
+  uint8_t *txn_ptr = XAie_ExportSerializedTransaction(&ctl.devInst, 0, 0);
+
+  // write transactions to file
+  XAie_TxnHeader *hdr = (XAie_TxnHeader *)txn_ptr;
+  std::string filename =
+      (llvm::Twine(workDirPath) + std::string(1, ps) + "txn.bin").str();
+  std::ofstream outfile(filename, std::ios::binary);
+  if (!outfile.good())
+    return failure();
+  outfile.write(reinterpret_cast<const char *>(txn_ptr), hdr->TxnSize);
+
+  return result;
+}
+
+LogicalResult xilinx::AIE::AIETranslateToCDODirect(
+    ModuleOp m, llvm::StringRef workDirPath, bool bigEndian, bool emitUnified,
+    bool cdoDebug, bool aieSim, bool xaieDebug, bool enableCores) {
   byte_ordering endianness =
       bigEndian ? byte_ordering::Big_Endian : byte_ordering::Little_Endian;
-  return AIETranslateToCDODirect(m, workDirPath, endianness, emitUnified,
-                                 cdoDebug, aieSim, xaieDebug, enableCores);
+  return translateToCDODirect(m, workDirPath, endianness, emitUnified, cdoDebug,
+                              aieSim, xaieDebug, enableCores);
 }
-} // namespace xilinx::AIE
+
+LogicalResult xilinx::AIE::AIETranslateToTxn(ModuleOp m,
+                                             llvm::StringRef workDirPath,
+                                             bool aieSim, bool xaieDebug,
+                                             bool enableCores) {
+  return translateToTxn(m, workDirPath, aieSim, xaieDebug, enableCores);
+}

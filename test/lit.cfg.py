@@ -291,6 +291,7 @@ tools = [
     "llvm-objdump",
     "opt",
     "xchesscc_wrapper",
+    'txn2mlir.py'
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
