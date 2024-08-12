@@ -1,0 +1,20 @@
+{
+    "BN10": {
+        "conv1x1_1": 9,
+        "conv3x3": 8,
+        "conv1x1_2": 9,
+        "skip_add": 0
+    },
+    "BN11": {
+        "conv1x1_1": 9,
+        "conv3x3": 8,
+        "conv1x1_2": 12,
+        "skip_add": 1
+    },
+    "BN12": {
+        "conv1x1_1": 8,
+        "conv3x3": 7,
+        "conv1x1_2": 10,
+        "skip_add": 0
+    }
+}

@@ -1,0 +1,92 @@
+_entry_point _main_init
+_symbol core_3_5 _after _main_init
+_symbol _main_init 0
+_reserved DMb 0x00000 0x40000 // Don't put data in code memory
+_stack DM_stack 0x70000 0x400 // stack for core
+
+// mapping neighbors tile memory
+// south -------------------------------------------------
+_reserved DMb 0x40000 0x10000  // Don't allocate variables in south neighbor
+
+_symbol B_OF_b11_act_layer1_layer2_buff_0 0x49700 4704
+_extern B_OF_b11_act_layer1_layer2_buff_0
+_reserved DMb 0x49700 4704
+
+_symbol B_OF_b11_act_layer1_layer2_buff_1 0x4A960 4704
+_extern B_OF_b11_act_layer1_layer2_buff_1
+_reserved DMb 0x4A960 4704
+
+_symbol B_OF_b10_layer3_bn_11_layer1_0_cons_buff_0 0x4BBC0 1568
+_extern B_OF_b10_layer3_bn_11_layer1_0_cons_buff_0
+_reserved DMb 0x4BBC0 1568
+
+_symbol B_OF_b10_layer3_bn_11_layer1_0_cons_buff_1 0x4C1E0 1568
+_extern B_OF_b10_layer3_bn_11_layer1_0_cons_buff_1
+_reserved DMb 0x4C1E0 1568
+
+_symbol weightsInBN11_layer1_cons_buff_0 0x40400 37632
+_extern weightsInBN11_layer1_cons_buff_0
+_reserved DMb 0x40400 37632
+
+_symbol bn11_1_rtp 0x4C800 64
+_extern bn11_1_rtp
+_reserved DMb 0x4C800 64
+
+// west -------------------------------------------------
+_reserved DMb 0x50000 0x10000  // Don't allocate variables in west neighbor
+
+_symbol B_OF_b10_act_layer2_layer3_buff_0 0x50400 6720
+_extern B_OF_b10_act_layer2_layer3_buff_0
+_reserved DMb 0x50400 6720
+
+_symbol B_OF_b10_act_layer2_layer3_buff_1 0x51E40 6720
+_extern B_OF_b10_act_layer2_layer3_buff_1
+_reserved DMb 0x51E40 6720
+
+_symbol B_OF_b10_act_layer1_layer2_cons_buff_0 0x53880 6720
+_extern B_OF_b10_act_layer1_layer2_cons_buff_0
+_reserved DMb 0x53880 6720
+
+_symbol B_OF_b10_act_layer1_layer2_cons_buff_1 0x552C0 6720
+_extern B_OF_b10_act_layer1_layer2_cons_buff_1
+_reserved DMb 0x552C0 6720
+
+_symbol B_OF_b10_act_layer1_layer2_cons_buff_2 0x56D00 6720
+_extern B_OF_b10_act_layer1_layer2_cons_buff_2
+_reserved DMb 0x56D00 6720
+
+_symbol B_OF_b10_act_layer1_layer2_cons_buff_3 0x58740 6720
+_extern B_OF_b10_act_layer1_layer2_cons_buff_3
+_reserved DMb 0x58740 6720
+
+_symbol weightsInBN10_layer2_cons_buff_0 0x5A180 4320
+_extern weightsInBN10_layer2_cons_buff_0
+_reserved DMb 0x5A180 4320
+
+_symbol bn10_2_rtp 0x5B260 64
+_extern bn10_2_rtp
+_reserved DMb 0x5B260 64
+
+_reserved DMb 0x60000 0x10000  // No tile with memory exists to the north.
+// east -------------------------------------------------
+_symbol B_OF_b10_layer3_bn_11_layer1_buff_0 0x7D600 1568
+_extern B_OF_b10_layer3_bn_11_layer1_buff_0
+_reserved DMb 0x7D600 1568
+
+_symbol B_OF_b10_layer3_bn_11_layer1_buff_1 0x7DC20 1568
+_extern B_OF_b10_layer3_bn_11_layer1_buff_1
+_reserved DMb 0x7DC20 1568
+
+_symbol weightsInBN10_layer3_cons_buff_0 0x70400 53760
+_extern weightsInBN10_layer3_cons_buff_0
+_reserved DMb 0x70400 53760
+
+_symbol bn10_3_rtp 0x7E240 64
+_extern bn10_3_rtp
+_reserved DMb 0x7E240 64
+
+// end mapping neighbors tile memory
+
+_reserved DMb 0x80000 0x80000 // And everything else the core can't see
+_include _file bn10_conv2dk1_ui8.o
+_resolve _main core_3_5

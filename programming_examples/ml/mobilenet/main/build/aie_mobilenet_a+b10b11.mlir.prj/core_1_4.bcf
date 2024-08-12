@@ -1,0 +1,158 @@
+_entry_point _main_init
+_symbol core_1_4 _after _main_init
+_symbol _main_init 0
+_reserved DMb 0x00000 0x40000 // Don't put data in code memory
+_stack DM_stack 0x70000 0x400 // stack for core
+
+// mapping neighbors tile memory
+// south -------------------------------------------------
+_reserved DMb 0x40000 0x10000  // Don't allocate variables in south neighbor
+
+_symbol bn7_act_2_3_buff_0 0x48808 2800
+_extern bn7_act_2_3_buff_0
+_reserved DMb 0x48808 2800
+
+_symbol bn7_act_1_2_buff_0 0x492F8 2800
+_extern bn7_act_1_2_buff_0
+_reserved DMb 0x492F8 2800
+
+_symbol bn7_act_1_2_buff_1 0x49DE8 2800
+_extern bn7_act_1_2_buff_1
+_reserved DMb 0x49DE8 2800
+
+_symbol bn7_act_1_2_buff_2 0x4A8D8 2800
+_extern bn7_act_1_2_buff_2
+_reserved DMb 0x4A8D8 2800
+
+_symbol act_bn7_bn8_buff_0 0x4B3C8 1120
+_extern act_bn7_bn8_buff_0
+_reserved DMb 0x4B3C8 1120
+
+_symbol act_bn7_bn8_buff_1 0x4B828 1120
+_extern act_bn7_bn8_buff_1
+_reserved DMb 0x4B828 1120
+
+_symbol bn7_wts_OF_L2L1_cons_buff_0 0x40400 33800
+_extern bn7_wts_OF_L2L1_cons_buff_0
+_reserved DMb 0x40400 33800
+
+_symbol rtp13 0x4BC88 64
+_extern rtp13
+_reserved DMb 0x4BC88 64
+
+// west -------------------------------------------------
+_reserved DMb 0x50000 0x10000  // Don't allocate variables in west neighbor
+
+_symbol bn2_act_2_3_buff_0 0x51408 4032
+_extern bn2_act_2_3_buff_0
+_reserved DMb 0x51408 4032
+
+_symbol bn2_act_1_2_buff_0 0x523C8 4032
+_extern bn2_act_1_2_buff_0
+_reserved DMb 0x523C8 4032
+
+_symbol bn2_act_1_2_buff_1 0x53388 4032
+_extern bn2_act_1_2_buff_1
+_reserved DMb 0x53388 4032
+
+_symbol bn2_act_1_2_buff_2 0x54348 4032
+_extern bn2_act_1_2_buff_2
+_reserved DMb 0x54348 4032
+
+_symbol act_bn2_bn3_buff_0 0x55308 1344
+_extern act_bn2_bn3_buff_0
+_reserved DMb 0x55308 1344
+
+_symbol act_bn2_bn3_buff_1 0x55848 1344
+_extern act_bn2_bn3_buff_1
+_reserved DMb 0x55848 1344
+
+_symbol act_bn2_bn3_buff_2 0x55D88 1344
+_extern act_bn2_bn3_buff_2
+_reserved DMb 0x55D88 1344
+
+_symbol bn2_wts_OF_L2L1_cons_buff_0 0x50400 4104
+_extern bn2_wts_OF_L2L1_cons_buff_0
+_reserved DMb 0x50400 4104
+
+_symbol rtp04 0x562C8 64
+_extern rtp04
+_reserved DMb 0x562C8 64
+
+// north -------------------------------------------------
+_reserved DMb 0x60000 0x10000  // Don't allocate variables in north neighbor
+
+_symbol bn4_act_2_3_buff_0 0x62DB8 3360
+_extern bn4_act_2_3_buff_0
+_reserved DMb 0x62DB8 3360
+
+_symbol bn4_act_1_2_buff_0 0x63AD8 3360
+_extern bn4_act_1_2_buff_0
+_reserved DMb 0x63AD8 3360
+
+_symbol bn4_act_1_2_buff_1 0x647F8 3360
+_extern bn4_act_1_2_buff_1
+_reserved DMb 0x647F8 3360
+
+_symbol bn4_act_1_2_buff_2 0x65518 3360
+_extern bn4_act_1_2_buff_2
+_reserved DMb 0x65518 3360
+
+_symbol act_bn4_bn5_buff_0 0x66238 1120
+_extern act_bn4_bn5_buff_0
+_reserved DMb 0x66238 1120
+
+_symbol act_bn4_bn5_buff_1 0x66698 1120
+_extern act_bn4_bn5_buff_1
+_reserved DMb 0x66698 1120
+
+_symbol act_bn4_bn5_buff_2 0x66AF8 1120
+_extern act_bn4_bn5_buff_2
+_reserved DMb 0x66AF8 1120
+
+_symbol bn4_wts_OF_L2L1_cons_buff_0 0x60400 10680
+_extern bn4_wts_OF_L2L1_cons_buff_0
+_reserved DMb 0x60400 10680
+
+_symbol rtp15 0x66F58 64
+_extern rtp15
+_reserved DMb 0x66F58 64
+
+// east -------------------------------------------------
+_symbol bn5_act_2_3_buff_0 0x72DB8 3360
+_extern bn5_act_2_3_buff_0
+_reserved DMb 0x72DB8 3360
+
+_symbol bn5_act_1_2_buff_0 0x73AD8 3360
+_extern bn5_act_1_2_buff_0
+_reserved DMb 0x73AD8 3360
+
+_symbol bn5_act_1_2_buff_1 0x747F8 3360
+_extern bn5_act_1_2_buff_1
+_reserved DMb 0x747F8 3360
+
+_symbol bn5_act_1_2_buff_2 0x75518 3360
+_extern bn5_act_1_2_buff_2
+_reserved DMb 0x75518 3360
+
+_symbol act_bn5_bn6_buff_0 0x76238 1120
+_extern act_bn5_bn6_buff_0
+_reserved DMb 0x76238 1120
+
+_symbol act_bn5_bn6_buff_1 0x76698 1120
+_extern act_bn5_bn6_buff_1
+_reserved DMb 0x76698 1120
+
+_symbol bn5_wts_OF_L2L1_cons_buff_0 0x70400 10680
+_extern bn5_wts_OF_L2L1_cons_buff_0
+_reserved DMb 0x70400 10680
+
+_symbol rtp14 0x76AF8 64
+_extern rtp14
+_reserved DMb 0x76AF8 64
+
+// end mapping neighbors tile memory
+
+_reserved DMb 0x80000 0x80000 // And everything else the core can't see
+_include _file bn5_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a
+_resolve _main core_1_4
