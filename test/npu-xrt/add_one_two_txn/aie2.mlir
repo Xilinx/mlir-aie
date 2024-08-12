@@ -23,7 +23,7 @@ module {
       %c8 = arith.constant 8 : index
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %c2_32 = arith.constant 2 : i32
+      %c2_32 = arith.constant 102 : i32
 
       scf.for %niter = %c0 to %c1 step %c1 {
         scf.for %steps = %c0 to %c8 step %c1 {

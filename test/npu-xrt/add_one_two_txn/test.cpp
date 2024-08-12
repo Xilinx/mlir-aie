@@ -129,13 +129,6 @@ int main(int argc, const char *argv[]) {
                                   return name == "ADDONE";
                                 });
   auto kernelName0 = xkernel0.get_name();
-  auto xkernel1 = *std::find_if(xkernels.begin(), xkernels.end(),
-                                [](xrt::xclbin::kernel &k) {
-                                  auto name = k.get_name();
-                                  std::cout << "Name: " << name << std::endl;
-                                  return name == "ADDTWO";
-                                });
-  auto kernelName1 = xkernel1.get_name();
 
   if (verbosity >= 1)
     std::cout << "Registering xclbin: " << vm["xclbin"].as<std::string>()
@@ -144,18 +137,9 @@ int main(int argc, const char *argv[]) {
   device.register_xclbin(xclbin);
 
   // get a hardware context
-  if (verbosity >= 1)
-    std::cout << "Getting hardware context.\n";
   xrt::hw_context context(device, xclbin.get_uuid());
 
-  // get a kernel handle
-  if (verbosity >= 1)
-    std::cout << "Getting handle to kernels: " << kernelName0 << " and "
-              << kernelName1 << "\n";
-
   auto kernel0 = xrt::kernel(context, kernelName0);
-  // auto kernel1 = xrt::kernel(context, kernelName1);
-  auto kernel1 = kernel0;
 
   auto bo_instr_0 = xrt::bo(device, instr_v.size() * sizeof(int),
                             XCL_BO_FLAGS_CACHEABLE, kernel0.group_id(1));
@@ -165,13 +149,13 @@ int main(int argc, const char *argv[]) {
                           XRT_BO_FLAGS_HOST_ONLY, kernel0.group_id(4));
 
   auto bo_instr_1 = xrt::bo(device, instr_v.size() * sizeof(int),
-                            XCL_BO_FLAGS_CACHEABLE, kernel1.group_id(1));
+                            XCL_BO_FLAGS_CACHEABLE, kernel0.group_id(1));
   auto bo_cfg_1 = xrt::bo(device, cfg_1_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel1.group_id(1));
+                          XCL_BO_FLAGS_CACHEABLE, kernel0.group_id(1));
   auto bo_inA_1 = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                          XRT_BO_FLAGS_HOST_ONLY, kernel1.group_id(3));
+                          XRT_BO_FLAGS_HOST_ONLY, kernel0.group_id(3));
   auto bo_out_1 = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
-                          XRT_BO_FLAGS_HOST_ONLY, kernel1.group_id(4));
+                          XRT_BO_FLAGS_HOST_ONLY, kernel0.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -222,7 +206,7 @@ int main(int argc, const char *argv[]) {
   run0.set_arg(6, 0);
   run0.set_arg(7, 0);
 
-  xrt::run run1_cfg = xrt::run(kernel1);
+  xrt::run run1_cfg = xrt::run(kernel0);
   run1_cfg.set_arg(0, opcode);
   run1_cfg.set_arg(1, bo_cfg_1);
   run1_cfg.set_arg(2, cfg_1_v.size());
@@ -233,7 +217,7 @@ int main(int argc, const char *argv[]) {
   run1_cfg.set_arg(7, 0);
 
   // Creating the second run
-  xrt::run run1 = xrt::run(kernel1);
+  xrt::run run1 = xrt::run(kernel0);
   run1.set_arg(0, opcode);
   run1.set_arg(1, bo_instr_1);
   run1.set_arg(2, instr_v.size());
@@ -272,7 +256,7 @@ int main(int argc, const char *argv[]) {
   }
 
   for (uint32_t i = 0; i < 64; i++) {
-    uint32_t ref = (i + 2) + 2;
+    uint32_t ref = (i + 2) + 102;
     if (*(bufOut_1 + i) != ref) {
       std::cout << "Error in output " << *(bufOut_1 + i) << " != " << ref
                 << std::endl;

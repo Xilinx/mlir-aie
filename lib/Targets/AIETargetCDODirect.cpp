@@ -488,10 +488,21 @@ struct AIEControl {
 
   LogicalResult addAieElf(uint8_t col, uint8_t row, const StringRef elfPath,
                           bool aieSim) {
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_CoreDisable, &devInst,
+                                XAie_TileLoc(col, row));
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, &devInst,
+                                XAie_TileLoc(col, row),
+                                XAie_DmaChReset::DMA_CHANNEL_RESET);
+
     // loadSym: Load symbols from .map file. This argument is not used when
     // __AIESIM__ is not defined.
     TRY_XAIE_API_LOGICAL_RESULT(XAie_LoadElf, &devInst, XAie_TileLoc(col, row),
                                 elfPath.str().c_str(), /*loadSym*/ aieSim);
+
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, &devInst,
+                                XAie_TileLoc(col, row),
+                                XAie_DmaChReset::DMA_CHANNEL_UNRESET);
+
     return success();
   }
 
@@ -889,7 +900,7 @@ LogicalResult translateToTxn(ModuleOp m, llvm::StringRef workDirPath,
   XAie_StartTransaction(&ctl.devInst, XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
 
   auto result =
-      generateTxn(ctl, workDirPath, targetOp, aieSim, false, true, true);
+      generateTxn(ctl, workDirPath, targetOp, aieSim, true, true, true);
 
   // Export the transactions to a buffer
   uint8_t *txn_ptr = XAie_ExportSerializedTransaction(&ctl.devInst, 0, 0);
