@@ -126,6 +126,7 @@ def operations_to_mlir(operations, columns=5):
                 4: AIEDevice.npu1_4col,
                 5: AIEDevice.npu1,
             }
+
             @device(devs[columns])
             def device_body():
                 for op in operations:
