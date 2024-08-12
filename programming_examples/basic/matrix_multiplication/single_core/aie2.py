@@ -247,15 +247,27 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                         size=trace_size,
                         offset=C_sz_in_bytes,
                         events=[
-                            PortEvent(trace_utils.CoreEvent.PORT_RUNNING_0, port_number=1, master=True),
-                            PortEvent(trace_utils.CoreEvent.PORT_RUNNING_1, port_number=2, master=True),
-                            PortEvent(trace_utils.CoreEvent.PORT_RUNNING_2, port_number=5, master=True),
+                            PortEvent(
+                                trace_utils.CoreEvent.PORT_RUNNING_0,
+                                port_number=1,
+                                master=True,
+                            ),
+                            PortEvent(
+                                trace_utils.CoreEvent.PORT_RUNNING_1,
+                                port_number=2,
+                                master=True,
+                            ),
+                            PortEvent(
+                                trace_utils.CoreEvent.PORT_RUNNING_2,
+                                port_number=5,
+                                master=True,
+                            ),
                             trace_utils.CoreEvent.INSTR_EVENT_0,
                             trace_utils.CoreEvent.INSTR_EVENT_1,
                             trace_utils.CoreEvent.MEMORY_STALL,
                             trace_utils.CoreEvent.LOCK_STALL,
                             trace_utils.CoreEvent.INSTR_VECTOR,
-                        ]
+                        ],
                     )
 
                 # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
@@ -264,13 +276,16 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                     # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
                     # that's what this loop is for
                     for pingpong in [0, 1]:
-                        C_row_offset = (tile_row_block * rows_per_block * m * N
-                                        + pingpong * rows_per_block // 2 * m * N)
-                        row_base = tile_row_block * rows_per_block + pingpong * rows_per_block//2
-                        bd_id_base = 8 * pingpong
-                        num_tile_rows = min(
-                            [rows_per_block//2, M_div_m - row_base]
+                        C_row_offset = (
+                            tile_row_block * rows_per_block * m * N
+                            + pingpong * rows_per_block // 2 * m * N
                         )
+                        row_base = (
+                            tile_row_block * rows_per_block
+                            + pingpong * rows_per_block // 2
+                        )
+                        bd_id_base = 8 * pingpong
+                        num_tile_rows = min([rows_per_block // 2, M_div_m - row_base])
                         npu_dma_memcpy_nd(
                             metadata="outC",
                             bd_id=bd_id_base,
@@ -280,9 +295,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                             strides=[m_x_N, n, N, 1],
                         )
                         for tile_row in range(num_tile_rows):
-                            A_row_offset = (
-                                (row_base + tile_row) * m * K
-                            )
+                            A_row_offset = (row_base + tile_row) * m * K
                             npu_dma_memcpy_nd(
                                 metadata="inA",
                                 bd_id=bd_id_base + 2 * tile_row + 1,
