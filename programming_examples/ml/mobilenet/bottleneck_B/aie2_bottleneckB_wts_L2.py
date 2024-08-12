@@ -912,7 +912,7 @@ def mobilenetV3_bn_10_11_12(start_row = 2, start_col = 0, bn10_scaleFactor1=10,b
         weightsInL3_ty = MemRefType.get((totalWeightsSize32b_complete,), int32_ty)
         activationsOutL3_ty = MemRefType.get((acitivationsOutSize32b,), int32_ty)
 
-        @FuncOp.from_py_func(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
+        @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
         def sequence(inputFromL3, weightsFromL3, outputToL3):
             NpuWriteRTPOp("bn10_1_rtp", index=0, value=bn10_scaleFactor1)
             NpuWriteRTPOp("bn10_2_rtp",  index=0, value=bn10_scaleFactor2)
