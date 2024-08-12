@@ -452,6 +452,33 @@ static void generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
                                                  zeroConstOp.getResult());
 }
 
+static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
+                                        mlir::ModuleOp parentModuleOp,
+                                        StringRef funcName, TypeRange inTypes,
+                                        TypeRange outTypes) {
+
+  mlir::OpBuilder::InsertionGuard insertGuard(rewriter);
+  rewriter.setInsertionPointToStart(
+      &parentModuleOp.getRegion().getBlocks().front());
+  SymbolTable st = SymbolTable(parentModuleOp);
+  func::FuncOp fn_op_lookup = st.lookup<func::FuncOp>(funcName);
+  func::FuncOp fn_op;
+  // if the function is already declared, use the existing function, don't
+  // declare multiple times
+  if (fn_op_lookup != NULL) {
+    fn_op = fn_op_lookup;
+  } else {
+    StringAttr t1 = rewriter.getStringAttr("sym_visibility");
+    StringAttr t2 = rewriter.getStringAttr("private");
+    NamedAttribute funcAccess = NamedAttribute(t1, t2);
+    FunctionType fn_type =
+        mlir::FunctionType::get(rewriter.getContext(), inTypes, outTypes);
+    fn_op = rewriter.create<func::FuncOp>(parentModuleOp.getLoc(), funcName,
+                                          fn_type, funcAccess);
+  }
+  return fn_op;
+}
+
 //===----------------------------------------------------------------------===//
 // Rewrite patterns
 //===----------------------------------------------------------------------===//
@@ -1903,30 +1930,11 @@ struct ComputeExpOpByLUTLLVMPattern : OpConversionPattern<math::ExpOp> {
 
     StringRef funcName = "getExpBf16";
     auto moduleOp = expOp->getParentOfType<mlir::ModuleOp>();
-    rewriter.setInsertionPointToStart(
-        &moduleOp.getRegion().getBlocks().front());
 
-    SymbolTable st = SymbolTable(moduleOp);
-    func::FuncOp fn_op_lookup = st.lookup<func::FuncOp>(funcName);
-
-    func::FuncOp fn_op;
     VectorType v16bf16Ty = mlir::VectorType::get({16}, rewriter.getBF16Type());
     VectorType v8i64Ty = mlir::VectorType::get({8}, rewriter.getI64Type());
-    // if the function is already declared, use the existing function, don't
-    // declare multiple times
-    if (fn_op_lookup != NULL) {
-      fn_op = fn_op_lookup;
-    } else {
-      StringAttr t1 = rewriter.getStringAttr("sym_visibility");
-      StringAttr t2 = rewriter.getStringAttr("private");
-      NamedAttribute funcAccess = NamedAttribute(t1, t2);
-      FunctionType fn_type = mlir::FunctionType::get(
-          rewriter.getContext(), TypeRange{v16bf16Ty}, TypeRange{v8i64Ty});
-      fn_op = rewriter.create<func::FuncOp>(moduleOp.getLoc(), funcName,
-                                            fn_type, funcAccess);
-    }
-
-    rewriter.setInsertionPoint(expOp);
+    func::FuncOp fn_op = getOrInsertFuncDecl(
+        rewriter, moduleOp, funcName, TypeRange{v16bf16Ty}, TypeRange{v8i64Ty});
 
     SmallVector<Value> expOperands = {adaptor.getOperand()};
 
