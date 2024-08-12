@@ -75,8 +75,10 @@ int main(int argc, const char *argv[]) {
       "the input xclbin path")("verbosity,v",
                                po::value<int>()->default_value(0),
                                "the verbosity of the output")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6")(
+      "instr0,i", po::value<std::string>()->required(),
+      "path to instructions for kernel0")("instr1,j",
+                                          po::value<std::string>()->required(),
+                                          "path to instructions for kernel1")(
       "cfg,c", po::value<std::string>()->required(), "txn binary path");
   po::variables_map vm;
 
@@ -94,21 +96,21 @@ int main(int argc, const char *argv[]) {
     return 1;
   }
 
-  check_arg_file_exists(vm, "xclbin");
-  check_arg_file_exists(vm, "instr");
-  check_arg_file_exists(vm, "cfg");
+  std::vector<uint32_t> instr_0_v =
+      load_instr_sequence(vm["instr0"].as<std::string>());
 
-  std::vector<uint32_t> instr_v =
-      load_instr_sequence(vm["instr"].as<std::string>());
+  std::vector<uint32_t> instr_1_v =
+      load_instr_sequence(vm["instr1"].as<std::string>());
 
   std::vector<uint32_t> cfg_1_v =
       load_instr_binary(vm["cfg"].as<std::string>());
 
   int verbosity = vm["verbosity"].as<int>();
-  if (verbosity >= 1)
-    std::cout << "Sequence instr count: " << instr_v.size() << "\n";
-  if (verbosity >= 1)
+  if (verbosity >= 1) {
+    std::cout << "Sequence instr 0 count: " << instr_0_v.size() << "\n";
+    std::cout << "Sequence instr 1 count: " << instr_1_v.size() << "\n";
     std::cout << "Sequence cfg count: " << cfg_1_v.size() << "\n";
+  }
 
   // Start the XRT test code
   // Get a device handle
@@ -141,14 +143,14 @@ int main(int argc, const char *argv[]) {
 
   auto kernel0 = xrt::kernel(context, kernelName0);
 
-  auto bo_instr_0 = xrt::bo(device, instr_v.size() * sizeof(int),
+  auto bo_instr_0 = xrt::bo(device, instr_0_v.size() * sizeof(int),
                             XCL_BO_FLAGS_CACHEABLE, kernel0.group_id(1));
   auto bo_inA_0 = xrt::bo(device, IN_SIZE * sizeof(int32_t),
                           XRT_BO_FLAGS_HOST_ONLY, kernel0.group_id(3));
   auto bo_out_0 = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
                           XRT_BO_FLAGS_HOST_ONLY, kernel0.group_id(4));
 
-  auto bo_instr_1 = xrt::bo(device, instr_v.size() * sizeof(int),
+  auto bo_instr_1 = xrt::bo(device, instr_1_v.size() * sizeof(int),
                             XCL_BO_FLAGS_CACHEABLE, kernel0.group_id(1));
   auto bo_cfg_1 = xrt::bo(device, cfg_1_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel0.group_id(1));
@@ -179,8 +181,8 @@ int main(int argc, const char *argv[]) {
   void *bufInstr_0 = bo_instr_0.map<void *>();
   void *bufInstr_1 = bo_instr_1.map<void *>();
   void *bufCfg_1 = bo_cfg_1.map<void *>();
-  memcpy(bufInstr_0, instr_v.data(), instr_v.size() * sizeof(int));
-  memcpy(bufInstr_1, instr_v.data(), instr_v.size() * sizeof(int));
+  memcpy(bufInstr_0, instr_0_v.data(), instr_0_v.size() * sizeof(int));
+  memcpy(bufInstr_1, instr_1_v.data(), instr_1_v.size() * sizeof(int));
   memcpy(bufCfg_1, cfg_1_v.data(), cfg_1_v.size() * sizeof(int));
 
   // Synchronizing BOs
@@ -199,7 +201,7 @@ int main(int argc, const char *argv[]) {
   xrt::run run0 = xrt::run(kernel0);
   run0.set_arg(0, opcode);
   run0.set_arg(1, bo_instr_0);
-  run0.set_arg(2, instr_v.size());
+  run0.set_arg(2, instr_0_v.size());
   run0.set_arg(3, bo_inA_0);
   run0.set_arg(4, bo_out_0);
   run0.set_arg(5, 0);
@@ -220,7 +222,7 @@ int main(int argc, const char *argv[]) {
   xrt::run run1 = xrt::run(kernel0);
   run1.set_arg(0, opcode);
   run1.set_arg(1, bo_instr_1);
-  run1.set_arg(2, instr_v.size());
+  run1.set_arg(2, instr_1_v.size());
   run1.set_arg(3, bo_inA_1);
   run1.set_arg(4, bo_out_1);
   run1.set_arg(5, 0);
