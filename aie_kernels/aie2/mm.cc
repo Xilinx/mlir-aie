@@ -134,6 +134,132 @@ void matmul_vectorized(const T_in *__restrict pA, const T_in *__restrict pB,
 
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t>
+void matmul_vectorized_1x2(const T_in *__restrict pA, const T_in *__restrict pB,
+                           T_out *__restrict pC) {
+  using MMUL = aie::mmul<r, s, t, T_in, T_in, accfloat>;
+  unsigned long long time;
+  event0();
+
+  // Microkernel extended to maximize accumulator usage
+
+  // unsigned long long start = get_cycles ();
+  for (unsigned z = 0; z < rowA; z += 4)
+        chess_loop_range(2, ) {
+      T_out *__restrict pC1 = pC + (z * colB + 0) * MMUL::size_C;
+      T_out *__restrict pC2 = pC + ((z + 1) * colB + 0) * MMUL::size_C;
+      T_out *__restrict pC3 = pC + ((z + 2) * colB + 0) * MMUL::size_C;
+      T_out *__restrict pC4 = pC + ((z + 3) * colB + 0) * MMUL::size_C;
+
+      for (unsigned j = 0; j < colB; j += 2)
+        chess_loop_range(2, ) {
+          const T_in *__restrict pA1 = pA + (z * colA + 0) * MMUL::size_A;
+          const T_in *__restrict pA2 = pA + ((z + 1) * colA + 0) * MMUL::size_A;
+          const T_in *__restrict pA3 = pA + ((z + 2) * colA + 0) * MMUL::size_A;
+          const T_in *__restrict pA4 = pA + ((z + 3) * colA + 0) * MMUL::size_A;
+
+          const T_in *__restrict pB1 = pB + (0 * colB + j) * MMUL::size_B;
+          const T_in *__restrict pB2 = pB + (0 * colB + (j + 1)) * MMUL::size_B;
+
+          aie::vector<T_in, MMUL::size_A> A01 = aie::load_v<MMUL::size_A>(pA1);
+          pA1 += MMUL::size_A;
+          aie::vector<T_in, MMUL::size_A> A11 = aie::load_v<MMUL::size_A>(pA2);
+          pA2 += MMUL::size_A;
+          aie::vector<T_in, MMUL::size_A> A21 = aie::load_v<MMUL::size_A>(pA3);
+          pA3 += MMUL::size_A;
+          aie::vector<T_in, MMUL::size_A> A31 = aie::load_v<MMUL::size_A>(pA4);
+          pA4 += MMUL::size_A;
+          aie::vector<T_in, MMUL::size_B> B01 = aie::load_v<MMUL::size_B>(pB1);
+          pB1 += (MMUL::size_B * colB);
+          aie::vector<T_in, MMUL::size_B> B11 = aie::load_v<MMUL::size_B>(pB2);
+          pB2 += (MMUL::size_B * colB);
+
+          aie::vector<T_out, MMUL::size_C> acc_C00 =
+              aie::load_v<MMUL::size_C>(pC1);
+          aie::vector<T_out, MMUL::size_C> acc_C01 =
+              aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C);
+          aie::vector<T_out, MMUL::size_C> acc_C10 =
+              aie::load_v<MMUL::size_C>(pC2);
+          aie::vector<T_out, MMUL::size_C> acc_C11 =
+              aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C);
+          aie::vector<T_out, MMUL::size_C> acc_C20 =
+              aie::load_v<MMUL::size_C>(pC3);
+          aie::vector<T_out, MMUL::size_C> acc_C21 =
+              aie::load_v<MMUL::size_C>(pC3 + MMUL::size_C);
+          aie::vector<T_out, MMUL::size_C> acc_C30 =
+              aie::load_v<MMUL::size_C>(pC4);
+          aie::vector<T_out, MMUL::size_C> acc_C31 =
+              aie::load_v<MMUL::size_C>(pC4 + MMUL::size_C);
+
+          MMUL C00(acc_C00);
+          MMUL C01(acc_C01);
+          MMUL C10(acc_C10);
+          MMUL C11(acc_C11);
+          MMUL C20(acc_C20);
+          MMUL C21(acc_C21);
+          MMUL C30(acc_C30);
+          MMUL C31(acc_C31);
+
+          C00.mac(A01, B01);
+          C01.mac(A01, B11);
+          C10.mac(A11, B01);
+          C11.mac(A11, B11);
+          C20.mac(A21, B01);
+          C21.mac(A21, B11);
+          C30.mac(A31, B01);
+          C31.mac(A31, B11);
+
+          for (unsigned i = 1; i < colA; i += 1)
+            chess_prepare_for_pipelining chess_loop_range(3, ) {
+
+              A01 = aie::load_v<MMUL::size_A>(pA1);
+              pA1 += MMUL::size_A;
+              A11 = aie::load_v<MMUL::size_A>(pA2);
+              pA2 += MMUL::size_A;
+              A21 = aie::load_v<MMUL::size_A>(pA3);
+              pA3 += MMUL::size_A;
+              A31 = aie::load_v<MMUL::size_A>(pA4);
+              pA4 += MMUL::size_A;
+              B01 = aie::load_v<MMUL::size_B>(pB1);
+              pB1 += (MMUL::size_B * colB);
+              B11 = aie::load_v<MMUL::size_B>(pB2);
+              pB2 += (MMUL::size_B * colB);
+
+              C00.mac(A01, B01);
+              C01.mac(A01, B11);
+              C10.mac(A11, B01);
+              C11.mac(A11, B11);
+              C20.mac(A21, B01);
+              C21.mac(A21, B11);
+              C30.mac(A31, B01);
+              C31.mac(A31, B11);
+            }
+
+          aie::store_v(pC1, C00.template to_vector<T_out>());
+          pC1 += MMUL::size_C;
+          aie::store_v(pC1, C01.template to_vector<T_out>());
+          pC1 += MMUL::size_C;
+          aie::store_v(pC2, C10.template to_vector<T_out>());
+          pC2 += MMUL::size_C;
+          aie::store_v(pC2, C11.template to_vector<T_out>());
+          pC2 += MMUL::size_C;
+          aie::store_v(pC3, C20.template to_vector<T_out>());
+          pC3 += MMUL::size_C;
+          aie::store_v(pC3, C21.template to_vector<T_out>());
+          pC3 += MMUL::size_C;
+          aie::store_v(pC4, C30.template to_vector<T_out>());
+          pC4 += MMUL::size_C;
+          aie::store_v(pC4, C31.template to_vector<T_out>());
+          pC4 += MMUL::size_C;
+        }
+    }
+  // unsigned long long end = get_cycles ();
+  // time = end - start;
+  // *pC = (int)time;
+  event1();
+}
+
+template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
+          unsigned colB, unsigned r, unsigned s, unsigned t>
 void matmul_vectorized_2x2(const T_in *__restrict pA, const T_in *__restrict pB,
                            T_out *__restrict pC) {
   using MMUL = aie::mmul<r, s, t, T_in, T_in, accfloat>;
@@ -362,7 +488,7 @@ void matmul_vectorized_4x4x4_i16_i16(const int16 *__restrict pA,
   static_assert(m % (2 * r) == 0 && m / (2 * r) > 0);
   static_assert(k % (2 * s) == 0 && k / (2 * s) > 0);
   static_assert(n % (2 * t) == 0 && n / (2 * t) > 0);
-  return matmul_vectorized<int16, int16, m / r, k / s, n / t, r, s, t>(pA, pB,
+  return matmul_vectorized_1x2<int16, int16, m / r, k / s, n / t, r, s, t>(pA, pB,
                                                                        pC);
 }
 
