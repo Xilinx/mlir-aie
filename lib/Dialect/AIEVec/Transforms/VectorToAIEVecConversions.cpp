@@ -479,6 +479,21 @@ static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
   return fn_op;
 }
 
+static bool matchExpOpForLUT(math::ExpOp::Adaptor adaptor) {
+  auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
+
+  if (!srcType)
+    return false;
+
+  Type scalarType = srcType.getElementType();
+  unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+  unsigned laneSize = getVectorLaneSize(srcType);
+  if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
+    return false;
+
+  return true;
+}
+
 //===----------------------------------------------------------------------===//
 // Rewrite patterns
 //===----------------------------------------------------------------------===//
@@ -1917,17 +1932,11 @@ struct ComputeExpOpByLUTLLVMPattern : OpConversionPattern<math::ExpOp> {
   LogicalResult
   matchAndRewrite(math::ExpOp expOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+
+    if (!matchExpOpForLUT(adaptor))
+      return failure();
+
     auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
-
-    if (!srcType)
-      return failure();
-
-    Type scalarType = srcType.getElementType();
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-    unsigned laneSize = getVectorLaneSize(srcType);
-    if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
-      return failure();
-
     StringRef funcName = "getExpBf16";
     auto moduleOp = expOp->getParentOfType<mlir::ModuleOp>();
 
@@ -1958,17 +1967,9 @@ struct ComputeExpOpByLUTPattern : OpConversionPattern<math::ExpOp> {
   LogicalResult
   matchAndRewrite(math::ExpOp expOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    if (!matchExpOpForLUT(adaptor))
+      return failure();
     auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
-
-    if (!srcType)
-      return failure();
-
-    Type scalarType = srcType.getElementType();
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-    unsigned laneSize = getVectorLaneSize(srcType);
-    if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
-      return failure();
-
     StringRef includeName = "lut_based_ops.h";
     auto moduleOp = expOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
