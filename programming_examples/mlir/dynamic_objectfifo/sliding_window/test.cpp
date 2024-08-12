@@ -126,7 +126,7 @@ int main(int argc, const char *argv[]) {
       }
       std::cout << "expected: " << expected_output << ", ";
       std::cout << "got: " << buf_output[i * OUTPUT_ROWS + j] << std::endl;
-      pass &= buf_output[i * OUTPUT_ROWS + j] == 2;
+      pass &= buf_output[i * OUTPUT_ROWS + j] == expected_output;
     }
     std::cout << std::endl << std::endl;
   }

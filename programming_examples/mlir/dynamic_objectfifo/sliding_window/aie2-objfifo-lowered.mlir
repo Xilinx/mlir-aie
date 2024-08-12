@@ -152,12 +152,12 @@ module {
       aie.use_lock(%output_fifo_cons_lock, AcquireGreaterEqual, 1)
       aie.dma_bd(%output_fifo_buff_0 : memref<10xi32>, 0, 10)
       aie.use_lock(%output_fifo_prod_lock, Release, 1)
-      aie.next_bd ^bb5
+      aie.next_bd ^bb6
     ^bb6:  // pred: ^bb4
       aie.use_lock(%output_fifo_cons_lock, AcquireGreaterEqual, 1)
       aie.dma_bd(%output_fifo_buff_1 : memref<10xi32>, 0, 10)
       aie.use_lock(%output_fifo_prod_lock, Release, 1)
-      aie.next_bd ^bb4
+      aie.next_bd ^bb5
     ^bb7:  // pred: ^bb3
       aie.end
     }
