@@ -41,8 +41,8 @@ mlirFileName = aie2_bottleneckB
 
 
 
-# mlirFileName = aie2_bottleneckB_wts_L2
-# testFileName=test_wts_L2
+mlirFileName = aie2_bottleneckB_wts_L2
+testFileName=test_wts_L2
 
 VPATH := ${srcdir}/../../../../aie_kernels/aie2
 
