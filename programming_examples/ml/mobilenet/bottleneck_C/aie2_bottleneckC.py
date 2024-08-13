@@ -116,8 +116,6 @@ class bottleneckCCore:
         OutputSplit=bneck_13_OutC1//8 #calculate 8 OCs at a time, should bneck_13_InC1rease to more
 
 
-        RepeatChannels=math.floor(bneck_13_InH1)
-
         bneck_13_InW2 = bneck_13_InW1
         bneck_13_InH2 = bneck_13_InH1
         bneck_13_OutC2 = bneck_13_OutC1
