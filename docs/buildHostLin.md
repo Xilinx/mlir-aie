@@ -106,7 +106,7 @@ You will...
 1. Pull the source for the correct kernel version, which is available in the AMDESE linux repository.
 
     ```bash
-    git clone --depth=1 --branch v6.8-iommu-sva-part4-v7 git@github.com:AMD-SW/linux
+    git clone git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
     export LINUX_SRC_DIR=$(realpath linux)
     ```
 
