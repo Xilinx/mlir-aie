@@ -155,7 +155,7 @@ static TileElement getParentTileElement(Operation *op) {
   return llvm::dyn_cast<TileElement>(parent);
 }
 
-struct UsesAreAccessable {
+struct UsesAreAccessible {
   static LogicalResult verifyTrait(Operation *op) {
     auto thisElement = cast<TileElement>(op);
     auto thisID = thisElement.getTileID();
@@ -1291,7 +1291,7 @@ int64_t BufferOp::getAllocationSize() {
 TileOp BufferOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 
 LogicalResult BufferOp::verify() {
-  if (UsesAreAccessable::verifyTrait(*this).failed())
+  if (UsesAreAccessible::verifyTrait(*this).failed())
     return failure();
   return success();
 }
@@ -2012,7 +2012,7 @@ int LockOp::colIndex() { return getTileOp().colIndex(); }
 int LockOp::rowIndex() { return getTileOp().rowIndex(); }
 
 LogicalResult LockOp::verify() {
-  if (auto result = UsesAreAccessable::verifyTrait(*this); result.failed())
+  if (auto result = UsesAreAccessible::verifyTrait(*this); result.failed())
     return result;
 
   if (getLockID().has_value()) {
