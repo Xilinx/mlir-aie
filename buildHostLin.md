@@ -103,10 +103,10 @@ You will...
     build-essential debhelper flex bison libssl-dev libelf-dev libboost-all-dev libpython3.10-dev libsystemd-dev libtiff-dev libudev-dev
     ```
 
-1. Pull the source for the correct kernel version, which is available in the AMDESE linux repository.
+1. Pull the source for kernel version 6.10.
 
     ```bash
-    git clone --depth=1 --branch v6.8-iommu-sva-part4-v7 git@github.com:AMD-SW/linux
+    git clone --depth=1 --branch v6.10 git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
     export LINUX_SRC_DIR=$(realpath linux)
     ```
 
@@ -142,10 +142,8 @@ You will...
 1. Install the new Linux kernel and reboot.
 
     ```bash
-    cd $LINUX_BUILD_DIR/..
-    sudo dpkg -i linux-headers-6.8.8+_6.8.8-g7575202b6461-1_amd64.deb
-    sudo dpkg -i linux-image-6.8.8+_6.8.8-g7575202b6461-1_amd64.deb 
-    sudo dpkg -i linux-libc-dev_6.8.8-g7575202b6461-1_amd64.deb
+    cd $LINUX_BUILD_DIR
+    sudo apt reinstall ../linux-headers-6.10.0_6.10.0-1_amd64.deb ../linux-image-6.10.0_6.10.0-1_amd64.deb ../linux-libc-dev_6.10.0-1_amd64.deb
     sudo shutdown --reboot 0
     ```
 
@@ -192,7 +190,7 @@ You will...
     git clone https://github.com/amd/xdna-driver.git
     export XDNA_SRC_DIR=$(realpath xdna-driver)
     cd xdna-driver
-    git reset --hard b6db49f792a48123a016ba052d0c2103862547ee
+    git reset --hard 537a509a3ab1b698c9c9f6ebcd88035b2fe8359b
     git submodule update --init --recursive
     ```
 
@@ -211,17 +209,14 @@ You will...
 
        ```bash
        cd $XDNA_SRC_DIR/xrt/build
-       ./build.sh
-       cd Release
-       make package
+       ./build.sh -noert -noalveo
        ```
 
     3. Install XRT.
 
        ```bash
        cd $XDNA_SRC_DIR/xrt/build/Release
-       sudo dpkg -i xrt_202420.2.18.0_22.04-amd64-xrt.deb
-       sudo dpkg -i xrt_202420.2.18.0_22.04-amd64-xbflash2.deb
+       sudo apt reinstall ./xrt_202420.2.18.0_22.04-amd64-xrt.deb ./xrt_202420.2.18.0_22.04-amd64-xbflash.deb
        ```
 
        > **An error is expected in this step.** Ignore it.
@@ -240,14 +235,14 @@ You will...
 
     ```bash
     cd $XDNA_SRC_DIR/build/Release
-    sudo dpkg -i xrt_plugin.2.18.0_ubuntu22.04-x86_64-amdxdna.deb
+    sudo apt reinstall ./xrt_plugin.2.18.0_ubuntu22.04-x86_64-amdxdna.deb
     ```
     
-1. Check that the NPU is working if the device appears with xbutil:
+1. Check that the NPU is working if the device appears with xrt-smi:
    
    ```bash
    source /opt/xilinx/xrt/setup.sh
-   xbutil examine
+   xrt-smi examine
    ```
 
    > At the bottom of the output you should see:
