@@ -109,7 +109,7 @@ class bottleneckCCore:
         self.bn13_skip=_bn13_skip
 
         bneck_13_InW1 = 7
-        bneck_13_InH1 = 6
+        bneck_13_InH1 = 7
         bneck_13_InC1 = 160
         bneck_13_OutC1 = 960
         InputSplit=2
@@ -953,7 +953,7 @@ def mobilenetV3_bn_13_14(start_row = 2, start_col = 0,
                         bn14_scaleFactor1=9,bn14_scaleFactor2=8,bn14_scaleFactor3=12,bn14_scaleFactorAdd=1):
 
             bneck_13_InW1 = 7
-            bneck_13_InH1 = 6
+            bneck_13_InH1 = 7
             bneck_13_InC1 = 160
             bneck_13_OutC1 = 960
             InputSplit=2
@@ -1206,7 +1206,7 @@ def mobilenetV3_bn_13_14(start_row = 2, start_col = 0,
                     weightsInL3_ty = MemRefType.get((totalWeightsSize32b_complete,), int32_ty)
                     activationsOutL3_ty = MemRefType.get((acitivationsOutSize32b,), int32_ty)
 
-                    @FuncOp.from_py_func(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
+                    @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
                     def sequence(inputFromL3, weightsFromL3, outputToL3):
                         # NpuWriteRTPOp("rtp04", col=0, row=4, index=0, value=9)
                         # NpuWriteRTPOp("rtp13", col=1, row=3, index=0, value=11)

@@ -619,61 +619,61 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(tileColIndex = 0,tensorInW = 56, tensorIn
         memtile_01_wts32b=(memtile_01_wts)//4
         memtile_11_wts32b=(memtile_11_wts)//4
 
-        @FuncOp.from_py_func(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
+        @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
         def sequence(inputFromL3, weightsFromL3, outputToL3):
             
             # # bn0+1
-            NpuWriteRTPOp("rtp03", col=tileColIndex, row=3, index=0, value=bn0_scaleFactor2)
-            NpuWriteRTPOp("rtp03", col=tileColIndex, row=3, index=1, value=bn0_scaleFactor3)
-            NpuWriteRTPOp("rtp03", col=tileColIndex, row=3, index=2, value=bn0_scaleFactorAdd)
-            NpuWriteRTPOp("rtp03", col=tileColIndex, row=3, index=3, value=bn1_scaleFactor1)
-            NpuWriteRTPOp("rtp03", col=tileColIndex, row=3, index=4, value=bn1_scaleFactor2)
-            NpuWriteRTPOp("rtp03", col=tileColIndex, row=3, index=5, value=bn1_scaleFactor3)
+            NpuWriteRTPOp("rtp03",   index=0, value=bn0_scaleFactor2)
+            NpuWriteRTPOp("rtp03",   index=1, value=bn0_scaleFactor3)
+            NpuWriteRTPOp("rtp03",   index=2, value=bn0_scaleFactorAdd)
+            NpuWriteRTPOp("rtp03",   index=3, value=bn1_scaleFactor1)
+            NpuWriteRTPOp("rtp03",   index=4, value=bn1_scaleFactor2)
+            NpuWriteRTPOp("rtp03",   index=5, value=bn1_scaleFactor3)
 
             # bn2
-            NpuWriteRTPOp("rtp04", col=tileColIndex, row=4, index=0, value=bn2_scaleFactor1)
-            NpuWriteRTPOp("rtp04", col=tileColIndex, row=4, index=1, value=bn2_scaleFactor2)
-            NpuWriteRTPOp("rtp04", col=tileColIndex, row=4, index=2, value=bn2_scaleFactor3)
-            NpuWriteRTPOp("rtp04", col=tileColIndex, row=4, index=3, value=bn2_scaleFactorAdd)
+            NpuWriteRTPOp("rtp04",   index=0, value=bn2_scaleFactor1)
+            NpuWriteRTPOp("rtp04",   index=1, value=bn2_scaleFactor2)
+            NpuWriteRTPOp("rtp04",   index=2, value=bn2_scaleFactor3)
+            NpuWriteRTPOp("rtp04",   index=3, value=bn2_scaleFactorAdd)
 
             # # bn3
-            NpuWriteRTPOp("rtp05", col=tileColIndex, row=5, index=0, value=bn3_scaleFactor1)
-            NpuWriteRTPOp("rtp05", col=tileColIndex, row=5, index=1, value=bn3_scaleFactor2)
-            NpuWriteRTPOp("rtp05", col=tileColIndex, row=5, index=2, value=bn3_scaleFactor3)
-            NpuWriteRTPOp("rtp05", col=tileColIndex, row=5, index=3, value=bn3_scaleFactorAdd)
+            NpuWriteRTPOp("rtp05",   index=0, value=bn3_scaleFactor1)
+            NpuWriteRTPOp("rtp05",   index=1, value=bn3_scaleFactor2)
+            NpuWriteRTPOp("rtp05",   index=2, value=bn3_scaleFactor3)
+            NpuWriteRTPOp("rtp05",   index=3, value=bn3_scaleFactorAdd)
 
             # bn4
-            NpuWriteRTPOp("rtp15", col=tileColIndex+1, row=5, index=0, value=bn4_scaleFactor1)
-            NpuWriteRTPOp("rtp15", col=tileColIndex+1, row=5, index=1, value=bn4_scaleFactor2)
-            NpuWriteRTPOp("rtp15", col=tileColIndex+1, row=5, index=2, value=bn4_scaleFactor3)
-            NpuWriteRTPOp("rtp15", col=tileColIndex+1, row=5, index=3, value=bn4_scaleFactorAdd)
+            NpuWriteRTPOp("rtp15",   index=0, value=bn4_scaleFactor1)
+            NpuWriteRTPOp("rtp15",   index=1, value=bn4_scaleFactor2)
+            NpuWriteRTPOp("rtp15",   index=2, value=bn4_scaleFactor3)
+            NpuWriteRTPOp("rtp15",   index=3, value=bn4_scaleFactorAdd)
 
             # # bn5
-            NpuWriteRTPOp("rtp14", col=tileColIndex+1, row=4, index=0, value=bn5_scaleFactor1)
-            NpuWriteRTPOp("rtp14", col=tileColIndex+1, row=4, index=1, value=bn5_scaleFactor2)
-            NpuWriteRTPOp("rtp14", col=tileColIndex+1, row=4, index=2, value=bn5_scaleFactor3)
-            NpuWriteRTPOp("rtp14", col=tileColIndex+1, row=4, index=3, value=bn5_scaleFactorAdd)
+            NpuWriteRTPOp("rtp14",   index=0, value=bn5_scaleFactor1)
+            NpuWriteRTPOp("rtp14",   index=1, value=bn5_scaleFactor2)
+            NpuWriteRTPOp("rtp14",   index=2, value=bn5_scaleFactor3)
+            NpuWriteRTPOp("rtp14",   index=3, value=bn5_scaleFactorAdd)
 
-            NpuWriteRTPOp("rtp12", col=tileColIndex+1, row=2, index=0, value=bn6_scaleFactor1)
-            NpuWriteRTPOp("rtp12", col=tileColIndex+1, row=2, index=1, value=bn6_scaleFactor2)
-            NpuWriteRTPOp("rtp12", col=tileColIndex+1, row=2, index=2, value=bn6_scaleFactor3)
-            NpuWriteRTPOp("rtp12", col=tileColIndex+1, row=2, index=3, value=bn6_scaleFactorAdd)
+            NpuWriteRTPOp("rtp12",   index=0, value=bn6_scaleFactor1)
+            NpuWriteRTPOp("rtp12",   index=1, value=bn6_scaleFactor2)
+            NpuWriteRTPOp("rtp12",   index=2, value=bn6_scaleFactor3)
+            NpuWriteRTPOp("rtp12",   index=3, value=bn6_scaleFactorAdd)
 
 
-            NpuWriteRTPOp("rtp13", col=tileColIndex+1, row=3, index=0, value=bn7_scaleFactor1)
-            NpuWriteRTPOp("rtp13", col=tileColIndex+1, row=3, index=1, value=bn7_scaleFactor2)
-            NpuWriteRTPOp("rtp13", col=tileColIndex+1, row=3, index=2, value=bn7_scaleFactor3)
-            NpuWriteRTPOp("rtp13", col=tileColIndex+1, row=3, index=3, value=bn7_scaleFactorAdd)
+            NpuWriteRTPOp("rtp13",   index=0, value=bn7_scaleFactor1)
+            NpuWriteRTPOp("rtp13",   index=1, value=bn7_scaleFactor2)
+            NpuWriteRTPOp("rtp13",   index=2, value=bn7_scaleFactor3)
+            NpuWriteRTPOp("rtp13",   index=3, value=bn7_scaleFactorAdd)
 
-            NpuWriteRTPOp("rtp22", col=tileColIndex+2, row=2, index=0, value=bn8_scaleFactor1)
-            NpuWriteRTPOp("rtp22", col=tileColIndex+2, row=2, index=1, value=bn8_scaleFactor2)
-            NpuWriteRTPOp("rtp22", col=tileColIndex+2, row=2, index=2, value=bn8_scaleFactor3)
-            NpuWriteRTPOp("rtp22", col=tileColIndex+2, row=2, index=3, value=bn8_scaleFactorAdd)
+            NpuWriteRTPOp("rtp22",   index=0, value=bn8_scaleFactor1)
+            NpuWriteRTPOp("rtp22",   index=1, value=bn8_scaleFactor2)
+            NpuWriteRTPOp("rtp22",   index=2, value=bn8_scaleFactor3)
+            NpuWriteRTPOp("rtp22",   index=3, value=bn8_scaleFactorAdd)
 
-            NpuWriteRTPOp("rtp23", col=tileColIndex+2, row=3, index=0, value=bn9_scaleFactor1)
-            NpuWriteRTPOp("rtp23", col=tileColIndex+2, row=3, index=1, value=bn9_scaleFactor2)
-            NpuWriteRTPOp("rtp23", col=tileColIndex+2, row=3, index=2, value=bn9_scaleFactor3)
-            NpuWriteRTPOp("rtp23", col=tileColIndex+2, row=3, index=3, value=bn9_scaleFactorAdd)
+            NpuWriteRTPOp("rtp23",   index=0, value=bn9_scaleFactor1)
+            NpuWriteRTPOp("rtp23",   index=1, value=bn9_scaleFactor2)
+            NpuWriteRTPOp("rtp23",   index=2, value=bn9_scaleFactor3)
+            NpuWriteRTPOp("rtp23",   index=3, value=bn9_scaleFactorAdd)
             
             npu_dma_memcpy_nd(
                 metadata="act_in",
