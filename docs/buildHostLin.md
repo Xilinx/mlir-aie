@@ -142,8 +142,8 @@ You will...
 1. Install the new Linux kernel and reboot.
 
     ```bash
-    cd $LINUX_BUILD_DIR/..
-    sudo apt reinstall linux-headers-6.10.0_6.10.0-1_amd64.deb linux-image-6.10.0_6.10.0-1_amd64.deb linux-libc-dev_6.10.0-1_amd64.deb
+    cd $LINUX_BUILD_DIR
+    sudo apt reinstall ../linux-headers-6.10.0_6.10.0-1_amd64.deb ../linux-image-6.10.0_6.10.0-1_amd64.deb ../linux-libc-dev_6.10.0-1_amd64.deb
     sudo shutdown --reboot 0
     ```
 
