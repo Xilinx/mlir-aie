@@ -165,22 +165,36 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     uint32_t bd_id = bd_op.getBdId().value();
     const AIE::AIETargetModel &target_model = AIE::getTargetModel(bd_op);
     auto buf = bd_op.getBuffer();
-    mlir::BlockArgument buf_arg = llvm::dyn_cast<mlir::BlockArgument>(buf);
-    if (!buf_arg) {
-      // TODO: Not yet implemented (for AIE.buffer references)
-      // Implementing this would involve taking the allocated buffer address and
-      // plugging it as a register write to `addr` below.
-      bd_op->emitOpError(
-          "At present, buffer arguments must be an input to the runtime "
-          "sequence. Constant buffer arguments not yet implemented.");
-      return failure();
+    uint64_t register_addr = getBufferDescriptorAddressRegisterAddress(
+        target_model, bd_id, tile.getCol(), tile.getRow());
+    if (mlir::BlockArgument buf_arg =
+            llvm::dyn_cast<mlir::BlockArgument>(buf)) {
+      if (!target_model.isShimNOCTile(tile.getCol(), tile.getRow())) {
+        return bd_op->emitOpError("DDR memory (runtime input arguments) can "
+                                  "only be referred to on shim tiles.");
+      }
+      unsigned arg_idx = buf_arg.getArgNumber();
+      int64_t offset = bd_op.getOffsetInBytes();
+      builder.create<NpuAddressPatchOp>(bd_op.getLoc(), /*addr*/ register_addr,
+                                        /*arg_idx*/ arg_idx,
+                                        /*arg_plus*/ offset);
+    } else if (AIE::BufferOp buffer =
+                   llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
+      uint64_t buf_addr;
+      if (!buffer.getAddress().has_value()) {
+        return bd_op->emitOpError(
+            "Cannot lower buffer without associated address. Run pass "
+            "--aie-assign-buffer-addresses first or manually assign an "
+            "address.");
+      }
+      buf_addr = *buffer.getAddress();
+      builder.create<NpuWrite32Op>(bd_op.getLoc(), register_addr, buf_addr,
+                                   nullptr, nullptr, nullptr);
+    } else {
+      return bd_op->emitOpError(
+          "Buffer argument must be either a constant aie.buffer or a runtime "
+          "sequence input argument.");
     }
-    unsigned arg_idx = buf_arg.getArgNumber();
-    uint64_t addr = getBufferDescriptorAddressRegisterAddress(
-        target_model, bd_id, tile.getCol());
-    int64_t offset = bd_op.getOffsetInBytes();
-    builder.create<NpuAddressPatchOp>(bd_op.getLoc(), /*addr*/ addr,
-                                      /*arg_idx*/ arg_idx, /*arg_plus*/ offset);
     return success();
   }
 

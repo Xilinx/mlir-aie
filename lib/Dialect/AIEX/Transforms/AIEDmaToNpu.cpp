@@ -438,8 +438,8 @@ public:
         iteration_size, iteration_stride, next_bd, row, use_next_bd, valid_bd,
         lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id);
 
-    uint64_t addr =
-        getBufferDescriptorAddressRegisterAddress(targetModel, op.getId(), col);
+    uint64_t addr = getBufferDescriptorAddressRegisterAddress(
+        targetModel, op.getId(), col, 0);
 
     rewriter.create<NpuAddressPatchOp>(op->getLoc(), addr, arg_idx, offset);
 

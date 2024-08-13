@@ -31,10 +31,11 @@ void AIEXDialect::initialize() {
       >();
 }
 
-uint64_t
-getBufferDescriptorAddressRegisterAddress(const AIE::AIETargetModel &tm,
-                                          unsigned bd_id, unsigned col) {
-  return ((uint64_t)col << tm.getColumnShift()) | (0x1D004 + bd_id * 0x20);
+uint64_t getBufferDescriptorAddressRegisterAddress(
+    const AIE::AIETargetModel &tm, unsigned bd_id, unsigned col, unsigned row) {
+  assert(bd_id < tm.getNumBDs(col, row));
+  return ((col & 0xff) << tm.getColumnShift()) |
+         ((row & 0xff) << tm.getRowShift()) | (0x1D004 + bd_id * 0x20);
 }
 
 /* Return the correct values to write to the hardware registers to configure

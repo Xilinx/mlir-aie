@@ -829,7 +829,7 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
   }];
 }
 
-def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"RuntimeSequenceOp">]>, Results<(outs Index:$result)> {
+def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"RuntimeSequenceOp">, TileElement]>, Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task on a Channel and Direction on a Tile";
   let description = [{
     Encapsulates the DMA configuration of one task, that is the (chain of) buffer descriptors to be executed on a given channel and direction on a tile.
@@ -858,6 +858,7 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"RuntimeSe
   let extraClassDeclaration = [{
     AIE::TileOp getTileOp();
     std::optional<uint32_t> getFirstBdId();
+    using ::xilinx::AIE::TileElement::Trait<AIEX::DMAConfigureTaskOp>::getAsmResultNames;
   }];
 
   let extraClassDefinition = [{
