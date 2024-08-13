@@ -51,7 +51,7 @@ torch.manual_seed(0)
 vectorSize=8
 
 bneck_13_InW1 = 7
-bneck_13_InH1 =6
+bneck_13_InH1 =7
 bneck_13_InC1 = 160
 bneck_13_OutC1 = 960
 WeightChunks=2 #2 splits for input channel and then output 

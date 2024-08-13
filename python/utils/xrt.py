@@ -36,7 +36,7 @@ class AIE_Application:
         insts = read_insts(insts_path)
         self.n_insts = len(insts)
         self.insts_buffer = AIE_Buffer(
-            self, 0, insts.dtype, insts.shape, xrt.bo.cacheable
+            self, 1, insts.dtype, insts.shape, xrt.bo.cacheable
         )
         self.insts_buffer.write(insts)
 
@@ -46,12 +46,16 @@ class AIE_Application:
     def run(self):
         self.insts_buffer.sync_to_device()
         h = self.call()
-        h.wait()
+        r = h.wait()
+        if r != xrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
+            raise Exception(f"Kernel returned {r}")
 
     def call(self):
+        opcode = 3
         h = self.kernel(
+            opcode,
             self.insts_buffer.bo,
-            self.n_insts * 4,
+            self.n_insts,
             *[b.bo for b in self.buffers if b is not None],
         )
         return h
@@ -129,13 +133,13 @@ def setup_aie(
     trace_size=16384,
 ):
     app = AIE_Application(xclbin_path, insts_path, kernel_name)
-    app.register_buffer(2, shape=in_0_shape, dtype=in_0_dtype)
-    app.register_buffer(3, shape=in_1_shape, dtype=in_1_dtype)
+    app.register_buffer(3, shape=in_0_shape, dtype=in_0_dtype)
+    app.register_buffer(4, shape=in_1_shape, dtype=in_1_dtype)
     if enable_trace:
         out_buf_len_bytes = np.prod(out_buf_shape) * np.dtype(out_buf_dtype).itemsize
         out_buf_shape = (out_buf_len_bytes + trace_size,)
         out_buf_dtype = np.uint8
-    app.register_buffer(4, shape=out_buf_shape, dtype=out_buf_dtype)
+    app.register_buffer(5, shape=out_buf_shape, dtype=out_buf_dtype)
     return app
 
 
@@ -156,18 +160,18 @@ def write_out_trace(trace, file_name):
 
 
 def execute(app, ifm_mem_fmt, total_wts):
-    app.buffers[2].write(ifm_mem_fmt)  # input's standard format CYX | scalar YCX
-    app.buffers[3].write(total_wts)  # wts's standard format OIYX | scalar OIYX
+    app.buffers[3].write(ifm_mem_fmt)  # input's standard format CYX | scalar YCX
+    app.buffers[4].write(total_wts)  # wts's standard format OIYX | scalar OIYX
     app.run()
-    return app.buffers[4].read()
+    return app.buffers[5].read()
 
 def write_wts(app, total_wts):
     app.buffers[3].write(total_wts)  # wts's standard format OIYX | scalar OIYX
 
 def execute_inference(app, ifm_mem_fmt):
-    app.buffers[2].write(ifm_mem_fmt)  # input's standard format CYX | scalar YCX
+    app.buffers[3].write(ifm_mem_fmt)  # input's standard format CYX | scalar YCX
     app.run()
-    return app.buffers[4].read()
+    return app.buffers[5].read()
 
 def setup_aie_single(
     xclbin_path,
@@ -181,16 +185,16 @@ def setup_aie_single(
     trace_size=16384,
 ):
     app = AIE_Application(xclbin_path, insts_path, kernel_name)
-    app.register_buffer(2, shape=in_0_shape, dtype=in_0_dtype)
+    app.register_buffer(3, shape=in_0_shape, dtype=in_0_dtype)
     if enable_trace:
         out_buf_len_bytes = np.prod(out_buf_shape) * np.dtype(out_buf_dtype).itemsize
         out_buf_shape = (out_buf_len_bytes + trace_size,)
         out_buf_dtype = np.uint8
-    app.register_buffer(3, shape=out_buf_shape, dtype=out_buf_dtype)
+    app.register_buffer(5, shape=out_buf_shape, dtype=out_buf_dtype)
     return app
 
 
 def execute_single(app, ifm_mem_fmt):
-    app.buffers[2].write(ifm_mem_fmt)  # input's standard format CYX | scalar YCX
+    app.buffers[3].write(ifm_mem_fmt)  # input's standard format CYX | scalar YCX
     app.run()
-    return app.buffers[3].read()
+    return app.buffers[5].read()
