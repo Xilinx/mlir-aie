@@ -103,10 +103,10 @@ You will...
     build-essential debhelper flex bison libssl-dev libelf-dev libboost-all-dev libpython3.10-dev libsystemd-dev libtiff-dev libudev-dev
     ```
 
-1. Pull the source for the latest kernel version.
+1. Pull the source for kernel version 6.10.
 
     ```bash
-    git clone git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+    git clone --depth=1 --branch v6.10 git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
     export LINUX_SRC_DIR=$(realpath linux)
     ```
 
