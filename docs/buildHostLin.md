@@ -216,7 +216,7 @@ You will...
 
        ```bash
        cd $XDNA_SRC_DIR/xrt/build/Release
-       sudo apt reinstall ./xrt_202420.2.18.0_22.04-amd64-xrt.deb ./xrt_202420.2.18.0_22.04-amd64-xbflash2.deb
+       sudo apt reinstall ./xrt_202420.2.18.0_22.04-amd64-xrt.deb ./xrt_202420.2.18.0_22.04-amd64-xbflash.deb
        ```
 
        > **An error is expected in this step.** Ignore it.
