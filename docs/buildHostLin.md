@@ -209,17 +209,14 @@ You will...
 
        ```bash
        cd $XDNA_SRC_DIR/xrt/build
-       ./build.sh
-       cd Release
-       make package
+       ./build.sh -noert -noalveo
        ```
 
     3. Install XRT.
 
        ```bash
        cd $XDNA_SRC_DIR/xrt/build/Release
-       sudo dpkg -i xrt_202420.2.18.0_22.04-amd64-xrt.deb
-       sudo dpkg -i xrt_202420.2.18.0_22.04-amd64-xbflash2.deb
+       sudo apt reinstall ./xrt_202420.2.18.0_22.04-amd64-xrt.deb ./xrt_202420.2.18.0_22.04-amd64-xbflash2.deb
        ```
 
        > **An error is expected in this step.** Ignore it.
