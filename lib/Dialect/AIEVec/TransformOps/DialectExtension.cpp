@@ -25,6 +25,8 @@ class AIEVecTransformDialectExtension
     : public transform::TransformDialectExtension<
           AIEVecTransformDialectExtension> {
 public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AIEVecTransformDialectExtension)
+
   using Base::Base;
 
   void init() {
