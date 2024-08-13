@@ -945,7 +945,7 @@ def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasParent<"RuntimeSequenceOp
 }
 
 
-def AIE_DMAStartBdChainOp: AIEX_Op<"dma_start_bd_chain", [HasParent<"RuntimeSequenceOp">]>,
+def AIE_DMAStartBdChainOp: AIEX_Op<"dma_start_bd_chain", [HasParent<"RuntimeSequenceOp">, TileElement]>,
     Results<(outs Index:$result)>
   {
 
@@ -975,6 +975,7 @@ def AIE_DMAStartBdChainOp: AIEX_Op<"dma_start_bd_chain", [HasParent<"RuntimeSequ
   let extraClassDeclaration = [{
     AIE::TileOp getTileOp();
     AIE::BDChainOp getBDChainOp();
+    using ::xilinx::AIE::TileElement::Trait<AIEX::DMAStartBdChainOp>::getAsmResultNames;
   }];
 
   let extraClassDefinition = [{

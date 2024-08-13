@@ -172,7 +172,9 @@ struct UsesAreAccessible {
       if (user->getParentWithTrait<SkipAccessibilityCheckTrait>()) {
         continue;
       }
-      if (auto element = getParentTileElement(user)) {
+      TileElement element;
+      if ((element = llvm::dyn_cast<TileElement>(user)) ||
+          (element = getParentTileElement(user))) {
         auto tileID = element.getTileID();
         if (!targetModel.isLegalMemAffinity(tileID.col, tileID.row, thisID.col,
                                             thisID.row))
