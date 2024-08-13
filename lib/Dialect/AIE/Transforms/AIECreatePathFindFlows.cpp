@@ -477,25 +477,26 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
       // check if same destinations
       SmallVector<Port, 4> ports(masterAMSels[{tileOp, amselValue}]);
 
-      // First scan: checking for exact same amsel -> port mapping
-      bool matched = true;
+      // check for complete/partial overlapping amsel -> port mapping with any
+      // previous amsel assignments
+      bool matched =
+          false; // Found at least one port with overlapping amsel assignment
+      bool mismatched = false; // Found at least one port without any
+                               // overlapping amsel assignment
       for (auto dest : packetFlow.second) {
-        if (Port port = dest.second;
-            std::find(ports.begin(), ports.end(), port) == ports.end()) {
-          matched = false;
-          break;
-        }
+        Port port = dest.second;
+        if (std::find(ports.begin(), ports.end(), port) == ports.end())
+          mismatched = true;
+        else
+          matched = true;
       }
-
-      // If given "matched", then the second scan: checking for partially
-      // overlapping "amsel -> port" mapping with previous amsels. If hit, then
-      // a new amsel, with the same arbiter but different msel, must be
-      // assigned.
-      if (matched && ports.size() != packetFlow.second.size())
-        foundPartialMatchArbiter = getArbiterIDFromAmsel(amselValue);
 
       if (matched) {
         foundMatchedDest = true;
+        if (mismatched)
+          foundPartialMatchArbiter = getArbiterIDFromAmsel(amselValue);
+        else if (ports.size() != packetFlow.second.size())
+          foundPartialMatchArbiter = getArbiterIDFromAmsel(amselValue);
         break;
       }
     }
