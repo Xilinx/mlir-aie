@@ -103,7 +103,7 @@ You will...
     build-essential debhelper flex bison libssl-dev libelf-dev libboost-all-dev libpython3.10-dev libsystemd-dev libtiff-dev libudev-dev
     ```
 
-1. Pull the source for the correct kernel version, which is available in the AMDESE linux repository.
+1. Pull the source for the latest kernel version.
 
     ```bash
     git clone git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
