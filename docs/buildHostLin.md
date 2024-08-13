@@ -143,9 +143,7 @@ You will...
 
     ```bash
     cd $LINUX_BUILD_DIR/..
-    sudo dpkg -i linux-headers-6.8.8+_6.8.8-g7575202b6461-1_amd64.deb
-    sudo dpkg -i linux-image-6.8.8+_6.8.8-g7575202b6461-1_amd64.deb 
-    sudo dpkg -i linux-libc-dev_6.8.8-g7575202b6461-1_amd64.deb
+    sudo apt reinstall linux-headers-6.10.0_6.10.0-1_amd64.deb linux-image-6.10.0_6.10.0-1_amd64.deb linux-libc-dev_6.10.0-1_amd64.deb
     sudo shutdown --reboot 0
     ```
 
