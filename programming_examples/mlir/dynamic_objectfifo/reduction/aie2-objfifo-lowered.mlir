@@ -25,17 +25,16 @@ module {
     aie.flow(%tile_0_2, DMA : 0, %tile_0_0, DMA : 0)
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
-      %c4294967295 = arith.constant 4294967295 : index
+      %c4294967295 = arith.constant 10 : index
       %c1 = arith.constant 1 : index
       %c2 = arith.constant 2 : index
-      %c4 = arith.constant 4 : index
 
       %init_input_fifo_counter = arith.constant 0 : index
       %init_output_fifo_counter = arith.constant 0 : index
       scf.for %arg0 = %c0 to %c4294967295 step %c1 iter_args(%input_fifo_counter = %init_input_fifo_counter, %output_fifo_counter = %init_output_fifo_counter) -> (index, index) {
         // Cycle through the objects in the fifos using a modulo of the fifo depths
         // on the fifo counters (updated at the end of each iteration).
-        %mod_depth_in = arith.remsi %input_fifo_counter, %c4 : index
+        %mod_depth_in = arith.remsi %input_fifo_counter, %c2 : index
         %mod_depth_out = arith.remsi %output_fifo_counter, %c2 : index
         // Instead of using one of these variables per object per fifo, use only
         // one per objectfifo and cycle the buffers in the switches (see below).
@@ -46,13 +45,7 @@ module {
           scf.yield %input_fifo_cons_buff_0 : memref<10xi32>
         }
         case 1 {
-          scf.yield %input_fifo_cons_buff_1 : memref<10xi32>
-        }
-        case 2 {
           scf.yield %input_fifo_cons_buff_2 : memref<10xi32>
-        }
-        case 3 {
-          scf.yield %input_fifo_cons_buff_3 : memref<10xi32>
         }
         default {
           scf.yield %input_fifo_cons_buff_0 : memref<10xi32>
@@ -63,13 +56,7 @@ module {
           scf.yield %input_fifo_cons_buff_1 : memref<10xi32>
         }
         case 1 {
-          scf.yield %input_fifo_cons_buff_2 : memref<10xi32>
-        }
-        case 2 {
           scf.yield %input_fifo_cons_buff_3 : memref<10xi32>
-        }
-        case 3 {
-          scf.yield %input_fifo_cons_buff_0 : memref<10xi32>
         }
         default {
           scf.yield %input_fifo_cons_buff_1 : memref<10xi32>
@@ -83,21 +70,21 @@ module {
           scf.yield %output_fifo_buff_1 : memref<10xi32>
         }
         default {
-          scf.yield %output_fifo_buff_0 : memref<10xi32>
+          scf.yield %output_fifo_buff_1 : memref<10xi32>
         }
 
         // Lock acquires can be inferred from the %fifo_counter values - %rels values.
         // TODO: change the UseLockOp to accept values, not just attributes.
-        aie.use_lock(%input_fifo_cons_cons_lock, AcquireGreaterEqual, 2)
         aie.use_lock(%output_fifo_prod_lock, AcquireGreaterEqual, 1)
+        aie.use_lock(%input_fifo_cons_cons_lock, AcquireGreaterEqual, 2)
 
         func.call @sum_10_i32(%input_0, %input_1, %output_fifo_buff) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
         
-        aie.use_lock(%input_fifo_cons_prod_lock, Release, 2)
-        %rel_in = arith.constant 2 : index // # released objects
+        %rel_in = arith.constant 1 : index
 
         aie.use_lock(%output_fifo_cons_lock, Release, 1)
         %rel_out = arith.constant 1 : index // # released objects
+        aie.use_lock(%input_fifo_cons_prod_lock, Release, 2)
 
         // Update the objectfifo counters based on how many objects were released
         // during this iteration.
@@ -142,12 +129,12 @@ module {
       aie.use_lock(%output_fifo_cons_lock, AcquireGreaterEqual, 1)
       aie.dma_bd(%output_fifo_buff_0 : memref<10xi32>, 0, 10)
       aie.use_lock(%output_fifo_prod_lock, Release, 1)
-      aie.next_bd ^bb5
+      aie.next_bd ^bb6
     ^bb6:  // pred: ^bb4
       aie.use_lock(%output_fifo_cons_lock, AcquireGreaterEqual, 1)
       aie.dma_bd(%output_fifo_buff_1 : memref<10xi32>, 0, 10)
       aie.use_lock(%output_fifo_prod_lock, Release, 1)
-      aie.next_bd ^bb4
+      aie.next_bd ^bb5
     ^bb7:  // pred: ^bb3
       aie.end
     }

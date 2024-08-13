@@ -115,12 +115,18 @@ int main(int argc, const char *argv[]) {
 
   bool pass = true;
   std::cout << std::endl << "Output: " << std::endl;
+  int row = 0;
   for(int i = 0; i < OUTPUT_ROWS; i++) {
-    std::cout << "row " << i << " : ";
+    std::cout << "row " << i << " : "<<std::endl;
     for (int j = 0; j < WIDTH_SIZE / sizeof(buf_output[0]); j++) {
-      std::cout << buf_output[i * OUTPUT_ROWS + j] << " ";
-      pass &= buf_output[i * OUTPUT_ROWS + j] == 2;
+      int expected_output = 0;
+      expected_output =
+            buf_input[(row + 1) * INPUT_ROWS] + buf_input[row * INPUT_ROWS];
+      std::cout << "expected: " << expected_output << ", ";
+      std::cout << buf_output[i * INPUT_ROWS + j] <<std::endl;
+      pass &= buf_output[i * INPUT_ROWS + j] == expected_output;
     }
+    row = row + 2;
     std::cout << std::endl;
   }
   std::cout << std::endl << std::endl;
