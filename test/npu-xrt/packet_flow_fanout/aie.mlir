@@ -99,7 +99,7 @@ module {
       %c8 = arith.constant 8 : index
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %c12_i8 = arith.constant 12 : i8
+      %c7_i8 = arith.constant 7 : i8
       %c2 = arith.constant 2 : index
       %c64 = arith.constant 64 : index
       aie.use_lock(%objFifo_core03_cons_cons_lock, AcquireGreaterEqual, 1)
@@ -107,7 +107,7 @@ module {
       scf.for %arg1 = %c0 to %c64 step %c1 {
         scf.for %arg2 = %c0 to %c64 step %c1 {
           %0 = memref.load %objFifo_core03_cons_buff_0[%arg1, %arg2] : memref<64x64xi8>
-          %1 = arith.addi %0, %c12_i8 : i8
+          %1 = arith.addi %0, %c7_i8 : i8
           memref.store %1, %objFifo_core03_buff_0[%arg1, %arg2] : memref<64x64xi8>
         }
       }
