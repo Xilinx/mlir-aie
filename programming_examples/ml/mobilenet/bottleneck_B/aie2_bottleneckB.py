@@ -903,21 +903,21 @@ def mobilenetV3_bn_10_11_12(start_row = 2, start_col = 0, bn10_scaleFactor1=10,b
         weightsInL3_ty = MemRefType.get((totalWeightsSize32b_complete,), int32_ty)
         activationsOutL3_ty = MemRefType.get((acitivationsOutSize32b,), int32_ty)
 
-        @FuncOp.from_py_func(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
+        @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
         def sequence(inputFromL3, weightsFromL3, outputToL3):
-            NpuWriteRTPOp("bn10_1_rtp", col=0, row=2, index=0, value=bn10_scaleFactor1)
-            NpuWriteRTPOp("bn10_2_rtp", col=0, row=3, index=0, value=bn10_scaleFactor2)
-            NpuWriteRTPOp("bn10_3_rtp", col=0, row=4, index=0, value=bn10_scaleFactor3)
+            NpuWriteRTPOp("bn10_1_rtp", index=0, value=bn10_scaleFactor1)
+            NpuWriteRTPOp("bn10_2_rtp", index=0, value=bn10_scaleFactor2)
+            NpuWriteRTPOp("bn10_3_rtp", index=0, value=bn10_scaleFactor3)
 
 
-            NpuWriteRTPOp("bn11_1_rtp", col=0, row=5, index=0, value=bn11_scaleFactor1)
-            NpuWriteRTPOp("bn11_2_rtp", col=1, row=5, index=0, value=bn11_scaleFactor2)
-            NpuWriteRTPOp("bn11_3_rtp", col=1, row=4, index=0, value=bn11_scaleFactor3)
-            NpuWriteRTPOp("bn11_3_rtp", col=1, row=4, index=1, value=bn11_scaleFactorAdd)
+            NpuWriteRTPOp("bn11_1_rtp", index=0, value=bn11_scaleFactor1)
+            NpuWriteRTPOp("bn11_2_rtp", index=0, value=bn11_scaleFactor2)
+            NpuWriteRTPOp("bn11_3_rtp", index=0, value=bn11_scaleFactor3)
+            NpuWriteRTPOp("bn11_3_rtp", index=1, value=bn11_scaleFactorAdd)
 
-            NpuWriteRTPOp("bn12_1_rtp", col=1, row=3, index=0, value=bn12_scaleFactor1)
-            NpuWriteRTPOp("bn12_2_rtp", col=1, row=2, index=0, value=bn12_scaleFactor2)
-            NpuWriteRTPOp("bn12_3_rtp", col=2, row=2, index=0, value=bn12_scaleFactor3)
+            NpuWriteRTPOp("bn12_1_rtp", index=0, value=bn12_scaleFactor1)
+            NpuWriteRTPOp("bn12_2_rtp", index=0, value=bn12_scaleFactor2)
+            NpuWriteRTPOp("bn12_3_rtp", index=0, value=bn12_scaleFactor3)
             
             npu_dma_memcpy_nd(
                 metadata="act_in",

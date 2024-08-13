@@ -224,9 +224,9 @@ def conv2dk1():
             activationsOutL3_ty = MemRefType.get((activationsOutSize32b,), int32_ty)
             weightsInL3_ty = MemRefType.get((totalWeightsSize32b,), int32_ty)
 
-            @FuncOp.from_py_func(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
+            @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
             def sequence(inputFromL3, weightsFromL3, outputToL3):
-                NpuWriteRTPOp("rtp2", col=0, row=2, index=0, value=8)
+                NpuWriteRTPOp("rtp2", index=0, value=8)
 
                 npu_dma_memcpy_nd(
                     metadata="inOF_act_L3L2",

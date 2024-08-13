@@ -1208,10 +1208,9 @@ def mobilenetV3_bn_13_14(start_row = 2, start_col = 0,
 
                     @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
                     def sequence(inputFromL3, weightsFromL3, outputToL3):
-                        # NpuWriteRTPOp("rtp04", col=0, row=4, index=0, value=9)
-                        # NpuWriteRTPOp("rtp13", col=1, row=3, index=0, value=11)
-
-                            
+                        # NpuWriteRTPOp("rtp04", index=0, value=9)
+                        # NpuWriteRTPOp("rtp13", index=0, value=11)
+ 
                         npu_dma_memcpy_nd(
                             metadata="act_in",
                             bd_id=0,

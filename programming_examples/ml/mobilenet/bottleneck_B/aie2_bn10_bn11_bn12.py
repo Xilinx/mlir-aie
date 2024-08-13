@@ -734,21 +734,21 @@ def mobilenetBottleneckB(bn10_scaleFactor1=10,bn10_scaleFactor2=7,bn10_scaleFact
             weightsInL3_ty = MemRefType.get((totalWeightsSize32b_complete,), int32_ty)
             activationsOutL3_ty = MemRefType.get((acitivationsOutSize32b,), int32_ty)
 
-            @FuncOp.from_py_func(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
+            @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
             def sequence(inputFromL3, weightsFromL3, outputToL3):
-                # NpuWriteRTPOp("rtp02", col=0, row=2, index=0, value=10)
-                # NpuWriteRTPOp("rtp03", col=0, row=3, index=0, value=7)
-                # NpuWriteRTPOp("rtp04", col=0, row=4, index=0, value=9)
+                # NpuWriteRTPOp("rtp02", index=0, value=10)
+                # NpuWriteRTPOp("rtp03", index=0, value=7)
+                # NpuWriteRTPOp("rtp04", index=0, value=9)
 
 
-                # NpuWriteRTPOp("rtp05", col=0, row=5, index=0, value=9)
-                # NpuWriteRTPOp("rtp15", col=1, row=5, index=0, value=8)
-                # NpuWriteRTPOp("rtp14", col=1, row=4, index=0, value=12)
-                # NpuWriteRTPOp("rtp14", col=1, row=4, index=1, value=1)
+                # NpuWriteRTPOp("rtp05", index=0, value=9)
+                # NpuWriteRTPOp("rtp15", index=0, value=8)
+                # NpuWriteRTPOp("rtp14", index=0, value=12)
+                # NpuWriteRTPOp("rtp14", index=1, value=1)
 
-                # NpuWriteRTPOp("rtp13", col=1, row=3, index=0, value=8)
-                # NpuWriteRTPOp("rtp12", col=1, row=2, index=0, value=8)
-                # NpuWriteRTPOp("rtp22", col=2, row=2, index=0, value=9)
+                # NpuWriteRTPOp("rtp13", index=0, value=8)
+                # NpuWriteRTPOp("rtp12", index=0, value=8)
+                # NpuWriteRTPOp("rtp22", index=0, value=9)
                 
                 npu_dma_memcpy_nd(
                     metadata="inOF_act_L3L2",

@@ -444,12 +444,12 @@ def mobilenetBottleneckB():
             weightsInL3_ty = MemRefType.get((totalWeightsSize32b_complete,), int32_ty)
             activationsOutL3_ty = MemRefType.get((acitivationsOutSize32b,), int32_ty)
 
-            @FuncOp.from_py_func(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
+            @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
             def sequence(inputFromL3, weightsFromL3, outputToL3):
-                NpuWriteRTPOp("rtp02", col=0, row=2, index=0, value=9)
-                NpuWriteRTPOp("rtp03", col=0, row=3, index=0, value=8)
-                NpuWriteRTPOp("rtp04", col=0, row=4, index=0, value=11)
-                NpuWriteRTPOp("rtp04", col=0, row=4, index=1, value=0)
+                NpuWriteRTPOp("rtp02", index=0, value=9)
+                NpuWriteRTPOp("rtp03", index=0, value=8)
+                NpuWriteRTPOp("rtp04", index=0, value=11)
+                NpuWriteRTPOp("rtp04", index=1, value=0)
                 
                 npu_dma_memcpy_nd(
                     metadata="inOF_act_L3L2",

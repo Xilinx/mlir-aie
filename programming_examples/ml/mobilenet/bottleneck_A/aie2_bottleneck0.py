@@ -143,11 +143,11 @@ def mobilenetV3Bottleneck0(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
         weightsInL3_ty = MemRefType.get((totalWeightsSize32b,), int32_ty)
         activationsOutL3_ty = MemRefType.get((activationsOutSize32b,), int32_ty)
 
-        @FuncOp.from_py_func(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
+        @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
         def sequence(inputFromL3, weightsFromL3, outputToL3):
-            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=0, value=scaleFactor2)
-            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=1, value=scaleFactor3)
-            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=2, value=scaleFactorAdd)
+            NpuWriteRTPOp("rtp", index=0, value=scaleFactor2)
+            NpuWriteRTPOp("rtp", index=1, value=scaleFactor3)
+            NpuWriteRTPOp("rtp", index=2, value=scaleFactorAdd)
             
             npu_dma_memcpy_nd(
                 metadata="act_in",
