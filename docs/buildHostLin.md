@@ -235,7 +235,7 @@ You will...
 
     ```bash
     cd $XDNA_SRC_DIR/build/Release
-    sudo dpkg -i xrt_plugin.2.18.0_ubuntu22.04-x86_64-amdxdna.deb
+    sudo apt reinstall ./xrt_plugin.2.18.0_ubuntu22.04-x86_64-amdxdna.deb
     ```
     
 1. Check that the NPU is working if the device appears with xbutil:
