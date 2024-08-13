@@ -108,7 +108,9 @@ int main(int argc, const char *argv[]) {
 
   for (uint32_t i = 0; i < 128; i++) {
     for (uint32_t j = 0; j < 64; j++) {
-      uint32_t ref = 1 + 12;
+      uint32_t ref = 1 + 12; // ref for the first input packet
+      if (i > 63)
+        ref = 1 + 7; // ref for the second input packet
       if (*(bufOut + i * 64 + j) != ref) {
         std::cout << "Error in output " << std::to_string(bufOut[i * 64 + j])
                   << " != " << ref << std::endl;
