@@ -400,19 +400,17 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
   };
   // Get a new unique amsel from masterAMSels on tile op. Prioritize on
   // incrementing arbiter id, before incrementing msel
-  auto getNewUniqueAmsel =
-      [&](DenseMap<std::pair<Operation *, int>, SmallVector<Port, 4>>
-              masterAMSels,
-          Operation *tileOp) {
-        for (int i = 0; i < numMsels; i++)
-          for (int a = 0; a < numArbiters; a++)
-            if (!masterAMSels.count(
-                    {tileOp, getAmselFromArbiterIDAndMsel(a, i)}))
-              return getAmselFromArbiterIDAndMsel(a, i);
-        tileOp->emitOpError(
-            "tile op has used up all arbiter-msel combinations");
-        return -1;
-      };
+  auto getNewUniqueAmsel = [&](DenseMap<std::pair<Operation *, int>,
+                                        SmallVector<Port, 4>>
+                                   masterAMSels,
+                               Operation *tileOp) {
+    for (int i = 0; i < numMsels; i++)
+      for (int a = 0; a < numArbiters; a++)
+        if (!masterAMSels.count({tileOp, getAmselFromArbiterIDAndMsel(a, i)}))
+          return getAmselFromArbiterIDAndMsel(a, i);
+    tileOp->emitOpError("tile op has used up all arbiter-msel combinations");
+    return -1;
+  };
   // Get a new unique amsel from masterAMSels on tile op with given arbiter id
   auto getNewUniqueAmselPerArbiterID =
       [&](DenseMap<std::pair<Operation *, int>, SmallVector<Port, 4>>
