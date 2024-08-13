@@ -164,10 +164,15 @@ struct UsesAreAccessible {
     for (auto *user : users) {
       // AIE.useLock may be used in a device to set the lock's default value
       // Allow in a toplevel module for backward compatibility
-      if (llvm::isa_and_nonnull<DeviceOp, ModuleOp>(user->getParentOp()))
-        return success();
+      if (llvm::isa_and_nonnull<DeviceOp, ModuleOp>(user->getParentOp())) {
+        continue;
+      }
+      // If any parent prescribes that accessibility checks be skipped,
+      // skip the check for that user.
+      if (user->getParentWithTrait<SkipAccessibilityCheckTrait>()) {
+        continue;
+      }
       if (auto element = getParentTileElement(user)) {
-
         auto tileID = element.getTileID();
         if (!targetModel.isLegalMemAffinity(tileID.col, tileID.row, thisID.col,
                                             thisID.row))
