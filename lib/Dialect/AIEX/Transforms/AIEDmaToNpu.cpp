@@ -370,12 +370,13 @@ public:
     buffer_offset = IntegerAttr::get(i32ty, offset);
 
     // enable_packet
+    if (auto packetInfo = op.getPacket()) {
+      enable_packet = IntegerAttr::get(i32ty, 1);
+      packet_type = IntegerAttr::get(i32ty, packetInfo->getPktType());
+      packet_id = IntegerAttr::get(i32ty, packetInfo->getPktId());
+    }
 
     // out_of_order_id
-
-    // packet_id
-
-    // packet_type
 
     if (!op.isLinearTransferWithoutTransformation()) {
       // d0_size, d0_stride

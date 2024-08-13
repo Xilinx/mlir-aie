@@ -37,6 +37,8 @@ std::optional<int64_t> getTransferReadAlignmentOffset(TransferReadLikeOp readOp,
                                                       mlir::VectorType vType,
                                                       int64_t alignment);
 
+mlir::VectorType getFlattenedVectorType(mlir::VectorType vecTy);
+
 } // namespace xilinx::aievec
 
 #endif // AIE_DIALECT_AIEVEC_UTILS_UTILS_H

@@ -6,7 +6,7 @@ docs/               @stephenneuendorffer
 **/ADF/             @stephenneuendorffer
 **/AIEVec/          @jsetoain
 **/AIE/             @AndraBisca @stephenneuendorffer @fifield @makslevental
-**/AIEX/            @makslevental @jgmelber @AndraBisca
+**/AIEX/            @makslevental @jgmelber @AndraBisca @fifield
 **/XLLVM/           @jsetoain
 **/AIETargetModel.* @stephenneuendorffer @makslevental
 lib/CAPI            @makslevental
@@ -19,9 +19,9 @@ programming_examples/ @denolf @jgmelber @fifield
 python/             @makslevental @AndraBisca
 reference_designs/  @denolf @jgmelber @fifield
 runtime_lib/        @stephenneuendorffer
+test/               @stephenneuendorffer @jgmelber @fifield @jackl-xilinx
 test/aievec/        @jsetoain
 test/python/        @makslevental @AndraBisca
 test/objectFifo*/   @AndraBisca
 tools/              @stephenneuendorffer @makslevental
-tutorials/          @denolf @jackl-xilinx
 utils/              @makslevental @jackl-xilinx @jgmelber
