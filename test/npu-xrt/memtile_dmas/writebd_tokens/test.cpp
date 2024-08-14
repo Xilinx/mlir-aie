@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
+// Copyright (C) 2023, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -178,6 +178,8 @@ int main(int argc, const char *argv[]) {
   for (uint32_t i = 0; i < N; i++) {
     uint32_t ref = (i + 1);
     if (*(bufOut + i) != ref) {
+      std::cout << "Mismatch at index " << i << ": expected " << ref << ", got "
+                << *(bufOut + i) << std::endl;
       errors++;
     }
   }
