@@ -81,12 +81,12 @@ void matvec_vectorized(T_in *__restrict a, T_in *__restrict b,
         aie::accum<T_acc, r> c_acc_in;
         c_acc_in.from_vector(aie::load_v<r>(c_ptr));
 
-        const aie::vector<T_in, 2 * r> a_vec_0 = aie::load_v<2 * r>(a_ptr);
-        const aie::vector<T_in, 2 * r> a_vec_1 =
+        const aie::vector<T_in, 2 *r> a_vec_0 = aie::load_v<2 * r>(a_ptr);
+        const aie::vector<T_in, 2 *r> a_vec_1 =
             aie::load_v<2 * r>(a_ptr + 2 * m);
-        const aie::vector<T_in, 2 * r> a_vec_2 =
+        const aie::vector<T_in, 2 *r> a_vec_2 =
             aie::load_v<2 * r>(a_ptr + 4 * m);
-        const aie::vector<T_in, 2 * r> a_vec_3 =
+        const aie::vector<T_in, 2 *r> a_vec_3 =
             aie::load_v<2 * r>(a_ptr + 6 * m);
 
         // The even/odd calls below extract the interleaved columns of A.
@@ -169,7 +169,7 @@ extern "C" {
 #define zero_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,              \
                                mlir_type_out, ctype_acc)                       \
   void zero_vectorized_##mlir_type_out(ctype_out *c_out) {                     \
-    zero_vectorized<ctype_out, DIM_M, 1, 32>(c_out);                           \
+    zero_vectorized<ctype_out, DIM_M, 1>(c_out);                               \
   }
 
 #define zero_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out,   \
