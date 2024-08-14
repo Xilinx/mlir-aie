@@ -40,6 +40,9 @@ struct DMAConfigureTaskForOpPattern : RewritePattern {
 
     AIE::ShimDMAAllocationOp alloc_op =
         AIE::ShimDMAAllocationOp::getForSymbol(device, op.getAlloc());
+    if (!alloc_op) {
+      return op.emitOpError("no shim DMA allocation found for symbol");
+    }
 
     const int col = alloc_op.getCol();
     AIE::TileOp tile = AIE::TileOp::getOrCreate(rewriter, device, col, 0);
@@ -453,28 +456,23 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       signalPassFailure();
     }
 
-    // if (failed(applyPartialConversion(device, target_0,
-    // std::move(patterns_0)))) {
-    //   signalPassFailure();
-    // }
-
     // Convert DMAStartBD and DMAAwaitBD ops
-    // ConversionTarget target_1(getContext());
-    // target_1.addLegalDialect<AIEXDialect>();
-    // target_1.addIllegalOp<DMAStartTaskOp>();
-    // target_1.addIllegalOp<DMAAwaitTaskOp>();
-    // RewritePatternSet patterns_1(&getContext());
-    // patterns_1.insert<DMAStartTaskOpPattern>(&getContext());
-    // patterns_1.insert<DMAAwaitTaskOpPattern>(&getContext());
-    // if (failed(applyPartialConversion(device, target_1,
-    // std::move(patterns_1)))) {
-    //  signalPassFailure();
-    //}
+    ConversionTarget target_1(getContext());
+    target_1.addLegalDialect<AIEXDialect>();
+    target_1.addIllegalOp<DMAStartTaskOp>();
+    target_1.addIllegalOp<DMAAwaitTaskOp>();
+    RewritePatternSet patterns_1(&getContext());
+    patterns_1.insert<DMAStartTaskOpPattern>(&getContext());
+    patterns_1.insert<DMAAwaitTaskOpPattern>(&getContext());
+    if (failed(
+            applyPartialConversion(device, target_1, std::move(patterns_1)))) {
+      signalPassFailure();
+    }
 
-    //// Lower the configuration for the BDs
-    // if (failed(rewriteDMAConfigureTaskOp(device))) {
-    //   signalPassFailure();
-    // }
+    // Lower the configuration for the BDs
+    if (failed(rewriteDMAConfigureTaskOp(device))) {
+      signalPassFailure();
+    }
   }
 };
 
