@@ -17,11 +17,67 @@
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
+
+struct DMAConfigureTaskForOpPattern : RewritePattern {
+
+  DMAConfigureTaskForOpPattern(MLIRContext *ctx)
+      : RewritePattern(DMAConfigureTaskForOp::getOperationName(),
+                       PatternBenefit(1), ctx) {}
+
+  LogicalResult matchAndRewrite(Operation *op_any,
+                                PatternRewriter &rewriter) const override {
+    DMAConfigureTaskForOp op = llvm::dyn_cast<DMAConfigureTaskForOp>(op_any);
+    if (!op) {
+      return failure();
+    }
+    AIE::DeviceOp device = op->getParentOfType<AIE::DeviceOp>();
+
+    AIE::ShimDMAAllocationOp alloc_op = nullptr;
+    auto alloc_ops = device.getOps<AIE::ShimDMAAllocationOp>();
+    for (auto it = alloc_ops.begin(); it != alloc_ops.end(); ++it) {
+      AIE::ShimDMAAllocationOp a = *it;
+      if (a.getSymName() == op.getAlloc()) {
+        alloc_op = a;
+        break;
+      }
+    }
+
+    AIE::TileOp tile = nullptr;
+    const int col = alloc_op.getCol();
+    auto tile_ops = device.getOps<AIE::TileOp>();
+    for (auto it = tile_ops.begin(); it != tile_ops.end(); ++it) {
+      AIE::TileOp t = *it;
+      if (t.getRow() == 0 && t.getCol() == col) {
+        tile = t;
+        break;
+      }
+    }
+    // ... or if undefined, create a new tile op
+    if (!tile) {
+      auto s = rewriter.saveInsertionPoint();
+      mlir::Block &device_start_block = *device.getBodyRegion().begin();
+      rewriter.setInsertionPointToStart(&device_start_block);
+      tile = rewriter.create<AIE::TileOp>(op.getLoc(), rewriter.getIndexType(),
+                                          col, 0);
+      rewriter.restoreInsertionPoint(s);
+    }
+    DMAConfigureTaskOp new_op = rewriter.create<DMAConfigureTaskOp>(
+        op.getLoc(), rewriter.getIndexType(), tile.getResult(),
+        alloc_op.getChannelDir(), (int32_t)alloc_op.getChannelIndex(),
+        op.getIssueToken(), op.getRepeatCount());
+    rewriter.replaceAllUsesWith(op.getResult(), new_op.getResult());
+    rewriter.inlineRegionBefore(op.getBody(), new_op.getBody(),
+                                new_op.getBody().begin());
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
 
 struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -30,6 +86,11 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
   matchAndRewrite(DMAStartTaskOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     DMAConfigureTaskOp task_op = op.getTaskOp();
+    if (!task_op) {
+      // Cannot rewrite this; probably points to a DMAStartTaskForOp,
+      // which we will lower once it has been rewritten into a DMAStartTaskOp.
+      return failure();
+    }
     AIE::TileOp tile = task_op.getTileOp();
     std::optional<uint32_t> first_bd_id = task_op.getFirstBdId();
     if (!first_bd_id) {
@@ -54,6 +115,9 @@ struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
   matchAndRewrite(DMAAwaitTaskOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     DMAConfigureTaskOp task_op = op.getTaskOp();
+    if (!task_op) {
+      return failure();
+    }
     if (!task_op.getIssueToken()) {
       auto err = op.emitOpError(
           "Cannot wait on a BD that is not configured to issue a token.");
@@ -399,22 +463,42 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
 
-    // Convert DMAStartBD and DMAAwaitBD ops
-    ConversionTarget target(getContext());
-    target.addLegalDialect<AIEXDialect>();
-    target.addIllegalOp<DMAStartTaskOp>();
-    target.addIllegalOp<DMAAwaitTaskOp>();
-    RewritePatternSet patterns(&getContext());
-    patterns.insert<DMAStartTaskOpPattern>(&getContext());
-    patterns.insert<DMAAwaitTaskOpPattern>(&getContext());
-    if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
+    // Convert DMAConfigureTaskForOps that reference shim DMA allocations
+    // to regular DMAConfigureTaskOps
+    ConversionTarget target_0(getContext());
+    target_0.addLegalDialect<AIEXDialect>();
+    target_0.addIllegalOp<DMAConfigureTaskForOp>();
+    RewritePatternSet patterns_0(&getContext());
+    patterns_0.insert<DMAConfigureTaskForOpPattern>(&getContext());
+
+    GreedyRewriteConfig rewriter_config = GreedyRewriteConfig();
+    if (failed(applyPatternsAndFoldGreedily(device, std::move(patterns_0),
+                                            rewriter_config))) {
       signalPassFailure();
     }
 
-    // Lower the configuration for the BDs
-    if (failed(rewriteDMAConfigureTaskOp(device))) {
-      signalPassFailure();
-    }
+    // if (failed(applyPartialConversion(device, target_0,
+    // std::move(patterns_0)))) {
+    //   signalPassFailure();
+    // }
+
+    // Convert DMAStartBD and DMAAwaitBD ops
+    // ConversionTarget target_1(getContext());
+    // target_1.addLegalDialect<AIEXDialect>();
+    // target_1.addIllegalOp<DMAStartTaskOp>();
+    // target_1.addIllegalOp<DMAAwaitTaskOp>();
+    // RewritePatternSet patterns_1(&getContext());
+    // patterns_1.insert<DMAStartTaskOpPattern>(&getContext());
+    // patterns_1.insert<DMAAwaitTaskOpPattern>(&getContext());
+    // if (failed(applyPartialConversion(device, target_1,
+    // std::move(patterns_1)))) {
+    //  signalPassFailure();
+    //}
+
+    //// Lower the configuration for the BDs
+    // if (failed(rewriteDMAConfigureTaskOp(device))) {
+    //   signalPassFailure();
+    // }
   }
 };
 
