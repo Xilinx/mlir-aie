@@ -135,15 +135,10 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
         C_l1_memref_ty = T.memref(m, n, dtype_out())
 
         # AIE Core Function declarations
-        zero_scalar = external_func("zero_scalar_bf16", inputs=[C_l1_memref_ty])
         zero_scalar = external_func(
             f"zero_scalar_{dtype_out_str}", inputs=[C_l1_memref_ty]
         )
         zero = external_func(f"zero_{dtype_out_str}", inputs=[C_l1_memref_ty])
-        matmul_scalar = external_func(
-            "matmul_scalar_bf16_bf16",
-            inputs=[A_l1_memref_ty, B_l1_memref_ty, C_l1_memref_ty],
-        )
         matmul_scalar = external_func(
             f"matmul_scalar_{dtype_in_str}_{dtype_out_str}",
             inputs=[A_l1_memref_ty, B_l1_memref_ty, C_l1_memref_ty],
