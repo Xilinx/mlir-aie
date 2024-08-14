@@ -88,9 +88,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
     # blocks are _broadcast_ across AIE core columns, then _distributed_ across
     # rows, s.t. each of the n_rows compute cores in a column receives a
     # contiguous (m, k)-sized block of A.
-    assert (
-        M % m == 0
-    ), """A must be tileable into (m, k * n_aie_rows)-sized blocks"""
+    assert M % m == 0, """A must be tileable into (m, k * n_aie_rows)-sized blocks"""
 
     # Both A and B are tiled in the K dimension into size k.
     assert K % (k * n_aie_rows) == 0
@@ -296,12 +294,12 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                                 if row == 0:
                                     call(
                                         matmul_scalar_cascade_get_only,
-                                        [elem_in_a, elem_in_b, elem_out]
+                                        [elem_in_a, elem_in_b, elem_out],
                                     )
                                 elif row == n_aie_rows - 1:
                                     call(
                                         matmul_scalar_cascade_put_only,
-                                        [elem_in_a, elem_in_b, elem_out]
+                                        [elem_in_a, elem_in_b, elem_out],
                                     )
                                 else:
                                     call(
