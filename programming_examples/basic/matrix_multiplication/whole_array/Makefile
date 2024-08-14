@@ -11,13 +11,13 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=whole_array
 targetname=matrixMultiplication
 
-M?=640
-K?=896
-N?=768
-m?=16
-k?=32
-n?=48
-n_aie_cols?=2
+M?=2304
+K?=256
+N?=4096
+m?=64
+k?=64
+n?=64
+n_aie_cols?=4
 
 kernels=mm_${m}x${k}x${n}
 aieargs+=-m $m -k $k -n $n --n-aie-cols ${n_aie_cols}

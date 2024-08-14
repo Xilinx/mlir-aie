@@ -6,7 +6,6 @@
 
 csv_out=my_sweep.csv
 log_out=my_sweep.log
-runargs="--iters 20 --warmup 10"
 iterations=1
 
 M_lo=256
@@ -26,9 +25,10 @@ export m=64
 export k=64
 export n=64
 export dtype_in=i16
-export dtype_out=i16
+export dtype_out=i32
 export n_aie_cols=4
 export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
+export runargs="--iters 1 --warmup 1"
 
 # Print configuration used to run for reproducibility
 env >>$log_out
@@ -40,9 +40,16 @@ for i in $(seq 1 $iterations); do
 done
 printf "\n" >>$csv_out
 
+start_M=2304
+start_K=3328
+start_N=2560
+
 for M in $Ms; do
     for K in $Ks; do
         for N in $Ns; do
+            if [ $M -lt $start_M ] || ([ $M -eq $start_M ] && [ $K -lt $start_K ]) || ([ $M -eq $start_M ] && [ $K -eq $start_K ] && [ $N -lt $start_N ]); then
+                continue
+            fi
             export M=$M
             export K=$K
             export N=$N

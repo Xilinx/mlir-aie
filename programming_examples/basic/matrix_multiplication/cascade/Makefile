@@ -11,9 +11,9 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=cascade
 targetname=matrixMultiplication
 
-M?=512
-K?=512
-N?=512
+M?=1280
+K?=3840
+N?=4096
 m?=64
 k?=64
 n?=64
