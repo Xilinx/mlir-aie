@@ -999,6 +999,7 @@ struct ConvertMulAddToAIEVecFMAOpPattern
 // This pattern replaces `vector.transfer_read` with `aievec.upd`. Right now,
 // it performs a naïve direct translation. This needs to be expanded to
 // support more complex scenarios.
+template <typename UpdOpTy>
 struct LowerVectorTransferReadToAIEUPD
     : OpConversionPattern<vector::TransferReadOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -1049,11 +1050,11 @@ struct LowerVectorTransferReadToAIEUPD
     if ((vSize > minVectorSize) && std::bitset<8>(multiplicity).count() != 1)
       return failure();
 
-    auto updOp = rewriter.create<xilinx::aievec::UPDOp>(
+    auto updOp = rewriter.create<UpdOpTy>(
         readOp.getLoc(), vType, adaptor.getSource(), adaptor.getIndices(), 0, 0,
         TypedValue<VectorType>(nullptr));
     if (vSize > maxLoadSize) {
-      updOp = rewriter.create<xilinx::aievec::UPDOp>(
+      updOp = rewriter.create<UpdOpTy>(
           readOp.getLoc(), vType, adaptor.getSource(), adaptor.getIndices(),
           maxLoadSize, 1, updOp.getResult());
     }
@@ -1064,6 +1065,11 @@ struct LowerVectorTransferReadToAIEUPD
 
   int64_t minVectorSize, maxVectorSize, vectorAlignment, maxLoadSize;
 };
+
+using LowerVectorTransferReadToAIE1UPD =
+    LowerVectorTransferReadToAIEUPD<aievec::aie1::UPDOp>;
+using LowerVectorTransferReadToAIE2UPD =
+    LowerVectorTransferReadToAIEUPD<aievec::UPDOp>;
 
 // XXX: Notice that this template doesn't verify that the vector element type
 // XXX: is supported by the target architecture.
@@ -1830,14 +1836,13 @@ struct LowerVectorExtractStridedSliceOpAIE2Pattern
 
 // Replaces a short UPD op with a wide one followed by an ext op of the bottom
 // half.
-struct ExpandUPDToUPDAndExtPattern : OpConversionPattern<aievec::UPDOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  ExpandUPDToUPDAndExtPattern(MLIRContext *context)
-      : OpConversionPattern(context) {}
+template <typename UpdOpTy, typename ExtOpTy>
+struct ExpandUPDToUPDAndExtPattern : OpConversionPattern<UpdOpTy> {
+  using OpConversionPattern<UpdOpTy>::OpConversionPattern;
+  using OpAdaptor = typename UpdOpTy::Adaptor;
 
   LogicalResult
-  matchAndRewrite(aievec::UPDOp updOp, OpAdaptor adaptor,
+  matchAndRewrite(UpdOpTy updOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     // Verify that we haven't already expanded this one
     if (updOp->hasOneUse() && isa<aievec::ExtOp>(*updOp->getUsers().begin()))
@@ -1848,31 +1853,36 @@ struct ExpandUPDToUPDAndExtPattern : OpConversionPattern<aievec::UPDOp> {
                                      vecType.getShape().end());
     vecShape[vecType.getRank() - 1] *= 2;
     auto longVecType = VectorType::get(vecShape, vecType.getElementType());
-    auto newUpdOp = rewriter.create<aievec::UPDOp>(
+    auto newUpdOp = rewriter.create<UpdOpTy>(
         updOp.getLoc(), longVecType, adaptor.getSource(), adaptor.getIndices(),
         adaptor.getOffset(), adaptor.getIndex(), adaptor.getVector());
-    rewriter.replaceOpWithNewOp<aievec::ExtOp>(
-        updOp, vecType, newUpdOp.getResult(), rewriter.getI8IntegerAttr(0));
+    rewriter.replaceOpWithNewOp<ExtOpTy>(updOp, vecType, newUpdOp.getResult(),
+                                         rewriter.getI8IntegerAttr(0));
 
     return success();
   }
 };
 
+using ExpandAIE1UPDToUPDAndExtPattern =
+    ExpandUPDToUPDAndExtPattern<aievec::aie1::UPDOp, aievec::aie1::ExtOp>;
+using ExpandAIE2UPDToUPDAndExtPattern =
+    ExpandUPDToUPDAndExtPattern<aievec::UPDOp, aievec::ExtOp>;
+
 // Replaces a wide UPD op followed by an ext op of the bottom half with a short
 // UPD op.
-struct FuseExtIntoUPDPattern : OpConversionPattern<aievec::ExtOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  FuseExtIntoUPDPattern(MLIRContext *context) : OpConversionPattern(context) {}
+template <typename UpdOpTy, typename ExtOpTy>
+struct FuseExtIntoUPDPattern : OpConversionPattern<ExtOpTy> {
+  using OpConversionPattern<ExtOpTy>::OpConversionPattern;
+  using OpAdaptor = typename ExtOpTy::Adaptor;
 
   LogicalResult
-  matchAndRewrite(aievec::ExtOp extOp, OpAdaptor adaptor,
+  matchAndRewrite(ExtOpTy extOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     // Verify we are extracting the lower half...
     if (extOp.getIndex() != 0)
       return failure();
     // ...of a UPDOp
-    auto updOp = dyn_cast<aievec::UPDOp>(extOp.getSource().getDefiningOp());
+    auto updOp = dyn_cast<UpdOpTy>(extOp.getSource().getDefiningOp());
     if (!updOp)
       return failure();
 
@@ -1880,13 +1890,18 @@ struct FuseExtIntoUPDPattern : OpConversionPattern<aievec::ExtOp> {
     if (!updOp->hasOneUse())
       return failure();
 
-    rewriter.replaceOpWithNewOp<aievec::UPDOp>(
+    rewriter.replaceOpWithNewOp<UpdOpTy>(
         extOp, extOp.getType(), updOp.getSource(), updOp.getIndices(),
         updOp.getOffset(), updOp.getIndex(), updOp.getVector());
 
     return success();
   }
 };
+
+using FuseAIE1ExtIntoUPDPattern =
+    FuseExtIntoUPDPattern<aievec::aie1::UPDOp, aievec::aie1::ExtOp>;
+using FuseAIE2ExtIntoUPDPattern =
+    FuseExtIntoUPDPattern<aievec::UPDOp, aievec::ExtOp>;
 
 // Lower ExpOp to function call
 struct ComputeExpOpByLUTPattern : OpConversionPattern<math::ExpOp> {
@@ -3000,8 +3015,8 @@ static void populateAIEVecCommonConversionPatterns(RewritePatternSet &patterns,
 
 static void populateAIEVecV1ConversionPatterns(RewritePatternSet &patterns,
                                                TargetBackend backend) {
-  patterns.add<LowerVectorTransferReadToAIEUPD>(patterns.getContext(), 128, 512,
-                                                128, 256);
+  patterns.add<LowerVectorTransferReadToAIE1UPD>(patterns.getContext(), 128,
+                                                 512, 128, 256);
   // clang-format off
   patterns.add<LowerVectorAddIOpToAIEVecAddOp,
                LowerVectorSubIOpToAIEVecSubOp,
@@ -3021,7 +3036,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
   // TODO: Reorder these alphabetically
   if (backend == TargetBackend::CPP) {
     patterns.add<
-        LowerVectorTransferReadToAIEUPD
+        LowerVectorTransferReadToAIE2UPD
       >(patterns.getContext(), 128, 1024, 256, 1024);
     patterns.add<
         LowerVectorAddFOpToAIEVecAddElemOp,
@@ -3817,14 +3832,28 @@ struct ExtendUPDOpsPass : PassWrapper<ExtendUPDOpsPass, OperationPass<>> {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
-    patterns.add<ExpandUPDToUPDAndExtPattern>(patterns.getContext());
-    target.addLegalDialect<aievec::AIEVecDialect>();
+    patterns
+        .add<ExpandAIE1UPDToUPDAndExtPattern, ExpandAIE2UPDToUPDAndExtPattern>(
+            patterns.getContext());
+    target.addLegalDialect<aievec::AIEVecDialect,
+                           aievec::aie1::AIEVecAIE1Dialect>();
+
     target.addDynamicallyLegalOp<aievec::UPDOp>([](aievec::UPDOp op) {
       return op.getVector() ||
              (op->hasOneUse() && isa<aievec::UPDOp>(*op->getUsers().begin())) ||
              llvm::all_of(op->getUsers(),
                           [](Operation *op) { return isa<aievec::ExtOp>(op); });
     });
+
+    target.addDynamicallyLegalOp<aievec::aie1::UPDOp>(
+        [](aievec::aie1::UPDOp op) {
+          return op.getVector() ||
+                 (op->hasOneUse() &&
+                  isa<aievec::aie1::UPDOp>(*op->getUsers().begin())) ||
+                 llvm::all_of(op->getUsers(), [](Operation *op) {
+                   return isa<aievec::aie1::ExtOp>(op);
+                 });
+        });
 
     if (auto *op = getOperation();
         failed(applyPartialConversion(op, target, std::move(patterns)))) {
@@ -3844,13 +3873,21 @@ struct SimplifyUPDOpsPass : PassWrapper<SimplifyUPDOpsPass, OperationPass<>> {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
-    patterns.add<FuseExtIntoUPDPattern>(patterns.getContext());
-    target.addLegalDialect<aievec::AIEVecDialect>();
+    patterns.add<FuseAIE1ExtIntoUPDPattern, FuseAIE2ExtIntoUPDPattern>(
+        patterns.getContext());
+    target.addLegalDialect<aievec::AIEVecDialect,
+                           aievec::aie1::AIEVecAIE1Dialect>();
     target.addDynamicallyLegalOp<aievec::ExtOp>([](aievec::ExtOp op) {
       auto *defOp = op.getSource().getDefiningOp();
       return !defOp || !isa<aievec::UPDOp>(defOp) || !defOp->hasOneUse() ||
              op.getIndex() != 0;
     });
+    target.addDynamicallyLegalOp<aievec::aie1::ExtOp>(
+        [](aievec::aie1::ExtOp op) {
+          auto defOp = op.getSource().getDefiningOp();
+          return !defOp || !isa<aievec::aie1::UPDOp>(defOp) ||
+                 !defOp->hasOneUse() || op.getIndex() != 0;
+        });
 
     if (auto *op = getOperation();
         failed(applyPartialConversion(op, target, std::move(patterns)))) {

@@ -44,17 +44,17 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
   affine.for %arg3 = 0 to 64 {
     // CHECK: scf.for %[[J:.*]] = %[[C0]] to %[[C64]] step %[[C16]] {
     affine.for %arg4 = 0 to 64 step 16 {
-      // CHECK: %[[ACC0:.*]] = aievec.upd %[[MC]][%[[I]], %[[J]]]
+      // CHECK: %[[ACC0:.*]] = aievec_aie1.upd %[[MC]][%[[I]], %[[J]]]
       // CHECK-SAME:                    {index = 0 : i8, offset = 0 : i32}
       // CHECK-SAME:                    : memref<?x64xi16>, vector<16xi16>
       %0 = vector.transfer_read %arg2[%arg3, %arg4], %c0_i16 : memref<?x64xi16>, vector<16xi16>
       // CHECK: %[[ACCn:.*]] = scf.for %[[K:.*]] = %[[C0]] to %[[C64]] step %[[C16]]
       // CHECK-SAME:                   iter_args(%[[ACCk:.*]] = %[[ACC0]]) -> (vector<16xi16>) {
       %1 = affine.for %arg5 = 0 to 64 step 16 iter_args(%arg6 = %0) -> (vector<16xi16>) {
-        // CHECK: %[[VA:.*]] = aievec.upd %[[MA]][%[[I]], %[[K]]]
+        // CHECK: %[[VA:.*]] = aievec_aie1.upd %[[MA]][%[[I]], %[[K]]]
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
-        // CHECK: %[[VB0:.*]] = aievec.upd %[[MB]][%[[K]], %[[J]]]
+        // CHECK: %[[VB0:.*]] = aievec_aie1.upd %[[MB]][%[[K]], %[[J]]]
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         // CHECK: %[[VC:.*]] = aievec.ups %[[ACCk]] {shift = 0 : i8} : vector<16xi16>, vector<16xi48>
@@ -63,7 +63,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         %4 = arith.muli %2, %3 : vector<16xi16>
         %5 = arith.addi %arg6, %4 : vector<16xi16>
         // CHECK: %[[K1:.*]] = arith.addi %[[K]], %[[C1]] : index
-        // CHECK: %[[VB1:.*]] = aievec.upd %[[MB]][%[[K1]], %[[J]]]
+        // CHECK: %[[VB1:.*]] = aievec_aie1.upd %[[MB]][%[[K1]], %[[J]]]
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         // CHECK: %[[VB01:.*]] = aievec.concat %[[VB0]], %[[VB1]] : vector<16xi16>, vector<32xi16>
@@ -77,7 +77,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         %9 = arith.muli %7, %8 : vector<16xi16>
         %10 = arith.addi %5, %9 : vector<16xi16>
         // CHECK: %[[K2:.*]] = arith.addi %[[K]], %[[C2]] : index
-        // CHECK: %[[VB2:.*]] = aievec.upd %[[MB]][%[[K2]], %[[J]]]
+        // CHECK: %[[VB2:.*]] = aievec_aie1.upd %[[MB]][%[[K2]], %[[J]]]
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         %11 = affine.apply #map2(%arg5)
@@ -86,7 +86,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         %14 = arith.muli %12, %13 : vector<16xi16>
         %15 = arith.addi %10, %14 : vector<16xi16>
         // CHECK: %[[K3:.*]] = arith.addi %[[K]], %[[C3]] : index
-        // CHECK: %[[VB3:.*]] = aievec.upd %[[MB]][%[[K3]], %[[J]]]
+        // CHECK: %[[VB3:.*]] = aievec_aie1.upd %[[MB]][%[[K3]], %[[J]]]
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         // CHECK: %[[VB23:.*]] = aievec.concat %[[VB2]], %[[VB3]] : vector<16xi16>, vector<32xi16>
@@ -99,7 +99,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         %19 = arith.muli %17, %18 : vector<16xi16>
         %20 = arith.addi %15, %19 : vector<16xi16>
         // CHECK: %[[K4:.*]] = arith.addi %[[K]], %[[C4]] : index
-        // CHECK: %[[VB4:.*]] = aievec.upd %[[MB]][%[[K4]], %[[J]]]
+        // CHECK: %[[VB4:.*]] = aievec_aie1.upd %[[MB]][%[[K4]], %[[J]]]
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         %21 = affine.apply #map4(%arg5)
@@ -108,7 +108,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         %24 = arith.muli %22, %23 : vector<16xi16>
         %25 = arith.addi %20, %24 : vector<16xi16>
         // CHECK: %[[K5:.*]] = arith.addi %[[K]], %[[C5]] : index
-        // CHECK: %[[VB5:.*]] = aievec.upd %[[MB]][%[[K5]], %[[J]]]
+        // CHECK: %[[VB5:.*]] = aievec_aie1.upd %[[MB]][%[[K5]], %[[J]]]
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         // CHECK: %[[VB45:.*]] = aievec.concat %[[VB4]], %[[VB5]] : vector<16xi16>, vector<32xi16>
@@ -121,7 +121,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         %29 = arith.muli %27, %28 : vector<16xi16>
         %30 = arith.addi %25, %29 : vector<16xi16>
         // CHECK: %[[K6:.*]] = arith.addi %[[K]], %[[C6]] : index
-        // CHECK: %[[VB6:.*]] = aievec.upd %[[MB]][%[[K6]], %[[J]]]
+        // CHECK: %[[VB6:.*]] = aievec_aie1.upd %[[MB]][%[[K6]], %[[J]]]
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         %31 = affine.apply #map6(%arg5)
@@ -130,7 +130,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         %34 = arith.muli %32, %33 : vector<16xi16>
         %35 = arith.addi %30, %34 : vector<16xi16>
         // CHECK: %[[K7:.*]] = arith.addi %[[K]], %[[C7]] : index
-        // CHECK: %[[VB7:.*]] = aievec.upd %[[MB]][%[[K7]], %[[J]]]
+        // CHECK: %[[VB7:.*]] = aievec_aie1.upd %[[MB]][%[[K7]], %[[J]]]
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         // CHECK: %[[VB67:.*]] = aievec.concat %[[VB6]], %[[VB7]] : vector<16xi16>, vector<32xi16>
@@ -143,7 +143,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         %39 = arith.muli %37, %38 : vector<16xi16>
         %40 = arith.addi %35, %39 : vector<16xi16>
         // CHECK: %[[K8:.*]] = arith.addi %[[K]], %[[C8]] : index
-        // CHECK: %[[VB8:.*]] = aievec.upd %[[MB]][%[[K8]], %[[J]]]
+        // CHECK: %[[VB8:.*]] = aievec_aie1.upd %[[MB]][%[[K8]], %[[J]]]
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         %41 = affine.apply #map8(%arg5)
@@ -152,7 +152,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         %44 = arith.muli %42, %43 : vector<16xi16>
         %45 = arith.addi %40, %44 : vector<16xi16>
         // CHECK: %[[K9:.*]] = arith.addi %[[K]], %[[C9]] : index
-        // CHECK: %[[VB9:.*]] = aievec.upd %[[MB]][%[[K9]], %[[J]]]
+        // CHECK: %[[VB9:.*]] = aievec_aie1.upd %[[MB]][%[[K9]], %[[J]]]
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         // CHECK: %[[VB89:.*]] = aievec.concat %[[VB8]], %[[VB9]] : vector<16xi16>, vector<32xi16>
@@ -165,7 +165,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         %49 = arith.muli %47, %48 : vector<16xi16>
         %50 = arith.addi %45, %49 : vector<16xi16>
         // CHECK: %[[K10:.*]] = arith.addi %[[K]], %[[C10]] : index
-        // CHECK: %[[VB10:.*]] = aievec.upd %[[MB]][%[[K10]], %[[J]]]
+        // CHECK: %[[VB10:.*]] = aievec_aie1.upd %[[MB]][%[[K10]], %[[J]]]
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         %51 = affine.apply #map10(%arg5)
@@ -174,7 +174,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         %54 = arith.muli %52, %53 : vector<16xi16>
         %55 = arith.addi %50, %54 : vector<16xi16>
         // CHECK: %[[K11:.*]] = arith.addi %[[K]], %[[C11]] : index
-        // CHECK: %[[VB11:.*]] = aievec.upd %[[MB]][%[[K11]], %[[J]]]
+        // CHECK: %[[VB11:.*]] = aievec_aie1.upd %[[MB]][%[[K11]], %[[J]]]
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         // CHECK: %[[VBab:.*]] = aievec.concat %[[VB10]], %[[VB11]] : vector<16xi16>, vector<32xi16>
@@ -187,7 +187,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         %59 = arith.muli %57, %58 : vector<16xi16>
         %60 = arith.addi %55, %59 : vector<16xi16>
         // CHECK: %[[K12:.*]] = arith.addi %[[K]], %[[C12]] : index
-        // CHECK: %[[VB12:.*]] = aievec.upd %[[MB]][%[[K12]], %[[J]]]
+        // CHECK: %[[VB12:.*]] = aievec_aie1.upd %[[MB]][%[[K12]], %[[J]]]
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         %61 = affine.apply #map12(%arg5)
@@ -196,7 +196,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         %64 = arith.muli %62, %63 : vector<16xi16>
         %65 = arith.addi %60, %64 : vector<16xi16>
         // CHECK: %[[K13:.*]] = arith.addi %[[K]], %[[C13]] : index
-        // CHECK: %[[VB13:.*]] = aievec.upd %[[MB]][%[[K13]], %[[J]]]
+        // CHECK: %[[VB13:.*]] = aievec_aie1.upd %[[MB]][%[[K13]], %[[J]]]
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         // CHECK: %[[VBcd:.*]] = aievec.concat %[[VB12]], %[[VB13]] : vector<16xi16>, vector<32xi16>
@@ -209,7 +209,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         %69 = arith.muli %67, %68 : vector<16xi16>
         %70 = arith.addi %65, %69 : vector<16xi16>
         // CHECK: %[[K14:.*]] = arith.addi %[[K]], %[[C14]] : index
-        // CHECK: %[[VB14:.*]] = aievec.upd %[[MB]][%[[K14]], %[[J]]]
+        // CHECK: %[[VB14:.*]] = aievec_aie1.upd %[[MB]][%[[K14]], %[[J]]]
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         %71 = affine.apply #map14(%arg5)
@@ -218,7 +218,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         %74 = arith.muli %72, %73 : vector<16xi16>
         %75 = arith.addi %70, %74 : vector<16xi16>
         // CHECK: %[[K15:.*]] = arith.addi %[[K]], %[[C15]] : index
-        // CHECK: %[[VB15:.*]] = aievec.upd %[[MB]][%[[K15]], %[[J]]]
+        // CHECK: %[[VB15:.*]] = aievec_aie1.upd %[[MB]][%[[K15]], %[[J]]]
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         // CHECK: %[[VBef:.*]] = aievec.concat %[[VB14]], %[[VB15]] : vector<16xi16>, vector<32xi16>

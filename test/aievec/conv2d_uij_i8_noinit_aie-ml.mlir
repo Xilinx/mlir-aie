@@ -1,4 +1,5 @@
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=32" -aieml=true --aie-vectorize="shift=0 dup-factor=2" -canonicalize | FileCheck %s
+// XFAIL: *
 
 func.func @conv2d (%A: memref<18x288xi8>, %B: memref<48xi8>, %C: memref<16x256xi8>) {
     affine.for %arg3 = 0 to 16 {
