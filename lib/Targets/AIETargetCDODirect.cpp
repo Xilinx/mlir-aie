@@ -638,10 +638,6 @@ struct AIEControl {
         }
 
         bool isdma = connectOp.getDestBundle() == WireBundle::DMA;
-        // assume a connection going south from row zero gets wired to shimdma
-        // by a shimmux. TODO: fix the assumption
-        if (!isdma && (switchboxOp.rowIndex() == 0))
-          isdma = connectOp.getDestBundle() == WireBundle::South;
         // Flag for overriding DROP_HEADER. TODO: Formalize this in tablegen
         isdma &= !connectOp->hasAttr("keep_pkt_header");
         auto dropHeader =
