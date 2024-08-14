@@ -38,35 +38,11 @@ struct DMAConfigureTaskForOpPattern : RewritePattern {
     }
     AIE::DeviceOp device = op->getParentOfType<AIE::DeviceOp>();
 
-    AIE::ShimDMAAllocationOp alloc_op = nullptr;
-    auto alloc_ops = device.getOps<AIE::ShimDMAAllocationOp>();
-    for (auto it = alloc_ops.begin(); it != alloc_ops.end(); ++it) {
-      AIE::ShimDMAAllocationOp a = *it;
-      if (a.getSymName() == op.getAlloc()) {
-        alloc_op = a;
-        break;
-      }
-    }
+    AIE::ShimDMAAllocationOp alloc_op =
+        AIE::ShimDMAAllocationOp::getForSymbol(device, op.getAlloc());
 
-    AIE::TileOp tile = nullptr;
     const int col = alloc_op.getCol();
-    auto tile_ops = device.getOps<AIE::TileOp>();
-    for (auto it = tile_ops.begin(); it != tile_ops.end(); ++it) {
-      AIE::TileOp t = *it;
-      if (t.getRow() == 0 && t.getCol() == col) {
-        tile = t;
-        break;
-      }
-    }
-    // ... or if undefined, create a new tile op
-    if (!tile) {
-      auto s = rewriter.saveInsertionPoint();
-      mlir::Block &device_start_block = *device.getBodyRegion().begin();
-      rewriter.setInsertionPointToStart(&device_start_block);
-      tile = rewriter.create<AIE::TileOp>(op.getLoc(), rewriter.getIndexType(),
-                                          col, 0);
-      rewriter.restoreInsertionPoint(s);
-    }
+    AIE::TileOp tile = AIE::TileOp::getOrCreate(rewriter, device, col, 0);
     DMAConfigureTaskOp new_op = rewriter.create<DMAConfigureTaskOp>(
         op.getLoc(), rewriter.getIndexType(), tile.getResult(),
         alloc_op.getChannelDir(), (int32_t)alloc_op.getChannelIndex(),
