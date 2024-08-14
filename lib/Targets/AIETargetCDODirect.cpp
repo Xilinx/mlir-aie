@@ -639,7 +639,8 @@ struct AIEControl {
 
         bool isdma = connectOp.getDestBundle() == WireBundle::DMA;
         // assume a connection going south from row zero gets wired to shimdma
-        // by a shimmux. TODO: fix the assumption
+        // by a shimmux. But if it's south 0 assume it's tct routing and don't
+        // drop header. TODO: fix the assumption
         if (!isdma && (switchboxOp.rowIndex() == 0))
           isdma = (connectOp.getDestBundle() == WireBundle::South) &&
                   (connectOp.destIndex() != 0);
