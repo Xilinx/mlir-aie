@@ -13,8 +13,9 @@ with mlir_mod_ctx() as ctx:
 
     @device(AIEDevice.npu1_1col)
     def device_body():
+        # CHECK: %[[tile0:.+]] = aie.tile
         shim_tile = tile(0, 0)
-        # CHECK: %[[tile:.+]] = aie.tile
+        # CHECK: %[[tile1:.+]] = aie.tile
         mem_tile = tile(0, 1)
 
         # CHECK: %[[buf0:.+]] = aie.buffer
@@ -26,7 +27,7 @@ with mlir_mod_ctx() as ctx:
 
         @runtime_sequence(T.memref(256, T.i32()))
         def seq(a):
-            # CHECK: %dma_configure_task_0_1 = aiex.dma_configure_task(%[[tile]], MM2S, 1) {
+            # CHECK: %[[tsk0:.+]] = aiex.dma_configure_task(%[[tile1]], MM2S, 1) {
             tsk0 = dma_configure_task(mem_tile, DMAChannelDir.MM2S, 1)
             with bds(tsk0) as bd:
                 with bd[0]:
@@ -46,10 +47,17 @@ with mlir_mod_ctx() as ctx:
                     # CHECK:   aie.next_bd ^bb1
                     next_bd(bd[1])
 
+            # CHECK: aiex.dma_await_task(%[[tsk0]])
+            dma_await_task(tsk0)
+
+            # CHECK: %[[tsk1:.+]] = aiex.dma_configure_task_for @of0 {
             tsk1 = dma_configure_task_for(of0)
             with bds(tsk1) as bd:
                 with bd[0]:
                     dma_bd(a)
                     EndOp()
+
+            # CHECK: aiex.dma_free_task(%[[tsk1]])
+            dma_free_task(tsk1)
 
     print(ctx.module)
