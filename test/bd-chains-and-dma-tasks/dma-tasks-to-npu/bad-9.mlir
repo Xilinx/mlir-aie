@@ -9,6 +9,8 @@
 //
 // RUN: aie-opt --verify-diagnostics --aie-dma-tasks-to-npu %s 
 
+// This test ensures the proper error is emitted if a task with no BDs are issued in the runtime sequence.
+
 module {
   aie.device(npu1_4col) {
     %tile_0_0 = aie.tile(0, 0)

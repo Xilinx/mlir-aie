@@ -9,6 +9,9 @@
 //
 // RUN: aie-opt --verify-diagnostics --aie-dma-tasks-to-npu %s 
 
+// This test ensures that the correct error is emitted if an illegal data layout transformation is specified
+// in a `aie.dma_bd` operation inside the runtime sequence.
+
 module {
   aie.device(npu1_4col) {
     %tile_0_0 = aie.tile(0, 0)

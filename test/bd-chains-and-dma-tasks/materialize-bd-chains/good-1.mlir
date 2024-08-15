@@ -9,6 +9,10 @@
 //
 // RUN: aie-opt --aie-materialize-bd-chains %s | FileCheck %s
 
+// This test ensures that a BD chains get lowered to correct `aiex.dma_configure_task`
+// operations at their usage sites. We particularly ensure that the input arguments 
+// are correctly substituted.
+
 module {
   aie.device(npu1_4col) {
     %tile_0_0 = aie.tile(0, 0)

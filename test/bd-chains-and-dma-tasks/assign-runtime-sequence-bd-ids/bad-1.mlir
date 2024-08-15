@@ -9,6 +9,8 @@
 //
 // RUN: aie-opt --verify-diagnostics --aie-assign-runtime-sequence-bd-ids %s
 
+// This test ensures that the proper error is emitted if a user tries to reference not-yet-lowered BD chains in aiex.dma_await_task.
+
 module {
   aie.device(npu1_4col) {
     %tile_0_0 = aie.tile(0, 0)

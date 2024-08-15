@@ -9,6 +9,10 @@
 //
 // RUN: aie-opt --aie-dma-tasks-to-npu %s | FileCheck %s
 
+// This test ensures buffer descriptor configurations, as well as `aiex.dma_start_task`,
+// `aiex.dma_await_task` operations, issued from within the runtime sequence,
+// are lowered to the correct NPU instruction sequence instructions.
+
 module {
   aie.device(npu1_4col) {
     %tile_0_0 = aie.tile(0, 0)
