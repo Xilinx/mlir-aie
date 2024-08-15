@@ -376,12 +376,20 @@ shim_mux = region_op(
 
 def get_dma_region_decorator(op_obj_constructor):
     def decorator(f):
+        f_sig = inspect.signature(f)
         op = op_obj_constructor()
         entry_block = op.body.blocks.append()
         bds_ctx = bds(op)
         with InsertionPoint(entry_block):
             with bds_ctx as bd:
-                f(bd)
+                if len(f_sig.parameters) == 0:
+                    f()
+                elif len(f_sig.parameters) == 1:
+                    f(bd)
+                else:
+                    raise RuntimeError(
+                        "Expected function to take zero or one argument(s)."
+                    )
         return op
 
     return decorator
