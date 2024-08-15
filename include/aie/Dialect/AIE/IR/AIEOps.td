@@ -2007,11 +2007,9 @@ def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol, SkipAccessibilityCheckTrait]> {
   }];
 
   let arguments = (
-    ins SymbolNameAttr:$sym_name,
-        TypeAttrOf<AnyTuple>:$entry_arg_types_attr
+    ins SymbolNameAttr:$sym_name
   );
   let regions = (region AnyRegion:$body);
-  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
   }];
