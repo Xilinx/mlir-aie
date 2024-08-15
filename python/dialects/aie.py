@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from dataclasses import dataclass
 import inspect
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Dict, Any
+import contextlib
 
 import numpy as np
 
@@ -48,6 +49,7 @@ from ..ir import (
     ArrayAttr,
     Attribute,
     Block,
+    BlockList,
     DenseElementsAttr,
     DictAttr,
     FlatSymbolRefAttr,
@@ -151,6 +153,65 @@ def _objectFifo_depth_attr(x, context):
     if isinstance(x, list):
         return _i32ArrayAttr(x, context)
     return IntegerAttr.get(IntegerType.get_signless(32, context=context), x)
+
+
+#### MLIR Helpers ####
+
+"""
+A thin wrapper around ir.Block that allows using them in context managers, e.g. as:
+
+```
+block : ContextManagedBlock = #...
+with block as b:
+    # statements to be put within block
+```
+
+which is equivalent to using a regular  block together with InsertionPoint:
+
+```
+block : ir.Block = # ...
+with InsertionPoint(block):
+    # statements to be put within block
+```
+"""
+
+
+class ContextManagedBlock:
+    def __init__(self, wrapped_block):
+        self.block = wrapped_block
+        self.context_manager = InsertionPoint(self.block)
+
+    def __enter__(self):
+        return self.context_manager.__enter__()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return self.context_manager.__exit__(exc_type, exc_value, traceback)
+
+
+"""
+A dictionary of ContextManagedBlocks, a specialization of ir.Block, keyed by arbitrary values, which automatically appends a new block at the end of `root_block_list` whenever a non-existant block is attempted to be accessed.
+"""
+
+
+class AutoInitializingContextManagedBlockList:
+    def __init__(self, root_block_list):
+        self.blocks: Dict[Any, ContextManagedBlock] = {}
+        self.root_block_list: BlockList = root_block_list
+        self.blocks[0] = ContextManagedBlock(self.root_block_list[0])
+
+    def __getitem__(self, key):
+        if key in self.blocks:
+            return self.blocks[key]
+        new_block: Block = self.root_block_list.append()
+        self.blocks[key] = ContextManagedBlock(new_block)
+        return self.blocks[key]
+
+
+@contextlib.contextmanager
+def bds(parent):
+    entry_block = parent.body.blocks.append()
+    with InsertionPoint(entry_block):
+        yield AutoInitializingContextManagedBlockList(parent.body.blocks)
 
 
 #### AIE Wrappers ####
@@ -428,7 +489,13 @@ class NextBDOp(NextBDOp):
         return Successor(self, [], self.successors[0], 0)
 
 
-def next_bd(dest: Optional[Union[Successor, Block]] = None, loc=None, ip=None):
+def next_bd(
+    dest: Optional[Union[Successor, Block, ContextManagedBlock]] = None,
+    loc=None,
+    ip=None,
+):
+    if isinstance(dest, ContextManagedBlock):
+        dest = dest.block
     return NextBDOp(dest, loc=loc, ip=ip).dest
 
 
@@ -694,3 +761,6 @@ class TileOp(TileOp):
 
 def tile(col, row, *, loc=None, ip=None):
     return TileOp(col=col, row=row, loc=loc, ip=ip)
+
+
+# BDChainOp

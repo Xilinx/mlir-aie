@@ -27,6 +27,7 @@ from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint
 
 # noinspection PyUnresolvedReferences
 from ..extras.dialects.ext import memref
+from ..extras import types as T
 
 
 # Comes from _aie
@@ -775,3 +776,10 @@ def runtime_sequence(*inputs: Type):
             f(*args)
 
     return decorator
+
+
+_orig_dma_configure_task = dma_configure_task
+
+
+def dma_configure_task(*args, **kwargs):
+    return DMAConfigureTaskOp(T.index(), *args, **kwargs)
