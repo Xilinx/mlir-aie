@@ -870,6 +870,8 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"RuntimeSe
 }
 
 def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasParent<"RuntimeSequenceOp">]>, Results<(outs Index:$result)> {
+  let summary = "As dma_configure_task, but specify tile, direction and channel by reference to a Shim DMA allocation op";
+
   let arguments = (
     ins FlatSymbolRefAttr:$alloc,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
