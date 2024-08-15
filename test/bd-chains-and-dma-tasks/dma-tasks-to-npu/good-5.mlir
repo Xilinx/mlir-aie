@@ -9,6 +9,11 @@
 //
 // RUN: aie-opt --aie-assign-buffer-addresses --aie-dma-tasks-to-npu %s | FileCheck %s
 
+// This test ensures that a chained buffer descriptor configuration in the runtime
+// sequence gets lowered to the correct NPU instruction sequence register write
+// instructions to set all BDs addresses to their correct value when combined with
+// the automatic buffer address allocation.
+
 module {
   aie.device(npu1_4col) {
     %tile_0_0 = aie.tile(0, 0)

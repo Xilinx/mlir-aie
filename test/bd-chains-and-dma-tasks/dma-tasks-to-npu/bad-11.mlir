@@ -9,6 +9,10 @@
 //
 // RUN: aie-opt --verify-diagnostics --aie-dma-tasks-to-npu %s
 
+// This test ensures the proper error is emitted if a user tries to lower a 
+// BD in a aiex.dma_configure_task operation in the runtime sequence before
+// the address of all referenced buffers is known.
+
 module {
   aie.device(npu1_4col) {
     %tile_0_0 = aie.tile(0, 0)

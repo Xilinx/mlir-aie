@@ -9,6 +9,9 @@
 //
 // RUN: aie-opt --verify-diagnostics --aie-dma-tasks-to-npu %s
 
+// This test ensures the proper error is emitted if a user attempts to configure a task 
+// that accesses a buffer that is inaccessible from the tile it is configured to run on.
+
 module {
   aie.device(npu1_4col) {
     %tile_0_0 = aie.tile(0, 0)
