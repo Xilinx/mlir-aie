@@ -57,7 +57,7 @@ vck5000: build/aie.mlir
 
 
 run: ${targetname}.exe build/final.xclbin build/insts.txt 
-	${powershell} ./$< --xclbin_1 build/final.xclbin --xclbin_2 ../vector_scalar_mul/build/final.xclbin --instr_1 build/insts.txt --instr_2 ../vector_scalar_mul/build/insts.txt -k MLIR_AIE
+	${powershell} ./$< --xclbin_1 build/final.xclbin --xclbin_2 ../vector_scalar_mul/build/final_4096.xclbin --instr_1 build/insts.txt --instr_2 ../vector_scalar_mul/build/insts_4096.txt -k MLIR_AIE
 
 clean:
 	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe

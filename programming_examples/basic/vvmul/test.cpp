@@ -14,6 +14,8 @@
 #include "test_utils.h"
 
 namespace po = boost::program_options;
+using TY_2 = std::uint32_t;
+const int scaleFactor = 3;
 
 int main(int argc, const char *argv[]) {
 
@@ -24,11 +26,11 @@ int main(int argc, const char *argv[]) {
   po::variables_map vm;
   desc.add_options()("help,h", "produce help message")(
     "xclbin_1", po::value<std::string>()->required(),
-    "the input xclbin path")(
+    "the input xclbin path2")(
     "xclbin_2", po::value<std::string>()->required(),
-    "the input xclbin path")(
-    "kernel,k", po::value<std::string>()->required(),
-    "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
+    "the input xclbin path2")(
+    "kernel_2,k", po::value<std::string>()->required(),
+    "the kernel_2 name in the XCLBIN (for instance PP_PRE_FD)")(
     "verbosity,v", po::value<int>()->default_value(0),
     "the verbosity of the output")(
     "instr_1", po::value<std::string>()->required(),
@@ -50,52 +52,83 @@ int main(int argc, const char *argv[]) {
   int n_warmup_iterations = vm["warmup"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
 
-  constexpr int IN_SIZE = 256*60;
-  constexpr int OUT_SIZE = IN_SIZE;
+  constexpr int IN_SIZE_1 = 256*60;
+  constexpr int OUT_SIZE_1 = IN_SIZE_1;
 
-  std::vector<uint32_t> instr_v1 = test_utils::load_instr_sequence(vm["instr_1"].as<std::string>());
+  constexpr int IN_VOLUME_2 = 4096;
+  constexpr int OUT_VOLUME_2 = IN_VOLUME_2;
+  int IN_SIZE_2 = IN_VOLUME_2 * sizeof(TY_2);
+  int OUT_SIZE_2 = OUT_VOLUME_2 * sizeof(TY_2) + trace_size;
 
   // ------------------------------------------------------
-  // Get device, load the xclbin & kernel and register them
+  // Get device, load the xclbin & kernel_2 and register them
   // ------------------------------------------------------
   // Get a device handle
   unsigned int device_index = 0;
   auto kernelName = "MLIR_AIE";
+  auto device = xrt::device(device_index);
 
-  auto device_1 = xrt::device(device_index);
+  std::vector<uint32_t> instr_v1 = test_utils::load_instr_sequence(vm["instr_1"].as<std::string>());
   auto xclbin_1 = xrt::xclbin(vm["xclbin_1"].as<std::string>()); // Load the xclbin
-  device_1.register_xclbin(xclbin_1); // Register xclbin
-  xrt::hw_context context_1(device_1, xclbin_1.get_uuid()); // Get a hardware context
-  auto kernel_1 = xrt::kernel(context_1, kernelName); // Get a kernel handle: MLIR_AIE
+  device.register_xclbin(xclbin_1); // Register xclbin
+  xrt::hw_context context_1(device, xclbin_1.get_uuid()); // Get a hardware context
+  auto kernel_1 = xrt::kernel(context_1, kernelName); // Get a kernel_2 handle: MLIR_AIE
+
+  std::vector<uint32_t> instr_v2 = test_utils::load_instr_sequence(vm["instr_2"].as<std::string>());
+  auto xclbin_2 = xrt::xclbin(vm["xclbin_2"].as<std::string>()); // Load the xclbin
+  device.register_xclbin(xclbin_2); // Register xclbin
+  xrt::hw_context context_2(device, xclbin_2.get_uuid()); // Get a hardware context
+  auto kernel_2 = xrt::kernel(context_2, kernelName); // Get a kernel_2 handle: MLIR_AIE
 
 
   // ------------------------------------------------------
   // Initialize input/ output buffer sizes and sync them
   // ------------------------------------------------------
 
-  auto bo_instr_1 = xrt::bo(device_1, instr_v1.size() * sizeof(int), XCL_BO_FLAGS_CACHEABLE, kernel_1.group_id(1));
-  auto bo_inA   = xrt::bo(device_1, IN_SIZE * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY, kernel_1.group_id(3));
-  auto bo_inB   = xrt::bo(device_1, IN_SIZE * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY, kernel_1.group_id(4));
-  auto bo_out   = xrt::bo(device_1, OUT_SIZE * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY, kernel_1.group_id(5));
-
-  uint32_t *bufInA = bo_inA.map<uint32_t *>();
-  std::vector<uint32_t> srcVecA;
-  for (int i = 0; i < IN_SIZE; i++)
-    srcVecA.push_back(i + 1);
-  memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
-
-  uint32_t *bufInB = bo_inB.map<uint32_t *>();
-  std::vector<uint32_t> srcVecB;
-  for (int i = 0; i < IN_SIZE; i++)
-    srcVecB.push_back(i);
-  memcpy(bufInB, srcVecB.data(), (srcVecB.size() * sizeof(uint32_t)));
-
+  auto bo_instr_1 = xrt::bo(device, instr_v1.size() * sizeof(int), XCL_BO_FLAGS_CACHEABLE, kernel_1.group_id(1));
   void *bufInstr_1 = bo_instr_1.map<void *>();
   memcpy(bufInstr_1, instr_v1.data(), instr_v1.size() * sizeof(int));
 
+  auto bo_inA_1   = xrt::bo(device, IN_SIZE_1 * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY, kernel_1.group_id(3));
+  uint32_t *bufInA_1 = bo_inA_1.map<uint32_t *>();
+  std::vector<uint32_t> srcVecA_1;
+  for (int i = 0; i < IN_SIZE_1; i++)
+    srcVecA_1.push_back(i + 1);
+  memcpy(bufInA_1, srcVecA_1.data(), (srcVecA_1.size() * sizeof(uint32_t)));
+
+  auto bo_inB_1   = xrt::bo(device, IN_SIZE_1 * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY, kernel_1.group_id(4));
+  uint32_t *bufInB_1 = bo_inB_1.map<uint32_t *>();
+  std::vector<uint32_t> srcVecB_1;
+  for (int i = 0; i < IN_SIZE_1; i++)
+    srcVecB_1.push_back(i);
+  memcpy(bufInB_1, srcVecB_1.data(), (srcVecB_1.size() * sizeof(uint32_t)));
+
+  auto bo_out_1   = xrt::bo(device, OUT_SIZE_1 * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY, kernel_1.group_id(5));
+
+
+  auto bo_instr_2  = xrt::bo(device, instr_v2.size() * sizeof(int), XCL_BO_FLAGS_CACHEABLE, kernel_2.group_id(1));
+  void *bufInstr_2 = bo_instr_2.map<void *>();
+  memcpy(bufInstr_2, instr_v2.data(), instr_v2.size() * sizeof(int));
+
+  auto bo_inA_2  = xrt::bo(device, IN_SIZE_2, XRT_BO_FLAGS_HOST_ONLY, kernel_2.group_id(3));
+  TY_2 *bufInA_2 = bo_inA_2.map<TY_2 *>();
+  for (int i = 0; i < IN_VOLUME_2; i++)
+    bufInA_2[i] = i + 1;
+
+  auto bo_inFactor = xrt::bo(device, 1 * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY, kernel_2.group_id(4));
+  int32_t *bufInFactor = bo_inFactor.map<int32_t *>();
+  *bufInFactor = (TY_2)scaleFactor;
+
+  auto bo_outC_2 = xrt::bo(device, OUT_SIZE_2, XRT_BO_FLAGS_HOST_ONLY, kernel_2.group_id(5));
+
+
   bo_instr_1.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inB.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_inA_1.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_inB_1.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+
+  bo_instr_2.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_inA_2.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_inFactor.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   // RUN KERNEL
 
@@ -106,35 +139,52 @@ int main(int argc, const char *argv[]) {
   for (int i=1; i<=1000; i++) {
     auto start = std::chrono::high_resolution_clock::now();
 
-    auto run = kernel_1(opcode, bo_instr_1, instr_v1.size(), bo_inA, bo_inB, bo_out);
-    run.wait();
+    auto run1 = kernel_1(opcode, bo_instr_1, instr_v1.size(), bo_inA_1, bo_inB_1, bo_out_1);
+    run1.wait();
+    auto run2 = kernel_2(opcode, bo_instr_2, instr_v2.size(), bo_inA_2, bo_inFactor, bo_outC_2);
+    run2.wait();
 
     auto stop = std::chrono::high_resolution_clock::now();
     float npu_time = std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count();
     if (i<11)
-      std::cout << i << " " << IN_SIZE << " NPU time: " << npu_time << "us." << std::endl;
+      std::cout << i << " " << IN_SIZE_1 << " NPU time: " << npu_time << "us." << std::endl;
     f_time << npu_time << "\n";
   }
   f_time.close();
 
-  bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  bo_out_1.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  uint32_t *bufOut_1 = bo_out_1.map<uint32_t *>();
 
-  uint32_t *bufOut = bo_out.map<uint32_t *>();
+  bo_outC_2.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  TY_2 *bufOut_2 = bo_outC_2.map<TY_2 *>();
 
   // COMPARE
 
   int errors = 0;
 
-  for (uint32_t i = 0; i < OUT_SIZE; i++) {
-    if (*(bufOut + i) != *(bufInA + i) * *(bufInB + i)) {
-      std::cout << "Error in output " << *(bufOut + i)
-                << " != " << *(bufInA + i) << " * " << *(bufInB + i)
+  for (uint32_t i = 0; i < OUT_SIZE_1; i++) {
+    if (*(bufOut_1 + i) != *(bufInA_1 + i) * *(bufInB_1 + i)) {
+      std::cout << "Error in output " << *(bufOut_1 + i)
+                << " != " << *(bufInA_1 + i) << " * " << *(bufInB_1 + i)
                 << std::endl;
       errors++;
     } else {
       if (verbosity > 1)
-        std::cout << "Correct output " << *(bufOut + i)
-                  << " == " << *(bufInA + i) * *(bufInB + i) << std::endl;
+        std::cout << "Correct output " << *(bufOut_1 + i)
+                  << " == " << *(bufInA_1 + i) * *(bufInB_1 + i) << std::endl;
+    }
+  }
+
+  for (uint32_t i = 0; i < IN_VOLUME_2; i++) {
+    int32_t ref = bufInA_2[i] * scaleFactor;
+    int32_t test = bufOut_2[i];
+    if (test != ref) {
+      if (verbosity >= 1)
+        std::cout << "Error in output " << test << " != " << ref << std::endl;
+      errors++;
+    } else {
+      if (verbosity >= 1)
+        std::cout << "Correct output " << test << " == " << ref << std::endl;
     }
   }
 
