@@ -317,8 +317,8 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
         destCoords = {destTile.colIndex(), destTile.rowIndex()};
         // Assign "keep_pkt_header flag"
         auto keep = pktFlowOp.getKeepPktHeader();
-        keepPktHeaderAttr[{destTile, destPort}] = keep ?
-            BoolAttr::get(Op.getContext(), *keep) : nullptr;
+        keepPktHeaderAttr[{destTile, destPort}] =
+            keep ? BoolAttr::get(Op.getContext(), *keep) : nullptr;
 
         TileID srcSB = {srcCoords.col, srcCoords.row};
         if (PathEndPoint srcPoint = {srcSB, srcPort};
@@ -707,9 +707,9 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
         amsels.push_back(amselOps[msel]);
       }
 
-      builder.create<MasterSetOp>(builder.getUnknownLoc(),
-                                  builder.getIndexType(), bundle,
-                                  channel, amsels, keepPktHeaderAttr[{tileOp, tileMaster}]);
+      builder.create<MasterSetOp>(
+          builder.getUnknownLoc(), builder.getIndexType(), bundle, channel,
+          amsels, keepPktHeaderAttr[{tileOp, tileMaster}]);
     }
 
     // Generate the packet rules
