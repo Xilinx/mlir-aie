@@ -35,10 +35,10 @@ from dolphin import print_dolphin
 vectorSize=8
 
 InC = 16
-OutC = 32
+OutC = 64
 
 InW2 = 7
-InH2 = 7
+InH2 = 1
 # WeightChunks=2 #2 splits for input channel and then output 
 # InC = OutC1
 

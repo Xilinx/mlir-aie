@@ -14,8 +14,8 @@ from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 import math
 
-InC = 16
-OutC = 32
+InC = 160
+OutC = 960
 
 InW2 = 7
 InH2 = 7
