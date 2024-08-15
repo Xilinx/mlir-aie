@@ -783,3 +783,11 @@ _orig_dma_configure_task = dma_configure_task
 
 def dma_configure_task(*args, **kwargs):
     return DMAConfigureTaskOp(T.index(), *args, **kwargs)
+
+
+_orig_dma_configure_task_for = dma_configure_task_for
+
+
+def dma_configure_task_for(alloc, *args, **kwargs):
+    alloc_sym = alloc if isinstance(alloc, str) else alloc.sym_name.value
+    return DMAConfigureTaskForOp(T.index(), alloc_sym, *args, **kwargs)
