@@ -142,7 +142,7 @@ void conv2dk1_ui8_ui8_scalar_input_split_partial_width_get(uint8_t *input, int8_
 void conv2dk1_i8_ui8_scalar_partial_width_get_new(int8_t *input, int8_t *kernels, uint8_t *output,
                                               const int32_t input_width, const int32_t input_channels,
                                               const int32_t output_channels, const int scale,
-                                              int32_t input_split, int32_t weight_index, int32_t x_start, int32_t oc) {
+                                              int32_t input_split, int32_t output_split,int32_t weight_index, int32_t x_start, int32_t oc) {
     event0();
     int ic, ic8, oc8;
 
@@ -169,9 +169,10 @@ void conv2dk1_i8_ui8_scalar_partial_width_get_new(int8_t *input, int8_t *kernels
 
     // Determine the start and end of the loop based on the chunk index for weights
     int input_channel_chunk_size = input_channels / input_split;
-    int start_ic = weight_index * input_channel_chunk_size;
+    int start_ic = 1 * input_channel_chunk_size;
     int end_ic =  start_ic + input_channel_chunk_size;
     int pixel = 0;
+    int oc_offset=0;
     // Preload vector register with partial sums from previous iteration
     // v16int32 v16vec_partial[8] = {undef_v16int32(), undef_v16int32(), undef_v16int32(), undef_v16int32(),
     //                            undef_v16int32(), undef_v16int32(), undef_v16int32(), undef_v16int32()};
@@ -180,15 +181,6 @@ void conv2dk1_i8_ui8_scalar_partial_width_get_new(int8_t *input, int8_t *kernels
     v16acc64 acc_cas = undef_v16acc64();
     v16int32 v16vec_partial[8] = {}; 
     v16int32 v16vec_cas[8] = {}; 
-
-    if (weight_index != 0) {// Preload vector register with partial sum from previous iteration. If weight is only 1 then we don't have partial sum anyway
-        for ( pixel = 0; pixel < pixel_limit; pixel++) {
-            int x = x_start + pixel;
-            if (x < input_width) {
-                    v16vec_partial[pixel] = lsrs(*accumulators[pixel],0,0); 
-            } 
-        }
-    }
 
     // Process each pixel across all output channels
     for (pixel = 0; pixel < pixel_limit; pixel++) {
@@ -208,19 +200,12 @@ void conv2dk1_i8_ui8_scalar_partial_width_get_new(int8_t *input, int8_t *kernels
                             current_sum+= val * k;
                     }
                 }
-                // Extract the partial sum if applicable
-                if (weight_index != 0) {
-                        last_sum = ext_elem(v16vec_partial[pixel], oc8);
-                }
                 // Transfer scalar sum to vector
-                sum= current_sum + last_sum;
+                sum= current_sum;
                 v16vec_partial[pixel] = upd_elem(v16vec_partial[pixel], oc8, sum);
-                if (weight_index != (input_split / 2 - 1)) {
-                    *accumulators[pixel] = lups(v16vec_partial[pixel],0);
-                }
             }
 
-            if (end_ic == input_channels) {
+            // if (end_ic == input_channels) {
                 // acc_cas=get_scd_v16acc64();
                 // int scale_new=8;
                 v16vec_cas[pixel] = lsrs(get_scd_v16acc64(),0, 0);
@@ -231,11 +216,20 @@ void conv2dk1_i8_ui8_scalar_partial_width_get_new(int8_t *input, int8_t *kernels
                     sum = ext_elem(v16vec_partial[pixel], oc8);
                     cascade_sum=ext_elem(v16vec_cas[pixel], oc8);
                     // sum_srs = ((sum+cascade_sum) + (1 << (scale - 1))) >> scale;
-                    sum_srs = (((sum) + (1 << (scale - 1)) - 1 + (((sum) >> scale) & 1)) >> scale);
+                    sum_srs = (((cascade_sum) + (1 << (scale - 1)) - 1 + (((cascade_sum) >> scale) & 1)) >> scale);
                     sum_srs= (sum_srs > UMAX) ? UMAX : (sum_srs< 0) ? 0 : sum_srs;
-                    output[(oc * input_width * 8) + (pixel * 8) + oc8] = sum_srs;
+                    if(weight_index!=0)
+                        // oc_offset=oc8+weight_index*8;
+                        
+                        if(oc==0 && output_split==4 )
+                            oc_offset=oc+(weight_index);
+                        else
+                            oc_offset=oc+output_split*(weight_index);
+                    else
+                        oc_offset=oc;
+                    output[(oc_offset * input_width * 8) + (pixel * 8) + (oc8)] = sum_srs;
             }
-        }       
+        // }       
     } 
 
     event1();
@@ -1018,11 +1012,11 @@ void bn14_1_conv2dk1_i8_ui8_partial_width_get(int8_t *input, int8_t *kernels, ui
 void conv2dk1_i8_ui8_partial_width_get_new(int8_t *input, int8_t *kernels, uint8_t *output,
                                               const int32_t input_width, const int32_t input_channels,
                                               const int32_t output_channels, const int scale,
-                                              int32_t input_split, int32_t weight_index, int32_t x_start, int32_t oc) 
+                                              int32_t input_split,int32_t output_split, int32_t weight_index, int32_t x_start, int32_t oc) 
                                               {
 
     conv2dk1_i8_ui8_scalar_partial_width_get_new(input, kernels, output, input_width, input_channels,
-                     output_channels, scale,input_split,weight_index,x_start,oc) ;
+                     output_channels, scale,input_split,output_split,weight_index,x_start,oc) ;
 
                                               }
 #endif

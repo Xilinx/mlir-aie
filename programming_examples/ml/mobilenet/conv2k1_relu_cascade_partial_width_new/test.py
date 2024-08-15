@@ -38,7 +38,7 @@ InC = 16
 OutC = 32
 
 InW2 = 7
-InH2 = 2
+InH2 = 7
 # WeightChunks=2 #2 splits for input channel and then output 
 # InC = OutC1
 
@@ -297,8 +297,8 @@ def main(opts):
     quant_bottleneck_model_HALF = QuantBottleneck_HALF(expand=InC//2,project=OutC)
     quant_bottleneck_model_HALF.eval()
 
-    # q_bottleneck_out_HALF = quant_bottleneck_model_HALF(input[:,0:InC//2,:,:])
-    q_bottleneck_out_HALF = quant_bottleneck_model_HALF(input[:,InC//2:InC,:,:])
+    q_bottleneck_out_HALF = quant_bottleneck_model_HALF(input[:,0:InC//2,:,:])
+    # q_bottleneck_out_HALF = quant_bottleneck_model_HALF(input[:,InC//2:InC,:,:])
     golden_output_HALF = q_bottleneck_out_HALF.int(float_datatype=True).data.numpy().astype(dtype_out)
     print("Golden_HALF::Brevitas::", golden_output_HALF)
 
@@ -359,7 +359,7 @@ def main(opts):
 
     # Check if 'tensor' is all zero
     is_all_zero = torch.allclose(ofm_mem_fmt_out, zeros_tensor)
-    golden_output=convert_to_numpy(golden_output)
+    golden_output=convert_to_numpy(golden_output_HALF)
     ofm_mem_fmt_out=convert_to_numpy(ofm_mem_fmt_out)
     max_difference = np.max((golden_output)-(ofm_mem_fmt_out))
     print("Max:",max_difference)

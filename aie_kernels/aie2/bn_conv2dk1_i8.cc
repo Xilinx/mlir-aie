@@ -156,7 +156,7 @@ void conv2dk1_i8_ui8_scalar_partial_width_put_new(int8_t *input, int8_t *kernels
 
     // Determine the start and end of the loop based on the chunk index for weights
     int input_channel_chunk_size = input_channels / input_split;
-    int start_ic = weight_index * input_channel_chunk_size;
+    int start_ic = 0 * input_channel_chunk_size;
     int end_ic = start_ic + input_channel_chunk_size;
 
     // Preload vector register with partial sums from previous iteration
@@ -191,7 +191,7 @@ void conv2dk1_i8_ui8_scalar_partial_width_put_new(int8_t *input, int8_t *kernels
             if (weight_index != 0) {  // Preload with partial sum from previous iteration
                 last_sum = ext_elem(v16vec_partial[pixel], oc8);
             }
-            sum = current_sum + last_sum;
+            sum = current_sum;
             v16vec_partial[pixel] = upd_elem(v16vec_partial[pixel], oc8, sum);
             // Update accumulators
             
@@ -200,10 +200,10 @@ void conv2dk1_i8_ui8_scalar_partial_width_put_new(int8_t *input, int8_t *kernels
                *accumulators[pixel] = lups(v16vec_partial[pixel],0);
             }
         }
-      if (weight_index == (input_split / 2 - 1)) {
+      // if (weight_index == (input_split / 2 - 1)) {
                 acc_cas= lups(v16vec_partial[pixel],0);
                 put_mcd(acc_cas); //push over cascade
-      }
+      // }
     }
 
     event1();
