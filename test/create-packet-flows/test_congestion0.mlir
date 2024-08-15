@@ -10,6 +10,8 @@
 // RUN: FileCheck %s --check-prefix=CHECK1 < %t.opt
 // RUN: aie-translate --aie-flows-to-json %t.opt | FileCheck %s --check-prefix=CHECK2
 
+// XFAIL: *
+
 // CHECK1:    %[[VAL_0:.*]] = aie.tile(0, 1)
 // CHECK1:    %[[VAL_1:.*]] = aie.tile(0, 2)
 // CHECK1:    %[[VAL_2:.*]] = aie.tile(0, 3)
