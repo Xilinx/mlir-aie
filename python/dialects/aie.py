@@ -209,7 +209,10 @@ class AutoInitializingContextManagedBlockList:
 
 @contextlib.contextmanager
 def bds(parent):
-    entry_block = parent.body.blocks.append()
+    if len(parent.body.blocks) == 0:
+        entry_block = parent.body.blocks.append()
+    else:
+        entry_block = parent.body.blocks[0]
     with InsertionPoint(entry_block):
         yield AutoInitializingContextManagedBlockList(parent.body.blocks)
 
@@ -764,3 +767,19 @@ def tile(col, row, *, loc=None, ip=None):
 
 
 # BDChainOp
+
+_orig_bd_chain = bd_chain
+
+
+def bd_chain(*inputs: T.Type):
+    def decorator(f):
+        seq_op = BDChainOp(f.__name__)
+        entry_block = seq_op.body.blocks.append(*inputs)
+        args = entry_block.arguments
+        bds_ctx = bds(seq_op)
+        with InsertionPoint(entry_block):
+            with bds_ctx as bd:
+                f(bd, *args)
+        return seq_op
+
+    return decorator

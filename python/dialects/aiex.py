@@ -791,3 +791,24 @@ _orig_dma_configure_task_for = dma_configure_task_for
 def dma_configure_task_for(alloc, *args, **kwargs):
     alloc_sym = alloc if isinstance(alloc, str) else alloc.sym_name.value
     return DMAConfigureTaskForOp(T.index(), alloc_sym, *args, **kwargs)
+
+
+_orig_dma_start_bd_chain = dma_start_bd_chain
+
+
+def dma_start_bd_chain(symbol, args, tile, direction, channel, *pyargs, **kwargs):
+    chain_sym = symbol if isinstance(symbol, str) else symbol.sym_name.value
+    return DMAStartBdChainOp(
+        T.index(), chain_sym, args, tile, direction, channel, *pyargs, **kwargs
+    )
+
+
+_orig_dma_start_bd_chain_for = dma_start_bd_chain_for
+
+
+def dma_start_bd_chain_for(symbol, args, alloc, *pyargs, **kwargs):
+    chain_sym = symbol if isinstance(symbol, str) else symbol.sym_name.value
+    alloc_sym = alloc if isinstance(alloc, str) else alloc.sym_name.value
+    return DMAStartBdChainForOp(
+        T.index(), chain_sym, args, alloc_sym, *pyargs, **kwargs
+    )
