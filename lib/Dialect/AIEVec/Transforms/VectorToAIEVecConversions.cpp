@@ -491,6 +491,28 @@ static bool matchExpOpForLUT(math::ExpOp::Adaptor adaptor) {
 
   return true;
 }
+static bool matchInvOpForLUT(arith::DivFOp::Adaptor adaptor,
+                             arith::DivFOp divOp) {
+  Type srcType = adaptor.getLhs().getType();
+  if (!divOp->hasOneUse() || isa<VectorType>(srcType) ||
+      !isa<FloatType>(srcType))
+    return false;
+
+  if (!isNarrowingOp(*divOp->getUsers().begin()))
+    return false;
+
+  auto fType = cast<FloatType>(srcType);
+  if (fType.getWidth() != 32)
+    return false;
+
+  auto constOp = divOp.getLhs().getDefiningOp<arith::ConstantOp>();
+  if (!constOp ||
+      cast<FloatAttr>(constOp.getValue()).getValue().convertToDouble() !=
+          1.0f) {
+    return false;
+  }
+  return true;
+}
 
 //===----------------------------------------------------------------------===//
 // Rewrite patterns
@@ -2016,22 +2038,7 @@ struct ComputeInvOpByLUTLLVMPattern : OpConversionPattern<arith::DivFOp> {
   LogicalResult
   matchAndRewrite(arith::DivFOp divOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Type srcType = adaptor.getLhs().getType();
-    if (!divOp->hasOneUse() || isa<VectorType>(srcType) ||
-        !isa<FloatType>(srcType))
-      return failure();
-
-    if (!isNarrowingOp(*divOp->getUsers().begin()))
-      return failure();
-
-    auto fType = cast<FloatType>(srcType);
-    if (fType.getWidth() != 32)
-      return failure();
-
-    auto constOp = dyn_cast<arith::ConstantOp>(divOp.getLhs().getDefiningOp());
-    if (!constOp ||
-        cast<FloatAttr>(constOp.getValue()).getValue().convertToDouble() !=
-            1.0f)
+    if (!matchInvOpForLUT(adaptor, divOp))
       return failure();
 
     StringRef funcName = "getInvBf16";
@@ -2066,24 +2073,8 @@ struct ComputeInvOpByLUTPattern : OpConversionPattern<arith::DivFOp> {
   LogicalResult
   matchAndRewrite(arith::DivFOp divOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Type srcType = adaptor.getLhs().getType();
-    if (!divOp->hasOneUse() || isa<VectorType>(srcType) ||
-        !isa<FloatType>(srcType))
+    if (!matchInvOpForLUT(adaptor, divOp))
       return failure();
-
-    if (!isNarrowingOp(*divOp->getUsers().begin()))
-      return failure();
-
-    auto fType = cast<FloatType>(srcType);
-    if (fType.getWidth() != 32)
-      return failure();
-
-    auto constOp = dyn_cast<arith::ConstantOp>(divOp.getLhs().getDefiningOp());
-    if (!constOp ||
-        cast<FloatAttr>(constOp.getValue()).getValue().convertToDouble() !=
-            1.0f)
-      return failure();
-
     StringRef includeName = "lut_based_ops.h";
     auto moduleOp = divOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
