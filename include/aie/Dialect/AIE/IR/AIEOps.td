@@ -498,7 +498,8 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [
   let arguments = (
     ins WireBundle:$dest_bundle,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel,
-        Variadic<Index>:$amsels
+        Variadic<Index>:$amsels,
+        OptionalAttr<BoolAttr>:$keep_pkt_header
   );
   let summary = "Packet switched input connection";
   let description = [{
