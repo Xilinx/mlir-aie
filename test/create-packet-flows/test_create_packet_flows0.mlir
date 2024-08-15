@@ -18,7 +18,7 @@ module @test_create_packet_flows0 {
 // CHECK:           %[[VAL_1:.*]] = aie.switchbox(%[[VAL_0]]) {
 // The actual indices used for the amsel arguments is unimportant.
 // CHECK:           %[[VAL_6:.*]] = aie.amsel<0> (0)
-// CHECK:           %[[VAL_7:.*]] = aie.amsel<0> (1)
+// CHECK:           %[[VAL_7:.*]] = aie.amsel<1> (0)
 // CHECK:           %[[VAL_4:.*]] = aie.masterset(Core : 0, %[[VAL_2:.*]])
 // CHECK:           %[[VAL_5:.*]] = aie.masterset(Core : 1, %[[VAL_3:.*]])
 // CHECK:           aie.packet_rules(West : 0) {

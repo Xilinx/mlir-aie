@@ -390,6 +390,41 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
   int numMsels = 4;
   int numArbiters = 6;
 
+  // Get arbiter id from amsel
+  auto getArbiterIDFromAmsel = [numArbiters](int amsel) {
+    return amsel % numArbiters;
+  };
+  // Get amsel from arbiter id and msel
+  auto getAmselFromArbiterIDAndMsel = [numArbiters](int arbiter, int msel) {
+    return arbiter + msel * numArbiters;
+  };
+  // Get a new unique amsel from masterAMSels on tile op. Prioritize on
+  // incrementing arbiter id, before incrementing msel
+  auto getNewUniqueAmsel = [&](DenseMap<std::pair<Operation *, int>,
+                                        SmallVector<Port, 4>>
+                                   masterAMSels,
+                               Operation *tileOp) {
+    for (int i = 0; i < numMsels; i++)
+      for (int a = 0; a < numArbiters; a++)
+        if (!masterAMSels.count({tileOp, getAmselFromArbiterIDAndMsel(a, i)}))
+          return getAmselFromArbiterIDAndMsel(a, i);
+    tileOp->emitOpError("tile op has used up all arbiter-msel combinations");
+    return -1;
+  };
+  // Get a new unique amsel from masterAMSels on tile op with given arbiter id
+  auto getNewUniqueAmselPerArbiterID =
+      [&](DenseMap<std::pair<Operation *, int>, SmallVector<Port, 4>>
+              masterAMSels,
+          Operation *tileOp, int arbiter) {
+        for (int i = 0; i < numMsels; i++)
+          if (!masterAMSels.count(
+                  {tileOp, getAmselFromArbiterIDAndMsel(arbiter, i)}))
+            return getAmselFromArbiterIDAndMsel(arbiter, i);
+        tileOp->emitOpError("tile op arbiter ")
+            << std::to_string(arbiter) << "has used up all its msels";
+        return -1;
+      };
+
   std::vector<std::pair<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>>>
       sortedPacketFlows(packetFlows.begin(), packetFlows.end());
 
@@ -426,7 +461,12 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
     // If there is an assignment of an arbiter to a master port before, we
     // assign all the master ports here with the same arbiter but different
     // msel
-    bool foundMatchedDest = false;
+    bool foundMatchedDest =
+        false; // This switchbox's output channels match completely or partially
+               // with an existing amsel entry.
+    int foundPartialMatchArbiter =
+        -1; // This switchbox's output channels match partially with an existing
+            // amsel entry on this arbiter ID (-1 means null).
     for (const auto &map : masterAMSels) {
       if (map.first.first != tileOp)
         continue;
@@ -434,39 +474,46 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
 
       // check if same destinations
       SmallVector<Port, 4> ports(masterAMSels[{tileOp, amselValue}]);
-      if (ports.size() != packetFlow.second.size())
-        continue;
 
-      bool matched = true;
+      // check for complete/partial overlapping amsel -> port mapping with any
+      // previous amsel assignments
+      bool matched =
+          false; // Found at least one port with overlapping amsel assignment
+      bool mismatched = false; // Found at least one port without any
+                               // overlapping amsel assignment
       for (auto dest : packetFlow.second) {
-        if (Port port = dest.second;
-            std::find(ports.begin(), ports.end(), port) == ports.end()) {
-          matched = false;
-          break;
-        }
+        Port port = dest.second;
+        if (std::find(ports.begin(), ports.end(), port) == ports.end())
+          mismatched = true;
+        else
+          matched = true;
       }
 
       if (matched) {
         foundMatchedDest = true;
+        if (mismatched)
+          foundPartialMatchArbiter = getArbiterIDFromAmsel(amselValue);
+        else if (ports.size() != packetFlow.second.size())
+          foundPartialMatchArbiter = getArbiterIDFromAmsel(amselValue);
         break;
       }
     }
 
     if (!foundMatchedDest) {
-      bool foundAMSelValue = false;
-      for (int a = 0; a < numArbiters; a++) {
-        for (int i = 0; i < numMsels; i++) {
-          amselValue = a + i * numArbiters;
-          if (masterAMSels.count({tileOp, amselValue}) == 0) {
-            foundAMSelValue = true;
-            break;
-          }
-        }
-
-        if (foundAMSelValue)
-          break;
+      // This packet flow switchbox's output ports completely mismatches with
+      // any existing amsel. Creating a new amsel.
+      amselValue = getNewUniqueAmsel(masterAMSels, tileOp);
+      // Update masterAMSels with new amsel
+      for (auto dest : packetFlow.second) {
+        Port port = dest.second;
+        masterAMSels[{tileOp, amselValue}].push_back(port);
       }
-
+    } else if (foundPartialMatchArbiter >= 0) {
+      // This packet flow switchbox's output ports partially overlaps with some
+      // existing amsel. Creating a new amsel with the same arbiter.
+      amselValue = getNewUniqueAmselPerArbiterID(masterAMSels, tileOp,
+                                                 foundPartialMatchArbiter);
+      // Update masterAMSels with new amsel
       for (auto dest : packetFlow.second) {
         Port port = dest.second;
         masterAMSels[{tileOp, amselValue}].push_back(port);
@@ -474,7 +521,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
     }
 
     slaveAMSels[packetFlow.first] = amselValue;
-    amselValues[tileOp] = amselValue % numArbiters;
+    amselValues[tileOp] = getArbiterIDFromAmsel(amselValue);
   }
 
   // Compute the master set IDs
@@ -485,8 +532,8 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
     assert(tileOp);
     int amselValue = physPort.second;
     for (auto port : ports) {
-      PhysPort physPort = {tileOp, port};
-      mastersets[physPort].push_back(amselValue);
+      PhysPort pp = {tileOp, port};
+      mastersets[pp].push_back(amselValue);
     }
   }
 
@@ -616,7 +663,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
     Block &b = swbox.getConnections().front();
     builder.setInsertionPoint(b.getTerminator());
 
-    std::vector<bool> amselOpNeededVector(32);
+    std::vector<bool> amselOpNeededVector(numMsels * numArbiters);
     for (const auto &map : mastersets) {
       if (tileOp != map.first.first)
         continue;
@@ -627,13 +674,16 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
     }
     // Create all the amsel Ops
     DenseMap<int, AMSelOp> amselOps;
-    for (int i = 0; i < 32; i++) {
-      if (amselOpNeededVector[i]) {
-        int arbiterID = i % numArbiters;
-        int msel = i / numArbiters;
-        auto amsel =
-            builder.create<AMSelOp>(builder.getUnknownLoc(), arbiterID, msel);
-        amselOps[i] = amsel;
+    for (int i = 0; i < numMsels; i++) {
+      for (int a = 0; a < numArbiters; a++) {
+        auto amselValue = getAmselFromArbiterIDAndMsel(a, i);
+        if (amselOpNeededVector[amselValue]) {
+          int arbiterID = a;
+          int msel = i;
+          auto amsel =
+              builder.create<AMSelOp>(builder.getUnknownLoc(), arbiterID, msel);
+          amselOps[amselValue] = amsel;
+        }
       }
     }
     // Create all the master set Ops
