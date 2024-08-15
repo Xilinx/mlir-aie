@@ -2010,13 +2010,6 @@ struct ComputeExpOpByLUTPattern : OpConversionPattern<math::ExpOp> {
   }
 };
 
-// Lower the inverse of a float to a function call
-// Convert the pattern-
-//  %cst = arith.constant 1.000000e+00 : f32
-//  %0 = arith.divf %cst, %arg1 : f32
-//  %1 = arith.truncf %0 : f32 to bf16
-// to -
-//  %0 = emitc.call "getInvBf16"(%0) : f32 -> bf16;
 struct ComputeInvOpByLUTLLVMPattern : OpConversionPattern<arith::DivFOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -2046,7 +2039,7 @@ struct ComputeInvOpByLUTLLVMPattern : OpConversionPattern<arith::DivFOp> {
     Type floatTy = rewriter.getF32Type();
     Type bfloat16Ty = rewriter.getBF16Type();
     func::FuncOp fn_op =
-        getOrGenerateFuncOp(rewriter, moduleOp, funcName, TypeRange{floatTy},
+        getOrInsertFuncDecl(rewriter, moduleOp, funcName, TypeRange{floatTy},
                             TypeRange{bfloat16Ty});
 
     auto truncOp = cast<arith::TruncFOp>(*divOp->getUsers().begin());
@@ -2060,6 +2053,13 @@ struct ComputeInvOpByLUTLLVMPattern : OpConversionPattern<arith::DivFOp> {
   }
 };
 
+// Lower the inverse of a float to a function call
+// Convert the pattern-
+//  %cst = arith.constant 1.000000e+00 : f32
+//  %0 = arith.divf %cst, %arg1 : f32
+//  %1 = arith.truncf %0 : f32 to bf16
+// to -
+//  %0 = emitc.call "getInvBf16"(%0) : f32 -> bf16;
 struct ComputeInvOpByLUTPattern : OpConversionPattern<arith::DivFOp> {
   using OpConversionPattern::OpConversionPattern;
 
