@@ -10,8 +10,6 @@
 // RUN: FileCheck %s --check-prefix=CHECK1 < %t.opt
 // RUN: aie-translate --aie-flows-to-json %t.opt | FileCheck %s --check-prefix=CHECK2
 
-// XFAIL: *
-
 // CHECK1:    %[[VAL_0:.*]] = aie.tile(0, 1)
 // CHECK1:    %[[VAL_1:.*]] = aie.tile(0, 2)
 // CHECK1:    %[[VAL_2:.*]] = aie.tile(0, 3)
@@ -22,7 +20,7 @@
 // CHECK1:      aie.packet_dest<%[[VAL_0:.*]], DMA : 0>
 // CHECK1:    }
 // CHECK1:    aie.packet_flow(4) {
-// CHECK1:      aie.packet_source<%[[VAL_1:.*]], DMA : 1>
+// CHECK1:      aie.packet_source<%[[VAL_1:.*]], DMA : 0>
 // CHECK1:      aie.packet_dest<%[[VAL_0:.*]], DMA : 4>
 // CHECK1:    }
 // CHECK1:    aie.packet_flow(1) {
@@ -38,7 +36,7 @@
 // CHECK1:      aie.packet_dest<%[[VAL_0:.*]], DMA : 3>
 // CHECK1:    }
 
-// CHECK2: "total_path_length": 8
+// CHECK2: "total_path_length": 10
 
 module {
  aie.device(npu1_1col) {
@@ -65,7 +63,7 @@ module {
     aie.packet_dest<%tile_0_1, DMA : 3>
   }
   aie.packet_flow(4) { 
-    aie.packet_source<%tile_0_2, DMA : 1> 
+    aie.packet_source<%tile_0_2, DMA : 0> 
     aie.packet_dest<%tile_0_1, DMA : 4>
   }
  }
