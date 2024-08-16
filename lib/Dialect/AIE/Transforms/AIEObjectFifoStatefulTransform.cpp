@@ -804,20 +804,20 @@ struct AIEObjectFifoStatefulTransformPass
             }
           }
 
-          int unrollFactor =
-              computeLCM(objFifoSizes); // also counts original loop body
-          // if loop iterations < unrollFactor, unroll the loop fully
-          if (forLoop.getSingleLowerBound() && forLoop.getSingleUpperBound() &&
-              forLoop.getSingleStep()) {
-            int64_t tripCount =
-                constantTripCount(*(forLoop.getSingleLowerBound()),
-                                  *(forLoop.getSingleUpperBound()),
-                                  *(forLoop.getSingleStep()))
-                    .value_or(0);
-            if (tripCount < unrollFactor)
-              unrollFactor = tripCount;
-          }
           if (found) {
+            int unrollFactor =
+              computeLCM(objFifoSizes); // also counts original loop body
+            // if loop iterations < unrollFactor, unroll the loop fully
+            if (forLoop.getSingleLowerBound() && forLoop.getSingleUpperBound() &&
+                forLoop.getSingleStep()) {
+              int64_t tripCount =
+                  constantTripCount(*(forLoop.getSingleLowerBound()),
+                                    *(forLoop.getSingleUpperBound()),
+                                    *(forLoop.getSingleStep()))
+                      .value_or(0);
+              if (tripCount < unrollFactor)
+                unrollFactor = tripCount;
+            }
             if (failed(mlir::loopUnrollByFactor(forLoop, unrollFactor))) {
               forLoop.emitOpError()
                   << "could not be unrolled with unrollFactor: " << unrollFactor
@@ -1275,75 +1275,25 @@ struct AIEObjectFifoStatefulTransformPass
 
         // check how many elements have been released in between this AcquireOp
         // and the previous one
+        // !!! operations may not be in the same block !!!
         int numRel = 0;
         for (auto relOp : releaseOps[{op, portNum}]) {
-          // TODO: operations may not be in the same block: currently only
-          // support one block level of difference
-
-          if (ObjectFifoCreateOp otherOp = relOp.getObjectFifo();
-              op == otherOp) {
-            // if they are already in the same block, check if releaseOp
-            // happened before
-            if (acquireOp.getOperation()->getBlock() ==
-                relOp.getOperation()->getBlock()) {
-              if (!acquireOp->isBeforeInBlock(relOp)) {
-                releaseOps[{op, portNum}].erase(
-                    releaseOps[{op, portNum}].begin());
-                // to ensure that we do not account
-                // the ReleaseOps again later,
-                // after the subview is created
-                numRel += relOp.relNumber();
-              }
-            } else {
-
-              // else, check if releaseOp happened before the block region
-              // with the acquireOp
-              if (Operation *acqBlockDefOp =
-                      acquireOp.getOperation()->getBlock()->getParentOp();
-                  relOp.getOperation()->getBlock() ==
-                  acqBlockDefOp->getBlock()) {
-                if (!acqBlockDefOp->isBeforeInBlock(relOp)) {
+          Operation *acqBlockDefOp = acquireOp.getOperation();
+          do {
+            Operation *relBlockDefOp = relOp.getOperation();
+            do {
+              if (acqBlockDefOp->getBlock() == relBlockDefOp->getBlock()) {
+                if (relBlockDefOp->isBeforeInBlock(acqBlockDefOp)) {
                   releaseOps[{op, portNum}].erase(
                       releaseOps[{op, portNum}]
                           .begin()); // to ensure that we do not account
-                  // the ReleaseOps again later, after
-                  // the subview is created
+                  // the ReleaseOps again later,
+                  // after the subview is created
                   numRel += relOp.relNumber();
                 }
-
-                // else, check if the block region with releaseOp happened
-                // before...
-              } else {
-
-                // ...the acquireOp
-                if (Operation *relBlockDefOp =
-                        relOp.getOperation()->getBlock()->getParentOp();
-                    acquireOp.getOperation()->getBlock() ==
-                    relBlockDefOp->getBlock()) {
-                  if (!acquireOp->isBeforeInBlock(relBlockDefOp)) {
-                    releaseOps[{op, portNum}].erase(
-                        releaseOps[{op, portNum}]
-                            .begin()); // to ensure that we do not account
-                    // the ReleaseOps again later,
-                    // after the subview is created
-                    numRel += relOp.relNumber();
-                  }
-
-                  // ...the block region with the acquireOp
-                } else if (acqBlockDefOp->getBlock() ==
-                           relBlockDefOp->getBlock()) {
-                  if (!acqBlockDefOp->isBeforeInBlock(relBlockDefOp)) {
-                    releaseOps[{op, portNum}].erase(
-                        releaseOps[{op, portNum}]
-                            .begin()); // to ensure that we do not account
-                    // the ReleaseOps again later,
-                    // after the subview is created
-                    numRel += relOp.relNumber();
-                  }
-                }
               }
-            }
-          }
+            } while ((relBlockDefOp = relBlockDefOp->getParentOp()) && !isa<DeviceOp>(relBlockDefOp));
+          } while ((acqBlockDefOp = acqBlockDefOp->getParentOp()) && !isa<DeviceOp>(acqBlockDefOp));
         }
 
         // track indices of elements to acquire
