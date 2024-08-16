@@ -806,7 +806,7 @@ struct AIEObjectFifoStatefulTransformPass
 
           if (found) {
             int unrollFactor =
-              computeLCM(objFifoSizes); // also counts original loop body
+                computeLCM(objFifoSizes); // also counts original loop body
             // if loop iterations < unrollFactor, unroll the loop fully
             if (forLoop.getSingleLowerBound() && forLoop.getSingleUpperBound() &&
                 forLoop.getSingleStep()) {
