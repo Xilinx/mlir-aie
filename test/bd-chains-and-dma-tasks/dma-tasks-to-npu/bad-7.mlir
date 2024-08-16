@@ -9,6 +9,9 @@
 //
 // RUN: aie-opt --verify-diagnostics --aie-dma-tasks-to-npu %s 
 
+// This test ensures the proper error message is emitted if the user tries to invoke the 
+// `--aie-dma-tasks-to-npu` pass without first lowering BD IDs for all `aie.dma_bd` ops.
+
 module {
   aie.device(npu1_4col) {
     %tile_0_0 = aie.tile(0, 0)
