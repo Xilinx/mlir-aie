@@ -79,6 +79,7 @@ class MyObjectFifo:
         self.memref_type = memref_type
         self._end1 = end1
         self._end2 = end2
+        self.name = str(MyObjectFifo.get_index())
         self.op = None
 
     @classmethod
@@ -102,7 +103,7 @@ class MyObjectFifo:
         assert dtype != None
         memRef_ty = MemRefType.get(shape=self.memref_type[0], element_type=dtype)
         self.op = object_fifo(
-            str(self.get_index()),
+            self.name,
             self._end1.get_tile(),
             self._end2.get_tile(),
             self.size,
@@ -239,34 +240,43 @@ class CoreProgram:
                 yield_([])
 
 
-class HostProgram:
-    def __init__(self, host_fn):
-        self.inputs = []
-        self.outputs = []
-        self.tile = None
+class FifoInOutHostProgram:
+    def __init__(self, fifo_in, bytes_in, fifo_out, bytes_out):
+        assert bytes_in % np.prod(fifo_in.memref_type[0]) == 0
+        assert bytes_out % np.prod(fifo_out.memref_type[0]) == 0
+        self.fifo_in = fifo_in
+        self.fifo_out = fifo_out
+        self.bytes_in = bytes_in
+        self.bytes_out = bytes_out
+        fifo_in.set_endpoint(self, False)
+        fifo_out.set_endpoint(self, True)
 
-        # TODO: how to validate this
-        self.host_fn = host_fn
+        self.tile = MyTile(0, 0)  # Use a default
 
-        if self.host_fn is None:
-            self.tile = MyTile(0, 0)  # Use a default
-
-    def add_input(self, input_type, of: MyObjectFifo):
-        assert isinstance(of, MyObjectFifo), "Wrong Type: Expected ObjectFifo"
-        of.set_endpoint(self, False)
-        self.inputs.append((input_type, of))
-
-    def add_output(self, output_type, of: MyObjectFifo):
-        assert isinstance(of, MyObjectFifo), "Wrong Type: Expected ObjectFifo"
-        of.set_endpoint(self, True)
-        self.outputs.append((output_type, of))
-
+    # TODO: remove this, add to resolve
     def get_tile(self, loc=None, ip=None, context=None):
         assert self.tile != None
         return self.tile.op
 
     def resolve(self, loc=None, ip=None, context=None):
-        pass
+        tensor_in_ty = T.memref(self.bytes_in, T.ui8())
+        tensor_out_ty = T.memref(self.bytes_out, T.ui8())
+
+        @runtime_sequence(tensor_in_ty, tensor_out_ty)
+        def sequence(inTensor, outTensor):
+            npu_dma_memcpy_nd(
+                metadata=self.fifo_in.name,
+                bd_id=0,
+                mem=inTensor,
+                sizes=[1, 1, 1, self.bytes_in],
+            )
+            npu_dma_memcpy_nd(
+                metadata=self.fifo_out.name,
+                bd_id=1,
+                mem=outTensor,
+                sizes=[1, 1, 1, self.bytes_out],
+            )
+            npu_sync(column=0, row=0, direction=0, channel=0)
 
 
 class AIEProgram:
@@ -275,7 +285,7 @@ class AIEProgram:
         assert core_programs != None and len(core_programs) >= 1
         for c in core_programs:
             assert isinstance(c, CoreProgram)
-        assert isinstance(host_program, HostProgram)
+        # assert isinstance(host_program, HostProgram) # TODO: check via hierarchy
         self.device = device
         self.core_programs = core_programs
         self.host_program = host_program
@@ -317,10 +327,11 @@ class AIEProgram:
                     c.resolve()
                     self._print_verify(ctx)
 
-                # TODO: Host program
-
-                # TODO: This should happen at end of every resolve() type operation not just in this method
-                self._print_verify(ctx)
+                # Host program
+                self.host_program.resolve()
+                self._print_verify(
+                    ctx
+                )  # TODO: This should happen at end of every resolve() type operation not just in this method
 
             print(ctx.module)
 
@@ -364,24 +375,10 @@ if __name__ == "__main__":
         of_in.release_consume(1)
         of_out.release_produce(1)
 
-    core_program = CoreProgram(
-        0,
-        2,
-        core_fn,
-        ofs_end1=[of0],
-        ofs_end2=[of1],
-        external_functions=[passthrough_fn],
-    )
-    host_program = HostProgram(None)
-    host_program.add_input(inout_type, of0)
-    host_program.add_output(inout_type, of1)
+    core_program = CoreProgram(0, 2, core_fn, [of0], [of1], [passthrough_fn])
+    host_program = FifoInOutHostProgram(of0, vector_size, of1, vector_size)
 
     my_program = AIEProgram(
         AIEDevice.npu1_1col, core_programs=[core_program], host_program=host_program
     )
     my_program.resolve()
-
-    # print(my_program.module())
-    # input = np.arange(1, vector_size + 1, dtype=np.int8)
-    # output = np.zeros(vector_size, dtype=np.int8)
-    # my_program.run(input, output, expected_output=input)
