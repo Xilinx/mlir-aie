@@ -1117,9 +1117,7 @@ TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
                            int row) {
   TileOp tile = nullptr;
   // Find matching predefined tile at device top level, ...
-  auto tile_ops = device.getOps<AIE::TileOp>();
-  for (auto it = tile_ops.begin(); it != tile_ops.end(); ++it) {
-    TileOp t = *it;
+  for (auto t : device.getOps<AIE::TileOp>()) {
     if (t.getRow() == row && t.getCol() == col) {
       tile = t;
       break;
@@ -1127,12 +1125,11 @@ TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
   }
   // ... or if undefined, create a new tile op
   if (!tile) {
-    auto s = builder.saveInsertionPoint();
+    OpBuilder::InsertionGuard guard(builder);
     mlir::Block &device_start_block = *device.getBodyRegion().begin();
     builder.setInsertionPointToStart(&device_start_block);
     tile = builder.create<TileOp>(builder.getUnknownLoc(),
                                   builder.getIndexType(), col, 0);
-    builder.restoreInsertionPoint(s);
   }
   return tile;
 }
