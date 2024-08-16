@@ -10,22 +10,6 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
-from aie.extras.meta import region_op, op_region_builder
-
-"""
-mycore = region_op(
-    lambda tile, link_with, *, loc=None, ip=None: Core(tile, link_with),
-    terminator=lambda *_: EndOp()
-)
-"""
-
-"""
-mycore = region_op(Core, terminator=lambda *_: EndOp())
-device = region_op(Device)
-mem = region_op(
-    lambda tile, *, loc=None, ip=None: MemOp(T.index(), tile, loc=loc, ip=ip)
-)
-"""
 
 import sys
 from collections import defaultdict
@@ -71,7 +55,29 @@ def type_mapper(np_dtype):
         )
     return xrt_dtype
 
-class ObjectFifo:
+def get_arg_types(objs):
+    '''
+    Utility function to get the type of arguments
+    '''
+    my_types = []
+    for o in objs:
+        if isinstance(o, Value):
+            my_types.append(o.type)
+        elif isinstance(o, OpView):
+            if len(o.results.types) != 1:
+                raise AttributeError(
+                    f"Operation given to a region op as a parameter ({o}) has more "
+                    "than one return type ({o.results.types}), which would lead to a mismatch "
+                    "between number of operands and number of operand types"
+                )
+            my_types += o.results.types
+        else:
+            raise AttributeError(
+                f"Argument {o} is not a Value or an Operation: {type(o).mro()}"
+            )
+    return my_types
+
+class MyObjectFifo:
     of_index = 0
 
     def __init__(self, size=1, memref_type=None, end1=None, end2=None):
@@ -111,10 +117,10 @@ class ObjectFifo:
             self._end2 = endpoint
 
     def acquire_produce(self, num_elem: int, loc=None, ip=None, context=None):
-        self._acquire(ObjectFifoPort.Produce, num_elem)
+        return self._acquire(ObjectFifoPort.Produce, num_elem)
 
     def acquire_consume(self, num_elem: int, loc=None, ip=None, context=None):
-        self._acquire(ObjectFifoPort.Consume, num_elem)
+        return self._acquire(ObjectFifoPort.Consume, num_elem)
 
     def release_produce(self, num_elem: int, loc=None, ip=None, context=None):
         self._release(ObjectFifoPort.Produce, num_elem)
@@ -125,14 +131,14 @@ class ObjectFifo:
     def _acquire(self, port: ObjectFifoPort, num_elem: int, loc=None, ip=None, context=None):
         assert num_elem > 0, "Must consume at least one element"
         assert num_elem <= self.size, "Cannot consume elements to exceed ObjectFifo size"
-        self.op.acquire(port, num_elem)
+        return self.op.acquire(port, num_elem)
 
     def _release(self, port: ObjectFifoPort, num_elem: int, loc=None, ip=None, context=None):
         assert num_elem > 0, "Must consume at least one element"
         assert num_elem <= self.size, "Cannot consume elements to exceed ObjectFifo size"
         self.op.release(port, num_elem)
 
-class Tile:
+class MyTile:
     def __init__(self, column, row):
         assert isinstance(column, int)
         assert isinstance(row, int)
@@ -146,36 +152,33 @@ class Tile:
 
 class CoreProgram:
     def __init__(self, column: int, row: int, core_fn, ofs_end1=[], ofs_end2=[], link_with=None):
-        self.tile = Tile(column, row)
+        self.tile = MyTile(column, row)
         self.core_fn = core_fn
         self.link_with = link_with
 
         self.ofs_end1 = ofs_end1
         for of in self.ofs_end1:
-            assert isinstance(of, ObjectFifo), "ofs_end1 must be List[ObjectFifo]"
+            assert isinstance(of, MyObjectFifo), "ofs_end1 must be List[ObjectFifo]"
             of.set_endpoint(self, True)
 
         self.ofs_end2 = ofs_end2
         for of in self.ofs_end2:
-            assert isinstance(of, ObjectFifo), "ofs_end1 must be List[ObjectFifo]"
+            assert isinstance(of, MyObjectFifo), "ofs_end1 must be List[ObjectFifo]"
             of.set_endpoint(self, False)
 
     def get_tile(self, loc=None, ip=None, context=None):
         assert self.tile != None
         return self.tile.op
 
-    def resolve(self, loc=None, ip=None, context=None):
+    def resolve(self, external_func, loc=None, ip=None, context=None):
         my_tile = self.tile.op
         my_link = self.link_with
-        of_out = self.ofs_end1[0].op
-        of_in = self.ofs_end2[0].op
 
         @core(my_tile, my_link)
         def core_body():
             for _ in for_(sys.maxsize):
-                self.core_fn(of_out, of_in)
+                self.core_fn(self.ofs_end1, self.ofs_end2, external_func)
                 yield_([])
-
 
 class HostProgram:
     def __init__(self, host_fn):
@@ -187,15 +190,15 @@ class HostProgram:
         self.host_fn = host_fn
 
         if self.host_fn is None:
-            self.tile = Tile(0, 0) # Use a default
+            self.tile = MyTile(0, 0) # Use a default
 
-    def add_input(self, input_type, of: ObjectFifo):
-        assert isinstance(of, ObjectFifo), "Wrong Type: Expected ObjectFifo"
+    def add_input(self, input_type, of: MyObjectFifo):
+        assert isinstance(of, MyObjectFifo), "Wrong Type: Expected ObjectFifo"
         of.set_endpoint(self, False)
         self.inputs.append((input_type, of))
     
-    def add_output(self, output_type, of: ObjectFifo):
-        assert isinstance(of, ObjectFifo), "Wrong Type: Expected ObjectFifo"
+    def add_output(self, output_type, of: MyObjectFifo):
+        assert isinstance(of, MyObjectFifo), "Wrong Type: Expected ObjectFifo"
         of.set_endpoint(self, True)
         self.outputs.append((output_type, of))
 
@@ -236,10 +239,14 @@ class AIEProgram:
                 for of in ofs:
                     of.create_fifo()
 
-                # Generate core programs
+                memRef_ty = T.memref(128, T.ui8())
+                passThroughLine = external_func(
+                    "passThroughLine", inputs=[memRef_ty, memRef_ty, T.i32()]
+                )
 
+                # Generate core programs
                 for c in self.core_programs:
-                    c.resolve()
+                    c.resolve(passThroughLine)
 
                 # TODO: Host program
             print(ctx.module)
@@ -258,15 +265,18 @@ if __name__ == "__main__":
     inout_type = ((vector_size,), np.int8)
     fifo_memref_type = ((line_size,), np.int8)
 
-    of0 = ObjectFifo(2, memref_type=fifo_memref_type)
-    of1 = ObjectFifo(2, memref_type=fifo_memref_type)
+    of0 = MyObjectFifo(2, memref_type=fifo_memref_type)
+    of1 = MyObjectFifo(2, memref_type=fifo_memref_type)
 
-    def core_fn(of_out, of_in):
-        elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
-        elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
-        #call("passThroughLine", [elemIn, elemOut, line_size])
-        of_in.release(ObjectFifoPort.Consume, 1)
-        of_out.release(ObjectFifoPort.Produce, 1)
+    def core_fn(ofs_end1, ofs_end2, my_external_func):
+        of_out = ofs_end1[0]
+        of_in = ofs_end2[0]
+
+        elemOut = of_out.acquire_produce(1)
+        elemIn = of_in.acquire_consume(1)
+        #call(my_external_func, [elemIn, elemOut, line_size])
+        of_in.release_consume(1)
+        of_out.release_produce(1)
 
     core_program = CoreProgram(0, 2, core_fn, ofs_end1=[of0], ofs_end2=[of1], link_with="passThrough.cc.o")
 
