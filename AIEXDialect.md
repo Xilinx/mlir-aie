@@ -276,6 +276,36 @@ Interfaces: `OpAsmOpInterface`, `TileElement`
 | `result` | index
 
 
+### `aiex.dma_configure_task_for` (::xilinx::AIEX::DMAConfigureTaskForOp)
+
+_As dma_configure_task, but specify tile, direction and channel by reference to a Shim DMA allocation op_
+
+
+Syntax:
+
+```
+operation ::= `aiex.dma_configure_task_for` $alloc regions attr-dict
+```
+
+
+Traits: `HasParent<RuntimeSequenceOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>alloc</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>issue_token</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
+<tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | index
+
+
 ### `aiex.dma_free_task` (::xilinx::AIEX::DMAFreeTaskOp)
 
 _Free all Buffer Descriptor IDs Associated with the Given Task_
@@ -338,6 +368,43 @@ Interfaces: `OpAsmOpInterface`, `TileElement`
 | :-----: | ----------- |
 | `args` | variadic of any type
 | `tile` | index
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | index
+
+
+### `aiex.dma_start_bd_chain_for` (::xilinx::AIEX::DMAStartBdChainForOp)
+
+_As dma_start_bd_chain, but specify tile, direction and channel by reference to a Shim DMA allocation op_
+
+
+Syntax:
+
+```
+operation ::= `aiex.dma_start_bd_chain_for` $symbol `(` $args `)` `:` `(` type($args) `)` ` ` `for` ` ` $alloc attr-dict
+```
+
+
+Traits: `HasParent<RuntimeSequenceOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>symbol</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>alloc</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>issue_token</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
+<tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `args` | variadic of any type
 
 #### Results:
 
