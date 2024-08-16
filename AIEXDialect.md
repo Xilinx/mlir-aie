@@ -249,6 +249,8 @@ Once configured, a task can be submitted for execution using `aiex.dma_start_con
 
 Traits: `HasParent<RuntimeSequenceOp>`
 
+Interfaces: `OpAsmOpInterface`, `TileElement`
+
 #### Attributes:
 
 <table>
@@ -314,6 +316,8 @@ This operation will configure a new DMA task on the given tile, channel and dire
 Completion of the DMA task, i.e. the data transfer, can be awaited using `aiex.await_task` if the attribute `issue_token` is set to `true`.
 
 Traits: `HasParent<RuntimeSequenceOp>`
+
+Interfaces: `OpAsmOpInterface`, `TileElement`
 
 #### Attributes:
 

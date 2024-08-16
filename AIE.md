@@ -73,6 +73,8 @@ Once defined, an abstract BD chain can be used elsewhere using AIEX ops in the r
 In the future, abstract BD chains will also be usable elsewhere, inside the static configuration.
 At its usage sites, the abstract BD chain will be concretized with the given input arguments.
 
+Traits: `SkipAccessibilityCheckTrait`
+
 Interfaces: `Symbol`
 
 #### Attributes:
