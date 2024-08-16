@@ -288,7 +288,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
   SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
   DenseMap<std::pair<PhysPort, int>, int> slaveAMSels;
   // Map from a port to
-  DenseMap<PhysPort, Attribute> keepPktHeaderAttr;
+  DenseMap<PhysPort, BoolAttr> keepPktHeaderAttr;
 
   for (auto tileOp : device.getOps<TileOp>()) {
     int col = tileOp.colIndex();
@@ -316,9 +316,10 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
         destPort = pktDest.port();
         destCoords = {destTile.colIndex(), destTile.rowIndex()};
         // Assign "keep_pkt_header flag"
-        if (pktFlowOp->hasAttr("keep_pkt_header"))
-          keepPktHeaderAttr[{destTile, destPort}] =
-              StringAttr::get(Op.getContext(), "true");
+        auto keep = pktFlowOp.getKeepPktHeader();
+        keepPktHeaderAttr[{destTile, destPort}] =
+            keep ? BoolAttr::get(Op.getContext(), *keep) : nullptr;
+
         TileID srcSB = {srcCoords.col, srcCoords.row};
         if (PathEndPoint srcPoint = {srcSB, srcPort};
             !analyzer.processedFlows[srcPoint]) {
@@ -706,11 +707,9 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
         amsels.push_back(amselOps[msel]);
       }
 
-      auto msOp = builder.create<MasterSetOp>(builder.getUnknownLoc(),
-                                              builder.getIndexType(), bundle,
-                                              channel, amsels);
-      if (auto pktFlowAttrs = keepPktHeaderAttr[{tileOp, tileMaster}])
-        msOp->setAttr("keep_pkt_header", pktFlowAttrs);
+      builder.create<MasterSetOp>(
+          builder.getUnknownLoc(), builder.getIndexType(), bundle, channel,
+          amsels, keepPktHeaderAttr[{tileOp, tileMaster}]);
     }
 
     // Generate the packet rules
