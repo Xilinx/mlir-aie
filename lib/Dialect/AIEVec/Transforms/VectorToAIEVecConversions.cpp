@@ -492,6 +492,22 @@ static bool matchExpOpForLUT(math::ExpOp::Adaptor adaptor) {
   return true;
 }
 
+static bool matchTanhOpForLUT(math::TanhOp tanhOp) {
+  auto srcType = dyn_cast<VectorType>(tanhOp.getOperand().getType());
+  if (!srcType)
+    return false;
+
+  Type scalarType = srcType.getElementType();
+  if (!isa<FloatType>(scalarType))
+    return false;
+
+  unsigned laneSize = getVectorLaneSize(srcType);
+  unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+  if (elWidth != 16 || laneSize != 16)
+    return false;
+
+  return true;
+}
 //===----------------------------------------------------------------------===//
 // Rewrite patterns
 //===----------------------------------------------------------------------===//
@@ -2070,17 +2086,7 @@ struct ComputeTanhOpByLUTLLVMPattern : OpConversionPattern<math::TanhOp> {
   LogicalResult
   matchAndRewrite(math::TanhOp tanhOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto srcType = dyn_cast<VectorType>(tanhOp.getOperand().getType());
-    if (!srcType)
-      return failure();
-
-    Type scalarType = srcType.getElementType();
-    if (!isa<FloatType>(scalarType))
-      return failure();
-
-    unsigned laneSize = getVectorLaneSize(srcType);
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-    if (elWidth != 16 || laneSize != 16)
+    if (!matchTanhOpForLUT(tanhOp))
       return failure();
 
     StringRef funcName = "getTanhBf16";
@@ -2105,17 +2111,7 @@ struct ComputeTanhOpByLUTPattern : OpConversionPattern<math::TanhOp> {
   LogicalResult
   matchAndRewrite(math::TanhOp tanhOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto srcType = dyn_cast<VectorType>(tanhOp.getOperand().getType());
-    if (!srcType)
-      return failure();
-
-    Type scalarType = srcType.getElementType();
-    if (!isa<FloatType>(scalarType))
-      return failure();
-
-    unsigned laneSize = getVectorLaneSize(srcType);
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-    if (elWidth != 16 || laneSize != 16)
+    if (!matchTanhOpForLUT(tanhOp))
       return failure();
 
     StringRef includeName = "lut_based_ops.h";
