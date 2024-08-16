@@ -180,4 +180,14 @@ def AIEDMATasksToNPU : Pass<"aie-dma-tasks-to-npu", "AIE::DeviceOp"> {
   ];
 }
 
+def AIESubstituteShimDMAAllocations : Pass<"aie-substitute-shim-dma-allocations", "AIE::DeviceOp"> {
+  let summary = "Replace symbolic references to `aie.shim_dma_allocation` ops with their `(tile, direction, channel)` triple";
+
+  let constructor = "xilinx::AIEX::createAIESubstituteShimDMAAllocationsPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 #endif

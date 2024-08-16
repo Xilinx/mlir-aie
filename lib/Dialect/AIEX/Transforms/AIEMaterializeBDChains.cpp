@@ -27,6 +27,39 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
 
+struct DMAStartBdChainForOpPattern : RewritePattern {
+
+  DMAStartBdChainForOpPattern(MLIRContext *ctx)
+      : RewritePattern(DMAStartBdChainForOp::getOperationName(),
+                       PatternBenefit(1), ctx) {}
+
+  LogicalResult matchAndRewrite(Operation *op_any,
+                                PatternRewriter &rewriter) const override {
+    DMAStartBdChainForOp op = llvm::dyn_cast<DMAStartBdChainForOp>(op_any);
+    if (!op) {
+      return failure();
+    }
+    AIE::DeviceOp device = op->getParentOfType<AIE::DeviceOp>();
+
+    AIE::ShimDMAAllocationOp alloc_op =
+        AIE::ShimDMAAllocationOp::getForSymbol(device, op.getAlloc());
+    if (!alloc_op) {
+      return op.emitOpError("no shim DMA allocation found for symbol");
+    }
+
+    const int col = alloc_op.getCol();
+    AIE::TileOp tile = AIE::TileOp::getOrCreate(rewriter, device, col, 0);
+    DMAStartBdChainOp new_op = rewriter.create<DMAStartBdChainOp>(
+        op.getLoc(), rewriter.getIndexType(), op.getSymbol(), op.getArgs(),
+        tile.getResult(), alloc_op.getChannelDir(),
+        (int32_t)alloc_op.getChannelIndex(), op.getIssueToken(),
+        op.getRepeatCount());
+    rewriter.replaceAllUsesWith(op.getResult(), new_op.getResult());
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
 struct DMAInlineBDChainPattern : RewritePattern {
 
   DMAInlineBDChainPattern(MLIRContext *ctx)
@@ -85,17 +118,24 @@ struct AIEMaterializeBDChainsPass
   void runOnOperation() override {
     MLIRContext *ctx = &getContext();
     AIE::DeviceOp device = getOperation();
-
-    ConversionTarget target(getContext());
-    target.addLegalDialect<AIEXDialect>();
-    target.addIllegalOp<DMAStartBdChainOp>();
-    RewritePatternSet patterns(ctx);
-    patterns.insert<DMAInlineBDChainPattern>(ctx);
     GreedyRewriteConfig rewriter_config = GreedyRewriteConfig();
     rewriter_config.enableRegionSimplification =
         GreedySimplifyRegionLevel::Disabled;
-    DMAConfigureTaskOp::getCanonicalizationPatterns(patterns, ctx);
-    if (failed(applyPatternsAndFoldGreedily(device, std::move(patterns),
+
+    RewritePatternSet patterns_0(ctx);
+    patterns_0.insert<DMAStartBdChainForOpPattern>(ctx);
+    DMAConfigureTaskOp::getCanonicalizationPatterns(patterns_0, ctx);
+    if (failed(applyPatternsAndFoldGreedily(device, std::move(patterns_0),
+                                            rewriter_config))) {
+      signalPassFailure();
+    }
+
+    RewritePatternSet patterns_1(ctx);
+    patterns_1.insert<DMAInlineBDChainPattern>(ctx);
+    rewriter_config.enableRegionSimplification =
+        GreedySimplifyRegionLevel::Disabled;
+    DMAConfigureTaskOp::getCanonicalizationPatterns(patterns_1, ctx);
+    if (failed(applyPatternsAndFoldGreedily(device, std::move(patterns_1),
                                             rewriter_config))) {
       signalPassFailure();
     }
