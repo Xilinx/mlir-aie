@@ -10,12 +10,20 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
-from aie.extras.meta import region_op
+from aie.extras.meta import region_op, op_region_builder
 
 """
-core = region_op(
+mycore = region_op(
     lambda tile, link_with, *, loc=None, ip=None: Core(tile, link_with),
     terminator=lambda *_: EndOp()
+)
+"""
+
+"""
+mycore = region_op(Core, terminator=lambda *_: EndOp())
+device = region_op(Device)
+mem = region_op(
+    lambda tile, *, loc=None, ip=None: MemOp(T.index(), tile, loc=loc, ip=ip)
 )
 """
 
@@ -165,12 +173,9 @@ class CoreProgram:
         @core(my_tile, my_link)
         def core_body():
             for _ in for_(sys.maxsize):
-                elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
-                elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
-
-                of_in.release(ObjectFifoPort.Consume, 1)
-                of_out.release(ObjectFifoPort.Produce, 1)
+                self.core_fn(of_out, of_in)
                 yield_([])
+
 
 class HostProgram:
     def __init__(self, host_fn):
@@ -256,12 +261,12 @@ if __name__ == "__main__":
     of0 = ObjectFifo(2, memref_type=fifo_memref_type)
     of1 = ObjectFifo(2, memref_type=fifo_memref_type)
 
-    def core_fn(ofs_end1=None, ofs_end2=None):
-        elemOut = ofs_end1[0].acquire_produce(1)
-        elemIn = ofs_end2[0].acquire_consume(1)
+    def core_fn(of_out, of_in):
+        elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
+        elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
         #call("passThroughLine", [elemIn, elemOut, line_size])
-        ofs_end1[0].release_consume(1)
-        ofs_end2[0].release_produce(1)
+        of_in.release(ObjectFifoPort.Consume, 1)
+        of_out.release(ObjectFifoPort.Produce, 1)
 
     core_program = CoreProgram(0, 2, core_fn, ofs_end1=[of0], ofs_end2=[of1], link_with="passThrough.cc.o")
 
