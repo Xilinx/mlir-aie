@@ -109,6 +109,8 @@ class MemRef(Value, ShapedValue):
         elif idx is None:
             return expand_shape(self, (0,), loc=loc)
 
+        # TODO: may need below
+        # idx = list((idx,) if isinstance(idx, (int, slice)) else idx)
         idx = list((idx,) if isinstance(idx, (int, slice)) else idx)
         for i, d in enumerate(idx):
             if isinstance(d, int):

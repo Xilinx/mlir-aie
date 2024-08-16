@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from dataclasses import dataclass
 import inspect
-from typing import List, Tuple, Dict, Any, Optional, Union
+from typing import List, Tuple, Dict, Any
 import contextlib
 
 import numpy as np
@@ -382,6 +382,8 @@ class object_fifo(ObjectFifoCreateOp):
         via_DMA=None,
         plio=None,
         disable_synchronization=None,
+        ip=None,
+        loc=None,
     ):
         self.datatype = try_convert_np_type_to_mlir_type(datatype)
         if not isinstance(consumerTiles, List):
@@ -402,6 +404,8 @@ class object_fifo(ObjectFifoCreateOp):
             via_DMA=via_DMA,
             plio=plio,
             disable_synchronization=disable_synchronization,
+            ip=ip,
+            loc=loc,
         )
 
     def acquire(self, port, num_elem):
@@ -440,7 +444,9 @@ class object_fifo(ObjectFifoCreateOp):
 class object_fifo_link(ObjectFifoLinkOp):
     """Specialize ObjectFifoLinkOp class constructor to take python variables"""
 
-    def __init__(self, fifoIns, fifoOuts, srcOffsets=[], dstOffsets=[]):
+    def __init__(
+        self, fifoIns, fifoOuts, srcOffsets=[], dstOffsets=[], ip=None, loc=None
+    ):
         if not isinstance(fifoIns, List):
             fifoIns = [fifoIns]
         if not isinstance(fifoOuts, List):
@@ -456,6 +462,8 @@ class object_fifo_link(ObjectFifoLinkOp):
             fifoOuts=fifoOutRefs,
             src_offsets=srcOffsets,
             dst_offsets=dstOffsets,
+            ip=ip,
+            loc=loc,
         )
 
 
@@ -607,8 +615,8 @@ def dma_start(
     channel_dir,
     channel_index,
     *,
-    dest: Optional[Union[Successor, Block, ContextManagedBlock]] = None,
-    chain: Optional[Union[Successor, Block, ContextManagedBlock]] = None,
+    dest: Successor | Block | ContextManagedBlock | None = None,
+    chain: Successor | Block | ContextManagedBlock | None = None,
     loc=None,
     ip=None,
 ):
@@ -858,6 +866,8 @@ class TileOp(TileOp):
         )
 
     def __eq__(self, other):
+        if other == None:
+            return False
         return tuple(map(int, (self.col, self.row))) == tuple(
             map(int, (other.col, other.row))
         )

@@ -44,6 +44,16 @@ declare_mlir_python_sources(AIEPythonSources.Extras
     extras/runtime/*.py
 )
 
+declare_mlir_python_sources(AIEPythonSources.Api
+  ADD_TO_PARENT AIEPythonSources
+  SOURCES_GLOB
+    api/*.py
+    api/dataflow/*.py
+    api/kernels/*.py
+    api/phys/*.py
+)
+
+
 declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT AIEPythonSources.Dialects
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}"
