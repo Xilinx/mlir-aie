@@ -980,6 +980,7 @@ Interfaces: `InferTypeOpInterface`
 * Trace (`Trace`)
 * Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
 <tr><td><code>dest_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>keep_pkt_header</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
 
 #### Operands:
