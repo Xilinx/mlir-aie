@@ -1113,6 +1113,27 @@ bool isLegalTileConnection(TileOp tile, const AIETargetModel &targetModel,
       tile.colIndex(), tile.rowIndex(), srcBundle, srcChan, dstBundle, dstChan);
 }
 
+TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
+                           int row) {
+  TileOp tile = nullptr;
+  // Find matching predefined tile at device top level, ...
+  for (auto t : device.getOps<AIE::TileOp>()) {
+    if (t.getRow() == row && t.getCol() == col) {
+      tile = t;
+      break;
+    }
+  }
+  // ... or if undefined, create a new tile op
+  if (!tile) {
+    OpBuilder::InsertionGuard guard(builder);
+    mlir::Block &device_start_block = *device.getBodyRegion().begin();
+    builder.setInsertionPointToStart(&device_start_block);
+    tile = builder.create<TileOp>(builder.getUnknownLoc(),
+                                  builder.getIndexType(), col, 0);
+  }
+  return tile;
+}
+
 //===----------------------------------------------------------------------===//
 // ShimSwitchboxOp
 //===----------------------------------------------------------------------===//
@@ -2247,6 +2268,22 @@ LogicalResult BDChainOp::verify() {
         "Number of region arguments and argument types mismatch.");
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ShimDMAAllocationOp
+//===----------------------------------------------------------------------===//
+
+ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,
+                                                      llvm::StringRef symbol) {
+  auto alloc_ops = device.getOps<ShimDMAAllocationOp>();
+  for (auto it = alloc_ops.begin(); it != alloc_ops.end(); ++it) {
+    AIE::ShimDMAAllocationOp a = *it;
+    if (a.getSymName() == symbol) {
+      return a;
+    }
+  }
+  return nullptr;
 }
 
 // Include implementations for custom attributes

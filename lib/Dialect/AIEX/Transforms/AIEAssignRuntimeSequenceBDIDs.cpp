@@ -95,6 +95,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             << "Lower this operation first using the "
                "--aie-materialize-bd-chains pass.";
       }
+      if (llvm::isa<DMAConfigureTaskForOp>(task_op)) {
+        err.attachNote(task_op->getLoc())
+            << "Lower this operation first using the "
+               "--aie-substitute-shim-dma-allocations pass.";
+      }
       return err;
     }
 

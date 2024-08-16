@@ -17,6 +17,7 @@
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 using namespace mlir;
@@ -30,6 +31,11 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
   matchAndRewrite(DMAStartTaskOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     DMAConfigureTaskOp task_op = op.getTaskOp();
+    if (!task_op) {
+      // Cannot rewrite this; probably points to a DMAStartTaskForOp,
+      // which we will lower once it has been rewritten into a DMAStartTaskOp.
+      return failure();
+    }
     AIE::TileOp tile = task_op.getTileOp();
     std::optional<uint32_t> first_bd_id = task_op.getFirstBdId();
     if (!first_bd_id) {
@@ -54,6 +60,9 @@ struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
   matchAndRewrite(DMAAwaitTaskOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     DMAConfigureTaskOp task_op = op.getTaskOp();
+    if (!task_op) {
+      return failure();
+    }
     if (!task_op.getIssueToken()) {
       auto err = op.emitOpError(
           "Cannot wait on a BD that is not configured to issue a token.");

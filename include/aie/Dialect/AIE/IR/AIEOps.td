@@ -118,6 +118,8 @@ def AIE_TileOp: AIE_Op<"tile", [
           return coreOp;
       return nullptr;
     }
+
+    static AIE::TileOp getOrCreate(mlir::OpBuilder builder, AIE::DeviceOp device, int col, int row);
   }];
 
   let assemblyFormat = [{
@@ -1569,6 +1571,10 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
 
   let assemblyFormat = [{
     $sym_name `(` $channel_dir `,` $channel_index `,` $col `)` attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    static ::xilinx::AIE::ShimDMAAllocationOp getForSymbol(::xilinx::AIE::DeviceOp device, ::llvm::StringRef symbol);
   }];
 }
 
