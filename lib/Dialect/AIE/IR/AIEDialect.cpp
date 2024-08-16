@@ -172,21 +172,23 @@ struct UsesAreAccessible {
       if (user->getParentWithTrait<SkipAccessibilityCheckTrait>()) {
         continue;
       }
-      TileElement element;
-      if ((element = llvm::dyn_cast<TileElement>(user)) ||
-          (element = getParentTileElement(user))) {
-        auto tileID = element.getTileID();
-        if (!targetModel.isLegalMemAffinity(tileID.col, tileID.row, thisID.col,
-                                            thisID.row))
-          return (op->emitOpError("in Column ")
-                  << thisID.col << " and Row " << thisID.row
-                  << " is accessed from an unreachable tile in Column "
-                  << tileID.col << " and Row " << tileID.row)
-                     .attachNote(user->getLoc())
-                 << "user";
-      } else {
+      TileElement element = llvm::dyn_cast<TileElement>(user);
+      if (!element) {
+        element = getParentTileElement(user);
+      }
+      if (!element) {
         // This should probably be caught elsewhere as well.
         return op->emitOpError("is accessed outside of a tile")
+                   .attachNote(user->getLoc())
+               << "user";
+      }
+      auto tileID = element.getTileID();
+      if (!targetModel.isLegalMemAffinity(tileID.col, tileID.row, thisID.col,
+                                          thisID.row)) {
+        return (op->emitOpError("in Column ")
+                << thisID.col << " and Row " << thisID.row
+                << " is accessed from an unreachable tile in Column "
+                << tileID.col << " and Row " << tileID.row)
                    .attachNote(user->getLoc())
                << "user";
       }
