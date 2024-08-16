@@ -10,8 +10,16 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
+from aie.extras.meta import region_op
 
-from typing import Sequence
+"""
+core = region_op(
+    lambda tile, link_with, *, loc=None, ip=None: Core(tile, link_with),
+    terminator=lambda *_: EndOp()
+)
+"""
+
+import sys
 from collections import defaultdict
 #from bfloat16 import bfloat16
 
@@ -71,12 +79,12 @@ class ObjectFifo:
         cls.of_index += 1
         return idx
 
-    def try_create_fifo(self):
+    def try_create_fifo(self, loc=None, ip=None, context=None):
         if self.op != None:
             pass
         self.create_fifo()
 
-    def create_fifo(self):
+    def create_fifo(self, loc=None, ip=None, context=None):
         assert self._end1 != None, "ObjectFifo missing endpoint 1"
         assert self._end2 != None, "ObjectFifo missing endpoint 2"
         assert self.memref_type != None, "ObjectFifo missing memref_type"
@@ -94,28 +102,26 @@ class ObjectFifo:
             assert self._end2 == None, "ObjectFifo already assigned endpoint 2"
             self._end2 = endpoint
 
-    def acquire_produce(self, num_elem: int):
+    def acquire_produce(self, num_elem: int, loc=None, ip=None, context=None):
         self._acquire(ObjectFifoPort.Produce, num_elem)
 
-    def acquire_consume(self, num_elem: int):
+    def acquire_consume(self, num_elem: int, loc=None, ip=None, context=None):
         self._acquire(ObjectFifoPort.Consume, num_elem)
 
-    def release_produce(self, num_elem: int):
+    def release_produce(self, num_elem: int, loc=None, ip=None, context=None):
         self._release(ObjectFifoPort.Produce, num_elem)
 
-    def release_consume(self, num_elem: int):
+    def release_consume(self, num_elem: int, loc=None, ip=None, context=None):
         self._release(ObjectFifoPort.Consume, num_elem)
 
-    def _acquire(self, port: ObjectFifoPort, num_elem: int):
+    def _acquire(self, port: ObjectFifoPort, num_elem: int, loc=None, ip=None, context=None):
         assert num_elem > 0, "Must consume at least one element"
         assert num_elem <= self.size, "Cannot consume elements to exceed ObjectFifo size"
-        # TODO: do some simple verification logic here??
         self.op.acquire(port, num_elem)
 
-    def _release(self, port: ObjectFifoPort, num_elem: int):
+    def _release(self, port: ObjectFifoPort, num_elem: int, loc=None, ip=None, context=None):
         assert num_elem > 0, "Must consume at least one element"
         assert num_elem <= self.size, "Cannot consume elements to exceed ObjectFifo size"
-        # TODO: do some simple verification logic here??
         self.op.release(port, num_elem)
 
 class Tile:
@@ -126,14 +132,15 @@ class Tile:
         self.row = row
         self.op = None
 
-    def create_tile(self):
+    def create_tile(self, loc=None, ip=None, context=None):
         assert self.op == None
         self.op = tile(self.column, self.row)
 
 class CoreProgram:
-    def __init__(self, column: int, row: int, core_fn, ofs_end1=[], ofs_end2=[]):
+    def __init__(self, column: int, row: int, core_fn, ofs_end1=[], ofs_end2=[], link_with=None):
         self.tile = Tile(column, row)
         self.core_fn = core_fn
+        self.link_with = link_with
 
         self.ofs_end1 = ofs_end1
         for of in self.ofs_end1:
@@ -145,13 +152,16 @@ class CoreProgram:
             assert isinstance(of, ObjectFifo), "ofs_end1 must be List[ObjectFifo]"
             of.set_endpoint(self, False)
 
-    def get_tile(self):
+    def get_tile(self, loc=None, ip=None, context=None):
         assert self.tile != None
         return self.tile.op
 
-    def resolve(self):
-        # TODO: implement this
-        pass
+    def resolve(self, loc=None, ip=None, context=None):
+        @core(self.tile.op, self.link_with)
+        def core_body():
+            for _ in for_(sys.maxsize):
+                self.core_fn(self.ofs_end1, self.ofs_end2)
+                yield_([])
 
 class HostProgram:
     def __init__(self, host_fn):
@@ -175,12 +185,11 @@ class HostProgram:
         of.set_endpoint(self, True)
         self.outputs.append((output_type, of))
 
-    def get_tile(self):
+    def get_tile(self, loc=None, ip=None, context=None):
         assert self.tile != None
         return self.tile.op
 
-    def resolve(self):
-        # TODO: do something here
+    def resolve(self, loc=None, ip=None, context=None):
         pass
 
 class AIEProgram:
@@ -201,7 +210,6 @@ class AIEProgram:
                 # generate tiles
                 for c in self.core_programs:
                     c.tile.create_tile()
-
                 host_program.tile.create_tile()
                 
                 # generate fifos
@@ -214,8 +222,36 @@ class AIEProgram:
                 for of in ofs:
                     of.create_fifo()
 
-                # TODO: do more things?
-                pass
+                # Generate core programs
+                """
+                for c in self.core_programs:
+                    c.resolve()
+
+                of_in = self.core_programs[0].ofs_end1[0].op
+                of_out = self.core_programs[0].ofs_end2[0].op
+                ComputeTile2 = self.core_programs[0].tile.op
+
+                @core(ComputeTile2, "passThrough.cc.o")
+                def core_body():
+                    for _ in for_(sys.maxsize):
+                        elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
+                        elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
+                        #call(passThroughLine, [elemIn, elemOut, lineWidthInBytes])
+                        of_in.release(ObjectFifoPort.Consume, 1)
+                        of_out.release(ObjectFifoPort.Produce, 1)
+                        yield_([])
+                """
+
+                @core(self.core_programs[0].tile.op, self.core_programs[0].link_with)
+                def core_body():
+                    for _ in for_(sys.maxsize):
+                        elemOut = self.core_programs[0].ofs_end1[0].op.acquire(ObjectFifoPort.Produce, 1)
+                        elemIn = self.core_programs[0].ofs_end2[0].op.acquire(ObjectFifoPort.Consume, 1)
+
+                        self.core_programs[0].ofs_end2[0].op.release(ObjectFifoPort.Consume, 1)
+                        self.core_programs[0].ofs_end1[0].op.release(ObjectFifoPort.Produce, 1)
+                        yield_([])
+                # TODO: Host program
 
             print(ctx.module)
 
@@ -229,21 +265,21 @@ if __name__ == "__main__":
     vector_size = 512
     assert vector_size % 4 == 0
     line_size = vector_size // 4
+
     inout_type = ((vector_size,), np.int8)
-    fifo_memref_type = ((vector_size,), np.int8)
+    fifo_memref_type = ((line_size,), np.int8)
 
     of0 = ObjectFifo(2, memref_type=fifo_memref_type)
     of1 = ObjectFifo(2, memref_type=fifo_memref_type)
 
-    #@core_fn("passThrough.cc.o")
     def core_fn(ofs_end1=None, ofs_end2=None):
         elemOut = ofs_end1[0].acquire_produce(1)
         elemIn = ofs_end2[0].acquire_consume(1)
-        call("passThroughLine", [elemIn, elemOut, line_size])
+        #call("passThroughLine", [elemIn, elemOut, line_size])
         ofs_end1[0].release_consume(1)
         ofs_end2[0].release_produce(1)
 
-    core_program = CoreProgram(0, 2, core_fn, ofs_end1=[of0], ofs_end2=[of1])
+    core_program = CoreProgram(0, 2, core_fn, ofs_end1=[of0], ofs_end2=[of1], link_with="passThrough.cc.o")
 
     host_program = HostProgram(None)
     host_program.add_input(inout_type, of0)
