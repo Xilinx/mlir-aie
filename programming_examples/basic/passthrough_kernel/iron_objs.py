@@ -15,6 +15,7 @@ import sys
 from collections import defaultdict
 
 # from bfloat16 import bfloat16
+range_ = for_
 
 TYPE_MAP_DICT = defaultdict(
     lambda: None,
@@ -74,12 +75,15 @@ def get_arg_types(objs):
 class MyObjectFifo:
     of_index = 0
 
-    def __init__(self, size=1, memref_type=None, end1=None, end2=None):
+    def __init__(self, size=1, memref_type=None, name=None, end1=None, end2=None):
         self.size = size
         self.memref_type = memref_type
         self._end1 = end1
         self._end2 = end2
-        self.name = str(MyObjectFifo.get_index())
+        if name:
+            self.name = name
+        else:
+            self.name = str(MyObjectFifo.get_index())
         self.op = None
 
     @classmethod
@@ -235,9 +239,7 @@ class CoreProgram:
 
         @core(my_tile, my_link)
         def core_body():
-            for _ in for_(sys.maxsize):
-                self.core_fn(self.ofs_end1, self.ofs_end2, self.external_functions)
-                yield_([])
+            self.core_fn(self.ofs_end1, self.ofs_end2, self.external_functions)
 
 
 class FifoInOutHostProgram:
@@ -265,16 +267,16 @@ class FifoInOutHostProgram:
         @runtime_sequence(tensor_in_ty, tensor_out_ty)
         def sequence(inTensor, outTensor):
             npu_dma_memcpy_nd(
-                metadata=self.fifo_in.name,
+                metadata=self.fifo_out.name,
                 bd_id=0,
                 mem=inTensor,
-                sizes=[1, 1, 1, self.bytes_in],
+                sizes=[1, 1, 1, self.bytes_out],
             )
             npu_dma_memcpy_nd(
-                metadata=self.fifo_out.name,
+                metadata=self.fifo_in.name,
                 bd_id=1,
                 mem=outTensor,
-                sizes=[1, 1, 1, self.bytes_out],
+                sizes=[1, 1, 1, self.bytes_in],
             )
             npu_sync(column=0, row=0, direction=0, channel=0)
 
@@ -340,45 +342,59 @@ class AIEProgram:
         if verify != True:
             print(verify)
 
-
+"""
+Problems for clarify/conciseness:
+* ObjectFifo needs (ordered) endpoints at instantiation
+* Need introspection to declare functions/fifos on-the-fly so they still land in the symbol table
+* Can remove type data if we're okay with inferring it through use (also required introspection) => but less verification if we go this route
+    - Could we fix this somehow? e.g. loop emulation or something like that?
+"""
 ##############################################################################################################################
 # Program Start
 ##############################################################################################################################
 
 import numpy as np
 
-if __name__ == "__main__":
-    vector_size = 512
-    assert vector_size % 4 == 0
-    line_size = vector_size // 4
+try:
+    vector_size = int(sys.argv[1])
+    if vector_size % 64 != 0 or vector_size < 512:
+        print("Vector size must be a multiple of 64 and greater than or equal to 512")
+        raise ValueError
+except ValueError:
+    print("Argument has inappropriate value")
 
-    inout_type = ((vector_size,), np.uint8)
-    fifo_memref_type = ((line_size,), np.uint8)
+assert vector_size % 4 == 0
+line_size = vector_size // 4
 
-    of0 = MyObjectFifo(2, memref_type=fifo_memref_type)
-    of1 = MyObjectFifo(2, memref_type=fifo_memref_type)
+inout_type = ((vector_size,), np.uint8)
+fifo_memref_type = ((line_size,), np.uint8)
 
-    passthrough_fn = MyExternalFunction(
-        "passThroughLine",
-        "passThrough.cc.o",
-        [fifo_memref_type, fifo_memref_type, np.int32],
-    )
+of0 = MyObjectFifo(2, memref_type=fifo_memref_type, name="out")
+of1 = MyObjectFifo(2, memref_type=fifo_memref_type, name="in")
 
-    def core_fn(ofs_end1, ofs_end2, external_functions):
-        of_out = ofs_end1[0]
-        of_in = ofs_end2[0]
-        passThroughLine = external_functions[0]
+passthrough_fn = MyExternalFunction(
+    "passThroughLine",
+    "passThrough.cc.o",
+    [fifo_memref_type, fifo_memref_type, np.int32],
+)
 
+def core_fn(ofs_end1, ofs_end2, external_functions):
+    of_out = ofs_end1[0]
+    of_in = ofs_end2[0]
+    passThroughLine = external_functions[0]
+
+    for _ in range_(vector_size // line_size):
         elemOut = of_out.acquire_produce(1)
         elemIn = of_in.acquire_consume(1)
         passThroughLine.call(elemIn, elemOut, line_size)
         of_in.release_consume(1)
         of_out.release_produce(1)
+        yield_([])
 
-    core_program = CoreProgram(0, 2, core_fn, [of0], [of1], [passthrough_fn])
-    host_program = FifoInOutHostProgram(of0, vector_size, of1, vector_size)
+core_program = CoreProgram(0, 2, core_fn, [of0], [of1], [passthrough_fn])
+host_program = FifoInOutHostProgram(of0, vector_size, of1, vector_size)
 
-    my_program = AIEProgram(
-        AIEDevice.npu1_1col, core_programs=[core_program], host_program=host_program
-    )
-    my_program.resolve()
+my_program = AIEProgram(
+    AIEDevice.npu1_1col, core_programs=[core_program], host_program=host_program
+)
+my_program.resolve()
