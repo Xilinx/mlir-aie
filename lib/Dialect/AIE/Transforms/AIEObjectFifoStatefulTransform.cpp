@@ -1292,8 +1292,10 @@ struct AIEObjectFifoStatefulTransformPass
                   numRel += relOp.relNumber();
                 }
               }
-            } while ((relBlockDefOp = relBlockDefOp->getParentOp()) && !isa<DeviceOp>(relBlockDefOp));
-          } while ((acqBlockDefOp = acqBlockDefOp->getParentOp()) && !isa<DeviceOp>(acqBlockDefOp));
+            } while ((relBlockDefOp = relBlockDefOp->getParentOp()) &&
+                     !isa<DeviceOp>(relBlockDefOp));
+          } while ((acqBlockDefOp = acqBlockDefOp->getParentOp()) &&
+                   !isa<DeviceOp>(acqBlockDefOp));
         }
 
         // track indices of elements to acquire
