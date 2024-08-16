@@ -157,10 +157,19 @@ class CoreProgram:
         return self.tile.op
 
     def resolve(self, loc=None, ip=None, context=None):
-        @core(self.tile.op, self.link_with)
+        my_tile = self.tile.op
+        my_link = self.link_with
+        of_out = self.ofs_end1[0].op
+        of_in = self.ofs_end2[0].op
+
+        @core(my_tile, my_link)
         def core_body():
             for _ in for_(sys.maxsize):
-                self.core_fn(self.ofs_end1, self.ofs_end2)
+                elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
+                elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
+
+                of_in.release(ObjectFifoPort.Consume, 1)
+                of_out.release(ObjectFifoPort.Produce, 1)
                 yield_([])
 
 class HostProgram:
@@ -223,36 +232,11 @@ class AIEProgram:
                     of.create_fifo()
 
                 # Generate core programs
-                """
+
                 for c in self.core_programs:
                     c.resolve()
 
-                of_in = self.core_programs[0].ofs_end1[0].op
-                of_out = self.core_programs[0].ofs_end2[0].op
-                ComputeTile2 = self.core_programs[0].tile.op
-
-                @core(ComputeTile2, "passThrough.cc.o")
-                def core_body():
-                    for _ in for_(sys.maxsize):
-                        elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
-                        elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
-                        #call(passThroughLine, [elemIn, elemOut, lineWidthInBytes])
-                        of_in.release(ObjectFifoPort.Consume, 1)
-                        of_out.release(ObjectFifoPort.Produce, 1)
-                        yield_([])
-                """
-
-                @core(self.core_programs[0].tile.op, self.core_programs[0].link_with)
-                def core_body():
-                    for _ in for_(sys.maxsize):
-                        elemOut = self.core_programs[0].ofs_end1[0].op.acquire(ObjectFifoPort.Produce, 1)
-                        elemIn = self.core_programs[0].ofs_end2[0].op.acquire(ObjectFifoPort.Consume, 1)
-
-                        self.core_programs[0].ofs_end2[0].op.release(ObjectFifoPort.Consume, 1)
-                        self.core_programs[0].ofs_end1[0].op.release(ObjectFifoPort.Produce, 1)
-                        yield_([])
                 # TODO: Host program
-
             print(ctx.module)
 
 ##############################################################################################################################
