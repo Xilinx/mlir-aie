@@ -2265,6 +2265,22 @@ ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,
   return nullptr;
 }
 
+//===----------------------------------------------------------------------===//
+// ShimDMAAllocationOp
+//===----------------------------------------------------------------------===//
+
+ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,
+                                                      llvm::StringRef symbol) {
+  auto alloc_ops = device.getOps<ShimDMAAllocationOp>();
+  for (auto it = alloc_ops.begin(); it != alloc_ops.end(); ++it) {
+    AIE::ShimDMAAllocationOp a = *it;
+    if (a.getSymName() == symbol) {
+      return a;
+    }
+  }
+  return nullptr;
+}
+
 // Include implementations for custom attributes
 #define GET_ATTRDEF_CLASSES
 #include "aie/Dialect/AIE/IR/AIEAttrs.cpp.inc"
