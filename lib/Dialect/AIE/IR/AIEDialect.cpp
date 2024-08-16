@@ -155,7 +155,7 @@ static TileElement getParentTileElement(Operation *op) {
   return llvm::dyn_cast<TileElement>(parent);
 }
 
-struct UsesAreAccessable {
+struct UsesAreAccessible {
   static LogicalResult verifyTrait(Operation *op) {
     auto thisElement = cast<TileElement>(op);
     auto thisID = thisElement.getTileID();
@@ -164,22 +164,31 @@ struct UsesAreAccessable {
     for (auto *user : users) {
       // AIE.useLock may be used in a device to set the lock's default value
       // Allow in a toplevel module for backward compatibility
-      if (llvm::isa_and_nonnull<DeviceOp, ModuleOp>(user->getParentOp()))
-        return success();
-      if (auto element = getParentTileElement(user)) {
-
-        auto tileID = element.getTileID();
-        if (!targetModel.isLegalMemAffinity(tileID.col, tileID.row, thisID.col,
-                                            thisID.row))
-          return (op->emitOpError("in Column ")
-                  << thisID.col << " and Row " << thisID.row
-                  << " is accessed from an unreachable tile in Column "
-                  << tileID.col << " and Row " << tileID.row)
-                     .attachNote(user->getLoc())
-                 << "user";
-      } else {
+      if (llvm::isa_and_nonnull<DeviceOp, ModuleOp>(user->getParentOp())) {
+        continue;
+      }
+      // If any parent prescribes that accessibility checks be skipped,
+      // skip the check for that user.
+      if (user->getParentWithTrait<SkipAccessibilityCheckTrait>()) {
+        continue;
+      }
+      TileElement element = llvm::dyn_cast<TileElement>(user);
+      if (!element) {
+        element = getParentTileElement(user);
+      }
+      if (!element) {
         // This should probably be caught elsewhere as well.
         return op->emitOpError("is accessed outside of a tile")
+                   .attachNote(user->getLoc())
+               << "user";
+      }
+      auto tileID = element.getTileID();
+      if (!targetModel.isLegalMemAffinity(tileID.col, tileID.row, thisID.col,
+                                          thisID.row)) {
+        return (op->emitOpError("in Column ")
+                << thisID.col << " and Row " << thisID.row
+                << " is accessed from an unreachable tile in Column "
+                << tileID.col << " and Row " << tileID.row)
                    .attachNote(user->getLoc())
                << "user";
       }
@@ -1291,7 +1300,7 @@ int64_t BufferOp::getAllocationSize() {
 TileOp BufferOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 
 LogicalResult BufferOp::verify() {
-  if (UsesAreAccessable::verifyTrait(*this).failed())
+  if (UsesAreAccessible::verifyTrait(*this).failed())
     return failure();
   return success();
 }
@@ -2012,7 +2021,7 @@ int LockOp::colIndex() { return getTileOp().colIndex(); }
 int LockOp::rowIndex() { return getTileOp().rowIndex(); }
 
 LogicalResult LockOp::verify() {
-  if (auto result = UsesAreAccessable::verifyTrait(*this); result.failed())
+  if (auto result = UsesAreAccessible::verifyTrait(*this); result.failed())
     return result;
 
   if (getLockID().has_value()) {

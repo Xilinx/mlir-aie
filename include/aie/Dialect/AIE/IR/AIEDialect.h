@@ -44,6 +44,10 @@ struct HasValidDMAChannels
   static mlir::LogicalResult verifyTrait(mlir::Operation *op);
 };
 
+template <typename ConcreteType>
+struct SkipAccessibilityCheckTrait
+    : mlir::OpTrait::TraitBase<ConcreteType, SkipAccessibilityCheckTrait> {};
+
 class TileOp;
 } // namespace xilinx::AIE
 
