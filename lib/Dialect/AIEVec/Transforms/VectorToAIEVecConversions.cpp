@@ -2088,7 +2088,7 @@ struct ComputeTanhOpByLUTLLVMPattern : OpConversionPattern<math::TanhOp> {
     VectorType v16bf16Ty = mlir::VectorType::get({16}, rewriter.getBF16Type());
 
     func::FuncOp fn_op =
-        getOrGenerateFuncOp(rewriter, moduleOp, funcName, TypeRange{v16bf16Ty},
+        getOrInsertFuncDecl(rewriter, moduleOp, funcName, TypeRange{v16bf16Ty},
                             TypeRange{v16bf16Ty});
 
     rewriter.setInsertionPoint(tanhOp);
@@ -3129,7 +3129,6 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       >(patterns.getContext(), 128, 1024, 256, 1024);
     patterns.add<
         ComputeExpOpByLUTPattern,
-        ComputeInvOpByLUTPattern,
         ComputeTanhOpByLUTPattern,
         LowerVectorAddFOpToAIEVecAddElemOp,
         LowerVectorSubFOpToAIEVecSubElemOp,
@@ -3139,11 +3138,11 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
   } else if (backend == TargetBackend::LLVMIR){
       patterns.add<
       ComputeExpOpByLUTLLVMPattern,
-      ComputeInvOpByLUTLLVMPattern,
       ComputeTanhOpByLUTLLVMPattern
       >(patterns.getContext());
   }
   patterns.add<
+      ComputeInvOpByLUTPattern,
       ComputeSqrtOpPattern,
       ComputeRsqrtOpPattern,
       ComputeErfOpPattern,
