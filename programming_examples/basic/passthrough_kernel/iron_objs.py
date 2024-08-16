@@ -180,6 +180,7 @@ class CoreProgram:
                 self.core_fn(self.ofs_end1, self.ofs_end2, external_func)
                 yield_([])
 
+
 class HostProgram:
     def __init__(self, host_fn):
         self.inputs = []
@@ -227,8 +228,11 @@ class AIEProgram:
                 # generate tiles
                 for c in self.core_programs:
                     c.tile.create_tile()
+                self._print_verify(ctx)
+
                 host_program.tile.create_tile()
-                
+                self._print_verify(ctx)
+
                 # generate fifos
                 ofs = set()
                 for c in self.core_programs:
@@ -238,6 +242,7 @@ class AIEProgram:
                         ofs.add(of2)
                 for of in ofs:
                     of.create_fifo()
+                    self._print_verify(ctx)
 
                 memRef_ty = T.memref(128, T.ui8())
                 passThroughLine = external_func(
@@ -247,9 +252,17 @@ class AIEProgram:
                 # Generate core programs
                 for c in self.core_programs:
                     c.resolve(passThroughLine)
+                    self._print_verify(ctx)
 
                 # TODO: Host program
+                # TODO: This should happen at end of every resolve() type operation
+                self._print_verify(ctx)
             print(ctx.module)
+
+    def _print_verify(self, ctx):
+        verify = ctx.module.operation.verify()
+        if verify != True:
+            print(verify)
 
 ##############################################################################################################################
 # Program Start
@@ -262,8 +275,8 @@ if __name__ == "__main__":
     assert vector_size % 4 == 0
     line_size = vector_size // 4
 
-    inout_type = ((vector_size,), np.int8)
-    fifo_memref_type = ((line_size,), np.int8)
+    inout_type = ((vector_size,), np.uint8)
+    fifo_memref_type = ((line_size,), np.uint8)
 
     of0 = MyObjectFifo(2, memref_type=fifo_memref_type)
     of1 = MyObjectFifo(2, memref_type=fifo_memref_type)
@@ -274,7 +287,7 @@ if __name__ == "__main__":
 
         elemOut = of_out.acquire_produce(1)
         elemIn = of_in.acquire_consume(1)
-        #call(my_external_func, [elemIn, elemOut, line_size])
+        call(my_external_func, [elemIn, elemOut, line_size])
         of_in.release_consume(1)
         of_out.release_produce(1)
 
@@ -286,9 +299,10 @@ if __name__ == "__main__":
     
     my_program = AIEProgram(AIEDevice.npu1_1col, core_programs=[core_program], host_program=host_program)
     my_program.resolve()
+
+
+
     #print(my_program.module())
-
-
     #input = np.arange(1, vector_size + 1, dtype=np.int8)
     #output = np.zeros(vector_size, dtype=np.int8)
     #my_program.run(input, output, expected_output=input)
