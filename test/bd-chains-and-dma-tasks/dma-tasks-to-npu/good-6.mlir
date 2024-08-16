@@ -7,7 +7,7 @@
 
 // REQUIRES: ryzen_ai
 //
-// RUN: aie-opt --aie-dma-tasks-to-npu %s | FileCheck %s
+// RUN: aie-opt --aie-substitute-shim-dma-allocations --aie-dma-tasks-to-npu %s | FileCheck %s
 
 module {
   aie.device(npu1_4col) {

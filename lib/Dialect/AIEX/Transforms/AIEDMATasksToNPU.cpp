@@ -24,40 +24,6 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
 
-struct DMAConfigureTaskForOpPattern : RewritePattern {
-
-  DMAConfigureTaskForOpPattern(MLIRContext *ctx)
-      : RewritePattern(DMAConfigureTaskForOp::getOperationName(),
-                       PatternBenefit(1), ctx) {}
-
-  LogicalResult matchAndRewrite(Operation *op_any,
-                                PatternRewriter &rewriter) const override {
-    DMAConfigureTaskForOp op = llvm::dyn_cast<DMAConfigureTaskForOp>(op_any);
-    if (!op) {
-      return failure();
-    }
-    AIE::DeviceOp device = op->getParentOfType<AIE::DeviceOp>();
-
-    AIE::ShimDMAAllocationOp alloc_op =
-        AIE::ShimDMAAllocationOp::getForSymbol(device, op.getAlloc());
-    if (!alloc_op) {
-      return op.emitOpError("no shim DMA allocation found for symbol");
-    }
-
-    const int col = alloc_op.getCol();
-    AIE::TileOp tile = AIE::TileOp::getOrCreate(rewriter, device, col, 0);
-    DMAConfigureTaskOp new_op = rewriter.create<DMAConfigureTaskOp>(
-        op.getLoc(), rewriter.getIndexType(), tile.getResult(),
-        alloc_op.getChannelDir(), (int32_t)alloc_op.getChannelIndex(),
-        op.getIssueToken(), op.getRepeatCount());
-    rewriter.replaceAllUsesWith(op.getResult(), new_op.getResult());
-    rewriter.inlineRegionBefore(op.getBody(), new_op.getBody(),
-                                new_op.getBody().begin());
-    rewriter.eraseOp(op);
-    return success();
-  }
-};
-
 struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -442,30 +408,15 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
 
-    // Convert DMAConfigureTaskForOps that reference shim DMA allocations
-    // to regular DMAConfigureTaskOps
-    ConversionTarget target_0(getContext());
-    target_0.addLegalDialect<AIEXDialect>();
-    target_0.addIllegalOp<DMAConfigureTaskForOp>();
-    RewritePatternSet patterns_0(&getContext());
-    patterns_0.insert<DMAConfigureTaskForOpPattern>(&getContext());
-
-    GreedyRewriteConfig rewriter_config = GreedyRewriteConfig();
-    if (failed(applyPatternsAndFoldGreedily(device, std::move(patterns_0),
-                                            rewriter_config))) {
-      signalPassFailure();
-    }
-
     // Convert DMAStartBD and DMAAwaitBD ops
-    ConversionTarget target_1(getContext());
-    target_1.addLegalDialect<AIEXDialect>();
-    target_1.addIllegalOp<DMAStartTaskOp>();
-    target_1.addIllegalOp<DMAAwaitTaskOp>();
-    RewritePatternSet patterns_1(&getContext());
-    patterns_1.insert<DMAStartTaskOpPattern>(&getContext());
-    patterns_1.insert<DMAAwaitTaskOpPattern>(&getContext());
-    if (failed(
-            applyPartialConversion(device, target_1, std::move(patterns_1)))) {
+    ConversionTarget target(getContext());
+    target.addLegalDialect<AIEXDialect>();
+    target.addIllegalOp<DMAStartTaskOp>();
+    target.addIllegalOp<DMAAwaitTaskOp>();
+    RewritePatternSet patterns(&getContext());
+    patterns.insert<DMAStartTaskOpPattern>(&getContext());
+    patterns.insert<DMAAwaitTaskOpPattern>(&getContext());
+    if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
       signalPassFailure();
     }
 
