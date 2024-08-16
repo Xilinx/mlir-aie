@@ -13,7 +13,8 @@ from aie.extras.context import mlir_mod_ctx
 
 import sys
 from collections import defaultdict
-#from bfloat16 import bfloat16
+
+# from bfloat16 import bfloat16
 
 TYPE_MAP_DICT = defaultdict(
     lambda: None,
@@ -32,33 +33,27 @@ TYPE_MAP_DICT = defaultdict(
         np.float16: T.f16,
         np.float32: T.f32,
         np.float64: T.f64,
-        #bfloat16: T.bf16,
+        # bfloat16: T.bf16,
     },
 )
 
-def type_mapper(np_dtype):
-    """
-    This function is meant to run within a module context (e.g., with a function wrapped with @build_module)
-    args:
-        np_dtype: the numpy data type to map
-    return:
-        The data type to run on the npu
-    """
-    xrt_dtype = TYPE_MAP_DICT[np_dtype]()
 
-    if xrt_dtype is None:
-        raise AirBackendError(f"numpy data type {np_dtype} has no default mapping")
-    elif xrt_dtype.width / 8 != np.dtype(np_dtype).itemsize:
-        # This is a sanity check on the TYPE_MAP_DICT rather than a check on the user input
-        raise AirBackendError(
-            f"Python data type has width {xrt_dtype.width / 8} but numpy data type has width {np.dtype(np_dtype).itemsize}"
-        )
-    return xrt_dtype
+def type_mapper(np_dtype):
+    xrt_dtype = TYPE_MAP_DICT[np_dtype]
+
+    if xrt_dtype:
+        xrt_dtype = xrt_dtype()
+        if xrt_dtype.width / 8 != np.dtype(np_dtype).itemsize:
+            # This is a sanity check on the TYPE_MAP_DICT rather than a check on the user input
+            raise AttributeError(
+                f"Python data type has width {xrt_dtype.width / 8} but numpy data type has width {np.dtype(np_dtype).itemsize}"
+            )
+        return xrt_dtype
+    else:
+        return None
+
 
 def get_arg_types(objs):
-    '''
-    Utility function to get the type of arguments
-    '''
     my_types = []
     for o in objs:
         if isinstance(o, Value):
@@ -72,10 +67,9 @@ def get_arg_types(objs):
                 )
             my_types += o.results.types
         else:
-            raise AttributeError(
-                f"Argument {o} is not a Value or an Operation: {type(o).mro()}"
-            )
+            return None
     return my_types
+
 
 class MyObjectFifo:
     of_index = 0
@@ -105,8 +99,15 @@ class MyObjectFifo:
         assert self.op == None, "Cannot resolve ObjectFifo more than once"
 
         dtype = type_mapper(self.memref_type[1])
+        assert dtype != None
         memRef_ty = MemRefType.get(shape=self.memref_type[0], element_type=dtype)
-        self.op = object_fifo(str(self.get_index()), self._end1.get_tile(), self._end2.get_tile(), self.size, memRef_ty)
+        self.op = object_fifo(
+            str(self.get_index()),
+            self._end1.get_tile(),
+            self._end2.get_tile(),
+            self.size,
+            memRef_ty,
+        )
 
     def set_endpoint(self, endpoint, first=True):
         if first:
@@ -128,15 +129,24 @@ class MyObjectFifo:
     def release_consume(self, num_elem: int, loc=None, ip=None, context=None):
         self._release(ObjectFifoPort.Consume, num_elem)
 
-    def _acquire(self, port: ObjectFifoPort, num_elem: int, loc=None, ip=None, context=None):
+    def _acquire(
+        self, port: ObjectFifoPort, num_elem: int, loc=None, ip=None, context=None
+    ):
         assert num_elem > 0, "Must consume at least one element"
-        assert num_elem <= self.size, "Cannot consume elements to exceed ObjectFifo size"
+        assert (
+            num_elem <= self.size
+        ), "Cannot consume elements to exceed ObjectFifo size"
         return self.op.acquire(port, num_elem)
 
-    def _release(self, port: ObjectFifoPort, num_elem: int, loc=None, ip=None, context=None):
+    def _release(
+        self, port: ObjectFifoPort, num_elem: int, loc=None, ip=None, context=None
+    ):
         assert num_elem > 0, "Must consume at least one element"
-        assert num_elem <= self.size, "Cannot consume elements to exceed ObjectFifo size"
+        assert (
+            num_elem <= self.size
+        ), "Cannot consume elements to exceed ObjectFifo size"
         self.op.release(port, num_elem)
+
 
 class MyTile:
     def __init__(self, column, row):
@@ -150,11 +160,59 @@ class MyTile:
         assert self.op == None
         self.op = tile(self.column, self.row)
 
+
+class MyExternalFunction:
+    def __init__(self, name, bin_name, inout_types):
+        assert isinstance(name, str)
+        assert len(name) > 0
+        assert isinstance(bin_name, str)
+        assert len(bin_name) > 0
+        assert isinstance(inout_types, list)
+        self.name = name
+        self.bin_name = bin_name
+        self.inout_types = inout_types
+        self.op = None
+
+    def resolve(self):
+        assert self.op == None
+        resolved_inout_types = []
+        for t in self.inout_types:
+            dtype = type_mapper(t)
+            if dtype is None:
+                dtype = get_arg_types(t)
+                if dtype is None:
+                    # Interpret as a dummy memref
+                    dtype = MemRefType.get(shape=t[0], element_type=type_mapper(t[1]))
+            resolved_inout_types.append(dtype)
+        self.op = external_func(self.name, inputs=resolved_inout_types)
+
+    def call(self, *args, **kwargs):
+        assert self.op
+        call(self.name, args)
+
+
 class CoreProgram:
-    def __init__(self, column: int, row: int, core_fn, ofs_end1=[], ofs_end2=[], link_with=None):
+    def __init__(
+        self,
+        column: int,
+        row: int,
+        core_fn,
+        ofs_end1=[],
+        ofs_end2=[],
+        external_functions=[],
+    ):
         self.tile = MyTile(column, row)
         self.core_fn = core_fn
-        self.link_with = link_with
+
+        assert isinstance(external_functions, list)
+        bin_names = set()
+        for e in external_functions:
+            assert isinstance(e, MyExternalFunction)
+            bin_names.add(e.bin_name)
+        assert len(bin_names) <= 1, "Right now only link with one bin"
+        if len(bin_names) == 1:
+            self.link_with = list(bin_names)[0]
+        self.external_functions = external_functions
 
         self.ofs_end1 = ofs_end1
         for of in self.ofs_end1:
@@ -170,14 +228,14 @@ class CoreProgram:
         assert self.tile != None
         return self.tile.op
 
-    def resolve(self, external_func, loc=None, ip=None, context=None):
+    def resolve(self, loc=None, ip=None, context=None):
         my_tile = self.tile.op
         my_link = self.link_with
 
         @core(my_tile, my_link)
         def core_body():
             for _ in for_(sys.maxsize):
-                self.core_fn(self.ofs_end1, self.ofs_end2, external_func)
+                self.core_fn(self.ofs_end1, self.ofs_end2, self.external_functions)
                 yield_([])
 
 
@@ -191,13 +249,13 @@ class HostProgram:
         self.host_fn = host_fn
 
         if self.host_fn is None:
-            self.tile = MyTile(0, 0) # Use a default
+            self.tile = MyTile(0, 0)  # Use a default
 
     def add_input(self, input_type, of: MyObjectFifo):
         assert isinstance(of, MyObjectFifo), "Wrong Type: Expected ObjectFifo"
         of.set_endpoint(self, False)
         self.inputs.append((input_type, of))
-    
+
     def add_output(self, output_type, of: MyObjectFifo):
         assert isinstance(of, MyObjectFifo), "Wrong Type: Expected ObjectFifo"
         of.set_endpoint(self, True)
@@ -209,6 +267,7 @@ class HostProgram:
 
     def resolve(self, loc=None, ip=None, context=None):
         pass
+
 
 class AIEProgram:
     def __init__(self, device, core_programs, host_program):
@@ -223,6 +282,7 @@ class AIEProgram:
 
     def resolve(self):
         with mlir_mod_ctx() as ctx:
+
             @device(self.device)
             def device_body():
                 # generate tiles
@@ -233,36 +293,42 @@ class AIEProgram:
                 host_program.tile.create_tile()
                 self._print_verify(ctx)
 
-                # generate fifos
+                # generate fifos (and external functions)
                 ofs = set()
+                external_functions = set()
                 for c in self.core_programs:
                     for of1 in c.ofs_end1:
                         ofs.add(of1)
                     for of2 in c.ofs_end2:
                         ofs.add(of2)
+
+                    for e in c.external_functions:
+                        external_functions.add(e)
                 for of in ofs:
                     of.create_fifo()
                     self._print_verify(ctx)
-
-                memRef_ty = T.memref(128, T.ui8())
-                passThroughLine = external_func(
-                    "passThroughLine", inputs=[memRef_ty, memRef_ty, T.i32()]
-                )
+                for e in external_functions:
+                    e.resolve()
+                    self._print_verify(ctx)
 
                 # Generate core programs
                 for c in self.core_programs:
-                    c.resolve(passThroughLine)
+                    # c.resolve(passThroughLine)
+                    c.resolve()
                     self._print_verify(ctx)
 
                 # TODO: Host program
-                # TODO: This should happen at end of every resolve() type operation
+
+                # TODO: This should happen at end of every resolve() type operation not just in this method
                 self._print_verify(ctx)
+
             print(ctx.module)
 
     def _print_verify(self, ctx):
         verify = ctx.module.operation.verify()
         if verify != True:
             print(verify)
+
 
 ##############################################################################################################################
 # Program Start
@@ -281,29 +347,41 @@ if __name__ == "__main__":
     of0 = MyObjectFifo(2, memref_type=fifo_memref_type)
     of1 = MyObjectFifo(2, memref_type=fifo_memref_type)
 
-    def core_fn(ofs_end1, ofs_end2, my_external_func):
+    passthrough_fn = MyExternalFunction(
+        "passThroughLine",
+        "passThrough.cc.o",
+        [fifo_memref_type, fifo_memref_type, np.int32],
+    )
+
+    def core_fn(ofs_end1, ofs_end2, external_functions):
         of_out = ofs_end1[0]
         of_in = ofs_end2[0]
+        passThroughLine = external_functions[0]
 
         elemOut = of_out.acquire_produce(1)
         elemIn = of_in.acquire_consume(1)
-        call(my_external_func, [elemIn, elemOut, line_size])
+        passThroughLine.call(elemIn, elemOut, line_size)
         of_in.release_consume(1)
         of_out.release_produce(1)
 
-    core_program = CoreProgram(0, 2, core_fn, ofs_end1=[of0], ofs_end2=[of1], link_with="passThrough.cc.o")
-
+    core_program = CoreProgram(
+        0,
+        2,
+        core_fn,
+        ofs_end1=[of0],
+        ofs_end2=[of1],
+        external_functions=[passthrough_fn],
+    )
     host_program = HostProgram(None)
     host_program.add_input(inout_type, of0)
     host_program.add_output(inout_type, of1)
-    
-    my_program = AIEProgram(AIEDevice.npu1_1col, core_programs=[core_program], host_program=host_program)
+
+    my_program = AIEProgram(
+        AIEDevice.npu1_1col, core_programs=[core_program], host_program=host_program
+    )
     my_program.resolve()
 
-
-
-    #print(my_program.module())
-    #input = np.arange(1, vector_size + 1, dtype=np.int8)
-    #output = np.zeros(vector_size, dtype=np.int8)
-    #my_program.run(input, output, expected_output=input)
-
+    # print(my_program.module())
+    # input = np.arange(1, vector_size + 1, dtype=np.int8)
+    # output = np.zeros(vector_size, dtype=np.int8)
+    # my_program.run(input, output, expected_output=input)
