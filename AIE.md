@@ -82,7 +82,6 @@ Interfaces: `Symbol`
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>entry_arg_types_attr</code></td><td>::mlir::TypeAttr</td><td>type attribute of tuple</td></tr>
 </table>
 
 
