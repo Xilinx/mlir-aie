@@ -622,7 +622,7 @@ LogicalResult AIEX::DMAStartBdChainOp::verify() {
   }
 
   auto actualArgTypes = getArgs().getTypes();
-  ArrayRef<Type> expectedArgTypes = chain.getEntryArgTypesAttr().getTypes();
+  auto expectedArgTypes = chain.getRegion().getArgumentTypes();
   if (actualArgTypes.size() != expectedArgTypes.size()) {
     return emitOpError("Number of arguments mismatches.");
   }
