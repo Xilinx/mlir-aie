@@ -232,4 +232,23 @@ def AIELowerCascadeFlows : Pass<"aie-lower-cascade-flows", "DeviceOp"> {
   ];
 }
 
+def AIEGenerateColumnControlOverlay : Pass<"aie-generate-column-control-overlay", "DeviceOp"> {
+  let summary = "Spawns streaming interconnect network for column control";
+  let description = [{
+    For each column of AIE tiles being employed in the design, spawn a network of control packet
+    streaming interconnects which overlay on top of the design.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEGenerateColumnControlOverlayPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+  ];
+  let options = [
+    Option<"clRouteShimCTRLToTCT", "route-shim-to-tct", "bool", /*default=*/"true",
+            "Flag to generate routing between shim dma CTRL and SOUTH ports, for TCT tokens.">,      
+    Option<"clRouteShimDmaToTileCTRL", "route-shim-to-tile-ctrl", "bool", /*default=*/"true",
+            "Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.">,  
+  ];
+}
+
 #endif
