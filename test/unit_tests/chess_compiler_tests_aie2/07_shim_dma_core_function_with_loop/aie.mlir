@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 //  clang -O2 --target=aie -c %S/kernel.cc
-// REQUIRES: valid_xchess_license
 // RUN: xchesscc_wrapper aie2 -c %S/kernel.cc
 // RUN: %PYTHON aiecc.py --aiesim --chesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s -I%host_runtime_lib%/test_lib/include -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
