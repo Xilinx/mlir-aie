@@ -48,7 +48,7 @@ struct AIEAssignTileCtrlIDsPass
     DeviceOp device = getOperation();
 
     // Collect TileOps
-    DenseMap<AIE::TileID, AIE::TileOp> tiles;
+    llvm::MapVector<AIE::TileID, AIE::TileOp> tiles;
     llvm::SmallSet<int, 1> occupiedCols;
     for (auto tile : device.getOps<AIE::TileOp>()) {
       int colIndex = tile.colIndex();
@@ -59,9 +59,10 @@ struct AIEAssignTileCtrlIDsPass
 
     // Assign controller ids.
     int designUnusedPacketIdFrom = getUnusedPacketIdFrom(device);
+    int unusedPacketIdFrom = designUnusedPacketIdFrom;
     for (int col : occupiedCols) {
       if (clColumnWiseUniqueIDs)
-        designUnusedPacketIdFrom = getUnusedPacketIdFrom(device);
+        unusedPacketIdFrom = designUnusedPacketIdFrom;
       SmallVector<AIE::TileOp> tilesOnCol;
       for (auto &[tId, tOp] : tiles) {
         if (tId.col != col)
@@ -74,7 +75,7 @@ struct AIEAssignTileCtrlIDsPass
           continue;
         auto pktInfoAttr =
             AIE::PacketInfoAttr::get(tOp->getContext(), /*pkt_type*/ 0,
-                                     /*pkt_id*/ designUnusedPacketIdFrom++);
+                                     /*pkt_id*/ unusedPacketIdFrom++);
         tOp->setAttr("controller_id", pktInfoAttr);
       }
     }
@@ -92,7 +93,7 @@ struct AIEGenerateColumnControlOverlayPass
     OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
 
     // Collect existing TileOps
-    DenseMap<AIE::TileID, AIE::TileOp> tiles;
+    llvm::MapVector<AIE::TileID, AIE::TileOp> tiles;
     llvm::SmallSet<int, 1> occupiedCols;
     for (auto tile : device.getOps<AIE::TileOp>()) {
       int colIndex = tile.colIndex();
@@ -101,6 +102,7 @@ struct AIEGenerateColumnControlOverlayPass
       occupiedCols.insert(colIndex);
     }
 
+    int designUnusedPacketIdFrom = getUnusedPacketIdFrom(device);
     for (int col : occupiedCols) {
       AIE::TileOp shimTile = nullptr;
       builder.setInsertionPointToStart(device.getBody());
@@ -118,7 +120,7 @@ struct AIEGenerateColumnControlOverlayPass
           tilesOnCol.push_back(tOp);
         }
 
-        int unusedPacketIdFrom = getUnusedPacketIdFrom(device);
+        int unusedPacketIdFrom = designUnusedPacketIdFrom;
         SmallVector<int> availableShimChans = {
             0}; // Only using SHIM dest SOUTH 0 for TCT.
         // Create packet flows per col
@@ -138,7 +140,7 @@ struct AIEGenerateColumnControlOverlayPass
             tilesOnCol.push_back(tOp);
         }
 
-        int unusedPacketIdFrom = getUnusedPacketIdFrom(device);
+        int unusedPacketIdFrom = designUnusedPacketIdFrom;
         int numShimChans = targetModel.getNumSourceShimMuxConnections(
             shimTile.getCol(), shimTile.getRow(), AIE::WireBundle::DMA);
         SmallVector<int> availableShimChans = getAvailableShimChans(
