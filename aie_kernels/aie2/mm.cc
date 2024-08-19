@@ -144,7 +144,7 @@ void matmul_vectorized_1x2(const T_in *__restrict pA, const T_in *__restrict pB,
 
   // unsigned long long start = get_cycles ();
   for (unsigned z = 0; z < rowA; z += 4)
-        chess_loop_range(2, ) {
+    chess_loop_range(2, ) {
       T_out *__restrict pC1 = pC + (z * colB + 0) * MMUL::size_C;
       T_out *__restrict pC2 = pC + ((z + 1) * colB + 0) * MMUL::size_C;
       T_out *__restrict pC3 = pC + ((z + 2) * colB + 0) * MMUL::size_C;
@@ -488,8 +488,8 @@ void matmul_vectorized_4x4x4_i16_i16(const int16 *__restrict pA,
   static_assert(m % (2 * r) == 0 && m / (2 * r) > 0);
   static_assert(k % (2 * s) == 0 && k / (2 * s) > 0);
   static_assert(n % (2 * t) == 0 && n / (2 * t) > 0);
-  return matmul_vectorized_1x2<int16, int16, m / r, k / s, n / t, r, s, t>(pA, pB,
-                                                                       pC);
+  return matmul_vectorized_1x2<int16, int16, m / r, k / s, n / t, r, s, t>(
+      pA, pB, pC);
 }
 
 template <unsigned m, unsigned k, unsigned n>
