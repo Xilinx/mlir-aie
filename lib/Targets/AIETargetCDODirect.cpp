@@ -626,50 +626,62 @@ struct AIEControl {
             WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
             connectOp.destIndex());
 
-      for (auto connectOp : b.getOps<MasterSetOp>()) {
+      for (auto masterSetOp : b.getOps<MasterSetOp>()) {
         int mask = 0;
         int arbiter = -1;
 
-        for (auto val : connectOp.getAmsels()) {
+        for (auto val : masterSetOp.getAmsels()) {
           AMSelOp amsel = cast<AMSelOp>(val.getDefiningOp());
           arbiter = amsel.arbiterIndex();
           int msel = amsel.getMselValue();
           mask |= (1 << msel);
         }
 
-        bool isdma = connectOp.getDestBundle() == WireBundle::DMA;
+        // the default is to keep header
+        bool keepHeader = true;
+        // the default for dma destinations is to drop the header
+        if (masterSetOp.getDestBundle() == WireBundle::DMA)
+          keepHeader = false;
         // assume a connection going south from row zero gets wired to shimdma
-        // by a shimmux. TODO: fix the assumption
-        if (!isdma && (switchboxOp.rowIndex() == 0))
-          isdma = connectOp.getDestBundle() == WireBundle::South;
-        // Flag for overriding DROP_HEADER. TODO: Formalize this in tablegen
-        isdma &= !connectOp->hasAttr("keep_pkt_header");
-        auto dropHeader =
-            isdma ? XAIE_SS_PKT_DROP_HEADER : XAIE_SS_PKT_DONOT_DROP_HEADER;
+        // by a shimmux. But if it's south 0 assume it's tct routing and don't
+        // drop header. TODO: fix the assumption
+        if (switchboxOp.rowIndex() == 0 &&
+            masterSetOp.getDestBundle() == WireBundle::South &&
+            masterSetOp.destIndex() != 0)
+          keepHeader = false;
+
+        // "keep_pkt_header" attribute overrides the above defaults, if set
+        if (auto keep = masterSetOp.getKeepPktHeader())
+          keepHeader = *keep;
+
+        auto dropHeader = keepHeader ? XAIE_SS_PKT_DONOT_DROP_HEADER
+                                     : XAIE_SS_PKT_DROP_HEADER;
         TRY_XAIE_API_EMIT_ERROR(
-            connectOp, XAie_StrmPktSwMstrPortEnable, &devInst, tileLoc,
-            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
-            connectOp.destIndex(), dropHeader, arbiter, mask);
+            masterSetOp, XAie_StrmPktSwMstrPortEnable, &devInst, tileLoc,
+            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(masterSetOp.getDestBundle()),
+            masterSetOp.destIndex(), dropHeader, arbiter, mask);
       }
 
-      for (auto connectOp : b.getOps<PacketRulesOp>()) {
+      for (auto packetRulesOp : b.getOps<PacketRulesOp>()) {
         int slot = 0;
-        Block &block = connectOp.getRules().front();
+        Block &block = packetRulesOp.getRules().front();
         for (auto slotOp : block.getOps<PacketRuleOp>()) {
           AMSelOp amselOp = cast<AMSelOp>(slotOp.getAmsel().getDefiningOp());
           int arbiter = amselOp.arbiterIndex();
           int msel = amselOp.getMselValue();
-          TRY_XAIE_API_EMIT_ERROR(
-              connectOp, XAie_StrmPktSwSlavePortEnable, &devInst, tileLoc,
-              WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
-              connectOp.sourceIndex());
+          TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlavePortEnable,
+                                  &devInst, tileLoc,
+                                  WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+                                      packetRulesOp.getSourceBundle()),
+                                  packetRulesOp.sourceIndex());
           auto packetInit = XAie_PacketInit(slotOp.valueInt(), /*PktType*/ 0);
           // TODO Need to better define packet id,type used here
-          TRY_XAIE_API_EMIT_ERROR(
-              connectOp, XAie_StrmPktSwSlaveSlotEnable, &devInst, tileLoc,
-              WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
-              connectOp.sourceIndex(), slot, packetInit, slotOp.maskInt(), msel,
-              arbiter);
+          TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlaveSlotEnable,
+                                  &devInst, tileLoc,
+                                  WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+                                      packetRulesOp.getSourceBundle()),
+                                  packetRulesOp.sourceIndex(), slot, packetInit,
+                                  slotOp.maskInt(), msel, arbiter);
           slot++;
         }
       }

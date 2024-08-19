@@ -9,6 +9,9 @@
 //
 // RUN: aie-opt --verify-diagnostics --aie-assign-runtime-sequence-bd-ids %s
 
+// This test ensures that the proper error is emitted if a user tries to use more buffer descriptors than
+// are availalbe in the current device.
+
 module {
   aie.device(npu1_4col) {
     %tile_0_0 = aie.tile(0, 0)

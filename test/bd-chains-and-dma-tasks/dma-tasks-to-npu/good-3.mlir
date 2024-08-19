@@ -9,6 +9,9 @@
 //
 // RUN: aie-opt --aie-dma-tasks-to-npu %s | FileCheck %s
 
+// This test ensures that buffer descriptor configurations with data layout transformations are
+// properly lowered to the correct NPU instruction sequence instructions.
+
 module {
   aie.device(npu1_4col) {
     %tile_0_0 = aie.tile(0, 0)

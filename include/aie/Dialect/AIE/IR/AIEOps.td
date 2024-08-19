@@ -118,6 +118,8 @@ def AIE_TileOp: AIE_Op<"tile", [
           return coreOp;
       return nullptr;
     }
+
+    static AIE::TileOp getOrCreate(mlir::OpBuilder builder, AIE::DeviceOp device, int col, int row);
   }];
 
   let assemblyFormat = [{
@@ -498,7 +500,8 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [
   let arguments = (
     ins WireBundle:$dest_bundle,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel,
-        Variadic<Index>:$amsels
+        Variadic<Index>:$amsels,
+        OptionalAttr<BoolAttr>:$keep_pkt_header
   );
   let summary = "Packet switched input connection";
   let description = [{
@@ -1569,6 +1572,10 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
   let assemblyFormat = [{
     $sym_name `(` $channel_dir `,` $channel_index `,` $col `)` attr-dict
   }];
+
+  let extraClassDeclaration = [{
+    static ::xilinx::AIE::ShimDMAAllocationOp getForSymbol(::xilinx::AIE::DeviceOp device, ::llvm::StringRef symbol);
+  }];
 }
 
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]> {
@@ -1988,7 +1995,7 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
   }];
 }
 
-def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol]> {
+def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol, SkipAccessibilityCheckTrait]> {
   let summary = "Definition of a Parametrizable Chain of Buffer Descriptors";
   let description = [{
     This operation allows you to define buffer descriptor chains with parametrizable inputs. 
@@ -2001,11 +2008,9 @@ def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol]> {
   }];
 
   let arguments = (
-    ins SymbolNameAttr:$sym_name,
-        TypeAttrOf<AnyTuple>:$entry_arg_types_attr
+    ins SymbolNameAttr:$sym_name
   );
   let regions = (region AnyRegion:$body);
-  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
   }];

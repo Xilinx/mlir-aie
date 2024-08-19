@@ -9,6 +9,8 @@
 //
 // RUN: aie-opt --aie-assign-runtime-sequence-bd-ids %s | FileCheck %s
 
+// This test ensures that all available 16 buffer descriptors are used.
+
 module {
   aie.device(npu1_4col) {
     %tile_0_0 = aie.tile(0, 0)

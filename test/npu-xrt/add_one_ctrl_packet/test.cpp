@@ -20,7 +20,6 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr int IN_SIZE = 64;
 constexpr int OUT_SIZE = 64;
 
 namespace po = boost::program_options;
@@ -134,21 +133,15 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_inB = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  auto bo_ctrlOut = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
+                            XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto bo_ctrlIn = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
+                           XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
   auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
-
-  uint32_t *bufInA = bo_inA.map<uint32_t *>();
-  std::vector<uint32_t> srcVecA;
-  for (int i = 0; i < IN_SIZE; i++)
-    srcVecA.push_back(i + 1);
-  memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
   uint32_t beats = 1 - 1;
   uint32_t operation = 0;
@@ -174,26 +167,38 @@ int main(int argc, const char *argv[]) {
 
   // set lock values to 2
   uint32_t data = 2;
-  std::vector<uint32_t> srcVecB = {
+  std::vector<uint32_t> ctrlPackets = {
       header0,
       data,
       header1,
       data,
   };
-  void *bufInB = bo_inB.map<void *>();
-  memcpy(bufInB, srcVecB.data(), srcVecB.size() * sizeof(int));
+  // Read 8 32-bit values from "other_buffer" at address 0x440 using two
+  // control packets
+  for (int i = 0; i < 2; i++) {
+    address = 0x440 + i * sizeof(uint32_t) * 4;
+    operation = 0x1;
+    stream_id = 0x2;
+    beats = 3;
+    uint32_t header2 =
+        stream_id << 24 | operation << 22 | beats << 20 | address;
+    header2 |= (0x1 & parity(header2)) << 31;
+    ctrlPackets.push_back(header2);
+  }
+  void *bufctrlIn = bo_ctrlIn.map<void *>();
+  memcpy(bufctrlIn, ctrlPackets.data(), ctrlPackets.size() * sizeof(int));
 
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inB.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_ctrlIn.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
   unsigned int opcode = 3;
-  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+  auto run =
+      kernel(opcode, bo_instr, instr_v.size(), bo_ctrlOut, bo_ctrlIn, bo_out);
 
   ert_cmd_state r = run.wait();
   if (r != ERT_CMD_STATE_COMPLETED) {
@@ -202,19 +207,33 @@ int main(int argc, const char *argv[]) {
   }
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  bo_ctrlOut.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   uint32_t *bufOut = bo_out.map<uint32_t *>();
+  uint32_t *ctrlOut = bo_ctrlOut.map<uint32_t *>();
 
   int errors = 0;
 
   for (uint32_t i = 0; i < 8; i++) {
-    uint32_t ref = 7;
+    uint32_t ref = 7 + i;
     if (*(bufOut + i) != ref) {
-      std::cout << "Error in output " << *(bufOut + i) << " != " << ref
+      std::cout << "Error in dma output " << *(bufOut + i) << " != " << ref
                 << std::endl;
       errors++;
     } else {
-      std::cout << "Correct output " << *(bufOut + i) << " == " << ref
+      std::cout << "Correct dma output " << *(bufOut + i) << " == " << ref
+                << std::endl;
+    }
+  }
+
+  for (uint32_t i = 0; i < 8; i++) {
+    uint32_t ref = 8 + i;
+    if (*(ctrlOut + i) != ref) {
+      std::cout << "Error in control output " << *(ctrlOut + i) << " != " << ref
+                << std::endl;
+      errors++;
+    } else {
+      std::cout << "Correct control output " << *(ctrlOut + i) << " == " << ref
                 << std::endl;
     }
   }

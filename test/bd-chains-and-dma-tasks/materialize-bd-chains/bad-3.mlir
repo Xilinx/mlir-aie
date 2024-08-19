@@ -9,6 +9,9 @@
 //
 // RUN: aie-opt --verify-diagnostics --aie-materialize-bd-chains %s
 
+// This test ensures the proper error gets emitted if the user attempts to
+// reference a BD chain that has not been defined.
+
 module {
   aie.device(npu1_4col) {
     %tile_0_0 = aie.tile(0, 0)

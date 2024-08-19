@@ -9,6 +9,9 @@
 //
 // RUN: aie-opt --verify-diagnostics --aie-materialize-bd-chains %s
 
+// This test ensures that the correct error gets emitted when a BD "chain" is not
+// actually a proper chain, i.e. some blocks are not connected.
+
 module {
   aie.device(npu1_4col) {
     %tile_0_0 = aie.tile(0, 0)

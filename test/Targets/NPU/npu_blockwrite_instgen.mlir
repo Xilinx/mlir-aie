@@ -14,10 +14,10 @@ module {
     aiex.runtime_sequence(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
 
       // TXN header
-      // CHECK: 06030100
+      // CHECK: 06030001
       // CHECK: 00000105
       // CHECK: 00000003
-      // CHECK: 00000068
+      // CHECK: 00000058
 
       %c16_i64 = arith.constant 16 : i64
       %c1_i64 = arith.constant 1 : i64
@@ -25,18 +25,16 @@ module {
       %c64_i64 = arith.constant 64 : i64
       %c0_i32 = arith.constant 0 : i32
       %c1_i32 = arith.constant 1 : i32
+      // CHECK: 061A00C0
+      // CHECK: 0000002C
       // CHECK: 00000001
-      // CHECK: 00000000
-      // CHECK: 0611D0C0
-      // CHECK: 00000030
-      // CHECK: 00000001
-      // CHECK: 00000002
-      // CHECK: 00000000
-      // CHECK: 00600005
-      // CHECK: 80800007
+      // CHECK: 00580002
+      // CHECK: 000C0005
+      // CHECK: 00100007
       // CHECK: 00000009
-      // CHECK: 2CD0000C
-      // CHECK: 2E107041
+      // CHECK: 00000000
+      // CHECK: 059A000C
+      // CHECK: 84038201
       aiex.npu.writebd { bd_id = 6 : i32,
                          buffer_length = 1 : i32,
                          buffer_offset = 2 : i32,
@@ -64,9 +62,7 @@ module {
                          use_next_bd = 1 : i32,
                          valid_bd = 1 : i32}
       // CHECK: 00000000
-      // CHECK: 00000000
       // CHECK: 06400DEF
-      // CHECK: 00000000
       // CHECK: 00000042
       aiex.npu.write32 { column = 3 : i32, row = 4 : i32, address = 0xabc00def : ui32, value = 0x42 : ui32 }
 

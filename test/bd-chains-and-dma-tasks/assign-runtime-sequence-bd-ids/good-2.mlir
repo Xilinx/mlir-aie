@@ -9,6 +9,9 @@
 //
 // RUN: aie-opt --aie-assign-runtime-sequence-bd-ids %s | FileCheck %s
 
+// This tests ensures that buffer descriptor IDs assigned to `aie.dma_bd` ops are reused after
+// calls to aiex.dma_free_task and aiex.dma_await_task, but are unique otherwise.
+
 module {
   aie.device(npu1_4col) {
     %tile_0_0 = aie.tile(0, 0)
