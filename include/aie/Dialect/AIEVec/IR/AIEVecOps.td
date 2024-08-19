@@ -98,15 +98,15 @@ def AIEVec_FMAElemOp :
 
 
 def AIEVec_MulElemOp:
-  AIEVec_Op<"mul_elem", [	 
+  AIEVec_Op<"mul_elem", [
     Pure,
     SameTypeOperands,
     SameOperandsShape,
     SameOperandsAndResultShape,
     isOperandResultTypePairValidForAIE2MulElem<"lhs", "rhs", "result">
-  ]>,	  
+  ]>,
   Arguments<(ins
-    VectorOfLengthAndType<[16, 32], [I8, I16, I32, BF16, F32]>:$lhs, 
+    VectorOfLengthAndType<[16, 32], [I8, I16, I32, BF16, F32]>:$lhs,
     VectorOfLengthAndType<[16, 32], [I8, I16, I32, BF16, F32]>:$rhs)>,
   Results<(outs
     VectorOfLengthAndType<[16, 32], [I32, I64, F32]>:$result)> {
@@ -124,7 +124,7 @@ def AIEVec_MulElemOp:
         `vector<16xbf16>`  | `vector<16xbf16>`  | `vector<16xf32>`
         `vector<16xf32>`   | `vector<16xf32>`   | `vector<16xf32>`'
   }];
-} 
+}
 
 def AIEVec_BroadcastOp:
   AIEVec_Op<"broadcast", [
@@ -186,7 +186,7 @@ def AIEVec_UPSOp:
 def AIEVec_CastOp:
   AIEVec_Op<"cast", [
     Pure
-  ]>, 
+  ]>,
   Arguments<(ins AnyVector:$source, DefaultValuedAttr<BoolAttr, "false">:$isResAcc)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE cast";
@@ -227,21 +227,21 @@ def AIEVec_UPDOp:
                  DefaultValuedAttr<AIEI32Attr, "0">:$offset,
                  DefaultValuedAttr<ConfinedAttr<AIEI8Attr,
                         [IntMinValue<0>, IntMaxValue<1>]>, "0">:$index,
-                 Optional<AnyVector>:$vector)>, 
+                 Optional<AnyVector>:$vector)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE upd";
   let description = [{
     AMD-specific update intrinsic. General upd intrinsic updates contiguous
-    lanes of the result vector from a smaller source vector. This form of 
-    upd intrinsic combines the load of data from memory into a vector 
-    register, and then updating the lanes of the result vector using it. 
+    lanes of the result vector from a smaller source vector. This form of
+    upd intrinsic combines the load of data from memory into a vector
+    register, and then updating the lanes of the result vector using it.
     `$result = upd($source[$indices], $offset, $index)`
   }];
   let builders = [
     OpBuilder<(ins "mlir::Type":$resultType, "mlir::Value":$source,
                    "mlir::ValueRange":$indices,
                    "int32_t":$offset, "int8_t":$index),
-    [{build($_builder, $_state, resultType, source, indices, 
+    [{build($_builder, $_state, resultType, source, indices,
                    offset, index, nullptr);}]>
   ];
 }
@@ -249,8 +249,8 @@ def AIEVec_UPDOp:
 def AIEVec_ConcatOp:
   AIEVec_Op<"concat", [
     Pure, InferTypeOpAdaptor,
-  ]>, 
-  Arguments<(ins Variadic<AnyVector>:$sources)>, 
+  ]>,
+  Arguments<(ins Variadic<AnyVector>:$sources)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE concat";
   let description = [{
@@ -270,8 +270,8 @@ def AIEVec_ExtOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE ext";
   let description = [{
-    AMD-specific vector extract intrinsic. Selects contiguous lanes from 
-    the source vector, and transfers the data from those lanes to the 
+    AMD-specific vector extract intrinsic. Selects contiguous lanes from
+    the source vector, and transfers the data from those lanes to the
     result. The lane selection is controlled by index. There are two cases:
     1. Extracted vector fills half of the original vector lanes (e.g. extract v64int8 from v128int8)
     2. Extracted vector fills a fourth of the original vector lanes (e.g. extract v32int8 from v128int8)
@@ -281,10 +281,26 @@ def AIEVec_ExtOp:
   }];
 }
 
+def AIEVec_InsOp:
+  AIEVec_Op<"ins", [
+    Pure,
+    AllTypesMatch<["dest", "result"]>
+  ]>,
+  Arguments<(ins AnyType:$source,
+                 VectorOfBitWidthAndElementTypes<512, [I8, I16, BF16, I32, F32]>:$dest,
+                 Index:$idx)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE2 insert element in vector";
+  let description = [{
+  }];
+  let assemblyFormat = "$source `,` $dest [$idx] $attr-dict `:` type($result)";
+  let hasVerifier = 0;
+}
+
 def AIEVec_PackOp:
   AIEVec_Op<"pack", [
     Pure
-  ]>, 
+  ]>,
   Arguments<(ins AnyVector:$source)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE pack";
@@ -298,7 +314,7 @@ def AIEVec_PackOp:
 def AIEVec_UnpackOp:
   AIEVec_Op<"unpack", [
     Pure
-  ]>, 
+  ]>,
   Arguments<(ins AnyVector:$source)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE unpack";
@@ -319,8 +335,8 @@ def AIEVec_ShiftOp:
   let description = [{
     AMD-specific shift intrinsic. Concatenates two
     vectors into a bigger vector, interprets them as a vector of 128 bytes
-    and returns v1::v2[shift: shift+64]. `shift` is the number of bytes to 
-    be shifted. The verifier confirms that all the input and result vectors 
+    and returns v1::v2[shift: shift+64]. `shift` is the number of bytes to
+    be shifted. The verifier confirms that all the input and result vectors
     have the same number of lanes and element types.
     `$result = shift($lhs, $rhs, $shift)`
   }];

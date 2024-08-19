@@ -399,6 +399,9 @@ static Value collapseInnerMostShapeDims(PatternRewriter &b, Location loc,
   auto shape = memRefTy.getShape();
   int64_t newInnerMostDim = std::accumulate(shape.end() - numDims, shape.end(),
                                             1, std::multiplies<>());
+  if (llvm::any_of(ArrayRef<int64_t>{shape.end() - numDims, shape.end()},
+                   ShapedType::isDynamic))
+    newInnerMostDim = ShapedType::kDynamic;
   SmallVector<int64_t, 4> newShape{shape.begin(), shape.end() - numDims + 1};
   newShape[shape.size() - numDims] = newInnerMostDim;
   auto newNumDims = newShape.size();
@@ -407,6 +410,7 @@ static Value collapseInnerMostShapeDims(PatternRewriter &b, Location loc,
       newShape, memRefTy.getElementType(),
       AffineMap::getMinorIdentityMap(newNumDims, newNumDims, ctx),
       memRefTy.getMemorySpace());
+
   auto reassocIndices =
       getReassociationIndicesForCollapse(shape, newShape).value();
   return b
