@@ -13,6 +13,7 @@
 
 #include "FoldMulAddChainToConvOp.h"
 
+#include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Ops.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/Analysis/Passes.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
@@ -43,9 +44,9 @@ using namespace xilinx::aievec;
 namespace xilinx {
 namespace aievec {
 
-SmallVector<NamedAttribute> buildFMAOpSplatAttrForElemTy(aievec::FMAOp fmaOp,
-                                                         int64_t bcastPos,
-                                                         int64_t step = 1);
+SmallVector<NamedAttribute>
+buildFMAOpSplatAttrForElemTy(aievec::aie1::FMAOp fmaOp, int64_t bcastPos,
+                             int64_t step = 1);
 
 } // namespace aievec
 } // namespace xilinx
@@ -76,8 +77,8 @@ static bool canFoldAIEShiftAndBroadcast(aievec::BroadcastOp op,
 
 template <typename AIEv1MACLikeOp,
           typename = std::enable_if_t<
-              std::is_same_v<AIEv1MACLikeOp, aievec::FMAOp> ||
-              std::is_same_v<AIEv1MACLikeOp, aievec::FMAOp::Adaptor>>>
+              std::is_same_v<AIEv1MACLikeOp, aievec::aie1::FMAOp> ||
+              std::is_same_v<AIEv1MACLikeOp, aievec::aie1::FMAOp::Adaptor>>>
 static bool isSingleColumnInt16VectorTimesScalarMac(AIEv1MACLikeOp fmaOp) {
   // lhs is a 32xi16 vector
   VectorType lhsVTy = cast<VectorType>(fmaOp.getLhs().getType());
@@ -111,11 +112,11 @@ static bool isSingleColumnInt16VectorTimesScalarMac(AIEv1MACLikeOp fmaOp) {
   return llvm::all_of(cstDense, [](const APInt &val) { return val == 0; });
 }
 
-static bool singleColumnFMAOpCanFold(aievec::FMAOp fmaOp) {
+static bool singleColumnFMAOpCanFold(aievec::aie1::FMAOp fmaOp) {
   auto accProdOp = fmaOp.getAcc().getDefiningOp();
   if (!accProdOp)
     return false;
-  auto accFmaOp = dyn_cast<aievec::FMAOp>(accProdOp);
+  auto accFmaOp = dyn_cast<aievec::aie1::FMAOp>(accProdOp);
   if (!accFmaOp)
     return false;
   if (!isSingleColumnInt16VectorTimesScalarMac(accFmaOp))
@@ -128,18 +129,18 @@ static bool singleColumnFMAOpCanFold(aievec::FMAOp fmaOp) {
 // Lowering patterns
 //===----------------------------------------------------------------------===//
 struct MergeSingleColumnI16FMAOpPattern
-    : public OpConversionPattern<aievec::FMAOp> {
-  using OpConversionPattern<aievec::FMAOp>::OpConversionPattern;
+    : public OpConversionPattern<aievec::aie1::FMAOp> {
+  using OpConversionPattern<aievec::aie1::FMAOp>::OpConversionPattern;
 
   LogicalResult
-  matchAndRewrite(aievec::FMAOp fmaOp, OpAdaptor adaptor,
+  matchAndRewrite(aievec::aie1::FMAOp fmaOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     if (!isSingleColumnInt16VectorTimesScalarMac(adaptor))
       return failure();
     auto accProdOp = adaptor.getAcc().getDefiningOp();
     if (!accProdOp)
       return failure();
-    auto accFmaOp = dyn_cast<aievec::FMAOp>(accProdOp);
+    auto accFmaOp = dyn_cast<aievec::aie1::FMAOp>(accProdOp);
     if (!accFmaOp)
       return failure();
     if (!isSingleColumnInt16VectorTimesScalarMac(accFmaOp))
@@ -163,7 +164,7 @@ struct MergeSingleColumnI16FMAOpPattern
         fmaOp.getLoc(), adaptor.getLhs().getType(),
         SmallVector<Value, 2>({lowV, hiV}));
     auto newFmaOpAttr = buildFMAOpSplatAttrForElemTy(fmaOp, start, step);
-    rewriter.replaceOpWithNewOp<aievec::FMAOp>(
+    rewriter.replaceOpWithNewOp<aievec::aie1::FMAOp>(
         fmaOp, TypeRange({fmaOp.getResult().getType()}),
         ValueRange({newConcatOp, adaptor.getRhs(), accFmaOp.getAcc()}),
         newFmaOpAttr);
@@ -214,12 +215,14 @@ static void populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns,
 static void
 configureAIEVecV1TransformationLegalizations(ConversionTarget &target,
                                              TargetBackend backend) {
-  target.addLegalDialect<aievec::AIEVecDialect>();
-  target.addDynamicallyLegalOp<aievec::FMAOp>([](aievec::FMAOp fmaOp) {
-    if (isSingleColumnInt16VectorTimesScalarMac(fmaOp))
-      return !singleColumnFMAOpCanFold(fmaOp);
-    return true;
-  });
+  target.addLegalDialect<aievec::AIEVecDialect,
+                         aievec::aie1::AIEVecAIE1Dialect>();
+  target.addDynamicallyLegalOp<aievec::aie1::FMAOp>(
+      [](aievec::aie1::FMAOp fmaOp) {
+        if (isSingleColumnInt16VectorTimesScalarMac(fmaOp))
+          return !singleColumnFMAOpCanFold(fmaOp);
+        return true;
+      });
 }
 
 static void
@@ -259,13 +262,14 @@ struct AIEVecTransformationPass
   void getDependentDialects(DialectRegistry &registry) const override {
     // TODO: Review list of dependent dialects.
     registry.insert<affine::AffineDialect, xilinx::aievec::AIEVecDialect,
-                    arith::ArithDialect, memref::MemRefDialect, scf::SCFDialect,
+                    aievec::aie1::AIEVecAIE1Dialect, arith::ArithDialect,
+                    memref::MemRefDialect, scf::SCFDialect,
                     vector::VectorDialect>();
   }
 
   Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aieml\". This will "
+      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
                      "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
@@ -284,8 +288,8 @@ struct AIEVecTransformationPass
     AIEArch aieVersion = AIEArch::AIE;
     if (!aieTarget.empty()) {
       std::string target = aieTarget;
-      if (target == "aieml") {
-        aieVersion = AIEArch::AIE_ML;
+      if (target == "aieml" || target == "aie2") {
+        aieVersion = AIEArch::AIE2;
       } else if (target != "aie") {
         op->emitError() << "unknown AIE target '" << aieTarget << "'";
         signalPassFailure();
@@ -350,18 +354,19 @@ struct AIEVecConvOpTransformationPass
     return "test-aievec-convolution-optimize";
   }
   StringRef getDescription() const final {
-    return "Optimize chains of macs into AIEML conv ops.";
+    return "Optimize chains of macs into AIE2 conv ops.";
   }
   void getDependentDialects(DialectRegistry &registry) const override {
     // TODO: Review list of dependent dialects.
     registry.insert<affine::AffineDialect, xilinx::aievec::AIEVecDialect,
-                    arith::ArithDialect, memref::MemRefDialect, scf::SCFDialect,
+                    aievec::aie1::AIEVecAIE1Dialect, arith::ArithDialect,
+                    memref::MemRefDialect, scf::SCFDialect,
                     vector::VectorDialect>();
   }
 
   Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aieml\". This will "
+      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
                      "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
@@ -385,8 +390,8 @@ struct AIEVecConvOpTransformationPass
     AIEArch aieVersion = AIEArch::AIE;
     if (!aieTarget.empty()) {
       std::string target = aieTarget;
-      if (target == "aieml") {
-        aieVersion = AIEArch::AIE_ML;
+      if (target == "aieml" || target == "aie2") {
+        aieVersion = AIEArch::AIE2;
       } else if (target != "aie") {
         op->emitError() << "unknown AIE target '" << aieTarget << "'";
         signalPassFailure();
@@ -412,7 +417,7 @@ struct AIEVecConvOpTransformationPass
     }
 
     AnalysisManager am = getAnalysisManager();
-    if (aieVersion == AIEArch::AIE_ML) {
+    if (aieVersion == AIEArch::AIE2) {
       populateAIEVecConvOpTransformationPatterns(patterns, am, shiftParam,
                                                  backend);
       configureAIEVecConvOpTransformationLegalizations(target, am, backend);
@@ -442,7 +447,7 @@ void xilinx::aievec::buildOptimizeAIEVec(OpPassManager &pm,
   pm.addPass(createCanonicalizerPass());
 
   // Add generating aievec convolution ops pass
-  if (options.aieTarget == "aieml") {
+  if (options.aieTarget == "aieml" || options.aieTarget == "aie2") {
     pm.addPass(createAIEVecConvolutionAnalysisPass());
     pm.addPass(createAIEVecConvOpTransformationPass(options));
   }

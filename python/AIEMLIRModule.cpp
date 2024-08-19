@@ -86,10 +86,10 @@ PYBIND11_MODULE(_aie, m) {
 
   m.def(
       "translate_aie_vec_to_cpp",
-      [&stealCStr](MlirOperation op, bool aieml) {
-        return stealCStr(aieTranslateAIEVecToCpp(op, aieml));
+      [&stealCStr](MlirOperation op, bool aie2) {
+        return stealCStr(aieTranslateAIEVecToCpp(op, aie2));
       },
-      "module"_a, "aieml"_a = false);
+      "module"_a, "aie2"_a = false);
 
   m.def(
       "translate_mlir_to_llvmir",
@@ -295,7 +295,15 @@ PYBIND11_MODULE(_aie, m) {
       // .def("get_num_dest_shim_mux_connections", int col, int row)
       // .def("get_num_source_shim_mux_connections", int col, int row)
       // .def("is_legal_memtile_connection")
-      .def("is_npu", [](PyAieTargetModel &self) {
-        return aieTargetModelIsNPU(self.get());
+      .def("is_npu",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelIsNPU(self.get());
+           })
+      .def("get_column_shift",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetColumnShift(self.get());
+           })
+      .def("get_row_shift", [](PyAieTargetModel &self) {
+        return aieTargetModelGetRowShift(self.get());
       });
 }

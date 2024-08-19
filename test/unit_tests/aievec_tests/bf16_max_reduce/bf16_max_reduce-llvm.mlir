@@ -2,7 +2,7 @@
 // Copyright (C) 2024, Advanced Micro Devices, Inc.
 
 // REQUIRES: valid_xchess_license
-// REQUIRES: peano
+// REQUIRES: peano, peano_and_chess
 // RUN: mkdir -p %t/data; cd %t
 // RUN: aie-opt %s %vector-to-llvmir% -o llvmir.mlir
 // RUN: aie-translate llvmir.mlir %llvmir-to-ll% -o dut.ll
@@ -11,10 +11,10 @@
 // RUN: xca_udm_dbg --aiearch aie-ml -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../profiling.tcl ./work/a.out" >& xca_udm_dbg.stdout
 // RUN: FileCheck --input-file=./xca_udm_dbg.stdout %s
 // CHECK: TEST PASSED
-// XFAIL: *
 
 module {
   func.func @dut(%arg0: memref<1024xbf16>, %arg1: memref<bf16>) {
+    memref.assume_alignment %arg0, 32 : memref<1024xbf16>
     %cst_0 = arith.constant dense<0xFF80> : vector<32xbf16>
     %0 = affine.for %arg2 = 0 to 1024 step 32 iter_args(%arg3 = %cst_0) -> (vector<32xbf16>) {
       %cst_1 = arith.constant 0.000000e+00 : bf16

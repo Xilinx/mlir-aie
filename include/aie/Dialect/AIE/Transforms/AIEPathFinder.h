@@ -14,9 +14,6 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
-#include "llvm/ADT/DirectedGraph.h"
-#include "llvm/ADT/GraphTraits.h"
-
 #include <algorithm>
 #include <iostream>
 #include <list>
@@ -24,101 +21,132 @@
 
 namespace xilinx::AIE {
 
-using Switchbox = struct Switchbox : TileID {
-  // Necessary for initializer construction?
-  Switchbox(TileID t) : TileID(t) {}
-  Switchbox(int col, int row) : TileID{col, row} {}
-  friend std::ostream &operator<<(std::ostream &os, const Switchbox &s) {
-    os << "Switchbox(" << s.col << ", " << s.row << ")";
-    return os;
+#define OVER_CAPACITY_COEFF 0.1
+#define USED_CAPACITY_COEFF 0.1
+#define DEMAND_COEFF 1.1
+#define DEMAND_BASE 1.0
+#define MAX_CIRCUIT_STREAM_CAPACITY 1
+#define MAX_PACKET_STREAM_CAPACITY 32
+
+enum class Connectivity { INVALID = 0, AVAILABLE = 1 };
+
+using SwitchboxConnect = struct SwitchboxConnect {
+  SwitchboxConnect() = default;
+  SwitchboxConnect(TileID coords) : srcCoords(coords), dstCoords(coords) {}
+  SwitchboxConnect(TileID srcCoords, TileID dstCoords)
+      : srcCoords(srcCoords), dstCoords(dstCoords) {}
+
+  TileID srcCoords, dstCoords;
+  std::vector<Port> srcPorts;
+  std::vector<Port> dstPorts;
+  // connectivity between ports
+  std::vector<std::vector<Connectivity>> connectivity;
+  // weights of Dijkstra's shortest path
+  std::vector<std::vector<double>> demand;
+  // history of Channel being over capacity
+  std::vector<std::vector<int>> overCapacity;
+  // how many circuit streams are actually using this Channel
+  std::vector<std::vector<int>> usedCapacity;
+  // how many packet streams are actually using this Channel
+  std::vector<std::vector<int>> packetFlowCount;
+  // only sharing the channel with the same packet group id
+  std::vector<std::vector<int>> packetGroupId;
+
+  // resize the matrices to the size of srcPorts and dstPorts
+  void resize() {
+    connectivity.resize(
+        srcPorts.size(),
+        std::vector<Connectivity>(dstPorts.size(), Connectivity::INVALID));
+    demand.resize(srcPorts.size(), std::vector<double>(dstPorts.size(), 0.0));
+    overCapacity.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
+    usedCapacity.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
+    packetFlowCount.resize(srcPorts.size(),
+                           std::vector<int>(dstPorts.size(), 0));
+    packetGroupId.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
   }
 
-  GENERATE_TO_STRING(Switchbox);
+  // update demand at the beginning of each dijkstraShortestPaths iteration
+  void updateDemand() {
+    for (size_t i = 0; i < srcPorts.size(); i++) {
+      for (size_t j = 0; j < dstPorts.size(); j++) {
+        double history = DEMAND_BASE + OVER_CAPACITY_COEFF * overCapacity[i][j];
+        double congestion =
+            DEMAND_BASE + USED_CAPACITY_COEFF * usedCapacity[i][j];
+        demand[i][j] = history * congestion;
+      }
+    }
+  }
 
-  bool operator==(const Switchbox &rhs) const {
-    return static_cast<TileID>(*this) == rhs;
+  // inside each dijkstraShortestPaths interation, bump demand when exceeds
+  // capacity
+  void bumpDemand(size_t i, size_t j) {
+    if (usedCapacity[i][j] >= MAX_CIRCUIT_STREAM_CAPACITY) {
+      demand[i][j] *= DEMAND_COEFF;
+    }
   }
 };
 
-using Channel = struct Channel {
-  Channel(Switchbox &src, Switchbox &target, WireBundle bundle, int maxCapacity)
-      : src(src), target(target), bundle(bundle), maxCapacity(maxCapacity) {}
+using PathEndPoint = struct PathEndPoint {
+  PathEndPoint() = default;
+  PathEndPoint(TileID coords, Port port) : coords(coords), port(port) {}
 
-  friend std::ostream &operator<<(std::ostream &os, const Channel &c) {
-    os << "Channel(src=" << c.src << ", dst=" << c.target << ")";
+  TileID coords;
+  Port port;
+
+  friend std::ostream &operator<<(std::ostream &os, const PathEndPoint &s) {
+    os << "PathEndPoint(" << s.coords << ": " << s.port << ")";
     return os;
   }
 
-  GENERATE_TO_STRING(Channel)
+  GENERATE_TO_STRING(PathEndPoint)
 
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                                       const Channel &c) {
-    os << to_string(c);
+                                       const PathEndPoint &s) {
+    os << to_string(s);
     return os;
   }
 
-  Switchbox &src;
-  Switchbox &target;
-  WireBundle bundle;
-  int maxCapacity = 0;  // maximum number of routing resources
-  double demand = 0.0;  // indicates how many flows want to use this Channel
-  int usedCapacity = 0; // how many flows are actually using this Channel
-  std::set<int> fixedCapacity; // channels not available to the algorithm
-  int overCapacityCount = 0;   // history of Channel being over capacity
+  // Needed for the std::maps that store PathEndPoint.
+  bool operator<(const PathEndPoint &rhs) const {
+    return std::tie(coords, port) < std::tie(rhs.coords, rhs.port);
+  }
+
+  bool operator==(const PathEndPoint &rhs) const {
+    return std::tie(coords, port) == std::tie(rhs.coords, rhs.port);
+  }
 };
 
-struct SwitchboxNode;
-struct ChannelEdge;
-using SwitchboxNodeBase = llvm::DGNode<SwitchboxNode, ChannelEdge>;
-using ChannelEdgeBase = llvm::DGEdge<SwitchboxNode, ChannelEdge>;
-using SwitchboxGraphBase = llvm::DirectedGraph<SwitchboxNode, ChannelEdge>;
-
-using SwitchboxNode = struct SwitchboxNode : SwitchboxNodeBase, Switchbox {
-  using Switchbox::Switchbox;
-  SwitchboxNode(int col, int row, int id) : Switchbox{col, row}, id{id} {}
-  int id;
-};
-
-// warning: 'xilinx::AIE::ChannelEdge::src' will be initialized after
-// SwitchboxNode &src; [-Wreorder]
-using ChannelEdge = struct ChannelEdge : ChannelEdgeBase, Channel {
-  using Channel::Channel;
-
-  explicit ChannelEdge(SwitchboxNode &target) = delete;
-  ChannelEdge(SwitchboxNode &src, SwitchboxNode &target, WireBundle bundle,
-              int maxCapacity)
-      : ChannelEdgeBase(target), Channel(src, target, bundle, maxCapacity),
-        src(src) {}
-
-  // This class isn't designed to copied or moved.
-  ChannelEdge(const ChannelEdge &E) = delete;
-  ChannelEdge &operator=(ChannelEdge &&E) = delete;
-
-  SwitchboxNode &src;
-};
-
-class SwitchboxGraph : public SwitchboxGraphBase {
-public:
-  SwitchboxGraph() = default;
-  ~SwitchboxGraph() = default;
+using Flow = struct Flow {
+  int packetGroupId;
+  PathEndPoint src;
+  std::vector<PathEndPoint> dsts;
 };
 
 // A SwitchSetting defines the required settings for a Switchbox for a flow
-// SwitchSetting.src is the incoming signal
+// SwitchSetting.srcs is the fanin
 // SwitchSetting.dsts is the fanout
 using SwitchSetting = struct SwitchSetting {
   SwitchSetting() = default;
-  SwitchSetting(Port src) : src(src) {}
-  SwitchSetting(Port src, std::set<Port> dsts)
-      : src(src), dsts(std::move(dsts)) {}
-  Port src;
-  std::set<Port> dsts;
+  SwitchSetting(std::vector<Port> srcs) : srcs(std::move(srcs)) {}
+  SwitchSetting(std::vector<Port> srcs, std::vector<Port> dsts)
+      : srcs(std::move(srcs)), dsts(std::move(dsts)) {}
 
-  // friend definition (will define the function as a non-member function of the
-  // namespace surrounding the class).
+  std::vector<Port> srcs;
+  std::vector<Port> dsts;
+
+  // friend definition (will define the function as a non-member function of
+  // the namespace surrounding the class).
   friend std::ostream &operator<<(std::ostream &os,
                                   const SwitchSetting &setting) {
-    os << setting.src << " -> "
+    os << "{"
+       << join(llvm::map_range(setting.srcs,
+                               [](const Port &port) {
+                                 std::ostringstream ss;
+                                 ss << port;
+                                 return ss.str();
+                               }),
+               ", ")
+       << " -> "
        << "{"
        << join(llvm::map_range(setting.dsts,
                                [](const Port &port) {
@@ -139,52 +167,10 @@ using SwitchSetting = struct SwitchSetting {
     return os;
   }
 
-  bool operator<(const SwitchSetting &rhs) const { return src < rhs.src; }
+  bool operator<(const SwitchSetting &rhs) const { return srcs < rhs.srcs; }
 };
 
-using SwitchSettings = std::map<Switchbox, SwitchSetting>;
-
-// A Flow defines source and destination vertices
-// Only one source, but any number of destinations (fanout)
-using PathEndPoint = struct PathEndPoint {
-  Switchbox sb;
-  Port port;
-
-  friend std::ostream &operator<<(std::ostream &os, const PathEndPoint &s) {
-    os << "PathEndPoint(" << s.sb << ": " << s.port << ")";
-    return os;
-  }
-
-  GENERATE_TO_STRING(PathEndPoint)
-
-  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                                       const PathEndPoint &s) {
-    os << to_string(s);
-    return os;
-  }
-
-  // Needed for the std::maps that store PathEndPoint.
-  bool operator<(const PathEndPoint &rhs) const {
-    return std::tie(sb, port) < std::tie(rhs.sb, rhs.port);
-  }
-
-  bool operator==(const PathEndPoint &rhs) const {
-    return std::tie(sb, port) == std::tie(rhs.sb, rhs.port);
-  }
-};
-
-// A Flow defines source and destination vertices
-// Only one source, but any number of destinations (fanout)
-using PathEndPointNode = struct PathEndPointNode : PathEndPoint {
-  PathEndPointNode(SwitchboxNode *sb, Port port)
-      : PathEndPoint{*sb, port}, sb(sb) {}
-  SwitchboxNode *sb;
-};
-
-using FlowNode = struct FlowNode {
-  PathEndPointNode src;
-  std::vector<PathEndPointNode> dsts;
-};
+using SwitchSettings = std::map<TileID, SwitchSetting>;
 
 class Router {
 public:
@@ -195,11 +181,10 @@ public:
   virtual void initialize(int maxCol, int maxRow,
                           const AIETargetModel &targetModel) = 0;
   virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
-                       Port dstPort) = 0;
-  virtual bool addFixedConnection(ConnectOp connectOp) = 0;
+                       Port dstPort, bool isPacketFlow) = 0;
+  virtual bool addFixedConnection(SwitchboxOp switchboxOp) = 0;
   virtual std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) = 0;
-  virtual Switchbox *getSwitchbox(TileID coords) = 0;
 };
 
 class Pathfinder : public Router {
@@ -207,27 +192,27 @@ public:
   Pathfinder() = default;
   void initialize(int maxCol, int maxRow,
                   const AIETargetModel &targetModel) override;
-  void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
-               Port dstPort) override;
-  bool addFixedConnection(ConnectOp connectOp) override;
+  void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort,
+               bool isPacketFlow) override;
+  bool addFixedConnection(SwitchboxOp switchboxOp) override;
   std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) override;
-
-  Switchbox *getSwitchbox(TileID coords) override {
-    auto *sb = std::find_if(graph.begin(), graph.end(), [&](SwitchboxNode *sb) {
-      return sb->col == coords.col && sb->row == coords.row;
-    });
-    assert(sb != graph.end() && "couldn't find sb");
-    return *sb;
-  }
+  std::map<PathEndPoint, PathEndPoint> dijkstraShortestPaths(PathEndPoint src);
 
 private:
-  SwitchboxGraph graph;
-  std::vector<FlowNode> flows;
-  std::map<TileID, SwitchboxNode> grid;
-  // Use a list instead of a vector because nodes have an edge list of raw
-  // pointers to edges (so growing a vector would invalidate the pointers).
-  std::list<ChannelEdge> edges;
+  // Flows to be routed
+  std::vector<Flow> flows;
+  // Represent all routable paths as a graph
+  // The key is a pair of TileIDs representing the connectivity from srcTile to
+  // dstTile If srcTile == dstTile, it represents connections inside the same
+  // switchbox otherwise, it represents connections (South, North, West, East)
+  // accross two switchboxes
+  std::map<std::pair<TileID, TileID>, SwitchboxConnect> graph;
+  // Channels available in the network
+  // The key is a PathEndPoint representing the start of a path
+  // The value is a vector of PathEndPoints representing the possible ends of
+  // the path
+  std::map<PathEndPoint, std::vector<PathEndPoint>> channels;
 };
 
 // DynamicTileAnalysis integrates the Pathfinder class into the MLIR
@@ -265,77 +250,14 @@ public:
 
 } // namespace xilinx::AIE
 
-// For some mysterious reason, the only way to get the priorityQueue(cmp)
-// comparison in dijkstraShortestPaths to work correctly is to define
-// this template specialization for the pointers. Overloading operator
-// will not work. Furthermore, if  you try to move this into AIEPathFinder.cpp
-// you'll get a compile error about
-// "specialization of ‘std::less<xilinx::AIE::Switchbox*>’ after instantiation"
-// because one of the graph traits below is doing the comparison internally
-// (try moving this below the llvm namespace...)
-namespace std {
-template <>
-struct less<xilinx::AIE::Switchbox *> {
-  bool operator()(const xilinx::AIE::Switchbox *a,
-                  const xilinx::AIE::Switchbox *b) const {
-    return *a < *b;
-  }
-};
-} // namespace std
-
 namespace llvm {
-
-template <>
-struct GraphTraits<xilinx::AIE::SwitchboxNode *> {
-  using NodeRef = xilinx::AIE::SwitchboxNode *;
-
-  static xilinx::AIE::SwitchboxNode *SwitchboxGraphGetSwitchbox(
-      DGEdge<xilinx::AIE::SwitchboxNode, xilinx::AIE::ChannelEdge> *P) {
-    return &P->getTargetNode();
-  }
-
-  // Provide a mapped iterator so that the GraphTrait-based implementations can
-  // find the target nodes without having to explicitly go through the edges.
-  using ChildIteratorType =
-      mapped_iterator<xilinx::AIE::SwitchboxNode::iterator,
-                      decltype(&SwitchboxGraphGetSwitchbox)>;
-  using ChildEdgeIteratorType = xilinx::AIE::SwitchboxNode::iterator;
-
-  static NodeRef getEntryNode(NodeRef N) { return N; }
-  static ChildIteratorType child_begin(NodeRef N) {
-    return {N->begin(), &SwitchboxGraphGetSwitchbox};
-  }
-  static ChildIteratorType child_end(NodeRef N) {
-    return {N->end(), &SwitchboxGraphGetSwitchbox};
-  }
-
-  static ChildEdgeIteratorType child_edge_begin(NodeRef N) {
-    return N->begin();
-  }
-  static ChildEdgeIteratorType child_edge_end(NodeRef N) { return N->end(); }
-};
-
-template <>
-struct GraphTraits<xilinx::AIE::SwitchboxGraph *>
-    : GraphTraits<xilinx::AIE::SwitchboxNode *> {
-  using nodes_iterator = xilinx::AIE::SwitchboxGraph::iterator;
-  static NodeRef getEntryNode(xilinx::AIE::SwitchboxGraph *DG) {
-    return *DG->begin();
-  }
-  static nodes_iterator nodes_begin(xilinx::AIE::SwitchboxGraph *DG) {
-    return DG->begin();
-  }
-  static nodes_iterator nodes_end(xilinx::AIE::SwitchboxGraph *DG) {
-    return DG->end();
-  }
-};
 
 inline raw_ostream &operator<<(raw_ostream &os,
                                const xilinx::AIE::SwitchSettings &ss) {
   std::stringstream s;
   s << "\tSwitchSettings: ";
-  for (const auto &[sb, setting] : ss) {
-    s << sb << ": " << setting << " | ";
+  for (const auto &[coords, setting] : ss) {
+    s << coords << ": " << setting << " | ";
   }
   s << "\n";
   os << s.str();
@@ -343,21 +265,5 @@ inline raw_ostream &operator<<(raw_ostream &os,
 }
 
 } // namespace llvm
-
-template <>
-struct std::hash<xilinx::AIE::Switchbox> {
-  std::size_t operator()(const xilinx::AIE::Switchbox &s) const noexcept {
-    return std::hash<xilinx::AIE::TileID>{}(s);
-  }
-};
-
-template <>
-struct std::hash<xilinx::AIE::PathEndPoint> {
-  std::size_t operator()(const xilinx::AIE::PathEndPoint &pe) const noexcept {
-    std::size_t h1 = std::hash<xilinx::AIE::Port>{}(pe.port);
-    std::size_t h2 = std::hash<xilinx::AIE::Switchbox>{}(pe.sb);
-    return h1 ^ (h2 << 1);
-  }
-};
 
 #endif

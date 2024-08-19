@@ -65,7 +65,7 @@ You will...
        
     1. Setup your environment using the following script for Vitis and aietools:
 
-       ```
+       ```bash
        #!/bin/bash
         #################################################################################
         # Setup Vitis (which includes Vitis and aietools)
@@ -82,7 +82,7 @@ You will...
        ```
    1. Vitis requires some python3.8 libraries:
   
-      ```
+      ```bash
       sudo add-apt-repository ppa:deadsnakes/ppa
       sudo apt-get update
       sudo apt install libpython3.8-dev
@@ -98,21 +98,21 @@ You will...
       BIOS → Advanced Settings (F7) → Security →  Secure Boot → Secure Boot Control (Set to Disabled)
 
 1. Install the following prerequisite packages for compiling Linux:
-    ```
+    ```bash
     sudo apt install \
     build-essential debhelper flex bison libssl-dev libelf-dev libboost-all-dev libpython3.10-dev libsystemd-dev libtiff-dev libudev-dev
     ```
 
-1. Pull the source for the correct kernel version, which is available in the AMDESE linux repository.
+1. Pull the source for kernel version 6.10.
 
-    ```
-    git clone --depth=1 --branch v6.8-iommu-sva-part4-v7 git@github.com:AMD-SW/linux
+    ```bash
+    git clone --depth=1 --branch v6.10 git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
     export LINUX_SRC_DIR=$(realpath linux)
     ```
 
 1. Create a build directory and a configuration within it.
     
-    ```
+    ```bash
     mkdir linux-build
     export LINUX_BUILD_DIR=$(realpath linux-build)
     cp /boot/config-`uname -r` $LINUX_BUILD_DIR/.config
@@ -120,9 +120,9 @@ You will...
 
 1. Go to the directory where you cloned Linux and adjust the configuration.
 
-    ```
+    ```bash
     cd $LINUX_SRC_DIR
-    make olddefconfig
+    make O=$LINUX_BUILD_DIR olddefconfig
     ./scripts/config --file $LINUX_BUILD_DIR/.config --disable MODULE_SIG
     ./scripts/config --file $LINUX_BUILD_DIR/.config --disable SYSTEM_TRUSTED_KEYS
     ./scripts/config --file $LINUX_BUILD_DIR/.config --disable SYSTEM_REVOCATION_KEYS
@@ -131,7 +131,7 @@ You will...
 
 1. Build Linux.
 
-    ```
+    ```bash
     make -j$(nproc) O=$LINUX_BUILD_DIR bindeb-pkg 2>&1 | tee kernel-build.log
     ```
 
@@ -141,11 +141,9 @@ You will...
 
 1. Install the new Linux kernel and reboot.
 
-    ```
-    cd $LINUX_BUILD_DIR/..
-    sudo dpkg -i linux-headers-6.8.8+_6.8.8-g7575202b6461-1_amd64.deb
-    sudo dpkg -i linux-image-6.8.8+_6.8.8-g7575202b6461-1_amd64.deb 
-    sudo dpkg -i linux-libc-dev_6.8.8-g7575202b6461-1_amd64.deb
+    ```bash
+    cd $LINUX_BUILD_DIR
+    sudo apt reinstall ../linux-headers-6.10.0_6.10.0-1_amd64.deb ../linux-image-6.10.0_6.10.0-1_amd64.deb ../linux-libc-dev_6.10.0-1_amd64.deb
     sudo shutdown --reboot 0
     ```
 
@@ -154,7 +152,7 @@ You will...
 1. Install a more recent CMake, which is needed for building XRT.
    
    1. Download CMake 3.28 binaries into `NEW_CMAKE_DIR`.
-      ```
+      ```bash
       mkdir cmake
       export NEW_CMAKE_DIR=$(realpath cmake)
       cd cmake
@@ -167,13 +165,13 @@ You will...
 
    1. Add new cmake directory to your `PATH`.
 
-      ```
+      ```bash
       export PATH="${NEW_CMAKE_DIR}/bin":"${PATH}"
       ```
    
    1. Verify the install of CMake was successful.
 
-      ```
+      ```bash
       cmake --version
       ```
 
@@ -182,17 +180,17 @@ You will...
 
 1. Install the following prerequisite packages.
  
-   ```
+   ```bash
    sudo apt install \
    libidn11-dev
    ```
 
 1. Clone the XDNA driver repository and its submodules.
-    ```
+    ```bash
     git clone https://github.com/amd/xdna-driver.git
     export XDNA_SRC_DIR=$(realpath xdna-driver)
     cd xdna-driver
-    git reset --hard cc2767aba2f10e377ddf054ae0583dbc2e3e6127
+    git reset --hard 537a509a3ab1b698c9c9f6ebcd88035b2fe8359b
     git submodule update --init --recursive
     ```
 
@@ -202,26 +200,23 @@ You will...
 
     1. Install XRT prerequisites.
     
-       ```
+       ```bash
        cd $XDNA_SRC_DIR
        sudo ./tools/amdxdna_deps.sh
        ```
 
     2. Build XRT. Remember to source the aietools/Vitis setup script from [above](#install-xilinx-vitis-20232).
 
-       ```
+       ```bash
        cd $XDNA_SRC_DIR/xrt/build
-       ./build.sh
-       cd Release
-       make package
+       ./build.sh -noert -noalveo
        ```
 
     3. Install XRT.
 
-       ```
+       ```bash
        cd $XDNA_SRC_DIR/xrt/build/Release
-       sudo dpkg -i xrt_202410.2.17.0_22.04-amd64-xrt.deb
-       sudo dpkg -i xrt_202410.2.17.0_22.04-amd64-xbflash2.deb
+       sudo apt reinstall ./xrt_202420.2.18.0_22.04-amd64-xrt.deb ./xrt_202420.2.18.0_22.04-amd64-xbflash.deb
        ```
 
        > **An error is expected in this step.** Ignore it.
@@ -230,7 +225,7 @@ You will...
 
 1. Build XDNA-Driver. Below steps are adapted from [here](https://github.com/amd/xdna-driver).
 
-    ```
+    ```bash
     cd $XDNA_SRC_DIR/build
     ./build.sh -release
     ./build.sh -package
@@ -238,16 +233,16 @@ You will...
 
 1. Install XDNA.
 
-    ```
+    ```bash
     cd $XDNA_SRC_DIR/build/Release
-    sudo dpkg -i xrt_plugin.2.17.0_ubuntu22.04-x86_64-amdxdna.deb
+    sudo apt reinstall ./xrt_plugin.2.18.0_ubuntu22.04-x86_64-amdxdna.deb
     ```
     
-1. Check that the NPU is working if the device appears with xbutil:
+1. Check that the NPU is working if the device appears with xrt-smi:
    
-   ```
+   ```bash
    source /opt/xilinx/xrt/setup.sh
-   xbutil examine
+   xrt-smi examine
    ```
 
    > At the bottom of the output you should see:
@@ -262,14 +257,14 @@ You will...
 
 1. Install the following packages needed for MLIR-AIE:
 
-    ``` 
+    ```bash
     sudo apt install \
     build-essential clang clang-14 lld lld-14 cmake python3-venv python3-pip libxrender1 libxtst6 libxi6 virtualenv
-      ```
+    ```
 
 1. Install g++13 and opencv needed for some programming examples:
 
-   ```
+   ```bash
    sudo add-apt-repository ppa:ubuntu-toolchain-r/test
    sudo apt update
    sudo apt install gcc-13 g++-13 -y
@@ -283,7 +278,7 @@ You will...
 ### Option A - Quick Setup for Ryzen™ AI Application Development
 
 1. Clone [the mlir-aie repository](https://github.com/Xilinx/mlir-aie.git), best under /home/username for speed (yourPathToBuildMLIR-AIE): 
-   ```
+   ```bash
    git clone https://github.com/Xilinx/mlir-aie.git
    cd mlir-aie
    ````
@@ -296,7 +291,7 @@ You will...
 ### Option B - Build mlir-aie Tools from Source for Development
 
 1. Clone [https://github.com/Xilinx/mlir-aie.git](https://github.com/Xilinx/mlir-aie.git) best under /home/username for speed (yourPathToBuildMLIR-AIE), with submodules: 
-   ```
+   ```bash
    git clone --recurse-submodules https://github.com/Xilinx/mlir-aie.git
    ````
 
@@ -311,7 +306,7 @@ We suggest you add all of the following to a `setup.sh` script in your home dire
 
 ### `setup.sh` - Option A - Quick Setup
 
-```
+```bash
 export LM_LICENSE_FILE=/opt/Xilinx.lic
 source /opt/xilinx/xrt/setup.sh
 export PATH="${NEW_CMAKE_DIR}/bin":"${PATH}"
@@ -327,7 +322,7 @@ source ${MLIR_AIE_BUILD_DIR}/utils/env_setup.sh ${MLIR_AIE_BUILD_DIR}/my_install
 
 ### `setup.sh` - Option B - Toolchain Compiled From Source
 
-```
+```bash
 cd ${MLIR_AIE_BUILD_DIR}
 source ${MLIR_AIE_BUILD_DIR}/sandbox/bin/activate
 source /opt/xilinx/xrt/setup.sh
@@ -351,14 +346,14 @@ For your design of interest, for instance from [programming_examples](../program
 Note that your design of interest might need an adapted `CMakeLists.txt` file. Also pay attention to accurately set the paths CMake parameters `BOOST_ROOT`, `XRT_INC_DIR` and `XRT_LIB_DIR` used in the `CMakeLists.txt`, either in the file or as CMake command line parameters.
 
 1. Build: Goto the same design of interest folder where the AIE design just got built (see above)
-    ```
+    ```bash
     make <testName>.exe
     ```
     > Note that the host code target has a `.exe` file extension even on Linux. Although unusual, this is an easy way for us to distinguish whether we want to compile device code or host code.
 
 
 1. Run (program arguments are just an example for add_one design)
-    ```
+    ```bash
     cd Release
     .\<testName>.exe -x ..\..\build\final.xclbin -k MLIR_AIE -i ..\..\build\insts.txt -v 1
     ```
@@ -368,7 +363,7 @@ Note that your design of interest might need an adapted `CMakeLists.txt` file. A
 ## Signing your XCLBIN (older xdna Linux drivers)
 
 1. Signing your array configuration binary aka. XCLBIN
-    ```
+    ```bash
     sudo bash
     source /opt/xilinx/xrt/setup.sh
     # Assume adding an unsigned xclbin on Phoenix, run
@@ -383,14 +378,14 @@ Note that your design of interest might need an adapted `CMakeLists.txt` file. A
 
 It is possible to hang the NPU in an unstable state. To reset the NPU:
 
-```
+```bash
 sudo rmmod amdxdna.ko
 sudo insmod $XDNA_SRC_DIR/build/Release/bins/driver/amdxdna.ko
 ```
 
 If you installed the AMD XDNA driver using `.deb` packages as outlined above, and `insmod` does not work, you may instead want to try:
 
-```
+```bash
 sudo modprobe -r amdxdna
 sudo modprobe -v amdxdna
 ```

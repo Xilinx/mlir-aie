@@ -27,7 +27,7 @@ The design in [join_L2.py](./join_L2.py) uses three Object FIFOs from each of th
 All compute tiles are running the same process of acquiring one object from their respective input Object FIFOs to produce, writing `1` to all of its entries, and releasing the object.
 
 This design is combined with the previous [distribute](../04_distribute_L2/distribute_L2.py) design to achieve a full data movement from external memory to the AIE array and back. The resulting code is available in [distribute_and_join_L2.py](./distribute_and_join_L2.py). It is possible to build, run and test it with the following commands:
-```
+```bash
 make
 make run
 ```

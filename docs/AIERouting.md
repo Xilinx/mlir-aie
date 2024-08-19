@@ -100,11 +100,11 @@ AIE.flow(%t73, "DMA" : 1, %t70, "PLIO" : 4)
 
 We support the visualization of routed modules in json format. 
 
-Here is an example of how users can route the `test/create-flows/broadcase.mlir` test, followed by converting the routed module into json format for visualization.
+Here is an example of how users can route the circuit-switched `test/create-flows/broadcast.mlir` test, followed by converting the routed module into json format for visualization.
 
 ```
 cd ${path-to-mlir-aie}/tools/aie-routing-command-line
-aie-opt --aie-create-pathfinder-flows --aie-find-flows ${path-to-mlir-aie}/test/create-flows/broadcast.mlir \
+aie-opt --aie-create-pathfinder-flows --aie-find-flows ../../test/create-flows/broadcast.mlir \
     | aie-translate --aie-flows-to-json > example.json
 python3 visualize.py -j example.json
 ```
@@ -166,3 +166,25 @@ Number on connection indicates the traffic in current direction.
 Asterisks indicate the tiles in use.
 
 For details on the usage of `visualize.py` please check out `python3 visualize.py --help`.
+
+
+Similarly, to visualize a packet-switched example,  
+
+```
+cd ${path-to-mlir-aie}/tools/aie-routing-command-line
+aie-opt --aie-create-pathfinder-flows --aie-find-flows ../../test/create-packet-flows/test_create_packet_flows6.mlir \
+    | aie-translate --aie-flows-to-json > example.json
+python3 visualize.py -j example.json
+```
+
+
+## Benckmarking Routing
+
+A python script is provided to measure the wall-clock time and the length of paths routed. Simply run 
+
+```
+python3  utils/router_performance.py test/create-flows/
+python3  utils/router_performance.py test/create-packet-flows/
+```
+
+and the generated `routing_performance_results.csv` files can be found under the corresponding folders.

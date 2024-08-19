@@ -53,6 +53,8 @@ config.substitutions.append(
 config.substitutions.append(("%aietools", config.vitis_aietools_dir))
 # for xchesscc_wrapper
 llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
+# for peano clang
+llvm_config.with_environment("XILINX_VITIS_AIETOOLS", config.vitis_aietools_dir)
 
 run_on_npu = "echo"
 xrt_flags = ""
@@ -129,13 +131,17 @@ if config.xrt_lib_dir:
     )
     config.available_features.add("xrt")
     try:
-        xbutil = os.path.join(config.xrt_bin_dir, "xbutil")
+        # xbutil is deprecated/renamed to xrt-smi, leaving it xbutil for now for
+        # compatibility with older versions of XRT
+        # xrtsmi = os.path.join(config.xrt_bin_dir, "xrt-smi")
+        xrtsmi = os.path.join(config.xrt_bin_dir, "xbutil")
         result = subprocess.run(
-            [xbutil, "examine"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            [xrtsmi, "examine"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
         result = result.stdout.decode("utf-8").split("\n")
         # Starting with Linux 6.8 the format is like "[0000:66:00.1]  :  RyzenAI-npu1"
-        p = re.compile("\[.+:.+:.+\].+(Phoenix|RyzenAI-(npu\d))")
+        # Starting with Linux 6.10 the format is like "|[0000:41:00.1]  ||RyzenAI-npu1  |"
+        p = re.compile("[\|]?\[.+:.+:.+\].+(Phoenix|RyzenAI-(npu\d))")
         for l in result:
             m = p.match(l)
             if m:
@@ -149,7 +155,7 @@ if config.xrt_lib_dir:
                     f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )
     except:
-        print("Failed to run xbutil")
+        print("Failed to run xrt-smi")
         pass
 else:
     print("xrt not found")
@@ -279,7 +285,6 @@ if config.enable_chess_tests:
 tools = [
     "aie-opt",
     "aie-translate",
-    "aie2xclbin",
     "aiecc.py",
     "ld.lld",
     "llc",

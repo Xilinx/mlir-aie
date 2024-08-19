@@ -1,5 +1,5 @@
-// RUN: aie-opt %s -convert-vector-to-aievec=aie-target=aieml | FileCheck %s
-// RUN: aie-opt %s -convert-vector-to-aievec="aie-target=aieml target-backend=llvmir" | FileCheck %s --check-prefix=CHECK-LLVM
+// RUN: aie-opt %s -convert-vector-to-aievec=aie-target=aie2 | FileCheck %s
+// RUN: aie-opt %s -convert-vector-to-aievec="aie-target=aie2 target-backend=llvmir" | FileCheck %s --check-prefix=CHECK-LLVM
 
 #map1 = affine_map<(d0, d1, d2) -> (d0, d2)>
 #map2 = affine_map<(d0, d1, d2) -> (d2, d1)>

@@ -1,5 +1,5 @@
 // REQUIRES: valid_xchess_license
-// RUN: aie-opt %s -convert-vector-to-aievec="aie-target=aieml" | aie-translate -aieml=true -aievec-to-cpp -o kernel.tmp.cc
+// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2" | aie-translate -aie2=true -aievec-to-cpp -o kernel.tmp.cc
 // RUN: echo "#include <cstdint>" > kernel.cc && cat kernel.tmp.cc >> kernel.cc
 // RUN: xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I. -I%aietools/include -D__AIENGINE__ -D__AIEARCH__=20 kernel.cc %S/helplib.cc %S/main.cc
 // RUN: xca_udm_dbg --aiearch aie-ml -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../../profiling.tcl ./work/a.out" | FileCheck %s

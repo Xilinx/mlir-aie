@@ -134,6 +134,15 @@ def AIETarget : OpInterface<"AIETarget"> {
 }
 
 // Don't delete - see AIEDialect::myVerifyOffsetSizeAndStrideOp
-def MyOffsetSizeAndStrideOpInterface: OpInterfaceTrait<"::xilinx::AIE::MyOffsetSizeAndStrideOpInterface"> {}
+def MyOffsetSizeAndStrideOpInterface : OpInterfaceTrait<"::xilinx::AIE::MyOffsetSizeAndStrideOpInterface"> {}
+
+// Ops may specify that the accessibility checks of their child ops are not verified.
+// For example, by default, ops will verify that all contained aie.buffers are
+// accessible from within the tile from which they are used. However, in abstract
+// definitions not tied to any tile, it may still be useful to be able to refer
+// to buffers and skip those checks.
+def SkipAccessibilityCheckTrait : NativeOpTrait<"SkipAccessibilityCheckTrait"> {
+  string cppNamespace = "::xilinx::AIE";
+}
 
 #endif // AIE_INTERFACES

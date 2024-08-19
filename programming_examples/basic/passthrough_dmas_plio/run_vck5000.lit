@@ -1,0 +1,9 @@
+// (c) Copyright 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: hsa
+//
+// RUN: make -f %S/Makefile clean
+// RUN: make -f %S/Makefile all
+// RUN: %run_on_vck5000 ./input.elf
+// RUN: %run_on_vck5000 ./output.elf

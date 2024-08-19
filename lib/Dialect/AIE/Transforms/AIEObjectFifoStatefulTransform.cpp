@@ -17,6 +17,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Iterators.h"
@@ -818,147 +819,12 @@ struct AIEObjectFifoStatefulTransformPass
     return lcm;
   }
 
-  // Recursively calls itself if it finds a nested for loop.
-  // Returns the next index to use to uniquely identify operations
-  // on the body of the innerLoop.
-  int identifyDependencies(scf::ForOp outerLoop, scf::ForOp innerLoop,
-                           std::vector<Operation *> &operations,
-                           DenseMap<Operation *, int> &opIndex,
-                           std::vector<std::vector<int>> &dependencies,
-                           int startIndex) {
-    Block *body = innerLoop.getBody();
-    auto withoutTerminator = --body->end();
-    int index = startIndex;
-    for (auto op = body->begin(); op != withoutTerminator; ++op) {
-      operations.push_back(&*op);
-      opIndex[&*op] = index;
-
-      // identify dependencies
-      auto numOperands = op->getNumOperands();
-      std::vector<int> dependecyIndices;
-      for (int i = 0; static_cast<unsigned>(i) < numOperands; i++) {
-        auto operand = op->getOperand(i);
-        int dependencyIndex = -1;
-
-        if (operand == outerLoop.getInductionVar()) {
-          dependencyIndex = LOOP_VAR_DEPENDENCY;
-        } else {
-          if (auto definingOp = operand.getDefiningOp();
-              opIndex.find(definingOp) != opIndex.end())
-            dependencyIndex = opIndex[definingOp];
-        }
-        dependecyIndices.push_back(dependencyIndex);
-      }
-      dependencies.push_back(dependecyIndices);
-
-      index++;
-
-      // if op was a nested for-loop, also keep track of dependencies inside it
-      if (auto nestedLoop = dyn_cast<scf::ForOp>(op))
-        index = identifyDependencies(outerLoop, nestedLoop, operations, opIndex,
-                                     dependencies, index);
-    }
-    return index;
-  }
-
-  // Replace operands of cloned operation with results from other
-  // duplicated operations based on the index of the original
-  // operation and its dependencies.
-  void replaceOperands(OpBuilder &builder, Operation *clone,
-                       int originalOpIndex, Value base, int64_t step,
-                       bool inLoop, int currentDuplication,
-                       std::vector<std::vector<int>> &dependencies,
-                       std::vector<Operation *> &duplicatedOperations) {
-    auto numOperands = clone->getNumOperands();
-    for (int operandIndex = 0;
-         static_cast<unsigned>(operandIndex) < numOperands; operandIndex++) {
-
-      if (int originalDependencyIndex =
-              dependencies[originalOpIndex][operandIndex];
-          originalDependencyIndex >= 0) {
-        // replace the operand with the result of operation with
-        // same index in current duplication
-        auto duplicatedOp = duplicatedOperations[originalDependencyIndex];
-        Value result = duplicatedOp->getResult(0);
-        clone->setOperand(operandIndex, result);
-
-      } else if (originalDependencyIndex == LOOP_VAR_DEPENDENCY) {
-        int64_t increment_value;
-        if (inLoop)
-          // +1 because we do not duplicate original loop body
-          increment_value = (currentDuplication + 1) * step;
-        else
-          increment_value = currentDuplication * step;
-
-        auto increment = builder.create<arith::ConstantOp>(
-            builder.getUnknownLoc(), builder.getIndexAttr(increment_value));
-        auto sum = builder.create<arith::AddIOp>(builder.getUnknownLoc(),
-                                                 builder.getIndexType(), base,
-                                                 increment->getResult(0));
-        clone->setOperand(operandIndex, sum->getResult(0));
-      }
-    }
-    duplicatedOperations.push_back(clone);
-  }
-
-  // Function that duplicates given operations for the given number
-  // of times. !!! Assumes builder insertion point is set. !!!
-  // If there is a dependency on a loop induction variable, the given
-  // base mlir::Value is used to resolve it.
-  void duplicateBlock(OpBuilder &builder, int numDuplications,
-                      std::vector<Operation *> &operations,
-                      std::vector<std::vector<int>> &dependencies, Value base,
-                      int64_t step, bool inLoop) {
-    std::vector<Operation *> duplicatedOperations; // operations in current
-    // Recursive function to replace operands, uses recursion to handle nested
-    // loop structures.
-    std::function<void(Operation *, unsigned &, unsigned)> replaceOpsNested =
-        [&](Operation *op, unsigned &opIndex,
-            unsigned numDuplications) -> void {
-      if (auto loopOp = dyn_cast<scf::ForOp>(op)) {
-        Block *body = loopOp.getBody();
-        auto withoutTerminator = --body->end();
-        // NOTE(jornt): This only handles the cases where the nested scf::for is
-        // located at the start of the body. This should be the most common
-        // case, but is not fully generic.
-        if (auto nestedLoop = dyn_cast<scf::ForOp>(body->begin())) {
-          opIndex++;
-          replaceOperands(builder, nestedLoop, opIndex, base, step, inLoop,
-                          numDuplications, dependencies, duplicatedOperations);
-          replaceOpsNested(nestedLoop, opIndex, numDuplications);
-        } else {
-          for (auto loopBodyOp = body->begin(); loopBodyOp != withoutTerminator;
-               ++loopBodyOp) {
-            opIndex++;
-            replaceOperands(builder, &*loopBodyOp, opIndex, base, step, inLoop,
-                            numDuplications, dependencies,
-                            duplicatedOperations);
-          }
-        }
-      }
-    };
-
-    // duplication iteration
-    for (int i = 0; i < numDuplications; i++) {
-      duplicatedOperations.clear();
-      for (unsigned opIndex = 0; opIndex < operations.size(); opIndex++) {
-        // for each operand, check whether there was a dependecy
-        auto op = operations[opIndex];
-        auto clone = op->clone();
-        replaceOperands(builder, clone, opIndex, base, step, inLoop, i,
-                        dependencies, duplicatedOperations);
-        builder.insert(clone);
-        replaceOpsNested(clone, opIndex, i);
-      }
-    }
-  }
-
   // Function that unrolls for-loops that contain objectFifo operations.
-  void unrollForLoops(DeviceOp &device, OpBuilder &builder,
-                      std::set<TileOp> objectFifoTiles) {
+  LogicalResult unrollForLoops(DeviceOp &device, OpBuilder &builder,
+                               std::set<TileOp> objectFifoTiles) {
     for (auto coreOp : device.getOps<CoreOp>()) {
       if (objectFifoTiles.count(coreOp.getTileOp()) > 0) {
-        coreOp.walk([&](scf::ForOp forLoop) {
+        WalkResult res = coreOp.walk([&](scf::ForOp forLoop) {
           // look for operations on objectFifos
           // when multiple fifos in same loop, must use the smallest
           // common multiplier as the unroll factor
@@ -974,95 +840,34 @@ struct AIEObjectFifoStatefulTransformPass
             }
           }
 
-          int unrollFactor =
-              computeLCM(objFifoSizes); // also counts original loop body
-
           if (found) {
-            std::vector<Operation *>
-                operations; // operations in original loop body, without
-            // terminator operation
-            DenseMap<Operation *, int>
-                opIndex; // maps operations of original loop body to their
-            // position in it
-            std::vector<std::vector<int>>
-                dependencies; // index in first vecotr corresponds to position
-            // in original loop body dependency vector has
-            // size equal to number of operands of that
-            // operation:
-            //    * if LOOP_VAR_DEPENDENCY : operand is
-            //    dependent on loop induction variable
-            //    * if -1 : operand is not dependent on any
-            //    operation in loop body
-            //    * if >=0: operand is dependent on operation
-            //    with that index in original loop body
-
-            // find new loop size and step
-            auto old_upper_bound = forLoop.getUpperBound()
-                                       .getDefiningOp<arith::ConstantOp>()
-                                       .getValue();
-            int64_t old_upper_value =
-                llvm::dyn_cast<IntegerAttr>(old_upper_bound).getInt();
-            auto old_lower_bound = forLoop.getLowerBound()
-                                       .getDefiningOp<arith::ConstantOp>()
-                                       .getValue();
-            int64_t old_lower_value =
-                llvm::dyn_cast<IntegerAttr>(old_lower_bound).getInt();
-            auto old_step =
-                forLoop.getStep().getDefiningOp<arith::ConstantOp>().getValue();
-            int64_t old_step_value =
-                llvm::dyn_cast<IntegerAttr>(old_step).getInt();
-            int64_t num_iter =
-                (old_upper_value - old_lower_value) / old_step_value;
-
-            int64_t num_unrolls; // number of times to unroll loop, not counting
-                                 // original body
-
-            identifyDependencies(forLoop, forLoop, operations, opIndex,
-                                 dependencies, 0);
-
-            if (num_iter <= unrollFactor) {
-              // duplicate loop body and remove loop
-              num_unrolls = num_iter;
-              builder.setInsertionPointAfter(forLoop);
-              duplicateBlock(builder, num_unrolls, operations, dependencies,
-                             forLoop.getLowerBound(), old_step_value, false);
-              forLoop.getOperation()->erase();
-
-            } else {
-              num_unrolls = unrollFactor - 1; // -1 without original loop body
-
-              // create new upper bound and step
-              int64_t new_step_value =
-                  static_cast<int64_t>(unrollFactor) * old_step_value;
-              int64_t remainder = (old_upper_value - old_lower_value) %
-                                  new_step_value / old_step_value;
-              builder.setInsertionPoint(forLoop);
-              if (remainder > 0) {
-                int64_t new_upper_bound = (old_upper_value - old_lower_value) /
-                                          new_step_value * new_step_value;
-                auto uBound = builder.create<arith::ConstantOp>(
-                    builder.getUnknownLoc(),
-                    builder.getIndexAttr(new_upper_bound));
-                forLoop.setUpperBound(uBound);
-              }
-              auto new_step = builder.create<arith::ConstantOp>(
-                  builder.getUnknownLoc(),
-                  builder.getIndexAttr(new_step_value));
-              forLoop.setStep(new_step);
-
-              // duplicate loop body, insert before terminator operation
-              builder.setInsertionPoint(&body->back());
-              duplicateBlock(builder, num_unrolls, operations, dependencies,
-                             forLoop.getInductionVar(), old_step_value, true);
-              // duplicate remainder operations after loop body
-              builder.setInsertionPointAfter(forLoop);
-              duplicateBlock(builder, remainder, operations, dependencies,
-                             forLoop.getUpperBound(), old_step_value, false);
+            int unrollFactor =
+                computeLCM(objFifoSizes); // also counts original loop body
+            // if loop iterations < unrollFactor, unroll the loop fully
+            if (forLoop.getSingleLowerBound() &&
+                forLoop.getSingleUpperBound() && forLoop.getSingleStep()) {
+              int64_t tripCount =
+                  constantTripCount(*(forLoop.getSingleLowerBound()),
+                                    *(forLoop.getSingleUpperBound()),
+                                    *(forLoop.getSingleStep()))
+                      .value_or(0);
+              if (tripCount < unrollFactor)
+                unrollFactor = tripCount;
+            }
+            if (failed(mlir::loopUnrollByFactor(forLoop, unrollFactor))) {
+              forLoop.emitOpError()
+                  << "could not be unrolled with unrollFactor: " << unrollFactor
+                  << "\n";
+              return WalkResult::interrupt();
             }
           }
+          return WalkResult::advance();
         });
+        if (res.wasInterrupted())
+          return failure();
       }
     }
+    return success();
   }
 
   /// Function used to create a UseLockOp based on input parameters.
@@ -1214,11 +1019,12 @@ struct AIEObjectFifoStatefulTransformPass
   void createObjectFifoAllocationInfo(OpBuilder &builder, MLIRContext *ctx,
                                       FlatSymbolRefAttr obj_fifo, int colIndex,
                                       DMAChannelDir channelDir,
-                                      int channelIndex) {
+                                      int channelIndex, bool plio) {
     builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(), obj_fifo,
                                         DMAChannelDirAttr::get(ctx, channelDir),
                                         builder.getI64IntegerAttr(channelIndex),
-                                        builder.getI64IntegerAttr(colIndex));
+                                        builder.getI64IntegerAttr(colIndex),
+                                        builder.getBoolAttr(plio));
   }
 
   void runOnOperation() override {
@@ -1227,6 +1033,8 @@ struct AIEObjectFifoStatefulTransformPass
     DMAChannelAnalysis dmaAnalysis(device);
     OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
     auto ctx = device->getContext();
+    auto producerWireType = WireBundle::DMA;
+    auto consumerWireType = WireBundle::DMA;
     std::set<TileOp>
         objectFifoTiles; // track cores to check for loops during unrolling
 
@@ -1371,13 +1179,15 @@ struct AIEObjectFifoStatefulTransformPass
                 producerChan.channel, 0, producer.getDimensionsToStreamAttr());
       // generate objectFifo allocation info
       builder.setInsertionPoint(&device.getBody()->back());
+
       if (producer.getProducerTileOp().isShimTile())
         createObjectFifoAllocationInfo(
             builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
             producer.getProducerTileOp().colIndex(), producerChan.direction,
-            producerChan.channel);
+            producerChan.channel, producer.getPlio());
 
       for (auto consumer : consumers) {
+
         // create consumer tile DMA
         DMAChannel consumerChan =
             dmaAnalysis.getSlaveDMAChannel(consumer.getProducerTile());
@@ -1387,25 +1197,41 @@ struct AIEObjectFifoStatefulTransformPass
                   consumerChan.channel, 1, consumerDims);
         // generate objectFifo allocation info
         builder.setInsertionPoint(&device.getBody()->back());
+
+        // If we have PLIO then figure out the direction and make that a PLIO
+        if (producer.getPlio()) {
+          producerWireType = producer.getProducerTileOp().isShimTile()
+                                 ? WireBundle::PLIO
+                                 : WireBundle::DMA;
+          consumerWireType = !(producer.getProducerTileOp().isShimTile())
+                                 ? WireBundle::PLIO
+                                 : WireBundle::DMA;
+        } else {
+          producerWireType = WireBundle::DMA;
+          consumerWireType = WireBundle::DMA;
+        }
+
         if (consumer.getProducerTileOp().isShimTile())
           createObjectFifoAllocationInfo(
               builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
               consumer.getProducerTileOp().colIndex(), consumerChan.direction,
-              consumerChan.channel);
+              consumerChan.channel, producer.getPlio());
 
         // create flow
         builder.setInsertionPointAfter(producer);
         builder.create<FlowOp>(builder.getUnknownLoc(),
-                               producer.getProducerTile(), WireBundle::DMA,
+                               producer.getProducerTile(), producerWireType,
                                producerChan.channel, consumer.getProducerTile(),
-                               WireBundle::DMA, consumerChan.channel);
+                               consumerWireType, consumerChan.channel);
       }
     }
 
     //===------------------------------------------------------------------===//
     // Unroll for loops
     //===------------------------------------------------------------------===//
-    unrollForLoops(device, builder, objectFifoTiles);
+    if (failed(unrollForLoops(device, builder, objectFifoTiles))) {
+      signalPassFailure();
+    }
 
     //===------------------------------------------------------------------===//
     // Replace ops
@@ -1490,75 +1316,27 @@ struct AIEObjectFifoStatefulTransformPass
 
         // check how many elements have been released in between this AcquireOp
         // and the previous one
+        // !!! operations may not be in the same block !!!
         int numRel = 0;
         for (auto relOp : releaseOps[{op, portNum}]) {
-          // TODO: operations may not be in the same block: currently only
-          // support one block level of difference
-
-          if (ObjectFifoCreateOp otherOp = relOp.getObjectFifo();
-              op == otherOp) {
-            // if they are already in the same block, check if releaseOp
-            // happened before
-            if (acquireOp.getOperation()->getBlock() ==
-                relOp.getOperation()->getBlock()) {
-              if (!acquireOp->isBeforeInBlock(relOp)) {
-                releaseOps[{op, portNum}].erase(
-                    releaseOps[{op, portNum}].begin());
-                // to ensure that we do not account
-                // the ReleaseOps again later,
-                // after the subview is created
-                numRel += relOp.relNumber();
-              }
-            } else {
-
-              // else, check if releaseOp happened before the block region
-              // with the acquireOp
-              if (Operation *acqBlockDefOp =
-                      acquireOp.getOperation()->getBlock()->getParentOp();
-                  relOp.getOperation()->getBlock() ==
-                  acqBlockDefOp->getBlock()) {
-                if (!acqBlockDefOp->isBeforeInBlock(relOp)) {
+          Operation *acqBlockDefOp = acquireOp.getOperation();
+          do {
+            Operation *relBlockDefOp = relOp.getOperation();
+            do {
+              if (acqBlockDefOp->getBlock() == relBlockDefOp->getBlock()) {
+                if (relBlockDefOp->isBeforeInBlock(acqBlockDefOp)) {
                   releaseOps[{op, portNum}].erase(
                       releaseOps[{op, portNum}]
                           .begin()); // to ensure that we do not account
-                  // the ReleaseOps again later, after
-                  // the subview is created
+                  // the ReleaseOps again later,
+                  // after the subview is created
                   numRel += relOp.relNumber();
                 }
-
-                // else, check if the block region with releaseOp happened
-                // before...
-              } else {
-
-                // ...the acquireOp
-                if (Operation *relBlockDefOp =
-                        relOp.getOperation()->getBlock()->getParentOp();
-                    acquireOp.getOperation()->getBlock() ==
-                    relBlockDefOp->getBlock()) {
-                  if (!acquireOp->isBeforeInBlock(relBlockDefOp)) {
-                    releaseOps[{op, portNum}].erase(
-                        releaseOps[{op, portNum}]
-                            .begin()); // to ensure that we do not account
-                    // the ReleaseOps again later,
-                    // after the subview is created
-                    numRel += relOp.relNumber();
-                  }
-
-                  // ...the block region with the acquireOp
-                } else if (acqBlockDefOp->getBlock() ==
-                           relBlockDefOp->getBlock()) {
-                  if (!acqBlockDefOp->isBeforeInBlock(relBlockDefOp)) {
-                    releaseOps[{op, portNum}].erase(
-                        releaseOps[{op, portNum}]
-                            .begin()); // to ensure that we do not account
-                    // the ReleaseOps again later,
-                    // after the subview is created
-                    numRel += relOp.relNumber();
-                  }
-                }
               }
-            }
-          }
+            } while ((relBlockDefOp = relBlockDefOp->getParentOp()) &&
+                     !isa<DeviceOp>(relBlockDefOp));
+          } while ((acqBlockDefOp = acqBlockDefOp->getParentOp()) &&
+                   !isa<DeviceOp>(acqBlockDefOp));
         }
 
         // track indices of elements to acquire

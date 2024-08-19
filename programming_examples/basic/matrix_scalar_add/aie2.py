@@ -78,21 +78,21 @@ def my_matrix_add_one():
 
         tensor_ty = T.memref(TILE_SIZE, T.i32())
 
-        @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
+        @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
         def sequence(inTensor, notUsed, outTensor):
             npu_dma_memcpy_nd(
                 metadata="out0",
                 bd_id=0,
                 mem=outTensor,
                 sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
-                strides=[1, 1, IMAGE_WIDTH],
+                strides=[1, 1, IMAGE_WIDTH, 1],
             )
             npu_dma_memcpy_nd(
                 metadata="in0",
                 bd_id=1,
                 mem=inTensor,
                 sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
-                strides=[1, 1, IMAGE_WIDTH],
+                strides=[1, 1, IMAGE_WIDTH, 1],
             )
             npu_sync(column=0, row=0, direction=0, channel=0)
 

@@ -46,17 +46,16 @@ module @passThroughLine_aie2 {
             aie.end
         } { link_with="passThrough.cc.o" } // indicate kernel object name used by this core
 
-        func.func @sequence(%in : memref<1152xi32>, %arg1 : memref<1xi32>, %out : memref<1152xi32>) {
+        aiex.runtime_sequence(%in : memref<1152xi32>, %arg1 : memref<1xi32>, %out : memref<1152xi32>) {
             %c0 = arith.constant 0 : i64
             %c1 = arith.constant 1 : i64
             %tileheight = arith.constant 9  : i64
             %tilewidth  = arith.constant 128 : i64  // in 32b words so tileWidth/4
 
             //dma_memcpy_nd ([offset in 32b words][length in 32b words][stride in 32b words])
-            aiex.npu.dma_memcpy_nd (0, 0, %in[%c0, %c0, %c0, %c0][%c1, %c1, %tileheight, %tilewidth][%c0, %c0, %tilewidth]) { metadata = @inOF, id = 1 : i64 } : memref<1152xi32>
-            aiex.npu.dma_memcpy_nd (0, 0, %out[%c0, %c0, %c0, %c0][%c1, %c1, %tileheight, %tilewidth][%c0, %c0, %tilewidth]) { metadata = @outOF, id = 0 : i64 } : memref<1152xi32>
+            aiex.npu.dma_memcpy_nd (0, 0, %in[%c0, %c0, %c0, %c0][%c1, %c1, %tileheight, %tilewidth][%c0, %c0, %tilewidth, %c1]) { metadata = @inOF, id = 1 : i64 } : memref<1152xi32>
+            aiex.npu.dma_memcpy_nd (0, 0, %out[%c0, %c0, %c0, %c0][%c1, %c1, %tileheight, %tilewidth][%c0, %c0, %tilewidth, %c1]) { metadata = @outOF, id = 0 : i64 } : memref<1152xi32>
             aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
-            return
         }
     }
 }

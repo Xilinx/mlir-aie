@@ -1,4 +1,4 @@
-// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aieml shift=10" | FileCheck %s
+// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2 shift=10" | FileCheck %s
 
 func.func @conv2d(%arg0: memref<18x288xi16>, %arg1: memref<9xi16>, %arg2: memref<16x256xi16>) {
   %c0 = arith.constant 0 : index

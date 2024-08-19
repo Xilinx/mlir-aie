@@ -316,7 +316,7 @@ def compile_with_vectorization(
         enable_ir_printing=debug,
     )
 
-    aievec_cpp = translate_aie_vec_to_cpp(mod_aievec.operation, aieml=True)
+    aievec_cpp = translate_aie_vec_to_cpp(mod_aievec.operation, aie2=True)
     aievec_cpp = aievec_cpp.replace("void", 'extern "C" void')
     aievec_ll = chess_compile_cpp_to_ll(aievec_cpp, workdir, debug=debug)
     # TODO(max) connect each core to its own kernel...

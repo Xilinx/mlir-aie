@@ -44,7 +44,7 @@ The first necessary component for trace configuration is setting the right value
         offset=tensorSize,
     )
 ```
-This block is defined within the sequence definition for `@FuncOp.from_py_func` where we define the shimDMA data movement to the 3 inout buffers. 
+This block is defined within the sequence definition for `@runtime_sequence` where we define the shimDMA data movement to the 3 inout buffers. 
 > **Note** This simplification works very well for the trace buffer from a single tile to the shimDMA. However, if we want to do something more advaned like allocating the trace buffer from multiple tiles into a single larger buffer, this function will not be able to express that. For that, please consult the [README](../../../python/utils) under `python/utils` for more guidance on how to customize the trace configuration.
 
 ### <u>(1b) Define trace event routes from tile to shimDMA</u>
@@ -62,10 +62,10 @@ flow(ComputeTile, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
 flow(source, source_bundle, source_channel, dest, dest_bundle, dest_channel)	
 ```
 * *source* - source tile of the flow
-* *source_bundle* - type of source WireBundle (see full list in AIEAttrs.td)
+* *source_bundle* - type of source WireBundle (see full list in [AIEAttrs.td](../../../include/aie/Dialect/AIE/IR/AIEAttrs.td))
 * *source_channel* - source channel index
 * *dest* - destination tile of the flow
-* *dest_bundle* - type of destination WireBundle (see full list in AIEAttrs.td)
+* *dest_bundle* - type of destination WireBundle (see full list in [AIEAttrs.td](../../../include/aie/Dialect/AIE/IR/AIEAttrs.td))
 * *dest_channel* - destination channel index
 
 It is important to consider the path this routing might take and how many other streams might be using that same path. This points to whether our design may experience stream routing congestion or not. While capturing trace events are non-intrusive (does not affect the performance of the AIE cores), the routing of these trace packets need to be balanced in your design to prevent congestion.
@@ -73,16 +73,16 @@ It is important to consider the path this routing might take and how many other 
 #### <u>Packet switched flows</u>
 The alternative to circuit switched routes is packet switched routes. The benefit of this is the ability to share a single stream switch routing channel between multiple routes. The drawback is the slight overhead of data packet headers as well as needing to gauge how much congestion might be present on a shared route given the data movement requirement of the AIE array design. This means that if multiple flows are sharing the same channel, any particular flow might experience backpressure while another flow is serviced. Depending on the performance requirement of the design, this may or may not have a performance impact.
 
-In IRON python bindings, we declare packet flows with the following syntax:
+In IRON Python bindings, we declare packet flows with the following syntax:
 ```python
 packetflow(pkt_id, source, source_port, source_channel, dest, dest_port, dest_channel, keep_pkt_header)
 ```
 * *pkt_id* - unique packet ID
 * *source* - source tile of the packet flow
-* *source_port* - type of source WireBundle (see full list in AIEAttrs.td). Some examples include `WireBundle.Trace`, `WireBundle.DMA`, `WireBundle.North`
+* *source_port* - type of source WireBundle (see full list in [AIEAttrs.td](../../../include/aie/Dialect/AIE/IR/AIEAttrs.td)). Some examples include `WireBundle.Trace`, `WireBundle.DMA`, `WireBundle.North`
 * *source_channel* - source channel index. For a given port, we often use multiple channels such as DMA channel 0 and DMA channel 1. In AIE2 core tiles, trace ports use channel 0 for the tile core and 1 for the tile memory.
 * *dest* - destination tile of the packet flow
-* *dest_port* - type of destination WireBundle (see full list in AIEAttrs.td)
+* *dest_port* - type of destination WireBundle (see full list in [AIEAttrs.td](../../../include/aie/Dialect/AIE/IR/AIEAttrs.td))
 * *dest_channel* - destination channel index
 * *keep_pkt_header* - boolean flag to keep header
 
@@ -104,7 +104,7 @@ To support packet switched flows, we need to declare packet flows and attach bot
 | ShimTile        | 2           |
 | MemTile         | 3           |
 
-**NOTE**: Quick reminder that most source flow channels from `WireBundle.Trace` will use channel 0, but the `Tile memory` actually uses channel 1.
+> **NOTE**: Quick reminder that most source flow channels from `WireBundle.Trace` will use channel 0, but the `Tile memory` actually uses channel 1.
 
 The `packet IDs`, on the other hand, an be variable but must be globally unique to distinguish routes from one another. An example is shown below for two tiles where both tile core and tile memory trace units are routed. Note the `packet ID` used after the `packetflow` keyword. Also note that we set `keep_pkt_hdr = true` as we would like to keep the packet headers when they are moved to DDR so we can distinguish the packets during post-run parsing.
 
@@ -211,7 +211,7 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
 ## <u>Exercises</u>
 1. Let's give tracing a try. In this directory, we're been examining a simplified version of the `vector ccalar multiply` example. Run `make trace`. This compiles the design, generates a trace data file, and run `prase_trace.py` to generate the `trace_4b.json` waveform file. 
 
-    **NOTE** In this example, `make`, `make run` and `make trace` will all build a structural design with tracing enabled to keep things simple. But only `make trace` will enable tracing in the host code and call `parse_trace.py`. In contrast, the reference `vector scalar multiply example` has a more robust `Makefile` where `make` and `make run` builds the structural design with tracing disabled.
+    > **NOTE** In this example, `make`, `make run` and `make trace` will all build a structural design with tracing enabled to keep things simple. But only `make trace` will enable tracing in the host code and call `parse_trace.py`. In contrast, the reference `vector scalar multiply example` has a more robust `Makefile` where `make` and `make run` builds the structural design with tracing disabled.
 
     Open this waveform json in http://ui.perfetto.dev. If you zoom into the region of interest with the keyboard shortcut key W and S to zoom in and out respectively and A and D to pan left and right. You should seem a wave like the following:
 
@@ -220,14 +220,22 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
     Based on this wave, You can mouse over each chunk of continguous data for `PortRunning0` (input dma port) and `PortRunning1` (output dma port). What is the chunk size? <img src="../../../mlir_tutorials/images/answer1.jpg" title="1024" height=25> How many input and output chunks are there? <img src="../../../mlir_tutorials/images/answer1.jpg" title="4 inputs and 4 outputs (last output might be truncated in viewer)" height=25> This should match iteration loop bounds in our example design.
 
     Here, there are a few common events in our waveform that's further described below.
-    * `Event0` - The event marking the beginning of our kernel. See [vector_scalar_mul.cc](./vector_scalar_mul.cc) where we added the function `event0()` before the loop. This is generally a handy thing to do to attach an event to the beginning of our kernel.
-    * `Event1` - The event marking the end of our kernel. See [vector_scalar_mul.cc](./vector_scalar_mul.cc) where we added the function `event1()` after the loop. Much like event0, attaching event1 to the end of our kernel is also helpful.
-    * `VectorInstr` - Vector instructions like vector MAC or vector load/store. Here, we are running a scalar implementation so there are no vector events.
-    * `PortRunning0` - Mapped to Port 0 which is by default configured to the S2MM0 input (DMA from stream to local memory). This is usually the first input.
-    * `PortRunning1` - Mapped to Port 1 which is by default configured to the MM2S0 output (DMA from local memory to stream). This is usually the first output.
-    * `LockStall` - Any locks stalls
-    * `LockAcquiresInstr` - Any lock acquire requests
-    * `LockReleaseInstr` - Any lock release requests
+    * `INSTR_EVENT_0` - The event marking the beginning of our kernel. See [vector_scalar_mul.cc](./vector_scalar_mul.cc) where we added the function `event0()` before the loop. This is generally a handy thing to do to attach an event to the beginning of our kernel.
+    * `INSTR_EVENT_1` - The event marking the end of our kernel. See [vector_scalar_mul.cc](./vector_scalar_mul.cc) where we added the function `event1()` after the loop. Much like event0, attaching event1 to the end of our kernel is also helpful.
+    * `INSTR_VECTOR` - Vector instructions like vector MAC or vector load/store. Here, we are running a scalar implementation so there are no vector events.
+    * `PORT_RUNNING_0` up to `PORT_RUNNING_7` - You can listen for a variety of events, such as `PORT_RUNNING`, `PORT_IDLE` or `PORT_STALLED` on up to 7 ports. To select which port to listen to, use the `PortEvent` Python class as your event. For example, to listen to master port 1:
+        ```
+        from aie.utils.trace import configure_simple_tracing_aie2, PortEvent
+        from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEvent
+        trace_utils.configure_simple_tracing_aie2(
+            # ... other arguments as above
+            events=[trace_utils.PortEvent(CoreEvent.PORT_RUNNING_0, 1, master=True)]
+        )
+        ```
+    * `PORT_RUNNING_1` - Mapped to Port 1 which is by default configured to the MM2S0 output (DMA from local memory to stream). This is usually the first output.
+    * `LOCK_STALL` - Any locks stalls
+    * `INSTR_LOCK_ACQUIRE_REQ` - Any lock acquire requests
+    * `INSTR_LOCK_RELEASE_REQ` - Any lock release requests
 
     We will look at more exercises with Trace and performance measurement in the next [section](../section-4c).
 

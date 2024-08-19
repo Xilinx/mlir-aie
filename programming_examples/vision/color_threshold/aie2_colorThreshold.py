@@ -247,42 +247,41 @@ def color_threshold():
             # To/from AIE-array data movement
 
             tensorSize = width * height
-            tensorSizeInInt32s = tensorSize // 4
 
-            @FuncOp.from_py_func(
-                T.memref(tensorSizeInInt32s, T.i32()),
+            @runtime_sequence(
+                T.memref(tensorSize, T.i8()),
                 T.memref(32, T.i32()),  # not used
-                T.memref(tensorSizeInInt32s, T.i32()),
+                T.memref(tensorSize, T.i8()),
             )
             def sequence(inTensor, notUsed, outTensor):
                 # thresholdValue, maxValue, thresholdType
-                NpuWriteRTPOp("rtpComputeTile2", col=0, row=2, index=0, value=50)
-                NpuWriteRTPOp("rtpComputeTile2", col=0, row=2, index=1, value=255)
-                NpuWriteRTPOp("rtpComputeTile2", col=0, row=2, index=2, value=0)
+                NpuWriteRTPOp("rtpComputeTile2", index=0, value=50)
+                NpuWriteRTPOp("rtpComputeTile2", index=1, value=255)
+                NpuWriteRTPOp("rtpComputeTile2", index=2, value=0)
 
-                NpuWriteRTPOp("rtpComputeTile3", col=0, row=3, index=0, value=50)
-                NpuWriteRTPOp("rtpComputeTile3", col=0, row=3, index=1, value=255)
-                NpuWriteRTPOp("rtpComputeTile3", col=0, row=3, index=2, value=0)
+                NpuWriteRTPOp("rtpComputeTile3", index=0, value=50)
+                NpuWriteRTPOp("rtpComputeTile3", index=1, value=255)
+                NpuWriteRTPOp("rtpComputeTile3", index=2, value=0)
 
-                NpuWriteRTPOp("rtpComputeTile4", col=0, row=4, index=0, value=50)
-                NpuWriteRTPOp("rtpComputeTile4", col=0, row=4, index=1, value=255)
-                NpuWriteRTPOp("rtpComputeTile4", col=0, row=4, index=2, value=0)
+                NpuWriteRTPOp("rtpComputeTile4", index=0, value=50)
+                NpuWriteRTPOp("rtpComputeTile4", index=1, value=255)
+                NpuWriteRTPOp("rtpComputeTile4", index=2, value=0)
 
-                NpuWriteRTPOp("rtpComputeTile5", col=0, row=5, index=0, value=50)
-                NpuWriteRTPOp("rtpComputeTile5", col=0, row=5, index=1, value=255)
-                NpuWriteRTPOp("rtpComputeTile5", col=0, row=5, index=2, value=0)
+                NpuWriteRTPOp("rtpComputeTile5", index=0, value=50)
+                NpuWriteRTPOp("rtpComputeTile5", index=1, value=255)
+                NpuWriteRTPOp("rtpComputeTile5", index=2, value=0)
 
                 npu_dma_memcpy_nd(
                     metadata="inOOB_L3L2",
                     bd_id=1,
                     mem=inTensor,
-                    sizes=[1, 1, 1, tensorSizeInInt32s],
+                    sizes=[1, 1, 1, tensorSize],
                 )
                 npu_dma_memcpy_nd(
                     metadata="outOOB_L2L3",
                     bd_id=0,
                     mem=outTensor,
-                    sizes=[1, 1, 1, tensorSizeInInt32s],
+                    sizes=[1, 1, 1, tensorSize],
                 )
                 npu_sync(column=0, row=0, direction=0, channel=0)
 

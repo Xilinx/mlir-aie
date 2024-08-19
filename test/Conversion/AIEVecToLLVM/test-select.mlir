@@ -2,14 +2,14 @@
 module {
   func.func @test(%arg0: vector<32xi16>) {
     // check the parameters that go into separate constants
-    %0 = aievec.select %arg0 {select = "0x00000000", xoffsets = "0x00000000", xoffsets_hi = "0x00000000", xsquare = "0x0000", xstart = "0", yoffsets = "0x00000000", yoffsets_hi = "0x00000000", ysquare = "0x0000", ystart = "0"} : vector<32xi16>, vector<32xi16>
-    %1 = aievec.select %arg0 {select = "0xfedcba98", xoffsets = "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x0000", xstart = "2", yoffsets = "0x03020100", yoffsets_hi = "0x07060504", ysquare = "0x0000", ystart = "7"} : vector<32xi16>, vector<32xi16>
+    %0 = aievec_aie1.select %arg0 {select = "0x00000000", xoffsets = "0x00000000", xoffsets_hi = "0x00000000", xsquare = "0x0000", xstart = "0", yoffsets = "0x00000000", yoffsets_hi = "0x00000000", ysquare = "0x0000", ystart = "0"} : vector<32xi16>, vector<32xi16>
+    %1 = aievec_aie1.select %arg0 {select = "0xfedcba98", xoffsets = "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x0000", xstart = "2", yoffsets = "0x03020100", yoffsets_hi = "0x07060504", ysquare = "0x0000", ystart = "7"} : vector<32xi16>, vector<32xi16>
 
     // check the various combinations that make up the configuration value
-    %2 = aievec.select %arg0 {select = "0x00000000", xoffsets = "0x00000000", xoffsets_hi = "0x00000000", xsquare = "0x3210", xstart = "0", yoffsets = "0x00000000", yoffsets_hi = "0x00000000", ysquare = "0x0000", ystart = "0"} : vector<32xi16>, vector<32xi16>
-    %3 = aievec.select %arg0 {select = "0x00000000", xoffsets = "0x00000000", xoffsets_hi = "0x00000000", xsquare = "0x0000", xstart = "0", yoffsets = "0x00000000", yoffsets_hi = "0x00000000", ysquare = "0x3210", ystart = "0"} : vector<32xi16>, vector<32xi16>
+    %2 = aievec_aie1.select %arg0 {select = "0x00000000", xoffsets = "0x00000000", xoffsets_hi = "0x00000000", xsquare = "0x3210", xstart = "0", yoffsets = "0x00000000", yoffsets_hi = "0x00000000", ysquare = "0x0000", ystart = "0"} : vector<32xi16>, vector<32xi16>
+    %3 = aievec_aie1.select %arg0 {select = "0x00000000", xoffsets = "0x00000000", xoffsets_hi = "0x00000000", xsquare = "0x0000", xstart = "0", yoffsets = "0x00000000", yoffsets_hi = "0x00000000", ysquare = "0x3210", ystart = "0"} : vector<32xi16>, vector<32xi16>
     // all of the configuration register values
-    %4 = aievec.select %arg0 {select = "0x00000000", xoffsets = "0x00000000", xoffsets_hi = "0x00000000", xsquare = "0x3210", xstart = "0", yoffsets = "0x00000000", yoffsets_hi = "0x00000000", ysquare = "0x3210", ystart = "0"} : vector<32xi16>, vector<32xi16>
+    %4 = aievec_aie1.select %arg0 {select = "0x00000000", xoffsets = "0x00000000", xoffsets_hi = "0x00000000", xsquare = "0x3210", xstart = "0", yoffsets = "0x00000000", yoffsets_hi = "0x00000000", ysquare = "0x3210", ystart = "0"} : vector<32xi16>, vector<32xi16>
     return
   }
 }

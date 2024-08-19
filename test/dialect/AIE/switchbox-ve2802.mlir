@@ -83,7 +83,6 @@ module {
     %01 = aie.tile(0, 1) // mem tile
     aie.switchbox(%01) {
       aie.connect<South: 0, South: 0> // Feedback OK
-      aie.connect<South: 0, South: 2> // Bounce OK
       aie.connect<DMA: 5, North: 1>  // 5 DMA connections
       aie.connect<South: 5, North: 5> // 6 northgoing connections
       aie.connect<North: 3, South: 3> // 4 southgoing connections
@@ -95,7 +94,6 @@ module {
     %03 = aie.tile(1, 3) // core tile
     aie.switchbox(%03) {
       aie.connect<East: 0, East: 0> // Feedback OK
-      aie.connect<South: 0, South: 2> // Bounce OK
       aie.connect<DMA: 1, East: 1>  // Two DMA connections
       aie.connect<Core: 0, East: 2> // One core connections
       aie.connect<FIFO: 0, West: 2> // One fifo connections

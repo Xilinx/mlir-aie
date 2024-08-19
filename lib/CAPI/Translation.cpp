@@ -33,11 +33,11 @@ using namespace llvm;
 using namespace mlir;
 using namespace xilinx::AIE;
 
-MlirStringRef aieTranslateAIEVecToCpp(MlirOperation moduleOp, bool aieml) {
+MlirStringRef aieTranslateAIEVecToCpp(MlirOperation moduleOp, bool aie2) {
   std::string cpp;
   llvm::raw_string_ostream os(cpp);
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
-  if (failed(xilinx::aievec::translateAIEVecToCpp(mod, aieml, os)))
+  if (failed(xilinx::aievec::translateAIEVecToCpp(mod, aie2, os)))
     return mlirStringRefCreate(nullptr, 0);
   char *cStr = static_cast<char *>(malloc(cpp.size()));
   cpp.copy(cStr, cpp.size());

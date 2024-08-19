@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from dataclasses import dataclass
 import inspect
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Dict, Any
+import contextlib
 
 import numpy as np
 
@@ -48,6 +49,7 @@ from ..ir import (
     ArrayAttr,
     Attribute,
     Block,
+    BlockList,
     DenseElementsAttr,
     DictAttr,
     FlatSymbolRefAttr,
@@ -108,7 +110,7 @@ def bd_dim_layout_array_attr_builder(
     if isinstance(tups, list) and all(isinstance(t, tuple) for t in tups):
         tups = list(map(lambda t: bd_dim_layout(*t), tups))
     return Attribute.parse(
-        f'#aie<bd_dim_layout_arr[{", ".join(map(str, tups))}]>', context=context
+        f'#aie<bd_dim_layout_array[{", ".join(map(str, tups))}]>', context=context
     )
 
 
@@ -116,7 +118,8 @@ def bd_dim_layout_array_attr_builder(
 def bd_dim_layout_array_array_attr_builder(tup_arrs: List[List[tuple]], context=None):
     tup_arrs = list(map(bd_dim_layout_array_attr_builder, tup_arrs))
     return Attribute.parse(
-        f'#aie<bd_dim_layout_arr_arr[{", ".join(map(str, tup_arrs))}]>', context=context
+        f'#aie<bd_dim_layout_array_array[{", ".join(map(str, tup_arrs))}]>',
+        context=context,
     )
 
 
@@ -150,6 +153,68 @@ def _objectFifo_depth_attr(x, context):
     if isinstance(x, list):
         return _i32ArrayAttr(x, context)
     return IntegerAttr.get(IntegerType.get_signless(32, context=context), x)
+
+
+#### MLIR Helpers ####
+
+"""
+A thin wrapper around ir.Block that allows using them in context managers, e.g. as:
+
+```
+block : ContextManagedBlock = #...
+with block as b:
+    # statements to be put within block
+```
+
+which is equivalent to using a regular  block together with InsertionPoint:
+
+```
+block : ir.Block = # ...
+with InsertionPoint(block):
+    # statements to be put within block
+```
+"""
+
+
+class ContextManagedBlock:
+    def __init__(self, wrapped_block):
+        self.block = wrapped_block
+        self.context_manager = InsertionPoint(self.block)
+
+    def __enter__(self):
+        return self.context_manager.__enter__()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return self.context_manager.__exit__(exc_type, exc_value, traceback)
+
+
+"""
+A dictionary of ContextManagedBlocks, a specialization of ir.Block, keyed by arbitrary values, which automatically appends a new block at the end of `root_block_list` whenever a non-existant block is attempted to be accessed.
+"""
+
+
+class AutoInitializingContextManagedBlockList:
+    def __init__(self, root_block_list):
+        self.blocks: Dict[Any, ContextManagedBlock] = {}
+        self.root_block_list: BlockList = root_block_list
+        self.blocks[0] = ContextManagedBlock(self.root_block_list[0])
+
+    def __getitem__(self, key):
+        if key in self.blocks:
+            return self.blocks[key]
+        new_block: Block = self.root_block_list.append()
+        self.blocks[key] = ContextManagedBlock(new_block)
+        return self.blocks[key]
+
+
+@contextlib.contextmanager
+def bds(parent):
+    if len(parent.body.blocks) == 0:
+        entry_block = parent.body.blocks.append()
+    else:
+        entry_block = parent.body.blocks[0]
+    with InsertionPoint(entry_block):
+        yield AutoInitializingContextManagedBlockList(parent.body.blocks)
 
 
 #### AIE Wrappers ####
@@ -211,6 +276,7 @@ class object_fifo(ObjectFifoCreateOp):
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
         via_DMA=None,
+        plio=None,
     ):
         self.datatype = datatype
         if not isinstance(consumerTiles, List):
@@ -230,6 +296,7 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsToStream=dimensionsToStream,
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
             via_DMA=via_DMA,
+            plio=plio,
         )
 
     def acquire(self, port, num_elem):
@@ -434,7 +501,13 @@ class NextBDOp(NextBDOp):
         return Successor(self, [], self.successors[0], 0)
 
 
-def next_bd(dest: Optional[Union[Successor, Block]] = None, loc=None, ip=None):
+def next_bd(
+    dest: Optional[Union[Successor, Block, ContextManagedBlock]] = None,
+    loc=None,
+    ip=None,
+):
+    if isinstance(dest, ContextManagedBlock):
+        dest = dest.block
     return NextBDOp(dest, loc=loc, ip=ip).dest
 
 
@@ -700,3 +773,22 @@ class TileOp(TileOp):
 
 def tile(col, row, *, loc=None, ip=None):
     return TileOp(col=col, row=row, loc=loc, ip=ip)
+
+
+# BDChainOp
+
+_orig_bd_chain = bd_chain
+
+
+def bd_chain(*inputs: T.Type):
+    def decorator(f):
+        seq_op = BDChainOp(f.__name__)
+        entry_block = seq_op.body.blocks.append(*inputs)
+        args = entry_block.arguments
+        bds_ctx = bds(seq_op)
+        with InsertionPoint(entry_block):
+            with bds_ctx as bd:
+                f(bd, *args)
+        return seq_op
+
+    return decorator

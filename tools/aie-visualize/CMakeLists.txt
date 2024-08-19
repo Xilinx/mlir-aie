@@ -27,7 +27,9 @@ target_link_libraries(aie-visualize
   MLIRAIEVecDialect
   MLIRAIEVecToLLVM
   MLIRAIEVecTransforms
+  MLIRBuiltinToLLVMIRTranslation
   MLIRXLLVMToLLVMIRTranslation
+  MLIRLLVMToLLVMIRTranslation
   ADF
   AIE
   AIETransforms
@@ -35,6 +37,7 @@ target_link_libraries(aie-visualize
   AIEX
   AIEXTransforms
   MLIRAIEVecDialect
+  MLIRAIEVecAIE1Dialect
   MLIRXLLVMDialect)
 
 install(TARGETS aie-visualize
