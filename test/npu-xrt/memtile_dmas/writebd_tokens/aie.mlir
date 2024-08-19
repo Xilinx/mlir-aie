@@ -14,21 +14,12 @@ module {
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
     aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
 
-    aie.packet_flow(0x1) {
-      aie.packet_source<%tile_0_1, "Ctrl" : 0>
-      aie.packet_dest<%tile_0_0, "South" : 0>
-    }
-    aie.packet_flow(0x2) {
-      aie.packet_source<%tile_0_0, "Ctrl" : 0>
-      aie.packet_dest<%tile_0_0, "South" : 0>
-    }
-
     aiex.runtime_sequence(%arg0: memref<4096xi32>, %arg1: memref<4096xi32>, %arg2: memref<4096xi32>) {
 
       // BD0, DMA_S2MM_0_Task_Queue
       aiex.npu.writebd {bd_id = 0 : i32, buffer_length = 4096 : i32, buffer_offset = 0 : i32, column = 0 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d2_stride = 0 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, row = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
       aiex.npu.address_patch {addr = 0x1d004 : ui32, arg_idx = 2 : i32, arg_plus = 0 : i32}
-      aiex.npu.maskwrite32 {address = 0x1d200 : ui32, column = 0 : i32, row = 0 : i32, mask = 0x00000F00 : ui32, value = 0x200 : ui32}
+      aiex.npu.maskwrite32 {address = 0x1d200 : ui32, column = 0 : i32, row = 0 : i32, mask = 0x00000F00 : ui32, value = 0x100 : ui32}
       aiex.npu.write32 {address = 0x1d204 : ui32, column = 0 : i32, row = 0 : i32, value = 0x80000000 : ui32}
 
       // BD1, DMA_MM2S_0_Task_Queue
@@ -38,7 +29,7 @@ module {
 
       // BD0, DMA_S2MM_0_Start_Queue
       aiex.npu.writebd {bd_id = 0 : i32, buffer_length = 4096 : i32, buffer_offset = 0 : i32, column = 0 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d2_stride = 0 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, row = 1 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
-      aiex.npu.maskwrite32 {address = 0xa0600 : ui32, column = 0 : i32, row = 1 : i32, mask = 0x00000F00 : ui32, value = 0x100 : ui32}
+      aiex.npu.maskwrite32 {address = 0xa0600 : ui32, column = 0 : i32, row = 1 : i32, mask = 0x00000F00 : ui32, value = 0x200 : ui32}
       aiex.npu.write32 {address = 0xa0604 : ui32, column = 0 : i32, row = 1 : i32, value = 0x80000000 : ui32}
 
       // sync with the copy into memtile before starting copy out of memtile
