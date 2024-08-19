@@ -23,25 +23,63 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-AIE::PacketFlowOp createPacketFlowOp(OpBuilder &builder, int &flowID,
-                                     Value source,
-                                     xilinx::AIE::WireBundle sourceBundle,
-                                     uint32_t sourceChannel, Value dest,
-                                     xilinx::AIE::WireBundle destBundle,
-                                     uint32_t destChannel,
-                                     mlir::BoolAttr keep_pkt_header = nullptr) {
-  AIE::PacketFlowOp pktFlow = builder.create<AIE::PacketFlowOp>(
-      builder.getUnknownLoc(), flowID++, keep_pkt_header);
-  Region &r_pktFlow = pktFlow.getPorts();
-  Block *b_pktFlow = builder.createBlock(&r_pktFlow);
-  builder.setInsertionPointToStart(b_pktFlow);
-  builder.create<AIE::PacketSourceOp>(builder.getUnknownLoc(), source,
-                                      sourceBundle, sourceChannel);
-  builder.create<AIE::PacketDestOp>(builder.getUnknownLoc(), dest, destBundle,
-                                    destChannel);
-  builder.create<AIE::EndOp>(builder.getUnknownLoc());
-  return pktFlow;
+int getUnusedPacketIdFrom(DeviceOp device) {
+  int unusedPacketIdFrom = 0;
+  device.walk([&](AIE::PacketFlowOp pOp) {
+    unusedPacketIdFrom = std::max(unusedPacketIdFrom, pOp.IDInt());
+  });
+  device.walk([&](AIE::TileOp tOp) {
+    if (!tOp->hasAttr("controller_id"))
+      return;
+    auto controllerIdPkt =
+        tOp->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
+    unusedPacketIdFrom =
+        std::max(unusedPacketIdFrom, (int)controllerIdPkt.getPktId());
+  });
+  return unusedPacketIdFrom + 1;
 }
+
+struct AIEAssignTileCtrlIDsPass
+    : AIEAssignTileCtrlIDsBase<AIEAssignTileCtrlIDsPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<AIEDialect>();
+  }
+  void runOnOperation() override {
+    DeviceOp device = getOperation();
+
+    // Collect TileOps
+    DenseMap<AIE::TileID, AIE::TileOp> tiles;
+    llvm::SmallSet<int, 1> occupiedCols;
+    for (auto tile : device.getOps<AIE::TileOp>()) {
+      int colIndex = tile.colIndex();
+      int rowIndex = tile.rowIndex();
+      tiles[{colIndex, rowIndex}] = tile;
+      occupiedCols.insert(colIndex);
+    }
+
+    // Assign controller ids.
+    int designUnusedPacketIdFrom = getUnusedPacketIdFrom(device);
+    for (int col : occupiedCols) {
+      if (clColumnWiseUniqueIDs)
+        designUnusedPacketIdFrom = getUnusedPacketIdFrom(device);
+      SmallVector<AIE::TileOp> tilesOnCol;
+      for (auto &[tId, tOp] : tiles) {
+        if (tId.col != col)
+          continue;
+        tilesOnCol.push_back(tOp);
+      }
+
+      for (auto tOp : tilesOnCol) {
+        if (tOp->hasAttr("controller_id"))
+          continue;
+        auto pktInfoAttr =
+            AIE::PacketInfoAttr::get(tOp->getContext(), /*pkt_type*/ 0,
+                                     /*pkt_id*/ designUnusedPacketIdFrom++);
+        tOp->setAttr("controller_id", pktInfoAttr);
+      }
+    }
+  }
+};
 
 struct AIEGenerateColumnControlOverlayPass
     : AIEGenerateColumnControlOverlayBase<AIEGenerateColumnControlOverlayPass> {
@@ -114,33 +152,57 @@ struct AIEGenerateColumnControlOverlayPass
     }
   }
 
+  AIE::PacketFlowOp
+  createPacketFlowOp(OpBuilder &builder, int &flowID, Value source,
+                     xilinx::AIE::WireBundle sourceBundle,
+                     uint32_t sourceChannel, Value dest,
+                     xilinx::AIE::WireBundle destBundle, uint32_t destChannel,
+                     mlir::BoolAttr keep_pkt_header = nullptr) {
+    AIE::PacketFlowOp pktFlow = builder.create<AIE::PacketFlowOp>(
+        builder.getUnknownLoc(), flowID++, keep_pkt_header);
+    Region &r_pktFlow = pktFlow.getPorts();
+    Block *b_pktFlow = builder.createBlock(&r_pktFlow);
+    builder.setInsertionPointToStart(b_pktFlow);
+    builder.create<AIE::PacketSourceOp>(builder.getUnknownLoc(), source,
+                                        sourceBundle, sourceChannel);
+    builder.create<AIE::PacketDestOp>(builder.getUnknownLoc(), dest, destBundle,
+                                      destChannel);
+    builder.create<AIE::EndOp>(builder.getUnknownLoc());
+    return pktFlow;
+  }
+
   // Create packet flows per col which moves control packets to and from shim
   // dma
   void generatePacketFlowsForControl(OpBuilder builder, DeviceOp device,
                                      const AIETargetModel &targetModel,
                                      TileOp shimTile, WireBundle shimWireBundle,
                                      SmallVector<int> availableShimChans,
-                                     SmallVector<AIE::TileOp> coreOrMemTiles,
-                                     WireBundle coreOrMemWireBundle,
+                                     SmallVector<AIE::TileOp> ctrlTiles,
+                                     WireBundle ctrlWireBundle,
                                      int coreOrMemChanId,
                                      int unusedPacketIdFrom, bool isShimMM2S) {
     // Create packet flows
     SmallVector<int> thresholdsToNextShimChannel;
     for (int i = 1; i < (int)availableShimChans.size() + 1; i++)
-      thresholdsToNextShimChannel.push_back(coreOrMemTiles.size() /
+      thresholdsToNextShimChannel.push_back(ctrlTiles.size() /
                                             availableShimChans.size() * i);
     int ctrlPktFlowID = unusedPacketIdFrom;
     int shimChanIdx = 0;
-    for (int i = 0; i < (int)coreOrMemTiles.size(); i++) {
+    for (int i = 0; i < (int)ctrlTiles.size(); i++) {
+      if (ctrlTiles[i]->hasAttr("controller_id"))
+        ctrlPktFlowID =
+            (int)ctrlTiles[i]
+                ->getAttrOfType<AIE::PacketInfoAttr>("controller_id")
+                .getPktId();
       builder.setInsertionPointToEnd(device.getBody());
       if (isShimMM2S)
-        (void)createPacketFlowOp(
-            builder, ctrlPktFlowID, shimTile, shimWireBundle,
-            availableShimChans[shimChanIdx], coreOrMemTiles[i],
-            coreOrMemWireBundle, coreOrMemChanId);
+        (void)createPacketFlowOp(builder, ctrlPktFlowID, shimTile,
+                                 shimWireBundle,
+                                 availableShimChans[shimChanIdx], ctrlTiles[i],
+                                 ctrlWireBundle, coreOrMemChanId);
       else
-        (void)createPacketFlowOp(builder, ctrlPktFlowID, coreOrMemTiles[i],
-                                 coreOrMemWireBundle, coreOrMemChanId, shimTile,
+        (void)createPacketFlowOp(builder, ctrlPktFlowID, ctrlTiles[i],
+                                 ctrlWireBundle, coreOrMemChanId, shimTile,
                                  shimWireBundle,
                                  availableShimChans[shimChanIdx]);
       if (i >= thresholdsToNextShimChannel[shimChanIdx]) {
@@ -148,14 +210,6 @@ struct AIEGenerateColumnControlOverlayPass
         ctrlPktFlowID = unusedPacketIdFrom;
       }
     }
-  }
-
-  int getUnusedPacketIdFrom(DeviceOp device) {
-    int unusedPacketIdFrom = 0;
-    device.walk([&](AIE::PacketFlowOp pOp) {
-      unusedPacketIdFrom = std::max(unusedPacketIdFrom, pOp.IDInt());
-    });
-    return unusedPacketIdFrom + 1;
   }
 
   // Get a vector of shim channels not reserved by any circuit-switched aie.flow
@@ -186,6 +240,10 @@ struct AIEGenerateColumnControlOverlayPass
     return availableShimChans;
   }
 };
+
+std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEAssignTileCtrlIDsPass() {
+  return std::make_unique<AIEAssignTileCtrlIDsPass>();
+}
 
 std::unique_ptr<OperationPass<DeviceOp>>
 AIE::createAIEGenerateColumnControlOverlayPass() {

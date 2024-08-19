@@ -232,6 +232,22 @@ def AIELowerCascadeFlows : Pass<"aie-lower-cascade-flows", "DeviceOp"> {
   ];
 }
 
+def AIEAssignTileCtrlIDs : Pass<"aie-assign-tile-controller-ids", "DeviceOp"> {
+  let summary = "Assign controller id per aie.tile_op";
+  let description = [{
+    For each aie.tile_op used in the design, assign a unique controller ID.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEAssignTileCtrlIDsPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+  ];
+  let options = [
+    Option<"clColumnWiseUniqueIDs", "column-wise-unique-ids", "bool", /*default=*/"true",
+            "Flag to generate controller ids only unique within each column. Otherwise globally unique.">,
+  ];
+}
+
 def AIEGenerateColumnControlOverlay : Pass<"aie-generate-column-control-overlay", "DeviceOp"> {
   let summary = "Spawns streaming interconnect network for column control";
   let description = [{
