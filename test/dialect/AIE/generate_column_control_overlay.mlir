@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt %s -aie-generate-column-control-overlay --split-input-file | FileCheck %s
-// RUN: aie-opt %s -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" --split-input-file | FileCheck %s --check-prefix=CTRLPCT
+// RUN: aie-opt %s -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" --split-input-file | FileCheck %s --check-prefix=CTRLPKT
 
 // assign controller ids to aie.tile_op, for control packets
 
