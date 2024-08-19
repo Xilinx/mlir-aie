@@ -124,9 +124,6 @@ struct AIEGenerateColumnControlOverlayPass
                                      WireBundle coreOrMemWireBundle,
                                      int coreOrMemChanId,
                                      int unusedPacketIdFrom, bool isShimMM2S) {
-    // Get a set of available shim dma channels
-    int numShimDmaChans = targetModel.getNumSourceShimMuxConnections(
-        shimTile.getCol(), shimTile.getRow(), shimWireBundle);
     // Create packet flows
     SmallVector<int> thresholdsToNextShimChannel;
     for (int i = 1; i < (int)availableShimChans.size() + 1; i++)
