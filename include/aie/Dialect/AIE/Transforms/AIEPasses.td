@@ -246,7 +246,7 @@ def AIEGenerateColumnControlOverlay : Pass<"aie-generate-column-control-overlay"
   let options = [
     Option<"clRouteShimCTRLToTCT", "route-shim-to-tct", "bool", /*default=*/"true",
             "Flag to generate routing between shim dma CTRL and SOUTH ports, for TCT tokens.">,      
-    Option<"clRouteShimDmaToTileCTRL", "route-shim-to-tile-ctrl", "bool", /*default=*/"true",
+    Option<"clRouteShimDmaToTileCTRL", "route-shim-to-tile-ctrl", "bool", /*default=*/"false",
             "Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.">,  
   ];
 }
