@@ -2194,7 +2194,6 @@ WireBundle getConnectingBundle(WireBundle dir) {
 
 ParseResult BDChainOp::parse(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::Argument> entryArgs;
-  auto &builder = parser.getBuilder();
 
   // Symbol name, e.g. @my_chain
   StringAttr symNameAttr;
@@ -2217,15 +2216,6 @@ ParseResult BDChainOp::parse(OpAsmParser &parser, OperationState &result) {
     return argParseResult;
   }
 
-  // Store entry arg types in op attributes
-  SmallVector<::mlir::Type> entryArgTypes;
-  entryArgTypes.reserve(entryArgs.size());
-  for (auto entryArg : entryArgs) {
-    entryArgTypes.push_back(entryArg.type);
-  }
-  result.addAttribute(getEntryArgTypesAttrAttrName(result.name),
-                      TypeAttr::get(builder.getTupleType(entryArgTypes)));
-
   // BD Chain Body
   auto *body = result.addRegion();
   ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, false);
@@ -2237,7 +2227,6 @@ ParseResult BDChainOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void BDChainOp::print(OpAsmPrinter &printer) {
-
   auto taskName =
       (*this)
           ->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
@@ -2245,29 +2234,19 @@ void BDChainOp::print(OpAsmPrinter &printer) {
   printer << ' ';
   printer.printSymbolName(taskName);
 
-  ArrayRef<Type> entryArgTypes = this->getEntryArgTypesAttr().getTypes();
   Region &body = getRegion();
-  assert(body.getNumArguments() == entryArgTypes.size());
+  auto argsIter = body.getArguments();
   printer << '(';
-  for (unsigned i = 0, n = entryArgTypes.size(); i < n; i++) {
-    if (i > 0) {
+  for (auto it = argsIter.begin(); it != argsIter.end(); ++it) {
+    if (it != argsIter.begin()) {
       printer << ", ";
     }
-    printer.printRegionArgument(body.getArgument(i));
+    printer.printRegionArgument(*it);
   }
   printer << ')';
 
   printer << ' ';
   printer.printRegion(body, false, true);
-}
-
-LogicalResult BDChainOp::verify() {
-  Region &body = getRegion();
-  if (body.getNumArguments() != getEntryArgTypesAttr().getTypes().size()) {
-    return emitOpError(
-        "Number of region arguments and argument types mismatch.");
-  }
-  return success();
 }
 
 //===----------------------------------------------------------------------===//
