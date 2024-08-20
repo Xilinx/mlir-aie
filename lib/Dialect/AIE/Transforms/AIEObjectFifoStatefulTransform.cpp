@@ -784,7 +784,6 @@ struct AIEObjectFifoStatefulTransformPass
     return lcm;
   }
 
-
   // Function that unrolls for-loops that contain objectFifo operations.
   LogicalResult unrollForLoops(DeviceOp &device, OpBuilder &builder,
                                std::set<TileOp> objectFifoTiles) {
@@ -810,34 +809,34 @@ struct AIEObjectFifoStatefulTransformPass
 
           int unrollFactor =
               computeLCM(objFifoSizes); // also counts original loop body
-          
-          while(remainder != 0 || found){
+
+          while (remainder != 0 || found) {
             forLoop->getParentRegion()->walk([&](scf::ForOp remLoop) {
-               if(std::count(unrolledLoops.begin(), unrolledLoops.end(), remLoop) == 0){
-                if (remLoop.getSingleLowerBound() && remLoop.getSingleUpperBound() &&
-                remLoop.getSingleStep()) {
+              if (std::count(unrolledLoops.begin(), unrolledLoops.end(),
+                             remLoop) == 0) {
+                if (remLoop.getSingleLowerBound() &&
+                    remLoop.getSingleUpperBound() && remLoop.getSingleStep()) {
                   int64_t tripCount =
-                  constantTripCount(*(remLoop.getSingleLowerBound()),
-                                  *(remLoop.getSingleUpperBound()),
-                                  *(remLoop.getSingleStep()))
-                      .value_or(0);
+                      constantTripCount(*(remLoop.getSingleLowerBound()),
+                                        *(remLoop.getSingleUpperBound()),
+                                        *(remLoop.getSingleStep()))
+                          .value_or(0);
                   // if loop iterations < unrollFactor, unroll the loop fully
                   if (tripCount < unrollFactor)
                     unrollFactor = tripCount;
-                  remainder = tripCount%unrollFactor;
+                  remainder = tripCount % unrollFactor;
                 }
                 // // Process the for loop
-                  if (failed(mlir::loopUnrollByFactor(remLoop, unrollFactor))) {
-                    remLoop.emitOpError()
-                    << "could not be unrolled with unrollFactor: " << unrollFactor
-                    << "\n";
-                    WalkResult::interrupt();
-                  }
-                  unrolledLoops.push_back(remLoop);
-                  found = false;
-                  WalkResult::advance();
-              }
-              else{
+                if (failed(mlir::loopUnrollByFactor(remLoop, unrollFactor))) {
+                  remLoop.emitOpError()
+                      << "could not be unrolled with unrollFactor: "
+                      << unrollFactor << "\n";
+                  WalkResult::interrupt();
+                }
+                unrolledLoops.push_back(remLoop);
+                found = false;
+                WalkResult::advance();
+              } else {
                 remainder = 0;
                 found = false;
                 WalkResult::advance();
