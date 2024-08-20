@@ -278,7 +278,7 @@ def generate_cores_list(mlir_module_str):
         ]
 
 
-def emit_design_bif(root_path, has_cores=True, enable_cores=True, unified=True):
+def emit_design_bif(root_path, has_cores=True, enable_cores=True, unified=False):
     if unified:
         cdo_unified_file = f"file={root_path}/aie_cdo.bin" if unified else ""
         files = f"{cdo_unified_file}"
@@ -551,7 +551,7 @@ class FlowRunner:
             input_physical = Module.parse(
                 await read_file_async(self.prepend_tmp("input_physical.mlir"))
             )
-            generate_cdo(input_physical.operation, self.tmpdirname, emit_unified=True)
+            generate_cdo(input_physical.operation, self.tmpdirname)
 
     async def process_txn(self):
         from aie.dialects.aie import generate_txn
@@ -605,7 +605,7 @@ class FlowRunner:
         )
 
         await write_file_async(
-            emit_design_bif(self.tmpdirname, unified=True),
+            emit_design_bif(self.tmpdirname),
             self.prepend_tmp("design.bif"),
         )
 
