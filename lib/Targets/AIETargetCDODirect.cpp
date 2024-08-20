@@ -116,7 +116,7 @@ static raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value) {
 
 template <typename H1, typename... T>
 static raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value,
-                      T &&...rest) {
+                             T &&...rest) {
   const char *pcomma = strchr(label, ',');
   return showArgs(out.write(label, pcomma - label)
                       << "=" << std::forward<H1>(value) << ',',
@@ -191,9 +191,10 @@ auto ps = std::filesystem::path::preferred_separator;
 #define MEM_TILE_LOCK_ID_INCR 64
 #define BASE_ADDR_A_INCR 0x80000
 
-static LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
-                                      const AIETargetModel &targetModel,
-                                      XAie_LocType &tileLoc) {
+static LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
+                                             Block &block,
+                                             const AIETargetModel &targetModel,
+                                             XAie_LocType &tileLoc) {
   LLVM_DEBUG(llvm::dbgs() << "\nstart configuring bds\n");
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
   bool acqEn;
@@ -240,11 +241,11 @@ static LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &blo
   return success();
 }
 
-static LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
-                                 Block &block,
-                                 const AIETargetModel &targetModel,
-                                 XAie_LocType &tileLoc, int bdId,
-                                 std::optional<int> nextBdId) {
+static LogicalResult configureBdInBlock(XAie_DevInst &devInst,
+                                        XAie_DmaDesc &dmaTileBd, Block &block,
+                                        const AIETargetModel &targetModel,
+                                        XAie_LocType &tileLoc, int bdId,
+                                        std::optional<int> nextBdId) {
   std::optional<int> packetType;
   std::optional<int> packetID;
 
@@ -387,10 +388,11 @@ static LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dma
   return success();
 };
 
-static LogicalResult pushToBdQueueAndEnable(XAie_DevInst &devInst, Operation &op,
-                                     XAie_LocType &tileLoc, int chNum,
-                                     const DMAChannelDir &channelDir, int bdId,
-                                     int repeatCount) {
+static LogicalResult pushToBdQueueAndEnable(XAie_DevInst &devInst,
+                                            Operation &op,
+                                            XAie_LocType &tileLoc, int chNum,
+                                            const DMAChannelDir &channelDir,
+                                            int bdId, int repeatCount) {
   XAie_DmaDirection direction =
       channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
   auto enTokenIssue = tileLoc.Row == 0 && direction == DMA_S2MM;
@@ -405,8 +407,8 @@ static LogicalResult pushToBdQueueAndEnable(XAie_DevInst &devInst, Operation &op
 };
 
 static LogicalResult configureLocksAndBd(XAie_DevInst &devInst, Block &block,
-                                  XAie_LocType tileLoc,
-                                  const AIETargetModel &targetModel) {
+                                         XAie_LocType tileLoc,
+                                         const AIETargetModel &targetModel) {
   DMABDOp bd = *block.getOps<DMABDOp>().begin();
   assert(bd.getBdId().has_value() &&
          "DMABDOp must have assigned bd_id; did you forget to run "
@@ -754,7 +756,6 @@ struct AIEControl {
     }
     return success();
   }
-
 };
 
 } // namespace
@@ -766,8 +767,9 @@ static void initializeCDOGenerator(byte_ordering endianness, bool cdoDebug) {
   setEndianness(endianness);
 };
 
-static LogicalResult generateCDOBinary(const StringRef outputPath,
-                                const std::function<LogicalResult()> &cb) {
+static LogicalResult
+generateCDOBinary(const StringRef outputPath,
+                  const std::function<LogicalResult()> &cb) {
 
   // TODO(newling): Get bootgen team to remove print statement in this function.
   startCDOFileStream(outputPath.str().c_str());
@@ -783,9 +785,10 @@ static LogicalResult generateCDOBinary(const StringRef outputPath,
 }
 
 static LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
-                                            const StringRef workDirPath,
-                                            DeviceOp &targetOp, bool aieSim,
-                                            bool enableCores) {
+                                                   const StringRef workDirPath,
+                                                   DeviceOp &targetOp,
+                                                   bool aieSim,
+                                                   bool enableCores) {
 
   if (failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_elfs.bin")
@@ -811,9 +814,10 @@ static LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
   return success();
 }
 
-static LogicalResult generateCDOUnified(AIEControl &ctl, const StringRef workDirPath,
-                                 DeviceOp &targetOp, bool aieSim,
-                                 bool enableCores) {
+static LogicalResult generateCDOUnified(AIEControl &ctl,
+                                        const StringRef workDirPath,
+                                        DeviceOp &targetOp, bool aieSim,
+                                        bool enableCores) {
   return generateCDOBinary(
       (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo.bin").str(),
       [&ctl, &targetOp, &workDirPath, &aieSim, &enableCores] {
@@ -829,10 +833,10 @@ static LogicalResult generateCDOUnified(AIEControl &ctl, const StringRef workDir
       });
 }
 
-static LogicalResult translateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
-                                   byte_ordering endianness, bool emitUnified,
-                                   bool cdoDebug, bool aieSim, bool xaieDebug,
-                                   bool enableCores) {
+static LogicalResult
+translateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
+                     byte_ordering endianness, bool emitUnified, bool cdoDebug,
+                     bool aieSim, bool xaieDebug, bool enableCores) {
 
   auto devOps = m.getOps<DeviceOp>();
   assert(llvm::range_size(devOps) == 1 &&
@@ -860,8 +864,9 @@ static LogicalResult translateToCDODirect(ModuleOp m, llvm::StringRef workDirPat
 }
 
 static LogicalResult generateTxn(AIEControl &ctl, const StringRef workDirPath,
-                          DeviceOp &targetOp, bool aieSim, bool enableElfs,
-                          bool enableInit, bool enableCores) {
+                                 DeviceOp &targetOp, bool aieSim,
+                                 bool enableElfs, bool enableInit,
+                                 bool enableCores) {
   if (enableElfs && !targetOp.getOps<CoreOp>().empty() &&
       failed(ctl.addAieElfs(targetOp, workDirPath, aieSim)))
     return failure();
@@ -874,7 +879,8 @@ static LogicalResult generateTxn(AIEControl &ctl, const StringRef workDirPath,
 }
 
 static LogicalResult translateToTxn(ModuleOp m, llvm::StringRef workDirPath,
-                             bool aieSim, bool xaieDebug, bool enableCores) {
+                                    bool aieSim, bool xaieDebug,
+                                    bool enableCores) {
 
   auto devOps = m.getOps<DeviceOp>();
   if (llvm::range_size(devOps) > 1)
