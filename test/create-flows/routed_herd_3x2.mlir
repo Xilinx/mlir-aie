@@ -8,34 +8,38 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s
-// CHECK: %[[T20:.*]] = aie.tile(2, 0)
-// CHECK: %[[T30:.*]] = aie.tile(3, 0)
-// CHECK: %[[T60:.*]] = aie.tile(6, 0)
-// CHECK: %[[T70:.*]] = aie.tile(7, 0)
-// CHECK: %[[T100:.*]] = aie.tile(10, 0)
-// CHECK: %[[T110:.*]] = aie.tile(11, 0)
-// CHECK: %[[T180:.*]] = aie.tile(18, 0)
-// CHECK: %[[T190:.*]] = aie.tile(19, 0)
-// CHECK: %[[T25:.*]] = aie.tile(2, 5)
-// CHECK: %[[T31:.*]] = aie.tile(3, 1)
-// CHECK: %[[T66:.*]] = aie.tile(6, 6)
-// CHECK: %[[T73:.*]] = aie.tile(7, 3)
-// CHECK: %[[T125:.*]] = aie.tile(12, 5)
-// CHECK: %[[T133:.*]] = aie.tile(13, 3)
-//
-// CHECK: aie.flow(%[[T30]], DMA : 0, %[[T31]], DMA : 0)
-// CHECK: aie.flow(%[[T100]], DMA : 0, %[[T73]], DMA : 0)
-// CHECK: aie.flow(%[[T110]], DMA : 0, %[[T133]], DMA : 0)
-//
-// CHECK: aie.flow(%[[T25]], DMA : 0, %[[T60]], DMA : 0)
-// CHECK: aie.flow(%[[T31]], Core : 0, %[[T25]], Core : 0)
-// CHECK: aie.flow(%[[T66]], DMA : 0, %[[T20]], DMA : 0)
-//
-// CHECK: aie.flow(%[[T73]], Core : 0, %[[T66]], Core : 0)
-// CHECK: aie.flow(%[[T125]], DMA : 0, %[[T180]], DMA : 0)
-// CHECK: aie.flow(%[[T133]], Core : 0, %[[T125]], Core : 0)
+// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s -o %t.opt
+// RUN: FileCheck %s --check-prefix=CHECK1 < %t.opt
+// RUN: aie-translate --aie-flows-to-json %t.opt | FileCheck %s --check-prefix=CHECK2
 
+// CHECK1: %[[T20:.*]] = aie.tile(2, 0)
+// CHECK1: %[[T30:.*]] = aie.tile(3, 0)
+// CHECK1: %[[T60:.*]] = aie.tile(6, 0)
+// CHECK1: %[[T70:.*]] = aie.tile(7, 0)
+// CHECK1: %[[T100:.*]] = aie.tile(10, 0)
+// CHECK1: %[[T110:.*]] = aie.tile(11, 0)
+// CHECK1: %[[T180:.*]] = aie.tile(18, 0)
+// CHECK1: %[[T190:.*]] = aie.tile(19, 0)
+// CHECK1: %[[T25:.*]] = aie.tile(2, 5)
+// CHECK1: %[[T31:.*]] = aie.tile(3, 1)
+// CHECK1: %[[T66:.*]] = aie.tile(6, 6)
+// CHECK1: %[[T73:.*]] = aie.tile(7, 3)
+// CHECK1: %[[T125:.*]] = aie.tile(12, 5)
+// CHECK1: %[[T133:.*]] = aie.tile(13, 3)
+//
+// CHECK1: aie.flow(%[[T30]], DMA : 0, %[[T31]], DMA : 0)
+// CHECK1: aie.flow(%[[T100]], DMA : 0, %[[T73]], DMA : 0)
+// CHECK1: aie.flow(%[[T110]], DMA : 0, %[[T133]], DMA : 0)
+//
+// CHECK1: aie.flow(%[[T25]], DMA : 0, %[[T60]], DMA : 0)
+// CHECK1: aie.flow(%[[T31]], Core : 0, %[[T25]], Core : 0)
+// CHECK1: aie.flow(%[[T66]], DMA : 0, %[[T20]], DMA : 0)
+//
+// CHECK1: aie.flow(%[[T73]], Core : 0, %[[T66]], Core : 0)
+// CHECK1: aie.flow(%[[T125]], DMA : 0, %[[T180]], DMA : 0)
+// CHECK1: aie.flow(%[[T133]], Core : 0, %[[T125]], Core : 0)
+
+// CHECK2: "total_path_length": 54
 
 module {
 	aie.device(xcvc1902) {

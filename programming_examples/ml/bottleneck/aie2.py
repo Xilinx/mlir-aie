@@ -501,18 +501,18 @@ def bottleneck4AIEs():
                     yield_([])
 
             # instruction stream generation
-            activationsInSize32b = (tensorInW * tensorInH * tensorInC) // 4
-            acitivationsOutSize32b = activationsInSize32b
-            totalWeightsSize32b = (
+            activationsIn = tensorInW * tensorInH * tensorInC
+            acitivationsOut = activationsIn
+            totalWeights = (
                 tensorL1InC * tensorL1OutC
                 + 3 * 3 * tensorL2InC * tensorL2OutC
                 + tensorL3InC * tensorL3OutC
-            ) // 4
+            )
 
-            activationsInL3_ty = MemRefType.get((activationsInSize32b,), int32_ty)
-            weightsInL3_ty = MemRefType.get((totalWeightsSize32b,), int32_ty)
+            activationsInL3_ty = MemRefType.get((activationsIn,), int8_ty)
+            weightsInL3_ty = MemRefType.get((totalWeights,), uint8_ty)
 
-            @FuncOp.from_py_func(activationsInL3_ty, weightsInL3_ty, activationsInL3_ty)
+            @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsInL3_ty)
             def sequence(inputFromL3, weightsFromL3, outputToL3):
 
                 if enableTrace:
@@ -565,22 +565,21 @@ def bottleneck4AIEs():
                     npu_write32(0, 4, 0x340D0, 0x10000)
 
                     # Start trace copy out.
-                    npu_writebd_shimtile(
+                    npu_writebd(
                         bd_id=3,
                         buffer_length=trace_sz_in_i32s,
-                        buffer_offset=acitivationsOutSize32b,
+                        buffer_offset=acitivationsOut,
                         enable_packet=0,
                         out_of_order_id=0,
                         packet_id=0,
                         packet_type=0,
                         column=0,
-                        column_num=1,
+                        row=0,
                         d0_stepsize=0,
                         d0_wrap=0,
                         d1_stepsize=0,
                         d1_wrap=0,
                         d2_stepsize=0,
-                        ddr_id=2,
                         iteration_current=0,
                         iteration_stepsize=0,
                         iteration_wrap=0,
@@ -596,39 +595,31 @@ def bottleneck4AIEs():
                     npu_write32(0, 2, 0x1D20C, 0x3)
 
                 # write RTP parameters
+                NpuWriteRTPOp("rtpComputeTile2", index=0, value=1)  # scale
+                NpuWriteRTPOp("rtpComputeTile3", index=0, value=1)  # scale
+                NpuWriteRTPOp("rtpComputeTile5", index=0, value=1)  # scale
                 NpuWriteRTPOp(
-                    "rtpComputeTile2", col=0, row=2, index=0, value=1
-                )  # scale
-                NpuWriteRTPOp(
-                    "rtpComputeTile3", col=0, row=3, index=0, value=1
-                )  # scale
-                NpuWriteRTPOp(
-                    "rtpComputeTile5", col=0, row=5, index=0, value=1
-                )  # scale
-                NpuWriteRTPOp(
-                    "rtpComputeTile4", col=0, row=4, index=0, value=1
+                    "rtpComputeTile4", index=0, value=1
                 )  # scale: conv1x1 with the same scale as the input so we match the scaling factor of output after conv1x1 and the initial input
-                NpuWriteRTPOp(
-                    "rtpComputeTile4", col=0, row=4, index=1, value=0
-                )  # skip_scale
+                NpuWriteRTPOp("rtpComputeTile4", index=1, value=0)  # skip_scale
 
                 npu_dma_memcpy_nd(
                     metadata="inOF_act_L3L2",
                     bd_id=0,
                     mem=inputFromL3,
-                    sizes=[1, 1, 1, activationsInSize32b],
+                    sizes=[1, 1, 1, activationsIn],
                 )
                 npu_dma_memcpy_nd(
                     metadata="outOFL2L3",
                     bd_id=2,
                     mem=outputToL3,
-                    sizes=[1, 1, 1, acitivationsOutSize32b],
+                    sizes=[1, 1, 1, acitivationsOut],
                 )
                 npu_dma_memcpy_nd(
                     metadata="inOF_wts_0_L3L2",
                     bd_id=1,
                     mem=weightsFromL3,
-                    sizes=[1, 1, 1, totalWeightsSize32b],
+                    sizes=[1, 1, 1, totalWeights],
                 )
 
                 npu_sync(column=0, row=0, direction=0, channel=0)

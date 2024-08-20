@@ -12,12 +12,12 @@
 
 // CHECK: module @cascade_flow {
 // CHECK:   aie.device(xcve2802) {
-// CHECK:     %tile_1_4 = aie.tile(1, 4)
-// CHECK:     %tile_2_4 = aie.tile(2, 4)
-// CHECK:     %tile_3_4 = aie.tile(3, 4)
-// CHECK:     aie.configure_cascade(%tile_1_4, North, East)
-// CHECK:     aie.configure_cascade(%tile_2_4, West, East)
-// CHECK:     aie.configure_cascade(%tile_3_4, West, South)
+// CHECK-DAG:     %tile_1_4 = aie.tile(1, 4)
+// CHECK-DAG:     %tile_2_4 = aie.tile(2, 4)
+// CHECK-DAG:     %tile_3_4 = aie.tile(3, 4)
+// CHECK-DAG:     aie.configure_cascade(%tile_1_4, North, East)
+// CHECK-DAG:     aie.configure_cascade(%tile_2_4, West, East)
+// CHECK-DAG:     aie.configure_cascade(%tile_3_4, West, South)
 // CHECK:   }
 // CHECK: }
 

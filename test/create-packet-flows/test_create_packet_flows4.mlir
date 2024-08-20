@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-packet-flows %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
 module @test_create_packet_flows4 {
  aie.device(xcvc1902) {
@@ -16,7 +16,7 @@ module @test_create_packet_flows4 {
 // CHECK:         %[[VAL_0:.*]] = aie.tile(1, 1)
 // CHECK:         %[[VAL_1:.*]] = aie.switchbox(%[[VAL_0]]) {
 // CHECK:           %[[VAL_6:.*]] = aie.amsel<0> (0)
-// CHECK:           %[[VAL_7:.*]] = aie.amsel<0> (1)
+// CHECK:           %[[VAL_7:.*]] = aie.amsel<1> (0)
 // CHECK:           %[[VAL_4:.*]] = aie.masterset(Core : 0, %[[VAL_3:.*]])
 // CHECK:           %[[VAL_5:.*]] = aie.masterset(Core : 1, %[[VAL_2:.*]])
 // CHECK:           aie.packet_rules(West : 1) {

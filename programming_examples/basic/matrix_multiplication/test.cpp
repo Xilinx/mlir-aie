@@ -28,10 +28,31 @@
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
-using A_DATATYPE = std::bfloat16_t;
-using B_DATATYPE = std::bfloat16_t;
-using C_DATATYPE = std::bfloat16_t;
+#ifndef DTYPE_IN
+#define DTYPE_IN std::bfloat16_t
 #endif
+#ifndef DTYPE_OUT
+#define DTYPE_OUT std::bfloat16_t
+#endif
+#ifndef DTYPE_ACC
+#define DTYPE_ACC float
+#endif
+using A_DATATYPE = DTYPE_IN;
+using B_DATATYPE = DTYPE_IN;
+using C_DATATYPE = DTYPE_OUT;
+using ACC_DATATYPE = DTYPE_ACC;
+#endif
+
+#define XSTR(X) STR(X)
+#define STR(X) #X
+
+constexpr long long verify_stochastic_threshold = 1024 * 1024 * 1024;
+constexpr int verify_stochastic_n_samples = 1000;
+
+// Verification tolerance
+// See "Note on Numerical Tolerances" in README.md
+float abs_tol = matmul_common::get_abs_tol<C_DATATYPE>();
+float rel_tol = matmul_common::get_rel_tol<C_DATATYPE>();
 
 namespace po = boost::program_options;
 
@@ -54,6 +75,8 @@ int main(int argc, const char *argv[]) {
   int M = vm["M"].as<int>();
   int K = vm["K"].as<int>();
   int N = vm["N"].as<int>();
+  bool do_verify_stochastic =
+      (long long)M * N * K > verify_stochastic_threshold;
 
   if (verbosity >= 1) {
     std::cout << "Matrix size " << M << "x" << K << "x" << N << std::endl;
@@ -118,13 +141,13 @@ int main(int argc, const char *argv[]) {
   auto kernel = xrt::kernel(context, kernelName);
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
+                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_a =
-      xrt::bo(device, A_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
+      xrt::bo(device, A_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_b =
-      xrt::bo(device, B_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+      xrt::bo(device, B_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
   auto bo_out =
-      xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+      xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   if (verbosity >= 1) {
     std::cout << "Writing data into buffer objects.\n";
@@ -133,24 +156,38 @@ int main(int argc, const char *argv[]) {
   A_DATATYPE *bufA = bo_a.map<A_DATATYPE *>();
   std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++) {
-    AVec[i] = matmul_common::random_bfloat16_t();
+    AVec[i] = matmul_common::get_random<A_DATATYPE>();
+    // AVec[i] = i;
   }
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
   B_DATATYPE *bufB = bo_b.map<B_DATATYPE *>();
   std::vector<B_DATATYPE> BVec(B_VOLUME);
   for (int i = 0; i < B_VOLUME; i++) {
-    BVec[i] = matmul_common::random_bfloat16_t();
+    BVec[i] = matmul_common::get_random<B_DATATYPE>();
+    // Diagonal:
+    // if(i % N == i / N) {
+    //   BVec[i] = 1.0;
+    // } else {
+    //   BVec[i] = 0.0;
+    // }
   }
   memcpy(bufB, BVec.data(), (BVec.size() * sizeof(B_DATATYPE)));
 
   // Initialize outputs; bufOut is results matrix plus tracing info
   char *bufOut = bo_out.map<char *>();
   std::vector<C_DATATYPE> CVec(C_VOLUME);
-  // memcpy(bufOut, CVec.data(), (CVec.size() * sizeof(C_DATATYPE)));
   memset(bufOut, 0, OUT_SIZE);
-  // if(trace_size > 0) {
-  //   memset(bufOut + C_SIZE, 0, trace_size);
-  // }
+
+  if (verbosity >= 2) {
+    std::cout << "DTYPE_IN  = " XSTR(DTYPE_IN) "\n";
+    std::cout << "DTYPE_OUT = " XSTR(DTYPE_OUT) "\n";
+    std::cout << "Verification tolerance " << abs_tol << " absolute, "
+              << rel_tol << " relative.\n";
+    std::cout << "A = \n";
+    matmul_common::print_matrix(AVec, K);
+    std::cout << "B = \n";
+    matmul_common::print_matrix(BVec, N);
+  }
 
   // Instruction buffer for DMA configuration
   void *bufInstr = bo_instr.map<void *>();
@@ -172,11 +209,16 @@ int main(int argc, const char *argv[]) {
   for (unsigned iter = 0; iter < num_iter; iter++) {
 
     if (verbosity >= 1) {
-      std::cout << "Running Kernel.\n";
+      std::cout << "Running Kernel (iteration " << iter << ").\n";
     }
     auto start = std::chrono::high_resolution_clock::now();
-    auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_out);
-    run.wait();
+    unsigned int opcode = 3;
+    auto run = kernel(opcode, bo_instr, instr_v.size(), bo_a, bo_b, bo_out);
+    ert_cmd_state r = run.wait();
+    if (r != ERT_CMD_STATE_COMPLETED) {
+      std::cout << "Kernel did not complete. Returned status: " << r << "\n";
+      return 1;
+    }
     auto stop = std::chrono::high_resolution_clock::now();
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
@@ -188,16 +230,30 @@ int main(int argc, const char *argv[]) {
     memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
     if (do_verify) {
       if (verbosity >= 1) {
-        std::cout << "Verifying against reference matmul ..." << std::endl;
+        if (do_verify_stochastic) {
+          std::cout << "Verifying " << verify_stochastic_n_samples
+                    << " random samples against reference matmul ..."
+                    << std::endl;
+        } else {
+          std::cout << "Verifying against reference matmul ..." << std::endl;
+        }
       }
       auto vstart = std::chrono::system_clock::now();
-      errors = matmul_common::verify(M, N, K, AVec, BVec, CVec);
+      if (do_verify_stochastic) {
+        errors = matmul_common::verify_stochastic<A_DATATYPE, C_DATATYPE,
+                                                  ACC_DATATYPE>(
+            M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples, verbosity,
+            abs_tol, rel_tol);
+      } else {
+        errors = matmul_common::verify<A_DATATYPE, C_DATATYPE, ACC_DATATYPE>(
+            M, N, K, AVec, BVec, CVec, abs_tol, rel_tol);
+      }
       auto vstop = std::chrono::system_clock::now();
       float vtime =
           std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)
               .count();
       if (verbosity >= 1) {
-        std::cout << "Verify time: " << vtime << "secs." << std::endl;
+        std::cout << "Verify time: " << vtime << " s." << std::endl;
       }
     } else {
       if (verbosity >= 1)
@@ -236,7 +292,13 @@ int main(int argc, const char *argv[]) {
     std::cout << "\nPASS!\n\n";
     return 0;
   } else {
-    std::cout << "\nError count: " << errors << "\n\n";
+    std::cout << "\nError count: " << errors;
+    if (do_verify_stochastic) {
+      std::cout << " (out of " << verify_stochastic_n_samples
+                << " random samples)";
+    }
+    std::cout << "\n\n";
+
     std::cout << "\nFailed.\n\n";
     return 1;
   }

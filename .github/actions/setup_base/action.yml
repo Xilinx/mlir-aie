@@ -65,7 +65,7 @@ runs:
         large-packages: true
         swap-storage: false # This frees space on the wrong partition.
 
-    - uses: actions/setup-python@v4
+    - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 

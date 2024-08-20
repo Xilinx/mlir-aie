@@ -20,11 +20,14 @@
 namespace xilinx {
 enum class AIEArch {
   AIE,    // Original AIE
-  AIE_ML, // ML/V2 version of AIE
+  AIE2,   // AIE-ML/V2 arch version of AIE
+  AIE2P,  // AIE2P arch version of AIE
+  UNKNOWN // Unsupported/Unknown backend
 };
 enum class TargetBackend {
   CPP,    // Convert to aievec targeting C++ backend
   LLVMIR, // Convert to aievec targeting LLVM IR backend
+  UNKNOWN // Unsupported/Unknown backend
 };
 } // namespace xilinx
 
@@ -38,7 +41,7 @@ struct CanonicalizeVectorForAIEVecOptions
     : public mlir::PassPipelineOptions<CanonicalizeVectorForAIEVecOptions> {
   PassOptions::Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aieml\". This will "
+      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
                      "determine the vector size and available operations."),
       llvm::cl::init("aie")};
   PassOptions::Option<std::string> targetBackend{
@@ -54,7 +57,7 @@ struct LowerVectorToAIEVecOptions
     : public mlir::PassPipelineOptions<LowerVectorToAIEVecOptions> {
   PassOptions::Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aieml\". This will "
+      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
                      "determine the vector size and available operations."),
       llvm::cl::init("aie")};
   PassOptions::Option<std::string> targetBackend{
@@ -70,7 +73,7 @@ struct OptimizeAIEVecOptions
     : public mlir::PassPipelineOptions<OptimizeAIEVecOptions> {
   PassOptions::Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aieml\". This will "
+      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
                      "determine the vector size and available operations."),
       llvm::cl::init("aie")};
   PassOptions::Option<std::string> targetBackend{
@@ -106,7 +109,7 @@ struct ConvertVectorToAIEVecOptions
       llvm::cl::init(2)};
   PassOptions::Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aieml\". This will "
+      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
                      "determine the vector size and available operations."),
       llvm::cl::init("aie")};
   PassOptions::Option<std::string> targetBackend{

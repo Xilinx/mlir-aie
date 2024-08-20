@@ -22,7 +22,6 @@ if len(sys.argv) == 3:
 heightMinus1 = height - 1
 lineWidth = width
 lineWidthInBytes = width * 4
-lineWidthInInt32s = lineWidthInBytes // 4
 
 enableTrace = False
 traceSizeInBytes = 8192
@@ -294,23 +293,22 @@ def edge_detect():
             # To/from AIE-array data movement
 
             tensorSize = width * height * 4  # 4 channels
-            tensorSizeInInt32s = tensorSize // 4
-            tensor_ty = T.memref(tensorSizeInInt32s, T.i32())
+            tensor_ty = T.memref(tensorSize, T.i8())
             memRef_16x16_ty = T.memref(16, 16, T.i32())
 
-            @FuncOp.from_py_func(tensor_ty, memRef_16x16_ty, tensor_ty)
+            @runtime_sequence(tensor_ty, memRef_16x16_ty, tensor_ty)
             def sequence(I, B, O):
                 npu_dma_memcpy_nd(
                     metadata="outOF_L2L3",
                     bd_id=0,
                     mem=O,
-                    sizes=[1, 1, 1, tensorSizeInInt32s],
+                    sizes=[1, 1, 1, tensorSize],
                 )
                 npu_dma_memcpy_nd(
                     metadata="inOF_L3L2",
                     bd_id=1,
                     mem=I,
-                    sizes=[1, 1, 1, tensorSizeInInt32s],
+                    sizes=[1, 1, 1, tensorSize],
                 )
                 npu_sync(column=0, row=0, direction=0, channel=0)
 

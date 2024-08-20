@@ -60,7 +60,7 @@ class CMakeBuild(build_ext):
         ext_fullpath = Path.cwd() / self.get_ext_fullpath(ext.name)
         extdir = ext_fullpath.parent.resolve()
         install_dir = extdir
-        cfg = "Release"
+        cfg = "Debug" if DEBUG else "Release"
 
         cmake_generator = os.getenv("CMAKE_GENERATOR", "Ninja")
 
@@ -201,10 +201,15 @@ datetime = os.environ.get(
 )
 version = f"{release_version}.{datetime}+{commit_hash}"
 
+DEBUG = check_env("DEBUG")
+name = "aie-python-bindings"
+if DEBUG:
+    name += "-debug"
+
 setup(
     version=os.getenv("MLIR_AIE_WHEEL_VERSION", version),
     author="",
-    name="aie-python-bindings",
+    name=name,
     include_package_data=True,
     long_description_content_type="text/markdown",
     ext_modules=[CMakeExtension("_aie", sourcedir=Path(__file__).parent.absolute())],

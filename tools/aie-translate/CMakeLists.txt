@@ -30,6 +30,8 @@ target_link_libraries(aie-translate
   AIEXTransforms
   AIEXUtils
   AIETargets
+  MLIRAIEVecDialect
+  MLIRAIEVecAIE1Dialect
   MLIRXLLVMToLLVMIRTranslation
   MLIRIR
   MLIRParser

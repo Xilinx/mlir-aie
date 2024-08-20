@@ -3,6 +3,8 @@
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2024, Advanced Micro Devices, Inc.
 # 
 ##===----------------------------------------------------------------------===##
 
@@ -19,8 +21,6 @@ all: build/conv2dk1_i8.o build/conv2dk1_skip_init.o build/conv2dk3.o build/conv2
 build/${mlirFileName}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@
-insts.txt: build/${mlirFileName}.mlir
-	aiecc.py -v --aie-only-generate-npu --npu-insts-name=$@ $<
 
 build/conv2dk1_i8.o: conv2dk1.cc
 	xchesscc -d ${CHESSCC2_FLAGS} -DINT8_ACT -c $< -o $@
@@ -41,9 +41,7 @@ build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1_i8.o build/conv2dk
 	cd build && aiecc.py --basic-alloc-scheme --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 clean:
-	rm -rf  build/*.elf* build/*.lst build/*.bif log* build/${mlirFileName}.mlir.prj build/*.xclbin sim \
-		build/chess* build/insts.txt \
-		build/*.log build/aie_partition.json build/*.bin build/BOOT.BIN _x test.exe
+	rm -rf build log
 
-run_py: 
+run_py: build/final.xclbin
 	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE

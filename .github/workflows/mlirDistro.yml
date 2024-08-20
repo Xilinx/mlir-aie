@@ -149,7 +149,7 @@ jobs:
         echo "OSX_VERSION=$(sw_vers -productVersion)" | tee -a $GITHUB_ENV
 
     - name: Checkout actions
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         # checkout just the actions in order to pick and choose
         # where the actual repo is checked out manually (see actions/setup_base)
@@ -400,7 +400,7 @@ jobs:
           name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
           path: dist
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 

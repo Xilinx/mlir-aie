@@ -19,6 +19,7 @@
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
@@ -30,6 +31,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
+
+#include <set>
 
 #define DEBUG_TYPE "aie-targets"
 
@@ -80,6 +83,7 @@ static void registerDialects(DialectRegistry &registry) {
   registry.insert<VectorDialect>();
   registry.insert<LLVM::LLVMDialect>();
   registry.insert<emitc::EmitCDialect>();
+  registry.insert<index::IndexDialect>();
 }
 
 // Output the buffer map for the given buffer operations, with the given offset.
@@ -161,9 +165,20 @@ void registerAIETranslations() {
         DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
 
         collectTiles(targetOp, tiles);
+        // sort the tiles for deterministic output
+        using tileType = std::pair<TileID, Operation *>;
+        struct tileCmp {
+          bool operator()(const tileType &lhs, const tileType &rhs) const {
+            return lhs.first < rhs.first;
+          }
+        };
+        std::set<tileType, tileCmp> sortedTiles;
+        for (auto tile : tiles)
+          sortedTiles.insert(tileType{tile.first, tile.second});
+
         collectBuffers(targetOp, buffers);
 
-        for (auto tile : tiles) {
+        for (auto tile : sortedTiles) {
           Operation *srcTileOp = tile.second;
           TileID srcCoord = cast<TileOp>(srcTileOp).getTileID();
           int srcCol = srcCoord.col;

@@ -23,7 +23,7 @@ from aie.dialects.aie import (
     object_fifo_link,
     tile,
 )
-from aie.dialects.aiex import npu_sync, npu_dma_memcpy_nd
+from aie.dialects.aiex import npu_sync, npu_dma_memcpy_nd, runtime_sequence
 from aie.dialects.func import FuncOp
 from aie.dialects.scf import for_
 from aie.dialects.scf import yield_
@@ -75,7 +75,7 @@ def my_vector_scalar(module):
                     yield_([])
                 yield_([])
 
-        @FuncOp.from_py_func(
+        @runtime_sequence(
             T.memref(N, T.i32()), T.memref(N, T.i32()), T.memref(N, T.i32())
         )
         def sequence(A, B, C):
@@ -177,7 +177,7 @@ def my_matmul(module):
                     yield_([])
                 yield_([])
 
-        @FuncOp.from_py_func(
+        @runtime_sequence(
             T.memref(A_sz_in_i32s, T.i32()),
             T.memref(B_sz_in_i32s, T.i32()),
             T.memref(C_sz_in_i32s, T.i32()),
@@ -200,7 +200,7 @@ def my_matmul(module):
                     mem=C,
                     offsets=[0, 0, 0, C_row_offset_in_i32s],
                     sizes=[num_tile_rows, N_div_n, m, n_in_i32s_out],
-                    strides=[m_x_N_in_i32s_out, n_in_i32s_out, N_in_i32s_out],
+                    strides=[m_x_N_in_i32s_out, n_in_i32s_out, N_in_i32s_out, 1],
                 )
                 for tile_row in range(num_tile_rows):
                     A_row_offset_in_i32s = (
@@ -216,14 +216,14 @@ def my_matmul(module):
                         mem=A,
                         offsets=[0, 0, 0, A_row_offset_in_i32s],
                         sizes=[N_div_n, K_div_k, m, k_in_i32s],
-                        strides=[0, k_in_i32s, K_in_i32s],
+                        strides=[0, k_in_i32s, K_in_i32s, 1],
                     )
                     npu_dma_memcpy_nd(
                         metadata="inB",
                         bd_id=2 * tile_row + 2,
                         mem=B,
                         sizes=[N_div_n, K_div_k, k, n_in_i32s],
-                        strides=[n_in_i32s, k_x_N_in_i32s, N_in_i32s],
+                        strides=[n_in_i32s, k_x_N_in_i32s, N_in_i32s, 1],
                     )
 
                 npu_sync(column=0, row=0, direction=0, channel=0)
@@ -437,7 +437,7 @@ def edge_detect(module):
                 outOF_L1L2.release(ObjectFifoPort.Produce, 1)
                 yield_([])
 
-        @FuncOp.from_py_func(
+        @runtime_sequence(
             T.memref(2304, T.i32()), T.memref(2304, T.i32()), T.memref(2304, T.i32())
         )
         def sequence(I, B, O):
@@ -446,14 +446,14 @@ def edge_detect(module):
                 bd_id=0,
                 mem=O,
                 sizes=[1, 1, 36, 64],
-                strides=[0, 0, 64],
+                strides=[0, 0, 64, 1],
             )
             npu_dma_memcpy_nd(
                 metadata="inOF_L3L2",
                 bd_id=1,
                 mem=I,
                 sizes=[1, 1, 36, 64],
-                strides=[0, 0, 64],
+                strides=[0, 0, 64, 1],
             )
             npu_sync(column=0, row=0, direction=0, channel=0)
 
@@ -492,7 +492,7 @@ def my_add_one_objFifo(module):
                 of_out1.release(ObjectFifoPort.Produce, 1)
                 yield_([])
 
-        @FuncOp.from_py_func(
+        @runtime_sequence(
             T.memref(64, T.i32()), T.memref(32, T.i32()), T.memref(64, T.i32())
         )
         def sequence(inTensor, notUsed, outTensor):

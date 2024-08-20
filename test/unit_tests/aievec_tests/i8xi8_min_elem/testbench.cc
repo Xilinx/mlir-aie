@@ -4,7 +4,15 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+
+#ifdef TO_LLVM
+extern "C" {
+#endif
 void dut(int8_t *restrict in0, int8_t *restrict in1, int8_t *restrict out0);
+#ifdef TO_LLVM
+}
+#endif
+
 void dut_ref(int8_t *in0, int8_t *in1, int8_t *out0);
 
 alignas(32) int8_t g_in0[IN0_SIZE];

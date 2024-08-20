@@ -1,4 +1,4 @@
-// RUN: aie-opt %s -canonicalize-vector-for-aievec=aie-target=aieml -canonicalize -cse -split-input-file | FileCheck %s
+// RUN: aie-opt %s -canonicalize-vector-for-aievec=aie-target=aie2 -canonicalize -cse -split-input-file | FileCheck %s
 
 // CHECK-LABEL: func.func @multidim_vector_transfer(
 // CHECK-SAME: %[[IMEM:[a-zA-Z0-9]+]]: memref<64x64x4x8xbf16>,

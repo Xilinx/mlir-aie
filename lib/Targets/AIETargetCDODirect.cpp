@@ -179,8 +179,6 @@ static_assert(XAIE_OK == 0);
 auto ps = std::filesystem::path::preferred_separator;
 
 #define XAIE_BASE_ADDR 0x40000000
-#define XAIE_COL_SHIFT 25
-#define XAIE_ROW_SHIFT 20
 #define XAIE_SHIM_ROW 0
 #define XAIE_MEM_TILE_ROW_START 1
 #define XAIE_PARTITION_BASE_ADDR 0x0
@@ -250,6 +248,8 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
                                  std::optional<int> nextBdId) {
   std::optional<int> packetType;
   std::optional<int> packetID;
+
+  // Below should go
   auto maybePacketOps = block.getOps<DMABDPACKETOp>();
   if (!maybePacketOps.empty()) {
     assert(llvm::range_size(maybePacketOps) == 1 &&
@@ -326,10 +326,48 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
                             lenInBytes);
   }
 
+  // ND zero padding.
+  std::optional<llvm::ArrayRef<BDPadLayoutAttr>> padDims =
+      bdOp.getPadDimensions();
+
+  if (padDims) {
+    XAie_DmaPadTensor dmaPadTensor = {};
+    dmaPadTensor.NumDim = padDims->size();
+    dmaPadTensor.PadDesc = static_cast<XAie_PadDesc *>(
+        calloc(dmaPadTensor.NumDim, sizeof(XAie_PadDesc)));
+    if (!dmaPadTensor.PadDesc)
+      return bdOp.emitError("couldn't allocate array of XAie_PadDesc");
+    // libxaie requires stride in multiples of 32b
+    double elementWidthIn32bWords =
+        static_cast<double>(bdOp.getBufferElementTypeWidthInBytes()) / 4.0;
+    for (size_t i = 0; i < padDims->size(); i++) {
+      // Pass down dimensions in reverse order.
+      int j = padDims->size() - i - 1;
+      uint8_t before;
+      uint8_t after;
+      if (j > 0) {
+        before = static_cast<uint8_t>(padDims.value()[i].getConstPadBefore());
+        after = static_cast<uint8_t>(padDims.value()[i].getConstPadAfter());
+      } else {
+        before = static_cast<uint8_t>(padDims.value()[i].getConstPadBefore() *
+                                      elementWidthIn32bWords);
+        after = static_cast<uint8_t>(padDims.value()[i].getConstPadAfter() *
+                                     elementWidthIn32bWords);
+      }
+      dmaPadTensor.PadDesc[j] = {before, after};
+    }
+    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetPadding, &dmaTileBd,
+                            &dmaPadTensor);
+  }
   if (nextBdId) {
     auto enableNextBd = 1;
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetNextBd, &dmaTileBd,
                             nextBdId.value(), enableNextBd);
+  }
+
+  if (auto packetInfo = bdOp.getPacket()) {
+    packetType = packetInfo->getPktType();
+    packetID = packetInfo->getPktId();
   }
 
   if (packetID) {
@@ -398,11 +436,21 @@ struct AIEControl {
     size_t deviceRows = tm.rows();
     size_t deviceCols = tm.columns() + partitionStartCol;
 
+    // Don't put this in the target model, because it's XAIE specific.
+    unsigned char devGen;
+    switch (tm.getTargetArch()) {
+    case AIEArch::AIE1: // probably unreachable.
+      devGen = XAIE_DEV_GEN_AIE;
+      break;
+    case AIEArch::AIE2:
+      devGen = XAIE_DEV_GEN_AIEML;
+      break;
+    }
     configPtr = XAie_Config{
-        /*AieGen*/ XAIE_DEV_GEN_AIEML,
+        /*AieGen*/ devGen,
         /*BaseAddr*/ XAIE_BASE_ADDR,
-        /*ColShift*/ XAIE_COL_SHIFT,
-        /*RowShift*/ XAIE_ROW_SHIFT,
+        /*ColShift*/ (uint8_t)tm.getColumnShift(),
+        /*RowShift*/ (uint8_t)tm.getRowShift(),
         /*NumRows*/ static_cast<uint8_t>(deviceRows),
         /*NumCols*/ static_cast<uint8_t>(deviceCols),
         /*ShimRowNum*/ XAIE_SHIM_ROW,
@@ -578,50 +626,62 @@ struct AIEControl {
             WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
             connectOp.destIndex());
 
-      for (auto connectOp : b.getOps<MasterSetOp>()) {
+      for (auto masterSetOp : b.getOps<MasterSetOp>()) {
         int mask = 0;
         int arbiter = -1;
 
-        for (auto val : connectOp.getAmsels()) {
+        for (auto val : masterSetOp.getAmsels()) {
           AMSelOp amsel = cast<AMSelOp>(val.getDefiningOp());
           arbiter = amsel.arbiterIndex();
           int msel = amsel.getMselValue();
           mask |= (1 << msel);
         }
 
-        bool isdma = connectOp.getDestBundle() == WireBundle::DMA;
+        // the default is to keep header
+        bool keepHeader = true;
+        // the default for dma destinations is to drop the header
+        if (masterSetOp.getDestBundle() == WireBundle::DMA)
+          keepHeader = false;
         // assume a connection going south from row zero gets wired to shimdma
-        // by a shimmux. TODO: fix the assumption
-        if (!isdma && (switchboxOp.rowIndex() == 0))
-          isdma = connectOp.getDestBundle() == WireBundle::South;
-        // Flag for overriding DROP_HEADER. TODO: Formalize this in tablegen
-        isdma &= !connectOp->hasAttr("keep_pkt_header");
-        auto dropHeader =
-            isdma ? XAIE_SS_PKT_DROP_HEADER : XAIE_SS_PKT_DONOT_DROP_HEADER;
+        // by a shimmux. But if it's south 0 assume it's tct routing and don't
+        // drop header. TODO: fix the assumption
+        if (switchboxOp.rowIndex() == 0 &&
+            masterSetOp.getDestBundle() == WireBundle::South &&
+            masterSetOp.destIndex() != 0)
+          keepHeader = false;
+
+        // "keep_pkt_header" attribute overrides the above defaults, if set
+        if (auto keep = masterSetOp.getKeepPktHeader())
+          keepHeader = *keep;
+
+        auto dropHeader = keepHeader ? XAIE_SS_PKT_DONOT_DROP_HEADER
+                                     : XAIE_SS_PKT_DROP_HEADER;
         TRY_XAIE_API_EMIT_ERROR(
-            connectOp, XAie_StrmPktSwMstrPortEnable, &devInst, tileLoc,
-            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
-            connectOp.destIndex(), dropHeader, arbiter, mask);
+            masterSetOp, XAie_StrmPktSwMstrPortEnable, &devInst, tileLoc,
+            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(masterSetOp.getDestBundle()),
+            masterSetOp.destIndex(), dropHeader, arbiter, mask);
       }
 
-      for (auto connectOp : b.getOps<PacketRulesOp>()) {
+      for (auto packetRulesOp : b.getOps<PacketRulesOp>()) {
         int slot = 0;
-        Block &block = connectOp.getRules().front();
+        Block &block = packetRulesOp.getRules().front();
         for (auto slotOp : block.getOps<PacketRuleOp>()) {
           AMSelOp amselOp = cast<AMSelOp>(slotOp.getAmsel().getDefiningOp());
           int arbiter = amselOp.arbiterIndex();
           int msel = amselOp.getMselValue();
-          TRY_XAIE_API_EMIT_ERROR(
-              connectOp, XAie_StrmPktSwSlavePortEnable, &devInst, tileLoc,
-              WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
-              connectOp.sourceIndex());
+          TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlavePortEnable,
+                                  &devInst, tileLoc,
+                                  WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+                                      packetRulesOp.getSourceBundle()),
+                                  packetRulesOp.sourceIndex());
           auto packetInit = XAie_PacketInit(slotOp.valueInt(), /*PktType*/ 0);
           // TODO Need to better define packet id,type used here
-          TRY_XAIE_API_EMIT_ERROR(
-              connectOp, XAie_StrmPktSwSlaveSlotEnable, &devInst, tileLoc,
-              WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
-              connectOp.sourceIndex(), slot, packetInit, slotOp.maskInt(), msel,
-              arbiter);
+          TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlaveSlotEnable,
+                                  &devInst, tileLoc,
+                                  WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+                                      packetRulesOp.getSourceBundle()),
+                                  packetRulesOp.sourceIndex(), slot, packetInit,
+                                  slotOp.maskInt(), msel, arbiter);
           slot++;
         }
       }
@@ -703,6 +763,8 @@ void initializeCDOGenerator(byte_ordering endianness, bool cdoDebug) {
 
 LogicalResult generateCDOBinary(const StringRef outputPath,
                                 const std::function<LogicalResult()> &cb) {
+
+  // TODO(newling): Get bootgen team to remove print statement in this function.
   startCDOFileStream(outputPath.str().c_str());
   FileHeader();
   // Never generate a completely empty CDO file.  If the file only contains a
@@ -767,6 +829,7 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
                                       bool emitUnified, bool cdoDebug,
                                       bool aieSim, bool xaieDebug,
                                       bool enableCores) {
+
   auto devOps = m.getOps<DeviceOp>();
   assert(llvm::range_size(devOps) == 1 &&
          "only exactly 1 device op supported.");
@@ -780,10 +843,16 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
 
   AIEControl ctl(aieSim, xaieDebug, targetModel);
   initializeCDOGenerator(endianness, cdoDebug);
-  if (emitUnified)
-    return generateCDOUnified(ctl, workDirPath, targetOp, aieSim, enableCores);
-  return generateCDOBinariesSeparately(ctl, workDirPath, targetOp, aieSim,
-                                       enableCores);
+
+  auto result = [&]() {
+    if (emitUnified) {
+      return generateCDOUnified(ctl, workDirPath, targetOp, aieSim,
+                                enableCores);
+    }
+    return generateCDOBinariesSeparately(ctl, workDirPath, targetOp, aieSim,
+                                         enableCores);
+  }();
+  return result;
 }
 // Not sure why but defining this with xilinx::AIE will create a duplicate
 // symbol in libAIETargets.a that then doesn't actually match the header?

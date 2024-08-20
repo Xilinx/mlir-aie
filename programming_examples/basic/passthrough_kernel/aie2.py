@@ -19,7 +19,6 @@ import aie.utils.trace as trace_utils
 def passthroughKernel(vector_size, trace_size):
     N = vector_size
     lineWidthInBytes = N // 4  # chop input in 4 sub-tensors
-    lineWidthInInt32s = lineWidthInBytes // 4
 
     @device(AIEDevice.npu1_1col)
     def device_body():
@@ -58,11 +57,9 @@ def passthroughKernel(vector_size, trace_size):
 
         #    print(ctx.module.operation.verify())
 
-        tensorSize = N
-        tensorSizeInInt32s = tensorSize // 4
-        tensor_ty = T.memref(tensorSizeInInt32s, T.i32())
+        tensor_ty = T.memref(N, T.ui8())
 
-        @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
+        @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
         def sequence(inTensor, outTensor, notUsed):
             if trace_size > 0:
                 trace_utils.configure_simple_tracing_aie2(
@@ -70,20 +67,20 @@ def passthroughKernel(vector_size, trace_size):
                     ShimTile,
                     ddr_id=1,
                     size=trace_size,
-                    offset=tensorSize,
+                    offset=N,
                 )
 
             npu_dma_memcpy_nd(
                 metadata="in",
                 bd_id=0,
                 mem=inTensor,
-                sizes=[1, 1, 1, tensorSizeInInt32s],
+                sizes=[1, 1, 1, N],
             )
             npu_dma_memcpy_nd(
                 metadata="out",
                 bd_id=1,
                 mem=outTensor,
-                sizes=[1, 1, 1, tensorSizeInInt32s],
+                sizes=[1, 1, 1, N],
             )
             npu_sync(column=0, row=0, direction=0, channel=0)
 
