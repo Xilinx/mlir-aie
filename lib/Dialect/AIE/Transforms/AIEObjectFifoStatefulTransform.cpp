@@ -775,8 +775,7 @@ struct AIEObjectFifoStatefulTransformPass
     builder.setInsertionPointToStart(dmaBlock);
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
                                channelIndex, repeatCount, bdBlock,
-                               endBlock);
-    if (lastDmaBlock != nullptr)
+                               channelIndex, repeatCount, bdBlock, endBlock);
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
     // create Bd blocks
