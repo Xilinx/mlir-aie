@@ -50,6 +50,8 @@ INPUT_WITH_ADDRESSES_PIPELINE = lambda basic_alloc_scheme=False: (
         .add_pass("aie-lower-cascade-flows")
         .add_pass("aie-lower-broadcast-packet")
         .add_pass("aie-lower-multicast")
+        .add_pass("aie-assign-tile-controller-ids")
+        .add_pass("aie-generate-column-control-overlay")
         .add_pass("aie-assign-buffer-addresses", basic_alloc=basic_alloc_scheme),
     )
     .convert_scf_to_cf()
