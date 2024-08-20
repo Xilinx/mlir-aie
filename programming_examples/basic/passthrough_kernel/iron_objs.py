@@ -366,18 +366,29 @@ except ValueError:
 assert vector_size % 4 == 0
 line_size = vector_size // 4
 
-inout_type = ((vector_size,), np.uint8)
+
+# PLANS:
+# - ADD TYPING
+# - IGNORE ENDPOINTS
+# - RENAME HOST PROGRAM
+# - MAKE IT MORE LOGICAL, ADD SIMPLE CORE PLACER
+
+
+
+inout_type = ((vector_size,), np.uint8) # TODO: should be able to use real types here
 fifo_memref_type = ((line_size,), np.uint8)
 
 of0 = MyObjectFifo(2, memref_type=fifo_memref_type, name="out")
 of1 = MyObjectFifo(2, memref_type=fifo_memref_type, name="in")
 
+# TODO: For common kernels, this would probably be from a library
 passthrough_fn = MyExternalFunction(
     "passThroughLine",
     "passThrough.cc.o",
     [fifo_memref_type, fifo_memref_type, np.int32],
 )
 
+# If objectfifo ends weren't ordered, I could tod the parameter thing described below
 def core_fn(ofs_end1, ofs_end2, external_functions):
     of_out = ofs_end1[0]
     of_in = ofs_end2[0]
@@ -391,7 +402,7 @@ def core_fn(ofs_end1, ofs_end2, external_functions):
         of_out.release_produce(1)
         yield_([])
 
-core_program = CoreProgram(0, 2, core_fn, [of0], [of1], [passthrough_fn])
+core_program = CoreProgram(0, 2, core_fn, [of0], [of1], [passthrough_fn]) # TODO: Would like to have: params=[of0, of1, passthrough_fn]
 host_program = FifoInOutHostProgram(of0, vector_size, of1, vector_size)
 
 my_program = AIEProgram(
