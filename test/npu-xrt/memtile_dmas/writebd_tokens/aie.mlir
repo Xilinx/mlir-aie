@@ -8,8 +8,8 @@
 module {
   aie.device(npu1_1col) {
 
-    %tile_0_0 = aie.tile(0, 0)
-    %tile_0_1 = aie.tile(0, 1)
+    %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 3>}
+    %tile_0_1 = aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
 
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
     aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
@@ -19,7 +19,7 @@ module {
       // BD0, DMA_S2MM_0_Task_Queue
       aiex.npu.writebd {bd_id = 0 : i32, buffer_length = 4096 : i32, buffer_offset = 0 : i32, column = 0 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d2_stride = 0 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, row = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
       aiex.npu.address_patch {addr = 0x1d004 : ui32, arg_idx = 2 : i32, arg_plus = 0 : i32}
-      aiex.npu.maskwrite32 {address = 0x1d200 : ui32, column = 0 : i32, row = 0 : i32, mask = 0x00000F00 : ui32, value = 0x100 : ui32}
+      aiex.npu.maskwrite32 {address = 0x1d200 : ui32, column = 0 : i32, row = 0 : i32, mask = 0x00000F00 : ui32, value = 0x300 : ui32}
       aiex.npu.write32 {address = 0x1d204 : ui32, column = 0 : i32, row = 0 : i32, value = 0x80000000 : ui32}
 
       // BD1, DMA_MM2S_0_Task_Queue
