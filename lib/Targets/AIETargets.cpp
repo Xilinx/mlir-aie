@@ -92,9 +92,8 @@ void writeBufferMap(raw_ostream &output, BufferOp buf, int offset) {
   std::string bufName(buf.name().getValue());
   int bufferBaseAddr = getBufferBaseAddress(buf);
   int numBytes = buf.getAllocationSize();
-  output << "_symbol " << bufName << " "
-         << "0x" << llvm::utohexstr(offset + bufferBaseAddr) << " " << numBytes
-         << '\n';
+  output << "_symbol " << bufName << " " << "0x"
+         << llvm::utohexstr(offset + bufferBaseAddr) << " " << numBytes << '\n';
 }
 
 LogicalResult AIETranslateToTargetArch(ModuleOp module, raw_ostream &output) {
@@ -153,9 +152,11 @@ void registerAIETranslations() {
       "cdo-enable-cores", llvm::cl::init(true),
       llvm::cl::desc("Enable cores in CDO"));
 
-  static llvm::cl::opt<bool> npuInstGenBinary(
-      "aie-npu-instgen-binary", llvm::cl::init(false),
-      llvm::cl::desc("Emit binary (true) or text (false) NPU instructions"));
+  static llvm::cl::opt<bool> outputBinary(
+      "aie-output-binary", llvm::cl::init(false),
+      llvm::cl::desc(
+          "Select binary (true) or text (false) output for supported "
+          "translations. e.g. aie-npu-instgen, aie-ctrlpkt-to-bin"));
 
   TranslateFromMLIRRegistration registrationMMap(
       "aie-generate-mmap", "Generate AIE memory map",
@@ -352,15 +353,33 @@ void registerAIETranslations() {
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationNPU(
-      "aie-npu-instgen", "Generate instructions for NPU",
+      "aie-npu-instgen", "Translate npu instructions to binary",
       [](ModuleOp module, raw_ostream &output) {
-        if (npuInstGenBinary == true) {
-          auto instructions = AIETranslateToNPU(module);
+        if (outputBinary == true) {
+          std::vector<uint32_t> instructions;
+          auto r = AIETranslateToNPU(module, instructions);
+          if (failed(r))
+            return r;
           output.write(reinterpret_cast<const char *>(instructions.data()),
                        instructions.size() * sizeof(uint32_t));
           return success();
         }
         return AIETranslateToNPU(module, output);
+      },
+      registerDialects);
+  TranslateFromMLIRRegistration registrationCtrlPkt(
+      "aie-ctrlpkt-to-bin", "Translate aiex.control_packet ops to binary",
+      [](ModuleOp module, raw_ostream &output) {
+        if (outputBinary == true) {
+          std::vector<uint32_t> instructions;
+          auto r = AIETranslateToControlPackets(module, instructions);
+          if (failed(r))
+            return r;
+          output.write(reinterpret_cast<const char *>(instructions.data()),
+                       instructions.size() * sizeof(uint32_t));
+          return success();
+        }
+        return AIETranslateToControlPackets(module, output);
       },
       registerDialects);
 }
