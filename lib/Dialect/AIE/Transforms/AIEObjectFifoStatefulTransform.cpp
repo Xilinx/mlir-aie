@@ -28,6 +28,7 @@
 
 #include <numeric>
 #include <set>
+#include <stack>
 
 using namespace mlir;
 using namespace xilinx;
@@ -783,6 +784,7 @@ struct AIEObjectFifoStatefulTransformPass
     return lcm;
   }
 
+
   // Function that unrolls for-loops that contain objectFifo operations.
   LogicalResult unrollForLoops(DeviceOp &device, OpBuilder &builder,
                                std::set<TileOp> objectFifoTiles) {
@@ -795,6 +797,8 @@ struct AIEObjectFifoStatefulTransformPass
           bool found = false;
           std::set<int> objFifoSizes;
           Block *body = forLoop.getBody();
+          int64_t remainder = 0;
+          std::vector<scf::ForOp> unrolledLoops;
 
           for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
             if (acqOp.getOperation()->getParentOp() == forLoop) {
@@ -806,24 +810,34 @@ struct AIEObjectFifoStatefulTransformPass
 
           int unrollFactor =
               computeLCM(objFifoSizes); // also counts original loop body
-          // if loop iterations < unrollFactor, unroll the loop fully
-          if (forLoop.getSingleLowerBound() && forLoop.getSingleUpperBound() &&
-              forLoop.getSingleStep()) {
-            int64_t tripCount =
-                constantTripCount(*(forLoop.getSingleLowerBound()),
-                                  *(forLoop.getSingleUpperBound()),
-                                  *(forLoop.getSingleStep()))
-                    .value_or(0);
-            if (tripCount < unrollFactor)
-              unrollFactor = tripCount;
-          }
-          if (found) {
-            if (failed(mlir::loopUnrollByFactor(forLoop, unrollFactor))) {
-              forLoop.emitOpError()
+          
+          while(remainder != 0 || found){
+            forLoop->getParentRegion()->walk([&](scf::ForOp remLoop) {
+              if(std::count(unrolledLoops.begin(), unrolledLoops.end(), remLoop) == 0){
+                if (remLoop.getSingleLowerBound() && remLoop.getSingleUpperBound() &&
+                remLoop.getSingleStep()) {
+                  int64_t tripCount =
+                  constantTripCount(*(remLoop.getSingleLowerBound()),
+                                  *(remLoop.getSingleUpperBound()),
+                                  *(remLoop.getSingleStep()))
+                      .value_or(0);
+                  // if loop iterations < unrollFactor, unroll the loop fully
+                  if (tripCount < unrollFactor)
+                    unrollFactor = tripCount;
+                  remainder = tripCount%unrollFactor;
+                }
+                // Process the for loop
+                if (failed(mlir::loopUnrollByFactor(remLoop, unrollFactor))) {
+                  remLoop.emitOpError()
                   << "could not be unrolled with unrollFactor: " << unrollFactor
                   << "\n";
-              return WalkResult::interrupt();
-            }
+                  WalkResult::interrupt();
+                }
+                unrolledLoops.push_back(remLoop);
+                found = false;
+                WalkResult::advance();
+              }
+            });
           }
           return WalkResult::advance();
         });
