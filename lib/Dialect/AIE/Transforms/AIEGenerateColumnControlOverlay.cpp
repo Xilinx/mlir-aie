@@ -46,6 +46,10 @@ struct AIEAssignTileCtrlIDsPass
   }
   void runOnOperation() override {
     DeviceOp device = getOperation();
+    const auto &targetModel = device.getTargetModel();
+
+    if (targetModel.getTargetArch() == AIEArch::AIE1)
+      return; // Disable this pass for AIE1; AIE1 support NYI.
 
     // Collect TileOps
     llvm::MapVector<AIE::TileID, AIE::TileOp> tiles;
@@ -92,6 +96,9 @@ struct AIEGenerateColumnControlOverlayPass
     const auto &targetModel = device.getTargetModel();
     OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
 
+    if (targetModel.getTargetArch() == AIEArch::AIE1)
+      return; // Disable this pass for AIE1; AIE1 support NYI.
+
     // Collect existing TileOps
     llvm::MapVector<AIE::TileID, AIE::TileOp> tiles;
     llvm::SmallSet<int, 1> occupiedCols;
@@ -107,11 +114,14 @@ struct AIEGenerateColumnControlOverlayPass
       builder.setInsertionPointToStart(device.getBody());
       AIE::TileOp shimTile = TileOp::getOrCreate(builder, device, col, 0);
 
-      if (clRouteShimCTRLToTCT) {
+      if (clRouteShimCTRLToTCT == "all-tiles" ||
+          clRouteShimCTRLToTCT == "shim-only") {
         // Get all tile ops on column col
         SmallVector<AIE::TileOp> tilesOnCol;
         for (auto &[tId, tOp] : tiles) {
           if (tId.col != col)
+            continue;
+          if (clRouteShimCTRLToTCT == "shim-only" && !tOp.isShimNOCorPLTile())
             continue;
           tilesOnCol.push_back(tOp);
         }
