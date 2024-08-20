@@ -180,7 +180,8 @@ int main(int argc, const char *argv[]) {
     else
       ref = 3;
     if (*(bufOut + i) != ref) {
-      std::cout << "error at index[" << i << "]: expected " << ref << " got " << *(bufOut + i) << std::endl;
+      std::cout << "error at index[" << i << "]: expected " << ref << " got "
+                << *(bufOut + i) << std::endl;
       errors++;
     }
   }
