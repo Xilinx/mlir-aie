@@ -278,10 +278,15 @@ def generate_cores_list(mlir_module_str):
         ]
 
 
-def emit_design_bif(root_path, has_cores=True, enable_cores=True):
-    cdo_elfs_file = f"file={root_path}/aie_cdo_elfs.bin"
-    cdo_init_file = f"file={root_path}/aie_cdo_init.bin"
-    cdo_enable_file = f"file={root_path}/aie_cdo_enable.bin" if enable_cores else ""
+def emit_design_bif(root_path, has_cores=True, enable_cores=True, unified=False):
+    if unified:
+        cdo_unified_file = f"file={root_path}/aie_cdo.bin" if unified else ""
+        files = f"{cdo_unified_file}"
+    else:
+        cdo_elfs_file = f"file={root_path}/aie_cdo_elfs.bin"
+        cdo_init_file = f"file={root_path}/aie_cdo_init.bin"
+        cdo_enable_file = f"file={root_path}/aie_cdo_enable.bin" if enable_cores else ""
+        files = f"{cdo_elfs_file} {cdo_init_file} {cdo_enable_file}"
     return dedent(
         f"""\
         all:
@@ -291,11 +296,7 @@ def emit_design_bif(root_path, has_cores=True, enable_cores=True):
           image
           {{
             name=aie_image, id=0x1c000000
-            {{ type=cdo
-               {cdo_elfs_file}
-               {cdo_init_file}
-               {cdo_enable_file}
-            }}
+            {{ type=cdo {files} }}
           }}
         }}
         """
@@ -551,6 +552,25 @@ class FlowRunner:
                 await read_file_async(self.prepend_tmp("input_physical.mlir"))
             )
             generate_cdo(input_physical.operation, self.tmpdirname)
+
+    async def process_txn(self):
+        from aie.dialects.aie import generate_txn
+
+        with Context(), Location.unknown():
+            for elf in glob.glob("*.elf"):
+                try:
+                    shutil.copy(elf, self.tmpdirname)
+                except shutil.SameFileError:
+                    pass
+            for elf_map in glob.glob("*.elf.map"):
+                try:
+                    shutil.copy(elf_map, self.tmpdirname)
+                except shutil.SameFileError:
+                    pass
+            input_physical = Module.parse(
+                await read_file_async(self.prepend_tmp("input_physical.mlir"))
+            )
+            generate_txn(input_physical.operation, self.tmpdirname)
 
     async def process_xclbin_gen(self):
         if opts.progress:
@@ -1090,8 +1110,12 @@ class FlowRunner:
             # Must have elfs, before we build the final binary assembly
             if opts.cdo and opts.execute:
                 await self.process_cdo()
+
             if opts.cdo or opts.xcl:
                 await self.process_xclbin_gen()
+
+            if opts.txn and opts.execute:
+                await self.process_txn()
 
     def dumpprofile(self):
         sortedruntimes = sorted(

@@ -238,6 +238,14 @@ def parse_args(args=None):
         help="Generate libxaie v2 for CDO",
     )
     parser.add_argument(
+        "--aie-generate-txn",
+        dest="txn",
+        default=False,
+        action="store_const",
+        const=True,
+        help="Generate txn binary for configuration",
+    )
+    parser.add_argument(
         "--aie-generate-xclbin",
         dest="xcl",
         default=False,
