@@ -813,7 +813,7 @@ struct AIEObjectFifoStatefulTransformPass
           
           while(remainder != 0 || found){
             forLoop->getParentRegion()->walk([&](scf::ForOp remLoop) {
-              if(std::count(unrolledLoops.begin(), unrolledLoops.end(), remLoop) == 0){
+               if(std::count(unrolledLoops.begin(), unrolledLoops.end(), remLoop) == 0){
                 if (remLoop.getSingleLowerBound() && remLoop.getSingleUpperBound() &&
                 remLoop.getSingleStep()) {
                   int64_t tripCount =
@@ -826,14 +826,19 @@ struct AIEObjectFifoStatefulTransformPass
                     unrollFactor = tripCount;
                   remainder = tripCount%unrollFactor;
                 }
-                // Process the for loop
-                if (failed(mlir::loopUnrollByFactor(remLoop, unrollFactor))) {
-                  remLoop.emitOpError()
-                  << "could not be unrolled with unrollFactor: " << unrollFactor
-                  << "\n";
-                  WalkResult::interrupt();
-                }
-                unrolledLoops.push_back(remLoop);
+                // // Process the for loop
+                  if (failed(mlir::loopUnrollByFactor(remLoop, unrollFactor))) {
+                    remLoop.emitOpError()
+                    << "could not be unrolled with unrollFactor: " << unrollFactor
+                    << "\n";
+                    WalkResult::interrupt();
+                  }
+                  unrolledLoops.push_back(remLoop);
+                  found = false;
+                  WalkResult::advance();
+              }
+              else{
+                remainder = 0;
                 found = false;
                 WalkResult::advance();
               }
