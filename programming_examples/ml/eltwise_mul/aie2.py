@@ -128,7 +128,7 @@ def my_eltwise_mul(trace_size):
         # To/from AIE-array data movement
         tensor_ty = T.memref(N, T.bf16())
 
-        @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
+        @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
         def sequence(A, B, C):
 
             if trace_size > 0:

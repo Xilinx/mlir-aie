@@ -5,7 +5,7 @@ func.func @pointwise_mult (%A: memref<2048xi16>, %B: memref<2048xi16>, %C: memre
     affine.for %arg0 = 0 to 2048 {
        %a = affine.load %A[%arg0] : memref<2048xi16>
        %b = affine.load %B[%arg0] : memref<2048xi16>
-       //CHECK: %2 = aievec.mul %0, %1 : vector<16xi16>, vector<16xi16>, vector<16xi48>
+       //CHECK: %2 = aievec_aie1.mul %0, %1 : vector<16xi16>, vector<16xi16>, vector<16xi48>
        %c = arith.muli %a, %b : i16
        affine.store %c, %C[%arg0] : memref<2048xi16>
     }

@@ -44,7 +44,7 @@ The first necessary component for trace configuration is setting the right value
         offset=tensorSize,
     )
 ```
-This block is defined within the sequence definition for `@FuncOp.from_py_func` where we define the shimDMA data movement to the 3 inout buffers. 
+This block is defined within the sequence definition for `@runtime_sequence` where we define the shimDMA data movement to the 3 inout buffers. 
 > **Note** This simplification works very well for the trace buffer from a single tile to the shimDMA. However, if we want to do something more advaned like allocating the trace buffer from multiple tiles into a single larger buffer, this function will not be able to express that. For that, please consult the [README](../../../python/utils) under `python/utils` for more guidance on how to customize the trace configuration.
 
 ### <u>(1b) Define trace event routes from tile to shimDMA</u>

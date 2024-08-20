@@ -1,4 +1,4 @@
-// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aieml" -split-input-file | FileCheck %s --check-prefix=CHECK
+// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2" -split-input-file | FileCheck %s --check-prefix=CHECK
 
 // CHECK-LABEL: transpose_i8_types
 // CHECK-SAME: %[[V0:.*]]: vector<4x16xi8>,

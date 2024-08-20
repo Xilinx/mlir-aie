@@ -22,7 +22,7 @@ module @kernel_gemm  {
   %4 = aie.switchbox(%3)  {
     %43 = aie.amsel<0> (0)
     %44 = aie.masterset(West : 0, %43)
-    aie.packet_rules(DMA : 0)  {
+    aie.packet_rules(South : 0)  {
       aie.rule(31, 2, %43)
     }
   }
@@ -44,7 +44,7 @@ module @kernel_gemm  {
   %10 = aie.switchbox(%9)  {
     %43 = aie.amsel<0> (0)
     %44 = aie.masterset(West : 0, %43)
-    aie.packet_rules(DMA : 1)  {
+    aie.packet_rules(South : 1)  {
       aie.rule(31, 3, %43)
     }
     aie.packet_rules(East : 0)  {

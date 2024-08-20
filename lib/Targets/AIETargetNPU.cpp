@@ -29,6 +29,7 @@ using namespace xilinx::AIEX;
 
 #define TXN_OPC_WRITE 0x0
 #define TXN_OPC_BLOCKWRITE 0x1
+#define TXN_OPC_MASKWRITE 0x3
 #define TXN_OPC_TCT 0x80
 #define TXN_OPC_DDR_PATCH 0x81
 
@@ -68,102 +69,118 @@ void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
 
 void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
 
-  auto words = reserveAndGetTail(instructions, 6);
-  const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
+  auto words = reserveAndGetTail(instructions, 3);
+
+  if (op.getBuffer()) {
+    op.emitOpError("Cannot translate symbolic address");
+    return;
+  }
 
   // XAIE_IO_WRITE
   words[0] = TXN_OPC_WRITE;
-  words[1] = 0;
-  words[2] = op.getAddress();
+  words[1] = op.getAddress();
   auto col = op.getColumn();
   auto row = op.getRow();
-  if (col && row)
-    words[2] = ((*col & 0xff) << tm.getColumnShift()) |
-               ((*row & 0xff) << tm.getRowShift()) | (words[2] & 0xFFFFF);
-  words[3] = 0;
-  words[4] = op.getValue();                   // Value
-  words[5] = words.size() * sizeof(uint32_t); // Operation Size
+  if (col && row) {
+    const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
+    words[1] = ((*col & 0xff) << tm.getColumnShift()) |
+               ((*row & 0xff) << tm.getRowShift()) | (words[1] & 0xFFFFF);
+  }
+  words[2] = op.getValue(); // Value
+}
+
+void appendMaskWrite32(std::vector<uint32_t> &instructions,
+                       NpuMaskWrite32Op op) {
+
+  auto words = reserveAndGetTail(instructions, 4);
+
+  if (op.getBuffer()) {
+    op.emitOpError("Cannot translate symbolic address");
+    return;
+  }
+
+  // XAIE_IO_MASKWRITE
+  words[0] = TXN_OPC_MASKWRITE;
+  words[1] = op.getAddress();
+  auto col = op.getColumn();
+  auto row = op.getRow();
+  if (col && row) {
+    const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
+    words[1] = ((*col & 0xff) << tm.getColumnShift()) |
+               ((*row & 0xff) << tm.getRowShift()) | (words[1] & 0xFFFFF);
+  }
+  words[2] = op.getValue(); // Value
+  words[3] = op.getMask();
 }
 
 void appendAddressPatch(std::vector<uint32_t> &instructions,
                         NpuAddressPatchOp op) {
 
-  auto words = reserveAndGetTail(instructions, 12);
+  auto words = reserveAndGetTail(instructions, 6);
 
   // XAIE_IO_CUSTOM_OP_DDR_PATCH
   words[0] = TXN_OPC_DDR_PATCH;
   words[1] = words.size() * sizeof(uint32_t); // Operation Size
 
-  words[6] = op.getAddr();
-  words[7] = 0;
+  words[2] = op.getAddr();
 
-  words[8] = op.getArgIdx();
-  words[9] = 0;
+  words[3] = op.getArgIdx();
 
-  words[10] = op.getArgPlus();
-  words[11] = 0;
+  words[4] = op.getArgPlus();
+  words[5] = 0;
 }
 
-void appendWriteBdShimTile(std::vector<uint32_t> &instructions,
-                           NpuWriteBdOp op) {
+void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
 
-  auto words = reserveAndGetTail(instructions, 12);
-  const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
+  Value memref = op.getData();
+  int64_t width = cast<MemRefType>(memref.getType()).getElementTypeBitWidth();
+  if (width != 32) {
+    op.emitWarning("Only 32-bit data type is supported for now");
+    return;
+  }
+
+  memref::GetGlobalOp getGlobal = memref.getDefiningOp<memref::GetGlobalOp>();
+  if (!getGlobal) {
+    op.emitError("Only MemRefs from memref.get_global are supported");
+    return;
+  }
+
+  auto global = dyn_cast_if_present<memref::GlobalOp>(
+      op->getParentOfType<AIE::DeviceOp>().lookupSymbol(getGlobal.getName()));
+  if (!global) {
+    op.emitError("Global symbol not found");
+    return;
+  }
+
+  auto initVal = global.getInitialValue();
+  if (!initVal) {
+    op.emitError("Global symbol has no initial value");
+    return;
+  }
+
+  auto data = dyn_cast<DenseIntElementsAttr>(*initVal);
+  if (!data) {
+    op.emitError("Global symbol initial value is not a dense int array");
+    return;
+  }
+
+  auto words = reserveAndGetTail(instructions, data.size() + 3);
 
   // XAIE_IO_BLOCKWRITE
   words[0] = TXN_OPC_BLOCKWRITE;
-  words[1] = 0;
+  words[1] = op.getAddress();
+  auto col = op.getColumn();
+  auto row = op.getRow();
+  if (col && row) {
+    const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
+    words[1] = ((*col & 0xff) << tm.getColumnShift()) |
+               ((*row & 0xff) << tm.getRowShift()) | (words[1] & 0xFFFFF);
+  }
+  words[2] = words.size() * sizeof(uint32_t); // Operation Size
 
-  // RegOff
-  auto bd_id = op.getBdId();
-  uint32_t bd_addr = (op.getColumn() << tm.getColumnShift()) |
-                     (op.getRow() << tm.getRowShift()) |
-                     (0x1D000 + bd_id * 0x20);
-  words[2] = bd_addr;                         // ADDR
-  words[3] = words.size() * sizeof(uint32_t); // Operation Size
-
-  // DMA_BDX_0
-  words[4] = op.getBufferLength();
-
-  // DMA_BDX_1
-  words[5] = op.getBufferOffset();
-
-  // DMA_BDX_2
-  // En Packet , OoO BD ID , Packet ID , Packet Type
-  words[6] |= (op.getEnablePacket() & 0x1) << 30;
-  words[6] |= (op.getOutOfOrderId() & 0x3f) << 24;
-  words[6] |= (op.getPacketId() & 0x1f) << 19;
-  words[6] |= (op.getPacketType() & 0x7) << 16;
-
-  // DMA_BDX_3
-  // TODO: Secure Access
-  words[7] |= (op.getD0Size() & 0x3ff) << 20;
-  words[7] |= op.getD0Stride() & 0xfffff;
-
-  // DMA_BDX_4
-  words[8] = 0x80000000; // burst length;
-  words[8] |= (op.getD1Size() & 0x3ff) << 20;
-  words[8] |= op.getD1Stride() & 0xfffff;
-
-  // DMA_BDX_5
-  // TODO: SIMID, AxCache, AXQoS
-  words[9] = op.getD2Stride() & 0xfffff;
-
-  // DMA_BDX_6
-  words[10] |= (op.getIterationCurrent() & 0x3f) << 26;
-  words[10] |= (op.getIterationSize() & 0x3f) << 20;
-  words[10] |= op.getIterationStride() & 0xfffff;
-
-  // DMA_BDX_7
-  // TODO: TLAST Suppress
-  words[11] |= (op.getNextBd() & 0xf) << 27;
-  words[11] |= (op.getUseNextBd() & 0x1) << 26;
-  words[11] |= (op.getValidBd() & 0x1) << 25;
-  words[11] |= (op.getLockRelVal() & 0xef) << 18;
-  words[11] |= (op.getLockRelId() & 0xf) << 13;
-  words[11] |= (op.getLockAcqEnable() & 0x1) << 12;
-  words[11] |= (op.getLockAcqVal() & 0xef) << 5;
-  words[11] |= op.getLockAcqId() & 0xf;
+  unsigned i = 3;
+  for (auto d : data)
+    words[i++] = d.getZExtValue();
 }
 
 } // namespace
@@ -175,16 +192,20 @@ std::vector<uint32_t> xilinx::AIE::AIETranslateToNPU(ModuleOp module) {
   auto words = reserveAndGetTail(instructions, 4);
 
   // setup txn header
-  words[0] = 0x06030100;
-  words[1] = 0x00000105;
+  uint8_t major = 1;
+  uint8_t minor = 0;
+  uint8_t devGen = 3;
+  uint8_t numRows = 6;
+  uint8_t numCols = 5;
+  uint8_t numMemTileRows = 1;
+  uint32_t count = 0;
+  words[0] = (numRows << 24) | (devGen << 16) | (minor << 8) | major;
+  words[1] = (numMemTileRows << 8) | numCols;
 
   DeviceOp deviceOp = *module.getOps<DeviceOp>().begin();
-  auto funcOps = deviceOp.getOps<func::FuncOp>();
-  int count = 0;
-  for (auto f : funcOps) {
-    if (f.isDeclaration())
-      continue;
-    Block &entry = f.getRegion().front();
+  auto sequenceOps = deviceOp.getOps<AIEX::RuntimeSequenceOp>();
+  for (auto f : sequenceOps) {
+    Block &entry = f.getBody().front();
     for (auto &o : entry) {
       llvm::TypeSwitch<Operation *>(&o)
           .Case<NpuSyncOp>([&](auto op) {
@@ -195,20 +216,24 @@ std::vector<uint32_t> xilinx::AIE::AIETranslateToNPU(ModuleOp module) {
             count++;
             appendWrite32(instructions, op);
           })
+          .Case<NpuBlockWriteOp>([&](auto op) {
+            count++;
+            appendBlockWrite(instructions, op);
+          })
+          .Case<NpuMaskWrite32Op>([&](auto op) {
+            count++;
+            appendMaskWrite32(instructions, op);
+          })
           .Case<NpuAddressPatchOp>([&](auto op) {
             count++;
             appendAddressPatch(instructions, op);
-          })
-          .Case<NpuWriteBdOp>([&](auto op) {
-            count++;
-            appendWriteBdShimTile(instructions, op);
           });
     }
   }
 
   // write size fields of the txn header
   instructions[2] = count;
-  instructions[3] = instructions.size() * sizeof(uint32_t);
+  instructions[3] = instructions.size() * sizeof(uint32_t); // size of the txn
   return instructions;
 }
 

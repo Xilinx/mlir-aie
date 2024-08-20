@@ -145,10 +145,7 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
     Option<"clRouteCircuit", "route-circuit", "bool", /*default=*/"true",
             "Flag to enable aie.flow lowering.">,      
     Option<"clRoutePacket", "route-packet", "bool", /*default=*/"true",
-            "Flag to enable aie.packetflow lowering.">,
-    Option<"clKeepFlowOp", "keep-flow-op", "bool", /*default=*/"false",
-            "Flag to not erase aie.flow/packetflow after its lowering,"
-            "used for routing visualization.">,       
+            "Flag to enable aie.packetflow lowering.">,     
   ];
 }
 

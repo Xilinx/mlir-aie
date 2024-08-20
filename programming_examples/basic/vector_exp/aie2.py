@@ -100,7 +100,7 @@ def my_eltwise_exp():
         # To/from AIE-array data movement
         tensor_ty = T.memref(N, T.bf16())
 
-        @FuncOp.from_py_func(tensor_ty, tensor_ty)
+        @runtime_sequence(tensor_ty, tensor_ty)
         def sequence(A, C):
             npu_dma_memcpy_nd(metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, N])
             npu_dma_memcpy_nd(metadata="inA", bd_id=1, mem=A, sizes=[1, 1, 1, N])

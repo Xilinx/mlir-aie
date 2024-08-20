@@ -1,4 +1,4 @@
-// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aieml" | FileCheck %s
+// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2" | FileCheck %s
 
 func.func @fold_aievec_shift_and_broadcast(%a: memref<48xi8>) -> (vector<32xi8>, vector<32xi8>) {
     %c0 = arith.constant 0 : index

@@ -1,4 +1,4 @@
-// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=64" --convert-vector-to-aievec="aie-target=aieml" -lower-affine | aie-translate -aieml=true --aievec-to-cpp -o dut.cc
+// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=64" --convert-vector-to-aievec="aie-target=aie2" -lower-affine | aie-translate -aie2=true --aievec-to-cpp -o dut.cc
 // RUN: xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I. -c dut.cc -o dut.o
 // RUN: xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I. %S/testbench.cc work/dut.o
 // RUN: mkdir -p data

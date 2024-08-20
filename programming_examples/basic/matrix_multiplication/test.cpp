@@ -28,14 +28,31 @@
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
-using A_DATATYPE = std::bfloat16_t;
-using B_DATATYPE = std::bfloat16_t;
-using C_DATATYPE = std::bfloat16_t;
-using ACC_DATATYPE = float;
+#ifndef DTYPE_IN
+#define DTYPE_IN std::bfloat16_t
 #endif
+#ifndef DTYPE_OUT
+#define DTYPE_OUT std::bfloat16_t
+#endif
+#ifndef DTYPE_ACC
+#define DTYPE_ACC float
+#endif
+using A_DATATYPE = DTYPE_IN;
+using B_DATATYPE = DTYPE_IN;
+using C_DATATYPE = DTYPE_OUT;
+using ACC_DATATYPE = DTYPE_ACC;
+#endif
+
+#define XSTR(X) STR(X)
+#define STR(X) #X
 
 constexpr long long verify_stochastic_threshold = 1024 * 1024 * 1024;
 constexpr int verify_stochastic_n_samples = 1000;
+
+// Verification tolerance
+// See "Note on Numerical Tolerances" in README.md
+float abs_tol = matmul_common::get_abs_tol<C_DATATYPE>();
+float rel_tol = matmul_common::get_rel_tol<C_DATATYPE>();
 
 namespace po = boost::program_options;
 
@@ -139,14 +156,14 @@ int main(int argc, const char *argv[]) {
   A_DATATYPE *bufA = bo_a.map<A_DATATYPE *>();
   std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++) {
-    AVec[i] = matmul_common::random_bfloat16_t();
+    AVec[i] = matmul_common::get_random<A_DATATYPE>();
     // AVec[i] = i;
   }
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
   B_DATATYPE *bufB = bo_b.map<B_DATATYPE *>();
   std::vector<B_DATATYPE> BVec(B_VOLUME);
   for (int i = 0; i < B_VOLUME; i++) {
-    BVec[i] = matmul_common::random_bfloat16_t();
+    BVec[i] = matmul_common::get_random<B_DATATYPE>();
     // Diagonal:
     // if(i % N == i / N) {
     //   BVec[i] = 1.0;
@@ -162,6 +179,10 @@ int main(int argc, const char *argv[]) {
   memset(bufOut, 0, OUT_SIZE);
 
   if (verbosity >= 2) {
+    std::cout << "DTYPE_IN  = " XSTR(DTYPE_IN) "\n";
+    std::cout << "DTYPE_OUT = " XSTR(DTYPE_OUT) "\n";
+    std::cout << "Verification tolerance " << abs_tol << " absolute, "
+              << rel_tol << " relative.\n";
     std::cout << "A = \n";
     matmul_common::print_matrix(AVec, K);
     std::cout << "B = \n";
@@ -221,10 +242,11 @@ int main(int argc, const char *argv[]) {
       if (do_verify_stochastic) {
         errors = matmul_common::verify_stochastic<A_DATATYPE, C_DATATYPE,
                                                   ACC_DATATYPE>(
-            M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples, verbosity);
+            M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples, verbosity,
+            abs_tol, rel_tol);
       } else {
         errors = matmul_common::verify<A_DATATYPE, C_DATATYPE, ACC_DATATYPE>(
-            M, N, K, AVec, BVec, CVec);
+            M, N, K, AVec, BVec, CVec, abs_tol, rel_tol);
       }
       auto vstop = std::chrono::system_clock::now();
       float vtime =

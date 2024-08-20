@@ -12,6 +12,7 @@
 // AIE vector abstraction.
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Ops.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Transforms/IntervalReuse.h"
@@ -361,10 +362,10 @@ static bool writesToAccumulator(Operation *op) {
   // Integer muls and FMAs write to accumulator
   if (!isAIEOp(op))
     return false;
-  if (auto mulOp = dyn_cast<aievec::MulOp>(op))
+  if (auto mulOp = dyn_cast<aievec::aie1::MulOp>(op))
     return isa<IntegerType>(
         cast<VectorType>(mulOp.getResult().getType()).getElementType());
-  if (auto fmaOp = dyn_cast<aievec::FMAOp>(op))
+  if (auto fmaOp = dyn_cast<aievec::aie1::FMAOp>(op))
     return isa<IntegerType>(
         cast<VectorType>(fmaOp.getResult().getType()).getElementType());
 
@@ -622,9 +623,9 @@ static aievec::ConcatOp generateConcatOp(SmallVector<Value> &sources,
 
 // Generate and return a select operation. The start, offset, etc. for lanes
 // are in opAttr.
-static aievec::SelectOp generateSelectOp(Value xbuff, AIEOpAttributes &opAttr,
-                                         unsigned lanes, VectState *state,
-                                         Location loc, Value ybuff = nullptr) {
+static aievec::aie1::SelectOp
+generateSelectOp(Value xbuff, AIEOpAttributes &opAttr, unsigned lanes,
+                 VectState *state, Location loc, Value ybuff = nullptr) {
   // Assert that we have computed the attributes (start, offset, etc.) for both
   // lanes, and that select is non-empty.
   assert(!opAttr.select.empty());
@@ -638,7 +639,7 @@ static aievec::SelectOp generateSelectOp(Value xbuff, AIEOpAttributes &opAttr,
   VectorType resultType = createVectorType(lanes, xtype.getElementType());
 
   // Create AIE dialect select op
-  auto selectOp = state->builder.create<aievec::SelectOp>(
+  auto selectOp = state->builder.create<aievec::aie1::SelectOp>(
       loc, resultType, xbuff, opAttr.select, opAttr.start[0], opAttr.offset[0],
       opAttr.offset_hi[0], opAttr.square[0], opAttr.start[1], opAttr.offset[1],
       opAttr.offset_hi[1], opAttr.square[1], ybuff);
@@ -649,8 +650,9 @@ static aievec::SelectOp generateSelectOp(Value xbuff, AIEOpAttributes &opAttr,
 
 // Generate and return an Ext op. The lanes indicate the lanes in vector
 // output, and idx defines which part of source is extracted.
-static aievec::ExtOp generateExtOp(Value source, unsigned lanes, int8_t idx,
-                                   VectState *state, Location loc) {
+static aievec::aie1::ExtOp generateExtOp(Value source, unsigned lanes,
+                                         int8_t idx, VectState *state,
+                                         Location loc) {
   auto stype = cast<VectorType>(source.getType());
   // Verify that lanes*idx is <= stype lanes
   assert(lanes * (idx + 1) <= getVectorLaneSize(stype));
@@ -659,7 +661,7 @@ static aievec::ExtOp generateExtOp(Value source, unsigned lanes, int8_t idx,
 
   // Create AIE dialect ext op
   auto extOp =
-      state->builder.create<aievec::ExtOp>(loc, resultType, source, idx);
+      state->builder.create<aievec::aie1::ExtOp>(loc, resultType, source, idx);
 
   assert(extOp && "could not create ext op");
   return extOp;
@@ -682,13 +684,13 @@ static aievec::PackOp generatePackOp(Value source, VectState *state,
 }
 
 // Generate and return an Add op.
-static aievec::AddOp generateAddOp(Operation *Op, AIEOpAttributes &opAttr,
-                                   VectState *state) {
+static aievec::aie1::AddOp generateAddOp(Operation *Op, AIEOpAttributes &opAttr,
+                                         VectState *state) {
   // Assert that we computed the attributes for both the operands
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2);
 
-  auto addOp = state->builder.create<aievec::AddOp>(
+  auto addOp = state->builder.create<aievec::aie1::AddOp>(
       Op->getLoc(), Op->getResult(0).getType(), Op->getOperand(0),
       Op->getOperand(1), opAttr.start[0], opAttr.offset[0], opAttr.offset_hi[0],
       opAttr.square[0], opAttr.start[1], opAttr.offset[1], opAttr.offset_hi[1],
@@ -697,13 +699,13 @@ static aievec::AddOp generateAddOp(Operation *Op, AIEOpAttributes &opAttr,
 }
 
 // Generate and return a Sub op.
-static aievec::SubOp generateSubOp(Operation *Op, AIEOpAttributes &opAttr,
-                                   VectState *state) {
+static aievec::aie1::SubOp generateSubOp(Operation *Op, AIEOpAttributes &opAttr,
+                                         VectState *state) {
   // Assert that we computed the attributes for both the operands
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2);
 
-  auto subOp = state->builder.create<aievec::SubOp>(
+  auto subOp = state->builder.create<aievec::aie1::SubOp>(
       Op->getLoc(), Op->getResult(0).getType(), Op->getOperand(0),
       Op->getOperand(1), opAttr.start[0], opAttr.offset[0], opAttr.offset_hi[0],
       opAttr.square[0], opAttr.start[1], opAttr.offset[1], opAttr.offset_hi[1],
@@ -906,7 +908,7 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
       }
     }
     // Create AIE dialect fma/msc op
-    xfmaOp = state->builder.create<aievec::FMAOp>(
+    xfmaOp = state->builder.create<aievec::aie1::FMAOp>(
         fmaOp->getLoc(), lhs, rhs, acc, opAttr.start[0], opAttr.offset[0],
         opAttr.offset_hi[0], opAttr.step[0], opAttr.square[0], opAttr.start[1],
         opAttr.offset[1], opAttr.offset_hi[1], opAttr.step[1], opAttr.square[1],
@@ -950,7 +952,7 @@ static Operation *generateMulOp(T mulOp, AIEOpAttributes &opAttr,
   }
 
   // Create AIE dialect mul op
-  Operation *xmulOp = state->builder.create<aievec::MulOp>(
+  Operation *xmulOp = state->builder.create<aievec::aie1::MulOp>(
       mulOp->getLoc(), lhs, rhs, opType, opAttr.start[0], opAttr.offset[0],
       opAttr.offset_hi[0], opAttr.step[0], opAttr.square[0], opAttr.start[1],
       opAttr.offset[1], opAttr.offset_hi[1], opAttr.step[1], opAttr.square[1]);
@@ -1452,13 +1454,13 @@ static void generateMulOrFMAOp(Operation *Op, Scheme &scheme,
   auto genOp = [&](Operation *Op, AIEOpAttributes &opAttr, VectState *state,
                    bool i8xi8_pairedOp = false) {
     Operation *repOp;
-    // Create aievec::FMAOp corresponding to the vector::FMAOp
+    // Create aievec::aie1::FMAOp corresponding to the vector::FMAOp
     if (auto fmaOp = dyn_cast<vector::FMAOp>(Op))
       repOp = generateFMAOp(fmaOp, opAttr, state, i8xi8_pairedOp);
-    // Create aievec::MulOp corresponding to the vector::MulIOp
+    // Create aievec::aie1::MulOp corresponding to the vector::MulIOp
     else if (auto mulOp = dyn_cast<MulIOp>(Op))
       repOp = generateMulOp<MulIOp>(mulOp, opAttr, state);
-    // Create aievec::MulOp corresponding to the vector::MulFOp
+    // Create aievec::aie1::MulOp corresponding to the vector::MulFOp
     else if (auto mulOp = dyn_cast<MulFOp>(Op))
       repOp = generateMulOp<MulFOp>(mulOp, opAttr, state);
     else
@@ -2059,26 +2061,27 @@ static bool matchAttributesAndDistanceForFusion(T1 curOp, T2 defOp) {
 // the acc of fma is a mul/fma operation which uses the same operands as fma.
 // the def of two operands are upd operations.
 // Transform -
-// %5 = aievec.mul %4, %0 {xoffsets = "[[Xo:.*]]", xoffsets_hi = "[[Xh:.*]]",
-// xsquare = "[[Sq:.*]]", xstart = "0", zoffsets = "[[Zo:.*]]", zoffsets_hi =
+// %5 = aievec_aie1.mul %4, %0 {xoffsets = "[[Xo:.*]]", xoffsets_hi =
+// "[[Xh:.*]]", xsquare = "[[Sq:.*]]", xstart = "0", zoffsets = "[[Zo:.*]]",
+// zoffsets_hi =
 // "[[Zh:.*]]", zstart = "0", zstep = "[[Zs:.*]]"}
 //
-// %6 = aievec.mac %4, %0, %5 {xoffsets = "[[Xo:.*]]",
+// %6 = aievec_aie1.mac %4, %0, %5 {xoffsets = "[[Xo:.*]]",
 // xoffsets_hi = "[[Xh:.*]]", xsquare = "[[Sq:.*]]", xstart = "2", zoffsets =
 // "[[Zo:.*]]", zoffsets_hi = "[[Zh:.*]]", zstart = "2", zstep = "[[Zs:.*]]"}
 //
 // to-
 //
-// %7 = aievec.mul_conv %6, %1 {M = 16 : si32, N = 4 : si32}
+// %7 = aievec_aie1.mul_conv %6, %1 {M = 16 : si32, N = 4 : si32}
 //
 // or transform the pattern like this-
 //
-// %9 = aievec.mac %8, %0, %6 {xoffsets = "[[Xo:.*]]", xoffsets_hi =
+// %9 = aievec_aie1.mac %8, %0, %6 {xoffsets = "[[Xo:.*]]", xoffsets_hi =
 // "[[Xh:.*]]", xsquare = "[[Sq:.*]]", xstart = "0", zoffsets = "[[Zo:.*]]",
 // zoffsets_hi =
 // "[[Zh:.*]]", zstart = "4", zstep = "[[Zs:.*]]"}
 //
-// %10 = aievec.mac %8, %0, %9 {xoffsets =
+// %10 = aievec_aie1.mac %8, %0, %9 {xoffsets =
 // "[[Xo:.*]]", xoffsets_hi = "[[Xh:.*]]", xsquare = "[[Sq:.*]]", xstart = "2",
 // zoffsets = "[[Zo:.*]]", zoffsets_hi = "[[Zh:.*]]", zstart = "6", zstep =
 // "[[Zs:.*]]"}
@@ -2091,8 +2094,8 @@ static bool matchAttributesAndDistanceForFusion(T1 curOp, T2 defOp) {
 // int16 type of AIE-ML architecture.
 static bool canFuseMulFMAOpsForInt16(Operation *Op) {
   // Check 1. This should be an aievec fma operation
-  assert(isa<aievec::FMAOp>(Op) && "operation must be an aievec fma op");
-  auto curOp = cast<aievec::FMAOp>(Op);
+  assert(isa<aievec::aie1::FMAOp>(Op) && "operation must be an aievec fma op");
+  auto curOp = cast<aievec::aie1::FMAOp>(Op);
 
   // Check 2. Element type should be int16
   auto vType = cast<VectorType>(Op->getOperand(1).getType());
@@ -2108,7 +2111,7 @@ static bool canFuseMulFMAOpsForInt16(Operation *Op) {
   // Check 3. acc operand of the Op should be a mul op or fma op
   Operation *mulOrFMAOp = Op->getOperand(2).getDefiningOp();
 
-  if (!isa<aievec::MulOp, aievec::FMAOp>(mulOrFMAOp))
+  if (!isa<aievec::aie1::MulOp, aievec::aie1::FMAOp>(mulOrFMAOp))
     return false;
 
   // Check 4. mulOrFMAOp must have one use
@@ -2127,14 +2130,14 @@ static bool canFuseMulFMAOpsForInt16(Operation *Op) {
 
   // If the acc operand is a mul op, we will try to generate mul_conv operation
   // If the acc operand is a fma op, we will try to generate fma_conv operation
-  if (auto mulOp = dyn_cast<aievec::MulOp>(mulOrFMAOp)) {
+  if (auto mulOp = dyn_cast<aievec::aie1::MulOp>(mulOrFMAOp)) {
     isMulOp = true;
 
     // Determine the lhs and rhs values for the mul_conv
     lhs = mulOp->getOperand(0);
     rhs = mulOp->getOperand(1);
   } else {
-    auto fmaOp = cast<aievec::FMAOp>(mulOrFMAOp);
+    auto fmaOp = cast<aievec::aie1::FMAOp>(mulOrFMAOp);
 
     // Determine the lhs, rhs and acc values for the fma_conv
     lhs = fmaOp->getOperand(0);
@@ -2161,14 +2164,14 @@ static bool canFuseMulFMAOpsForInt16(Operation *Op) {
   // Check 8. xstart and zstart distance between two operations should be
   // 2. offsets, offsets_hi, square and step of two operations should be same.
   return (isMulOp && matchAttributesAndDistanceForFusion(
-                         curOp, cast<aievec::MulOp>(mulOrFMAOp))) ||
-         matchAttributesAndDistanceForFusion(curOp,
-                                             cast<aievec::FMAOp>(mulOrFMAOp));
+                         curOp, cast<aievec::aie1::MulOp>(mulOrFMAOp))) ||
+         matchAttributesAndDistanceForFusion(
+             curOp, cast<aievec::aie1::FMAOp>(mulOrFMAOp));
 }
 
 // Rewrite a mul/fma and fma op as a aievec MUL_conv or FMA_Conv op
 static void fuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
-  auto curOp = cast<aievec::FMAOp>(Op);
+  auto curOp = cast<aievec::aie1::FMAOp>(Op);
 
   Value lhs = curOp->getOperand(0);
 
@@ -2202,15 +2205,15 @@ static void fuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
   // Get the def op of acc. It is either a mul op or a fma op.
   Operation *convOp = nullptr;
   Operation *mulOrFMAOp = Op->getOperand(2).getDefiningOp();
-  auto mulOp = dyn_cast<aievec::MulOp>(mulOrFMAOp);
-  auto fmaOp = dyn_cast<aievec::FMAOp>(mulOrFMAOp);
+  auto mulOp = dyn_cast<aievec::aie1::MulOp>(mulOrFMAOp);
+  auto fmaOp = dyn_cast<aievec::aie1::FMAOp>(mulOrFMAOp);
   int32_t zStart;
 
   if (mulOp) {
-    aievec::MulOp defOp = mulOp;
+    aievec::aie1::MulOp defOp = mulOp;
     zStart = stoi(static_cast<std::string>(defOp.getStart(1)));
   } else {
-    aievec::FMAOp defOp = fmaOp;
+    aievec::aie1::FMAOp defOp = fmaOp;
     zStart = stoi(static_cast<std::string>(defOp.getStart(1)));
   }
 
@@ -2256,7 +2259,7 @@ static void fuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
 
 static void fuseMulFMAOpsByMulFMAConv(func::FuncOp func, VectState *state) {
   func.walk([&](Operation *Op) {
-    if (isa<aievec::FMAOp>(Op) && canFuseMulFMAOpsForInt16(Op))
+    if (isa<aievec::aie1::FMAOp>(Op) && canFuseMulFMAOpsForInt16(Op))
       fuseMulFMAOpsForInt16(Op, state);
   });
 }

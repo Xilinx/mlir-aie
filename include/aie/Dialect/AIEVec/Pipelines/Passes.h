@@ -19,13 +19,15 @@
 
 namespace xilinx {
 enum class AIEArch {
-  AIE,   // Original AIE
-  AIE2,  // AIE-ML/V2 arch version of AIE
-  AIE2P, // AIE2P arch version of AIE
+  AIE,    // Original AIE
+  AIE2,   // AIE-ML/V2 arch version of AIE
+  AIE2P,  // AIE2P arch version of AIE
+  UNKNOWN // Unsupported/Unknown backend
 };
 enum class TargetBackend {
   CPP,    // Convert to aievec targeting C++ backend
   LLVMIR, // Convert to aievec targeting LLVM IR backend
+  UNKNOWN // Unsupported/Unknown backend
 };
 } // namespace xilinx
 

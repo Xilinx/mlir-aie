@@ -82,7 +82,14 @@ transforms = {
 
 def get_args():
     argparser = argparse.ArgumentParser()
-    argparser.add_argument("--input", "-i", type=argparse.FileType("r"), required=True)
+    argparser.add_argument(
+        "--input",
+        "-i",
+        type=argparse.FileType("r"),
+        default=[],
+        action="append",
+        required=True,
+    )
     argparser.add_argument("--output", "-o", type=argparse.FileType("wb"), default=None)
     argparser.add_argument("--outputfmt", choices=["png", "pdf"], default="pdf")
     argparser.add_argument(
@@ -97,6 +104,15 @@ def get_args():
     argparser.add_argument("--filter", type=str, action="append", default=[])
     argparser.add_argument("--xlog", action="store_true", default=False)
     argparser.add_argument("--ylog", action="store_true", default=False)
+    argparser.add_argument("--input-labels", type=str, action="append", default=[])
+    argparser.add_argument("--plot-max", action="store_true", default=False)
+    argparser.add_argument(
+        "--bandwidth", type=eval, default=2e9 * 8
+    )  # default: 2 GB/s memory bandwidth per channel * 8 channels
+    argparser.add_argument(
+        "--max-flops", type=eval, default=64 * 2 * 1e9 * 16
+    )  # default: 64 MACs / cycle (for int16) / core * 2 FLOPs/MAC * 1 GHz * 16 cores
+
     args = argparser.parse_args()
     if not args.xnames:
         args.xnames = ["M", "K", "N"]
@@ -122,11 +138,11 @@ def get_args():
             args.ylabel = "Percent Throughput Efficiency [achieved/peak]"
     if args.output is None:
         args.output = "{0}.{1}".format(
-            os.path.basename(args.input.name), args.outputfmt
+            os.path.basename(args.input[0].name), args.outputfmt
         )
     if not args.ynames:
-        header = args.input.readline()
-        args.input.seek(0)
+        header = args.input[0].readline()
+        args.input[0].seek(0)
         iteration_ys = [
             "It{}".format(m.group(1)) for m in re.finditer(r"It(\d+)", header)
         ]
@@ -134,6 +150,8 @@ def get_args():
             args.ynames = iteration_ys
         elif args.ytrans in {"macs", "gflops", "tflops", "thru", "eff"}:
             args.ynames = ["M", "K", "N"] + iteration_ys
+    if not args.input_labels:
+        args.input_labels = [os.path.basename(f.name) for f in args.input]
     args.xtrans = transforms[args.xtrans]
     args.ytrans = transforms[args.ytrans]
     return args
@@ -151,7 +169,11 @@ def get_plot_values(csv_file, x_names, y_names, x_trans, y_trans, filters=[]):
             for k, v in row.items()
             if k is not None
         }
-        if not all(eval(f, row) for f in filters):
+        try:
+            if not all(eval(f, row) for f in filters):
+                continue
+        except ValueError:
+            errors.append(i)
             continue
         try:
             x_pieces = [float(row[x_name]) for x_name in x_names]
@@ -171,8 +193,8 @@ def get_plot_values(csv_file, x_names, y_names, x_trans, y_trans, filters=[]):
     return xs, ys
 
 
-def plot(ax, xs, ys, title, xlabel, ylabel, xlog=False, ylog=False):
-    ax.scatter(xs, ys, marker=".")
+def plot(ax, xs, ys, title, xlabel, ylabel, xlog=False, ylog=False, label=""):
+    ax.scatter(xs, ys, marker=".", label=label)
     ax.set_title(title)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
@@ -182,16 +204,8 @@ def plot(ax, xs, ys, title, xlabel, ylabel, xlog=False, ylog=False):
         ax.set_yscale("log")
 
 
-def plot_max(ax, xs, ys, xtrans, ytrans):
+def plot_max(ax, max_x, xtrans, ytrans, bandwidth, max_flops):
     """Draw the roofline"""
-
-    bandwidth = 2e9  # 2 GB/s peak memory bandwidth per channel
-    max_flops = 1e12  # 1 TFLOP/s / core for bf16
-    n_channels = 8
-    n_cores = 4
-
-    max_flops *= n_cores
-    bandwidth *= n_channels
 
     slope = bandwidth  # [byte/s]
     max_y = max_flops  # [FLOP/s]
@@ -223,23 +237,46 @@ def plot_max(ax, xs, ys, xtrans, ytrans):
         # Not a roofline plot
         return
 
-    max_x = max(xs)
     # ridge point x is where max_y == slope*x
     ridge_point_x = min(max_y / slope, max_x)
     ridge_point_y = min(max_y, ridge_point_x * slope)
     max_y = min(max_y, max_x * slope)
 
-    ax.plot([0, ridge_point_x, max_x], [0, ridge_point_y, max_y])
+    ax.plot(
+        [0, ridge_point_x, max_x],
+        [0, ridge_point_y, max_y],
+        label="Theoretical Maximum",
+    )
 
 
 def main():
     args = get_args()
-    xs, ys = get_plot_values(
-        args.input, args.xnames, args.ynames, args.xtrans, args.ytrans, args.filter
-    )
     fig, ax = plt.subplots()
-    plot(ax, xs, ys, args.title, args.xlabel, args.ylabel, args.xlog, args.ylog)
-    plot_max(ax, xs, ys, args.xtrans, args.ytrans)
+    max_x = 0
+    for i, input_ in enumerate(args.input):
+        xs, ys = get_plot_values(
+            input_,
+            args.xnames,
+            args.ynames,
+            args.xtrans,
+            args.ytrans,
+            args.filter,
+        )
+        plot(
+            ax,
+            xs,
+            ys,
+            args.title,
+            args.xlabel,
+            args.ylabel,
+            args.xlog,
+            args.ylog,
+            label=args.input_labels[i],
+        )
+        max_x = max(max(xs), max_x)
+    if args.plot_max:
+        plot_max(ax, max_x, args.xtrans, args.ytrans, args.bandwidth, args.max_flops)
+    plt.legend()
     plt.savefig(args.output, format=args.outputfmt)
 
 

@@ -103,8 +103,8 @@ SECTIONS
 {
   . = 0x0;
   .text : {
-     /* the _main_init symbol from me_basic.o has to come at address zero. */
-     *me_basic.o(.text)
+     /* the _main_init symbol has to come at address zero. */
+     *crt0.o(.text)
      . = 0x200;
      _ctors_start = .;
      _init_array_start = .;
@@ -162,7 +162,7 @@ SECTIONS
         if (auto fileAttr = coreOp.getLinkWith())
           output << "INPUT(" << fileAttr.value().str() << ")\n";
 
-        output << "PROVIDE(_main = core_" << tile.getCol() << "_"
+        output << "PROVIDE(main = core_" << tile.getCol() << "_"
                << tile.getRow() << ");\n";
       }
     }

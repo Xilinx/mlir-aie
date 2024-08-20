@@ -63,6 +63,8 @@ LOWER_TO_LLVM_PIPELINE = (
     .expand_strided_metadata()
     .lower_affine()
     .convert_math_to_llvm()
+    .convert_index_to_llvm()
+    .arith_expand()
     .convert_arith_to_llvm()
     .finalize_memref_to_llvm()
     .convert_func_to_llvm(use_bare_ptr_memref_call_conv=True)
@@ -89,7 +91,16 @@ AIE_LOWER_TO_LLVM = (
 CREATE_PATH_FINDER_FLOWS = Pipeline().Nested(
     "aie.device", Pipeline().add_pass("aie-create-pathfinder-flows")
 )
-DMA_TO_NPU = Pipeline().Nested("aie.device", Pipeline().add_pass("aie-dma-to-npu"))
+
+DMA_TO_NPU = Pipeline().Nested(
+    "aie.device",
+    Pipeline()
+    .add_pass("aie-materialize-bd-chains")
+    .add_pass("aie-substitute-shim-dma-allocations")
+    .add_pass("aie-assign-runtime-sequence-bd-ids")
+    .add_pass("aie-dma-tasks-to-npu")
+    .add_pass("aie-dma-to-npu"),
+)
 
 
 async def read_file_async(file_path: str) -> str:
@@ -454,31 +465,8 @@ class FlowRunner:
             runtime_lib_path = os.path.join(
                 install_path, "aie_runtime_lib", aie_target.upper()
             )
-            clang_path = os.path.dirname(shutil.which("clang"))
-            # The build path for libc can be very different from where it's installed.
-            llvmlibc_build_lib_path = os.path.join(
-                clang_path,
-                "..",
-                "runtimes",
-                "runtimes-" + aie_target.lower() + "-none-unknown-elf-bins",
-                "libc",
-                "lib",
-                "libc.a",
-            )
-            llvmlibc_install_lib_path = os.path.join(
-                clang_path,
-                "..",
-                "lib",
-                aie_target.lower() + "-none-unknown-elf",
-                "libc.a",
-            )
-            me_basic_o = os.path.join(runtime_lib_path, "me_basic.o")
-            if os.path.isfile(llvmlibc_build_lib_path):
-                libc = llvmlibc_build_lib_path
-            else:
-                libc = llvmlibc_install_lib_path
 
-            clang_link_args = [me_basic_o, libc, "-Wl,--gc-sections"]
+            clang_link_args = ["-Wl,--gc-sections"]
 
             if opts.progress:
                 task = self.progress_bar.add_task(
@@ -606,7 +594,7 @@ class FlowRunner:
         if opts.xclbin_input:
             await self.do_call(task, ["xclbinutil",
                                       "--dump-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_input_partition.json"),
-                                      "--force", "--input", opts.xclbin_input])
+                                      "--force", "--quiet", "--input", opts.xclbin_input])
             with open(self.prepend_tmp("aie_input_partition.json")) as f:
                 input_partition = json.load(f)
             with open(self.prepend_tmp("aie_partition.json")) as f:
@@ -621,7 +609,7 @@ class FlowRunner:
         await self.do_call(task, ["xclbinutil"] + flag +
                                  ["--add-kernel", self.prepend_tmp("kernels.json"),
                                   "--add-replace-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_partition.json"),
-                                  "--force", "--output", opts.xclbin_name])
+                                  "--force", "--quiet", "--output", opts.xclbin_name])
         # fmt: on
 
     async def process_host_cgen(self, aie_target, file_with_addresses):
@@ -1037,7 +1025,7 @@ class FlowRunner:
                     progress_bar.task,
                     [
                         "aie-opt",
-                        "--aie-dma-to-npu",
+                        f"--pass-pipeline={DMA_TO_NPU}",
                         file_with_addresses,
                         "-o",
                         generated_insts_mlir,
