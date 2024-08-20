@@ -57,7 +57,9 @@ def simple_repeat():
             @FuncOp.from_py_func(tensor_in_ty, tensor_ty, tensor_ty)
             def sequence(A, B, C):
                 npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
-                npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N // 4])
+                npu_dma_memcpy_nd(
+                    metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N // 4]
+                )
                 npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
