@@ -790,6 +790,7 @@ struct AIEObjectFifoStatefulTransformPass
                                std::set<TileOp> objectFifoTiles) {
     for (auto coreOp : device.getOps<CoreOp>()) {
       if (objectFifoTiles.count(coreOp.getTileOp()) > 0) {
+        std::vector<scf::ForOp> unrolledLoops;
         WalkResult res = coreOp.walk([&](scf::ForOp forLoop) {
           // look for operations on objectFifos
           // when multiple fifos in same loop, must use the smallest
@@ -798,7 +799,6 @@ struct AIEObjectFifoStatefulTransformPass
           std::set<int> objFifoSizes;
           Block *body = forLoop.getBody();
           int64_t remainder = 0;
-          std::vector<scf::ForOp> unrolledLoops;
 
           for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
             if (acqOp.getOperation()->getParentOp() == forLoop) {
