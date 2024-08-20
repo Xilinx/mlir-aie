@@ -143,6 +143,18 @@ PYBIND11_MODULE(_aie, m) {
       "module"_a);
 
   m.def(
+      "generate_control_packets",
+      [&stealCStr](MlirOperation op) {
+        py::str ctrlPackets = stealCStr(aieTranslateToControlPackets(op));
+        auto individualInstructions =
+            ctrlPackets.attr("split")().cast<py::list>();
+        for (size_t i = 0; i < individualInstructions.size(); ++i)
+          individualInstructions[i] = individualInstructions[i].attr("strip")();
+        return individualInstructions;
+      },
+      "module"_a);
+
+  m.def(
       "generate_xaie",
       [&stealCStr](MlirOperation op) {
         return stealCStr(aieTranslateToXAIEV2(op));

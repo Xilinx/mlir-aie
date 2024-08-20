@@ -19,6 +19,7 @@ MLIR_CAPI_EXPORTED MlirStringRef aieTranslateAIEVecToCpp(MlirOperation op,
                                                          bool aie2);
 MLIR_CAPI_EXPORTED MlirStringRef aieTranslateModuleToLLVMIR(MlirOperation op);
 MLIR_CAPI_EXPORTED MlirStringRef aieTranslateToNPU(MlirOperation op);
+MLIR_CAPI_EXPORTED MlirStringRef aieTranslateToControlPackets(MlirOperation op);
 MLIR_CAPI_EXPORTED MlirStringRef aieTranslateToXAIEV2(MlirOperation op);
 MLIR_CAPI_EXPORTED MlirStringRef aieTranslateToHSA(MlirOperation op);
 MLIR_CAPI_EXPORTED MlirStringRef aieTranslateToBCF(MlirOperation op, int col,

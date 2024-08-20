@@ -185,9 +185,9 @@ void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
 
 } // namespace
 
-std::vector<uint32_t> xilinx::AIE::AIETranslateToNPU(ModuleOp module) {
-
-  std::vector<uint32_t> instructions;
+LogicalResult
+xilinx::AIE::AIETranslateToNPU(ModuleOp module,
+                               std::vector<uint32_t> &instructions) {
 
   auto words = reserveAndGetTail(instructions, 4);
 
@@ -236,12 +236,67 @@ std::vector<uint32_t> xilinx::AIE::AIETranslateToNPU(ModuleOp module) {
   // write size fields of the txn header
   instructions[2] = count;
   instructions[3] = instructions.size() * sizeof(uint32_t); // size of the txn
-  return instructions;
+  return success();
 }
 
 LogicalResult xilinx::AIE::AIETranslateToNPU(ModuleOp module,
                                              raw_ostream &output) {
-  auto instructions = AIETranslateToNPU(module);
+  std::vector<uint32_t> instructions;
+  auto r = AIETranslateToNPU(module, instructions);
+  if (failed(r))
+    return r;
+  for (auto w : instructions)
+    output << llvm::format("%08X\n", w);
+  return success();
+}
+
+LogicalResult
+xilinx::AIE::AIETranslateToControlPackets(ModuleOp module,
+                                          std::vector<uint32_t> &instructions) {
+
+  DeviceOp deviceOp = *module.getOps<DeviceOp>().begin();
+  auto sequenceOps = deviceOp.getOps<AIEX::RuntimeSequenceOp>();
+  for (auto f : sequenceOps) {
+    Block &entry = f.getBody().front();
+    for (auto &o : entry) {
+      llvm::TypeSwitch<Operation *>(&o).Case<NpuControlPacketOp>([&](auto op) {
+        uint32_t size = 0;
+        auto data = op.getData();
+        auto length = op.getLength();
+        if (data)
+          size = data->size();
+        auto words = reserveAndGetTail(instructions, 1 + size);
+        if (!data && length)
+          size = *length;
+        auto parity = [](uint32_t n) {
+          uint32_t p = 0;
+          while (n) {
+            p += n & 1;
+            n >>= 1;
+          }
+          return (p % 2) == 0;
+        };
+        uint32_t addr = op.getAddress();
+        uint32_t beats = size - 1;
+        uint32_t opc = op.getOpcode();
+        uint32_t id = op.getStreamId();
+        uint32_t hdr = id << 24 | opc << 22 | beats << 20 | addr;
+        words[0] = hdr | (0x1 & parity(hdr)) << 31;
+        if (opc == 0x0 || opc == 0x2)
+          for (unsigned i = 0; i < size; i++)
+            words[i + 1] = data.value()[i];
+      });
+    }
+  }
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIETranslateToControlPackets(ModuleOp module,
+                                                        raw_ostream &output) {
+  std::vector<uint32_t> instructions;
+  auto r = AIETranslateToControlPackets(module, instructions);
+  if (failed(r))
+    return r;
   for (auto w : instructions)
     output << llvm::format("%08X\n", w);
   return success();
