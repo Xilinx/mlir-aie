@@ -67,24 +67,24 @@
 // CHECK:              %[[VAL_1:.+]] = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
 // CHECK:           ^bb4:
 // CHECK:             aie.use_lock(%[[OF0_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[OF0_CONS_BUFF_0]] : memref<256xi32>, 0, 128, [<size = 4, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
+// CHECK:             aie.dma_bd(%[[OF0_CONS_BUFF_0]] : memref<256xi32>, 0, 128, [<size = 2, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
 // CHECK:             aie.use_lock(%[[OF0_CONS_PROD_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[OF0_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[OF0_CONS_BUFF_1]] : memref<256xi32>, 0, 128, [<size = 4, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
+// CHECK:             aie.dma_bd(%[[OF0_CONS_BUFF_1]] : memref<256xi32>, 0, 128, [<size = 2, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
 // CHECK:             aie.use_lock(%[[OF0_CONS_PROD_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb4
 // CHECK:           ^bb6:
 // CHECK:              %[[VAL_2:.+]] = aie.dma_start(MM2S, 1, ^bb7, ^bb9)
 // CHECK:           ^bb7:
 // CHECK:             aie.use_lock(%[[OF0_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[OF0_CONS_BUFF_0]] : memref<256xi32>, 128, 128, [<size = 4, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
+// CHECK:             aie.dma_bd(%[[OF0_CONS_BUFF_0]] : memref<256xi32>, 128, 128, [<size = 2, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
 // CHECK:             aie.use_lock(%[[OF0_CONS_PROD_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb8
 // CHECK:           ^bb8:
 // CHECK:             aie.use_lock(%[[OF0_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[OF0_CONS_BUFF_1]] : memref<256xi32>, 128, 128, [<size = 4, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
+// CHECK:             aie.dma_bd(%[[OF0_CONS_BUFF_1]] : memref<256xi32>, 128, 128, [<size = 2, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
 // CHECK:             aie.use_lock(%[[OF0_CONS_PROD_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb7
 // CHECK:           ^bb9:
@@ -158,15 +158,15 @@ aie.device(xcve2302) {
     %tile13 = aie.tile(1, 3)
     %tile23 = aie.tile(2, 3)
     aie.objectfifo @of0 (%tile10, {%tile11}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
-    aie.objectfifo @of1 (%tile11 toStream [<size = 4, stride = 64>,
+    aie.objectfifo @of1 (%tile11 toStream [<size = 2, stride = 64>,
                                            <size = 2, stride = 4>,
                                            <size = 8, stride = 8>,
                                            <size = 4, stride = 1>],
                         {%tile12, %tile22}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
-    aie.objectfifo @of2 (%tile11 toStream [<size = 4, stride = 64>,
+    aie.objectfifo @of2 (%tile11 toStream [<size = 2, stride = 64>,
                                            <size = 2, stride = 4>,
                                            <size = 8, stride = 8>,
                                            <size = 4, stride = 1>],
                         {%tile13, %tile23}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
-   aie.objectfifo.link [ @of0 ] -> [ @of1, @of2 ] ([][ 0, 128])
+   aie.objectfifo.link [ @of0 ] -> [ @of1, @of2 ] ([][0, 128])
 }

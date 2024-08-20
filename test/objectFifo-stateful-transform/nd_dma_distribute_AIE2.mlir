@@ -34,8 +34,6 @@
 // CHECK:     %[[of0_cons_buf_1:.*]] = aie.buffer(%[[tile_1_1:.*]]) {sym_name = "of0_cons_buff_1"} : memref<256xi32>
 // CHECK:     %[[of0_cons_prod_lock:.*]] = aie.lock(%[[tile_1_1:.*]], 0) {init = 4 : i32, sym_name = "of0_cons_prod_lock"}
 // CHECK:     %[[of0_cons_cons_lock:.*]] = aie.lock(%[[tile_1_1:.*]], 1) {init = 0 : i32, sym_name = "of0_cons_cons_lock"}
-// CHECK:     %[[of0_prod_lock:.*]] = aie.lock(%[[tile_1_0:.*]], 0) {init = 1 : i32, sym_name = "of0_prod_lock"}
-// CHECK:     %[[of0_cons_lock:.*]] = aie.lock(%[[tile_1_0:.*]], 1) {init = 0 : i32, sym_name = "of0_cons_lock"}
 // CHECK:     aie.flow(%[[tile_1_0:.*]], DMA : 0, %[[tile_1_1:.*]], DMA : 0)
 // CHECK:     aie.flow(%[[tile_1_1:.*]], DMA : 0, %[[tile_2_2:.*]], DMA : 0)
 // CHECK:     aie.flow(%[[tile_1_1:.*]], DMA : 1, %[[tile_2_3:.*]], DMA : 0)
@@ -56,24 +54,24 @@
 // CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
 // CHECK:     ^bb4:  // 2 preds: ^bb3, ^bb5
 // CHECK:       aie.use_lock(%[[of0_cons_cons_lock:.*]], AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%[[of0_cons_buf_0:.*]] : memref<256xi32>, 0, 128, [<size = 4, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
+// CHECK:       aie.dma_bd(%[[of0_cons_buf_0:.*]] : memref<256xi32>, 0, 128, [<size = 2, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
 // CHECK:       aie.use_lock(%[[of0_cons_prod_lock:.*]], Release, 1)
 // CHECK:       aie.next_bd ^bb5
 // CHECK:     ^bb5:  // pred: ^bb4
 // CHECK:       aie.use_lock(%[[of0_cons_cons_lock:.*]], AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%[[of0_cons_buf_1:.*]] : memref<256xi32>, 0, 128, [<size = 4, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
+// CHECK:       aie.dma_bd(%[[of0_cons_buf_1:.*]] : memref<256xi32>, 0, 128, [<size = 2, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
 // CHECK:       aie.use_lock(%[[of0_cons_prod_lock:.*]], Release, 1)
 // CHECK:       aie.next_bd ^bb4
 // CHECK:     ^bb6:  // pred: ^bb3
 // CHECK:       %2 = aie.dma_start(MM2S, 1, ^bb7, ^bb9)
 // CHECK:     ^bb7:  // 2 preds: ^bb6, ^bb8
 // CHECK:       aie.use_lock(%[[of0_cons_cons_lock:.*]], AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%[[of0_cons_buf_0:.*]] : memref<256xi32>, 512, 128, [<size = 4, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
+// CHECK:       aie.dma_bd(%[[of0_cons_buf_0:.*]] : memref<256xi32>, 512, 128, [<size = 2, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
 // CHECK:       aie.use_lock(%[[of0_cons_prod_lock:.*]], Release, 1)
 // CHECK:       aie.next_bd ^bb8
 // CHECK:     ^bb8:  // pred: ^bb7
 // CHECK:       aie.use_lock(%[[of0_cons_cons_lock:.*]], AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%[[of0_cons_buf_1:.*]] : memref<256xi32>, 512, 128, [<size = 4, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
+// CHECK:       aie.dma_bd(%[[of0_cons_buf_1:.*]] : memref<256xi32>, 512, 128, [<size = 2, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
 // CHECK:       aie.use_lock(%[[of0_cons_prod_lock:.*]], Release, 1)
 // CHECK:       aie.next_bd ^bb7
 // CHECK:     ^bb9:  // pred: ^bb6
@@ -122,13 +120,13 @@ module @ndDMAObjFifoAIE2 {
     aie.objectfifo @of0 (%tile10, {%tile11},
                          2 : i32) : !aie.objectfifo<memref<256xi32>>
 
-    aie.objectfifo @of1 (%tile11 toStream [<size = 4, stride = 64>,
+    aie.objectfifo @of1 (%tile11 toStream [<size = 2, stride = 64>,
                                            <size = 2, stride = 4>,
                                            <size = 8, stride = 8>,
                                            <size = 4, stride = 1>],
                         {%tile22}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
 
-    aie.objectfifo @of2 (%tile11 toStream [<size = 4, stride = 64>,
+    aie.objectfifo @of2 (%tile11 toStream [<size = 2, stride = 64>,
                                            <size = 2, stride = 4>,
                                            <size = 8, stride = 8>,
                                            <size = 4, stride = 1>],
