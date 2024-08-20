@@ -1240,6 +1240,7 @@ Interfaces: `Symbol`
 <tr><td><code>dimensionsFromStreamPerConsumer</code></td><td>::xilinx::AIE::BDDimLayoutArrayArrayAttr</td><td></td></tr>
 <tr><td><code>via_DMA</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>plio</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
+<tr><td><code>via_shared_mem</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
 #### Operands:
