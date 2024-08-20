@@ -19,6 +19,7 @@ extern "C" {
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Region.h"
+#include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 
@@ -27,6 +28,7 @@ extern "C" {
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/ToolOutputFile.h"
 
 #include <algorithm>
 #include <cassert>
@@ -34,7 +36,6 @@ extern "C" {
 #include <cstdint> // uint
 #include <cstdlib> // calloc
 #include <filesystem>
-#include <fstream>
 #include <functional>
 #include <map>
 #include <optional>
@@ -908,11 +909,15 @@ static LogicalResult translateToTxn(ModuleOp m, llvm::StringRef workDirPath,
   XAie_TxnHeader *hdr = (XAie_TxnHeader *)txn_ptr;
   std::string filename =
       (llvm::Twine(workDirPath) + std::string(1, ps) + "txn.bin").str();
-  std::ofstream outfile(filename, std::ios::binary);
-  if (!outfile.good())
-    return failure();
-  outfile.write(reinterpret_cast<const char *>(txn_ptr), hdr->TxnSize);
 
+  std::string errorMessage;
+  auto output = openOutputFile(filename, &errorMessage);
+  if (!output) {
+    llvm::errs() << errorMessage << "\n";
+    return failure();
+  }
+  output->os().write(reinterpret_cast<const char *>(txn_ptr), hdr->TxnSize);
+  output->keep();
   return result;
 }
 

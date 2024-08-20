@@ -535,7 +535,7 @@ class FlowRunner:
             # fmt: on
 
     async def process_cdo(self):
-        from aie.dialects.aie import generate_cdo, generate_txn
+        from aie.dialects.aie import generate_cdo
 
         with Context(), Location.unknown():
             for elf in glob.glob("*.elf"):
@@ -554,7 +554,7 @@ class FlowRunner:
             generate_cdo(input_physical.operation, self.tmpdirname, emit_unified=True)
 
     async def process_txn(self):
-        from aie.dialects.aie import generate_cdo, generate_txn
+        from aie.dialects.aie import generate_txn
 
         with Context(), Location.unknown():
             for elf in glob.glob("*.elf"):
