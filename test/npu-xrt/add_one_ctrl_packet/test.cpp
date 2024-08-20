@@ -145,7 +145,7 @@ int main(int argc, const char *argv[]) {
 
   uint32_t beats = 1 - 1;
   uint32_t operation = 0;
-  uint32_t stream_id = 5;
+  uint32_t stream_id = 0;
   auto parity = [](uint32_t n) {
     uint32_t p = 0;
     while (n) {
