@@ -800,7 +800,8 @@ struct AIEObjectFifoStatefulTransformPass
       auto highestStride = dims.getValue().begin()->getStride();
       if (highestStride == 0) {
         repeatCount = dims.getValue().begin()->getSize();
-        dims = AIE::BDDimLayoutArrayAttr::get(op->getContext(), dims.getValue().drop_front(1));
+        dims = AIE::BDDimLayoutArrayAttr::get(op->getContext(),
+                                              dims.getValue().drop_front(1));
       }
     }
 
