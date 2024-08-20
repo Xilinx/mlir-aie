@@ -608,14 +608,6 @@ struct AIEControl {
       int32_t row = switchboxOp.rowIndex();
       XAie_LocType tileLoc = XAie_TileLoc(col, row);
       assert(targetModel.isNPU() && "Only NPU currently supported");
-      if (row == 0) {
-        // FIXME hack for TCT routing
-        // TODO Support both channels
-        auto slvPortNum = 0;
-        auto mstrPortNum = 0;
-        TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_StrmConnCctEnable, &devInst,
-                                tileLoc, CTRL, slvPortNum, SOUTH, mstrPortNum);
-      }
 
       Block &b = switchboxOp.getConnections().front();
       for (auto connectOp : b.getOps<ConnectOp>())
@@ -643,11 +635,9 @@ struct AIEControl {
         if (masterSetOp.getDestBundle() == WireBundle::DMA)
           keepHeader = false;
         // assume a connection going south from row zero gets wired to shimdma
-        // by a shimmux. But if it's south 0 assume it's tct routing and don't
-        // drop header. TODO: fix the assumption
+        // by a shimmux.
         if (switchboxOp.rowIndex() == 0 &&
-            masterSetOp.getDestBundle() == WireBundle::South &&
-            masterSetOp.destIndex() != 0)
+            masterSetOp.getDestBundle() == WireBundle::South)
           keepHeader = false;
 
         // "keep_pkt_header" attribute overrides the above defaults, if set

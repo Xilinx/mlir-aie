@@ -104,12 +104,8 @@ struct AIEGenerateColumnControlOverlayPass
 
     int designUnusedPacketIdFrom = getUnusedPacketIdFrom(device);
     for (int col : occupiedCols) {
-      AIE::TileOp shimTile = nullptr;
       builder.setInsertionPointToStart(device.getBody());
-      if (tiles.count({col, 0}))
-        shimTile = tiles[{col, 0}];
-      else
-        shimTile = builder.create<AIE::TileOp>(builder.getUnknownLoc(), col, 0);
+      AIE::TileOp shimTile = TileOp::getOrCreate(builder, device, col, 0);
 
       if (clRouteShimCTRLToTCT) {
         // Get all tile ops on column col
@@ -184,7 +180,11 @@ struct AIEGenerateColumnControlOverlayPass
                                      int coreOrMemChanId,
                                      int unusedPacketIdFrom, bool isShimMM2S) {
     // Create packet flows
-    SmallVector<int> thresholdsToNextShimChannel;
+    SmallVector<int>
+        thresholdsToNextShimChannel; // a list of thresholds on the number of
+                                     // control ports that the ith shim channel
+                                     // could connect to, before advancing to
+                                     // the next shim channel in round robin
     for (int i = 1; i < (int)availableShimChans.size() + 1; i++)
       thresholdsToNextShimChannel.push_back(ctrlTiles.size() /
                                             availableShimChans.size() * i);
@@ -197,16 +197,17 @@ struct AIEGenerateColumnControlOverlayPass
                 ->getAttrOfType<AIE::PacketInfoAttr>("controller_id")
                 .getPktId();
       builder.setInsertionPointToEnd(device.getBody());
+      auto keep_pkt_header = builder.getBoolAttr(true);
       if (isShimMM2S)
-        (void)createPacketFlowOp(builder, ctrlPktFlowID, shimTile,
-                                 shimWireBundle,
-                                 availableShimChans[shimChanIdx], ctrlTiles[i],
-                                 ctrlWireBundle, coreOrMemChanId);
+        (void)createPacketFlowOp(
+            builder, ctrlPktFlowID, shimTile, shimWireBundle,
+            availableShimChans[shimChanIdx], ctrlTiles[i], ctrlWireBundle,
+            coreOrMemChanId, keep_pkt_header);
       else
-        (void)createPacketFlowOp(builder, ctrlPktFlowID, ctrlTiles[i],
-                                 ctrlWireBundle, coreOrMemChanId, shimTile,
-                                 shimWireBundle,
-                                 availableShimChans[shimChanIdx]);
+        (void)createPacketFlowOp(
+            builder, ctrlPktFlowID, ctrlTiles[i], ctrlWireBundle,
+            coreOrMemChanId, shimTile, shimWireBundle,
+            availableShimChans[shimChanIdx], keep_pkt_header);
       if (i >= thresholdsToNextShimChannel[shimChanIdx]) {
         shimChanIdx++;
         ctrlPktFlowID = unusedPacketIdFrom;
@@ -221,25 +222,48 @@ struct AIEGenerateColumnControlOverlayPass
                                          WireBundle shimWireBundle,
                                          bool isShimMM2S) {
     SmallVector<int> availableShimChans;
+    DenseMap<int, AIE::FlowOp> flowOpUsers;
+
+    for (auto user : shimTile.getResult().getUsers()) {
+      auto fOp = dyn_cast<AIE::FlowOp>(user);
+      if (!fOp)
+        continue;
+      if (isShimMM2S && fOp.getSource() == shimTile)
+        flowOpUsers[fOp.getSourceChannel()] = fOp;
+      else if (!isShimMM2S && fOp.getDest() == shimTile)
+        flowOpUsers[fOp.getDestChannel()] = fOp;
+    }
     for (int i = 0; i < numShimChans; i++) {
-      bool isShimChanReservedByAIEFlowOp = false;
-      device.walk([&](AIE::FlowOp fOp) {
-        if (isShimMM2S && fOp.getSource() == shimTile &&
-            fOp.getSourceBundle() == shimWireBundle &&
-            fOp.getSourceChannel() == i) {
-          isShimChanReservedByAIEFlowOp = true;
-          return;
-        } else if (!isShimMM2S && fOp.getDest() == shimTile &&
-                   fOp.getDestBundle() == shimWireBundle &&
-                   fOp.getDestChannel() == i) {
-          isShimChanReservedByAIEFlowOp = true;
-          return;
-        }
-      });
-      if (!isShimChanReservedByAIEFlowOp)
+      if (!flowOpUsers.count(i))
         availableShimChans.push_back(i);
     }
     return availableShimChans;
+  }
+
+  // Get packet-flow op with the same source or destination
+  AIE::PacketFlowOp getPktFlowWithSameSrcOrDst(DeviceOp device, TileOp srcTile,
+                                               WireBundle srcBundle,
+                                               int srcChan, TileOp destTile,
+                                               WireBundle destBundle,
+                                               int destChan) {
+    AIE::PacketFlowOp result = nullptr;
+    device.walk([&](AIE::PacketFlowOp fOp) {
+      for (auto srcOp : fOp.getOps<AIE::PacketSourceOp>()) {
+        if (srcOp.getTile() == srcTile && srcOp.getBundle() == srcBundle &&
+            srcOp.channelIndex() == srcChan) {
+          result = fOp;
+          return;
+        }
+      }
+      for (auto destOp : fOp.getOps<AIE::PacketDestOp>()) {
+        if (destOp.getTile() == destTile && destOp.getBundle() == destBundle &&
+            destOp.channelIndex() == destChan) {
+          result = fOp;
+          return;
+        }
+      }
+    });
+    return result;
   }
 };
 
