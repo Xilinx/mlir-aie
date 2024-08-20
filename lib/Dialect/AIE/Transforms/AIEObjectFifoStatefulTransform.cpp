@@ -664,7 +664,8 @@ struct AIEObjectFifoStatefulTransformPass
       if (highestStride == 0) {
         repeatCount = dims.getValue().begin()->getSize();
         dims = AIE::BDDimLayoutArrayAttr::get(op->getContext(), dims.getValue().drop_front(1));
-      }
+        dims = AIE::BDDimLayoutArrayAttr::get(op->getContext(),
+                                              dims.getValue().drop_front(1));
     }
     if (op.getMemtileRepeat().has_value())
       repeatCount = op.getMemtileRepeat().value();
@@ -774,8 +775,7 @@ struct AIEObjectFifoStatefulTransformPass
     builder.setInsertionPointToStart(dmaBlock);
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
                                channelIndex, repeatCount, bdBlock,
-                               endBlock);
-    if (lastDmaBlock != nullptr)
+                               channelIndex, repeatCount, bdBlock, endBlock);
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
     // create Bd blocks
