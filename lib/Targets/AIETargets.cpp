@@ -153,6 +153,10 @@ void registerAIETranslations() {
       "cdo-enable-cores", llvm::cl::init(true),
       llvm::cl::desc("Enable cores in CDO"));
 
+  static llvm::cl::opt<bool> npuInstGenBinary(
+      "aie-npu-instgen-binary", llvm::cl::init(false),
+      llvm::cl::desc("Emit binary (true) or text (false) NPU instructions"));
+
   TranslateFromMLIRRegistration registrationMMap(
       "aie-generate-mmap", "Generate AIE memory map",
       [](ModuleOp module, raw_ostream &output) {
@@ -332,9 +336,30 @@ void registerAIETranslations() {
                                        cdoXaieDebug, cdoEnableCores);
       },
       registerDialects);
+  TranslateFromMLIRRegistration registrationCDOWithTxn(
+      "aie-generate-txn", "Generate TXN configuration",
+      [](ModuleOp module, raw_ostream &) {
+        SmallString<128> workDirPath_;
+        if (workDirPath.getNumOccurrences() == 0) {
+          if (llvm::sys::fs::current_path(workDirPath_))
+            llvm::report_fatal_error(
+                "couldn't get cwd to use as work-dir-path");
+        } else
+          workDirPath_ = workDirPath.getValue();
+        LLVM_DEBUG(llvm::dbgs() << "work-dir-path: " << workDirPath_ << "\n");
+        return AIETranslateToTxn(module, workDirPath_.c_str(), cdoAieSim,
+                                 cdoXaieDebug, cdoEnableCores);
+      },
+      registerDialects);
   TranslateFromMLIRRegistration registrationNPU(
       "aie-npu-instgen", "Generate instructions for NPU",
       [](ModuleOp module, raw_ostream &output) {
+        if (npuInstGenBinary == true) {
+          auto instructions = AIETranslateToNPU(module);
+          output.write(reinterpret_cast<const char *>(instructions.data()),
+                       instructions.size() * sizeof(uint32_t));
+          return success();
+        }
         return AIETranslateToNPU(module, output);
       },
       registerDialects);

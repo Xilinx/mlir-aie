@@ -111,3 +111,36 @@ module {
    }
   }
 }
+
+// -----
+
+// CHECK: runtime_sequence
+// CHECK: aiex.npu.maskwrite32 {address = 3147552 : ui32, mask = 65535 : ui32, value = 321 : ui32}
+module {
+  aie.device(npu1_1col) {
+    %tile03 = aie.tile(0,3)
+    %s = aie.buffer(%tile03) {address = 1024 : i32, sym_name = "stuff"} : memref<128xi32>
+    aiex.runtime_sequence() {
+      aiex.npu.maskwrite32 {buffer = @stuff, address = 200 : ui32, value = 321 : ui32, mask = 0xffff : ui32}
+    }
+  }
+}
+
+// -----
+
+// Issue packet header from shim dma bd
+// CHECK: memref.global "private" constant @blockwrite_data_0 : memref<8xi32>
+// CHECK-SAME: = dense<[{{.*}}, {{.*}}, 1074987008, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}]>
+// CHECK: runtime_sequence
+// CHECK: aiex.npu.blockwrite
+// CHECK: aiex.npu.address_patch
+// CHECK: aiex.npu.write32
+module {
+  aie.device(npu1_1col) {
+    memref.global "public" @toMem : memref<16xi32>
+    aiex.runtime_sequence(%arg0: memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd (0, 0, %arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1], packet = <pkt_id = 2, pkt_type = 3>) { metadata = @toMem, id = 1 : i64 } : memref<16xi32>
+    }
+    aie.shim_dma_allocation @toMem (S2MM, 0, 0)
+  }
+}

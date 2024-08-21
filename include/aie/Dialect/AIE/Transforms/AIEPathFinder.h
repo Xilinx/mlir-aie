@@ -21,285 +21,132 @@
 
 namespace xilinx::AIE {
 
-enum class Connectivity { INVALID = -1, AVAILABLE = 0, OCCUPIED = 1 };
+#define OVER_CAPACITY_COEFF 0.1
+#define USED_CAPACITY_COEFF 0.1
+#define DEMAND_COEFF 1.1
+#define DEMAND_BASE 1.0
+#define MAX_CIRCUIT_STREAM_CAPACITY 1
+#define MAX_PACKET_STREAM_CAPACITY 32
 
-using SwitchboxNode = struct SwitchboxNode {
+enum class Connectivity { INVALID = 0, AVAILABLE = 1 };
 
-  SwitchboxNode(int col, int row, int id, int maxCol, int maxRow,
-                const AIETargetModel &targetModel)
-      : col{col}, row{row}, id{id} {
+using SwitchboxConnect = struct SwitchboxConnect {
+  SwitchboxConnect() = default;
+  SwitchboxConnect(TileID coords) : srcCoords(coords), dstCoords(coords) {}
+  SwitchboxConnect(TileID srcCoords, TileID dstCoords)
+      : srcCoords(srcCoords), dstCoords(dstCoords) {}
 
-    std::vector<WireBundle> bundles = {
-        WireBundle::Core,  WireBundle::DMA,  WireBundle::FIFO,
-        WireBundle::South, WireBundle::West, WireBundle::North,
-        WireBundle::East,  WireBundle::PLIO, WireBundle::NOC,
-        WireBundle::Trace, WireBundle::Ctrl};
+  TileID srcCoords, dstCoords;
+  std::vector<Port> srcPorts;
+  std::vector<Port> dstPorts;
+  // connectivity between ports
+  std::vector<std::vector<Connectivity>> connectivity;
+  // weights of Dijkstra's shortest path
+  std::vector<std::vector<double>> demand;
+  // history of Channel being over capacity
+  std::vector<std::vector<int>> overCapacity;
+  // how many circuit streams are actually using this Channel
+  std::vector<std::vector<int>> usedCapacity;
+  // how many packet streams are actually using this Channel
+  std::vector<std::vector<int>> packetFlowCount;
+  // only sharing the channel with the same packet group id
+  std::vector<std::vector<int>> packetGroupId;
 
-    for (WireBundle bundle : bundles) {
-      int maxCapacity =
-          targetModel.getNumSourceSwitchboxConnections(col, row, bundle);
-      if (targetModel.isShimNOCorPLTile(col, row) && maxCapacity == 0) {
-        // wordaround for shimMux, todo: integrate shimMux into routable grid
-        maxCapacity =
-            targetModel.getNumSourceShimMuxConnections(col, row, bundle);
-      }
+  // resize the matrices to the size of srcPorts and dstPorts
+  void resize() {
+    connectivity.resize(
+        srcPorts.size(),
+        std::vector<Connectivity>(dstPorts.size(), Connectivity::INVALID));
+    demand.resize(srcPorts.size(), std::vector<double>(dstPorts.size(), 0.0));
+    overCapacity.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
+    usedCapacity.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
+    packetFlowCount.resize(srcPorts.size(),
+                           std::vector<int>(dstPorts.size(), 0));
+    packetGroupId.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
+  }
 
-      for (int channel = 0; channel < maxCapacity; channel++) {
-        Port inPort = {bundle, channel};
-        inPortToId[inPort] = inPortId;
-        inPortId++;
-      }
-
-      maxCapacity =
-          targetModel.getNumDestSwitchboxConnections(col, row, bundle);
-      if (targetModel.isShimNOCorPLTile(col, row) && maxCapacity == 0) {
-        // wordaround for shimMux, todo: integrate shimMux into routable grid
-        maxCapacity =
-            targetModel.getNumDestShimMuxConnections(col, row, bundle);
-      }
-      for (int channel = 0; channel < maxCapacity; channel++) {
-        Port outPort = {bundle, channel};
-        outPortToId[outPort] = outPortId;
-        outPortId++;
-      }
-    }
-
-    connectionMatrix.resize(inPortId, std::vector<Connectivity>(
-                                          outPortId, Connectivity::AVAILABLE));
-
-    // illegal connection
-    for (const auto &[inPort, inId] : inPortToId) {
-      for (const auto &[outPort, outId] : outPortToId) {
-        if (!targetModel.isLegalTileConnection(col, row, inPort.bundle,
-                                               inPort.channel, outPort.bundle,
-                                               outPort.channel))
-          connectionMatrix[inId][outId] = Connectivity::INVALID;
-
-        if (targetModel.isShimNOCorPLTile(col, row)) {
-          // wordaround for shimMux, todo: integrate shimMux into routable grid
-          auto isBundleInList = [](WireBundle bundle,
-                                   std::vector<WireBundle> bundles) {
-            return std::find(bundles.begin(), bundles.end(), bundle) !=
-                   bundles.end();
-          };
-          std::vector<WireBundle> bundles = {WireBundle::DMA, WireBundle::NOC,
-                                             WireBundle::PLIO};
-          if (isBundleInList(inPort.bundle, bundles) ||
-              isBundleInList(outPort.bundle, bundles))
-            connectionMatrix[inId][outId] = Connectivity::AVAILABLE;
-        }
+  // update demand at the beginning of each dijkstraShortestPaths iteration
+  void updateDemand() {
+    for (size_t i = 0; i < srcPorts.size(); i++) {
+      for (size_t j = 0; j < dstPorts.size(); j++) {
+        double history = DEMAND_BASE + OVER_CAPACITY_COEFF * overCapacity[i][j];
+        double congestion =
+            DEMAND_BASE + USED_CAPACITY_COEFF * usedCapacity[i][j];
+        demand[i][j] = history * congestion;
       }
     }
   }
 
-  // given a outPort, find availble input channel
-  std::vector<int> findAvailableChannelIn(WireBundle inBundle, Port outPort,
-                                          bool isPkt) {
-    std::vector<int> availableChannels;
-    if (outPortToId.count(outPort) > 0) {
-      int outId = outPortToId[outPort];
-      if (isPkt) {
-        for (const auto &[inPort, inId] : inPortToId) {
-          if (inPort.bundle == inBundle &&
-              connectionMatrix[inId][outId] != Connectivity::INVALID) {
-            bool available = true;
-            if (inPortPktCount.count(inPort) == 0) {
-              for (const auto &[outPort, outId] : outPortToId) {
-                if (connectionMatrix[inId][outId] == Connectivity::OCCUPIED) {
-                  // occupied by others as circuit-switched
-                  available = false;
-                  break;
-                }
-              }
-            } else {
-              if (inPortPktCount[inPort] >= maxPktStream) {
-                // occupied by others as packet-switched but exceed max packet
-                // stream capacity
-                available = false;
-              }
-            }
-            if (available)
-              availableChannels.push_back(inPort.channel);
-          }
-        }
-      } else {
-        for (const auto &[inPort, inId] : inPortToId) {
-          if (inPort.bundle == inBundle &&
-              connectionMatrix[inId][outId] == Connectivity::AVAILABLE) {
-            bool available = true;
-            for (const auto &[outPort, outId] : outPortToId) {
-              if (connectionMatrix[inId][outId] == Connectivity::OCCUPIED) {
-                available = false;
-                break;
-              }
-            }
-            if (available)
-              availableChannels.push_back(inPort.channel);
-          }
-        }
-      }
-    }
-    return availableChannels;
-  }
-
-  bool allocate(Port inPort, Port outPort, bool isPkt) {
-    // invalid port
-    if (outPortToId.count(outPort) == 0 || inPortToId.count(inPort) == 0)
-      return false;
-
-    int inId = inPortToId[inPort];
-    int outId = outPortToId[outPort];
-
-    // invalid connection
-    if (connectionMatrix[inId][outId] == Connectivity::INVALID)
-      return false;
-
-    if (isPkt) {
-      // a packet-switched stream to be allocated
-      if (inPortPktCount.count(inPort) == 0) {
-        for (const auto &[outPort, outId] : outPortToId) {
-          if (connectionMatrix[inId][outId] == Connectivity::OCCUPIED) {
-            // occupied by others as circuit-switched, allocation fail!
-            return false;
-          }
-        }
-        // empty channel, allocation succeed!
-        inPortPktCount[inPort] = 1;
-        connectionMatrix[inId][outId] = Connectivity::OCCUPIED;
-        return true;
-      } else {
-        if (inPortPktCount[inPort] >= maxPktStream) {
-          // occupied by others as packet-switched but exceed max packet stream
-          // capacity, allocation fail!
-          return false;
-        } else {
-          // valid packet-switched, allocation succeed!
-          inPortPktCount[inPort]++;
-          return true;
-        }
-      }
-    } else {
-      // a circuit-switched stream to be allocated
-      if (connectionMatrix[inId][outId] == Connectivity::AVAILABLE) {
-        // empty channel, allocation succeed!
-        connectionMatrix[inId][outId] = Connectivity::OCCUPIED;
-        return true;
-      } else {
-        // occupied by others, allocation fail!
-        return false;
-      }
+  // inside each dijkstraShortestPaths interation, bump demand when exceeds
+  // capacity
+  void bumpDemand(size_t i, size_t j) {
+    if (usedCapacity[i][j] >= MAX_CIRCUIT_STREAM_CAPACITY) {
+      demand[i][j] *= DEMAND_COEFF;
     }
   }
+};
 
-  void clearAllocation() {
-    for (int inId = 0; inId < inPortId; inId++) {
-      for (int outId = 0; outId < outPortId; outId++) {
-        if (connectionMatrix[inId][outId] != Connectivity::INVALID) {
-          connectionMatrix[inId][outId] = Connectivity::AVAILABLE;
-        }
-      }
-    }
-    inPortPktCount.clear();
-  }
+using PathEndPoint = struct PathEndPoint {
+  PathEndPoint() = default;
+  PathEndPoint(TileID coords, Port port) : coords(coords), port(port) {}
 
-  friend std::ostream &operator<<(std::ostream &os, const SwitchboxNode &s) {
-    os << "Switchbox(" << s.col << ", " << s.row << ")";
+  TileID coords;
+  Port port;
+
+  friend std::ostream &operator<<(std::ostream &os, const PathEndPoint &s) {
+    os << "PathEndPoint(" << s.coords << ": " << s.port << ")";
     return os;
   }
 
-  GENERATE_TO_STRING(SwitchboxNode);
+  GENERATE_TO_STRING(PathEndPoint)
 
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                                       const SwitchboxNode &s) {
+                                       const PathEndPoint &s) {
     os << to_string(s);
     return os;
   }
 
-  bool operator<(const SwitchboxNode &rhs) const {
-    return std::tie(col, row) < std::tie(rhs.col, rhs.row);
+  // Needed for the std::maps that store PathEndPoint.
+  bool operator<(const PathEndPoint &rhs) const {
+    return std::tie(coords, port) < std::tie(rhs.coords, rhs.port);
   }
 
-  bool operator==(const SwitchboxNode &rhs) const {
-    return std::tie(col, row) == std::tie(rhs.col, rhs.row);
+  bool operator==(const PathEndPoint &rhs) const {
+    return std::tie(coords, port) == std::tie(rhs.coords, rhs.port);
   }
-
-  int col, row, id;
-  int inPortId = 0, outPortId = 0;
-  std::map<Port, int> inPortToId, outPortToId;
-
-  // tenary representation of switchbox connectivity
-  // -1: invalid in arch, 0: empty and available, 1: occupued
-  std::vector<std::vector<Connectivity>> connectionMatrix;
-
-  // input ports with incoming packet-switched streams
-  std::map<Port, int> inPortPktCount;
-
-  // up to 32 packet-switched stram through a port
-  const int maxPktStream = 32;
 };
 
-using ChannelEdge = struct ChannelEdge {
-  ChannelEdge(SwitchboxNode *src, SwitchboxNode *target)
-      : src(src), target(target) {
-
-    // get bundle from src to target coordinates
-    if (src->col == target->col) {
-      if (src->row > target->row)
-        bundle = WireBundle::South;
-      else
-        bundle = WireBundle::North;
-    } else {
-      if (src->col > target->col)
-        bundle = WireBundle::West;
-      else
-        bundle = WireBundle::East;
-    }
-
-    // maximum number of routing resources
-    maxCapacity = 0;
-    for (auto &[outPort, _] : src->outPortToId) {
-      if (outPort.bundle == bundle) {
-        maxCapacity++;
-      }
-    }
-  }
-
-  friend std::ostream &operator<<(std::ostream &os, const ChannelEdge &c) {
-    os << "Channel(src=" << c.src << ", dst=" << c.target << ")";
-    return os;
-  }
-
-  GENERATE_TO_STRING(ChannelEdge)
-
-  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                                       const ChannelEdge &c) {
-    os << to_string(c);
-    return os;
-  }
-
-  SwitchboxNode *src;
-  SwitchboxNode *target;
-
-  int maxCapacity;
-  WireBundle bundle;
+using Flow = struct Flow {
+  int packetGroupId;
+  PathEndPoint src;
+  std::vector<PathEndPoint> dsts;
 };
 
-// A SwitchSetting defines the required settings for a SwitchboxNode for a flow
-// SwitchSetting.src is the incoming signal
+// A SwitchSetting defines the required settings for a Switchbox for a flow
+// SwitchSetting.srcs is the fanin
 // SwitchSetting.dsts is the fanout
 using SwitchSetting = struct SwitchSetting {
   SwitchSetting() = default;
-  SwitchSetting(Port src) : src(src) {}
-  SwitchSetting(Port src, std::set<Port> dsts)
-      : src(src), dsts(std::move(dsts)) {}
-  Port src;
-  std::set<Port> dsts;
+  SwitchSetting(std::vector<Port> srcs) : srcs(std::move(srcs)) {}
+  SwitchSetting(std::vector<Port> srcs, std::vector<Port> dsts)
+      : srcs(std::move(srcs)), dsts(std::move(dsts)) {}
 
-  // friend definition (will define the function as a non-member function of the
-  // namespace surrounding the class).
+  std::vector<Port> srcs;
+  std::vector<Port> dsts;
+
+  // friend definition (will define the function as a non-member function of
+  // the namespace surrounding the class).
   friend std::ostream &operator<<(std::ostream &os,
                                   const SwitchSetting &setting) {
-    os << setting.src << " -> "
+    os << "{"
+       << join(llvm::map_range(setting.srcs,
+                               [](const Port &port) {
+                                 std::ostringstream ss;
+                                 ss << port;
+                                 return ss.str();
+                               }),
+               ", ")
+       << " -> "
        << "{"
        << join(llvm::map_range(setting.dsts,
                                [](const Port &port) {
@@ -320,53 +167,10 @@ using SwitchSetting = struct SwitchSetting {
     return os;
   }
 
-  bool operator<(const SwitchSetting &rhs) const { return src < rhs.src; }
+  bool operator<(const SwitchSetting &rhs) const { return srcs < rhs.srcs; }
 };
 
-using SwitchSettings = std::map<SwitchboxNode, SwitchSetting>;
-
-// A Flow defines source and destination vertices
-// Only one source, but any number of destinations (fanout)
-using PathEndPoint = struct PathEndPoint {
-  SwitchboxNode sb;
-  Port port;
-
-  friend std::ostream &operator<<(std::ostream &os, const PathEndPoint &s) {
-    os << "PathEndPoint(" << s.sb << ": " << s.port << ")";
-    return os;
-  }
-
-  GENERATE_TO_STRING(PathEndPoint)
-
-  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                                       const PathEndPoint &s) {
-    os << to_string(s);
-    return os;
-  }
-
-  // Needed for the std::maps that store PathEndPoint.
-  bool operator<(const PathEndPoint &rhs) const {
-    return std::tie(sb, port) < std::tie(rhs.sb, rhs.port);
-  }
-
-  bool operator==(const PathEndPoint &rhs) const {
-    return std::tie(sb, port) == std::tie(rhs.sb, rhs.port);
-  }
-};
-
-// A Flow defines source and destination vertices
-// Only one source, but any number of destinations (fanout)
-using PathEndPointNode = struct PathEndPointNode : PathEndPoint {
-  PathEndPointNode(SwitchboxNode *sb, Port port)
-      : PathEndPoint{*sb, port}, sb(sb) {}
-  SwitchboxNode *sb;
-};
-
-using FlowNode = struct FlowNode {
-  bool isPacketFlow;
-  PathEndPointNode src;
-  std::vector<PathEndPointNode> dsts;
-};
+using SwitchSettings = std::map<TileID, SwitchSetting>;
 
 class Router {
 public:
@@ -381,7 +185,6 @@ public:
   virtual bool addFixedConnection(SwitchboxOp switchboxOp) = 0;
   virtual std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) = 0;
-  virtual SwitchboxNode getSwitchboxNode(TileID coords) = 0;
 };
 
 class Pathfinder : public Router {
@@ -394,34 +197,22 @@ public:
   bool addFixedConnection(SwitchboxOp switchboxOp) override;
   std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) override;
-
-  std::map<SwitchboxNode *, SwitchboxNode *>
-  dijkstraShortestPaths(SwitchboxNode *src);
-
-  SwitchboxNode getSwitchboxNode(TileID coords) override {
-    return grid.at(coords);
-  }
+  std::map<PathEndPoint, PathEndPoint> dijkstraShortestPaths(PathEndPoint src);
 
 private:
   // Flows to be routed
-  std::vector<FlowNode> flows;
-
-  // Grid of switchboxes available
-  std::map<TileID, SwitchboxNode> grid;
-
-  // Use a list instead of a vector because nodes have an edge list of raw
-  // pointers to edges (so growing a vector would invalidate the pointers).
-  std::list<ChannelEdge> edges;
-
-  // Use Dijkstra's shortest path to find routes, and use "demand" as the
-  // weights.
-  std::map<ChannelEdge *, double> demand;
-
-  // History of Channel being over capacity
-  std::map<ChannelEdge *, int> overCapacity;
-
-  // how many flows are actually using this Channel
-  std::map<ChannelEdge *, int> usedCapacity;
+  std::vector<Flow> flows;
+  // Represent all routable paths as a graph
+  // The key is a pair of TileIDs representing the connectivity from srcTile to
+  // dstTile If srcTile == dstTile, it represents connections inside the same
+  // switchbox otherwise, it represents connections (South, North, West, East)
+  // accross two switchboxes
+  std::map<std::pair<TileID, TileID>, SwitchboxConnect> graph;
+  // Channels available in the network
+  // The key is a PathEndPoint representing the start of a path
+  // The value is a vector of PathEndPoints representing the possible ends of
+  // the path
+  std::map<PathEndPoint, std::vector<PathEndPoint>> channels;
 };
 
 // DynamicTileAnalysis integrates the Pathfinder class into the MLIR
@@ -465,8 +256,8 @@ inline raw_ostream &operator<<(raw_ostream &os,
                                const xilinx::AIE::SwitchSettings &ss) {
   std::stringstream s;
   s << "\tSwitchSettings: ";
-  for (const auto &[sb, setting] : ss) {
-    s << sb << ": " << setting << " | ";
+  for (const auto &[coords, setting] : ss) {
+    s << coords << ": " << setting << " | ";
   }
   s << "\n";
   os << s.str();
@@ -474,21 +265,5 @@ inline raw_ostream &operator<<(raw_ostream &os,
 }
 
 } // namespace llvm
-
-template <>
-struct std::hash<xilinx::AIE::SwitchboxNode> {
-  std::size_t operator()(const xilinx::AIE::SwitchboxNode &s) const noexcept {
-    return std::hash<xilinx::AIE::TileID>{}({s.col, s.row});
-  }
-};
-
-template <>
-struct std::hash<xilinx::AIE::PathEndPoint> {
-  std::size_t operator()(const xilinx::AIE::PathEndPoint &pe) const noexcept {
-    std::size_t h1 = std::hash<xilinx::AIE::Port>{}(pe.port);
-    std::size_t h2 = std::hash<xilinx::AIE::SwitchboxNode>{}(pe.sb);
-    return h1 ^ (h2 << 1);
-  }
-};
 
 #endif

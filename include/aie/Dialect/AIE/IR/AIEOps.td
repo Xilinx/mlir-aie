@@ -118,6 +118,8 @@ def AIE_TileOp: AIE_Op<"tile", [
           return coreOp;
       return nullptr;
     }
+
+    static AIE::TileOp getOrCreate(mlir::OpBuilder builder, AIE::DeviceOp device, int col, int row);
   }];
 
   let assemblyFormat = [{
@@ -498,7 +500,8 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [
   let arguments = (
     ins WireBundle:$dest_bundle,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel,
-        Variadic<Index>:$amsels
+        Variadic<Index>:$amsels,
+        OptionalAttr<BoolAttr>:$keep_pkt_header
   );
   let summary = "Packet switched input connection";
   let description = [{
@@ -746,9 +749,7 @@ def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
   }];
 }
 
-def AIE_DMABDOp: AIE_Op<"dma_bd", [
-    ParentOneOf<["MemOp", "MemTileDMAOp", "ShimDMAOp", "DMAOp"]>,
-  ]> {
+def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
   let summary = "Declare a dma buffer descriptor op";
   let description = [{
     This operation describes a buffer descriptor for DMA operations. In particular, it specifies
@@ -861,22 +862,20 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
   let arguments = (
     ins AnyMemRef:$buffer,
         // in multiples of element width (not bytes)
-        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$offset,
+        DefaultValuedAttr<AIEI32Attr, "0">:$offset,
         // in multiples of element width (not bytes)
         OptionalAttr<AIEI32Attr>:$len,
         OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
         OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
         OptionalAttr<AIEI32Attr>:$bd_id,
+        OptionalAttr<PacketInfoAttr>:$packet,
         // should never be assigned by user...
         OptionalAttr<AIEI32Attr>:$next_bd_id
   );
 
   let hasVerifier = 1;
-
-  let assemblyFormat = [{
-    `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,` $dimensions^)? (`,` $pad_dimensions^)? (`,` `pad_value` `=` $pad_value^)? `)` attr-dict
-  }];
+  let hasCustomAssemblyFormat = 1;
 
   let extraClassDeclaration = [{
     BufferOp getBufferOp();
@@ -917,6 +916,34 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
       $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
       $_state.addAttribute("dimensions", dims);
       $_state.addAttribute("pad_dimensions", paddims);
+    }]>,
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "PacketInfoAttr":$pkt), [{
+      $_state.addOperands(buffer);
+      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
+      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
+      $_state.addAttribute("packet", pkt);
+    }]>,
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims, "PacketInfoAttr":$pkt), [{
+      $_state.addOperands(buffer);
+      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
+      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
+      $_state.addAttribute("dimensions", dims);
+      $_state.addAttribute("packet", pkt);
+    }]>,
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDPadLayoutArrayAttr":$paddims, "PacketInfoAttr":$pkt), [{
+      $_state.addOperands(buffer);
+      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
+      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
+      $_state.addAttribute("pad_dimensions", paddims);
+      $_state.addAttribute("packet", pkt);
+    }]>,
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims, "BDPadLayoutArrayAttr":$paddims, "PacketInfoAttr":$pkt), [{
+      $_state.addOperands(buffer);
+      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
+      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
+      $_state.addAttribute("dimensions", dims);
+      $_state.addAttribute("pad_dimensions", paddims);
+      $_state.addAttribute("packet", pkt);
     }]>
   ];
 }
@@ -1002,7 +1029,6 @@ def AIE_DMAOp: AIE_Op<"dma", [
     }
   }];
 }
-
 
 // MemOps are not actually Callable, but we want to inline code into them, so we have to
 // implement CallableOpInterface
@@ -1101,9 +1127,7 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
   }];
 }
 
-def AIE_NextBDOp: AIE_Op<"next_bd", [
-    Terminator, ParentOneOf<["MemOp", "MemTileDMAOp", "mlir::func::FuncOp", "ShimDMAOp"]>
-  ]> {
+def AIE_NextBDOp: AIE_Op<"next_bd", [Terminator]> {
   let summary = "The next buffer descriptor";
   let description = [{
     This operation terminates the basic block describing a buffer descriptor inside
@@ -1548,6 +1572,10 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
   let assemblyFormat = [{
     $sym_name `(` $channel_dir `,` $channel_index `,` $col `)` attr-dict
   }];
+
+  let extraClassDeclaration = [{
+    static ::xilinx::AIE::ShimDMAAllocationOp getForSymbol(::xilinx::AIE::DeviceOp device, ::llvm::StringRef symbol);
+  }];
 }
 
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]> {
@@ -1637,7 +1665,10 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         BDDimLayoutArrayAttr:$dimensionsToStream,
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
         DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
-        DefaultValuedAttr<BoolAttr, "false">:$plio
+        DefaultValuedAttr<BoolAttr, "false">:$plio,
+        // via_shared_mem==0 means use producer tile's memory module
+        // via_shared_mem==1 means use consumer tile's memory module
+        OptionalAttr<AIEI32Attr>:$via_shared_mem
   );
 
   let assemblyFormat = [{
@@ -1965,6 +1996,29 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
           .getInt();
     }
   }];
+}
+
+def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol, SkipAccessibilityCheckTrait]> {
+  let summary = "Definition of a Parametrizable Chain of Buffer Descriptors";
+  let description = [{
+    This operation allows you to define buffer descriptor chains with parametrizable inputs. 
+    This is useful for common patterns such as double buffering (ping-pong) that may look identical but use different input/output buffers and locks.
+    Currently, only buffers and locks are parametrizable.
+
+    Once defined, an abstract BD chain can be used elsewhere using AIEX ops in the runtime sequence. 
+    In the future, abstract BD chains will also be usable elsewhere, inside the static configuration.
+    At its usage sites, the abstract BD chain will be concretized with the given input arguments.
+  }];
+
+  let arguments = (
+    ins SymbolNameAttr:$sym_name
+  );
+  let regions = (region AnyRegion:$body);
+
+  let extraClassDeclaration = [{
+  }];
+  let hasCustomAssemblyFormat = 1;
+
 }
 
 #endif // AIE_OPS

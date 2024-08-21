@@ -13,9 +13,9 @@
 ##===----------------------------------------------------------------------===##
 
 # The LLVM commit to use.
-LLVM_PROJECT_COMMIT=db1d88137212fec6c884dcb0f76a8dfab4fcab98
-DATETIME=2024072223
-WHEEL_VERSION=19.0.0.$DATETIME+${LLVM_PROJECT_COMMIT:0:8}
+LLVM_PROJECT_COMMIT=5e6a1987a5d4574d3c3811f878ddbbbf7c35fa01
+DATETIME=2024082021
+WHEEL_VERSION=20.0.0.$DATETIME+${LLVM_PROJECT_COMMIT:0:8}
 
 ############################################################################################
 # The way to bump `LLVM_PROJECT_COMMIT`

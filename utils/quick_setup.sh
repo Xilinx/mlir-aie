@@ -18,7 +18,7 @@
 echo "Setting up RyzenAI developement tools..."
 if [[ $WSL_DISTRO_NAME == "" ]]; then
   XRTSMI=`which xrt-smi`
-  if ! test -f "$XRTSMI"; then
+  if ! test -f "$XRTSMI"; then 
     echo "XRT is not installed"
     return 1
   fi

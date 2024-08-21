@@ -181,4 +181,18 @@ def BDPadLayoutArrayAttr : ArrayOfAttr<
     /*eltName*/BDPadLayoutAttr.cppClassName
 >;
 
+def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
+  let mnemonic = "packet_info";
+  let summary = [{
+    Tuple encoding the type and header of a packet;
+  }];
+
+  let parameters = (ins
+    "uint16_t" : $pkt_type,
+    "uint16_t" : $pkt_id
+  );
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
 #endif // AIE_ATTRS

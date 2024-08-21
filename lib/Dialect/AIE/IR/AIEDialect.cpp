@@ -155,7 +155,7 @@ static TileElement getParentTileElement(Operation *op) {
   return llvm::dyn_cast<TileElement>(parent);
 }
 
-struct UsesAreAccessable {
+struct UsesAreAccessible {
   static LogicalResult verifyTrait(Operation *op) {
     auto thisElement = cast<TileElement>(op);
     auto thisID = thisElement.getTileID();
@@ -164,22 +164,31 @@ struct UsesAreAccessable {
     for (auto *user : users) {
       // AIE.useLock may be used in a device to set the lock's default value
       // Allow in a toplevel module for backward compatibility
-      if (llvm::isa_and_nonnull<DeviceOp, ModuleOp>(user->getParentOp()))
-        return success();
-      if (auto element = getParentTileElement(user)) {
-
-        auto tileID = element.getTileID();
-        if (!targetModel.isLegalMemAffinity(tileID.col, tileID.row, thisID.col,
-                                            thisID.row))
-          return (op->emitOpError("in Column ")
-                  << thisID.col << " and Row " << thisID.row
-                  << " is accessed from an unreachable tile in Column "
-                  << tileID.col << " and Row " << tileID.row)
-                     .attachNote(user->getLoc())
-                 << "user";
-      } else {
+      if (llvm::isa_and_nonnull<DeviceOp, ModuleOp>(user->getParentOp())) {
+        continue;
+      }
+      // If any parent prescribes that accessibility checks be skipped,
+      // skip the check for that user.
+      if (user->getParentWithTrait<SkipAccessibilityCheckTrait>()) {
+        continue;
+      }
+      TileElement element = llvm::dyn_cast<TileElement>(user);
+      if (!element) {
+        element = getParentTileElement(user);
+      }
+      if (!element) {
         // This should probably be caught elsewhere as well.
         return op->emitOpError("is accessed outside of a tile")
+                   .attachNote(user->getLoc())
+               << "user";
+      }
+      auto tileID = element.getTileID();
+      if (!targetModel.isLegalMemAffinity(tileID.col, tileID.row, thisID.col,
+                                          thisID.row)) {
+        return (op->emitOpError("in Column ")
+                << thisID.col << " and Row " << thisID.row
+                << " is accessed from an unreachable tile in Column "
+                << tileID.col << " and Row " << tileID.row)
                    .attachNote(user->getLoc())
                << "user";
       }
@@ -476,6 +485,12 @@ LogicalResult ObjectFifoCreateOp::verify() {
   if (getProducerTileOp().isShimTile() && !getDimensionsToStream().empty()) {
     return emitError("`toStream` data layout transformations are not supported "
                      "on shim tile producers");
+  }
+
+  if (getViaSharedMem().has_value()) {
+    if (getConsumerTiles().size() > 1)
+      return emitError(
+          "`via_shared_mem` can only be used in 1-to-1 object FIFOs");
   }
 
   return success();
@@ -1104,6 +1119,27 @@ bool isLegalTileConnection(TileOp tile, const AIETargetModel &targetModel,
       tile.colIndex(), tile.rowIndex(), srcBundle, srcChan, dstBundle, dstChan);
 }
 
+TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
+                           int row) {
+  TileOp tile = nullptr;
+  // Find matching predefined tile at device top level, ...
+  for (auto t : device.getOps<AIE::TileOp>()) {
+    if (t.getRow() == row && t.getCol() == col) {
+      tile = t;
+      break;
+    }
+  }
+  // ... or if undefined, create a new tile op
+  if (!tile) {
+    OpBuilder::InsertionGuard guard(builder);
+    mlir::Block &device_start_block = *device.getBodyRegion().begin();
+    builder.setInsertionPointToStart(&device_start_block);
+    tile = builder.create<TileOp>(builder.getUnknownLoc(),
+                                  builder.getIndexType(), col, 0);
+  }
+  return tile;
+}
+
 //===----------------------------------------------------------------------===//
 // ShimSwitchboxOp
 //===----------------------------------------------------------------------===//
@@ -1291,7 +1327,7 @@ int64_t BufferOp::getAllocationSize() {
 TileOp BufferOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 
 LogicalResult BufferOp::verify() {
-  if (UsesAreAccessable::verifyTrait(*this).failed())
+  if (UsesAreAccessible::verifyTrait(*this).failed())
     return failure();
   return success();
 }
@@ -1550,7 +1586,179 @@ BufferOp DMABDOp::getBufferOp() {
   return cast<BufferOp>(getBuffer().getDefiningOp());
 }
 
+// let assemblyFormat = [{
+//   `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,`
+//   $dimensions^)? (`,` $pad_dimensions^)? (`,` `pad_value` `=` $pad_value^)?
+//   `)` attr-dict
+// }];
+ParseResult DMABDOp::parse(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::UnresolvedOperand bufferRawOperand{};
+  ::llvm::ArrayRef<OpAsmParser::UnresolvedOperand> bufferOperands(
+      &bufferRawOperand, 1);
+  ::llvm::SMLoc bufferOperandsLoc;
+  (void)bufferOperandsLoc;
+  Type bufferRawType{};
+  ::llvm::ArrayRef<Type> bufferTypes(&bufferRawType, 1);
+  IntegerAttr offsetAttr;
+  IntegerAttr lenAttr;
+  ::xilinx::AIE::BDDimLayoutArrayAttr dimensionsAttr;
+  ::xilinx::AIE::BDPadLayoutArrayAttr pad_dimensionsAttr;
+  IntegerAttr pad_valueAttr;
+  if (parser.parseLParen())
+    return failure();
+
+  bufferOperandsLoc = parser.getCurrentLocation();
+  if (parser.parseOperand(bufferRawOperand))
+    return failure();
+  if (parser.parseColon())
+    return failure();
+  if (parser.parseCustomTypeWithFallback(bufferRawType))
+    return failure();
+
+  // offset
+  if (succeeded(parser.parseOptionalComma())) {
+    if (parser.parseCustomAttributeWithFallback(
+            offsetAttr, parser.getBuilder().getIntegerType(32))) {
+      return failure();
+    }
+    if (!offsetAttr)
+      offsetAttr = parser.getBuilder().getIntegerAttr(
+          parser.getBuilder().getIntegerType(32), 0);
+    result.getOrAddProperties<DMABDOp::Properties>().offset = offsetAttr;
+  }
+
+  // len
+  if (succeeded(parser.parseOptionalComma())) {
+    if (parser.parseCustomAttributeWithFallback(
+            lenAttr, parser.getBuilder().getIntegerType(32))) {
+      return failure();
+    }
+    if (lenAttr)
+      result.getOrAddProperties<DMABDOp::Properties>().len = lenAttr;
+  }
+
+  // dimensions
+  if (succeeded(parser.parseOptionalComma())) {
+    if (parser.parseCustomAttributeWithFallback(dimensionsAttr, Type{})) {
+      return failure();
+    }
+    if (dimensionsAttr)
+      result.getOrAddProperties<DMABDOp::Properties>().dimensions =
+          dimensionsAttr;
+  }
+
+  // pad_dimensions
+  if (succeeded(parser.parseOptionalComma())) {
+    if (parser.parseCustomAttributeWithFallback(pad_dimensionsAttr, Type{})) {
+      return failure();
+    }
+    if (pad_dimensionsAttr)
+      result.getOrAddProperties<DMABDOp::Properties>().pad_dimensions =
+          pad_dimensionsAttr;
+  }
+
+  // pad_value
+  if (succeeded(parser.parseOptionalComma())) {
+    if (parser.parseKeyword("pad_value"))
+      return failure();
+    if (parser.parseEqual())
+      return failure();
+
+    if (parser.parseCustomAttributeWithFallback(
+            pad_valueAttr, parser.getBuilder().getIntegerType(32))) {
+      return failure();
+    }
+    if (pad_valueAttr)
+      result.getOrAddProperties<DMABDOp::Properties>().pad_value =
+          pad_valueAttr;
+  }
+  if (parser.parseRParen())
+    return failure();
+
+  auto loc = parser.getCurrentLocation();
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+  if (failed(verifyInherentAttrs(result.name, result.attributes, [&]() {
+        return parser.emitError(loc)
+               << "'" << result.name.getStringRef() << "' op ";
+      })))
+    return failure();
+
+  if (parser.resolveOperands(bufferOperands, bufferTypes, bufferOperandsLoc,
+                             result.operands))
+    return failure();
+
+  return success();
+}
+
+void DMABDOp::print(::mlir::OpAsmPrinter &printer) {
+  printer << "(";
+  printer << getBuffer();
+  printer << ' ' << ":";
+  printer << ' ';
+  {
+    auto type = getBuffer().getType();
+    if (auto validType = ::llvm::dyn_cast<::mlir::MemRefType>(type))
+      printer.printStrippedAttrOrType(validType);
+    else
+      printer << type;
+  }
+  if (getLenAttr() ||
+      getOffsetAttr() !=
+          ::mlir::OpBuilder((*this)->getContext())
+              .getIntegerAttr(
+                  ::mlir::OpBuilder((*this)->getContext()).getIntegerType(32),
+                  0)) {
+    printer << ",";
+    printer << ' ';
+    printer.printAttributeWithoutType(getOffsetAttr());
+  }
+  if (getLenAttr()) {
+    printer << ",";
+    printer << ' ';
+    printer.printAttributeWithoutType(getLenAttr());
+  }
+  if (getDimensionsAttr()) {
+    printer << ",";
+    printer << ' ';
+    printer.printStrippedAttrOrType(getDimensionsAttr());
+  }
+  if (getPadDimensionsAttr()) {
+    printer << ",";
+    printer << ' ';
+    printer.printStrippedAttrOrType(getPadDimensionsAttr());
+  }
+  if ((getPadValueAttr() &&
+       getPadValueAttr() !=
+           ::mlir::OpBuilder((*this)->getContext())
+               .getIntegerAttr(
+                   ::mlir::OpBuilder((*this)->getContext()).getIntegerType(32),
+                   0))) {
+    printer << ",";
+    printer << ' ' << "pad_value";
+    printer << ' ' << "=";
+    printer << ' ';
+    printer.printAttributeWithoutType(getPadValueAttr());
+  }
+  printer << ")";
+  ::llvm::SmallVector<::llvm::StringRef, 2> elidedAttrs;
+  elidedAttrs.push_back("offset");
+  elidedAttrs.push_back("len");
+  elidedAttrs.push_back("dimensions");
+  elidedAttrs.push_back("pad_dimensions");
+  elidedAttrs.push_back("pad_value");
+  printer.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
+}
+
 LogicalResult DMABDOp::verify() {
+  // Skip verification of the BDOp outside of mem operations.
+  // BDOps may appear elsewhere and subsequent lowerings will place them in the
+  // correct mem ops.
+  Operation *p = (*this)->getParentOp();
+  if (!llvm::isa<MemOp, MemTileDMAOp, ShimDMAOp, DMAOp>(*p)) {
+    return success();
+  }
+
   if (!isa<BufferOp, ExternalBufferOp>(getBuffer().getDefiningOp()))
     return emitOpError(
         "BDs only support BufferOp or ExternalBufferOp operands.");
@@ -1653,10 +1861,16 @@ LogicalResult DMABDOp::verify() {
     if (auto baseAddr = getBufferOp().getAddress(); baseAddr.has_value()) {
       int offsetInBytes = *baseAddr + getOffsetInBytes();
       if (offsetInBytes % 4)
-        return emitOpError(
-                   "bd address must be 4 byte (32b) aligned; got base+offset: ")
+        return emitOpError("bd address must be 4 byte (32b) aligned; got "
+                           "base+offset: ")
                << offsetInBytes << " (bytes)";
     }
+  }
+  if (auto packetInfo = getPacket()) {
+    if (packetInfo->getPktType() > 7)
+      return emitOpError("Packet type field can only hold 3 bits.");
+    if (packetInfo->getPktId() > 31)
+      return emitOpError("Packet ID field can only hold 5 bits.");
   }
 
   if (!getLen() && !getBuffer().getType().hasStaticShape())
@@ -1674,8 +1888,8 @@ int MemTileDMAOp::colIndex() { return getTileOp().colIndex(); }
 int MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
 /// Returns the region on the current operation that is callable. This may
-/// return nullptr in the case of an external callable object, e.g. an external
-/// function.
+/// return nullptr in the case of an external callable object, e.g. an
+/// external function.
 Region *MemTileDMAOp::getCallableRegion() { return &getBody(); }
 
 //===----------------------------------------------------------------------===//
@@ -1834,7 +2048,7 @@ int LockOp::colIndex() { return getTileOp().colIndex(); }
 int LockOp::rowIndex() { return getTileOp().rowIndex(); }
 
 LogicalResult LockOp::verify() {
-  if (auto result = UsesAreAccessable::verifyTrait(*this); result.failed())
+  if (auto result = UsesAreAccessible::verifyTrait(*this); result.failed())
     return result;
 
   if (getLockID().has_value()) {
@@ -1910,7 +2124,8 @@ LogicalResult UseLockOp::verify() {
     return (*this)->emitOpError(
         "AcquireGreaterEqual is not supported in AIE1.");
 
-  // Otherwise, AIE.useLock should be inside MemOp, MemTileDMAOp, or ShimDMAOp,
+  // Otherwise, AIE.useLock should be inside MemOp, MemTileDMAOp, or
+  // ShimDMAOp,
   if (HasSomeParent<MemOp, MemTileDMAOp, ShimDMAOp>::verifyTrait(*this)
           .succeeded()) {
     if (!(*this)->getBlock())
@@ -1922,8 +2137,8 @@ LogicalResult UseLockOp::verify() {
           "used in a DMA block that have multiple locks.");
 
     if (AcquireReleaseOneStateInDMABlock::verifyTrait(*this).failed())
-      return (*this)->emitOpError(
-          "acquires/releases the lock in a DMA block from/to multiple states.");
+      return (*this)->emitOpError("acquires/releases the lock in a DMA block "
+                                  "from/to multiple states.");
 
     if (HasSomeParent<MemOp>::verifyTrait(*this).succeeded() &&
         AccessesLocalLocks::verifyTrait(*this).failed())
@@ -1978,6 +2193,83 @@ WireBundle getConnectingBundle(WireBundle dir) {
 }
 
 } // namespace xilinx::AIE
+
+//===----------------------------------------------------------------------===//
+// BDChainOp
+//===----------------------------------------------------------------------===//
+
+ParseResult BDChainOp::parse(OpAsmParser &parser, OperationState &result) {
+  SmallVector<OpAsmParser::Argument> entryArgs;
+
+  // Symbol name, e.g. @my_chain
+  StringAttr symNameAttr;
+  if (parser.parseSymbolName(symNameAttr, SymbolTable::getSymbolAttrName(),
+                             result.attributes)) {
+    return failure();
+  }
+
+  // Entry arguments (placeholders), e.g. (%addr: memref<1xi32>)
+  ParseResult argParseResult = parser.parseCommaSeparatedList(
+      OpAsmParser::Delimiter::Paren, [&]() -> ParseResult {
+        OpAsmParser::Argument argument;
+        if (parser.parseArgument(argument, true, true)) {
+          return failure();
+        }
+        entryArgs.push_back(argument);
+        return success();
+      });
+  if (argParseResult) {
+    return argParseResult;
+  }
+
+  // BD Chain Body
+  auto *body = result.addRegion();
+  ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, false);
+  if (bodyParseResult) {
+    return bodyParseResult;
+  }
+
+  return success();
+}
+
+void BDChainOp::print(OpAsmPrinter &printer) {
+  auto taskName =
+      (*this)
+          ->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
+          .getValue();
+  printer << ' ';
+  printer.printSymbolName(taskName);
+
+  Region &body = getRegion();
+  auto argsIter = body.getArguments();
+  printer << '(';
+  for (auto it = argsIter.begin(); it != argsIter.end(); ++it) {
+    if (it != argsIter.begin()) {
+      printer << ", ";
+    }
+    printer.printRegionArgument(*it);
+  }
+  printer << ')';
+
+  printer << ' ';
+  printer.printRegion(body, false, true);
+}
+
+//===----------------------------------------------------------------------===//
+// ShimDMAAllocationOp
+//===----------------------------------------------------------------------===//
+
+ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,
+                                                      llvm::StringRef symbol) {
+  auto alloc_ops = device.getOps<ShimDMAAllocationOp>();
+  for (auto it = alloc_ops.begin(); it != alloc_ops.end(); ++it) {
+    AIE::ShimDMAAllocationOp a = *it;
+    if (a.getSymName() == symbol) {
+      return a;
+    }
+  }
+  return nullptr;
+}
 
 // Include implementations for custom attributes
 #define GET_ATTRDEF_CLASSES
