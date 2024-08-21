@@ -692,12 +692,14 @@ struct AIEObjectFifoStatefulTransformPass
     int acqNum = 1;
     int relNum = 1;
 
+    /*
     if (!dims.getValue().empty()) {
       lenOut = 1;
       for (auto dim = dims.begin(); dim != dims.end(); ++dim) {
         lenOut *= dim->getSize();
       }
     }
+    */
 
     // search for the buffers/locks (based on if this objFifo has a link)
     // identify size difference between input and output memrefs
