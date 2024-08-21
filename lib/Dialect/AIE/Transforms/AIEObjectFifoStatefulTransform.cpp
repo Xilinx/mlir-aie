@@ -28,7 +28,6 @@
 
 #include <numeric>
 #include <set>
-#include <stack>
 
 using namespace mlir;
 using namespace xilinx;
@@ -789,7 +788,6 @@ struct AIEObjectFifoStatefulTransformPass
                                std::set<TileOp> objectFifoTiles) {
     for (auto coreOp : device.getOps<CoreOp>()) {
       if (objectFifoTiles.count(coreOp.getTileOp()) > 0) {
-        std::vector<scf::ForOp> unrolledLoops;
         WalkResult res = coreOp.walk([&](scf::ForOp forLoop) {
           // look for operations on objectFifos
           // when multiple fifos in same loop, must use the smallest
@@ -797,7 +795,6 @@ struct AIEObjectFifoStatefulTransformPass
           bool found = false;
           std::set<int> objFifoSizes;
           Block *body = forLoop.getBody();
-          int64_t remainder = 0;
 
           for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
             if (acqOp.getOperation()->getParentOp() == forLoop) {
@@ -809,7 +806,6 @@ struct AIEObjectFifoStatefulTransformPass
 
           int unrollFactor =
               computeLCM(objFifoSizes); // also counts original loop body
-
           Region *region = forLoop->getParentRegion();
           while (remainder > 1 || found) {
             region->walk([&](scf::ForOp remLoop) {
@@ -827,6 +823,11 @@ struct AIEObjectFifoStatefulTransformPass
                     unrollFactor = tripCount;
                   remainder = tripCount % unrollFactor;
                 }
+                auto step =
+                forLoop.getStep().getDefiningOp<arith::ConstantOp>().getValue();
+                int64_t step_value =
+                llvm::dyn_cast<IntegerAttr>(step).getInt();
+                if(step_value < unrollFactor || found){
                 // // Process the for loop
                 if (failed(mlir::loopUnrollByFactor(remLoop, unrollFactor))) {
                   remLoop.emitOpError()
@@ -842,6 +843,12 @@ struct AIEObjectFifoStatefulTransformPass
                 found = false;
                 WalkResult::advance();
               }
+              }
+              else{
+                remainder = 0;
+                found = false;
+                WalkResult::advance();
+              }
             });
           }
           return WalkResult::advance();
@@ -852,7 +859,6 @@ struct AIEObjectFifoStatefulTransformPass
     }
     return success();
   }
-
   /// Function used to create a UseLockOp based on input parameters.
   /// acc is an accumulator map that tracks the indices of the next locks to
   /// acquire (or release). Uses op to find index of acc for next lockID.
