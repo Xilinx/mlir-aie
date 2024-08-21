@@ -49,6 +49,8 @@ using SwitchboxConnect = struct SwitchboxConnect {
   std::vector<std::vector<int>> usedCapacity;
   // how many packet streams are actually using this Channel
   std::vector<std::vector<int>> packetFlowCount;
+  // only sharing the channel with the same packet group id
+  std::vector<std::vector<int>> packetGroupId;
 
   // resize the matrices to the size of srcPorts and dstPorts
   void resize() {
@@ -60,6 +62,7 @@ using SwitchboxConnect = struct SwitchboxConnect {
     usedCapacity.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
     packetFlowCount.resize(srcPorts.size(),
                            std::vector<int>(dstPorts.size(), 0));
+    packetGroupId.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
   }
 
   // update demand at the beginning of each dijkstraShortestPaths iteration
@@ -114,7 +117,7 @@ using PathEndPoint = struct PathEndPoint {
 };
 
 using Flow = struct Flow {
-  bool isPacketFlow;
+  int packetGroupId;
   PathEndPoint src;
   std::vector<PathEndPoint> dsts;
 };

@@ -19,6 +19,7 @@ extern "C" {
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Region.h"
+#include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 
@@ -27,6 +28,7 @@ extern "C" {
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/ToolOutputFile.h"
 
 #include <algorithm>
 #include <cassert>
@@ -109,13 +111,13 @@ static const std::map<WireBundle, StrmSwPortType>
 
 // https://stackoverflow.com/a/32230306
 template <typename H1>
-raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value) {
+static raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value) {
   return out << label << "=" << std::forward<H1>(value);
 }
 
 template <typename H1, typename... T>
-raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value,
-                      T &&...rest) {
+static raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value,
+                             T &&...rest) {
   const char *pcomma = strchr(label, ',');
   return showArgs(out.write(label, pcomma - label)
                       << "=" << std::forward<H1>(value) << ',',
@@ -124,19 +126,19 @@ raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value,
 
 #define SHOW_ARGS(os, ...) showArgs(os, #__VA_ARGS__, __VA_ARGS__)
 
-raw_ostream &operator<<(raw_ostream &os, const XAie_LocType &loc) {
+static raw_ostream &operator<<(raw_ostream &os, const XAie_LocType &loc) {
   os << "XAie_LocType(col: " << std::to_string(loc.Col)
      << ", row: " << std::to_string(loc.Row) << ")";
   return os;
 }
 
-raw_ostream &operator<<(raw_ostream &os, const XAie_Lock &lock) {
+static raw_ostream &operator<<(raw_ostream &os, const XAie_Lock &lock) {
   os << "XAie_Lock(id: " << std::to_string(lock.LockId)
      << ", val: " << std::to_string(lock.LockVal) << ")";
   return os;
 }
 
-raw_ostream &operator<<(raw_ostream &os, const XAie_Packet &packet) {
+static raw_ostream &operator<<(raw_ostream &os, const XAie_Packet &packet) {
   os << "XAie_Packet(id: " << std::to_string(packet.PktId)
      << ", type: " << std::to_string(packet.PktType) << ")";
   return os;
@@ -190,11 +192,10 @@ auto ps = std::filesystem::path::preferred_separator;
 #define MEM_TILE_LOCK_ID_INCR 64
 #define BASE_ADDR_A_INCR 0x80000
 
-namespace xilinx::AIE {
-
-LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
-                                      const AIETargetModel &targetModel,
-                                      XAie_LocType &tileLoc) {
+static LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
+                                             Block &block,
+                                             const AIETargetModel &targetModel,
+                                             XAie_LocType &tileLoc) {
   LLVM_DEBUG(llvm::dbgs() << "\nstart configuring bds\n");
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
   bool acqEn;
@@ -241,11 +242,11 @@ LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
   return success();
 }
 
-LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
-                                 Block &block,
-                                 const AIETargetModel &targetModel,
-                                 XAie_LocType &tileLoc, int bdId,
-                                 std::optional<int> nextBdId) {
+static LogicalResult configureBdInBlock(XAie_DevInst &devInst,
+                                        XAie_DmaDesc &dmaTileBd, Block &block,
+                                        const AIETargetModel &targetModel,
+                                        XAie_LocType &tileLoc, int bdId,
+                                        std::optional<int> nextBdId) {
   std::optional<int> packetType;
   std::optional<int> packetID;
 
@@ -388,10 +389,11 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
   return success();
 };
 
-LogicalResult pushToBdQueueAndEnable(XAie_DevInst &devInst, Operation &op,
-                                     XAie_LocType &tileLoc, int chNum,
-                                     const DMAChannelDir &channelDir, int bdId,
-                                     int repeatCount) {
+static LogicalResult pushToBdQueueAndEnable(XAie_DevInst &devInst,
+                                            Operation &op,
+                                            XAie_LocType &tileLoc, int chNum,
+                                            const DMAChannelDir &channelDir,
+                                            int bdId, int repeatCount) {
   XAie_DmaDirection direction =
       channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
   auto enTokenIssue = tileLoc.Row == 0 && direction == DMA_S2MM;
@@ -405,9 +407,9 @@ LogicalResult pushToBdQueueAndEnable(XAie_DevInst &devInst, Operation &op,
   return success();
 };
 
-LogicalResult configureLocksAndBd(XAie_DevInst &devInst, Block &block,
-                                  XAie_LocType tileLoc,
-                                  const AIETargetModel &targetModel) {
+static LogicalResult configureLocksAndBd(XAie_DevInst &devInst, Block &block,
+                                         XAie_LocType tileLoc,
+                                         const AIETargetModel &targetModel) {
   DMABDOp bd = *block.getOps<DMABDOp>().begin();
   assert(bd.getBdId().has_value() &&
          "DMABDOp must have assigned bd_id; did you forget to run "
@@ -424,6 +426,7 @@ LogicalResult configureLocksAndBd(XAie_DevInst &devInst, Block &block,
   return success();
 };
 
+namespace {
 struct AIEControl {
   XAie_Config configPtr;
   XAie_DevInst devInst;
@@ -485,17 +488,28 @@ struct AIEControl {
     TRY_XAIE_API_FATAL_ERROR(XAie_UpdateNpiAddr, &devInst, NPI_ADDR);
   }
 
-  LogicalResult addAieElfToCDO(uint8_t col, uint8_t row,
-                               const StringRef elfPath, bool aieSim) {
+  LogicalResult addAieElf(uint8_t col, uint8_t row, const StringRef elfPath,
+                          bool aieSim) {
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_CoreDisable, &devInst,
+                                XAie_TileLoc(col, row));
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, &devInst,
+                                XAie_TileLoc(col, row),
+                                XAie_DmaChReset::DMA_CHANNEL_RESET);
+
     // loadSym: Load symbols from .map file. This argument is not used when
     // __AIESIM__ is not defined.
     TRY_XAIE_API_LOGICAL_RESULT(XAie_LoadElf, &devInst, XAie_TileLoc(col, row),
                                 elfPath.str().c_str(), /*loadSym*/ aieSim);
+
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, &devInst,
+                                XAie_TileLoc(col, row),
+                                XAie_DmaChReset::DMA_CHANNEL_UNRESET);
+
     return success();
   }
 
-  LogicalResult addAieElfsToCDO(DeviceOp &targetOp, const StringRef workDirPath,
-                                bool aieSim) {
+  LogicalResult addAieElfs(DeviceOp &targetOp, const StringRef workDirPath,
+                           bool aieSim) {
     for (auto tileOp : targetOp.getOps<TileOp>())
       if (tileOp.isShimNOCorPLTile()) {
         // Resets no needed with V2 kernel driver
@@ -510,7 +524,7 @@ struct AIEControl {
             fileName = (llvm::Twine("core_") + std::to_string(col) + "_" +
                         std::to_string(row) + ".elf")
                            .str();
-          if (failed(addAieElfToCDO(
+          if (failed(addAieElf(
                   col, row,
                   (llvm::Twine(workDirPath) + std::string(1, ps) + fileName)
                       .str(),
@@ -521,7 +535,7 @@ struct AIEControl {
     return success();
   }
 
-  LogicalResult addInitConfigToCDO(DeviceOp &targetOp) {
+  LogicalResult addInitConfig(DeviceOp &targetOp) {
     for (auto tileOp : targetOp.getOps<TileOp>()) {
       auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
       if (!tileOp.isShimTile() && tileOp.getCoreOp()) {
@@ -608,14 +622,6 @@ struct AIEControl {
       int32_t row = switchboxOp.rowIndex();
       XAie_LocType tileLoc = XAie_TileLoc(col, row);
       assert(targetModel.isNPU() && "Only NPU currently supported");
-      if (row == 0) {
-        // FIXME hack for TCT routing
-        // TODO Support both channels
-        auto slvPortNum = 0;
-        auto mstrPortNum = 0;
-        TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_StrmConnCctEnable, &devInst,
-                                tileLoc, CTRL, slvPortNum, SOUTH, mstrPortNum);
-      }
 
       Block &b = switchboxOp.getConnections().front();
       for (auto connectOp : b.getOps<ConnectOp>())
@@ -626,52 +632,60 @@ struct AIEControl {
             WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
             connectOp.destIndex());
 
-      for (auto connectOp : b.getOps<MasterSetOp>()) {
+      for (auto masterSetOp : b.getOps<MasterSetOp>()) {
         int mask = 0;
         int arbiter = -1;
 
-        for (auto val : connectOp.getAmsels()) {
+        for (auto val : masterSetOp.getAmsels()) {
           AMSelOp amsel = cast<AMSelOp>(val.getDefiningOp());
           arbiter = amsel.arbiterIndex();
           int msel = amsel.getMselValue();
           mask |= (1 << msel);
         }
 
-        bool isdma = connectOp.getDestBundle() == WireBundle::DMA;
+        // the default is to keep header
+        bool keepHeader = true;
+        // the default for dma destinations is to drop the header
+        if (masterSetOp.getDestBundle() == WireBundle::DMA)
+          keepHeader = false;
         // assume a connection going south from row zero gets wired to shimdma
-        // by a shimmux. But if it's south 0 assume it's tct routing and don't
-        // drop header. TODO: fix the assumption
-        if (!isdma && (switchboxOp.rowIndex() == 0))
-          isdma = (connectOp.getDestBundle() == WireBundle::South) &&
-                  (connectOp.destIndex() != 0);
-        // Flag for overriding DROP_HEADER. TODO: Formalize this in tablegen
-        isdma &= !connectOp->hasAttr("keep_pkt_header");
-        auto dropHeader =
-            isdma ? XAIE_SS_PKT_DROP_HEADER : XAIE_SS_PKT_DONOT_DROP_HEADER;
+        // by a shimmux.
+        if (switchboxOp.rowIndex() == 0 &&
+            masterSetOp.getDestBundle() == WireBundle::South)
+          keepHeader = false;
+
+        // "keep_pkt_header" attribute overrides the above defaults, if set
+        if (auto keep = masterSetOp.getKeepPktHeader())
+          keepHeader = *keep;
+
+        auto dropHeader = keepHeader ? XAIE_SS_PKT_DONOT_DROP_HEADER
+                                     : XAIE_SS_PKT_DROP_HEADER;
         TRY_XAIE_API_EMIT_ERROR(
-            connectOp, XAie_StrmPktSwMstrPortEnable, &devInst, tileLoc,
-            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
-            connectOp.destIndex(), dropHeader, arbiter, mask);
+            masterSetOp, XAie_StrmPktSwMstrPortEnable, &devInst, tileLoc,
+            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(masterSetOp.getDestBundle()),
+            masterSetOp.destIndex(), dropHeader, arbiter, mask);
       }
 
-      for (auto connectOp : b.getOps<PacketRulesOp>()) {
+      for (auto packetRulesOp : b.getOps<PacketRulesOp>()) {
         int slot = 0;
-        Block &block = connectOp.getRules().front();
+        Block &block = packetRulesOp.getRules().front();
         for (auto slotOp : block.getOps<PacketRuleOp>()) {
           AMSelOp amselOp = cast<AMSelOp>(slotOp.getAmsel().getDefiningOp());
           int arbiter = amselOp.arbiterIndex();
           int msel = amselOp.getMselValue();
-          TRY_XAIE_API_EMIT_ERROR(
-              connectOp, XAie_StrmPktSwSlavePortEnable, &devInst, tileLoc,
-              WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
-              connectOp.sourceIndex());
+          TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlavePortEnable,
+                                  &devInst, tileLoc,
+                                  WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+                                      packetRulesOp.getSourceBundle()),
+                                  packetRulesOp.sourceIndex());
           auto packetInit = XAie_PacketInit(slotOp.valueInt(), /*PktType*/ 0);
           // TODO Need to better define packet id,type used here
-          TRY_XAIE_API_EMIT_ERROR(
-              connectOp, XAie_StrmPktSwSlaveSlotEnable, &devInst, tileLoc,
-              WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
-              connectOp.sourceIndex(), slot, packetInit, slotOp.maskInt(), msel,
-              arbiter);
+          TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlaveSlotEnable,
+                                  &devInst, tileLoc,
+                                  WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+                                      packetRulesOp.getSourceBundle()),
+                                  packetRulesOp.sourceIndex(), slot, packetInit,
+                                  slotOp.maskInt(), msel, arbiter);
           slot++;
         }
       }
@@ -724,7 +738,7 @@ struct AIEControl {
     return success();
   }
 
-  LogicalResult addCoreEnableToCDO(DeviceOp &targetOp) {
+  LogicalResult addCoreEnable(DeviceOp &targetOp) {
     // Start execution of all the cores.
     for (auto tileOp : targetOp.getOps<TileOp>()) {
       auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
@@ -733,26 +747,20 @@ struct AIEControl {
     }
     return success();
   }
-
-  void dmaUpdateBdAddr(DeviceOp &targetOp, int col, int row, size_t addr,
-                       size_t bdId) {
-    auto tileLoc = XAie_TileLoc(col, row);
-    TRY_XAIE_API_FATAL_ERROR(XAie_DmaUpdateBdAddr, &devInst, tileLoc, addr,
-                             bdId);
-  }
 };
 
-} // namespace xilinx::AIE
+} // namespace
 
-void initializeCDOGenerator(byte_ordering endianness, bool cdoDebug) {
+static void initializeCDOGenerator(byte_ordering endianness, bool cdoDebug) {
   // Enables AXI-MM prints for configs being added in CDO
   if (cdoDebug)
     EnAXIdebug();
   setEndianness(endianness);
 };
 
-LogicalResult generateCDOBinary(const StringRef outputPath,
-                                const std::function<LogicalResult()> &cb) {
+static LogicalResult
+generateCDOBinary(const StringRef outputPath,
+                  const std::function<LogicalResult()> &cb) {
 
   // TODO(newling): Get bootgen team to remove print statement in this function.
   startCDOFileStream(outputPath.str().c_str());
@@ -767,58 +775,59 @@ LogicalResult generateCDOBinary(const StringRef outputPath,
   return success();
 }
 
-LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
-                                            const StringRef workDirPath,
-                                            DeviceOp &targetOp, bool aieSim,
-                                            bool enableCores) {
+static LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
+                                                   const StringRef workDirPath,
+                                                   DeviceOp &targetOp,
+                                                   bool aieSim,
+                                                   bool enableCores) {
 
   if (failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_elfs.bin")
               .str(),
           [&ctl, &targetOp, &workDirPath, &aieSim] {
-            return ctl.addAieElfsToCDO(targetOp, workDirPath, aieSim);
+            return ctl.addAieElfs(targetOp, workDirPath, aieSim);
           })))
     return failure();
 
   if (failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_init.bin")
               .str(),
-          [&ctl, &targetOp] { return ctl.addInitConfigToCDO(targetOp); })))
+          [&ctl, &targetOp] { return ctl.addInitConfig(targetOp); })))
     return failure();
 
   if (enableCores &&
       failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_enable.bin")
               .str(),
-          [&ctl, &targetOp] { return ctl.addCoreEnableToCDO(targetOp); })))
+          [&ctl, &targetOp] { return ctl.addCoreEnable(targetOp); })))
     return failure();
 
   return success();
 }
 
-LogicalResult generateCDOUnified(AIEControl &ctl, const StringRef workDirPath,
-                                 DeviceOp &targetOp, bool aieSim,
-                                 bool enableCores) {
+static LogicalResult generateCDOUnified(AIEControl &ctl,
+                                        const StringRef workDirPath,
+                                        DeviceOp &targetOp, bool aieSim,
+                                        bool enableCores) {
   return generateCDOBinary(
       (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo.bin").str(),
       [&ctl, &targetOp, &workDirPath, &aieSim, &enableCores] {
         if (!targetOp.getOps<CoreOp>().empty() &&
-            failed(ctl.addAieElfsToCDO(targetOp, workDirPath, aieSim)))
+            failed(ctl.addAieElfs(targetOp, workDirPath, aieSim)))
           return failure();
-        if (failed(ctl.addInitConfigToCDO(targetOp)))
+        if (failed(ctl.addInitConfig(targetOp)))
           return failure();
         if (enableCores && !targetOp.getOps<CoreOp>().empty() &&
-            failed(ctl.addCoreEnableToCDO(targetOp)))
+            failed(ctl.addCoreEnable(targetOp)))
           return failure();
         return success();
       });
 }
 
-LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
-                                      byte_ordering endianness,
-                                      bool emitUnified, bool cdoDebug,
-                                      bool aieSim, bool xaieDebug,
-                                      bool enableCores) {
+static LogicalResult
+translateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
+                     byte_ordering endianness, bool emitUnified, bool cdoDebug,
+                     bool aieSim, bool xaieDebug, bool enableCores) {
 
   auto devOps = m.getOps<DeviceOp>();
   assert(llvm::range_size(devOps) == 1 &&
@@ -844,16 +853,76 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
   }();
   return result;
 }
-// Not sure why but defining this with xilinx::AIE will create a duplicate
-// symbol in libAIETargets.a that then doesn't actually match the header?
-namespace xilinx::AIE {
-LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
-                                      bool bigEndian, bool emitUnified,
-                                      bool cdoDebug, bool aieSim,
-                                      bool xaieDebug, bool enableCores) {
+
+static LogicalResult generateTxn(AIEControl &ctl, const StringRef workDirPath,
+                                 DeviceOp &targetOp, bool aieSim,
+                                 bool enableElfs, bool enableInit,
+                                 bool enableCores) {
+  if (enableElfs && !targetOp.getOps<CoreOp>().empty() &&
+      failed(ctl.addAieElfs(targetOp, workDirPath, aieSim)))
+    return failure();
+  if (enableInit && failed(ctl.addInitConfig(targetOp)))
+    return failure();
+  if (enableCores && !targetOp.getOps<CoreOp>().empty() &&
+      failed(ctl.addCoreEnable(targetOp)))
+    return failure();
+  return success();
+}
+
+static LogicalResult translateToTxn(ModuleOp m, llvm::StringRef workDirPath,
+                                    bool aieSim, bool xaieDebug,
+                                    bool enableCores) {
+
+  auto devOps = m.getOps<DeviceOp>();
+  if (llvm::range_size(devOps) > 1)
+    return m.emitError("only exactly 1 device op supported.");
+
+  DeviceOp targetOp = *devOps.begin();
+  const BaseNPUTargetModel &targetModel =
+      (const BaseNPUTargetModel &)targetOp.getTargetModel();
+
+  if (!targetModel.isNPU())
+    return failure();
+
+  AIEControl ctl(aieSim, xaieDebug, targetModel);
+
+  // start collecting transations
+  XAie_StartTransaction(&ctl.devInst, XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
+
+  auto result =
+      generateTxn(ctl, workDirPath, targetOp, aieSim, true, true, true);
+
+  // Export the transactions to a buffer
+  uint8_t *txn_ptr = XAie_ExportSerializedTransaction(&ctl.devInst, 0, 0);
+
+  // write transactions to file
+  XAie_TxnHeader *hdr = (XAie_TxnHeader *)txn_ptr;
+  std::string filename =
+      (llvm::Twine(workDirPath) + std::string(1, ps) + "txn.bin").str();
+
+  std::string errorMessage;
+  auto output = openOutputFile(filename, &errorMessage);
+  if (!output) {
+    llvm::errs() << errorMessage << "\n";
+    return failure();
+  }
+  output->os().write(reinterpret_cast<const char *>(txn_ptr), hdr->TxnSize);
+  output->keep();
+  return result;
+}
+
+LogicalResult xilinx::AIE::AIETranslateToCDODirect(
+    ModuleOp m, llvm::StringRef workDirPath, bool bigEndian, bool emitUnified,
+    bool cdoDebug, bool aieSim, bool xaieDebug, bool enableCores) {
   byte_ordering endianness =
       bigEndian ? byte_ordering::Big_Endian : byte_ordering::Little_Endian;
-  return AIETranslateToCDODirect(m, workDirPath, endianness, emitUnified,
-                                 cdoDebug, aieSim, xaieDebug, enableCores);
+  return translateToCDODirect(m, workDirPath, endianness, emitUnified, cdoDebug,
+                              aieSim, xaieDebug, enableCores);
 }
-} // namespace xilinx::AIE
+
+LogicalResult xilinx::AIE::AIETranslateToTxn(ModuleOp m,
+                                             llvm::StringRef workDirPath,
+                                             bool aieSim, bool xaieDebug,
+                                             bool enableCores) {
+  return translateToTxn(m, workDirPath, aieSim, xaieDebug, enableCores);
+}
