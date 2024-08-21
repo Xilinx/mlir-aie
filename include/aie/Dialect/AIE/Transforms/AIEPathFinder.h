@@ -22,7 +22,7 @@
 namespace xilinx::AIE {
 
 #define OVER_CAPACITY_COEFF 0.1
-#define USED_CAPACITY_COEFF 0.1
+#define USED_CAPACITY_COEFF 0.02
 #define DEMAND_COEFF 1.1
 #define DEMAND_BASE 1.0
 #define MAX_CIRCUIT_STREAM_CAPACITY 1

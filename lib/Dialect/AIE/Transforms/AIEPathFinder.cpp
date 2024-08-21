@@ -439,7 +439,9 @@ Pathfinder::findPaths(const int maxIterations) {
 
   int iterationCount = -1;
   int illegalEdges = 0;
+#ifndef NDEBUG
   int totalPathLength = 0;
+#endif
   do {
     // if reach maxIterations, throw an error since no routing can be found
     if (++iterationCount >= maxIterations) {
@@ -459,7 +461,9 @@ Pathfinder::findPaths(const int maxIterations) {
 
     // "rip up" all routes
     illegalEdges = 0;
+#ifndef NDEBUG
     totalPathLength = 0;
+#endif
     routingSolution.clear();
     for (auto &[_, sb] : graph) {
       for (size_t i = 0; i < sb.srcPorts.size(); i++) {
@@ -551,10 +555,12 @@ Pathfinder::findPaths(const int maxIterations) {
                 << sb.usedCapacity[i][j] << ", demand = " << sb.demand[i][j]
                 << ", over_capacity_count = " << sb.overCapacity[i][j] << "\n");
           }
+#ifndef NDEBUG
           // calculate total path length (across switchboxes)
           if (sb.srcCoords != sb.dstCoords) {
             totalPathLength += sb.usedCapacity[i][j];
           }
+#endif
         }
       }
     }
@@ -566,11 +572,11 @@ Pathfinder::findPaths(const int maxIterations) {
                  << PathEndPoint.coords.row << "):\t");
       LLVM_DEBUG(llvm::dbgs() << switchSetting);
     }
-#endif
     LLVM_DEBUG(llvm::dbgs()
                << "\t\t---End findPaths iteration #" << iterationCount
                << " , illegal edges count = " << illegalEdges
                << ", total path length = " << totalPathLength << "---\n");
+#endif
   } while (illegalEdges >
            0); // continue iterations until a legal routing is found
 
