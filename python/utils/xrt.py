@@ -164,3 +164,37 @@ def execute(app, ifm_mem_fmt, total_wts):
     app.buffers[4].write(total_wts)  # wts's standard format OIYX | scalar OIYX
     app.run()
     return app.buffers[5].read()
+
+def write_wts(app, total_wts):
+    app.buffers[4].write(total_wts)  # wts's standard format OIYX | scalar OIYX
+
+def execute_inference(app, ifm_mem_fmt):
+    app.buffers[3].write(ifm_mem_fmt)  # input's standard format CYX | scalar YCX
+    app.run()
+    return app.buffers[5].read()
+
+def setup_aie_single(
+    xclbin_path,
+    insts_path,
+    in_0_shape,
+    in_0_dtype,
+    out_buf_shape,
+    out_buf_dtype,
+    enable_trace=False,
+    kernel_name="MLIR_AIE",
+    trace_size=16384,
+):
+    app = AIE_Application(xclbin_path, insts_path, kernel_name)
+    app.register_buffer(3, shape=in_0_shape, dtype=in_0_dtype)
+    if enable_trace:
+        out_buf_len_bytes = np.prod(out_buf_shape) * np.dtype(out_buf_dtype).itemsize
+        out_buf_shape = (out_buf_len_bytes + trace_size,)
+        out_buf_dtype = np.uint8
+    app.register_buffer(5, shape=out_buf_shape, dtype=out_buf_dtype)
+    return app
+
+
+def execute_single(app, ifm_mem_fmt):
+    app.buffers[3].write(ifm_mem_fmt)  # input's standard format CYX | scalar YCX
+    app.run()
+    return app.buffers[5].read()

@@ -1665,7 +1665,12 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         BDDimLayoutArrayAttr:$dimensionsToStream,
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
         DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
-        DefaultValuedAttr<BoolAttr, "false">:$plio
+        DefaultValuedAttr<BoolAttr, "false">:$plio,
+        // via_shared_mem==0 means use producer tile's memory module
+        // via_shared_mem==1 means use consumer tile's memory module
+        OptionalAttr<AIEI32Attr>:$via_shared_mem,
+        // memtile_repeat==0 means "do it once" and don't repeat
+        OptionalAttr<AIEI32Attr>:$memtile_repeat
   );
 
   let assemblyFormat = [{
@@ -1745,13 +1750,15 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
 
   let arguments = (
     ins SymbolRefArrayAttr:$fifoIns,
-        SymbolRefArrayAttr:$fifoOuts
+        SymbolRefArrayAttr:$fifoOuts,
+        I64ArrayAttr:$src_offsets,
+        I64ArrayAttr:$dst_offsets
   );
 
   let hasCustomAssemblyFormat = 1;
 
   let assemblyFormat = [{
-    $fifoIns `->` $fifoOuts `(` `)` attr-dict
+    $fifoIns `->` $fifoOuts `(` $src_offsets $dst_offsets `)` attr-dict
   }];
 
   let hasVerifier = 1;
@@ -1759,16 +1766,12 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
   let extraClassDeclaration = [{
     std::vector<ObjectFifoCreateOp> getInputObjectFifos();
     std::vector<ObjectFifoCreateOp> getOutputObjectFifos();
-
-    bool isJoin() {
-      return getFifoIns().size() > 1;
-    }
-
-    bool isDistribute() {
-      return getFifoOuts().size() > 1;
-    }
-
+    bool isJoin() { return getFifoIns().size() > 1; }
+    bool isDistribute() { return getFifoOuts().size() > 1; }
     std::optional<mlir::Value> getOptionalSharedTile();
+    std::optional<int> getRepeatCount();
+    std::vector<int> getJoinTranferLengths();
+    std::vector<int> getDistributeTranferLengths();
   }];
 }
 
