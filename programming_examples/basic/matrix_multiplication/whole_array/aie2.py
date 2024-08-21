@@ -25,13 +25,13 @@ def main():
     argparser.add_argument("-N", type=int, default=512)
     argparser.add_argument("-m", type=int, default=64)
     argparser.add_argument("-k", type=int, default=64)
-    argparser.add_argument("-n", type=int, default=64)
+    argparser.add_argument("-n", type=int, default=32)
     argparser.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4], default=4)
     argparser.add_argument(
         "--dtype_in", type=str, choices=["bf16", "i16"], default="i16"
     )
     argparser.add_argument(
-        "--dtype_out", type=str, choices=["bf16", "i16", "f32", "i32"], default="i32"
+        "--dtype_out", type=str, choices=["bf16", "i16", "f32", "i32"], default="i16"
     )
     args = argparser.parse_args()
     with mlir_mod_ctx() as ctx:
@@ -79,9 +79,9 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
         s = 8
         t = 4
     elif dtype_in_str == "i16":
-        r = 1
-        s = 1
-        t = 1
+        r = 4
+        s = 4
+        t = 4
 
     # Input matrix A:
     # Conceptually, we divide input A into (m * n_rows, k)-sized blocks. These
@@ -111,7 +111,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
     # memory, it may be because too much code is generated due to ObjectFIFO
     # loop unrollings. Reducing the depth to 1 here will work around that at
     # a big performance cost.
-    fifo_depth = 1
+    fifo_depth = 2
 
     n_tiles_per_core = (M // m) * (N // n) // n_aie_cores
 
@@ -268,7 +268,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                             elem_out = C_l1l2_fifos[row][col].acquire(
                                 ObjectFifoPort.Produce, 1
                             )
-                            call(zero_scalar, [elem_out])
+                            call(zero, [elem_out])
 
                             for _ in for_(K // k):
                                 elem_in_a = A_l2l1_fifos[row].acquire(
@@ -277,7 +277,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                                 elem_in_b = B_l2l1_fifos[col].acquire(
                                     ObjectFifoPort.Consume, 1
                                 )
-                                call(matmul_scalar, [elem_in_a, elem_in_b, elem_out])
+                                call(matmul, [elem_in_a, elem_in_b, elem_out])
                                 A_l2l1_fifos[row].release(ObjectFifoPort.Consume, 1)
                                 B_l2l1_fifos[col].release(ObjectFifoPort.Consume, 1)
                                 yield_([])

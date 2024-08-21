@@ -128,7 +128,7 @@ extern "C" {
 #define zero_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,              \
                                mlir_type_out, r, s, t)                         \
   void zero_##mlir_type_out(ctype_out *c_out) {                                \
-    zero_vectorized<ctype_out, DIM_M, DIM_N, 32>(c_out);                       \
+    zero_vectorized<ctype_out, DIM_M, DIM_N>(c_out);                           \
   }
 
 #define zero_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out,   \
