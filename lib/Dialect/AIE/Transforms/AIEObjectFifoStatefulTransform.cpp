@@ -825,28 +825,27 @@ struct AIEObjectFifoStatefulTransformPass
                     unrollFactor = tripCount;
                   remainder = tripCount % unrollFactor;
                 }
-                auto step =
-                forLoop.getStep().getDefiningOp<arith::ConstantOp>().getValue();
-                int64_t step_value =
-                llvm::dyn_cast<IntegerAttr>(step).getInt();
-                if(step_value < unrollFactor || found){
-                // // Process the for loop
-                if (failed(mlir::loopUnrollByFactor(remLoop, unrollFactor))) {
-                  remLoop.emitOpError()
-                      << "could not be unrolled with unrollFactor: "
-                      << unrollFactor << "\n";
-                  WalkResult::interrupt();
+                auto step = forLoop.getStep()
+                                .getDefiningOp<arith::ConstantOp>()
+                                .getValue();
+                int64_t step_value = llvm::dyn_cast<IntegerAttr>(step).getInt();
+                if (step_value < unrollFactor || found) {
+                  // // Process the for loop
+                  if (failed(mlir::loopUnrollByFactor(remLoop, unrollFactor))) {
+                    remLoop.emitOpError()
+                        << "could not be unrolled with unrollFactor: "
+                        << unrollFactor << "\n";
+                    WalkResult::interrupt();
+                  }
+                  unrolledLoops.push_back(remLoop);
+                  found = false;
+                  WalkResult::advance();
+                } else {
+                  remainder = 0;
+                  found = false;
+                  WalkResult::advance();
                 }
-                unrolledLoops.push_back(remLoop);
-                found = false;
-                WalkResult::advance();
               } else {
-                remainder = 0;
-                found = false;
-                WalkResult::advance();
-              }
-              }
-              else{
                 remainder = 0;
                 found = false;
                 WalkResult::advance();
