@@ -23,6 +23,16 @@ consistent view of the memory map of a system.
 _Assigns the lockIDs of locks that do not have IDs._
 
 Assigns the lockIDs of locks that do not have IDs.
+### `-aie-assign-tile-controller-ids`
+
+_Assign controller id per aie.tile_op_
+
+For each aie.tile_op used in the design, assign a unique controller ID.
+
+#### Options
+```
+-column-wise-unique-ids : Flag to generate controller ids only unique within each column. Otherwise globally unique.
+```
 ### `-aie-canonicalize-device`
 
 _Canonicalize Designs to include a toplevel device_
@@ -54,6 +64,18 @@ to another.  These flows may be circuit-switched flows (represented
 by aie.flow) or a packet-switched connection (represensted by
 aie.packetflow).  This pass is primarily used for testing automatic
 routing.
+### `-aie-generate-column-control-overlay`
+
+_Spawns streaming interconnect network for column control_
+
+For each column of AIE tiles being employed in the design, spawn a network of control packet
+streaming interconnects which overlay on top of the design.
+
+#### Options
+```
+-route-shim-to-tct       : Flag to generate TCT routing between tile CTRL and shim SOUTH ports. Available options: ['shim-only', 'all-tiles', 'disable'].
+-route-shim-to-tile-ctrl : Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.
+```
 ### `-aie-localize-locks`
 
 _Convert global locks to a core-relative index_
