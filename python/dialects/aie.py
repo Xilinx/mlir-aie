@@ -315,25 +315,16 @@ class object_fifo(ObjectFifoCreateOp):
     def release(self, port, num_elem):
         return objectfifo_release(port, self.sym_name.value, num_elem)
 
-    def set_via_shared_mem(self, port):
-        num = 0
-        if port == ObjectFifoPort.Produce:
-            num = 0
-        elif port == ObjectFifoPort.Consume:
-            num = 1
-        int_num = IntegerAttr.get(T.i32(), num)
-        self.attributes["via_shared_mem"] = int_num
-
-    def set_memtile_repeat(self, num):
-        int_num = IntegerAttr.get(T.i32(), num)
-        self.attributes["memtile_repeat"] = int_num
-
 
 # Create an aie objectFifo_link between input and output objectFifos.
 class object_fifo_link(ObjectFifoLinkOp):
     """Specialize ObjectFifoLinkOp class constructor to take python variables"""
 
-    def __init__(self, fifoIns, fifoOuts, srcOffsets=[], dstOffsets=[]):
+    def __init__(
+        self,
+        fifoIns,
+        fifoOuts,
+    ):
         if not isinstance(fifoIns, List):
             fifoIns = [fifoIns]
         if not isinstance(fifoOuts, List):
@@ -347,8 +338,6 @@ class object_fifo_link(ObjectFifoLinkOp):
         super().__init__(
             fifoIns=fifoInRefs,
             fifoOuts=fifoOutRefs,
-            src_offsets=srcOffsets,
-            dst_offsets=dstOffsets,
         )
 
 
