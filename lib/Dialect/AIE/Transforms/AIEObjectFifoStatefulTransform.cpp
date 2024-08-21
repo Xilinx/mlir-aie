@@ -810,8 +810,9 @@ struct AIEObjectFifoStatefulTransformPass
           int unrollFactor =
               computeLCM(objFifoSizes); // also counts original loop body
 
-          while (remainder != 0 || found) {
-            forLoop->getParentRegion()->walk([&](scf::ForOp remLoop) {
+          Region *region = forLoop->getParentRegion();
+          while (remainder > 1 || found) {
+            region->walk([&](scf::ForOp remLoop) {
               if (std::count(unrolledLoops.begin(), unrolledLoops.end(),
                              remLoop) == 0) {
                 if (remLoop.getSingleLowerBound() &&
