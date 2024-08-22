@@ -10,7 +10,7 @@
 
 // RUN: aie-translate --aie-npu-instgen %s | FileCheck %s
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     memref.global "private" constant @write_data : memref<8xi32> = dense<[100, 101, 102, 103, 104 ,105, 106, 107]>
     aiex.runtime_sequence(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
 
