@@ -24,14 +24,14 @@ module {
     aie.flow(%tile_0_2, DMA : 0, %tile_0_0, DMA : 0)
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
-      %c4294967295 = arith.constant 10 : index
+      %c10 = arith.constant 10 : index
       %c1 = arith.constant 1 : index
       %c2 = arith.constant 2 : index
       %c3 = arith.constant 3 : index
 
       %init_input_fifo_counter = arith.constant 0 : index
       %init_output_fifo_counter = arith.constant 0 : index
-      scf.for %arg0 = %c0 to %c4294967295 step %c1 iter_args(%input_fifo_counter = %init_input_fifo_counter, %output_fifo_counter = %init_output_fifo_counter) -> (index, index) {
+      scf.for %arg0 = %c0 to %c10 step %c1 iter_args(%input_fifo_counter = %init_input_fifo_counter, %output_fifo_counter = %init_output_fifo_counter) -> (index, index) {
         // Cycle through the objects in the fifos using a modulo of the fifo depths
         // on the fifo counters (updated at the end of each iteration).
         %mod_depth_in = arith.remsi %input_fifo_counter, %c3 : index
@@ -84,7 +84,7 @@ module {
         aie.use_lock(%output_fifo_prod_lock, AcquireGreaterEqual, 1)
 
         %is_first_iter = arith.cmpi eq, %arg0, %c0 : index
-        %last_iter = arith.subi %c4294967295, %c1 : index
+        %last_iter = arith.subi %c10, %c1 : index
         %is_last_iter = arith.cmpi eq, %arg0, %last_iter : index
 
         %rel_in = scf.if %is_first_iter -> (index) {

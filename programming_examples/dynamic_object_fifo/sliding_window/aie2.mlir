@@ -1,4 +1,4 @@
-//===- aie.mlir ------------------------------------------------*- MLIR -*-===//
+//===- aie2.mlir ------------------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -14,7 +14,7 @@
 
 module {
   aie.device(npu1_1col) {
-    func.func private @passthrough_64_i32(memref<10xi32>, memref<10xi32>, memref<10xi32>)
+    func.func private @sum_10_i32(memref<10xi32>, memref<10xi32>, memref<10xi32>)
 
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
@@ -23,40 +23,35 @@ module {
 
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
-      %c4294967295 = arith.constant 4294967295 : index
       %c1 = arith.constant 1 : index
-      scf.for %arg0 = %c0 to %c4294967295 step %c1 {
-        %0 = aie.objectfifo.acquire @output_fifo(Produce, 1) : !aie.objectfifosubview<memref<10xi32>>
-        %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+      %c8 = arith.constant 9 : index
 
-        %is_first_iter = arith.cmpi eq, %arg0, %c0 : index
-        %last_iter = arith.subi %c4294967295, %c1 : index
-        %is_last_iter = arith.cmpi eq, %arg0, %last_iter : index
+      %0 = aie.objectfifo.acquire @output_fifo(Produce, 1) : !aie.objectfifosubview<memref<10xi32>>
+      %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+      %2 = aie.objectfifo.acquire @input_fifo(Consume, 1) : !aie.objectfifosubview<memref<10xi32>>
+      %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+      func.call @sum_10_i32(%3, %3, %1) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+      aie.objectfifo.release @output_fifo(Produce, 1)
 
-        scf.if %is_first_iter {
-          %2 = aie.objectfifo.acquire @input_fifo(Consume, 1) : !aie.objectfifosubview<memref<10xi32>>
-          %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-          func.call @sum_64_i32(%3, %3, %1) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
-
-        } else {
-          scf.if %is_last_iter {
-            %2 = aie.objectfifo.acquire @input_fifo(Consume, 2) : !aie.objectfifosubview<memref<10xi32>>
-            %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-            %4 = aie.objectfifo.subview.access %2[1] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-            func.call @sum_64_i32(%3, %4, %1) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
-            aie.use_lock(%input_fifo_cons_prod_lock, Release, 2)
-            
-          } else {
-            %2 = aie.objectfifo.acquire @input_fifo(Consume, 2) : !aie.objectfifosubview<memref<10xi32>>
-            %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-            %4 = aie.objectfifo.subview.access %2[1] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-            func.call @sum_64_i32(%3, %4, %1) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
-            aie.use_lock(%input_fifo_cons_prod_lock, Release, 1)
-          }
-        }
-
+      scf.for %arg0 = %c0 to %c8 step %c1 {
+        %4 = aie.objectfifo.acquire @output_fifo(Produce, 1) : !aie.objectfifosubview<memref<10xi32>>
+        %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+        %6 = aie.objectfifo.acquire @input_fifo(Consume, 2) : !aie.objectfifosubview<memref<10xi32>>
+        %7 = aie.objectfifo.subview.access %6[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+        %8 = aie.objectfifo.subview.access %6[1] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+        func.call @sum_10_i32(%7, %8, %5) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+        aie.objectfifo.release @input_fifo(Consume, 1)
         aie.objectfifo.release @output_fifo(Produce, 1)
       }
+
+      %9 = aie.objectfifo.acquire @output_fifo(Produce, 1) : !aie.objectfifosubview<memref<10xi32>>
+      %10 = aie.objectfifo.subview.access %9[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+      %11 = aie.objectfifo.acquire @input_fifo(Consume, 2) : !aie.objectfifosubview<memref<10xi32>>
+      %12 = aie.objectfifo.subview.access %11[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+      %13 = aie.objectfifo.subview.access %11[1] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+      func.call @sum_10_i32(%12, %13, %10) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+      aie.objectfifo.release @input_fifo(Consume, 2)
+      aie.objectfifo.release @output_fifo(Produce, 1)
 
       aie.end
     } {link_with = "kernel.o"}
