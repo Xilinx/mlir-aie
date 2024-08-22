@@ -110,39 +110,39 @@ static const std::map<WireBundle, StrmSwPortType>
 };
 
 // https://stackoverflow.com/a/32230306
-template <typename H1>
-static raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value) {
-  return out << label << "=" << std::forward<H1>(value);
-}
+// template <typename H1>
+// static raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value) {
+//   return out << label << "=" << std::forward<H1>(value);
+// }
 
-template <typename H1, typename... T>
-static raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value,
-                             T &&...rest) {
-  const char *pcomma = strchr(label, ',');
-  return showArgs(out.write(label, pcomma - label)
-                      << "=" << std::forward<H1>(value) << ',',
-                  pcomma + 1, std::forward<T>(rest)...);
-}
+// template <typename H1, typename... T>
+// static raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value,
+//                              T &&...rest) {
+//   const char *pcomma = strchr(label, ',');
+//   return showArgs(out.write(label, pcomma - label)
+//                       << "=" << std::forward<H1>(value) << ',',
+//                   pcomma + 1, std::forward<T>(rest)...);
+// }
 
-#define SHOW_ARGS(os, ...) showArgs(os, #__VA_ARGS__, __VA_ARGS__)
+// #define SHOW_ARGS(os, ...) showArgs(os, #__VA_ARGS__, __VA_ARGS__)
 
-static raw_ostream &operator<<(raw_ostream &os, const XAie_LocType &loc) {
-  os << "XAie_LocType(col: " << std::to_string(loc.Col)
-     << ", row: " << std::to_string(loc.Row) << ")";
-  return os;
-}
+// static raw_ostream &operator<<(raw_ostream &os, const XAie_LocType &loc) {
+//   os << "XAie_LocType(col: " << std::to_string(loc.Col)
+//      << ", row: " << std::to_string(loc.Row) << ")";
+//   return os;
+// }
 
-static raw_ostream &operator<<(raw_ostream &os, const XAie_Lock &lock) {
-  os << "XAie_Lock(id: " << std::to_string(lock.LockId)
-     << ", val: " << std::to_string(lock.LockVal) << ")";
-  return os;
-}
+// static raw_ostream &operator<<(raw_ostream &os, const XAie_Lock &lock) {
+//   os << "XAie_Lock(id: " << std::to_string(lock.LockId)
+//      << ", val: " << std::to_string(lock.LockVal) << ")";
+//   return os;
+// }
 
-static raw_ostream &operator<<(raw_ostream &os, const XAie_Packet &packet) {
-  os << "XAie_Packet(id: " << std::to_string(packet.PktId)
-     << ", type: " << std::to_string(packet.PktType) << ")";
-  return os;
-}
+// static raw_ostream &operator<<(raw_ostream &os, const XAie_Packet &packet) {
+//   os << "XAie_Packet(id: " << std::to_string(packet.PktId)
+//      << ", type: " << std::to_string(packet.PktType) << ")";
+//   return os;
+// }
 
 // So that we can use the pattern if(auto r = TRY_XAIE_API...) { // r is nonzero
 // }
