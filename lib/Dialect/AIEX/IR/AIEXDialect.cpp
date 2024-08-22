@@ -555,6 +555,13 @@ std::optional<uint32_t> AIEX::DMAConfigureTaskOp::getFirstBdId() {
     return std::nullopt;
   }
   auto bd_ops = body.front().getOps<AIE::DMABDOp>();
+  if (bd_ops.empty() && body.front().getNumSuccessors() == 1) {
+    // Allow the first block to be empty and point to the entry point of the
+    // chain. This allows for specifying cyclying BD chains (infinite loops)
+    // within the constraints of MLIR syntax.
+    Block &chain_entry = *body.front().getSuccessor(0);
+    bd_ops = chain_entry.getOps<AIE::DMABDOp>();
+  }
   if (bd_ops.empty()) {
     return std::nullopt;
   }

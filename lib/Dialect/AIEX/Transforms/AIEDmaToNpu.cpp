@@ -227,6 +227,32 @@ public:
   matchAndRewrite(NpuPushQueueOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
+    auto column = rewriter.getI32IntegerAttr(op.getColumn());
+    auto row = rewriter.getI32IntegerAttr(0);
+
+    // control packet for issuing token
+    if (op.getIssueToken()) {
+      uint32_t ctrl_offset =
+          op.getDirection() == AIE::DMAChannelDir::MM2S ? 0x1D210 : 0x1D200;
+      if (op.getChannel() == 1)
+        ctrl_offset += 0x8;
+      uint32_t controller_id = 0;
+      auto builder = OpBuilder::atBlockBegin(
+          op->getParentOfType<AIE::DeviceOp>().getBody());
+      auto tOp = AIE::TileOp::getOrCreate(
+          builder, op->getParentOfType<AIE::DeviceOp>(), op.getColumn(), 0);
+      if (tOp && tOp->hasAttr("controller_id")) {
+        auto controllerIdAttr =
+            tOp->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
+        controller_id = controllerIdAttr.getPktId();
+      }
+      controller_id = controller_id << 8;
+      if (controller_id)
+        rewriter.create<NpuMaskWrite32Op>(op->getLoc(), ctrl_offset,
+                                          controller_id, 0x0F00, nullptr,
+                                          column, row);
+    }
+
     // the offset of the task queue register in the tile
     uint32_t queue_offset;
     if (op.getDirection() == AIE::DMAChannelDir::MM2S)
@@ -245,8 +271,6 @@ public:
     if (op.getIssueToken())
       cmd |= 0x80000000;
 
-    auto column = rewriter.getI32IntegerAttr(op.getColumn());
-    auto row = rewriter.getI32IntegerAttr(0);
     rewriter.create<NpuWrite32Op>(op->getLoc(), queue_offset, cmd, nullptr,
                                   column, row);
     rewriter.eraseOp(op);

@@ -207,7 +207,14 @@ def bottleneck4AIEs():
             wts_buf_02 = object_fifo(
                 "wts_buf_02", MemTile, ComputeTile4, 1, weightsLayer3_ty
             )
-            object_fifo_link(inOF_wts_0_L3L2, [of_wts_buf_00, wts_buf_01, wts_buf_02])
+            of_offsets = [
+                0,
+                np.prod(weightsLayer1_ty.shape),
+                np.prod(weightsLayer1_ty.shape) + np.prod(weightsLayer2_ty.shape),
+            ]
+            object_fifo_link(
+                inOF_wts_0_L3L2, [of_wts_buf_00, wts_buf_01, wts_buf_02], [], of_offsets
+            )
 
             # activation tensor
             of_act_2_3_5 = object_fifo(

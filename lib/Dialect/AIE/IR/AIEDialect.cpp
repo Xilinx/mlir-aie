@@ -650,6 +650,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
     for (auto repeat : repeat_counts)
       if (repeat_counts[0] != repeat)
         return emitError("repeat counts of output object FIFOs must be equal");
+
   } else {
     if (!getSrcOffsets().empty() && !getDstOffsets().empty())
       return emitOpError("all offsets should be empty if there is no "
