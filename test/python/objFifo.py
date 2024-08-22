@@ -41,6 +41,7 @@ from util import construct_and_print_module
 # CHECK:    }
 # CHECK:  }
 
+
 @construct_and_print_module
 def objFifo_example():
     dev = Device(AIEDevice.xcve2302)
