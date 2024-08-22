@@ -113,8 +113,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             bd_op.emitOpError("Free called on BD chain with unassigned IDs.");
             return WalkResult::interrupt();
           }
-          assert(gen.bdIdAlreadyAssigned(bd_op.getBdId().value()) &&
-                 "MLIR state and BdIDGenerator state out of sync.");
+          if (!gen.bdIdAlreadyAssigned(bd_op.getBdId().value())) {
+            // Ignore double-frees.
+            return WalkResult::advance();
+          }
           gen.freeBdId(bd_op.getBdId().value());
           return WalkResult::advance();
         });

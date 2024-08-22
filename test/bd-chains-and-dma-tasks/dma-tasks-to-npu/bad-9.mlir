@@ -9,7 +9,7 @@
 //
 // RUN: aie-opt --verify-diagnostics --aie-dma-tasks-to-npu %s 
 
-// This test ensures the proper error is emitted if a task with no BDs are issued in the runtime sequence.
+// This test ensures the proper error is emitted if a task with no BDs is issued in the runtime sequence.
 
 module {
   aie.device(npu1_4col) {
@@ -19,6 +19,9 @@ module {
     aiex.runtime_sequence(%arg0: memref<32xi8>) {
       // expected-note@+1 {{Error encountered}}
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        ^bb0:
+          aie.next_bd ^bb1
+        ^bb1:
           // expected-error@+1 {{Block ending in this terminator does not contain a required}}
           aie.end
       }
