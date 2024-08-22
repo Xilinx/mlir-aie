@@ -325,6 +325,10 @@ class object_fifo(ObjectFifoCreateOp):
         int_num = IntegerAttr.get(T.i32(), num)
         self.attributes["via_shared_mem"] = int_num
 
+    def set_memtile_repeat(self, num):
+        int_num = IntegerAttr.get(T.i32(), num)
+        self.attributes["memtile_repeat"] = int_num
+
 
 # Create an aie objectFifo_link between input and output objectFifos.
 class object_fifo_link(ObjectFifoLinkOp):
