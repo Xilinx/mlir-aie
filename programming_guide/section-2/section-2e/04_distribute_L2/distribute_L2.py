@@ -33,7 +33,7 @@ def distribute_L2():
             of_in0 = object_fifo("in0", MemTile, ComputeTile0, 2, memRef_8_ty)
             of_in1 = object_fifo("in1", MemTile, ComputeTile1, 2, memRef_8_ty)
             of_in2 = object_fifo("in2", MemTile, ComputeTile2, 2, memRef_8_ty)
-            object_fifo_link(of_in, [of_in0, of_in1, of_in2])
+            object_fifo_link(of_in, [of_in0, of_in1, of_in2], [], [0, 8, 16])
 
             # Set up compute tiles
             # Compute tile 2

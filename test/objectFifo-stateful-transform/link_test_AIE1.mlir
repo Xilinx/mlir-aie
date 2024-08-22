@@ -96,7 +96,7 @@ module @link_AIE1 {
         aie.objectfifo @of1 (%tile20, {%tile12}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
         aie.objectfifo @of2 (%tile12, {%tile22}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
-        aie.objectfifo.link [@of1] -> [@of2] ()
+        aie.objectfifo.link [@of1] -> [@of2] ([] [])
 
         %ext_buff_in = aie.external_buffer {sym_name = "ext_buff_in"} : memref<16xi32>
         aie.objectfifo.register_external_buffers @of1 (%tile20, {%ext_buff_in}) : (memref<16xi32>)

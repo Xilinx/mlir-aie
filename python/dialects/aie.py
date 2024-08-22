@@ -331,11 +331,7 @@ class object_fifo(ObjectFifoCreateOp):
 class object_fifo_link(ObjectFifoLinkOp):
     """Specialize ObjectFifoLinkOp class constructor to take python variables"""
 
-    def __init__(
-        self,
-        fifoIns,
-        fifoOuts,
-    ):
+    def __init__(self, fifoIns, fifoOuts, srcOffsets=[], dstOffsets=[]):
         if not isinstance(fifoIns, List):
             fifoIns = [fifoIns]
         if not isinstance(fifoOuts, List):
@@ -349,6 +345,8 @@ class object_fifo_link(ObjectFifoLinkOp):
         super().__init__(
             fifoIns=fifoInRefs,
             fifoOuts=fifoOutRefs,
+            src_offsets=srcOffsets,
+            dst_offsets=dstOffsets,
         )
 
 

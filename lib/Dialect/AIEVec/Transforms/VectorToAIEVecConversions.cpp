@@ -459,22 +459,22 @@ static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
   rewriter.setInsertionPointToStart(
       &parentModuleOp.getRegion().getBlocks().front());
   SymbolTable st = SymbolTable(parentModuleOp);
-  func::FuncOp fn_op_lookup = st.lookup<func::FuncOp>(funcName);
-  func::FuncOp fn_op;
+  func::FuncOp fnOpLookup = st.lookup<func::FuncOp>(funcName);
+  func::FuncOp fnOp;
   // if the function is already declared, use the existing function, don't
   // declare multiple times
-  if (fn_op_lookup != NULL) {
-    fn_op = fn_op_lookup;
+  if (fnOpLookup != NULL) {
+    fnOp = fnOpLookup;
   } else {
     StringAttr t1 = rewriter.getStringAttr("sym_visibility");
     StringAttr t2 = rewriter.getStringAttr("private");
     NamedAttribute funcAccess = NamedAttribute(t1, t2);
-    FunctionType fn_type =
+    FunctionType fnType =
         mlir::FunctionType::get(rewriter.getContext(), inTypes, outTypes);
-    fn_op = rewriter.create<func::FuncOp>(parentModuleOp.getLoc(), funcName,
-                                          fn_type, funcAccess);
+    fnOp = rewriter.create<func::FuncOp>(parentModuleOp.getLoc(), funcName,
+                                         fnType, funcAccess);
   }
-  return fn_op;
+  return fnOp;
 }
 
 static bool matchExpOpForLUT(math::ExpOp::Adaptor adaptor) {
@@ -486,10 +486,7 @@ static bool matchExpOpForLUT(math::ExpOp::Adaptor adaptor) {
   Type scalarType = srcType.getElementType();
   unsigned elWidth = scalarType.getIntOrFloatBitWidth();
   unsigned laneSize = getVectorLaneSize(srcType);
-  if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
-    return false;
-
-  return true;
+  return isa<FloatType>(scalarType) && laneSize == 16 && elWidth == 16;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1948,14 +1945,14 @@ struct ComputeExpOpByLUTLLVMPattern : OpConversionPattern<math::ExpOp> {
 
     VectorType v16bf16Ty = mlir::VectorType::get({16}, rewriter.getBF16Type());
     VectorType v8i64Ty = mlir::VectorType::get({8}, rewriter.getI64Type());
-    func::FuncOp fn_op = getOrInsertFuncDecl(
+    func::FuncOp fnOp = getOrInsertFuncDecl(
         rewriter, moduleOp, funcName, TypeRange{v16bf16Ty}, TypeRange{v8i64Ty});
 
     SmallVector<Value> expOperands = {adaptor.getOperand()};
 
-    Type accTypeNative = getVectorOpDestType(srcType, /*AIEML =*/true);
+    Type accTypeNative = getVectorOpDestType(srcType, /*AIE2 =*/true);
     auto callOp =
-        rewriter.create<func::CallOp>(expOp.getLoc(), fn_op, expOperands);
+        rewriter.create<func::CallOp>(expOp.getLoc(), fnOp, expOperands);
     auto resCastOp = rewriter.create<vector::BitCastOp>(
         expOp.getLoc(), accTypeNative, callOp.getResults());
     auto shiftParamOp = rewriter.create<arith::ConstantOp>(

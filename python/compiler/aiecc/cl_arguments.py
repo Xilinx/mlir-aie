@@ -152,6 +152,13 @@ def parse_args(args=None):
         help="Use basic memory allocation scheme for AIE buffer address assignment",
     )
     parser.add_argument(
+        "--generate-ctrl-pkt-overlay",
+        dest="ctrl_pkt_overlay",
+        default=False,
+        action="store_true",
+        help="Generate column-wise overlay of control packet routings",
+    )
+    parser.add_argument(
         "--aie-generate-airbin",
         dest="airbin",
         default=False,

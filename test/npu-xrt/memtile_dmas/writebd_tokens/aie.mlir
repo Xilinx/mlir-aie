@@ -8,12 +8,12 @@
 module {
   aie.device(npu1_1col) {
 
-    %tile_0_0 = aie.tile(0, 0)
-    %tile_0_1 = aie.tile(0, 1)
+    %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
+    %tile_0_1 = aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
 
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
     aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
-
+    
     aie.packet_flow(0x1) {
       aie.packet_source<%tile_0_1, "Ctrl" : 0>
       aie.packet_dest<%tile_0_0, "South" : 0>

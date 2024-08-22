@@ -77,12 +77,19 @@ memRef_tiles_ty = T.memref(tile_size, T.i32())
 inX_fifo_names = [f"in{i}" for i in range(n_cores)]     # list of input object FIFO names
 inX_fifos = {}                                          # map name to its object FIFO
 
+# Calculate the offsets into the input/output data for the join/distribute
+if n_cores > 1:
+    of_offsets = [16 * i for i in range(n_cores)]
+else:
+    of_offsets = []
+object_fifo_link(of_in, inX_fifo_names[0:n_cores], [], of_offsets)
+
 of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, memRef_data_ty)
 for i in range(n_cores):
     inX_fifos[inX_fifo_names[i]] = object_fifo(
         inX_fifo_names[i], MemTile, ComputeTiles[i], buffer_depth, memRef_tiles_ty
     )
-object_fifo_link(of_in, [inX_fifo_names])
+object_fifo_link(of_in, inX_fifo_names[0:n_cores], [], of_offsets)
 
 
 # Output data movement
@@ -95,7 +102,7 @@ for i in range(n_cores):
     outX_fifos[outX_fifo_names[i]] = object_fifo(
         outX_fifo_names[i], ComputeTiles[i], MemTile, buffer_depth, memRef_tiles_ty
     )
-object_fifo_link([outX_fifo_names], of_out)
+object_fifo_link(outX_fifo_names[0:n_cores], of_out, of_offsets, [])
 ```
 
 <img src="../../assets/MultiDesign.svg" width="1000">
