@@ -16,11 +16,11 @@ module {
   
     aie.objectfifo @objFifo_in0(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @objFifo_in1(%t01, {%t02}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
-    aie.objectfifo.link [@objFifo_in0] -> [@objFifo_in1] ([] [])
+    aie.objectfifo.link [@objFifo_in0] -> [@objFifo_in1] ()
 
     aie.objectfifo @objFifo_out1(%t02, {%t01}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
     aie.objectfifo @objFifo_out0(%t01, {%t00}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo.link [@objFifo_out1] -> [@objFifo_out0] ([] [])
+    aie.objectfifo.link [@objFifo_out1] -> [@objFifo_out0] ()
   
     aie.core(%t02) {
       %c8 = arith.constant 8 : index
