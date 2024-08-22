@@ -282,19 +282,21 @@ def AIEVec_ExtOp:
 }
 
 def AIEVec_InsOp:
-  AIEVec_Op<"ins", [
+  AIEVec_Op<"insert", [
     Pure,
     AllTypesMatch<["dest", "result"]>
   ]>,
   Arguments<(ins AnyType:$source,
-                 VectorOfBitWidthAndElementTypes<512, [I8, I16, BF16, I32, F32]>:$dest,
+                 AIE2VectorType:$dest,
                  Index:$idx)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE2 insert element in vector";
   let description = [{
+    AMD-specific vector insert operation. Inserts the source value in the
+    destination vector starting from the specified index.
   }];
   let assemblyFormat = "$source `,` $dest [$idx] $attr-dict `:` type($result)";
-  let hasVerifier = 0;
+  let hasVerifier = 1;
 }
 
 def AIEVec_PackOp:

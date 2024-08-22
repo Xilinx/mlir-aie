@@ -403,42 +403,6 @@ def VectorInsertI64I512IntrOp :
                    I32:$idx,
                    VectorOfLengthAndType<[2], [I32]>:$elem)>;
 
-////class AIEV2VInsert16_bf512 : Intrinsic<[llvm_v32bf16_ty], [llvm_v32bf16_ty,llvm_i32_ty,llvm_bfloat_ty], [IntrNoMem]>;
-////def int_aie2_vinsert16_bf512 : ClangBuiltin<"__builtin_aiev2_vinsert_bf16_bf512">, AIEV2VInsert16_bf512;
-//def VectorInsertBF16BF512IntrOp :
-//    AIEVec2_IntrOp<"vinsert16.bf512",
-//        [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
-//    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$dst,
-//                   I32:$idx,
-//                   BF16:$elem)>;
-//
-////class AIEV2VInsert32_bf512 : Intrinsic<[llvm_v32bf16_ty], [llvm_v32bf16_ty,llvm_i32_ty,llvm_v2bf16_ty], [IntrNoMem]>;
-////def int_aie2_vinsert32_bf512 : ClangBuiltin<"__builtin_aiev2_vinsert_bf32_bf512">, AIEV2VInsert32_bf512;
-//def VectorInsert2xBF16BF512IntrOp :
-//    AIEVec2_IntrOp<"vinsert32.bf512",
-//        [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
-//    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$dst,
-//                   I32:$idx,
-//                   VectorOfLengthAndType<[2], [BF16]>:$elem)>;
-//
-////class AIEV2VInsert64_bf512 : Intrinsic<[llvm_v32bf16_ty], [llvm_v32bf16_ty,llvm_i32_ty,llvm_v4bf16_ty], [IntrNoMem]>;
-////def int_aie2_vinsert64_bf512 : ClangBuiltin<"__builtin_aiev2_vinsert_bf64_bf512">, AIEV2VInsert64_bf512;
-//def VectorInsert4xBF16BF512IntrOp :
-//    AIEVec2_IntrOp<"vinsert64.bf512",
-//        [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
-//    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$dst,
-//                   I32:$idx,
-//                   VectorOfLengthAndType<[4], [BF16]>:$elem)>;
-//
-////class AIEV2VInsert32_accfloat : Intrinsic<[llvm_v8i64_ty], [llvm_v8i64_ty,llvm_i32_ty,llvm_float_ty], [IntrNoMem]>;
-////def int_aie2_vinsert32_accfloat : ClangBuiltin<"__builtin_aiev2_vinsert32_accfloat">, AIEV2VInsert32_accfloat;
-//def VectorInsertF32F1024IntrOp :
-//    AIEVec2_IntrOp<"vinsert32.accfloat",
-//        [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
-//    Arguments<(ins VectorOfLengthAndType<[8], [I32]>:$dst,
-//                   I32:$idx,
-//                   F32:$elem)>;
-//
 // ----- MAX ELEMENT -----
 
 def VectorMaxLt8IntrOp :

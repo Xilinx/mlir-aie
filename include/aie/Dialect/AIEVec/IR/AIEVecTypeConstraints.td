@@ -51,6 +51,16 @@ class VectorOfBitWidthAndElementTypes<int bitwidth, list<Type> allowedTypes> :
             CPred<ShapedTypeBitWidth<"_self">.result # " == " # bitwidth>]>,
        bitwidth # "-bit wide vector, of " # AnyTypeOf<allowedTypes>.summary>;
 
+def AIE2VectorType :
+  AnyTypeOf<[VectorOfBitWidthAndElementTypes<128, [I4, I8, I16, I32, BF16, F32]>,
+             VectorOfBitWidthAndElementTypes<256, [I4, I8, I16, I32, BF16, F32]>,
+             VectorOfBitWidthAndElementTypes<512, [I4, I8, I16, I32, BF16, F32]>,
+             VectorOfBitWidthAndElementTypes<1024, [I4, I8, I16, I32, BF16, F32]>],
+            "an AIE2-compatible vector type",
+            "::mlir::VectorType">;
+
+def AIE2AccVectorType :
+  AnyTypeOf<[VectorOfBitWidthAndElementTypes<512,
 def AIE2MatMulLHS :
   AnyTypeOf<[VectorOfShapeAndType<[4, 16], I8>,
              VectorOfShapeAndType<[4, 8], I8>,
@@ -151,13 +161,13 @@ class IsValidAIE2MatMulShapeAndType<string lhs, string rhs, string acc> :
 class isOperandResultTypePairValidForAIE2MulElem<string lhs, string rhs, string acc> :
   PredOpTrait<acc # " type is a valid accumulator type given the type of the" #
               " operands.",
-    Or<[  
-      And <[ElementTypeIsPred<acc,I32>, ElementTypeIsPred<lhs,I8>]>, 
-      And <[ElementTypeIsPred<acc,I32>, ElementTypeIsPred<lhs,I16>]>, 
-      And <[ElementTypeIsPred<acc,I64>, ElementTypeIsPred<lhs,I32>]>, 
-      And <[ElementTypeIsPred<acc,F32>, ElementTypeIsPred<lhs,BF16>]>, 
+    Or<[
+      And <[ElementTypeIsPred<acc,I32>, ElementTypeIsPred<lhs,I8>]>,
+      And <[ElementTypeIsPred<acc,I32>, ElementTypeIsPred<lhs,I16>]>,
+      And <[ElementTypeIsPred<acc,I64>, ElementTypeIsPred<lhs,I32>]>,
+      And <[ElementTypeIsPred<acc,F32>, ElementTypeIsPred<lhs,BF16>]>,
       And <[ElementTypeIsPred<acc,F32>, ElementTypeIsPred<lhs,F32>]>
     ]>>;
 
- 
+
 #endif
