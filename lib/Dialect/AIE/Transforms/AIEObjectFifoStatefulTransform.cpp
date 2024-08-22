@@ -824,6 +824,7 @@ struct AIEObjectFifoStatefulTransformPass
                                std::set<TileOp> objectFifoTiles) {
     for (auto coreOp : device.getOps<CoreOp>()) {
       if (objectFifoTiles.count(coreOp.getTileOp()) > 0) {
+        std::vector<scf::ForOp> unrolledLoops;
         WalkResult res = coreOp.walk([&](scf::ForOp forLoop) {
           // look for operations on objectFifos
           // when multiple fifos in same loop, must use the smallest
@@ -831,6 +832,7 @@ struct AIEObjectFifoStatefulTransformPass
           bool found = false;
           std::set<int> objFifoSizes;
           Block *body = forLoop.getBody();
+          int64_t remainder = 0;
 
           for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
             if (acqOp.getOperation()->getParentOp() == forLoop) {
@@ -840,26 +842,51 @@ struct AIEObjectFifoStatefulTransformPass
             }
           }
 
-          if (found) {
-            int unrollFactor =
-                computeLCM(objFifoSizes); // also counts original loop body
-            // if loop iterations < unrollFactor, unroll the loop fully
-            if (forLoop.getSingleLowerBound() &&
-                forLoop.getSingleUpperBound() && forLoop.getSingleStep()) {
-              int64_t tripCount =
-                  constantTripCount(*(forLoop.getSingleLowerBound()),
-                                    *(forLoop.getSingleUpperBound()),
-                                    *(forLoop.getSingleStep()))
-                      .value_or(0);
-              if (tripCount < unrollFactor)
-                unrollFactor = tripCount;
-            }
-            if (failed(mlir::loopUnrollByFactor(forLoop, unrollFactor))) {
-              forLoop.emitOpError()
-                  << "could not be unrolled with unrollFactor: " << unrollFactor
-                  << "\n";
-              return WalkResult::interrupt();
-            }
+          int unrollFactor =
+              computeLCM(objFifoSizes); // also counts original loop body
+          Region *region = forLoop->getParentRegion();
+          while (remainder > 1 || found) {
+            region->walk([&](scf::ForOp remLoop) {
+              if (std::count(unrolledLoops.begin(), unrolledLoops.end(),
+                             remLoop) == 0) {
+                if (remLoop.getSingleLowerBound() &&
+                    remLoop.getSingleUpperBound() && remLoop.getSingleStep()) {
+                  int64_t tripCount =
+                      constantTripCount(*(remLoop.getSingleLowerBound()),
+                                        *(remLoop.getSingleUpperBound()),
+                                        *(remLoop.getSingleStep()))
+                          .value_or(0);
+                  // if loop iterations < unrollFactor, unroll the loop fully
+                  if (tripCount < unrollFactor)
+                    unrollFactor = tripCount;
+                  remainder = tripCount % unrollFactor;
+                }
+                auto step = forLoop.getStep()
+                                .getDefiningOp<arith::ConstantOp>()
+                                .getValue();
+                int64_t step_value = llvm::dyn_cast<IntegerAttr>(step).getInt();
+                if (step_value < unrollFactor || found) {
+                  // // Process the for loop
+                  if (failed(mlir::loopUnrollByFactor(remLoop, unrollFactor))) {
+                    remLoop.emitOpError()
+                        << "could not be unrolled with unrollFactor: "
+                        << unrollFactor << "\n";
+                    WalkResult::interrupt();
+                  }
+                  unrolledLoops.push_back(remLoop);
+                  found = false;
+                  WalkResult::advance();
+                } else {
+                  remainder = 0;
+                  found = false;
+                  WalkResult::advance();
+                }
+              } else {
+                remainder = 0;
+                found = false;
+                WalkResult::advance();
+              }
+            });
           }
           return WalkResult::advance();
         });
