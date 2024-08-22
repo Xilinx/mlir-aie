@@ -21,7 +21,7 @@
 // CHECK: aie.objectfifo @obj1(%[[TILE_0_0]], {%[[TILE_0_1]]}, 4 : i32) : !aie.objectfifo<memref<2048xi32, 1>>
 // CHECK: aie.objectfifo @obj2(%[[TILE_0_1]] toStream [<size = 8, stride = 4>, <size = 32, stride = 32>, <size = 4, stride = 1>], {%[[TILE_0_2]], %[[TILE_0_3]]}, 4 : i32) : !aie.objectfifo<memref<1024xi32, 1>>
 // CHECK: aie.objectfifo @obj3(%[[TILE_0_1]] toStream [<size = 8, stride = 4>, <size = 32, stride = 32>, <size = 4, stride = 1>], {%[[TILE_1_2]], %[[TILE_1_3]]}, 4 : i32) : !aie.objectfifo<memref<1024xi32, 1>>
-// CHECK: aie.objectfifo.link [@obj1] -> [@obj2, @obj3]()
+// CHECK: aie.objectfifo.link [@obj1] -> [@obj2, @obj3]([] [0, 1024])
 aie.device(npu1_4col) {
   memref.global "public" @out0 : memref<16xi32>
   %tile_0_2 = aie.tile(0, 2)
@@ -33,5 +33,5 @@ aie.device(npu1_4col) {
   aie.objectfifo @obj1(%tile_0_0, {%tile_0_1}, 4 : i32) : !aie.objectfifo<memref<2048xi32, 1>>
   aie.objectfifo @obj2(%tile_0_1 toStream [<size = 8, stride = 4>, <size = 32, stride = 32>, <size = 4, stride = 1>], {%tile_0_2, %tile_0_3}, 4 : i32) : !aie.objectfifo<memref<1024xi32, 1>>
   aie.objectfifo @obj3(%tile_0_1 toStream [<size = 8, stride = 4>, <size = 32, stride = 32>, <size = 4, stride = 1>], {%tile_1_2, %tile_1_3}, 4 : i32) : !aie.objectfifo<memref<1024xi32, 1>>
-  aie.objectfifo.link [@obj1] -> [@obj2, @obj3]()
+  aie.objectfifo.link [@obj1] -> [@obj2, @obj3]([] [0, 1024])
 }
