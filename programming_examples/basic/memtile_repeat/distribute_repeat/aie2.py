@@ -100,7 +100,7 @@ def distribute_repeat():
             tensor_out_ty = T.memref(out_size, T.i32())
             tensor_in_ty = T.memref(N, T.i32())
 
-            @FuncOp.from_py_func(tensor_in_ty, tensor_in_ty, tensor_out_ty)
+            @runtime_sequence(tensor_in_ty, tensor_in_ty, tensor_out_ty)
             def sequence(A, B, C):
                 npu_dma_memcpy_nd(
                     metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, out_size]
