@@ -208,6 +208,8 @@ bool checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,
 int setBufferAddress(BufferOp buffer, int numBanks, int startBankIndex,
                      std::vector<int64_t> &nextAddrInBanks,
                      std::vector<BankLimits> &bankLimits) {
+  assert(startBankIndex < numBanks ||
+         "Unexpected input value for startBankIndex");
   int bankIndex = startBankIndex;
   for (int i = 0; i < numBanks; i++) {
     int64_t startAddr = nextAddrInBanks[bankIndex];
@@ -215,12 +217,11 @@ int setBufferAddress(BufferOp buffer, int numBanks, int startBankIndex,
     if (endAddr <= bankLimits[bankIndex].endAddr || i == numBanks - 1) {
       buffer.setMemBank(bankIndex);
       setAndUpdateAddressInBank(buffer, startAddr, endAddr, nextAddrInBanks);
-      bankIndex++;
+      bankIndex = (bankIndex + 1) % numBanks;
       break;
     }
-    bankIndex++;
+    bankIndex = (bankIndex + 1) % numBanks;
   }
-  bankIndex %= numBanks;
   return bankIndex;
 }
 
