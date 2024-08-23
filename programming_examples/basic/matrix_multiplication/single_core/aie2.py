@@ -271,7 +271,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                     )
 
                 # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
-                rows_per_block = 6
+                rows_per_block = 4
                 for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
                     # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
                     # that's what this loop is for
@@ -286,6 +286,9 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                         )
                         bd_id_base = 8 * pingpong
                         num_tile_rows = min([rows_per_block // 2, M_div_m - row_base])
+                        if num_tile_rows <= 0:
+                            # At the very last iteration, we may not need a 'pong' iteration
+                            break
                         npu_dma_memcpy_nd(
                             metadata="outC",
                             bd_id=bd_id_base,
