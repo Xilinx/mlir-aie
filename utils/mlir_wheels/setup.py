@@ -97,7 +97,6 @@ class CMakeBuild(build_ext):
             "-DLLVM_BUILD_TESTS=OFF",
             "-DLLVM_BUILD_UTILS=ON",
             "-DLLVM_CCACHE_BUILD=ON",
-            "-DLLVM_ENABLE_ASSERTIONS=ON",
             f"-DLLVM_ENABLE_RTTI={os.getenv('ENABLE_RTTI', 'ON')}",
             "-DLLVM_ENABLE_ZSTD=OFF",
             "-DLLVM_INCLUDE_BENCHMARKS=OFF",
