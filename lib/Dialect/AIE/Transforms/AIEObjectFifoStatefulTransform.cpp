@@ -782,74 +782,99 @@ struct AIEObjectFifoStatefulTransformPass
       lcm = i * lcm / std::gcd(i, lcm);
     return lcm;
   }
-
   // Function that unrolls for-loops that contain objectFifo operations.
   LogicalResult unrollForLoops(DeviceOp &device, OpBuilder &builder,
                                std::set<TileOp> objectFifoTiles) {
     for (auto coreOp : device.getOps<CoreOp>()) {
       if (objectFifoTiles.count(coreOp.getTileOp()) > 0) {
         std::vector<scf::ForOp> unrolledLoops;
+        std::map<Operation *, bool> foundMap;
+        std::map<Operation *, int64_t> remainderMap;
+        std::map<Operation *, int64_t> tripCountMap;
         WalkResult res = coreOp.walk([&](scf::ForOp forLoop) {
           // look for operations on objectFifos
           // when multiple fifos in same loop, must use the smallest
           // common multiplier as the unroll factor
-          bool found = false;
+          foundMap[forLoop.getOperation()] = false;
           std::set<int> objFifoSizes;
           Block *body = forLoop.getBody();
-          int64_t remainder = 0;
-
+          remainderMap[forLoop.getOperation()] = 0;
           for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
             if (acqOp.getOperation()->getParentOp() == forLoop) {
-              found = true;
+              foundMap[forLoop.getOperation()] = true;
               ObjectFifoCreateOp op = acqOp.getObjectFifo();
               objFifoSizes.insert(op.size());
             }
           }
-
           int unrollFactor =
               computeLCM(objFifoSizes); // also counts original loop body
           Region *region = forLoop->getParentRegion();
-          while (remainder > 1 || found) {
+          scf::ForOp looping;
+          looping = forLoop;
+          tripCountMap[looping.getOperation()] = 0;
+          while (remainderMap[looping.getOperation()] > 1 ||
+                 foundMap[looping.getOperation()]) {
             region->walk([&](scf::ForOp remLoop) {
+              bool duplicateFound = 0;
+              int64_t tripCount = 0;
+              if (remLoop.getSingleLowerBound() &&
+                  remLoop.getSingleUpperBound() && remLoop.getSingleStep()) {
+                tripCount = constantTripCount(*(remLoop.getSingleLowerBound()),
+                                              *(remLoop.getSingleUpperBound()),
+                                              *(remLoop.getSingleStep()))
+                                .value_or(0);
+              }
+              // Loop ids are not unique.
+              // Sometimes, immediately after unrolling, the unrolled loop
+              // and the one next to it has the same ID during the walk.
+              // Makes it difficult to identify which loop needs to be unrolled.
+              // Once it restart walking from start, it ends up allocating new
+              // ID too each loop
+              if (remainderMap[looping.getOperation()] > 1 &&
+                  foundMap[looping.getOperation()] == false &&
+                  tripCount < tripCountMap[looping.getOperation()])
+                duplicateFound = 1;
               if (std::count(unrolledLoops.begin(), unrolledLoops.end(),
-                             remLoop) == 0) {
-                if (remLoop.getSingleLowerBound() &&
-                    remLoop.getSingleUpperBound() && remLoop.getSingleStep()) {
-                  int64_t tripCount =
-                      constantTripCount(*(remLoop.getSingleLowerBound()),
-                                        *(remLoop.getSingleUpperBound()),
-                                        *(remLoop.getSingleStep()))
-                          .value_or(0);
-                  // if loop iterations < unrollFactor, unroll the loop fully
-                  if (tripCount < unrollFactor)
-                    unrollFactor = tripCount;
-                  remainder = tripCount % unrollFactor;
+                             remLoop) == 0 &&
+                  duplicateFound == 0) {
+                tripCountMap[looping.getOperation()] = tripCount;
+                // if loop iterations < unrollFactor, unroll the loop fully
+                if (tripCountMap[looping.getOperation()] < unrollFactor)
+                  unrollFactor = tripCountMap[looping.getOperation()];
+                if (unrollFactor == 0) {
+                  remLoop.emitOpError()
+                      << "could not be unrolled with unrollFactor = 0, check "
+                         "loop boundaries."
+                      << "\n";
+                  return WalkResult::interrupt();
                 }
-                auto step = forLoop.getStep()
+                remainderMap[remLoop.getOperation()] =
+                    tripCountMap[looping.getOperation()] % unrollFactor;
+                auto step = remLoop.getStep()
                                 .getDefiningOp<arith::ConstantOp>()
                                 .getValue();
                 int64_t step_value = llvm::dyn_cast<IntegerAttr>(step).getInt();
-                if (step_value < unrollFactor || found) {
+                if (step_value < unrollFactor ||
+                    foundMap[looping.getOperation()]) {
                   // // Process the for loop
                   if (failed(mlir::loopUnrollByFactor(remLoop, unrollFactor))) {
                     remLoop.emitOpError()
                         << "could not be unrolled with unrollFactor: "
                         << unrollFactor << "\n";
-                    WalkResult::interrupt();
+                    return WalkResult::interrupt();
                   }
                   unrolledLoops.push_back(remLoop);
-                  found = false;
-                  WalkResult::advance();
+                  foundMap[remLoop.getOperation()] = false;
                 } else {
-                  remainder = 0;
-                  found = false;
-                  WalkResult::advance();
+                  remainderMap[remLoop.getOperation()] = 0;
+                  foundMap[remLoop.getOperation()] = false;
                 }
               } else {
-                remainder = 0;
-                found = false;
-                WalkResult::advance();
+                remainderMap[remLoop.getOperation()] = 0;
+                foundMap[remLoop.getOperation()] = false;
               }
+              looping = remLoop;
+              return WalkResult::advance();
             });
           }
           return WalkResult::advance();
@@ -860,6 +885,7 @@ struct AIEObjectFifoStatefulTransformPass
     }
     return success();
   }
+
   /// Function used to create a UseLockOp based on input parameters.
   /// acc is an accumulator map that tracks the indices of the next locks to
   /// acquire (or release). Uses op to find index of acc for next lockID.
