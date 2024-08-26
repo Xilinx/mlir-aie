@@ -873,7 +873,7 @@ struct AIEObjectFifoStatefulTransformPass
           }
           // If the loop doesn't have acquire and release locks
           // Push it to the unrolledLoops to avoid further unrolling
-          if(!foundMap[forLoop.getOperation()]){
+          if (!foundMap[forLoop.getOperation()]) {
             unrolledLoops.push_back(forLoop);
           }
           int unrollFactor =
