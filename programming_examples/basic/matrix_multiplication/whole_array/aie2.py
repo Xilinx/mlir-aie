@@ -257,7 +257,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                 ],
             )
             if n_aie_rows > 1:
-                of_offsets = [N * i for i in range(n_aie_rows)]
+                of_offsets = [m * n * i for i in range(n_aie_rows)]
             else:
                 of_offsets = []
             object_fifo_link(
