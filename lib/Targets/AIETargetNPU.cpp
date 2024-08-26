@@ -191,18 +191,20 @@ std::vector<uint32_t> xilinx::AIE::AIETranslateToNPU(ModuleOp module) {
 
   auto words = reserveAndGetTail(instructions, 4);
 
+  DeviceOp deviceOp = *module.getOps<DeviceOp>().begin();
+  const AIETargetModel &tm = deviceOp.getTargetModel();
+
   // setup txn header
   uint8_t major = 1;
   uint8_t minor = 0;
   uint8_t devGen = 3;
-  uint8_t numRows = 6;
-  uint8_t numCols = 5;
-  uint8_t numMemTileRows = 1;
+  uint8_t numRows = tm.rows();
+  uint8_t numCols = tm.columns();
+  uint8_t numMemTileRows = tm.getNumMemTileRows();
   uint32_t count = 0;
   words[0] = (numRows << 24) | (devGen << 16) | (minor << 8) | major;
   words[1] = (numMemTileRows << 8) | numCols;
 
-  DeviceOp deviceOp = *module.getOps<DeviceOp>().begin();
   auto sequenceOps = deviceOp.getOps<AIEX::RuntimeSequenceOp>();
   for (auto f : sequenceOps) {
     Block &entry = f.getBody().front();

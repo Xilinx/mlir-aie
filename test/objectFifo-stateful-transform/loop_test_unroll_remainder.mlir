@@ -34,26 +34,25 @@
 // CHECK:            %core_1_2 = aie.core(%tile_1_2) {
 // CHECK:              %c0 = arith.constant 0 : index
 // CHECK:              %c1 = arith.constant 1 : index
-// CHECK:              %c4 = arith.constant 4 : index
 // CHECK:              %c10 = arith.constant 10 : index
 // CHECK:              %c8 = arith.constant 8 : index
-// CHECK:              %c4_0 = arith.constant 4 : index
-// CHECK:              scf.for %arg0 = %c0 to %c8 step %c4_0 {
+// CHECK:              %c4 = arith.constant 4 : index
+// CHECK:              scf.for %arg0 = %c0 to %c8 step %c4 {
 // CHECK:                aie.use_lock(%of_1_lock_0, Acquire, 1)
 // CHECK:                aie.use_lock(%of_2_lock_0, Acquire, 0)
 // CHECK:                func.call @some_work(%of_1_buff_0, %of_2_buff_0, %arg0) : (memref<16xi32>, memref<16xi32>, index) -> ()
 // CHECK:                aie.use_lock(%of_1_lock_0, Release, 0)
 // CHECK:                aie.use_lock(%of_2_lock_0, Release, 1)
-// CHECK:                %c1_2 = arith.constant 1 : index
-// CHECK:                %2 = arith.muli %c1, %c1_2 : index
+// CHECK:                %c1_1 = arith.constant 1 : index
+// CHECK:                %2 = arith.muli %c1, %c1_1 : index
 // CHECK:                %3 = arith.addi %arg0, %2 : index
 // CHECK:                aie.use_lock(%of_1_lock_1, Acquire, 1)
 // CHECK:                aie.use_lock(%of_2_lock_1, Acquire, 0)
 // CHECK:                func.call @some_work(%of_1_buff_1, %of_2_buff_1, %3) : (memref<16xi32>, memref<16xi32>, index) -> ()
 // CHECK:                aie.use_lock(%of_1_lock_1, Release, 0)
 // CHECK:                aie.use_lock(%of_2_lock_1, Release, 1)
-// CHECK:                %c2_3 = arith.constant 2 : index
-// CHECK:                %4 = arith.muli %c1, %c2_3 : index
+// CHECK:                %c2_2 = arith.constant 2 : index
+// CHECK:                %4 = arith.muli %c1, %c2_2 : index
 // CHECK:                %5 = arith.addi %arg0, %4 : index
 // CHECK:                aie.use_lock(%of_1_lock_0, Acquire, 1)
 // CHECK:                aie.use_lock(%of_2_lock_2, Acquire, 0)
@@ -75,8 +74,8 @@
 // CHECK:              func.call @some_work(%of_1_buff_0, %of_2_buff_0, %c8) : (memref<16xi32>, memref<16xi32>, index) -> ()
 // CHECK:              aie.use_lock(%of_1_lock_0, Release, 0)
 // CHECK:              aie.use_lock(%of_2_lock_0, Release, 1)
-// CHECK:              %c1_1 = arith.constant 1 : index
-// CHECK:              %0 = arith.muli %c1, %c1_1 : index
+// CHECK:              %c1_0 = arith.constant 1 : index
+// CHECK:              %0 = arith.muli %c1, %c1_0 : index
 // CHECK:              %1 = arith.addi %c8, %0 : index
 // CHECK:              aie.use_lock(%of_1_lock_1, Acquire, 1)
 // CHECK:              aie.use_lock(%of_2_lock_1, Acquire, 0)
@@ -100,7 +99,6 @@ module {
     %core12 = aie.core(%tile12) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %c4 = arith.constant 4 : index
       %c10 = arith.constant 10 : index
 
       scf.for %indexInHeight = %c0 to %c10 step %c1 {

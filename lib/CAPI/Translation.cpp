@@ -79,6 +79,25 @@ MlirLogicalResult aieTranslateToCDODirect(MlirOperation moduleOp,
   return wrap(status);
 }
 
+MlirLogicalResult aieTranslateToTxn(MlirOperation moduleOp,
+                                    MlirStringRef workDirPath, bool aieSim,
+                                    bool xaieDebug, bool enableCores) {
+  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
+  auto status = AIETranslateToTxn(
+      mod, llvm::StringRef(workDirPath.data, workDirPath.length), aieSim,
+      xaieDebug, enableCores);
+  std::vector<std::string> diagnostics;
+  ScopedDiagnosticHandler handler(mod.getContext(), [&](Diagnostic &d) {
+    llvm::raw_string_ostream(diagnostics.emplace_back())
+        << d.getLocation() << ": " << d;
+  });
+  if (failed(status))
+    for (const auto &diagnostic : diagnostics)
+      std::cerr << diagnostic << "\n";
+
+  return wrap(status);
+}
+
 MlirStringRef aieTranslateToNPU(MlirOperation moduleOp) {
   std::string npu;
   llvm::raw_string_ostream os(npu);

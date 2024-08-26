@@ -80,6 +80,14 @@ struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
 
 struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
 
+  bool shouldSkipBlock(Block &block) {
+    // Allow blocks in the input IR that contain nothing but a next_bd operation
+    // as the entry block. We will skip these blocks and not lower them to
+    // anything.
+    auto it = block.without_terminator();
+    return block.isEntryBlock() && it.begin() == it.end();
+  }
+
   LogicalResult verifyBdInBlock(Block &block) {
     auto bd_ops = block.getOps<AIE::DMABDOp>();
     // Exactly one BD op per block
@@ -317,6 +325,9 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     Region &body = op.getBody();
     for (auto it = body.begin(); it != body.end(); ++it) {
       Block &block = *it;
+      if (shouldSkipBlock(block)) {
+        continue;
+      }
       AIE::DMABDOp bd_op = getBdForBlock(block);
       if (AIE::NextBDOp next_bd_op =
               llvm::dyn_cast<AIE::NextBDOp>(block.getTerminator())) {
@@ -362,12 +373,14 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     // Verify each BD block first; subsequent functions rely on them being
     // well-formed
     for (auto it = body.begin(); it != body.end(); ++it) {
+      if (shouldSkipBlock(*it)) {
+        continue;
+      }
       if (failed(verifyNoUnsupportedOpsInBlock(*it))) {
         return failure();
       }
       if (failed(verifyBdInBlock(*it))) {
         return failure();
-      } else {
       }
       if (failed(verifyOptionalLocksInBlock(*it))) {
         return failure();
@@ -382,6 +395,9 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     // Lower all BDs
     for (auto it = body.begin(); it != body.end(); ++it) {
       Block &block = *it;
+      if (shouldSkipBlock(block)) {
+        continue;
+      }
       if (failed(rewriteSingleBD(builder, block, tile))) {
         return failure();
       }
