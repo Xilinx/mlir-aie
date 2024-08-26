@@ -109,6 +109,8 @@ static const std::map<WireBundle, StrmSwPortType>
         {WireBundle::Trace, StrmSwPortType::TRACE},
 };
 
+#ifndef NDEBUG
+
 // https://stackoverflow.com/a/32230306
 template <typename H1>
 static raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value) {
@@ -177,6 +179,31 @@ static_assert(XAIE_OK == 0);
       return failure();                                                        \
     }                                                                          \
   } while (0)
+
+#else
+
+#define TRY_XAIE_API_FATAL_ERROR(API, ...)                                     \
+  do {                                                                         \
+    if (auto r = API(__VA_ARGS__))                                             \
+      llvm::report_fatal_error(llvm::Twine(#API " failed with ") +             \
+                               AIERCTOSTR.at(r));                              \
+  } while (0)
+
+#define TRY_XAIE_API_EMIT_ERROR(OP, API, ...)                                  \
+  do {                                                                         \
+    if (auto r = API(__VA_ARGS__))                                             \
+      return OP.emitOpError() << #API " failed with " << AIERCTOSTR.at(r);     \
+  } while (0)
+
+#define TRY_XAIE_API_LOGICAL_RESULT(API, ...)                                  \
+  do {                                                                         \
+    if (auto r = API(__VA_ARGS__)) {                                           \
+      llvm::errs() << #API " failed with " << AIERCTOSTR.at(r);                \
+      return failure();                                                        \
+    }                                                                          \
+  } while (0)
+
+#endif
 
 auto ps = std::filesystem::path::preferred_separator;
 

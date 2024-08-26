@@ -301,8 +301,11 @@ struct AIEObjectFifoStatefulTransformPass
     std::vector<LockOp> locks;
     auto dev = op->getParentOfType<DeviceOp>();
     auto &target = dev.getTargetModel();
-    if (creation_tile.isShimTile())
-      numElem = externalBuffersPerFifo[op].size();
+    if (creation_tile.isShimTile()) {
+      numElem = 1;
+      if (!externalBuffersPerFifo[op].empty())
+        numElem = externalBuffersPerFifo[op].size();
+    }
     if (target.getTargetArch() == AIEArch::AIE1) {
       int of_elem_index = 0; // used to give objectFifo elements a symbolic name
       for (int i = 0; i < numElem; i++) {
@@ -424,6 +427,8 @@ struct AIEObjectFifoStatefulTransformPass
       of_elem_index++;
     }
     if (linked) {
+      if (linkOp->getRepeatCount().has_value())
+        numElem *= linkOp->getRepeatCount().value() + 1;
       if (linkOp->isDistribute())
         numElem *= linkOp->getFifoOuts().size();
       else if (linkOp->isJoin())
@@ -689,6 +694,19 @@ struct AIEObjectFifoStatefulTransformPass
     int acqNum = 1;
     int relNum = 1;
 
+    // check for repeat count
+    int repeatCount = 0;
+    if (!dims.getValue().empty()) {
+      auto highestStride = dims.getValue().begin()->getStride() - 1;
+      if (highestStride == 0) {
+        repeatCount = dims.getValue().begin()->getSize();
+        dims = AIE::BDDimLayoutArrayAttr::get(op->getContext(),
+                                              dims.getValue().drop_front(1));
+      }
+    }
+    if (op.getMemtileRepeat().has_value())
+      repeatCount = op.getMemtileRepeat().value();
+
     // search for the buffers/locks (based on if this objFifo has a link)
     // identify size difference between input and output memrefs
     ObjectFifoCreateOp target = op;
@@ -698,46 +716,58 @@ struct AIEObjectFifoStatefulTransformPass
     if (auto linkOp = getOptionalLinkOp(op)) {
       if (objFifoLinks.find(*linkOp) != objFifoLinks.end()) {
         target = objFifoLinks[*linkOp];
+        auto srcOffsets = linkOp->getSrcOffsets();
+        auto dstOffsets = linkOp->getDstOffsets();
+
+        if (target == op) {
+          if (linkOp->getRepeatCount().has_value()) {
+            // +1 for original data movement
+            acqNum *= linkOp->getRepeatCount().value() + 1;
+            relNum *= linkOp->getRepeatCount().value() + 1;
+          }
+        }
 
         if (linkOp->isJoin()) {
-          // find offset based on order of this op in join list
+          // compute offset and length
           isJoin = true;
           if (target == op) {
-            acqNum = linkOp->getFifoIns().size();
-            relNum = linkOp->getFifoIns().size();
+            acqNum *= linkOp->getFifoIns().size();
+            relNum *= linkOp->getFifoIns().size();
           } else {
+            int i = 0;
             for (auto fifoIn : linkOp->getInputObjectFifos()) {
-              auto fifoType =
-                  llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
-              auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
               if (fifoIn.name() == op.name())
                 break;
-              extraOffset += elemType.getNumElements();
+              i++;
             }
+            extraOffset = *getConstantIntValue(srcOffsets[i]);
+            lenOut = linkOp->getJoinTranferLengths()[i];
           }
         } else if (linkOp->isDistribute()) {
-          // find offset based on order of this op in distribute list
+          // compute offset and length
           isDistribute = true;
           if (target == op) {
-            acqNum = linkOp->getFifoOuts().size();
-            relNum = linkOp->getFifoOuts().size();
+            acqNum *= linkOp->getFifoOuts().size();
+            relNum *= linkOp->getFifoOuts().size();
           } else {
+            int i = 0;
             for (auto fifoOut : linkOp->getOutputObjectFifos()) {
-              auto fifoType =
-                  llvm::cast<AIEObjectFifoType>(fifoOut.getElemType());
-              auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
               if (fifoOut.name() == op.name())
                 break;
-              extraOffset += elemType.getNumElements();
+              i++;
             }
+            extraOffset = *getConstantIntValue(dstOffsets[i]);
+            lenOut = linkOp->getDistributeTranferLengths()[i];
           }
         } else {
           if (target != op) {
-            auto targetFifo =
-                llvm::cast<AIEObjectFifoType>(target.getElemType());
-            auto targetElemType =
-                llvm::cast<MemRefType>(targetFifo.getElementType());
-            lenOut = targetElemType.getNumElements();
+            if (dims.getValue().empty()) {
+              auto targetFifo =
+                  llvm::cast<AIEObjectFifoType>(target.getElemType());
+              auto targetElemType =
+                  llvm::cast<MemRefType>(targetFifo.getElementType());
+              lenOut = targetElemType.getNumElements();
+            }
           }
         }
 
@@ -781,8 +811,7 @@ struct AIEObjectFifoStatefulTransformPass
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, /*repeatCount*/ 0, bdBlock,
-                               endBlock);
+                               channelIndex, repeatCount, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 

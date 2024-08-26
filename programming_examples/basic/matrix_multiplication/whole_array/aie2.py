@@ -196,9 +196,15 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
             # tiles; distribute it along rows of AIE cores.
             start_row = col * n_A_tiles_per_shim
             stop_row = start_row + n_A_tiles_per_shim
+            if stop_row - start_row > 1:
+                of_offsets = [m * k * i for i in range(stop_row - start_row)]
+            else:
+                of_offsets = []
             object_fifo_link(
                 A_l3l2_fifos[col],
                 [A_l2l1_fifos[row] for row in range(start_row, stop_row)],
+                [],
+                of_offsets,
             )
 
         # Input B
@@ -250,8 +256,15 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                     (t, 1),
                 ],
             )
+            if n_aie_rows > 1:
+                of_offsets = [N * i for i in range(n_aie_rows)]
+            else:
+                of_offsets = []
             object_fifo_link(
-                [C_l1l2_fifos[j][col] for j in range(n_aie_rows)], C_l2l3_fifos[col]
+                [C_l1l2_fifos[j][col] for j in range(n_aie_rows)],
+                C_l2l3_fifos[col],
+                of_offsets,
+                [],
             )  # join along one column
 
         # Set up compute tiles
