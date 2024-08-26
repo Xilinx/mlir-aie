@@ -871,6 +871,11 @@ struct AIEObjectFifoStatefulTransformPass
               objFifoSizes.insert(op.size());
             }
           }
+          // If the loop doesn't have acquire and release locks
+          // Push it to the unrolledLoops to avoid further unrolling
+          if(!foundMap[forLoop.getOperation()]){
+            unrolledLoops.push_back(forLoop);
+          }
           int unrollFactor =
               computeLCM(objFifoSizes); // also counts original loop body
           Region *region = forLoop->getParentRegion();
