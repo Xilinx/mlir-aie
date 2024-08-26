@@ -208,7 +208,7 @@ bool checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,
 int setBufferAddress(BufferOp buffer, int numBanks, int startBankIndex,
                      std::vector<int64_t> &nextAddrInBanks,
                      std::vector<BankLimits> &bankLimits) {
-  assert(startBankIndex < numBanks ||
+  assert(startBankIndex < numBanks &&
          "Unexpected input value for startBankIndex");
   int bankIndex = startBankIndex;
   for (int i = 0; i < numBanks; i++) {
