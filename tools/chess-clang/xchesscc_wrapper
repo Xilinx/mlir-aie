@@ -42,13 +42,7 @@ elif [ $TARGET == "AIE2P" ]
     AIEARCH=aie2p
     AIETARGET=aie2p
 else
-  then
     echo "xchesscc_wrapper unknown architecture $TARGET"
-    exit 1
-fi
-if [ -z "$AIETOOLS" ]
-  then
-    echo "xchesscc_wrapper needs a valid Vitis installation"
     exit 1
 fi
 
