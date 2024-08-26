@@ -791,7 +791,7 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
   }];
 }
 
-def AIE_NpuControlPacketOp: AIEX_Op<"control_packet", []> {
+def AIE_NpuControlPacketOp: AIEX_Op<"npu.control_packet", []> {
   let summary = "AIE control packet";
   let arguments = (
     ins UI32Attr:$address,
@@ -805,6 +805,10 @@ def AIE_NpuControlPacketOp: AIEX_Op<"control_packet", []> {
   let description = [{
     The control_packet operation represents a low-level AIE control packet header
     and payload.
+  }];
+  let extraClassDeclaration = [{
+    uint32_t getRow();
+    uint32_t getColumn();
   }];
 }
 
