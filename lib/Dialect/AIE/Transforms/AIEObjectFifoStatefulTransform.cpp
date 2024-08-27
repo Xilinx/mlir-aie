@@ -872,10 +872,11 @@ struct AIEObjectFifoStatefulTransformPass
             }
           }
           // If the loop doesn't have acquire and release locks
-          // Push it to the unrolledLoops to avoid further unrolling
+          // Push it to the unrolledLoops to avoid unrolling
           if (!foundMap[forLoop.getOperation()]) {
             unrolledLoops.push_back(forLoop);
           } else {
+            // Walk in the loop region to unroll the loop and its remainder
             Region *region = forLoop->getParentRegion();
             scf::ForOp looping;
             looping = forLoop;
@@ -883,7 +884,7 @@ struct AIEObjectFifoStatefulTransformPass
             while (remainderMap[looping.getOperation()] > 1 ||
                    foundMap[looping.getOperation()]) {
               region->walk([&](scf::ForOp remLoop) {
-                bool duplicateFound = 0;
+                bool skipLoop = 0;
                 int64_t tripCount = 0;
                 if (remLoop.getSingleLowerBound() &&
                     remLoop.getSingleUpperBound() && remLoop.getSingleStep()) {
@@ -897,22 +898,25 @@ struct AIEObjectFifoStatefulTransformPass
                     computeLCM(objFifoSizes); // also counts original loop body
                 // Loop ids are not unique.
                 // Sometimes, immediately after unrolling, the unrolled loop
-                // and the one next to it has the same ID during the walk.
-                // Makes it difficult to identify which loop needs to be
-                // unrolled. Once it restart walking from start, it ends up
-                // allocating new ID too each loop
+                // and the one next to it (can be the remainder loop or an
+                // independent loop) will have the same ID. This makes it
+                // difficult to identify which loop needs to be unrolled.
+                // Once it restarts walking from start, it ends up allocating
+                // new ID to each loop.
                 if (remainderMap[looping.getOperation()] > 1 &&
                     foundMap[remLoop.getOperation()] == false &&
-                    tripCount < tripCountMap[looping.getOperation()]) {
-                  duplicateFound = 1;
+                    tripCount < tripCountMap[looping.getOperation()] &&
+                    looping != remLoop) {
+                  skipLoop = 1;
                 }
                 if (std::count(unrolledLoops.begin(), unrolledLoops.end(),
                                remLoop) == 0 &&
-                    duplicateFound == 0) {
+                    skipLoop == 0) {
                   tripCountMap[remLoop.getOperation()] = tripCount;
                   // if loop iterations < unrollFactor, unroll the loop fully
                   if (tripCountMap[remLoop.getOperation()] < unrollFactor)
                     unrollFactor = tripCountMap[remLoop.getOperation()];
+                  // If unrollFactor = 0,divide by zero
                   if (unrollFactor == 0) {
                     remLoop.emitOpError()
                         << "could not be unrolled with unrollFactor = 0, check "
@@ -930,7 +934,7 @@ struct AIEObjectFifoStatefulTransformPass
 
                     if (step_value < unrollFactor ||
                         foundMap[remLoop.getOperation()]) {
-                      // // Process the for loop
+                      // Process the for loop
                       if (failed(mlir::loopUnrollByFactor(remLoop,
                                                           unrollFactor))) {
                         remLoop.emitOpError()
