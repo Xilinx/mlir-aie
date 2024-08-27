@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate -aie-npu-instgen -aie-output-binary=true %s -o ./cfg.bin
-// RUN: %python txn2mlir.py -f ./cfg.bin -generate-ctrl-pkt | FileCheck %s
+// RUN: aie-translate -aie-npu-instgen -aie-output-binary=true %s -o ./generate_ctrl_pkt_cfg.bin
+// RUN: %python txn2mlir.py -f ./generate_ctrl_pkt_cfg.bin -generate-ctrl-pkt | FileCheck %s
 
 // CHECK: aie.device(npu1_1col)
 // CHECK: memref.global "private" constant @blockwrite_data : memref<6xi32> = dense<[4195328, 0, 0, 0, 0, 100941792]>
