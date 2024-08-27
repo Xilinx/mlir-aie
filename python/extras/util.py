@@ -462,3 +462,21 @@ class getitemproperty:
 
         # f is not a bound method since it was decorated...
         return self.f(self.instance, item, **kwargs)
+
+
+def get_arg_types(objs):
+    my_types = []
+    for o in objs:
+        if isinstance(o, Value):
+            my_types.append(o.type)
+        elif isinstance(o, OpView):
+            if len(o.results.types) != 1:
+                raise AttributeError(
+                    f"Operation given to a region op as a parameter ({o}) has more "
+                    "than one return type ({o.results.types}), which would lead to a mismatch "
+                    "between number of operands and number of operand types"
+                )
+            my_types += o.results.types
+        else:
+            return None
+    return my_types

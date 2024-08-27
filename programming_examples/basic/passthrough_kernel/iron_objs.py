@@ -8,67 +8,16 @@
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
+from aie.dialects.scf import for_ as range_
+from aie.dialects.scf import yield_
 from aie.extras.context import mlir_mod_ctx
 
-from aie.extras.util import np_dtype_to_mlir_type
 from aie.api.phys.tile import MyTile
 from aie.api.dataflow.objectfifo import MyObjectFifo
+from aie.api.kernels.binkernel import BinKernel
+from aie.api.kernels.kernel import MyKernel
 
 import sys
-
-range_ = for_
-
-
-def get_arg_types(objs):
-    my_types = []
-    for o in objs:
-        if isinstance(o, Value):
-            my_types.append(o.type)
-        elif isinstance(o, OpView):
-            if len(o.results.types) != 1:
-                raise AttributeError(
-                    f"Operation given to a region op as a parameter ({o}) has more "
-                    "than one return type ({o.results.types}), which would lead to a mismatch "
-                    "between number of operands and number of operand types"
-                )
-            my_types += o.results.types
-        else:
-            return None
-    return my_types
-
-
-class MyExternalFunction:
-    def __init__(self, name, bin_name, inout_types):
-        assert isinstance(name, str)
-        assert len(name) > 0
-        assert isinstance(bin_name, str)
-        assert len(bin_name) > 0
-        assert isinstance(inout_types, list)
-        self.name = name
-        self.bin_name = bin_name
-        self.inout_types = inout_types
-        self.op = None
-
-    def resolve(self):
-        assert self.op == None
-        resolved_inout_types = []
-        for t in self.inout_types:
-            try:
-                dtype = np_dtype_to_mlir_type(t)
-            except Exception:
-                dtype = get_arg_types(t)
-                if dtype is None:
-                    # Interpret as a dummy memref
-                    dtype = MemRefType.get(
-                        shape=t[0], element_type=np_dtype_to_mlir_type(t[1])
-                    )
-            resolved_inout_types.append(dtype)
-        self.op = external_func(self.name, inputs=resolved_inout_types)
-
-    def call(self, *args, **kwargs):
-        assert self.op
-        call(self.name, args)
 
 
 class CoreProgram:
@@ -87,7 +36,7 @@ class CoreProgram:
         assert isinstance(external_functions, list)
         bin_names = set()
         for e in external_functions:
-            assert isinstance(e, MyExternalFunction)
+            assert isinstance(e, MyKernel)
             bin_names.add(e.bin_name)
         assert len(bin_names) <= 1, "Right now only link with one bin"
         if len(bin_names) == 1:
@@ -249,7 +198,7 @@ fifo_memref_type = ((line_size,), np.uint8)
 of0 = MyObjectFifo(2, memref_type=fifo_memref_type, name="out")
 of1 = MyObjectFifo(2, memref_type=fifo_memref_type, name="in")
 
-passthrough_fn = MyExternalFunction(
+passthrough_fn = BinKernel(
     "passThroughLine",
     "passThrough.cc.o",
     [fifo_memref_type, fifo_memref_type, np.int32],
@@ -264,7 +213,7 @@ def core_fn(ofs_end1, ofs_end2, external_functions):
     for _ in range_(vector_size // line_size):
         elemOut = of_out.acquire_produce(1)
         elemIn = of_in.acquire_consume(1)
-        passThroughLine.call(elemIn, elemOut, line_size)
+        passThroughLine(elemIn, elemOut, line_size)
         of_in.release_consume(1)
         of_out.release_produce(1)
         yield_([])
