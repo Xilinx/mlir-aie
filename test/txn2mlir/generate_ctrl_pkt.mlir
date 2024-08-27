@@ -13,10 +13,10 @@
 
 // CHECK: aie.device(npu1_1col)
 // CHECK: memref.global "private" constant @blockwrite_data : memref<6xi32> = dense<[4195328, 0, 0, 0, 0, 100941792]>
-// CHECK: aiex.npu.control_packet {address = 2301952 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
-// CHECK: aiex.npu.control_packet {address = 2224128 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
-// CHECK: aiex.npu.control_packet {address = 2215936 : ui32, data = array<i32: 4195328, 0, 0, 0>, opcode = 0 : i32, stream_id = 0 : i32}
-// CHECK: aiex.npu.control_packet {address = 2215952 : ui32, data = array<i32: 0, 100941792>, opcode = 0 : i32, stream_id = 0 : i32}
+// CHECK: aiex.control_packet {address = 2301952 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
+// CHECK: aiex.control_packet {address = 2224128 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
+// CHECK: aiex.control_packet {address = 2215936 : ui32, data = array<i32: 4195328, 0, 0, 0>, opcode = 0 : i32, stream_id = 0 : i32}
+// CHECK: aiex.control_packet {address = 2215952 : ui32, data = array<i32: 0, 100941792>, opcode = 0 : i32, stream_id = 0 : i32}
 module {
   aie.device(npu1_1col) {
     memref.global "private" constant @blockwrite_data : memref<6xi32> = dense<[4195328, 0, 0, 0, 0, 100941792]>

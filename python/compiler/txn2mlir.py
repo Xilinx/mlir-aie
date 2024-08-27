@@ -149,7 +149,7 @@ def operations_to_mlir(operations, columns=5, mlir_ctrl_pkt=False):
                             if op[0] == 0x00:
                                 addr = op[1]
                                 value = op[2]
-                                npu_control_packet(
+                                control_packet(
                                     address=addr,
                                     opcode=0,
                                     stream_id=0,
@@ -172,7 +172,7 @@ def operations_to_mlir(operations, columns=5, mlir_ctrl_pkt=False):
                                     # Individual access cannot cross a 128-bit boundary.
                                     data_split_4 = [data[:4], data[4:]]
                                 for d_split in data_split_4:
-                                    npu_control_packet(
+                                    control_packet(
                                         address=addr,
                                         opcode=0,
                                         stream_id=0,
@@ -183,7 +183,7 @@ def operations_to_mlir(operations, columns=5, mlir_ctrl_pkt=False):
                                 addr = op[1]
                                 value = op[2]
                                 # mask (op[3]) is ignored, as control packet cannot do masked write
-                                npu_control_packet(
+                                control_packet(
                                     address=addr,
                                     opcode=0,
                                     stream_id=0,

@@ -791,7 +791,7 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
   }];
 }
 
-def AIE_NpuControlPacketOp: AIEX_Op<"npu.control_packet", []> {
+def AIE_NpuControlPacketOp: AIEX_Op<"control_packet", []> {
   let summary = "AIE control packet";
   let arguments = (
     ins UI32Attr:$address,
