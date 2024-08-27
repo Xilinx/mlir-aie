@@ -878,11 +878,11 @@ struct AIEObjectFifoStatefulTransformPass
           } else {
             // Walk in the loop region to unroll the loop and its remainder
             Region *region = forLoop->getParentRegion();
-            scf::ForOp looping;
-            looping = forLoop;
-            tripCountMap[looping.getOperation()] = 0;
-            while (remainderMap[looping.getOperation()] > 1 ||
-                   foundMap[looping.getOperation()]) {
+            scf::ForOp prevLoop;
+            prevLoop = forLoop;
+            tripCountMap[prevLoop.getOperation()] = 0;
+            while (remainderMap[prevLoop.getOperation()] > 1 ||
+                   foundMap[prevLoop.getOperation()]) {
               region->walk([&](scf::ForOp remLoop) {
                 bool skipLoop = 0;
                 int64_t tripCount = 0;
@@ -903,9 +903,9 @@ struct AIEObjectFifoStatefulTransformPass
                 // difficult to identify which loop needs to be unrolled.
                 // Once it restarts walking from start, it ends up allocating
                 // new ID to each loop.
-                if (remainderMap[looping.getOperation()] > 1 &&
+                if (remainderMap[prevLoop.getOperation()] > 1 &&
                     foundMap[remLoop.getOperation()] == false &&
-                    looping != remLoop) {
+                    prevLoop != remLoop) {
                   skipLoop = 1;
                 }
                 if (std::count(unrolledLoops.begin(), unrolledLoops.end(),
@@ -952,7 +952,7 @@ struct AIEObjectFifoStatefulTransformPass
                   remainderMap[remLoop.getOperation()] = 0;
                   foundMap[remLoop.getOperation()] = false;
                 }
-                looping = remLoop;
+                prevLoop = remLoop;
                 return WalkResult::advance();
               });
             }
@@ -1138,7 +1138,7 @@ struct AIEObjectFifoStatefulTransformPass
     // Split objectFifos into a consumer end and producer end if needed
     //===------------------------------------------------------------------===//
     // We are going to create additional createObjectFifoOps, so get a copy of
-    // all "original" ones before the loop to avoid looping over newly created
+    // all "original" ones before the loop to avoid prevLoop over newly created
     // ones.
     std::vector<ObjectFifoCreateOp> createFifoOps;
     auto range = device.getOps<ObjectFifoCreateOp>();
