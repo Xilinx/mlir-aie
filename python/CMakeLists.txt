@@ -48,6 +48,7 @@ declare_mlir_python_sources(AIEPythonSources.Api
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
     api/*.py
+    api/phys/*.py
 )
 
 
