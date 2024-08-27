@@ -80,7 +80,7 @@ int main(int argc, const char *argv[]) {
   auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(OUT_DATATYPE),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
   auto bo_ctrlpkt = xrt::bo(device, CTRL_IN_SIZE * sizeof(int32_t),
-                           XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
+                            XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   IN_DATATYPE *bufInA = bo_inA.map<IN_DATATYPE *>();
   std::vector<IN_DATATYPE> srcVecA;
@@ -91,7 +91,6 @@ int main(int argc, const char *argv[]) {
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
-
   void *bufctrlpkt = bo_ctrlpkt.map<void *>();
   memcpy(bufctrlpkt, ctrlPackets.data(), ctrlPackets.size() * sizeof(int));
 
@@ -100,7 +99,8 @@ int main(int argc, const char *argv[]) {
   bo_ctrlpkt.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   unsigned int opcode = 3;
-  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out, bo_ctrlpkt);
+  auto run =
+      kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out, bo_ctrlpkt);
   ert_cmd_state r = run.wait();
   if (r != ERT_CMD_STATE_COMPLETED) {
     std::cout << "Kernel did not complete. Returned status: " << r << "\n";
@@ -120,7 +120,7 @@ int main(int argc, const char *argv[]) {
         std::cout << "Error in output " << std::to_string(bufOut[i * 64 + j])
                   << " != " << ref << std::endl;
         errors++;
-      } 
+      }
       // else
       //   std::cout << "Correct output " << std::to_string(bufOut[i * 64 + j])
       //             << " == " << ref << std::endl;
