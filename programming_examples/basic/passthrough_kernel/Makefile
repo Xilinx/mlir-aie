@@ -22,11 +22,11 @@ PASSTHROUGH_SIZE = ${data_size}
 
 all: build/final_${data_size}.xclbin
 
-build/aie2_lineBased_8b_${data_size}.mlir: ${srcdir}/iron_objs.py
+build/aie2_lineBased_8b_${data_size}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< ${data_size} 0 > $@
 
-build/aie_trace__lineBased_8b_${data_size}.mlir: ${srcdir}/iron_objs.py
+build/aie_trace__lineBased_8b_${data_size}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< ${data_size} ${trace_size} > $@
 
