@@ -5,8 +5,6 @@
 //
 // (c) Copyright 2024 AMD Inc.
 
-// REQUIRES: ryzen_ai
-//
 // RUN: aie-opt --verify-diagnostics --aie-assign-runtime-sequence-bd-ids %s
 
 // This test ensures that the proper error is issued if the user tries to reuse buffer descriptor IDs
