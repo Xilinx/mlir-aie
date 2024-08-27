@@ -16,54 +16,9 @@ from aie.api.phys.tile import MyTile
 from aie.api.dataflow.objectfifo import MyObjectFifo
 from aie.api.kernels.binkernel import BinKernel
 from aie.api.kernels.kernel import MyKernel
+from aie.api.worker import MyWorker
 
 import sys
-
-
-class CoreProgram:
-    def __init__(
-        self,
-        column: int,
-        row: int,
-        core_fn,
-        ofs_end1=[],
-        ofs_end2=[],
-        external_functions=[],
-    ):
-        self.tile = MyTile(column, row)
-        self.core_fn = core_fn
-
-        assert isinstance(external_functions, list)
-        bin_names = set()
-        for e in external_functions:
-            assert isinstance(e, MyKernel)
-            bin_names.add(e.bin_name)
-        assert len(bin_names) <= 1, "Right now only link with one bin"
-        if len(bin_names) == 1:
-            self.link_with = list(bin_names)[0]
-        self.external_functions = external_functions
-
-        self.ofs_end1 = ofs_end1
-        for of in self.ofs_end1:
-            assert isinstance(of, MyObjectFifo), "ofs_end1 must be List[ObjectFifo]"
-            of.set_endpoint(self, True)
-
-        self.ofs_end2 = ofs_end2
-        for of in self.ofs_end2:
-            assert isinstance(of, MyObjectFifo), "ofs_end1 must be List[ObjectFifo]"
-            of.set_endpoint(self, False)
-
-    def get_tile(self, loc=None, ip=None, context=None):
-        assert self.tile != None
-        return self.tile.op
-
-    def resolve(self, loc=None, ip=None, context=None):
-        my_tile = self.tile.op
-        my_link = self.link_with
-
-        @core(my_tile, my_link)
-        def core_body():
-            self.core_fn(self.ofs_end1, self.ofs_end2, self.external_functions)
 
 
 class FifoInOutHostProgram:
@@ -110,7 +65,7 @@ class AIEProgram:
         assert isinstance(device, AIEDevice)
         assert core_programs != None and len(core_programs) >= 1
         for c in core_programs:
-            assert isinstance(c, CoreProgram)
+            assert isinstance(c, MyWorker)
         # assert isinstance(host_program, HostProgram) # TODO: check via hierarchy
         self.device = device
         self.core_programs = core_programs
@@ -219,7 +174,7 @@ def core_fn(ofs_end1, ofs_end2, external_functions):
         yield_([])
 
 
-core_program = CoreProgram(0, 2, core_fn, [of0], [of1], [passthrough_fn])
+core_program = MyWorker(core_fn, [of0], [of1], [passthrough_fn], coords=(0, 2))
 host_program = FifoInOutHostProgram(of0, vector_size, of1, vector_size)
 
 my_program = AIEProgram(
