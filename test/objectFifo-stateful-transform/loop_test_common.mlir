@@ -65,18 +65,20 @@
 // CHECK-NEXT:          aie.use_lock(%[[LOCK_1]], Release, 1)
 // CHECK-NEXT:        }
 // CHECK:             %[[C3:.*]] = arith.constant 3 : index
-// CHECK:             %[[C2_0:.*]] = arith.constant 2 : index
 // CHECK:             aie.use_lock(%[[LOCK_2]], Acquire, 0)
 // CHECK:             func.call @some_work(%[[BUFF_2]], %[[C1]]) : (memref<16xi32>, index) -> ()
 // CHECK:             aie.use_lock(%[[LOCK_2]], Release, 1)
-// CHECK:             %[[C1_1:.*]] = arith.constant 1 : index
-// CHECK:             %[[MUL_0:.*]] = arith.muli %c1, %[[C1_1]] : index
+// CHECK:             %[[C1_0:.*]] = arith.constant 1 : index
+// CHECK:             %[[MUL_0:.*]] = arith.muli %c1, %[[C1_0]] : index
 // CHECK:             %[[ADD_0:.*]] = arith.addi %c1, %[[MUL_0]] : index
 // CHECK:             aie.use_lock(%[[LOCK_3]], Acquire, 0)
 // CHECK:             func.call @some_work(%[[BUFF_3]], %[[ADD_0]]) : (memref<16xi32>, index) -> ()
 // CHECK:             aie.use_lock(%[[LOCK_3]], Release, 1)
+// CHECK:             %[[C2_1:.*]] = arith.constant 2 : index
+// CHECK:             %[[MUL_1:.*]] = arith.muli %c1, %[[C2_1]] : index
+// CHECK:             %[[ADD_1:.*]] = arith.addi %c1, %[[MUL_1]] : index
 // CHECK:             aie.use_lock(%[[LOCK_0]], Acquire, 0)
-// CHECK:             func.call @some_work(%[[BUFF_0]], %[[C3]]) : (memref<16xi32>, index) -> ()
+// CHECK:             func.call @some_work(%[[BUFF_0]], %[[ADD_1]]) : (memref<16xi32>, index) -> ()
 // CHECK:             aie.use_lock(%[[LOCK_0]], Release, 1)
 
 module {

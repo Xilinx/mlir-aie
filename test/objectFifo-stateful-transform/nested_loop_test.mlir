@@ -42,7 +42,37 @@
 //       CHECK:     }
 //       CHECK:     aie.use_lock
 //       CHECK:     aie.use_lock
-
+//       CHECK:     aie.use_lock
+//       CHECK:     memref.reinterpret_cast
+//       CHECK:     aie.use_lock
+//       CHECK:     memref.reinterpret_cast
+//       CHECK:     scf.for
+//       CHECK:     {
+//       CHECK:       scf.for
+//       CHECK:       {
+//       CHECK:         scf.for
+//       CHECK:         {
+//       CHECK:           scf.for
+//       CHECK:           {
+//       CHECK:             scf.for
+//       CHECK:             {
+//       CHECK:               scf.for
+//       CHECK:               {
+//       CHECK:                 memref.load
+//       CHECK:                 memref.load
+//       CHECK:                 memref.load
+//       CHECK:                 arith.muli
+//       CHECK:                 arith.addi
+//       CHECK:                 memref.store
+//       CHECK:               }
+//       CHECK:             }
+//       CHECK:           }
+//       CHECK:         }
+//       CHECK:       }
+//       CHECK:     }
+//       CHECK:     aie.use_lock
+//       CHECK:     aie.use_lock
+//       CHECK:   }
 
 aie.device(npu1_4col) {
   %tile_0_1 = aie.tile(0, 1)
