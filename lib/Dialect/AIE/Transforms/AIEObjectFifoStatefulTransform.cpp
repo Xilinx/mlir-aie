@@ -905,7 +905,6 @@ struct AIEObjectFifoStatefulTransformPass
                 // new ID to each loop.
                 if (remainderMap[looping.getOperation()] > 1 &&
                     foundMap[remLoop.getOperation()] == false &&
-                    tripCount < tripCountMap[looping.getOperation()] &&
                     looping != remLoop) {
                   skipLoop = 1;
                 }
