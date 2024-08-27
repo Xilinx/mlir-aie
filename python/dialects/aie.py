@@ -751,6 +751,8 @@ class TileOp(TileOp):
         )
 
     def __eq__(self, other):
+        if other == None:
+            return False
         return tuple(map(int, (self.col, self.row))) == tuple(
             map(int, (other.col, other.row))
         )

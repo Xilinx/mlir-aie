@@ -1,3 +1,4 @@
+from collections import defaultdict
 import contextlib
 import ctypes
 import inspect
@@ -127,35 +128,55 @@ def find_ops(op, pred: Callable[[OpView, Operation, Module], bool], single=False
     return matching
 
 
-_np_dtype_to_mlir_type_ctor = {
-    np.int8: T.i8,
-    np.int16: T.i16,
-    np.int32: T.i32,
-    # windows
-    np.intc: T.i32,
-    np.int64: T.i64,
-    # is technically wrong i guess but numpy by default casts python scalars to this
-    # so to support passing lists of ints we map to index type
-    np.longlong: T.index,
-    np.uintp: T.index,
-    np.float16: T.f16,
-    np.float32: T.f32,
-    np.float64: T.f64,
-}
-
-_mlir_type_ctor_to_np_dtype = lambda: {
-    v: k for k, v in _np_dtype_to_mlir_type_ctor.items()
-}
+_np_dtype_to_mlir_type_ctor = defaultdict(
+    lambda: None,
+    {
+        # Signed integer types
+        np.int8: T.i8,
+        np.int16: T.i16,
+        np.int32: T.i32,
+        np.intc: T.i32,  # windows
+        np.int64: T.i64,
+        # Unsigned integer types
+        np.uint8: T.ui8,
+        np.uint16: T.ui16,
+        np.uint32: T.ui32,
+        np.uint64: T.ui64,
+        # Floating point types
+        np.float16: T.f16,
+        np.float32: T.f32,
+        np.float64: T.f64,
+        # Block floating point types
+        # bfloat16: T.bf16, # TODO(erika): enable bfloat16 here!
+        # Index Types
+        # this is technically wrong i guess but numpy by default casts python scalars to this
+        # so to support passing lists of ints we map to index type
+        np.longlong: T.index,
+        np.uintp: T.index,
+    },
+)
 
 
 def np_dtype_to_mlir_type(np_dtype):
-    if typ := _np_dtype_to_mlir_type_ctor.get(np_dtype):
-        return typ()
+    mlir_type = _np_dtype_to_mlir_type_ctor[np_dtype]
+    if mlir_type:
+        return mlir_type()
+    else:
+        raise AttributeError("Failed to map np dtype to mlir python type")
 
 
 def mlir_type_to_np_dtype(mlir_type):
-    _mlir_type_to_np_dtype = {v(): k for k, v in _np_dtype_to_mlir_type_ctor.items()}
-    return _mlir_type_to_np_dtype.get(mlir_type)
+    # Must define dynamically because you can't instantiate v() outside of context
+    mlir_type_ctor_to_np_dtype = defaultdict(
+        lambda: None,
+        {v(): k for k, v in _np_dtype_to_mlir_type_ctor.items()},
+    )
+
+    np_dtype = mlir_type_ctor_to_np_dtype.get(mlir_type)
+    if np_dtype:
+        return np_dtype
+    else:
+        raise AttributeError("Failed to map mlir python type to np dtype")
 
 
 _mlir_type_to_ctype = {

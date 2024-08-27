@@ -15,9 +15,14 @@ class MyTile(Resolvable):
     def __init__(self, column: int, row: int) -> None:
         assert isinstance(column, int)
         assert isinstance(row, int)
-        self.column: int = column
-        self.row: int = row
-        self.op: int = None
+        self.__column: int = column
+        self.__row: int = row
+        self.__op: int = None
+
+    @property
+    def op(self):
+        assert self.__op != None
+        return self.__op
 
     def resolve(
         self,
@@ -25,5 +30,6 @@ class MyTile(Resolvable):
         ip: ir.InsertionPoint = None,
         context: ir.Context = None,
     ) -> None:
-        assert self.op == None
-        self.op = tile(self.column, self.row, loc=loc, ip=ip)
+        if self.__op != None:
+            pass
+        self.__op = tile(self.__column, self.__row, loc=loc, ip=ip)
