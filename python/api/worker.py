@@ -2,20 +2,18 @@
 TODO: 
 * docs
 * types
-* producer/consumer
-* join/distribute
 * logical?
 """
 
 from .. import ir
 from ..dialects.aie import core
-from .resolvable import Resolvable
 from .phys.tile import MyTile
 from .dataflow.objectfifo import MyObjectFifo
+from .dataflow.endpoint import MyObjectFifoEndpoint
 from .kernels.kernel import MyKernel
 
 
-class MyWorker(Resolvable):
+class MyWorker(MyObjectFifoEndpoint):
     def __init__(
         self,
         core_fn,
@@ -48,7 +46,7 @@ class MyWorker(Resolvable):
             assert isinstance(of, MyObjectFifo), "ofs_end1 must be List[ObjectFifo]"
             of.set_endpoint(self, False)
 
-    def get_tile(self):
+    def get_tile(self) -> MyTile:
         assert self.tile != None
         return self.tile.op
 
