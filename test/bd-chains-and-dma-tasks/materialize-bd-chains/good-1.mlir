@@ -5,8 +5,6 @@
 //
 // (c) Copyright 2024 AMD Inc.
 
-// REQUIRES: ryzen_ai
-//
 // RUN: aie-opt --aie-materialize-bd-chains %s | FileCheck %s
 
 // This test ensures that a BD chains get lowered to correct `aiex.dma_configure_task`
