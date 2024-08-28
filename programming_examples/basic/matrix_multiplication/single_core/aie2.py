@@ -56,7 +56,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
         r = 4
         s = 8
         t = 4
-     elif dtype_in_str == "i8":
+    elif dtype_in_str == "i8":
         r = 4
         s = 8
         t = 8
