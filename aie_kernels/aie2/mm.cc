@@ -539,12 +539,12 @@ void matmul_vectorized_4x8x4_bf16_f32(const bfloat16 *__restrict pA,
 }
 
 template <unsigned m, unsigned k, unsigned n>
-void matmul_vectorized_4x8x4_i8_i8(const int8 *__restrict pA,
+void matmul_vectorized_4x8x8_i8_i8(const int8 *__restrict pA,
                                    const int8 *__restrict pB,
                                    int8 *__restrict pC) {
   constexpr int r = 4;
   constexpr int s = 8;
-  constexpr int t = 4;
+  constexpr int t = 8;
   static_assert(m % (2 * r) == 0 && m / (2 * r) > 0);
   static_assert(k % (2 * s) == 0 && k / (2 * s) > 0);
   static_assert(n % (2 * t) == 0 && n / (2 * t) > 0);
@@ -572,7 +572,7 @@ extern "C" {
 #endif
 
 #define combos(X)                                                              \
-  X(int8, i8, int8, i8, 4, 8, 4)                                               \
+  X(int8, i8, int8, i8, 4, 8, 8)                                               \
   X(int16, i16, int16, i16, 4, 4, 4)                                           \
   X(int16, i16, int32, i32, 4, 4, 4)                                           \
   X(bfloat16, bf16, bfloat16, bf16, 4, 8, 4)                                   \

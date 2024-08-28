@@ -52,10 +52,14 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
     assert K % k == 0
     assert N % n == 0
 
-    if dtype_in_str == "bf16" or dtype_in_str == "i8":
+    if dtype_in_str == "bf16":
         r = 4
         s = 8
         t = 4
+     elif dtype_in_str == "i8":
+        r = 4
+        s = 8
+        t = 8
     elif dtype_in_str == "i16":
         r = 4
         s = 4

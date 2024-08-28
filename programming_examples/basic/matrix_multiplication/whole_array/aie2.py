@@ -81,10 +81,14 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
     elif dtype_out_str == "i32":
         dtype_out = T.i32
 
-    if dtype_in_str == "bf16" or dtype_in_str == "i8":
+    if dtype_in_str == "bf16":
         r = 4
         s = 8
         t = 4
+    elif dtype_in_str == "i8":
+        r = 4
+        s = 8
+        t = 8
     elif dtype_in_str == "i16":
         r = 4
         s = 4
