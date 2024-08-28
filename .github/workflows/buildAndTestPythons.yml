@@ -34,7 +34,7 @@ jobs:
       # Run the tests on the Cartesian product of the following
       matrix:
         build_type: [ Assert, Release ]
-        ubuntu_version: [ 20.04, 22.04 ]
+        ubuntu_version: [ 20.04, 22.04, 24.04 ]
         python_version: [ "3.8", "3.9", "3.10", "3.11", "3.12" ]
 
     steps:
