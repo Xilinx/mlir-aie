@@ -21,7 +21,7 @@ The design in [join_L2.py](./join_L2.py) uses three Object FIFOs from each of th
   of_out0 = object_fifo("out0", ComputeTile0, MemTile, 2, memRef_8_ty)
   of_out1 = object_fifo("out1", ComputeTile1, MemTile, 2, memRef_8_ty)
   of_out2 = object_fifo("out2", ComputeTile2, MemTile, 2, memRef_8_ty)
-  object_fifo_link([of_out0, of_out1, of_out2], of_out)
+  object_fifo_link([of_out0, of_out1, of_out2], of_out, [0, 8, 16], [])
 ```
 
 All compute tiles are running the same process of acquiring one object from their respective input Object FIFOs to produce, writing `1` to all of its entries, and releasing the object.

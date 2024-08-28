@@ -1668,7 +1668,9 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         DefaultValuedAttr<BoolAttr, "false">:$plio,
         // via_shared_mem==0 means use producer tile's memory module
         // via_shared_mem==1 means use consumer tile's memory module
-        OptionalAttr<AIEI32Attr>:$via_shared_mem
+        OptionalAttr<AIEI32Attr>:$via_shared_mem,
+        // memtile_repeat==0 means "do it once" and don't repeat
+        OptionalAttr<AIEI32Attr>:$memtile_repeat
   );
 
   let assemblyFormat = [{
@@ -1724,37 +1726,38 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
 def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
   let summary = "Links two objectFifos through an intermediary tile's DMA";
   let description = [{
-    The `aie.objectFifo.link` operation allows to mark two `objectFifos` as linked. This implies that the two `objectFifos` form
+    The `aie.objectFifo.link` operation allows to mark two or more `objectFifos` as linked. This implies that the `objectFifos` form
     one dataflow movement which is split accross multiple `objectFifos`. Specifically, during the `objectFifo` lowering there will
-    be less memory elements generated at the link point as the two `objectFifos` can share.
+    be less memory elements generated at the link point (i.e., the shared tile of all `objectFifos` in the link) as the `objectFifos` can share.
 
-    The two `objectFifos` which are linked must have a link point (i.e., a shared AIE tile).
-    In L1, only `objectFifos` of same size may be linked. In L2, different sized objectFifos can be linked.
+    The `objectFifos` which are linked must have a link point (i.e., a shared AIE tile).
 
     Example:
     ```
       aie.objectfifo @of1 (%t70, { %t72 }, 2) : !aie.objectfifo<memref<64xi16>>
       aie.objectfifo @of2 (%t72, { %t74 }, 2) : !aie.objectfifo<memref<64xi16>>
-      aie.objectfifo.link [@of1] -> [@of2] ()
+      aie.objectfifo.link [@of1] -> [@of2] ([] [])
     ```
-    This operation links two `objectFifos` which have tile `%t72` as a link point.
+    This operation links two `objectFifos` which have tile `%t72` as a link point. The offset input arrays are not required as the full size of
+    the objects is transferred from @of1 to @of2.
 
     To achieve a broadcast pattern through the link tile, the output `objectFifo` should have a list of all the consumers tiles.
     To achieve a distribute pattern from the link tile, there should be multiple output `objectFifos` in the LinkOp. In this case,
-    parts will be taken out of the input `objectFifo`'s buffers based on the sizes of the output `objectFifos`, in the order they
-    were given in the LinkOp.
-    The join pattern is the exact inverse of the distribute one.
+    parts will be taken out of the input `objectFifo`'s buffers based on dst_offsets input array.
+    The join pattern is the exact inverse of the distribute one and uses the src_offsets input array instead.
   }];
 
   let arguments = (
     ins SymbolRefArrayAttr:$fifoIns,
-        SymbolRefArrayAttr:$fifoOuts
+        SymbolRefArrayAttr:$fifoOuts,
+        I64ArrayAttr:$src_offsets,
+        I64ArrayAttr:$dst_offsets
   );
 
   let hasCustomAssemblyFormat = 1;
 
   let assemblyFormat = [{
-    $fifoIns `->` $fifoOuts `(` `)` attr-dict
+    $fifoIns `->` $fifoOuts `(` $src_offsets $dst_offsets `)` attr-dict
   }];
 
   let hasVerifier = 1;
@@ -1762,16 +1765,12 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
   let extraClassDeclaration = [{
     std::vector<ObjectFifoCreateOp> getInputObjectFifos();
     std::vector<ObjectFifoCreateOp> getOutputObjectFifos();
-
-    bool isJoin() {
-      return getFifoIns().size() > 1;
-    }
-
-    bool isDistribute() {
-      return getFifoOuts().size() > 1;
-    }
-
+    bool isJoin() { return getFifoIns().size() > 1; }
+    bool isDistribute() { return getFifoOuts().size() > 1; }
     std::optional<mlir::Value> getOptionalSharedTile();
+    std::optional<int> getRepeatCount();
+    std::vector<int> getJoinTranferLengths();
+    std::vector<int> getDistributeTranferLengths();
   }];
 }
 

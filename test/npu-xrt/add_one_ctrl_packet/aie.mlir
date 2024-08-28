@@ -13,7 +13,7 @@ module {
     memref.global "public" @out0 : memref<8xi32>
     memref.global "public" @ctrl0 : memref<8xi32>
 
-    %tile_0_0 = aie.tile(0, 0)
+    %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
     %tile_0_2 = aie.tile(0, 2)
 
     %input_lock0 = aie.lock(%tile_0_2, 0) {init = 0 : i32, sym_name = "input_lock0"}
@@ -130,6 +130,7 @@ module {
 
       // patch bd0 address for packet 0, push to mm2s_0_task_queue, wait
       aiex.npu.address_patch {addr = 0x1d004 : ui32, arg_idx = 1 : i32, arg_plus = 0 : i32}
+      aiex.npu.maskwrite32 {address = 0x1d210 : ui32, column = 0 : i32, row = 0 : i32, mask = 0x00000F00 : ui32, value = 0x400 : ui32}
       aiex.npu.write32 {address = 0x1d214 : ui32, column = 0 : i32, row = 0 : i32, value = 0x80000000 : ui32}
       aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
 
