@@ -267,6 +267,16 @@ def configure_coretile_tracing_aie2(
         npu_write32(column=int(tile.col), row=int(tile.row), address=addr, value=value)
 
 
+def configure_broadcast_core_aie2(tile, num, event):
+    addr = 0x34010 + num*4
+    npu_write32(
+        column=int(tile.col),
+        row=int(tile.row),
+        address=addr,
+        value=event,
+    )
+
+
 def configure_shimtile_tracing_aie2(
     shim,
     channel=1,
