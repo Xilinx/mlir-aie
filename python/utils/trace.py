@@ -161,6 +161,7 @@ def pack4bytes(b3, b2, b1, b0):
 # Big assumption: The bd_id and channel are unused.  If they are used by something else, then
 # everything will probably break.
 
+
 def configure_coretile_tracing_aie2(
     tile,
     start=CoreEvent.TRUE,
@@ -200,9 +201,10 @@ def configure_coretile_tracing_aie2(
     ordered_events.append(events[5])
     ordered_events.append(events[4])
 
-
     # Assure all selected events are valid
-    ordered_events = [e if isinstance(e, GenericEvent) else GenericEvent(e) for e in ordered_events]
+    ordered_events = [
+        e if isinstance(e, GenericEvent) else GenericEvent(e) for e in ordered_events
+    ]
 
     # Require ports to be specifically given for port events.
     for event in ordered_events:
@@ -268,7 +270,7 @@ def configure_coretile_tracing_aie2(
 
 
 def configure_broadcast_core_aie2(tile, num, event):
-    addr = 0x34010 + num*4
+    addr = 0x34010 + num * 4
     npu_write32(
         column=int(tile.col),
         row=int(tile.row),
