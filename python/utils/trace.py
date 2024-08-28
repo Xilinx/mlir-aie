@@ -160,33 +160,22 @@ def pack4bytes(b3, b2, b1, b0):
 # Event numbers should be less than 128.
 # Big assumption: The bd_id and channel are unused.  If they are used by something else, then
 # everything will probably break.
-def configure_simple_tracing_aie2(
+
+def configure_coretile_tracing_aie2(
     tile,
-    shim,
-    channel=1,
-    bd_id=13,
-    ddr_id=2,
-    size=8192,
-    offset=0,
     start=CoreEvent.TRUE,
     stop=CoreEvent.NONE,
     events=[
-        CoreEvent.INSTR_EVENT_1,
         CoreEvent.INSTR_EVENT_0,
+        CoreEvent.INSTR_EVENT_1,
         CoreEvent.INSTR_VECTOR,
-        CoreEvent.INSTR_LOCK_RELEASE_REQ,
-        CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
-        CoreEvent.LOCK_STALL,
         PortEvent(CoreEvent.PORT_RUNNING_0, 1, True),  # master(1)
         PortEvent(CoreEvent.PORT_RUNNING_1, 1, False),  # slave(1)
+        CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
+        CoreEvent.INSTR_LOCK_RELEASE_REQ,
+        CoreEvent.LOCK_STALL,
     ],
 ):
-    dev = shim.parent.attributes["device"]
-    tm = get_target_model(dev)
-
-    # Shim has to be a shim tile
-    assert tm.is_shim_noc_tile(shim.col, shim.row)
-
     # For backwards compatibility, allow integers for start/stop events
     if isinstance(start, int):
         start = CoreEvent(start)
@@ -200,11 +189,23 @@ def configure_simple_tracing_aie2(
         )
     events = (events + [CoreEvent.NONE] * 8)[:8]
 
+    # Reorder events so they match the event order for display
+    ordered_events = []
+    ordered_events.append(events[3])
+    ordered_events.append(events[2])
+    ordered_events.append(events[1])
+    ordered_events.append(events[0])
+    ordered_events.append(events[7])
+    ordered_events.append(events[6])
+    ordered_events.append(events[5])
+    ordered_events.append(events[4])
+
+
     # Assure all selected events are valid
-    events = [e if isinstance(e, GenericEvent) else GenericEvent(e) for e in events]
+    ordered_events = [e if isinstance(e, GenericEvent) else GenericEvent(e) for e in ordered_events]
 
     # Require ports to be specifically given for port events.
-    for event in events:
+    for event in ordered_events:
         if event.code in PortEventCodes and not isinstance(event, PortEvent):
             raise RuntimeError(
                 f"Tracing: {event.code.name} is a PortEvent and requires a port to be specified alongside it. \n"
@@ -242,7 +243,7 @@ def configure_simple_tracing_aie2(
         column=int(tile.col),
         row=int(tile.row),
         address=0x340E0,
-        value=pack4bytes(*(e.code.value for e in events[0:4])),
+        value=pack4bytes(*(e.code.value for e in ordered_events[0:4])),
     )
     # 0x340E4: Trace Event Group 2  (Which events to trace)
     #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
@@ -250,12 +251,12 @@ def configure_simple_tracing_aie2(
         column=int(tile.col),
         row=int(tile.row),
         address=0x340E4,
-        value=pack4bytes(*(e.code.value for e in events[4:8])),
+        value=pack4bytes(*(e.code.value for e in ordered_events[4:8])),
     )
 
     # Event specific register writes
     all_reg_writes = {}
-    for e in events:
+    for e in ordered_events:
         reg_writes = e.get_register_writes()
         for addr, value in reg_writes.items():
             if addr in all_reg_writes:
@@ -264,6 +265,32 @@ def configure_simple_tracing_aie2(
                 all_reg_writes[addr] = value
     for addr, value in all_reg_writes.items():
         npu_write32(column=int(tile.col), row=int(tile.row), address=addr, value=value)
+
+
+def configure_broadcast_core_aie2(tile, num, event):
+    addr = 0x34010 + num*4
+    npu_write32(
+        column=int(tile.col),
+        row=int(tile.row),
+        address=addr,
+        value=event,
+    )
+
+
+def configure_shimtile_tracing_aie2(
+    shim,
+    channel=1,
+    bd_id=13,
+    ddr_id=2,
+    size=8192,
+    offset=0,
+):
+
+    dev = shim.parent.attributes["device"]
+    tm = get_target_model(dev)
+
+    # Shim has to be a shim tile
+    assert tm.is_shim_noc_tile(shim.col, shim.row)
 
     # Configure a buffer descriptor to write tracing information that has been routed into this shim tile
     # out to host DDR memory
@@ -303,3 +330,28 @@ def configure_simple_tracing_aie2(
         address=0x1D204 if channel == 0 else 0x1D20C,
         value=bd_id,
     )
+
+
+def configure_simple_tracing_aie2(
+    tile,
+    shim,
+    channel=1,
+    bd_id=13,
+    ddr_id=2,
+    size=8192,
+    offset=0,
+    start=CoreEvent.TRUE,
+    stop=CoreEvent.NONE,
+    events=[
+        CoreEvent.INSTR_EVENT_0,
+        CoreEvent.INSTR_EVENT_1,
+        CoreEvent.INSTR_VECTOR,
+        PortEvent(CoreEvent.PORT_RUNNING_0, 1, True),  # master(1)
+        PortEvent(CoreEvent.PORT_RUNNING_1, 1, False),  # slave(1)
+        CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
+        CoreEvent.INSTR_LOCK_RELEASE_REQ,
+        CoreEvent.LOCK_STALL,
+    ],
+):
+    configure_coretile_tracing_aie2(tile, start, stop, events)
+    configure_shimtile_tracing_aie2(shim, channel, bd_id, ddr_id, size, offset)
