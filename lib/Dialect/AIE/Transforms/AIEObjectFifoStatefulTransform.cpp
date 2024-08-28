@@ -875,87 +875,83 @@ struct AIEObjectFifoStatefulTransformPass
           // Push it to the unrolledLoops to avoid unrolling
           if (!foundMap[forLoop.getOperation()]) {
             unrolledLoops.push_back(forLoop);
-          } else {
-            // Walk in the loop region to unroll the loop and its remainder
-            Region *region = forLoop->getParentRegion();
-            scf::ForOp prevLoop;
-            prevLoop = forLoop;
-            tripCountMap[prevLoop.getOperation()] = 0;
-            while (remainderMap[prevLoop.getOperation()] > 1 ||
-                   foundMap[prevLoop.getOperation()]) {
-              region->walk([&](scf::ForOp remLoop) {
-                bool skipLoop = 0;
-                int64_t tripCount = 0;
-                if (remLoop.getSingleLowerBound() &&
-                    remLoop.getSingleUpperBound() && remLoop.getSingleStep()) {
-                  tripCount =
-                      constantTripCount(*(remLoop.getSingleLowerBound()),
-                                        *(remLoop.getSingleUpperBound()),
-                                        *(remLoop.getSingleStep()))
-                          .value_or(0);
+            return WalkResult::advance();
+          }
+          // Walk in the loop region to unroll the loop and its remainder
+          Region *region = forLoop->getParentRegion();
+          scf::ForOp prevLoop;
+          prevLoop = forLoop;
+          tripCountMap[prevLoop.getOperation()] = 0;
+          while (remainderMap[prevLoop.getOperation()] > 1 ||
+                 foundMap[prevLoop.getOperation()]) {
+            region->walk([&](scf::ForOp remLoop) {
+              bool skipLoop = false;
+              int64_t tripCount = 0;
+              if (remLoop.getSingleLowerBound() &&
+                  remLoop.getSingleUpperBound() && remLoop.getSingleStep()) {
+                tripCount = constantTripCount(*(remLoop.getSingleLowerBound()),
+                                              *(remLoop.getSingleUpperBound()),
+                                              *(remLoop.getSingleStep()))
+                                .value_or(0);
+              }
+              int unrollFactor =
+                  computeLCM(objFifoSizes); // also counts original loop body
+              // Loop ids are not unique.
+              // Sometimes, immediately after unrolling, the unrolled loop
+              // and the one next to it (can be the remainder loop or an
+              // independent loop) will have the same ID. This makes it
+              // difficult to identify which loop needs to be unrolled.
+              // Once it restarts walking from start, it ends up allocating
+              // new ID to each loop.
+              if (remainderMap[prevLoop.getOperation()] > 1 &&
+                  foundMap[remLoop.getOperation()] == false &&
+                  prevLoop != remLoop) {
+                skipLoop = true;
+              }
+              if (std::count(unrolledLoops.begin(), unrolledLoops.end(),
+                             remLoop) == 0 &&
+                  !skipLoop) {
+                tripCountMap[remLoop.getOperation()] = tripCount;
+                // if loop iterations < unrollFactor, unroll the loop fully
+                if (tripCountMap[remLoop.getOperation()] < unrollFactor)
+                  unrollFactor = tripCountMap[remLoop.getOperation()];
+                // If unrollFactor = 0,divide by zero
+                if (unrollFactor == 0) {
+                  remLoop.emitOpError()
+                      << "could not be unrolled with unrollFactor = 0, check "
+                         "loop boundaries."
+                      << "\n";
+                  return WalkResult::interrupt();
                 }
-                int unrollFactor =
-                    computeLCM(objFifoSizes); // also counts original loop body
-                // Loop ids are not unique.
-                // Sometimes, immediately after unrolling, the unrolled loop
-                // and the one next to it (can be the remainder loop or an
-                // independent loop) will have the same ID. This makes it
-                // difficult to identify which loop needs to be unrolled.
-                // Once it restarts walking from start, it ends up allocating
-                // new ID to each loop.
-                if (remainderMap[prevLoop.getOperation()] > 1 &&
-                    foundMap[remLoop.getOperation()] == false &&
-                    prevLoop != remLoop) {
-                  skipLoop = 1;
-                }
-                if (std::count(unrolledLoops.begin(), unrolledLoops.end(),
-                               remLoop) == 0 &&
-                    skipLoop == 0) {
-                  tripCountMap[remLoop.getOperation()] = tripCount;
-                  // if loop iterations < unrollFactor, unroll the loop fully
-                  if (tripCountMap[remLoop.getOperation()] < unrollFactor)
-                    unrollFactor = tripCountMap[remLoop.getOperation()];
-                  // If unrollFactor = 0,divide by zero
-                  if (unrollFactor == 0) {
-                    remLoop.emitOpError()
-                        << "could not be unrolled with unrollFactor = 0, check "
-                           "loop boundaries."
-                        << "\n";
-                    return WalkResult::interrupt();
-                  } else {
-                    remainderMap[remLoop.getOperation()] =
-                        tripCountMap[remLoop.getOperation()] % unrollFactor;
-                    auto step = remLoop.getStep()
-                                    .getDefiningOp<arith::ConstantOp>()
-                                    .getValue();
-                    int64_t step_value =
-                        llvm::dyn_cast<IntegerAttr>(step).getInt();
+                remainderMap[remLoop.getOperation()] =
+                    tripCountMap[remLoop.getOperation()] % unrollFactor;
+                auto step = remLoop.getStep()
+                                .getDefiningOp<arith::ConstantOp>()
+                                .getValue();
+                int64_t step_value = llvm::dyn_cast<IntegerAttr>(step).getInt();
 
-                    if (step_value < unrollFactor ||
-                        foundMap[remLoop.getOperation()]) {
-                      // Process the for loop
-                      if (failed(mlir::loopUnrollByFactor(remLoop,
-                                                          unrollFactor))) {
-                        remLoop.emitOpError()
-                            << "could not be unrolled with unrollFactor: "
-                            << unrollFactor << "\n";
-                        return WalkResult::interrupt();
-                      }
-                      unrolledLoops.push_back(remLoop);
-                      foundMap[remLoop.getOperation()] = false;
-                    } else {
-                      remainderMap[remLoop.getOperation()] = 0;
-                      foundMap[remLoop.getOperation()] = false;
-                    }
+                if (step_value < unrollFactor ||
+                    foundMap[remLoop.getOperation()]) {
+                  // Process the for loop
+                  if (failed(mlir::loopUnrollByFactor(remLoop, unrollFactor))) {
+                    remLoop.emitOpError()
+                        << "could not be unrolled with unrollFactor: "
+                        << unrollFactor << "\n";
+                    return WalkResult::interrupt();
                   }
+                  unrolledLoops.push_back(remLoop);
+                  foundMap[remLoop.getOperation()] = false;
                 } else {
                   remainderMap[remLoop.getOperation()] = 0;
                   foundMap[remLoop.getOperation()] = false;
                 }
-                prevLoop = remLoop;
-                return WalkResult::advance();
-              });
-            }
+              } else {
+                remainderMap[remLoop.getOperation()] = 0;
+                foundMap[remLoop.getOperation()] = false;
+              }
+              prevLoop = remLoop;
+              return WalkResult::advance();
+            });
           }
           return WalkResult::advance();
         });
@@ -1138,7 +1134,7 @@ struct AIEObjectFifoStatefulTransformPass
     // Split objectFifos into a consumer end and producer end if needed
     //===------------------------------------------------------------------===//
     // We are going to create additional createObjectFifoOps, so get a copy of
-    // all "original" ones before the loop to avoid prevLoop over newly created
+    // all "original" ones before the loop to avoid looping over newly created
     // ones.
     std::vector<ObjectFifoCreateOp> createFifoOps;
     auto range = device.getOps<ObjectFifoCreateOp>();
