@@ -1,10 +1,12 @@
-//===- test_congestion0.mlir ------------------------------------------------*- MLIR -*-===//
+//===- test_congestion0.mlir -----------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Copyright (C) 2024, Advanced Micro Devices, Inc.
-// SPDX-License-Identifier: MIT
 //
 //===----------------------------------------------------------------------===//
-// REQUIRES: ryzen_ai, chess
 
 // RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s -o %t.opt
 // RUN: FileCheck %s --check-prefix=CHECK1 < %t.opt

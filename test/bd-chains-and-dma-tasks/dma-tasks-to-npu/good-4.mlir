@@ -5,8 +5,6 @@
 //
 // (c) Copyright 2024 AMD Inc.
 
-// REQUIRES: ryzen_ai
-//
 // RUN: aie-opt --aie-dma-tasks-to-npu %s | FileCheck %s
 
 // This test ensures that a buffer descriptor configuration that references a buffer

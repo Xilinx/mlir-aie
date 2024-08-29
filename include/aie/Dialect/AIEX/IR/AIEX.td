@@ -791,6 +791,23 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
   }];
 }
 
+def AIE_NpuControlPacketOp: AIEX_Op<"control_packet", []> {
+  let summary = "AIE control packet";
+  let arguments = (
+    ins UI32Attr:$address,
+        OptionalAttr<I32Attr>:$length,
+        I32Attr:$opcode,
+        I32Attr:$stream_id,
+        OptionalAttr<DenseI32ArrayAttr>:$data
+  );
+  let results = (outs );
+  let assemblyFormat = [{ attr-dict }];
+  let description = [{
+    The control_packet operation represents a low-level AIE control packet header
+    and payload.
+  }];
+}
+
 // NPU Bd Write operation
 def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
   let summary = "dma operator";
