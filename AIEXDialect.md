@@ -204,6 +204,32 @@ Example:
 | `dest` | index
 
 
+### `aiex.control_packet` (::xilinx::AIEX::NpuControlPacketOp)
+
+_AIE control packet_
+
+
+Syntax:
+
+```
+operation ::= `aiex.control_packet` attr-dict
+```
+
+The control_packet operation represents a low-level AIE control packet header
+and payload.
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>length</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>opcode</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>stream_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>data</code></td><td>::mlir::DenseI32ArrayAttr</td><td>i32 dense array attribute</td></tr>
+</table>
+
+
 ### `aiex.dma_await_task` (::xilinx::AIEX::DMAAwaitTaskOp)
 
 _Await Completion of a Previously Submitted DMA Task_
