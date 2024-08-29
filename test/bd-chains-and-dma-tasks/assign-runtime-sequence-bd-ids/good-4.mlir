@@ -5,8 +5,6 @@
 //
 // (c) Copyright 2024 AMD Inc.
 
-// REQUIRES: ryzen_ai
-//
 // RUN: aie-opt --aie-assign-runtime-sequence-bd-ids %s | FileCheck %s
 
 // This test ensures that all available 16 buffer descriptors are used.

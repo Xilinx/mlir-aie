@@ -225,7 +225,8 @@ static LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
                                              XAie_LocType &tileLoc) {
   LLVM_DEBUG(llvm::dbgs() << "\nstart configuring bds\n");
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
-  bool acqEn;
+  bool acqEn = false;
+
   // switch (lock->getAc)
   for (auto op : block.getOps<UseLockOp>()) {
     // Only dyn_cast if you are going to check if it was of the type
@@ -475,6 +476,8 @@ struct AIEControl {
     case AIEArch::AIE2:
       devGen = XAIE_DEV_GEN_AIEML;
       break;
+    default:
+      assert(false);
     }
     configPtr = XAie_Config{
         /*AieGen*/ devGen,
