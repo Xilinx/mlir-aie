@@ -913,7 +913,8 @@ parseTxnBinary(const std::vector<uint8_t> &data, bool verbose = true) {
   LLVM_DEBUG(llvm::outs() << "// NumMemTileRows: "
                           << static_cast<int>(num_mem_tile_rows) << "\n");
   LLVM_DEBUG(llvm::outs() << "// NumOps: " << num_ops << "\n");
-  LLVM_DEBUG(llvm::outs() << "// TxnSize: " << txn_size << " bytes" << "\n");
+  LLVM_DEBUG(llvm::outs() << "// TxnSize: " << txn_size << " bytes"
+                          << "\n");
 
   std::vector<
       std::tuple<uint8_t, uint64_t, uint32_t, uint32_t, const uint8_t *>>
