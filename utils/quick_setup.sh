@@ -56,7 +56,7 @@ else
   source ironenv/bin/activate
 fi
 python3 -m pip install --upgrade pip
-VPP=`which v++`
+VPP=`which xchesscc`
 if test -f "$VPP"; then
   AIETOOLS="`dirname $VPP`/../aietools"
   mkdir -p my_install
