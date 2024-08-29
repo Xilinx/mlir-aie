@@ -13,13 +13,13 @@ extern "C" {
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIEEnums.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/IR/Block.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Region.h"
-#include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 
@@ -28,7 +28,6 @@ extern "C" {
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/ToolOutputFile.h"
 
 #include <algorithm>
 #include <cassert>
@@ -40,6 +39,7 @@ extern "C" {
 #include <map>
 #include <optional>
 #include <string>
+#include <vector>
 
 #ifndef NDEBUG
 #define XAIE_DEBUG
@@ -884,6 +884,139 @@ translateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
   return result;
 }
 
+// returns number of columns and a vector of
+// std::tuple<opc, addr, value, size|mask, data ptr>
+static std::pair<int, std::vector<std::tuple<uint8_t, uint64_t, uint32_t,
+                                             uint32_t, const uint8_t *>>>
+parseTxnBinary(const std::vector<uint8_t> &data, bool verbose = true) {
+
+  uint8_t major, minor, dev_gen, num_rows, num_cols, num_mem_tile_rows;
+  uint32_t num_ops, txn_size;
+
+  std::memcpy(&major, &data[0], 1);
+  std::memcpy(&minor, &data[1], 1);
+  std::memcpy(&dev_gen, &data[2], 1);
+  std::memcpy(&num_rows, &data[3], 1);
+  std::memcpy(&num_cols, &data[4], 1);
+  std::memcpy(&num_mem_tile_rows, &data[5], 1);
+  std::memcpy(&num_ops, &data[8], 4);
+  std::memcpy(&txn_size, &data[12], 4);
+
+  LLVM_DEBUG(llvm::outs() << "// Major: " << static_cast<int>(major) << "\n");
+  LLVM_DEBUG(llvm::outs() << "// Minor: " << static_cast<int>(minor) << "\n");
+  LLVM_DEBUG(llvm::outs() << "// DevGen: " << static_cast<int>(dev_gen)
+                          << "\n");
+  LLVM_DEBUG(llvm::outs() << "// NumRows: " << static_cast<int>(num_rows)
+                          << "\n");
+  LLVM_DEBUG(llvm::outs() << "// NumCols: " << static_cast<int>(num_cols)
+                          << "\n");
+  LLVM_DEBUG(llvm::outs() << "// NumMemTileRows: "
+                          << static_cast<int>(num_mem_tile_rows) << "\n");
+  LLVM_DEBUG(llvm::outs() << "// NumOps: " << num_ops << "\n");
+  LLVM_DEBUG(llvm::outs() << "// TxnSize: " << txn_size << " bytes" << "\n");
+
+  std::vector<
+      std::tuple<uint8_t, uint64_t, uint32_t, uint32_t, const uint8_t *>>
+      operations;
+  size_t i = 16;
+
+  if (major == 0 && minor == 1) {
+    while (i < data.size()) {
+      uint8_t opc;
+      std::memcpy(&opc, &data[i], 1);
+      LLVM_DEBUG(llvm::outs() << "opcode: " + std::to_string(opc) + "\n");
+
+      if (opc == 0x00) {
+        LLVM_DEBUG(llvm::outs() << "opcode: WRITE (0x00)\n");
+        uint32_t addr0, addr1, value, size;
+        std::memcpy(&addr0, &data[i + 8], 4);
+        std::memcpy(&addr1, &data[i + 12], 4);
+        std::memcpy(&value, &data[i + 16], 4);
+        std::memcpy(&size, &data[i + 20], 4);
+        uint64_t addr = static_cast<uint64_t>(addr1) << 32 | addr0;
+        LLVM_DEBUG(llvm::outs() << "addr: " + std::to_string(addr) + "\n");
+        LLVM_DEBUG(llvm::outs() << "value: " + std::to_string(value) + "\n");
+        LLVM_DEBUG(llvm::outs() << "size: " + std::to_string(size) + "\n");
+        operations.emplace_back(opc, addr, value, size, nullptr);
+        i += size;
+      } else if (opc == 0x01) {
+        LLVM_DEBUG(llvm::outs() << "opcode: BLOCKWRITE (0x01)\n");
+        uint32_t addr, size;
+        std::memcpy(&addr, &data[i + 8], 4);
+        std::memcpy(&size, &data[i + 12], 4);
+        LLVM_DEBUG(llvm::outs() << "addr: " + std::to_string(addr) + "\n");
+        LLVM_DEBUG(llvm::outs() << "size: " + std::to_string(size) + "\n");
+        operations.emplace_back(opc, addr, 0, size - 16, data.data() + i + 16);
+        i += size;
+      } else if (opc == 0x03) {
+        LLVM_DEBUG(llvm::outs() << "opcode: MASKWRITE (0x03)\n");
+        uint32_t addr0, addr1, value, mask, size;
+        std::memcpy(&addr0, &data[i + 8], 4);
+        std::memcpy(&addr1, &data[i + 12], 4);
+        std::memcpy(&value, &data[i + 16], 4);
+        std::memcpy(&mask, &data[i + 20], 4);
+        std::memcpy(&size, &data[i + 24], 4);
+        uint64_t addr = static_cast<uint64_t>(addr1) << 32 | addr0;
+        LLVM_DEBUG(llvm::outs() << "addr: " + std::to_string(addr) + "\n");
+        LLVM_DEBUG(llvm::outs() << "value: " + std::to_string(value) + "\n");
+        LLVM_DEBUG(llvm::outs() << "mask: " + std::to_string(mask) + "\n");
+        LLVM_DEBUG(llvm::outs() << "size: " + std::to_string(size) + "\n");
+        operations.emplace_back(opc, addr, value, mask, nullptr);
+        i += size;
+      } else {
+        //     uint32_t value;
+        //     std::memcpy(&value, &data[i], 4);
+        //     throw std::runtime_error("Unhandled header: " +
+        //     std::to_string(value));
+      }
+    }
+  } else if (major == 1 && minor == 0) {
+    while (i < data.size()) {
+      uint8_t opc;
+      std::memcpy(&opc, &data[i], 1);
+      LLVM_DEBUG(llvm::outs() << "opcode: " + std::to_string(opc) + "\n");
+
+      if (opc == 0x00) {
+        LLVM_DEBUG(llvm::outs() << "opcode: WRITE (0x00)\n");
+        uint32_t addr, value;
+        std::memcpy(&addr, &data[i + 4], 4);
+        std::memcpy(&value, &data[i + 8], 4);
+        LLVM_DEBUG(llvm::outs() << "addr: " + std::to_string(addr) + "\n");
+        LLVM_DEBUG(llvm::outs() << "value: " + std::to_string(value) + "\n");
+        operations.emplace_back(opc, addr, value, 0, nullptr);
+        i += 12;
+      } else if (opc == 0x01) {
+        LLVM_DEBUG(llvm::outs() << "opcode: BLOCKWRITE (0x01)\n");
+        uint32_t addr, size;
+        std::memcpy(&addr, &data[i + 4], 4);
+        std::memcpy(&size, &data[i + 8], 4);
+        LLVM_DEBUG(llvm::outs() << "addr: " + std::to_string(addr) + "\n");
+        LLVM_DEBUG(llvm::outs() << "size: " + std::to_string(size) + "\n");
+        operations.emplace_back(opc, addr, 0, size, data.data() + i + 12);
+        i += size;
+      } else if (opc == 0x03) {
+        LLVM_DEBUG(llvm::outs() << "opcode: MASKWRITE (0x03)\n");
+        uint32_t addr, value, mask;
+        std::memcpy(&addr, &data[i + 4], 4);
+        std::memcpy(&value, &data[i + 8], 4);
+        std::memcpy(&mask, &data[i + 12], 4);
+        LLVM_DEBUG(llvm::outs() << "addr: " + std::to_string(addr) + "\n");
+        LLVM_DEBUG(llvm::outs() << "value: " + std::to_string(value) + "\n");
+        LLVM_DEBUG(llvm::outs() << "mask: " + std::to_string(mask) + "\n");
+        operations.emplace_back(opc, addr, value, mask, nullptr);
+        i += 16;
+      } else {
+        // uint32_t value;
+        // std::memcpy(&value, &data[i], 4);
+        // throw std::runtime_error("Unhandled header: " +
+        // std::to_string(value));
+      }
+    }
+  }
+
+  return {num_cols, operations};
+}
+
 static LogicalResult generateTxn(AIEControl &ctl, const StringRef workDirPath,
                                  DeviceOp &targetOp, bool aieSim,
                                  bool enableElfs, bool enableInit,
@@ -899,9 +1032,9 @@ static LogicalResult generateTxn(AIEControl &ctl, const StringRef workDirPath,
   return success();
 }
 
-static LogicalResult translateToTxn(ModuleOp m, llvm::StringRef workDirPath,
-                                    bool aieSim, bool xaieDebug,
-                                    bool enableCores) {
+static LogicalResult translateToTxn(ModuleOp m, std::vector<uint8_t> &output,
+                                    llvm::StringRef workDirPath, bool aieSim,
+                                    bool xaieDebug, bool enableCores) {
 
   auto devOps = m.getOps<DeviceOp>();
   if (llvm::range_size(devOps) > 1)
@@ -921,24 +1054,16 @@ static LogicalResult translateToTxn(ModuleOp m, llvm::StringRef workDirPath,
 
   auto result =
       generateTxn(ctl, workDirPath, targetOp, aieSim, true, true, true);
+  if (failed(result))
+    return result;
 
   // Export the transactions to a buffer
   uint8_t *txn_ptr = XAie_ExportSerializedTransaction(&ctl.devInst, 0, 0);
-
-  // write transactions to file
   XAie_TxnHeader *hdr = (XAie_TxnHeader *)txn_ptr;
-  std::string filename =
-      (llvm::Twine(workDirPath) + std::string(1, ps) + "txn.bin").str();
+  std::vector<uint8_t> txn_data(txn_ptr, txn_ptr + hdr->TxnSize);
+  output.swap(txn_data);
 
-  std::string errorMessage;
-  auto output = openOutputFile(filename, &errorMessage);
-  if (!output) {
-    llvm::errs() << errorMessage << "\n";
-    return failure();
-  }
-  output->os().write(reinterpret_cast<const char *>(txn_ptr), hdr->TxnSize);
-  output->keep();
-  return result;
+  return success();
 }
 
 LogicalResult xilinx::AIE::AIETranslateToCDODirect(
@@ -950,9 +1075,109 @@ LogicalResult xilinx::AIE::AIETranslateToCDODirect(
                               aieSim, xaieDebug, enableCores);
 }
 
+std::optional<mlir::ModuleOp>
+xilinx::AIE::AIETranslateBinaryToTxn(mlir::MLIRContext *ctx,
+                                     std::vector<uint8_t> &binary) {
+
+  // parse the binary
+  auto [columns, operations] = parseTxnBinary(binary);
+  auto loc = mlir::UnknownLoc::get(ctx);
+
+  // create a new ModuleOp and set the insertion point
+  auto module = ModuleOp::create(loc);
+  OpBuilder builder(module.getBodyRegion());
+  builder.setInsertionPointToStart(module.getBody());
+
+  // create aie.device
+  std::vector<AIEDevice> devices{AIEDevice::npu1_1col, AIEDevice::npu1_2col,
+                                 AIEDevice::npu1_3col, AIEDevice::npu1_4col,
+                                 AIEDevice::npu1};
+  auto device = builder.create<DeviceOp>(loc, devices[columns - 1]);
+  device.getRegion().emplaceBlock();
+  builder.setInsertionPointToStart(device.getBody());
+
+  // for each blockwrite in the binary, create a GlobalOp with the data
+  std::vector<memref::GlobalOp> global_data;
+  for (auto &op : operations) {
+    uint8_t opc = std::get<0>(op);
+    if (opc != 0x01) {
+      global_data.push_back(nullptr);
+      continue;
+    }
+    uint32_t size = (std::get<3>(op) - 16) / 4;
+    const uint32_t *d = reinterpret_cast<const uint32_t *>(std::get<4>(op));
+    std::vector<uint32_t> data32(d, d + size);
+
+    int id = 0;
+    std::string name = "blockwrite_data";
+    while (device.lookupSymbol(name))
+      name = "blockwrite_data_" + std::to_string(id++);
+
+    MemRefType memrefType = MemRefType::get({size}, builder.getI32Type());
+    TensorType tensorType = RankedTensorType::get({size}, builder.getI32Type());
+    auto global = builder.create<memref::GlobalOp>(
+        loc, name, builder.getStringAttr("private"), memrefType,
+        DenseElementsAttr::get<uint32_t>(tensorType, data32), true, nullptr);
+    global_data.push_back(global);
+  }
+
+  // create aiex.runtime_sequence
+  auto seq = builder.create<AIEX::RuntimeSequenceOp>(loc, nullptr);
+  seq.getBody().push_back(new Block);
+
+  // create the txn ops
+  builder.setInsertionPointToStart(&seq.getBody().front());
+  for (auto p : llvm::zip(operations, global_data)) {
+    memref::GlobalOp payload = std::get<1>(p);
+    // operations =
+    // std::vector<std::tuple<uint8_t, uint64_t, uint32_t, uint32_t, uint8_t*>>>
+    auto op = std::get<0>(p);
+    uint8_t opc = std::get<0>(op);
+    uint64_t addr = std::get<1>(op);
+    uint32_t value = std::get<2>(op);
+    uint32_t mask = std::get<3>(op);
+
+    if (opc == 0x00) {
+      builder.create<AIEX::NpuWrite32Op>(loc, addr, value, nullptr, nullptr,
+                                         nullptr);
+    } else if (opc == 0x01) {
+      auto memref = builder.create<memref::GetGlobalOp>(loc, payload.getType(),
+                                                        payload.getName());
+      builder.create<AIEX::NpuBlockWriteOp>(
+          loc, builder.getUI32IntegerAttr(addr), memref.getResult(), nullptr,
+          nullptr, nullptr);
+    } else if (opc == 0x03) {
+      builder.create<AIEX::NpuMaskWrite32Op>(loc, addr, value, mask, nullptr,
+                                             nullptr, nullptr);
+    } else {
+      ; // return std::nullopt;
+    }
+  }
+
+  return module;
+}
+
 LogicalResult xilinx::AIE::AIETranslateToTxn(ModuleOp m,
+                                             llvm::raw_ostream &output,
                                              llvm::StringRef workDirPath,
-                                             bool aieSim, bool xaieDebug,
-                                             bool enableCores) {
-  return translateToTxn(m, workDirPath, aieSim, xaieDebug, enableCores);
+                                             bool outputBinary, bool enableSim,
+                                             bool xaieDebug, bool enableCores) {
+  std::vector<uint8_t> bin;
+  auto result =
+      translateToTxn(m, bin, workDirPath, enableSim, xaieDebug, enableCores);
+  if (failed(result))
+    return result;
+
+  if (outputBinary) {
+    output.write(reinterpret_cast<const char *>(bin.data()), bin.size());
+    return success();
+  }
+
+  auto new_module = AIETranslateBinaryToTxn(m.getContext(), bin);
+  if (!new_module)
+    return failure();
+
+  new_module->print(output);
+
+  return success();
 }

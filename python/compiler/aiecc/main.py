@@ -580,7 +580,8 @@ class FlowRunner:
             input_physical = Module.parse(
                 await read_file_async(self.prepend_tmp("input_physical.mlir"))
             )
-            generate_txn(input_physical.operation, self.tmpdirname)
+            txn_file = os.path.join(self.tmpdirname, "txn.mlir")
+            generate_txn(input_physical.operation, txn_file, self.tmpdirname)
 
     async def process_xclbin_gen(self):
         if opts.progress:

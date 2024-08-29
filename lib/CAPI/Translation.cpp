@@ -16,12 +16,14 @@
 #include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Support.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Target/LLVMIR/Export.h"
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <cstdlib>
@@ -80,21 +82,35 @@ MlirLogicalResult aieTranslateToCDODirect(MlirOperation moduleOp,
 }
 
 MlirLogicalResult aieTranslateToTxn(MlirOperation moduleOp,
+                                    MlirStringRef outputFile,
                                     MlirStringRef workDirPath, bool aieSim,
                                     bool xaieDebug, bool enableCores) {
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
+  bool outputBinary = false;
+
+  std::string errorMessage;
+  auto output = openOutputFile(StringRef(outputFile.data, outputFile.length),
+                               &errorMessage);
+  if (!output) {
+    llvm::errs() << errorMessage << "\n";
+    return wrap(failure());
+  }
+
   auto status = AIETranslateToTxn(
-      mod, llvm::StringRef(workDirPath.data, workDirPath.length), aieSim,
-      xaieDebug, enableCores);
+      mod, output->os(), llvm::StringRef(workDirPath.data, workDirPath.length),
+      outputBinary, aieSim, xaieDebug, enableCores);
+
   std::vector<std::string> diagnostics;
   ScopedDiagnosticHandler handler(mod.getContext(), [&](Diagnostic &d) {
     llvm::raw_string_ostream(diagnostics.emplace_back())
         << d.getLocation() << ": " << d;
   });
+
   if (failed(status))
     for (const auto &diagnostic : diagnostics)
       std::cerr << diagnostic << "\n";
-
+  else
+    output->keep();
   return wrap(status);
 }
 

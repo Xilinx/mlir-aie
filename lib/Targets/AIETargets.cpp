@@ -92,9 +92,8 @@ void writeBufferMap(raw_ostream &output, BufferOp buf, int offset) {
   std::string bufName(buf.name().getValue());
   int bufferBaseAddr = getBufferBaseAddress(buf);
   int numBytes = buf.getAllocationSize();
-  output << "_symbol " << bufName << " "
-         << "0x" << llvm::utohexstr(offset + bufferBaseAddr) << " " << numBytes
-         << '\n';
+  output << "_symbol " << bufName << " " << "0x"
+         << llvm::utohexstr(offset + bufferBaseAddr) << " " << numBytes << '\n';
 }
 
 LogicalResult AIETranslateToTargetArch(ModuleOp module, raw_ostream &output) {
@@ -339,8 +338,10 @@ void registerAIETranslations() {
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationCDOWithTxn(
-      "aie-generate-txn", "Generate TXN configuration",
-      [](ModuleOp module, raw_ostream &) {
+      "aie-generate-txn",
+      "Generate TXN configuration. Use --aie-output-binary to select between "
+      "mlir (default) and binary output",
+      [](ModuleOp module, raw_ostream &output) {
         SmallString<128> workDirPath_;
         if (workDirPath.getNumOccurrences() == 0) {
           if (llvm::sys::fs::current_path(workDirPath_))
@@ -349,8 +350,8 @@ void registerAIETranslations() {
         } else
           workDirPath_ = workDirPath.getValue();
         LLVM_DEBUG(llvm::dbgs() << "work-dir-path: " << workDirPath_ << "\n");
-        return AIETranslateToTxn(module, workDirPath_.c_str(), cdoAieSim,
-                                 cdoXaieDebug, cdoEnableCores);
+        return AIETranslateToTxn(module, output, workDirPath_, outputBinary,
+                                 cdoAieSim, cdoXaieDebug, cdoEnableCores);
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationNPU(
