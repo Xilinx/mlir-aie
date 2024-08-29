@@ -191,15 +191,7 @@ def configure_coretile_tracing_aie2(
     events = (events + [CoreEvent.NONE] * 8)[:8]
 
     # Reorder events so they match the event order for display
-    ordered_events = []
-    ordered_events.append(events[3])
-    ordered_events.append(events[2])
-    ordered_events.append(events[1])
-    ordered_events.append(events[0])
-    ordered_events.append(events[7])
-    ordered_events.append(events[6])
-    ordered_events.append(events[5])
-    ordered_events.append(events[4])
+    ordered_events = [events[p] for p in [3, 2, 1, 0, 7, 6, 5, 4]]
 
     # Assure all selected events are valid
     ordered_events = [
