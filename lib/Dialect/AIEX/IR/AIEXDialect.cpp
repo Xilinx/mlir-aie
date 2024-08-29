@@ -642,23 +642,3 @@ LogicalResult AIEX::DMAStartBdChainOp::verify() {
   }
   return success();
 }
-
-//===----------------------------------------------------------------------===//
-// NpuControlPacketOp
-//===----------------------------------------------------------------------===//
-
-uint32_t AIEX::NpuControlPacketOp::getRow() {
-  const auto &targetModel = AIE::getTargetModel(*this);
-  uint32_t addr = getAddress();
-  uint32_t rowInt =
-      (addr & (0xff << targetModel.getRowShift())) >> targetModel.getRowShift();
-  return rowInt;
-}
-
-uint32_t AIEX::NpuControlPacketOp::getColumn() {
-  const auto &targetModel = AIE::getTargetModel(*this);
-  uint32_t addr = getAddress();
-  uint32_t colInt = (addr & (0xff << targetModel.getColumnShift())) >>
-                    targetModel.getColumnShift();
-  return colInt;
-}
