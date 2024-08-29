@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-create-pathfinder-flows %s 2>&1 | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 | FileCheck %s
 // CHECK: error{{.*}} 'aie.rule' op can lead to false packet id match for id 28, which is not supposed to pass through this port
 // CHECK: remark: Please consider changing all uses of packet id 28 to avoid deadlock.
 
