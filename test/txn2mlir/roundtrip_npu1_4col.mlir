@@ -8,7 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate -aie-npu-instgen -aie-output-binary=true %s | %python txn2mlir.py | FileCheck %s
+// RUN: aie-translate -aie-npu-instgen -aie-output-binary=true %s -o ./roundtrip_npu1_4col_cfg.bin
+// RUN: %python txn2mlir.py -f ./roundtrip_npu1_4col_cfg.bin | FileCheck %s
 
 // CHECK: aie.device(npu1_4col)
 // CHECK: aiex.npu.maskwrite32 {address = 2301952 : ui32, mask = 1 : ui32, value = 1 : ui32}

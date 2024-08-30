@@ -276,7 +276,7 @@ xilinx::AIE::AIETranslateToControlPackets(ModuleOp module,
           }
           return (p % 2) == 0;
         };
-        uint32_t addr = op.getAddress();
+        uint32_t addr = op.getAddress() & 0xFFFFF;
         uint32_t beats = size - 1;
         uint32_t opc = op.getOpcode();
         uint32_t id = op.getStreamId();
