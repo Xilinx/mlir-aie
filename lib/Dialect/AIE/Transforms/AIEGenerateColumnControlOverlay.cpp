@@ -42,8 +42,8 @@ int getUnusedPacketIdFrom(DeviceOp device) {
 // AIE arch-specific tile id to controller id mapping. Users can use those
 // packet ids for design but run into risk of deadlocking control packet flows.
 DenseMap<AIE::TileID, int>
-getTileToControllerIdMap(bool clColumnWiseUniqueIDs,
-                         const AIETargetModel &targetModel) {
+getTileToControllerIdMap6RowsOrLess(bool clColumnWiseUniqueIDs,
+                                    const AIETargetModel &targetModel) {
   // Below column controller id combinations were chosen to avoid packet flow
   // deadlock due to single-level LUT bit-masking on packet header, which could
   // fail to differentiate certain packet id combinations. Controller ids for
@@ -62,6 +62,30 @@ getTileToControllerIdMap(bool clColumnWiseUniqueIDs,
       else
         tileIDMap[{col, row}] = validTileIds[col][row];
     }
+  }
+
+  return tileIDMap;
+}
+DenseMap<AIE::TileID, int>
+getTileToControllerIdMap(bool clColumnWiseUniqueIDs,
+                         const AIETargetModel &targetModel) {
+  if (targetModel.rows() <= 6)
+    return getTileToControllerIdMap6RowsOrLess(clColumnWiseUniqueIDs,
+                                               targetModel);
+
+  // Controller id assignment strategy for devices with more than 6 rows.
+  if (!clColumnWiseUniqueIDs)
+    assert(false && "Device has more tiles than the total number of candidate "
+                    "packet ids permitted by the device. Please switch to "
+                    "clColumnWiseUniqueIDs mode for AIEAssignTileCtrlIDsPass.");
+  DenseMap<AIE::TileID, int> tileIDMap;
+
+  int unusedPacketIdFrom = 0;
+  for (int col = 0; col < targetModel.columns(); col++) {
+    if (clColumnWiseUniqueIDs)
+      unusedPacketIdFrom = 0;
+    for (int row = 0; row < targetModel.rows(); row++)
+      tileIDMap[{col, row}] = unusedPacketIdFrom++;
   }
 
   return tileIDMap;
