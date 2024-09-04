@@ -92,12 +92,6 @@ int main(int argc, const char *argv[]) {
     std::cout << "Sequence instr count: " << instr_v.size() << std::endl;
 
   int N = vm["length"].as<int>();
-  if ((N % 2 == 1)) {
-    std::cerr << "Length must be a multiple of 2." << std::endl;
-    return 1;
-  }
-  int repeat_count = 6;
-  int out_size = N * (repeat_count + 1);
 
   // Start the XRT test code
   // Get a device handle
@@ -147,8 +141,8 @@ int main(int argc, const char *argv[]) {
                         kernel.group_id(3));
   auto bo_inB = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(4));
-  auto bo_out = xrt::bo(device, out_size * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
+  auto bo_out = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+                        kernel.group_id(5));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
@@ -177,16 +171,8 @@ int main(int argc, const char *argv[]) {
 
   int errors = 0;
 
-  for (uint32_t i = 0; i < out_size / 2; i++) {
-    uint32_t ref = (i % (N / 2)) + 2;
-    if (*(bufOut + i) != ref) {
-      std::cout << "error at index[" << i << "]: expected " << ref << " got "
-                << *(bufOut + i) << std::endl;
-      errors++;
-    }
-  }
-  for (uint32_t i = out_size / 2; i < out_size; i++) {
-    uint32_t ref = (i % (N / 2)) + (N / 2) + 3;
+  for (uint32_t i = 0; i < N; i++) {
+    uint32_t ref = i + 4;
     if (*(bufOut + i) != ref) {
       std::cout << "error at index[" << i << "]: expected " << ref << " got "
                 << *(bufOut + i) << std::endl;
