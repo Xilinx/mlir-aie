@@ -14,6 +14,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_os_ostream.h"
 
+#include "llvm/ADT/MapVector.h"
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -47,9 +49,11 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
                << " -> (" << dstCoords.col << ", " << dstCoords.row << ")"
                << stringifyWireBundle(dstPort.bundle) << dstPort.channel
                << "\n");
-    pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort, false);
+    pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort,
+                        /*isPktFlow*/ false, /*isPriorityFlow*/ false);
   }
 
+  // Control packet flows to be routed (as prioritized routings)
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     Region &r = pktFlowOp.getPorts();
     Block &b = r.front();
@@ -73,10 +77,20 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
                    << stringifyWireBundle(dstPort.bundle) << dstPort.channel
                    << "\n");
         // todo: support many-to-one & many-to-many?
-        pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort, true);
+        bool priorityFlow =
+            pktFlowOp.getCtrlPktFlow()
+                ? *pktFlowOp.getCtrlPktFlow()
+                : false; // Flows such as control packet flows are routed in
+                         // priority, to ensure routing consistency.
+        pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort,
+                            /*isPktFlow*/ true, priorityFlow);
       }
     }
   }
+
+  // Sort ctrlPktFlows into a deterministic order; concat ctrlPktFlows to flows
+  pathfinder->sortFlows(device.getTargetModel().columns(),
+                        device.getTargetModel().rows());
 
   // add existing connections so Pathfinder knows which resources are
   // available search all existing SwitchBoxOps for exising connections
@@ -283,11 +297,15 @@ void Pathfinder::initialize(int maxCol, int maxRow,
 // Add a flow from src to dst can have an arbitrary number of dst locations
 // due to fanout.
 void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
-                         Port dstPort, bool isPacketFlow) {
+                         Port dstPort, bool isPacketFlow, bool isPriorityFlow) {
   // check if a flow with this source already exists
-  for (auto &[_, src, dsts] : flows) {
+  for (auto &[_, prioritized, src, dsts] : flows) {
     if (src.coords == srcCoords && src.port == srcPort) {
-      dsts.emplace_back(PathEndPoint{dstCoords, dstPort});
+      if (isPriorityFlow) {
+        prioritized = true;
+        dsts.emplace(dsts.begin(), PathEndPoint{dstCoords, dstPort});
+      } else
+        dsts.emplace_back(PathEndPoint{dstCoords, dstPort});
       return;
     }
   }
@@ -299,7 +317,7 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
   int packetGroupId = -1;
   if (isPacketFlow) {
     bool found = false;
-    for (auto &[existingId, src, dsts] : flows) {
+    for (auto &[existingId, _, src, dsts] : flows) {
       if (src.coords == srcCoords && src.port == srcPort) {
         packetGroupId = existingId;
         found = true;
@@ -320,8 +338,45 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
   }
   // If no existing flow was found with this source, create a new flow.
   flows.push_back(
-      Flow{packetGroupId, PathEndPoint{srcCoords, srcPort},
+      Flow{packetGroupId, isPriorityFlow, PathEndPoint{srcCoords, srcPort},
            std::vector<PathEndPoint>{PathEndPoint{dstCoords, dstPort}}});
+}
+
+// Sort flows to (1) get deterministic routing, and (2) perform routings on
+// prioritized flows before others, for routing consistency on those flows.
+void Pathfinder::sortFlows(const int maxCol, const int maxRow) {
+  std::vector<Flow> priorityFlows;
+  std::vector<Flow> normalFlows;
+  for (auto f : flows) {
+    if (f.isPriorityFlow)
+      priorityFlows.push_back(f);
+    else
+      normalFlows.push_back(f);
+  }
+  std::sort(priorityFlows.begin(), priorityFlows.end(),
+            [maxCol, maxRow](const auto &lhs, const auto &rhs) {
+              int lhsUniqueID = lhs.src.coords.col;
+              lhsUniqueID += lhs.src.coords.row * maxCol;
+              int currMultiplier = maxCol * maxRow;
+              for (auto dest : lhs.dsts) {
+                lhsUniqueID += currMultiplier;
+                lhsUniqueID += dest.coords.col;
+                lhsUniqueID += dest.coords.row * maxCol;
+                currMultiplier += maxCol * maxRow;
+              }
+              int rhsUniqueID = rhs.src.coords.col;
+              rhsUniqueID += rhs.src.coords.row * maxCol;
+              currMultiplier = maxCol * maxRow;
+              for (auto dest : rhs.dsts) {
+                rhsUniqueID += currMultiplier;
+                rhsUniqueID += dest.coords.col;
+                rhsUniqueID += dest.coords.row * maxCol;
+                currMultiplier += maxCol * maxRow;
+              }
+              return lhsUniqueID < rhsUniqueID;
+            });
+  flows = priorityFlows;
+  flows.insert(flows.end(), normalFlows.begin(), normalFlows.end());
 }
 
 // Keep track of connections already used in the AIE; Pathfinder algorithm
@@ -464,7 +519,7 @@ Pathfinder::findPaths(const int maxIterations) {
   }
 
   // group flows based on packetGroupId
-  std::map<int, std::vector<Flow>> groupedFlows;
+  llvm::MapVector<int, std::vector<Flow>> groupedFlows;
   for (auto &f : flows) {
     if (groupedFlows.count(f.packetGroupId) == 0) {
       groupedFlows[f.packetGroupId] = std::vector<Flow>();
@@ -514,7 +569,7 @@ Pathfinder::findPaths(const int maxIterations) {
     // update used_capacity for the path between them
 
     for (const auto &[_, flows] : groupedFlows) {
-      for (const auto &[packetGroupId, src, dsts] : flows) {
+      for (const auto &[packetGroupId, _, src, dsts] : flows) {
         // Use dijkstra to find path given current demand from the start
         // switchbox; find the shortest paths to each other switchbox. Output is
         // in the predecessor map, which must then be processed to get
