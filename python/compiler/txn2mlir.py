@@ -65,7 +65,7 @@ def parse_txn(data, verbose=False):
                 _, addr, size = struct.unpack("III", data[i + 4 : i + 16])
                 print_log(f"addr: {addr:#x}")
                 print_log(f"size: {size}")
-                operations.append((opc, addr, data[i + 16 : i + size]))
+                operations.append((opc, addr, data[i + 16 : i + size - 16]))
                 i = i + size
             elif opc == 0x03:
                 print_log("opcode: MASKWRITE (0x03)")
@@ -115,7 +115,7 @@ def parse_txn(data, verbose=False):
     return num_cols, operations
 
 
-def operations_to_mlir(operations, columns=5, mlir_ctrl_pkt=False):
+def operations_to_mlir(operations, columns=5):
     with Context(), Location.unknown():
         module = Module.create()
         global_data = []
@@ -139,81 +139,57 @@ def operations_to_mlir(operations, columns=5, mlir_ctrl_pkt=False):
                     else:
                         global_data.append(None)
 
-                if mlir_ctrl_pkt:
-                    # Runtime sequence arg0 as handle for ctrl packet raw data in host ddr
-                    MAX_CTRL_PKTS_HOST_SIZE = 2048
+                # Runtime sequence arg0 as handle for ctrl packet raw data in host ddr
+                MAX_CTRL_PKTS_HOST_SIZE = 2048
 
-                    @runtime_sequence(T.memref(MAX_CTRL_PKTS_HOST_SIZE, T.i32()))
-                    def sequence(arg0):
-                        for op, payload in zip(operations, global_data):
-                            if op[0] == 0x00:
-                                addr = op[1]
-                                value = op[2]
-                                control_packet(
-                                    address=addr,
-                                    opcode=0,
-                                    stream_id=0,
-                                    data=np.array([value]).astype(np.int32),
+                @runtime_sequence(T.memref(MAX_CTRL_PKTS_HOST_SIZE, T.i32()))
+                def sequence(arg0):
+                    for op, payload in zip(operations, global_data):
+                        if op[0] == 0x00:
+                            addr = op[1]
+                            value = op[2]
+                            control_packet(
+                                address=addr,
+                                opcode=0,
+                                stream_id=0,
+                                data=np.array([value]).astype(np.int32),
+                            )
+                        elif op[0] == 0x01:
+                            addr = op[1]
+                            data = np.array(payload.initial_value, dtype=np.int32)
+                            # Individual access cannot cross a 128-bit boundary.
+                            num_split_4s = (data.size + 3) // 4
+                            data_split_4 = data
+                            if num_split_4s > 1:
+                                data_split_4 = np.array_split(
+                                    data[: (num_split_4s - 1) * 4], num_split_4s
                                 )
-                            elif op[0] == 0x01:
-                                addr = op[1]
-                                data = np.array(payload.initial_value, dtype=np.int32)
+                                data_split_4 = data_split_4.append(
+                                    data[(num_split_4s - 1) * 4 :]
+                                )
+                            if num_split_4s == 2:
                                 # Individual access cannot cross a 128-bit boundary.
-                                num_split_4s = (data.size + 3) // 4
-                                data_split_4 = data
-                                if num_split_4s > 1:
-                                    data_split_4 = np.array_split(
-                                        data[: (num_split_4s - 1) * 4], num_split_4s
-                                    )
-                                    data_split_4 = data_split_4.append(
-                                        data[(num_split_4s - 1) * 4 :]
-                                    )
-                                if num_split_4s == 2:
-                                    # Individual access cannot cross a 128-bit boundary.
-                                    data_split_4 = [data[:4], data[4:]]
-                                for d_split in data_split_4:
-                                    control_packet(
-                                        address=addr,
-                                        opcode=0,
-                                        stream_id=0,
-                                        data=d_split,
-                                    )
-                                    addr = addr + d_split.size * 4
-                            elif op[0] == 0x03:
-                                addr = op[1]
-                                value = op[2]
-                                # mask (op[3]) is ignored, as control packet cannot do masked write
+                                data_split_4 = [data[:4], data[4:]]
+                            for d_split in data_split_4:
                                 control_packet(
                                     address=addr,
                                     opcode=0,
                                     stream_id=0,
-                                    data=np.array([value], dtype=np.int32),
+                                    data=d_split,
                                 )
-                            else:
-                                raise Exception(f"Unhandled op: {op:#x}")
-
-                else:
-
-                    @runtime_sequence()
-                    def sequence():
-                        for op, payload in zip(operations, global_data):
-                            if op[0] == 0x00:
-                                addr = op[1]
-                                value = op[2]
-                                npu_write32(addr, value)
-                            elif op[0] == 0x01:
-                                addr = op[1]
-                                d = memref.get_global(
-                                    payload.type_.value, payload.sym_name.value
-                                )
-                                npu_blockwrite(addr, d)
-                            elif op[0] == 0x03:
-                                addr = op[1]
-                                value = op[2]
-                                mask = op[3]
-                                npu_maskwrite32(addr, value, mask)
-                            else:
-                                raise Exception(f"Unhandled op: {op:#x}")
+                                addr = addr + d_split.size * 4
+                        elif op[0] == 0x03:
+                            addr = op[1]
+                            value = op[2]
+                            # mask (op[3]) is ignored, as control packet cannot do masked write
+                            control_packet(
+                                address=addr,
+                                opcode=0,
+                                stream_id=0,
+                                data=np.array([value], dtype=np.int32),
+                            )
+                        else:
+                            raise Exception(f"Unhandled op: {op:#x}")
 
     return module
 
@@ -221,7 +197,7 @@ def operations_to_mlir(operations, columns=5, mlir_ctrl_pkt=False):
 if __name__ == "__main__":
     # Parse arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("-file", "-f", type=argparse.FileType("rb"), nargs="*")
+    parser.add_argument("-file", "-f", type=argparse.FileType("rb"))
     parser.add_argument(
         "-generate-ctrl-pkt",
         dest="mlir_ctrl_pkt",
@@ -231,15 +207,16 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # Process each file provided as command line argument
-    operations = []
-    for f in args.file:
-        # Read the data from the file
-        data = f.read()
-        # Parse the TXN data
+    # Read the data from the file
+    data = args.file.read()
+
+    if args.mlir_ctrl_pkt:
+        operations = []
         columns, ops = parse_txn(data)
         operations = operations + ops
-
-    module = operations_to_mlir(operations, columns, mlir_ctrl_pkt=args.mlir_ctrl_pkt)
+        module = operations_to_mlir(operations, columns)
+    else:
+        with Context() as ctx:
+            module = transaction_binary_to_mlir(ctx, data)
 
     print(str(module))

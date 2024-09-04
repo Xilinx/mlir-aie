@@ -117,18 +117,29 @@ PYBIND11_MODULE(_aie, m) {
 
   m.def(
       "generate_txn",
-      [](MlirOperation op, const std::string &workDirPath, bool aieSim,
-         bool xaieDebug, bool enableCores) {
+      [](MlirOperation op, const std::string &outputFile,
+         const std::string &workDirPath, bool aieSim, bool xaieDebug,
+         bool enableCores) {
         mlir::python::CollectDiagnosticsToStringScope scope(
             mlirOperationGetContext(op));
         if (mlirLogicalResultIsFailure(
-                aieTranslateToTxn(op, {workDirPath.data(), workDirPath.size()},
+                aieTranslateToTxn(op, {outputFile.data(), outputFile.size()},
+                                  {workDirPath.data(), workDirPath.size()},
                                   aieSim, xaieDebug, enableCores)))
           throw py::value_error("Failed to generate txn binary because: " +
                                 scope.takeMessage());
       },
-      "module"_a, "work_dir_path"_a, "aiesim"_a = false, "xaie_debug"_a = false,
-      "enable_cores"_a = true);
+      "module"_a, "output_file"_a, "work_dir_path"_a, "aiesim"_a = false,
+      "xaie_debug"_a = false, "enable_cores"_a = true);
+
+  m.def(
+      "transaction_binary_to_mlir",
+      [](MlirContext ctx, py::bytes bytes) {
+        std::string s = bytes;
+        MlirStringRef bin = {s.data(), s.size()};
+        return aieTranslateBinaryToTxn(ctx, bin);
+      },
+      "ctx"_a, "binary"_a);
 
   m.def(
       "npu_instgen",
