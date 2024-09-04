@@ -7,9 +7,13 @@ TODO:
 """
 
 from ... import ir
+from ..._mlir_libs._aie import ObjectFifoSubviewType
 from ...extras.util import np_dtype_to_mlir_type
-from ...dialects._aie_enum_gen import ObjectFifoPort
+
+from ...dialects._aie_enum_gen import ObjectFifoPort 
+from ...dialects._aie_ops_gen import ObjectFifoSubviewAccessOp, ObjectFifoAcquireOp, objectfifo_release
 from ...dialects.aie import object_fifo
+
 from ...dialects.memref import MemRefType
 from ..resolvable import Resolvable
 from .endpoint import MyObjectFifoEndpoint
@@ -70,6 +74,8 @@ class MyObjectFifo(Resolvable):
             self.__end2.get_tile(),
             self.__depth,
             memRef_ty,
+            loc=loc,
+            ip=ip,
         )
 
     def set_endpoint(self, endpoint, first=True):
@@ -99,7 +105,20 @@ class MyObjectFifo(Resolvable):
         assert (
             num_elem <= self.__depth
         ), "Cannot consume elements to exceed ObjectFifo depth"
-        return self.__op.acquire(port, num_elem)
+        dtype = np_dtype_to_mlir_type(self.__memref_type[1])
+        assert dtype != None
+        memRef_ty = MemRefType.get(shape=self.__memref_type[0], element_type=dtype)
+        subview_t = ObjectFifoSubviewType.get(memRef_ty)
+        acq = ObjectFifoAcquireOp(subview_t, port, self.name, num_elem)
+
+        objects = []
+        if acq.size.value == 1:
+            return ObjectFifoSubviewAccessOp(
+                memRef_ty, acq.subview, acq.size.value - 1
+            )
+        for i in range(acq.size.value):
+            objects.append(ObjectFifoSubviewAccessOp(memRef_ty, acq.subview, i))
+        return objects
 
     def _release(
         self, port: ObjectFifoPort, num_elem: int, loc=None, ip=None, context=None
@@ -108,4 +127,4 @@ class MyObjectFifo(Resolvable):
         assert (
             num_elem <= self.__depth
         ), "Cannot consume elements to exceed ObjectFifo depth"
-        self.op.release(port, num_elem)
+        objectfifo_release(port, self.name, num_elem, loc=loc, ip=ip)

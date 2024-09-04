@@ -279,6 +279,8 @@ class object_fifo(ObjectFifoCreateOp):
         dimensionsFromStreamPerConsumer=None,
         via_DMA=None,
         plio=None,
+        ip=None,
+        loc=None,
     ):
         self.datatype = datatype
         if not isinstance(consumerTiles, List):
@@ -287,7 +289,6 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer = []
         if dimensionsToStream is None:
             dimensionsToStream = []
-        int_ty = IntegerType.get_signless(32)
         of_Ty = TypeAttr.get(ObjectFifoType.get(datatype))
         super().__init__(
             sym_name=name,
@@ -299,6 +300,8 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
             via_DMA=via_DMA,
             plio=plio,
+            ip=ip,
+            loc=loc,
         )
 
     def acquire(self, port, num_elem):
