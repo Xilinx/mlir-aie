@@ -6,4 +6,3 @@
 // RUN: make -f %S/Makefile clean
 // RUN: make -f %S/Makefile 
 // RUN: %run_on_npu make -f %S/Makefile run | FileCheck %s
-// XFAIL: *

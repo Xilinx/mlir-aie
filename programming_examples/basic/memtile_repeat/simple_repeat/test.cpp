@@ -64,7 +64,10 @@ int main(int argc, const char *argv[]) {
       "instr,i", po::value<std::string>()->required(),
       "path of file containing userspace instructions to be sent to the LX6")(
       "length,l", po::value<int>()->default_value(4096),
-      "the length of the transfer in int32_t");
+      "the length of the transfer in int32_t")(
+      "repeat,r", po::value<int>()->default_value(3),
+      "the memtile repeat count"
+      );
   po::variables_map vm;
 
   try {
@@ -96,6 +99,7 @@ int main(int argc, const char *argv[]) {
     std::cerr << "Length must be a multiple of 1024." << std::endl;
     return 1;
   }
+  int repeat_count = vm["repeat"].as<int>();
 
   // Start the XRT test code
   // Get a device handle
@@ -145,7 +149,7 @@ int main(int argc, const char *argv[]) {
                         kernel.group_id(3));
   auto bo_inB = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(4));
-  auto bo_out = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+  auto bo_out = xrt::bo(device, N * (repeat_count + 1) * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(5));
 
   if (verbosity >= 1)
@@ -174,9 +178,8 @@ int main(int argc, const char *argv[]) {
   uint32_t *bufOut = bo_out.map<uint32_t *>();
 
   int errors = 0;
-
-  for (uint32_t i = 0; i < N; i++) {
-    uint32_t ref = (i + 1);
+  for (uint32_t i = 0; i < N * (repeat_count + 1); i++) {
+    uint32_t ref = (i % N) + 1;
     if (*(bufOut + i) != ref) {
       errors++;
     }

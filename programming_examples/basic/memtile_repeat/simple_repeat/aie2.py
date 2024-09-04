@@ -11,12 +11,12 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects.scf import *
-from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
 N = 4096
 dev = AIEDevice.npu1_1col
 col = 0
+memtile_repeat_count = 3
 
 if len(sys.argv) > 1:
     N = int(sys.argv[1])
@@ -38,23 +38,25 @@ def my_passthrough():
 
         @device(dev)
         def device_body():
-            memRef_ty = T.memref(1024, T.i32())
+            memRef_ty = T.memref(N, T.i32())
 
             # Tile declarations
             ShimTile = tile(col, 0)
-            MemTile = tile(0, 1)
+            MemTile = tile(col, 1)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, MemTile, 2, memRef_ty)
-            of_out = object_fifo("out", MemTile, ShimTile, 2, memRef_ty)
+            of_in = object_fifo("in", ShimTile, MemTile, 1, memRef_ty)
+            of_out = object_fifo("out", MemTile, ShimTile, 1, memRef_ty)
+            of_out.set_memtile_repeat(memtile_repeat_count)
             object_fifo_link(of_in, of_out)
 
             # To/from AIE-array data movement
             tensor_ty = T.memref(N, T.i32())
+            tensor_out_ty = T.memref(N * (memtile_repeat_count + 1), T.i32())
 
-            @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
+            @runtime_sequence(tensor_ty, tensor_ty, tensor_out_ty)
             def sequence(A, B, C):
-                npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
+                npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N * (memtile_repeat_count + 1)])
                 npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
                 npu_sync(column=0, row=0, direction=0, channel=0)
 
