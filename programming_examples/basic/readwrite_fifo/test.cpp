@@ -172,7 +172,7 @@ int main(int argc, const char *argv[]) {
   int errors = 0;
 
   for (uint32_t i = 0; i < N; i++) {
-    uint32_t ref = i + 4;
+    uint32_t ref = i + 1 + 13;
     if (*(bufOut + i) != ref) {
       std::cout << "error at index[" << i << "]: expected " << ref << " got "
                 << *(bufOut + i) << std::endl;
