@@ -114,6 +114,14 @@ MlirLogicalResult aieTranslateToTxn(MlirOperation moduleOp,
   return wrap(status);
 }
 
+MlirOperation aieTranslateBinaryToTxn(MlirContext ctx, MlirStringRef binary) {
+  std::vector<uint8_t> binaryData(binary.data, binary.data + binary.length);
+  auto mod = AIETranslateBinaryToTxn(unwrap(ctx), binaryData);
+  if (!mod)
+    return wrap(ModuleOp().getOperation());
+  return wrap(mod->getOperation());
+}
+
 MlirStringRef aieTranslateToNPU(MlirOperation moduleOp) {
   std::string npu;
   llvm::raw_string_ostream os(npu);

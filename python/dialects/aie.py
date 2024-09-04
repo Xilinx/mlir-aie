@@ -29,6 +29,7 @@ from .._mlir_libs._aie import (
     register_dialect,
     translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
+    transaction_binary_to_mlir,
 )
 from ..extras import types as T
 from ..extras.dialects.ext.arith import constant

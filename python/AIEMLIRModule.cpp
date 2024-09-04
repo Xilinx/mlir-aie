@@ -133,6 +133,15 @@ PYBIND11_MODULE(_aie, m) {
       "xaie_debug"_a = false, "enable_cores"_a = true);
 
   m.def(
+      "transaction_binary_to_mlir",
+      [](MlirContext ctx, py::bytes bytes) {
+        std::string s = bytes;
+        MlirStringRef bin = {s.data(), s.size()};
+        return aieTranslateBinaryToTxn(ctx, bin);
+      },
+      "ctx"_a, "binary"_a);
+
+  m.def(
       "npu_instgen",
       [&stealCStr](MlirOperation op) {
         py::str npuInstructions = stealCStr(aieTranslateToNPU(op));

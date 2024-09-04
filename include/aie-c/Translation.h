@@ -34,6 +34,8 @@ aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath,
 MLIR_CAPI_EXPORTED MlirLogicalResult aieTranslateToTxn(
     MlirOperation moduleOp, MlirStringRef outputFile, MlirStringRef workDirPath,
     bool aieSim, bool xaieDebug, bool enableCores);
+MLIR_CAPI_EXPORTED MlirOperation aieTranslateBinaryToTxn(MlirContext ctx,
+                                                         MlirStringRef binary);
 
 #ifdef __cplusplus
 }
