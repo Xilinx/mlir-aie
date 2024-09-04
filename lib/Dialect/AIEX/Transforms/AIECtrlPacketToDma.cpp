@@ -20,8 +20,6 @@
 
 #define DEBUG_TYPE "aie-ctrl-packet-to-dma"
 
-// #include <iostream>
-
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -38,12 +36,9 @@ struct AIECtrlPacketInferTilesPass
     for (auto f : sequenceOps) {
       auto ctrlPktOps = f.getOps<AIEX::NpuControlPacketOp>();
       for (auto ctrlPktOp : ctrlPktOps) {
-        // std::cout << "col: " << (int)ctrlPktOp.getColumnFromAddr()  << " row:
-        // " << (int)ctrlPktOp.getRowFromAddr() << "\n";
         auto tOp = TileOp::getOrCreate(devBuilder, device,
                                        (int)ctrlPktOp.getColumnFromAddr(),
                                        (int)ctrlPktOp.getRowFromAddr());
-
         // Assign controller id
         auto tileIDMap = getTileToControllerIdMap(true, targetModel);
         if (tOp->hasAttr("controller_id"))
