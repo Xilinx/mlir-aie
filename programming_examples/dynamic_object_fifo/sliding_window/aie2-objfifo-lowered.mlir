@@ -1,3 +1,4 @@
+// aie-opt --aie-objectFifo-stateful-transform ../programming_examples/dynamic_object_fifo/sliding_window/aie2.mlir 
 module {
   aie.device(npu1_1col) {
     memref.global "public" @output_fifo_cons : memref<10xi32>
