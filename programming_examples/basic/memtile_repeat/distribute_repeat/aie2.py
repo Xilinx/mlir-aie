@@ -14,9 +14,9 @@ from aie.dialects.scf import *
 from aie.extras.dialects.ext import arith
 from aie.extras.context import mlir_mod_ctx
 
-N = 36
 dev = AIEDevice.npu1_1col
 col = 0
+N = 36
 
 if len(sys.argv) > 1:
     N = int(sys.argv[1])
