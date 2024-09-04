@@ -1,4 +1,4 @@
-# memtile_repeat/simple_repeat/aie2.py -*- Python -*-
+# passthrough_dmas/aie2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -33,7 +33,7 @@ if len(sys.argv) > 3:
     col = int(sys.argv[3])
 
 
-def simple_repeat():
+def my_passthrough():
     with mlir_mod_ctx() as ctx:
 
         @device(dev)
@@ -42,27 +42,23 @@ def simple_repeat():
 
             # Tile declarations
             ShimTile = tile(col, 0)
-            MemTile = tile(col, 1)
+            MemTile = tile(0, 1)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, MemTile, 1, memRef_ty)
-            of_out = object_fifo("out", MemTile, ShimTile, 1, memRef_ty)
-            of_out.set_memtile_repeat(3)
+            of_in = object_fifo("in", ShimTile, MemTile, 2, memRef_ty)
+            of_out = object_fifo("out", MemTile, ShimTile, 2, memRef_ty)
             object_fifo_link(of_in, of_out)
 
             # To/from AIE-array data movement
             tensor_ty = T.memref(N, T.i32())
-            tensor_in_ty = T.memref(N // 4, T.i32())
 
-            @runtime_sequence(tensor_in_ty, tensor_ty, tensor_ty)
+            @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
             def sequence(A, B, C):
                 npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
-                npu_dma_memcpy_nd(
-                    metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N // 4]
-                )
+                npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
                 npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 
 
-simple_repeat()
+my_passthrough()
