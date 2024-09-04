@@ -888,52 +888,87 @@ struct AIEObjectFifoStatefulTransformPass
           // If for Loop is found with objectFifos,
           // convert the objectFifos into dynamic Fifos.
           if(found){
-            OpBuilder builder = OpBuilder::atBlockBegin(body);
-            builder.setInsertionPointToStart(body);
+            OpBuilder builder(forLoop);
+            builder.setInsertionPoint(forLoop);
 
-            // Need separate counters for each input and output?
+            // Separate counters for each fifo : tie to releaseCounters map 
             auto zeroIndex = builder.create<arith::ConstantIndexOp>(loc, 0);
+            auto oneIndex = builder.create<arith::ConstantIndexOp>(loc, 1);
             Value inputCounter = zeroIndex;
             Value outputCounter = zeroIndex;
+            Value updateCounter = oneIndex;
             
             // Recreate for Loop as for Loop with iter_args
             // and copy the body of the old loop
             auto forLoopWithIterArgs = builder.create<scf::ForOp>(loc, forLoop.getLowerBound(), forLoop.getUpperBound(), forLoop.getStep(), ValueRange({inputCounter, outputCounter}));
-            forLoopWithIterArgs.getBody()->getOperations().splice(forLoopWithIterArgs.getBody()->begin(), forLoop.getBody()->getOperations());
-            forLoop.replaceAllUsesWith(forLoopWithIterArgs.getResults());
+            Block *newLoopBody = forLoopWithIterArgs.getBody();
+            Block *oldLoopBody = forLoop.getBody();
+            //newLoopBody->getOperations().splice(newLoopBody->getOperations().begin(), oldLoopBody->getOperations());
+            for(auto &op : *oldLoopBody){
+              if(forLoop.getBody()->getTerminator() == &op) {
+                continue;
+              }
+              builder.setInsertionPointToEnd(newLoopBody);
+              builder.clone(op);
+            }
+
+            loc = forLoopWithIterArgs.getLoc();
+            body = forLoopWithIterArgs.getBody();
+            builder.setInsertionPointToStart(newLoopBody);
             // Number of subviews found inside the for loop equals
             // the number of switch statements to be written
             body->walk([&](ObjectFifoSubviewAccessOp accessOp) {
+              std::cout<<"Inside subview walk"<<std::endl;
               auto acqOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-              ObjectFifoCreateOp op = acqOp.getObjectFifo();
+              std::cout<<"AccessOp found"<<std::endl;
+              ObjectFifoCreateOp createOp = acqOp.getObjectFifo();
+              std::cout<<"Op found"<<std::endl;
               // Create a switch for each subview access
-              auto maxIndex = builder.create<arith::ConstantIndexOp>(loc, fifoSizes[op]);
+              auto maxIndex = builder.create<arith::ConstantIndexOp>(loc, fifoSizes[createOp]);
               Value maxCounter = maxIndex;
               Value switchIndex = builder.create<arith::RemSIOp>(loc, inputCounter, maxCounter);
-              unsigned caseRegionCounts = fifoSizes[op];
+              unsigned caseRegionCounts = fifoSizes[createOp];
               SmallVector<int64_t, 4> caseValues;
               
-              for (int i= 0; i < fifoSizes[op]; ++i){
+              for (int i= 0; i < fifoSizes[createOp]; ++i){
                 int j = i + accessOp.getIndex();
-                if(j >= fifoSizes[op])
-                  j = fifoSizes[op] - j;
+                if(j >= fifoSizes[createOp])
+                  j = fifoSizes[createOp] - j;
                 caseValues.push_back(j);
               }
               auto cases = DenseI64ArrayAttr::get(builder.getContext(), caseValues);
-              auto switchOp = builder.create<scf::IndexSwitchOp>(loc, TypeRange({buffersPerFifo[op][0].getType()}), switchIndex, cases, caseRegionCounts);  
+              auto switchOp = builder.create<scf::IndexSwitchOp>(loc, TypeRange({buffersPerFifo[createOp][0].getType()}), switchIndex, cases, caseRegionCounts);  
               builder.createBlock(&switchOp.getDefaultRegion());
-              builder.create<scf::YieldOp>(switchOp.getLoc(), buffersPerFifo[op][accessOp.getIndex()].getResult());                         
-              for (int i= 0; i < fifoSizes[op]; ++i){
+              builder.create<scf::YieldOp>(switchOp.getLoc(), buffersPerFifo[createOp][accessOp.getIndex()].getResult());                         
+              for (int i= 0; i < fifoSizes[createOp]; ++i){
                 //Define cases
                 builder.setInsertionPoint(&switchOp.getCaseBlock(i),switchOp.getCaseBlock(i).begin());
                 builder.createBlock(&switchOp.getCaseRegions()[i]);
-                int bufferToBeAccesed = (accessOp.getIndex() + i)%fifoSizes[op];
-                builder.create<scf::YieldOp>(switchOp.getCaseRegions()[i].getLoc(), buffersPerFifo[op][bufferToBeAccesed].getResult());   
+                int bufferToBeAccesed = (accessOp.getIndex() + i)%fifoSizes[createOp];
+                builder.create<scf::YieldOp>(switchOp.getCaseRegions()[i].getLoc(), buffersPerFifo[createOp][bufferToBeAccesed].getResult());   
               } 
               loc = switchOp.getLoc();
               builder.setInsertionPointAfter(switchOp);
+
+            // Replace fifos in the function call with the switch outputs accordingly.
+            // Find the func.call
+            // Where the op is being used, replace with the switch output.
               return WalkResult::advance();
             });
+
+            builder.setInsertionPointToEnd(newLoopBody);
+            // Update the Iteration Args : tie to releaseCounters map 
+            builder.create<arith::AddIOp>(loc, inputCounter, updateCounter);
+            builder.create<arith::AddIOp>(loc, outputCounter, updateCounter);
+
+            builder.setInsertionPointToEnd(newLoopBody);
+            builder.create<scf::YieldOp>(forLoopWithIterArgs.getLoc(), ValueRange({inputCounter, outputCounter}));
+            forLoop.replaceAllUsesWith(forLoopWithIterArgs.getResults());
+
+            // When I try to remove the forLoop, it crashes.
+            // if(forLoop.use_empty()){
+            //   forLoop.erase();
+            // }
           }
           return WalkResult::advance();
         });
