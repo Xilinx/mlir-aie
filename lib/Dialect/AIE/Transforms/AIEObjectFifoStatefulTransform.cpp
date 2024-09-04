@@ -895,11 +895,12 @@ struct AIEObjectFifoStatefulTransformPass
             auto zeroIndex = builder.create<arith::ConstantIndexOp>(loc, 0);
             Value inputCounter = zeroIndex;
             Value outputCounter = zeroIndex;
-            // Check if the loop already has the arguments?
             
             // Recreate for Loop as for Loop with iter_args
             // and copy the body of the old loop
-            
+            auto forLoopWithIterArgs = builder.create<scf::ForOp>(loc, forLoop.getLowerBound(), forLoop.getUpperBound(), forLoop.getStep(), ValueRange({inputCounter, outputCounter}));
+            forLoopWithIterArgs.getBody()->getOperations().splice(forLoopWithIterArgs.getBody()->begin(), forLoop.getBody()->getOperations());
+            forLoop.replaceAllUsesWith(forLoopWithIterArgs.getResults());
             // Number of subviews found inside the for loop equals
             // the number of switch statements to be written
             body->walk([&](ObjectFifoSubviewAccessOp accessOp) {
