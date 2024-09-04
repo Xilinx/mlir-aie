@@ -180,6 +180,8 @@ int main(int argc, const char *argv[]) {
   for (uint32_t i = 0; i < N * (repeat_count + 1); i++) {
     uint32_t ref = (i % N) + 1;
     if (*(bufOut + i) != ref) {
+      std::cout << "error at index[" << i << "]: expected " << ref << " got "
+                << *(bufOut + i) << std::endl;
       errors++;
     }
   }

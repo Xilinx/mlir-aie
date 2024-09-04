@@ -18,7 +18,7 @@ The implicit copy is performed using the `object_fifo_link` operation that speci
 
 The repeat count is specified as follows:
 ```
-of_out.set_memtile_repeat(3)
+of_out.set_memtile_repeat(memtile_repeat_count)
 ```
 Specifically, the instruction above specifies the number of repetitions that the producer side of the `of_out` objectfifo should do.
 

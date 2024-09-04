@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+
 import sys
 
 from aie.dialects.aie import *
@@ -13,10 +14,9 @@ from aie.dialects.scf import *
 from aie.extras.dialects.ext import arith
 from aie.extras.context import mlir_mod_ctx
 
-N = 4096
+N = 32
 dev = AIEDevice.npu1_1col
 col = 0
-repeat_counter = 6
 
 if len(sys.argv) > 1:
     N = int(sys.argv[1])
@@ -33,6 +33,7 @@ if len(sys.argv) > 3:
     col = int(sys.argv[3])
 
 assert N % 2 == 0, "N must be even"
+repeat_counter = 6
 out_size = N * (repeat_counter + 1)
 
 
@@ -41,7 +42,7 @@ def distribute_repeat():
 
         @device(dev)
         def device_body():
-            memRef_ty = T.memref(N, T.i32())
+            memRef_in_ty = T.memref(N, T.i32())
             memRef_half_ty = T.memref(N // 2, T.i32())
             memRef_out_ty = T.memref(out_size, T.i32())
 
@@ -52,7 +53,7 @@ def distribute_repeat():
             ComputeTile3 = tile(col, 3)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, MemTile, 1, memRef_ty)
+            of_in = object_fifo("in", ShimTile, MemTile, 1, memRef_in_ty)
             of_in2 = object_fifo("in2", MemTile, ComputeTile2, 2, memRef_half_ty)
             of_in3 = object_fifo("in3", MemTile, ComputeTile3, 2, memRef_half_ty)
             of_in2.set_memtile_repeat(repeat_counter)
@@ -97,10 +98,10 @@ def distribute_repeat():
                     yield_([])
 
             # To/from AIE-array data movement
-            tensor_ty = T.memref(N, T.i32())
             tensor_out_ty = T.memref(out_size, T.i32())
+            tensor_in_ty = T.memref(N, T.i32())
 
-            @runtime_sequence(tensor_ty, tensor_ty, tensor_out_ty)
+            @runtime_sequence(tensor_in_ty, tensor_in_ty, tensor_out_ty)
             def sequence(A, B, C):
                 npu_dma_memcpy_nd(
                     metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, out_size]

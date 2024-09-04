@@ -180,17 +180,17 @@ int main(int argc, const char *argv[]) {
   for (uint32_t i = 0; i < out_size / 2; i++) {
     uint32_t ref = (i % (N / 2)) + 2;
     if (*(bufOut + i) != ref) {
-      errors++;
       std::cout << "error at index[" << i << "]: expected " << ref << " got "
                 << *(bufOut + i) << std::endl;
+      errors++;
     }
   }
   for (uint32_t i = out_size / 2; i < out_size; i++) {
     uint32_t ref = (i % (N / 2)) + (N / 2) + 3;
     if (*(bufOut + i) != ref) {
-      errors++;
       std::cout << "error at index[" << i << "]: expected " << ref << " got "
                 << *(bufOut + i) << std::endl;
+      errors++;
     }
   }
 
