@@ -66,8 +66,7 @@ int main(int argc, const char *argv[]) {
       "length,l", po::value<int>()->default_value(4096),
       "the length of the transfer in int32_t")(
       "repeat,r", po::value<int>()->default_value(3),
-      "the memtile repeat count"
-      );
+      "the memtile repeat count");
   po::variables_map vm;
 
   try {
@@ -149,8 +148,8 @@ int main(int argc, const char *argv[]) {
                         kernel.group_id(3));
   auto bo_inB = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(4));
-  auto bo_out = xrt::bo(device, N * (repeat_count + 1) * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(5));
+  auto bo_out = xrt::bo(device, N * (repeat_count + 1) * sizeof(int32_t),
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
