@@ -159,17 +159,12 @@ def operations_to_mlir(operations, columns=5):
                             data = np.array(payload.initial_value, dtype=np.int32)
                             # Individual access cannot cross a 128-bit boundary.
                             num_split_4s = (data.size + 3) // 4
-                            data_split_4 = data
+                            data_split_4 = [data]
                             if num_split_4s > 1:
                                 data_split_4 = np.array_split(
-                                    data[: (num_split_4s - 1) * 4], num_split_4s
+                                    data[: (num_split_4s - 1) * 4], num_split_4s - 1
                                 )
-                                data_split_4 = data_split_4.append(
-                                    data[(num_split_4s - 1) * 4 :]
-                                )
-                            if num_split_4s == 2:
-                                # Individual access cannot cross a 128-bit boundary.
-                                data_split_4 = [data[:4], data[4:]]
+                                data_split_4.append(data[(num_split_4s - 1) * 4 :])
                             for d_split in data_split_4:
                                 control_packet(
                                     address=addr,
