@@ -806,6 +806,10 @@ def AIE_NpuControlPacketOp: AIEX_Op<"control_packet", []> {
     The control_packet operation represents a low-level AIE control packet header
     and payload.
   }];
+  let extraClassDeclaration = [{
+    uint32_t getRowFromAddr();
+    uint32_t getColumnFromAddr();
+  }];
 }
 
 // NPU Bd Write operation
