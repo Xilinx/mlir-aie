@@ -14,7 +14,7 @@ from aie.dialects.scf import *
 from aie.extras.dialects.ext import arith
 from aie.extras.context import mlir_mod_ctx
 
-N = 32
+N = 36
 dev = AIEDevice.npu1_1col
 col = 0
 
