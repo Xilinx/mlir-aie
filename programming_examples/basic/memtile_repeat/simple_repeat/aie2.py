@@ -1,4 +1,4 @@
-# passthrough_dmas/aie2.py -*- Python -*-
+# memtile_repeat/simple_repeat/aie2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -33,7 +33,7 @@ if len(sys.argv) > 3:
     col = int(sys.argv[3])
 
 
-def my_passthrough():
+def simple_repeat():
     with mlir_mod_ctx() as ctx:
 
         @device(dev)
@@ -68,4 +68,4 @@ def my_passthrough():
     print(ctx.module)
 
 
-my_passthrough()
+simple_repeat()
