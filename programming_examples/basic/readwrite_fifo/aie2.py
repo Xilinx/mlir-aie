@@ -1,4 +1,4 @@
-# memtile_repeat/distribute_repeat/aie2.py -*- Python -*-
+# readwrite_fifo/aie2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -32,12 +32,8 @@ if len(sys.argv) > 2:
 if len(sys.argv) > 3:
     col = int(sys.argv[3])
 
-assert N % 2 == 0, "N must be even"
-repeat_counter = 6
-out_size = N * (repeat_counter + 1)
 
-
-def distribute_repeat():
+def readwrite_of():
     with mlir_mod_ctx() as ctx:
 
         @device(dev)
@@ -107,4 +103,4 @@ def distribute_repeat():
     print(ctx.module)
 
 
-distribute_repeat()
+readwrite_of()
