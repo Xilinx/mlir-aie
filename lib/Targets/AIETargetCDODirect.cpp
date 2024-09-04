@@ -887,11 +887,12 @@ translateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
 
 namespace {
 
-// An TxnBinaryOperation encapulates an aie-rt TnxCmd struct
-struct TxnBinaryOperation {
+// An TransactionBinaryOperation encapulates an aie-rt TnxCmd struct
+struct TransactionBinaryOperation {
   struct XAie_TxnCmd cmd;
-  TxnBinaryOperation(XAie_TxnOpcode opc, uint32_t mask, uint64_t addr,
-                     uint32_t value, const uint8_t *data, uint32_t size) {
+  TransactionBinaryOperation(XAie_TxnOpcode opc, uint32_t mask, uint64_t addr,
+                             uint32_t value, const uint8_t *data,
+                             uint32_t size) {
     cmd.Opcode = opc;
     cmd.Mask = mask;
     cmd.RegOff = addr;
@@ -904,8 +905,9 @@ struct TxnBinaryOperation {
 
 // Parse a TXN binary blob. On success return the number of columns from the
 // header and a vector of parsed operations. On failure return std::nullopt.
-static std::optional<int> parseTxnBinary(const std::vector<uint8_t> &data,
-                                         std::vector<TxnBinaryOperation> &ops) {
+static std::optional<int>
+parseTransactionBinary(const std::vector<uint8_t> &data,
+                       std::vector<TransactionBinaryOperation> &ops) {
 
   uint32_t major = data[0];
   uint32_t minor = data[1];
@@ -945,8 +947,8 @@ static std::optional<int> parseTxnBinary(const std::vector<uint8_t> &data,
   };
 
   // Parse the binary blob. There are two versions supported, 0.1 and 1.0.
-  // For both versions, build a list of TxnBinaryOperation objects representing
-  // the parsed operations.
+  // For both versions, build a list of TransactionBinaryOperation objects
+  // representing the parsed operations.
   if (major == 0 && minor == 1) {
     while (i < data.size()) {
 
@@ -1111,8 +1113,8 @@ xilinx::AIE::AIETranslateBinaryToTxn(mlir::MLIRContext *ctx,
                                      std::vector<uint8_t> &binary) {
 
   // parse the binary
-  std::vector<TxnBinaryOperation> operations;
-  auto c = parseTxnBinary(binary, operations);
+  std::vector<TransactionBinaryOperation> operations;
+  auto c = parseTransactionBinary(binary, operations);
   if (!c) {
     llvm::errs() << "Failed to parse binary\n";
     return std::nullopt;
