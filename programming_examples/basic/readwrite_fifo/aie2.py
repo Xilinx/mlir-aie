@@ -16,7 +16,7 @@ from aie.extras.context import mlir_mod_ctx
 
 dev = AIEDevice.npu1_1col
 col = 0
-N = 36
+N = 4
 
 if len(sys.argv) > 1:
     N = int(sys.argv[1])
@@ -38,7 +38,8 @@ def readwrite_of():
 
         @device(dev)
         def device_body():
-            memRef_in_ty = T.memref(N, T.i32())
+            memRef_inout_ty = T.memref(N, T.i32())
+            memRef_interior_ty = T.memref(1, T.i32())
 
             # Tile declarations
             ShimTile = tile(col, 0)
@@ -47,16 +48,16 @@ def readwrite_of():
             ComputeTile3 = tile(col, 3)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, MemTile, 1, memRef_in_ty)
-            of_in2 = object_fifo("in2", MemTile, ComputeTile2, 2, memRef_in_ty)
+            of_in = object_fifo("in", ShimTile, MemTile, 1, memRef_inout_ty)
+            of_in2 = object_fifo("in2", MemTile, ComputeTile2, N, memRef_interior_ty)
             object_fifo_link(of_in, of_in2, [], [])
 
             of_shared = object_fifo(
-                "shared", ComputeTile2, ComputeTile3, 1, memRef_in_ty
+                "shared", ComputeTile2, ComputeTile3, N, memRef_interior_ty
             )
 
-            of_out2 = object_fifo("out2", ComputeTile2, MemTile, 2, memRef_in_ty)
-            of_out = object_fifo("out", MemTile, ShimTile, 1, memRef_in_ty)
+            of_out2 = object_fifo("out2", ComputeTile2, MemTile, N, memRef_interior_ty)
+            of_out = object_fifo("out", MemTile, ShimTile, 1, memRef_inout_ty)
             object_fifo_link(of_out2, of_out, [], [])
 
             # Set up compute tiles
@@ -66,26 +67,26 @@ def readwrite_of():
             def core_body():
                 for _ in for_(sys.maxsize):
                     # Here I am a writer
-                    elemOut = of_shared.acquire(ObjectFifoPort.Produce, 1)
-                    elemIn = of_in2.acquire(ObjectFifoPort.Consume, 1)
                     for i in for_(N):
-                        v0 = memref.load(elemIn, [i])
+                        elemOut = of_shared.acquire(ObjectFifoPort.Produce, 1)
+                        elemIn = of_in2.acquire(ObjectFifoPort.Consume, 1)
+                        v0 = memref.load(elemIn, [0])
                         v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elemOut, [i])
+                        memref.store(v1, elemOut, [0])
+                        of_in2.release(ObjectFifoPort.Consume, 1)
+                        of_shared.release(ObjectFifoPort.Produce, 1)
                         yield_([])
-                    of_in2.release(ObjectFifoPort.Consume, 1)
-                    of_shared.release(ObjectFifoPort.Produce, 1)
 
                     # Here I am a reader
-                    elemIn = of_shared.acquire(ObjectFifoPort.Produce, 1)
-                    elemOut = of_out2.acquire(ObjectFifoPort.Produce, 1)
                     for i in for_(N):
-                        v0 = memref.load(elemIn, [i])
+                        elemIn = of_shared.acquire(ObjectFifoPort.Produce, 1)
+                        elemOut = of_out2.acquire(ObjectFifoPort.Produce, 1)
+                        v0 = memref.load(elemIn, [0])
                         v1 = arith.addi(v0, arith.constant(10, T.i32()))
-                        memref.store(v1, elemOut, [i])
+                        memref.store(v1, elemOut, [0])
+                        of_out2.release(ObjectFifoPort.Produce, 1)
+                        of_shared.release(ObjectFifoPort.Produce, 1)
                         yield_([])
-                    of_out2.release(ObjectFifoPort.Produce, 1)
-                    of_shared.release(ObjectFifoPort.Produce, 1)
                     yield_([])
 
             # Compute tile 3
@@ -93,13 +94,13 @@ def readwrite_of():
             def core_body():
                 # Here I read/write
                 for _ in for_(sys.maxsize):
-                    elemIn = of_shared.acquire(ObjectFifoPort.Consume, 1)
                     for i in for_(N):
-                        v0 = memref.load(elemIn, [i])
+                        elemIn = of_shared.acquire(ObjectFifoPort.Consume, 1)
+                        v0 = memref.load(elemIn, [0])
                         v1 = arith.addi(v0, arith.constant(2, T.i32()))
-                        memref.store(v1, elemIn, [i])
+                        memref.store(v1, elemIn, [0])
+                        of_shared.release(ObjectFifoPort.Consume, 1)
                         yield_([])
-                    of_shared.release(ObjectFifoPort.Consume, 1)
                     yield_([])
 
             # To/from AIE-array data movement

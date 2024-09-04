@@ -14,7 +14,7 @@ all: build/final.xclbin build/insts.txt
 
 devicename ?= npu
 targetname = readwrite
-LENGTH ?= 36
+LENGTH ?= 4
 
 build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
