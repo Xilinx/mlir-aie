@@ -239,14 +239,16 @@ struct AIEGenerateColumnControlOverlayPass
     }
   }
 
-  AIE::PacketFlowOp
-  createPacketFlowOp(OpBuilder &builder, int &flowID, Value source,
-                     xilinx::AIE::WireBundle sourceBundle,
-                     uint32_t sourceChannel, Value dest,
-                     xilinx::AIE::WireBundle destBundle, uint32_t destChannel,
-                     mlir::BoolAttr keep_pkt_header = nullptr) {
+  AIE::PacketFlowOp createPacketFlowOp(OpBuilder &builder, int &flowID,
+                                       Value source,
+                                       xilinx::AIE::WireBundle sourceBundle,
+                                       uint32_t sourceChannel, Value dest,
+                                       xilinx::AIE::WireBundle destBundle,
+                                       uint32_t destChannel,
+                                       mlir::BoolAttr keep_pkt_header = nullptr,
+                                       mlir::BoolAttr ctrl_pkt_flow = nullptr) {
     AIE::PacketFlowOp pktFlow = builder.create<AIE::PacketFlowOp>(
-        builder.getUnknownLoc(), flowID++, keep_pkt_header);
+        builder.getUnknownLoc(), flowID++, keep_pkt_header, ctrl_pkt_flow);
     Region &r_pktFlow = pktFlow.getPorts();
     Block *b_pktFlow = builder.createBlock(&r_pktFlow);
     builder.setInsertionPointToStart(b_pktFlow);
@@ -307,6 +309,8 @@ struct AIEGenerateColumnControlOverlayPass
     auto availableShimChans =
         getAvailableShimChans(device, shimTile, shimWireBundle, isShimMM2S);
     SmallVector<AIE::ShimDMAAllocationOp> shimAllocs;
+    device.walk(
+        [&](AIE::ShimDMAAllocationOp salloc) { shimAllocs.push_back(salloc); });
     for (auto tOp : ctrlTiles) {
       if (tOp->hasAttr("controller_id"))
         ctrlPktFlowID =
@@ -323,16 +327,17 @@ struct AIEGenerateColumnControlOverlayPass
             "from routing control packets.");
       builder.setInsertionPointToEnd(device.getBody());
       auto keep_pkt_header = builder.getBoolAttr(true);
+      auto ctrl_pkt_flow = builder.getBoolAttr(true);
       if (isShimMM2S)
         (void)createPacketFlowOp(
             builder, ctrlPktFlowID, shimTile, shimWireBundle,
             rowToShimChanMap[tOp.rowIndex()], tOp, ctrlWireBundle,
-            coreOrMemChanId, keep_pkt_header);
+            coreOrMemChanId, keep_pkt_header, ctrl_pkt_flow);
       else
         (void)createPacketFlowOp(builder, ctrlPktFlowID, tOp, ctrlWireBundle,
                                  coreOrMemChanId, shimTile, shimWireBundle,
                                  rowToShimChanMap[tOp.rowIndex()],
-                                 keep_pkt_header);
+                                 keep_pkt_header, ctrl_pkt_flow);
 
       // Generate shim dma alloc ops as handle for runtime sequence to pickup,
       // when issuing control packets
