@@ -893,18 +893,20 @@ struct AIEObjectFifoStatefulTransformPass
             OpBuilder builder(forLoop);
             builder.setInsertionPoint(forLoop);
 
-            // Separate counters for each fifo : tie to releaseCounters map 
-            auto zeroIndex = builder.create<arith::ConstantIndexOp>(loc, 0);
-            auto oneIndex = builder.create<arith::ConstantIndexOp>(loc, 1);
+            // Separate counters for each fifo
             for(const auto &i : fifoSizes){
               auto op = i.first;
               Value count = builder.create<arith::ConstantIndexOp>(loc, 0);
               counterMap[op] = count;
             }
-            
+            std::vector<Value> counterVector;
+            for(const auto &entry : counterMap){
+              counterVector.push_back(entry.second);
+            }
+            llvm::ArrayRef<Value> counterArrayRef(counterVector);
             // Recreate for Loop as for Loop with iter_args
             // and copy the body of the old loop
-            auto forLoopWithIterArgs = builder.create<scf::ForOp>(loc, forLoop.getLowerBound(), forLoop.getUpperBound(), forLoop.getStep(), ValueRange({ArrayRef(counterMap)}));
+            auto forLoopWithIterArgs = builder.create<scf::ForOp>(loc, forLoop.getLowerBound(), forLoop.getUpperBound(), forLoop.getStep(), ValueRange(counterArrayRef));
             Block *newLoopBody = forLoopWithIterArgs.getBody();
             Block *oldLoopBody = forLoop.getBody();
             //newLoopBody->getOperations().splice(newLoopBody->getOperations().begin(), oldLoopBody->getOperations());
@@ -948,7 +950,6 @@ struct AIEObjectFifoStatefulTransformPass
                 int bufferToBeAccesed = (accessOp.getIndex() + i)%fifoSizes[createOp];
                 builder.create<scf::YieldOp>(switchOp.getCaseRegions()[i].getLoc(), buffersPerFifo[createOp][bufferToBeAccesed].getResult());   
               }           
-              // std::cout<<switchOp.getBody()->getOutput()<<std::endl;     
               switchMap[buffersPerFifo[createOp][accessOp.getIndex()]]  = buffersPerFifo[createOp][0];             
               loc = switchOp.getLoc();
               builder.setInsertionPointAfter(switchOp);
@@ -959,20 +960,19 @@ struct AIEObjectFifoStatefulTransformPass
             });
 
             builder.setInsertionPointToEnd(newLoopBody);
-            // Update the Iteration Args : tie to releaseCounters map 
-            
+
+            // Update the Iteration Args
             for(const auto &i : fifoSizes){
               auto op = i.first;
               auto val = releaseCounters[op];
-              auto c = counterMap[op].getDefiningOp<arith::ConstantIntOp>();
-              auto count = builder.create<arith::AddIOp>(loc, c, val);
-              std::cout<<count.getType()<<std::endl;
-              // Value final_count = builder.create<arith::ConstantIndexOp>(loc, count);
-              // counterMap[op] = final_count;
+              Value release_val = builder.create<arith::ConstantIndexOp>(loc, val);
+              counterMap[op] = builder.create<arith::AddIOp>(loc, counterMap[op], release_val);
+              // In printed mlir, it shows updated values as new values
+              // not updated in the initialized counters.
             }
 
             builder.setInsertionPointToEnd(newLoopBody);
-            builder.create<scf::YieldOp>(forLoopWithIterArgs.getLoc(), ValueRange({ArrayRef(counterMap)}));
+            builder.create<scf::YieldOp>(forLoopWithIterArgs.getLoc(), ValueRange(counterArrayRef));
             forLoop.replaceAllUsesWith(forLoopWithIterArgs.getResults());
 
             builder.setInsertionPointToStart(newLoopBody);
