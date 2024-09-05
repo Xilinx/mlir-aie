@@ -92,8 +92,12 @@ int main(int argc, const char *argv[]) {
     std::cout << "Sequence instr count: " << instr_v.size() << std::endl;
 
   int N = vm["length"].as<int>();
-  int R = 6;
-  int O = N * (R + 1);
+  if ((N % 2 == 1)) {
+    std::cerr << "Length must be a multiple of 2." << std::endl;
+    return 1;
+  }
+  int repeat_count = 6;
+  int out_size = N * (repeat_count + 1);
 
   // Start the XRT test code
   // Get a device handle
@@ -138,13 +142,13 @@ int main(int argc, const char *argv[]) {
   auto kernel = xrt::kernel(context, kernelName);
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
+                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_inA = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(2));
-  auto bo_inB = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(3));
-  auto bo_out = xrt::bo(device, O * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+  auto bo_inB = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(4));
+  auto bo_out = xrt::bo(device, out_size * sizeof(int32_t),
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
@@ -152,7 +156,7 @@ int main(int argc, const char *argv[]) {
   int32_t *bufInA = bo_inA.map<int32_t *>();
   std::vector<uint32_t> srcVecA;
   for (int i = 0; i < N; i++)
-    srcVecA.push_back(1);
+    srcVecA.push_back(i + 1);
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
   void *bufInstr = bo_instr.map<void *>();
@@ -163,7 +167,8 @@ int main(int argc, const char *argv[]) {
 
   if (verbosity >= 1)
     std::cout << "Running Kernel." << std::endl;
-  auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+  unsigned int opcode = 3;
+  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
   run.wait();
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
@@ -171,14 +176,17 @@ int main(int argc, const char *argv[]) {
   uint32_t *bufOut = bo_out.map<uint32_t *>();
 
   int errors = 0;
-  int repeat_pattern_limit_1 = O / 2;
 
-  for (uint32_t i = 0; i < O; i++) {
-    uint32_t ref = i;
-    if (i < repeat_pattern_limit_1)
-      ref = 2;
-    else
-      ref = 3;
+  for (uint32_t i = 0; i < out_size / 2; i++) {
+    uint32_t ref = (i % (N / 2)) + 2;
+    if (*(bufOut + i) != ref) {
+      std::cout << "error at index[" << i << "]: expected " << ref << " got "
+                << *(bufOut + i) << std::endl;
+      errors++;
+    }
+  }
+  for (uint32_t i = out_size / 2; i < out_size; i++) {
+    uint32_t ref = (i % (N / 2)) + (N / 2) + 3;
     if (*(bufOut + i) != ref) {
       std::cout << "error at index[" << i << "]: expected " << ref << " got "
                 << *(bufOut + i) << std::endl;
