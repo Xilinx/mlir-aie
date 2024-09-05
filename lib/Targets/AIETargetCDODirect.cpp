@@ -917,14 +917,14 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
   std::memcpy(&num_ops, &data[8], 4);
   std::memcpy(&txn_size, &data[12], 4);
 
-  LLVM_DEBUG(llvm::outs() << "Major: " << major << "\n");
-  LLVM_DEBUG(llvm::outs() << "Minor: " << minor << "\n");
-  LLVM_DEBUG(llvm::outs() << "DevGen: " << data[2] << "\n");
-  LLVM_DEBUG(llvm::outs() << "NumRows: " << data[3] << "\n");
-  LLVM_DEBUG(llvm::outs() << "NumCols: " << num_cols << "\n");
-  LLVM_DEBUG(llvm::outs() << "NumMemTileRows: " << data[5] << "\n");
-  LLVM_DEBUG(llvm::outs() << "NumOps: " << num_ops << "\n");
-  LLVM_DEBUG(llvm::outs() << "TxnSize: " << txn_size << " bytes\n");
+  LLVM_DEBUG(llvm::dbgs() << "Major: " << major << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "Minor: " << minor << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "DevGen: " << data[2] << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "NumRows: " << data[3] << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "NumCols: " << num_cols << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "NumMemTileRows: " << data[5] << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "NumOps: " << num_ops << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "TxnSize: " << txn_size << " bytes\n");
 
   size_t i = 16;
 
@@ -950,7 +950,7 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
     while (i < data.size()) {
 
       XAie_TxnOpcode opc = convertOpcode(data[i]);
-      LLVM_DEBUG(llvm::outs() << "opcode: " + std::to_string(opc) + "\n");
+      LLVM_DEBUG(llvm::dbgs() << "opcode: " + std::to_string(opc) + "\n");
 
       uint64_t addr = 0;
       uint32_t value = 0;
@@ -959,7 +959,7 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
       const uint8_t *data_ptr = nullptr;
 
       if (opc == XAie_TxnOpcode::XAIE_IO_WRITE) {
-        LLVM_DEBUG(llvm::outs() << "opcode: WRITE (0x00)\n");
+        LLVM_DEBUG(llvm::dbgs() << "opcode: WRITE (0x00)\n");
         uint32_t addr0, addr1;
         std::memcpy(&addr0, &data[i + 8], 4);
         std::memcpy(&addr1, &data[i + 12], 4);
@@ -968,14 +968,14 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         addr = static_cast<uint64_t>(addr1) << 32 | addr0;
         i += size;
       } else if (opc == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
-        LLVM_DEBUG(llvm::outs() << "opcode: BLOCKWRITE (0x01)\n");
+        LLVM_DEBUG(llvm::dbgs() << "opcode: BLOCKWRITE (0x01)\n");
         std::memcpy(&addr, &data[i + 8], 4);
         std::memcpy(&size, &data[i + 12], 4);
         data_ptr = data.data() + i + 16;
         i += size;
         size = size - 16;
       } else if (opc == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
-        LLVM_DEBUG(llvm::outs() << "opcode: MASKWRITE (0x03)\n");
+        LLVM_DEBUG(llvm::dbgs() << "opcode: MASKWRITE (0x03)\n");
         uint32_t addr0, addr1;
         std::memcpy(&addr0, &data[i + 8], 4);
         std::memcpy(&addr1, &data[i + 12], 4);
@@ -989,18 +989,18 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         return std::nullopt;
       }
       ops.emplace_back(opc, mask, addr, value, data_ptr, size);
-      LLVM_DEBUG(llvm::outs() << "addr: " << addr << "\n");
-      LLVM_DEBUG(llvm::outs() << "value: " << value << "\n");
-      LLVM_DEBUG(llvm::outs() << "size: " << size << "\n");
-      LLVM_DEBUG(llvm::outs() << "mask: " << mask << "\n");
-      LLVM_DEBUG(llvm::outs()
+      LLVM_DEBUG(llvm::dbgs() << "addr: " << addr << "\n");
+      LLVM_DEBUG(llvm::dbgs() << "value: " << value << "\n");
+      LLVM_DEBUG(llvm::dbgs() << "size: " << size << "\n");
+      LLVM_DEBUG(llvm::dbgs() << "mask: " << mask << "\n");
+      LLVM_DEBUG(llvm::dbgs()
                  << "data: " << reinterpret_cast<uintptr_t>(data_ptr) << "\n");
     }
   } else if (major == 1 && minor == 0) {
     while (i < data.size()) {
 
       XAie_TxnOpcode opc = convertOpcode(data[i]);
-      LLVM_DEBUG(llvm::outs() << "opcode: " + std::to_string(opc) + "\n");
+      LLVM_DEBUG(llvm::dbgs() << "opcode: " + std::to_string(opc) + "\n");
 
       uint64_t addr = 0;
       uint32_t value = 0;
@@ -1009,19 +1009,19 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
       const uint8_t *data_ptr = nullptr;
 
       if (opc == XAie_TxnOpcode::XAIE_IO_WRITE) {
-        LLVM_DEBUG(llvm::outs() << "opcode: WRITE (0x00)\n");
+        LLVM_DEBUG(llvm::dbgs() << "opcode: WRITE (0x00)\n");
         std::memcpy(&addr, &data[i + 4], 4);
         std::memcpy(&value, &data[i + 8], 4);
         i += 12;
       } else if (opc == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
-        LLVM_DEBUG(llvm::outs() << "opcode: BLOCKWRITE (0x01)\n");
+        LLVM_DEBUG(llvm::dbgs() << "opcode: BLOCKWRITE (0x01)\n");
         std::memcpy(&addr, &data[i + 4], 4);
         std::memcpy(&size, &data[i + 8], 4);
         data_ptr = data.data() + i + 12;
         i += size;
         size = size - 12;
       } else if (opc == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
-        LLVM_DEBUG(llvm::outs() << "opcode: MASKWRITE (0x03)\n");
+        LLVM_DEBUG(llvm::dbgs() << "opcode: MASKWRITE (0x03)\n");
         std::memcpy(&addr, &data[i + 4], 4);
         std::memcpy(&value, &data[i + 8], 4);
         std::memcpy(&mask, &data[i + 12], 4);
@@ -1030,11 +1030,11 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         llvm::errs() << "Unhandled opcode: " << std::to_string(opc) << "\n";
         return std::nullopt;
       }
-      LLVM_DEBUG(llvm::outs() << "addr: " << addr << "\n");
-      LLVM_DEBUG(llvm::outs() << "value: " << value << "\n");
-      LLVM_DEBUG(llvm::outs() << "size: " << size << "\n");
-      LLVM_DEBUG(llvm::outs() << "mask: " << mask << "\n");
-      LLVM_DEBUG(llvm::outs()
+      LLVM_DEBUG(llvm::dbgs() << "addr: " << addr << "\n");
+      LLVM_DEBUG(llvm::dbgs() << "value: " << value << "\n");
+      LLVM_DEBUG(llvm::dbgs() << "size: " << size << "\n");
+      LLVM_DEBUG(llvm::dbgs() << "mask: " << mask << "\n");
+      LLVM_DEBUG(llvm::dbgs()
                  << "data: " << reinterpret_cast<uintptr_t>(data_ptr) << "\n");
       ops.emplace_back(opc, mask, addr, value, data_ptr, size);
     }
