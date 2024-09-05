@@ -653,7 +653,8 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
 
   let arguments = (
     ins AIEI8Attr:$ID,
-        OptionalAttr<BoolAttr>:$keep_pkt_header
+        OptionalAttr<BoolAttr>:$keep_pkt_header,
+        OptionalAttr<BoolAttr>:$ctrl_pkt_flow
   );
   let regions = (region AnyRegion:$ports);
 

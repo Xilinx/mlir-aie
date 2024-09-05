@@ -36,4 +36,16 @@ using namespace xilinx::AIE;
 // Populate column control streaming interconnect overlay
 void populateAIEColumnControlOverlay(DeviceOp &device);
 
+// AIE arch-specific row id to shim dma mm2s channel mapping. All shim mm2s
+// channels were assumed to be available for control packet flow routing (i.e.
+// not reserved by any aie.flow circuit-switched routing).
+DenseMap<int, int> getRowToShimChanMap(const AIETargetModel &targetModel,
+                                       WireBundle bundle);
+
+// AIE arch-specific tile id to controller id mapping. Users can use those
+// packet ids for design but run into risk of deadlocking control packet flows.
+DenseMap<AIE::TileID, int>
+getTileToControllerIdMap(bool clColumnWiseUniqueIDs,
+                         const AIETargetModel &targetModel);
+
 #endif
