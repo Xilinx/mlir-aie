@@ -122,11 +122,11 @@ You will...
 
     ```bash
     cd $LINUX_SRC_DIR
-    make O=$LINUX_BUILD_DIR olddefconfig
     ./scripts/config --file $LINUX_BUILD_DIR/.config --disable MODULE_SIG
     ./scripts/config --file $LINUX_BUILD_DIR/.config --disable SYSTEM_TRUSTED_KEYS
     ./scripts/config --file $LINUX_BUILD_DIR/.config --disable SYSTEM_REVOCATION_KEYS
     ./scripts/config --file $LINUX_BUILD_DIR/.config --enable DRM_ACCEL
+    make O=$LINUX_BUILD_DIR olddefconfig
     ```
 
 1. Build Linux.
