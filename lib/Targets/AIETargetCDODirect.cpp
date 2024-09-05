@@ -911,10 +911,7 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
 
   uint32_t major = data[0];
   uint32_t minor = data[1];
-  uint32_t dev_gen = data[2];
-  uint32_t num_rows = data[3];
   uint32_t num_cols = data[4];
-  uint32_t num_mem_tile_rows = data[5];
 
   uint32_t num_ops, txn_size;
   std::memcpy(&num_ops, &data[8], 4);
@@ -922,10 +919,10 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
 
   LLVM_DEBUG(llvm::outs() << "Major: " << major << "\n");
   LLVM_DEBUG(llvm::outs() << "Minor: " << minor << "\n");
-  LLVM_DEBUG(llvm::outs() << "DevGen: " << dev_gen << "\n");
-  LLVM_DEBUG(llvm::outs() << "NumRows: " << num_rows << "\n");
+  LLVM_DEBUG(llvm::outs() << "DevGen: " << data[2] << "\n");
+  LLVM_DEBUG(llvm::outs() << "NumRows: " << data[3] << "\n");
   LLVM_DEBUG(llvm::outs() << "NumCols: " << num_cols << "\n");
-  LLVM_DEBUG(llvm::outs() << "NumMemTileRows: " << num_mem_tile_rows << "\n");
+  LLVM_DEBUG(llvm::outs() << "NumMemTileRows: " << data[5] << "\n");
   LLVM_DEBUG(llvm::outs() << "NumOps: " << num_ops << "\n");
   LLVM_DEBUG(llvm::outs() << "TxnSize: " << txn_size << " bytes\n");
 
