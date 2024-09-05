@@ -54,13 +54,13 @@ jobs:
             ENABLE_ASSERTIONS: OFF
             ENABLE_RTTI: OFF
           - OS: ubuntu-20.04
-            COMPILER: llvm
+            COMPILER: gcc-11
             ENABLE_ASSERTIONS: ON
-            ENABLE_RTTI: OFF
+            ENABLE_RTTI: ON
           - OS: ubuntu-20.04
-            COMPILER: llvm
+            COMPILER: gcc-11
             ENABLE_ASSERTIONS: OFF
-            ENABLE_RTTI: OFF
+            ENABLE_RTTI: ON
           - OS: windows-2019
             COMPILER: msvc
             ENABLE_ASSERTIONS: ON
