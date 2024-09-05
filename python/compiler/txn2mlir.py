@@ -65,7 +65,7 @@ def parse_txn(data, verbose=False):
                 _, addr, size = struct.unpack("III", data[i + 4 : i + 16])
                 print_log(f"addr: {addr:#x}")
                 print_log(f"size: {size}")
-                operations.append((opc, addr, data[i + 16 : i + size - 16]))
+                operations.append((opc, addr, data[i + 16 : i + size]))
                 i = i + size
             elif opc == 0x03:
                 print_log("opcode: MASKWRITE (0x03)")
