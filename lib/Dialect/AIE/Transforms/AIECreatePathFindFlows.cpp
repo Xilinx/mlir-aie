@@ -472,6 +472,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
     case WireBundle::Ctrl:
       return 10;
     }
+    return -1;
   };
   auto getUniqueIdPerFlowPerSB =
       [getWireBundleAsInt](int flowID, WireBundle srcBundle,
