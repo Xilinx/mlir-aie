@@ -24,10 +24,12 @@ from .._mlir_libs._aie import (
     generate_cdo,
     generate_txn,
     generate_xaie,
+    generate_control_packets,
     npu_instgen,
     register_dialect,
     translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
+    transaction_binary_to_mlir,
 )
 from ..extras import types as T
 from ..extras.dialects.ext.arith import constant

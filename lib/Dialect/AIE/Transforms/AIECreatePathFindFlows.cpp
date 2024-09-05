@@ -746,6 +746,19 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
         packetrules = slaveRules[slave];
 
       Block &rules = packetrules.getRules().front();
+
+      // Verify ID mapping against all other rules of the same slave.
+      for (auto rule : rules.getOps<PacketRuleOp>()) {
+        auto verifyMask = rule.maskInt();
+        auto verifyValue = rule.valueInt();
+        if ((group.front().second & verifyMask) == verifyValue) {
+          rule->emitOpError("can lead to false packet id match for id ")
+              << ID << ", which is not supposed to pass through this port.";
+          rule->emitRemark("Please consider changing all uses of packet id ")
+              << ID << " to avoid deadlock.";
+        }
+      }
+
       builder.setInsertionPoint(rules.getTerminator());
       builder.create<PacketRuleOp>(builder.getUnknownLoc(), mask, ID, amsel);
     }
