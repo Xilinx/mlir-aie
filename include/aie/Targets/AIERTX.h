@@ -1,6 +1,12 @@
+//===- AIERTX.h -------------------------------------------------*- C++ -*-===//
 //
-// Created by maksim on 3/6/24.
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
+// Copyright (C) 2024, Advanced Micro Devices, Inc. All rights reserved.
+//
+//===----------------------------------------------------------------------===//
 
 #ifndef AIE_AIERTX_H
 #define AIE_AIERTX_H
@@ -15,6 +21,7 @@ extern "C" {
 #include "xaiengine/xaie_txn.h"
 #include "xaiengine/xaiegbl.h"
 }
+
 #include "llvm/Support/raw_ostream.h"
 
 #include <map>
@@ -70,7 +77,7 @@ static const std::map<xilinx::AIE::WireBundle, StrmSwPortType>
     WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE = {
         {xilinx::AIE::WireBundle::Core, StrmSwPortType::CORE},
         {xilinx::AIE::WireBundle::DMA, StrmSwPortType::DMA},
-        // missing control from StrmSwPortType
+        {xilinx::AIE::WireBundle::Ctrl, StrmSwPortType::CTRL},
         {xilinx::AIE::WireBundle::FIFO, StrmSwPortType::FIFO},
         {xilinx::AIE::WireBundle::South, StrmSwPortType::SOUTH},
         {xilinx::AIE::WireBundle::West, StrmSwPortType::WEST},
@@ -80,6 +87,8 @@ static const std::map<xilinx::AIE::WireBundle, StrmSwPortType>
         // missing NOC from WireBundle
         {xilinx::AIE::WireBundle::Trace, StrmSwPortType::TRACE},
 };
+
+#ifndef NDEBUG
 
 // https://stackoverflow.com/a/32230306
 template <typename H1>
@@ -139,9 +148,32 @@ static_assert(XAIE_OK == 0);
     }                                                                          \
   } while (0)
 
+#else
+
+#define TRY_XAIE_API_FATAL_ERROR(API, ...)                                     \
+  do {                                                                         \
+    if (auto r = API(__VA_ARGS__))                                             \
+      llvm::report_fatal_error(llvm::Twine(#API " failed with ") +             \
+                               AIERCTOSTR.at(r));                              \
+  } while (0)
+
+#define TRY_XAIE_API_EMIT_ERROR(OP, API, ...)                                  \
+  do {                                                                         \
+    if (auto r = API(__VA_ARGS__))                                             \
+      return OP.emitOpError() << #API " failed with " << AIERCTOSTR.at(r);     \
+  } while (0)
+
+#define TRY_XAIE_API_LOGICAL_RESULT(API, ...)                                  \
+  do {                                                                         \
+    if (auto r = API(__VA_ARGS__)) {                                           \
+      llvm::errs() << #API " failed with " << AIERCTOSTR.at(r);                \
+      return failure();                                                        \
+    }                                                                          \
+  } while (0)
+
+#endif
+
 #define XAIE_BASE_ADDR 0x40000000
-#define XAIE_COL_SHIFT 25
-#define XAIE_ROW_SHIFT 20
 #define XAIE_SHIM_ROW 0
 #define XAIE_MEM_TILE_ROW_START 1
 #define XAIE_PARTITION_BASE_ADDR 0x0
@@ -157,10 +189,9 @@ namespace xilinx::AIE {
 struct AIERTXControl {
   XAie_Config configPtr;
   XAie_DevInst devInst;
-  const AIETargetModel &targetModel;
+  const BaseNPUTargetModel &targetModel;
 
-  AIERTXControl(size_t partitionStartCol, size_t partitionNumCols,
-                const xilinx::AIE::AIETargetModel &tm);
+  AIERTXControl(const xilinx::AIE::BaseNPUTargetModel &tm);
 
   mlir::LogicalResult setIOBackend(bool aieSim, bool xaieDebug);
   mlir::LogicalResult configureBdInBlock(XAie_DmaDesc &dmaTileBd,
@@ -175,10 +206,16 @@ struct AIERTXControl {
                                           XAie_LocType tileLoc);
   mlir::LogicalResult initLocks(DeviceOp &targetOp);
   mlir::LogicalResult configureSwitches(DeviceOp &targetOp);
-  mlir::LogicalResult enableCoresInDevice(DeviceOp &targetOp);
+  mlir::LogicalResult addInitConfig(DeviceOp &targetOp);
+  mlir::LogicalResult addCoreEnable(DeviceOp &targetOp);
   mlir::LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
                                               mlir::Block &block,
                                               XAie_LocType &tileLoc);
+  mlir::LogicalResult addAieElf(uint8_t col, uint8_t row,
+                                const mlir::StringRef elfPath, bool aieSim);
+  mlir::LogicalResult addAieElfs(DeviceOp &targetOp,
+                                 const mlir::StringRef workDirPath,
+                                 bool aieSim);
   void startTransaction();
   void dmaUpdateBdAddr(int col, int row, size_t addr, size_t bdId);
   void exportSerializedTransaction();

@@ -46,9 +46,8 @@ extern "C" {
 #define DEBUG_TYPE "aie-generate-cdo"
 
 using namespace mlir;
-
-
-
+using namespace xilinx;
+using namespace xilinx::AIE;
 
 static void initializeCDOGenerator(byte_ordering endianness, bool cdoDebug) {
   // Enables AXI-MM prints for configs being added in CDO
@@ -74,11 +73,12 @@ generateCDOBinary(const StringRef outputPath,
   return success();
 }
 
-static LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
+static LogicalResult generateCDOBinariesSeparately(AIERTXControl &ctl,
                                                    const StringRef workDirPath,
                                                    DeviceOp &targetOp,
                                                    bool aieSim,
                                                    bool enableCores) {
+  auto ps = std::filesystem::path::preferred_separator;
 
   if (failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_elfs.bin")
@@ -104,10 +104,12 @@ static LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
   return success();
 }
 
-static LogicalResult generateCDOUnified(AIEControl &ctl,
+static LogicalResult generateCDOUnified(AIERTXControl &ctl,
                                         const StringRef workDirPath,
                                         DeviceOp &targetOp, bool aieSim,
                                         bool enableCores) {
+auto ps = std::filesystem::path::preferred_separator;
+
   return generateCDOBinary(
       (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo.bin").str(),
       [&ctl, &targetOp, &workDirPath, &aieSim, &enableCores] {
@@ -139,7 +141,7 @@ translateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
   // shim dma on tile (0,0) are hard-coded assumptions about NPU...
   assert(targetModel.isNPU() && "Only NPU currently supported");
 
-  AIERTXControl ctl(targetOp.getTargetModel());
+  AIERTXControl ctl(targetModel);
   if (failed(ctl.setIOBackend(aieSim, xaieDebug)))
     return failure();
   initializeCDOGenerator(endianness, cdoDebug);
@@ -317,7 +319,7 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
   return num_cols;
 }
 
-static LogicalResult generateTxn(AIEControl &ctl, const StringRef workDirPath,
+static LogicalResult generateTxn(AIERTXControl &ctl, const StringRef workDirPath,
                                  DeviceOp &targetOp, bool aieSim,
                                  bool enableElfs, bool enableInit,
                                  bool enableCores) {
@@ -347,7 +349,9 @@ static LogicalResult translateToTxn(ModuleOp m, std::vector<uint8_t> &output,
   if (!targetModel.isNPU())
     return failure();
 
-  AIEControl ctl(aieSim, xaieDebug, targetModel);
+  AIERTXControl ctl(targetModel);
+  if (failed(ctl.setIOBackend(aieSim, xaieDebug)))
+    return failure();
 
   // start collecting transations
   XAie_StartTransaction(&ctl.devInst, XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);

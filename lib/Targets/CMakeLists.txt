@@ -25,7 +25,7 @@ target_include_directories(AIERTX SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR})
 target_include_directories(obj.AIERTX SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR})
 add_dependencies(obj.AIERTX xaienginecdo_static xaienginecdo_static-headers)
 
-set(_sources
+add_mlir_library(AIETargets
   AIETargets.cpp
   AIETargetBCF.cpp
   AIETargetCDODirect.cpp

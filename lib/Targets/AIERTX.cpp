@@ -1,7 +1,10 @@
 //===- AIERTX.cpp -----------------------------------------------*- C++ -*-===//
 //
-// Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2024, Advanced Micro Devices, Inc. All rights reserved.
 //
 //===----------------------------------------------------------------------===//
 
@@ -12,13 +15,17 @@
 extern "C" {
 #include "xaiengine/xaie_core.h"
 #include "xaiengine/xaie_dma.h"
+#include "xaiengine/xaie_elfloader.h"
 #include "xaiengine/xaie_interrupt.h"
 #include "xaiengine/xaie_locks.h"
 #include "xaiengine/xaie_plif.h"
 #include "xaiengine/xaie_ss.h"
+#include "xaiengine/xaie_txn.h"
 #include "xaiengine/xaiegbl.h"
 #include "xaiengine/xaiegbl_defs.h"
 }
+
+#include <filesystem>
 
 using namespace mlir;
 
@@ -44,16 +51,35 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 }
 
 namespace xilinx::AIE {
-AIERTXControl::AIERTXControl(size_t partitionStartCol, size_t partitionNumCols,
-                             const AIETargetModel &tm)
+
+AIERTXControl::AIERTXControl(const AIE::BaseNPUTargetModel &tm)
     : targetModel(tm) {
+  // The first column in the NPU lacks a shim tile.  AIE-RT exposes some of
+  // the internals about how this is modeled in a somewhat awkward way.
+  size_t partitionStartCol = tm.isVirtualized() ? 1 : 0;
+  size_t partitionNumCols = tm.columns();
+  size_t deviceRows = tm.rows();
+  size_t deviceCols = tm.columns() + partitionStartCol;
+
+  // Don't put this in the target model, because it's XAIE specific.
+  unsigned char devGen;
+  switch (tm.getTargetArch()) {
+  case AIEArch::AIE1: // probably unreachable.
+    devGen = XAIE_DEV_GEN_AIE;
+    break;
+  case AIEArch::AIE2:
+    devGen = XAIE_DEV_GEN_AIEML;
+    break;
+  default:
+    assert(false);
+  }
   configPtr = XAie_Config{
-      /*AieGen*/ XAIE_DEV_GEN_AIEML,
+      /*AieGen*/ devGen,
       /*BaseAddr*/ XAIE_BASE_ADDR,
-      /*ColShift*/ XAIE_COL_SHIFT,
-      /*RowShift*/ XAIE_ROW_SHIFT,
-      /*NumRows*/ static_cast<uint8_t>(tm.rows()),
-      /*NumCols*/ static_cast<uint8_t>(tm.columns()),
+      /*ColShift*/ static_cast<uint8_t>(tm.getColumnShift()),
+      /*RowShift*/ static_cast<uint8_t>(tm.getRowShift()),
+      /*NumRows*/ static_cast<uint8_t>(deviceRows),
+      /*NumCols*/ static_cast<uint8_t>(deviceCols),
       /*ShimRowNum*/ XAIE_SHIM_ROW,
       /*MemTileRowStart*/ XAIE_MEM_TILE_ROW_START,
       /*MemTileNumRows*/ static_cast<uint8_t>(tm.getNumMemTileRows()),
@@ -92,7 +118,8 @@ LogicalResult AIERTXControl::configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
                                                      XAie_LocType &tileLoc) {
   LLVM_DEBUG(llvm::dbgs() << "\nstart configuring bds\n");
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
-  bool acqEn;
+  bool acqEn = false;
+
   // switch (lock->getAc)
   for (auto op : block.getOps<UseLockOp>()) {
     // Only dyn_cast if you are going to check if it was of the type
@@ -142,6 +169,8 @@ LogicalResult AIERTXControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
                                                 std::optional<int> nextBdId) {
   std::optional<int> packetType;
   std::optional<int> packetID;
+
+  // Below should go
   auto maybePacketOps = block.getOps<DMABDPACKETOp>();
   if (!maybePacketOps.empty()) {
     assert(llvm::range_size(maybePacketOps) == 1 &&
@@ -157,7 +186,7 @@ LogicalResult AIERTXControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
     // write them out like this so they show up with names in debug prints
     size_t smid = 0;
     size_t burstLen = 16; // (10):BLEN=16 (256Byte) (corresponds to
-                          // 0x800000000 from targetipu)
+                          // 0x800000000 from target)
     size_t qOs = 0;
     size_t cache = 0;
     size_t secure = 0;
@@ -165,59 +194,107 @@ LogicalResult AIERTXControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
                             qOs, cache, secure);
   }
 
-  // deref here because this is a const iter and the various getters below
-  // aren't const (even though they probably should be...)
   // StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
-  ShapedType bufferType = bdOp.getBuffer().getType().cast<::mlir::MemRefType>();
-  int bytes = bufferType.getElementTypeBitWidth() / 8;
   int baseAddr = 0;
   if (!targetModel.isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
     auto bufferOp = cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp());
-    assert(bufferOp.getAddress().has_value() && "buffer must have address");
+    if (!bufferOp.getAddress())
+      return bufferOp.emitError("buffer must have address assigned");
     baseAddr = bufferOp.getAddress().value();
     if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row))
       baseAddr += BASE_ADDR_A_INCR;
   }
 
   std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDimensions();
-  int lenInBytes = bdOp.getLenValue() * bytes;
-  int basePlusOffset = baseAddr + bdOp.getOffsetValue();
+  int lenInBytes = bdOp.getLenInBytes();
+  int basePlusOffsetInBytes = baseAddr + bdOp.getOffsetInBytes();
   if (!dims) {
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAddrLen, &dmaTileBd,
-                            basePlusOffset, lenInBytes);
+                            basePlusOffsetInBytes, lenInBytes);
   } else {
     XAie_DmaTensor dmaTileBdTensor = {};
     dmaTileBdTensor.NumDim = dims->size();
     dmaTileBdTensor.Dim = static_cast<XAie_DmaDimDesc *>(
-        calloc(dims->size(), sizeof(XAie_DmaDimDesc)));
+        calloc(dmaTileBdTensor.NumDim, sizeof(XAie_DmaDimDesc)));
     if (!dmaTileBdTensor.Dim)
       return bdOp.emitError("couldn't allocate array of XAie_DmaDimDesc");
-    // TODO(max): rethink this?
+    // libxaie requires stride in multiples of 32b
+    double elementWidthIn32bWords =
+        static_cast<double>(bdOp.getBufferElementTypeWidthInBytes()) / 4.0;
     for (size_t i = 0; i < dims->size(); i++) {
       // Pass down dimensions in reverse order; in the MLIR, this allows
       // us to specify step sizes/wraps in the same order as we would
       // access a multi-dim C array, with the highest dimension first.
       int j = dims->size() - i - 1;
-      // Assume AIE-ML architecture; we assert this above
-      // TODO(max): no we don't
-      dmaTileBdTensor.Dim[j].AieMlDimDesc = {dims.value()[i].getStride(),
-                                             dims.value()[i].getSize()};
+      uint16_t size;
+      uint32_t stride;
+      if (j > 0) {
+        stride = static_cast<uint32_t>(dims.value()[i].getStride() *
+                                       elementWidthIn32bWords);
+        size = dims.value()[i].getSize();
+      } else {
+        stride = dims.value()[i].getStride();
+        size = static_cast<uint16_t>(dims.value()[i].getSize() *
+                                     elementWidthIn32bWords);
+      }
+      stride = stride > 0 ? stride : 1;
+      // Assume AIE-ML architecture (ie use AieMlDimDesc instead of AieDimDesc);
+      // asserted in AIETranslateToCDODirect).
+      dmaTileBdTensor.Dim[j].AieMlDimDesc = {stride, size};
     }
-    // TODO: Probably need special handling for NOC
-    // TODO: Might need to adjust step sizes / wraps by -1
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetMultiDimAddr, &dmaTileBd,
-                            &dmaTileBdTensor, basePlusOffset, lenInBytes);
+                            &dmaTileBdTensor, basePlusOffsetInBytes,
+                            lenInBytes);
   }
 
+  // ND zero padding.
+  std::optional<llvm::ArrayRef<BDPadLayoutAttr>> padDims =
+      bdOp.getPadDimensions();
+
+  if (padDims) {
+    XAie_DmaPadTensor dmaPadTensor = {};
+    dmaPadTensor.NumDim = padDims->size();
+    dmaPadTensor.PadDesc = static_cast<XAie_PadDesc *>(
+        calloc(dmaPadTensor.NumDim, sizeof(XAie_PadDesc)));
+    if (!dmaPadTensor.PadDesc)
+      return bdOp.emitError("couldn't allocate array of XAie_PadDesc");
+    // libxaie requires stride in multiples of 32b
+    double elementWidthIn32bWords =
+        static_cast<double>(bdOp.getBufferElementTypeWidthInBytes()) / 4.0;
+    for (size_t i = 0; i < padDims->size(); i++) {
+      // Pass down dimensions in reverse order.
+      int j = padDims->size() - i - 1;
+      uint8_t before;
+      uint8_t after;
+      if (j > 0) {
+        before = static_cast<uint8_t>(padDims.value()[i].getConstPadBefore());
+        after = static_cast<uint8_t>(padDims.value()[i].getConstPadAfter());
+      } else {
+        before = static_cast<uint8_t>(padDims.value()[i].getConstPadBefore() *
+                                      elementWidthIn32bWords);
+        after = static_cast<uint8_t>(padDims.value()[i].getConstPadAfter() *
+                                     elementWidthIn32bWords);
+      }
+      dmaPadTensor.PadDesc[j] = {before, after};
+    }
+    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetPadding, &dmaTileBd,
+                            &dmaPadTensor);
+  }
   if (nextBdId) {
     auto enableNextBd = 1;
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetNextBd, &dmaTileBd,
                             nextBdId.value(), enableNextBd);
   }
 
+  if (auto packetInfo = bdOp.getPacket()) {
+    packetType = packetInfo->getPktType();
+    packetID = packetInfo->getPktId();
+  }
+
   if (packetID) {
-    assert(packetType && "must have packetType with packetID");
-    if (bdOp.getLenValue() == 0)
+    if (!packetType)
+      bdOp.emitError("must have packetType with packetID");
+    if (bdOp.getLen() == 0)
       return bdOp.emitOpError(
           "For MM2S channels, if Buffer_Length=0 then Enable_Packet must be "
           "set to 0, otherwise behavior is undefined (3.7.8 arch spec)");
@@ -302,16 +379,7 @@ LogicalResult AIERTXControl::configureSwitches(DeviceOp &targetOp) {
     int32_t col = switchboxOp.colIndex();
     int32_t row = switchboxOp.rowIndex();
     XAie_LocType tileLoc = XAie_TileLoc(col, row);
-    assert(targetOp.getDevice() == AIEDevice::ipu &&
-           "Only IPU currently supported");
-    if (row == 0) {
-      // FIXME hack for TCT routing
-      // TODO Support both channels
-      auto slvPortNum = 0;
-      auto mstrPortNum = 0;
-      TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_StrmConnCctEnable, &devInst,
-                              tileLoc, CTRL, slvPortNum, SOUTH, mstrPortNum);
-    }
+    assert(targetModel.isNPU() && "Only NPU currently supported");
 
     Block &b = switchboxOp.getConnections().front();
     for (auto connectOp : b.getOps<ConnectOp>())
@@ -322,50 +390,60 @@ LogicalResult AIERTXControl::configureSwitches(DeviceOp &targetOp) {
           WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
           connectOp.destIndex());
 
-    for (auto connectOp : b.getOps<MasterSetOp>()) {
+    for (auto masterSetOp : b.getOps<MasterSetOp>()) {
       int mask = 0;
       int arbiter = -1;
 
-      for (auto val : connectOp.getAmsels()) {
+      for (auto val : masterSetOp.getAmsels()) {
         AMSelOp amsel = cast<AMSelOp>(val.getDefiningOp());
         arbiter = amsel.arbiterIndex();
         int msel = amsel.getMselValue();
         mask |= (1 << msel);
       }
 
-      bool isdma = connectOp.getDestBundle() == WireBundle::DMA;
+      // the default is to keep header
+      bool keepHeader = true;
+      // the default for dma destinations is to drop the header
+      if (masterSetOp.getDestBundle() == WireBundle::DMA)
+        keepHeader = false;
       // assume a connection going south from row zero gets wired to shimdma
-      // by a shimmux. TODO: fix the assumption
-      if (!isdma && (switchboxOp.rowIndex() == 0))
-        isdma = connectOp.getDestBundle() == WireBundle::South;
-      // Flag for overriding DROP_HEADER. TODO: Formalize this in tablegen
-      isdma &= !connectOp->hasAttr("keep_pkt_header");
-      auto dropHeader =
-          isdma ? XAIE_SS_PKT_DROP_HEADER : XAIE_SS_PKT_DONOT_DROP_HEADER;
+      // by a shimmux.
+      if (switchboxOp.rowIndex() == 0 &&
+          masterSetOp.getDestBundle() == WireBundle::South)
+        keepHeader = false;
+
+      // "keep_pkt_header" attribute overrides the above defaults, if set
+      if (auto keep = masterSetOp.getKeepPktHeader())
+        keepHeader = *keep;
+
+      auto dropHeader = keepHeader ? XAIE_SS_PKT_DONOT_DROP_HEADER
+                                    : XAIE_SS_PKT_DROP_HEADER;
       TRY_XAIE_API_EMIT_ERROR(
-          connectOp, XAie_StrmPktSwMstrPortEnable, &devInst, tileLoc,
-          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
-          connectOp.destIndex(), dropHeader, arbiter, mask);
+          masterSetOp, XAie_StrmPktSwMstrPortEnable, &devInst, tileLoc,
+          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(masterSetOp.getDestBundle()),
+          masterSetOp.destIndex(), dropHeader, arbiter, mask);
     }
 
-    for (auto connectOp : b.getOps<PacketRulesOp>()) {
+    for (auto packetRulesOp : b.getOps<PacketRulesOp>()) {
       int slot = 0;
-      Block &block = connectOp.getRules().front();
+      Block &block = packetRulesOp.getRules().front();
       for (auto slotOp : block.getOps<PacketRuleOp>()) {
         AMSelOp amselOp = cast<AMSelOp>(slotOp.getAmsel().getDefiningOp());
         int arbiter = amselOp.arbiterIndex();
         int msel = amselOp.getMselValue();
-        TRY_XAIE_API_EMIT_ERROR(
-            connectOp, XAie_StrmPktSwSlavePortEnable, &devInst, tileLoc,
-            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
-            connectOp.sourceIndex());
+        TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlavePortEnable,
+                                &devInst, tileLoc,
+                                WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+                                    packetRulesOp.getSourceBundle()),
+                                packetRulesOp.sourceIndex());
         auto packetInit = XAie_PacketInit(slotOp.valueInt(), /*PktType*/ 0);
         // TODO Need to better define packet id,type used here
-        TRY_XAIE_API_EMIT_ERROR(
-            connectOp, XAie_StrmPktSwSlaveSlotEnable, &devInst, tileLoc,
-            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
-            connectOp.sourceIndex(), slot, packetInit, slotOp.maskInt(), msel,
-            arbiter);
+        TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlaveSlotEnable,
+                                &devInst, tileLoc,
+                                WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+                                    packetRulesOp.getSourceBundle()),
+                                packetRulesOp.sourceIndex(), slot, packetInit,
+                                slotOp.maskInt(), msel, arbiter);
         slot++;
       }
     }
@@ -414,16 +492,130 @@ LogicalResult AIERTXControl::configureSwitches(DeviceOp &targetOp) {
               static_cast<WireBundle>(configOp.getOutputDir())));
     }
   }
+
   return success();
 }
 
-LogicalResult AIERTXControl::enableCoresInDevice(DeviceOp &targetOp) {
+LogicalResult AIERTXControl::addInitConfig(DeviceOp &targetOp) {
+
+  if (failed(initLocks(targetOp))) {
+    return failure();
+  }
+
+  auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
+  llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());
+  llvm::append_range(memOps, targetOp.getOps<ShimDMAOp>());
+  for (TileElement memOp : memOps) {
+    int col = memOp.getTileID().col;
+    int row = memOp.getTileID().row;
+    XAie_LocType tileLoc = XAie_TileLoc(col, row);
+
+    // handle DMA ops separately
+    auto dmaOps = llvm::to_vector_of<DMAOp>(
+        memOp.getOperation()->getRegion(0).getOps<DMAOp>());
+    if (!dmaOps.empty()) {
+      for (auto dmaOp : dmaOps)
+        for (auto &bdRegion : dmaOp.getBds()) {
+          Block &block = bdRegion.getBlocks().front();
+          if (failed(configureLocksAndBd(block, tileLoc)))
+            return failure();
+        }
+    } else {
+      for (Block &block : memOp.getOperation()->getRegion(0)) {
+        if (block.getOps<DMABDOp>().empty())
+          continue;
+        if (failed(configureLocksAndBd(block, tileLoc)))
+          return failure();
+      }
+    }
+
+    if (!dmaOps.empty())
+      for (auto dmaOp : dmaOps) {
+        auto &block = dmaOp.getBds().front().getBlocks().front();
+        DMABDOp bd = *block.getOps<DMABDOp>().begin();
+        if (failed(pushToBdQueueAndEnable(
+                *dmaOp.getOperation(), tileLoc,
+                dmaOp.getChannelIndex(), dmaOp.getChannelDir(),
+                bd.getBdId().value(), dmaOp.getRepeatCount())))
+          return failure();
+      }
+    else
+      for (Block &block : memOp.getOperation()->getRegion(0)) {
+        for (auto op : block.getOps<DMAStartOp>()) {
+          DMABDOp bd = *op.getDest()->getOps<DMABDOp>().begin();
+          int chNum = op.getChannelIndex();
+          auto channelDir = op.getChannelDir();
+          if (failed(pushToBdQueueAndEnable(
+                  *bd.getOperation(), tileLoc, chNum, channelDir,
+                  bd.getBdId().value(), op.getRepeatCount())))
+            return failure();
+        }
+      }
+  }
+
+  if (failed(configureSwitches(targetOp))) {
+    return failure();
+  }
+
+  return success();
+}
+
+LogicalResult AIERTXControl::addCoreEnable(DeviceOp &targetOp) {
   // Start execution of all the cores.
   for (auto tileOp : targetOp.getOps<TileOp>()) {
     auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
     if (!tileOp.isShimTile() && tileOp.getCoreOp())
       TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_CoreEnable, &devInst, tileLoc);
   }
+  return success();
+}
+
+LogicalResult AIERTXControl::addAieElf(uint8_t col, uint8_t row,
+                                       const StringRef elfPath, bool aieSim) {
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_CoreDisable, &devInst,
+                              XAie_TileLoc(col, row));
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, &devInst,
+                              XAie_TileLoc(col, row),
+                              XAie_DmaChReset::DMA_CHANNEL_RESET);
+
+  // loadSym: Load symbols from .map file. This argument is not used when
+  // __AIESIM__ is not defined.
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_LoadElf, &devInst, XAie_TileLoc(col, row),
+                              elfPath.str().c_str(), /*loadSym*/ aieSim);
+
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, &devInst,
+                              XAie_TileLoc(col, row),
+                              XAie_DmaChReset::DMA_CHANNEL_UNRESET);
+
+  return success();
+}
+
+LogicalResult AIERTXControl::addAieElfs(DeviceOp &targetOp,
+                                        const StringRef workDirPath,
+                                        bool aieSim) {
+  for (auto tileOp : targetOp.getOps<TileOp>())
+    if (tileOp.isShimNOCorPLTile()) {
+      // Resets no needed with V2 kernel driver
+    } else {
+      int col = tileOp.colIndex();
+      int row = tileOp.rowIndex();
+      if (auto coreOp = tileOp.getCoreOp()) {
+        std::string fileName;
+        if (auto fileAttr = coreOp.getElfFile())
+          fileName = fileAttr->str();
+        else
+          fileName = (llvm::Twine("core_") + std::to_string(col) + "_" +
+                      std::to_string(row) + ".elf")
+                          .str();
+        auto ps = std::filesystem::path::preferred_separator;
+        if (failed(addAieElf(
+                col, row,
+                (llvm::Twine(workDirPath) + std::string(1, ps) + fileName)
+                    .str(),
+                aieSim)))
+          return failure();
+      }
+    }
   return success();
 }
 

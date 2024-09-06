@@ -230,9 +230,9 @@ DEFINE_C_API_PTR_METHODS(AieRtxControl, xilinx::AIE::AIERTXControl)
 
 AieRtxControl getAieRtxControl(size_t partitionStartCol,
                                size_t partitionNumCols) {
-  IPUTargetModel targetModel;
+  NPUTargetModel targetModel;
   AIERTXControl *ctl =
-      new AIERTXControl(partitionStartCol, partitionNumCols, targetModel);
+      new AIERTXControl(targetModel);
   return wrap(ctl);
 }
 
