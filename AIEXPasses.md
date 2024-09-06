@@ -39,6 +39,14 @@ _Generate physical lock ops from logical lock (token) ops_
 Tokens represent high-level buffer synchronization through a sequence of
 pipeline stages.  This pass lowers token operations into physical aie.lock
 operations.
+### `-aie-ctrl-packet-infer-tiles`
+
+_Infer aie.tile ops from aiex.control_packet addresses_
+
+### `-aie-ctrl-packet-to-dma`
+
+_Lowers npu.control_packet op to npu.dma_memcpy_nd op_
+
 ### `-aie-dma-tasks-to-npu`
 
 _Lower configured DMA tasks to NPU instructions_
