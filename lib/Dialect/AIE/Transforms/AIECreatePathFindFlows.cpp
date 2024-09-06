@@ -477,15 +477,15 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
   auto getUniqueIdPerFlowPerSB =
       [getWireBundleAsInt](int flowID, WireBundle srcBundle,
                            SmallVector<PhysPort, 4> dests) {
-        int currMultiplier =
-            16; // TODO: Will fail when WireBundle enum eventually exceeds 16
+        int totalNumOfWireBundles = AIE::getMaxEnumValForWireBundle();
+        int currMultiplier = totalNumOfWireBundles;
         int uniqueId = flowID;
         uniqueId += currMultiplier + getWireBundleAsInt(srcBundle);
-        currMultiplier += 16;
+        currMultiplier += totalNumOfWireBundles;
         for (auto dst : dests) {
           uniqueId += currMultiplier;
           uniqueId += getWireBundleAsInt(dst.second.bundle);
-          currMultiplier += 16;
+          currMultiplier += totalNumOfWireBundles;
         }
         return uniqueId;
       };
