@@ -20,18 +20,18 @@
 // CHECK: aie.packet_flow(15) {
 // CHECK:   aie.packet_source<%[[tile_0_0]], Ctrl : 0>
 // CHECK:   aie.packet_dest<%[[tile_0_0]], South : 0>
-// CHECK: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// CHECK: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // TCTALLTILES-LABEL: module {
 // TCTALLTILES: %[[tile_0_0:.*]] = aie.tile(0, 0)
 // TCTALLTILES: %[[tile_0_1:.*]] = aie.tile(0, 1)
 // TCTALLTILES: aie.packet_flow(15) {
 // TCTALLTILES:   aie.packet_source<%[[tile_0_0]], Ctrl : 0>
 // TCTALLTILES:   aie.packet_dest<%[[tile_0_0]], South : 0>
-// TCTALLTILES: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // TCTALLTILES: aie.packet_flow(26) {
 // TCTALLTILES:   aie.packet_source<%[[tile_0_1]], Ctrl : 0>
 // TCTALLTILES:   aie.packet_dest<%[[tile_0_0]], South : 0>
-// TCTALLTILES: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // CTRLPKT-LABEL: module {
 // CTRLPKT: %[[tile_0_0:.*]] = aie.tile(0, 0)
 // CTRLPKT: %[[tile_0_1:.*]] = aie.tile(0, 1)
@@ -63,11 +63,11 @@ aie.device(npu1_1col) {
 // CHECK: aie.packet_flow(15) {
 // CHECK:   aie.packet_source<%[[tile_0_0]], Ctrl : 0>
 // CHECK:   aie.packet_dest<%[[tile_0_0]], South : 0>
-// CHECK: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// CHECK: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // CHECK: aie.packet_flow(15) {
 // CHECK:   aie.packet_source<%[[tile_1_0]], Ctrl : 0>
 // CHECK:   aie.packet_dest<%[[tile_1_0]], South : 0>
-// CHECK: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// CHECK: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // TCTALLTILES-LABEL: module {
 // TCTALLTILES: %[[tile_0_0:.*]] = aie.tile(0, 0)
 // TCTALLTILES: %[[tile_0_1:.*]] = aie.tile(0, 1)
@@ -76,19 +76,19 @@ aie.device(npu1_1col) {
 // TCTALLTILES: aie.packet_flow(15) {
 // TCTALLTILES:   aie.packet_source<%[[tile_0_0]], Ctrl : 0>
 // TCTALLTILES:   aie.packet_dest<%[[tile_0_0]], South : 0>
-// TCTALLTILES: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // TCTALLTILES: aie.packet_flow(26) {
 // TCTALLTILES:   aie.packet_source<%[[tile_0_1]], Ctrl : 0>
 // TCTALLTILES:   aie.packet_dest<%[[tile_0_0]], South : 0>
-// TCTALLTILES: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // TCTALLTILES: aie.packet_flow(15) {
 // TCTALLTILES:   aie.packet_source<%[[tile_1_0]], Ctrl : 0>
 // TCTALLTILES:   aie.packet_dest<%[[tile_1_0]], South : 0>
-// TCTALLTILES: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // TCTALLTILES: aie.packet_flow(26) {
 // TCTALLTILES:   aie.packet_source<%[[tile_1_1]], Ctrl : 0>
 // TCTALLTILES:   aie.packet_dest<%[[tile_1_0]], South : 0>
-// TCTALLTILES: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // CTRLPKT-LABEL: module {
 // CTRLPKT: %[[tile_0_0:.*]] = aie.tile(0, 0)
 // CTRLPKT: %[[tile_0_1:.*]] = aie.tile(0, 1)
@@ -139,11 +139,11 @@ aie.device(npu1_2col) {
 // CHECK: aie.packet_flow(4) {
 // CHECK:   aie.packet_source<%[[tile_0_0]], Ctrl : 0>
 // CHECK:   aie.packet_dest<%[[tile_0_0]], South : 0>
-// CHECK: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// CHECK: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // CHECK: aie.packet_flow(5) {
 // CHECK:   aie.packet_source<%[[tile_1_0]], Ctrl : 0>
 // CHECK:   aie.packet_dest<%[[tile_1_0]], South : 0>
-// CHECK: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// CHECK: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // TCTALLTILES-LABEL: module {
 // TCTALLTILES: %[[tile_0_0:.*]] = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
 // TCTALLTILES: %[[tile_0_1:.*]] = aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 3>}
@@ -156,35 +156,35 @@ aie.device(npu1_2col) {
 // TCTALLTILES: aie.packet_flow(4) {
 // TCTALLTILES:   aie.packet_source<%[[tile_0_0]], Ctrl : 0>
 // TCTALLTILES:   aie.packet_dest<%[[tile_0_0]], South : 0>
-// TCTALLTILES: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // TCTALLTILES: aie.packet_flow(3) {
 // TCTALLTILES:   aie.packet_source<%[[tile_0_1]], Ctrl : 0>
 // TCTALLTILES:   aie.packet_dest<%[[tile_0_0]], South : 0>
-// TCTALLTILES: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // TCTALLTILES: aie.packet_flow(5) {
 // TCTALLTILES:   aie.packet_source<%[[tile_0_2]], Ctrl : 0>
 // TCTALLTILES:   aie.packet_dest<%[[tile_0_0]], South : 0>
-// TCTALLTILES: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // TCTALLTILES: aie.packet_flow(1) {
 // TCTALLTILES:   aie.packet_source<%[[tile_0_3]], Ctrl : 0>
 // TCTALLTILES:   aie.packet_dest<%[[tile_0_0]], South : 0>
-// TCTALLTILES: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // TCTALLTILES: aie.packet_flow(6) {
 // TCTALLTILES:   aie.packet_source<%[[tile_0_4]], Ctrl : 0>
 // TCTALLTILES:   aie.packet_dest<%[[tile_0_0]], South : 0>
-// TCTALLTILES: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // TCTALLTILES: aie.packet_flow(2) {
 // TCTALLTILES:   aie.packet_source<%[[tile_0_5]], Ctrl : 0>
 // TCTALLTILES:   aie.packet_dest<%[[tile_0_0]], South : 0>
-// TCTALLTILES: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // TCTALLTILES: aie.packet_flow(5) {
 // TCTALLTILES:   aie.packet_source<%[[tile_1_0]], Ctrl : 0>
 // TCTALLTILES:   aie.packet_dest<%[[tile_1_0]], South : 0>
-// TCTALLTILES: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // TCTALLTILES: aie.packet_flow(7) {
 // TCTALLTILES:   aie.packet_source<%[[tile_1_1]], Ctrl : 0>
 // TCTALLTILES:   aie.packet_dest<%[[tile_1_0]], South : 0>
-// TCTALLTILES: }{{.*}}ctrl_pkt_flow = true{{.*}}keep_pkt_header = true
+// TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // CTRLPKT-LABEL: module {
 // CTRLPKT: %[[tile_0_0:.*]] = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
 // CTRLPKT: %[[tile_0_1:.*]] = aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 3>}
