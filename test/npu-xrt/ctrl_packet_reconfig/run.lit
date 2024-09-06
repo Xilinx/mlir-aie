@@ -8,7 +8,7 @@
 // RUN: %python txn2mlir.py -f aie2.mlir.prj/txn.bin -generate-ctrl-pkt > cfg.mlir
 // RUN: aie-translate -aie-ctrlpkt-to-bin cfg.mlir -o cfg.txt
 // RUN: aie-opt -aie-ctrl-packet-infer-tiles -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" -aie-ctrl-packet-to-dma cfg.mlir > aie3.mlir
-// RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --no-compile-host --basic-alloc-scheme --generate-ctrl-pkt-overlay --xclbin-name=aie3.xclbin --npu-insts-name=insts3.txt %S/aie3.mlir
+// RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --no-compile-host --basic-alloc-scheme --generate-ctrl-pkt-overlay --xclbin-name=aie3.xclbin --npu-insts-name=insts3.txt aie3.mlir
 // RUN: clang %S/test.cpp -o test.exe -std=c++11 -Wall %xrt_flags -lrt -lstdc++ -lboost_program_options -lboost_filesystem
 // RUN: %run_on_npu ./test.exe | FileCheck %s
 // CHECK: PASS!
