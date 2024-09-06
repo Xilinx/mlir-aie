@@ -67,13 +67,12 @@ struct AIESubstituteShimDMAAllocationsPass
 
     // Convert DMAConfigureTaskForOps that reference shim DMA allocations
     // to regular DMAConfigureTaskOps
-    ConversionTarget target(getContext());
-    target.addLegalDialect<AIEXDialect>();
-    target.addIllegalOp<DMAConfigureTaskForOp>();
+    GreedyRewriteConfig rewriter_config = GreedyRewriteConfig();
+    rewriter_config.enableRegionSimplification =
+        GreedySimplifyRegionLevel::Disabled;
     RewritePatternSet patterns(&getContext());
     patterns.insert<DMAConfigureTaskForOpPattern>(&getContext());
 
-    GreedyRewriteConfig rewriter_config = GreedyRewriteConfig();
     if (failed(applyPatternsAndFoldGreedily(device, std::move(patterns),
                                             rewriter_config))) {
       signalPassFailure();
