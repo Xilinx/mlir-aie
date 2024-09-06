@@ -39,12 +39,28 @@ jobs:
       # Run the tests on the Cartesian product of the following
       matrix:
 
-        OS: [ ubuntu-20.04, ubuntu-22.04, ubuntu-24.04 ]
+        OS: [ ubuntu-22.04, ubuntu-24.04 ]
         COMPILER: [ llvm, gcc ]
         ENABLE_ASSERTIONS: [ ON, OFF ]
         ENABLE_RTTI: [ ON, OFF ]
 
         include:
+          - OS: ubuntu-20.04
+            COMPILER: gcc-11
+            ENABLE_ASSERTIONS: ON
+            ENABLE_RTTI: OFF
+          - OS: ubuntu-20.04
+            COMPILER: gcc-11
+            ENABLE_ASSERTIONS: OFF
+            ENABLE_RTTI: OFF
+          - OS: ubuntu-20.04
+            COMPILER: gcc-11
+            ENABLE_ASSERTIONS: ON
+            ENABLE_RTTI: ON
+          - OS: ubuntu-20.04
+            COMPILER: gcc-11
+            ENABLE_ASSERTIONS: OFF
+            ENABLE_RTTI: ON
           - OS: windows-2019
             COMPILER: msvc
             ENABLE_ASSERTIONS: ON
