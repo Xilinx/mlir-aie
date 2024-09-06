@@ -78,8 +78,8 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
                    << "\n");
         // todo: support many-to-one & many-to-many?
         bool priorityFlow =
-            pktFlowOp.getCtrlPktFlow()
-                ? *pktFlowOp.getCtrlPktFlow()
+            pktFlowOp.getPriorityRoute()
+                ? *pktFlowOp.getPriorityRoute()
                 : false; // Flows such as control packet flows are routed in
                          // priority, to ensure routing consistency.
         pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort,

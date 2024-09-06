@@ -348,7 +348,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
                 switchboxes[currTile].push_back({connect, flowID});
               // Assign "control packet flows" flag per switchbox, based on
               // packet flow op attribute
-              auto ctrlPkt = pktFlowOp.getCtrlPktFlow();
+              auto ctrlPkt = pktFlowOp.getPriorityRoute();
               ctrlPktFlows[{
                   {analyzer.getTile(builder, curr.col, curr.row), dest},
                   flowID}] = ctrlPkt ? *ctrlPkt : false;
