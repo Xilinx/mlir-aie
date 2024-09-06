@@ -18,7 +18,7 @@ import aie.utils.trace as trace_utils
 
 def my_vector_scalar(vector_size, trace_size):
     N = vector_size
-    N_in_bytes = N * 2
+    N_in_bytes = N * 4
     N_div_n = 4  # chop input vector into 4 sub-vectors
     n = N // N_div_n
 
@@ -28,17 +28,17 @@ def my_vector_scalar(vector_size, trace_size):
 
     @device(AIEDevice.npu1_1col)
     def device_body():
-        memRef_ty = T.memref(n, T.i16())
+        memRef_ty = T.memref(n, T.i32())
         memRef_ty2 = T.memref(1, T.i32())
 
         # AIE Core Function declarations
 
         scale_scalar = external_func(
-            "vector_scalar_mul_int16_scalar",
+            "vector_scalar_mul_int32_scalar",
             inputs=[memRef_ty, memRef_ty, memRef_ty2, T.i32()],
         )
         scale = external_func(
-            "vector_scalar_mul_int16_vector",
+            "vector_scalar_mul_int32_vector",
             inputs=[memRef_ty, memRef_ty, memRef_ty2, T.i32()],
         )
 
@@ -80,7 +80,7 @@ def my_vector_scalar(vector_size, trace_size):
                 yield_([])
 
         # To/from AIE-array data movement
-        tensor_ty = T.memref(N, T.i16())
+        tensor_ty = T.memref(N, T.i32())
         scalar_ty = T.memref(1, T.i32())
 
         @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
