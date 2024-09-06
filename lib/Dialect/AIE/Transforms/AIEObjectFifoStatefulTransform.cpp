@@ -858,9 +858,6 @@ struct AIEObjectFifoStatefulTransformPass
         std::map<Operation *, int64_t> remainderMap;
         std::map<Operation *, int64_t> tripCountMap;
         WalkResult res = coreOp.walk([&](scf::ForOp forLoop) {
-          // look for operations on objectFifos
-          // when multiple fifos in same loop, must use the smallest
-          // common multiplier as the unroll factor
           bool found = false;
           Block *body = forLoop.getBody();
           std::map<ObjectFifoCreateOp, int> fifoSizes;
@@ -909,13 +906,14 @@ struct AIEObjectFifoStatefulTransformPass
             auto forLoopWithIterArgs = builder.create<scf::ForOp>(loc, forLoop.getLowerBound(), forLoop.getUpperBound(), forLoop.getStep(), ValueRange(counterArrayRef));
             Block *newLoopBody = forLoopWithIterArgs.getBody();
             Block *oldLoopBody = forLoop.getBody();
-            //newLoopBody->getOperations().splice(newLoopBody->getOperations().begin(), oldLoopBody->getOperations());
+            int count = 0;
             for(auto &op : *oldLoopBody){
               if(forLoop.getBody()->getTerminator() == &op) {
                 continue;
               }
               builder.setInsertionPointToEnd(newLoopBody);
               builder.clone(op);
+              count++;
             }
 
             loc = forLoopWithIterArgs.getLoc();
@@ -950,15 +948,15 @@ struct AIEObjectFifoStatefulTransformPass
                 int bufferToBeAccesed = (accessOp.getIndex() + i)%fifoSizes[createOp];
                 builder.create<scf::YieldOp>(switchOp.getCaseRegions()[i].getLoc(), buffersPerFifo[createOp][bufferToBeAccesed].getResult());   
               }           
+              // NEED FIXING: Find all the function calls
               auto result = switchOp.getResult(0);
-              // Find all the function calls
               for (auto callOp : newLoopBody->getOps<func::CallOp>()) {
                 for(unsigned i = 0; i<callOp.getNumOperands(); ++i){
                   auto arg = callOp.getOperand(i);
                   if(arg == accessOp)
-                    callOp.setOperand(i, result);
+                     callOp.setOperand(i, result);
+                  }
               }
-            }
               loc = switchOp.getLoc();
               builder.setInsertionPointAfter(switchOp);
 
@@ -975,16 +973,19 @@ struct AIEObjectFifoStatefulTransformPass
               auto val = releaseCounters[op];
               Value release_val = builder.create<arith::ConstantIndexOp>(loc, val);
               counterMap[op] = builder.create<arith::AddIOp>(loc, counterMap[op], release_val);
-              // In printed mlir, it shows updated values as new values
-              // not updated in the initialized counters.
+              // NEED FIXING: In printed mlir, it shows updated values as new values
             }
             
             builder.setInsertionPointToEnd(newLoopBody);
             builder.create<scf::YieldOp>(forLoopWithIterArgs.getLoc(), ValueRange(counterArrayRef));
-            forLoop.replaceAllUsesWith(forLoopWithIterArgs.getResults());
-
-            builder.setInsertionPointToStart(newLoopBody);
-            // When I try to remove the forLoop, it crashes.
+            forLoop.replaceAllUsesWith(forLoopWithIterArgs);
+            forLoop.getResults().replaceAllUsesWith(forLoopWithIterArgs.getResults());
+            // NEED FIXING: When I try to remove the forLoop without this, it crashes.
+            for(int i=0; i<count/2; i++){ 
+                forLoop.getBody()->back().erase();
+            }
+            forLoop->getBlock()->getOperations().splice(Block::iterator(forLoop),forLoop.getBody()->getOperations());
+            forLoop.erase();
           }
           return WalkResult::advance();
         });
