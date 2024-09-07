@@ -52,20 +52,36 @@ int main(int argc, char **argv) {
 
   // ClangIR dialect
   registry.insert<mlir::cir::CIRDialect>();
+
   // ClangIR-specific passes
   ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
     return ::cir::createConvertMLIRToLLVMPass();
   });
   ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
-    return mlir::createMergeCleanupsPass();
+    return mlir::createCIRSimplifyPass();
+  });
+
+  ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
+    return mlir::createSCFPreparePass();
   });
   ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
     return ::cir::createConvertCIRToMLIRPass();
   });
+
   mlir::PassPipelineRegistration<mlir::EmptyPipelineOptions> pipeline(
       "cir-to-llvm", "", [](mlir::OpPassManager &pm) {
         ::cir::direct::populateCIRToLLVMPasses(pm);
       });
+
+  ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
+    return mlir::createFlattenCFGPass();
+  });
+
+  ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
+    return mlir::createReconcileUnrealizedCastsPass();
+  });
+
+  mlir::registerTransformsPasses();
 
   return failed(
       MlirOptMain(argc, argv, "MLIR modular optimizer driver\n", registry));
