@@ -108,7 +108,7 @@ static LogicalResult generateCDOUnified(AIERTXControl &ctl,
                                         const StringRef workDirPath,
                                         DeviceOp &targetOp, bool aieSim,
                                         bool enableCores) {
-auto ps = std::filesystem::path::preferred_separator;
+  auto ps = std::filesystem::path::preferred_separator;
 
   return generateCDOBinary(
       (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo.bin").str(),
@@ -319,10 +319,9 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
   return num_cols;
 }
 
-static LogicalResult generateTxn(AIERTXControl &ctl, const StringRef workDirPath,
-                                 DeviceOp &targetOp, bool aieSim,
-                                 bool enableElfs, bool enableInit,
-                                 bool enableCores) {
+static LogicalResult
+generateTxn(AIERTXControl &ctl, const StringRef workDirPath, DeviceOp &targetOp,
+            bool aieSim, bool enableElfs, bool enableInit, bool enableCores) {
   if (enableElfs && !targetOp.getOps<CoreOp>().empty() &&
       failed(ctl.addAieElfs(targetOp, workDirPath, aieSim)))
     return failure();

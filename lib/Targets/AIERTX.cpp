@@ -416,8 +416,8 @@ LogicalResult AIERTXControl::configureSwitches(DeviceOp &targetOp) {
       if (auto keep = masterSetOp.getKeepPktHeader())
         keepHeader = *keep;
 
-      auto dropHeader = keepHeader ? XAIE_SS_PKT_DONOT_DROP_HEADER
-                                    : XAIE_SS_PKT_DROP_HEADER;
+      auto dropHeader =
+          keepHeader ? XAIE_SS_PKT_DONOT_DROP_HEADER : XAIE_SS_PKT_DROP_HEADER;
       TRY_XAIE_API_EMIT_ERROR(
           masterSetOp, XAie_StrmPktSwMstrPortEnable, &devInst, tileLoc,
           WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(masterSetOp.getDestBundle()),
@@ -534,9 +534,9 @@ LogicalResult AIERTXControl::addInitConfig(DeviceOp &targetOp) {
         auto &block = dmaOp.getBds().front().getBlocks().front();
         DMABDOp bd = *block.getOps<DMABDOp>().begin();
         if (failed(pushToBdQueueAndEnable(
-                *dmaOp.getOperation(), tileLoc,
-                dmaOp.getChannelIndex(), dmaOp.getChannelDir(),
-                bd.getBdId().value(), dmaOp.getRepeatCount())))
+                *dmaOp.getOperation(), tileLoc, dmaOp.getChannelIndex(),
+                dmaOp.getChannelDir(), bd.getBdId().value(),
+                dmaOp.getRepeatCount())))
           return failure();
       }
     else
@@ -545,9 +545,9 @@ LogicalResult AIERTXControl::addInitConfig(DeviceOp &targetOp) {
           DMABDOp bd = *op.getDest()->getOps<DMABDOp>().begin();
           int chNum = op.getChannelIndex();
           auto channelDir = op.getChannelDir();
-          if (failed(pushToBdQueueAndEnable(
-                  *bd.getOperation(), tileLoc, chNum, channelDir,
-                  bd.getBdId().value(), op.getRepeatCount())))
+          if (failed(pushToBdQueueAndEnable(*bd.getOperation(), tileLoc, chNum,
+                                            channelDir, bd.getBdId().value(),
+                                            op.getRepeatCount())))
             return failure();
         }
       }
@@ -606,7 +606,7 @@ LogicalResult AIERTXControl::addAieElfs(DeviceOp &targetOp,
         else
           fileName = (llvm::Twine("core_") + std::to_string(col) + "_" +
                       std::to_string(row) + ".elf")
-                          .str();
+                         .str();
         auto ps = std::filesystem::path::preferred_separator;
         if (failed(addAieElf(
                 col, row,
