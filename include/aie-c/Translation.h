@@ -8,6 +8,8 @@
 #ifndef AIE_C_TRANSLATION_H
 #define AIE_C_TRANSLATION_H
 
+#include "aie-c/TargetModel.h"
+
 #include "mlir-c/IR.h"
 #include "mlir-c/Support.h"
 #include "mlir/CAPI/Wrap.h"
@@ -47,7 +49,7 @@ struct AieRtxControl {
 };
 using AieRtxControl = struct AieRtxControl;
 
-MLIR_CAPI_EXPORTED AieRtxControl getAieRtxControl(size_t partitionNumCols);
+MLIR_CAPI_EXPORTED AieRtxControl getAieRtxControl(AieTargetModel tm);
 MLIR_CAPI_EXPORTED void freeAieRtxControl(AieRtxControl aieCtl);
 MLIR_CAPI_EXPORTED void aieRtxStartTransaction(AieRtxControl aieCtl);
 MLIR_CAPI_EXPORTED void aieRtxDmaUpdateBdAddr(AieRtxControl aieCtl, int col,
