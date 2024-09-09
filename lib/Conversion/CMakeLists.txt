@@ -1,1 +1,2 @@
+add_subdirectory(AIEToTransaction)
 add_subdirectory(AIEVecToLLVM)
