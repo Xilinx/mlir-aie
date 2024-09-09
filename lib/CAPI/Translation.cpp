@@ -87,6 +87,7 @@ MlirLogicalResult aieTranslateToTxn(MlirOperation moduleOp,
                                     bool xaieDebug, bool enableCores) {
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
   bool outputBinary = false;
+  bool outputCtrlpkt = false;
 
   std::string errorMessage;
   auto output = openOutputFile(StringRef(outputFile.data, outputFile.length),
@@ -98,7 +99,41 @@ MlirLogicalResult aieTranslateToTxn(MlirOperation moduleOp,
 
   auto status = AIETranslateToTxn(
       mod, output->os(), llvm::StringRef(workDirPath.data, workDirPath.length),
-      outputBinary, aieSim, xaieDebug, enableCores);
+      outputBinary, outputCtrlpkt, aieSim, xaieDebug, enableCores);
+
+  std::vector<std::string> diagnostics;
+  ScopedDiagnosticHandler handler(mod.getContext(), [&](Diagnostic &d) {
+    llvm::raw_string_ostream(diagnostics.emplace_back())
+        << d.getLocation() << ": " << d;
+  });
+
+  if (failed(status))
+    for (const auto &diagnostic : diagnostics)
+      std::cerr << diagnostic << "\n";
+  else
+    output->keep();
+  return wrap(status);
+}
+
+MlirLogicalResult aieTranslateToCtrlpkt(MlirOperation moduleOp,
+                                        MlirStringRef outputFile,
+                                        MlirStringRef workDirPath, bool aieSim,
+                                        bool xaieDebug, bool enableCores) {
+  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
+  bool outputBinary = false;
+  bool outputCtrlpkt = true;
+
+  std::string errorMessage;
+  auto output = openOutputFile(StringRef(outputFile.data, outputFile.length),
+                               &errorMessage);
+  if (!output) {
+    llvm::errs() << errorMessage << "\n";
+    return wrap(failure());
+  }
+
+  auto status = AIETranslateToTxn(
+      mod, output->os(), llvm::StringRef(workDirPath.data, workDirPath.length),
+      outputBinary, outputCtrlpkt, aieSim, xaieDebug, enableCores);
 
   std::vector<std::string> diagnostics;
   ScopedDiagnosticHandler handler(mod.getContext(), [&](Diagnostic &d) {
@@ -133,11 +168,11 @@ MlirStringRef aieTranslateToNPU(MlirOperation moduleOp) {
   return mlirStringRefCreate(cStr, npu.size());
 }
 
-MlirStringRef aieTranslateToControlPackets(MlirOperation moduleOp) {
+MlirStringRef AIETranslateControlPacketsToText(MlirOperation moduleOp) {
   std::string npu;
   llvm::raw_string_ostream os(npu);
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
-  if (failed(AIETranslateToControlPackets(mod, os)))
+  if (failed(AIETranslateControlPacketsToText(mod, os)))
     return mlirStringRefCreate(nullptr, 0);
   char *cStr = static_cast<char *>(malloc(npu.size()));
   npu.copy(cStr, npu.size());

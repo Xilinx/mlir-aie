@@ -159,6 +159,12 @@ void registerAIETranslations() {
           "Select binary (true) or text (false) output for supported "
           "translations. e.g. aie-npu-instgen, aie-ctrlpkt-to-bin"));
 
+  // static llvm::cl::opt<bool> outputCtrlpkt(
+  //     "aie-output-ctrlpkts", llvm::cl::init(false),
+  //     llvm::cl::desc(
+  //         "Select control packet output for supported translations. "
+  //         "e.g. aie-npu-instgen, aie-ctrlpkt-to-bin"));
+
   TranslateFromMLIRRegistration registrationMMap(
       "aie-generate-mmap", "Generate AIE memory map",
       [](ModuleOp module, raw_ostream &output) {
@@ -352,7 +358,8 @@ void registerAIETranslations() {
           workDirPath_ = workDirPath.getValue();
         LLVM_DEBUG(llvm::dbgs() << "work-dir-path: " << workDirPath_ << "\n");
         return AIETranslateToTxn(module, output, workDirPath_, outputBinary,
-                                 cdoAieSim, cdoXaieDebug, cdoEnableCores);
+                                 /*outputCtrlpkt*/ false, cdoAieSim,
+                                 cdoXaieDebug, cdoEnableCores);
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationNPU(
@@ -375,14 +382,32 @@ void registerAIETranslations() {
       [](ModuleOp module, raw_ostream &output) {
         if (outputBinary == true) {
           std::vector<uint32_t> instructions;
-          auto r = AIETranslateToControlPackets(module, instructions);
+          auto r = AIETranslateControlPacketsToText(module, instructions);
           if (failed(r))
             return r;
           output.write(reinterpret_cast<const char *>(instructions.data()),
                        instructions.size() * sizeof(uint32_t));
           return success();
         }
-        return AIETranslateToControlPackets(module, output);
+        return AIETranslateControlPacketsToText(module, output);
+      },
+      registerDialects);
+  TranslateFromMLIRRegistration registrationCDOWithCtrlpkt(
+      "aie-generate-ctrlpkt",
+      "Generate control packet configuration. Use --aie-output-binary to "
+      "select between mlir (default) and binary output",
+      [](ModuleOp module, raw_ostream &output) {
+        SmallString<128> workDirPath_;
+        if (workDirPath.getNumOccurrences() == 0) {
+          if (llvm::sys::fs::current_path(workDirPath_))
+            llvm::report_fatal_error(
+                "couldn't get cwd to use as work-dir-path");
+        } else
+          workDirPath_ = workDirPath.getValue();
+        LLVM_DEBUG(llvm::dbgs() << "work-dir-path: " << workDirPath_ << "\n");
+        return AIETranslateToTxn(module, output, workDirPath_, outputBinary,
+                                 /*outputCtrlpkt*/ true, cdoAieSim,
+                                 cdoXaieDebug, cdoEnableCores);
       },
       registerDialects);
 }

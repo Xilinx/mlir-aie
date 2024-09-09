@@ -253,6 +253,14 @@ def parse_args(args=None):
         help="Generate txn binary for configuration",
     )
     parser.add_argument(
+        "--aie-generate-ctrlpkt",
+        dest="ctrlpkt",
+        default=False,
+        action="store_const",
+        const=True,
+        help="Generate control packets for configuration",
+    )
+    parser.add_argument(
         "--aie-generate-xclbin",
         dest="xcl",
         default=False,

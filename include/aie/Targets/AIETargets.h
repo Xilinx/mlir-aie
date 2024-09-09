@@ -37,10 +37,10 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
 mlir::LogicalResult AIETranslateToNPU(mlir::ModuleOp module,
                                       llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateToNPU(mlir::ModuleOp, std::vector<uint32_t> &);
-mlir::LogicalResult AIETranslateToControlPackets(mlir::ModuleOp module,
-                                                 llvm::raw_ostream &output);
-mlir::LogicalResult AIETranslateToControlPackets(mlir::ModuleOp,
-                                                 std::vector<uint32_t> &);
+mlir::LogicalResult AIETranslateControlPacketsToText(mlir::ModuleOp module,
+                                                     llvm::raw_ostream &output);
+mlir::LogicalResult AIETranslateControlPacketsToText(mlir::ModuleOp,
+                                                     std::vector<uint32_t> &);
 mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module,
                                            llvm::raw_ostream &output,
                                            int tileCol, int tileRow);
@@ -61,8 +61,8 @@ AIETranslateToCDODirect(mlir::ModuleOp m, llvm::StringRef workDirPath,
 mlir::LogicalResult
 AIETranslateToTxn(mlir::ModuleOp m, llvm::raw_ostream &output,
                   llvm::StringRef workDirPath, bool outputBinary = false,
-                  bool aieSim = false, bool xaieDebug = false,
-                  bool enableCores = true);
+                  bool outputCtrlpkt = false, bool aieSim = false,
+                  bool xaieDebug = false, bool enableCores = true);
 
 #ifdef AIE_ENABLE_AIRBIN
 mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
@@ -76,6 +76,10 @@ mlir::LogicalResult AIETranslateToTargetArch(mlir::ModuleOp module,
 
 std::optional<mlir::ModuleOp>
 AIETranslateBinaryToTxn(mlir::MLIRContext *ctx, std::vector<uint8_t> &binary);
+
+std::optional<mlir::ModuleOp>
+AIETranslateBinaryToCtrlpkt(mlir::MLIRContext *ctx,
+                            std::vector<uint8_t> &binary);
 
 } // namespace AIE
 
