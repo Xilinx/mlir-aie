@@ -49,7 +49,7 @@ int main(int argc, const char *argv[]) {
   // AIE configuration as control packet streams
   std::vector<uint32_t> instr3_cfg_v = load_instr_sequence("insts3.txt");
   // AIE configuration control packets' raw data
-  std::vector<uint32_t> ctrlPackets = load_instr_sequence("cfg.txt");
+  std::vector<uint32_t> ctrlPackets = load_instr_sequence("ctrlpkt.txt");
 
   // Start the XRT test code
   // Get a device handle
