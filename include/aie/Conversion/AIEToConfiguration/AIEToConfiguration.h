@@ -1,4 +1,4 @@
-//===- AIEToTransaction.h ---------------------------------------*- C++ -*-===//
+//===- AIEToConfiguration.h -------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef AIE_CONVERSION_AIETOTRANSACTION_AIETOTRANSACTION_H
-#define AIE_CONVERSION_AIETOTRANSACTION_AIETOTRANSACTION_H
+#ifndef AIE_CONVERSION_AIETOCONFIGURATION_AIETOCONFIGURATION_H
+#define AIE_CONVERSION_AIETOCONFIGURATION_AIETOCONFIGURATION_H
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
@@ -25,4 +25,4 @@ createConvertAIEToTransactionPass();
 
 } // namespace xilinx::AIE
 
-#endif // AIE_CONVERSION_AIETOTRANSACTION_AIETOTRANSACTION_H
+#endif // AIE_CONVERSION_AIETOCONFIGURATION_AIETOCONFIGURATION_H

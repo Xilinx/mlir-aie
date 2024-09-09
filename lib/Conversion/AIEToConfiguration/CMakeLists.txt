@@ -3,11 +3,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
-add_mlir_conversion_library(MLIRAIEToTransaction
-  AIEToTransaction.cpp
+add_mlir_conversion_library(MLIRAIEToConfiguration
+  AIEToConfiguration.cpp
 
   ADDITIONAL_HEADER_DIRS
-  $(CMAKE_CURRENT_SRC_DIR)/../../../../include/aie/Conversion/AIEToTransaction
+  $(CMAKE_CURRENT_SRC_DIR)/../../../../include/aie/Conversion/AIEToConfiguration
 
   DEPENDS
   MLIRAIEConversionPassIncGen

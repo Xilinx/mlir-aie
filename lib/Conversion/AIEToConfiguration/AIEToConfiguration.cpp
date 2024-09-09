@@ -1,4 +1,4 @@
-//===- AIEToTransaction.h ---------------------------------------*- C++ -*-===//
+//===- AIEToConfiguration.h -------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -10,14 +10,14 @@
 
 #include "../PassDetail.h"
 
-#include "aie/Conversion/AIEToTransaction/AIEToTransaction.h"
+#include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Targets/AIERTX.h"
 
 #include "llvm/Support/Debug.h"
 
 #include <vector>
 
-#define DEBUG_TYPE "aie-convert-to-transaction"
+#define DEBUG_TYPE "aie-convert-to-config"
 
 using namespace mlir;
 using namespace xilinx;

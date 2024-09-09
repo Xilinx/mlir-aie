@@ -3,5 +3,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
-add_subdirectory(AIEToTransaction)
+add_subdirectory(AIEToConfiguration)
 add_subdirectory(AIEVecToLLVM)

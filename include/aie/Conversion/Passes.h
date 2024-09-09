@@ -11,7 +11,7 @@
 #ifndef AIE_CONVERSION_PASSES_H
 #define AIE_CONVERSION_PASSES_H
 
-#include "aie/Conversion/AIEToTransaction/AIEToTransaction.h"
+#include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
 #include "aie/Conversion/PassesEnums.h.inc"
 
