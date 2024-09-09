@@ -11,6 +11,7 @@ from util import construct_and_print_module
 from aie.dialects.aiex import DDR_AIE_ADDR_OFFSET
 from aie.dialects.aie import AIEDevice, get_target_model
 
+
 # CHECK-LABEL: simple
 @construct_and_print_module
 def simple(module):
