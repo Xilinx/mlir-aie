@@ -28,10 +28,13 @@ def main():
     argparser.add_argument("-k", type=int, default=64)
     argparser.add_argument("-n", type=int, default=32)
     argparser.add_argument(
-        "--dtype_in", type=str, choices=["bf16", "i16"], default="i16"
+        "--dtype_in", type=str, choices=["bf16", "i8", "i16"], default="i16"
     )
     argparser.add_argument(
-        "--dtype_out", type=str, choices=["bf16", "i16", "f32", "i32"], default="i32"
+        "--dtype_out",
+        type=str,
+        choices=["bf16", "i8", "i16", "f32", "i32"],
+        default="i32",
     )
     args = argparser.parse_args()
     my_matmul(
@@ -53,6 +56,10 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
         r = 4
         s = 8
         t = 4
+    elif dtype_in_str == "i8":
+        r = 4
+        s = 8
+        t = 8
     elif dtype_in_str == "i16":
         r = 4
         s = 4
@@ -69,11 +76,15 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
     dtype_in = None
     if dtype_in_str == "bf16":
         dtype_in = T.bf16
+    elif dtype_in_str == "i8":
+        dtype_in = T.i8
     elif dtype_in_str == "i16":
         dtype_in = T.i16
     dtype_out = None
     if dtype_out_str == "bf16":
         dtype_out = T.bf16
+    elif dtype_out_str == "i8":
+        dtype_out = T.i8
     elif dtype_out_str == "i16":
         dtype_out = T.i16
     elif dtype_out_str == "f32":
@@ -271,7 +282,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                     )
 
                 # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
-                rows_per_block = 6
+                rows_per_block = 4
                 for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
                     # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
                     # that's what this loop is for
