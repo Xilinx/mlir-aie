@@ -47,8 +47,7 @@ struct AieRtxControl {
 };
 using AieRtxControl = struct AieRtxControl;
 
-MLIR_CAPI_EXPORTED AieRtxControl getAieRtxControl(size_t partitionStartCol,
-                                                  size_t partitionNumCols);
+MLIR_CAPI_EXPORTED AieRtxControl getAieRtxControl(size_t partitionNumCols);
 MLIR_CAPI_EXPORTED void freeAieRtxControl(AieRtxControl aieCtl);
 MLIR_CAPI_EXPORTED void aieRtxStartTransaction(AieRtxControl aieCtl);
 MLIR_CAPI_EXPORTED void aieRtxDmaUpdateBdAddr(AieRtxControl aieCtl, int col,

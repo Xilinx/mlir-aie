@@ -20,8 +20,8 @@ using namespace py::literals;
 
 class PyAIERTXControl {
 public:
-  PyAIERTXControl(size_t partitionStartCol, size_t partitionNumCols)
-      : ctl(getAieRtxControl(partitionStartCol, partitionNumCols)) {}
+  PyAIERTXControl(size_t partitionNumCols)
+      : ctl(getAieRtxControl(partitionNumCols)) {}
 
   ~PyAIERTXControl() { freeAieRtxControl(ctl); }
 
@@ -31,8 +31,7 @@ public:
 PYBIND11_MODULE(_aiertx, m) {
 
   py::class_<PyAIERTXControl>(m, "AIERTXControl", py::module_local())
-      .def(py::init<size_t, size_t>(), "partition_start_col"_a,
-           "partition_num_cols"_a)
+      .def(py::init<size_t>(), "partition_num_cols"_a)
       .def("start_transaction",
            [](PyAIERTXControl &self) { aieRtxStartTransaction(self.ctl); })
       .def("export_serialized_transaction",

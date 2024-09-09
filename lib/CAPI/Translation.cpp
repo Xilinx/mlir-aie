@@ -228,11 +228,14 @@ MlirStringRef aieLLVMLink(MlirStringRef *modules, int nModules) {
 
 DEFINE_C_API_PTR_METHODS(AieRtxControl, xilinx::AIE::AIERTXControl)
 
-AieRtxControl getAieRtxControl(size_t partitionStartCol,
-                               size_t partitionNumCols) {
-  NPUTargetModel targetModel;
-  AIERTXControl *ctl =
-      new AIERTXControl(targetModel);
+AieRtxControl getAieRtxControl(size_t partitionNumCols) {
+  std::vector<AIEDevice> devices{AIEDevice::npu1_1col, AIEDevice::npu1_2col,
+                                 AIEDevice::npu1_3col, AIEDevice::npu1_4col,
+                                 AIEDevice::npu1};
+  const BaseNPUTargetModel &targetModel =
+      (const BaseNPUTargetModel &)xilinx::AIE::getTargetModel(
+          devices[partitionNumCols - 1]);
+  AIERTXControl *ctl = new AIERTXControl(targetModel);
   return wrap(ctl);
 }
 
