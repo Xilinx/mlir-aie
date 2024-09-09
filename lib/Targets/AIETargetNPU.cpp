@@ -187,7 +187,8 @@ void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
 
 LogicalResult
 xilinx::AIE::AIETranslateToNPU(ModuleOp module,
-                               std::vector<uint32_t> &instructions) {
+                               std::vector<uint32_t> &instructions,
+                               StringRef sequenceName) {
 
   auto words = reserveAndGetTail(instructions, 4);
 
@@ -206,8 +207,10 @@ xilinx::AIE::AIETranslateToNPU(ModuleOp module,
   words[1] = (numMemTileRows << 8) | numCols;
 
   auto sequenceOps = deviceOp.getOps<AIEX::RuntimeSequenceOp>();
-  for (auto f : sequenceOps) {
-    Block &entry = f.getBody().front();
+  for (auto seq : sequenceOps) {
+    if (sequenceName.size() && sequenceName != seq.getSymName())
+      continue;
+    Block &entry = seq.getBody().front();
     for (auto &o : entry) {
       llvm::TypeSwitch<Operation *>(&o)
           .Case<NpuSyncOp>([&](auto op) {
@@ -240,9 +243,10 @@ xilinx::AIE::AIETranslateToNPU(ModuleOp module,
 }
 
 LogicalResult xilinx::AIE::AIETranslateToNPU(ModuleOp module,
-                                             raw_ostream &output) {
+                                             raw_ostream &output,
+                                             StringRef sequenceName) {
   std::vector<uint32_t> instructions;
-  auto r = AIETranslateToNPU(module, instructions);
+  auto r = AIETranslateToNPU(module, instructions, sequenceName);
   if (failed(r))
     return r;
   for (auto w : instructions)
@@ -250,13 +254,16 @@ LogicalResult xilinx::AIE::AIETranslateToNPU(ModuleOp module,
   return success();
 }
 
-LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
-    ModuleOp module, std::vector<uint32_t> &instructions) {
-
+LogicalResult
+xilinx::AIE::AIETranslateControlPacketsToUI32Vec(ModuleOp module,
+                                          std::vector<uint32_t> &instructions,
+                                          StringRef sequenceName) {
   DeviceOp deviceOp = *module.getOps<DeviceOp>().begin();
   auto sequenceOps = deviceOp.getOps<AIEX::RuntimeSequenceOp>();
-  for (auto f : sequenceOps) {
-    Block &entry = f.getBody().front();
+  for (auto seq : sequenceOps) {
+    if (sequenceName.size() && sequenceName != seq.getSymName())
+      continue;
+    Block &entry = seq.getBody().front();
     for (auto &o : entry) {
       llvm::TypeSwitch<Operation *>(&o).Case<NpuControlPacketOp>([&](auto op) {
         uint32_t size = 0;
@@ -291,10 +298,10 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
 }
 
 LogicalResult
-xilinx::AIE::AIETranslateControlPacketsToUI32Vec(ModuleOp module,
-                                                 raw_ostream &output) {
+xilinx::AIE::AIETranslateControlPacketsToUI32Vec(ModuleOp module, raw_ostream &output,
+                                          StringRef sequenceName) {
   std::vector<uint32_t> instructions;
-  auto r = AIETranslateControlPacketsToUI32Vec(module, instructions);
+  auto r = AIETranslateControlPacketsToUI32Vec(module, instructions, sequenceName);
   if (failed(r))
     return r;
   for (auto w : instructions)

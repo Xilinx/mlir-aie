@@ -223,9 +223,8 @@ struct ConvertAIEToTransactionPass
     // start collecting transations
     XAie_StartTransaction(&ctl.devInst, XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
 
-    std::string workDirPath = "workdir";
     auto result =
-        generateTxn(ctl, workDirPath, device, aieSim, true, true, true);
+        generateTxn(ctl, clElfDir, device, aieSim, true, true, true);
     if (failed(result))
       return signalPassFailure();
 
@@ -236,14 +235,12 @@ struct ConvertAIEToTransactionPass
 
     // parse the binary data
     std::vector<TransactionBinaryOperation> operations;
-    auto c = parseTransactionBinary(txn_data, operations);
-    if (!c) {
+    if (!parseTransactionBinary(txn_data, operations)) {
       llvm::errs() << "Failed to parse binary\n";
       return signalPassFailure();
     }
-    // int columns = *c;
 
-    OpBuilder builder(device);
+    OpBuilder builder(device.getBodyRegion());
     auto loc = device.getLoc();
 
     // for each blockwrite in the binary, create a GlobalOp with the data
@@ -271,7 +268,12 @@ struct ConvertAIEToTransactionPass
       global_data.push_back(global);
     }
 
-    auto seq = builder.create<AIEX::RuntimeSequenceOp>(loc, nullptr);
+    int id = 0;
+    std::string seq_name = "configure";
+    while (device.lookupSymbol(seq_name))
+      seq_name = "configure" + std::to_string(id++);
+    StringAttr seq_sym_name = builder.getStringAttr(seq_name);
+    auto seq = builder.create<AIEX::RuntimeSequenceOp>(loc, seq_sym_name);
     seq.getBody().push_back(new Block);
 
     // create the txn ops
