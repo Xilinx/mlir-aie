@@ -87,7 +87,6 @@ MlirLogicalResult aieTranslateToTxn(MlirOperation moduleOp,
                                     bool xaieDebug, bool enableCores) {
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
   bool outputBinary = false;
-  bool outputCtrlpkt = false;
 
   std::string errorMessage;
   auto output = openOutputFile(StringRef(outputFile.data, outputFile.length),
@@ -99,7 +98,7 @@ MlirLogicalResult aieTranslateToTxn(MlirOperation moduleOp,
 
   auto status = AIETranslateToTxn(
       mod, output->os(), llvm::StringRef(workDirPath.data, workDirPath.length),
-      outputBinary, outputCtrlpkt, aieSim, xaieDebug, enableCores);
+      outputBinary, aieSim, xaieDebug, enableCores);
 
   std::vector<std::string> diagnostics;
   ScopedDiagnosticHandler handler(mod.getContext(), [&](Diagnostic &d) {
@@ -121,7 +120,6 @@ MlirLogicalResult aieTranslateToCtrlpkt(MlirOperation moduleOp,
                                         bool xaieDebug, bool enableCores) {
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
   bool outputBinary = false;
-  bool outputCtrlpkt = true;
 
   std::string errorMessage;
   auto output = openOutputFile(StringRef(outputFile.data, outputFile.length),
@@ -131,9 +129,9 @@ MlirLogicalResult aieTranslateToCtrlpkt(MlirOperation moduleOp,
     return wrap(failure());
   }
 
-  auto status = AIETranslateToTxn(
+  auto status = AIETranslateToControlPackets(
       mod, output->os(), llvm::StringRef(workDirPath.data, workDirPath.length),
-      outputBinary, outputCtrlpkt, aieSim, xaieDebug, enableCores);
+      outputBinary, aieSim, xaieDebug, enableCores);
 
   std::vector<std::string> diagnostics;
   ScopedDiagnosticHandler handler(mod.getContext(), [&](Diagnostic &d) {

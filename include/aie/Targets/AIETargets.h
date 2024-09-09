@@ -62,8 +62,13 @@ AIETranslateToCDODirect(mlir::ModuleOp m, llvm::StringRef workDirPath,
 mlir::LogicalResult
 AIETranslateToTxn(mlir::ModuleOp m, llvm::raw_ostream &output,
                   llvm::StringRef workDirPath, bool outputBinary = false,
-                  bool outputCtrlpkt = false, bool aieSim = false,
-                  bool xaieDebug = false, bool enableCores = true);
+                  bool aieSim = false, bool xaieDebug = false,
+                  bool enableCores = true);
+mlir::LogicalResult
+AIETranslateToControlPackets(mlir::ModuleOp m, llvm::raw_ostream &output,
+                             llvm::StringRef workDirPath,
+                             bool outputBinary = false, bool aieSim = false,
+                             bool xaieDebug = false, bool enableCores = true);
 
 #ifdef AIE_ENABLE_AIRBIN
 mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,

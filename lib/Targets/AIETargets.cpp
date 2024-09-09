@@ -159,12 +159,6 @@ void registerAIETranslations() {
           "Select binary (true) or text (false) output for supported "
           "translations. e.g. aie-npu-instgen, aie-ctrlpkt-to-bin"));
 
-  // static llvm::cl::opt<bool> outputCtrlpkt(
-  //     "aie-output-ctrlpkts", llvm::cl::init(false),
-  //     llvm::cl::desc(
-  //         "Select control packet output for supported translations. "
-  //         "e.g. aie-npu-instgen, aie-ctrlpkt-to-bin"));
-
   TranslateFromMLIRRegistration registrationMMap(
       "aie-generate-mmap", "Generate AIE memory map",
       [](ModuleOp module, raw_ostream &output) {
@@ -358,8 +352,7 @@ void registerAIETranslations() {
           workDirPath_ = workDirPath.getValue();
         LLVM_DEBUG(llvm::dbgs() << "work-dir-path: " << workDirPath_ << "\n");
         return AIETranslateToTxn(module, output, workDirPath_, outputBinary,
-                                 /*outputCtrlpkt*/ false, cdoAieSim,
-                                 cdoXaieDebug, cdoEnableCores);
+                                 cdoAieSim, cdoXaieDebug, cdoEnableCores);
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationNPU(
@@ -405,9 +398,9 @@ void registerAIETranslations() {
         } else
           workDirPath_ = workDirPath.getValue();
         LLVM_DEBUG(llvm::dbgs() << "work-dir-path: " << workDirPath_ << "\n");
-        return AIETranslateToTxn(module, output, workDirPath_, outputBinary,
-                                 /*outputCtrlpkt*/ true, cdoAieSim,
-                                 cdoXaieDebug, cdoEnableCores);
+        return AIETranslateToControlPackets(module, output, workDirPath_,
+                                            outputBinary, cdoAieSim,
+                                            cdoXaieDebug, cdoEnableCores);
       },
       registerDialects);
 }

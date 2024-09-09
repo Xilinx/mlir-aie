@@ -1301,22 +1301,13 @@ xilinx::AIE::AIETranslateBinaryToCtrlpkt(mlir::MLIRContext *ctx,
 LogicalResult xilinx::AIE::AIETranslateToTxn(ModuleOp m,
                                              llvm::raw_ostream &output,
                                              llvm::StringRef workDirPath,
-                                             bool outputBinary,
-                                             bool outputCtrlpkt, bool enableSim,
+                                             bool outputBinary, bool enableSim,
                                              bool xaieDebug, bool enableCores) {
   std::vector<uint8_t> bin;
   auto result =
       translateToTxn(m, bin, workDirPath, enableSim, xaieDebug, enableCores);
   if (failed(result))
     return result;
-
-  if (outputCtrlpkt) {
-    auto new_module = AIETranslateBinaryToCtrlpkt(m.getContext(), bin);
-    if (!new_module)
-      return failure();
-    new_module->print(output);
-    return success();
-  }
 
   if (outputBinary) {
     output.write(reinterpret_cast<const char *>(bin.data()), bin.size());
@@ -1326,8 +1317,27 @@ LogicalResult xilinx::AIE::AIETranslateToTxn(ModuleOp m,
   auto new_module = AIETranslateBinaryToTxn(m.getContext(), bin);
   if (!new_module)
     return failure();
-
   new_module->print(output);
+  return success();
+}
 
+LogicalResult xilinx::AIE::AIETranslateToControlPackets(
+    ModuleOp m, llvm::raw_ostream &output, llvm::StringRef workDirPath,
+    bool outputBinary, bool enableSim, bool xaieDebug, bool enableCores) {
+  std::vector<uint8_t> bin;
+  auto result =
+      translateToTxn(m, bin, workDirPath, enableSim, xaieDebug, enableCores);
+  if (failed(result))
+    return result;
+
+  if (outputBinary) {
+    output.write(reinterpret_cast<const char *>(bin.data()), bin.size());
+    return success();
+  }
+
+  auto new_module = AIETranslateBinaryToCtrlpkt(m.getContext(), bin);
+  if (!new_module)
+    return failure();
+  new_module->print(output);
   return success();
 }
