@@ -5,8 +5,6 @@
 //
 // (c) Copyright 2024 AMD Inc.
 
-// REQUIRES: ryzen_ai
-//
 // RUN: aie-opt --aie-substitute-shim-dma-allocations --aie-dma-tasks-to-npu %s | FileCheck %s
 
 module {

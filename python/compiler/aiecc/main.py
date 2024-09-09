@@ -474,7 +474,10 @@ class FlowRunner:
                 install_path, "aie_runtime_lib", aie_target.upper()
             )
 
-            clang_link_args = ["-Wl,--gc-sections"]
+            # --gc-sections to eliminate unneeded code.
+            # --orphan-handling=error to ensure that the linker script is as expected.
+            # If there are orphaned input sections, then they'd likely end up outside of the normal program memory.
+            clang_link_args = ["-Wl,--gc-sections", "-Wl,--orphan-handling=error"]
 
             if opts.progress:
                 task = self.progress_bar.add_task(
@@ -577,7 +580,8 @@ class FlowRunner:
             input_physical = Module.parse(
                 await read_file_async(self.prepend_tmp("input_physical.mlir"))
             )
-            generate_txn(input_physical.operation, self.tmpdirname)
+            txn_file = os.path.join(self.tmpdirname, "txn.mlir")
+            generate_txn(input_physical.operation, txn_file, self.tmpdirname)
 
     async def process_xclbin_gen(self):
         if opts.progress:

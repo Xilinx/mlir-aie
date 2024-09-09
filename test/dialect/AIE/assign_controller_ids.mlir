@@ -14,19 +14,19 @@
 // assign controller ids to aie.tile_op, for control packets
 
 // CHECK-LABEL: module {
-// CHECK: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
-// CHECK: aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
-// CHECK: aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 3>}
-// CHECK: aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
-// CHECK: aie.tile(0, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
-// CHECK: aie.tile(0, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 6>}
+// CHECK: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 15>}
+// CHECK: aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 26>}
+// CHECK: aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 27>}
+// CHECK: aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 29>}
+// CHECK: aie.tile(0, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 30>}
+// CHECK: aie.tile(0, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 31>}
 // GLOBAL-LABEL: module {
-// GLOBAL: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
-// GLOBAL: aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
-// GLOBAL: aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 3>}
-// GLOBAL: aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
-// GLOBAL: aie.tile(0, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
-// GLOBAL: aie.tile(0, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 6>}
+// GLOBAL: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 15>}
+// GLOBAL: aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 26>}
+// GLOBAL: aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 27>}
+// GLOBAL: aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 29>}
+// GLOBAL: aie.tile(0, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 30>}
+// GLOBAL: aie.tile(0, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 31>}
 
 aie.device(npu1_1col) {
   %tile_0_0 = aie.tile(0, 0)
@@ -40,31 +40,31 @@ aie.device(npu1_1col) {
 // -----
 
 // CHECK-LABEL: module {
-// CHECK: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
-// CHECK: aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
-// CHECK: aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 3>}
-// CHECK: aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
-// CHECK: aie.tile(0, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
-// CHECK: aie.tile(0, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 6>}
-// CHECK: aie.tile(1, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
-// CHECK: aie.tile(1, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
-// CHECK: aie.tile(1, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 3>}
-// CHECK: aie.tile(1, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
-// CHECK: aie.tile(1, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
-// CHECK: aie.tile(1, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 6>}
+// CHECK: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 15>}
+// CHECK: aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 26>}
+// CHECK: aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 27>}
+// CHECK: aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 29>}
+// CHECK: aie.tile(0, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 30>}
+// CHECK: aie.tile(0, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 31>}
+// CHECK: aie.tile(1, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 15>}
+// CHECK: aie.tile(1, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 26>}
+// CHECK: aie.tile(1, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 27>}
+// CHECK: aie.tile(1, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 29>}
+// CHECK: aie.tile(1, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 30>}
+// CHECK: aie.tile(1, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 31>}
 // GLOBAL-LABEL: module {
-// GLOBAL: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
-// GLOBAL: aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
-// GLOBAL: aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 3>}
-// GLOBAL: aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
-// GLOBAL: aie.tile(0, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
-// GLOBAL: aie.tile(0, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 6>}
-// GLOBAL: aie.tile(1, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 7>}
-// GLOBAL: aie.tile(1, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 8>}
-// GLOBAL: aie.tile(1, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 9>}
-// GLOBAL: aie.tile(1, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 10>}
-// GLOBAL: aie.tile(1, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 11>}
-// GLOBAL: aie.tile(1, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 12>}
+// GLOBAL: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 15>}
+// GLOBAL: aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 26>}
+// GLOBAL: aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 27>}
+// GLOBAL: aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 29>}
+// GLOBAL: aie.tile(0, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 30>}
+// GLOBAL: aie.tile(0, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 31>}
+// GLOBAL: aie.tile(1, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 14>}
+// GLOBAL: aie.tile(1, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 21>}
+// GLOBAL: aie.tile(1, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 22>}
+// GLOBAL: aie.tile(1, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 23>}
+// GLOBAL: aie.tile(1, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 24>}
+// GLOBAL: aie.tile(1, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 25>}
 
 aie.device(npu1_2col) {
   %tile_0_0 = aie.tile(0, 0)
