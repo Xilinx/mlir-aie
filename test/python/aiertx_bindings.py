@@ -14,7 +14,7 @@ from aie.dialects.aiex import DDR_AIE_ADDR_OFFSET
 # CHECK-LABEL: simple
 @construct_and_print_module
 def simple(module):
-    ctl = AIERTXControl(1, 4)
+    ctl = AIERTXControl(4)
     ctl.start_transaction()
     ctl.dma_update_bd_addr(0, 0, DDR_AIE_ADDR_OFFSET, 0)
     ctl.export_serialized_transaction()
