@@ -382,14 +382,14 @@ void registerAIETranslations() {
       [](ModuleOp module, raw_ostream &output) {
         if (outputBinary == true) {
           std::vector<uint32_t> instructions;
-          auto r = AIETranslateControlPacketsToText(module, instructions);
+          auto r = AIETranslateControlPacketsToUI32Vec(module, instructions);
           if (failed(r))
             return r;
           output.write(reinterpret_cast<const char *>(instructions.data()),
                        instructions.size() * sizeof(uint32_t));
           return success();
         }
-        return AIETranslateControlPacketsToText(module, output);
+        return AIETranslateControlPacketsToUI32Vec(module, output);
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationCDOWithCtrlpkt(

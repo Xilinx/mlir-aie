@@ -250,7 +250,7 @@ LogicalResult xilinx::AIE::AIETranslateToNPU(ModuleOp module,
   return success();
 }
 
-LogicalResult xilinx::AIE::AIETranslateControlPacketsToText(
+LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     ModuleOp module, std::vector<uint32_t> &instructions) {
 
   DeviceOp deviceOp = *module.getOps<DeviceOp>().begin();
@@ -291,10 +291,10 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToText(
 }
 
 LogicalResult
-xilinx::AIE::AIETranslateControlPacketsToText(ModuleOp module,
-                                              raw_ostream &output) {
+xilinx::AIE::AIETranslateControlPacketsToUI32Vec(ModuleOp module,
+                                                 raw_ostream &output) {
   std::vector<uint32_t> instructions;
-  auto r = AIETranslateControlPacketsToText(module, instructions);
+  auto r = AIETranslateControlPacketsToUI32Vec(module, instructions);
   if (failed(r))
     return r;
   for (auto w : instructions)

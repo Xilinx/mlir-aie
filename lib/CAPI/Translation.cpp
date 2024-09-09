@@ -168,11 +168,11 @@ MlirStringRef aieTranslateToNPU(MlirOperation moduleOp) {
   return mlirStringRefCreate(cStr, npu.size());
 }
 
-MlirStringRef AIETranslateControlPacketsToText(MlirOperation moduleOp) {
+MlirStringRef AIETranslateControlPacketsToUI32Vec(MlirOperation moduleOp) {
   std::string npu;
   llvm::raw_string_ostream os(npu);
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
-  if (failed(AIETranslateControlPacketsToText(mod, os)))
+  if (failed(AIETranslateControlPacketsToUI32Vec(mod, os)))
     return mlirStringRefCreate(nullptr, 0);
   char *cStr = static_cast<char *>(malloc(npu.size()));
   npu.copy(cStr, npu.size());

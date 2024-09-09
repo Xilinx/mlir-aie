@@ -173,7 +173,8 @@ PYBIND11_MODULE(_aie, m) {
   m.def(
       "generate_control_packets",
       [&stealCStr](MlirOperation op) {
-        py::str ctrlPackets = stealCStr(AIETranslateControlPacketsToText(op));
+        py::str ctrlPackets =
+            stealCStr(AIETranslateControlPacketsToUI32Vec(op));
         auto individualInstructions =
             ctrlPackets.attr("split")().cast<py::list>();
         for (size_t i = 0; i < individualInstructions.size(); ++i)

@@ -37,10 +37,11 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
 mlir::LogicalResult AIETranslateToNPU(mlir::ModuleOp module,
                                       llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateToNPU(mlir::ModuleOp, std::vector<uint32_t> &);
-mlir::LogicalResult AIETranslateControlPacketsToText(mlir::ModuleOp module,
-                                                     llvm::raw_ostream &output);
-mlir::LogicalResult AIETranslateControlPacketsToText(mlir::ModuleOp,
-                                                     std::vector<uint32_t> &);
+mlir::LogicalResult
+AIETranslateControlPacketsToUI32Vec(mlir::ModuleOp module,
+                                    llvm::raw_ostream &output);
+mlir::LogicalResult
+AIETranslateControlPacketsToUI32Vec(mlir::ModuleOp, std::vector<uint32_t> &);
 mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module,
                                            llvm::raw_ostream &output,
                                            int tileCol, int tileRow);
