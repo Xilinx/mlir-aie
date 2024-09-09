@@ -133,6 +133,23 @@ PYBIND11_MODULE(_aie, m) {
       "xaie_debug"_a = false, "enable_cores"_a = true);
 
   m.def(
+      "generate_ctrlpkt",
+      [](MlirOperation op, const std::string &outputFile,
+         const std::string &workDirPath, bool aieSim, bool xaieDebug,
+         bool enableCores) {
+        mlir::python::CollectDiagnosticsToStringScope scope(
+            mlirOperationGetContext(op));
+        if (mlirLogicalResultIsFailure(aieTranslateToCtrlpkt(
+                op, {outputFile.data(), outputFile.size()},
+                {workDirPath.data(), workDirPath.size()}, aieSim, xaieDebug,
+                enableCores)))
+          throw py::value_error("Failed to generate control packets because: " +
+                                scope.takeMessage());
+      },
+      "module"_a, "output_file"_a, "work_dir_path"_a, "aiesim"_a = false,
+      "xaie_debug"_a = false, "enable_cores"_a = true);
+
+  m.def(
       "transaction_binary_to_mlir",
       [](MlirContext ctx, py::bytes bytes) {
         std::string s = bytes;
@@ -156,7 +173,8 @@ PYBIND11_MODULE(_aie, m) {
   m.def(
       "generate_control_packets",
       [&stealCStr](MlirOperation op) {
-        py::str ctrlPackets = stealCStr(aieTranslateToControlPackets(op));
+        py::str ctrlPackets =
+            stealCStr(AIETranslateControlPacketsToUI32Vec(op));
         auto individualInstructions =
             ctrlPackets.attr("split")().cast<py::list>();
         for (size_t i = 0; i < individualInstructions.size(); ++i)

@@ -583,6 +583,26 @@ class FlowRunner:
             txn_file = os.path.join(self.tmpdirname, "txn.mlir")
             generate_txn(input_physical.operation, txn_file, self.tmpdirname)
 
+    async def process_ctrlpkt(self):
+        from aie.dialects.aie import generate_ctrlpkt
+
+        with Context(), Location.unknown():
+            for elf in glob.glob("*.elf"):
+                try:
+                    shutil.copy(elf, self.tmpdirname)
+                except shutil.SameFileError:
+                    pass
+            for elf_map in glob.glob("*.elf.map"):
+                try:
+                    shutil.copy(elf_map, self.tmpdirname)
+                except shutil.SameFileError:
+                    pass
+            input_physical = Module.parse(
+                await read_file_async(self.prepend_tmp("input_physical.mlir"))
+            )
+            ctrlpkt_file = os.path.join(self.tmpdirname, "ctrlpkt.mlir")
+            generate_ctrlpkt(input_physical.operation, ctrlpkt_file, self.tmpdirname)
+
     async def process_xclbin_gen(self):
         if opts.progress:
             task = self.progress_bar.add_task(
@@ -1124,6 +1144,9 @@ class FlowRunner:
 
             if opts.txn and opts.execute:
                 await self.process_txn()
+
+            if opts.ctrlpkt and opts.execute:
+                await self.process_ctrlpkt()
 
     def dumpprofile(self):
         sortedruntimes = sorted(

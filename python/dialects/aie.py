@@ -23,6 +23,7 @@ from .._mlir_libs._aie import (
     generate_bcf,
     generate_cdo,
     generate_txn,
+    generate_ctrlpkt,
     generate_xaie,
     generate_control_packets,
     npu_instgen,
