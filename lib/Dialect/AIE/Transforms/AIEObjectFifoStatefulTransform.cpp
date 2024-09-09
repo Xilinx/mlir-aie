@@ -877,7 +877,7 @@ struct AIEObjectFifoStatefulTransformPass
           for (auto relOp : body->getOps<ObjectFifoReleaseOp>()) {
             if (relOp.getOperation()->getParentOp() == forLoop) {
               ObjectFifoCreateOp op = relOp.getObjectFifo();
-              releaseCounters[op]++;
+              releaseCounters[op] = relOp.getSize();
             }
           }
           auto loc = forLoop.getLoc();
