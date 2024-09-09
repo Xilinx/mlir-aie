@@ -639,7 +639,14 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
   let description = [{
     A logical packet-switched flow between tiles.  During place and
     route, this is replaced by MasterSets and PacketRules inside
-    switchboxes.
+    switchboxes. 
+    
+    The optional attribute keep_pkt_header indicates whether each 
+    data packet's packet header gets preserved at the flow's 
+    destination. The optional attribute priority_route indicates
+    whether the packet flow is routed in priority over other flows, 
+    so that they always get allocated with the same master, slave 
+    ports, arbiters and master selects (msel).
 
     Example:
     ```
@@ -653,7 +660,8 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
 
   let arguments = (
     ins AIEI8Attr:$ID,
-        OptionalAttr<BoolAttr>:$keep_pkt_header
+        OptionalAttr<BoolAttr>:$keep_pkt_header,
+        OptionalAttr<BoolAttr>:$priority_route
   );
   let regions = (region AnyRegion:$ports);
 
