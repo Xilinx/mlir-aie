@@ -912,6 +912,22 @@ struct AIEObjectFifoStatefulTransformPass
                 body->getOperations());
             forLoop.erase();
 
+            // Map each iter arg to its objectfifo
+            std::map<ObjectFifoCreateOp, Value> iterArgPerFifo;
+            int iterArgIndex = 0;
+            for(const auto &i : counterMap){
+              auto objectFifo = i.first;
+              auto val = i.second;
+              for (auto arg : forLoopWithIterArgs.getInitArgs()) {
+                if (arg == val) {
+                  iterArgPerFifo[objectFifo] = forLoopWithIterArgs.getRegionIterArg(iterArgIndex);
+                  iterArgIndex = 0;
+                  break;
+                }
+                iterArgIndex++;
+              }
+            }
+
             loc = forLoopWithIterArgs.getLoc();
             builder.setInsertionPointToStart(newLoopBody);
             // Number of subviews found inside the for loop equals
@@ -922,9 +938,7 @@ struct AIEObjectFifoStatefulTransformPass
 
               // Create a switch for each subview access
               auto maxCounter = builder.create<arith::ConstantIndexOp>(loc, fifoSizes[createOp]);
-              // NEEDS FIX: It's not the counterMap[createOp] that should be used but the iterArg it corresponds to.
-              // maybe use: getRegionIterArg(unsigned index)
-              Value switchIndex = builder.create<arith::RemSIOp>(loc, counterMap[createOp], maxCounter);
+              Value switchIndex = builder.create<arith::RemSIOp>(loc, iterArgPerFifo[createOp], maxCounter);
               unsigned caseRegionCounts = fifoSizes[createOp];
               SmallVector<int64_t, 4> caseValues;
               for (int i = 0; i < fifoSizes[createOp]; ++i){
@@ -951,14 +965,13 @@ struct AIEObjectFifoStatefulTransformPass
               return WalkResult::advance();
             });
 
-            builder.setInsertionPointToEnd(newLoopBody);
-
             // Update the Iteration Args
+            builder.setInsertionPointToEnd(newLoopBody);
             for(const auto &i : fifoSizes){
               auto op = i.first;
               auto val = releaseCounters[op];
               Value release_val = builder.create<arith::ConstantIndexOp>(loc, val);
-              counterMap[op] = builder.create<arith::AddIOp>(loc, counterMap[op], release_val);
+              counterMap[op] = builder.create<arith::AddIOp>(loc, iterArgPerFifo[op], release_val);
             }
             counterVector.clear();
             for(const auto &entry : counterMap){
