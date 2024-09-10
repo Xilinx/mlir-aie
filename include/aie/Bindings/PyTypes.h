@@ -7,8 +7,8 @@
 // (c) Copyright 2024 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
-#ifndef AIE_PYTYPES_H
-#define AIE_PYTYPES_H
+#ifndef AIE_BINDINGS_PYTYPES_H
+#define AIE_BINDINGS_PYTYPES_H
 
 #include "aie-c/TargetModel.h"
 
@@ -22,4 +22,4 @@ private:
   AieTargetModel model;
 };
 
-#endif // AIE_PYTYPES_H
+#endif // AIE_BINDINGS_PYTYPES_H

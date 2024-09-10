@@ -10,7 +10,7 @@
 #include "aie-c/TargetModel.h"
 #include "aie-c/Translation.h"
 
-#include "PyTypes.h"
+#include "aie/Bindings/PyTypes.h"
 
 #include "mlir-c/IR.h"
 #include "mlir-c/Support.h"

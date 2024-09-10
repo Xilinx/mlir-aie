@@ -11,7 +11,7 @@
 #include "aie-c/TargetModel.h"
 #include "aie-c/Translation.h"
 
-#include "PyTypes.h"
+#include "aie/Bindings/PyTypes.h"
 
 #include <pybind11/pybind11.h>
 #include <pybind11/pytypes.h>
