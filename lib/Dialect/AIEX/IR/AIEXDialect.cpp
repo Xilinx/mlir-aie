@@ -650,15 +650,13 @@ LogicalResult AIEX::DMAStartBdChainOp::verify() {
 uint32_t AIEX::NpuControlPacketOp::getRowFromAddr() {
   const auto &targetModel = AIE::getTargetModel(*this);
   uint32_t addr = getAddress();
-  uint32_t rowInt =
-      (addr & (0xff << targetModel.getRowShift())) >> targetModel.getRowShift();
+  uint32_t rowInt = (addr >> targetModel.getRowShift()) & 0x1f;
   return rowInt;
 }
 
 uint32_t AIEX::NpuControlPacketOp::getColumnFromAddr() {
   const auto &targetModel = AIE::getTargetModel(*this);
   uint32_t addr = getAddress();
-  uint32_t colInt = (addr & (0xff << targetModel.getColumnShift())) >>
-                    targetModel.getColumnShift();
+  uint32_t colInt = (addr >> targetModel.getColumnShift()) & 0x1f;
   return colInt;
 }
