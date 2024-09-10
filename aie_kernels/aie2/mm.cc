@@ -552,6 +552,34 @@ void matmul_vectorized_4x8x8_i8_i8(const int8 *__restrict pA,
                                                                      pC);
 }
 
+template <unsigned m, unsigned k, unsigned n>
+void matmul_vectorized_4x8x8_i8_i16(const int8 *__restrict pA,
+                                    const int8 *__restrict pB,
+                                    int16 *__restrict pC) {
+  constexpr int r = 4;
+  constexpr int s = 8;
+  constexpr int t = 8;
+  static_assert(m % (2 * r) == 0 && m / (2 * r) > 0);
+  static_assert(k % (2 * s) == 0 && k / (2 * s) > 0);
+  static_assert(n % (2 * t) == 0 && n / (2 * t) > 0);
+  return matmul_vectorized<int8, int16, m / r, k / s, n / t, r, s, t>(pA, pB,
+                                                                      pC);
+}
+
+template <unsigned m, unsigned k, unsigned n>
+void matmul_vectorized_4x8x8_i8_i32(const int8 *__restrict pA,
+                                    const int8 *__restrict pB,
+                                    int32 *__restrict pC) {
+  constexpr int r = 4;
+  constexpr int s = 8;
+  constexpr int t = 8;
+  static_assert(m % (2 * r) == 0 && m / (2 * r) > 0);
+  static_assert(k % (2 * s) == 0 && k / (2 * s) > 0);
+  static_assert(n % (2 * t) == 0 && n / (2 * t) > 0);
+  return matmul_vectorized<int8, int32, m / r, k / s, n / t, r, s, t>(pA, pB,
+                                                                      pC);
+}
+
 extern "C" {
 
 // If you want to compile microkernels with different inner tile sizes,
@@ -571,12 +599,49 @@ extern "C" {
 #define DIM_N 64
 #endif
 
+#ifdef i8_i8_ONLY
+#define combos(X) \
+  X(int8, i8, int8, i8, 4, 8, 8)
+#endif
+
+#ifdef i8_i16_ONLY
+#define combos(X) \
+  X(int8, i8, int16, i16, 4, 8, 8)
+#endif
+
+#ifdef i8_i32_ONLY
+#define combos(X) \
+  X(int8, i8, int32, i32, 4, 8, 8)
+#endif
+
+#ifdef i16_i16_ONLY
+#define combos(X) \
+  X(int16, i16, int16, i16, 4, 4, 4)
+#endif
+
+#ifdef i16_i32_ONLY
+#define combos(X) \
+  X(int16, i16, int32, i32, 4, 4, 4)
+#endif
+
+#ifdef bf16_bf16_ONLY
+#define combos(X) \
+  X(bfloat16, bf16, bfloat16, bf16, 4, 8, 4)
+#endif
+
+#ifdef bf16_f32_ONLY
+#define combos(X) \
+  X(bfloat16, bf16, float, f32, 4, 8, 4)
+#endif
+
+#ifdef ALL_COMBOS
 #define combos(X)                                                              \
   X(int8, i8, int8, i8, 4, 8, 8)                                               \
   X(int16, i16, int16, i16, 4, 4, 4)                                           \
   X(int16, i16, int32, i32, 4, 4, 4)                                           \
   X(bfloat16, bf16, bfloat16, bf16, 4, 8, 4)                                   \
   X(bfloat16, bf16, float, f32, 4, 8, 4)
+#endif
 
 #define matmul_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,            \
                                  mlir_type_out, r, s, t)                       \
