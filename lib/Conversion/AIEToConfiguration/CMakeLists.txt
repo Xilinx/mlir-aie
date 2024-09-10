@@ -16,5 +16,5 @@ add_mlir_conversion_library(MLIRAIEToConfiguration
   Core
 
   LINK_LIBS PUBLIC
-  AIERTX
+  AIERT
   )

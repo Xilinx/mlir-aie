@@ -576,15 +576,16 @@ class FlowRunner:
                     shutil.copy(elf_map, self.tmpdirname)
                 except shutil.SameFileError:
                     pass
-            await self.do_call(
-                None,
-                [
-                    "aie-opt",
-                    "--convert-aie-to-transaction=elf-dir=" + self.tmpdirname + "",
-                    self.prepend_tmp("input_physical.mlir"),
-                    "-o",
-                    self.prepend_tmp("input_physical_txn.mlir"),
-                ],
+            input_physical = await read_file_async(
+                self.prepend_tmp("input_physical.mlir")
+            )
+            run_passes(
+                "builtin.module(aie.device(convert-aie-to-transaction{elf-dir="
+                + self.tmpdirname
+                + "}))",
+                input_physical,
+                self.prepend_tmp("txn.mlir"),
+                self.opts.verbose,
             )
 
     async def process_ctrlpkt(self):

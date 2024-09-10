@@ -11,7 +11,7 @@
 #include "../PassDetail.h"
 
 #include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
-#include "aie/Targets/AIERTX.h"
+#include "aie/Targets/AIERT.h"
 
 #include "llvm/Support/Debug.h"
 
@@ -186,7 +186,7 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
 }
 
 static LogicalResult
-generateTxn(AIERTXControl &ctl, const StringRef workDirPath, DeviceOp &targetOp,
+generateTxn(AIERTControl &ctl, const StringRef workDirPath, DeviceOp &targetOp,
             bool aieSim, bool enableElfs, bool enableInit, bool enableCores) {
   if (enableElfs && !targetOp.getOps<CoreOp>().empty() &&
       failed(ctl.addAieElfs(targetOp, workDirPath, aieSim)))
@@ -216,7 +216,7 @@ struct ConvertAIEToTransactionPass
     bool aieSim = false;
     bool xaieDebug = false;
 
-    AIERTXControl ctl(targetModel);
+    AIERTControl ctl(targetModel);
     if (failed(ctl.setIOBackend(aieSim, xaieDebug)))
       return signalPassFailure();
 

@@ -403,10 +403,9 @@ void registerAIETranslations() {
         } else
           workDirPath_ = workDirPath.getValue();
         LLVM_DEBUG(llvm::dbgs() << "work-dir-path: " << workDirPath_ << "\n");
-        // return AIETranslateToControlPackets(module, output, workDirPath_,
-        //                                     outputBinary, cdoAieSim,
-        //                                     cdoXaieDebug, cdoEnableCores);
-        return AIETranslateToControlPackets(module, output, sequenceName);
+        return AIETranslateToControlPackets(module, output, workDirPath_,
+                                            outputBinary, cdoAieSim,
+                                            cdoXaieDebug, cdoEnableCores);
       },
       registerDialects);
 }
