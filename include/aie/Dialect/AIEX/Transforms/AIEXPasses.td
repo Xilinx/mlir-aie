@@ -180,4 +180,34 @@ def AIEDMATasksToNPU : Pass<"aie-dma-tasks-to-npu", "AIE::DeviceOp"> {
   ];
 }
 
+def AIESubstituteShimDMAAllocations : Pass<"aie-substitute-shim-dma-allocations", "AIE::DeviceOp"> {
+  let summary = "Replace symbolic references to `aie.shim_dma_allocation` ops with their `(tile, direction, channel)` triple";
+
+  let constructor = "xilinx::AIEX::createAIESubstituteShimDMAAllocationsPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
+  let summary = "Lowers npu.control_packet op to npu.dma_memcpy_nd op";
+
+  let constructor = "xilinx::AIEX::createAIECtrlPacketToDmaPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIECtrlPacketInferTiles : Pass<"aie-ctrl-packet-infer-tiles", "AIE::DeviceOp"> {
+  let summary = "Infer aie.tile ops from aiex.control_packet addresses";
+
+  let constructor = "xilinx::AIEX::createAIECtrlPacketInferTilesPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 #endif

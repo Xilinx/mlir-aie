@@ -505,6 +505,13 @@ def resnet_conv_x():
                         wts_sub_fifo_names[i][1],
                         wts_sub_fifo_names[i][2],
                     ],
+                    [],
+                    [
+                        0,
+                        np.prod(layer1_wts_sizes[i].shape),
+                        np.prod(layer1_wts_sizes[i].shape)
+                        + np.prod(weightsLayer2_ty.shape),
+                    ],
                 )
             # output tensor
             outOFL2L3 = object_fifo(

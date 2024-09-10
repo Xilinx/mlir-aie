@@ -5,9 +5,10 @@
 //
 // (c) Copyright 2024 AMD Inc.
 
-// REQUIRES: ryzen_ai
-//
 // RUN: aie-opt --aie-dma-tasks-to-npu %s | FileCheck %s
+
+// This test ensures that buffer descriptor configurations with chaining get
+// lowered to the correct NPU instruction sequence instructions.
 
 module {
   aie.device(npu1_4col) {

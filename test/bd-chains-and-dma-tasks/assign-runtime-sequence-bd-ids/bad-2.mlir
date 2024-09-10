@@ -5,9 +5,10 @@
 //
 // (c) Copyright 2024 AMD Inc.
 
-// REQUIRES: ryzen_ai
-//
 // RUN: aie-opt --verify-diagnostics --aie-assign-runtime-sequence-bd-ids %s
+
+// This test ensures that the proper error is emitted if a user tries to use more buffer descriptors than
+// are availalbe in the current device.
 
 module {
   aie.device(npu1_4col) {

@@ -103,6 +103,12 @@ if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
   )
 endif()
 
+declare_mlir_python_sources(AIEPythonSources.AIERT
+  ADD_TO_PARENT AIEPythonSources
+  SOURCES
+    aiert.py
+)
+
 ################################################################################
 # Extensions
 ################################################################################
@@ -167,6 +173,7 @@ if (AIE_ENABLE_PYTHON_PASSES)
     list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/XRTModule.cpp)
     list(APPEND _py_libs xrt_coreutil uuid)
   endif()
+  list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/AIERTModule.cpp)
 
   declare_mlir_python_extension(AIEPythonExtensions.MLIR
     MODULE_NAME _aie
@@ -290,6 +297,19 @@ else ()
     target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})
   endif()
 
+  declare_mlir_python_extension(AIEPythonExtensions.AIERT
+    MODULE_NAME _aiert
+    ADD_TO_PARENT AIEPythonExtensions
+    ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
+
+    PARTIAL_SOURCES_INTENDED
+    SOURCES
+      AIERTModule.cpp
+
+    PRIVATE_LINK_LIBS
+      LLVMSupport
+  )
+
   add_mlir_python_common_capi_library(AIEAggregateCAPI
     INSTALL_COMPONENT AIEPythonModules
     INSTALL_DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs
@@ -388,8 +408,9 @@ add_custom_command(
   TARGET AIEPythonModules PRE_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy
   ${CMAKE_CURRENT_SOURCE_DIR}/compiler/aiecc.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/compiler/txn2mlir.py
   ${CMAKE_BINARY_DIR}/bin
 )
 # during install
-install(PROGRAMS compiler/aiecc.py DESTINATION bin)
+install(PROGRAMS compiler/aiecc.py compiler/txn2mlir.py DESTINATION bin)
 

@@ -31,10 +31,11 @@ void AIEXDialect::initialize() {
       >();
 }
 
-uint64_t
-getBufferDescriptorAddressRegisterAddress(const AIE::AIETargetModel &tm,
-                                          unsigned bd_id, unsigned col) {
-  return ((uint64_t)col << tm.getColumnShift()) | (0x1D004 + bd_id * 0x20);
+uint64_t getBufferDescriptorAddressRegisterAddress(
+    const AIE::AIETargetModel &tm, unsigned bd_id, unsigned col, unsigned row) {
+  assert(bd_id < tm.getNumBDs(col, row));
+  return ((col & 0xff) << tm.getColumnShift()) |
+         ((row & 0xff) << tm.getRowShift()) | (0x1D004 + bd_id * 0x20);
 }
 
 /* Return the correct values to write to the hardware registers to configure
@@ -400,6 +401,14 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     return failure();
   }
 
+  // packet header
+  if (auto packetInfo = getPacket()) {
+    if (packetInfo->getPktType() > 7)
+      return emitOpError("Packet type field can only hold 3 bits.");
+    if (packetInfo->getPktId() > 31)
+      return emitOpError("Packet ID field can only hold 5 bits.");
+  }
+
   return success();
 }
 
@@ -546,6 +555,13 @@ std::optional<uint32_t> AIEX::DMAConfigureTaskOp::getFirstBdId() {
     return std::nullopt;
   }
   auto bd_ops = body.front().getOps<AIE::DMABDOp>();
+  if (bd_ops.empty() && body.front().getNumSuccessors() == 1) {
+    // Allow the first block to be empty and point to the entry point of the
+    // chain. This allows for specifying cyclying BD chains (infinite loops)
+    // within the constraints of MLIR syntax.
+    Block &chain_entry = *body.front().getSuccessor(0);
+    bd_ops = chain_entry.getOps<AIE::DMABDOp>();
+  }
   if (bd_ops.empty()) {
     return std::nullopt;
   }
@@ -559,17 +575,18 @@ std::optional<uint32_t> AIEX::DMAConfigureTaskOp::getFirstBdId() {
 LogicalResult
 AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
                                        PatternRewriter &rewriter) {
-  // Verify inlined basic blocks do form a chain reachable from the start;
-  // Remove empty blocks
+  // Remove blocks that contain nothing but a terminator
   Region &body = op.getBody();
   bool did_rewrite = false;
   for (auto it = body.begin(); it != body.end(); ++it) {
     Block &block = *it;
+    if (block.empty()) {
+      continue;
+    }
     auto ops_it = block.without_terminator();
     if (std::distance(ops_it.begin(), ops_it.end()) == 0) {
       rewriter.eraseOp(block.getTerminator());
       did_rewrite = true;
-      continue;
     }
   }
   if (did_rewrite) {
@@ -582,6 +599,9 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
   Region &body = getBody();
   for (auto it = body.begin(); it != body.end(); ++it) {
     Block &block = *it;
+    if (block.empty()) {
+      continue;
+    }
     if (block.hasNoPredecessors() && !block.isEntryBlock()) {
       auto error = block.getTerminator()->emitError(
           "Block ending in this terminator does not form a chain with "
@@ -609,7 +629,7 @@ LogicalResult AIEX::DMAStartBdChainOp::verify() {
   }
 
   auto actualArgTypes = getArgs().getTypes();
-  ArrayRef<Type> expectedArgTypes = chain.getEntryArgTypesAttr().getTypes();
+  auto expectedArgTypes = chain.getRegion().getArgumentTypes();
   if (actualArgTypes.size() != expectedArgTypes.size()) {
     return emitOpError("Number of arguments mismatches.");
   }
@@ -621,4 +641,22 @@ LogicalResult AIEX::DMAStartBdChainOp::verify() {
     }
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// NpuControlPacketOp
+//===----------------------------------------------------------------------===//
+
+uint32_t AIEX::NpuControlPacketOp::getRowFromAddr() {
+  const auto &targetModel = AIE::getTargetModel(*this);
+  uint32_t addr = getAddress();
+  uint32_t rowInt = (addr >> targetModel.getRowShift()) & 0x1f;
+  return rowInt;
+}
+
+uint32_t AIEX::NpuControlPacketOp::getColumnFromAddr() {
+  const auto &targetModel = AIE::getTargetModel(*this);
+  uint32_t addr = getAddress();
+  uint32_t colInt = (addr >> targetModel.getColumnShift()) & 0x1f;
+  return colInt;
 }

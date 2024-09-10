@@ -5,9 +5,10 @@
 //
 // (c) Copyright 2024 AMD Inc.
 
-// REQUIRES: ryzen_ai
-//
 // RUN: aie-opt --verify-diagnostics --aie-materialize-bd-chains %s
+
+// This test ensures that the correct error is emitted if the types of 
+// the arguments in a BD chain definition and its usage site mismatch.
 
 module {
   aie.device(npu1_4col) {

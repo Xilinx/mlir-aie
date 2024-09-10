@@ -8,40 +8,45 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s
-// CHECK: %[[T20:.*]] = aie.tile(2, 0)
-// CHECK: %[[T30:.*]] = aie.tile(3, 0)
-// CHECK: %[[T60:.*]] = aie.tile(6, 0)
-// CHECK: %[[T70:.*]] = aie.tile(7, 0)
-// CHECK: %[[T100:.*]] = aie.tile(10, 0)
-// CHECK: %[[T110:.*]] = aie.tile(11, 0)
-// CHECK: %[[T180:.*]] = aie.tile(18, 0)
-// CHECK: %[[T190:.*]] = aie.tile(19, 0)
-// CHECK: %[[T03:.*]] = aie.tile(0, 3)
-// CHECK: %[[T14:.*]] = aie.tile(1, 4)
-// CHECK: %[[T33:.*]] = aie.tile(3, 3)
-// CHECK: %[[T42:.*]] = aie.tile(4, 2)
-// CHECK: %[[T53:.*]] = aie.tile(5, 3)
-// CHECK: %[[T63:.*]] = aie.tile(6, 3)
-// CHECK: %[[T74:.*]] = aie.tile(7, 4)
-// CHECK: %[[T92:.*]] = aie.tile(9, 2)
-// CHECK: %[[T102:.*]] = aie.tile(10, 2)
-// CHECK: %[[T113:.*]] = aie.tile(11, 3)
+// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s -o %t.opt
+// RUN: FileCheck %s --check-prefix=CHECK1 < %t.opt
+// RUN: aie-translate --aie-flows-to-json %t.opt | FileCheck %s --check-prefix=CHECK2
+
+// CHECK1: %[[T20:.*]] = aie.tile(2, 0)
+// CHECK1: %[[T30:.*]] = aie.tile(3, 0)
+// CHECK1: %[[T60:.*]] = aie.tile(6, 0)
+// CHECK1: %[[T70:.*]] = aie.tile(7, 0)
+// CHECK1: %[[T100:.*]] = aie.tile(10, 0)
+// CHECK1: %[[T110:.*]] = aie.tile(11, 0)
+// CHECK1: %[[T180:.*]] = aie.tile(18, 0)
+// CHECK1: %[[T190:.*]] = aie.tile(19, 0)
+// CHECK1: %[[T03:.*]] = aie.tile(0, 3)
+// CHECK1: %[[T14:.*]] = aie.tile(1, 4)
+// CHECK1: %[[T33:.*]] = aie.tile(3, 3)
+// CHECK1: %[[T42:.*]] = aie.tile(4, 2)
+// CHECK1: %[[T53:.*]] = aie.tile(5, 3)
+// CHECK1: %[[T63:.*]] = aie.tile(6, 3)
+// CHECK1: %[[T74:.*]] = aie.tile(7, 4)
+// CHECK1: %[[T92:.*]] = aie.tile(9, 2)
+// CHECK1: %[[T102:.*]] = aie.tile(10, 2)
+// CHECK1: %[[T113:.*]] = aie.tile(11, 3)
 //
-// CHECK: aie.flow(%[[T20]], DMA : 0, %[[T14]], DMA : 0)
-// CHECK: aie.flow(%[[T20]], DMA : 1, %[[T63]], DMA : 1)
-// CHECK: aie.flow(%[[T30]], DMA : 0, %[[T33]], DMA : 0)
-// CHECK: aie.flow(%[[T30]], DMA : 1, %[[T74]], DMA : 1)
-// CHECK: aie.flow(%[[T60]], DMA : 0, %[[T03]], DMA : 0)
-// CHECK: aie.flow(%[[T60]], DMA : 1, %[[T42]], DMA : 0)
-// CHECK: aie.flow(%[[T70]], DMA : 0, %[[T03]], DMA : 1)
-// CHECK: aie.flow(%[[T70]], DMA : 1, %[[T53]], DMA : 0)
-// CHECK: aie.flow(%[[T100]], DMA : 0, %[[T102]], DMA : 0)
-// CHECK: aie.flow(%[[T110]], DMA : 0, %[[T113]], DMA : 0)
-// CHECK: aie.flow(%[[T180]], DMA : 0, %[[T63]], DMA : 0)
-// CHECK: aie.flow(%[[T180]], DMA : 1, %[[T92]], DMA : 0)
-// CHECK: aie.flow(%[[T190]], DMA : 0, %[[T74]], DMA : 0)
-// CHECK: aie.flow(%[[T190]], DMA : 1, %[[T113]], DMA : 1)
+// CHECK1: aie.flow(%[[T20]], DMA : 0, %[[T14]], DMA : 0)
+// CHECK1: aie.flow(%[[T20]], DMA : 1, %[[T63]], DMA : 1)
+// CHECK1: aie.flow(%[[T30]], DMA : 0, %[[T33]], DMA : 0)
+// CHECK1: aie.flow(%[[T30]], DMA : 1, %[[T74]], DMA : 1)
+// CHECK1: aie.flow(%[[T60]], DMA : 0, %[[T03]], DMA : 0)
+// CHECK1: aie.flow(%[[T60]], DMA : 1, %[[T42]], DMA : 0)
+// CHECK1: aie.flow(%[[T70]], DMA : 0, %[[T03]], DMA : 1)
+// CHECK1: aie.flow(%[[T70]], DMA : 1, %[[T53]], DMA : 0)
+// CHECK1: aie.flow(%[[T100]], DMA : 0, %[[T102]], DMA : 0)
+// CHECK1: aie.flow(%[[T110]], DMA : 0, %[[T113]], DMA : 0)
+// CHECK1: aie.flow(%[[T180]], DMA : 0, %[[T63]], DMA : 0)
+// CHECK1: aie.flow(%[[T180]], DMA : 1, %[[T92]], DMA : 0)
+// CHECK1: aie.flow(%[[T190]], DMA : 0, %[[T74]], DMA : 0)
+// CHECK1: aie.flow(%[[T190]], DMA : 1, %[[T113]], DMA : 1)
+
+// CHECK2: "total_path_length": 109
 
 module {
 	aie.device(xcvc1902) {

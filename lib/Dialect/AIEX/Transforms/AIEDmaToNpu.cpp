@@ -142,6 +142,43 @@ struct BlockWriteSymToAddr : OpConversionPattern<NpuBlockWriteOp> {
   }
 };
 
+struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
+  using OpConversionPattern::OpConversionPattern;
+
+  MaskWrite32SymToAddr(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit) {}
+
+  LogicalResult
+  matchAndRewrite(NpuMaskWrite32Op op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    if (!op.getBuffer())
+      return failure();
+
+    auto device = op->getParentOfType<AIE::DeviceOp>();
+
+    auto buffer = device.lookupSymbol<AIE::BufferOp>(*op.getBuffer());
+    if (!buffer)
+      return op->emitError("buffer '" + *op.getBuffer() +
+                           "' not found in device");
+
+    if (!buffer.getAddress())
+      return op->emitError("buffer must have address assigned");
+
+    const AIE::AIETargetModel &tm = device.getTargetModel();
+    uint32_t address = static_cast<uint32_t>(*buffer.getAddress()) +
+                       op.getAddress() * sizeof(uint32_t);
+    auto col = buffer.getTileOp().getCol();
+    auto row = buffer.getTileOp().getRow();
+    address |= ((col & 0xff) << tm.getColumnShift()) |
+               ((row & 0xff) << tm.getRowShift()) | (address & 0xFFFFF);
+
+    rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(
+        op, address, op.getValue(), op.getMask(), nullptr, nullptr, nullptr);
+    return success();
+  }
+};
+
 struct RtpToWrite32Pattern : OpConversionPattern<NpuWriteRTPOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -190,6 +227,32 @@ public:
   matchAndRewrite(NpuPushQueueOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
+    auto column = rewriter.getI32IntegerAttr(op.getColumn());
+    auto row = rewriter.getI32IntegerAttr(0);
+
+    // control packet for issuing token
+    if (op.getIssueToken()) {
+      uint32_t ctrl_offset =
+          op.getDirection() == AIE::DMAChannelDir::MM2S ? 0x1D210 : 0x1D200;
+      if (op.getChannel() == 1)
+        ctrl_offset += 0x8;
+      uint32_t controller_id = 0;
+      auto builder = OpBuilder::atBlockBegin(
+          op->getParentOfType<AIE::DeviceOp>().getBody());
+      auto tOp = AIE::TileOp::getOrCreate(
+          builder, op->getParentOfType<AIE::DeviceOp>(), op.getColumn(), 0);
+      if (tOp && tOp->hasAttr("controller_id")) {
+        auto controllerIdAttr =
+            tOp->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
+        controller_id = controllerIdAttr.getPktId();
+      }
+      controller_id = controller_id << 8;
+      if (controller_id)
+        rewriter.create<NpuMaskWrite32Op>(op->getLoc(), ctrl_offset,
+                                          controller_id, 0x0F00, nullptr,
+                                          column, row);
+    }
+
     // the offset of the task queue register in the tile
     uint32_t queue_offset;
     if (op.getDirection() == AIE::DMAChannelDir::MM2S)
@@ -208,8 +271,6 @@ public:
     if (op.getIssueToken())
       cmd |= 0x80000000;
 
-    auto column = rewriter.getI32IntegerAttr(op.getColumn());
-    auto row = rewriter.getI32IntegerAttr(0);
     rewriter.create<NpuWrite32Op>(op->getLoc(), queue_offset, cmd, nullptr,
                                   column, row);
     rewriter.eraseOp(op);
@@ -333,12 +394,13 @@ public:
     buffer_offset = IntegerAttr::get(i32ty, offset);
 
     // enable_packet
+    if (auto packetInfo = op.getPacket()) {
+      enable_packet = IntegerAttr::get(i32ty, 1);
+      packet_type = IntegerAttr::get(i32ty, packetInfo->getPktType());
+      packet_id = IntegerAttr::get(i32ty, packetInfo->getPktId());
+    }
 
     // out_of_order_id
-
-    // packet_id
-
-    // packet_type
 
     if (!op.isLinearTransferWithoutTransformation()) {
       // d0_size, d0_stride
@@ -400,8 +462,8 @@ public:
         iteration_size, iteration_stride, next_bd, row, use_next_bd, valid_bd,
         lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id);
 
-    uint64_t addr =
-        getBufferDescriptorAddressRegisterAddress(targetModel, op.getId(), col);
+    uint64_t addr = getBufferDescriptorAddressRegisterAddress(
+        targetModel, op.getId(), col, 0);
 
     rewriter.create<NpuAddressPatchOp>(op->getLoc(), addr, arg_idx, offset);
 
@@ -466,56 +528,104 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
     AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
     const AIE::AIETargetModel &tm = dev.getTargetModel();
 
-    auto bd_id = op.getBdId();
-    uint32_t bd_addr = (op.getColumn() << tm.getColumnShift()) |
-                       (op.getRow() << tm.getRowShift()) |
-                       (0x1D000 + bd_id * 0x20);
-
     std::vector<uint32_t> words(8, 0);
+    auto bd_id = op.getBdId();
+    uint32_t bd_addr;
+    if (tm.isShimNOCTile(op.getColumn(), op.getRow())) {
+      bd_addr = (op.getColumn() << tm.getColumnShift()) |
+                (op.getRow() << tm.getRowShift()) | (0x1D000 + bd_id * 0x20);
 
-    // DMA_BDX_0
-    words[0] = op.getBufferLength();
+      // DMA_BDX_0
+      words[0] = op.getBufferLength();
 
-    // DMA_BDX_1
-    words[1] = op.getBufferOffset();
+      // DMA_BDX_1
+      words[1] = op.getBufferOffset();
 
-    // DMA_BDX_2
-    // En Packet , OoO BD ID , Packet ID , Packet Type
-    words[2] |= (op.getEnablePacket() & 0x1) << 30;
-    words[2] |= (op.getOutOfOrderId() & 0x3f) << 24;
-    words[2] |= (op.getPacketId() & 0x1f) << 19;
-    words[2] |= (op.getPacketType() & 0x7) << 16;
+      // DMA_BDX_2
+      // En Packet , OoO BD ID , Packet ID , Packet Type
+      words[2] |= (op.getEnablePacket() & 0x1) << 30;
+      words[2] |= (op.getOutOfOrderId() & 0x3f) << 24;
+      words[2] |= (op.getPacketId() & 0x1f) << 19;
+      words[2] |= (op.getPacketType() & 0x7) << 16;
 
-    // DMA_BDX_3
-    // TODO: Secure Access
-    words[3] |= (op.getD0Size() & 0x3ff) << 20;
-    words[3] |= op.getD0Stride() & 0xfffff;
+      // DMA_BDX_3
+      // TODO: Secure Access
+      words[3] |= (op.getD0Size() & 0x3ff) << 20;
+      words[3] |= op.getD0Stride() & 0xfffff;
 
-    // DMA_BDX_4
-    words[4] = 0x80000000; // burst length;
-    words[4] |= (op.getD1Size() & 0x3ff) << 20;
-    words[4] |= op.getD1Stride() & 0xfffff;
+      // DMA_BDX_4
+      words[4] = 0x80000000; // burst length;
+      words[4] |= (op.getD1Size() & 0x3ff) << 20;
+      words[4] |= op.getD1Stride() & 0xfffff;
 
-    // DMA_BDX_5
-    // TODO: SIMID, AxCache, AXQoS
-    words[5] = op.getD2Stride() & 0xfffff;
+      // DMA_BDX_5
+      // TODO: SIMID, AxCache, AXQoS
+      words[5] = op.getD2Stride() & 0xfffff;
 
-    // DMA_BDX_6
-    words[6] |= (op.getIterationCurrent() & 0x3f) << 26;
-    words[6] |= (op.getIterationSize() & 0x3f) << 20;
-    words[6] |= op.getIterationStride() & 0xfffff;
+      // DMA_BDX_6
+      words[6] |= (op.getIterationCurrent() & 0x3f) << 26;
+      words[6] |= (op.getIterationSize() & 0x3f) << 20;
+      words[6] |= op.getIterationStride() & 0xfffff;
 
-    // DMA_BDX_7
-    // TODO: TLAST Suppress
-    words[7] |= (op.getNextBd() & 0xf) << 27;
-    words[7] |= (op.getUseNextBd() & 0x1) << 26;
-    words[7] |= (op.getValidBd() & 0x1) << 25;
-    words[7] |= (op.getLockRelVal() & 0xef) << 18;
-    words[7] |= (op.getLockRelId() & 0xf) << 13;
-    words[7] |= (op.getLockAcqEnable() & 0x1) << 12;
-    words[7] |= (op.getLockAcqVal() & 0xef) << 5;
-    words[7] |= op.getLockAcqId() & 0xf;
+      // DMA_BDX_7
+      // TODO: TLAST Suppress
+      words[7] |= (op.getNextBd() & 0xf) << 27;
+      words[7] |= (op.getUseNextBd() & 0x1) << 26;
+      words[7] |= (op.getValidBd() & 0x1) << 25;
+      words[7] |= (op.getLockRelVal() & 0xef) << 18;
+      words[7] |= (op.getLockRelId() & 0xf) << 13;
+      words[7] |= (op.getLockAcqEnable() & 0x1) << 12;
+      words[7] |= (op.getLockAcqVal() & 0xef) << 5;
+      words[7] |= op.getLockAcqId() & 0xf;
+    } else if (tm.isMemTile(op.getColumn(), op.getRow())) {
+      bd_addr = (op.getColumn() << tm.getColumnShift()) |
+                (op.getRow() << tm.getRowShift()) | (0xA0000 + bd_id * 0x20);
+      // DMA_BDX_0
+      words[0] |= (op.getEnablePacket() & 0x1) << 31;
+      words[0] |= (op.getPacketType() & 0x7) << 28;
+      words[0] |= (op.getPacketId() & 0x1f) << 23;
+      words[0] |= (op.getOutOfOrderId() & 0x3f) << 17;
+      words[0] |= op.getBufferLength() & 0x1ffff;
 
+      // DMA_BDX_1
+      words[1] |= (op.getNextBd() & 0x3f) << 20;
+      words[1] |= (op.getUseNextBd() & 0x1) << 19;
+      words[1] |= op.getBufferOffset() & 0x7ffff;
+
+      // DMA_BDX_2
+      words[2] |= (op.getD0Size() & 0x3ff) << 17;
+      words[2] |= op.getD0Stride() & 0x1ffff;
+
+      // DMA_BDX_3
+      // TODO: Secure Access
+      words[3] |= (op.getD1Size() & 0x3ff) << 17;
+      words[3] |= op.getD1Stride() & 0x1ffff;
+
+      // DMA_BDX_4
+      // TODO: D2Size
+      words[4] |= op.getD2Stride() & 0x1ffff;
+
+      // DMA_BDX_5
+      // ToDO: D3Stride
+
+      // DMA_BDX_6
+      words[6] |= (op.getIterationCurrent() & 0x3f) << 23;
+      words[6] |= (op.getIterationSize() & 0x3f) << 17;
+      words[6] |= op.getIterationStride() & 0x1ffff;
+
+      // DMA_BDX_7
+      words[7] |= (op.getValidBd() & 0x1) << 31;
+      words[7] |= (op.getLockRelVal() & 0x7f) << 24;
+      words[7] |= (op.getLockRelId() & 0xff) << 16;
+      words[7] |= (op.getLockAcqEnable() & 0x1) << 15;
+      words[7] |= (op.getLockAcqVal() & 0x7f) << 8;
+      words[7] |= op.getLockAcqId() & 0xff;
+    } else {
+      // TODO: DMA BD configuration for Compute Tiles
+      op->emitError("Run-time DMA configuration is supported only for "
+                    "ShimTiles and MemTiles currently.");
+      return failure();
+    }
     MemRefType memrefType = MemRefType::get({8}, rewriter.getI32Type());
     TensorType tensorType = RankedTensorType::get({8}, rewriter.getI32Type());
     memref::GlobalOp global = nullptr;
@@ -568,11 +678,14 @@ struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
         [&](NpuWrite32Op op) { return !op.getBuffer(); });
     target.addDynamicallyLegalOp<NpuBlockWriteOp>(
         [&](NpuBlockWriteOp op) { return !op.getBuffer(); });
+    target.addDynamicallyLegalOp<NpuMaskWrite32Op>(
+        [&](NpuMaskWrite32Op op) { return !op.getBuffer(); });
 
     RewritePatternSet patterns(&getContext());
     patterns.insert<BlockWriteSymToAddr>(&getContext());
     patterns.insert<DmaToNpuPattern>(&getContext(), cachingGetter);
     patterns.insert<DmaWaitToSyncPattern>(&getContext(), cachingGetter);
+    patterns.insert<MaskWrite32SymToAddr>(&getContext());
     patterns.insert<PushQueuetoWrite32Pattern>(&getContext());
     patterns.insert<RtpToWrite32Pattern>(&getContext());
     patterns.insert<Write32SymToAddr>(&getContext());

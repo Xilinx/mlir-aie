@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from dataclasses import dataclass
 import inspect
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Dict, Any
+import contextlib
 
 import numpy as np
 
@@ -21,11 +22,15 @@ from .._mlir_libs._aie import (
     aie_llvm_link,
     generate_bcf,
     generate_cdo,
+    generate_txn,
+    generate_ctrlpkt,
     generate_xaie,
+    generate_control_packets,
     npu_instgen,
     register_dialect,
     translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
+    transaction_binary_to_mlir,
 )
 from ..extras import types as T
 from ..extras.dialects.ext.arith import constant
@@ -48,6 +53,7 @@ from ..ir import (
     ArrayAttr,
     Attribute,
     Block,
+    BlockList,
     DenseElementsAttr,
     DictAttr,
     FlatSymbolRefAttr,
@@ -153,6 +159,68 @@ def _objectFifo_depth_attr(x, context):
     return IntegerAttr.get(IntegerType.get_signless(32, context=context), x)
 
 
+#### MLIR Helpers ####
+
+"""
+A thin wrapper around ir.Block that allows using them in context managers, e.g. as:
+
+```
+block : ContextManagedBlock = #...
+with block as b:
+    # statements to be put within block
+```
+
+which is equivalent to using a regular  block together with InsertionPoint:
+
+```
+block : ir.Block = # ...
+with InsertionPoint(block):
+    # statements to be put within block
+```
+"""
+
+
+class ContextManagedBlock:
+    def __init__(self, wrapped_block):
+        self.block = wrapped_block
+        self.context_manager = InsertionPoint(self.block)
+
+    def __enter__(self):
+        return self.context_manager.__enter__()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return self.context_manager.__exit__(exc_type, exc_value, traceback)
+
+
+"""
+A dictionary of ContextManagedBlocks, a specialization of ir.Block, keyed by arbitrary values, which automatically appends a new block at the end of `root_block_list` whenever a non-existant block is attempted to be accessed.
+"""
+
+
+class AutoInitializingContextManagedBlockList:
+    def __init__(self, root_block_list):
+        self.blocks: Dict[Any, ContextManagedBlock] = {}
+        self.root_block_list: BlockList = root_block_list
+        self.blocks[0] = ContextManagedBlock(self.root_block_list[0])
+
+    def __getitem__(self, key):
+        if key in self.blocks:
+            return self.blocks[key]
+        new_block: Block = self.root_block_list.append()
+        self.blocks[key] = ContextManagedBlock(new_block)
+        return self.blocks[key]
+
+
+@contextlib.contextmanager
+def bds(parent):
+    if len(parent.body.blocks) == 0:
+        entry_block = parent.body.blocks.append()
+    else:
+        entry_block = parent.body.blocks[0]
+    with InsertionPoint(entry_block):
+        yield AutoInitializingContextManagedBlockList(parent.body.blocks)
+
+
 #### AIE Wrappers ####
 
 Device = DeviceOp
@@ -251,16 +319,25 @@ class object_fifo(ObjectFifoCreateOp):
     def release(self, port, num_elem):
         return objectfifo_release(port, self.sym_name.value, num_elem)
 
+    def set_via_shared_mem(self, port):
+        num = 0
+        if port == ObjectFifoPort.Produce:
+            num = 0
+        elif port == ObjectFifoPort.Consume:
+            num = 1
+        int_num = IntegerAttr.get(T.i32(), num)
+        self.attributes["via_shared_mem"] = int_num
+
+    def set_memtile_repeat(self, num):
+        int_num = IntegerAttr.get(T.i32(), num)
+        self.attributes["memtile_repeat"] = int_num
+
 
 # Create an aie objectFifo_link between input and output objectFifos.
 class object_fifo_link(ObjectFifoLinkOp):
     """Specialize ObjectFifoLinkOp class constructor to take python variables"""
 
-    def __init__(
-        self,
-        fifoIns,
-        fifoOuts,
-    ):
+    def __init__(self, fifoIns, fifoOuts, srcOffsets=[], dstOffsets=[]):
         if not isinstance(fifoIns, List):
             fifoIns = [fifoIns]
         if not isinstance(fifoOuts, List):
@@ -274,6 +351,8 @@ class object_fifo_link(ObjectFifoLinkOp):
         super().__init__(
             fifoIns=fifoInRefs,
             fifoOuts=fifoOutRefs,
+            src_offsets=srcOffsets,
+            dst_offsets=dstOffsets,
         )
 
 
@@ -428,7 +507,13 @@ class NextBDOp(NextBDOp):
         return Successor(self, [], self.successors[0], 0)
 
 
-def next_bd(dest: Optional[Union[Successor, Block]] = None, loc=None, ip=None):
+def next_bd(
+    dest: Optional[Union[Successor, Block, ContextManagedBlock]] = None,
+    loc=None,
+    ip=None,
+):
+    if isinstance(dest, ContextManagedBlock):
+        dest = dest.block
     return NextBDOp(dest, loc=loc, ip=ip).dest
 
 
@@ -694,3 +779,22 @@ class TileOp(TileOp):
 
 def tile(col, row, *, loc=None, ip=None):
     return TileOp(col=col, row=row, loc=loc, ip=ip)
+
+
+# BDChainOp
+
+_orig_bd_chain = bd_chain
+
+
+def bd_chain(*inputs: T.Type):
+    def decorator(f):
+        seq_op = BDChainOp(f.__name__)
+        entry_block = seq_op.body.blocks.append(*inputs)
+        args = entry_block.arguments
+        bds_ctx = bds(seq_op)
+        with InsertionPoint(entry_block):
+            with bds_ctx as bd:
+                f(bd, *args)
+        return seq_op
+
+    return decorator

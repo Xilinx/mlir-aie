@@ -9,6 +9,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie-c/Translation.h"
+
+#include "aie/Dialect/AIE/IR/AIETargetModel.h"
+#include "aie/Targets/AIERT.h"
 #include "aie/Targets/AIETargets.h"
 
 #include "mlir-c/IR.h"
@@ -16,12 +19,13 @@
 #include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Support.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Target/LLVMIR/Export.h"
 
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <cstdlib>
@@ -79,11 +83,96 @@ MlirLogicalResult aieTranslateToCDODirect(MlirOperation moduleOp,
   return wrap(status);
 }
 
+MlirLogicalResult aieTranslateToTxn(MlirOperation moduleOp,
+                                    MlirStringRef outputFile,
+                                    MlirStringRef workDirPath, bool aieSim,
+                                    bool xaieDebug, bool enableCores) {
+  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
+  bool outputBinary = false;
+
+  std::string errorMessage;
+  auto output = openOutputFile(StringRef(outputFile.data, outputFile.length),
+                               &errorMessage);
+  if (!output) {
+    llvm::errs() << errorMessage << "\n";
+    return wrap(failure());
+  }
+
+  auto status = AIETranslateToTxn(
+      mod, output->os(), llvm::StringRef(workDirPath.data, workDirPath.length),
+      outputBinary, aieSim, xaieDebug, enableCores);
+
+  std::vector<std::string> diagnostics;
+  ScopedDiagnosticHandler handler(mod.getContext(), [&](Diagnostic &d) {
+    llvm::raw_string_ostream(diagnostics.emplace_back())
+        << d.getLocation() << ": " << d;
+  });
+
+  if (failed(status))
+    for (const auto &diagnostic : diagnostics)
+      std::cerr << diagnostic << "\n";
+  else
+    output->keep();
+  return wrap(status);
+}
+
+MlirLogicalResult aieTranslateToCtrlpkt(MlirOperation moduleOp,
+                                        MlirStringRef outputFile,
+                                        MlirStringRef workDirPath, bool aieSim,
+                                        bool xaieDebug, bool enableCores) {
+  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
+  bool outputBinary = false;
+
+  std::string errorMessage;
+  auto output = openOutputFile(StringRef(outputFile.data, outputFile.length),
+                               &errorMessage);
+  if (!output) {
+    llvm::errs() << errorMessage << "\n";
+    return wrap(failure());
+  }
+
+  auto status = AIETranslateToControlPackets(
+      mod, output->os(), llvm::StringRef(workDirPath.data, workDirPath.length),
+      outputBinary, aieSim, xaieDebug, enableCores);
+
+  std::vector<std::string> diagnostics;
+  ScopedDiagnosticHandler handler(mod.getContext(), [&](Diagnostic &d) {
+    llvm::raw_string_ostream(diagnostics.emplace_back())
+        << d.getLocation() << ": " << d;
+  });
+
+  if (failed(status))
+    for (const auto &diagnostic : diagnostics)
+      std::cerr << diagnostic << "\n";
+  else
+    output->keep();
+  return wrap(status);
+}
+
+MlirOperation aieTranslateBinaryToTxn(MlirContext ctx, MlirStringRef binary) {
+  std::vector<uint8_t> binaryData(binary.data, binary.data + binary.length);
+  auto mod = AIETranslateBinaryToTxn(unwrap(ctx), binaryData);
+  if (!mod)
+    return wrap(ModuleOp().getOperation());
+  return wrap(mod->getOperation());
+}
+
 MlirStringRef aieTranslateToNPU(MlirOperation moduleOp) {
   std::string npu;
   llvm::raw_string_ostream os(npu);
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
   if (failed(AIETranslateToNPU(mod, os)))
+    return mlirStringRefCreate(nullptr, 0);
+  char *cStr = static_cast<char *>(malloc(npu.size()));
+  npu.copy(cStr, npu.size());
+  return mlirStringRefCreate(cStr, npu.size());
+}
+
+MlirStringRef AIETranslateControlPacketsToUI32Vec(MlirOperation moduleOp) {
+  std::string npu;
+  llvm::raw_string_ostream os(npu);
+  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
+  if (failed(AIETranslateControlPacketsToUI32Vec(mod, os)))
     return mlirStringRefCreate(nullptr, 0);
   char *cStr = static_cast<char *>(malloc(npu.size()));
   npu.copy(cStr, npu.size());
@@ -135,4 +224,35 @@ MlirStringRef aieLLVMLink(MlirStringRef *modules, int nModules) {
   char *cStr = static_cast<char *>(malloc(ll.size()));
   ll.copy(cStr, ll.size());
   return mlirStringRefCreate(cStr, ll.size());
+}
+
+DEFINE_C_API_PTR_METHODS(AieRtControl, xilinx::AIE::AIERTControl)
+
+AieRtControl getAieRtControl(AieTargetModel tm) {
+  // unwrap the target model
+  const BaseNPUTargetModel &targetModel =
+      *reinterpret_cast<const BaseNPUTargetModel *>(tm.d);
+  AIERTControl *ctl = new AIERTControl(targetModel);
+  return wrap(ctl);
+}
+
+void freeAieRtControl(AieRtControl aieCtl) {
+  AIERTControl *ctl = unwrap(aieCtl);
+  delete ctl;
+}
+
+void aieRtDmaUpdateBdAddr(AieRtControl aieCtl, int col, int row, size_t addr,
+                          size_t bdId) {
+  AIERTControl *ctl = unwrap(aieCtl);
+  ctl->dmaUpdateBdAddr(col, row, addr, bdId);
+}
+
+void aieRtStartTransaction(AieRtControl aieCtl) {
+  AIERTControl *ctl = unwrap(aieCtl);
+  ctl->startTransaction();
+}
+
+void aieRtExportSerializedTransaction(AieRtControl aieCtl) {
+  AIERTControl *ctl = unwrap(aieCtl);
+  ctl->exportSerializedTransaction();
 }

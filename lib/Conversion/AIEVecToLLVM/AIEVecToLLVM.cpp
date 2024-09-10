@@ -15,12 +15,12 @@
 #include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Ops.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
+#include "aie/Dialect/AIEVec/Utils/Utils.h"
 #include "aie/Dialect/XLLVM/XLLVMDialect.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/TypeUtilities.h"
-#include <numeric>
 #include <sstream>
 
 using namespace mlir;
@@ -117,15 +117,6 @@ struct BufferParams {
   uint32_t step;
   uint32_t square;
 };
-
-static VectorType getFlattenedVectorType(VectorType vecTy) {
-  if (vecTy.getRank() == 1)
-    return vecTy;
-  auto shape = vecTy.getShape();
-  return VectorType::get(
-      {std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<>())},
-      vecTy.getElementType());
-}
 
 // sgn_x: Sign mask of matrix X. If it is one matrix X is interpreted as
 // signed, else it treated as unsigned.
@@ -1436,11 +1427,11 @@ public:
 };
 
 class SelectOpConversion
-    : public mlir::ConvertOpToLLVMPattern<aievec::SelectOp> {
+    : public mlir::ConvertOpToLLVMPattern<aievec::aie1::SelectOp> {
 public:
-  using ConvertOpToLLVMPattern<aievec::SelectOp>::ConvertOpToLLVMPattern;
+  using ConvertOpToLLVMPattern<aievec::aie1::SelectOp>::ConvertOpToLLVMPattern;
 
-  static std::string getIntrinsicName(aievec::SelectOp op) {
+  static std::string getIntrinsicName(aievec::aie1::SelectOp op) {
     auto xbuffType = cast<VectorType>(op.getXbuff().getType());
     std::stringstream ss;
     ss << "llvm.aie.prim." << getVectorTypeString(xbuffType) << ".select";
@@ -1448,7 +1439,7 @@ public:
   }
 
   LogicalResult
-  matchAndRewrite(aievec::SelectOp op, OpAdaptor adaptor,
+  matchAndRewrite(aievec::aie1::SelectOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto module = op->getParentOfType<ModuleOp>();
     MLIRContext *context = rewriter.getContext();

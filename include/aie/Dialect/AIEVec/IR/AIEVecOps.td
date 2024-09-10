@@ -281,64 +281,6 @@ def AIEVec_ExtOp:
   }];
 }
 
-def AIEVec_SelectOp:
-  AIEVec_Op<"select", [
-    Pure
-  ]>,
-  Arguments<(ins AnyVector:$xbuff,
-               DefaultValuedStrAttr<StrAttr, "">:$select,
-               DefaultValuedStrAttr<StrAttr, "">:$xstart,
-               DefaultValuedStrAttr<StrAttr, "">:$xoffsets,
-               DefaultValuedStrAttr<StrAttr, "">:$xoffsets_hi,
-               DefaultValuedStrAttr<StrAttr, "">:$xsquare,
-               DefaultValuedStrAttr<StrAttr, "">:$ystart,
-               DefaultValuedStrAttr<StrAttr, "">:$yoffsets,
-               DefaultValuedStrAttr<StrAttr, "">:$yoffsets_hi,
-               DefaultValuedStrAttr<StrAttr, "">:$ysquare,
-               Optional<AnyVector>:$ybuff)>,
-  Results<(outs AnyVector:$result)> {
-  let summary = "AIE vector lane selection";
-  let description = [{
-    AMD-specific vector lane selection operation. It selects between the
-    first set of lanes or the second one according to the value in 'select'. 
-    If the bit in select is 0(1), it returns the value in the first(second) 
-    set of lanes.
-    `$result = `select32($select, $xbuff, $xstart, $xoffsets, $ystart, $yoffsets)`
-  }];
-  let builders = [
-    OpBuilder<(ins "mlir::Type":$resultType, "mlir::Value":$xbuff, "llvm::StringRef":$select,
-            "llvm::StringRef":$xstart,
-            "llvm::StringRef":$xoffsets, "llvm::StringRef":$xoffsets_hi,
-            "llvm::StringRef":$xsquare,
-            "llvm::StringRef":$ystart,
-            "llvm::StringRef":$yoffsets, "llvm::StringRef":$yoffsets_hi,
-            "llvm::StringRef":$ysquare),
-    [{build($_builder, $_state, resultType, xbuff, select,
-            xstart, xoffsets, xoffsets_hi, xsquare,
-            ystart, yoffsets, yoffsets_hi, ysquare, nullptr);}]>
-  ];
-  let extraClassDeclaration = [{
-    // Get the attributes
-    llvm::StringRef getStart(int idx) { assert(idx==0 || idx==1);
-                        return idx==0 ? getXstart() : getYstart(); }
-    llvm::StringRef getOffset(int idx) { assert(idx==0 || idx==1);
-                        return idx==0 ? getXoffsets() : getYoffsets(); }
-    llvm::StringRef getOffsetHi(int idx) { assert(idx==0 || idx==1);
-                        return idx==0 ? getXoffsetsHi() : getYoffsetsHi(); }
-    llvm::StringRef getSquare(int idx) { assert(idx==0 || idx==1);
-                        return idx==0 ? getXsquare() : getYsquare(); }
-    // Get the attribute names
-    llvm::StringRef getStartAttrName(int idx) { assert(idx==0 || idx==1);
-                        return idx==0 ? "xstart" : "ystart"; }
-    llvm::StringRef getOffsetAttrName(int idx) { assert(idx==0 || idx==1);
-                        return idx==0 ? "xoffsets" : "yoffsets"; }
-    llvm::StringRef getOffsetHiAttrName(int idx) { assert(idx==0 || idx==1);
-                        return idx==0 ? "xoffsets_hi" : "yoffsets_hi"; }
-    llvm::StringRef getSquareAttrName(int idx) { assert(idx==0 || idx==1);
-                        return idx==0 ? "xsquare" : "ysquare"; }
-  }];
-}
-
 def AIEVec_PackOp:
   AIEVec_Op<"pack", [
     Pure

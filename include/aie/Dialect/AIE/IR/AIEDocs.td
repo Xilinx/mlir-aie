@@ -8,6 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// A simplified version of AIEDialect.h used to generate the on-line
+// documentation
 include "aie/Dialect/AIE/IR/AIE.td"
 include "aie/Dialect/AIE/IR/AIEAttrs.td"
 include "aie/Dialect/AIE/IR/AIEInterfaces.td"

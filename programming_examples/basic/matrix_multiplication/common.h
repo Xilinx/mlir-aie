@@ -118,6 +118,11 @@ std::int16_t get_random<std::int16_t>() {
 }
 
 template <>
+int8_t get_random<int8_t>() {
+  return (int8_t)rand() % 0x100;
+}
+
+template <>
 std::bfloat16_t get_random<std::bfloat16_t>() {
   // Random numbers should NOT be uniformly between 0 and 1, because that
   // would make the matrix product AB always close to 1.
@@ -196,6 +201,11 @@ float get_abs_tol<float>() {
 }
 
 template <>
+float get_abs_tol<int8_t>() {
+  return 0;
+}
+
+template <>
 float get_rel_tol<std::int16_t>() {
   return 0.0;
 }
@@ -213,6 +223,11 @@ float get_rel_tol<std::bfloat16_t>() {
 template <>
 float get_rel_tol<float>() {
   return 0.05;
+}
+
+template <>
+float get_rel_tol<int8_t>() {
+  return 0;
 }
 
 template <typename T>
@@ -273,6 +288,21 @@ void print_matrix(const std::vector<T> matrix, int n_cols,
   }
 
 #undef print_row
+}
+
+// int8_t aka char will not print as a number but as a character; specialize
+// print_matrix<int8_t> to cast to int16_t first so everything prints as numbers
+template <>
+void print_matrix(const std::vector<int8_t> matrix, int n_cols,
+                  int n_printable_rows, int n_printable_cols,
+                  std::ostream &ostream, const char col_sep[],
+                  const char elide_sym[], int w) {
+  std::vector<int16_t> cast_matrix(matrix.size());
+  for (int i = 0; i < matrix.size(); i++) {
+    cast_matrix[i] = (int16_t)matrix[i];
+  }
+  print_matrix(cast_matrix, n_cols, n_printable_rows, n_printable_cols, ostream,
+               col_sep, elide_sym, w);
 }
 
 constexpr int max_printable_errors = 32;

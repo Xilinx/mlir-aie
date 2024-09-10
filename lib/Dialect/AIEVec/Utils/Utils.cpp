@@ -17,6 +17,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include <numeric>
 
 #define DEBUG_TYPE "aievec-utils"
 
@@ -94,5 +95,14 @@ getTransferReadAlignmentOffset(vector::TransferReadOp readOp, VectorType vType,
 template std::optional<int64_t>
 getTransferReadAlignmentOffset(vector::TransferReadOp::Adaptor readOp,
                                VectorType vType, int64_t alignment);
+
+VectorType getFlattenedVectorType(VectorType vecTy) {
+  if (vecTy.getRank() == 1)
+    return vecTy;
+  auto shape = vecTy.getShape();
+  return VectorType::get(
+      {std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<>())},
+      vecTy.getElementType());
+}
 
 } // namespace xilinx::aievec

@@ -5,9 +5,10 @@
 //
 // (c) Copyright 2024 AMD Inc.
 
-// REQUIRES: ryzen_ai
-//
 // RUN: aie-opt --verify-diagnostics --aie-dma-tasks-to-npu %s 
+
+// This test ensures the proper error is emitted if a single block inside a `aiex.dma_configure_task` op
+// contains multiple `aie.dma_bd` operations -- only one such operation is allowed per basic block.
 
 module {
   aie.device(npu1_4col) {

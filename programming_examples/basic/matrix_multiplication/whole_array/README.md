@@ -108,6 +108,8 @@ Each of `inA_fifos`, `inB_fifos`, `OutC_fifos`, `memA_fifos`, `memB_fifos` and `
 
 Of note is the `object_fifo_link()` operation. This operation establishes a connection between the `mem*` FIFOs and the `in*` and `outC` FIFOs. By linking ObjectFIFOs, the output received at one end of the source FIFO is fed as input into the ObjectFIFO listed as the destination.
 
+[![data movement diagram](diagram.png)](https://excalidraw.com/#room=23df780b85d72d80cbc6,1czLdPr_vK9-OjtxFIWTpw)
+
 <!-- 2. Creation of Object Fifos for Matrix A:
 
     * The input matrix A is streamed from the host to the AIE array using object fifos. `inA_fifos` and `memA_fifos` are dictionaries created to store the object fifos for input matrix A. `inA_fifo_names` and `memA_fifo_names` are lists storing the names of corresponding object fifos.
