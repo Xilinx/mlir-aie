@@ -8,8 +8,11 @@
 #ifndef AIE_C_TRANSLATION_H
 #define AIE_C_TRANSLATION_H
 
+#include "aie-c/TargetModel.h"
+
 #include "mlir-c/IR.h"
 #include "mlir-c/Support.h"
+#include "mlir/CAPI/Wrap.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,6 +43,18 @@ MLIR_CAPI_EXPORTED MlirLogicalResult aieTranslateToCtrlpkt(
     bool aieSim, bool xaieDebug, bool enableCores);
 MLIR_CAPI_EXPORTED MlirOperation aieTranslateBinaryToTxn(MlirContext ctx,
                                                          MlirStringRef binary);
+
+struct AieRtControl {
+  void *ptr;
+};
+using AieRtControl = struct AieRtControl;
+
+MLIR_CAPI_EXPORTED AieRtControl getAieRtControl(AieTargetModel tm);
+MLIR_CAPI_EXPORTED void freeAieRtControl(AieRtControl aieCtl);
+MLIR_CAPI_EXPORTED void aieRtStartTransaction(AieRtControl aieCtl);
+MLIR_CAPI_EXPORTED void aieRtDmaUpdateBdAddr(AieRtControl aieCtl, int col,
+                                             int row, size_t addr, size_t bdId);
+MLIR_CAPI_EXPORTED void aieRtExportSerializedTransaction(AieRtControl aieCtl);
 
 #ifdef __cplusplus
 }

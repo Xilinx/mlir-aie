@@ -10,6 +10,8 @@
 #include "aie-c/TargetModel.h"
 #include "aie-c/Translation.h"
 
+#include "aie/Bindings/PyTypes.h"
+
 #include "mlir-c/IR.h"
 #include "mlir-c/Support.h"
 #include "mlir/Bindings/Python/PybindAdaptors.h"
@@ -27,16 +29,6 @@
 using namespace mlir::python::adaptors;
 namespace py = pybind11;
 using namespace py::literals;
-
-class PyAieTargetModel {
-public:
-  PyAieTargetModel(AieTargetModel model) : model(model) {}
-  operator AieTargetModel() const { return model; }
-  AieTargetModel get() const { return model; }
-
-private:
-  AieTargetModel model;
-};
 
 PYBIND11_MODULE(_aie, m) {
 

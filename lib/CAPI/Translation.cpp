@@ -9,6 +9,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie-c/Translation.h"
+
+#include "aie/Dialect/AIE/IR/AIETargetModel.h"
+#include "aie/Targets/AIERT.h"
 #include "aie/Targets/AIETargets.h"
 
 #include "mlir-c/IR.h"
@@ -21,7 +24,6 @@
 #include "mlir/Target/LLVMIR/Export.h"
 
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
@@ -222,4 +224,35 @@ MlirStringRef aieLLVMLink(MlirStringRef *modules, int nModules) {
   char *cStr = static_cast<char *>(malloc(ll.size()));
   ll.copy(cStr, ll.size());
   return mlirStringRefCreate(cStr, ll.size());
+}
+
+DEFINE_C_API_PTR_METHODS(AieRtControl, xilinx::AIE::AIERTControl)
+
+AieRtControl getAieRtControl(AieTargetModel tm) {
+  // unwrap the target model
+  const BaseNPUTargetModel &targetModel =
+      *reinterpret_cast<const BaseNPUTargetModel *>(tm.d);
+  AIERTControl *ctl = new AIERTControl(targetModel);
+  return wrap(ctl);
+}
+
+void freeAieRtControl(AieRtControl aieCtl) {
+  AIERTControl *ctl = unwrap(aieCtl);
+  delete ctl;
+}
+
+void aieRtDmaUpdateBdAddr(AieRtControl aieCtl, int col, int row, size_t addr,
+                          size_t bdId) {
+  AIERTControl *ctl = unwrap(aieCtl);
+  ctl->dmaUpdateBdAddr(col, row, addr, bdId);
+}
+
+void aieRtStartTransaction(AieRtControl aieCtl) {
+  AIERTControl *ctl = unwrap(aieCtl);
+  ctl->startTransaction();
+}
+
+void aieRtExportSerializedTransaction(AieRtControl aieCtl) {
+  AIERTControl *ctl = unwrap(aieCtl);
+  ctl->exportSerializedTransaction();
 }
