@@ -900,27 +900,22 @@ struct AIEObjectFifoStatefulTransformPass
               counterVector.push_back(entry.second);
             }
             llvm::ArrayRef<Value> counterArrayRef(counterVector);
-            // Recreate for Loop as for Loop with iter_args
+            // Recreate forLoop as forLoopWithIterArgs
             // and copy the body of the old loop
             auto forLoopWithIterArgs = builder.create<scf::ForOp>(loc, forLoop.getLowerBound(), forLoop.getUpperBound(), forLoop.getStep(), ValueRange(counterArrayRef));
             Block *newLoopBody = forLoopWithIterArgs.getBody();
-            Block *oldLoopBody = forLoop.getBody();
-            int count = 0;
-            for(auto &op : *oldLoopBody){
-              if(forLoop.getBody()->getTerminator() == &op) {
-                continue;
-              }
-              builder.setInsertionPointToEnd(newLoopBody);
-              builder.clone(op);
-              count++;
-            }
+            forLoop.getResults().replaceAllUsesWith(forLoopWithIterArgs.getResults());
+            body->back().erase();
+            newLoopBody->getOperations().splice(
+                Block::iterator(newLoopBody->back()),
+                body->getOperations());
+            forLoop.erase();
 
             loc = forLoopWithIterArgs.getLoc();
-            body = forLoopWithIterArgs.getBody();
             builder.setInsertionPointToStart(newLoopBody);
             // Number of subviews found inside the for loop equals
             // the number of switch statements to be written
-            body->walk([&](ObjectFifoSubviewAccessOp accessOp) {
+            newLoopBody->walk([&](ObjectFifoSubviewAccessOp accessOp) {
               auto acqOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
               ObjectFifoCreateOp createOp = acqOp.getObjectFifo();
               // Create a switch for each subview access
@@ -947,16 +942,9 @@ struct AIEObjectFifoStatefulTransformPass
                 int bufferToBeAccesed = (accessOp.getIndex() + i)%fifoSizes[createOp];
                 builder.create<scf::YieldOp>(switchOp.getCaseRegions()[i].getLoc(), buffersPerFifo[createOp][bufferToBeAccesed].getResult());   
               }           
-              // NEED FIXING: Find all the function calls to replace the arguments
-              // Not sure if anything else other than function calls also use the buffer inside the loop
-              auto result = switchOp.getResult(0);
-              for (auto callOp : newLoopBody->getOps<func::CallOp>()) {
-                for(unsigned i = 0; i<callOp.getNumOperands(); ++i){
-                  auto arg = callOp.getOperand(i);
-                  if(arg == accessOp)
-                     callOp.setOperand(i, result);
-                  }
-              }
+
+              // Replace all uses of accessed objectfifo buffers with results of switchOps
+              accessOp.getOutput().replaceAllUsesWith(switchOp.getResult(0));
               loc = switchOp.getLoc();
               builder.setInsertionPointAfter(switchOp);
 
@@ -979,14 +967,6 @@ struct AIEObjectFifoStatefulTransformPass
             
             builder.setInsertionPointToEnd(newLoopBody);
             builder.create<scf::YieldOp>(forLoopWithIterArgs.getLoc(), ValueRange(ArrayRef(counterVector)));
-            forLoop.replaceAllUsesWith(forLoopWithIterArgs);
-            forLoop.getResults().replaceAllUsesWith(forLoopWithIterArgs.getResults());
-            // NEED FIXING: When I try to remove the forLoop without this, it crashes.
-            for(int i=0; i<count/2; i++){ 
-                forLoop.getBody()->back().erase();
-            }
-            forLoop->getBlock()->getOperations().splice(Block::iterator(forLoop),forLoop.getBody()->getOperations());
-            forLoop.erase();
           }
           return WalkResult::advance();
         });
