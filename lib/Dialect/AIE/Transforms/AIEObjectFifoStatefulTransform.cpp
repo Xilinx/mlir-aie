@@ -884,7 +884,7 @@ struct AIEObjectFifoStatefulTransformPass
           
           // If for Loop is found with objectFifos,
           // convert the objectFifos into dynamic Fifos.
-          if(found){
+          if (found) {
             std::map<ObjectFifoCreateOp, Value> counterMap;
             OpBuilder builder(forLoop);
             builder.setInsertionPoint(forLoop);
@@ -900,6 +900,7 @@ struct AIEObjectFifoStatefulTransformPass
               counterVector.push_back(entry.second);
             }
             llvm::ArrayRef<Value> counterArrayRef(counterVector);
+
             // Recreate forLoop as forLoopWithIterArgs
             // and copy the body of the old loop
             auto forLoopWithIterArgs = builder.create<scf::ForOp>(loc, forLoop.getLowerBound(), forLoop.getUpperBound(), forLoop.getStep(), ValueRange(counterArrayRef));
@@ -918,28 +919,27 @@ struct AIEObjectFifoStatefulTransformPass
             newLoopBody->walk([&](ObjectFifoSubviewAccessOp accessOp) {
               auto acqOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
               ObjectFifoCreateOp createOp = acqOp.getObjectFifo();
+
               // Create a switch for each subview access
-              auto maxIndex = builder.create<arith::ConstantIndexOp>(loc, fifoSizes[createOp]);
-              Value maxCounter = maxIndex;
+              auto maxCounter = builder.create<arith::ConstantIndexOp>(loc, fifoSizes[createOp]);
+              // NEEDS FIX: It's not the counterMap[createOp] that should be used but the iterArg it corresponds to.
+              // maybe use: getRegionIterArg(unsigned index)
               Value switchIndex = builder.create<arith::RemSIOp>(loc, counterMap[createOp], maxCounter);
               unsigned caseRegionCounts = fifoSizes[createOp];
               SmallVector<int64_t, 4> caseValues;
-              
-              for (int i= 0; i < fifoSizes[createOp]; ++i){
-                int j = i + accessOp.getIndex();
-                if(j >= fifoSizes[createOp])
-                  j = fifoSizes[createOp] - j;
-                caseValues.push_back(j);
+              for (int i = 0; i < fifoSizes[createOp]; ++i){
+                caseValues.push_back(i);
               }
               auto cases = DenseI64ArrayAttr::get(builder.getContext(), caseValues);
               auto switchOp = builder.create<scf::IndexSwitchOp>(loc, TypeRange({buffersPerFifo[createOp][0].getType()}), switchIndex, cases, caseRegionCounts);  
+              // Create default case of IndexSwitchOp
               builder.createBlock(&switchOp.getDefaultRegion());
               builder.create<scf::YieldOp>(switchOp.getLoc(), buffersPerFifo[createOp][accessOp.getIndex()].getResult());         
-              for (int i= 0; i < fifoSizes[createOp]; ++i){
-                //Define cases
-                builder.setInsertionPoint(&switchOp.getCaseBlock(i),switchOp.getCaseBlock(i).begin());
+              for (int i = 0; i < fifoSizes[createOp]; ++i){
+                // Create other cases of IndexSwitchOp
+                builder.setInsertionPoint(&switchOp.getCaseBlock(i), switchOp.getCaseBlock(i).begin());
                 builder.createBlock(&switchOp.getCaseRegions()[i]);
-                int bufferToBeAccesed = (accessOp.getIndex() + i)%fifoSizes[createOp];
+                int bufferToBeAccesed = (accessOp.getIndex() + i) % fifoSizes[createOp];
                 builder.create<scf::YieldOp>(switchOp.getCaseRegions()[i].getLoc(), buffersPerFifo[createOp][bufferToBeAccesed].getResult());   
               }           
 
@@ -964,7 +964,6 @@ struct AIEObjectFifoStatefulTransformPass
             for(const auto &entry : counterMap){
               counterVector.push_back(entry.second);
             }
-            
             builder.setInsertionPointToEnd(newLoopBody);
             builder.create<scf::YieldOp>(forLoopWithIterArgs.getLoc(), ValueRange(ArrayRef(counterVector)));
           }
