@@ -839,15 +839,6 @@ struct AIEObjectFifoStatefulTransformPass
     }
   }
 
-  // Function that computes the Least Common Multiplier of the values
-  // of a vector.
-  int computeLCM(std::set<int> values) {
-    int lcm = 1;
-    for (int i : values)
-      lcm = i * lcm / std::gcd(i, lcm);
-    return lcm;
-  }
-
   // Function that creates dynamic objectFifos.
   LogicalResult dynamicObjectFifos(DeviceOp &device, OpBuilder &builder,
                                std::set<TileOp> objectFifoTiles) {
