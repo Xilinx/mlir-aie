@@ -1,0 +1,11 @@
+// (c) Copyright 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, chess
+//
+// RUN: mkdir -p %S/test_2
+// RUN: cd %S/test_2
+// RUN: make -f %S/Makefile clean
+// RUN: env M=768 K=512 N=512 m=64 k=64 n=64 dtype_in=i16 dtype_out=i16 make -f %S/Makefile 
+// RUN: %run_on_npu env M=768 K=512 N=512 m=64 k=64 n=64 dtype_in=i16 dtype_out=i16 make -f %S/Makefile run | FileCheck %s
+// CHECK: PASS!
