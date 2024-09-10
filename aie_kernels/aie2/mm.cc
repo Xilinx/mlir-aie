@@ -25,7 +25,7 @@
 #include "zero.cc"
 
 template <typename T_in, typename T_out, int rowA, int colA, int colB>
-void matmul_scalar(T_in *a, T_in *b, T_out *c) {
+static inline void matmul_scalar(T_in *a, T_in *b, T_out *c) {
   event0();
   for (int row = 0; row < rowA; row++) {
     for (int col = 0; col < colB; col++) {
@@ -41,8 +41,9 @@ void matmul_scalar(T_in *a, T_in *b, T_out *c) {
 
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t>
-void matmul_vectorized(const T_in *__restrict pA, const T_in *__restrict pB,
-                       T_out *__restrict pC) {
+static inline void matmul_vectorized(const T_in *__restrict pA,
+                                     const T_in *__restrict pB,
+                                     T_out *__restrict pC) {
   using MMUL = aie::mmul<r, s, t, T_in, T_in, accfloat>;
 
   event0();
@@ -134,8 +135,9 @@ void matmul_vectorized(const T_in *__restrict pA, const T_in *__restrict pB,
 
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t>
-void matmul_vectorized_1x2(const T_in *__restrict pA, const T_in *__restrict pB,
-                           T_out *__restrict pC) {
+static inline void matmul_vectorized_1x2(const T_in *__restrict pA,
+                                         const T_in *__restrict pB,
+                                         T_out *__restrict pC) {
   using MMUL = aie::mmul<r, s, t, T_in, T_in, accfloat>;
   unsigned long long time;
   event0();
@@ -260,8 +262,9 @@ void matmul_vectorized_1x2(const T_in *__restrict pA, const T_in *__restrict pB,
 
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t>
-void matmul_vectorized_2x2(const T_in *__restrict pA, const T_in *__restrict pB,
-                           T_out *__restrict pC) {
+static inline void matmul_vectorized_2x2(const T_in *__restrict pA,
+                                         const T_in *__restrict pB,
+                                         T_out *__restrict pC) {
   using MMUL = aie::mmul<r, s, t, T_in, T_in, accfloat>;
 
   event0();
@@ -476,9 +479,9 @@ void matmul_vectorized_2x2(const T_in *__restrict pA, const T_in *__restrict pB,
 }
 
 template <unsigned m, unsigned k, unsigned n>
-void matmul_vectorized_4x4x4_i16_i16(const int16 *__restrict pA,
-                                     const int16 *__restrict pB,
-                                     int16 *__restrict pC) {
+static inline void matmul_vectorized_4x4x4_i16_i16(const int16 *__restrict pA,
+                                                   const int16 *__restrict pB,
+                                                   int16 *__restrict pC) {
   // matmul_vectorized operates on two 4x4 input blocks of A, and two 4x4 input
   // blocks of B in each iteration. Make sure we have at least 2 blocks in each
   // dimension, and that our input matrix is evenly divisible.
@@ -493,9 +496,9 @@ void matmul_vectorized_4x4x4_i16_i16(const int16 *__restrict pA,
 }
 
 template <unsigned m, unsigned k, unsigned n>
-void matmul_vectorized_4x4x4_i16_i32(const int16 *__restrict pA,
-                                     const int16 *__restrict pB,
-                                     int32 *__restrict pC) {
+static inline void matmul_vectorized_4x4x4_i16_i32(const int16 *__restrict pA,
+                                                   const int16 *__restrict pB,
+                                                   int32 *__restrict pC) {
   // matmul_vectorized operates on two 4x4 input blocks of A, and two 4x4 input
   // blocks of B in each iteration. Make sure we have at least 2 blocks in each
   // dimension, and that our input matrix is evenly divisible.
@@ -510,9 +513,10 @@ void matmul_vectorized_4x4x4_i16_i32(const int16 *__restrict pA,
 }
 
 template <unsigned m, unsigned k, unsigned n>
-void matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
-                                       const bfloat16 *__restrict pB,
-                                       bfloat16 *__restrict pC) {
+static inline void
+matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
+                                  const bfloat16 *__restrict pB,
+                                  bfloat16 *__restrict pC) {
   constexpr int r = 4;
   constexpr int s = 8;
   constexpr int t = 4;
@@ -525,9 +529,10 @@ void matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
 }
 
 template <unsigned m, unsigned k, unsigned n>
-void matmul_vectorized_4x8x4_bf16_f32(const bfloat16 *__restrict pA,
-                                      const bfloat16 *__restrict pB,
-                                      float *__restrict pC) {
+static inline void
+matmul_vectorized_4x8x4_bf16_f32(const bfloat16 *__restrict pA,
+                                 const bfloat16 *__restrict pB,
+                                 float *__restrict pC) {
   constexpr int r = 4;
   constexpr int s = 8;
   constexpr int t = 4;
@@ -539,9 +544,9 @@ void matmul_vectorized_4x8x4_bf16_f32(const bfloat16 *__restrict pA,
 }
 
 template <unsigned m, unsigned k, unsigned n>
-void matmul_vectorized_4x8x8_i8_i8(const int8 *__restrict pA,
-                                   const int8 *__restrict pB,
-                                   int8 *__restrict pC) {
+static inline void matmul_vectorized_4x8x8_i8_i8(const int8 *__restrict pA,
+                                                 const int8 *__restrict pB,
+                                                 int8 *__restrict pC) {
   constexpr int r = 4;
   constexpr int s = 8;
   constexpr int t = 8;
@@ -553,9 +558,9 @@ void matmul_vectorized_4x8x8_i8_i8(const int8 *__restrict pA,
 }
 
 template <unsigned m, unsigned k, unsigned n>
-void matmul_vectorized_4x8x8_i8_i16(const int8 *__restrict pA,
-                                    const int8 *__restrict pB,
-                                    int16 *__restrict pC) {
+static inline void matmul_vectorized_4x8x8_i8_i16(const int8 *__restrict pA,
+                                                  const int8 *__restrict pB,
+                                                  int16 *__restrict pC) {
   constexpr int r = 4;
   constexpr int s = 8;
   constexpr int t = 8;
@@ -567,9 +572,9 @@ void matmul_vectorized_4x8x8_i8_i16(const int8 *__restrict pA,
 }
 
 template <unsigned m, unsigned k, unsigned n>
-void matmul_vectorized_4x8x8_i8_i32(const int8 *__restrict pA,
-                                    const int8 *__restrict pB,
-                                    int32 *__restrict pC) {
+static inline void matmul_vectorized_4x8x8_i8_i32(const int8 *__restrict pA,
+                                                  const int8 *__restrict pB,
+                                                  int32 *__restrict pC) {
   constexpr int r = 4;
   constexpr int s = 8;
   constexpr int t = 8;
@@ -600,38 +605,31 @@ extern "C" {
 #endif
 
 #ifdef i8_i8_ONLY
-#define combos(X) \
-  X(int8, i8, int8, i8, 4, 8, 8)
+#define combos(X) X(int8, i8, int8, i8, 4, 8, 8)
 #endif
 
 #ifdef i8_i16_ONLY
-#define combos(X) \
-  X(int8, i8, int16, i16, 4, 8, 8)
+#define combos(X) X(int8, i8, int16, i16, 4, 8, 8)
 #endif
 
 #ifdef i8_i32_ONLY
-#define combos(X) \
-  X(int8, i8, int32, i32, 4, 8, 8)
+#define combos(X) X(int8, i8, int32, i32, 4, 8, 8)
 #endif
 
 #ifdef i16_i16_ONLY
-#define combos(X) \
-  X(int16, i16, int16, i16, 4, 4, 4)
+#define combos(X) X(int16, i16, int16, i16, 4, 4, 4)
 #endif
 
 #ifdef i16_i32_ONLY
-#define combos(X) \
-  X(int16, i16, int32, i32, 4, 4, 4)
+#define combos(X) X(int16, i16, int32, i32, 4, 4, 4)
 #endif
 
 #ifdef bf16_bf16_ONLY
-#define combos(X) \
-  X(bfloat16, bf16, bfloat16, bf16, 4, 8, 4)
+#define combos(X) X(bfloat16, bf16, bfloat16, bf16, 4, 8, 4)
 #endif
 
 #ifdef bf16_f32_ONLY
-#define combos(X) \
-  X(bfloat16, bf16, float, f32, 4, 8, 4)
+#define combos(X) X(bfloat16, bf16, float, f32, 4, 8, 4)
 #endif
 
 #ifdef ALL_COMBOS
