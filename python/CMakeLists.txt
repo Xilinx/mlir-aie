@@ -103,10 +103,10 @@ if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
   )
 endif()
 
-declare_mlir_python_sources(AIEPythonSources.AIERTX
+declare_mlir_python_sources(AIEPythonSources.AIERT
   ADD_TO_PARENT AIEPythonSources
   SOURCES
-    aiertx.py
+    aiert.py
 )
 
 ################################################################################
@@ -173,7 +173,7 @@ if (AIE_ENABLE_PYTHON_PASSES)
     list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/XRTModule.cpp)
     list(APPEND _py_libs xrt_coreutil uuid)
   endif()
-  list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/AIERTXModule.cpp)
+  list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/AIERTModule.cpp)
 
   declare_mlir_python_extension(AIEPythonExtensions.MLIR
     MODULE_NAME _aie
@@ -297,14 +297,14 @@ else ()
     target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})
   endif()
 
-  declare_mlir_python_extension(AIEPythonExtensions.AIERTX
-    MODULE_NAME _aiertx
+  declare_mlir_python_extension(AIEPythonExtensions.AIERT
+    MODULE_NAME _aiert
     ADD_TO_PARENT AIEPythonExtensions
     ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
 
     PARTIAL_SOURCES_INTENDED
     SOURCES
-      AIERTXModule.cpp
+      AIERTModule.cpp
 
     PRIVATE_LINK_LIBS
       LLVMSupport

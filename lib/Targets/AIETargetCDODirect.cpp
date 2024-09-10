@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Targets/AIERTX.h"
+#include "aie/Targets/AIERT.h"
 #include "aie/Targets/AIETargets.h"
 extern "C" {
 #include "cdo-driver/cdo_driver.h"
@@ -73,7 +73,7 @@ generateCDOBinary(const StringRef outputPath,
   return success();
 }
 
-static LogicalResult generateCDOBinariesSeparately(AIERTXControl &ctl,
+static LogicalResult generateCDOBinariesSeparately(AIERTControl &ctl,
                                                    const StringRef workDirPath,
                                                    DeviceOp &targetOp,
                                                    bool aieSim,
@@ -104,7 +104,7 @@ static LogicalResult generateCDOBinariesSeparately(AIERTXControl &ctl,
   return success();
 }
 
-static LogicalResult generateCDOUnified(AIERTXControl &ctl,
+static LogicalResult generateCDOUnified(AIERTControl &ctl,
                                         const StringRef workDirPath,
                                         DeviceOp &targetOp, bool aieSim,
                                         bool enableCores) {
@@ -141,7 +141,7 @@ translateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
   // shim dma on tile (0,0) are hard-coded assumptions about NPU...
   assert(targetModel.isNPU() && "Only NPU currently supported");
 
-  AIERTXControl ctl(targetModel);
+  AIERTControl ctl(targetModel);
   if (failed(ctl.setIOBackend(aieSim, xaieDebug)))
     return failure();
   initializeCDOGenerator(endianness, cdoDebug);
@@ -319,9 +319,10 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
   return num_cols;
 }
 
-static LogicalResult
-generateTxn(AIERTXControl &ctl, const StringRef workDirPath, DeviceOp &targetOp,
-            bool aieSim, bool enableElfs, bool enableInit, bool enableCores) {
+static LogicalResult generateTxn(AIERTControl &ctl, const StringRef workDirPath,
+                                 DeviceOp &targetOp, bool aieSim,
+                                 bool enableElfs, bool enableInit,
+                                 bool enableCores) {
   if (enableElfs && !targetOp.getOps<CoreOp>().empty() &&
       failed(ctl.addAieElfs(targetOp, workDirPath, aieSim)))
     return failure();
@@ -348,7 +349,7 @@ static LogicalResult translateToTxn(ModuleOp m, std::vector<uint8_t> &output,
   if (!targetModel.isNPU())
     return failure();
 
-  AIERTXControl ctl(targetModel);
+  AIERTControl ctl(targetModel);
   if (failed(ctl.setIOBackend(aieSim, xaieDebug)))
     return failure();
 

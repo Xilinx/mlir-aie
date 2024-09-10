@@ -1,4 +1,4 @@
-//===- AIERTX.cpp -----------------------------------------------*- C++ -*-===//
+//===- AIERT.cpp ------------------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Targets/AIERTX.h"
+#include "aie/Targets/AIERT.h"
 
 #include "mlir/Support/LogicalResult.h"
 
@@ -29,7 +29,7 @@ extern "C" {
 
 using namespace mlir;
 
-#define DEBUG_TYPE "aie-aiertx"
+#define DEBUG_TYPE "aie-aiert"
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const XAie_LocType &loc) {
   os << "XAie_LocType(col: " << std::to_string(loc.Col)
@@ -52,7 +52,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 
 namespace xilinx::AIE {
 
-AIERTXControl::AIERTXControl(const AIE::BaseNPUTargetModel &tm)
+AIERTControl::AIERTControl(const AIE::BaseNPUTargetModel &tm)
     : targetModel(tm) {
   // The first column in the NPU lacks a shim tile.  AIE-RT exposes some of
   // the internals about how this is modeled in a somewhat awkward way.
@@ -98,7 +98,7 @@ AIERTXControl::AIERTXControl(const AIE::BaseNPUTargetModel &tm)
   TRY_XAIE_API_FATAL_ERROR(XAie_UpdateNpiAddr, &devInst, NPI_ADDR);
 }
 
-LogicalResult AIERTXControl::setIOBackend(bool aieSim, bool xaieDebug) {
+LogicalResult AIERTControl::setIOBackend(bool aieSim, bool xaieDebug) {
   // Quoting: The instance of a device must be always declared using this
   // macro. In the future, the same macro will be expanded to
   // allocate more memory from the user application for resource
@@ -113,9 +113,9 @@ LogicalResult AIERTXControl::setIOBackend(bool aieSim, bool xaieDebug) {
   return success();
 }
 
-LogicalResult AIERTXControl::configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
-                                                     Block &block,
-                                                     XAie_LocType &tileLoc) {
+LogicalResult AIERTControl::configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
+                                                    Block &block,
+                                                    XAie_LocType &tileLoc) {
   LLVM_DEBUG(llvm::dbgs() << "\nstart configuring bds\n");
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
   bool acqEn = false;
@@ -163,10 +163,10 @@ LogicalResult AIERTXControl::configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
   return success();
 }
 
-LogicalResult AIERTXControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
-                                                Block &block,
-                                                XAie_LocType &tileLoc, int bdId,
-                                                std::optional<int> nextBdId) {
+LogicalResult AIERTControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
+                                               Block &block,
+                                               XAie_LocType &tileLoc, int bdId,
+                                               std::optional<int> nextBdId) {
   std::optional<int> packetType;
   std::optional<int> packetID;
 
@@ -309,9 +309,10 @@ LogicalResult AIERTXControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
   return success();
 };
 
-LogicalResult AIERTXControl::pushToBdQueueAndEnable(
-    Operation &op, XAie_LocType &tileLoc, int chNum,
-    const DMAChannelDir &channelDir, int bdId, int repeatCount) {
+LogicalResult
+AIERTControl::pushToBdQueueAndEnable(Operation &op, XAie_LocType &tileLoc,
+                                     int chNum, const DMAChannelDir &channelDir,
+                                     int bdId, int repeatCount) {
   XAie_DmaDirection direction =
       channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
   auto enTokenIssue = tileLoc.Row == 0 && direction == DMA_S2MM;
@@ -325,8 +326,8 @@ LogicalResult AIERTXControl::pushToBdQueueAndEnable(
   return success();
 };
 
-LogicalResult AIERTXControl::configureLocksAndBd(Block &block,
-                                                 XAie_LocType tileLoc) {
+LogicalResult AIERTControl::configureLocksAndBd(Block &block,
+                                                XAie_LocType tileLoc) {
   DMABDOp bd = *block.getOps<DMABDOp>().begin();
   assert(bd.getBdId().has_value() &&
          "DMABDOp must have assigned bd_id; did you forget to run "
@@ -343,7 +344,7 @@ LogicalResult AIERTXControl::configureLocksAndBd(Block &block,
   return success();
 }
 
-LogicalResult AIERTXControl::initLocks(DeviceOp &targetOp) {
+LogicalResult AIERTControl::initLocks(DeviceOp &targetOp) {
   for (auto tileOp : targetOp.getOps<TileOp>()) {
     auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
     if (!tileOp.isShimTile() && tileOp.getCoreOp()) {
@@ -372,7 +373,7 @@ LogicalResult AIERTXControl::initLocks(DeviceOp &targetOp) {
   return success();
 }
 
-LogicalResult AIERTXControl::configureSwitches(DeviceOp &targetOp) {
+LogicalResult AIERTControl::configureSwitches(DeviceOp &targetOp) {
 
   // StreamSwitch (switchbox) configuration
   for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
@@ -496,7 +497,7 @@ LogicalResult AIERTXControl::configureSwitches(DeviceOp &targetOp) {
   return success();
 }
 
-LogicalResult AIERTXControl::addInitConfig(DeviceOp &targetOp) {
+LogicalResult AIERTControl::addInitConfig(DeviceOp &targetOp) {
 
   if (failed(initLocks(targetOp))) {
     return failure();
@@ -560,7 +561,7 @@ LogicalResult AIERTXControl::addInitConfig(DeviceOp &targetOp) {
   return success();
 }
 
-LogicalResult AIERTXControl::addCoreEnable(DeviceOp &targetOp) {
+LogicalResult AIERTControl::addCoreEnable(DeviceOp &targetOp) {
   // Start execution of all the cores.
   for (auto tileOp : targetOp.getOps<TileOp>()) {
     auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
@@ -570,8 +571,8 @@ LogicalResult AIERTXControl::addCoreEnable(DeviceOp &targetOp) {
   return success();
 }
 
-LogicalResult AIERTXControl::addAieElf(uint8_t col, uint8_t row,
-                                       const StringRef elfPath, bool aieSim) {
+LogicalResult AIERTControl::addAieElf(uint8_t col, uint8_t row,
+                                      const StringRef elfPath, bool aieSim) {
   TRY_XAIE_API_LOGICAL_RESULT(XAie_CoreDisable, &devInst,
                               XAie_TileLoc(col, row));
   TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, &devInst,
@@ -590,9 +591,9 @@ LogicalResult AIERTXControl::addAieElf(uint8_t col, uint8_t row,
   return success();
 }
 
-LogicalResult AIERTXControl::addAieElfs(DeviceOp &targetOp,
-                                        const StringRef workDirPath,
-                                        bool aieSim) {
+LogicalResult AIERTControl::addAieElfs(DeviceOp &targetOp,
+                                       const StringRef workDirPath,
+                                       bool aieSim) {
   for (auto tileOp : targetOp.getOps<TileOp>())
     if (tileOp.isShimNOCorPLTile()) {
       // Resets no needed with V2 kernel driver
@@ -619,18 +620,17 @@ LogicalResult AIERTXControl::addAieElfs(DeviceOp &targetOp,
   return success();
 }
 
-void AIERTXControl::dmaUpdateBdAddr(int col, int row, size_t addr,
-                                    size_t bdId) {
+void AIERTControl::dmaUpdateBdAddr(int col, int row, size_t addr, size_t bdId) {
   auto tileLoc = XAie_TileLoc(col, row);
   TRY_XAIE_API_FATAL_ERROR(XAie_DmaUpdateBdAddr, &devInst, tileLoc, addr, bdId);
 }
 
-void AIERTXControl::startTransaction() {
+void AIERTControl::startTransaction() {
   TRY_XAIE_API_FATAL_ERROR(XAie_StartTransaction, &devInst,
                            XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
 }
 
-void AIERTXControl::exportSerializedTransaction() {
+void AIERTControl::exportSerializedTransaction() {
   XAie_TxnInst *txnInst = XAie_ExportTransactionInstance(&devInst);
   std::ios_base::fmtflags f(std::cout.flags());
   for (size_t i = 0; i < txnInst->NumCmds; ++i) {

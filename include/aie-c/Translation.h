@@ -44,18 +44,17 @@ MLIR_CAPI_EXPORTED MlirLogicalResult aieTranslateToCtrlpkt(
 MLIR_CAPI_EXPORTED MlirOperation aieTranslateBinaryToTxn(MlirContext ctx,
                                                          MlirStringRef binary);
 
-struct AieRtxControl {
+struct AieRtControl {
   void *ptr;
 };
-using AieRtxControl = struct AieRtxControl;
+using AieRtControl = struct AieRtControl;
 
-MLIR_CAPI_EXPORTED AieRtxControl getAieRtxControl(AieTargetModel tm);
-MLIR_CAPI_EXPORTED void freeAieRtxControl(AieRtxControl aieCtl);
-MLIR_CAPI_EXPORTED void aieRtxStartTransaction(AieRtxControl aieCtl);
-MLIR_CAPI_EXPORTED void aieRtxDmaUpdateBdAddr(AieRtxControl aieCtl, int col,
-                                              int row, size_t addr,
-                                              size_t bdId);
-MLIR_CAPI_EXPORTED void aieRtxExportSerializedTransaction(AieRtxControl aieCtl);
+MLIR_CAPI_EXPORTED AieRtControl getAieRtControl(AieTargetModel tm);
+MLIR_CAPI_EXPORTED void freeAieRtControl(AieRtControl aieCtl);
+MLIR_CAPI_EXPORTED void aieRtStartTransaction(AieRtControl aieCtl);
+MLIR_CAPI_EXPORTED void aieRtDmaUpdateBdAddr(AieRtControl aieCtl, int col,
+                                             int row, size_t addr, size_t bdId);
+MLIR_CAPI_EXPORTED void aieRtExportSerializedTransaction(AieRtControl aieCtl);
 
 #ifdef __cplusplus
 }

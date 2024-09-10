@@ -1,4 +1,4 @@
-//===- AIERTX.h -------------------------------------------------*- C++ -*-===//
+//===- AIERT.h --------------------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef AIE_AIERTX_H
-#define AIE_AIERTX_H
+#ifndef AIE_AIERT_H
+#define AIE_AIERT_H
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIEEnums.h"
@@ -112,7 +112,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const XAie_Lock &lock);
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const XAie_Packet &packet);
 
-#define SHOW_AIERTX_ARGS(os, ...) showAIEXRTArgs(os, #__VA_ARGS__, __VA_ARGS__)
+#define SHOW_AIERT_ARGS(os, ...) showAIEXRTArgs(os, #__VA_ARGS__, __VA_ARGS__)
 
 // So that we can use the pattern if(auto r = TRY_XAIE_API...) { // r is nonzero
 // }
@@ -121,7 +121,7 @@ static_assert(XAIE_OK == 0);
 #define TRY_XAIE_API_FATAL_ERROR(API, ...)                                     \
   do {                                                                         \
     LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << " with args: "); \
-    LLVM_DEBUG(SHOW_AIERTX_ARGS(llvm::dbgs(), __VA_ARGS__));                   \
+    LLVM_DEBUG(SHOW_AIERT_ARGS(llvm::dbgs(), __VA_ARGS__));                    \
     LLVM_DEBUG(llvm::dbgs() << "\n");                                          \
     if (auto r = API(__VA_ARGS__))                                             \
       llvm::report_fatal_error(llvm::Twine(#API " failed with ") +             \
@@ -131,7 +131,7 @@ static_assert(XAIE_OK == 0);
 #define TRY_XAIE_API_EMIT_ERROR(OP, API, ...)                                  \
   do {                                                                         \
     LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << " with args: "); \
-    LLVM_DEBUG(SHOW_AIERTX_ARGS(llvm::dbgs(), __VA_ARGS__));                   \
+    LLVM_DEBUG(SHOW_AIERT_ARGS(llvm::dbgs(), __VA_ARGS__));                    \
     LLVM_DEBUG(llvm::dbgs() << "\n");                                          \
     if (auto r = API(__VA_ARGS__))                                             \
       return OP.emitOpError() << #API " failed with " << AIERCTOSTR.at(r);     \
@@ -140,7 +140,7 @@ static_assert(XAIE_OK == 0);
 #define TRY_XAIE_API_LOGICAL_RESULT(API, ...)                                  \
   do {                                                                         \
     LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << " with args: "); \
-    LLVM_DEBUG(SHOW_AIERTX_ARGS(llvm::dbgs(), __VA_ARGS__));                   \
+    LLVM_DEBUG(SHOW_AIERT_ARGS(llvm::dbgs(), __VA_ARGS__));                    \
     LLVM_DEBUG(llvm::dbgs() << "\n");                                          \
     if (auto r = API(__VA_ARGS__)) {                                           \
       llvm::errs() << #API " failed with " << AIERCTOSTR.at(r);                \
@@ -186,12 +186,12 @@ static_assert(XAIE_OK == 0);
 #define BASE_ADDR_A_INCR 0x80000
 
 namespace xilinx::AIE {
-struct AIERTXControl {
+struct AIERTControl {
   XAie_Config configPtr;
   XAie_DevInst devInst;
   const BaseNPUTargetModel &targetModel;
 
-  AIERTXControl(const xilinx::AIE::BaseNPUTargetModel &tm);
+  AIERTControl(const xilinx::AIE::BaseNPUTargetModel &tm);
 
   mlir::LogicalResult setIOBackend(bool aieSim, bool xaieDebug);
   mlir::LogicalResult configureBdInBlock(XAie_DmaDesc &dmaTileBd,
@@ -223,4 +223,4 @@ struct AIERTXControl {
 
 } // namespace xilinx::AIE
 
-#endif // AIE_AIERTX_H
+#endif // AIE_AIERT_H
