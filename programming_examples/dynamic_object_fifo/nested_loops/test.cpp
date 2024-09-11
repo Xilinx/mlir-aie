@@ -89,7 +89,7 @@ int main(int argc, const char *argv[]) {
     std::cout << "row " << i << " : ";
     for(int j = 0; j < WIDTH; j++) {
       buf_input[i * WIDTH + j] = i;
-      std::cout << buf_input[i * WIDTH + j]<< " ";
+      std::cout << buf_input[i * WIDTH + j] << " ";
     }
     std::cout << std::endl << std::endl;
   }
@@ -126,7 +126,7 @@ int main(int argc, const char *argv[]) {
     }
     for(int j = 0; j < WIDTH; j++) {
       std::cout << "expected: " << expected_output << ", ";
-      std::cout << "got: " << buf_output[i * WIDTH + j]<<std::endl;
+      std::cout << "got: " << buf_output[i * WIDTH + j] << std::endl;
       pass &= buf_output[i * WIDTH + j] == expected_output;
     }
     std::cout << std::endl << std::endl;

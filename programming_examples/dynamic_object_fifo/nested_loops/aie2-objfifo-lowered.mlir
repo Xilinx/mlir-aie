@@ -27,7 +27,7 @@ module {
 
       %init_input_fifo_counter = arith.constant 0 : index
       %init_output_fifo_counter = arith.constant 0 : index
-      scf.for %arg0 = %c0 to %c5 step %c1 iter_args(%input_fifo_counter = %init_input_fifo_counter) -> (index) {
+      scf.for %arg0 = %c0 to %c5 step %c1 iter_args(%input_fifo_counter = %init_input_fifo_counter, %output_fifo_counter = %init_output_fifo_counter) -> (index, index) {
         %mod_depth_in = arith.remsi %input_fifo_counter, %c2 : index
 
         %input_0 = scf.index_switch %mod_depth_in -> memref<10xi32>
@@ -43,10 +43,10 @@ module {
 
         aie.use_lock(%input_fifo_cons_cons_lock, AcquireGreaterEqual, 1)
 
-        scf.for %arg1 = %c0 to %c5 step %c1 iter_args(%output_fifo_counter = %init_output_fifo_counter) -> (index) {
-          %mod_depth_out = arith.remsi %output_fifo_counter, %c2 : index
+        %output_counter = scf.for %arg1 = %c0 to %c5 step %c1 iter_args(%output_fifo_counter_nested = %output_fifo_counter) -> (index) {
+          %mod_depth_out = arith.remsi %output_fifo_counter_nested, %c2 : index
 
-          %output_fifo_buff = scf.index_switch %mod_depth_out -> memref<10xi32>
+          %output_0 = scf.index_switch %mod_depth_out -> memref<10xi32>
           case 0 {
             scf.yield %output_fifo_buff_0 : memref<10xi32>
           }
@@ -59,7 +59,7 @@ module {
 
           aie.use_lock(%output_fifo_prod_lock, AcquireGreaterEqual, 1)
 
-          func.call @passthrough_10_i32(%input_0, %output_fifo_buff) : (memref<10xi32>, memref<10xi32>) -> ()
+          func.call @passthrough_10_i32(%input_0, %output_0) : (memref<10xi32>, memref<10xi32>) -> ()
 
           aie.use_lock(%output_fifo_cons_lock, Release, 1)
           %rel_out = arith.constant 1 : index // # released objects
@@ -69,17 +69,17 @@ module {
         }
         
         aie.use_lock(%input_fifo_cons_prod_lock, Release, 1)
-        %rel_in = arith.constant 2 : index // # released objects
+        %rel_in = arith.constant 1 : index // # released objects
 
         %sum_in = arith.addi %input_fifo_counter, %rel_in : index
-        scf.yield %sum_in : index
+        scf.yield %sum_in, %output_counter : index, index
       }
       aie.end
     } {link_with = "kernel.o"}
     aie.shim_dma_allocation @input_fifo(MM2S, 0, 0)
-    aiex.runtime_sequence(%arg0: memref<10xi32>, %arg1: memref<10xi32>) {
-      aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 1, 50][0, 0, 0, 1]) {id = 0 : i64, metadata = @input_fifo} : memref<10xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg1[0, 0, 0, 0][1, 1, 1, 250][0, 0, 0, 1]) {id = 2 : i64, metadata = @output_fifo} : memref<10xi32>
+    aiex.runtime_sequence(%arg0: memref<50xi32>, %arg1: memref<250xi32>) {
+      aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 1, 50][0, 0, 0, 1]) {id = 0 : i64, metadata = @input_fifo} : memref<50xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %arg1[0, 0, 0, 0][1, 1, 1, 250][0, 0, 0, 1]) {id = 2 : i64, metadata = @output_fifo} : memref<250xi32>
       aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
     }
     aie.shim_dma_allocation @output_fifo(S2MM, 0, 0)
