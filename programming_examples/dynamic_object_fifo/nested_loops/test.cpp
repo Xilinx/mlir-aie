@@ -28,6 +28,7 @@
 #define INPUT_SIZE  (50 * sizeof(int))  // in bytes
 #define OUTPUT_SIZE (250 * sizeof(int)) // in bytes
 #define WIDTH_SIZE  (10 * sizeof(int))  // in bytes
+#define WIDTH 10
 #define INPUT_ROWS  INPUT_SIZE / WIDTH_SIZE
 #define OUTPUT_ROWS OUTPUT_SIZE / WIDTH_SIZE
 
@@ -86,9 +87,9 @@ int main(int argc, const char *argv[]) {
   std::cout << std::endl << std::endl << "Input: " << std::endl;
   for(int i = 0; i < INPUT_ROWS; i++) {
     std::cout << "row " << i << " : ";
-    for(int j = 0; j < WIDTH_SIZE / sizeof(buf_input[0]); j++) {
-      buf_input[i * INPUT_ROWS + j] = i;
-      std::cout << buf_input[i * INPUT_ROWS + j] << " ";
+    for(int j = 0; j < WIDTH; j++) {
+      buf_input[i * WIDTH + j] = i;
+      std::cout << buf_input[i * WIDTH + j]<< " ";
     }
     std::cout << std::endl << std::endl;
   }
@@ -123,10 +124,10 @@ int main(int argc, const char *argv[]) {
       expected_output++;
       five_repetitions = 0;
     }
-    for(int j = 0; j < WIDTH_SIZE / sizeof(buf_output[0]); j++) {
+    for(int j = 0; j < WIDTH; j++) {
       std::cout << "expected: " << expected_output << ", ";
-      std::cout << "got: " << buf_output[i * OUTPUT_ROWS + j] << std::endl;
-      pass &= buf_output[i * OUTPUT_ROWS + j] == expected_output;
+      std::cout << "got: " << buf_output[i * WIDTH + j]<<std::endl;
+      pass &= buf_output[i * WIDTH + j] == expected_output;
     }
     std::cout << std::endl << std::endl;
     five_repetitions++;
