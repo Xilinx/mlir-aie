@@ -40,11 +40,12 @@ mlir::LogicalResult AIETranslateToNPU(mlir::ModuleOp module,
 mlir::LogicalResult AIETranslateToNPU(mlir::ModuleOp, std::vector<uint32_t> &,
                                       llvm::StringRef sequenceName = "");
 mlir::LogicalResult
-AIETranslateControlPacketsToUI32Vec(mlir::ModuleOp module, llvm::raw_ostream &output,
-                             llvm::StringRef sequenceName = "");
+AIETranslateControlPacketsToUI32Vec(mlir::ModuleOp module,
+                                    llvm::raw_ostream &output,
+                                    llvm::StringRef sequenceName = "");
 mlir::LogicalResult
 AIETranslateControlPacketsToUI32Vec(mlir::ModuleOp, std::vector<uint32_t> &,
-                             llvm::StringRef sequenceName = "");
+                                    llvm::StringRef sequenceName = "");
 mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module,
                                            llvm::raw_ostream &output,
                                            int tileCol, int tileRow);

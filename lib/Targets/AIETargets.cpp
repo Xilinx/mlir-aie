@@ -380,7 +380,8 @@ void registerAIETranslations() {
       [](ModuleOp module, raw_ostream &output) {
         if (outputBinary == true) {
           std::vector<uint32_t> instructions;
-          auto r = AIETranslateControlPacketsToUI32Vec(module, instructions, sequenceName);
+          auto r = AIETranslateControlPacketsToUI32Vec(module, instructions,
+                                                       sequenceName);
           if (failed(r))
             return r;
           output.write(reinterpret_cast<const char *>(instructions.data()),

@@ -185,9 +185,10 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
   return num_cols;
 }
 
-static LogicalResult
-generateTxn(AIERTControl &ctl, const StringRef workDirPath, DeviceOp &targetOp,
-            bool aieSim, bool enableElfs, bool enableInit, bool enableCores) {
+static LogicalResult generateTxn(AIERTControl &ctl, const StringRef workDirPath,
+                                 DeviceOp &targetOp, bool aieSim,
+                                 bool enableElfs, bool enableInit,
+                                 bool enableCores) {
   if (enableElfs && !targetOp.getOps<CoreOp>().empty() &&
       failed(ctl.addAieElfs(targetOp, workDirPath, aieSim)))
     return failure();
@@ -223,8 +224,7 @@ struct ConvertAIEToTransactionPass
     // start collecting transations
     XAie_StartTransaction(&ctl.devInst, XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
 
-    auto result =
-        generateTxn(ctl, clElfDir, device, aieSim, true, true, true);
+    auto result = generateTxn(ctl, clElfDir, device, aieSim, true, true, true);
     if (failed(result))
       return signalPassFailure();
 
