@@ -10,6 +10,7 @@
 
 #include "aie-c/Translation.h"
 
+#include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Targets/AIERT.h"
 #include "aie/Targets/AIETargets.h"
@@ -83,39 +84,6 @@ MlirLogicalResult aieTranslateToCDODirect(MlirOperation moduleOp,
   return wrap(status);
 }
 
-MlirLogicalResult aieTranslateToTxn(MlirOperation moduleOp,
-                                    MlirStringRef outputFile,
-                                    MlirStringRef workDirPath, bool aieSim,
-                                    bool xaieDebug, bool enableCores) {
-  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
-  bool outputBinary = false;
-
-  std::string errorMessage;
-  auto output = openOutputFile(StringRef(outputFile.data, outputFile.length),
-                               &errorMessage);
-  if (!output) {
-    llvm::errs() << errorMessage << "\n";
-    return wrap(failure());
-  }
-
-  auto status = AIETranslateToTxn(
-      mod, output->os(), llvm::StringRef(workDirPath.data, workDirPath.length),
-      outputBinary, aieSim, xaieDebug, enableCores);
-
-  std::vector<std::string> diagnostics;
-  ScopedDiagnosticHandler handler(mod.getContext(), [&](Diagnostic &d) {
-    llvm::raw_string_ostream(diagnostics.emplace_back())
-        << d.getLocation() << ": " << d;
-  });
-
-  if (failed(status))
-    for (const auto &diagnostic : diagnostics)
-      std::cerr << diagnostic << "\n";
-  else
-    output->keep();
-  return wrap(status);
-}
-
 MlirLogicalResult aieTranslateToCtrlpkt(MlirOperation moduleOp,
                                         MlirStringRef outputFile,
                                         MlirStringRef workDirPath, bool aieSim,
@@ -151,7 +119,7 @@ MlirLogicalResult aieTranslateToCtrlpkt(MlirOperation moduleOp,
 
 MlirOperation aieTranslateBinaryToTxn(MlirContext ctx, MlirStringRef binary) {
   std::vector<uint8_t> binaryData(binary.data, binary.data + binary.length);
-  auto mod = AIETranslateBinaryToTxn(unwrap(ctx), binaryData);
+  auto mod = convertTransactionBinaryToMLIR(unwrap(ctx), binaryData);
   if (!mod)
     return wrap(ModuleOp().getOperation());
   return wrap(mod->getOperation());

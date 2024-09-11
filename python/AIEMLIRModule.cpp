@@ -108,23 +108,6 @@ PYBIND11_MODULE(_aie, m) {
       "xaie_debug"_a = false, "enable_cores"_a = true);
 
   m.def(
-      "generate_txn",
-      [](MlirOperation op, const std::string &outputFile,
-         const std::string &workDirPath, bool aieSim, bool xaieDebug,
-         bool enableCores) {
-        mlir::python::CollectDiagnosticsToStringScope scope(
-            mlirOperationGetContext(op));
-        if (mlirLogicalResultIsFailure(
-                aieTranslateToTxn(op, {outputFile.data(), outputFile.size()},
-                                  {workDirPath.data(), workDirPath.size()},
-                                  aieSim, xaieDebug, enableCores)))
-          throw py::value_error("Failed to generate txn binary because: " +
-                                scope.takeMessage());
-      },
-      "module"_a, "output_file"_a, "work_dir_path"_a, "aiesim"_a = false,
-      "xaie_debug"_a = false, "enable_cores"_a = true);
-
-  m.def(
       "generate_ctrlpkt",
       [](MlirOperation op, const std::string &outputFile,
          const std::string &workDirPath, bool aieSim, bool xaieDebug,

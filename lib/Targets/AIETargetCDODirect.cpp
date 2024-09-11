@@ -380,90 +380,6 @@ LogicalResult xilinx::AIE::AIETranslateToCDODirect(
 }
 
 std::optional<mlir::ModuleOp>
-xilinx::AIE::AIETranslateBinaryToTxn(mlir::MLIRContext *ctx,
-                                     std::vector<uint8_t> &binary) {
-
-  // parse the binary
-  std::vector<TransactionBinaryOperation> operations;
-  auto c = parseTransactionBinary(binary, operations);
-  if (!c) {
-    llvm::errs() << "Failed to parse binary\n";
-    return std::nullopt;
-  }
-  int columns = *c;
-
-  auto loc = mlir::UnknownLoc::get(ctx);
-
-  // create a new ModuleOp and set the insertion point
-  auto module = ModuleOp::create(loc);
-  OpBuilder builder(module.getBodyRegion());
-  builder.setInsertionPointToStart(module.getBody());
-
-  // create aie.device
-  std::vector<AIEDevice> devices{AIEDevice::npu1_1col, AIEDevice::npu1_2col,
-                                 AIEDevice::npu1_3col, AIEDevice::npu1_4col,
-                                 AIEDevice::npu1};
-  auto device = builder.create<DeviceOp>(loc, devices[columns - 1]);
-  device.getRegion().emplaceBlock();
-  builder.setInsertionPointToStart(device.getBody());
-
-  // for each blockwrite in the binary, create a GlobalOp with the data
-  std::vector<memref::GlobalOp> global_data;
-  for (auto &op : operations) {
-    if (op.cmd.Opcode != XAIE_IO_BLOCKWRITE) {
-      global_data.push_back(nullptr);
-      continue;
-    }
-    uint32_t size = op.cmd.Size / 4;
-    const uint32_t *d = reinterpret_cast<const uint32_t *>(op.cmd.DataPtr);
-    std::vector<uint32_t> data32(d, d + size);
-
-    int id = 0;
-    std::string name = "blockwrite_data";
-    while (device.lookupSymbol(name))
-      name = "blockwrite_data_" + std::to_string(id++);
-
-    MemRefType memrefType = MemRefType::get({size}, builder.getI32Type());
-    TensorType tensorType = RankedTensorType::get({size}, builder.getI32Type());
-    auto global = builder.create<memref::GlobalOp>(
-        loc, name, builder.getStringAttr("private"), memrefType,
-        DenseElementsAttr::get<uint32_t>(tensorType, data32), true, nullptr);
-    global_data.push_back(global);
-  }
-
-  // create aiex.runtime_sequence
-  auto seq = builder.create<AIEX::RuntimeSequenceOp>(loc, nullptr);
-  seq.getBody().push_back(new Block);
-
-  // create the txn ops
-  builder.setInsertionPointToStart(&seq.getBody().front());
-  for (auto p : llvm::zip(operations, global_data)) {
-    auto op = std::get<0>(p);
-    memref::GlobalOp payload = std::get<1>(p);
-
-    if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
-      builder.create<AIEX::NpuWrite32Op>(loc, op.cmd.RegOff, op.cmd.Value,
-                                         nullptr, nullptr, nullptr);
-    } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
-      auto memref = builder.create<memref::GetGlobalOp>(loc, payload.getType(),
-                                                        payload.getName());
-      builder.create<AIEX::NpuBlockWriteOp>(
-          loc, builder.getUI32IntegerAttr(op.cmd.RegOff), memref.getResult(),
-          nullptr, nullptr, nullptr);
-    } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
-      builder.create<AIEX::NpuMaskWrite32Op>(loc, op.cmd.RegOff, op.cmd.Value,
-                                             op.cmd.Mask, nullptr, nullptr,
-                                             nullptr);
-    } else {
-      llvm::errs() << "Unhandled txn opcode: " << op.cmd.Opcode << "\n";
-      return std::nullopt;
-    }
-  }
-
-  return module;
-}
-
-std::optional<mlir::ModuleOp>
 xilinx::AIE::AIETranslateBinaryToCtrlpkt(mlir::MLIRContext *ctx,
                                          std::vector<uint8_t> &binary) {
 
@@ -570,29 +486,6 @@ xilinx::AIE::AIETranslateBinaryToCtrlpkt(mlir::MLIRContext *ctx,
   }
 
   return module;
-}
-
-LogicalResult xilinx::AIE::AIETranslateToTxn(ModuleOp m,
-                                             llvm::raw_ostream &output,
-                                             llvm::StringRef workDirPath,
-                                             bool outputBinary, bool enableSim,
-                                             bool xaieDebug, bool enableCores) {
-  std::vector<uint8_t> bin;
-  auto result =
-      translateToTxn(m, bin, workDirPath, enableSim, xaieDebug, enableCores);
-  if (failed(result))
-    return result;
-
-  if (outputBinary) {
-    output.write(reinterpret_cast<const char *>(bin.data()), bin.size());
-    return success();
-  }
-
-  auto new_module = AIETranslateBinaryToTxn(m.getContext(), bin);
-  if (!new_module)
-    return failure();
-  new_module->print(output);
-  return success();
 }
 
 LogicalResult xilinx::AIE::AIETranslateToControlPackets(
