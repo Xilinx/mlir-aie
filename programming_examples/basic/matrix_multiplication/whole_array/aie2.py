@@ -442,7 +442,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
                             #     |0011    0011    |
                             #     |0011    0011    |
                             #      ----------------
-                            B_col_offset = (col * n if not b_col_maj else col * n * K)
+                            B_col_offset = col * n if not b_col_maj else col * n * K
                             npu_dma_memcpy_nd(
                                 metadata=B_l3l2_fifos[col].sym_name.value,
                                 bd_id=bd_id_base + 2 * tile_row + 2,
