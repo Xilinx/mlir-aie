@@ -19,7 +19,7 @@
 
 namespace xilinx::AIE {
 
-using TileID = struct TileID {
+struct TileID {
   // friend definition (will define the function as a non-member function in the
   // namespace surrounding the class).
   friend std::ostream &operator<<(std::ostream &os, const TileID &s) {
