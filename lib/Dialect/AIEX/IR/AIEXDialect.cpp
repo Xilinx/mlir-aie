@@ -532,16 +532,6 @@ LogicalResult AIEX::RuntimeSequenceOp::verify() {
     (*this)->emitOpError() << "must be inside AIE device operation.";
     return failure();
   }
-  auto seq_ops = device.getOps<AIEX::RuntimeSequenceOp>();
-  if (std::distance(seq_ops.begin(), seq_ops.end()) > 1) {
-    auto err = device.emitOpError()
-               << "Cannot have more than one runtime sequence per device.";
-    for (auto it = seq_ops.begin(); it != seq_ops.end(); ++it) {
-      AIEX::RuntimeSequenceOp seq_op = *it;
-      err.attachNote(seq_op.getLoc()) << "Sequence operation definition here.";
-    }
-    return failure();
-  }
   return success();
 }
 

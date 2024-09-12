@@ -564,7 +564,6 @@ class FlowRunner:
             generate_cdo(input_physical.operation, self.tmpdirname)
 
     async def process_txn(self):
-        from aie.dialects.aie import generate_txn
 
         with Context(), Location.unknown():
             for elf in glob.glob("*.elf"):
@@ -577,11 +576,17 @@ class FlowRunner:
                     shutil.copy(elf_map, self.tmpdirname)
                 except shutil.SameFileError:
                     pass
-            input_physical = Module.parse(
-                await read_file_async(self.prepend_tmp("input_physical.mlir"))
+            input_physical = await read_file_async(
+                self.prepend_tmp("input_physical.mlir")
             )
-            txn_file = os.path.join(self.tmpdirname, "txn.mlir")
-            generate_txn(input_physical.operation, txn_file, self.tmpdirname)
+            run_passes(
+                "builtin.module(aie.device(convert-aie-to-transaction{elf-dir="
+                + self.tmpdirname
+                + "}))",
+                input_physical,
+                self.prepend_tmp("txn.mlir"),
+                self.opts.verbose,
+            )
 
     async def process_ctrlpkt(self):
         from aie.dialects.aie import generate_ctrlpkt
