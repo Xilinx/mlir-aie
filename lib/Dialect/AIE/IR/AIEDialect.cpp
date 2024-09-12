@@ -483,8 +483,9 @@ LogicalResult ObjectFifoCreateOp::verify() {
   }
 
   if (getProducerTileOp().isShimTile() && !getDimensionsToStream().empty()) {
-    return emitError("`dimensionsToStream` data layout transformations are not supported "
-                     "on shim tile producers");
+    return emitError(
+        "`dimensionsToStream` data layout transformations are not supported "
+        "on shim tile producers");
   }
 
   if (getViaSharedMem().has_value()) {
