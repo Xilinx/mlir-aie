@@ -928,50 +928,56 @@ struct AIEObjectFifoStatefulTransformPass
               // Number of subviews found inside the for loop equals
               // the number of switch statements to be written
               newLoopBody->walk([&](ObjectFifoSubviewAccessOp accessOp) {
-                if(count(modifiedAccessOps.begin(), modifiedAccessOps.end(), accessOp) == 0){
+                if (count(modifiedAccessOps.begin(), modifiedAccessOps.end(),
+                          accessOp) == 0) {
                   modifiedAccessOps.push_back(accessOp);
-                auto acqOp =
-                    accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-                ObjectFifoCreateOp createOp = acqOp.getObjectFifo();
+                  auto acqOp = accessOp.getSubview()
+                                   .getDefiningOp<ObjectFifoAcquireOp>();
+                  ObjectFifoCreateOp createOp = acqOp.getObjectFifo();
 
-                // Create a switch for each subview access
-                auto maxCounter = builder.create<arith::ConstantIndexOp>(
-                    loc, fifoSizes[createOp]);
-                Value switchIndex = builder.create<arith::RemSIOp>(
-                    loc, iterArgPerFifo[createOp], maxCounter);
-                unsigned caseRegionCounts = fifoSizes[createOp];
-                SmallVector<int64_t, 4> caseValues;
-                for (int i = 0; i < fifoSizes[createOp]; ++i) {
-                  caseValues.push_back(i);
-                }
-                auto cases =
-                    DenseI64ArrayAttr::get(builder.getContext(), caseValues);
-                auto switchOp = builder.create<scf::IndexSwitchOp>(
-                    loc, TypeRange({buffersPerFifo[createOp][0].getType()}),
-                    switchIndex, cases, caseRegionCounts);
-                // Create default case of IndexSwitchOp
-                builder.createBlock(&switchOp.getDefaultRegion());
-                auto bufferIndex = (accessOp.getIndex()) % createOp.size();
-                builder.create<scf::YieldOp>(
-                    switchOp.getLoc(),
-                    buffersPerFifo[createOp][bufferIndex].getResult());
-                for (int i = 0; i < fifoSizes[createOp]; ++i) {
-                  // Create other cases of IndexSwitchOp
-                  builder.setInsertionPoint(&switchOp.getCaseBlock(i),
-                                            switchOp.getCaseBlock(i).begin());
-                  builder.createBlock(&switchOp.getCaseRegions()[i]);
-                  int bufferToBeAccesed =
-                      (accessOp.getIndex() + i) % fifoSizes[createOp];
+                  // Single switch case
+                  if (fifoSizes[createOp] == 1)
+                    return WalkResult::advance();
+                  // Create a switch for each subview access
+                  auto maxCounter = builder.create<arith::ConstantIndexOp>(
+                      loc, fifoSizes[createOp]);
+                  Value switchIndex = builder.create<arith::RemSIOp>(
+                      loc, iterArgPerFifo[createOp], maxCounter);
+                  unsigned caseRegionCounts = fifoSizes[createOp];
+                  SmallVector<int64_t, 4> caseValues;
+                  for (int i = 0; i < fifoSizes[createOp]; ++i) {
+                    caseValues.push_back(i);
+                  }
+                  auto cases =
+                      DenseI64ArrayAttr::get(builder.getContext(), caseValues);
+                  auto switchOp = builder.create<scf::IndexSwitchOp>(
+                      loc, TypeRange({buffersPerFifo[createOp][0].getType()}),
+                      switchIndex, cases, caseRegionCounts);
+                  // Create default case of IndexSwitchOp
+                  builder.createBlock(&switchOp.getDefaultRegion());
+                  auto bufferIndex = (accessOp.getIndex()) % createOp.size();
                   builder.create<scf::YieldOp>(
-                      switchOp.getCaseRegions()[i].getLoc(),
-                      buffersPerFifo[createOp][bufferToBeAccesed].getResult());
-                }
+                      switchOp.getLoc(),
+                      buffersPerFifo[createOp][bufferIndex].getResult());
+                  for (int i = 0; i < fifoSizes[createOp]; ++i) {
+                    // Create other cases of IndexSwitchOp
+                    builder.setInsertionPoint(&switchOp.getCaseBlock(i),
+                                              switchOp.getCaseBlock(i).begin());
+                    builder.createBlock(&switchOp.getCaseRegions()[i]);
+                    int bufferToBeAccesed =
+                        (accessOp.getIndex() + i) % fifoSizes[createOp];
+                    builder.create<scf::YieldOp>(
+                        switchOp.getCaseRegions()[i].getLoc(),
+                        buffersPerFifo[createOp][bufferToBeAccesed]
+                            .getResult());
+                  }
 
-                // Replace all uses of accessed objectfifo buffers with results
-                // of switchOps
-                accessOp.getOutput().replaceAllUsesWith(switchOp.getResult(0));
-                loc = switchOp.getLoc();
-                builder.setInsertionPointAfter(switchOp);
+                  // Replace all uses of accessed objectfifo buffers with
+                  // results of switchOps
+                  accessOp.getOutput().replaceAllUsesWith(
+                      switchOp.getResult(0));
+                  loc = switchOp.getLoc();
+                  builder.setInsertionPointAfter(switchOp);
                 }
                 return WalkResult::advance();
               });
