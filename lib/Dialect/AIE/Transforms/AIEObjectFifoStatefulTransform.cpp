@@ -841,131 +841,159 @@ struct AIEObjectFifoStatefulTransformPass
 
   // Function that creates dynamic objectFifos.
   LogicalResult dynamicObjectFifos(DeviceOp &device, OpBuilder &builder,
-                               std::set<TileOp> objectFifoTiles) {
+                                   std::set<TileOp> objectFifoTiles) {
     for (auto coreOp : device.getOps<CoreOp>()) {
       if (objectFifoTiles.count(coreOp.getTileOp()) > 0) {
-        WalkResult res = coreOp.walk([&](scf::ForOp forLoop) {
-          bool found = false;
-          Block *body = forLoop.getBody();
-          std::map<ObjectFifoCreateOp, int> fifoSizes;
-          std::map<ObjectFifoCreateOp, int> releaseCounters;
+        // Within the tile, keep a map of objectFifo and its releases
+        std::vector<ObjectFifoSubviewAccessOp> modifiedAccessOps;
+        // Walk in the tile and if there is a Release update its counter,
+        // if there is a for loop, perform dynamic objectFifos and update
+        // counter
+        WalkResult res = coreOp.walk([&](Operation *op) {
+          if (isa<scf::ForOp>(op)) {
+            auto forLoop = dyn_cast<scf::ForOp>(op);
+            bool found = false;
+            Block *body = forLoop.getBody();
+            std::map<ObjectFifoCreateOp, int> fifoSizes;
+            std::map<ObjectFifoCreateOp, int> releaseCounters;
 
-          // Initialize maps with FIFO sizes and counters
-          for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
-            if (acqOp.getOperation()->getParentOp() == forLoop) {
-              found = true;
-              ObjectFifoCreateOp op = acqOp.getObjectFifo();
-              fifoSizes[op] = op.size();
-              releaseCounters[op] = 0;
+            // Initialize maps with FIFO sizes and counters
+            for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
+              if (acqOp.getOperation()->getParentOp() == forLoop) {
+                found = true;
+                ObjectFifoCreateOp op = acqOp.getObjectFifo();
+                fifoSizes[op] = op.size();
+                releaseCounters[op] = 0;
+              }
             }
-          }
 
-          // Count release operations for each FIFO
-          for (auto relOp : body->getOps<ObjectFifoReleaseOp>()) {
-            if (relOp.getOperation()->getParentOp() == forLoop) {
-              ObjectFifoCreateOp op = relOp.getObjectFifo();
-              releaseCounters[op] = relOp.getSize();
+            // Count release operations for each FIFO
+            for (auto relOp : body->getOps<ObjectFifoReleaseOp>()) {
+              if (relOp.getOperation()->getParentOp() == forLoop) {
+                ObjectFifoCreateOp op = relOp.getObjectFifo();
+                releaseCounters[op] = relOp.getSize();
+              }
             }
-          }
-          auto loc = forLoop.getLoc();
-          
-          // If for Loop is found with objectFifos,
-          // convert the objectFifos into dynamic Fifos.
-          if (found) {
-            std::map<ObjectFifoCreateOp, Value> counterMap;
-            OpBuilder builder(forLoop);
-            builder.setInsertionPoint(forLoop);
+            auto loc = forLoop.getLoc();
 
-            // Separate counters for each fifo
-            for(const auto &i : fifoSizes){
-              auto op = i.first;
-              Value count = builder.create<arith::ConstantIndexOp>(loc, 0);
-              counterMap[op] = count;
-            }
-            std::vector<Value> counterVector;
-            for(const auto &entry : counterMap){
-              counterVector.push_back(entry.second);
-            }
-            llvm::ArrayRef<Value> counterArrayRef(counterVector);
+            // If for Loop is found with objectFifos,
+            // convert the objectFifos into dynamic Fifos.
+            if (found) {
+              std::map<ObjectFifoCreateOp, Value> counterMap;
+              OpBuilder builder(forLoop);
+              builder.setInsertionPoint(forLoop);
 
-            // Recreate forLoop as forLoopWithIterArgs
-            // and copy the body of the old loop
-            auto forLoopWithIterArgs = builder.create<scf::ForOp>(loc, forLoop.getLowerBound(), forLoop.getUpperBound(), forLoop.getStep(), ValueRange(counterArrayRef));
-            Block *newLoopBody = forLoopWithIterArgs.getBody();
-            forLoop.getResults().replaceAllUsesWith(forLoopWithIterArgs.getResults());
-            body->back().erase();
-            newLoopBody->getOperations().splice(
-                Block::iterator(newLoopBody->back()),
-                body->getOperations());
-            forLoop.erase();
+              // Separate counters for each fifo
+              for (const auto &i : fifoSizes) {
+                auto op = i.first;
+                Value count = builder.create<arith::ConstantIndexOp>(loc, 0);
+                counterMap[op] = count;
+              }
+              std::vector<Value> counterVector;
+              for (const auto &entry : counterMap) {
+                counterVector.push_back(entry.second);
+              }
+              llvm::ArrayRef<Value> counterArrayRef(counterVector);
 
-            // Map each iter arg to its objectfifo
-            std::map<ObjectFifoCreateOp, Value> iterArgPerFifo;
-            int iterArgIndex = 0;
-            for(const auto &i : counterMap){
-              auto objectFifo = i.first;
-              auto val = i.second;
-              for (auto arg : forLoopWithIterArgs.getInitArgs()) {
-                if (arg == val) {
-                  iterArgPerFifo[objectFifo] = forLoopWithIterArgs.getRegionIterArg(iterArgIndex);
-                  iterArgIndex = 0;
-                  break;
+              // Recreate forLoop as forLoopWithIterArgs
+              // and copy the body of the old loop
+              auto forLoopWithIterArgs = builder.create<scf::ForOp>(
+                  loc, forLoop.getLowerBound(), forLoop.getUpperBound(),
+                  forLoop.getStep(), ValueRange(counterArrayRef));
+              Block *newLoopBody = forLoopWithIterArgs.getBody();
+              forLoop.getResults().replaceAllUsesWith(
+                  forLoopWithIterArgs.getResults());
+              body->back().erase();
+              newLoopBody->getOperations().splice(
+                  Block::iterator(newLoopBody->back()), body->getOperations());
+              forLoop.erase();
+              // Map each iter arg to its objectfifo
+              std::map<ObjectFifoCreateOp, Value> iterArgPerFifo;
+              int iterArgIndex = 0;
+              for (const auto &i : counterMap) {
+                auto objectFifo = i.first;
+                auto val = i.second;
+                for (auto arg : forLoopWithIterArgs.getInitArgs()) {
+                  if (arg == val) {
+                    iterArgPerFifo[objectFifo] =
+                        forLoopWithIterArgs.getRegionIterArg(iterArgIndex);
+                    iterArgIndex = 0;
+                    break;
+                  }
+                  iterArgIndex++;
                 }
-                iterArgIndex++;
               }
-            }
+              loc = forLoopWithIterArgs.getLoc();
+              builder.setInsertionPointToStart(newLoopBody);
+              // Number of subviews found inside the for loop equals
+              // the number of switch statements to be written
+              newLoopBody->walk([&](ObjectFifoSubviewAccessOp accessOp) {
+                if(count(modifiedAccessOps.begin(), modifiedAccessOps.end(), accessOp) == 0){
+                  modifiedAccessOps.push_back(accessOp);
+                auto acqOp =
+                    accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
+                ObjectFifoCreateOp createOp = acqOp.getObjectFifo();
 
-            loc = forLoopWithIterArgs.getLoc();
-            builder.setInsertionPointToStart(newLoopBody);
-            // Number of subviews found inside the for loop equals
-            // the number of switch statements to be written
-            newLoopBody->walk([&](ObjectFifoSubviewAccessOp accessOp) {
-              auto acqOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-              ObjectFifoCreateOp createOp = acqOp.getObjectFifo();
+                // Create a switch for each subview access
+                auto maxCounter = builder.create<arith::ConstantIndexOp>(
+                    loc, fifoSizes[createOp]);
+                Value switchIndex = builder.create<arith::RemSIOp>(
+                    loc, iterArgPerFifo[createOp], maxCounter);
+                unsigned caseRegionCounts = fifoSizes[createOp];
+                SmallVector<int64_t, 4> caseValues;
+                for (int i = 0; i < fifoSizes[createOp]; ++i) {
+                  caseValues.push_back(i);
+                }
+                auto cases =
+                    DenseI64ArrayAttr::get(builder.getContext(), caseValues);
+                auto switchOp = builder.create<scf::IndexSwitchOp>(
+                    loc, TypeRange({buffersPerFifo[createOp][0].getType()}),
+                    switchIndex, cases, caseRegionCounts);
+                // Create default case of IndexSwitchOp
+                builder.createBlock(&switchOp.getDefaultRegion());
+                auto bufferIndex = (accessOp.getIndex()) % createOp.size();
+                builder.create<scf::YieldOp>(
+                    switchOp.getLoc(),
+                    buffersPerFifo[createOp][bufferIndex].getResult());
+                for (int i = 0; i < fifoSizes[createOp]; ++i) {
+                  // Create other cases of IndexSwitchOp
+                  builder.setInsertionPoint(&switchOp.getCaseBlock(i),
+                                            switchOp.getCaseBlock(i).begin());
+                  builder.createBlock(&switchOp.getCaseRegions()[i]);
+                  int bufferToBeAccesed =
+                      (accessOp.getIndex() + i) % fifoSizes[createOp];
+                  builder.create<scf::YieldOp>(
+                      switchOp.getCaseRegions()[i].getLoc(),
+                      buffersPerFifo[createOp][bufferToBeAccesed].getResult());
+                }
 
-              // Create a switch for each subview access
-              auto maxCounter = builder.create<arith::ConstantIndexOp>(loc, fifoSizes[createOp]);
-              Value switchIndex = builder.create<arith::RemSIOp>(loc, iterArgPerFifo[createOp], maxCounter);
-              unsigned caseRegionCounts = fifoSizes[createOp];
-              SmallVector<int64_t, 4> caseValues;
-              for (int i = 0; i < fifoSizes[createOp]; ++i){
-                caseValues.push_back(i);
+                // Replace all uses of accessed objectfifo buffers with results
+                // of switchOps
+                accessOp.getOutput().replaceAllUsesWith(switchOp.getResult(0));
+                loc = switchOp.getLoc();
+                builder.setInsertionPointAfter(switchOp);
+                }
+                return WalkResult::advance();
+              });
+
+              // Update the Iteration Args
+              builder.setInsertionPointToEnd(newLoopBody);
+              for (const auto &i : fifoSizes) {
+                auto op = i.first;
+                auto val = releaseCounters[op];
+                Value release_val =
+                    builder.create<arith::ConstantIndexOp>(loc, val);
+                counterMap[op] = builder.create<arith::AddIOp>(
+                    loc, iterArgPerFifo[op], release_val);
               }
-              auto cases = DenseI64ArrayAttr::get(builder.getContext(), caseValues);
-              auto switchOp = builder.create<scf::IndexSwitchOp>(loc, TypeRange({buffersPerFifo[createOp][0].getType()}), switchIndex, cases, caseRegionCounts);  
-              // Create default case of IndexSwitchOp
-              builder.createBlock(&switchOp.getDefaultRegion());
-              builder.create<scf::YieldOp>(switchOp.getLoc(), buffersPerFifo[createOp][accessOp.getIndex()].getResult());         
-              for (int i = 0; i < fifoSizes[createOp]; ++i){
-                // Create other cases of IndexSwitchOp
-                builder.setInsertionPoint(&switchOp.getCaseBlock(i), switchOp.getCaseBlock(i).begin());
-                builder.createBlock(&switchOp.getCaseRegions()[i]);
-                int bufferToBeAccesed = (accessOp.getIndex() + i) % fifoSizes[createOp];
-                builder.create<scf::YieldOp>(switchOp.getCaseRegions()[i].getLoc(), buffersPerFifo[createOp][bufferToBeAccesed].getResult());   
-              }           
-
-              // Replace all uses of accessed objectfifo buffers with results of switchOps
-              accessOp.getOutput().replaceAllUsesWith(switchOp.getResult(0));
-              loc = switchOp.getLoc();
-              builder.setInsertionPointAfter(switchOp);
-
-              return WalkResult::advance();
-            });
-
-            // Update the Iteration Args
-            builder.setInsertionPointToEnd(newLoopBody);
-            for(const auto &i : fifoSizes){
-              auto op = i.first;
-              auto val = releaseCounters[op];
-              Value release_val = builder.create<arith::ConstantIndexOp>(loc, val);
-              counterMap[op] = builder.create<arith::AddIOp>(loc, iterArgPerFifo[op], release_val);
+              counterVector.clear();
+              for (const auto &entry : counterMap) {
+                counterVector.push_back(entry.second);
+              }
+              builder.setInsertionPointToEnd(newLoopBody);
+              builder.create<scf::YieldOp>(forLoopWithIterArgs.getLoc(),
+                                           ValueRange(ArrayRef(counterVector)));
             }
-            counterVector.clear();
-            for(const auto &entry : counterMap){
-              counterVector.push_back(entry.second);
-            }
-            builder.setInsertionPointToEnd(newLoopBody);
-            builder.create<scf::YieldOp>(forLoopWithIterArgs.getLoc(), ValueRange(ArrayRef(counterVector)));
           }
           return WalkResult::advance();
         });
@@ -1230,7 +1258,9 @@ struct AIEObjectFifoStatefulTransformPass
     // - Create objectFifo buffers and locks.
     // - Populate a list of tiles containing objectFifos for later processing of
     //   the acquires/releases (uses of the FIFO).
+    // - Global release counter tracker to keep track of the objectFifo state
     //===------------------------------------------------------------------===//
+
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
       int share_direction = 0;
       bool shared = !requiresDMAs(createOp, share_direction);
