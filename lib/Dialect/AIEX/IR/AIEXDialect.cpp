@@ -306,19 +306,19 @@ int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
       llvm::map_to_vector(llvm::reverse(getMixedOffsets()), [](OpFoldResult s) {
         return getConstantIntValue(s).value();
       });
-  size_t stride = 1;
+  llvm::SmallVector<int64_t, 4> strides =
+      llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
   size_t offset = 0;
   MemRefType my_memref = getMemref().getType();
-  auto shape = my_memref.getShape();
-  size_t R = shape.size();
+  size_t R = offsets.size();
   size_t el_bit_width = my_memref.getElementTypeBitWidth();
   assert(el_bit_width % 8 == 0 &&
          "Expected Memref element bitwidth to be multiple of 8.");
   size_t S = el_bit_width / 8;
-  for (size_t i = 0; i < R; i++) {
-    offset += offsets[i] * stride * S;
-    stride *= shape[R - i - 1];
-  }
+  for (size_t i = 0; i < R; i++)
+    offset += offsets[i] * strides[i] * S;
   return offset;
 }
 
