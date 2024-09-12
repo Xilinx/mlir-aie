@@ -34,10 +34,6 @@ MLIR_CAPI_EXPORTED MlirLogicalResult
 aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath,
                         bool bigEndian, bool emitUnified, bool cdoDebug,
                         bool aieSim, bool xaieDebug, bool enableCores);
-
-MLIR_CAPI_EXPORTED MlirLogicalResult aieTranslateToTxn(
-    MlirOperation moduleOp, MlirStringRef outputFile, MlirStringRef workDirPath,
-    bool aieSim, bool xaieDebug, bool enableCores);
 MLIR_CAPI_EXPORTED MlirLogicalResult aieTranslateToCtrlpkt(
     MlirOperation moduleOp, MlirStringRef outputFile, MlirStringRef workDirPath,
     bool aieSim, bool xaieDebug, bool enableCores);

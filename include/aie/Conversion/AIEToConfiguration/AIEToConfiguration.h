@@ -23,6 +23,10 @@ namespace xilinx::AIE {
 std::unique_ptr<mlir::OperationPass<xilinx::AIE::DeviceOp>>
 createConvertAIEToTransactionPass();
 
+std::optional<mlir::ModuleOp>
+convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
+                               std::vector<uint8_t> &binary);
+
 } // namespace xilinx::AIE
 
 #endif // AIE_CONVERSION_AIETOCONFIGURATION_AIETOCONFIGURATION_H

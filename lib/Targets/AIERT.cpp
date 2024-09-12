@@ -592,8 +592,7 @@ LogicalResult AIERTControl::addAieElf(uint8_t col, uint8_t row,
 }
 
 LogicalResult AIERTControl::addAieElfs(DeviceOp &targetOp,
-                                       const StringRef workDirPath,
-                                       bool aieSim) {
+                                       const StringRef elfPath, bool aieSim) {
   for (auto tileOp : targetOp.getOps<TileOp>())
     if (tileOp.isShimNOCorPLTile()) {
       // Resets no needed with V2 kernel driver
@@ -611,8 +610,7 @@ LogicalResult AIERTControl::addAieElfs(DeviceOp &targetOp,
         auto ps = std::filesystem::path::preferred_separator;
         if (failed(addAieElf(
                 col, row,
-                (llvm::Twine(workDirPath) + std::string(1, ps) + fileName)
-                    .str(),
+                (llvm::Twine(elfPath) + std::string(1, ps) + fileName).str(),
                 aieSim)))
           return failure();
       }

@@ -22,7 +22,6 @@ from .._mlir_libs._aie import (
     aie_llvm_link,
     generate_bcf,
     generate_cdo,
-    generate_txn,
     generate_ctrlpkt,
     generate_xaie,
     generate_control_packets,
