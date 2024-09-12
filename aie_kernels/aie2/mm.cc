@@ -632,7 +632,7 @@ extern "C" {
 #define combos(X) X(bfloat16, bf16, float, f32, 4, 8, 4)
 #endif
 
-#ifdef ALL_COMBOS
+#ifndef combos
 #define combos(X)                                                              \
   X(int8, i8, int8, i8, 4, 8, 8)                                               \
   X(int16, i16, int16, i16, 4, 4, 4)                                           \
