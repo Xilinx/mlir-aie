@@ -589,7 +589,6 @@ class FlowRunner:
             )
 
     async def process_ctrlpkt(self):
-        from aie.dialects.aie import generate_ctrlpkt
 
         with Context(), Location.unknown():
             for elf in glob.glob("*.elf"):
