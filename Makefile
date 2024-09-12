@@ -87,7 +87,7 @@ rebuild_cache/fast: rebuild_cache
 
 # Special rule for the target list_install_components
 list_install_components:
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Available install components are: \"ADF\" \"AIE\" \"AIECAPI\" \"AIEPythonModules\" \"AIERT\" \"AIETargets\" \"AIETransforms\" \"AIEX\" \"AIEXTransforms\" \"AIEXUtils\" \"MLIRAIEVecAIE1Dialect\" \"MLIRAIEVecDialect\" \"MLIRAIEVecToLLVM\" \"MLIRAIEVecTransformOps\" \"MLIRAIEVecTransforms\" \"MLIRAIEVecUtils\" \"MLIRTargetAIEVecCpp\" \"MLIRXLLVMDialect\" \"MLIRXLLVMToLLVMIRTranslation\" \"Unspecified\" \"aie-cmake-exports\" \"aie-headers\" \"aie-lsp-server\" \"aie-opt\" \"aie-python\" \"aie-reset\" \"aie-translate\" \"aie-visualize\" \"mlir-python-sources\" \"obj.AIECAPI\" \"obj.AIERT\" \"obj.AIETargets\""
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Available install components are: \"ADF\" \"AIE\" \"AIECAPI\" \"AIEPythonModules\" \"AIERT\" \"AIETargets\" \"AIETransforms\" \"AIEX\" \"AIEXTransforms\" \"AIEXUtils\" \"MLIRAIEToConfiguration\" \"MLIRAIEVecAIE1Dialect\" \"MLIRAIEVecDialect\" \"MLIRAIEVecToLLVM\" \"MLIRAIEVecTransformOps\" \"MLIRAIEVecTransforms\" \"MLIRAIEVecUtils\" \"MLIRTargetAIEVecCpp\" \"MLIRXLLVMDialect\" \"MLIRXLLVMToLLVMIRTranslation\" \"Unspecified\" \"aie-cmake-exports\" \"aie-headers\" \"aie-lsp-server\" \"aie-opt\" \"aie-python\" \"aie-reset\" \"aie-translate\" \"aie-visualize\" \"mlir-python-sources\" \"obj.AIECAPI\" \"obj.AIERT\" \"obj.AIETargets\""
 .PHONY : list_install_components
 
 # Special rule for the target list_install_components
