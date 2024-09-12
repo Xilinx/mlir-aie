@@ -69,6 +69,7 @@ int main(int argc, const char *argv[]) {
   int n_iterations = vm["iters"].as<int>();
   int n_warmup_iterations = vm["warmup"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
+  int b_col_maj = vm["b_col_maj"].as<int>();
 
   srand(time(NULL));
 
@@ -163,13 +164,13 @@ int main(int argc, const char *argv[]) {
   B_DATATYPE *bufB = bo_b.map<B_DATATYPE *>();
   std::vector<B_DATATYPE> BVec(B_VOLUME);
   for (int i = 0; i < B_VOLUME; i++) {
-    BVec[i] = matmul_common::get_random<B_DATATYPE>();
+    // BVec[i] = matmul_common::get_random<B_DATATYPE>();
     // Diagonal:
-    // if(i % N == i / N) {
-    //   BVec[i] = 1.0;
-    // } else {
-    //   BVec[i] = 0.0;
-    // }
+    if (i % N == i / N) {
+      BVec[i] = 1.0;
+    } else {
+      BVec[i] = 0.0;
+    }
   }
   memcpy(bufB, BVec.data(), (BVec.size() * sizeof(B_DATATYPE)));
 
@@ -227,8 +228,8 @@ int main(int argc, const char *argv[]) {
       continue;
     }
 
-    memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
     if (do_verify) {
+      memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
       if (verbosity >= 1) {
         if (do_verify_stochastic) {
           std::cout << "Verifying " << verify_stochastic_n_samples
@@ -243,10 +244,10 @@ int main(int argc, const char *argv[]) {
         errors = matmul_common::verify_stochastic<A_DATATYPE, C_DATATYPE,
                                                   ACC_DATATYPE>(
             M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples, verbosity,
-            abs_tol, rel_tol);
+            abs_tol, rel_tol, b_col_maj);
       } else {
         errors = matmul_common::verify<A_DATATYPE, C_DATATYPE, ACC_DATATYPE>(
-            M, N, K, AVec, BVec, CVec, abs_tol, rel_tol);
+            M, N, K, AVec, BVec, CVec, verbosity, abs_tol, rel_tol, b_col_maj);
       }
       auto vstop = std::chrono::system_clock::now();
       float vtime =
@@ -260,11 +261,6 @@ int main(int argc, const char *argv[]) {
         std::cout << "WARNING: matmul results not verified." << std::endl;
     }
 
-    if (trace_size > 0) {
-      matmul_common::write_out_trace(((char *)bufOut) + C_SIZE, trace_size,
-                                     vm["trace_file"].as<std::string>());
-    }
-
     float npu_time =
         std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
             .count();
@@ -272,6 +268,13 @@ int main(int argc, const char *argv[]) {
     npu_time_total += npu_time;
     npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;
     npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
+  }
+
+  // Only write out trace of last iteration.
+  if (trace_size > 0) {
+    memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
+    matmul_common::write_out_trace(((char *)bufOut) + C_SIZE, trace_size,
+                                   vm["trace_file"].as<std::string>());
   }
 
   std::cout << std::endl
