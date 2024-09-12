@@ -28,10 +28,13 @@ def main():
     argparser.add_argument("-n", type=int, default=32)
     argparser.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4], default=4)
     argparser.add_argument(
-        "--dtype_in", type=str, choices=["bf16", "i16"], default="i16"
+        "--dtype_in", type=str, choices=["bf16", "i8", "i16"], default="i16"
     )
     argparser.add_argument(
-        "--dtype_out", type=str, choices=["bf16", "i16", "f32", "i32"], default="i16"
+        "--dtype_out",
+        type=str,
+        choices=["bf16", "i8", "i16", "f32", "i32"],
+        default="i16",
     )
     args = argparser.parse_args()
     with mlir_mod_ctx() as ctx:
@@ -62,11 +65,15 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
     dtype_in = None
     if dtype_in_str == "bf16":
         dtype_in = T.bf16
+    elif dtype_in_str == "i8":
+        dtype_in = T.i8
     elif dtype_in_str == "i16":
         dtype_in = T.i16
     dtype_out = None
     if dtype_out_str == "bf16":
         dtype_out = T.bf16
+    elif dtype_out_str == "i8":
+        dtype_out = T.i8
     elif dtype_out_str == "i16":
         dtype_out = T.i16
     elif dtype_out_str == "f32":
@@ -78,6 +85,10 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
         r = 4
         s = 8
         t = 4
+    elif dtype_in_str == "i8":
+        r = 4
+        s = 8
+        t = 8
     elif dtype_in_str == "i16":
         r = 4
         s = 4
@@ -196,9 +207,15 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
             # tiles; distribute it along rows of AIE cores.
             start_row = col * n_A_tiles_per_shim
             stop_row = start_row + n_A_tiles_per_shim
+            if stop_row - start_row > 1:
+                of_offsets = [m * k * i for i in range(stop_row - start_row)]
+            else:
+                of_offsets = []
             object_fifo_link(
                 A_l3l2_fifos[col],
                 [A_l2l1_fifos[row] for row in range(start_row, stop_row)],
+                [],
+                of_offsets,
             )
 
         # Input B
@@ -250,8 +267,15 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                     (t, 1),
                 ],
             )
+            if n_aie_rows > 1:
+                of_offsets = [m * n * i for i in range(n_aie_rows)]
+            else:
+                of_offsets = []
             object_fifo_link(
-                [C_l1l2_fifos[j][col] for j in range(n_aie_rows)], C_l2l3_fifos[col]
+                [C_l1l2_fifos[j][col] for j in range(n_aie_rows)],
+                C_l2l3_fifos[col],
+                of_offsets,
+                [],
             )  # join along one column
 
         # Set up compute tiles

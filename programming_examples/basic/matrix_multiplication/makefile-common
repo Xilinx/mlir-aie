@@ -47,7 +47,6 @@ ifeq ($(dtype_out),bf16)
 	dtype_out_cpp=std::bfloat16_t
 	dtype_acc_cpp=float
 endif
-
 ifeq ($(dtype_in),i16)
 	dtype_in_cpp=int16_t
 endif
@@ -62,6 +61,13 @@ endif
 ifeq ($(dtype_out),f32)
 	dtype_out_cpp=float
 	dtype_acc_cpp=float
+endif
+ifeq ($(dtype_in),i8)
+	dtype_in_cpp=int8_t
+endif
+ifeq ($(dtype_out),i8)
+	dtype_out_cpp=int8_t
+	dtype_acc_cpp=int8_t
 endif
 
 trace_size?=65536

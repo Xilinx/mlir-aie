@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Copyright (C) 2024, Advanced Micro Devices, Inc.
-// 
+//
 //===----------------------------------------------------------------------===//-->
 
 # <ins>Section 4b - Trace</ins>
@@ -44,7 +44,7 @@ The first necessary component for trace configuration is setting the right value
         offset=tensorSize,
     )
 ```
-This block is defined within the sequence definition for `@runtime_sequence` where we define the shimDMA data movement to the 3 inout buffers. 
+This block is defined within the sequence definition for `@runtime_sequence` where we define the shimDMA data movement to the 3 inout buffers.
 > **Note** This simplification works very well for the trace buffer from a single tile to the shimDMA. However, if we want to do something more advaned like allocating the trace buffer from multiple tiles into a single larger buffer, this function will not be able to express that. For that, please consult the [README](../../../python/utils) under `python/utils` for more guidance on how to customize the trace configuration.
 
 ### <u>(1b) Define trace event routes from tile to shimDMA</u>
@@ -59,7 +59,7 @@ flow(ComputeTile, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
 
 `flow` creates a circuit switched flow between src and dest and has the general syntax of:
 ```python
-flow(source, source_bundle, source_channel, dest, dest_bundle, dest_channel)	
+flow(source, source_bundle, source_channel, dest, dest_bundle, dest_channel)
 ```
 * *source* - source tile of the flow
 * *source_bundle* - type of source WireBundle (see full list in [AIEAttrs.td](../../../include/aie/Dialect/AIE/IR/AIEAttrs.td))
@@ -87,9 +87,9 @@ packetflow(pkt_id, source, source_port, source_channel, dest, dest_port, dest_ch
 * *keep_pkt_header* - boolean flag to keep header
 
 
-MLIR examples are similar and are included below for quick reference but are more fully defined in the [AIE Dialect online documentation](https://xilinx.github.io/mlir-aie/AIE.html):
+MLIR examples are similar and are included below for quick reference but are more fully defined in the [AIE Dialect online documentation](https://xilinx.github.io/mlir-aie/AIEDialect.html):
 ```mlir
-packetflow(1) { 
+packetflow(1) {
     aie.packet_source<%tile02, Trace : 0> // core trace
     aie.packet_dest<%tile00, DMA : 1>
 } {keep_pkt_header = "true"}
@@ -106,13 +106,13 @@ To support packet switched flows, we need to declare packet flows and attach bot
 
 > **NOTE**: Quick reminder that most source flow channels from `WireBundle.Trace` will use channel 0, but the `Tile memory` actually uses channel 1.
 
-The `packet IDs`, on the other hand, an be variable but must be globally unique to distinguish routes from one another. An example is shown below for two tiles where both tile core and tile memory trace units are routed. Note the `packet ID` used after the `packetflow` keyword. Also note that we set `keep_pkt_hdr = true` as we would like to keep the packet headers when they are moved to DDR so we can distinguish the packets during post-run parsing.
+The `packet IDs`, on the other hand, an be variable but must be globally unique to distinguish routes from one another. An example is shown below for two tiles where both tile core and tile memory trace units are routed. Note the `packet ID` used after the `packetflow` keyword. Also note that we set `keep_pkt_header = true` as we would like to keep the packet headers when they are moved to DDR so we can distinguish the packets during post-run parsing.
 
 ```python
-packetflow(1, ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1, keep_pkt_hdr=True) # core trace
-packetflow(2, ComputeTile2, WireBundle.Trace, 1, ShimTile, WireBundle.DMA, 1, keep_pkt_hdr=True) # core mem trace
-packetflow(3, ComputeTile3, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1, keep_pkt_hdr=True) # core trace
-packetflow(4, ComputeTile3, WireBundle.Trace, 1, ShimTile, WireBundle.DMA, 1, keep_pkt_hdr=True) # core mem trace
+packetflow(1, ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1, keep_pkt_header=True) # core trace
+packetflow(2, ComputeTile2, WireBundle.Trace, 1, ShimTile, WireBundle.DMA, 1, keep_pkt_header=True) # core mem trace
+packetflow(3, ComputeTile3, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1, keep_pkt_header=True) # core trace
+packetflow(4, ComputeTile3, WireBundle.Trace, 1, ShimTile, WireBundle.DMA, 1, keep_pkt_header=True) # core mem trace
 ```
 
 ## <u>2. Configure host code to read trace data and write it to a text file</u>
@@ -120,7 +120,7 @@ packetflow(4, ComputeTile3, WireBundle.Trace, 1, ShimTile, WireBundle.DMA, 1, ke
 Once the trace units are configured and enabled, we want the host code to read the trace data from DDR and write it out to a text file for post-run processing. To give a better sense of how this comes together, this section provides an example design that is again a simplifed version of the [Vector Scalar Multiply example](../../../programming_examples/basic/vector_scalar_mul/).
 
 ### <u>AIE structural design code ([aie2.py](./aie2.py))</u>
-In order to write the DDR data to a text file, we need to decide where we want the DDR data to first be stored and then read from that location, before writing to a text file. This starts inside the [aie2.py](./aie2.py) file where we use the `configure_simple_tracing_aie2` function call to configure the trace units and program the shimDMA to write to 1 of the 3 inout buffers. There are many ways to configure our structural design to write this data out but one pattern is the following: `inout0` is for input data, `inout1` is for output data, and `inout2` is for output trace data as illustrated below: 
+In order to write the DDR data to a text file, we need to decide where we want the DDR data to first be stored and then read from that location, before writing to a text file. This starts inside the [aie2.py](./aie2.py) file where we use the `configure_simple_tracing_aie2` function call to configure the trace units and program the shimDMA to write to 1 of the 3 inout buffers. There are many ways to configure our structural design to write this data out but one pattern is the following: `inout0` is for input data, `inout1` is for output data, and `inout2` is for output trace data as illustrated below:
 
 | inout0 | inout1 | inout2 |
 |--------|--------|--------|
@@ -146,17 +146,17 @@ Once [aie2.py](./aie2.py) is configured to output trace data through one of the 
 > **NOTE** In our example design ([aie2.py](./aie2.py), [Makefile](./Makefile)), we provide a Makefile target `run` for standard build and `trace` for trace-enabled build. The trace-enabled build passes the trace buffer size as an argument to [aie2.py](./aie2.py) which conditionally enables the trace `flow` and calls `configure_simple_tracing_aie2` as long as `trace_size` is > 0. This is also true for the [Vector Scalar Multiply example](../../../programming_examples/basic/vector_scalar_mul).
 
 ### <u>(2a) C/C++ Host code ([test.cpp](./test.cpp))</u>
-The main changes needed for [test.cpp](./test.cpp) is the increase in the output buffer size to account for the trace buffer size, being careful to read only the output buffer portion when verifying correctness of the results. We also need to be sure to pass the correct buffer offset which points to the trace buffer data when calling `write_out_trace`. 
+The main changes needed for [test.cpp](./test.cpp) is the increase in the output buffer size to account for the trace buffer size, being careful to read only the output buffer portion when verifying correctness of the results. We also need to be sure to pass the correct buffer offset which points to the trace buffer data when calling `write_out_trace`.
 
-You can see in [test.cpp](./test.cpp) that trace_size is set based on an input argument of `-t $(trace_size)` which is defined and passed in the [Makefile](./Makefile). The `trace` target from the [Makefile](./Makefile) is shown below. 
+You can see in [test.cpp](./test.cpp) that trace_size is set based on an input argument of `-t $(trace_size)` which is defined and passed in the [Makefile](./Makefile). The `trace` target from the [Makefile](./Makefile) is shown below.
 
 ```Makefile
-trace: ${targetname}.exe build/final.xclbin build/insts.txt 
+trace: ${targetname}.exe build/final.xclbin build/insts.txt
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -t 8192
 	../../../programming_examples/utils/parse_trace.py --filename trace.txt --mlir build/aie.mlir --colshift 1 > trace_4b.json
 ```
-Following the invocation of the executable, we call the `parse_trace.py` python script which we will cover in more detail in step 3. 
-Within the [test.cpp](./test.cpp), we redefine OUT_SIZE to be the sum of output buffer size (in bytes) and the trace buffer size. 
+Following the invocation of the executable, we call the `parse_trace.py` python script which we will cover in more detail in step 3.
+Within the [test.cpp](./test.cpp), we redefine OUT_SIZE to be the sum of output buffer size (in bytes) and the trace buffer size.
 ```c++
     int OUT_SIZE = IN_SIZE + trace_size;
 ```
@@ -184,7 +184,7 @@ During verification, the `output_buffer` excludes the trace data and uses the `r
     entire_buffer = bo_inout2.read(OUT_SIZE, 0).view(np.uint32)
     output_buffer = entire_buffer[:INOUT2_VOLUME]
 ```
-Finally, we read `trace buffer` from the entire_buffer starting at the offset of the `INOUT2_VOLUME` and pass the trace buffer to the python equivalent of `write_out_trace` which is defined in `aie.utils.trace`. 
+Finally, we read `trace buffer` from the entire_buffer starting at the offset of the `INOUT2_VOLUME` and pass the trace buffer to the python equivalent of `write_out_trace` which is defined in `aie.utils.trace`.
 > **Note** This version doesn't need the trace_size as our python function recognizes when the array is empty.
 ```python
     if opts.trace_size > 0:
@@ -193,14 +193,14 @@ Finally, we read `trace buffer` from the entire_buffer starting at the offset of
 ```
 
 ## <u>3. Parse text file to generate a waveform json file</u>
-Once the packet trace text file is generated (`trace.txt`), we use a python-based trace parser ([parse_trace.py](../../../programming_examples/utils/parse_trace.py)) to interpret the trace values and generate a waveform json file for visualization (with Perfetto). 
+Once the packet trace text file is generated (`trace.txt`), we use a python-based trace parser ([parse_trace.py](../../../programming_examples/utils/parse_trace.py)) to interpret the trace values and generate a waveform json file for visualization (with Perfetto).
 ```Makefile
 	../../../programming_examples/utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > trace_vs.json
 ```
-This leverages the python parse scripts under [programming_examples/utils](../../../programming_examples/utils/). Follow [this link](../../../programming_examples/utils/) to get more details about how to use the python parse scripts. 
+This leverages the python parse scripts under [programming_examples/utils](../../../programming_examples/utils/). Follow [this link](../../../programming_examples/utils/) to get more details about how to use the python parse scripts.
 
 ## <u>4. Open json file in a visualization tool like Perfetto</u>
-Open https://ui.perfetto.dev in your browser and then open up the waveform json file generated in step 3. You can navigate the waveform viewer as you would a standard waveform viewer and can even zoom/pan the waveform with the a,s,w,d keyboard keys. 
+Open https://ui.perfetto.dev in your browser and then open up the waveform json file generated in step 3. You can navigate the waveform viewer as you would a standard waveform viewer and can even zoom/pan the waveform with the a,s,w,d keyboard keys.
 
 ## <u>Additional Debug Hints</u>
 * If you are getting 0's in your trace outputs. Check these things:
@@ -209,7 +209,7 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
     * For packet-routed flows, check correctly matching packet IDs. The packet flow ID must match the configured ID value in Trace Control 1 register or else the packets don't get routed.
 
 ## <u>Exercises</u>
-1. Let's give tracing a try. In this directory, we're been examining a simplified version of the `vector ccalar multiply` example. Run `make trace`. This compiles the design, generates a trace data file, and run `prase_trace.py` to generate the `trace_4b.json` waveform file. 
+1. Let's give tracing a try. In this directory, we're been examining a simplified version of the `vector ccalar multiply` example. Run `make trace`. This compiles the design, generates a trace data file, and run `prase_trace.py` to generate the `trace_4b.json` waveform file.
 
     > **NOTE** In this example, `make`, `make run` and `make trace` will all build a structural design with tracing enabled to keep things simple. But only `make trace` will enable tracing in the host code and call `parse_trace.py`. In contrast, the reference `vector scalar multiply example` has a more robust `Makefile` where `make` and `make run` builds the structural design with tracing disabled.
 

@@ -532,16 +532,6 @@ LogicalResult AIEX::RuntimeSequenceOp::verify() {
     (*this)->emitOpError() << "must be inside AIE device operation.";
     return failure();
   }
-  auto seq_ops = device.getOps<AIEX::RuntimeSequenceOp>();
-  if (std::distance(seq_ops.begin(), seq_ops.end()) > 1) {
-    auto err = device.emitOpError()
-               << "Cannot have more than one runtime sequence per device.";
-    for (auto it = seq_ops.begin(); it != seq_ops.end(); ++it) {
-      AIEX::RuntimeSequenceOp seq_op = *it;
-      err.attachNote(seq_op.getLoc()) << "Sequence operation definition here.";
-    }
-    return failure();
-  }
   return success();
 }
 
@@ -555,6 +545,13 @@ std::optional<uint32_t> AIEX::DMAConfigureTaskOp::getFirstBdId() {
     return std::nullopt;
   }
   auto bd_ops = body.front().getOps<AIE::DMABDOp>();
+  if (bd_ops.empty() && body.front().getNumSuccessors() == 1) {
+    // Allow the first block to be empty and point to the entry point of the
+    // chain. This allows for specifying cyclying BD chains (infinite loops)
+    // within the constraints of MLIR syntax.
+    Block &chain_entry = *body.front().getSuccessor(0);
+    bd_ops = chain_entry.getOps<AIE::DMABDOp>();
+  }
   if (bd_ops.empty()) {
     return std::nullopt;
   }
@@ -634,4 +631,22 @@ LogicalResult AIEX::DMAStartBdChainOp::verify() {
     }
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// NpuControlPacketOp
+//===----------------------------------------------------------------------===//
+
+uint32_t AIEX::NpuControlPacketOp::getRowFromAddr() {
+  const auto &targetModel = AIE::getTargetModel(*this);
+  uint32_t addr = getAddress();
+  uint32_t rowInt = (addr >> targetModel.getRowShift()) & 0x1f;
+  return rowInt;
+}
+
+uint32_t AIEX::NpuControlPacketOp::getColumnFromAddr() {
+  const auto &targetModel = AIE::getTargetModel(*this);
+  uint32_t addr = getAddress();
+  uint32_t colInt = (addr >> targetModel.getColumnShift()) & 0x1f;
+  return colInt;
 }

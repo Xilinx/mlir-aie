@@ -22,7 +22,7 @@
 namespace xilinx::AIE {
 
 #define OVER_CAPACITY_COEFF 0.1
-#define USED_CAPACITY_COEFF 0.1
+#define USED_CAPACITY_COEFF 0.02
 #define DEMAND_COEFF 1.1
 #define DEMAND_BASE 1.0
 #define MAX_CIRCUIT_STREAM_CAPACITY 1
@@ -118,6 +118,7 @@ using PathEndPoint = struct PathEndPoint {
 
 using Flow = struct Flow {
   int packetGroupId;
+  bool isPriorityFlow;
   PathEndPoint src;
   std::vector<PathEndPoint> dsts;
 };
@@ -181,7 +182,9 @@ public:
   virtual void initialize(int maxCol, int maxRow,
                           const AIETargetModel &targetModel) = 0;
   virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
-                       Port dstPort, bool isPacketFlow) = 0;
+                       Port dstPort, bool isPacketFlow,
+                       bool isPriorityFlow) = 0;
+  virtual void sortFlows(const int maxCol, const int maxRow) = 0;
   virtual bool addFixedConnection(SwitchboxOp switchboxOp) = 0;
   virtual std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) = 0;
@@ -193,7 +196,8 @@ public:
   void initialize(int maxCol, int maxRow,
                   const AIETargetModel &targetModel) override;
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort,
-               bool isPacketFlow) override;
+               bool isPacketFlow, bool isPriorityFlow) override;
+  void sortFlows(const int maxCol, const int maxRow) override;
   bool addFixedConnection(SwitchboxOp switchboxOp) override;
   std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) override;

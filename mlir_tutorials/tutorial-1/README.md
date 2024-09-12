@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Copyright (C) 2022, Advanced Micro Devices, Inc.
-// 
+//
 //===----------------------------------------------------------------------===//-->
 
 # <ins>Tutorial 1 - Modules, tile, buffer, core, lock</ins>
@@ -13,8 +13,8 @@ In the MLIR-based AI Engine representation, every physical component of the AI E
 
 ```
 module @module_name {
-    ... 
-    AI Engine array components and connections 
+    ...
+    AI Engine array components and connections
     ...
 }
 ```
@@ -26,31 +26,31 @@ AI Engine tiles are the basic building blocks of AIE designs and can be declared
 %tile24 = AIE.tile(2,4)
 %tile34 = AIE.tile(3,4)
 ```
-The two major components of an AI Engine tile are 
+The two major components of an AI Engine tile are
 
 * VLIW processor core declared as `AIE.core(tileName) { body }`
-* Local memory buffer declared as `AIE.buffer(tileName) : memref<depth x data_type> { body }`. 
+* Local memory buffer declared as `AIE.buffer(tileName) : memref<depth x data_type> { body }`.
 
 Example declarations include:
 ```
 AIE.core(%tile14) {
-    ... 
-    core body 
+    ...
+    core body
     ...
 }
 
 %buff0 = AIE.buffer(%tile14) : memref<256xi32>
 %buff1 = AIE.buffer(%tile14) : memref<256xi32>
 ```
-The association between these declarations and the physical AI Engine tile components can be seen here. For more details on mlir-aie dialect syntax, you can refer to the online reference document [here](https://xilinx.github.io/mlir-aie/AIE.html).
+The association between these declarations and the physical AI Engine tile components can be seen here. For more details on mlir-aie dialect syntax, you can refer to the online reference document [here](https://xilinx.github.io/mlir-aie/AIEDialect.html).
 <img src="../images/diagram1.png" width="1000">
 
 A third key component of a tile is the `lock` which is critical for synchronizing data between tiles and one another, and between tiles and the host controller. While not a physically large component, it plays a critical role in facilitating efficient and correct data communication.
 
 ### <ins>Tile</ins>
 
-For the tile, we simply declare its coordinates by column and row 
->**NOTE:** index values start at 0, with row 0 belonging to the shim which is not a regular row. The first regular row for first generation AI engines is row index 1. 
+For the tile, we simply declare its coordinates by column and row
+>**NOTE:** index values start at 0, with row 0 belonging to the shim which is not a regular row. The first regular row for first generation AI engines is row index 1.
 Tile declaration is mainly needed so other sub components can be associated to the tile by name. Some higher level logical components may also automatically declare tiles so they are enabled (e.g. logical flows require the intermediate tiles along the path to be enabled to support stream switch routing).
 
 >**ADF Graph NOTE:** ADF graph descriptions treat the first full row of AI Engines as row 0 and does not count the shim tiles. As such, be sure to add one to the row value when moving from ADF designs to MLIR-AIE descriptions.
@@ -63,7 +63,7 @@ The type of tiles and orientation of its associated local memory is architecture
 
 ### <ins>Buffer</ins>
 
-When declaring a buffer, we pass in the associated AIE tile and declare the buffer parameters. Those parameters are the depth and data type width (though the local memory itself is not physically organized in this way). 
+When declaring a buffer, we pass in the associated AIE tile and declare the buffer parameters. Those parameters are the depth and data type width (though the local memory itself is not physically organized in this way).
 > One important note about buffers is that one buffer is not strictly mapped to the entire local memory. You can declare multiple buffers that are associated with the local memory of a tile and they would, by default, be allocated sequentially in that tile's local memory.
 
 Operators such as buffers (and some other components such as locks) also can have a symbolic name defined in the body to make it easier to refer to the component in generated host access functions. The syntax for this looks like:
@@ -91,11 +91,11 @@ Examples:
 %lock13_11 = AIE.lock(%tile13, 11) { sym_name = "lock13_11" }
 ```
 Each tile has 16 locks and each lock is in one of two states (acquired, released) and one of two values (0, 1).
-> By default, we tend to assume (value=0 is a "write", value=1 is "read"). But there is no real definition of these values. The only key thing to remember is that the lock value starts at `val=0`, and is reset into the release `val=0` state. This means an `acquire=0` will always succeed first, while an `acquire=1` needs the lock state to be `release=1` to succeed. Once acquired, a lock can be released to the 0 or 1 state. 
+> By default, we tend to assume (value=0 is a "write", value=1 is "read"). But there is no real definition of these values. The only key thing to remember is that the lock value starts at `val=0`, and is reset into the release `val=0` state. This means an `acquire=0` will always succeed first, while an `acquire=1` needs the lock state to be `release=1` to succeed. Once acquired, a lock can be released to the 0 or 1 state.
 
-The 16 locks in a tile are accessible by its same 3 cardinal neighbors that can access the tile's local memory. This is to ensure all neighbors that can access the local memory can also access the locks. 
+The 16 locks in a tile are accessible by its same 3 cardinal neighbors that can access the tile's local memory. This is to ensure all neighbors that can access the local memory can also access the locks.
 
-To use the lock, we call the `use_lock` operation either inside a `core` operation or `mem`/`shim_dma` operation. 
+To use the lock, we call the `use_lock` operation either inside a `core` operation or `mem`/`shim_dma` operation.
 ```
 AIE.use_lock(%lockName, "Acquire|Release", 0|1)
 ```
@@ -112,9 +112,9 @@ Notice the familiar design pattern of:
 * a set of operations
 * release lock in some value (usually the other value)
 
-The acquire value must match the current lock state in order for the acquire to succeed. The release value can be either 0 or 1. 
+The acquire value must match the current lock state in order for the acquire to succeed. The release value can be either 0 or 1.
 
-We will be introducing more components and the ways these components are customized in subsequent tutorials. Additional syntax for these MLIR-based AI Engine components can be found in the github<area>.io docs [here](https://xilinx.github.io/mlir-aie/AIE.html).
+We will be introducing more components and the ways these components are customized in subsequent tutorials. Additional syntax for these MLIR-based AI Engine components can be found in the github<area>.io docs [here](https://xilinx.github.io/mlir-aie/AIEDialect.html).
 
 ## <ins>Tutorial 1 Lab</ins>
 
@@ -130,9 +130,9 @@ We will be introducing more components and the ways these components are customi
 ### <ins>MLIR-AIE Transformations</ins>
 Under the hood, `make` calls `aiecc.py` which itself calls a number of utilities that are built as part of the `mlir-aie` project (`aie-translate`, `aie-opt`). More details on these utilities can be found in [tutorial-10](../tutorial-10). These utilities are built as part of the `mlir-aie` to perform IR transformations and lowerings. In this example, since we are already describing our design at a low physical level, we will perform the final transformation and produce an AI Engine program (core_1_4.elf).
 
-The MLIR operations inside the core are then converted to an LLVM representation which the AMD internal compiler (currently `xchesscc`) takes to build the executable that will run on each individual AIE tile. 
-   
-3. In [aie.mlir](aie.mlir), what is the variable name for tile(1,4)? <img src="../images/answer1.jpg" title="%tile14" height=25> 
+The MLIR operations inside the core are then converted to an LLVM representation which the AMD internal compiler (currently `xchesscc`) takes to build the executable that will run on each individual AIE tile.
+
+3. In [aie.mlir](aie.mlir), what is the variable name for tile(1,4)? <img src="../images/answer1.jpg" title="%tile14" height=25>
 
     What about the variable name and size of the buffer that is associated with the local memory of tile(1,4)? <img src="../images/answer1.jpg" title="%buf, 256 x int32" height=25>
 
@@ -145,7 +145,7 @@ In first generation AI Engines, each tile has 32 kB of local data memory assigne
 5. Change the size of the buffer to the size of our local memory (8192 x i32) and run `make` again. What do you expect to happen and what happens instead? <img src="../images/answer1.jpg" title="You may expect to be able to define a buffer that uses the entirety of local memory. Instead, an error occurs: Allocated buffers exceed local memory. (The next paragraph explains why this happens.)" height=25>
 
 ### <ins>AI Engine Program Memory</ins>
-While we have a separate 16 kB of program memory which stores the AIE program code, the 32 kB of data memory is also used for the program stack. By default, the tool reserves 1024 bytes for the stack so all buffers are then allocated immediately after that. 
+While we have a separate 16 kB of program memory which stores the AIE program code, the 32 kB of data memory is also used for the program stack. By default, the tool reserves 1024 bytes for the stack so all buffers are then allocated immediately after that.
 
 6. Declare a horizontally adjacent tile (pay attention to which row we're in) so that tile (1,4) can access the neighbor tile's local memory. Declare a buffer in this tile that uses the entire local memory (8192 x i32) and replace the reference %buf in line 34 with the new buffer, then run `make ` again. What happens? <img src="../images/answer1.jpg" title="We are able to compile successfully, since we can use our neighbor's full local memory. Only tiles that are running program code have a stack space of 1024 bytes reserved." height=25>
 

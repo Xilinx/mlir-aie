@@ -7,6 +7,24 @@
 
 add_subdirectory(AIEVecToCpp)
 
+# for #include <elf.h>
+set(BOOTGEN_SOURCE_DIR ${PROJECT_SOURCE_DIR}/third_party/bootgen)
+
+add_mlir_library(AIERT
+  AIERT.cpp
+
+  PARTIAL_SOURCES_INTENDED
+  ENABLE_AGGREGATION
+
+  ADDITIONAL_HEADER_DIRS
+  ${CMAKE_CURRENT_SRC_DIR}/../../../include/aie/Targets
+)
+
+target_link_libraries(AIERT PRIVATE xaienginecdo_static)
+target_include_directories(AIERT SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR})
+target_include_directories(obj.AIERT SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR})
+add_dependencies(obj.AIERT xaienginecdo_static xaienginecdo_static-headers)
+
 add_mlir_library(AIETargets
   AIETargets.cpp
   AIETargetBCF.cpp
@@ -26,7 +44,7 @@ add_mlir_library(AIETargets
 
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
-  $(CMAKE_CURRENT_SRC_DIR)/../../../include/aie/Targets
+  ${CMAKE_CURRENT_SRC_DIR}/../../../include/aie/Targets
 
   LINK_COMPONENTS
   BinaryFormat
@@ -41,6 +59,7 @@ add_mlir_library(AIETargets
   IPO
 
   LINK_LIBS PUBLIC
+  AIERT
   AIE
   AIEX
   AIEXUtils
@@ -68,9 +87,6 @@ if(AIE_ENABLE_AIRBIN)
 endif()
 
 target_link_libraries(AIETargets PRIVATE xaienginecdo_static)
-add_dependencies(obj.AIETargets xaienginecdo_static xaienginecdo_static-headers)
-# for #include <elf.h>
-set(BOOTGEN_SOURCE_DIR ${PROJECT_SOURCE_DIR}/third_party/bootgen)
 target_include_directories(AIETargets SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR})
 target_include_directories(obj.AIETargets SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR})
 

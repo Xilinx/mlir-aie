@@ -153,6 +153,17 @@ void registerAIETranslations() {
       "cdo-enable-cores", llvm::cl::init(true),
       llvm::cl::desc("Enable cores in CDO"));
 
+  static llvm::cl::opt<bool> outputBinary(
+      "aie-output-binary", llvm::cl::init(false),
+      llvm::cl::desc(
+          "Select binary (true) or text (false) output for supported "
+          "translations. e.g. aie-npu-instgen, aie-ctrlpkt-to-bin"));
+
+  static llvm::cl::opt<std::string> sequenceName(
+      "aie-sequence-name", llvm::cl::init(""),
+      llvm::cl::desc(
+          "Specify the name of the aiex.runtime_sequence to translate"));
+
   TranslateFromMLIRRegistration registrationMMap(
       "aie-generate-mmap", "Generate AIE memory map",
       [](ModuleOp module, raw_ostream &output) {
@@ -332,10 +343,70 @@ void registerAIETranslations() {
                                        cdoXaieDebug, cdoEnableCores);
       },
       registerDialects);
-  TranslateFromMLIRRegistration registrationNPU(
-      "aie-npu-instgen", "Generate instructions for NPU",
+  TranslateFromMLIRRegistration registrationCDOWithTxn(
+      "aie-generate-txn",
+      "Generate TXN configuration. Use --aie-output-binary to select between "
+      "mlir (default) and binary output",
       [](ModuleOp module, raw_ostream &output) {
-        return AIETranslateToNPU(module, output);
+        SmallString<128> workDirPath_;
+        if (workDirPath.getNumOccurrences() == 0) {
+          if (llvm::sys::fs::current_path(workDirPath_))
+            llvm::report_fatal_error(
+                "couldn't get cwd to use as work-dir-path");
+        } else
+          workDirPath_ = workDirPath.getValue();
+        LLVM_DEBUG(llvm::dbgs() << "work-dir-path: " << workDirPath_ << "\n");
+        return AIETranslateToTxn(module, output, workDirPath_, outputBinary,
+                                 cdoAieSim, cdoXaieDebug, cdoEnableCores);
+      },
+      registerDialects);
+  TranslateFromMLIRRegistration registrationNPU(
+      "aie-npu-instgen", "Translate npu instructions to binary",
+      [](ModuleOp module, raw_ostream &output) {
+        if (outputBinary == true) {
+          std::vector<uint32_t> instructions;
+          auto r = AIETranslateToNPU(module, instructions, sequenceName);
+          if (failed(r))
+            return r;
+          output.write(reinterpret_cast<const char *>(instructions.data()),
+                       instructions.size() * sizeof(uint32_t));
+          return success();
+        }
+        return AIETranslateToNPU(module, output, sequenceName);
+      },
+      registerDialects);
+  TranslateFromMLIRRegistration registrationCtrlPkt(
+      "aie-ctrlpkt-to-bin", "Translate aiex.control_packet ops to binary",
+      [](ModuleOp module, raw_ostream &output) {
+        if (outputBinary == true) {
+          std::vector<uint32_t> instructions;
+          auto r = AIETranslateControlPacketsToUI32Vec(module, instructions,
+                                                       sequenceName);
+          if (failed(r))
+            return r;
+          output.write(reinterpret_cast<const char *>(instructions.data()),
+                       instructions.size() * sizeof(uint32_t));
+          return success();
+        }
+        return AIETranslateControlPacketsToUI32Vec(module, output);
+      },
+      registerDialects);
+  TranslateFromMLIRRegistration registrationCDOWithCtrlpkt(
+      "aie-generate-ctrlpkt",
+      "Generate control packet configuration. Use --aie-output-binary to "
+      "select between mlir (default) and binary output",
+      [](ModuleOp module, raw_ostream &output) {
+        SmallString<128> workDirPath_;
+        if (workDirPath.getNumOccurrences() == 0) {
+          if (llvm::sys::fs::current_path(workDirPath_))
+            llvm::report_fatal_error(
+                "couldn't get cwd to use as work-dir-path");
+        } else
+          workDirPath_ = workDirPath.getValue();
+        LLVM_DEBUG(llvm::dbgs() << "work-dir-path: " << workDirPath_ << "\n");
+        return AIETranslateToControlPackets(module, output, workDirPath_,
+                                            outputBinary, cdoAieSim,
+                                            cdoXaieDebug, cdoEnableCores);
       },
       registerDialects);
 }

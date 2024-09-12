@@ -22,11 +22,15 @@ from .._mlir_libs._aie import (
     aie_llvm_link,
     generate_bcf,
     generate_cdo,
+    generate_txn,
+    generate_ctrlpkt,
     generate_xaie,
+    generate_control_packets,
     npu_instgen,
     register_dialect,
     translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
+    transaction_binary_to_mlir,
 )
 from ..extras import types as T
 from ..extras.dialects.ext.arith import constant
@@ -315,16 +319,25 @@ class object_fifo(ObjectFifoCreateOp):
     def release(self, port, num_elem):
         return objectfifo_release(port, self.sym_name.value, num_elem)
 
+    def set_via_shared_mem(self, port):
+        num = 0
+        if port == ObjectFifoPort.Produce:
+            num = 0
+        elif port == ObjectFifoPort.Consume:
+            num = 1
+        int_num = IntegerAttr.get(T.i32(), num)
+        self.attributes["via_shared_mem"] = int_num
+
+    def set_memtile_repeat(self, num):
+        int_num = IntegerAttr.get(T.i32(), num)
+        self.attributes["memtile_repeat"] = int_num
+
 
 # Create an aie objectFifo_link between input and output objectFifos.
 class object_fifo_link(ObjectFifoLinkOp):
     """Specialize ObjectFifoLinkOp class constructor to take python variables"""
 
-    def __init__(
-        self,
-        fifoIns,
-        fifoOuts,
-    ):
+    def __init__(self, fifoIns, fifoOuts, srcOffsets=[], dstOffsets=[]):
         if not isinstance(fifoIns, List):
             fifoIns = [fifoIns]
         if not isinstance(fifoOuts, List):
@@ -338,6 +351,8 @@ class object_fifo_link(ObjectFifoLinkOp):
         super().__init__(
             fifoIns=fifoInRefs,
             fifoOuts=fifoOutRefs,
+            src_offsets=srcOffsets,
+            dst_offsets=dstOffsets,
         )
 
 

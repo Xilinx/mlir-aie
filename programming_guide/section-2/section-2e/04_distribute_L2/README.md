@@ -21,7 +21,7 @@ The design in [distribute_L2.py](./distribute_L2.py) uses an Object FIFO `of_in`
   of_in0 = object_fifo("in0", MemTile, ComputeTile0, 2, memRef_8_ty)
   of_in1 = object_fifo("in1", MemTile, ComputeTile1, 2, memRef_8_ty)
   of_in2 = object_fifo("in2", MemTile, ComputeTile2, 2, memRef_8_ty)
-  object_fifo_link(of_in, [of_in0, of_in1, of_in2])
+  object_fifo_link(of_in, [of_in0, of_in1, of_in2], [], [0, 8, 16])
 ```
 
 All compute tiles are running the same process of acquiring one object from their respective input Object FIFOs to consume, adding `1` to all of its entries, and releasing the object. The [join design](../05_join_L2/) shows how the data is sent back out to external memory and tested.

@@ -6,7 +6,9 @@
 # (c) Copyright 2021 Xilinx Inc.
 
 add_mlir_dialect(AIE aie)
-add_mlir_doc(AIEDocs AIE ./ -gen-dialect-doc)
+# Use a simplified version AIEDocs.td to generate the AIEDialect.md ending up as
+# https://xilinx.github.io/mlir-aie/AIEDialect.html
+add_mlir_doc(AIEDocs AIEDialect ./ -gen-dialect-doc)
 
 # Add AIE interfaces
 set(LLVM_TARGET_DEFINITIONS AIEInterfaces.td)

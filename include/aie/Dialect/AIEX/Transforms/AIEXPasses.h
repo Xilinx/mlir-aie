@@ -1,4 +1,4 @@
-//===- AIEPasses.h ----------------------------------------------*- C++ -*-===//
+//===- AIEXPasses.h ---------------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -38,6 +38,10 @@ std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEDMATasksToNPUPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIESubstituteShimDMAAllocationsPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIECtrlPacketToDmaPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIECtrlPacketInferTilesPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
