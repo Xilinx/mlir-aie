@@ -1633,9 +1633,9 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     On AIE-ML devices, objectFifos can also apply data layout transformations by
     using the DMAs n-dimensional address generation scheme. Two transformations
     can be applied for an objectFifo: one on the producer side, given by a
-    `toStream` attribute, and one transformation on the consumer side, given by
-    a `fromStream` attribute. See the `DMABDOp` documentation for a description
-    of strides and sizes. The `toStream` and `fromStream` optional attributes
+    `dimensionsToStream` attribute, and one transformation on the consumer side, given by
+    a `dimensionsFromStream` attribute. See the `DMABDOp` documentation for a description
+    of strides and sizes. The `dimensionsToStream` and `dimensionsFromStream` optional attributes
     are given directly following the producer or consumer tile declaration.
     Different transformations can be specified for each consumer. See example
     below.
@@ -1655,10 +1655,10 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     all even indices from the stream, followed by all odd indices:
 
     ```
-      aie.objectfifo @of4 (%tile12 toStream [<16, 1>, <16, 16>, <1,1>],
+      aie.objectfifo @of4 (%tile12 dimensionsToStream [<16, 1>, <16, 16>, <1,1>],
                            {
-                            %tile13 fromStream [],
-                            %tile23 fromStream [<2, 1>, <128, 2>]
+                            %tile13 dimensionsFromStream [],
+                            %tile23 dimensionsFromStream [<2, 1>, <128, 2>]
                            }, 2 : i32
                           ) : !aie.objectfifo<memref<256xi32>>
     ```
