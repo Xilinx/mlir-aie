@@ -1777,8 +1777,8 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     bool isDistribute() { return getFifoOuts().size() > 1; }
     std::optional<mlir::Value> getOptionalSharedTile();
     std::optional<int> getRepeatCount();
-    std::vector<int> getJoinTranferLengths();
-    std::vector<int> getDistributeTranferLengths();
+    std::vector<int> getJoinTransferLengths();
+    std::vector<int> getDistributeTransferLengths();
   }];
 }
 

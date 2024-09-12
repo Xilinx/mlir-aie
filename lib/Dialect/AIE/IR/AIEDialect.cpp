@@ -719,7 +719,7 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getOutputObjectFifos() {
   return outputObjFifos;
 }
 
-std::vector<int> ObjectFifoLinkOp::getJoinTranferLengths() {
+std::vector<int> ObjectFifoLinkOp::getJoinTransferLengths() {
   std::vector<int> lengths;
   if (isJoin()) {
     auto fifoOut =
@@ -739,7 +739,7 @@ std::vector<int> ObjectFifoLinkOp::getJoinTranferLengths() {
   return lengths;
 }
 
-std::vector<int> ObjectFifoLinkOp::getDistributeTranferLengths() {
+std::vector<int> ObjectFifoLinkOp::getDistributeTransferLengths() {
   std::vector<int> lengths;
   if (isDistribute()) {
     auto fifoIn =
