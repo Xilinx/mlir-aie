@@ -371,7 +371,8 @@ void registerAIETranslations() {
                        instructions.size() * sizeof(uint32_t));
           return success();
         }
-        return AIETranslateControlPacketsToUI32Vec(module, output);
+        return AIETranslateControlPacketsToUI32Vec(module, output,
+                                                   sequenceName);
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationCDOWithCtrlpkt(

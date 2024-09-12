@@ -602,11 +602,17 @@ class FlowRunner:
                     shutil.copy(elf_map, self.tmpdirname)
                 except shutil.SameFileError:
                     pass
-            input_physical = Module.parse(
-                await read_file_async(self.prepend_tmp("input_physical.mlir"))
+            input_physical = await read_file_async(
+                self.prepend_tmp("input_physical.mlir")
             )
-            ctrlpkt_file = os.path.join(self.tmpdirname, "ctrlpkt.mlir")
-            generate_ctrlpkt(input_physical.operation, ctrlpkt_file, self.tmpdirname)
+            run_passes(
+                "builtin.module(aie.device(convert-aie-to-control-packets{elf-dir="
+                + self.tmpdirname
+                + "}))",
+                input_physical,
+                self.prepend_tmp("ctrlpkt.mlir"),
+                self.opts.verbose,
+            )
 
     async def process_xclbin_gen(self):
         if opts.progress:

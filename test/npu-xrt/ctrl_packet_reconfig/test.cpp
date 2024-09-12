@@ -45,9 +45,10 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
 
 int main(int argc, const char *argv[]) {
   // AIE design's data streams
-  std::vector<uint32_t> instr2_v = load_instr_sequence("insts2.txt");
+  std::vector<uint32_t> instr2_v = load_instr_sequence("aie2_run_seq.txt");
   // AIE configuration as control packet streams
-  std::vector<uint32_t> instr3_cfg_v = load_instr_sequence("insts3.txt");
+  std::vector<uint32_t> instr3_cfg_v =
+      load_instr_sequence("ctrlpkt_dma_seq.txt");
   // AIE configuration control packets' raw data
   std::vector<uint32_t> ctrlPackets = load_instr_sequence("ctrlpkt.txt");
 
