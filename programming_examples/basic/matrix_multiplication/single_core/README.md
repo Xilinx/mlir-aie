@@ -10,7 +10,7 @@
 
 # Matrix Multiplication - Single Core Design
 
-In this design, a single AI Engine compute core performs a matrix-matrix-multiplication. The matrices are `bfloat16` data type, and the dimensions are set (by default) to `M`&times;`K`&times;`N` = `128`&times;`128`&times;`128`. The kernel operates on chunks of `64`&times;`32`&times;`64` (`m`&times;`k`&times;`n`), so it is invoked multiple times to complete the full result.
+In this design, a single AI Engine compute core performs a matrix-matrix-multiplication. By default, the matrices are `int16` data type for the input and `int32` data type for the output, and the dimensions are set (by default) to `M`&times;`K`&times;`N` = `256`&times;`256`&times;`256`. The kernel operates on chunks of `64`&times;`32`&times;`64` (`m`&times;`k`&times;`n`), so it is invoked multiple times to complete the full result.
 
 > This design is a simplification of the [whole-array design](../whole_array/README.md). Instead of utilizing all available AI Engine compute cores in parallel, this design performs all computation on a single core. To understand this design better, please refer to the discussion of the whole-array design and the differences outlined below.
 
