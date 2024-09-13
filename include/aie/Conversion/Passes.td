@@ -75,4 +75,26 @@ def ConvertAIEToTransaction : Pass<"convert-aie-to-transaction",
   ];
 }
 
+//===----------------------------------------------------------------------===//
+// AIEToControlPackets
+//===----------------------------------------------------------------------===//
+
+def ConvertAIEToControlPackets : Pass<"convert-aie-to-control-packets",
+                                   "xilinx::AIE::DeviceOp"> {
+  let summary = "Convert AIE dialect to npu control packet operations";
+  let description = [{
+    This pass converts aie.device operations to a sequence of control packet
+    operations (writes, masked writes, and block writes) that can be used to
+    to configure the npu device. A new `aiex.runtime_sequence` operation is
+    inserted into the `aie.device` to contain the new control packet sequence.
+  }];
+  let constructor = "xilinx::AIE::createConvertAIEToControlPacketsPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect"];
+  let options = [
+      Option<"clElfDir", "elf-dir", "std::string", /*default=*/"",
+             "Where to find ELF files">,
+  ];
+}
+
 #endif // AIE_CONVERSION_PASSES

@@ -371,25 +371,8 @@ void registerAIETranslations() {
                        instructions.size() * sizeof(uint32_t));
           return success();
         }
-        return AIETranslateControlPacketsToUI32Vec(module, output);
-      },
-      registerDialects);
-  TranslateFromMLIRRegistration registrationCDOWithCtrlpkt(
-      "aie-generate-ctrlpkt",
-      "Generate control packet configuration. Use --aie-output-binary to "
-      "select between mlir (default) and binary output",
-      [](ModuleOp module, raw_ostream &output) {
-        SmallString<128> workDirPath_;
-        if (workDirPath.getNumOccurrences() == 0) {
-          if (llvm::sys::fs::current_path(workDirPath_))
-            llvm::report_fatal_error(
-                "couldn't get cwd to use as work-dir-path");
-        } else
-          workDirPath_ = workDirPath.getValue();
-        LLVM_DEBUG(llvm::dbgs() << "work-dir-path: " << workDirPath_ << "\n");
-        return AIETranslateToControlPackets(module, output, workDirPath_,
-                                            outputBinary, cdoAieSim,
-                                            cdoXaieDebug, cdoEnableCores);
+        return AIETranslateControlPacketsToUI32Vec(module, output,
+                                                   sequenceName);
       },
       registerDialects);
 }
