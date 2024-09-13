@@ -29,11 +29,13 @@ except ValueError:
 assert vector_size % 4 == 0
 line_size = vector_size // 4
 
+# TODO: clean up types
 inout_type = ((vector_size,), np.uint8)
 fifo_memref_type = ((line_size,), np.uint8)
 
-of0 = MyObjectFifo(2, memref_type=fifo_memref_type, name="out")
-of1 = MyObjectFifo(2, memref_type=fifo_memref_type, name="in")
+# TODO: rely on depth inference
+of_in = MyObjectFifo(2, memref_type=fifo_memref_type)
+of_out = MyObjectFifo(2, memref_type=fifo_memref_type)
 
 passthrough_fn = BinKernel(
     "passThroughLine",
@@ -42,23 +44,23 @@ passthrough_fn = BinKernel(
 )
 
 
-def core_fn(ofs_end1, ofs_end2, external_functions):
-    of_out = ofs_end1[0]
-    of_in = ofs_end2[0]
-    passThroughLine = external_functions[0]
-
+def core_fn(of_in, of_out, passThroughLine):
     for _ in range_(vector_size // line_size):
-        elemOut = of_out.acquire_produce(1)
-        elemIn = of_in.acquire_consume(1)
+        elemOut = of_out.acquire(1)
+        elemIn = of_in.acquire(1)
         passThroughLine(elemIn, elemOut, line_size)
-        of_in.release_consume(1)
-        of_out.release_produce(1)
+        of_in.release(1)
+        of_out.release(1)
         yield_([])
 
 
-worker_program = MyWorker(core_fn, [of0], [of1], [passthrough_fn], coords=(0, 2))
-inout_program = SimpleFifoInOutProgram(of0, vector_size, of1, vector_size)
-
+# TODO: clean up placement
+worker_program = MyWorker(
+    core_fn, [of_in.second, of_out.first, passthrough_fn], coords=(0, 2)
+)
+inout_program = SimpleFifoInOutProgram(
+    of_in.first, vector_size, of_out.second, vector_size
+)
 
 my_program = MyProgram(
     NPU1Col1(), worker_programs=[worker_program], inout_program=inout_program

@@ -42,23 +42,10 @@ class MyProgram:
                 self._print_verify(ctx)
 
                 # generate fifos (and external functions)
-                ofs = set()
-                external_functions = set()
                 for w in self.__worker_programs:
-                    for of1 in w.ofs_end1:
-                        ofs.add(of1)
-                    for of2 in w.ofs_end2:
-                        ofs.add(of2)
-
-                    for e in w.external_functions:
-                        external_functions.add(e)
-                for of in ofs:
-                    of.resolve()
-                    self._print_verify(ctx)
-
-                for e in external_functions:
-                    e.resolve()
-                    self._print_verify(ctx)
+                    for arg in w.fn_args:
+                        arg.resolve()
+                        # self._print_verify(ctx)
 
                 # Generate core programs
                 for w in self.__worker_programs:

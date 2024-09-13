@@ -5,10 +5,12 @@ TODO:
 * logical?
 """
 
+from typing import Union
+
 from .. import ir
 from ..dialects.aie import core
 from .phys.tile import MyTile
-from .dataflow.objectfifo import MyObjectFifo
+from .dataflow.objectfifo import ObjectFifoHandle
 from .dataflow.endpoint import MyObjectFifoEndpoint
 from .kernels.kernel import MyKernel
 
@@ -17,34 +19,26 @@ class MyWorker(MyObjectFifoEndpoint):
     def __init__(
         self,
         core_fn,
-        ofs_end1: list[MyObjectFifo] = [],
-        ofs_end2: list[MyObjectFifo] = [],
-        external_functions: list[MyKernel] = [],
+        fn_args: list[Union[ObjectFifoHandle, MyKernel]],
         coords: tuple[int, int] = None,
     ):
         column, row = coords
         self.tile = MyTile(column, row)
         self.core_fn = core_fn
 
-        assert isinstance(external_functions, list)
+        assert isinstance(fn_args, list)
+        self.fn_args = fn_args
         bin_names = set()
-        for e in external_functions:
-            assert isinstance(e, MyKernel)
-            bin_names.add(e.bin_name)
+
+        for arg in self.fn_args:
+            if isinstance(arg, MyKernel):
+                bin_names.add(arg.bin_name)
+            elif isinstance(arg, ObjectFifoHandle):
+                arg.set_endpoint(self)
+
         assert len(bin_names) <= 1, "Right now only link with one bin"
         if len(bin_names) == 1:
             self.link_with = list(bin_names)[0]
-        self.external_functions = external_functions
-
-        self.ofs_end1 = ofs_end1
-        for of in self.ofs_end1:
-            assert isinstance(of, MyObjectFifo), "ofs_end1 must be List[ObjectFifo]"
-            of.set_endpoint(self, True)
-
-        self.ofs_end2 = ofs_end2
-        for of in self.ofs_end2:
-            assert isinstance(of, MyObjectFifo), "ofs_end1 must be List[ObjectFifo]"
-            of.set_endpoint(self, False)
 
     def get_tile(self) -> MyTile:
         assert self.tile != None
@@ -61,4 +55,4 @@ class MyWorker(MyObjectFifoEndpoint):
 
         @core(my_tile, my_link)
         def core_body():
-            self.core_fn(self.ofs_end1, self.ofs_end2, self.external_functions)
+            self.core_fn(*self.fn_args)
