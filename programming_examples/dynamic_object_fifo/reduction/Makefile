@@ -42,7 +42,7 @@ build/kernel.o: ${srcdir}/kernel.cc
 ${xclbin_target}: aie2.mlir build/kernel.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-npu --npu-insts-name=${insts_target:build/%=%} ${<:%=../%}
+				--dynamic-objFifos --aie-generate-npu --npu-insts-name=${insts_target:build/%=%} ${<:%=../%}
 
 ${host_target}: ${srcdir}/test.cpp ${xclbin_target}
 	mkdir -p ${@D}
