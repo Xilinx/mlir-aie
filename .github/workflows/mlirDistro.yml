@@ -175,7 +175,7 @@ jobs:
         EXTRA_KEY: mlir-distro-enable-rtti-${{ matrix.ENABLE_RTTI }}
 
     # default workspace is repo root but we're not build mlir-aie here, we're building llvm+mlir
-    # and thus llvm-project needs to be adjacent to utils/mlir_wheels/setup.py
+    # and thus llvm-project needs to be adjacent to utils/packaging/mlir_wheels/setup.py
     - name: Shift workspace root
       id: workspace_root
       shell: bash
@@ -185,9 +185,9 @@ jobs:
         ls "${{ steps.setup_base.outputs.WORKSPACE_ROOT }}"
         
         if [ x"${{ matrix.OS }}" == x"windows-2019" ]; then
-          WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}\utils\mlir_wheels"
+          WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}\utils\packaging\mlir_wheels"
         else
-          WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/mlir_wheels"
+          WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/packaging/mlir_wheels"
         fi
         
         echo "WORKSPACE_ROOT=$WORKSPACE_ROOT" | tee -a $GITHUB_OUTPUT

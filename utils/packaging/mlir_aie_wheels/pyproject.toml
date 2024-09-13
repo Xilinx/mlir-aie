@@ -19,6 +19,7 @@ environment-pass = [
     "DATETIME",
     "HOST_CCACHE_DIR",
     "AIE_PROJECT_COMMIT",
+    "REQUIRED_LLVM_WHEEL_VERSION",
     "MATRIX_OS",
     "PARALLEL_LEVEL",
     "PIP_FIND_LINKS",
