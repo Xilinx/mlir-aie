@@ -22,6 +22,7 @@ b_col_maj?=0
 
 kernels=mm_${m}x${k}x${n}
 aieargs+=-m $m -k $k -n $n --n-aie-cols ${n_aie_cols} --b-col-maj ${b_col_maj}
+runargs+=--b_col_maj ${b_col_maj}
 target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
 
 include ${srcdir}/../makefile-common
