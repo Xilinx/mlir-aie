@@ -1367,14 +1367,19 @@ struct AIEObjectFifoStatefulTransformPass
                                consumerWireType, consumerChan.channel);
       }
     }
-
     //===------------------------------------------------------------------===//
-    // Unroll for loops
+    // Statically unroll for loops or use dynamic objectFifos
     //===------------------------------------------------------------------===//
-    if (failed(dynamicObjectFifos(device, builder, objectFifoTiles))) {
+    if(clDynamicObjectFifos){
+      if (failed(dynamicObjectFifos(device, builder, objectFifoTiles))) {
       signalPassFailure();
+      }
     }
-
+    else{
+      if(failed(unrollForLoops(device, builder, objectFifoTiles))) {
+      signalPassFailure();
+      }
+    }
     //===------------------------------------------------------------------===//
     // Replace ops
     //===------------------------------------------------------------------===//
