@@ -37,16 +37,6 @@ static inline void matmul_vectorized_b_col_maj(const T_in *__restrict pA,
 
   event0();
 
-  // For int16 (4x4x4), this implementation iterates over the output space in
-  // steps of 4x4 tiles; each iteration makes an r*s, s*t and r*t step in the
-  // input and output space, respectively. The data layout expected is such
-  // that each r*s/s*t/r*t tile's elements are laid out contiguously in
-  // row-major order, and tiles themselves are organized in row-major
-  // order. For example, for 4x4x4 tiles, this means that an element in
-  // row 1, column 0 would be stored at offset 4 (since the first 4x4 tile
-  // is laid out contiguously in row-major). An element in row 0, column 4
-  // would be stored at offset 16 in the same example.
-
   for (unsigned z = 0; z < rowA; z += 2)
     chess_loop_range(2, ) {
       T_out *__restrict pC1 = pC + (z * colB + 0) * MMUL::size_C;
