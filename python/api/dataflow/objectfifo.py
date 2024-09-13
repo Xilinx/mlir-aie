@@ -10,8 +10,12 @@ from ... import ir
 from ..._mlir_libs._aie import ObjectFifoSubviewType
 from ...extras.util import np_dtype_to_mlir_type
 
-from ...dialects._aie_enum_gen import ObjectFifoPort 
-from ...dialects._aie_ops_gen import ObjectFifoSubviewAccessOp, ObjectFifoAcquireOp, objectfifo_release
+from ...dialects._aie_enum_gen import ObjectFifoPort
+from ...dialects._aie_ops_gen import (
+    ObjectFifoSubviewAccessOp,
+    ObjectFifoAcquireOp,
+    objectfifo_release,
+)
 from ...dialects.aie import object_fifo
 
 from ...dialects.memref import MemRefType
@@ -113,9 +117,7 @@ class MyObjectFifo(Resolvable):
 
         objects = []
         if acq.size.value == 1:
-            return ObjectFifoSubviewAccessOp(
-                memRef_ty, acq.subview, acq.size.value - 1
-            )
+            return ObjectFifoSubviewAccessOp(memRef_ty, acq.subview, acq.size.value - 1)
         for i in range(acq.size.value):
             objects.append(ObjectFifoSubviewAccessOp(memRef_ty, acq.subview, i))
         return objects
