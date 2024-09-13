@@ -2,11 +2,11 @@
 TODO: 
 * docs
 * types
-* producer/consumer
 * join/distribute
 """
 
-from abc import ABC, abstractmethod
+# Address circular dependency between MyObjectFifo and ObjectFifoHandle
+from __future__ import annotations
 
 from ... import ir
 from ..._mlir_libs._aie import ObjectFifoSubviewType
@@ -24,74 +24,6 @@ from ...dialects.aie import object_fifo
 from ...dialects.memref import MemRefType
 from ..resolvable import Resolvable
 from .endpoint import MyObjectFifoEndpoint
-
-
-# TODO: maybe not First and Second types, maybe just have Handle type.
-class ObjectFifoHandle(Resolvable):
-    @abstractmethod
-    def set_endpoint(self, endpoint: MyObjectFifoEndpoint) -> None: ...
-
-    @abstractmethod
-    def acquire(self, num_elem: int, loc=None, ip=None, context=None): ...
-
-    @abstractmethod
-    def release(self, num_elem: int, loc=None, ip=None, context=None): ...
-
-    @property
-    @abstractmethod
-    def name(self) -> str: ...
-
-
-class ObjectFifoFirst(ObjectFifoHandle):
-    def __init__(self, of):
-        self.__object_fifo = of
-
-    def acquire(self, num_elem: int, loc=None, ip=None, context=None):
-        return self.__object_fifo._acquire(ObjectFifoPort.Produce, num_elem)
-
-    def release(self, num_elem: int, loc=None, ip=None, context=None):
-        return self.__object_fifo._release(ObjectFifoPort.Produce, num_elem)
-
-    def set_endpoint(self, endpoint: MyObjectFifoEndpoint) -> None:
-        self.__object_fifo._set_endpoint(endpoint, first=True)
-
-    @property
-    def name(self) -> str:
-        return self.__object_fifo.name
-
-    def resolve(
-        self,
-        loc: ir.Location = None,
-        ip: ir.InsertionPoint = None,
-        context: ir.Context = None,
-    ) -> None:
-        return self.__object_fifo.resolve(loc, ip, context)
-
-
-class ObjectFifoSecond(ObjectFifoHandle):
-    def __init__(self, of):
-        self.__object_fifo = of
-
-    def acquire(self, num_elem: int, loc=None, ip=None, context=None):
-        return self.__object_fifo._acquire(ObjectFifoPort.Consume, num_elem)
-
-    def release(self, num_elem: int, loc=None, ip=None, context=None):
-        return self.__object_fifo._release(ObjectFifoPort.Consume, num_elem)
-
-    def set_endpoint(self, endpoint: MyObjectFifoEndpoint) -> None:
-        self.__object_fifo._set_endpoint(endpoint, first=False)
-
-    @property
-    def name(self) -> str:
-        return self.__object_fifo.name
-
-    def resolve(
-        self,
-        loc: ir.Location = None,
-        ip: ir.InsertionPoint = None,
-        context: ir.Context = None,
-    ) -> None:
-        return self.__object_fifo.resolve(loc, ip, context)
 
 
 class MyObjectFifo(Resolvable):
@@ -129,15 +61,15 @@ class MyObjectFifo(Resolvable):
         return self.__op
 
     @property
-    def first(self) -> ObjectFifoFirst:
+    def first(self) -> ObjectFifoHandle:
         if self.__first == None:
-            self.__first = ObjectFifoFirst(self)
+            self.__first = ObjectFifoHandle(self, True)
         return self.__first
 
     @property
-    def second(self) -> ObjectFifoSecond:
+    def second(self) -> ObjectFifoHandle:
         if self.__second == None:
-            self.__second = ObjectFifoSecond(self)
+            self.__second = ObjectFifoHandle(self, False)
         return self.__second
 
     def resolve(
@@ -200,3 +132,31 @@ class MyObjectFifo(Resolvable):
             num_elem <= self.__depth
         ), "Cannot consume elements to exceed ObjectFifo depth"
         objectfifo_release(port, self.name, num_elem, loc=loc, ip=ip)
+
+
+class ObjectFifoHandle(Resolvable):
+    def __init__(self, of: MyObjectFifo, is_first: bool):
+        self.__port = ObjectFifoPort.Produce if is_first else ObjectFifoPort.Consume
+        self.__is_first = is_first
+        self.__object_fifo = of
+
+    def acquire(self, num_elem: int, loc=None, ip=None, context=None):
+        return self.__object_fifo._acquire(self.__port, num_elem)
+
+    def release(self, num_elem: int, loc=None, ip=None, context=None):
+        return self.__object_fifo._release(self.__port, num_elem)
+
+    def set_endpoint(self, endpoint: MyObjectFifoEndpoint) -> None:
+        self.__object_fifo._set_endpoint(endpoint, first=self.__is_first)
+
+    @property
+    def name(self) -> str:
+        return self.__object_fifo.name
+
+    def resolve(
+        self,
+        loc: ir.Location = None,
+        ip: ir.InsertionPoint = None,
+        context: ir.Context = None,
+    ) -> None:
+        return self.__object_fifo.resolve(loc, ip, context)
