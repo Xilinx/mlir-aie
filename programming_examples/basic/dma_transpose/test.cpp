@@ -152,10 +152,8 @@ int main(int argc, const char *argv[]) {
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_inA = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(3));
-  auto bo_inB = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(4));
   auto bo_out = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(5));
+                        kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
@@ -174,8 +172,8 @@ int main(int argc, const char *argv[]) {
 
   if (verbosity >= 1)
     std::cout << "Running Kernel." << std::endl;
-  unsigned int opcode = 3;
-  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+  unsigned int opcode = 2;
+  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out);
   run.wait();
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);

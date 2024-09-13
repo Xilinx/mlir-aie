@@ -10,6 +10,7 @@ from ..dialects.aie import device
 from .worker import MyWorker
 from .phys.device import MyDevice
 from .dataflow.inout.inout import InOutProgram
+from .dataflow.objectfifolink import MyObjectFifoLink
 
 
 class MyProgram:
@@ -18,15 +19,19 @@ class MyProgram:
         device: MyDevice,
         worker_programs: list[MyWorker],
         inout_program: InOutProgram,
+        links: list[MyObjectFifoLink] = [],
     ):
         assert isinstance(device, MyDevice)
         assert worker_programs != None and len(worker_programs) >= 1
         for w in worker_programs:
             assert isinstance(w, MyWorker)
         assert isinstance(inout_program, InOutProgram)
+        for l in links:
+            assert isinstance(l, MyObjectFifoLink)
         self.__device = device
         self.__worker_programs = worker_programs
         self.__inout_program = inout_program
+        self.__links = links
 
     def resolve_program(self):
         with mlir_mod_ctx() as ctx:
@@ -35,26 +40,37 @@ class MyProgram:
             def device_body():
                 # generate tiles
                 for w in self.__worker_programs:
-                    w.tile.resolve()  # TODO: should maybe be part of endpoint trait?
-                self._print_verify(ctx)
+                    self.__device.resolve_tile(w.tile)
+                for l in self.__links:
+                    self.__device.resolve_tile(l.tile)
+                # self._print_verify(ctx)
 
-                self.__inout_program.tile.resolve()
-                self._print_verify(ctx)
+                self.__device.resolve_tile(self.__inout_program.tile)
+                # self._print_verify(ctx)
 
                 # generate fifos (and external functions)
                 for w in self.__worker_programs:
                     for arg in w.fn_args:
                         arg.resolve()
                         # self._print_verify(ctx)
+                for f in self.__inout_program.get_fifos():
+                    f.resolve()
+                    # self._print_verify(ctx)
+
+                # Generate object fifo links
+                for l in self.__links:
+                    l.resolve()
+                    # self._print_verify(ctx)
 
                 # Generate core programs
                 for w in self.__worker_programs:
                     w.resolve()
-                    self._print_verify(ctx)
+                    # self._print_verify(ctx)
 
                 # Host program
                 self.__inout_program.resolve()
-                self._print_verify(ctx)
+
+                # self._print_verify(ctx)
 
             print(ctx.module)
 

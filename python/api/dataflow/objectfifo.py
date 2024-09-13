@@ -39,8 +39,8 @@ class MyObjectFifo(Resolvable):
     ):
         self.__depth: int = depth
         self.__memref_type = memref_type
-        self.__end1: MyObjectFifoEndpoint = end1
-        self.__end2: MyObjectFifoEndpoint = end2
+        self.end1: MyObjectFifoEndpoint = end1
+        self.end2: MyObjectFifoEndpoint = end2
         if name is None:
             self.name = f"myof{MyObjectFifo.__get_index()}"
         else:
@@ -66,6 +66,11 @@ class MyObjectFifo(Resolvable):
             self.__first = ObjectFifoHandle(self, True)
         return self.__first
 
+    # TODO: type this
+    @property
+    def obj_type(self):
+        return self.__memref_type
+
     @property
     def second(self) -> ObjectFifoHandle:
         if self.__second == None:
@@ -79,17 +84,17 @@ class MyObjectFifo(Resolvable):
         context: ir.Context = None,
     ) -> None:
         if self.__op != None:
-            pass
-        assert self.__end1 != None, "ObjectFifo missing endpoint 1"
-        assert self.__end2 != None, "ObjectFifo missing endpoint 2"
+            return
+        assert self.end1 != None, "ObjectFifo missing endpoint 1"
+        assert self.end2 != None, "ObjectFifo missing endpoint 2"
         assert self.__memref_type != None, "ObjectFifo missing memref_type"
         dtype = np_dtype_to_mlir_type(self.__memref_type[1])
         assert dtype != None
         memRef_ty = MemRefType.get(shape=self.__memref_type[0], element_type=dtype)
         self.__op = object_fifo(
             self.name,
-            self.__end1.get_tile(),
-            self.__end2.get_tile(),
+            self.end1.get_tile(),
+            self.end2.get_tile(),
             self.__depth,
             memRef_ty,
             loc=loc,
@@ -98,11 +103,11 @@ class MyObjectFifo(Resolvable):
 
     def _set_endpoint(self, endpoint, first=True):
         if first:
-            assert self.__end1 == None, "ObjectFifo already assigned endpoint 1"
-            self.__end1 = endpoint
+            assert self.end1 == None, "ObjectFifo already assigned endpoint 1"
+            self.end1 = endpoint
         else:
-            assert self.__end2 == None, "ObjectFifo already assigned endpoint 2"
-            self.__end2 = endpoint
+            assert self.end2 == None, "ObjectFifo already assigned endpoint 2"
+            self.end2 = endpoint
 
     def _acquire(
         self, port: ObjectFifoPort, num_elem: int, loc=None, ip=None, context=None
@@ -146,12 +151,21 @@ class ObjectFifoHandle(Resolvable):
     def release(self, num_elem: int, loc=None, ip=None, context=None):
         return self.__object_fifo._release(self.__port, num_elem)
 
-    def set_endpoint(self, endpoint: MyObjectFifoEndpoint) -> None:
-        self.__object_fifo._set_endpoint(endpoint, first=self.__is_first)
+    # TODO: type this
+    @property
+    def obj_type(self):
+        return self.__object_fifo.obj_type
 
     @property
     def name(self) -> str:
         return self.__object_fifo.name
+
+    @property
+    def op(self) -> ObjectFifoCreateOp:
+        return self.__object_fifo.op
+
+    def set_endpoint(self, endpoint: MyObjectFifoEndpoint) -> None:
+        self.__object_fifo._set_endpoint(endpoint, first=self.__is_first)
 
     def resolve(
         self,

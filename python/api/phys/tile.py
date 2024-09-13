@@ -6,30 +6,12 @@ TODOs:
 """
 
 from ... import ir
-from ...dialects.aie import tile
-
-from ..resolvable import Resolvable
 
 
-class MyTile(Resolvable):
-    def __init__(self, column: int, row: int) -> None:
-        assert isinstance(column, int)
+class MyTile:
+    def __init__(self, col: int, row: int) -> None:
+        assert isinstance(col, int)
         assert isinstance(row, int)
-        self.__column: int = column
-        self.__row: int = row
-        self.__op: int = None
-
-    @property
-    def op(self):
-        assert self.__op != None
-        return self.__op
-
-    def resolve(
-        self,
-        loc: ir.Location = None,
-        ip: ir.InsertionPoint = None,
-        context: ir.Context = None,
-    ) -> None:
-        if self.__op != None:
-            pass
-        self.__op = tile(self.__column, self.__row, loc=loc, ip=ip)
+        self.col: int = col
+        self.row: int = row
+        self.op = None

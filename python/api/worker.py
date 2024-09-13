@@ -25,6 +25,7 @@ class MyWorker(MyObjectFifoEndpoint):
         column, row = coords
         self.tile = MyTile(column, row)
         self.core_fn = core_fn
+        self.link_with = None
 
         assert isinstance(fn_args, list)
         self.fn_args = fn_args
