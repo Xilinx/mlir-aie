@@ -1151,12 +1151,16 @@ struct AIEObjectFifoStatefulTransformPass
                                    std::set<TileOp> objectFifoTiles) {
     for (auto coreOp : device.getOps<CoreOp>()) {
       if (objectFifoTiles.count(coreOp.getTileOp()) > 0) {
-        // For each core: count the number of obectFifos and create
+        // For each core: count the number of objectFifos and create
         // a global state buffer just before the core.
-        std::map<ObjectFifoCreateOp, int> fifoSizes;
+        // !! NOTE !! objectFifos with same producer / consumer tile 
+        // need two counters (accessed based on the ObjectFifoPort)
+        std::map<std::pair<ObjectFifoCreateOp, ObjectFifoPort>, int> fifoSizes;
         coreOp.walk([&](ObjectFifoAcquireOp acqOp) {
           ObjectFifoCreateOp op = acqOp.getObjectFifo();
-          fifoSizes[op] = op.size();
+          ObjectFifoPort port = acqOp.getPort();
+          if (fifoSizes.find({op, port}) == fifoSizes.end())
+            fifoSizes[{op, port}] = op.size();
         });
         builder.setInsertionPoint(coreOp);
         auto memrefTy =
@@ -1169,8 +1173,8 @@ struct AIEObjectFifoStatefulTransformPass
         // Initialize all counters in the global state to 0.
         // Also, keep a map of the ConstantOps for the indices per OF 
         // and a map with the ConstantOps for the sizes per OF.
-        std::map<ObjectFifoCreateOp, arith::ConstantOp> globalIndices;
-        std::map<ObjectFifoCreateOp, arith::ConstantOp> constantSizes;
+        std::map<std::pair<ObjectFifoCreateOp, ObjectFifoPort>, arith::ConstantOp> globalIndices;
+        std::map<std::pair<ObjectFifoCreateOp, ObjectFifoPort>, arith::ConstantOp> constantSizes;
         int index = 0;
         builder.setInsertionPointToStart(&(coreOp.getBody().front()));
         Value initVal = builder.create<arith::ConstantOp>(
@@ -1194,9 +1198,10 @@ struct AIEObjectFifoStatefulTransformPass
         WalkResult res = coreOp.walk([&](Operation *op) {
           if (auto relOp = dyn_cast<ObjectFifoReleaseOp>(op)) {
             ObjectFifoCreateOp createOp = relOp.getObjectFifo();
+            ObjectFifoPort port = relOp.getPort();
             updateGlobalState(builder, relOp, globalState,
-                              globalIndices[createOp],
-                              constantSizes[createOp]);
+                              globalIndices[{createOp, port}],
+                              constantSizes[{createOp, port}]);
           }
           if (auto acqOp = dyn_cast<ObjectFifoAcquireOp>(op)) {
             std::vector<ObjectFifoSubviewAccessOp> accessOps;
@@ -1206,18 +1211,19 @@ struct AIEObjectFifoStatefulTransformPass
 
             for (auto accessOp : accessOps) {
               ObjectFifoCreateOp createOp = acqOp.getObjectFifo();
+              ObjectFifoPort port = acqOp.getPort();
 
               // Single switch case
-              if (fifoSizes[createOp] == 1)
+              if (fifoSizes[{createOp, port}] == 1)
                 return WalkResult::advance();
 
               // Create a switch for each subview access
               builder.setInsertionPointAfter(accessOp);
               auto switchIndex = builder.create<memref::LoadOp>(
-                  builder.getUnknownLoc(), globalState, ValueRange(ArrayRef({globalIndices[createOp].getResult()})));
-              unsigned caseRegionCounts = fifoSizes[createOp];
+                  builder.getUnknownLoc(), globalState, ValueRange(ArrayRef({globalIndices[{createOp, port}].getResult()})));
+              unsigned caseRegionCounts = fifoSizes[{createOp, port}];
               SmallVector<int64_t, 4> caseValues;
-              for (int i = 0; i < fifoSizes[createOp]; ++i) {
+              for (int i = 0; i < fifoSizes[{createOp, port}]; ++i) {
                 caseValues.push_back(i);
               }
               auto cases =
@@ -1232,13 +1238,13 @@ struct AIEObjectFifoStatefulTransformPass
               builder.create<scf::YieldOp>(
                   builder.getUnknownLoc(),
                   buffersPerFifo[createOp][bufferIndex].getResult());
-              for (int i = 0; i < fifoSizes[createOp]; ++i) {
+              for (int i = 0; i < fifoSizes[{createOp, port}]; ++i) {
                 // Create other cases of IndexSwitchOp
                 builder.setInsertionPoint(&switchOp.getCaseBlock(i),
                                           switchOp.getCaseBlock(i).begin());
                 builder.createBlock(&switchOp.getCaseRegions()[i]);
                 int bufferToBeAccesed =
-                    (accessOp.getIndex() + i) % fifoSizes[createOp];
+                    (accessOp.getIndex() + i) % fifoSizes[{createOp, port}];
                 builder.create<scf::YieldOp>(
                     switchOp.getCaseRegions()[i].getLoc(),
                     buffersPerFifo[createOp][bufferToBeAccesed]
