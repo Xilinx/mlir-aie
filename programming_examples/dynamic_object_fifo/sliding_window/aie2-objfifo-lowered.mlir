@@ -39,7 +39,7 @@ module {
 
       %init_input_fifo_counter = arith.constant 0 : index
       %init_output_fifo_counter = arith.constant 1 : index // because of above release
-      scf.for %arg0 = %c0 to %c8 step %c1 iter_args(%input_fifo_counter = %init_input_fifo_counter, %output_fifo_counter = %init_output_fifo_counter) -> (index, index) {
+      %input, %output = scf.for %arg0 = %c0 to %c8 step %c1 iter_args(%input_fifo_counter = %init_input_fifo_counter, %output_fifo_counter = %init_output_fifo_counter) -> (index, index) {
         %mod_depth_in = arith.remsi %input_fifo_counter, %c3 : index
         %mod_depth_out = arith.remsi %output_fifo_counter, %c2 : index
 
@@ -96,6 +96,7 @@ module {
         %sum_out = arith.addi %output_fifo_counter, %rel_out : index
         scf.yield %sum_in, %sum_out : index, index
       }
+      
       aie.use_lock(%output_fifo_prod_lock, AcquireGreaterEqual, 1)
       aie.use_lock(%input_fifo_cons_cons_lock, AcquireGreaterEqual, 1)
       // TODO: the loop needs to give some information about the last release numbers, we cannot use its bounds

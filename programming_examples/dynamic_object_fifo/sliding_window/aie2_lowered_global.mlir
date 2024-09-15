@@ -25,26 +25,24 @@ module {
     aie.flow(%tile_0_2, DMA : 0, %tile_0_0, DMA : 0)
 
     // Keep state of object fifos accesses
-    %global_state = aie.buffer(%tile_0_2) : memref<2xi32> // # of object fifos, ex: [input_fifo, ouput_fifo]
+    %global_state = aie.buffer(%tile_0_2) : memref<2xindex> // # of object fifos, ex: [input_fifo, ouput_fifo]
     
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
       %c8 = arith.constant 8 : index
       %c1 = arith.constant 1 : index
-      %c2 = arith.constant 2 : i32
-      %c3 = arith.constant 3 : i32
+      %c2 = arith.constant 2 : index
+      %c3 = arith.constant 3 : index
 
-      %c0_0 = arith.constant 0 : i32
+      %c0_0 = arith.constant 0 : index
       %c0_ind = arith.constant 0 : index
       %c1_ind = arith.constant 1 : index
-      memref.store %c0_0, %global_state[%c0_ind] : memref<2xi32>
-      memref.store %c0_0, %global_state[%c1_ind] : memref<2xi32>
+      memref.store %c0_0, %global_state[%c0_ind] : memref<2xindex>
+      memref.store %c0_0, %global_state[%c1_ind] : memref<2xindex>
 
       // Pre amble
-      %input_state_pre = memref.load %global_state[%c0_ind] : memref<2xi32>
-      %input_state_index_pre = index.casts %input_state_pre : i32 to index
-      %output_state_pre = memref.load %global_state[%c1_ind] : memref<2xi32>
-      %output_state_index_pre = index.casts %output_state_pre : i32 to index
+      %input_state_index_pre = memref.load %global_state[%c0_ind] : memref<2xindex>
+      %output_state_index_pre = memref.load %global_state[%c1_ind] : memref<2xindex>
       %input_0_pre = scf.index_switch %input_state_index_pre -> memref<10xi32>
       case 0 {
         scf.yield %input_fifo_cons_buff_0 : memref<10xi32>
@@ -73,17 +71,15 @@ module {
       aie.use_lock(%input_fifo_cons_cons_lock, AcquireGreaterEqual, 1)
       func.call @sum_10_i32(%input_0_pre, %input_0_pre, %output_0_pre) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
       aie.use_lock(%output_fifo_cons_lock, Release, 1)
-      %output_old_state_pre = memref.load %global_state[%c1_ind] : memref<2xi32>
-      %c1_0 = arith.constant 1 : i32
-      %mod_depth_out = arith.addi %output_old_state_pre, %c1_0 : i32
-      %output_new_state_pre = arith.remsi %mod_depth_out, %c2 : i32
-      memref.store %output_new_state_pre, %global_state[%c1_ind] : memref<2xi32>
+      %output_old_state_pre = memref.load %global_state[%c1_ind] : memref<2xindex>
+      %c1_0 = arith.constant 1 : index
+      %mod_depth_out = arith.addi %output_old_state_pre, %c1_0 : index
+      %output_new_state_pre = arith.remsi %mod_depth_out, %c2 : index
+      memref.store %output_new_state_pre, %global_state[%c1_ind] : memref<2xindex>
 
       scf.for %arg0 = %c0 to %c8 step %c1 {
-        %input_state = memref.load %global_state[%c0_ind] : memref<2xi32>
-        %input_state_index = index.casts %input_state : i32 to index
-        %output_state = memref.load %global_state[%c1_ind] : memref<2xi32>
-        %output_state_index = index.casts %output_state : i32 to index
+        %input_state_index = memref.load %global_state[%c0_ind] : memref<2xindex>
+        %output_state_index = memref.load %global_state[%c1_ind] : memref<2xindex>
 
         %input_0 = scf.index_switch %input_state_index -> memref<10xi32>
         case 0 {
@@ -130,25 +126,23 @@ module {
         func.call @sum_10_i32(%input_0, %input_1, %output_fifo_buff) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
         
         aie.use_lock(%input_fifo_cons_prod_lock, Release, 1)
-        %input_old_state = memref.load %global_state[%c0_ind] : memref<2xi32>
-        %c1_1 = arith.constant 1 : i32
-        %input_state_add = arith.addi %input_old_state, %c1_1 : i32
-        %input_new_state = arith.remsi %input_state_add, %c3 : i32
-        memref.store %input_new_state, %global_state[%c0_ind] : memref<2xi32>
+        %input_old_state = memref.load %global_state[%c0_ind] : memref<2xindex>
+        %c1_1 = arith.constant 1 : index
+        %input_state_add = arith.addi %input_old_state, %c1_1 : index
+        %input_new_state = arith.remsi %input_state_add, %c3 : index
+        memref.store %input_new_state, %global_state[%c0_ind] : memref<2xindex>
         
         aie.use_lock(%output_fifo_cons_lock, Release, 1)
-        %output_old_state = memref.load %global_state[%c1_ind] : memref<2xi32>
-        %c1_2 = arith.constant 1 : i32
-        %output_state_add = arith.addi %output_old_state, %c1_2 : i32
-        %output_new_state = arith.remsi %output_state_add, %c2 : i32
-        memref.store %output_new_state, %global_state[%c1_ind] : memref<2xi32>
+        %output_old_state = memref.load %global_state[%c1_ind] : memref<2xindex>
+        %c1_2 = arith.constant 1 : index
+        %output_state_add = arith.addi %output_old_state, %c1_2 : index
+        %output_new_state = arith.remsi %output_state_add, %c2 : index
+        memref.store %output_new_state, %global_state[%c1_ind] : memref<2xindex>
       }
 
       // Post amble
-      %input_state_post = memref.load %global_state[%c0_ind] : memref<2xi32>
-      %input_state_index_post = index.casts %input_state_post : i32 to index
-      %output_state_post = memref.load %global_state[%c1_ind] : memref<2xi32>
-      %output_state_index_post = index.casts %output_state_post : i32 to index
+      %input_state_index_post = memref.load %global_state[%c0_ind] : memref<2xindex>
+      %output_state_index_post = memref.load %global_state[%c1_ind] : memref<2xindex>
       %input_0_post = scf.index_switch %input_state_index_post -> memref<10xi32>
       case 0 {
         scf.yield %input_fifo_cons_buff_0 : memref<10xi32>
@@ -191,20 +185,20 @@ module {
       func.call @sum_10_i32(%input_0_post, %input_1_post, %output_0_post) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
       
       aie.use_lock(%input_fifo_cons_prod_lock, Release, 2)
-      %input_old_state_post = memref.load %global_state[%c0_ind] : memref<2xi32>
-      %c2_0 = arith.constant 2 : i32
-      %input_state_add_post = arith.addi %input_old_state_post, %c2_0 : i32
-      %input_new_state_post = arith.remsi %input_state_add_post, %c3 : i32
-      memref.store %input_new_state_post, %global_state[%c0_ind] : memref<2xi32>
+      %input_old_state_post = memref.load %global_state[%c0_ind] : memref<2xindex>
+      %c2_0 = arith.constant 2 : index
+      %input_state_add_post = arith.addi %input_old_state_post, %c2_0 : index
+      %input_new_state_post = arith.remsi %input_state_add_post, %c3 : index
+      memref.store %input_new_state_post, %global_state[%c0_ind] : memref<2xindex>
       
       aie.use_lock(%output_fifo_cons_lock, Release, 1)
-      %output_old_state_post = memref.load %global_state[%c1_ind] : memref<2xi32>
-      %c1_4 = arith.constant 1 : i32
-      %output_state_add_post = arith.addi %output_old_state_post, %c1_4 : i32
-      %output_new_state_post = arith.remsi %output_state_add_post, %c2 : i32
-      memref.store %output_new_state_post, %global_state[%c1_ind] : memref<2xi32>
+      %output_old_state_post = memref.load %global_state[%c1_ind] : memref<2xindex>
+      %c1_4 = arith.constant 1 : index
+      %output_state_add_post = arith.addi %output_old_state_post, %c1_4 : index
+      %output_new_state_post = arith.remsi %output_state_add_post, %c2 : index
+      memref.store %output_new_state_post, %global_state[%c1_ind] : memref<2xindex>
 
-      memref.dealloc %global_state : memref<2xi32>
+      memref.dealloc %global_state : memref<2xindex>
       aie.end
     } {link_with = "kernel.o"}
     aie.shim_dma_allocation @input_fifo(MM2S, 0, 0)
