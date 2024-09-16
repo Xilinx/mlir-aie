@@ -2,10 +2,9 @@ cmake==3.27.9
 dataclasses
 importlib-metadata
 ninja
-numpy<2
+numpy>=1.19.5, <=1.26
 pip
 pybind11[global]>=2.10.4
 rich
 setuptools>=42
 wheel
-bfloat16

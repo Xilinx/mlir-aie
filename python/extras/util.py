@@ -1,5 +1,4 @@
 from collections import defaultdict
-from bfloat16 import bfloat16
 import contextlib
 import ctypes
 import inspect
@@ -12,7 +11,10 @@ from functools import wraps
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence, Tuple, Union
 
+import tensorflow as tf
 import numpy as np
+
+bfloat16 = tf.bfloat16.as_numpy_dtype
 
 from .meta import op_region_builder
 from ..extras import types as T

@@ -6,9 +6,11 @@
 # (c) Copyright 2023 AMD Inc.
 
 import argparse
-from bfloat16 import bfloat16
 import numpy as np
+import tensorflow as tf
 import sys
+
+bfloat16 = tf.bfloat16.as_numpy_dtype
 
 from aie.dialects.scf import yield_, for_ as range_
 from aie.dialects.aiex import npu_dma_memcpy_nd, npu_sync
