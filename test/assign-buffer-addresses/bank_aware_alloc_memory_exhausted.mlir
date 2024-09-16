@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --verify-diagnostics --aie-assign-buffer-addresses=basic-alloc=0 %s
+// RUN: aie-opt --verify-diagnostics --aie-assign-buffer-addresses="alloc-scheme=basic-alloc" %s
 
 module {
   aie.device(npu1_2col) {

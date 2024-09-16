@@ -15,22 +15,17 @@
 
 // CHECK:   %tile12 = aie.tile(1, 2)
 // CHECK:             ^
-// CHECK: note: see current operation: %0 = "aie.tile"() <{col = 1 : i32, row = 2 : i32}> : () -> index
 // CHECK: note: Current configuration of buffers in bank(s) : MemoryMap:
 // CHECK: (no stack allocated)
 // CHECK:         bank : 0        0x0-0x1FFF
-// CHECK:                 b       : 0x0-0x1FFF    (8192 bytes)
+// CHECK:                 a       : 0x0-0x1FFF    (8192 bytes)
 // CHECK:         bank : 1        0x2000-0x3FFF
-// CHECK:                 c       : 0x2000-0x3FFF         (8192 bytes)
+// CHECK:                 b       : 0x2000-0x3FFF         (8192 bytes)
 // CHECK:         bank : 2        0x4000-0x5FFF
-// CHECK:                 a       : 0x4000-0x4FFF         (4096 bytes)
-// CHECK:                 e       : 0x5000-0x5FFF         (4096 bytes)
+// CHECK:                 c       : 0x4000-0x5FFF         (8192 bytes)
 // CHECK:         bank : 3        0x6000-0x7FFF
 // CHECK:                 d       : 0x6000-0x6FFF         (4096 bytes)
-// CHECK:                 act_3_4_buff_0  : 0x7000-0x73FF         (1024 bytes)
-// CHECK:                 act_3_4_buff_1  : 0x7400-0x77FF         (1024 bytes)
-// CHECK:                 act_3_4_buff_2  : 0x7800-0x7BFF         (1024 bytes)
-// CHECK:                 act_3_4_buff_3  : 0x7C00-0x7FFF         (1024 bytes)
+// CHECK:                 e       : 0x7000-0x7FFF         (4096 bytes)
 
 // CHECK: error: 'aie.tile' op allocated buffers exceeded available memory: Sequential
 // CHECK: (no stack allocated)
@@ -44,16 +39,12 @@
 // CHECK:         a       : 0x4000-0x4FFF         (4096 bytes)
 // CHECK:         d       : 0x5000-0x5FFF         (4096 bytes)
 // CHECK:         e       : 0x6000-0x6FFF         (4096 bytes)
-// CHECK:         act_3_4_buff_0  : 0x7000-0x73FF         (1024 bytes)
-// CHECK:         act_3_4_buff_1  : 0x7400-0x77FF         (1024 bytes)
-// CHECK:         act_3_4_buff_2  : 0x7800-0x7BFF         (1024 bytes)
-// CHECK:         act_3_4_buff_3  : 0x7C00-0x7FFF         (1024 bytes)
 // CHECK:         f       : 0x8000-0x81FF         (512 bytes)
 
 module @test {
  aie.device(xcvc1902) {
   %tile12 = aie.tile(1, 2)
-  %1 = aie.buffer(%tile12) { sym_name = "a" } : memref<1024xi32>  //4096 bytes
+  %1 = aie.buffer(%tile12) { sym_name = "a" } : memref<2048xi32>  //8192 bytes
   %2 = aie.buffer(%tile12) { sym_name = "b" } : memref<2048xi32>  //8192 bytes
   %3 = aie.buffer(%tile12) { sym_name = "c" } : memref<2048xi32>  //8192 bytes
   %4 = aie.buffer(%tile12) { sym_name = "d" } : memref<1024xi32>  //4096 bytes
