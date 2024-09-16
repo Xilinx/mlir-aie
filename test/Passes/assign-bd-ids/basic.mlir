@@ -18,10 +18,10 @@
 // CHECK:  %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) : memref<32xi32>
 // CHECK:  %[[VAL_5:.*]] = aie.lock(%[[VAL_2]]) {init = 1 : i32, sym_name = "lock_X"}
 // CHECK:  %[[VAL_6:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "lock_Y"}
-// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>, 0) {bd_id = 0 : i32, next_bd_id = 1 : i32}
+// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 0 : i32, next_bd_id = 1 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 1 : i32, next_bd_id = 2 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 2 : i32, next_bd_id = 0 : i32}
-// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>, 0) {bd_id = 3 : i32, next_bd_id = 4 : i32}
+// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 3 : i32, next_bd_id = 4 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 4 : i32, next_bd_id = 5 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 5 : i32, next_bd_id = 3 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_4]] : memref<32xi32>) {bd_id = 0 : i32}

@@ -79,13 +79,13 @@ def AIE_TileOp: AIE_Op<"tile", [
 
   let summary = "Declare an AIE tile";
   let description = [{
-    This operation creates an AIE tile in the AIE array. We specify what the column and the row of the tile.
+    This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile.
 
     A tile encompasses core module (CoreOp), memory module (MemOp), stream switch (SwitchboxOp),
     memory buffer (BufferOp), and lock (LockOp).
 
-    A tile is a logical abstraction. We use a tile to establish an ownership of a hardware entity
-    to it.
+    A tile is a logical abstraction. We use a tile to establish ownership of a hardware entity.
+
     Note that row 0 of the Tile array is different from other rows, since it models the shim interface between
     the AIE array proper and the PL.  The South-West/Lower Right most core exists in Tile(0,1)
   }];
@@ -118,6 +118,8 @@ def AIE_TileOp: AIE_Op<"tile", [
           return coreOp;
       return nullptr;
     }
+
+    static AIE::TileOp getOrCreate(mlir::OpBuilder builder, AIE::DeviceOp device, int col, int row);
   }];
 
   let assemblyFormat = [{
@@ -194,7 +196,7 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shim_switchbox", [
     6 Ports to North (Core Tile) 4 Ports from North (Core Tile)
     4 Ports to West 4 Ports from West
     4 Ports to East 4 Ports from East
-    6 Ports to South(DMA, NoC I/F, PL I/F) 8 Ports from South (DMA, NoC I/F, PL I/F)
+    6 Ports to South (DMA, NoC I/F, PL I/F) 8 Ports from South (DMA, NoC I/F, PL I/F)
     2 Ports to FIFOs 2 Ports from FIFOs
     1 Port for control packet for Shim register access
     1 Port for response to access for Shim registers
@@ -383,7 +385,7 @@ def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> 
     This operation represents a programmed circuit-switched connection in a stream switch.
     It associates a source bundle and source channel with a destination bundle and a destination channel.
     This operation must exist within an `aie.switchbox` or `aie.shim_switchbox` operation.
-    All of the `aie.connect` operations in a switchbox must have a different destinations.
+    All of the `aie.connect` operations in a switchbox must have different destinations.
     All of the `aie.connect` operations must also have a destination which is different from all
     of the `aie.masterset` operations in the same switchbox.
 
@@ -498,11 +500,12 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [
   let arguments = (
     ins WireBundle:$dest_bundle,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel,
-        Variadic<Index>:$amsels
+        Variadic<Index>:$amsels,
+        OptionalAttr<BoolAttr>:$keep_pkt_header
   );
   let summary = "Packet switched input connection";
   let description = [{
-    A Packet switched connection inside a switchbox.
+    A packet switched connection inside a switchbox.
     This operation specifies the configuration for a master port.
 
     Example:
@@ -566,7 +569,7 @@ def AIE_PacketRulesOp: AIE_Op<"packet_rules", [SingleBlockImplicitTerminator<"En
   let summary = "Packet switched routing rules";
   let description = [{
     This operation defines packet-switched routing configuration for packets entering a switchbox.
-    It references a port of the containing swithcbox, which be unique among other packetRules
+    It references a port of the containing switchbox, which must be unique among other packetRules
     operations and [aie.connect]($aieconnect-aieconnectop) operations in the containing switchbox.
     It contains a region of up to 4 [aie.rule](#aierule-aiepacketruleop) operations.
 
@@ -636,7 +639,14 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
   let description = [{
     A logical packet-switched flow between tiles.  During place and
     route, this is replaced by MasterSets and PacketRules inside
-    switchboxes.
+    switchboxes. 
+    
+    The optional attribute keep_pkt_header indicates whether each 
+    data packet's packet header gets preserved at the flow's 
+    destination. The optional attribute priority_route indicates
+    whether the packet flow is routed in priority over other flows, 
+    so that they always get allocated with the same master, slave 
+    ports, arbiters and master selects (msel).
 
     Example:
     ```
@@ -650,7 +660,8 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
 
   let arguments = (
     ins AIEI8Attr:$ID,
-        OptionalAttr<BoolAttr>:$keep_pkt_header
+        OptionalAttr<BoolAttr>:$keep_pkt_header,
+        OptionalAttr<BoolAttr>:$priority_route
   );
   let regions = (region AnyRegion:$ports);
 
@@ -670,7 +681,7 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
   );
   let summary = "A sourceport";
   let description = [{
-    A object representing the destination of a packet-switched flow. This must exist
+    An object representing the destination of a packet-switched flow. This must exist
     within an [aie.packet_flow](#aiepacketflow-aiepacketflowop) operation.
 
     See [aie.packet_flow](#aiepacketflow-aiepacketflowop) for an example.
@@ -746,9 +757,7 @@ def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
   }];
 }
 
-def AIE_DMABDOp: AIE_Op<"dma_bd", [
-    ParentOneOf<["MemOp", "MemTileDMAOp", "ShimDMAOp", "DMAOp"]>,
-  ]> {
+def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
   let summary = "Declare a dma buffer descriptor op";
   let description = [{
     This operation describes a buffer descriptor for DMA operations. In particular, it specifies
@@ -757,8 +766,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
         1. the offset into the buffer;
         2. the transfer length;
         3. the sizes and strides for n-d tensor addressing (described below);
-        4. the "bd_id" with which to associate the buffer descriptor (most often left empty).
-        5. the number of zeros to pad before and after every dimension of an n-d tensor (described below);
+        4. the "bd_id" with which to associate the buffer descriptor (most often left empty);
+        5. the number of zeros to pad before and after every dimension of an n-d tensor (described below).
 
     `offset`, `len`, `size`s and `stride`s are all denominated in element width; e.g., transferring the whole of
     `memref<512xi32>` means `len == 512`, and also while transferring the whole of `memref<512xi16>`, `len == 512`.
@@ -815,7 +824,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
     [<size_2, stride_2>, <size_1, stride_1>, <size_0, stride_0>]
     ```
 
-    ...translates to an access pattern that can be epxressed like this:
+    ...translates to an access pattern that can be expressed like this:
 
     ```
     int *buffer;  // i32
@@ -861,22 +870,20 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
   let arguments = (
     ins AnyMemRef:$buffer,
         // in multiples of element width (not bytes)
-        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$offset,
+        DefaultValuedAttr<AIEI32Attr, "0">:$offset,
         // in multiples of element width (not bytes)
         OptionalAttr<AIEI32Attr>:$len,
         OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
         OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
         OptionalAttr<AIEI32Attr>:$bd_id,
+        OptionalAttr<PacketInfoAttr>:$packet,
         // should never be assigned by user...
         OptionalAttr<AIEI32Attr>:$next_bd_id
   );
 
   let hasVerifier = 1;
-
-  let assemblyFormat = [{
-    `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,` $dimensions^)? (`,` $pad_dimensions^)? (`,` `pad_value` `=` $pad_value^)? `)` attr-dict
-  }];
+  let hasCustomAssemblyFormat = 1;
 
   let extraClassDeclaration = [{
     BufferOp getBufferOp();
@@ -917,6 +924,34 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
       $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
       $_state.addAttribute("dimensions", dims);
       $_state.addAttribute("pad_dimensions", paddims);
+    }]>,
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "PacketInfoAttr":$pkt), [{
+      $_state.addOperands(buffer);
+      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
+      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
+      $_state.addAttribute("packet", pkt);
+    }]>,
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims, "PacketInfoAttr":$pkt), [{
+      $_state.addOperands(buffer);
+      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
+      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
+      $_state.addAttribute("dimensions", dims);
+      $_state.addAttribute("packet", pkt);
+    }]>,
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDPadLayoutArrayAttr":$paddims, "PacketInfoAttr":$pkt), [{
+      $_state.addOperands(buffer);
+      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
+      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
+      $_state.addAttribute("pad_dimensions", paddims);
+      $_state.addAttribute("packet", pkt);
+    }]>,
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims, "BDPadLayoutArrayAttr":$paddims, "PacketInfoAttr":$pkt), [{
+      $_state.addOperands(buffer);
+      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
+      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
+      $_state.addAttribute("dimensions", dims);
+      $_state.addAttribute("pad_dimensions", paddims);
+      $_state.addAttribute("packet", pkt);
     }]>
   ];
 }
@@ -1002,7 +1037,6 @@ def AIE_DMAOp: AIE_Op<"dma", [
     }
   }];
 }
-
 
 // MemOps are not actually Callable, but we want to inline code into them, so we have to
 // implement CallableOpInterface
@@ -1101,9 +1135,7 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
   }];
 }
 
-def AIE_NextBDOp: AIE_Op<"next_bd", [
-    Terminator, ParentOneOf<["MemOp", "MemTileDMAOp", "mlir::func::FuncOp", "ShimDMAOp"]>
-  ]> {
+def AIE_NextBDOp: AIE_Op<"next_bd", [Terminator]> {
   let summary = "The next buffer descriptor";
   let description = [{
     This operation terminates the basic block describing a buffer descriptor inside
@@ -1217,9 +1249,9 @@ def AIE_LockOp: AIE_Op<"lock", [
 def AIE_UseLockOp: AIE_Op<"use_lock", []> {
   let summary = "acquire/release lock op";
   let description = [{
-    This operation uses a lock. In AIE1, a lock can be acquired with a value,
+    This operation uses a lock. In AIE1, a lock can be acquired with a value
     or released with a value. This should be understood as a "blocking"
-    operation. In AIE2, locks are counting semaphores without inherent
+    operation. In AIE2, locks are counting semaphores without an inherent
     acquired/release characteristic. This lock must appear in a parent op where
     the tile can be determined (A CoreOp, a ShimDMAOp, a MemOp, or a
     MemTileDMAOp).
@@ -1548,13 +1580,17 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
   let assemblyFormat = [{
     $sym_name `(` $channel_dir `,` $channel_index `,` $col `)` attr-dict
   }];
+
+  let extraClassDeclaration = [{
+    static ::xilinx::AIE::ShimDMAAllocationOp getForSymbol(::xilinx::AIE::DeviceOp device, ::llvm::StringRef symbol);
+  }];
 }
 
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]> {
   let summary = "Create a circular buffer or channel between two tiles";
   let description = [{
     The `aie.objectFifo` operation creates a circular buffer established between a producer and one or
-    more consumers, which are `aie.tile` operations. The`aie.objectFifo` instantiates the given number of
+    more consumers, which are `aie.tile` operations. The `aie.objectFifo` instantiates the given number of
     buffers (of given output type) and their locks in the Memory Module of the appropriate tile(s) after
     lowering, based on tile-adjacency. These elements represent the conceptual depth of the `objectFifo` or,
     more specifically, of its object pool.
@@ -1597,14 +1633,14 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     On AIE-ML devices, objectFifos can also apply data layout transformations by
     using the DMAs n-dimensional address generation scheme. Two transformations
     can be applied for an objectFifo: one on the producer side, given by a
-    `toStream` attribute, and one transformation on the consumer side, given by
-    a `fromStream` attribute. See the `DMABDOp` documentation for a description
-    of strides and sizes. The `toStream` and `fromStream` optional attributes
+    `dimensionsToStream` attribute, and one transformation on the consumer side, given by
+    a `dimensionsFromStream` attribute. See the `DMABDOp` documentation for a description
+    of strides and sizes. The `dimensionsToStream` and `dimensionsFromStream` optional attributes
     are given directly following the producer or consumer tile declaration.
     Different transformations can be specified for each consumer. See example
     below.
 
-    Note that using data layout transformations will cause the DMA be used even
+    Note that using data layout transformations will cause DMAs to be used even
     between adjacent tiles whose objectFifos would otherwise use shared memory.
 
     Further note that data layout transforms always apply at a granularity of
@@ -1619,10 +1655,10 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     all even indices from the stream, followed by all odd indices:
 
     ```
-      aie.objectfifo @of4 (%tile12 toStream [<16, 1>, <16, 16>, <1,1>],
+      aie.objectfifo @of4 (%tile12 dimensionsToStream [<16, 1>, <16, 16>, <1,1>],
                            {
-                            %tile13 fromStream [],
-                            %tile23 fromStream [<2, 1>, <128, 2>]
+                            %tile13 dimensionsFromStream [],
+                            %tile23 dimensionsFromStream [<2, 1>, <128, 2>]
                            }, 2 : i32
                           ) : !aie.objectfifo<memref<256xi32>>
     ```
@@ -1637,7 +1673,12 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         BDDimLayoutArrayAttr:$dimensionsToStream,
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
         DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
-        DefaultValuedAttr<BoolAttr, "false">:$plio
+        DefaultValuedAttr<BoolAttr, "false">:$plio,
+        // via_shared_mem==0 means use producer tile's memory module
+        // via_shared_mem==1 means use consumer tile's memory module
+        OptionalAttr<AIEI32Attr>:$via_shared_mem,
+        // memtile_repeat==0 means "do it once" and don't repeat
+        OptionalAttr<AIEI32Attr>:$memtile_repeat
   );
 
   let assemblyFormat = [{
@@ -1693,37 +1734,38 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
 def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
   let summary = "Links two objectFifos through an intermediary tile's DMA";
   let description = [{
-    The `aie.objectFifo.link` operation allows to mark two `objectFifos` as linked. This implies that the two `objectFifos` form
+    The `aie.objectFifo.link` operation marks two or more `objectFifos` as linked. This implies that the `objectFifos` form
     one dataflow movement which is split accross multiple `objectFifos`. Specifically, during the `objectFifo` lowering there will
-    be less memory elements generated at the link point as the two `objectFifos` can share.
+    be less memory elements generated at the link point (i.e., the shared tile of all `objectFifos` in the link) as the `objectFifos` can share.
 
-    The two `objectFifos` which are linked must have a link point (i.e., a shared AIE tile).
-    In L1, only `objectFifos` of same size may be linked. In L2, different sized objectFifos can be linked.
+    The `objectFifos` which are linked must have a link point (i.e., a shared AIE tile).
 
     Example:
     ```
       aie.objectfifo @of1 (%t70, { %t72 }, 2) : !aie.objectfifo<memref<64xi16>>
       aie.objectfifo @of2 (%t72, { %t74 }, 2) : !aie.objectfifo<memref<64xi16>>
-      aie.objectfifo.link [@of1] -> [@of2] ()
+      aie.objectfifo.link [@of1] -> [@of2] ([] [])
     ```
-    This operation links two `objectFifos` which have tile `%t72` as a link point.
+    This operation links two `objectFifos` which have tile `%t72` as a link point. The offset input arrays are not required as the full size of
+    the objects are transferred from @of1 to @of2.
 
     To achieve a broadcast pattern through the link tile, the output `objectFifo` should have a list of all the consumers tiles.
-    To achieve a distribute pattern from the link tile, there should be multiple output `objectFifos` in the LinkOp. In this case,
-    parts will be taken out of the input `objectFifo`'s buffers based on the sizes of the output `objectFifos`, in the order they
-    were given in the LinkOp.
-    The join pattern is the exact inverse of the distribute one.
+    To achieve a distribute pattern from the link tile, there should be multiple output `objectFifos` in the OjbectFifoLinkOp. In this case,
+    parts will be taken out of the input `objectFifo`'s buffers based on dst_offsets input array.
+    The join pattern is the exact inverse of the distribute one and uses the src_offsets input array instead.
   }];
 
   let arguments = (
     ins SymbolRefArrayAttr:$fifoIns,
-        SymbolRefArrayAttr:$fifoOuts
+        SymbolRefArrayAttr:$fifoOuts,
+        I64ArrayAttr:$src_offsets,
+        I64ArrayAttr:$dst_offsets
   );
 
   let hasCustomAssemblyFormat = 1;
 
   let assemblyFormat = [{
-    $fifoIns `->` $fifoOuts `(` `)` attr-dict
+    $fifoIns `->` $fifoOuts `(` $src_offsets $dst_offsets `)` attr-dict
   }];
 
   let hasVerifier = 1;
@@ -1731,23 +1773,19 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
   let extraClassDeclaration = [{
     std::vector<ObjectFifoCreateOp> getInputObjectFifos();
     std::vector<ObjectFifoCreateOp> getOutputObjectFifos();
-
-    bool isJoin() {
-      return getFifoIns().size() > 1;
-    }
-
-    bool isDistribute() {
-      return getFifoOuts().size() > 1;
-    }
-
+    bool isJoin() { return getFifoIns().size() > 1; }
+    bool isDistribute() { return getFifoOuts().size() > 1; }
     std::optional<mlir::Value> getOptionalSharedTile();
+    std::optional<int> getRepeatCount();
+    std::vector<int> getJoinTransferLengths();
+    std::vector<int> getDistributeTransferLengths();
   }];
 }
 
 def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectfifo.register_external_buffers", [
     HasParent<"DeviceOp">, TileElement, IsShimNOCTile
   ]> {
-  let summary = "Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)";
+  let summary = "Registers external buffers to an objectFifo's shim tile(s) for use in the associated shim DMA(s)";
   let description = [{
     The `aie.objectfifo.register_external_buffers` operation is used to register one or multiple external buffers
     to the shim tile(s) used in an `objectFifo` creation. During the `objectFifo` lowering pass, shim DMAs that are
@@ -1965,6 +2003,29 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
           .getInt();
     }
   }];
+}
+
+def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol, SkipAccessibilityCheckTrait]> {
+  let summary = "Definition of a Parametrizable Chain of Buffer Descriptors";
+  let description = [{
+    This operation allows you to define buffer descriptor chains with parametrizable inputs. 
+    This is useful for common patterns such as double buffering (ping-pong) that may look identical but use different input/output buffers and locks.
+    Currently, only buffers and locks are parametrizable.
+
+    Once defined, an abstract BD chain can be used elsewhere using AIEX ops in the runtime sequence. 
+    In the future, abstract BD chains will also be usable elsewhere, inside the static configuration.
+    At its usage sites, the abstract BD chain will be concretized with the given input arguments.
+  }];
+
+  let arguments = (
+    ins SymbolNameAttr:$sym_name
+  );
+  let regions = (region AnyRegion:$body);
+
+  let extraClassDeclaration = [{
+  }];
+  let hasCustomAssemblyFormat = 1;
+
 }
 
 #endif // AIE_OPS

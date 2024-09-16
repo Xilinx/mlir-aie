@@ -147,4 +147,67 @@ def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
   ];
 }
 
+def AIEMaterializeBDChains : Pass<"aie-materialize-bd-chains", "AIE::DeviceOp"> {
+  let summary = "Concretize aie.bd_chain ops at aiex.start_task use sites";
+  let description = [{
+    Inlines pre-defined `aie.bd_chains` at `aiex.start_task` use sites to become `aiex.dma_configure_task` and `aiex.dma_start_task` ops.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEMaterializeBDChainsPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIEAssignRuntimeSequenceBDIDs : Pass<"aie-assign-runtime-sequence-bd-ids", "AIE::DeviceOp"> {
+  let summary = "Assign IDs to Buffer Descriptors Configured in the Runtime Sequence";
+
+  let constructor = "xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIEDMATasksToNPU : Pass<"aie-dma-tasks-to-npu", "AIE::DeviceOp"> {
+  let summary = "Lower configured DMA tasks to NPU instructions";
+
+  let constructor = "xilinx::AIEX::createAIEDMATasksToNPUPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIESubstituteShimDMAAllocations : Pass<"aie-substitute-shim-dma-allocations", "AIE::DeviceOp"> {
+  let summary = "Replace symbolic references to `aie.shim_dma_allocation` ops with their `(tile, direction, channel)` triple";
+
+  let constructor = "xilinx::AIEX::createAIESubstituteShimDMAAllocationsPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
+  let summary = "Lowers npu.control_packet op to npu.dma_memcpy_nd op";
+
+  let constructor = "xilinx::AIEX::createAIECtrlPacketToDmaPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIECtrlPacketInferTiles : Pass<"aie-ctrl-packet-infer-tiles", "AIE::DeviceOp"> {
+  let summary = "Infer aie.tile ops from aiex.control_packet addresses";
+
+  let constructor = "xilinx::AIEX::createAIECtrlPacketInferTilesPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 #endif

@@ -22,7 +22,7 @@ At a high level, the code does the following (in order):
 
 1. [**Defining Core Computations:**](#4-defining-core-computations) The `core_body()` function contains the code that will be loaded onto each AIE core. This code describes the matrix multiplication using the input submatrices `a` and `b` acquired through the ObjectFIFOs. The results are accumulated in the output submatrix `c`.
 
-1. [**Defining External Data Transfer Sequences:**](#5-defining-external-data-transfer-sequences) The `sequence()` function sets up matrix data movement from the host into the AIE compute cores, and back to the host after computation. It initializes Data Movement Accelerator (DMA) transfers, sets memory access patterns, and performs synchronization.
+1. [**Defining External Data Transfer Sequences:**](#5-defining-external-data-transfer-sequences) The `aie.runtime_sequence()` op sets up matrix data movement from the host into the AIE compute cores, and back to the host after computation. It initializes Data Movement Accelerator (DMA) transfers, sets memory access patterns, and performs synchronization.
 
 1. **Generating the Design:** The `my_matmul()` function triggers the code generation process and represents the main entry point of the design. The final print statement outputs the MLIR representation of the AIE array configuration.
 
@@ -30,7 +30,7 @@ In summary, this design leverages an AI Engine accelerator to accomplish matrix 
 
 ## Building and Running the Design
 
-As configured, this design will set up an array of AIEs to perform matrix-matrix multiplication on a `bfloat16` data type, with `A`, `B` and `C` matrices all of size `512` &times; `512` &times; `512`. The tiling size is configured as `64` &times; `64` for `a`, `b`, and `c`.
+With the default configuration, this design will set up an array of AIEs to perform matrix-matrix multiplication on a `int16` input data type (`int32` output). The tiling size is configured as `64` &times; `64` for `a`, `b`, and `c` by default.
 
 You will need C++23 for `bfloat16_t` support in the `test.cpp`, which can be found in `g++-13`: [https://lindevs.com/install-g-on-ubuntu](https://lindevs.com/install-g-on-ubuntu)
 
@@ -72,7 +72,7 @@ The input and output matrix sizes are given by the user. We subdivide the input 
 
 1. **Tiling to Compute Core Submatrix Chunks:** The input and output matrices stream to/from the AIE compute cores in chunks of size of `m`&times;`k`, `k`&times;`n` and `n`&times;`m`. Tiling into these chunks allows each of the computation cores to concurrently work on distinct sub-sections of the input matrices in parallel, which improves performance. This also reduces on-chip memory requirements. The final result is re-assembled using the sub-matrix results of all cores.
 
-    > This tiling occurs in the `sequence()` function describing the host-to-memory-tile transfer.
+    > This tiling occurs in the `aie.runtime_sequence()` operation describing the host-to-memory-tile transfer.
 We describe it further below, in section *"5. Defining External Data Transfer Sequences"*.
 
 1. **Tiling to Vector Intrinsic Size:** The AIE compute cores calculate the matrix multiplication using efficient "multiply-accumulate" vector intrinsic instructions (`MAC` instructions). These hardware instructions process very small blocks of the matrix: size `r`&times;`s` blocks of `A` and size `s`&times;`t` blocks of  `B`, producing an output of size `r`&times;`t` (`C`). 
@@ -108,6 +108,8 @@ Each of `inA_fifos`, `inB_fifos`, `OutC_fifos`, `memA_fifos`, `memB_fifos` and `
 
 Of note is the `object_fifo_link()` operation. This operation establishes a connection between the `mem*` FIFOs and the `in*` and `outC` FIFOs. By linking ObjectFIFOs, the output received at one end of the source FIFO is fed as input into the ObjectFIFO listed as the destination.
 
+[![data movement diagram](diagram.png)](https://excalidraw.com/#room=23df780b85d72d80cbc6,1czLdPr_vK9-OjtxFIWTpw)
+
 <!-- 2. Creation of Object Fifos for Matrix A:
 
     * The input matrix A is streamed from the host to the AIE array using object fifos. `inA_fifos` and `memA_fifos` are dictionaries created to store the object fifos for input matrix A. `inA_fifo_names` and `memA_fifo_names` are lists storing the names of corresponding object fifos.
@@ -141,7 +143,7 @@ We assume our data are stored in **row-major format** in the host's memory. For 
 
 ##### Tiling to Vector Intrinsic Size
 
-The `memA_fifos` and `memB_fifos` receive sub-matrices of size `m`&times;`k` and `k`&times;`n`, respectively. The FIFOs translate those matrices from a row-major format into the `r`&times;`s`-sized and `s`&times;`t`-sized blocks required by the hardware's vector instrinsics before sending them into the compute cores memory.
+The `memA_fifos` and `memB_fifos` receive sub-matrices of size `m`&times;`k` and `k`&times;`n`, respectively. The FIFOs translate those matrices from a row-major format (or, alternatively, column-major for `B` if `b_col_maj` is set) into the `r`&times;`s`-sized and `s`&times;`t`-sized blocks required by the hardware's vector instrinsics before sending them into the compute cores memory.
 
 For matrix A (`memA_fifos`), this transformation is expressed using the following wraps and strides as a list of tuples `(wrap, stride)`, given as arguments to the `object_fifo()` operation:
 (Note that `//` denotes integer floor-division in Python.)
@@ -177,7 +179,7 @@ Let us break down each component of this pattern. We do so back-to-front for eas
 
 > You can use this [data layout visualizer](http://andreroesti.com/data-layout-viz/data_layout.html) to better understand data layout transformations expressed as wraps and strides.
 
-The matrix B transformation (`memB_fifos`) is equivalent after substituting the correct dimensions (`k`&times;`n` instead of `m`&times;`k` and `s`&times;`t` isntead of `r`&times;`s`).
+The matrix B transformation (`memB_fifos`) is equivalent after substituting the correct dimensions (`k`&times;`n` instead of `m`&times;`k` and `s`&times;`t` isntead of `r`&times;`s`). If a column-major layout is used for `B` (argument `b_col_maj` is set), the transformation is analogous but transposed.
 
 Analogously, the output matrix C is transformed back from `r`&times;`t`-sized blocks back into a row-major matrix of contiguous rows with size `m`&times;`n`.
 
@@ -198,9 +200,9 @@ We define a `core_body()` function for each compute core `i`, inside of which we
 
 ### 5. Defining External Data Transfer Sequences
 
-The function signature of the `sequence()` function lists as its arguments all the external buffers from the host that we wish to read from or write to on the AI Engine's shim tiles. The body of this function describes how these buffers are transfered from and to the host, including tiling the input matrices into `m`&times;`k` and `k`&times;`n`-sized sub-matrices, and combining the `m`&times;`n`-sized output tiles into the larger output `M`&times;`N` matrix buffer.
+The signature of the `aie.runtime_sequence()` operation lists as its arguments all the external buffers from the host that we wish to read from or write to on the AI Engine's shim tiles. The body of this function describes how these buffers are transfered from and to the host, including tiling the input matrices into `m`&times;`k` and `k`&times;`n`-sized sub-matrices, and combining the `m`&times;`n`-sized output tiles into the larger output `M`&times;`N` matrix buffer.
 
-* The `tile_row_block` variable segments the M (rows of A) into smaller chunks, each containing `rows_per_block` tile rows. This is done so the buffer descriptors (BDs) can be reused for efficient DMA transfers.
+* The `tb` variable segments the M (rows of A) into smaller chunks, each containing `tb_max_rows` tile rows. This is done so the buffer descriptors (BDs) can be reused for efficient DMA transfers.
 * For each column `i`:
     * For each `tile_row` in the current row block:
         * The DMA transfer function `npu_dma_memcpy_nd` loads a segment of matrix A and matrix B data (submatrix a, submatrix b) from the host into the corresponding `inA_fifos` for the respective column, maintaining the appropriate strides and offsets.
@@ -208,6 +210,10 @@ The function signature of the `sequence()` function lists as its arguments all t
            > Note that data layout transformations in the `npu_dma_memcpy_nd` operation are expressed in units of 4 bytes. This is why you will see all strides and the lowest-dimension length multiplied by a factor of `word_size_in` or `word_size_out` (to get the size in bytes) and then divided by four (to get the size in units of 4 bytes). This discrepancy will be streamlined in future versions.
     * The DMA transfer function `npu_dma_memcpy_nd` sends a segment of matrix C data (submatrix c) from the corresponding `outC_fifos` for the respective column, back to the host while maintaining the appropriate strides and offsets.
     * After completing DMA transfers for each column, `npu_sync` is used to synchronize their completion.
+
+The aforementioned transfers of rows of tiles of the `A` matrix are further split into a "ping" and a "pong" phase.
+This allows us to reconfigure half of the buffer descriptors used for transferring `A` concurrently with the other half running (transferring data).
+This interleaved design improves performance thanks to overlapped reconfiguration and data movement, especially if there is a large number of rows of tiles of `A`.
 
 ## Compute Microkernels
 
@@ -222,5 +228,7 @@ This C++ code demonstrates how to implement matrix multiplication for different 
 1. Extern "C" interface functions: These functions provide a C-compatible interface to the main matrix multiplication functions, making it easier to call these functions from other languages or environments.
 
 1. Zeroing functions: Functions like `zero_vectorized` and `zero_scalar` initialize the output matrix (`c_out`) with all zero values.
+
+1. `matmul_vectorized_b_col_maj` functions: These functions are identical to the `matmul_vectorized_2x2` implementation except for diffrences in pointer arithmetic for accessing the `B` matrix and issuing a transpose instruction for `B`. This allows us to feed column-major `s`&times;`t`-sized tiles into the compute kernel, which then transposes those into row-major.
 
 This code showcases efficient performance in matrix multiplication-intensive workloads and can be adapted for other types of inputs and operations as needed.

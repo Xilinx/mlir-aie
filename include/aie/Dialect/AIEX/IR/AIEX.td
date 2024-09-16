@@ -18,8 +18,8 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
 include "mlir/IR/SymbolInterfaces.td"
-include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/CommonAttrConstraints.td"
 
 def AIEX_Dialect : Dialect {
   let name = "aiex";
@@ -29,8 +29,11 @@ def AIEX_Dialect : Dialect {
     This is a dialect for experimental work related to AIEngine processors.
     The expectation is that new ideas can be developed here before migration
     to the more mature AIE dialect.
-
   }];
+
+  let extraClassDeclaration = [{
+  }];
+
 }
 
 
@@ -463,6 +466,25 @@ def AIE_SelectOp: AIEX_Op<"select", []>, Results<(outs Index)> {
   ];
 }
 
+def AIE_RuntimeSequenceOp : AIEX_Op<"runtime_sequence", [NoTerminator, HasParent<"AIE::DeviceOp">]> {
+  let summary = "Program the configuration co-processor of the AI Engine array";
+  let description = [{
+    Instructions in this operation allow for runtime (re-)configuration of the AI Engine array, such as configuring data movement buffer descriptors.
+    These instructions will execute on the configuration co-processor of the AI Engine array.
+
+    Typically, these instructions include configuring the data transfers between host and AIE array on the shims.
+    The input arguments are arguments passed in from the host at kernel invocation time. This may include buffers on the host.
+  }];
+  let arguments = (
+    ins OptionalAttr<SymbolNameAttr>:$sym_name
+  );
+  let regions = (region
+    AnyRegion:$body
+  );
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
 def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     AttrSizedOperandSegments,
     MyOffsetSizeAndStrideOpInterface
@@ -483,11 +505,11 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
 
     #### `metadata` -- Specifying Tile, Channel, Direction and Linking a `dma_memcpy_nd` to its Other Half
 
-    The `metadata` attribute must point to a symbol referencing a 
-    [`aie.shim_dma_allocation` operation](AIE.html#aiedma_bd-xilinxaiedmabdop).
+    The `metadata` attribute must point to a symbol referencing a
+    [`aie.shim_dma_allocation` operation](AIEDialect.html#aiedma_bd-xilinxaiedmabdop).
     The tile coordinates of the DMA to configure, the channel number and the direction (`MM2S` or `S2MM`) are taken from this operation.
 
-    To connect the DMA to its other half (i.e. a `MM2S` DMA to its receiving end and a `S2MM` to the sending end), 
+    To connect the DMA to its other half (i.e. a `MM2S` DMA to its receiving end and a `S2MM` to the sending end),
     the user must configure a flow (`aie.flow`) between the tile and channel referenced in the `aie.shim_dma_allocation` and the corresponding other end.
 
     When using ObjectFIFOs, the `aie.shim_dma_allocation` operations and the `aie.flows` are generated automatically.
@@ -498,13 +520,13 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     When the `dma_memcpy_nd` operation executes, it immediately reprograms the buffer descriptor with ID `bd_id` on tile (`x`, `y`), even if that buffer descriptor is currently executing.
     Without proper synchronization, this inevitably leads to nondeterministic results.
 
-    Programming a buffer descriptor that is not currently executing is harmless. 
+    Programming a buffer descriptor that is not currently executing is harmless.
     Thus, the first `dma_memcpy_nd` call for each `bd_id` requires no synchronization.
 
-    However, if you wish to later re-use a `bd_id` on the same tile, you must wait for the previous buffer descriptor to complete. 
+    However, if you wish to later re-use a `bd_id` on the same tile, you must wait for the previous buffer descriptor to complete.
     The `sync` or `dma_wait` operations can be used for this.
 
-    `sync` blocks until it receives a _task completion token_ (TCT). 
+    `sync` blocks until it receives a _task completion token_ (TCT).
     To properly synchronize, you must thus configure your BD to issue a TCT using the `issue_token` attribute, then wait on that token before reusing the BD.
 
     `dma_wait` is a convenience operation that lowers to the corresponding `sync` operation for the refrenced symbol.
@@ -515,17 +537,22 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     #### Data Layout Transformations
 
     The `sizes` and `strides` attributes describe a data layout transformation to be performed by the DMA.
-    These transformations are described in more depth in the documentation for the 
-    [`aie.dma_bd` operation](AIE.html#aiedma_bd-xilinxaiedmabdop).
-    Note that the syntax here differs from that of the `dma_bd` operation: 
+    These transformations are described in more depth in the documentation for the
+    [`aie.dma_bd` operation](AIEDialect.html#aiedma_bd-xilinxaiedmabdop).
+    Note that the syntax here differs from that of the `dma_bd` operation:
     offsets and strides are given as separate arrays instead of tuples.
 
     The `offsets` array is used to calculate a static offset into the memref.
-    Each offset in the array is understood in relation to the shape of the memref; 
-    the lowest-dimension `offset` is a direct offset in units of memref element type, and the higher dimensions are multiplied by the size of the memref in those dimensions. 
-    Note that this is for convenience of the user only. 
+    Each offset in the array is understood in relation to the shape of the memref;
+    the lowest-dimension `offset` is a direct offset in units of memref element type, and the higher dimensions are multiplied by the size of the memref in those dimensions.
+    Note that this is for convenience of the user only.
     The hardware only supports a single static offset, and this offset is calculated at compile time.
     Thus, all offsets can be equivalently expressed with the lowest dimension only.
+
+    #### Packet Header Attribute
+    The optional `packet` attribute defines the packet header and packet type that gets issued per DMA BD.
+    If the attribute is set, then every time the DMA BD gets issued, a packet header is generated prior to the transmission of data.
+    The packet header is used to guide arbitration throughout a packet-routed data flow, where each switch box arbitrates the data packet to stream to a successor based on the packet header.
 
   }];
 
@@ -540,6 +567,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_offsets,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_strides,
+        OptionalAttr<PacketInfoAttr>:$packet,
         FlatSymbolRefAttr:$metadata,
         I64Attr:$id,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token
@@ -549,7 +577,8 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     `(` $x `,` $y `,` $memref ``
     custom<DynamicIndexList>($offsets, $static_offsets) ``
     custom<DynamicIndexList>($sizes, $static_sizes) ``
-    custom<DynamicIndexList>($strides, $static_strides) `)`
+    custom<DynamicIndexList>($strides, $static_strides) ``
+    (`,` `packet` `=` $packet^)? `)`
     attr-dict `:` type($memref)
   }];
 
@@ -557,31 +586,12 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     static unsigned getOffsetSizeAndStrideStartOperandIndex();
     static std::array<unsigned, 3> getArrayAttrMaxRanks();
 
-    /* Returns the provided multi-dimensional data transfer strides in units of
-       address granularity. In the IR, we express strides in units of element
-       data type, but the hardware requires it in units of address granularity.
-       Address granularity currently is 4 bytes for all hardware.
-
-       The returned stride[0] is the second-lowest dimension stride, i.e.
-       stride 1. The lowest stride is currently implicitly one, but this is not
-       a hardware requirement and could be changed in the future.  */
-    llvm::SmallVector<int64_t, 4> getStridesInAddressGranularity();
-
-    /* Returns the multi-dimensional data transfer sizes in units of address
-       granularity. These sizes are expressed in units of element data type in
-       the IR, but the hardware requires them to be in units of address
-       granularity. Address granularity currently is 4 bytes for all hardware. 
-
-       The returned size[0] is the lowest dimension size. In the IR, the sizes
-       are given in reverse order. For example, specifying sizes in IR as
-       [1, 2, 3, 4] would result in this function returning [4, 3, 2, 1].
-       */
-    llvm::SmallVector<int64_t, 4> getSizesInAddressGranularity();
-
     /* Returns the data transfer offset in bytes, i.e. the first N bytes of the
        target buffer will be skipped. In the IR, offsets are expressed in units
        of memref element data type size. */
-    int64_t getOffsetInBytes(); 
+    int64_t getOffsetInBytes();
+
+    bool isLinearTransferWithoutTransformation();
   }];
 
   let extraClassDefinition = [{
@@ -598,7 +608,7 @@ def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait", []> {
     The NpuDmaWaitOp blocks until the DMA referenced through `symbol` completes execution
     and issues a task-complete-token (TCT).
 
-    `symbol` is a reference to a `aie.shim_dma_allocation`, which contains information about the column, channel and channel direction on which to wait for a TCT. 
+    `symbol` is a reference to a `aie.shim_dma_allocation`, which contains information about the column, channel and channel direction on which to wait for a TCT.
     The `aie.shim_dma_allocation` may be generated from an ObjectFIFO, in which case you can directly pass the ObjectFIFO symbol refrence.
     `npu.dma_wait` will be lowered to the corresponding `npu.sync` operation using the information from `symbol`.
 
@@ -629,14 +639,12 @@ def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait", []> {
 def AIE_NpuWriteRTPOp: AIEX_Op<"npu.rtp_write", []> {
   let summary = "rtp write operator";
   let arguments = (
-    ins StrAttr:$buffer_sym_name,
-        UI32Attr:$col,
-        UI32Attr:$row,
+    ins FlatSymbolRefAttr:$buffer,
         UI32Attr:$index,
         I32Attr:$value
   );
   let results = (outs );
-  let assemblyFormat = [{ `(` $col `,` $row `,` $index `,` $value `)` attr-dict 
+  let assemblyFormat = [{ `(` $buffer `,` $index `,` $value `)` attr-dict
   }];
   let description = [{
     rtp write operator
@@ -671,6 +679,7 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
   let arguments = (
     ins UI32Attr:$address,
         UI32Attr:$value,
+        OptionalAttr<FlatSymbolRefAttr>:$buffer,
         OptionalAttr<I32Attr>:$column,
         OptionalAttr<I32Attr>:$row
   );
@@ -679,7 +688,64 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
     attr-dict
   }];
   let description = [{
-    write32 operator
+    NPU write32 operator writes a 32bit value to the AIE array.
+    If 'buffer' is present then 'address' is interpreted as an offset into the
+    aie.buffer with symbol name 'buffer'.
+    If 'column' and 'row' are present then 'address' is interpreted as an offset
+    into the memory space of aie.tile(column, row).
+    If 'buffer' is not present and 'column' and 'row' are not present then
+    'address' is interpreted as a full 32-bit address in the AIE array.
+  }];
+}
+
+// MASKWRITE
+def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", []> {
+  let summary = "Write a masked 32-bit value to the AIE array";
+  let arguments = (
+    ins UI32Attr:$address,
+        UI32Attr:$value,
+        UI32Attr:$mask,
+        OptionalAttr<FlatSymbolRefAttr>:$buffer,
+        OptionalAttr<I32Attr>:$column,
+        OptionalAttr<I32Attr>:$row
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    attr-dict
+  }];
+  let description = [{
+    NPU mask write32 operator writes a masked 32bit value to the AIE array.
+    If 'buffer' is present then 'address' is interpreted as an offset into the
+    aie.buffer with symbol name 'buffer'.
+    If 'column' and 'row' are present then 'address' is interpreted as an offset
+    into the memory space of aie.tile(column, row).
+    If 'buffer' is not present and 'column' and 'row' are not present then
+    'address' is interpreted as a full 32-bit address in the AIE array.
+  }];
+}
+
+// BLOCKWRITE
+def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
+  let summary = "blockwrite operator";
+  let arguments = (
+    ins UI32Attr:$address,
+        AnyMemRef:$data,
+        OptionalAttr<FlatSymbolRefAttr>:$buffer,
+        OptionalAttr<I32Attr>:$column,
+        OptionalAttr<I32Attr>:$row
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    `(` $data `)` attr-dict `:` type($data)
+  }];
+  let description = [{
+    blockwrite operator writes the data from the memref 'data' to the AIE array.
+    If 'buffer' is present then 'address' is interpreted as an offset into the
+    aie.buffer with symbol name 'buffer'.
+    If 'column' and 'row' are present then 'address' is interpreted as an offset
+    into the memory space of aie.tile(column, row).
+    If 'buffer' is not present and 'column' and 'row' are not present then
+    'address' is interpreted as a full 32-bit address in the AIE array.
   }];
 }
 
@@ -725,6 +791,27 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
   }];
 }
 
+def AIE_NpuControlPacketOp: AIEX_Op<"control_packet", []> {
+  let summary = "AIE control packet";
+  let arguments = (
+    ins UI32Attr:$address,
+        OptionalAttr<I32Attr>:$length,
+        I32Attr:$opcode,
+        I32Attr:$stream_id,
+        OptionalAttr<DenseI32ArrayAttr>:$data
+  );
+  let results = (outs );
+  let assemblyFormat = [{ attr-dict }];
+  let description = [{
+    The control_packet operation represents a low-level AIE control packet header
+    and payload.
+  }];
+  let extraClassDeclaration = [{
+    uint32_t getRowFromAddr();
+    uint32_t getColumnFromAddr();
+  }];
+}
+
 // NPU Bd Write operation
 def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
   let summary = "dma operator";
@@ -760,6 +847,192 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
   let hasVerifier = 1;
   let description = [{
     writebd operator
+  }];
+}
+
+def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"RuntimeSequenceOp">, TileElement]>, Results<(outs Index:$result)> {
+  let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task on a Channel and Direction on a Tile";
+  let description = [{
+    Encapsulates the DMA configuration of one task, that is the (chain of) buffer descriptors to be executed on a given channel and direction on a tile.
+
+    Such configurations are generated by materializing abstract aie.bd_chains using aiex.start_task, or can be created manually using this op.
+
+    Once configured, a task can be submitted for execution using `aiex.dma_start_configured_task`, after which its execution completion can be awaited using `aiex.dma_await_task`.
+  }];
+
+  let arguments = (
+    ins Index:$tile,
+        DMAChannelDir:$direction,
+        I32Attr:$channel,
+        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count
+  );
+
+  let regions = (
+    region AnyRegion:$body
+  );
+
+  let assemblyFormat = [{
+    `(` $tile `,` $direction `,` $channel `)` regions attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    AIE::TileOp getTileOp();
+    std::optional<uint32_t> getFirstBdId();
+    using ::xilinx::AIE::TileElement::Trait<AIEX::DMAConfigureTaskOp>::getAsmResultNames;
+  }];
+
+  let extraClassDefinition = [{
+    AIE::TileOp DMAConfigureTaskOp::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
+  }];
+
+  let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
+}
+
+def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasParent<"RuntimeSequenceOp">]>, Results<(outs Index:$result)> {
+  let summary = "As dma_configure_task, but specify tile, direction and channel by reference to a Shim DMA allocation op";
+
+  let arguments = (
+    ins FlatSymbolRefAttr:$alloc,
+        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count
+  );
+
+  let regions = (region AnyRegion:$body);
+
+  let assemblyFormat = [{ $alloc regions attr-dict }];
+}
+
+def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasParent<"RuntimeSequenceOp">]> {
+  let summary = "Free all Buffer Descriptor IDs Associated with the Given Task";
+  let description = [{
+    This operation informs the static buffer descriptor allocator pass in the compiler that the buffer descriptor IDs it has allocated to the BDs inside the referenced task can be reused thereafter.
+
+    Potential future implementations of dynamic buffer descriptor allocators may lower this to a `free` instruction.
+  }];
+  let arguments = (
+    ins Index:$task
+  );
+
+  let assemblyFormat = [{
+    `(` $task `)` attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    DMAConfigureTaskOp getTaskOp();
+  }];
+
+  let extraClassDefinition = [{
+    DMAConfigureTaskOp DMAFreeTaskOp::getTaskOp() { return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
+  }];
+}
+
+def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", [HasParent<"RuntimeSequenceOp">]> {
+  let summary = "Submit a Preconfigured Task to the Task Queue";
+  let description = [{
+    Submits the referenced task for execution on the tile, channel and direction it has been configured to run on.
+    Once submitted, if the task is configured to issue a token, you can await completion of the task using `aiex.await_task`.
+  }];
+
+  let arguments = (
+    ins Index:$task
+  );
+
+  let assemblyFormat = [{
+    `(` $task `)` attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    DMAConfigureTaskOp getTaskOp();
+  }];
+
+  let extraClassDefinition = [{
+    DMAConfigureTaskOp DMAStartTaskOp::getTaskOp() { return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
+  }];
+}
+
+def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasParent<"RuntimeSequenceOp">]> {
+  let summary = "Await Completion of a Previously Submitted DMA Task";
+  let description = [{
+    This operation will block execution of the runtime sequence until the referenced previously started DMA task has completed.
+
+    DMA tasks can be started using `aiex.start_task` using abstract BD chains declared using `aie.bd_chain`, or using `aiex.start_configured_task` using a manually configured task.
+
+    To be able to wait on a task, it must issue a task completion token (TCT). Tasks only emit these tokens if the attribute `issue_token` is set to `true`.
+  }];
+
+  let arguments = (
+    ins Index:$task
+  );
+
+  let assemblyFormat = [{
+    `(` $task `)` attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    DMAConfigureTaskOp getTaskOp();
+  }];
+
+  let extraClassDefinition = [{
+    DMAConfigureTaskOp DMAAwaitTaskOp::getTaskOp() { return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
+  }];
+}
+
+def AIE_DMAStartBdChainOp: AIEX_Op<"dma_start_bd_chain", [HasParent<"RuntimeSequenceOp">, TileElement]>,
+    Results<(outs Index:$result)>
+  {
+
+  let summary = "Materialize an Abstract BD Chain as a DMA Task on the Given Tile, Channel and Direction and Immediately Start It";
+  let description = [{
+    This operation will configure a new DMA task on the given tile, channel and direction by concretizing an abstract BD chain, previously defined using `aie.bd_chain`, with the given input arguments.
+
+    Completion of the DMA task, i.e. the data transfer, can be awaited using `aiex.await_task` if the attribute `issue_token` is set to `true`.
+  }];
+
+  let arguments = (
+    ins FlatSymbolRefAttr:$symbol,
+        Variadic<AnyType>:$args,
+        Index:$tile,
+        DMAChannelDir:$direction,
+        I32Attr:$channel,
+        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count
+  );
+
+  let assemblyFormat = [{
+     $symbol `(` $args `)` `:` `(` type($args) `)` ` ` `on` ` ` `(` $tile `,` $direction `,` $channel `)` attr-dict
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    AIE::TileOp getTileOp();
+    AIE::BDChainOp getBDChainOp();
+    using ::xilinx::AIE::TileElement::Trait<AIEX::DMAStartBdChainOp>::getAsmResultNames;
+  }];
+
+  let extraClassDefinition = [{
+    AIE::TileOp DMAStartBdChainOp::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
+  }];
+
+}
+
+def AIE_DMAStartBdChainForOp: AIEX_Op<"dma_start_bd_chain_for", [HasParent<"RuntimeSequenceOp">]>,
+    Results<(outs Index:$result)>
+  {
+  let summary = "As dma_start_bd_chain, but specify tile, direction and channel by reference to a Shim DMA allocation op";
+
+  let arguments = (
+    ins FlatSymbolRefAttr:$symbol,
+        Variadic<AnyType>:$args,
+        FlatSymbolRefAttr:$alloc,
+        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count
+  );
+
+  let assemblyFormat = [{
+     $symbol `(` $args `)` `:` `(` type($args) `)` ` ` `for` ` ` $alloc attr-dict
   }];
 }
 

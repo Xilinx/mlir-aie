@@ -23,10 +23,11 @@ from .aie import (
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from ..ir import DictAttr, IntegerAttr, UnitAttr
+from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint
 
 # noinspection PyUnresolvedReferences
 from ..extras.dialects.ext import memref
+from ..extras import types as T
 
 
 # Comes from _aie
@@ -761,3 +762,53 @@ def broadcast_flow(
     if len(flows) == 1:
         flows = flows[0]
     return flows
+
+
+# Runtime sequence
+
+
+def runtime_sequence(*inputs: Type):
+    def decorator(f):
+        seq_op = RuntimeSequenceOp()
+        entry_block = seq_op.body.blocks.append(*inputs)
+        args = entry_block.arguments
+        with InsertionPoint(entry_block):
+            f(*args)
+
+    return decorator
+
+
+_orig_dma_configure_task = dma_configure_task
+
+
+def dma_configure_task(*args, **kwargs):
+    return DMAConfigureTaskOp(T.index(), *args, **kwargs)
+
+
+_orig_dma_configure_task_for = dma_configure_task_for
+
+
+def dma_configure_task_for(alloc, *args, **kwargs):
+    alloc_sym = alloc if isinstance(alloc, str) else alloc.sym_name.value
+    return DMAConfigureTaskForOp(T.index(), alloc_sym, *args, **kwargs)
+
+
+_orig_dma_start_bd_chain = dma_start_bd_chain
+
+
+def dma_start_bd_chain(symbol, args, tile, direction, channel, *pyargs, **kwargs):
+    chain_sym = symbol if isinstance(symbol, str) else symbol.sym_name.value
+    return DMAStartBdChainOp(
+        T.index(), chain_sym, args, tile, direction, channel, *pyargs, **kwargs
+    )
+
+
+_orig_dma_start_bd_chain_for = dma_start_bd_chain_for
+
+
+def dma_start_bd_chain_for(symbol, args, alloc, *pyargs, **kwargs):
+    chain_sym = symbol if isinstance(symbol, str) else symbol.sym_name.value
+    alloc_sym = alloc if isinstance(alloc, str) else alloc.sym_name.value
+    return DMAStartBdChainForOp(
+        T.index(), chain_sym, args, alloc_sym, *pyargs, **kwargs
+    )

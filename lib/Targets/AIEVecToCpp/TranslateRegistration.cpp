@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Ops.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Targets/AIETargets.h"
 
@@ -57,7 +58,8 @@ void registerAIEVecToCppTranslation() {
                         DLTIDialect,
                         scf::SCFDialect,
                         vector::VectorDialect,
-                        xilinx::aievec::AIEVecDialect,
+                        xilinx::aievec::aie1::AIEVecAIE1Dialect,
+                        xilinx::aievec::AIEVecDialect,                        
                         index::IndexDialect>();
         // clang-format on
       });

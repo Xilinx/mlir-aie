@@ -36,23 +36,30 @@ from aie.dialects import aie as aiedialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
-INPUT_WITH_ADDRESSES_PIPELINE = lambda scheme="": (
-    Pipeline()
-    .lower_affine()
-    .add_pass("aie-canonicalize-device")
-    .Nested(
-        "aie.device",
+INPUT_WITH_ADDRESSES_PIPELINE = (
+    lambda basic_alloc_scheme=False, ctrl_pkt_overlay=False: (
         Pipeline()
-        .add_pass("aie-assign-lock-ids")
-        .add_pass("aie-register-objectFifos")
-        .add_pass("aie-objectFifo-stateful-transform")
-        .add_pass("aie-assign-bd-ids")
-        .add_pass("aie-lower-cascade-flows")
-        .add_pass("aie-lower-broadcast-packet")
-        .add_pass("aie-lower-multicast")
-        .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
+        .lower_affine()
+        .add_pass("aie-canonicalize-device")
+        .Nested(
+            "aie.device",
+            Pipeline()
+            .add_pass("aie-assign-lock-ids")
+            .add_pass("aie-register-objectFifos")
+            .add_pass("aie-objectFifo-stateful-transform")
+            .add_pass("aie-assign-bd-ids")
+            .add_pass("aie-lower-cascade-flows")
+            .add_pass("aie-lower-broadcast-packet")
+            .add_pass("aie-lower-multicast")
+            .add_pass("aie-assign-tile-controller-ids")
+            .add_pass(
+                "aie-generate-column-control-overlay",
+                route_shim_to_tile_ctrl=ctrl_pkt_overlay,
+            )
+            .add_pass("aie-assign-buffer-addresses", basic_alloc=basic_alloc_scheme),
+        )
+        .convert_scf_to_cf()
     )
-    .convert_scf_to_cf()
 )
 
 LOWER_TO_LLVM_PIPELINE = (
@@ -91,7 +98,16 @@ AIE_LOWER_TO_LLVM = (
 CREATE_PATH_FINDER_FLOWS = Pipeline().Nested(
     "aie.device", Pipeline().add_pass("aie-create-pathfinder-flows")
 )
-DMA_TO_NPU = Pipeline().Nested("aie.device", Pipeline().add_pass("aie-dma-to-npu"))
+
+DMA_TO_NPU = Pipeline().Nested(
+    "aie.device",
+    Pipeline()
+    .add_pass("aie-materialize-bd-chains")
+    .add_pass("aie-substitute-shim-dma-allocations")
+    .add_pass("aie-assign-runtime-sequence-bd-ids")
+    .add_pass("aie-dma-tasks-to-npu")
+    .add_pass("aie-dma-to-npu"),
+)
 
 
 async def read_file_async(file_path: str) -> str:
@@ -269,10 +285,15 @@ def generate_cores_list(mlir_module_str):
         ]
 
 
-def emit_design_bif(root_path, has_cores=True, enable_cores=True):
-    cdo_elfs_file = f"file={root_path}/aie_cdo_elfs.bin"
-    cdo_init_file = f"file={root_path}/aie_cdo_init.bin"
-    cdo_enable_file = f"file={root_path}/aie_cdo_enable.bin" if enable_cores else ""
+def emit_design_bif(root_path, has_cores=True, enable_cores=True, unified=False):
+    if unified:
+        cdo_unified_file = f"file={root_path}/aie_cdo.bin" if unified else ""
+        files = f"{cdo_unified_file}"
+    else:
+        cdo_elfs_file = f"file={root_path}/aie_cdo_elfs.bin"
+        cdo_init_file = f"file={root_path}/aie_cdo_init.bin"
+        cdo_enable_file = f"file={root_path}/aie_cdo_enable.bin" if enable_cores else ""
+        files = f"{cdo_elfs_file} {cdo_init_file} {cdo_enable_file}"
     return dedent(
         f"""\
         all:
@@ -282,11 +303,7 @@ def emit_design_bif(root_path, has_cores=True, enable_cores=True):
           image
           {{
             name=aie_image, id=0x1c000000
-            {{ type=cdo
-               {cdo_elfs_file}
-               {cdo_init_file}
-               {cdo_enable_file}
-            }}
+            {{ type=cdo {files} }}
           }}
         }}
         """
@@ -457,7 +474,10 @@ class FlowRunner:
                 install_path, "aie_runtime_lib", aie_target.upper()
             )
 
-            clang_link_args = ["-Wl,--gc-sections"]
+            # --gc-sections to eliminate unneeded code.
+            # --orphan-handling=error to ensure that the linker script is as expected.
+            # If there are orphaned input sections, then they'd likely end up outside of the normal program memory.
+            clang_link_args = ["-Wl,--gc-sections", "-Wl,--orphan-handling=error"]
 
             if opts.progress:
                 task = self.progress_bar.add_task(
@@ -542,6 +562,56 @@ class FlowRunner:
                 await read_file_async(self.prepend_tmp("input_physical.mlir"))
             )
             generate_cdo(input_physical.operation, self.tmpdirname)
+
+    async def process_txn(self):
+
+        with Context(), Location.unknown():
+            for elf in glob.glob("*.elf"):
+                try:
+                    shutil.copy(elf, self.tmpdirname)
+                except shutil.SameFileError:
+                    pass
+            for elf_map in glob.glob("*.elf.map"):
+                try:
+                    shutil.copy(elf_map, self.tmpdirname)
+                except shutil.SameFileError:
+                    pass
+            input_physical = await read_file_async(
+                self.prepend_tmp("input_physical.mlir")
+            )
+            run_passes(
+                "builtin.module(aie.device(convert-aie-to-transaction{elf-dir="
+                + self.tmpdirname
+                + "}))",
+                input_physical,
+                self.prepend_tmp("txn.mlir"),
+                self.opts.verbose,
+            )
+
+    async def process_ctrlpkt(self):
+
+        with Context(), Location.unknown():
+            for elf in glob.glob("*.elf"):
+                try:
+                    shutil.copy(elf, self.tmpdirname)
+                except shutil.SameFileError:
+                    pass
+            for elf_map in glob.glob("*.elf.map"):
+                try:
+                    shutil.copy(elf_map, self.tmpdirname)
+                except shutil.SameFileError:
+                    pass
+            input_physical = await read_file_async(
+                self.prepend_tmp("input_physical.mlir")
+            )
+            run_passes(
+                "builtin.module(aie.device(convert-aie-to-control-packets{elf-dir="
+                + self.tmpdirname
+                + "}))",
+                input_physical,
+                self.prepend_tmp("ctrlpkt.mlir"),
+                self.opts.verbose,
+            )
 
     async def process_xclbin_gen(self):
         if opts.progress:
@@ -978,12 +1048,18 @@ class FlowRunner:
             )
 
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
+<<<<<<< HEAD
             if opts.alloc_scheme:
                 pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
                     opts.alloc_scheme
                 ).materialize(module=True)
             else:
                 pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE().materialize(module=True)
+=======
+            pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
+                opts.basic_alloc_scheme, opts.ctrl_pkt_overlay
+            ).materialize(module=True)
+>>>>>>> 932a5df230ed255e9053777f0e07ddde1324531c
             run_passes(
                 pass_pipeline,
                 self.mlir_module_str,
@@ -1016,7 +1092,7 @@ class FlowRunner:
                     progress_bar.task,
                     [
                         "aie-opt",
-                        "--aie-dma-to-npu",
+                        f"--pass-pipeline={DMA_TO_NPU}",
                         file_with_addresses,
                         "-o",
                         generated_insts_mlir,
@@ -1081,8 +1157,15 @@ class FlowRunner:
             # Must have elfs, before we build the final binary assembly
             if opts.cdo and opts.execute:
                 await self.process_cdo()
+
             if opts.cdo or opts.xcl:
                 await self.process_xclbin_gen()
+
+            if opts.txn and opts.execute:
+                await self.process_txn()
+
+            if opts.ctrlpkt and opts.execute:
+                await self.process_ctrlpkt()
 
     def dumpprofile(self):
         sortedruntimes = sorted(

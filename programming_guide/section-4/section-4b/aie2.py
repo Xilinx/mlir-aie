@@ -6,6 +6,7 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 
+import argparse
 import sys
 
 from aie.dialects.aie import *
@@ -16,10 +17,10 @@ from aie.extras.context import mlir_mod_ctx
 import aie.utils.trace as trace_utils
 
 
-def my_vector_scalar():
+def my_vector_scalar(opts):
 
-    enableTrace = True
-    trace_size = 8192
+    enableTrace = opts.trace_size > 0
+    trace_size = opts.trace_size
 
     @device(AIEDevice.npu1_1col)
     def device_body():
@@ -68,7 +69,7 @@ def my_vector_scalar():
         tensor_ty = T.memref(4096, T.i32())
         scalar_ty = T.memref(1, T.i32())
 
-        @FuncOp.from_py_func(tensor_ty, scalar_ty, tensor_ty)
+        @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
             if enableTrace:
                 trace_utils.configure_simple_tracing_aie2(
@@ -85,10 +86,21 @@ def my_vector_scalar():
             npu_sync(column=0, row=0, direction=0, channel=0)
 
 
-with mlir_mod_ctx() as ctx:
-    my_vector_scalar()
-    res = ctx.module.operation.verify()
-    if res == True:
-        print(ctx.module)
-    else:
-        print(res)
+if __name__ == "__main__":
+    p = argparse.ArgumentParser()
+    p.add_argument(
+        "-t",
+        "--trace_sz",
+        dest="trace_size",
+        default=0,
+        type=int,
+        help="trace size in bytes",
+    )
+    opts = p.parse_args(sys.argv[1:])
+    with mlir_mod_ctx() as ctx:
+        my_vector_scalar(opts)
+        res = ctx.module.operation.verify()
+        if res == True:
+            print(ctx.module)
+        else:
+            print(res)

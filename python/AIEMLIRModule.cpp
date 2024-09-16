@@ -10,6 +10,8 @@
 #include "aie-c/TargetModel.h"
 #include "aie-c/Translation.h"
 
+#include "aie/Bindings/PyTypes.h"
+
 #include "mlir-c/IR.h"
 #include "mlir-c/Support.h"
 #include "mlir/Bindings/Python/PybindAdaptors.h"
@@ -27,16 +29,6 @@
 using namespace mlir::python::adaptors;
 namespace py = pybind11;
 using namespace py::literals;
-
-class PyAieTargetModel {
-public:
-  PyAieTargetModel(AieTargetModel model) : model(model) {}
-  operator AieTargetModel() const { return model; }
-  AieTargetModel get() const { return model; }
-
-private:
-  AieTargetModel model;
-};
 
 PYBIND11_MODULE(_aie, m) {
 
@@ -116,11 +108,33 @@ PYBIND11_MODULE(_aie, m) {
       "xaie_debug"_a = false, "enable_cores"_a = true);
 
   m.def(
+      "transaction_binary_to_mlir",
+      [](MlirContext ctx, py::bytes bytes) {
+        std::string s = bytes;
+        MlirStringRef bin = {s.data(), s.size()};
+        return aieTranslateBinaryToTxn(ctx, bin);
+      },
+      "ctx"_a, "binary"_a);
+
+  m.def(
       "npu_instgen",
       [&stealCStr](MlirOperation op) {
         py::str npuInstructions = stealCStr(aieTranslateToNPU(op));
         auto individualInstructions =
             npuInstructions.attr("split")().cast<py::list>();
+        for (size_t i = 0; i < individualInstructions.size(); ++i)
+          individualInstructions[i] = individualInstructions[i].attr("strip")();
+        return individualInstructions;
+      },
+      "module"_a);
+
+  m.def(
+      "generate_control_packets",
+      [&stealCStr](MlirOperation op) {
+        py::str ctrlPackets =
+            stealCStr(AIETranslateControlPacketsToUI32Vec(op));
+        auto individualInstructions =
+            ctrlPackets.attr("split")().cast<py::list>();
         for (size_t i = 0; i < individualInstructions.size(); ++i)
           individualInstructions[i] = individualInstructions[i].attr("strip")();
         return individualInstructions;

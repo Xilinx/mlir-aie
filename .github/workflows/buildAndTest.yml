@@ -34,18 +34,18 @@ jobs:
       # Run the tests on the Cartesian product of the following
       matrix:
         build_type: [ Assert, Release ]
-        ubuntu_version: [ 20.04, 22.04 ]
+        ubuntu_version: [ 20.04, 22.04, 24.04 ]
 
     steps:
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
       - name: Get the project repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 2
           submodules: "true"
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.8'
 
@@ -88,7 +88,7 @@ jobs:
           unzip -q mlir-*.whl
 
       - name: Ccache for C++ compilation
-        uses: hendrikmuhs/ccache-action@ca3acd2731eef11f1572ccb126356c2f9298d35e
+        uses: hendrikmuhs/ccache-action@v1.2
         with:
           # Since there are now several compilation jobs running in parallel,
           # use a different key per job to avoid a ccache writing race condition

@@ -207,7 +207,14 @@ def bottleneck4AIEs():
             wts_buf_02 = object_fifo(
                 "wts_buf_02", MemTile, ComputeTile4, 1, weightsLayer3_ty
             )
-            object_fifo_link(inOF_wts_0_L3L2, [of_wts_buf_00, wts_buf_01, wts_buf_02])
+            of_offsets = [
+                0,
+                np.prod(weightsLayer1_ty.shape),
+                np.prod(weightsLayer1_ty.shape) + np.prod(weightsLayer2_ty.shape),
+            ]
+            object_fifo_link(
+                inOF_wts_0_L3L2, [of_wts_buf_00, wts_buf_01, wts_buf_02], [], of_offsets
+            )
 
             # activation tensor
             of_act_2_3_5 = object_fifo(
@@ -512,7 +519,7 @@ def bottleneck4AIEs():
             activationsInL3_ty = MemRefType.get((activationsIn,), int8_ty)
             weightsInL3_ty = MemRefType.get((totalWeights,), uint8_ty)
 
-            @FuncOp.from_py_func(activationsInL3_ty, weightsInL3_ty, activationsInL3_ty)
+            @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsInL3_ty)
             def sequence(inputFromL3, weightsFromL3, outputToL3):
 
                 if enableTrace:
@@ -595,21 +602,13 @@ def bottleneck4AIEs():
                     npu_write32(0, 2, 0x1D20C, 0x3)
 
                 # write RTP parameters
+                NpuWriteRTPOp("rtpComputeTile2", index=0, value=1)  # scale
+                NpuWriteRTPOp("rtpComputeTile3", index=0, value=1)  # scale
+                NpuWriteRTPOp("rtpComputeTile5", index=0, value=1)  # scale
                 NpuWriteRTPOp(
-                    "rtpComputeTile2", col=0, row=2, index=0, value=1
-                )  # scale
-                NpuWriteRTPOp(
-                    "rtpComputeTile3", col=0, row=3, index=0, value=1
-                )  # scale
-                NpuWriteRTPOp(
-                    "rtpComputeTile5", col=0, row=5, index=0, value=1
-                )  # scale
-                NpuWriteRTPOp(
-                    "rtpComputeTile4", col=0, row=4, index=0, value=1
+                    "rtpComputeTile4", index=0, value=1
                 )  # scale: conv1x1 with the same scale as the input so we match the scaling factor of output after conv1x1 and the initial input
-                NpuWriteRTPOp(
-                    "rtpComputeTile4", col=0, row=4, index=1, value=0
-                )  # skip_scale
+                NpuWriteRTPOp("rtpComputeTile4", index=1, value=0)  # skip_scale
 
                 npu_dma_memcpy_nd(
                     metadata="inOF_act_L3L2",

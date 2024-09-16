@@ -17,12 +17,12 @@
 
 echo "Setting up RyzenAI developement tools..."
 if [[ $WSL_DISTRO_NAME == "" ]]; then
-  XBUTIL=`which xbutil`
-  if ! test -f "$XBUTIL"; then 
+  XRTSMI=`which xrt-smi`
+  if ! test -f "$XRTSMI"; then 
     echo "XRT is not installed"
     return 1
   fi
-  NPU=`/opt/xilinx/xrt/bin/xbutil examine | grep RyzenAI`
+  NPU=`/opt/xilinx/xrt/bin/xrt-smi examine | grep RyzenAI`
   if [[ $NPU == *"RyzenAI"* ]]; then
     echo "Ryzen AI NPU found:"
     echo $NPU
@@ -56,7 +56,7 @@ else
   source ironenv/bin/activate
 fi
 python3 -m pip install --upgrade pip
-VPP=`which v++`
+VPP=`which xchesscc`
 if test -f "$VPP"; then
   AIETOOLS="`dirname $VPP`/../aietools"
   mkdir -p my_install

@@ -5,7 +5,7 @@
 #
 # (c) Copyright 2024 AMD Inc.
 
-# REQUIRES: ryzen_ai
+# REQUIRES: ryzen_ai, valid_xchess_license
 #
 # RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cc -o ./kernel.o
 # RUN: %python %S/aie2.py > ./aie2.mlir
@@ -68,7 +68,7 @@ def design():
                     yield_([])
 
             # To/from AIE-array data movement
-            @FuncOp.from_py_func(matrix_memref, matrix_memref)
+            @runtime_sequence(matrix_memref, matrix_memref)
             def sequence(inp, out):
                 npu_dma_memcpy_nd(
                     metadata=fifo_in.sym_name.value,

@@ -239,9 +239,12 @@ void printMemMap(TileOp tile, SmallVector<BufferOp, 4> allocatedBuffers,
 // The index of the next bank to search (which should be given to subsequent
 // calls of this function to ensure a round-robin allocation scheme
 // over the available banks).
-bool setBufferAddress(BufferOp buffer, int numBanks, int &bankIndex,
-                      std::vector<int64_t> &nextAddrInBanks,
-                      std::vector<BankLimits> &bankLimits) {
+int setBufferAddress(BufferOp buffer, int numBanks, int startBankIndex,
+                     std::vector<int64_t> &nextAddrInBanks,
+                     std::vector<BankLimits> &bankLimits) {
+  assert(startBankIndex < numBanks &&
+         "Unexpected input value for startBankIndex");
+  int bankIndex = startBankIndex;
   bool allocated = false;
   for (int i = 0; i < numBanks; i++) {
     int64_t startAddr = nextAddrInBanks[bankIndex];

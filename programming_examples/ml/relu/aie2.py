@@ -64,7 +64,13 @@ def my_relu(trace_size):
             inA_fifos[inA_fifo_names[i]] = object_fifo(
                 inA_fifo_names[i], MemTile, cores[i], buffer_depth, memRef_A_ty
             )
-        object_fifo_link(inA, inA_fifo_names)
+        if n_cores > 1:
+            of_offsets = [
+                (np.prod(memRef_A_MT_ty.shape) // n_cores) * i for i in range(n_cores)
+            ]
+        else:
+            of_offsets = []
+        object_fifo_link(inA, inA_fifo_names, [], of_offsets)
 
         # Output C
         for i in range(n_cores):
@@ -72,7 +78,13 @@ def my_relu(trace_size):
                 outC_fifo_names[i], cores[i], MemTile, buffer_depth, memRef_C_ty
             )
         outC = object_fifo("outC", MemTile, ShimTile, buffer_depth, memRef_C_MT_ty)
-        object_fifo_link(outC_fifo_names[0:n_cores], outC)
+        if n_cores > 1:
+            of_offsets = [
+                (np.prod(memRef_C_MT_ty.shape) // n_cores) * i for i in range(n_cores)
+            ]
+        else:
+            of_offsets = []
+        object_fifo_link(outC_fifo_names[0:n_cores], outC, of_offsets, [])
 
         # Set up a circuit-switched flow from core to shim for tracing information
         if trace_size > 0:
@@ -104,7 +116,7 @@ def my_relu(trace_size):
         # To/from AIE-array data movement
         tensor_ty = T.memref(N, T.bf16())
 
-        @FuncOp.from_py_func(tensor_ty, tensor_ty)
+        @runtime_sequence(tensor_ty, tensor_ty)
         def sequence(A, C):
 
             if trace_size > 0:

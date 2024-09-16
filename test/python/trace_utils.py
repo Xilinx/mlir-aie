@@ -81,7 +81,7 @@ def passthroughKernel():
             tensorSizeInInt32s = tensorSize // 4
             tensor_ty = T.memref(lineWidthInInt32s, T.i32())
 
-            @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
+            @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
             def sequence(inTensor, outTensor, notUsed):
                 if enableTrace:
                     configure_simple_tracing_aie2(
@@ -95,14 +95,14 @@ def passthroughKernel():
                         start=0x1,
                         stop=0x0,
                         events=[
-                            PortEvent(0x4B, 1, True),
-                            0x22,
-                            0x21,
                             0x25,
-                            0x2D,
-                            0x2C,
-                            0x1A,
+                            0x21,
+                            0x22,
+                            PortEvent(0x4B, 1, True),
                             PortEvent(0x4F, 1, False),
+                            0x1A,
+                            0x2C,
+                            0x2D,
                         ],
                     )
 

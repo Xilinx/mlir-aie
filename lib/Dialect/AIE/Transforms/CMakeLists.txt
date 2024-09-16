@@ -21,6 +21,7 @@ add_mlir_dialect_library(
   AIEObjectFifoStatefulTransform.cpp
   AIEObjectFifoRegisterProcess.cpp
   AIELowerCascadeFlows.cpp
+  AIEGenerateColumnControlOverlay.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 

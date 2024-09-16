@@ -64,7 +64,13 @@ def my_eltwise_exp():
             inA_fifos[inA_fifo_names[i]] = object_fifo(
                 inA_fifo_names[i], MemTile, cores[i], buffer_depth, memRef_A_ty
             )
-        object_fifo_link(inA, inA_fifo_names)
+        if n_cores > 1:
+            of_offsets = [
+                (np.prod(memRef_A_MT_ty.shape) // n_cores) * i for i in range(n_cores)
+            ]
+        else:
+            of_offsets = []
+        object_fifo_link(inA, inA_fifo_names, [], of_offsets)
 
         # Output C
         for i in range(n_cores):
@@ -72,7 +78,13 @@ def my_eltwise_exp():
                 outC_fifo_names[i], cores[i], MemTile, buffer_depth, memRef_C_ty
             )
         outC = object_fifo("outC", MemTile, ShimTile, buffer_depth, memRef_C_MT_ty)
-        object_fifo_link(outC_fifo_names[0:n_cores], outC)
+        if n_cores > 1:
+            of_offsets = [
+                (np.prod(memRef_C_MT_ty.shape) // n_cores) * i for i in range(n_cores)
+            ]
+        else:
+            of_offsets = []
+        object_fifo_link(outC_fifo_names[0:n_cores], outC, of_offsets, [])
 
         # Compute tile bodies
         for i in range(n_cores):
@@ -100,7 +112,7 @@ def my_eltwise_exp():
         # To/from AIE-array data movement
         tensor_ty = T.memref(N, T.bf16())
 
-        @FuncOp.from_py_func(tensor_ty, tensor_ty)
+        @runtime_sequence(tensor_ty, tensor_ty)
         def sequence(A, C):
             npu_dma_memcpy_nd(metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, N])
             npu_dma_memcpy_nd(metadata="inA", bd_id=1, mem=A, sizes=[1, 1, 1, N])

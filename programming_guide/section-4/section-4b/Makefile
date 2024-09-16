@@ -20,11 +20,20 @@ build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
+build/aie_trace.mlir: ${srcdir}/aie2.py
+	mkdir -p ${@D}
+	python3 $< -t ${trace_size} > $@
+
 build/scale.o: ${srcdir}/vector_scalar_mul.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}
 
 build/final.xclbin: build/aie.mlir build/scale.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
+
+build/trace.xclbin: build/aie_trace.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
@@ -40,19 +49,19 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: ${targetname}.exe build/final.xclbin build/insts.txt 
+run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
-run_py: build/final.xclbin build/insts.txt
+run_py: build/final.xclbin
 	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
-trace: ${targetname}.exe build/final.xclbin build/insts.txt 
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
-	../../../programming_examples/utils/parse_trace.py --filename trace.txt --mlir build/aie.mlir --colshift 1 > trace_4b.json
+trace: ${targetname}.exe build/trace.xclbin
+	${powershell} ./$< -x build/trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
+	${srcdir}/../../../programming_examples/utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > trace_4b.json
 
-trace_py: build/final.xclbin build/insts.txt
-	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
-	../../../programming_examples/utils/parse_trace.py --filename trace.txt --mlir build/aie.mlir --colshift 1 > trace_4b.json
+trace_py: build/trace.xclbin
+	${powershell} python3 ${srcdir}/test.py -x build/trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
+	${srcdir}/../../../programming_examples/utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > trace_4b.json
 
 clean_trace:
 	rm -rf tmpTrace trace.txt trace*json

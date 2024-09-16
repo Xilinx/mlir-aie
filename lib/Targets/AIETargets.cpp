@@ -153,6 +153,17 @@ void registerAIETranslations() {
       "cdo-enable-cores", llvm::cl::init(true),
       llvm::cl::desc("Enable cores in CDO"));
 
+  static llvm::cl::opt<bool> outputBinary(
+      "aie-output-binary", llvm::cl::init(false),
+      llvm::cl::desc(
+          "Select binary (true) or text (false) output for supported "
+          "translations. e.g. aie-npu-instgen, aie-ctrlpkt-to-bin"));
+
+  static llvm::cl::opt<std::string> sequenceName(
+      "aie-sequence-name", llvm::cl::init(""),
+      llvm::cl::desc(
+          "Specify the name of the aiex.runtime_sequence to translate"));
+
   TranslateFromMLIRRegistration registrationMMap(
       "aie-generate-mmap", "Generate AIE memory map",
       [](ModuleOp module, raw_ostream &output) {
@@ -333,9 +344,35 @@ void registerAIETranslations() {
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationNPU(
-      "aie-npu-instgen", "Generate instructions for NPU",
+      "aie-npu-instgen", "Translate npu instructions to binary",
       [](ModuleOp module, raw_ostream &output) {
-        return AIETranslateToNPU(module, output);
+        if (outputBinary == true) {
+          std::vector<uint32_t> instructions;
+          auto r = AIETranslateToNPU(module, instructions, sequenceName);
+          if (failed(r))
+            return r;
+          output.write(reinterpret_cast<const char *>(instructions.data()),
+                       instructions.size() * sizeof(uint32_t));
+          return success();
+        }
+        return AIETranslateToNPU(module, output, sequenceName);
+      },
+      registerDialects);
+  TranslateFromMLIRRegistration registrationCtrlPkt(
+      "aie-ctrlpkt-to-bin", "Translate aiex.control_packet ops to binary",
+      [](ModuleOp module, raw_ostream &output) {
+        if (outputBinary == true) {
+          std::vector<uint32_t> instructions;
+          auto r = AIETranslateControlPacketsToUI32Vec(module, instructions,
+                                                       sequenceName);
+          if (failed(r))
+            return r;
+          output.write(reinterpret_cast<const char *>(instructions.data()),
+                       instructions.size() * sizeof(uint32_t));
+          return success();
+        }
+        return AIETranslateControlPacketsToUI32Vec(module, output,
+                                                   sequenceName);
       },
       registerDialects);
 }

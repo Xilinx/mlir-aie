@@ -63,7 +63,9 @@ void add_default_options(po::options_description &desc) {
       "warmup", po::value<int>()->default_value(0))(
       "trace_sz,t", po::value<int>()->default_value(0))(
       "trace_file", po::value<std::string>()->default_value("trace.txt"),
-      "where to store trace output");
+      "where to store trace output")("b_col_maj",
+                                     po::value<int>()->default_value(0),
+                                     "Is B matrix in colum-major format?");
 }
 
 void parse_options(int argc, const char *argv[], po::options_description &desc,
@@ -118,6 +120,11 @@ std::int16_t get_random<std::int16_t>() {
 }
 
 template <>
+int8_t get_random<int8_t>() {
+  return (int8_t)rand() % 0x100;
+}
+
+template <>
 std::bfloat16_t get_random<std::bfloat16_t>() {
   // Random numbers should NOT be uniformly between 0 and 1, because that
   // would make the matrix product AB always close to 1.
@@ -126,12 +133,16 @@ std::bfloat16_t get_random<std::bfloat16_t>() {
 
 template <typename Tin, typename Tout, typename Tacc>
 void matmul(int M, int N, int K, const std::vector<Tin> A,
-            const std::vector<Tin> B, std::vector<Tout> &C) {
+            const std::vector<Tin> B, std::vector<Tout> &C, int b_col_maj) {
   for (int row = 0; row < M; row++) {
     for (int col = 0; col < N; col++) {
       Tacc running_sum = 0;
       for (int k = 0; k < K; k++) {
-        running_sum += Tacc(A[row * K + k] * B[k * N + col]);
+        if (!b_col_maj) {
+          running_sum += Tacc(A[row * K + k] * B[k * N + col]);
+        } else {
+          running_sum += Tacc(A[row * K + k] * B[k + col * K]);
+        }
       }
       C[row * N + col] = Tout(running_sum);
     }
@@ -140,10 +151,14 @@ void matmul(int M, int N, int K, const std::vector<Tin> A,
 
 template <typename Tin, typename Tout, typename Tacc>
 Tout mul_acc(int M, int N, int K, int row, int col, const std::vector<Tin> A,
-             const std::vector<Tin> B) {
+             const std::vector<Tin> B, int b_col_maj) {
   Tacc running_sum = 0;
   for (int k = 0; k < K; k++) {
-    running_sum += Tacc(A[row * K + k] * B[k * N + col]);
+    if (!b_col_maj) {
+      running_sum += Tacc(A[row * K + k] * B[k * N + col]);
+    } else {
+      running_sum += Tacc(A[row * K + k] * B[k + col * K]);
+    }
   }
   return (Tout)running_sum;
 }
@@ -196,6 +211,11 @@ float get_abs_tol<float>() {
 }
 
 template <>
+float get_abs_tol<int8_t>() {
+  return 0;
+}
+
+template <>
 float get_rel_tol<std::int16_t>() {
   return 0.0;
 }
@@ -213,6 +233,11 @@ float get_rel_tol<std::bfloat16_t>() {
 template <>
 float get_rel_tol<float>() {
   return 0.05;
+}
+
+template <>
+float get_rel_tol<int8_t>() {
+  return 0;
 }
 
 template <typename T>
@@ -275,6 +300,21 @@ void print_matrix(const std::vector<T> matrix, int n_cols,
 #undef print_row
 }
 
+// int8_t aka char will not print as a number but as a character; specialize
+// print_matrix<int8_t> to cast to int16_t first so everything prints as numbers
+template <>
+void print_matrix(const std::vector<int8_t> matrix, int n_cols,
+                  int n_printable_rows, int n_printable_cols,
+                  std::ostream &ostream, const char col_sep[],
+                  const char elide_sym[], int w) {
+  std::vector<int16_t> cast_matrix(matrix.size());
+  for (int i = 0; i < matrix.size(); i++) {
+    cast_matrix[i] = (int16_t)matrix[i];
+  }
+  print_matrix(cast_matrix, n_cols, n_printable_rows, n_printable_cols, ostream,
+               col_sep, elide_sym, w);
+}
+
 constexpr int max_printable_errors = 32;
 
 template <typename Tout>
@@ -330,13 +370,13 @@ void print_progress_bar(std::ostream &os, double progress, int len = 75) {
 template <typename Tin, typename Tout, typename Tacc>
 int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
            std::vector<Tout> C, int verbosity = 0, float abs_tol = 0.5,
-           float rel_tol = 0.05) {
+           float rel_tol = 0.05, int b_col_maj = 0) {
   int n_errors = 0;
   std::vector<struct error<Tout>> errors;
   Tout max_rel_error = (Tout)0.0f;
 
   std::vector<Tout> CRef(M * N);
-  matmul<Tin, Tout, Tacc>(M, N, K, A, B, CRef);
+  matmul<Tin, Tout, Tacc>(M, N, K, A, B, CRef, b_col_maj);
 
   for (int row = 0; row < M; row++) {
     for (int col = 0; col < N; col++) {
@@ -373,7 +413,7 @@ template <typename Tin, typename Tout, typename Tacc>
 int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
                       std::vector<Tin> B, std::vector<Tout> C, int n_samples,
                       int verbosity = 0, float abs_tol = 0.5,
-                      float rel_tol = 0.05) {
+                      float rel_tol = 0.05, int b_col_maj = 0) {
   std::mt19937 rng;
   auto rows = std::views::iota(0, M);
   auto cols = std::views::iota(0, N);
@@ -398,7 +438,7 @@ int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
       progress = (double)i / n_samples;
       print_progress_bar(std::cerr, progress);
     }
-    Tout ref = mul_acc<Tin, Tout, Tacc>(M, N, K, row, col, A, B);
+    Tout ref = mul_acc<Tin, Tout, Tacc>(M, N, K, row, col, A, B, b_col_maj);
     std::optional<struct error<Tout>> error = verify_single(
         std::cout, row, col, ref, C[row * N + col], abs_tol, rel_tol);
     if (error.has_value()) {

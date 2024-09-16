@@ -505,6 +505,13 @@ def resnet_conv_x():
                         wts_sub_fifo_names[i][1],
                         wts_sub_fifo_names[i][2],
                     ],
+                    [],
+                    [
+                        0,
+                        np.prod(layer1_wts_sizes[i].shape),
+                        np.prod(layer1_wts_sizes[i].shape)
+                        + np.prod(weightsLayer2_ty.shape),
+                    ],
                 )
             # output tensor
             outOFL2L3 = object_fifo(
@@ -918,29 +925,29 @@ def resnet_conv_x():
 
             weightsInL3_ty_complete = MemRefType.get((totalWeights_complete,), int8_ty)
 
-            @FuncOp.from_py_func(
+            @runtime_sequence(
                 activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_ty
             )
             def sequence(inputFromL3, weightsFromL3, outputToL3):
 
-                NpuWriteRTPOp("rtpComputeTile02", col=0, row=2, index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile03", col=0, row=3, index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile04", col=0, row=5, index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile05", col=0, row=4, index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile05", col=0, row=4, index=1, value=0)
-                NpuWriteRTPOp("rtpComputeTile05", col=0, row=4, index=2, value=1)
+                NpuWriteRTPOp("rtpComputeTile02", index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile03", index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile04", index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile05", index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile05", index=1, value=0)
+                NpuWriteRTPOp("rtpComputeTile05", index=2, value=1)
 
-                NpuWriteRTPOp("rtpComputeTile15", col=1, row=5, index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile14", col=1, row=4, index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile12", col=1, row=2, index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile13", col=1, row=3, index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile13", col=1, row=3, index=1, value=0)
+                NpuWriteRTPOp("rtpComputeTile15", index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile14", index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile12", index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile13", index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile13", index=1, value=0)
 
-                NpuWriteRTPOp("rtpComputeTile22", col=2, row=2, index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile23", col=2, row=3, index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile25", col=2, row=5, index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile24", col=2, row=4, index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile24", col=2, row=4, index=1, value=0)
+                NpuWriteRTPOp("rtpComputeTile22", index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile23", index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile25", index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile24", index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile24", index=1, value=0)
 
                 npu_dma_memcpy_nd(
                     metadata="act1_00_02_01",

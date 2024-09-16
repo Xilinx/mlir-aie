@@ -13,6 +13,7 @@
 
 #include "aie/Targets/AIETargets.h"
 
+#include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Ops.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 
@@ -487,7 +488,7 @@ static std::pair<bool, int64_t> getStep(scf::ForOp forOp) {
   return std::make_pair(false, 0);
 }
 
-// Return the operator string of the SCF dialect binary operator
+// Return the operator string of the Arith dialect binary operator
 template <typename T>
 static StringRef getOperator(T binOp) {
   if (isa<arith::AddIOp>(binOp) || isa<arith::AddFOp>(binOp))
@@ -525,7 +526,7 @@ static StringRef getOperator(T binOp) {
   llvm_unreachable("Cannot print the operation of binary operator");
 }
 
-// Print the SCF dialect binary operation
+// Print the Arith dialect binary operation
 template <typename T>
 static LogicalResult printOperation(CppEmitter &emitter, T binOp) {
   if (failed(emitter.emitAssignPrefix(*binOp)))
@@ -931,7 +932,8 @@ printOperation(CppEmitter &emitter,
 }
 
 // Generate the ext intrinsic
-static LogicalResult printOperation(CppEmitter &emitter, aievec::ExtOp extOp) {
+template <typename T>
+static LogicalResult printExtOperation(CppEmitter &emitter, T extOp) {
   Value source = extOp.getSource();
   int8_t index = extOp.getIndex();
 
@@ -975,6 +977,21 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::ExtOp extOp) {
   os << ")";
 
   return success();
+}
+
+// Generate the aie2 ext intrinsic
+static LogicalResult printOperation(CppEmitter &emitter, aievec::ExtOp extOp) {
+  if (!emitter.aie2())
+    return failure();
+  return printExtOperation<aievec::ExtOp>(emitter, extOp);
+}
+
+// Generate the aie1 ext intrinsic
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::aie1::ExtOp extOp) {
+  if (emitter.aie2())
+    return failure();
+  return printExtOperation<aievec::aie1::ExtOp>(emitter, extOp);
 }
 
 // Generate the concat intrinsic
@@ -1097,7 +1114,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
 
 // Generate the select intrinsic
 static LogicalResult printOperation(CppEmitter &emitter,
-                                    aievec::SelectOp selectOp) {
+                                    aievec::aie1::SelectOp selectOp) {
   Value xbuff = selectOp.getXbuff();
   assert(xbuff && "xbuff empty in select op");
 
@@ -1333,7 +1350,8 @@ static LogicalResult printFMAOrMulConvOperand(CppEmitter &emitter, T op,
 }
 
 // Generate the Mul op
-static LogicalResult printOperation(CppEmitter &emitter, aievec::MulOp mulOp) {
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::aie1::MulOp mulOp) {
   auto lhs = mulOp.getLhs();
   auto rhs = mulOp.getRhs();
 
@@ -1368,10 +1386,10 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::MulOp mulOp) {
 
   os << opname;
   os << "(";
-  if (failed(printFMAOrMulOperand<aievec::MulOp>(emitter, mulOp, 0)))
+  if (failed(printFMAOrMulOperand<aievec::aie1::MulOp>(emitter, mulOp, 0)))
     return failure();
   os << ", ";
-  if (failed(printFMAOrMulOperand<aievec::MulOp>(emitter, mulOp, 1)))
+  if (failed(printFMAOrMulOperand<aievec::aie1::MulOp>(emitter, mulOp, 1)))
     return failure();
   os << ")";
 
@@ -1513,7 +1531,8 @@ static LogicalResult printOperation(CppEmitter &emitter,
 }
 
 // Generate the Add op
-static LogicalResult printOperation(CppEmitter &emitter, aievec::AddOp addOp) {
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::aie1::AddOp addOp) {
   auto lhs = addOp.getLhs();
   auto rhs = addOp.getRhs();
 
@@ -1556,10 +1575,10 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::AddOp addOp) {
   // Otherwise this is complex scheme
   os << (floatType ? "fpadd" : "add" + std::to_string(lanes));
   os << "(";
-  if (failed(printAddOrSubOperand<aievec::AddOp>(emitter, addOp, 0)))
+  if (failed(printAddOrSubOperand<aievec::aie1::AddOp>(emitter, addOp, 0)))
     return failure();
   os << ", ";
-  if (failed(printAddOrSubOperand<aievec::AddOp>(emitter, addOp, 1)))
+  if (failed(printAddOrSubOperand<aievec::aie1::AddOp>(emitter, addOp, 1)))
     return failure();
   os << ")";
 
@@ -1567,7 +1586,8 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::AddOp addOp) {
 }
 
 // Generate the Sub op
-static LogicalResult printOperation(CppEmitter &emitter, aievec::SubOp subOp) {
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::aie1::SubOp subOp) {
   auto lhs = subOp.getLhs();
   auto rhs = subOp.getRhs();
 
@@ -1610,10 +1630,10 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SubOp subOp) {
   // Otherwise this is complex scheme
   os << (floatType ? "fpsub" : "sub" + std::to_string(lanes));
   os << "(";
-  if (failed(printAddOrSubOperand<aievec::SubOp>(emitter, subOp, 0)))
+  if (failed(printAddOrSubOperand<aievec::aie1::SubOp>(emitter, subOp, 0)))
     return failure();
   os << ", ";
-  if (failed(printAddOrSubOperand<aievec::SubOp>(emitter, subOp, 1)))
+  if (failed(printAddOrSubOperand<aievec::aie1::SubOp>(emitter, subOp, 1)))
     return failure();
   os << ")";
 
@@ -1864,7 +1884,8 @@ static LogicalResult printOperation(CppEmitter &emitter,
 }
 
 // Generate the FMA op
-static LogicalResult printOperation(CppEmitter &emitter, aievec::FMAOp fmaOp) {
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::aie1::FMAOp fmaOp) {
   auto acc = fmaOp.getAcc();
   auto lhs = fmaOp.getLhs();
   auto rhs = fmaOp.getRhs();
@@ -1902,10 +1923,10 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::FMAOp fmaOp) {
   os << "(";
   os << accName;
   os << ", ";
-  if (failed(printFMAOrMulOperand<aievec::FMAOp>(emitter, fmaOp, 0)))
+  if (failed(printFMAOrMulOperand<aievec::aie1::FMAOp>(emitter, fmaOp, 0)))
     return failure();
   os << ", ";
-  if (failed(printFMAOrMulOperand<aievec::FMAOp>(emitter, fmaOp, 1)))
+  if (failed(printFMAOrMulOperand<aievec::aie1::FMAOp>(emitter, fmaOp, 1)))
     return failure();
   os << ")";
 
@@ -3264,12 +3285,17 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
           .Case<memref::StoreOp, memref::ExpandShapeOp,
                 memref::CollapseShapeOp>(
               [&](auto op) { return printOperation(*this, op); })
-          .Case<AddOp, AddElemOp, ConcatOp, ExtOp, FMAOp, MulOp, PackOp,
-                SelectOp, SRSOp, SubOp, SubElemOp, UPDOp, UPSOp, FMAElemOp,
-                MulElemOp, BroadcastOp, BroadcastScalarOp, MulConvOp, FMAConvOp,
-                ShiftOp, ShuffleOp, CastOp, MinOp, MaxOp, NegOp, CmpOp, SelOp,
-                ExtElemOp, BxorOp, BnegOp, BandOp, BorOp, UnpackOp, MatMulOp,
-                LegacyShuffleOp>(
+          // AievecAie1 ops
+          .Case<aievec::aie1::AddOp, aievec::aie1::SubOp, aievec::aie1::FMAOp,
+                aievec::aie1::MulOp, aievec::aie1::SelectOp,
+                aievec::aie1::ExtOp>(
+              [&](auto op) { return printOperation(*this, op); })
+          // Aievec ops
+          .Case<AddElemOp, ConcatOp, ExtOp, PackOp, SRSOp, SubElemOp, UPDOp,
+                UPSOp, FMAElemOp, MulElemOp, BroadcastOp, BroadcastScalarOp,
+                MulConvOp, FMAConvOp, ShiftOp, ShuffleOp, CastOp, MinOp, MaxOp,
+                NegOp, CmpOp, SelOp, ExtElemOp, BxorOp, BnegOp, BandOp, BorOp,
+                UnpackOp, MatMulOp, LegacyShuffleOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");

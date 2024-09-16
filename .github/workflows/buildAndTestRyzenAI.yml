@@ -57,7 +57,7 @@ jobs:
     name: Run Tests on Ryzen AI
     runs-on: amd7940hs
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: "true"
 
@@ -114,7 +114,7 @@ jobs:
     name: Run Examples on Ryzen AI
     runs-on: amd7940hs
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: "true"
 

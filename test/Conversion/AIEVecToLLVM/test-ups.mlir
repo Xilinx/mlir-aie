@@ -182,3 +182,20 @@ func.func @v32f32_ups_v32bf16(%arg0 : vector<32xbf16>) {
 // CHECK-SAME: %[[BITCAST4]], %[[BITCAST5]]) :
 // CHECK-SAME: (vector<16xi32>, vector<16xi32>) -> vector<32xi32>
 // CHECK-NEXT: %[[RES:.*]] = llvm.bitcast %[[CONCAT]] : vector<32xi32> to vector<32xf32>
+
+// -----
+
+// CHECK-LABEL: @multidim_ups_i8_to_i32
+// CHECK-SAME: %[[V:.*]]: vector<4x8xi8>
+// CHECK: %[[FV:.*]] = vector.shape_cast %[[V]]
+// CHECK-SAME:                     : vector<4x8xi8> to vector<32xi8>
+// CHECK: %[[FUPS:.*]] = "xllvm.intr.aie2.acc32.v32.I256.ups"(%[[FV]],
+// CHECK-SAME:                             %{{[a-zA-Z0-9]+}}, %{{[a-zA-Z0-9]+}})
+// CHECK-SAME:                     : (vector<32xi8>, i32, i32) -> vector<16xi64>
+// CHECK: %[[FR:.*]] = llvm.bitcast %3 : vector<16xi64> to vector<32xi32>
+// CHECK: %[[UPS:.*]] = vector.shape_cast %[[FR]]
+// CHECK-sAME:                     : vector<32xi32> to vector<4x8xi32>
+func.func @multidim_ups_i8_to_i32(%arg0 : vector<4x8xi8>) -> vector<4x8xi32> {
+  %0 = aievec.ups %arg0 {shift = 0 : i8} : vector<4x8xi8>, vector<4x8xi32>
+  return %0 : vector<4x8xi32>
+}

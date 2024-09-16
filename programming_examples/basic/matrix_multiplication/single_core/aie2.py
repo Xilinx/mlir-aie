@@ -13,6 +13,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects.scf import *
 import aie.utils.trace as trace_utils
+from aie.utils.trace import PortEvent
 
 
 def main():
@@ -27,10 +28,13 @@ def main():
     argparser.add_argument("-k", type=int, default=64)
     argparser.add_argument("-n", type=int, default=32)
     argparser.add_argument(
-        "--dtype_in", type=str, choices=["bf16", "i16"], default="i16"
+        "--dtype_in", type=str, choices=["bf16", "i8", "i16"], default="i16"
     )
     argparser.add_argument(
-        "--dtype_out", type=str, choices=["bf16", "i16", "f32", "i32"], default="i32"
+        "--dtype_out",
+        type=str,
+        choices=["bf16", "i8", "i16", "f32", "i32"],
+        default="i32",
     )
     args = argparser.parse_args()
     my_matmul(
@@ -52,6 +56,10 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
         r = 4
         s = 8
         t = 4
+    elif dtype_in_str == "i8":
+        r = 4
+        s = 8
+        t = 8
     elif dtype_in_str == "i16":
         r = 4
         s = 4
@@ -68,11 +76,15 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
     dtype_in = None
     if dtype_in_str == "bf16":
         dtype_in = T.bf16
+    elif dtype_in_str == "i8":
+        dtype_in = T.i8
     elif dtype_in_str == "i16":
         dtype_in = T.i16
     dtype_out = None
     if dtype_out_str == "bf16":
         dtype_out = T.bf16
+    elif dtype_out_str == "i8":
+        dtype_out = T.i8
     elif dtype_out_str == "i16":
         dtype_out = T.i16
     elif dtype_out_str == "f32":
@@ -231,7 +243,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
 
             # To/from AIE-array data movement
 
-            @FuncOp.from_py_func(
+            @runtime_sequence(
                 T.memref(A_sz, dtype_in()),
                 T.memref(B_sz, dtype_in()),
                 T.memref(C_sz, dtype_out()),
@@ -245,44 +257,77 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                         ddr_id=2,
                         size=trace_size,
                         offset=C_sz_in_bytes,
+                        events=[
+                            PortEvent(
+                                trace_utils.CoreEvent.PORT_RUNNING_0,
+                                port_number=1,
+                                master=True,
+                            ),
+                            PortEvent(
+                                trace_utils.CoreEvent.PORT_RUNNING_1,
+                                port_number=2,
+                                master=True,
+                            ),
+                            PortEvent(
+                                trace_utils.CoreEvent.PORT_RUNNING_2,
+                                port_number=5,
+                                master=True,
+                            ),
+                            trace_utils.CoreEvent.INSTR_EVENT_0,
+                            trace_utils.CoreEvent.INSTR_EVENT_1,
+                            trace_utils.CoreEvent.MEMORY_STALL,
+                            trace_utils.CoreEvent.LOCK_STALL,
+                            trace_utils.CoreEvent.INSTR_VECTOR,
+                        ],
                     )
 
-                # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
-                rows_per_block = 5
+                # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
+                rows_per_block = 4
                 for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
-                    C_row_offset = tile_row_block * rows_per_block * m * N
-                    num_tile_rows = min(
-                        [rows_per_block, M_div_m - tile_row_block * rows_per_block]
-                    )
-                    npu_dma_memcpy_nd(
-                        metadata="outC",
-                        bd_id=0,
-                        mem=C,
-                        offsets=[0, 0, 0, C_row_offset],
-                        sizes=[num_tile_rows, N_div_n, m, n],
-                        strides=[m_x_N, n, N, 1],
-                    )
-                    for tile_row in range(num_tile_rows):
-                        A_row_offset = (
-                            ((tile_row_block * rows_per_block) + tile_row) * m * K
+                    # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
+                    # that's what this loop is for
+                    for pingpong in [0, 1]:
+                        C_row_offset = (
+                            tile_row_block * rows_per_block * m * N
+                            + pingpong * rows_per_block // 2 * m * N
                         )
+                        row_base = (
+                            tile_row_block * rows_per_block
+                            + pingpong * rows_per_block // 2
+                        )
+                        bd_id_base = 8 * pingpong
+                        num_tile_rows = min([rows_per_block // 2, M_div_m - row_base])
+                        if num_tile_rows <= 0:
+                            # At the very last iteration, we may not need a 'pong' iteration
+                            break
                         npu_dma_memcpy_nd(
-                            metadata="inA",
-                            bd_id=2 * tile_row + 1,
-                            mem=A,
-                            offsets=[0, 0, 0, A_row_offset],
-                            sizes=[N_div_n, K_div_k, m, k],
-                            strides=[0, k, K, 1],
+                            metadata="outC",
+                            bd_id=bd_id_base,
+                            mem=C,
+                            offsets=[0, 0, 0, C_row_offset],
+                            sizes=[num_tile_rows, N_div_n, m, n],
+                            strides=[m_x_N, n, N, 1],
                         )
-                        npu_dma_memcpy_nd(
-                            metadata="inB",
-                            bd_id=2 * tile_row + 2,
-                            mem=B,
-                            sizes=[N_div_n, K_div_k, k, n],
-                            strides=[n, k_x_N, N, 1],
-                        )
-
-                    npu_sync(column=0, row=0, direction=0, channel=0)
+                        for tile_row in range(num_tile_rows):
+                            A_row_offset = (row_base + tile_row) * m * K
+                            npu_dma_memcpy_nd(
+                                metadata="inA",
+                                bd_id=bd_id_base + 2 * tile_row + 1,
+                                mem=A,
+                                offsets=[0, 0, 0, A_row_offset],
+                                sizes=[N_div_n, K_div_k, m, k],
+                                strides=[0, k, K, 1],
+                            )
+                            npu_dma_memcpy_nd(
+                                metadata="inB",
+                                bd_id=bd_id_base + 2 * tile_row + 2,
+                                mem=B,
+                                sizes=[N_div_n, K_div_k, k, n],
+                                strides=[n, k_x_N, N, 1],
+                            )
+                        if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
+                            npu_sync(column=0, row=0, direction=0, channel=0)
+                npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 

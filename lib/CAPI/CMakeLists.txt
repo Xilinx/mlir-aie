@@ -15,7 +15,9 @@ add_mlir_public_c_api_library(AIECAPI
   AIEX
   AIEXTransforms
   AIEXUtils
+  MLIRAIEToConfiguration
   MLIRAIEVecDialect
+  MLIRAIEVecAIE1Dialect
   MLIRAIEVecToLLVM
   MLIRAIEVecTransforms
   MLIRAIEVecUtils

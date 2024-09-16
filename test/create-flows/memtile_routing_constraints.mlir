@@ -8,37 +8,29 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s -o %t.opt
+// RUN: FileCheck %s --check-prefix=CHECK1 < %t.opt
+// RUN: aie-translate --aie-flows-to-json %t.opt | FileCheck %s --check-prefix=CHECK2
 
-// CHECK: %[[T24:.*]] = aie.tile(2, 4)
-// CHECK: %[[T23:.*]] = aie.tile(2, 3)
-// CHECK: %[[T22:.*]] = aie.tile(2, 2)
-// CHECK: %[[T21:.*]] = aie.tile(2, 1)
-// CHECK: %[[T20:.*]] = aie.tile(2, 0)
-// CHECK: aie.switchbox(%[[T21]]) {
-// CHECK:   aie.connect<North : 0, DMA : 0>
-// CHECK:   aie.connect<North : 1, South : 1>
-// CHECK: }
-// CHECK: aie.switchbox(%[[T22]]) {
-// CHECK:   aie.connect<DMA : 0, South : 0>
-// CHECK:   aie.connect<North : 1, South : 1>
-// CHECK: }
-// CHECK: aie.switchbox(%[[T20]]) {
-// CHECK:   aie.connect<North : 1, South : 2>
-// CHECK: }
-// CHECK: aie.switchbox(%[[T23]]) {
-// CHECK:   aie.connect<DMA : 0, South : 1>
-// CHECK: }
+// CHECK1: %[[T24:.*]] = aie.tile(2, 4)
+// CHECK1: %[[T23:.*]] = aie.tile(2, 3)
+// CHECK1: %[[T22:.*]] = aie.tile(2, 2)
+// CHECK1: %[[T21:.*]] = aie.tile(2, 1)
+// CHECK1: %[[T20:.*]] = aie.tile(2, 0)
+// CHECK1: aie.flow(%[[T23]], DMA : 0, %[[T20]], DMA : 0)
+// CHECK1: aie.flow(%[[T22]], DMA : 0, %[[T21]], DMA : 0)
+
+// CHECK2: "total_path_length": 4
 
 module {
     aie.device(xcve2802) {
-        %t04 = aie.tile(2, 4)
-        %t03 = aie.tile(2, 3)
-        %t02 = aie.tile(2, 2)
-        %t01 = aie.tile(2, 1)
-        %t00 = aie.tile(2, 0)
+        %t24 = aie.tile(2, 4)
+        %t23 = aie.tile(2, 3)
+        %t22 = aie.tile(2, 2)
+        %t21 = aie.tile(2, 1)
+        %t20 = aie.tile(2, 0)
 
-        aie.flow(%t02, DMA : 0, %t01, DMA : 0)
-        aie.flow(%t03, DMA : 0, %t00, DMA : 0)
+        aie.flow(%t22, DMA : 0, %t21, DMA : 0)
+        aie.flow(%t23, DMA : 0, %t20, DMA : 0)
     }
 }
