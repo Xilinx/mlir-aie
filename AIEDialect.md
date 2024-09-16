@@ -222,7 +222,7 @@ operation ::= `aie.connect` `<` $source_bundle `:` $source_channel `,` $dest_bun
 This operation represents a programmed circuit-switched connection in a stream switch.
 It associates a source bundle and source channel with a destination bundle and a destination channel.
 This operation must exist within an `aie.switchbox` or `aie.shim_switchbox` operation.
-All of the `aie.connect` operations in a switchbox must have a different destinations.
+All of the `aie.connect` operations in a switchbox must have different destinations.
 All of the `aie.connect` operations must also have a destination which is different from all
 of the `aie.masterset` operations in the same switchbox.
 
@@ -453,8 +453,8 @@ what buffer to use, and optionally:
     1. the offset into the buffer;
     2. the transfer length;
     3. the sizes and strides for n-d tensor addressing (described below);
-    4. the "bd_id" with which to associate the buffer descriptor (most often left empty).
-    5. the number of zeros to pad before and after every dimension of an n-d tensor (described below);
+    4. the "bd_id" with which to associate the buffer descriptor (most often left empty);
+    5. the number of zeros to pad before and after every dimension of an n-d tensor (described below).
 
 `offset`, `len`, `size`s and `stride`s are all denominated in element width; e.g., transferring the whole of
 `memref<512xi32>` means `len == 512`, and also while transferring the whole of `memref<512xi16>`, `len == 512`.
@@ -511,7 +511,7 @@ nested loops. In general, a set of strides and sizes like this...
 [<size_2, stride_2>, <size_1, stride_1>, <size_0, stride_0>]
 ```
 
-...translates to an access pattern that can be epxressed like this:
+...translates to an access pattern that can be expressed like this:
 
 ```
 int *buffer;  // i32
@@ -933,7 +933,7 @@ Syntax:
 operation ::= `aie.masterset` `(` $dest_bundle `:` $dest_channel `,` $amsels `)` attr-dict
 ```
 
-A Packet switched connection inside a switchbox.
+A packet switched connection inside a switchbox.
 This operation specifies the configuration for a master port.
 
 Example:
@@ -1152,7 +1152,7 @@ operation ::= `aie.objectfifo` $sym_name
 ```
 
 The `aie.objectFifo` operation creates a circular buffer established between a producer and one or
-more consumers, which are `aie.tile` operations. The`aie.objectFifo` instantiates the given number of
+more consumers, which are `aie.tile` operations. The `aie.objectFifo` instantiates the given number of
 buffers (of given output type) and their locks in the Memory Module of the appropriate tile(s) after
 lowering, based on tile-adjacency. These elements represent the conceptual depth of the `objectFifo` or,
 more specifically, of its object pool.
@@ -1195,14 +1195,14 @@ specified in the first example.
 On AIE-ML devices, objectFifos can also apply data layout transformations by
 using the DMAs n-dimensional address generation scheme. Two transformations
 can be applied for an objectFifo: one on the producer side, given by a
-`toStream` attribute, and one transformation on the consumer side, given by
-a `fromStream` attribute. See the `DMABDOp` documentation for a description
-of strides and sizes. The `toStream` and `fromStream` optional attributes
+`dimensionsToStream` attribute, and one transformation on the consumer side, given by
+a `dimensionsFromStream` attribute. See the `DMABDOp` documentation for a description
+of strides and sizes. The `dimensionsToStream` and `dimensionsFromStream` optional attributes
 are given directly following the producer or consumer tile declaration.
 Different transformations can be specified for each consumer. See example
 below.
 
-Note that using data layout transformations will cause the DMA be used even
+Note that using data layout transformations will cause DMAs to be used even
 between adjacent tiles whose objectFifos would otherwise use shared memory.
 
 Further note that data layout transforms always apply at a granularity of
@@ -1217,10 +1217,10 @@ attribute may also be left off), and a transformation on `%tile23` first gives
 all even indices from the stream, followed by all odd indices:
 
 ```
-  aie.objectfifo @of4 (%tile12 toStream [<16, 1>, <16, 16>, <1,1>],
+  aie.objectfifo @of4 (%tile12 dimensionsToStream [<16, 1>, <16, 16>, <1,1>],
                        {
-                        %tile13 fromStream [],
-                        %tile23 fromStream [<2, 1>, <128, 2>]
+                        %tile13 dimensionsFromStream [],
+                        %tile23 dimensionsFromStream [<2, 1>, <128, 2>]
                        }, 2 : i32
                       ) : !aie.objectfifo<memref<256xi32>>
 ```
@@ -1311,7 +1311,7 @@ Syntax:
 operation ::= `aie.objectfifo.link` $fifoIns `->` $fifoOuts `(` $src_offsets $dst_offsets `)` attr-dict
 ```
 
-The `aie.objectFifo.link` operation allows to mark two or more `objectFifos` as linked. This implies that the `objectFifos` form
+The `aie.objectFifo.link` operation marks two or more `objectFifos` as linked. This implies that the `objectFifos` form
 one dataflow movement which is split accross multiple `objectFifos`. Specifically, during the `objectFifo` lowering there will
 be less memory elements generated at the link point (i.e., the shared tile of all `objectFifos` in the link) as the `objectFifos` can share.
 
@@ -1324,10 +1324,10 @@ Example:
   aie.objectfifo.link [@of1] -> [@of2] ([] [])
 ```
 This operation links two `objectFifos` which have tile `%t72` as a link point. The offset input arrays are not required as the full size of
-the objects is transferred from @of1 to @of2.
+the objects are transferred from @of1 to @of2.
 
 To achieve a broadcast pattern through the link tile, the output `objectFifo` should have a list of all the consumers tiles.
-To achieve a distribute pattern from the link tile, there should be multiple output `objectFifos` in the LinkOp. In this case,
+To achieve a distribute pattern from the link tile, there should be multiple output `objectFifos` in the OjbectFifoLinkOp. In this case,
 parts will be taken out of the input `objectFifo`'s buffers based on dst_offsets input array.
 The join pattern is the exact inverse of the distribute one and uses the src_offsets input array instead.
 
@@ -1346,7 +1346,7 @@ Traits: `HasParent<DeviceOp>`
 
 ### `aie.objectfifo.register_external_buffers` (::xilinx::AIE::ObjectFifoRegisterExternalBuffersOp)
 
-_Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)_
+_Registers external buffers to an objectFifo's shim tile(s) for use in the associated shim DMA(s)_
 
 
 Syntax:
@@ -1625,7 +1625,7 @@ operation ::= `aie.packet_rules` `(` $source_bundle `:` $source_channel `)` regi
 ```
 
 This operation defines packet-switched routing configuration for packets entering a switchbox.
-It references a port of the containing swithcbox, which be unique among other packetRules
+It references a port of the containing switchbox, which must be unique among other packetRules
 operations and [aie.connect]($aieconnect-aieconnectop) operations in the containing switchbox.
 It contains a region of up to 4 [aie.rule](#aierule-aiepacketruleop) operations.
 
@@ -1664,7 +1664,7 @@ Syntax:
 operation ::= `aie.packet_source` `<` $tile `,` $bundle `:` $channel `>` attr-dict
 ```
 
-A object representing the destination of a packet-switched flow. This must exist
+An object representing the destination of a packet-switched flow. This must exist
 within an [aie.packet_flow](#aiepacketflow-aiepacketflowop) operation.
 
 See [aie.packet_flow](#aiepacketflow-aiepacketflowop) for an example.
@@ -1981,7 +1981,7 @@ AXI-Stream Master Ports AXI-Stream Slave Ports
 6 Ports to North (Core Tile) 4 Ports from North (Core Tile)
 4 Ports to West 4 Ports from West
 4 Ports to East 4 Ports from East
-6 Ports to South(DMA, NoC I/F, PL I/F) 8 Ports from South (DMA, NoC I/F, PL I/F)
+6 Ports to South (DMA, NoC I/F, PL I/F) 8 Ports from South (DMA, NoC I/F, PL I/F)
 2 Ports to FIFOs 2 Ports from FIFOs
 1 Port for control packet for Shim register access
 1 Port for response to access for Shim registers
@@ -2056,13 +2056,13 @@ Syntax:
 operation ::= `aie.tile` `(` $col `,` $row `)` attr-dict
 ```
 
-This operation creates an AIE tile in the AIE array. We specify what the column and the row of the tile.
+This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile.
 
 A tile encompasses core module (CoreOp), memory module (MemOp), stream switch (SwitchboxOp),
 memory buffer (BufferOp), and lock (LockOp).
 
-A tile is a logical abstraction. We use a tile to establish an ownership of a hardware entity
-to it.
+A tile is a logical abstraction. We use a tile to establish ownership of a hardware entity.
+
 Note that row 0 of the Tile array is different from other rows, since it models the shim interface between
 the AIE array proper and the PL.  The South-West/Lower Right most core exists in Tile(0,1)
 
@@ -2098,9 +2098,9 @@ Syntax:
 operation ::= `aie.use_lock` `(` $lock `,` $action (`,` $value^)? (`,` $blocking^)? `)` attr-dict
 ```
 
-This operation uses a lock. In AIE1, a lock can be acquired with a value,
+This operation uses a lock. In AIE1, a lock can be acquired with a value
 or released with a value. This should be understood as a "blocking"
-operation. In AIE2, locks are counting semaphores without inherent
+operation. In AIE2, locks are counting semaphores without an inherent
 acquired/release characteristic. This lock must appear in a parent op where
 the tile can be determined (A CoreOp, a ShimDMAOp, a MemOp, or a
 MemTileDMAOp).
