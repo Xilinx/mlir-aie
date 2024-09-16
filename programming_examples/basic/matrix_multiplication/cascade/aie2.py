@@ -230,6 +230,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                         (t, 1),
                     ],
                 )
+            of_offsets = [n * k * i for i in range(n_aie_cols)]
             object_fifo_link(
                 B_l3l2_fifos[col],
                 [B_l2l1_fifos[row][col] for row in range(n_aie_rows)],
