@@ -1,4 +1,5 @@
 from collections import defaultdict
+from bfloat16 import bfloat16
 import contextlib
 import ctypes
 import inspect
@@ -147,7 +148,7 @@ _np_dtype_to_mlir_type_ctor = defaultdict(
         np.float32: T.f32,
         np.float64: T.f64,
         # Block floating point types
-        # bfloat16: T.bf16, # TODO(erika): enable bfloat16 here!
+        bfloat16: T.bf16,
         # Index Types
         # this is technically wrong i guess but numpy by default casts python scalars to this
         # so to support passing lists of ints we map to index type

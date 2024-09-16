@@ -5,15 +5,22 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-import sys
 import argparse
+from bfloat16 import bfloat16
+import numpy as np
+import sys
 
-from aie.extras.context import mlir_mod_ctx
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
-from aie.dialects.scf import *
-import aie.utils.trace as trace_utils
-from aie.utils.trace import PortEvent
+from aie.dialects.scf import for_ as range_
+from aie.dialects.scf import yield_
+from aie.dialects.aiex import npu_dma_memcpy_nd, npu_sync
+
+from aie.api.dataflow.inout.inout import MyInOutProgram
+from aie.api.dataflow.objectfifo import MyObjectFifo
+from aie.api.dataflow.objectfifolink import MyObjectFifoLink
+from aie.api.kernels.binkernel import BinKernel
+from aie.api.phys.device import NPU1Col1
+from aie.api.program import MyProgram
+from aie.api.worker import MyWorker
 
 
 def main():
@@ -30,6 +37,7 @@ def main():
     argparser.add_argument(
         "--dtype_in", type=str, choices=["bf16", "i8", "i16"], default="i16"
     )
+    argparser.add_argument("-v", "--vectorized", type=bool, default=True)
     argparser.add_argument(
         "--dtype_out",
         type=str,
@@ -38,7 +46,15 @@ def main():
     )
     args = argparser.parse_args()
     my_matmul(
-        args.M, args.K, args.N, args.m, args.k, args.n, args.dtype_in, args.dtype_out
+        args.M,
+        args.K,
+        args.N,
+        args.m,
+        args.k,
+        args.n,
+        args.dtype_in,
+        args.dtype_out,
+        args.vectorized,
     )
 
 
@@ -46,290 +62,201 @@ def ceildiv(a, b):
     return (a + b - 1) // b
 
 
-def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
+def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
 
     assert M % m == 0
     assert K % k == 0
     assert N % n == 0
 
-    if dtype_in_str == "bf16":
-        r = 4
-        s = 8
-        t = 4
-    elif dtype_in_str == "i8":
-        r = 4
-        s = 8
+    r = 4
+    s = 8
+    t = 4
+    if dtype_in_str == "i8":
         t = 8
     elif dtype_in_str == "i16":
-        r = 4
         s = 4
-        t = 4
 
     assert m % r == 0
     assert k % s == 0
     assert n % t == 0
 
-    vectorized = True
-    enable_tracing = False
-    trace_size = 65536
+    dtype_map = {
+        "bf16": bfloat16,
+        "i8": np.int8,
+        "i16": np.int16,
+        "f32": np.float32,
+        "i32": np.int32,
+    }
+    dtype_in = dtype_map[dtype_in_str]
+    dtype_out = dtype_map[dtype_out_str]
 
-    dtype_in = None
-    if dtype_in_str == "bf16":
-        dtype_in = T.bf16
-    elif dtype_in_str == "i8":
-        dtype_in = T.i8
-    elif dtype_in_str == "i16":
-        dtype_in = T.i16
-    dtype_out = None
-    if dtype_out_str == "bf16":
-        dtype_out = T.bf16
-    elif dtype_out_str == "i8":
-        dtype_out = T.i8
-    elif dtype_out_str == "i16":
-        dtype_out = T.i16
-    elif dtype_out_str == "f32":
-        dtype_out = T.f32
-    elif dtype_out_str == "i32":
-        dtype_out = T.i32
+    num_data_tiles = (M // m) * (N // n)
 
-    A_sz = M * K
-    B_sz = K * N
-    C_sz = M * N
+    # input/output matrices TODO(erika): fix up types
+    memref_A_ty = ((M, K), dtype_in)
+    memref_B_ty = ((K, N), dtype_in)
+    memref_C_ty = ((M, N), dtype_out)
 
-    M_div_m = M // m
-    K_div_k = K // k
-    N_div_n = N // n
-    tiles = M_div_m * N_div_n
+    # submatrices TODO(erika): fix up types
+    memref_a_ty = ((m, k), dtype_in)
+    memref_b_ty = ((k, n), dtype_in)
+    memref_c_ty = ((m, n), dtype_out)
 
-    # Matrix B: KxN, submatrices b: kxn
-    k_x_N = k * N
+    # AIE Core Function declarations
+    scalar_str = "" if vectorized else "scalar_"
+    zero = BinKernel(
+        f"zero_{scalar_str}{dtype_out_str}", f"mm_{m}x{k}x{n}.o", [memref_c_ty]
+    )
+    matmul = BinKernel(
+        f"matmul_{scalar_str}{dtype_in_str}_{dtype_out_str}",
+        f"mm_{m}x{k}x{n}.o",
+        [memref_a_ty, memref_b_ty, memref_c_ty],
+    )
 
-    # Output Matrix C: MxN
-    m_x_N = m * N
+    inA = MyObjectFifo(2, memref_a_ty)
+    memA = MyObjectFifo(
+        2,
+        memref_a_ty,
+        dimensionsToStream=(
+            [
+                (m // r, r * k),
+                (k // s, s),
+                (r, k),
+                (s, 1),
+            ]
+            if vectorized
+            else []
+        ),
+    )
+    inALink = MyObjectFifoLink(
+        [inA.second], [memA.first], coords=(0, 1)
+    )  # TODO(erika): represent_memtile
 
-    with mlir_mod_ctx() as ctx:
+    # Input B
+    inB = MyObjectFifo(2, memref_b_ty)
+    memB = MyObjectFifo(
+        2,
+        memref_b_ty,
+        dimensionsToStream=(
+            [
+                (k // s, s * n),
+                (n // t, t),
+                (s, n),
+                (t, 1),
+            ]
+            if vectorized
+            else []
+        ),
+    )
+    inBLink = MyObjectFifoLink(
+        [inB.second], [memB.first], coords=(0, 1)
+    )  # TODO(erika): represent memtile
 
-        C_sz_in_bytes = C_sz * dtype_out().width // 8
+    # Output C
+    memC = MyObjectFifo(2, memref_c_ty)
+    outC = MyObjectFifo(
+        2,
+        memref_c_ty,
+        dimensionsToStream=(
+            [
+                (m // r, r * n),
+                (r, t),
+                (n // t, r * t),
+                (t, 1),
+            ]
+            if vectorized
+            else []
+        ),
+    )
+    outCLink = MyObjectFifoLink(
+        [memC.second], [outC.first], coords=(0, 1)
+    )  # TODO(erika): represent memtile
 
-        @device(AIEDevice.npu1_1col)
-        def device_body():
-            memref_a_ty = T.memref(m, k, dtype_in())
-            memref_b_ty = T.memref(k, n, dtype_in())
-            memref_c_ty = T.memref(m, n, dtype_out())
+    def core_fn(a, b, c, zero, matmul):
+        for _ in (
+            range_(num_data_tiles) if num_data_tiles > 1 else range(1)
+        ):  # issue #1547
+            elem_out = c.acquire(1)
+            zero(elem_out)
 
-            ofifo_memref_a_ty = TypeAttr.get(ObjectFifoType.get(memref_a_ty))
-            ofifo_memref_b_ty = TypeAttr.get(ObjectFifoType.get(memref_b_ty))
-            ofifo_memref_c_ty = TypeAttr.get(ObjectFifoType.get(memref_c_ty))
-
-            # AIE Core Function declarations
-            zero_scalar = external_func(
-                f"zero_scalar_{dtype_out_str}", inputs=[memref_c_ty]
-            )
-            zero = external_func(f"zero_{dtype_out_str}", inputs=[memref_c_ty])
-            matmul_scalar = external_func(
-                f"matmul_scalar_{dtype_in_str}_{dtype_out_str}",
-                inputs=[memref_a_ty, memref_b_ty, memref_c_ty],
-            )
-            matmul = external_func(
-                f"matmul_{dtype_in_str}_{dtype_out_str}",
-                inputs=[memref_a_ty, memref_b_ty, memref_c_ty],
-            )
-
-            # Tile declarations
-            shim_tile = tile(0, 0)
-            mem_tile = tile(0, 1)
-            compute_tile2_col, compute_tile2_row = 0, 2
-            compute_tile2 = tile(compute_tile2_col, compute_tile2_row)
-
-            # AIE-array data movement with object fifos
-            # Input A
-            inA = object_fifo("inA", shim_tile, mem_tile, 2, memref_a_ty)
-            memA = object_fifo(
-                "memA",
-                mem_tile,
-                compute_tile2,
-                2,
-                memref_a_ty,
-                (
-                    [
-                        (m // r, r * k),
-                        (k // s, s),
-                        (r, k),
-                        (s, 1),
-                    ]
-                    if vectorized
-                    else []
-                ),
-            )
-            object_fifo_link(inA, memA)
-
-            # Input B
-            inB = object_fifo("inB", shim_tile, mem_tile, 2, memref_b_ty)
-            memB = object_fifo(
-                "memB",
-                mem_tile,
-                compute_tile2,
-                2,
-                memref_b_ty,
-                (
-                    [
-                        (k // s, s * n),
-                        (n // t, t),
-                        (s, n),
-                        (t, 1),
-                    ]
-                    if vectorized
-                    else []
-                ),
-            )
-            object_fifo_link(inB, memB)
-
-            # Output C
-            memC = object_fifo("memC", compute_tile2, mem_tile, 2, memref_c_ty)
-            outC = object_fifo(
-                "outC",
-                mem_tile,
-                shim_tile,
-                2,
-                memref_c_ty,
-                (
-                    [
-                        (m // r, r * n),
-                        (r, t),
-                        (n // t, r * t),
-                        (t, 1),
-                    ]
-                    if vectorized
-                    else []
-                ),
-            )
-            object_fifo_link(memC, outC)
-
-            # Set up a circuit-switched flow from core to shim for tracing information
-            if enable_tracing:
-                flow(compute_tile2, WireBundle.Trace, 0, shim_tile, WireBundle.DMA, 1)
-
-            # Set up compute tiles
-
-            # Compute tile 2
-            @core(compute_tile2, f"mm_{m}x{k}x{n}.o")
-            def core_body():
-                for _ in for_(0xFFFFFFFF):
-                    for _ in for_(tiles) if tiles > 1 else range(1):  # issue #1547
-                        elem_out = memC.acquire(ObjectFifoPort.Produce, 1)
-                        if vectorized:
-                            call(zero, [elem_out])
-                        else:
-                            call(zero_scalar, [elem_out])
-
-                        for _ in (
-                            for_(K_div_k) if K_div_k > 1 else range(1)
-                        ):  # issue #1547
-                            elem_in_a = memA.acquire(ObjectFifoPort.Consume, 1)
-                            elem_in_b = memB.acquire(ObjectFifoPort.Consume, 1)
-                            if vectorized:
-                                call(matmul, [elem_in_a, elem_in_b, elem_out])
-                            else:
-                                call(matmul_scalar, [elem_in_a, elem_in_b, elem_out])
-                            memA.release(ObjectFifoPort.Consume, 1)
-                            memB.release(ObjectFifoPort.Consume, 1)
-                            if K_div_k > 1:
-                                yield_([])
-
-                        memC.release(ObjectFifoPort.Produce, 1)
-                        if tiles > 1:
-                            yield_([])
+            for _ in range_(K // k) if (K // k) > 1 else range(1):  # issue #1547
+                elem_in_a = a.acquire(1)
+                elem_in_b = b.acquire(1)
+                matmul(elem_in_a, elem_in_b, elem_out)
+                a.release(1)
+                b.release(1)
+                if (K // k) > 1:
                     yield_([])
 
-            # To/from AIE-array data movement
+            c.release(1)
+            if num_data_tiles > 1:
+                yield_([])
 
-            @runtime_sequence(
-                T.memref(A_sz, dtype_in()),
-                T.memref(B_sz, dtype_in()),
-                T.memref(C_sz, dtype_out()),
-            )
-            def sequence(A, B, C):
-
-                if enable_tracing:
-                    trace_utils.configure_simple_tracing_aie2(
-                        compute_tile2,
-                        shim_tile,
-                        ddr_id=2,
-                        size=trace_size,
-                        offset=C_sz_in_bytes,
-                        events=[
-                            PortEvent(
-                                trace_utils.CoreEvent.PORT_RUNNING_0,
-                                port_number=1,
-                                master=True,
-                            ),
-                            PortEvent(
-                                trace_utils.CoreEvent.PORT_RUNNING_1,
-                                port_number=2,
-                                master=True,
-                            ),
-                            PortEvent(
-                                trace_utils.CoreEvent.PORT_RUNNING_2,
-                                port_number=5,
-                                master=True,
-                            ),
-                            trace_utils.CoreEvent.INSTR_EVENT_0,
-                            trace_utils.CoreEvent.INSTR_EVENT_1,
-                            trace_utils.CoreEvent.MEMORY_STALL,
-                            trace_utils.CoreEvent.LOCK_STALL,
-                            trace_utils.CoreEvent.INSTR_VECTOR,
-                        ],
+    def sequence_fn(A, B, C, inA, inB, outC):
+        # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
+        rows_per_block = 4
+        for tile_row_block in range(ceildiv(M // m, rows_per_block)):
+            # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
+            # that's what this loop is for
+            for pingpong in [0, 1]:
+                C_row_offset = (
+                    tile_row_block * rows_per_block * m * N
+                    + pingpong * rows_per_block // 2 * m * N
+                )
+                row_base = (
+                    tile_row_block * rows_per_block + pingpong * rows_per_block // 2
+                )
+                bd_id_base = 8 * pingpong
+                num_tile_rows = min([rows_per_block // 2, M // m - row_base])
+                if num_tile_rows <= 0:
+                    # At the very last iteration, we may not need a 'pong' iteration
+                    break
+                npu_dma_memcpy_nd(
+                    metadata=outC.name,
+                    bd_id=bd_id_base,
+                    mem=C,
+                    offsets=[0, 0, 0, C_row_offset],
+                    sizes=[num_tile_rows, N // n, m, n],
+                    strides=[m * N, n, N, 1],
+                )
+                for tile_row in range(num_tile_rows):
+                    A_row_offset = (row_base + tile_row) * m * K
+                    npu_dma_memcpy_nd(
+                        metadata=inA.name,
+                        bd_id=bd_id_base + 2 * tile_row + 1,
+                        mem=A,
+                        offsets=[0, 0, 0, A_row_offset],
+                        sizes=[N // n, K // k, m, k],
+                        strides=[0, k, K, 1],
                     )
+                    npu_dma_memcpy_nd(
+                        metadata=inB.name,
+                        bd_id=bd_id_base + 2 * tile_row + 2,
+                        mem=B,
+                        sizes=[N // n, K // k, k, n],
+                        strides=[n, k * N, N, 1],
+                    )
+                if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
+                    npu_sync(column=0, row=0, direction=0, channel=0)
+        npu_sync(column=0, row=0, direction=0, channel=0)
 
-                # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
-                rows_per_block = 4
-                for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
-                    # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
-                    # that's what this loop is for
-                    for pingpong in [0, 1]:
-                        C_row_offset = (
-                            tile_row_block * rows_per_block * m * N
-                            + pingpong * rows_per_block // 2 * m * N
-                        )
-                        row_base = (
-                            tile_row_block * rows_per_block
-                            + pingpong * rows_per_block // 2
-                        )
-                        bd_id_base = 8 * pingpong
-                        num_tile_rows = min([rows_per_block // 2, M_div_m - row_base])
-                        if num_tile_rows <= 0:
-                            # At the very last iteration, we may not need a 'pong' iteration
-                            break
-                        npu_dma_memcpy_nd(
-                            metadata="outC",
-                            bd_id=bd_id_base,
-                            mem=C,
-                            offsets=[0, 0, 0, C_row_offset],
-                            sizes=[num_tile_rows, N_div_n, m, n],
-                            strides=[m_x_N, n, N, 1],
-                        )
-                        for tile_row in range(num_tile_rows):
-                            A_row_offset = (row_base + tile_row) * m * K
-                            npu_dma_memcpy_nd(
-                                metadata="inA",
-                                bd_id=bd_id_base + 2 * tile_row + 1,
-                                mem=A,
-                                offsets=[0, 0, 0, A_row_offset],
-                                sizes=[N_div_n, K_div_k, m, k],
-                                strides=[0, k, K, 1],
-                            )
-                            npu_dma_memcpy_nd(
-                                metadata="inB",
-                                bd_id=bd_id_base + 2 * tile_row + 2,
-                                mem=B,
-                                sizes=[N_div_n, K_div_k, k, n],
-                                strides=[n, k_x_N, N, 1],
-                            )
-                        if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
-                            npu_sync(column=0, row=0, direction=0, channel=0)
-                npu_sync(column=0, row=0, direction=0, channel=0)
+    inout_program = MyInOutProgram(
+        sequence_fn,
+        [memref_A_ty, memref_B_ty, memref_C_ty],
+        [memA.second, memB.second, memC.first],
+        coords=(0, 0),
+    )
+    worker_program = MyWorker(
+        core_fn, [inA.first, inB.first, outC.second, zero, matmul], coords=(0, 2)
+    )
 
-    print(ctx.module)
+    my_program = MyProgram(
+        NPU1Col1(),
+        worker_programs=[worker_program],
+        links=[inALink, inBLink, outCLink],
+        inout_program=inout_program,
+    )
+    my_program.resolve_program()
 
 
 if __name__ == "__main__":

@@ -36,11 +36,16 @@ class MyObjectFifo(Resolvable):
         name: str = None,
         end1: MyObjectFifoEndpoint = None,
         end2: MyObjectFifoEndpoint = None,
+        dimensionsToStream=None,  # TODO(erika): needs a type
+        dimensionsFromStreamPerConsumer=None,  # TODO(erika): needs a type
     ):
         self.__depth: int = depth
         self.__memref_type = memref_type
         self.end1: MyObjectFifoEndpoint = end1
         self.end2: MyObjectFifoEndpoint = end2
+        self.dimensionToStream = dimensionsToStream
+        self.dimensionsFromStreamPerConsumer = dimensionsFromStreamPerConsumer
+
         if name is None:
             self.name = f"myof{MyObjectFifo.__get_index()}"
         else:
@@ -97,6 +102,8 @@ class MyObjectFifo(Resolvable):
             self.end2.get_tile(),
             self.__depth,
             memRef_ty,
+            dimensionsToStream=self.dimensionToStream,
+            dimensionsFromStreamPerConsumer=self.dimensionsFromStreamPerConsumer,
             loc=loc,
             ip=ip,
         )
