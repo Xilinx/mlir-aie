@@ -185,10 +185,11 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
   return num_cols;
 }
 
-static LogicalResult generateTxn(AIERTControl &ctl, const StringRef workDirPath,
-                                 DeviceOp &targetOp, bool aieSim,
-                                 bool enableElfs, bool enableInit,
-                                 bool enableCores) {
+static LogicalResult generateTransactions(AIERTControl &ctl,
+                                          const StringRef workDirPath,
+                                          DeviceOp &targetOp, bool aieSim,
+                                          bool enableElfs, bool enableInit,
+                                          bool enableCores) {
   if (enableElfs && !targetOp.getOps<CoreOp>().empty() &&
       failed(ctl.addAieElfs(targetOp, workDirPath, aieSim)))
     return failure();
@@ -200,8 +201,110 @@ static LogicalResult generateTxn(AIERTControl &ctl, const StringRef workDirPath,
   return success();
 }
 
+// Translate vector of TransactionBinaryOperation to a sequence of transaction
+// ops (npu.write32, npu.maskwrite32, npu.blockwrite).
+static LogicalResult
+emitTransactionOps(OpBuilder &builder,
+                   std::vector<TransactionBinaryOperation> &operations,
+                   std::vector<memref::GlobalOp> &global_data) {
+
+  auto loc = builder.getUnknownLoc();
+
+  // create the txn ops
+  for (auto p : llvm::zip(operations, global_data)) {
+    auto op = std::get<0>(p);
+    memref::GlobalOp payload = std::get<1>(p);
+
+    if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
+      builder.create<AIEX::NpuWrite32Op>(loc, op.cmd.RegOff, op.cmd.Value,
+                                         nullptr, nullptr, nullptr);
+    } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
+      auto memref = builder.create<memref::GetGlobalOp>(loc, payload.getType(),
+                                                        payload.getName());
+      builder.create<AIEX::NpuBlockWriteOp>(
+          loc, builder.getUI32IntegerAttr(op.cmd.RegOff), memref.getResult(),
+          nullptr, nullptr, nullptr);
+    } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
+      builder.create<AIEX::NpuMaskWrite32Op>(loc, op.cmd.RegOff, op.cmd.Value,
+                                             op.cmd.Mask, nullptr, nullptr,
+                                             nullptr);
+    } else {
+      llvm::errs() << "Unhandled txn opcode: " << op.cmd.Opcode << "\n";
+      return failure();
+    }
+  }
+  return success();
+}
+
+// Translate vector of TransactionBinaryOperation to a sequence of control
+// packet ops.
+static LogicalResult
+emitControlPacketOps(OpBuilder &builder,
+                     std::vector<TransactionBinaryOperation> &operations,
+                     std::vector<memref::GlobalOp> &global_data) {
+
+  auto loc = builder.getUnknownLoc();
+  auto ctx = builder.getContext();
+
+  // create the control packet ops
+  for (auto p : llvm::zip(operations, global_data)) {
+    auto op = std::get<0>(p);
+    memref::GlobalOp payload = std::get<1>(p);
+
+    if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
+      builder.create<AIEX::NpuControlPacketOp>(
+          loc, builder.getUI32IntegerAttr(op.cmd.RegOff), nullptr,
+          /*opcode*/ builder.getI32IntegerAttr(0),
+          /*stream_id*/ builder.getI32IntegerAttr(0),
+          DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(op.cmd.Value)));
+    } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
+      if (!std::get<1>(p).getInitialValue())
+        continue;
+      auto blockWriteData =
+          dyn_cast<DenseIntElementsAttr>(*std::get<1>(p).getInitialValue());
+      if (!blockWriteData) {
+        payload.emitError(
+            "Global symbol initial value is not a dense int array");
+        break;
+      }
+      auto blockWriteDataValues = blockWriteData.getValues<int32_t>();
+      // Split block write data into beats of 4 or less, in int32_t.
+      int currAddr = op.cmd.RegOff;
+      for (size_t i = 0; i < blockWriteDataValues.size(); i += 4) {
+        auto last = std::min(blockWriteDataValues.size(), i + 4);
+        SmallVector<int32_t> splitData =
+            SmallVector<int32_t>(blockWriteDataValues.begin() + i,
+                                 blockWriteDataValues.begin() + last);
+        builder.create<AIEX::NpuControlPacketOp>(
+            loc, builder.getUI32IntegerAttr(currAddr), nullptr,
+            /*opcode*/ builder.getI32IntegerAttr(0),
+            /*stream_id*/ builder.getI32IntegerAttr(0),
+            DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(splitData)));
+        currAddr += splitData.size() * sizeof(int32_t);
+      }
+
+    } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
+      builder.create<AIEX::NpuControlPacketOp>(
+          loc, builder.getUI32IntegerAttr(op.cmd.RegOff), nullptr,
+          /*opcode*/ builder.getI32IntegerAttr(0),
+          /*stream_id*/ builder.getI32IntegerAttr(0),
+          DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(op.cmd.Value)));
+    } else {
+      llvm::errs() << "Unhandled txn opcode: " << op.cmd.Opcode << "\n";
+      return failure();
+    }
+  }
+  return success();
+}
+
+// an enum to represent the output type of the transaction binary
+enum OutputType {
+  Transaction,
+  ControlPacket,
+};
+
 static LogicalResult convertTransactionOpsToMLIR(
-    OpBuilder builder, AIE::DeviceOp device,
+    OpBuilder builder, AIE::DeviceOp device, OutputType outputType,
     std::vector<TransactionBinaryOperation> &operations) {
 
   auto loc = builder.getUnknownLoc();
@@ -241,33 +344,23 @@ static LogicalResult convertTransactionOpsToMLIR(
 
   // create the txn ops
   builder.setInsertionPointToStart(&seq.getBody().front());
-  for (auto p : llvm::zip(operations, global_data)) {
-    auto op = std::get<0>(p);
-    memref::GlobalOp payload = std::get<1>(p);
-
-    if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
-      builder.create<AIEX::NpuWrite32Op>(loc, op.cmd.RegOff, op.cmd.Value,
-                                         nullptr, nullptr, nullptr);
-    } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
-      auto memref = builder.create<memref::GetGlobalOp>(loc, payload.getType(),
-                                                        payload.getName());
-      builder.create<AIEX::NpuBlockWriteOp>(
-          loc, builder.getUI32IntegerAttr(op.cmd.RegOff), memref.getResult(),
-          nullptr, nullptr, nullptr);
-    } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
-      builder.create<AIEX::NpuMaskWrite32Op>(loc, op.cmd.RegOff, op.cmd.Value,
-                                             op.cmd.Mask, nullptr, nullptr,
-                                             nullptr);
-    } else {
-      llvm::errs() << "Unhandled txn opcode: " << op.cmd.Opcode << "\n";
+  if (outputType == OutputType::Transaction) {
+    if (failed(emitTransactionOps(builder, operations, global_data)))
       return failure();
-    }
+  } else if (outputType == OutputType::ControlPacket) {
+    if (failed(emitControlPacketOps(builder, operations, global_data)))
+      return failure();
+  } else {
+    llvm_unreachable("bad output type");
   }
 
   return success();
 }
 
-// Convert a transaction binary to MLIR. On success return a new ModuleOp
+// Convert (disassemble) a transaction binary to MLIR. On success return a new
+// ModuleOp containing a DeviceOp containing a runtime sequence with the
+// transaction binary encoded as a sequence of npu.write32, npu.maskwrite32 and
+// npu.blockwrite operations. On failure return std::nullopt.
 std::optional<mlir::ModuleOp>
 xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
                                             std::vector<uint8_t> &binary) {
@@ -296,10 +389,58 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
   device.getRegion().emplaceBlock();
   builder.setInsertionPointToStart(device.getBody());
 
-  if (failed(convertTransactionOpsToMLIR(builder, device, operations)))
+  // convert the parsed ops to MLIR
+  if (failed(convertTransactionOpsToMLIR(builder, device,
+                                         OutputType::Transaction, operations)))
     return std::nullopt;
 
   return module;
+}
+
+static LogicalResult convertAIEToConfiguration(AIE::DeviceOp device,
+                                               StringRef clElfDir,
+                                               OutputType outputType) {
+
+  const BaseNPUTargetModel &targetModel =
+      (const BaseNPUTargetModel &)device.getTargetModel();
+
+  if (!targetModel.isNPU())
+    return failure();
+
+  bool aieSim = false;
+  bool xaieDebug = false;
+
+  AIERTControl ctl(targetModel);
+  if (failed(ctl.setIOBackend(aieSim, xaieDebug)))
+    return failure();
+
+  // start collecting transations
+  XAie_StartTransaction(&ctl.devInst, XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
+
+  if (failed(generateTransactions(ctl, clElfDir, device, aieSim, true, true,
+                                  true)))
+    return failure();
+
+  // Export the transactions to a binary buffer
+  uint8_t *txn_ptr = XAie_ExportSerializedTransaction(&ctl.devInst, 0, 0);
+  XAie_TxnHeader *hdr = (XAie_TxnHeader *)txn_ptr;
+  std::vector<uint8_t> txn_data(txn_ptr, txn_ptr + hdr->TxnSize);
+
+  // parse the binary data
+  std::vector<TransactionBinaryOperation> operations;
+  if (!parseTransactionBinary(txn_data, operations)) {
+    llvm::errs() << "Failed to parse binary\n";
+    return failure();
+  }
+
+  OpBuilder builder(device.getBodyRegion());
+
+  // convert the parsed ops to MLIR
+  if (failed(
+          convertTransactionOpsToMLIR(builder, device, outputType, operations)))
+    return failure();
+
+  return success();
 }
 
 namespace {
@@ -307,44 +448,17 @@ namespace {
 struct ConvertAIEToTransactionPass
     : ConvertAIEToTransactionBase<ConvertAIEToTransactionPass> {
   void runOnOperation() override {
-
-    auto device = getOperation();
-
-    const BaseNPUTargetModel &targetModel =
-        (const BaseNPUTargetModel &)device.getTargetModel();
-
-    if (!targetModel.isNPU())
-      return;
-
-    bool aieSim = false;
-    bool xaieDebug = false;
-
-    AIERTControl ctl(targetModel);
-    if (failed(ctl.setIOBackend(aieSim, xaieDebug)))
+    if (failed(convertAIEToConfiguration(getOperation(), clElfDir,
+                                         OutputType::Transaction)))
       return signalPassFailure();
+  }
+};
 
-    // start collecting transations
-    XAie_StartTransaction(&ctl.devInst, XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
-
-    auto result = generateTxn(ctl, clElfDir, device, aieSim, true, true, true);
-    if (failed(result))
-      return signalPassFailure();
-
-    // Export the transactions to a binary buffer
-    uint8_t *txn_ptr = XAie_ExportSerializedTransaction(&ctl.devInst, 0, 0);
-    XAie_TxnHeader *hdr = (XAie_TxnHeader *)txn_ptr;
-    std::vector<uint8_t> txn_data(txn_ptr, txn_ptr + hdr->TxnSize);
-
-    // parse the binary data
-    std::vector<TransactionBinaryOperation> operations;
-    if (!parseTransactionBinary(txn_data, operations)) {
-      llvm::errs() << "Failed to parse binary\n";
-      return signalPassFailure();
-    }
-
-    OpBuilder builder(device.getBodyRegion());
-
-    if (failed(convertTransactionOpsToMLIR(builder, device, operations)))
+struct ConvertAIEToControlPacketsPass
+    : public ConvertAIEToControlPacketsBase<ConvertAIEToControlPacketsPass> {
+  void runOnOperation() override {
+    if (failed(convertAIEToConfiguration(getOperation(), clElfDir,
+                                         OutputType::ControlPacket)))
       return signalPassFailure();
   }
 };
@@ -354,4 +468,9 @@ struct ConvertAIEToTransactionPass
 std::unique_ptr<mlir::OperationPass<xilinx::AIE::DeviceOp>>
 xilinx::AIE::createConvertAIEToTransactionPass() {
   return std::make_unique<ConvertAIEToTransactionPass>();
+}
+
+std::unique_ptr<mlir::OperationPass<xilinx::AIE::DeviceOp>>
+xilinx::AIE::createConvertAIEToControlPacketsPass() {
+  return std::make_unique<ConvertAIEToControlPacketsPass>();
 }
