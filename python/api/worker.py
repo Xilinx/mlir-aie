@@ -5,10 +5,12 @@ TODO:
 * logical?
 """
 
+import sys
 from typing import Union
 
 from .. import ir
 from ..dialects.aie import core
+from ..dialects.scf import yield_, for_
 from .phys.tile import MyTile
 from .dataflow.objectfifo import ObjectFifoHandle
 from .dataflow.endpoint import MyObjectFifoEndpoint
@@ -24,7 +26,15 @@ class MyWorker(MyObjectFifoEndpoint):
     ):
         column, row = coords
         self.tile = MyTile(column, row)
-        self.core_fn = core_fn
+        if core_fn is None:
+
+            def do_nothing_core_fun():
+                for _ in for_(sys.maxsize):
+                    yield_([])
+
+            self.core_fn = do_nothing_core_fun
+        else:
+            self.core_fn = core_fn
         self.link_with = None
 
         assert isinstance(fn_args, list)

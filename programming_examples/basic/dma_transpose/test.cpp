@@ -167,15 +167,19 @@ int main(int argc, const char *argv[]) {
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
+  // sync host to device memories
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
+  // Execute the kernel and wait to finish
   if (verbosity >= 1)
-    std::cout << "Running Kernel." << std::endl;
-  unsigned int opcode = 2;
+    std::cout << "Running Kernel.\n";
+  unsigned int opcode = 3;
   auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out);
   run.wait();
 
+  // Sync device to host memories
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   uint32_t *bufOut = bo_out.map<uint32_t *>();

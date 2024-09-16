@@ -43,34 +43,34 @@ class MyProgram:
                     self.__device.resolve_tile(w.tile)
                 for l in self.__links:
                     self.__device.resolve_tile(l.tile)
-                # self._print_verify(ctx)
+                self._print_verify(ctx)
 
                 self.__device.resolve_tile(self.__inout_program.tile)
-                # self._print_verify(ctx)
+                self._print_verify(ctx)
 
                 # generate fifos (and external functions)
                 for w in self.__worker_programs:
                     for arg in w.fn_args:
                         arg.resolve()
-                        # self._print_verify(ctx)
+                        self._print_verify(ctx)
                 for f in self.__inout_program.get_fifos():
                     f.resolve()
-                    # self._print_verify(ctx)
+                    self._print_verify(ctx)
 
                 # Generate object fifo links
                 for l in self.__links:
                     l.resolve()
-                    # self._print_verify(ctx)
+                    self._print_verify(ctx)
 
                 # Generate core programs
                 for w in self.__worker_programs:
                     w.resolve()
-                    # self._print_verify(ctx)
+                    self._print_verify(ctx)
 
                 # Host program
                 self.__inout_program.resolve()
 
-                # self._print_verify(ctx)
+                self._print_verify(ctx)
 
             print(ctx.module)
 

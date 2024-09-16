@@ -7,6 +7,7 @@ TODO:
 import numpy as np
 
 from .... import ir
+from ....extras.util import np_dtype_to_mlir_type
 from ....dialects.aiex import runtime_sequence, npu_dma_memcpy_nd, npu_sync, T
 from .inout import InOutProgram
 from ...phys.tile import MyTile
@@ -24,6 +25,7 @@ class SimpleFifoInOutProgram(InOutProgram):
         in_strides: list[int] = None,
         out_sizes: list[int] = None,
         out_strides: list[int] = None,
+        dtype=np.uint8,  # TODO: needs type
     ):
         assert bytes_in % np.prod(fifo_in.obj_type[0]) == 0
         assert bytes_out % np.prod(fifo_out.obj_type[0]) == 0
@@ -31,6 +33,7 @@ class SimpleFifoInOutProgram(InOutProgram):
         self.fifo_out = fifo_out
         self.bytes_in = bytes_in
         self.bytes_out = bytes_out
+        self.dtype = dtype
         self.tile = MyTile(0, 0)  # TODO: how to set default here?
         fifo_in.set_endpoint(self)
         fifo_out.set_endpoint(self)
@@ -85,8 +88,8 @@ class SimpleFifoInOutProgram(InOutProgram):
         ip: ir.InsertionPoint = None,
         context: ir.Context = None,
     ) -> None:
-        tensor_in_ty = T.memref(self.bytes_in, T.ui8())
-        tensor_out_ty = T.memref(self.bytes_out, T.ui8())
+        tensor_in_ty = T.memref(self.bytes_in, np_dtype_to_mlir_type(self.dtype))
+        tensor_out_ty = T.memref(self.bytes_out, np_dtype_to_mlir_type(self.dtype))
 
         @runtime_sequence(tensor_in_ty, tensor_out_ty)
         def sequence(inTensor, outTensor):
