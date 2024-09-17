@@ -488,6 +488,28 @@ static bool matchExpOpForLUT(math::ExpOp::Adaptor adaptor) {
   unsigned laneSize = getVectorLaneSize(srcType);
   return isa<FloatType>(scalarType) && laneSize == 16 && elWidth == 16;
 }
+static bool matchInvOpForLUT(arith::DivFOp::Adaptor adaptor,
+                             arith::DivFOp divOp) {
+  Type srcType = adaptor.getLhs().getType();
+  if (!divOp->hasOneUse() || isa<VectorType>(srcType) ||
+      !isa<FloatType>(srcType))
+    return false;
+
+  if (!isNarrowingOp(*divOp->getUsers().begin()))
+    return false;
+
+  auto fType = cast<FloatType>(srcType);
+  if (fType.getWidth() != 32)
+    return false;
+
+  auto constOp = divOp.getLhs().getDefiningOp<arith::ConstantOp>();
+  if (!constOp ||
+      cast<FloatAttr>(constOp.getValue()).getValue().convertToDouble() !=
+          1.0f) {
+    return false;
+  }
+  return true;
+}
 
 //===----------------------------------------------------------------------===//
 // Rewrite patterns
@@ -2007,6 +2029,34 @@ struct ComputeExpOpByLUTPattern : OpConversionPattern<math::ExpOp> {
   }
 };
 
+struct ComputeInvOpByLUTLLVMPattern : OpConversionPattern<arith::DivFOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::DivFOp divOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (!matchInvOpForLUT(adaptor, divOp))
+      return failure();
+
+    StringRef funcName = "getInvBf16";
+    auto moduleOp = divOp->getParentOfType<mlir::ModuleOp>();
+    Type floatTy = rewriter.getF32Type();
+    Type bfloat16Ty = rewriter.getBF16Type();
+    func::FuncOp fn_op =
+        getOrInsertFuncDecl(rewriter, moduleOp, funcName, TypeRange{floatTy},
+                            TypeRange{bfloat16Ty});
+
+    auto truncOp = cast<arith::TruncFOp>(*divOp->getUsers().begin());
+
+    rewriter.setInsertionPoint(truncOp);
+    SmallVector<Value> invOperands = {adaptor.getRhs()};
+    rewriter.replaceOpWithNewOp<func::CallOp>(truncOp, fn_op, invOperands);
+    rewriter.eraseOp(divOp);
+
+    return success();
+  }
+};
+
 // Lower the inverse of a float to a function call
 // Convert the pattern-
 //  %cst = arith.constant 1.000000e+00 : f32
@@ -2020,24 +2070,8 @@ struct ComputeInvOpByLUTPattern : OpConversionPattern<arith::DivFOp> {
   LogicalResult
   matchAndRewrite(arith::DivFOp divOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Type srcType = adaptor.getLhs().getType();
-    if (!divOp->hasOneUse() || isa<VectorType>(srcType) ||
-        !isa<FloatType>(srcType))
+    if (!matchInvOpForLUT(adaptor, divOp))
       return failure();
-
-    if (!isNarrowingOp(*divOp->getUsers().begin()))
-      return failure();
-
-    auto fType = cast<FloatType>(srcType);
-    if (fType.getWidth() != 32)
-      return failure();
-
-    auto constOp = dyn_cast<arith::ConstantOp>(divOp.getLhs().getDefiningOp());
-    if (!constOp ||
-        cast<FloatAttr>(constOp.getValue()).getValue().convertToDouble() !=
-            1.0f)
-      return failure();
-
     StringRef includeName = "lut_based_ops.h";
     auto moduleOp = divOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
@@ -3092,6 +3126,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       >(patterns.getContext(), 128, 1024, 256, 1024);
     patterns.add<
         ComputeExpOpByLUTPattern,
+        ComputeInvOpByLUTPattern,
         LowerVectorAddFOpToAIEVecAddElemOp,
         LowerVectorSubFOpToAIEVecSubElemOp,
         LowerVectorAddIOpToAIEVecAddElemOp,
@@ -3099,11 +3134,11 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       >(patterns.getContext());
   } else if (backend == TargetBackend::LLVMIR){
       patterns.add<
-      ComputeExpOpByLUTLLVMPattern
+      ComputeExpOpByLUTLLVMPattern,
+      ComputeInvOpByLUTLLVMPattern
       >(patterns.getContext());
   }
   patterns.add<
-      ComputeInvOpByLUTPattern,
       ComputeTanhOpByLUTPattern,
       ComputeSqrtOpPattern,
       ComputeRsqrtOpPattern,
