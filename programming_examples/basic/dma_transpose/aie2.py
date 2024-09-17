@@ -34,8 +34,8 @@ of_out = MyObjectFifo(2, memref_type=memref_ty)
 
 # TODO: clean up placement
 # TODO: logic to put dummy core if link has core location but core not specified
-worker_program = MyWorker(None, [], coords=(0, 2))
-my_link = MyObjectFifoLink([of_in.second], [of_out.first], coords=(0, 2))
+worker_program = MyWorker(None, [], coords=(0, 2), intermediate=AnyMemtile)
+# my_link = MyObjectFifoLink([of_in.second], [of_out.first], coords=(0, 2))
 
 # TODO: take memref_type for input/output instead?
 inout_program = SimpleFifoInOutProgram(

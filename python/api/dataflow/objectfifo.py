@@ -37,8 +37,8 @@ class MyObjectFifo(Resolvable):
         name: str = None,
         end1: MyObjectFifoEndpoint = None,
         end2: MyObjectFifoEndpoint = None,
-        dimensionsToStream=list[list[int]],  # TODO(erika): needs a type
-        dimensionsFromStreamPerConsumer=list[list[int]],  # TODO(erika): needs a type
+        dimensionsToStream=None,  # TODO(erika): needs a type
+        dimensionsFromStreamPerConsumer=None,  # TODO(erika): needs a type
     ):
         self.__depth = depth
         self.__obj_type = obj_type
@@ -86,7 +86,7 @@ class MyObjectFifo(Resolvable):
         if self.__op == None:
             assert self.end1 != None, "ObjectFifo missing endpoint 1"
             assert self.end2 != None, "ObjectFifo missing endpoint 2"
-            assert self.__memref_type != None, "ObjectFifo missing memref_type"
+            assert self.__obj_type != None, "ObjectFifo missing object type"
             self.__op = object_fifo(
                 self.name,
                 self.end1.get_tile().op,

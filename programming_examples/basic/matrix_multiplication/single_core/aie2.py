@@ -243,8 +243,15 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
         [inA.first, inB.first, outC.second],
         coords=(0, 0),
     )
+
+    # AnyMemtile
+    c = LogicalCore()
+    c2 = c.neighbor()
+
     worker_program = MyWorker(
-        core_fn, [memA.second, memB.second, memC.first, zero, matmul], coords=(0, 2)
+        core_fn,
+        [memA.second, memB.second, memC.first, zero, matmul],
+        AnyCore,  # coords=(0, 2)
     )
 
     my_program = MyProgram(
@@ -252,7 +259,11 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
         worker_programs=[worker_program],
         links=[inALink, inBLink, outCLink],
         inout_program=inout_program,
+        placer=SequentialPlace(),  # GraphBasedPlacer() # CoreOnlyPlace() -> anything memtile has to be decided by Programmer
     )
+
+    # g = my_program.get_dataflow_graph()
+
     my_program.resolve_program()
 
 

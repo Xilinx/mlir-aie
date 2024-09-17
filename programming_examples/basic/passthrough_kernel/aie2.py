@@ -64,3 +64,48 @@ my_program = MyProgram(
     NPU1Col1(), worker_programs=[worker_program], inout_program=inout_program
 )
 my_program.resolve_program()
+
+"""
+Brainstorming on FifoDepth:
+
+Depth:
+    * MyObjectFifo(n, line_type)
+        * Expect strictly == or < n for actual depth
+    * MyObjectFifo([n, m], line_type)
+        * object_fifo(prod, [cons1, cons2], elem_depth=[prod_depth, cons_depth1, cons_depth2])
+        * We have examples where sometimes cons1 close, cons2 is far (skip connection - have as far as 7). If gave 1 single depth of 7 -- too much.
+        * Need to choose which depths to force/not_force
+
+    * MyObjectFifo(line_type)
+        * Expect highest some n+1 ??
+
+    * MyObjectFifo(n, line_type, force_depth=True)
+        * ALWAYS n
+
+
+m = MyObjectFifo()
+m.first.enforce_depth()
+
+Can write a number or array. Number is treated flexibly. Array is treated strictly.
+Force may lead to deadlock.
+
+Not clean case:
+* How to enforce depths with broadcast when not shared mem? Created
+
+Depth (Cases):
+* object_fifo(prod, [cons1, cons2], elem_depth=[prod_depth, cons_depth1, cons_depth2])
+
+
+* object_fifo(prod, [cons1, cons2], elem_depth=[(prod_depth, is_force), (cons_depth1, is_force), (cons_depth2, is_force)])
+* object_fifo(prod, [cons1, cons2], forced_elem_depth=[])
+
+* object_fifo(prod, cons, elem_depth=[prod_depth, cons_depth])
+    * if prod_depth != cons_depth -> cannot use shared? Or just discard one of the depths?
+
+Maybe (I don't like this):
+* object_fifo(prod, cons, depth?)
+* object_fifo((prod, depth), (cons, depth))
+
+TODO: ObjectFifo Skip Connection Analysis, adjusts depth for you based on that.
+TODO: Maybe fusing kernels?
+"""

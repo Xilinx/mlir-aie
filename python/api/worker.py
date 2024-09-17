@@ -20,7 +20,7 @@ from .kernels.kernel import MyKernel
 class MyWorker(MyObjectFifoEndpoint):
     def __init__(
         self,
-        core_fn: Optional[Callable[[Union[ObjectFifoHandle, MyKernel], None]]],
+        core_fn: Optional[Callable[[Union[ObjectFifoHandle, MyKernel]], None]],
         fn_args: list[Union[ObjectFifoHandle, MyKernel]] = [],
         coords: tuple[int, int] = None,
     ):

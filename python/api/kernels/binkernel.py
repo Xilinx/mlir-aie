@@ -38,15 +38,10 @@ class BinKernel(MyKernel):
         if self.__op == None:
             resolved_inout_types = []
             for t in self.__inout_types:
-                try:
+                if isinstance(t, MyTensorType):
+                    dtype = t.memref_type
+                else:
                     dtype = np_dtype_to_mlir_type(t)
-                except Exception:
-                    dtype = get_arg_types(t)
-                    if dtype is None:
-                        # Interpret as a dummy memref
-                        dtype = MemRefType.get(
-                            shape=t[0], element_type=np_dtype_to_mlir_type(t[1])
-                        )
                 resolved_inout_types.append(dtype)
             self.__op = external_func(self.__name, inputs=resolved_inout_types)
 

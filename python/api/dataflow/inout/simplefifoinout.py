@@ -28,8 +28,8 @@ class SimpleFifoInOutProgram(InOutProgram):
         out_strides: Optional[list[int]] = None,
         dtype: np.generic = np.uint8,
     ):
-        assert bytes_in % np.prod(fifo_in.obj_type[0]) == 0
-        assert bytes_out % np.prod(fifo_out.obj_type[0]) == 0
+        assert bytes_in % np.prod(fifo_in.obj_type.shape) == 0
+        assert bytes_out % np.prod(fifo_in.obj_type.shape) == 0
         assert bytes_in > 0
         assert bytes_out > 0
 
@@ -91,8 +91,8 @@ class SimpleFifoInOutProgram(InOutProgram):
         loc: ir.Location = None,
         ip: ir.InsertionPoint = None,
     ) -> None:
-        tensor_in_ty = MyTensorType(self.bytes_in, self.dtype).memref_type
-        tensor_out_ty = MyTensorType(self.bytes_out, self.dtype).memref_type
+        tensor_in_ty = MyTensorType(self.dtype, [self.bytes_in]).memref_type
+        tensor_out_ty = MyTensorType(self.dtype, [self.bytes_out]).memref_type
 
         @runtime_sequence(tensor_in_ty, tensor_out_ty)
         def sequence(inTensor, outTensor):

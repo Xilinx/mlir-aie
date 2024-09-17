@@ -28,4 +28,6 @@ class MyTensorType:
 
     def __eq__(self, other):
         # TODO: may want to be equal to numpy datatypes as well??
-        return self.__my_numpy_type == other.__my_numpy_type
+        if other:
+            return self.__my_numpy_type == other.__my_numpy_type
+        return False
