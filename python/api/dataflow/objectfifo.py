@@ -26,6 +26,7 @@ from ..resolvable import Resolvable
 from .endpoint import MyObjectFifoEndpoint
 from ..tensor import MyTensorType
 
+
 class MyObjectFifo(Resolvable):
     __of_index = 0
 
@@ -36,8 +37,8 @@ class MyObjectFifo(Resolvable):
         name: str = None,
         end1: MyObjectFifoEndpoint = None,
         end2: MyObjectFifoEndpoint = None,
-        dimensionsToStream=list[list[int]],                 # TODO(erika): needs a type
-        dimensionsFromStreamPerConsumer=list[list[int]],    # TODO(erika): needs a type
+        dimensionsToStream=list[list[int]],  # TODO(erika): needs a type
+        dimensionsFromStreamPerConsumer=list[list[int]],  # TODO(erika): needs a type
     ):
         self.__depth = depth
         self.__obj_type = obj_type
@@ -106,36 +107,68 @@ class MyObjectFifo(Resolvable):
             assert self.end2 == None, "ObjectFifo already assigned endpoint 2"
             self.end2 = endpoint
 
-    def _acquire(self, port: ObjectFifoPort, num_elem: int, loc: ir.Location = None, ip: ir.InsertionPoint = None):
+    def _acquire(
+        self,
+        port: ObjectFifoPort,
+        num_elem: int,
+        loc: ir.Location = None,
+        ip: ir.InsertionPoint = None,
+    ):
         assert num_elem > 0, "Must consume at least one element"
-        assert num_elem <= self.__depth, "Cannot consume elements to exceed ObjectFifo depth"
+        assert (
+            num_elem <= self.__depth
+        ), "Cannot consume elements to exceed ObjectFifo depth"
 
         subview_t = ObjectFifoSubviewType.get(self.__obj_type.memref_type)
         acq = ObjectFifoAcquireOp(subview_t, port, self.name, num_elem, loc=loc, ip=ip)
 
         objects = []
         if acq.size.value == 1:
-            return ObjectFifoSubviewAccessOp(self.__obj_type.memref_type, acq.subview, acq.size.value - 1, loc=loc, ip=ip)
+            return ObjectFifoSubviewAccessOp(
+                self.__obj_type.memref_type,
+                acq.subview,
+                acq.size.value - 1,
+                loc=loc,
+                ip=ip,
+            )
         for i in range(acq.size.value):
-            objects.append(ObjectFifoSubviewAccessOp(self.__obj_type.memref_type, acq.subview, i, loc=loc, ip=ip))
+            objects.append(
+                ObjectFifoSubviewAccessOp(
+                    self.__obj_type.memref_type, acq.subview, i, loc=loc, ip=ip
+                )
+            )
         return objects
 
-    def _release(self, port: ObjectFifoPort, num_elem: int, loc: ir.Location = None, ip: ir.InsertionPoint = None):
+    def _release(
+        self,
+        port: ObjectFifoPort,
+        num_elem: int,
+        loc: ir.Location = None,
+        ip: ir.InsertionPoint = None,
+    ):
         assert num_elem > 0, "Must consume at least one element"
-        assert num_elem <= self.__depth, "Cannot consume elements to exceed ObjectFifo depth"
+        assert (
+            num_elem <= self.__depth
+        ), "Cannot consume elements to exceed ObjectFifo depth"
         objectfifo_release(port, self.name, num_elem, loc=loc, ip=ip)
 
 
 class ObjectFifoHandle(Resolvable):
     def __init__(self, of: MyObjectFifo, is_first: bool):
-        self.__port: ObjectFifoPort = ObjectFifoPort.Produce if is_first else ObjectFifoPort.Consume
+        self.__port: ObjectFifoPort = (
+            ObjectFifoPort.Produce if is_first else ObjectFifoPort.Consume
+        )
         self.__is_first = is_first
         self.__object_fifo = of
 
-    def acquire(self, num_elem: int, loc: ir.Location = None, ip: ir.InsertionPoint = None):
+    def acquire(
+        self, num_elem: int, loc: ir.Location = None, ip: ir.InsertionPoint = None
+    ):
         return self.__object_fifo._acquire(self.__port, num_elem, loc=loc, ip=ip)
 
-    def release(self, num_elem: int, loc: ir.Location = None, ip: ir.InsertionPoint = None):
+    def release(
+        self, num_elem: int, loc: ir.Location = None, ip: ir.InsertionPoint = None
+    ):
         return self.__object_fifo._release(self.__port, num_elem, loc=loc, ip=ip)
 
     @property

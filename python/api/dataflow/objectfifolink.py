@@ -9,6 +9,7 @@ from ..phys.tile import MyTile
 from .endpoint import MyObjectFifoEndpoint
 from .objectfifo import ObjectFifoHandle
 
+
 class MyObjectFifoLink(MyObjectFifoEndpoint):
     def __init__(
         self,

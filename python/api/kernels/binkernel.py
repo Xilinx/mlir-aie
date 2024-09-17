@@ -3,6 +3,7 @@ TODO:
 * docs
 * types for inout_types
 """
+
 import numpy as np
 from typing import Optional
 
@@ -17,7 +18,9 @@ from .kernel import MyKernel
 
 
 class BinKernel(MyKernel):
-    def __init__(self, name: str, bin_name: str, inout_types: list[MyTensorType, np.generic] = []) -> None:
+    def __init__(
+        self, name: str, bin_name: str, inout_types: list[MyTensorType, np.generic] = []
+    ) -> None:
         self.__name = name
         self.__bin_name = bin_name
         self.__inout_types = inout_types

@@ -1,10 +1,10 @@
-
 from functools import cached_property
 import numpy as np
 from typing import Literal
 
 from ..extras.util import np_dtype_to_mlir_type
 from ..dialects.memref import MemRefType
+
 
 class MyTensorType:
     def __init__(self, dtype: np.generic, shape: np.generic.shape):

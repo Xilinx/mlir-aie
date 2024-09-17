@@ -48,6 +48,7 @@ class MyInOutProgram(InOutProgram):
         ip: ir.InsertionPoint = None,
     ) -> None:
         my_memref_types = [t.memref_type for t in self.inout_types]
+
         @runtime_sequence(*my_memref_types)
         def sequence(*args, **kwargs):
             self.sequence_fn(*args, *self.fifos, **kwargs)

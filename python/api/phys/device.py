@@ -26,10 +26,12 @@ class MyDevice(Resolvable):
     """
     Note: this class is abstract because it does not implement Resolve
     """
+
     class __MyDeviceTile(Resolvable):
         """
         Interior class for tiles objects owned by a particular device
         """
+
         def __init__(self, col: int, row: int) -> None:
             self.__col: int = col
             self.__row: int = row

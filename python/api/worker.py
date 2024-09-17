@@ -27,9 +27,11 @@ class MyWorker(MyObjectFifoEndpoint):
         column, row = coords
         self.tile = MyTile(column, row)
         if core_fn is None:
+
             def do_nothing_core_fun() -> None:
                 for _ in for_(sys.maxsize):
                     yield_([])
+
             self.core_fn = do_nothing_core_fun
         else:
             self.core_fn = core_fn

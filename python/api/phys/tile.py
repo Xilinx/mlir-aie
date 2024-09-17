@@ -4,8 +4,10 @@ TODOs:
 * error handling
 * tile types"
 """
+
 from typing import Optional
 from ...dialects.aie import TileOp
+
 
 class MyTile:
     def __init__(self, col: int, row: int) -> None:
