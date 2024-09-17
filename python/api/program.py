@@ -21,13 +21,6 @@ class MyProgram:
         inout_program: InOutProgram,
         links: list[MyObjectFifoLink] = [],
     ):
-        assert isinstance(device, MyDevice)
-        assert worker_programs != None and len(worker_programs) >= 1
-        for w in worker_programs:
-            assert isinstance(w, MyWorker)
-        assert isinstance(inout_program, InOutProgram)
-        for l in links:
-            assert isinstance(l, MyObjectFifoLink)
         self.__device = device
         self.__worker_programs = worker_programs
         self.__inout_program = inout_program

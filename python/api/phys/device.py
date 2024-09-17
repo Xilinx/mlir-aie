@@ -14,74 +14,60 @@ devs = {
 }
 """
 
-from abc import abstractmethod
+from typing import Optional
 
 from ... import ir
-from ...dialects.aie import AIEDevice, tile
-
+from ...dialects.aie import AIEDevice, tile, TileOp
 from ..resolvable import Resolvable
 from .tile import MyTile
 
 
 class MyDevice(Resolvable):
-    class MyDeviceTile(Resolvable):
-        def __init__(self, column: int, row: int) -> None:
-            assert isinstance(column, int)
-            assert isinstance(row, int)
-            self.__column: int = column
+    """
+    Note: this class is abstract because it does not implement Resolve
+    """
+    class __MyDeviceTile(Resolvable):
+        """
+        Interior class for tiles objects owned by a particular device
+        """
+        def __init__(self, col: int, row: int) -> None:
+            self.__col: int = col
             self.__row: int = row
-            self.__op: int = None
-
-        @property
-        def op(self):
-            assert self.__op != None
-            return self.__op
+            self.__op: Optional[TileOp] = None
 
         def resolve(
             self,
             loc: ir.Location = None,
             ip: ir.InsertionPoint = None,
-            context: ir.Context = None,
         ) -> None:
-            if self.__op != None:
-                return
-            self.__op = tile(self.__column, self.__row, loc=loc, ip=ip)
+            if self.__op == None:
+                self.__op = tile(self.__col, self.__row, loc=loc, ip=ip)
 
-    @property
-    @abstractmethod
-    def rows(self) -> int: ...
+        @property
+        def op(self) -> TileOp:
+            assert self.__op != None
+            return self.__op
 
-    @property
-    @abstractmethod
-    def columns(self) -> int: ...
+        @op.setter
+        def op(self, op: TileOp):
+            assert self.__op == None
+            self.__op = op
 
-    @abstractmethod
-    def resolve_tile(
-        self,
-        col: int,
-        row: int,
-        loc: ir.Location = None,
-        ip: ir.InsertionPoint = None,
-        context: ir.Context = None,
-    ) -> None: ...
-
-
-class NPU1Col1(MyDevice):
-    def __init__(self) -> None:
-        self.__cols: int = 1
-        self.__rows: int = 4
-        self.__tiles: list[list[MyDevice.MyDeviceTile]] = []
+    def __init__(self, cols: int, rows: int) -> None:
+        self.__cols = cols
+        self.__rows = rows
+        self.__tiles: list[list[MyDevice.__MyDeviceTile]] = []
         for c in range(self.__cols):
             self.__tiles.append([])
             for r in range(self.__rows):
-                self.__tiles[c].append(MyDevice.MyDeviceTile(c, r))
+                self.__tiles[c].append(MyDevice.__MyDeviceTile(c, r))
 
     @property
     def rows(self) -> int:
         return self.__rows
 
     @property
-    def columns(self) -> int:
+    def cols(self) -> int:
         return self.__cols
 
     def resolve_tile(
@@ -89,15 +75,18 @@ class NPU1Col1(MyDevice):
         tile: MyTile,
         loc: ir.Location = None,
         ip: ir.InsertionPoint = None,
-        context: ir.Context = None,
     ) -> None:
-        self.__tiles[tile.col][tile.row].resolve(loc, ip, context)
+        self.__tiles[tile.col][tile.row].resolve(loc, ip)
         tile.op = self.__tiles[tile.col][tile.row].op
+
+
+class NPU1Col1(MyDevice):
+    def __init__(self) -> None:
+        super().__init__(cols=1, rows=4)
 
     def resolve(
         self,
         loc: ir.Location = None,
         ip: ir.InsertionPoint = None,
-        context: ir.Context = None,
     ) -> None:
         return AIEDevice.npu1_1col

@@ -6,7 +6,7 @@ TODO:
 """
 
 import sys
-from typing import Union
+from typing import Callable, Optional, Union
 
 from .. import ir
 from ..dialects.aie import core
@@ -20,24 +20,20 @@ from .kernels.kernel import MyKernel
 class MyWorker(MyObjectFifoEndpoint):
     def __init__(
         self,
-        core_fn,
-        fn_args: list[Union[ObjectFifoHandle, MyKernel]],
+        core_fn: Optional[Callable[[Union[ObjectFifoHandle, MyKernel], None]]],
+        fn_args: list[Union[ObjectFifoHandle, MyKernel]] = [],
         coords: tuple[int, int] = None,
     ):
         column, row = coords
         self.tile = MyTile(column, row)
         if core_fn is None:
-
-            def do_nothing_core_fun():
+            def do_nothing_core_fun() -> None:
                 for _ in for_(sys.maxsize):
                     yield_([])
-
             self.core_fn = do_nothing_core_fun
         else:
             self.core_fn = core_fn
-        self.link_with = None
-
-        assert isinstance(fn_args, list)
+        self.link_with: Optional[str] = None
         self.fn_args = fn_args
         bin_names = set()
 
@@ -53,13 +49,12 @@ class MyWorker(MyObjectFifoEndpoint):
 
     def get_tile(self) -> MyTile:
         assert self.tile != None
-        return self.tile.op
+        return self.tile
 
     def resolve(
         self,
         loc: ir.Location = None,
         ip: ir.InsertionPoint = None,
-        context: ir.Context = None,
     ) -> None:
         my_tile = self.tile.op
         my_link = self.link_with

@@ -5,13 +5,14 @@ TODO:
 """
 
 import numpy as np
+from typing import Optional
 
 from .... import ir
-from ....extras.util import np_dtype_to_mlir_type
 from ....dialects.aiex import runtime_sequence, npu_dma_memcpy_nd, npu_sync, T
 from .inout import InOutProgram
 from ...phys.tile import MyTile
 from ..objectfifo import ObjectFifoHandle
+from ...tensor import MyTensorType
 
 
 class SimpleFifoInOutProgram(InOutProgram):
@@ -21,14 +22,17 @@ class SimpleFifoInOutProgram(InOutProgram):
         bytes_in: int,
         fifo_out: ObjectFifoHandle,
         bytes_out: int,
-        in_sizes: list[int] = None,
-        in_strides: list[int] = None,
-        out_sizes: list[int] = None,
-        out_strides: list[int] = None,
-        dtype=np.uint8,  # TODO: needs type
+        in_sizes: Optional[list[int]] = None,
+        in_strides: Optional[list[int]] = None,
+        out_sizes: Optional[list[int]] = None,
+        out_strides: Optional[list[int]] = None,
+        dtype: np.generic = np.uint8,
     ):
         assert bytes_in % np.prod(fifo_in.obj_type[0]) == 0
         assert bytes_out % np.prod(fifo_out.obj_type[0]) == 0
+        assert bytes_in > 0
+        assert bytes_out > 0
+
         self.fifo_in = fifo_in
         self.fifo_out = fifo_out
         self.bytes_in = bytes_in
@@ -77,7 +81,7 @@ class SimpleFifoInOutProgram(InOutProgram):
 
     def get_tile(self) -> MyTile:
         assert self.tile != None
-        return self.tile.op
+        return self.tile
 
     def get_fifos(self) -> list[ObjectFifoHandle]:
         return [self.fifo_in, self.fifo_out]
@@ -86,10 +90,9 @@ class SimpleFifoInOutProgram(InOutProgram):
         self,
         loc: ir.Location = None,
         ip: ir.InsertionPoint = None,
-        context: ir.Context = None,
     ) -> None:
-        tensor_in_ty = T.memref(self.bytes_in, np_dtype_to_mlir_type(self.dtype))
-        tensor_out_ty = T.memref(self.bytes_out, np_dtype_to_mlir_type(self.dtype))
+        tensor_in_ty = MyTensorType(self.bytes_in, self.dtype).memref_type
+        tensor_out_ty = MyTensorType(self.bytes_out, self.dtype).memref_type
 
         @runtime_sequence(tensor_in_ty, tensor_out_ty)
         def sequence(inTensor, outTensor):

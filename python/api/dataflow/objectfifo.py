@@ -7,6 +7,7 @@ TODO:
 
 # Address circular dependency between MyObjectFifo and ObjectFifoHandle
 from __future__ import annotations
+from typing import Optional
 
 from ... import ir
 from ..._mlir_libs._aie import ObjectFifoSubviewType
@@ -21,10 +22,9 @@ from ...dialects._aie_ops_gen import (
 )
 from ...dialects.aie import object_fifo
 
-from ...dialects.memref import MemRefType
 from ..resolvable import Resolvable
 from .endpoint import MyObjectFifoEndpoint
-
+from ..tensor import MyTensorType
 
 class MyObjectFifo(Resolvable):
     __of_index = 0
@@ -32,15 +32,15 @@ class MyObjectFifo(Resolvable):
     def __init__(
         self,
         depth: int = 1,
-        memref_type=None,
+        obj_type: MyTensorType = None,
         name: str = None,
         end1: MyObjectFifoEndpoint = None,
         end2: MyObjectFifoEndpoint = None,
-        dimensionsToStream=None,  # TODO(erika): needs a type
-        dimensionsFromStreamPerConsumer=None,  # TODO(erika): needs a type
+        dimensionsToStream=list[list[int]],                 # TODO(erika): needs a type
+        dimensionsFromStreamPerConsumer=list[list[int]],    # TODO(erika): needs a type
     ):
-        self.__depth: int = depth
-        self.__memref_type = memref_type
+        self.__depth = depth
+        self.__obj_type = obj_type
         self.end1: MyObjectFifoEndpoint = end1
         self.end2: MyObjectFifoEndpoint = end2
         self.dimensionToStream = dimensionsToStream
@@ -50,9 +50,9 @@ class MyObjectFifo(Resolvable):
             self.name = f"myof{MyObjectFifo.__get_index()}"
         else:
             self.name = name
-        self.__op = None
-        self.__first = None
-        self.__second = None
+        self.__op: Optional[ObjectFifoCreateOp] = None
+        self.__first: ObjectFifoHandle = ObjectFifoHandle(self, True)
+        self.__second: ObjectFifoHandle = ObjectFifoHandle(self, False)
 
     @classmethod
     def __get_index(cls) -> int:
@@ -67,48 +67,38 @@ class MyObjectFifo(Resolvable):
 
     @property
     def first(self) -> ObjectFifoHandle:
-        if self.__first == None:
-            self.__first = ObjectFifoHandle(self, True)
         return self.__first
-
-    # TODO: type this
-    @property
-    def obj_type(self):
-        return self.__memref_type
 
     @property
     def second(self) -> ObjectFifoHandle:
-        if self.__second == None:
-            self.__second = ObjectFifoHandle(self, False)
         return self.__second
+
+    @property
+    def obj_type(self) -> MyTensorType:
+        return self.__obj_type
 
     def resolve(
         self,
         loc: ir.Location = None,
         ip: ir.InsertionPoint = None,
-        context: ir.Context = None,
     ) -> None:
-        if self.__op != None:
-            return
-        assert self.end1 != None, "ObjectFifo missing endpoint 1"
-        assert self.end2 != None, "ObjectFifo missing endpoint 2"
-        assert self.__memref_type != None, "ObjectFifo missing memref_type"
-        dtype = np_dtype_to_mlir_type(self.__memref_type[1])
-        assert dtype != None
-        memRef_ty = MemRefType.get(shape=self.__memref_type[0], element_type=dtype)
-        self.__op = object_fifo(
-            self.name,
-            self.end1.get_tile(),
-            self.end2.get_tile(),
-            self.__depth,
-            memRef_ty,
-            dimensionsToStream=self.dimensionToStream,
-            dimensionsFromStreamPerConsumer=self.dimensionsFromStreamPerConsumer,
-            loc=loc,
-            ip=ip,
-        )
+        if self.__op == None:
+            assert self.end1 != None, "ObjectFifo missing endpoint 1"
+            assert self.end2 != None, "ObjectFifo missing endpoint 2"
+            assert self.__memref_type != None, "ObjectFifo missing memref_type"
+            self.__op = object_fifo(
+                self.name,
+                self.end1.get_tile().op,
+                self.end2.get_tile().op,
+                self.__depth,
+                self.__obj_type.memref_type,
+                dimensionsToStream=self.dimensionToStream,
+                dimensionsFromStreamPerConsumer=self.dimensionsFromStreamPerConsumer,
+                loc=loc,
+                ip=ip,
+            )
 
-    def _set_endpoint(self, endpoint, first=True):
+    def _set_endpoint(self, endpoint: MyObjectFifoEndpoint, first: bool = True) -> None:
         if first:
             assert self.end1 == None, "ObjectFifo already assigned endpoint 1"
             self.end1 = endpoint
@@ -116,51 +106,40 @@ class MyObjectFifo(Resolvable):
             assert self.end2 == None, "ObjectFifo already assigned endpoint 2"
             self.end2 = endpoint
 
-    def _acquire(
-        self, port: ObjectFifoPort, num_elem: int, loc=None, ip=None, context=None
-    ):
+    def _acquire(self, port: ObjectFifoPort, num_elem: int, loc: ir.Location = None, ip: ir.InsertionPoint = None):
         assert num_elem > 0, "Must consume at least one element"
-        assert (
-            num_elem <= self.__depth
-        ), "Cannot consume elements to exceed ObjectFifo depth"
-        dtype = np_dtype_to_mlir_type(self.__memref_type[1])
-        assert dtype != None
-        memRef_ty = MemRefType.get(shape=self.__memref_type[0], element_type=dtype)
-        subview_t = ObjectFifoSubviewType.get(memRef_ty)
-        acq = ObjectFifoAcquireOp(subview_t, port, self.name, num_elem)
+        assert num_elem <= self.__depth, "Cannot consume elements to exceed ObjectFifo depth"
+
+        subview_t = ObjectFifoSubviewType.get(self.__obj_type.memref_type)
+        acq = ObjectFifoAcquireOp(subview_t, port, self.name, num_elem, loc=loc, ip=ip)
 
         objects = []
         if acq.size.value == 1:
-            return ObjectFifoSubviewAccessOp(memRef_ty, acq.subview, acq.size.value - 1)
+            return ObjectFifoSubviewAccessOp(self.__obj_type.memref_type, acq.subview, acq.size.value - 1, loc=loc, ip=ip)
         for i in range(acq.size.value):
-            objects.append(ObjectFifoSubviewAccessOp(memRef_ty, acq.subview, i))
+            objects.append(ObjectFifoSubviewAccessOp(self.__obj_type.memref_type, acq.subview, i, loc=loc, ip=ip))
         return objects
 
-    def _release(
-        self, port: ObjectFifoPort, num_elem: int, loc=None, ip=None, context=None
-    ):
+    def _release(self, port: ObjectFifoPort, num_elem: int, loc: ir.Location = None, ip: ir.InsertionPoint = None):
         assert num_elem > 0, "Must consume at least one element"
-        assert (
-            num_elem <= self.__depth
-        ), "Cannot consume elements to exceed ObjectFifo depth"
+        assert num_elem <= self.__depth, "Cannot consume elements to exceed ObjectFifo depth"
         objectfifo_release(port, self.name, num_elem, loc=loc, ip=ip)
 
 
 class ObjectFifoHandle(Resolvable):
     def __init__(self, of: MyObjectFifo, is_first: bool):
-        self.__port = ObjectFifoPort.Produce if is_first else ObjectFifoPort.Consume
+        self.__port: ObjectFifoPort = ObjectFifoPort.Produce if is_first else ObjectFifoPort.Consume
         self.__is_first = is_first
         self.__object_fifo = of
 
-    def acquire(self, num_elem: int, loc=None, ip=None, context=None):
-        return self.__object_fifo._acquire(self.__port, num_elem)
+    def acquire(self, num_elem: int, loc: ir.Location = None, ip: ir.InsertionPoint = None):
+        return self.__object_fifo._acquire(self.__port, num_elem, loc=loc, ip=ip)
 
-    def release(self, num_elem: int, loc=None, ip=None, context=None):
-        return self.__object_fifo._release(self.__port, num_elem)
+    def release(self, num_elem: int, loc: ir.Location = None, ip: ir.InsertionPoint = None):
+        return self.__object_fifo._release(self.__port, num_elem, loc=loc, ip=ip)
 
-    # TODO: type this
     @property
-    def obj_type(self):
+    def obj_type(self) -> MyTensorType:
         return self.__object_fifo.obj_type
 
     @property
@@ -178,6 +157,5 @@ class ObjectFifoHandle(Resolvable):
         self,
         loc: ir.Location = None,
         ip: ir.InsertionPoint = None,
-        context: ir.Context = None,
     ) -> None:
-        return self.__object_fifo.resolve(loc, ip, context)
+        return self.__object_fifo.resolve(loc=loc, ip=ip)

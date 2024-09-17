@@ -10,4 +10,5 @@ from ..resolvable import Resolvable
 
 class MyKernel(Resolvable):
     @abstractmethod
-    def __call__(self, *args, **kwargs): ...
+    def __call__(self, *args, **kwargs) -> None:
+        pass

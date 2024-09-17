@@ -16,6 +16,7 @@ from aie.api.dataflow.objectfifo import MyObjectFifo
 from aie.api.kernels.binkernel import BinKernel
 from aie.api.phys.device import NPU1Col1
 from aie.api.program import MyProgram
+from aie.api.tensor import MyTensorType
 from aie.api.worker import MyWorker
 
 try:
@@ -28,19 +29,16 @@ except ValueError:
 
 assert vector_size % 4 == 0
 line_size = vector_size // 4
-
-# TODO: clean up types
-inout_type = ((vector_size,), np.uint8)
-fifo_memref_type = ((line_size,), np.uint8)
+line_type = MyTensorType(np.uint8, (line_size,))
 
 # TODO: rely on depth inference
-of_in = MyObjectFifo(2, memref_type=fifo_memref_type)
-of_out = MyObjectFifo(2, memref_type=fifo_memref_type)
+of_in = MyObjectFifo(2, line_type)
+of_out = MyObjectFifo(2, line_type)
 
 passthrough_fn = BinKernel(
     "passThroughLine",
     "passThrough.cc.o",
-    [fifo_memref_type, fifo_memref_type, np.int32],
+    [line_type, line_type, np.int32],
 )
 
 

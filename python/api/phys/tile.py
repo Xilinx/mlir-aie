@@ -4,14 +4,21 @@ TODOs:
 * error handling
 * tile types"
 """
-
-from ... import ir
-
+from typing import Optional
+from ...dialects.aie import TileOp
 
 class MyTile:
     def __init__(self, col: int, row: int) -> None:
-        assert isinstance(col, int)
-        assert isinstance(row, int)
         self.col: int = col
         self.row: int = row
-        self.op = None
+        self.__op: Optional[TileOp] = None
+
+    @property
+    def op(self) -> TileOp:
+        assert self.__op != None
+        return self.__op
+
+    @op.setter
+    def op(self, op: TileOp):
+        assert self.__op == None
+        self.__op = op

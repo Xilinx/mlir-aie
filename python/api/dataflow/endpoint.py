@@ -6,7 +6,7 @@ TODO:
 * join
 """
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from ..phys.tile import MyTile
 from ..resolvable import Resolvable
 

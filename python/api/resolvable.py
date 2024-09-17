@@ -14,5 +14,4 @@ class Resolvable(ABC):
         cls,
         loc: ir.Location = None,
         ip: ir.InsertionPoint = None,
-        context: ir.Context = None,
     ) -> None: ...
