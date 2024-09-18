@@ -354,25 +354,13 @@ void Pathfinder::sortFlows(const int maxCol, const int maxRow) {
       normalFlows.push_back(f);
   }
   std::sort(priorityFlows.begin(), priorityFlows.end(),
-            [maxCol, maxRow](const auto &lhs, const auto &rhs) {
+            [maxCol](const auto &lhs, const auto &rhs) {
               int lhsUniqueID = lhs.src.coords.col;
               lhsUniqueID += lhs.src.coords.row * maxCol;
-              int currMultiplier = maxCol * maxRow;
-              for (auto dest : lhs.dsts) {
-                lhsUniqueID += currMultiplier;
-                lhsUniqueID += dest.coords.col;
-                lhsUniqueID += dest.coords.row * maxCol;
-                currMultiplier += maxCol * maxRow;
-              }
+              lhsUniqueID += getWireBundleAsInt(lhs.src.port.bundle);
               int rhsUniqueID = rhs.src.coords.col;
               rhsUniqueID += rhs.src.coords.row * maxCol;
-              currMultiplier = maxCol * maxRow;
-              for (auto dest : rhs.dsts) {
-                rhsUniqueID += currMultiplier;
-                rhsUniqueID += dest.coords.col;
-                rhsUniqueID += dest.coords.row * maxCol;
-                currMultiplier += maxCol * maxRow;
-              }
+              rhsUniqueID += getWireBundleAsInt(rhs.src.port.bundle);
               return lhsUniqueID < rhsUniqueID;
             });
   flows = priorityFlows;
@@ -692,4 +680,33 @@ Pathfinder::findPaths(const int maxIterations) {
 
   LLVM_DEBUG(llvm::dbgs() << "\t---End Pathfinder::findPaths---\n");
   return routingSolution;
+}
+
+// Get enum int value from WireBundle.
+int AIE::getWireBundleAsInt(WireBundle bundle) {
+  switch (bundle) {
+  case WireBundle::Core:
+    return 0;
+  case WireBundle::DMA:
+    return 1;
+  case WireBundle::FIFO:
+    return 2;
+  case WireBundle::South:
+    return 3;
+  case WireBundle::West:
+    return 4;
+  case WireBundle::North:
+    return 5;
+  case WireBundle::East:
+    return 6;
+  case WireBundle::PLIO:
+    return 7;
+  case WireBundle::NOC:
+    return 8;
+  case WireBundle::Trace:
+    return 9;
+  case WireBundle::Ctrl:
+    return 10;
+  }
+  return -1;
 }
