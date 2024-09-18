@@ -252,6 +252,9 @@ public:
   ShimMuxOp getShimMux(mlir::OpBuilder &builder, int col);
 };
 
+// Get enum int value from WireBundle.
+int getWireBundleAsInt(WireBundle bundle);
+
 } // namespace xilinx::AIE
 
 namespace llvm {
