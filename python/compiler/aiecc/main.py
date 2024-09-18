@@ -445,7 +445,10 @@ class FlowRunner:
         await self.do_call(
             task,
             [
-                "chess-llvm-link",
+                # The path below is cheating a bit since it refers directly to the AIE1
+                # version of llvm-link, rather than calling the architecture-specific
+                # tool version.
+                opts.aietools_path + "/tps/lnx64/target/bin/LNa64bin/chess-llvm-link",
                 llvmir_chesshack,
                 chess_intrinsic_wrapper_ll_path,
                 "-S",
