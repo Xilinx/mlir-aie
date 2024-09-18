@@ -297,6 +297,48 @@ emitControlPacketOps(OpBuilder &builder,
   return success();
 }
 
+// Perform bitwise or on consecutive control packets operating on the same
+// address, to resolve the lack of mask write in control packets.
+LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
+  SmallVector<AIEX::NpuControlPacketOp> ctrlPktOps;
+  body->walk(
+      [&](AIEX::NpuControlPacketOp cpOp) { ctrlPktOps.push_back(cpOp); });
+  if (ctrlPktOps.empty())
+    return success();
+
+  SmallVector<Operation *> erased;
+  int addrBuffer = ctrlPktOps[0].getAddress();
+  AIEX::NpuControlPacketOp ctrlPktBuffer = ctrlPktOps[0];
+  for (size_t i = 1; i < ctrlPktOps.size(); i++) {
+    int currentAddrBuffer = ctrlPktOps[i].getAddress();
+    if (addrBuffer != currentAddrBuffer) {
+      addrBuffer = currentAddrBuffer;
+      ctrlPktBuffer = ctrlPktOps[i];
+      continue;
+    }
+    auto bufferedData = ctrlPktBuffer.getData().value();
+    auto currentData = ctrlPktOps[i].getData().value();
+    SmallVector<int> newData;
+    for (unsigned j = 0; j < std::max(bufferedData.size(), currentData.size());
+         j++) {
+      if (j < std::min(bufferedData.size(), currentData.size())) {
+        newData.push_back(bufferedData[j] | currentData[j]);
+        continue;
+      }
+      newData.push_back(j < bufferedData.size() ? bufferedData[j]
+                                                : currentData[j]);
+    }
+    ctrlPktBuffer.getProperties().data = DenseI32ArrayAttr::get(
+        ctrlPktBuffer->getContext(), ArrayRef<int>{newData});
+    erased.push_back(ctrlPktOps[i]);
+  }
+
+  for (auto e : erased)
+    e->erase();
+
+  return success();
+}
+
 // an enum to represent the output type of the transaction binary
 enum OutputType {
   Transaction,
@@ -349,6 +391,9 @@ static LogicalResult convertTransactionOpsToMLIR(
       return failure();
   } else if (outputType == OutputType::ControlPacket) {
     if (failed(emitControlPacketOps(builder, operations, global_data)))
+      return failure();
+    // resolve mask writes; control packet doesn't natively support mask write.
+    if (failed(orConsecutiveWritesOnSameAddr(&seq.getBody().front())))
       return failure();
   } else {
     llvm_unreachable("bad output type");
