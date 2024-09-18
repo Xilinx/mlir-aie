@@ -689,29 +689,5 @@ Pathfinder::findPaths(const int maxIterations) {
 
 // Get enum int value from WireBundle.
 int AIE::getWireBundleAsInt(WireBundle bundle) {
-  switch (bundle) {
-  case WireBundle::Core:
-    return 0;
-  case WireBundle::DMA:
-    return 1;
-  case WireBundle::FIFO:
-    return 2;
-  case WireBundle::South:
-    return 3;
-  case WireBundle::West:
-    return 4;
-  case WireBundle::North:
-    return 5;
-  case WireBundle::East:
-    return 6;
-  case WireBundle::PLIO:
-    return 7;
-  case WireBundle::NOC:
-    return 8;
-  case WireBundle::Trace:
-    return 9;
-  case WireBundle::Ctrl:
-    return 10;
-  }
-  return -1;
+  return static_cast<typename std::underlying_type<WireBundle>::type>(bundle);
 }
