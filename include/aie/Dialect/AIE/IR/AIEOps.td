@@ -29,7 +29,7 @@ class AIE_Op<string mnemonic, list<Trait> traits = []> :
 def AIE_DeviceOp: AIE_Op<"device", [
     AIETarget,
     SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove
-  ]> {
+  ]>, Results<(outs Index:$result)> {
   let summary = "Define an AIE design targetting a complete device";
   let description = [{
     This operation describes a design that executes on a particular AIEngine device.
@@ -48,7 +48,7 @@ def AIE_DeviceOp: AIE_Op<"device", [
 
     Example:
     ```
-    aie.device(xcvc1902) {
+    %device = aie.device(xcvc1902) {
       %tile = aie.tile(1, 1)
       %CORE = aie.core(%tile) { ... }
     }
