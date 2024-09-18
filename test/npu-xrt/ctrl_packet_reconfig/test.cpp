@@ -23,7 +23,6 @@
 
 constexpr int IN_SIZE = 64 * 64;
 constexpr int OUT_SIZE = 64 * 64;
-constexpr int CTRL_IN_SIZE = 1024;
 
 #define IN_DATATYPE int8_t
 #define OUT_DATATYPE int8_t
@@ -89,7 +88,7 @@ int main(int argc, const char *argv[]) {
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(OUT_DATATYPE),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
-  auto bo_ctrlpkt = xrt::bo(device, CTRL_IN_SIZE * sizeof(int32_t),
+  auto bo_ctrlpkt = xrt::bo(device, ctrlPackets.size() * sizeof(int32_t),
                             XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
 
   IN_DATATYPE *bufInA = bo_inA.map<IN_DATATYPE *>();
