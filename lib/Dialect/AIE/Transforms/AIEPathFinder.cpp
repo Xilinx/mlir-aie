@@ -354,13 +354,18 @@ void Pathfinder::sortFlows(const int maxCol, const int maxRow) {
       normalFlows.push_back(f);
   }
   std::sort(priorityFlows.begin(), priorityFlows.end(),
-            [maxCol](const auto &lhs, const auto &rhs) {
+            [maxCol, maxRow](const auto &lhs, const auto &rhs) {
               int lhsUniqueID = lhs.src.coords.col;
               lhsUniqueID += lhs.src.coords.row * maxCol;
+              lhsUniqueID += maxRow * maxCol;
               lhsUniqueID += getWireBundleAsInt(lhs.src.port.bundle);
+              lhsUniqueID += AIE::getMaxEnumValForWireBundle();
+              lhsUniqueID += lhs.src.port.channel;
               int rhsUniqueID = rhs.src.coords.col;
               rhsUniqueID += rhs.src.coords.row * maxCol;
+              rhsUniqueID += maxRow * maxCol;
               rhsUniqueID += getWireBundleAsInt(rhs.src.port.bundle);
+              rhsUniqueID += rhs.src.port.channel;
               return lhsUniqueID < rhsUniqueID;
             });
   flows = priorityFlows;
