@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file -convert-aie-to-control-packets="elf-dir=%S/convert_aie_to_ctrl_pkts_elfs/" %s | FileCheck %s
+// RUN: aie-opt -convert-aie-to-control-packets="elf-dir=%S/convert_aie_to_ctrl_pkts_elfs/" %s | FileCheck %s
 
 // CHECK-label: aiex.runtime_sequence @configure
 // CHECK-COUNT-5: aiex.control_packet {address = {{.*}} : ui32, data = array<i32: {{.*}}>
