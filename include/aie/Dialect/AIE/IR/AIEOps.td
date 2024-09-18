@@ -27,13 +27,13 @@ class AIE_Op<string mnemonic, list<Trait> traits = []> :
 
 
 def AIE_DeviceOp: AIE_Op<"device", [
-    AIETarget, HasParent<"mlir::ModuleOp">,
+    AIETarget,
     SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove
   ]> {
   let summary = "Define an AIE design targetting a complete device";
   let description = [{
     This operation describes a design that executes on a particular AIEngine device.
-    It exists at the toplevel of a design; although currently it does not replace the
+    It does not replace the
     default toplevel module in MLIR, the intention is that this could be the case
     in the future.
 
@@ -1483,8 +1483,8 @@ def AIE_CascadeFlowOp: AIE_Op<"cascade_flow", []> {
   );
   let summary = "A cascade connection between tiles";
   let description = [{
-    The `aie.cascade_flow` operation represents a cascade connection between two `aie.tile` operations.  
-    During lowering, this is replaced by `aie.configure_cascade` operations for each `aie.tile` based on 
+    The `aie.cascade_flow` operation represents a cascade connection between two `aie.tile` operations.
+    During lowering, this is replaced by `aie.configure_cascade` operations for each `aie.tile` based on
     their relative placement to one another.
 
     Example:
@@ -1507,7 +1507,7 @@ def AIE_CascadeFlowOp: AIE_Op<"cascade_flow", []> {
 def AIE_ConfigureCascadeOp: AIE_Op<"configure_cascade", [HasParent<"DeviceOp">]> {
   let summary = "An op to configure the input and output directions of the cascade for a single AIE tile";
   let description = [{
-    An operation to configure the cascade on a single tile in both the input and the output 
+    An operation to configure the cascade on a single tile in both the input and the output
     directions.
 
     Example:
@@ -1927,7 +1927,7 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
   }];
 
   let arguments = (
-    ins AIE_ObjectFifoSubviewType:$subview, 
+    ins AIE_ObjectFifoSubviewType:$subview,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$index
   );
 
