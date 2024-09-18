@@ -77,19 +77,9 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
           builder.create<AIEX::RuntimeSequenceOp>(loc, f.getSymNameAttr());
       newSeq.getBody().push_back(new Block);
 
-      // Get total size of all control packets (in i32 words)
-      int64_t totalCtrlPktSizeInI32 = 0;
-      llvm::for_each(controlPacketOps, [&](AIEX::NpuControlPacketOp ctrlPktOp) {
-        if (ctrlPktOp.getData())
-          totalCtrlPktSizeInI32 += ctrlPktOp.getData()->size();
-        else if (ctrlPktOp.getLength())
-          totalCtrlPktSizeInI32 += *ctrlPktOp.getLength();
-        totalCtrlPktSizeInI32++; // Plus one control packet info word
-      });
-
-      auto ctrlPktMemrefType =
-          MemRefType::get(SmallVector<int64_t>{totalCtrlPktSizeInI32},
-                          IntegerType::get(ctx, 32), nullptr, 0);
+      // Using dynamic shape for ctrl pkt stream.
+      auto ctrlPktMemrefType = MemRefType::get(
+          ShapedType::kDynamic, IntegerType::get(ctx, 32), nullptr, 0);
       auto newBlockArg = newSeq.getBody().addArgument(ctrlPktMemrefType, loc);
       builder.setInsertionPointToStart(&newSeq.getBody().front());
 
