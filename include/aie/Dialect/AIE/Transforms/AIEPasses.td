@@ -28,7 +28,7 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
 
   let options = [
     Option<"clAllocScheme", "alloc-scheme", "std::string", /*default=*/"",
-           "Choose allocation scheme; possibilities: basic-sequential, bank-aware. By default, bank-aware is selected and if it fails, will fall back to basic-sequential scheme.">,
+           "Select allocation scheme: basic-sequential or bank-aware. Default is bank-aware, falling back to basic-sequential if it fails.">,
   ];
 }
 
