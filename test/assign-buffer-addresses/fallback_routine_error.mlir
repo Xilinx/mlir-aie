@@ -9,8 +9,8 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
-// CHECK:   error: Failed to allocate buffer: "f" with size: 512 bytes.
-// CHECK: note: see current operation: %6 = "aie.buffer"(%0) <{sym_name = "f"}> : (index) -> memref<256xi16>
+// CHECK:   error: Failed to allocate buffer: "act_3_4_buff_2" with size: 2048 bytes.
+// CHECK: note: see current operation: %10 = "aie.buffer"(%0) <{sym_name = "act_3_4_buff_2"}> : (index) -> memref<512xi32>
 // CHECK: error: 'aie.tile' op All requested buffers don't fit in the available memory: Bank aware
 
 // CHECK:   %tile12 = aie.tile(1, 2)
@@ -22,10 +22,12 @@
 // CHECK:         bank : 1        0x2000-0x3FFF
 // CHECK:                 b       : 0x2000-0x3FFF         (8192 bytes)
 // CHECK:         bank : 2        0x4000-0x5FFF
-// CHECK:                 c       : 0x4000-0x5FFF         (8192 bytes)
+// CHECK:                 c       : 0x4000-0x4FFF         (4096 bytes)
+// CHECK:                 d       : 0x5000-0x5FFF         (4096 bytes)
 // CHECK:         bank : 3        0x6000-0x7FFF
-// CHECK:                 d       : 0x6000-0x6FFF         (4096 bytes)
-// CHECK:                 e       : 0x7000-0x7FFF         (4096 bytes)
+// CHECK:                 e       : 0x6000-0x6FFF         (4096 bytes)
+// CHECK:                 act_3_4_buff_0  : 0x7000-0x77FF         (2048 bytes)
+// CHECK:                 act_3_4_buff_1  : 0x7800-0x7FFF         (2048 bytes)
 
 // CHECK: error: 'aie.tile' op allocated buffers exceeded available memory: Sequential
 // CHECK: (no stack allocated)
@@ -39,18 +41,22 @@
 // CHECK:         a       : 0x4000-0x4FFF         (4096 bytes)
 // CHECK:         d       : 0x5000-0x5FFF         (4096 bytes)
 // CHECK:         e       : 0x6000-0x6FFF         (4096 bytes)
-// CHECK:         f       : 0x8000-0x81FF         (512 bytes)
+// CHECK:         act_3_4_buff_0  : 0x7000-0x77FF         (2048 bytes)
+// CHECK:         act_3_4_buff_1  : 0x7800-0x7FFF         (2048 bytes)
+// CHECK:         act_3_4_buff_2  : 0x8000-0x87FF         (2048 bytes)
+// CHECK:         act_3_4_buff_3  : 0x8800-0x8FFF         (2048 bytes)
+// CHECK:         f       : 0x9000-0x91FF         (512 bytes)
 
 module @test {
  aie.device(xcvc1902) {
   %tile12 = aie.tile(1, 2)
-  %1 = aie.buffer(%tile12) { sym_name = "a" } : memref<2048xi32>  //8192 bytes
+  %1 = aie.buffer(%tile12) { sym_name = "a" } : memref<1024xi32>  //8192 bytes
   %2 = aie.buffer(%tile12) { sym_name = "b" } : memref<2048xi32>  //8192 bytes
   %3 = aie.buffer(%tile12) { sym_name = "c" } : memref<2048xi32>  //8192 bytes
   %4 = aie.buffer(%tile12) { sym_name = "d" } : memref<1024xi32>  //4096 bytes
   %5 = aie.buffer(%tile12) { sym_name = "e" } : memref<1024xi32>  //4096 bytes
   %6 = aie.buffer(%tile12) { sym_name = "f" } : memref<256xi16>   //32 bytes
   %tile13 = aie.tile(1, 3)
-  aie.objectfifo @act_3_4(%tile12, {%tile13}, 4 : i32) : !aie.objectfifo<memref<256xi32>> //4x1024 bytes
+  aie.objectfifo @act_3_4(%tile12, {%tile13}, 4 : i32) : !aie.objectfifo<memref<512xi32>> //4x1024 bytes
  }
 }
