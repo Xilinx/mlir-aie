@@ -20,7 +20,6 @@ from aie.api.dataflow.objectfifo import MyObjectFifo
 from aie.api.dataflow.objectfifolink import MyObjectFifoLink
 from aie.api.kernels.binkernel import BinKernel
 from aie.api.phys.device import NPU1Col1
-from aie.api.tensor import MyTensorType
 from aie.api.program import MyProgram
 from aie.api.worker import MyWorker
 
@@ -95,14 +94,14 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
     num_data_tiles = (M // m) * (N // n)
 
     # input/output matrices
-    memref_A_ty = MyTensorType(dtype_in, [M * K])
-    memref_B_ty = MyTensorType(dtype_in, [K * N])
-    memref_C_ty = MyTensorType(dtype_out, [M * N])
+    memref_A_ty = np.ndarray[dtype_in, [M * K]]
+    memref_B_ty = np.ndarray[dtype_in, [K * N]]
+    memref_C_ty = np.ndarray[dtype_out, [M * N]]
 
     # submatrices
-    memref_a_ty = MyTensorType(dtype_in, (m, k))
-    memref_b_ty = MyTensorType(dtype_in, (k, n))
-    memref_c_ty = MyTensorType(dtype_out, (m, n))
+    memref_a_ty = np.ndarray[dtype_in, (m, k)]
+    memref_b_ty = np.ndarray[dtype_in, (k, n)]
+    memref_c_ty = np.ndarray[dtype_out, (m, n)]
 
     # AIE Core Function declarations
     scalar_str = "" if vectorized else "scalar_"
