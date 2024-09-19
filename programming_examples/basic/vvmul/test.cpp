@@ -25,7 +25,7 @@ int main(int argc, const char *argv[]) {
   po::options_description desc("Allowed options");
   po::variables_map vm;
   desc.add_options()("help,h", "produce help message")(
-    "xclbin_1", po::value<std::string>()->required(),
+    "xclbin", po::value<std::string>()->required(),
     "the input xclbin path2")(
     "xclbin_2", po::value<std::string>()->required(),
     "the input xclbin path2")(
@@ -33,7 +33,7 @@ int main(int argc, const char *argv[]) {
     "the kernel_2 name in the XCLBIN (for instance PP_PRE_FD)")(
     "verbosity,v", po::value<int>()->default_value(0),
     "the verbosity of the output")(
-    "instr_1", po::value<std::string>()->required(),
+    "instr", po::value<std::string>()->required(),
     "path of file containing userspace instructions sent to the NPU")(
     "instr_2", po::value<std::string>()->required(),
     "path of file containing userspace instructions sent to the NPU")(
@@ -52,7 +52,7 @@ int main(int argc, const char *argv[]) {
   int n_warmup_iterations = vm["warmup"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
 
-  constexpr int IN_SIZE_1 = 256*60;
+  constexpr int IN_SIZE_1 = 4096;
   constexpr int OUT_SIZE_1 = IN_SIZE_1;
 
   constexpr int IN_VOLUME_2 = 4096;
@@ -68,8 +68,8 @@ int main(int argc, const char *argv[]) {
   auto kernelName = "MLIR_AIE";
   auto device = xrt::device(device_index);
 
-  std::vector<uint32_t> instr_v1 = test_utils::load_instr_sequence(vm["instr_1"].as<std::string>());
-  auto xclbin_1 = xrt::xclbin(vm["xclbin_1"].as<std::string>()); // Load the xclbin
+  std::vector<uint32_t> instr_v1 = test_utils::load_instr_sequence(vm["instr"].as<std::string>());
+  auto xclbin_1 = xrt::xclbin(vm["xclbin"].as<std::string>()); // Load the xclbin
   device.register_xclbin(xclbin_1); // Register xclbin
   xrt::hw_context context_1(device, xclbin_1.get_uuid()); // Get a hardware context
   auto kernel_1 = xrt::kernel(context_1, kernelName); // Get a kernel_2 handle: MLIR_AIE

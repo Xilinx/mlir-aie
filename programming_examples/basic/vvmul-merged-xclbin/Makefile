@@ -12,7 +12,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-data_size = 4096
+data_size = 8192
 targetname = vectorMult
 devicename = npu
 col = 0

@@ -18,7 +18,7 @@ import sys
 
 
 def my_vector_mul():
-    N = 256*60
+    N = 4096
     n = 16
     N_div_n = N // n
 
