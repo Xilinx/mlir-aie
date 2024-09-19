@@ -463,7 +463,6 @@ struct AIEAssignBufferAddressesPass
       }
     } else {
       for (auto tile : device.getOps<TileOp>()) {
-        tile.emitWarning("Memory allocation scheme is either missing or unrecognized. By default, bank-aware is selected.");
         if (auto res = simpleBankAwareAllocation(tile); res.failed()) {
           if (auto res2 = basicAllocation(tile); res2.failed())
             return signalPassFailure();
