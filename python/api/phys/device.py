@@ -92,3 +92,15 @@ class NPU1Col1(MyDevice):
         ip: ir.InsertionPoint = None,
     ) -> None:
         return AIEDevice.npu1_1col
+
+
+class XCVC1902(MyDevice):
+    def __init__(self) -> None:
+        super().__init__(cols=1, rows=1)  # TODO: this is just dummy for now
+
+    def resolve(
+        self,
+        loc: ir.Location = None,
+        ip: ir.InsertionPoint = None,
+    ) -> None:
+        return AIEDevice.xcvc1902

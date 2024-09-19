@@ -6,13 +6,20 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
-from aie.dialects.scf import *
-from aie.extras.dialects.ext import memref, arith
-from aie.extras.context import mlir_mod_ctx
-
+import numpy as np
 import sys
+
+from aie.dialects.scf import for_ as range_
+from aie.dialects.scf import yield_
+from aie.dialects.aie import T
+from aie.extras.dialects.ext import memref, arith
+
+from aie.api.dataflow.inout.simplefifoinout import SimpleFifoInOutProgram
+from aie.api.dataflow.objectfifo import MyObjectFifo
+from aie.api.kernels.binkernel import BinKernel
+from aie.api.phys.device import NPU1Col1, XCVC1902
+from aie.api.program import MyProgram
+from aie.api.worker import MyWorker
 
 # Size of the entire image
 IMAGE_HEIGHT = 16
@@ -31,76 +38,60 @@ objfifo_capacity = 4
 
 
 def my_matrix_add_one():
-
     if len(sys.argv) != 3:
         raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
     if sys.argv[1] == "npu":
-        dev = AIEDevice.npu1_1col
+        dev = NPU1Col1()
     elif sys.argv[1] == "xcvc1902":
-        dev = AIEDevice.xcvc1902
+        dev = XCVC1902()
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
-    @device(dev)
-    def device_body():
-        memRef_ty = T.memref(TILE_SIZE, T.i32())
+    my_dtype = np.int32
+    tile_ty = np.ndarray[my_dtype, (TILE_SIZE,)]
 
-        # Tile declarations
-        ShimTile = tile(int(sys.argv[2]), 0)
-        ComputeTile2 = tile(int(sys.argv[2]), 2)
+    # AIE-array data movement with object fifos
+    of_in = MyObjectFifo(objfifo_capacity, tile_ty)
+    of_out = MyObjectFifo(objfifo_capacity, tile_ty)
 
-        # AIE-array data movement with object fifos
-        # Input
-        of_in1 = object_fifo("in0", ShimTile, ComputeTile2, objfifo_capacity, memRef_ty)
-
-        # Output
-        of_out1 = object_fifo(
-            "out0", ComputeTile2, ShimTile, objfifo_capacity, memRef_ty
-        )
-
-        # Set up compute tile 2
-        @core(ComputeTile2)
-        def core_body():
-            # Effective while(1)
-            for _ in for_(sys.maxsize):
-                elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
-                elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
-                for i in for_(TILE_SIZE):
-                    v0 = memref.load(elem_in, [i])
-                    v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                    memref.store(v1, elem_out, [i])
-                    yield_([])
-                of_in1.release(ObjectFifoPort.Consume, 1)
-                of_out1.release(ObjectFifoPort.Produce, 1)
+    # Set up compute tile 2
+    def core_fn(of_in, of_out):
+        # Effective while(1)
+        for _ in range_(sys.maxsize):
+            elem_in = of_in.acquire(1)
+            elem_out = of_out.acquire(1)
+            for i in range_(TILE_SIZE):
+                v0 = memref.load(elem_in, [i])
+                v1 = arith.addi(v0, arith.constant(1, T.i32()))
+                memref.store(v1, elem_out, [i])
                 yield_([])
+            of_in.release(1)
+            of_out.release(1)
+            yield_([])
 
-        # To/from AIE-array data movement
+    # TODO: clean up placement
+    worker_program = MyWorker(
+        core_fn, [of_in.second, of_out.first], coords=(int(sys.argv[2]), 2)
+    )
 
-        tensor_ty = T.memref(TILE_SIZE, T.i32())
+    # To/from AIE-array data movement
+    inout_program = SimpleFifoInOutProgram(
+        of_in.first,
+        TILE_SIZE,
+        of_out.second,
+        TILE_SIZE,
+        in_sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
+        in_strides=[1, 1, IMAGE_WIDTH, 1],
+        out_sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
+        out_strides=[1, 1, IMAGE_WIDTH, 1],
+        dtype=my_dtype,
+        coords=(int(sys.argv[2]), 0),
+    )
 
-        @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
-        def sequence(inTensor, notUsed, outTensor):
-            npu_dma_memcpy_nd(
-                metadata="out0",
-                bd_id=0,
-                mem=outTensor,
-                sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
-                strides=[1, 1, IMAGE_WIDTH, 1],
-            )
-            npu_dma_memcpy_nd(
-                metadata="in0",
-                bd_id=1,
-                mem=inTensor,
-                sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
-                strides=[1, 1, IMAGE_WIDTH, 1],
-            )
-            npu_sync(column=0, row=0, direction=0, channel=0)
+    my_program = MyProgram(
+        dev, worker_programs=[worker_program], inout_program=inout_program
+    )
+    my_program.resolve_program()
 
 
-with mlir_mod_ctx() as ctx:
-    my_matrix_add_one()
-    res = ctx.module.operation.verify()
-    if res == True:
-        print(ctx.module)
-    else:
-        print(res)
+my_matrix_add_one()

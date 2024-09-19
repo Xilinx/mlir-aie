@@ -5,7 +5,7 @@ TODO:
 
 from abc import abstractmethod
 import numpy as np
-from typing import Callable
+from typing import Callable, Optional
 
 from .... import ir
 from ....extras.util import np_dtype_to_mlir_type
@@ -27,7 +27,7 @@ class MyInOutProgram(InOutProgram):
         sequence_fn: Callable[..., None],
         inout_types: list[np.ndarray[np.generic.dtype, np.generic.shape]],
         fifos=list[ObjectFifoHandle],
-        coords: tuple[int, int] = (0, 0),  # TODO: how to get default
+        coords: Optional[tuple[int, int]] = (0, 0),  # TODO: how to get default
     ):
         self.sequence_fn = sequence_fn
         self.inout_types = inout_types

@@ -27,6 +27,7 @@ class SimpleFifoInOutProgram(InOutProgram):
         out_sizes: Optional[list[int]] = None,
         out_strides: Optional[list[int]] = None,
         dtype: np.generic = np.uint8,
+        coords: Optional[tuple[int, int]] = (0, 0),
     ):
         assert bytes_in % np.prod(fifo_in.obj_type.shape) == 0
         assert bytes_out % np.prod(fifo_in.obj_type.shape) == 0
@@ -38,7 +39,7 @@ class SimpleFifoInOutProgram(InOutProgram):
         self.bytes_in = bytes_in
         self.bytes_out = bytes_out
         self.dtype = dtype
-        self.tile = MyTile(0, 0)  # TODO: how to set default here?
+        self.tile = MyTile(*coords)
         fifo_in.set_endpoint(self)
         fifo_out.set_endpoint(self)
 
@@ -52,8 +53,8 @@ class SimpleFifoInOutProgram(InOutProgram):
                 len(in_sizes) > 0 and len(in_sizes) <= 4
             ), "Invalid number of in_sizes"
             assert (
-                np.prod(in_sizes) == self.bytes_in
-            ), "In sizes does not add up to correct input size"
+                self.bytes_in % np.prod(in_sizes) == 0
+            ), "in_sizes does not correctly divide input size"
             self.in_sizes = in_sizes
 
         if in_strides != None:
@@ -69,8 +70,8 @@ class SimpleFifoInOutProgram(InOutProgram):
                 len(out_sizes) > 0 and len(out_sizes) <= 4
             ), "Invalid number of out_sizes"
             assert (
-                np.prod(out_sizes) == self.bytes_out
-            ), "Out sizes does not add up to correct output size"
+                self.bytes_out % np.prod(out_sizes) == 0
+            ), "out_sizes does not correctly divide output size"
             self.out_sizes = out_sizes
 
         if out_strides != None:
