@@ -70,38 +70,6 @@ private:
     return std::nullopt;
   }
 };
-
-// Helper class to get a unique int id for creating a GlobalOp.
-
-struct UniqueGlobalOpIdGetter {
-
-public:
-  // Return an int id unique to all previous ids allocated to existing
-  // GlobalOps.
-  std::optional<int> get() {
-    int id = 0;
-    while (llvm::is_contained(idCache, id))
-      id++;
-    idCache.push_back(id);
-    return id;
-  }
-
-  // Initialize idCache with existing global ops' ids.
-  void init(AIE::DeviceOp dev, std::string blockwriteSymPrefix) {
-    dev.walk([&](memref::GlobalOp globalOp) {
-      std::string name = globalOp.getSymName().str();
-      if (name.find(blockwriteSymPrefix) == std::string::npos)
-        return;
-      int id = 0;
-      std::from_chars(&name[blockwriteSymPrefix.length()], &name[name.length()],
-                      id);
-      idCache.push_back(id);
-    });
-  }
-
-private:
-  llvm::SmallVector<int> idCache;
-};
 } // namespace
 
 struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
@@ -554,13 +522,12 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
   using OpConversionPattern::OpConversionPattern;
 
 private:
-  UniqueGlobalOpIdGetter &idGetter;
+  int &cachedId;
 
 public:
-  WriteBdToBlockWritePattern(MLIRContext *context,
-                             UniqueGlobalOpIdGetter &getter,
+  WriteBdToBlockWritePattern(MLIRContext *context, int &cachedId,
                              PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), idGetter(getter) {}
+      : OpConversionPattern(context, benefit), cachedId(cachedId) {}
 
   LogicalResult
   matchAndRewrite(NpuWriteBdOp op, OpAdaptor adaptor,
@@ -675,10 +642,11 @@ public:
       std::string name = "blockwrite_data_";
       rewriter.setInsertionPoint(
           op->getParentOfType<AIEX::RuntimeSequenceOp>());
-      auto id = idGetter.get();
-      if (!id)
-        return failure();
-      name += std::to_string(*id);
+      int id = cachedId;
+      while (dev.lookupSymbol(name + std::to_string(id)))
+        id++;
+      name += std::to_string(id);
+      cachedId = id;
       global = rewriter.create<memref::GlobalOp>(
           op->getLoc(), name, rewriter.getStringAttr("private"), memrefType,
           DenseElementsAttr::get<uint32_t>(tensorType, words), true, nullptr);
@@ -730,9 +698,8 @@ struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
     patterns.insert<PushQueuetoWrite32Pattern>(&getContext());
     patterns.insert<RtpToWrite32Pattern>(&getContext());
     patterns.insert<Write32SymToAddr>(&getContext());
-    UniqueGlobalOpIdGetter cachingIdGetter;
-    cachingIdGetter.init(device, /*GlobalOp symbol prefix*/ "blockwrite_data_");
-    patterns.insert<WriteBdToBlockWritePattern>(&getContext(), cachingIdGetter);
+    int cachedId = 0;
+    patterns.insert<WriteBdToBlockWritePattern>(&getContext(), cachedId);
 
     if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();
