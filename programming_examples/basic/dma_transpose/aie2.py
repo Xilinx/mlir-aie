@@ -14,7 +14,6 @@ from aie.api.dataflow.objectfifo import MyObjectFifo
 from aie.api.dataflow.objectfifolink import MyObjectFifoLink
 from aie.api.phys.device import NPU1Col1
 from aie.api.program import MyProgram
-from aie.api.tensor import MyTensorType
 from aie.api.worker import MyWorker
 
 N = 4096
@@ -26,7 +25,8 @@ if len(sys.argv) == 3:
     K = int(sys.argv[2])
     N = M * K
 
-obj_type = MyTensorType(np.uint32, (M, K))
+my_dtype = np.uint32
+obj_type = np.ndarray[my_dtype, (M, K)]
 
 # TODO: rely on depth inference
 of_in = MyObjectFifo(2, obj_type)
@@ -45,7 +45,7 @@ inout_program = SimpleFifoInOutProgram(
     N,
     in_sizes=[1, K, M, 1],
     in_strides=[1, 1, K, 1],
-    dtype=obj_type.dtype,
+    dtype=my_dtype,
 )
 
 my_program = MyProgram(

@@ -7,14 +7,16 @@ from ..dialects.memref import MemRefType
 
 
 class MyTensorType:
-    def __init__(self, np_ndarray_type: np.ndarray):
+    def __init__(self, np_ndarray_type: np.ndarray[np.generic.dtype, np.generic.shape]):
         args = typing.get_args(np_ndarray_type)
         self.__dtype: np.generic.dtype = args[0]
         self.__shape: np.generic.shape = args[1]
         self.__my_numpy_type = np_ndarray_type
 
     @classmethod
-    def get_memref_type(cls, np_ndarray_type: np.ndarray) -> MemRefType:
+    def get_memref_type(
+        cls, np_ndarray_type: np.ndarray[np.generic.dtype, np.generic.shape]
+    ) -> MemRefType:
         args = typing.get_args(np_ndarray_type)
         dtype: np.generic.dtype = args[0]
         shape: np.generic.shape = args[1]
@@ -31,7 +33,7 @@ class MyTensorType:
         return self.__shape
 
     @property
-    def dtype(self) -> np.generic:
+    def dtype(self) -> np.generic.dtype:
         return self.__dtype
 
     def __eq__(self, other):

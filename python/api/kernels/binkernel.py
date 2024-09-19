@@ -19,7 +19,12 @@ from .kernel import MyKernel
 
 class BinKernel(MyKernel):
     def __init__(
-        self, name: str, bin_name: str, inout_types: list[np.ndarray, np.generic] = []
+        self,
+        name: str,
+        bin_name: str,
+        inout_types: list[
+            np.ndarray[np.generic.dtype, np.generic.shape], np.generic.dtype
+        ] = [],
     ) -> None:
         self.__name = name
         self.__bin_name = bin_name

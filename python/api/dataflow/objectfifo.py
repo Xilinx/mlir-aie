@@ -32,8 +32,8 @@ class MyObjectFifo(Resolvable):
 
     def __init__(
         self,
-        depth: int = 1,
-        obj_type: np.ndarray.generic = None,
+        depth: int,
+        obj_type: np.ndarray[np.generic.dtype, np.generic.shape],
         name: str = None,
         end1: MyObjectFifoEndpoint = None,
         end2: MyObjectFifoEndpoint = None,
