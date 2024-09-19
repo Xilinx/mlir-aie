@@ -1,0 +1,19 @@
+// (c) Copyright 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai
+//
+// RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %S/aie1.mlir -o aie1_overlay.mlir
+// RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --no-compile-host --xclbin-name=aie1.xclbin aie1_overlay.mlir
+//
+// RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %S/aie2.mlir -o aie2_overlay.mlir
+// RUN: %python aiecc.py --no-aiesim --aie-generate-ctrlpkt --aie-generate-npu --no-compile-host --npu-insts-name=aie2_run_seq.txt aie2_overlay.mlir
+//
+// RUN: aie-translate -aie-ctrlpkt-to-bin -aie-sequence-name=configure aie2_overlay.mlir.prj/ctrlpkt.mlir -o ctrlpkt.txt
+//
+// RUN: aie-opt -aie-ctrl-packet-to-dma -aie-dma-to-npu aie2_overlay.mlir.prj/ctrlpkt.mlir -o ctrlpkt_dma_seq.mlir
+// RUN: aie-translate -aie-npu-instgen -aie-sequence-name=configure ctrlpkt_dma_seq.mlir -o ctrlpkt_dma_seq.txt
+//
+// RUN: clang %S/test.cpp -o test.exe -std=c++11 -Wall %xrt_flags -lrt -lstdc++ -lboost_program_options -lboost_filesystem
+// RUN: %run_on_npu ./test.exe | FileCheck %s
+// CHECK: PASS!

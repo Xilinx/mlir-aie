@@ -76,8 +76,10 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
       auto newSeq =
           builder.create<AIEX::RuntimeSequenceOp>(loc, f.getSymNameAttr());
       newSeq.getBody().push_back(new Block);
+
+      // Using dynamic shape for ctrl pkt stream.
       auto ctrlPktMemrefType = MemRefType::get(
-          SmallVector<int64_t>{1024}, IntegerType::get(ctx, 32), nullptr, 0);
+          ShapedType::kDynamic, IntegerType::get(ctx, 32), nullptr, 0);
       auto newBlockArg = newSeq.getBody().addArgument(ctrlPktMemrefType, loc);
       builder.setInsertionPointToStart(&newSeq.getBody().front());
 

@@ -428,7 +428,6 @@ class FlowRunner:
         llvmir_chesslinked_path = llvmir + "chesslinked.ll"
         if not self.opts.execute:
             return llvmir_chesslinked_path
-        llvmir = await read_file_async(llvmir)
 
         install_path = aie.compiler.aiecc.configure.install_path()
         runtime_lib_path = os.path.join(install_path, "aie_runtime_lib")
@@ -436,12 +435,18 @@ class FlowRunner:
             runtime_lib_path, aie_target.upper(), "chess_intrinsic_wrapper.ll"
         )
 
-        await write_file_async(llvmir, llvmir_chesshack)
+        llvmir_ir = await read_file_async(llvmir)
+        llvmir_hacked_ir = downgrade_ir_for_chess(llvmir_ir)
+        await write_file_async(llvmir_hacked_ir, llvmir_chesshack)
+
         assert os.path.exists(llvmir_chesshack)
         await self.do_call(
             task,
             [
-                "llvm-link",
+                # The path below is cheating a bit since it refers directly to the AIE1
+                # version of llvm-link, rather than calling the architecture-specific
+                # tool version.
+                opts.aietools_path + "/tps/lnx64/target/bin/LNa64bin/chess-llvm-link",
                 llvmir_chesshack,
                 chess_intrinsic_wrapper_ll_path,
                 "-S",
@@ -449,10 +454,6 @@ class FlowRunner:
                 llvmir_chesslinked_path,
             ],
         )
-
-        llvmir_chesslinked_ir = await read_file_async(llvmir_chesslinked_path)
-        llvmir_chesslinked_ir = downgrade_ir_for_chess(llvmir_chesslinked_ir)
-        await write_file_async(llvmir_chesslinked_ir, llvmir_chesslinked_path)
 
         return llvmir_chesslinked_path
 
@@ -511,9 +512,9 @@ class FlowRunner:
                     file_core_llvmir_chesslinked = await self.chesshack(task, file_core_llvmir, aie_target)
                     if self.opts.link and self.opts.xbridge:
                         link_with_obj = await extract_input_files(file_core_bcf)
-                        await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-d", "-f", "+P", "4", file_core_llvmir_chesslinked, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
+                        await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-d", "+Wclang,-xir", "-f", file_core_llvmir_chesslinked, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                     elif self.opts.link:
-                        await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "-f", "+P", "4", file_core_llvmir_chesslinked, "-o", file_core_obj])
+                        await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "+Wclang,-xir", "-f", file_core_llvmir_chesslinked, "-o", file_core_obj])
                         await self.do_call(task, [self.peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
                 else:
                     file_core_obj = self.unified_file_core_obj
@@ -1114,7 +1115,7 @@ class FlowRunner:
                 self.unified_file_core_obj = self.prepend_tmp("input.o")
                 if opts.compile and opts.xchesscc:
                     file_llvmir_hacked = await self.chesshack(progress_bar.task, file_llvmir, aie_target)
-                    await self.do_call(progress_bar.task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "-f", "+P", "4", file_llvmir_hacked, "-o", self.unified_file_core_obj])
+                    await self.do_call(progress_bar.task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "+Wclang,-xir", "-f", file_llvmir_hacked, "-o", self.unified_file_core_obj])
                 elif opts.compile:
                     file_llvmir_opt = self.prepend_tmp("input.opt.ll")
                     await self.do_call(progress_bar.task, [self.peano_opt_path, "--passes=default<O2>", "-inline-threshold=10", "-S", file_llvmir, "-o", file_llvmir_opt])
