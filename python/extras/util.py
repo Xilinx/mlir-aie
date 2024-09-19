@@ -165,7 +165,7 @@ def np_dtype_to_mlir_type(np_dtype):
     if mlir_type:
         return mlir_type()
     else:
-        raise AttributeError("Failed to map np dtype to mlir python type")
+        raise AttributeError("Failed to map np dtype to mlir python type: " + str(np_dtype))
 
 
 def mlir_type_to_np_dtype(mlir_type):

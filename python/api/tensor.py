@@ -1,16 +1,24 @@
 from functools import cached_property
 import numpy as np
-from typing import Literal
+import typing
 
 from ..extras.util import np_dtype_to_mlir_type
 from ..dialects.memref import MemRefType
 
 
 class MyTensorType:
-    def __init__(self, dtype: np.generic, shape: np.generic.shape):
-        self.__dtype = dtype
-        self.__shape = shape
-        self.__my_numpy_type = np.ndarray[dtype, Literal[tuple(shape)]]
+    def __init__(self, np_ndarray_type: np.ndarray):
+        args = typing.get_args(np_ndarray_type)
+        self.__dtype: np.generic.dtype = args[0]
+        self.__shape: np.generic.shape = args[1]
+        self.__my_numpy_type = np_ndarray_type
+
+    @classmethod
+    def get_memref_type(cls, np_ndarray_type: np.ndarray) -> MemRefType:
+        args = typing.get_args(np_ndarray_type)
+        dtype: np.generic.dtype = args[0]
+        shape: np.generic.shape = args[1]
+        return MemRefType.get(shape=shape, element_type=np_dtype_to_mlir_type(dtype))
 
     @cached_property
     def memref_type(self) -> MemRefType:

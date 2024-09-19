@@ -91,8 +91,12 @@ class SimpleFifoInOutProgram(InOutProgram):
         loc: ir.Location = None,
         ip: ir.InsertionPoint = None,
     ) -> None:
-        tensor_in_ty = MyTensorType(self.dtype, [self.bytes_in]).memref_type
-        tensor_out_ty = MyTensorType(self.dtype, [self.bytes_out]).memref_type
+        tensor_in_ty = MyTensorType.get_memref_type(
+            np.ndarray[self.dtype, [self.bytes_in]]
+        )
+        tensor_out_ty = MyTensorType.get_memref_type(
+            np.ndarray[self.dtype, [self.bytes_out]]
+        )
 
         @runtime_sequence(tensor_in_ty, tensor_out_ty)
         def sequence(inTensor, outTensor):

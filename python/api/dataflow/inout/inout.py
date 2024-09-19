@@ -4,6 +4,7 @@ TODO:
 """
 
 from abc import abstractmethod
+import numpy as np
 from typing import Callable
 
 from .... import ir
@@ -24,7 +25,7 @@ class MyInOutProgram(InOutProgram):
     def __init__(
         self,
         sequence_fn: Callable[..., None],
-        inout_types: list[MyTensorType],
+        inout_types: list[np.ndarray[np.generic.dtype, np.generic.shape]],
         fifos=list[ObjectFifoHandle],
         coords: tuple[int, int] = (0, 0),  # TODO: how to get default
     ):
@@ -47,7 +48,7 @@ class MyInOutProgram(InOutProgram):
         loc: ir.Location = None,
         ip: ir.InsertionPoint = None,
     ) -> None:
-        my_memref_types = [t.memref_type for t in self.inout_types]
+        my_memref_types = [MyTensorType.get_memref_type(t) for t in self.inout_types]
 
         @runtime_sequence(*my_memref_types)
         def sequence(*args, **kwargs):

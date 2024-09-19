@@ -33,7 +33,7 @@ class MyObjectFifo(Resolvable):
     def __init__(
         self,
         depth: int = 1,
-        obj_type: MyTensorType = None,
+        obj_type: np.ndarray.generic = None,
         name: str = None,
         end1: MyObjectFifoEndpoint = None,
         end2: MyObjectFifoEndpoint = None,
@@ -41,7 +41,7 @@ class MyObjectFifo(Resolvable):
         dimensionsFromStreamPerConsumer=None,  # TODO(erika): needs a type
     ):
         self.__depth = depth
-        self.__obj_type = obj_type
+        self.__obj_type = MyTensorType(obj_type)
         self.end1: MyObjectFifoEndpoint = end1
         self.end2: MyObjectFifoEndpoint = end2
         self.dimensionToStream = dimensionsToStream

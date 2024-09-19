@@ -5,7 +5,7 @@ TODO:
 """
 
 import numpy as np
-from typing import Optional
+from typing import Optional, get_origin
 
 from ... import ir
 
@@ -19,7 +19,7 @@ from .kernel import MyKernel
 
 class BinKernel(MyKernel):
     def __init__(
-        self, name: str, bin_name: str, inout_types: list[MyTensorType, np.generic] = []
+        self, name: str, bin_name: str, inout_types: list[np.ndarray, np.generic] = []
     ) -> None:
         self.__name = name
         self.__bin_name = bin_name
@@ -38,8 +38,8 @@ class BinKernel(MyKernel):
         if self.__op == None:
             resolved_inout_types = []
             for t in self.__inout_types:
-                if isinstance(t, MyTensorType):
-                    dtype = t.memref_type
+                if get_origin(t) == np.ndarray:
+                    dtype = MyTensorType.get_memref_type(t)
                 else:
                     dtype = np_dtype_to_mlir_type(t)
                 resolved_inout_types.append(dtype)

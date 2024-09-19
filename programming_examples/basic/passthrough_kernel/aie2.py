@@ -16,7 +16,6 @@ from aie.api.dataflow.objectfifo import MyObjectFifo
 from aie.api.kernels.binkernel import BinKernel
 from aie.api.phys.device import NPU1Col1
 from aie.api.program import MyProgram
-from aie.api.tensor import MyTensorType
 from aie.api.worker import MyWorker
 
 try:
@@ -29,7 +28,7 @@ except ValueError:
 
 assert vector_size % 4 == 0
 line_size = vector_size // 4
-line_type = MyTensorType(np.uint8, (line_size,))
+line_type = np.ndarray[np.uint8, (line_size,)]
 
 # TODO: rely on depth inference
 of_in = MyObjectFifo(2, line_type)
