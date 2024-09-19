@@ -2,7 +2,7 @@ import sys
 from functools import update_wrapper
 
 from ...meta import op_region_builder
-from ...util import get_user_code_loc, make_maybe_no_args_decorator
+from ...util import get_user_code_loc, make_maybe_no_args_decorator, get_arg_types
 from ....dialects._ods_common import get_op_result_or_op_results
 from ....dialects.func import *
 from ....ir import (
@@ -198,7 +198,7 @@ class FuncBase:
                     elif isalambda(v):
                         input_types[i] = v()
             else:
-                input_types = [a.type for a in call_args]
+                input_types = get_arg_types(call_args)
 
             function_type = TypeAttr.get(
                 FunctionType.get(
@@ -231,9 +231,9 @@ class FuncBase:
                 nonlocal return_types
                 results = self.body_builder(*args)
                 if isinstance(results, (tuple, list)):
-                    return_types.extend([r.type for r in results])
+                    return_types.extend(get_arg_types(results))
                 elif results is not None:
-                    return_types.append(results.type)
+                    return_types.extend(get_arg_types([results]))
                 return results
 
             builder_wrapper(grab_results)

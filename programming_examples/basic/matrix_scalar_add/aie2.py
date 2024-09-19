@@ -9,12 +9,15 @@
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects.scf import *
+from aie.dialects.scf import for_ as range_
 from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
 from aie.extras.dialects.ext.arith import constant
 from aie.extras.dialects.ext.func import func
+from aie.extras.ast import canonicalize
 
+# from aie.extras.dialects.ext.scf import canonicalizer as scf_canonicalizer
 # from aie.extras.dialects.ast.canonicalize import canonicalize
 
 import sys
@@ -63,12 +66,14 @@ def my_matrix_add_one():
             "out0", ComputeTile2, ShimTile, objfifo_capacity, memRef_ty
         )
 
+        # @canonicalize(using=scf_canonicalizer) shoudl decorate this after func?
+        # we need emit = true because must be emited in outer loop (not deferred) to have access to symbol table
         @func(emit=True)
         def memfoo(elem_in: memRef_ty, elem_out: memRef_ty):
             one = constant(1)
-            for i in range(TILE_SIZE):
+            for i in range_(TILE_SIZE):
                 elem_out[i] = elem_in[i] + one
-                # yield_([])
+                yield_([])
 
         # Set up compute tile 2
         @core(ComputeTile2)
@@ -107,7 +112,7 @@ def my_matrix_add_one():
 
 with mlir_mod_ctx() as ctx:
     my_matrix_add_one()
-    res = True  # ctx.module.operation.verify()
+    res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)
     else:
