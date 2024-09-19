@@ -13,6 +13,7 @@
 #include "mlir/InitAllPasses.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
+#include "aie/CIR/CIRToAIEPasses.h"
 #include "aie/Conversion/Passes.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/Analysis/Passes.h"
@@ -39,6 +40,7 @@ int main(int argc, char **argv) {
   xilinx::aievec::registerAIEVecAnalysisPasses();
   xilinx::aievec::registerAIEVecPasses();
   xilinx::aievec::registerAIEVecPipelines();
+  xilinx::AIE::CIR::registerCIRToAIEPasses();
 
   mlir::DialectRegistry registry;
   registerAllDialects(registry);

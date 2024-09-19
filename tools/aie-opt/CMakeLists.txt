@@ -32,6 +32,7 @@ set(LIBS
   AIEX
   AIEXTransforms
   AIEXUtils
+  CIRToAIEPasses
   MLIRAIEToConfiguration
   MLIRAIEVecDialect
   MLIRAIEVecAIE1Dialect

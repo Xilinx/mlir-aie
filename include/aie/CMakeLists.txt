@@ -6,5 +6,6 @@
 # (c) Copyright 2021 Xilinx Inc.
 
 configure_file(version.h.in version.h)
-add_subdirectory(Dialect)
+add_subdirectory(CIR)
 add_subdirectory(Conversion)
+add_subdirectory(Dialect)
