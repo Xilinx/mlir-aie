@@ -20,6 +20,7 @@ from aie.api.dataflow.objectfifo import MyObjectFifo
 from aie.api.dataflow.objectfifolink import MyObjectFifoLink
 from aie.api.kernels.binkernel import BinKernel
 from aie.api.phys.device import NPU1Col1
+from aie.api.tensor import MyTensorType
 from aie.api.program import MyProgram
 from aie.api.worker import MyWorker
 
@@ -93,15 +94,15 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
 
     num_data_tiles = (M // m) * (N // n)
 
-    # input/output matrices TODO(erika): fix up types
-    memref_A_ty = ([M * K], dtype_in)
-    memref_B_ty = ([K * N], dtype_in)
-    memref_C_ty = ([M * N], dtype_out)
+    # input/output matrices
+    memref_A_ty = MyTensorType(dtype_in, [M * K])
+    memref_B_ty = MyTensorType(dtype_in, [K * N])
+    memref_C_ty = MyTensorType(dtype_out, [M * N])
 
-    # submatrices TODO(erika): fix up types
-    memref_a_ty = ((m, k), dtype_in)
-    memref_b_ty = ((k, n), dtype_in)
-    memref_c_ty = ((m, n), dtype_out)
+    # submatrices
+    memref_a_ty = MyTensorType(dtype_in, (m, k))
+    memref_b_ty = MyTensorType(dtype_in, (k, n))
+    memref_c_ty = MyTensorType(dtype_out, (m, n))
 
     # AIE Core Function declarations
     scalar_str = "" if vectorized else "scalar_"
@@ -129,7 +130,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
             else []
         ),
     )
-    inALink = MyObjectFifoLink([inA.second], [memA.first], coords=(0, 1))
+    inALink = MyObjectFifoLink([inA.second], [memA.first], coords=(0, 1))  # AnyMemtile
 
     # Input B
     inB = MyObjectFifo(2, memref_b_ty)
@@ -147,7 +148,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
             else []
         ),
     )
-    inBLink = MyObjectFifoLink([inB.second], [memB.first], coords=(0, 1))
+    inBLink = MyObjectFifoLink([inB.second], [memB.first], coords=(0, 1))  # AnyMemtile
 
     # Output C
     memC = MyObjectFifo(2, memref_c_ty)
@@ -165,7 +166,9 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
             else []
         ),
     )
-    outCLink = MyObjectFifoLink([memC.second], [outC.first], coords=(0, 1))
+    outCLink = MyObjectFifoLink(
+        [memC.second], [outC.first], coords=(0, 1)
+    )  # AnyMemtile
 
     def core_fn(a, b, c, zero, matmul):
         for _ in range_(0xFFFFFFFF):
@@ -216,6 +219,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
                     sizes=[num_tile_rows, N // n, m, n],
                     strides=[m * N, n, N, 1],
                 )
+
                 for tile_row in range(num_tile_rows):
                     A_row_offset = (row_base + tile_row) * m * K
                     npu_dma_memcpy_nd(
@@ -241,17 +245,13 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
         sequence_fn,
         [memref_A_ty, memref_B_ty, memref_C_ty],
         [inA.first, inB.first, outC.second],
-        coords=(0, 0),
+        coords=(0, 0),  # AnyShim
     )
-
-    # AnyMemtile
-    c = LogicalCore()
-    c2 = c.neighbor()
 
     worker_program = MyWorker(
         core_fn,
         [memA.second, memB.second, memC.first, zero, matmul],
-        AnyCore,  # coords=(0, 2)
+        coords=(0, 2),  # AnyCore
     )
 
     my_program = MyProgram(
@@ -259,11 +259,10 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
         worker_programs=[worker_program],
         links=[inALink, inBLink, outCLink],
         inout_program=inout_program,
-        placer=SequentialPlace(),  # GraphBasedPlacer() # CoreOnlyPlace() -> anything memtile has to be decided by Programmer
+        # placer=SequentialPlacer(pack=True)
     )
 
     # g = my_program.get_dataflow_graph()
-
     my_program.resolve_program()
 
 
