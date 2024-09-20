@@ -49,7 +49,9 @@ add_executable(${currentTarget}
     test.cpp
 )
 
-target_compile_definitions(${currentTarget} PUBLIC DISABLE_ABI_CHECK=1)
+target_compile_definitions(${currentTarget} PUBLIC 
+    DATASIZE=${DATASIZE}
+    DISABLE_ABI_CHECK=1)
 
 target_include_directories (${currentTarget} PUBLIC 
     ${XRT_INC_DIR}

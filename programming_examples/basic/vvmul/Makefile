@@ -12,6 +12,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
+data_size = 4096
 targetname = vectorMult
 devicename = npu
 col = 0
@@ -20,7 +21,7 @@ all: build/final.xclbin
 
 build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
-	python3 $< ${devicename} ${col} > $@
+	python3 $< ${devicename} ${col} ${data_size} > $@
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
@@ -30,7 +31,7 @@ build/final.xclbin: build/aie.mlir
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}  -DDATASIZE=${data_size}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -38,6 +39,15 @@ else
 	cp _build/${targetname} $@ 
 endif
 
+
+../vector_scalar_mul/build/aie.mlir: ../vector_scalar_mul/aie2.py
+	mkdir -p ${@D}
+	python3 $< ${data_size} 0 > $@
+
+../vector_scalar_mul/build/final.xclbin: ../vector_scalar_mul/build/aie.mlir
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%) --kernel-name MLIR_AIE
 
 
 # Changing variables when we target VCK5000
@@ -56,7 +66,7 @@ vck5000: build/aie.mlir
 		-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
 
 
-run: ${targetname}.exe build/final.xclbin build/insts.txt 
+run: ${targetname}.exe build/final.xclbin build/insts.txt ../vector_scalar_mul/build/final.xclbin
 	${powershell} ./$< --xclbin build/final.xclbin --xclbin_2 ../vector_scalar_mul/build/final.xclbin --instr build/insts.txt --instr_2 ../vector_scalar_mul/build/insts.txt -k MLIR_AIE
 
 clean:

@@ -1,0 +1,53 @@
+{
+  "aie_partition": {
+    "name": "",
+    "operations_per_cycle": "2048",
+    "inference_fingerprint": "23423",
+    "pre_post_fingerprint": "12345",
+    "partition": {
+      "column_width": "1",
+      "start_columns": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
+    },
+    "PDIs": [
+      {
+        "uuid": "d5357193-f9d0-4e2a-905c-4887d3326e53",
+        "file_name": "d5357193-f9d0-4e2a-905c-4887d3326e53.pdi",
+        "cdo_groups": [
+          {
+            "name": "DPU",
+            "type": "PRIMARY",
+            "pdi_id": "0x1",
+            "dpu_kernel_ids": [
+              "0x901"
+            ],
+            "pre_cdo_groups": [
+              "0xc1"
+            ]
+          }
+        ]
+      },
+      {
+        "uuid": "53b98dca-a18e-4bce-82b6-388e8728159b",
+        "file_name": "./design.pdi",
+        "cdo_groups": [
+          {
+            "name": "DPU",
+            "type": "PRIMARY",
+            "pdi_id": "0x01",
+            "dpu_kernel_ids": [
+              "0x902"
+            ],
+            "pre_cdo_groups": [
+              "0xC1"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

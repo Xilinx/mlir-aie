@@ -121,10 +121,13 @@ int main(int argc, const char *argv[]) {
 
   // RUN KERNEL
 
+  #define SIZE 4096
+
   unsigned int opcode = 3;
 
   std::ofstream f_time;
-  f_time.open("time.txt");
+  std::string file_name = "time_" + std::to_string(DATASIZE) + ".txt";
+  f_time.open(file_name);
   for (int i=1; i<=1000; i++) {
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -150,7 +153,7 @@ int main(int argc, const char *argv[]) {
   // COMPARE
   int errors = 0;
 
-  for (uint32_t i = 0; i < OUT_SIZE_1; i++) {
+  for (uint32_t i = 0; i < SIZE; i++) {
     if (*(bufOut_1 + i) != *(bufInA_1 + i) * *(bufInB_1 + i)) {
       std::cout << "Error in output " << *(bufOut_1 + i)
                 << " != " << *(bufInA_1 + i) << " * " << *(bufInB_1 + i)
@@ -163,7 +166,7 @@ int main(int argc, const char *argv[]) {
     }
   }
 
-  for (uint32_t i = 0; i < IN_VOLUME_2; i++) {
+  for (uint32_t i = 0; i < SIZE; i++) {
     int32_t ref = bufInA_2[i] * scaleFactor;
     int32_t test = bufOut_2[i];
     if (test != ref) {

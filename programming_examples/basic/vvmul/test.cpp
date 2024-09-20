@@ -52,10 +52,10 @@ int main(int argc, const char *argv[]) {
   int n_warmup_iterations = vm["warmup"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
 
-  constexpr int IN_SIZE_1 = 4096;
+  constexpr int IN_SIZE_1 = DATASIZE;
   constexpr int OUT_SIZE_1 = IN_SIZE_1;
 
-  constexpr int IN_VOLUME_2 = 4096;
+  constexpr int IN_VOLUME_2 = DATASIZE;
   constexpr int OUT_VOLUME_2 = IN_VOLUME_2;
   int IN_SIZE_2 = IN_VOLUME_2 * sizeof(TY_2);
   int OUT_SIZE_2 = OUT_VOLUME_2 * sizeof(TY_2) + trace_size;

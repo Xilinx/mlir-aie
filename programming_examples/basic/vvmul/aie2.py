@@ -17,15 +17,11 @@ from aie.extras.dialects.ext import memref, arith
 import sys
 
 
-def my_vector_mul():
-    N = 4096
+def my_vector_mul(N):
     n = 16
     N_div_n = N // n
 
     buffer_depth = 2
-
-    if len(sys.argv) != 3:
-        raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
 
     if sys.argv[1] == "npu":
         dev = AIEDevice.npu1_1col
@@ -85,7 +81,7 @@ def my_vector_mul():
 
 
 with mlir_mod_ctx() as ctx:
-    my_vector_mul()
+    my_vector_mul(int(sys.argv[3]))
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)
