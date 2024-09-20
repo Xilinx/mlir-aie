@@ -81,8 +81,22 @@ def main(opts):
     if opts.verbosity >= 1:
         print("Running Kernel.")
     opcode = 3
-    h = kernel(opcode, bo_instr, len(instr_v), bo_inout0, bo_inout1)
-    h.wait()
+
+    with open("time_py.txt", "w") as f:
+
+        for i in range(1000):
+            start = time.time_ns()
+
+            h = kernel(opcode, bo_instr, len(instr_v), bo_inout0, bo_inout1)
+            h.wait()
+
+            stop = time.time_ns()
+            npu_time_ms = round((stop - start)/1000)
+            f.write(f"{npu_time_ms}\n")
+            print(f"{i}: {opts.size} - {npu_time_ms}")
+        
+
+
     bo_inout1.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 
     # Copy output results and verify they are correct

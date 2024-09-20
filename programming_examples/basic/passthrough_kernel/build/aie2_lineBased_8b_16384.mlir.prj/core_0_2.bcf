@@ -1,0 +1,34 @@
+_entry_point _main_init
+_symbol core_0_2 _after _main_init
+_symbol _main_init 0
+_reserved DMb 0x00000 0x40000 // Don't put data in code memory
+_stack DM_stack 0x70000 0x400 // stack for core
+
+// mapping neighbors tile memory
+_reserved DMb 0x40000 0x10000  // No tile with memory exists to the south.
+_reserved DMb 0x50000 0x10000  // No tile with memory exists to the west.
+// north -------------------------------------------------
+_reserved DMb 0x60000 0x10000  // Don't allocate variables in north neighbor
+
+// east -------------------------------------------------
+_symbol out_buff_0 0x70400 4096
+_extern out_buff_0
+_reserved DMb 0x70400 4096
+
+_symbol out_buff_1 0x74000 4096
+_extern out_buff_1
+_reserved DMb 0x74000 4096
+
+_symbol in_cons_buff_0 0x78000 4096
+_extern in_cons_buff_0
+_reserved DMb 0x78000 4096
+
+_symbol in_cons_buff_1 0x7C000 4096
+_extern in_cons_buff_1
+_reserved DMb 0x7C000 4096
+
+// end mapping neighbors tile memory
+
+_reserved DMb 0x80000 0x80000 // And everything else the core can't see
+_include _file passThrough.cc.o
+_resolve _main core_0_2

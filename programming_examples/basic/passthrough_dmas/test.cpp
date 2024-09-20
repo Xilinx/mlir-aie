@@ -166,8 +166,22 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1)
     std::cout << "Running Kernel." << std::endl;
   unsigned int opcode = 3;
-  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
-  run.wait();
+
+  std::ofstream f_time;
+  f_time.open("time.txt");
+  for (int i=1; i<=1000; i++) {
+    auto start = std::chrono::high_resolution_clock::now();
+
+    auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+    run.wait();
+
+    auto stop = std::chrono::high_resolution_clock::now();
+    float npu_time = std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count();
+    if (i<11)
+      std::cout << i << " " << srcVecA.size() << " NPU time: " << npu_time << "us." << std::endl;
+    f_time << npu_time << "\n";
+  }
+  f_time.close();
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
