@@ -9,7 +9,7 @@ import warnings
 from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
-from typing import Callable, List, Optional, Sequence, Tuple, Union
+from typing import Callable, List, Optional, Sequence, Tuple, Union, get_args
 
 import tensorflow as tf
 import numpy as np
@@ -182,6 +182,23 @@ def mlir_type_to_np_dtype(mlir_type):
         return np_dtype
     else:
         raise AttributeError("Failed to map mlir python type to np dtype")
+
+
+def np_ndarray_type_to_mlir_type(
+    np_ndarray_type: np.ndarray[np.generic.dtype, np.generic.shape]
+) -> MemRefType:
+    args = get_args(np_ndarray_type)
+    dtype: np.generic.dtype = args[0]
+    shape: np.generic.shape = args[1]
+    return MemRefType.get(shape=shape, element_type=np_dtype_to_mlir_type(dtype))
+
+
+def get_np_ndarray_type_shape(
+    np_ndarray_type: np.ndarray[np.generic.dtype, np.generic.shape]
+) -> np.generic.shape:
+    args = get_args(np_ndarray_type)
+    print(args)
+    return args[1]
 
 
 _mlir_type_to_ctype = {

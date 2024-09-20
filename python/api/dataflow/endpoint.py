@@ -12,5 +12,6 @@ from ..resolvable import Resolvable
 
 
 class MyObjectFifoEndpoint(Resolvable):
+    @property
     @abstractmethod
-    def get_tile(self) -> MyTile: ...
+    def tile(self) -> MyTile: ...

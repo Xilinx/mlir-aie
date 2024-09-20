@@ -8,11 +8,11 @@ import numpy as np
 from typing import Optional
 
 from .... import ir
-from ....dialects.aiex import runtime_sequence, npu_dma_memcpy_nd, npu_sync, T
+from ....dialects.aiex import runtime_sequence, npu_sync
 from .inout import InOutProgram
-from ...phys.tile import MyTile
 from ..objectfifo import ObjectFifoHandle
-from ...tensor import MyTensorType
+from ....extras.util import np_ndarray_type_to_mlir_type, get_np_ndarray_type_shape
+from ..npudmamemcpynd import MyNpuDmaMemcpyNd
 
 
 class SimpleFifoInOutProgram(InOutProgram):
@@ -27,10 +27,9 @@ class SimpleFifoInOutProgram(InOutProgram):
         out_sizes: Optional[list[int]] = None,
         out_strides: Optional[list[int]] = None,
         dtype: np.generic = np.uint8,
-        coords: Optional[tuple[int, int]] = (0, 0),
     ):
-        assert bytes_in % np.prod(fifo_in.obj_type.shape) == 0
-        assert bytes_out % np.prod(fifo_in.obj_type.shape) == 0
+        assert bytes_in % np.prod(get_np_ndarray_type_shape(fifo_in.obj_type)) == 0
+        assert bytes_out % np.prod(get_np_ndarray_type_shape(fifo_in.obj_type)) == 0
         assert bytes_in > 0
         assert bytes_out > 0
 
@@ -39,9 +38,6 @@ class SimpleFifoInOutProgram(InOutProgram):
         self.bytes_in = bytes_in
         self.bytes_out = bytes_out
         self.dtype = dtype
-        self.tile = MyTile(*coords)
-        fifo_in.set_endpoint(self)
-        fifo_out.set_endpoint(self)
 
         self.in_strides = None
         self.out_strides = None
@@ -80,10 +76,6 @@ class SimpleFifoInOutProgram(InOutProgram):
             ), "Invalid number of out_strides"
             self.out_strides = out_strides
 
-    def get_tile(self) -> MyTile:
-        assert self.tile != None
-        return self.tile
-
     def get_fifos(self) -> list[ObjectFifoHandle]:
         return [self.fifo_in, self.fifo_out]
 
@@ -92,25 +84,27 @@ class SimpleFifoInOutProgram(InOutProgram):
         loc: ir.Location = None,
         ip: ir.InsertionPoint = None,
     ) -> None:
-        tensor_in_ty = MyTensorType.get_memref_type(
-            np.ndarray[self.dtype, [self.bytes_in]]
+        tensor_in_ty = np_ndarray_type_to_mlir_type(
+            np.ndarray[self.dtype, (self.bytes_in,)]
         )
-        tensor_out_ty = MyTensorType.get_memref_type(
-            np.ndarray[self.dtype, [self.bytes_out]]
+        tensor_out_ty = np_ndarray_type_to_mlir_type(
+            np.ndarray[self.dtype, (self.bytes_out,)]
         )
 
         @runtime_sequence(tensor_in_ty, tensor_out_ty)
         def sequence(inTensor, outTensor):
-            npu_dma_memcpy_nd(
-                metadata=self.fifo_out.name,
+            MyNpuDmaMemcpyNd(
+                of=self.fifo_out,
                 bd_id=0,
+                coords=(0, 0),
                 mem=outTensor,
                 sizes=self.out_sizes,
                 strides=self.out_strides,
             )
-            npu_dma_memcpy_nd(
-                metadata=self.fifo_in.name,
+            MyNpuDmaMemcpyNd(
+                of=self.fifo_in,
                 bd_id=1,
+                coords=(0, 0),
                 mem=inTensor,
                 sizes=self.in_sizes,
                 strides=self.in_strides,

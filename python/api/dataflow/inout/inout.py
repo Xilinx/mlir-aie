@@ -5,18 +5,17 @@ TODO:
 
 from abc import abstractmethod
 import numpy as np
-from typing import Callable, Optional
+from typing import Callable
 
 from .... import ir
-from ....extras.util import np_dtype_to_mlir_type
 from ....dialects.aiex import runtime_sequence
-from ...tensor import MyTensorType
-from ..endpoint import MyObjectFifoEndpoint
+from ....extras.util import np_ndarray_type_to_mlir_type
+
 from ..objectfifo import ObjectFifoHandle
-from ...phys.tile import MyTile
+from ...resolvable import Resolvable
 
 
-class InOutProgram(MyObjectFifoEndpoint):
+class InOutProgram(Resolvable):
     @abstractmethod
     def get_fifos(self) -> list[ObjectFifoHandle]: ...
 
@@ -27,18 +26,10 @@ class MyInOutProgram(InOutProgram):
         sequence_fn: Callable[..., None],
         inout_types: list[np.ndarray[np.generic.dtype, np.generic.shape]],
         fifos=list[ObjectFifoHandle],
-        coords: Optional[tuple[int, int]] = (0, 0),  # TODO: how to get default
     ):
         self.sequence_fn = sequence_fn
         self.inout_types = inout_types
-        self.tile = MyTile(coords[0], coords[1])
-        for f in fifos:
-            f.set_endpoint(self)
         self.fifos = fifos
-
-    def get_tile(self) -> MyTile:
-        assert self.tile != None
-        return self.tile
 
     def get_fifos(self) -> list[ObjectFifoHandle]:
         return self.fifos
@@ -48,7 +39,7 @@ class MyInOutProgram(InOutProgram):
         loc: ir.Location = None,
         ip: ir.InsertionPoint = None,
     ) -> None:
-        my_memref_types = [MyTensorType.get_memref_type(t) for t in self.inout_types]
+        my_memref_types = [np_ndarray_type_to_mlir_type(t) for t in self.inout_types]
 
         @runtime_sequence(*my_memref_types)
         def sequence(*args, **kwargs):

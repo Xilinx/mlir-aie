@@ -5,15 +5,14 @@ TODO:
 """
 
 import numpy as np
-from typing import Optional, get_origin
+from typing import get_origin, Optional, Union
 
 from ... import ir
 
-from ...extras.util import np_dtype_to_mlir_type, get_arg_types
-from ...dialects.memref import MemRefType
+from ...extras.util import np_dtype_to_mlir_type
 from ...dialects.func import FuncOp
 from ...dialects.aie import external_func, call
-from ..tensor import MyTensorType
+from ...extras.util import np_ndarray_type_to_mlir_type
 from .kernel import MyKernel
 
 
@@ -23,7 +22,7 @@ class BinKernel(MyKernel):
         name: str,
         bin_name: str,
         inout_types: list[
-            np.ndarray[np.generic.dtype, np.generic.shape], np.generic.dtype
+            Union[np.ndarray[np.generic.dtype, np.generic.shape], np.dtype]
         ] = [],
     ) -> None:
         self.__name = name
@@ -44,7 +43,7 @@ class BinKernel(MyKernel):
             resolved_inout_types = []
             for t in self.__inout_types:
                 if get_origin(t) == np.ndarray:
-                    dtype = MyTensorType.get_memref_type(t)
+                    dtype = np_ndarray_type_to_mlir_type(t)
                 else:
                     dtype = np_dtype_to_mlir_type(t)
                 resolved_inout_types.append(dtype)

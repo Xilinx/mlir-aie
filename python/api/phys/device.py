@@ -36,6 +36,7 @@ class MyDevice(Resolvable):
             self.__col: int = col
             self.__row: int = row
             self.__op: Optional[TileOp] = None
+            super().__init__()
 
         def resolve(
             self,
@@ -85,6 +86,18 @@ class MyDevice(Resolvable):
 class NPU1Col1(MyDevice):
     def __init__(self) -> None:
         super().__init__(cols=1, rows=4)
+
+    def resolve(
+        self,
+        loc: ir.Location = None,
+        ip: ir.InsertionPoint = None,
+    ) -> None:
+        return AIEDevice.npu1_1col
+
+
+class NPU1Col4(MyDevice):
+    def __init__(self) -> None:
+        super().__init__(cols=4, rows=4)
 
     def resolve(
         self,

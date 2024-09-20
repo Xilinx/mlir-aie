@@ -8,11 +8,10 @@ TODO:
 # Address circular dependency between MyObjectFifo and ObjectFifoHandle
 from __future__ import annotations
 from typing import Optional
+import numpy as np
 
 from ... import ir
 from ..._mlir_libs._aie import ObjectFifoSubviewType
-from ...extras.util import np_dtype_to_mlir_type
-
 from ...dialects._aie_enum_gen import ObjectFifoPort
 from ...dialects._aie_ops_gen import (
     ObjectFifoCreateOp,
@@ -21,10 +20,10 @@ from ...dialects._aie_ops_gen import (
     objectfifo_release,
 )
 from ...dialects.aie import object_fifo
+from ...extras.util import np_ndarray_type_to_mlir_type
 
 from ..resolvable import Resolvable
 from .endpoint import MyObjectFifoEndpoint
-from ..tensor import MyTensorType
 
 
 class MyObjectFifo(Resolvable):
@@ -41,7 +40,7 @@ class MyObjectFifo(Resolvable):
         dimensionsFromStreamPerConsumer=None,  # TODO(erika): needs a type
     ):
         self.__depth = depth
-        self.__obj_type = MyTensorType(obj_type)
+        self.__obj_type = obj_type
         self.end1: MyObjectFifoEndpoint = end1
         self.end2: MyObjectFifoEndpoint = end2
         self.dimensionToStream = dimensionsToStream
@@ -75,7 +74,7 @@ class MyObjectFifo(Resolvable):
         return self.__second
 
     @property
-    def obj_type(self) -> MyTensorType:
+    def obj_type(self) -> np.ndarray[np.generic.dtype, np.generic.shape]:
         return self.__obj_type
 
     def resolve(
@@ -89,10 +88,10 @@ class MyObjectFifo(Resolvable):
             assert self.__obj_type != None, "ObjectFifo missing object type"
             self.__op = object_fifo(
                 self.name,
-                self.end1.get_tile().op,
-                self.end2.get_tile().op,
+                self.end1.tile.op,
+                self.end2.tile.op,
                 self.__depth,
-                self.__obj_type.memref_type,
+                np_ndarray_type_to_mlir_type(self.__obj_type),
                 dimensionsToStream=self.dimensionToStream,
                 dimensionsFromStreamPerConsumer=self.dimensionsFromStreamPerConsumer,
                 loc=loc,
@@ -118,14 +117,14 @@ class MyObjectFifo(Resolvable):
         assert (
             num_elem <= self.__depth
         ), "Cannot consume elements to exceed ObjectFifo depth"
-
-        subview_t = ObjectFifoSubviewType.get(self.__obj_type.memref_type)
+        memref_ty = np_ndarray_type_to_mlir_type(self.__obj_type)
+        subview_t = ObjectFifoSubviewType.get(memref_ty)
         acq = ObjectFifoAcquireOp(subview_t, port, self.name, num_elem, loc=loc, ip=ip)
 
         objects = []
         if acq.size.value == 1:
             return ObjectFifoSubviewAccessOp(
-                self.__obj_type.memref_type,
+                memref_ty,
                 acq.subview,
                 acq.size.value - 1,
                 loc=loc,
@@ -133,9 +132,7 @@ class MyObjectFifo(Resolvable):
             )
         for i in range(acq.size.value):
             objects.append(
-                ObjectFifoSubviewAccessOp(
-                    self.__obj_type.memref_type, acq.subview, i, loc=loc, ip=ip
-                )
+                ObjectFifoSubviewAccessOp(memref_ty, acq.subview, i, loc=loc, ip=ip)
             )
         return objects
 
@@ -172,16 +169,16 @@ class ObjectFifoHandle(Resolvable):
         return self.__object_fifo._release(self.__port, num_elem, loc=loc, ip=ip)
 
     @property
-    def obj_type(self) -> MyTensorType:
-        return self.__object_fifo.obj_type
-
-    @property
     def name(self) -> str:
         return self.__object_fifo.name
 
     @property
     def op(self) -> ObjectFifoCreateOp:
         return self.__object_fifo.op
+
+    @property
+    def obj_type(self) -> np.ndarray[np.generic.dtype, np.generic.shape]:
+        return self.__object_fifo.obj_type
 
     def set_endpoint(self, endpoint: MyObjectFifoEndpoint) -> None:
         self.__object_fifo._set_endpoint(endpoint, first=self.__is_first)

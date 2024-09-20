@@ -25,7 +25,7 @@ class MyWorker(MyObjectFifoEndpoint):
         coords: tuple[int, int] = None,
     ):
         column, row = coords
-        self.tile = MyTile(column, row)
+        self.__tile = MyTile(column, row)
         if core_fn is None:
 
             def do_nothing_core_fun() -> None:
@@ -49,16 +49,16 @@ class MyWorker(MyObjectFifoEndpoint):
         if len(bin_names) == 1:
             self.link_with = list(bin_names)[0]
 
-    def get_tile(self) -> MyTile:
-        assert self.tile != None
-        return self.tile
+    @property
+    def tile(self) -> MyTile:
+        return self.__tile
 
     def resolve(
         self,
         loc: ir.Location = None,
         ip: ir.InsertionPoint = None,
     ) -> None:
-        my_tile = self.tile.op
+        my_tile = self.__tile.op
         my_link = self.link_with
 
         @core(my_tile, my_link)

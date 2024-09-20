@@ -40,7 +40,8 @@ class MyProgram:
                     self.__device.resolve_tile(l.tile)
                 self._print_verify(ctx)
 
-                self.__device.resolve_tile(self.__inout_program.tile)
+                # Host program
+                self.__inout_program.resolve()
                 self._print_verify(ctx)
 
                 # generate fifos (and external functions)
@@ -64,11 +65,6 @@ class MyProgram:
                 for w in self.__worker_programs:
                     w.resolve()
                     self._print_verify(ctx)
-
-                # Host program
-                self.__inout_program.resolve()
-
-                self._print_verify(ctx)
 
             print(ctx.module)
 

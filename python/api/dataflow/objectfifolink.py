@@ -1,10 +1,10 @@
+import numpy as np
 from typing import Optional
 
 from ... import ir
 from ...dialects._aie_ops_gen import ObjectFifoLinkOp
 from ...dialects.aie import object_fifo_link
 
-from ..tensor import MyTensorType
 from ..phys.tile import MyTile
 from .endpoint import MyObjectFifoEndpoint
 from .objectfifo import ObjectFifoHandle
@@ -18,7 +18,7 @@ class MyObjectFifoLink(MyObjectFifoEndpoint):
         coords: Optional[tuple[int, int]] = None,
     ):
         column, row = coords
-        self.tile = MyTile(column, row)
+        self.__tile = MyTile(column, row)
 
         self.__seconds = []
         self.__firsts = []
@@ -34,9 +34,10 @@ class MyObjectFifoLink(MyObjectFifoEndpoint):
             f.set_endpoint(self)
             self.__firsts.append(f)
 
-    def get_tile(self) -> MyTile:
-        assert self.tile != None
-        return self.tile
+    @property
+    def tile(self) -> MyTile:
+        assert self.__tile != None
+        return self.__tile
 
     @property
     def op(self) -> ObjectFifoLinkOp:
@@ -44,7 +45,7 @@ class MyObjectFifoLink(MyObjectFifoEndpoint):
         return self.__op
 
     @property
-    def obj_type(self) -> MyTensorType:
+    def obj_type(self) -> np.ndarray[np.generic.dtype, np.generic.shape]:
         return self.__obj_type
 
     def resolve(
