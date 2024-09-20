@@ -44,13 +44,25 @@ config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
 config.substitutions.append(
     ("%aie_runtime_lib%", os.path.join(config.aie_obj_root, "aie_runtime_lib"))
 )
+config.substitutions.append(("%aietools", config.vitis_aietools_dir))
+
+test_lib_path = os.path.join(
+    config.aie_obj_root, "runtime_lib", config.aieHostTarget, "test_lib"
+)
 config.substitutions.append(
     (
-        "%host_runtime_lib%",
-        os.path.join(config.aie_obj_root, "runtime_lib", config.aieHostTarget),
+        "%test_lib_flags",
+        f"-I{test_lib_path}/include -L{test_lib_path}/lib -ltest_lib",
     )
 )
-config.substitutions.append(("%aietools", config.vitis_aietools_dir))
+config.substitutions.append(
+    (
+        "%test_utils_flags",
+        "-lboost_program_options -lboost_filesystem "
+        + f"-I{test_lib_path}/include -L{test_lib_path}/lib -ltest_utils",
+    )
+)
+
 # for xchesscc_wrapper
 llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
 # for peano clang

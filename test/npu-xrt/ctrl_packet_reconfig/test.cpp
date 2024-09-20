@@ -21,35 +21,22 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include "test_utils.h"
+
 constexpr int IN_SIZE = 64 * 64;
 constexpr int OUT_SIZE = 64 * 64;
 
 #define IN_DATATYPE int8_t
 #define OUT_DATATYPE int8_t
 
-std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
-  std::ifstream instr_file(instr_path);
-  std::string line;
-  std::vector<uint32_t> instr_v;
-  while (std::getline(instr_file, line)) {
-    std::istringstream iss(line);
-    uint32_t a;
-    if (!(iss >> std::hex >> a)) {
-      throw std::runtime_error("Unable to parse instruction file\n");
-    }
-    instr_v.push_back(a);
-  }
-  return instr_v;
-}
-
 int main(int argc, const char *argv[]) {
   // AIE design's data streams
-  std::vector<uint32_t> instr2_v = load_instr_sequence("aie2_run_seq.txt");
+  std::vector<uint32_t> instr2_v = test_utils::load_instr_sequence("aie2_run_seq.txt");
   // AIE configuration as control packet streams
   std::vector<uint32_t> instr3_cfg_v =
-      load_instr_sequence("ctrlpkt_dma_seq.txt");
+      test_utils::load_instr_sequence("ctrlpkt_dma_seq.txt");
   // AIE configuration control packets' raw data
-  std::vector<uint32_t> ctrlPackets = load_instr_sequence("ctrlpkt.txt");
+  std::vector<uint32_t> ctrlPackets = test_utils::load_instr_sequence("ctrlpkt.txt");
 
   // Start the XRT test code
   // Get a device handle

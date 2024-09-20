@@ -19,29 +19,16 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include "test_utils.h"
+
 constexpr int IN_SIZE = 128 * 64;
 constexpr int OUT_SIZE = 128 * 64;
 
 #define IN_DATATYPE int8_t
 #define OUT_DATATYPE int8_t
 
-std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
-  std::ifstream instr_file(instr_path);
-  std::string line;
-  std::vector<uint32_t> instr_v;
-  while (std::getline(instr_file, line)) {
-    std::istringstream iss(line);
-    uint32_t a;
-    if (!(iss >> std::hex >> a)) {
-      throw std::runtime_error("Unable to parse instruction file\n");
-    }
-    instr_v.push_back(a);
-  }
-  return instr_v;
-}
-
 int main(int argc, const char *argv[]) {
-  std::vector<uint32_t> instr_v = load_instr_sequence("insts.txt");
+  std::vector<uint32_t> instr_v = test_util::load_instr_sequence("insts.txt");
 
   // Start the XRT test code
   // Get a device handle

@@ -10,7 +10,7 @@
 
 // REQUIRES: peano, !hsa
 
-// RUN: %PYTHON aiecc.py --aiesim --no-xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s -I%host_runtime_lib%/test_lib/include -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
+// RUN: %PYTHON aiecc.py --aiesim --no-xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 // RUN: sh -c 'aie.mlir.prj/aiesim.sh; exit 0' | FileCheck %s
 
@@ -19,7 +19,7 @@
 
 module {
   %tile13 = aie.tile(1, 3)
-  %tile23 = aie.tile(2, 3)
+  %tile23 = aie.tile(2, 3)1
 
   %buf13 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
   %buf23 = aie.buffer(%tile23) { sym_name = "c" } : memref<256xi32>
