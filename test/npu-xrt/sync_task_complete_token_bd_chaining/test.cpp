@@ -34,7 +34,7 @@
 
 int main(int argc, const char *argv[]) {
 
-  std::vector<uint32_t> instr_v = test_util::load_instr_sequence(INSTS_TXT);
+  std::vector<uint32_t> instr_v = test_utils::load_instr_sequence(INSTS_TXT);
   assert(instr_v.size() > 0);
 
   // Get a device handle
