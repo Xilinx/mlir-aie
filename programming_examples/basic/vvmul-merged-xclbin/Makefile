@@ -17,25 +17,32 @@ targetname = vectorMult
 devicename = npu
 col = 0
 
+VPATH := ${srcdir}/../../../aie_kernels/aie2
+
+build2/%.o: %.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}
+
+
 all: build/final.xclbin
 
 build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< ${devicename} ${col} ${data_size} > $@
 
-build/final.xclbin: build/aie.mlir ../vector_scalar_mul/build/final.xclbin
+build/final.xclbin: build/aie.mlir build2/final.xclbin
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --xclbin-kernel-name=VVM --xclbin-kernel-id=0x902 \
 				--xclbin-instance-name=VVMINST --no-aiesim  --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--xclbin-input=../../vector_scalar_mul/build/final.xclbin  \
+				--xclbin-input=../build2/final.xclbin  \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
-../vector_scalar_mul/build/aie.mlir: ../vector_scalar_mul/aie2.py
+build2/aie.mlir: ../vector_scalar_mul/aie2.py
 	mkdir -p ${@D}
 	python3 $< ${data_size} 0 > $@
 
-../vector_scalar_mul/build/final.xclbin: ../vector_scalar_mul/build/aie.mlir
-	cd ../vector_scalar_mul/build/ && aiecc.py --xclbin-kernel-name=VSM --xclbin-kernel-id=0x901 \
+build2/final.xclbin: build2/aie.mlir  build2/scale.o
+	cd build2/ && aiecc.py --xclbin-kernel-name=VSM --xclbin-kernel-id=0x901 \
 			--xclbin-instance-name=VSMINST --no-aiesim  --aie-generate-cdo --no-compile-host --xclbin-name=final.xclbin \
 			--aie-generate-npu --npu-insts-name=insts.txt aie.mlir
 
@@ -71,7 +78,7 @@ vck5000: build/aie.mlir
 
 run: ${targetname}.exe build/final.xclbin build/insts.txt 
 	${powershell} ./$< --xclbin build/final.xclbin \
-	--instr build/insts.txt --instr_2 ../vector_scalar_mul/build/insts.txt -k VVM
+	--instr build/insts.txt --instr_2 build2/insts.txt -k VVM
 
 clean:
-	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe ../vector_scalar_mul/build/final.xclbin ../vector_scalar_mul/aie.mlir
+	rm -rf build build2 _build inst aie.mlir.prj core_* test.elf ${targetname}.exe build2/final.xclbin ../vector_scalar_mul/aie.mlir

@@ -12,12 +12,18 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
+VPATH := ${srcdir}/../../../aie_kernels/aie2
+
 data_size = 4096
 targetname = vectorMult
 devicename = npu
 col = 0
 
 all: build/final.xclbin
+
+build2/%.o: %.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}
 
 build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
@@ -40,14 +46,14 @@ else
 endif
 
 
-../vector_scalar_mul/build/aie.mlir: ../vector_scalar_mul/aie2.py
+build2/aie.mlir: ../vector_scalar_mul/aie2.py
 	mkdir -p ${@D}
 	python3 $< ${data_size} 0 > $@
 
-../vector_scalar_mul/build/final.xclbin: ../vector_scalar_mul/build/aie.mlir
+build2/final.xclbin: build2/aie.mlir build2/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%) --kernel-name MLIR_AIE
+				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
 
 # Changing variables when we target VCK5000
@@ -66,8 +72,8 @@ vck5000: build/aie.mlir
 		-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
 
 
-run: ${targetname}.exe build/final.xclbin build/insts.txt ../vector_scalar_mul/build/final.xclbin
-	${powershell} ./$< --xclbin build/final.xclbin --xclbin_2 ../vector_scalar_mul/build/final.xclbin --instr build/insts.txt --instr_2 ../vector_scalar_mul/build/insts.txt -k MLIR_AIE
+run: ${targetname}.exe build/final.xclbin build/insts.txt build2/final.xclbin
+	${powershell} ./$< --xclbin build/final.xclbin --xclbin_2 build2/final.xclbin --instr build/insts.txt --instr_2 build2/insts.txt -k MLIR_AIE
 
 clean:
-	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe
+	rm -rf build build2 _build inst aie.mlir.prj core_* test.elf ${targetname}.exe build2/aie.mlir build2/final.xclbin

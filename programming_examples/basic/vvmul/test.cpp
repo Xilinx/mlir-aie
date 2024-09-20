@@ -135,7 +135,8 @@ int main(int argc, const char *argv[]) {
   unsigned int opcode = 3;
 
   std::ofstream f_time;
-  f_time.open("time.txt");
+  std::string file_name = "time_" + std::to_string(DATASIZE) + ".txt";
+  f_time.open(file_name);
   for (int i=1; i<=1000; i++) {
     auto start = std::chrono::high_resolution_clock::now();
 
