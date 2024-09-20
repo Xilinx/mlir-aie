@@ -30,10 +30,12 @@ constexpr int OUT_SIZE = 4 * 64 * 64;
 #define OUT_DATATYPE int8_t
 
 int main(int argc, const char *argv[]) {
-  std::vector<uint32_t> instr_v = test_utils::load_instr_sequence("aie_run_seq.txt");
+  std::vector<uint32_t> instr_v =
+      test_utils::load_instr_sequence("aie_run_seq.txt");
   std::vector<uint32_t> ctrlpkt_instr_v =
       load_instr_sequence("ctrlpkt_dma_seq.txt");
-  std::vector<uint32_t> ctrlPackets = test_utils::load_instr_sequence("ctrlpkt.txt");
+  std::vector<uint32_t> ctrlPackets =
+      test_utils::load_instr_sequence("ctrlpkt.txt");
 
   // Start the XRT test code
   // Get a device handle
