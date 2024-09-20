@@ -12,7 +12,7 @@ import sys
 
 bfloat16 = tf.bfloat16.as_numpy_dtype
 
-from aie.dialects.scf import yield_, for_ as range_
+from aie.extras.dialects.ext.scf import _for as range_
 from aie.dialects.aiex import npu_dma_memcpy_nd, npu_sync
 
 from aie.api.dataflow.inout.inout import MyInOutProgram
@@ -94,77 +94,41 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
     num_data_tiles = (M // m) * (N // n)
 
     # input/output matrices
-    memref_A_ty = np.ndarray[dtype_in, [M * K]]
-    memref_B_ty = np.ndarray[dtype_in, [K * N]]
-    memref_C_ty = np.ndarray[dtype_out, [M * N]]
+    A_ty = np.ndarray[dtype_in, (M * K,)]
+    B_ty = np.ndarray[dtype_in, (K * N,)]
+    C_ty = np.ndarray[dtype_out, (M * N,)]
 
     # submatrices
-    memref_a_ty = np.ndarray[dtype_in, (m, k)]
-    memref_b_ty = np.ndarray[dtype_in, (k, n)]
-    memref_c_ty = np.ndarray[dtype_out, (m, n)]
+    a_ty = np.ndarray[dtype_in, (m, k)]
+    b_ty = np.ndarray[dtype_in, (k, n)]
+    c_ty = np.ndarray[dtype_out, (m, n)]
 
     # AIE Core Function declarations
     scalar_str = "" if vectorized else "scalar_"
-    zero = BinKernel(
-        f"zero_{scalar_str}{dtype_out_str}", f"mm_{m}x{k}x{n}.o", [memref_c_ty]
-    )
+    zero = BinKernel(f"zero_{scalar_str}{dtype_out_str}", f"mm_{m}x{k}x{n}.o", [c_ty])
     matmul = BinKernel(
         f"matmul_{scalar_str}{dtype_in_str}_{dtype_out_str}",
         f"mm_{m}x{k}x{n}.o",
-        [memref_a_ty, memref_b_ty, memref_c_ty],
+        [a_ty, b_ty, c_ty],
     )
 
-    inA = MyObjectFifo(2, memref_a_ty)
-    memA = MyObjectFifo(
-        2,
-        memref_a_ty,
-        dimensionsToStream=(
-            [
-                (m // r, r * k),
-                (k // s, s),
-                (r, k),
-                (s, 1),
-            ]
-            if vectorized
-            else []
-        ),
-    )
+    inA = MyObjectFifo(2, a_ty)
+    memAToStream = [(m // r, r * k), (k // s, s), (r, k), (s, 1)] if vectorized else []
+    memA = MyObjectFifo(2, a_ty, dimensionsToStream=memAToStream)
     inALink = MyObjectFifoLink([inA.second], [memA.first], coords=(0, 1))  # AnyMemtile
 
     # Input B
-    inB = MyObjectFifo(2, memref_b_ty)
-    memB = MyObjectFifo(
-        2,
-        memref_b_ty,
-        dimensionsToStream=(
-            [
-                (k // s, s * n),
-                (n // t, t),
-                (s, n),
-                (t, 1),
-            ]
-            if vectorized
-            else []
-        ),
-    )
+    inB = MyObjectFifo(2, b_ty)
+    memBToStream = [(k // s, s * n), (n // t, t), (s, n), (t, 1)] if vectorized else []
+    memB = MyObjectFifo(2, b_ty, dimensionsToStream=memBToStream)
     inBLink = MyObjectFifoLink([inB.second], [memB.first], coords=(0, 1))  # AnyMemtile
 
     # Output C
-    memC = MyObjectFifo(2, memref_c_ty)
-    outC = MyObjectFifo(
-        2,
-        memref_c_ty,
-        dimensionsToStream=(
-            [
-                (m // r, r * n),
-                (r, t),
-                (n // t, r * t),
-                (t, 1),
-            ]
-            if vectorized
-            else []
-        ),
+    memC = MyObjectFifo(2, c_ty)
+    memCToStream = (
+        [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)] if vectorized else []
     )
+    outC = MyObjectFifo(2, c_ty, dimensionsToStream=memCToStream)
     outCLink = MyObjectFifoLink(
         [memC.second], [outC.first], coords=(0, 1)
     )  # AnyMemtile
@@ -183,13 +147,8 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
                     matmul(elem_in_a, elem_in_b, elem_out)
                     a.release(1)
                     b.release(1)
-                    if (K // k) > 1:
-                        yield_([])
 
                 c.release(1)
-                if num_data_tiles > 1:
-                    yield_([])
-            yield_([])
 
     def sequence_fn(A, B, C, inA, inB, outC):
         # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
@@ -242,7 +201,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
 
     inout_program = MyInOutProgram(
         sequence_fn,
-        [memref_A_ty, memref_B_ty, memref_C_ty],
+        [A_ty, B_ty, C_ty],
         [inA.first, inB.first, outC.second],
         coords=(0, 0),  # AnyShim
     )

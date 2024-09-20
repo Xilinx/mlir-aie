@@ -1,0 +1,50 @@
+from typing import Optional, Sequence
+
+from ....ir import InsertionPoint, Value
+from ....dialects.linalg.opdsl.lang.emitter import _is_index_type
+from ....dialects.scf import ForOp, yield_
+
+from .arith import constant, index_cast
+
+
+def _for(
+    start,
+    stop=None,
+    step=None,
+    iter_args: Optional[Sequence[Value]] = None,
+    insert_yield: bool = True,
+    *,
+    loc=None,
+    ip=None,
+):
+    if step is None:
+        step = 1
+    if stop is None:
+        stop = start
+        start = 0
+    params = [start, stop, step]
+    for i, p in enumerate(params):
+        if isinstance(p, int):
+            p = constant(p, index=True)
+        if not _is_index_type(p.type):
+            p = index_cast(p)
+        params[i] = p
+
+    start, stop, step = params
+
+    for_op = ForOp(start, stop, step, iter_args, loc=loc, ip=ip)
+    iv = for_op.induction_variable
+    iter_args = tuple(for_op.inner_iter_args)
+    with InsertionPoint(for_op.body):
+        if len(iter_args) > 1:
+            yield iv, iter_args, for_op.results
+            # print("HI")
+        elif len(iter_args) == 1:
+            yield iv, iter_args[0], for_op.results[0]
+            # print("HI")
+        else:
+            # print("HELLO")
+            yield iv
+            # print("HI1")
+        if insert_yield:
+            yield_([])

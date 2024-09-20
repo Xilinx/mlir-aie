@@ -8,8 +8,8 @@
 import sys
 import numpy as np
 
-from aie.dialects.scf import for_ as range_
-from aie.dialects.scf import yield_
+# TODO: move maybe to aie.api.controlflow
+from aie.extras.dialects.ext.scf import _for as range_
 
 from aie.api.dataflow.inout.simplefifoinout import SimpleFifoInOutProgram
 from aie.api.dataflow.objectfifo import MyObjectFifo
@@ -48,7 +48,6 @@ def core_fn(of_in, of_out, passThroughLine):
         passThroughLine(elemIn, elemOut, line_size)
         of_in.release(1)
         of_out.release(1)
-        yield_([])
 
 
 # TODO: clean up placement

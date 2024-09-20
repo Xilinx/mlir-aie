@@ -1,6 +1,9 @@
 import sys
+import numpy as np
 from functools import update_wrapper
+from typing import get_origin
 
+from ....api.tensor import MyTensorType
 from ...meta import op_region_builder
 from ...util import get_user_code_loc, make_maybe_no_args_decorator, get_arg_types
 from ....dialects._ods_common import get_op_result_or_op_results
@@ -109,9 +112,11 @@ def prep_func_types(sig, return_types):
         for p in sig.parameters.values()
         if not p.annotation is inspect.Signature.empty
     ]
+    # convert ndarray types to memref types
     assert all(
-        isinstance(r, (str, Type)) or isalambda(r) for r in input_types
-    ), f"all input types must be mlir types {input_types=}"
+        isinstance(r, (str, Type)) or isalambda(r) or get_origin(r) == np.ndarray
+        for r in input_types
+    ), f"all input types must be mlir types or ndarrays (tensors) {input_types=}"
     user_loc = get_user_code_loc()
     # If ir.Context is none (like for deferred func emit)
     if user_loc is None:
@@ -197,6 +202,8 @@ class FuncBase:
                         input_types[i] = Type(eval(v, self.body_builder.__globals__))
                     elif isalambda(v):
                         input_types[i] = v()
+                    elif get_origin(v) == np.ndarray:
+                        input_types[i] = MyTensorType.get_memref_type(v)
             else:
                 input_types = get_arg_types(call_args)
 

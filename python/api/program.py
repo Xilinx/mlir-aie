@@ -6,7 +6,9 @@ TODO:
 """
 
 from ..extras.context import mlir_mod_ctx
+from ..extras.dialects.ext.func import FuncBase
 from ..dialects.aie import device
+
 from .worker import MyWorker
 from .phys.device import MyDevice
 from .dataflow.inout.inout import InOutProgram
@@ -44,7 +46,10 @@ class MyProgram:
                 # generate fifos (and external functions)
                 for w in self.__worker_programs:
                     for arg in w.fn_args:
-                        arg.resolve()
+                        if isinstance(arg, FuncBase):
+                            arg.emit()
+                        else:
+                            arg.resolve()
                         self._print_verify(ctx)
                 for f in self.__inout_program.get_fifos():
                     f.resolve()
