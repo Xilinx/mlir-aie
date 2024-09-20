@@ -35,7 +35,7 @@ jobs:
       matrix:
         build_type: [ Assert, Release ]
         ubuntu_version: [ 20.04, 22.04, 24.04 ]
-        python_version: [ "3.8", "3.9", "3.10", "3.11", "3.12" ]
+        python_version: [ "3.10", "3.11", "3.12" ]
 
     steps:
       # Clone the repo and its submodules. Do shallow clone to save clone
