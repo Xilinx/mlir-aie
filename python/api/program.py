@@ -33,26 +33,28 @@ class MyProgram:
 
             @device(self.__device.resolve())
             def device_body():
-                # generate tiles
+                # Collect all fifos
+                all_fifos = self.__inout_program.get_fifos()
                 for w in self.__worker_programs:
-                    self.__device.resolve_tile(w.tile)
+                    all_fifos.extend(w.get_fifos())
+
+                # Collect all tiles
+                my_tiles = set()
+                for w in self.__worker_programs:
+                    my_tiles.add(w.tile)
                 for l in self.__links:
-                    self.__device.resolve_tile(l.tile)
-                self._print_verify(ctx)
+                    my_tiles.add(l.tile)
+                for f in all_fifos:
+                    my_tiles.add(f.end1_tile())
+                    my_tiles.update(f.end2_tiles())
 
-                # Host program
-                self.__inout_program.resolve()
-                self._print_verify(ctx)
+                # Resolve tiles
+                for t in my_tiles:
+                    self.__device.resolve_tile(t)
+                    self._print_verify(ctx)
 
-                # generate fifos (and external functions)
-                for w in self.__worker_programs:
-                    for arg in w.fn_args:
-                        if isinstance(arg, FuncBase):
-                            arg.emit()
-                        else:
-                            arg.resolve()
-                        self._print_verify(ctx)
-                for f in self.__inout_program.get_fifos():
+                # Generate fifos
+                for f in all_fifos:
                     f.resolve()
                     self._print_verify(ctx)
 
@@ -60,6 +62,19 @@ class MyProgram:
                 for l in self.__links:
                     l.resolve()
                     self._print_verify(ctx)
+
+                # generate functions - this may call resolve() more than once on the same fifo, but that's ok
+                for w in self.__worker_programs:
+                    for arg in w.fn_args:
+                        if isinstance(arg, FuncBase):
+                            arg.emit()
+                        else:
+                            arg.resolve()
+                        self._print_verify(ctx)
+
+                # In/Out Sequence
+                self.__inout_program.resolve()
+                self._print_verify(ctx)
 
                 # Generate core programs
                 for w in self.__worker_programs:

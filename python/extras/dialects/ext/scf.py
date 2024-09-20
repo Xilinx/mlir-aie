@@ -38,13 +38,9 @@ def _for(
     with InsertionPoint(for_op.body):
         if len(iter_args) > 1:
             yield iv, iter_args, for_op.results
-            # print("HI")
         elif len(iter_args) == 1:
             yield iv, iter_args[0], for_op.results[0]
-            # print("HI")
         else:
-            # print("HELLO")
             yield iv
-            # print("HI1")
         if insert_yield:
             yield_([])

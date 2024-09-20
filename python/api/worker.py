@@ -38,12 +38,14 @@ class MyWorker(MyObjectFifoEndpoint):
         self.link_with: Optional[str] = None
         self.fn_args = fn_args
         bin_names = set()
+        self.__fifos = []
 
         for arg in self.fn_args:
             if isinstance(arg, MyKernel):
                 bin_names.add(arg.bin_name)
             elif isinstance(arg, ObjectFifoHandle):
                 arg.set_endpoint(self)
+                self.__fifos.append(arg)
 
         assert len(bin_names) <= 1, "Right now only link with one bin"
         if len(bin_names) == 1:
@@ -52,6 +54,9 @@ class MyWorker(MyObjectFifoEndpoint):
     @property
     def tile(self) -> MyTile:
         return self.__tile
+
+    def get_fifos(self) -> list[ObjectFifoHandle]:
+        return self.__fifos
 
     def resolve(
         self,

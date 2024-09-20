@@ -197,7 +197,6 @@ def get_np_ndarray_type_shape(
     np_ndarray_type: np.ndarray[np.generic.dtype, np.generic.shape]
 ) -> np.generic.shape:
     args = get_args(np_ndarray_type)
-    print(args)
     return args[1]
 
 

@@ -88,13 +88,13 @@ def core_body(a_in, b_in, c_out, zero, matvec):
 
 
 # Setup workers + per-worker dataflow
-inB_fifo = MyObjectFifo(2, b_ty, name="inB")
+inB_fifo = MyObjectFifo(2, b_ty, name="inB", end_first=(1, 0))
 for i in range(n_cores):
     # Create object fifos for per-code dataflow
-    memA = MyObjectFifo(2, a_flat_ty, name=f"memA{i}")
+    memA = MyObjectFifo(2, a_flat_ty, name=f"memA{i}", end_first=(i, 0))
     toStreamA = [(k // 2 // 2, 2), (m, k), (2, 1)] if vectorized else []
     inA = MyObjectFifo(2, a_ty, name=f"inA{i}", toStream=toStreamA)
-    outC = MyObjectFifo(2, c_ty)
+    outC = MyObjectFifo(2, c_ty, end_second=(i, 0))
 
     # Create per-core worker program
     worker_programs.append(
@@ -113,8 +113,8 @@ for i in range(n_cores):
 
 # To/from AIE-array data movement
 def sequence_fn(A, B, C, memA, inB, memC):
-    MyNpuMemcpyNd(
-        metadata=inB,
+    npu_dma_memcpy_nd(
+        metadata=inB.name,
         bd_id=2,
         mem=B,
         coords=(1, 0),
@@ -124,8 +124,8 @@ def sequence_fn(A, B, C, memA, inB, memC):
     for i in range(n_cores):
         A_offset = i * M_div_m_div_n_cores * m * K
         C_offset = i * M_div_m_div_n_cores * m
-        MyNpuMemcpyNd(
-            metadata=memA[i],
+        npu_dma_memcpy_nd(
+            metadata=memA[i].name,
             bd_id=1,
             mem=A,
             coords=(i, 0),
@@ -133,8 +133,8 @@ def sequence_fn(A, B, C, memA, inB, memC):
             sizes=[M_div_m_div_n_cores, K_div_k, m, k],
             strides=[m_x_K, k, K, 1],
         )
-        MyNpuMemcpyNd(
-            metadata=memC[i],
+        npu_dma_memcpy_nd(
+            metadata=memC[i].name,
             bd_id=0,
             mem=C,
             coords=(i, 0),

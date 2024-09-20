@@ -8,11 +8,10 @@ import numpy as np
 from typing import Optional
 
 from .... import ir
-from ....dialects.aiex import runtime_sequence, npu_sync
+from ....dialects.aiex import runtime_sequence, npu_sync, npu_dma_memcpy_nd
 from .inout import InOutProgram
 from ..objectfifo import ObjectFifoHandle
 from ....extras.util import np_ndarray_type_to_mlir_type, get_np_ndarray_type_shape
-from ..npudmamemcpynd import MyNpuDmaMemcpyNd
 
 
 class SimpleFifoInOutProgram(InOutProgram):
@@ -32,6 +31,7 @@ class SimpleFifoInOutProgram(InOutProgram):
         assert bytes_out % np.prod(get_np_ndarray_type_shape(fifo_in.obj_type)) == 0
         assert bytes_in > 0
         assert bytes_out > 0
+        # TODO: make sure fifo endpoint is a shim tile
 
         self.fifo_in = fifo_in
         self.fifo_out = fifo_out
@@ -93,18 +93,16 @@ class SimpleFifoInOutProgram(InOutProgram):
 
         @runtime_sequence(tensor_in_ty, tensor_out_ty)
         def sequence(inTensor, outTensor):
-            MyNpuDmaMemcpyNd(
-                of=self.fifo_out,
+            npu_dma_memcpy_nd(
+                metadata=self.fifo_out.name,
                 bd_id=0,
-                coords=(0, 0),
                 mem=outTensor,
                 sizes=self.out_sizes,
                 strides=self.out_strides,
             )
-            MyNpuDmaMemcpyNd(
-                of=self.fifo_in,
+            npu_dma_memcpy_nd(
+                metadata=self.fifo_in.name,
                 bd_id=1,
-                coords=(0, 0),
                 mem=inTensor,
                 sizes=self.in_sizes,
                 strides=self.in_strides,

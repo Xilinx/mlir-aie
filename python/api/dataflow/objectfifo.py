@@ -24,6 +24,7 @@ from ...extras.util import np_ndarray_type_to_mlir_type
 
 from ..resolvable import Resolvable
 from .endpoint import MyObjectFifoEndpoint
+from ..phys.tile import MyTile
 
 
 class MyObjectFifo(Resolvable):
@@ -38,6 +39,7 @@ class MyObjectFifo(Resolvable):
         end2: MyObjectFifoEndpoint = None,
         dimensionsToStream=None,  # TODO(erika): needs a type
         dimensionsFromStreamPerConsumer=None,  # TODO(erika): needs a type
+        shim_endpoint: Optional[tuple[int, int]] = None,
     ):
         self.__depth = depth
         self.__obj_type = obj_type
@@ -53,6 +55,11 @@ class MyObjectFifo(Resolvable):
         self.__op: Optional[ObjectFifoCreateOp] = None
         self.__first: ObjectFifoHandle = ObjectFifoHandle(self, True)
         self.__second: ObjectFifoHandle = ObjectFifoHandle(self, False)
+        if shim_endpoint:
+            column, row = shim_endpoint
+            self.__shim_endpoint = MyTile(col=column, row=row)
+        else:
+            self.__shim_endpoint = shim_endpoint
 
     @classmethod
     def __get_index(cls) -> int:
@@ -73,6 +80,24 @@ class MyObjectFifo(Resolvable):
     def second(self) -> ObjectFifoHandle:
         return self.__second
 
+    def end1_tile(self) -> MyTile:
+        if self.end1 == None:
+            if self.end2 != None and self.__shim_endpoint != None:
+                return self.__shim_endpoint
+            else:
+                assert False, "ObjectFifo end1 not set"
+        else:
+            return self.end1.tile
+
+    def end2_tiles(self) -> list[MyTile]:
+        if self.end2 == None:
+            if self.end1 != None and self.__shim_endpoint != None:
+                return [self.__shim_endpoint]
+            else:
+                assert False, "ObjectFifo end2 not set"
+        else:
+            return [self.end2.tile]
+
     @property
     def obj_type(self) -> np.ndarray[np.generic.dtype, np.generic.shape]:
         return self.__obj_type
@@ -83,13 +108,13 @@ class MyObjectFifo(Resolvable):
         ip: ir.InsertionPoint = None,
     ) -> None:
         if self.__op == None:
-            assert self.end1 != None, "ObjectFifo missing endpoint 1"
-            assert self.end2 != None, "ObjectFifo missing endpoint 2"
-            assert self.__obj_type != None, "ObjectFifo missing object type"
+            tile1 = self.end1_tile()
+            tiles2 = self.end2_tiles()
+
             self.__op = object_fifo(
                 self.name,
-                self.end1.tile.op,
-                self.end2.tile.op,
+                tile1.op,
+                [t.op for t in tiles2],
                 self.__depth,
                 np_ndarray_type_to_mlir_type(self.__obj_type),
                 dimensionsToStream=self.dimensionToStream,
@@ -100,10 +125,14 @@ class MyObjectFifo(Resolvable):
 
     def _set_endpoint(self, endpoint: MyObjectFifoEndpoint, first: bool = True) -> None:
         if first:
-            assert self.end1 == None, "ObjectFifo already assigned endpoint 1"
+            assert self.end1 == None and (
+                self.end2 == None or self.__shim_endpoint == None
+            ), "ObjectFifo already assigned endpoint 1"
             self.end1 = endpoint
         else:
-            assert self.end2 == None, "ObjectFifo already assigned endpoint 2"
+            assert self.end2 == None and (
+                self.end1 == None or self.__shim_endpoint == None
+            ), "ObjectFifo already assigned endpoint 2"
             self.end2 = endpoint
 
     def _acquire(
@@ -179,6 +208,12 @@ class ObjectFifoHandle(Resolvable):
     @property
     def obj_type(self) -> np.ndarray[np.generic.dtype, np.generic.shape]:
         return self.__object_fifo.obj_type
+
+    def end1_tile(self) -> MyTile:
+        return self.__object_fifo.end1_tile()
+
+    def end2_tiles(self) -> list[MyTile]:
+        return self.__object_fifo.end2_tiles()
 
     def set_endpoint(self, endpoint: MyObjectFifoEndpoint) -> None:
         self.__object_fifo._set_endpoint(endpoint, first=self.__is_first)

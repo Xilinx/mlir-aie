@@ -31,8 +31,8 @@ line_size = vector_size // 4
 line_type = np.ndarray[np.uint8, (line_size,)]
 
 # TODO: rely on depth inference
-of_in = MyObjectFifo(2, line_type)
-of_out = MyObjectFifo(2, line_type)
+of_in = MyObjectFifo(2, line_type, shim_endpoint=(0, 0))
+of_out = MyObjectFifo(2, line_type, shim_endpoint=(0, 0))
 
 passthrough_fn = BinKernel(
     "passThroughLine",
