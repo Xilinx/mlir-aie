@@ -9,7 +9,7 @@
 import sys
 import numpy as np
 
-from aie.api.dataflow.inout.simplefifoinout import SimpleFifoInOutProgram
+from aie.api.dataflow.inout.simplefifoinout import SimpleFifoInOutSequence
 from aie.api.dataflow.objectfifo import MyObjectFifo
 from aie.api.dataflow.objectfifolink import MyObjectFifoLink
 from aie.api.phys.device import NPU1Col1
@@ -28,17 +28,13 @@ if len(sys.argv) == 3:
 my_dtype = np.uint32
 obj_type = np.ndarray[my_dtype, (M, K)]
 
-# TODO: rely on depth inference
-of_in = MyObjectFifo(2, obj_type)
-of_out = MyObjectFifo(2, obj_type)
+of_in = MyObjectFifo(2, obj_type, shim_endpoint=(0, 0))
+of_out = MyObjectFifo(2, obj_type, shim_endpoint=(0, 0))
 
-# TODO: clean up placement
-# TODO: logic to put dummy core if link has core location but core not specified
-worker_program = MyWorker(None, [], coords=(0, 2))  # , intermediate=AnyMemtile
+worker_program = MyWorker(None, [], coords=(0, 2))
 my_link = MyObjectFifoLink([of_in.second], [of_out.first], coords=(0, 2))
 
-# TODO: take memref_type for input/output instead?
-inout_program = SimpleFifoInOutProgram(
+inout_sequence = SimpleFifoInOutSequence(
     of_in.first,
     N,
     of_out.second,
@@ -52,6 +48,6 @@ my_program = MyProgram(
     NPU1Col1(),
     worker_programs=[worker_program],
     links=[my_link],
-    inout_program=inout_program,
+    inout_sequence=inout_sequence,
 )
 my_program.resolve_program()

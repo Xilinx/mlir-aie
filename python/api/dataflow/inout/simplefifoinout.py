@@ -9,12 +9,12 @@ from typing import Optional
 
 from .... import ir
 from ....dialects.aiex import runtime_sequence, npu_sync, npu_dma_memcpy_nd
-from .inout import InOutProgram
+from .inout import InOutSequence
 from ..objectfifo import ObjectFifoHandle
 from ....extras.util import np_ndarray_type_to_mlir_type, get_np_ndarray_type_shape
 
 
-class SimpleFifoInOutProgram(InOutProgram):
+class SimpleFifoInOutSequence(InOutSequence):
     def __init__(
         self,
         fifo_in: ObjectFifoHandle,

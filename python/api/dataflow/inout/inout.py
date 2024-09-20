@@ -15,12 +15,12 @@ from ..objectfifo import ObjectFifoHandle
 from ...resolvable import Resolvable
 
 
-class InOutProgram(Resolvable):
+class InOutSequence(Resolvable):
     @abstractmethod
     def get_fifos(self) -> list[ObjectFifoHandle]: ...
 
 
-class MyInOutProgram(InOutProgram):
+class MyInOutSequence(InOutSequence):
     def __init__(
         self,
         sequence_fn: Callable[..., None],

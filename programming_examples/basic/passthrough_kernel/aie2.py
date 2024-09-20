@@ -11,7 +11,7 @@ import numpy as np
 # TODO: move maybe to aie.api.controlflow
 from aie.extras.dialects.ext.scf import _for as range_
 
-from aie.api.dataflow.inout.simplefifoinout import SimpleFifoInOutProgram
+from aie.api.dataflow.inout.simplefifoinout import SimpleFifoInOutSequence
 from aie.api.dataflow.objectfifo import MyObjectFifo
 from aie.api.kernels.binkernel import BinKernel
 from aie.api.phys.device import NPU1Col1
@@ -54,11 +54,11 @@ def core_fn(of_in, of_out, passThroughLine):
 worker_program = MyWorker(
     core_fn, [of_in.second, of_out.first, passthrough_fn], coords=(0, 2)
 )
-inout_program = SimpleFifoInOutProgram(
+inout_sequence = SimpleFifoInOutSequence(
     of_in.first, vector_size, of_out.second, vector_size
 )
 
 my_program = MyProgram(
-    NPU1Col1(), worker_programs=[worker_program], inout_program=inout_program
+    NPU1Col1(), worker_programs=[worker_program], inout_sequence=inout_sequence
 )
 my_program.resolve_program()

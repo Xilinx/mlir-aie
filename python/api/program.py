@@ -11,7 +11,7 @@ from ..dialects.aie import device
 
 from .worker import MyWorker
 from .phys.device import MyDevice
-from .dataflow.inout.inout import InOutProgram
+from .dataflow.inout.inout import InOutSequence
 from .dataflow.objectfifolink import MyObjectFifoLink
 
 
@@ -20,12 +20,12 @@ class MyProgram:
         self,
         device: MyDevice,
         worker_programs: list[MyWorker],
-        inout_program: InOutProgram,
+        inout_sequence: InOutSequence,
         links: list[MyObjectFifoLink] = [],
     ):
         self.__device = device
         self.__worker_programs = worker_programs
-        self.__inout_program = inout_program
+        self.__inout_sequence = inout_sequence
         self.__links = links
 
     def resolve_program(self):
@@ -34,7 +34,7 @@ class MyProgram:
             @device(self.__device.resolve())
             def device_body():
                 # Collect all fifos
-                all_fifos = self.__inout_program.get_fifos()
+                all_fifos = self.__inout_sequence.get_fifos()
                 for w in self.__worker_programs:
                     all_fifos.extend(w.get_fifos())
 
@@ -73,7 +73,7 @@ class MyProgram:
                         self._print_verify(ctx)
 
                 # In/Out Sequence
-                self.__inout_program.resolve()
+                self.__inout_sequence.resolve()
                 self._print_verify(ctx)
 
                 # Generate core programs
