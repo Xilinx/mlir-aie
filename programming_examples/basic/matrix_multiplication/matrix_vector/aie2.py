@@ -9,7 +9,7 @@ import numpy as np
 from aie.extras.dialects.ext.scf import _for as range_
 from aie.dialects.aiex import npu_dma_memcpy_nd, npu_sync
 
-from aie.api.dataflow.inout.inout import MyInOutProgram
+from aie.api.dataflow.inout.inout import MyInOutSequence
 from aie.api.dataflow.objectfifo import MyObjectFifo
 from aie.api.dataflow.objectfifolink import MyObjectFifoLink
 from aie.api.kernels.binkernel import BinKernel
@@ -46,9 +46,9 @@ dtype_out = np.int32
 dtype_out_str = "i32"
 
 # Input/output tensor definitions # TODO: can simplify if single value?
-inA_ty = np.ndarray(dtype_in, (M * K))
-inB_ty = np.ndarray(dtype_in, (K,))
-outC_ty = np.ndarray(dtype_out, (M,))
+inA_ty = np.ndarray[dtype_in, (M * K,)]
+inB_ty = np.ndarray[dtype_in, (K,)]
+outC_ty = np.ndarray[dtype_out, (M,)]
 a_ty = np.ndarray[dtype_in, (m, k)]
 a_flat_ty = np.ndarray[dtype_in, (m * k,)]
 b_ty = np.ndarray[dtype_in, (k,)]
@@ -59,7 +59,7 @@ scalar_str = "" if vectorized else "scalar_"
 zero = BinKernel(f"zero_{scalar_str}{dtype_out_str}", f"mv_{m}x{k}.o", [c_ty])
 matvec = BinKernel(
     f"matvec_{scalar_str}{dtype_in_str}_{dtype_out_str}",
-    f"mm_{m}x{k}x{n}.o",
+    f"mv_{m}x{k}.o",
     [a_ty, b_ty, c_ty],
 )
 
@@ -88,13 +88,13 @@ def core_body(a_in, b_in, c_out, zero, matvec):
 
 
 # Setup workers + per-worker dataflow
-inB_fifo = MyObjectFifo(2, b_ty, name="inB", end_first=(1, 0))
+inB_fifo = MyObjectFifo(2, b_ty, name="inB", shim_endpoint=(1, 0))
 for i in range(n_cores):
     # Create object fifos for per-code dataflow
-    memA = MyObjectFifo(2, a_flat_ty, name=f"memA{i}", end_first=(i, 0))
-    toStreamA = [(k // 2 // 2, 2), (m, k), (2, 1)] if vectorized else []
-    inA = MyObjectFifo(2, a_ty, name=f"inA{i}", toStream=toStreamA)
-    outC = MyObjectFifo(2, c_ty, end_second=(i, 0))
+    memA = MyObjectFifo(2, a_flat_ty, name=f"memA{i}", shim_endpoint=(i, 0))
+    dimensionsToStreamA = [(k // 2 // 2, 2), (m, k), (2, 1)] if vectorized else []
+    inA = MyObjectFifo(2, a_ty, name=f"inA{i}", dimensionsToStream=dimensionsToStreamA)
+    outC = MyObjectFifo(2, c_ty, shim_endpoint=(i, 0))
 
     # Create per-core worker program
     worker_programs.append(
@@ -147,7 +147,7 @@ def sequence_fn(A, B, C, memA, inB, memC):
         npu_sync(column=i, row=0, direction=0, channel=0)
 
 
-inout_program = MyInOutProgram(
+inout_sequence = MyInOutSequence(
     sequence_fn,
     [inA_ty, inB_ty, outC_ty],
     [memA_fifos, inB_fifo, outC_fifos],
@@ -157,7 +157,7 @@ my_program = MyProgram(
     NPU1Col4(),
     worker_programs=worker_programs,
     links=A_links,
-    inout_program=inout_program,
+    inout_sequence=inout_sequence,
 )
 
 my_program.resolve_program()

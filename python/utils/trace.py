@@ -13,11 +13,11 @@ from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEve
 
 
 class GenericEvent:
-    def __init__(self, code: typing.Union[CoreEvent, MemEvent, PLEvent, MemTileEvent]):
+    def __init__(self, code: CoreEvent | MemEvent | PLEvent | MemTileEvent):
         # For backwards compatibility, allow integer as event
         if isinstance(code, int):
             code = CoreEvent(code)
-        self.code: typing.Union[CoreEvent, MemEvent, PLEvent, MemTileEvent] = code
+        self.code: CoreEvent | MemEvent | PLEvent | MemTileEvent = code
 
     def get_register_writes(self):
         """

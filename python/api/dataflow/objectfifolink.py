@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Optional
+from collections.abc import Sequence
 
 from ... import ir
 from ...dialects._aie_ops_gen import ObjectFifoLinkOp
@@ -8,31 +8,34 @@ from ...dialects.aie import object_fifo_link
 from ..phys.tile import MyTile
 from .endpoint import MyObjectFifoEndpoint
 from .objectfifo import ObjectFifoHandle
+from ...extras.util import single_elem_or_list_to_list
 
 
 class MyObjectFifoLink(MyObjectFifoEndpoint):
     def __init__(
         self,
-        seconds: list[ObjectFifoHandle] = [],
-        firsts: list[ObjectFifoHandle] = [],
-        coords: Optional[tuple[int, int]] = None,
+        seconds: Sequence[ObjectFifoHandle] | ObjectFifoHandle = [],
+        firsts: Sequence[ObjectFifoHandle] | ObjectFifoHandle = [],
+        coords: tuple[int, int] | None = None,
     ):
         column, row = coords
         self.__tile = MyTile(column, row)
 
-        self.__seconds = []
-        self.__firsts = []
+        self.__seconds = single_elem_or_list_to_list(seconds)
+        self.__firsts = single_elem_or_list_to_list(firsts)
         self.__op = None
 
-        self.__obj_type = seconds[0].obj_type
-        for s in seconds:
-            assert s.obj_type == self.__obj_type
-            s.set_endpoint(self)
-            self.__seconds.append(s)
-        for f in firsts:
+        assert len(self.__firsts) > 0
+        assert len(self.__seconds) > 0
+
+        self.__obj_type = self.__seconds[0].obj_type
+        for f in self.__firsts:
+            # TODO: need to check size not exactness
             assert f.obj_type == self.__obj_type
             f.set_endpoint(self)
-            self.__firsts.append(f)
+        for s in self.__seconds:
+            assert s.obj_type == self.__obj_type
+            s.set_endpoint(self)
 
     @property
     def tile(self) -> MyTile:

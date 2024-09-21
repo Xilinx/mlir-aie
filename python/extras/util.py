@@ -9,7 +9,7 @@ import warnings
 from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
-from typing import Callable, List, Optional, Sequence, Tuple, Union, get_args
+from typing import Callable, List, Sequence, Tuple, get_args, TypeVar
 
 import tensorflow as tf
 import numpy as np
@@ -46,12 +46,21 @@ except ImportError:
     )
     TypeID = object
 
+E = TypeVar("E")
+
+
+def single_elem_or_list_to_list(val: list[E] | E) -> list[T]:
+    """does not work for list of lists but still useful"""
+    if not isinstance(val, list):
+        return [val]
+    return val
+
 
 def is_relative_to(self, other):
     return other == self or other in self.parents
 
 
-def get_user_code_loc(user_base: Optional[Path] = None):
+def get_user_code_loc(user_base: Path | None = None):
     from .. import extras
 
     if Context.current is None:
@@ -215,8 +224,8 @@ def mlir_type_to_ctype(mlir_type):
 
 
 def infer_mlir_type(
-    py_val: Union[int, float, bool, np.ndarray], memref=False, vector=False
-) -> Union[IntegerType, F32Type, F64Type, RankedTensorType]:
+    py_val: int | float | bool | np.ndarray, memref=False, vector=False
+) -> IntegerType | F32Type | F64Type | RankedTensorType:
     """Infer MLIR type (`ir.Type`) from supported python values.
 
     Note ints and floats are mapped to 64-bit types.
@@ -336,7 +345,7 @@ def make_maybe_no_args_decorator(decorator):
 
 @dataclass
 class Successor:
-    op: Union[OpView, Operation]
+    op: OpView | Operation
     operands: List[Value]
     block: Block
     pos: int
@@ -350,7 +359,7 @@ class Successor:
 
 
 @contextlib.contextmanager
-def bb(*preds: Tuple[Union[Successor, OpView]]):
+def bb(*preds: Tuple[Successor | OpView]):
     current_ip = InsertionPoint.current
     op = current_ip.block.owner
     op_region = op.regions[0]

@@ -21,9 +21,10 @@ from ....ir import (
 
 
 def call(
-    callee_or_results: Union[FuncOp, List[Type]],
-    arguments_or_callee: Union[List[Value], FlatSymbolRefAttr, str],
-    arguments: Optional[list] = None,
+    callee_or_results: FuncOp | List[Type],
+    arguments_or_callee: List[Value] | FlatSymbolRefAttr,
+    str,
+    arguments: list | None = None,
     *,
     call_op_ctor=CallOp.__base__,
     loc=None,

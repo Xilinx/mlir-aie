@@ -14,8 +14,6 @@ devs = {
 }
 """
 
-from typing import Optional
-
 from ... import ir
 from ...dialects.aie import AIEDevice, tile, TileOp
 from ..resolvable import Resolvable
@@ -35,7 +33,7 @@ class MyDevice(Resolvable):
         def __init__(self, col: int, row: int) -> None:
             self.__col: int = col
             self.__row: int = row
-            self.__op: Optional[TileOp] = None
+            self.__op: TileOp | None = None
             super().__init__()
 
         def resolve(

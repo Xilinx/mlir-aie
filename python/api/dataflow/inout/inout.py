@@ -29,10 +29,10 @@ class MyInOutSequence(InOutSequence):
     ):
         self.sequence_fn = sequence_fn
         self.inout_types = inout_types
-        self.fifos = fifos
+        self.fifos = fifos.copy()
 
     def get_fifos(self) -> list[ObjectFifoHandle]:
-        return self.fifos
+        return self.fifos.copy()
 
     def resolve(
         self,

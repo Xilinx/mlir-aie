@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from dataclasses import dataclass
 import inspect
-from typing import List, Optional, Tuple, Union, Dict, Any
+from typing import List, Tuple, Dict, Any
 import contextlib
 
 import numpy as np
@@ -106,9 +106,7 @@ def bd_dim_layout(size, stride):
 
 
 @register_attribute_builder("BDDimLayoutArrayAttr")
-def bd_dim_layout_array_attr_builder(
-    tups: List[Union[Attribute, Tuple[int]]], context=None
-):
+def bd_dim_layout_array_attr_builder(tups: List[Attribute | Tuple[int]], context=None):
     if isinstance(tups, list) and all(isinstance(t, tuple) for t in tups):
         tups = list(map(lambda t: bd_dim_layout(*t), tups))
     return Attribute.parse(
@@ -374,7 +372,7 @@ class packetflow(PacketFlowOp):
         dest,
         dest_port,
         dest_channel,
-        keep_pkt_header: Optional[bool] = None,
+        keep_pkt_header: bool | None = None,
     ):
         super().__init__(ID=pkt_id, keep_pkt_header=keep_pkt_header)
         bb = Block.create_at_start(self.ports)
@@ -448,9 +446,9 @@ class DMAStartOp(DMAStartOp):
         channel_dir,
         channel_index,
         *,
-        dest: Optional[Union[Successor, Block]] = None,
-        chain: Optional[Union[Successor, Block]] = None,
-        repeat_count: Optional[int] = None,
+        dest: Successor | Block | None = None,
+        chain: Successor | Block | None = None,
+        repeat_count: int | None = None,
         loc=None,
         ip=None,
     ):
@@ -485,8 +483,8 @@ def dma_start(
     channel_dir,
     channel_index,
     *,
-    dest: Optional[Union[Successor, Block]] = None,
-    chain: Optional[Union[Successor, Block]] = None,
+    dest: Successor | Block | None = None,
+    chain: Successor | Block | None = None,
     loc=None,
     ip=None,
 ):
@@ -496,9 +494,7 @@ def dma_start(
 
 @_cext.register_operation(_Dialect, replace=True)
 class NextBDOp(NextBDOp):
-    def __init__(
-        self, dest: Optional[Union[Successor, Block]] = None, *, loc=None, ip=None
-    ):
+    def __init__(self, dest: Successor | Block | None = None, *, loc=None, ip=None):
         if isinstance(dest, Successor):
             dest = dest.block
         if dest is None:
@@ -513,7 +509,7 @@ class NextBDOp(NextBDOp):
 
 
 def next_bd(
-    dest: Optional[Union[Successor, Block, ContextManagedBlock]] = None,
+    dest: Successor | Block | ContextManagedBlock | None = None,
     loc=None,
     ip=None,
 ):

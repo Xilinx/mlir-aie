@@ -12,7 +12,7 @@ import sys
 from aie.extras.dialects.ext.arith import constant
 from aie.extras.dialects.ext.func import func
 from aie.extras.dialects.ext.scf import _for as range_
-from aie.api.dataflow.inout.simplefifoinout import SimpleFifoInOutProgram
+from aie.api.dataflow.inout.simplefifoinout import SimpleFifoInOutSequence
 from aie.api.dataflow.objectfifo import MyObjectFifo
 from aie.api.phys.device import NPU1Col1, XCVC1902
 from aie.api.program import MyProgram
@@ -42,12 +42,13 @@ elif sys.argv[1] == "xcvc1902":
 else:
     raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
+col = int(sys.argv[2])
 my_dtype = np.int32
 tile_ty = np.ndarray[my_dtype, (TILE_SIZE,)]
 
 # AIE-array data movement with object fifos
-of_in = MyObjectFifo(objfifo_capacity, tile_ty)
-of_out = MyObjectFifo(objfifo_capacity, tile_ty)
+of_in = MyObjectFifo(objfifo_capacity, tile_ty, shim_endpoint=(col, 0))
+of_out = MyObjectFifo(objfifo_capacity, tile_ty, shim_endpoint=(col, 0))
 
 
 @func
@@ -66,15 +67,15 @@ def core_fn(of_in, of_out, add_kernel):
         of_out.release(1)
 
 
-# Set up compute tile 2 TODO: clean up placement
+# Set up worker
 worker_program = MyWorker(
     core_fn,
     [of_in.second, of_out.first, add_kernel],
-    coords=(int(sys.argv[2]), 2),
+    coords=(col, 2),
 )
 
 # To/from AIE-array data movement
-inout_program = SimpleFifoInOutProgram(
+inout_sequence = SimpleFifoInOutSequence(
     of_in.first,
     TILE_SIZE,
     of_out.second,
@@ -84,16 +85,9 @@ inout_program = SimpleFifoInOutProgram(
     out_sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
     out_strides=[1, 1, IMAGE_WIDTH, 1],
     dtype=my_dtype,
-    coords=(int(sys.argv[2]), 0),
 )
 
 my_program = MyProgram(
-    dev, worker_programs=[worker_program], inout_program=inout_program
+    dev, worker_programs=[worker_program], inout_sequence=inout_sequence
 )
 my_program.resolve_program()
-
-"""
-TODOs:
-* look into # @canonicalize(using=scf_canonicalizer) shoudl decorate this after func if we want control flow
-* we need emit = true because must be emited in outer loop (not deferred) to have access to symbol table
-"""

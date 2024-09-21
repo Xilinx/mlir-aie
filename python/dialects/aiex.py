@@ -4,7 +4,6 @@ from contextlib import contextmanager
 from functools import partial
 import itertools
 from operator import itemgetter
-from typing import Union, Optional
 
 import numpy as np
 
@@ -47,7 +46,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         offsets: MixedValues = None,
         sizes: MixedValues = None,
         strides: MixedValues = None,
-        issue_token: Optional[bool] = None,
+        issue_token: bool | None = None,
     ):
         x = 0
         y = 0
@@ -685,8 +684,8 @@ class TileArray:
 
 
 def broadcast_flow(
-    source: Union[np.ndarray, TileOp],
-    dest: Union[np.ndarray, TileOp],
+    source: np.ndarray | TileOp,
+    dest: np.ndarray | TileOp,
     source_bundle=None,
     source_channel=None,
     dest_bundle=None,

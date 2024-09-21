@@ -5,7 +5,6 @@ TODO:
 """
 
 import numpy as np
-from typing import Optional
 
 from .... import ir
 from ....dialects.aiex import runtime_sequence, npu_sync, npu_dma_memcpy_nd
@@ -21,10 +20,10 @@ class SimpleFifoInOutSequence(InOutSequence):
         bytes_in: int,
         fifo_out: ObjectFifoHandle,
         bytes_out: int,
-        in_sizes: Optional[list[int]] = None,
-        in_strides: Optional[list[int]] = None,
-        out_sizes: Optional[list[int]] = None,
-        out_strides: Optional[list[int]] = None,
+        in_sizes: list[int] | None = None,
+        in_strides: list[int] | None = None,
+        out_sizes: list[int] | None = None,
+        out_strides: list[int] | None = None,
         dtype: np.generic = np.uint8,
     ):
         assert bytes_in % np.prod(get_np_ndarray_type_shape(fifo_in.obj_type)) == 0

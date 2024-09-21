@@ -5,7 +5,7 @@ TODO:
 """
 
 import numpy as np
-from typing import get_origin, Optional, Union
+from typing import get_origin
 
 from ... import ir
 
@@ -22,13 +22,13 @@ class BinKernel(MyKernel):
         name: str,
         bin_name: str,
         inout_types: list[
-            Union[np.ndarray[np.generic.dtype, np.generic.shape], np.dtype]
+            np.ndarray[np.generic.dtype, np.generic.shape] | np.dtype
         ] = [],
     ) -> None:
         self.__name = name
         self.__bin_name = bin_name
         self.__inout_types = inout_types
-        self.__op: Optional[FuncOp] = None
+        self.__op: FuncOp | None = None
 
     @property
     def bin_name(self) -> str:

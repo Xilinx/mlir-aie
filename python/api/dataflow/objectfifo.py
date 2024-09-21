@@ -7,7 +7,6 @@ TODO:
 
 # Address circular dependency between MyObjectFifo and ObjectFifoHandle
 from __future__ import annotations
-from typing import Optional
 import numpy as np
 
 from ... import ir
@@ -39,7 +38,7 @@ class MyObjectFifo(Resolvable):
         end2: MyObjectFifoEndpoint = None,
         dimensionsToStream=None,  # TODO(erika): needs a type
         dimensionsFromStreamPerConsumer=None,  # TODO(erika): needs a type
-        shim_endpoint: Optional[tuple[int, int]] = None,
+        shim_endpoint: tuple[int, int] | None = None,
     ):
         self.__depth = depth
         self.__obj_type = obj_type
@@ -52,7 +51,7 @@ class MyObjectFifo(Resolvable):
             self.name = f"myof{MyObjectFifo.__get_index()}"
         else:
             self.name = name
-        self.__op: Optional[ObjectFifoCreateOp] = None
+        self.__op: ObjectFifoCreateOp | None = None
         self.__first: ObjectFifoHandle = ObjectFifoHandle(self, True)
         self.__second: ObjectFifoHandle = ObjectFifoHandle(self, False)
         if shim_endpoint:

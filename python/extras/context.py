@@ -1,7 +1,6 @@
 import contextlib
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
-from typing import Optional
 
 from .. import ir
 
@@ -17,7 +16,7 @@ class MLIRContext:
 
 @contextmanager
 def mlir_mod_ctx(
-    src: Optional[str] = None,
+    src: str | None = None,
     context: ir.Context = None,
     location: ir.Location = None,
     allow_unregistered_dialects=False,
@@ -45,7 +44,7 @@ class RAIIMLIRContext:
     context: ir.Context
     location: ir.Location
 
-    def __init__(self, location: Optional[ir.Location] = None):
+    def __init__(self, location: ir.Location | None = None):
         self.context = ir.Context()
         self.context.__enter__()
         if location is None:

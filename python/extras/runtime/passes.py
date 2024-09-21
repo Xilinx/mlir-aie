@@ -4,7 +4,7 @@ import sys
 import tempfile
 from contextlib import ExitStack
 from io import StringIO
-from typing import List, Optional, Union
+from typing import List
 
 from ..context import disable_multithreading
 from ...ir import Module, StringAttr
@@ -25,8 +25,8 @@ def get_module_name_for_debug_dump(module):
 
 def run_pipeline(
     module,
-    pipeline: Union[str, "Pipeline"],
-    description: Optional[str] = None,
+    pipeline: str | "Pipeline",
+    description: str | None = None,
     enable_ir_printing=False,
     print_pipeline=False,
     verify=True,

@@ -15,7 +15,7 @@ bfloat16 = tf.bfloat16.as_numpy_dtype
 from aie.extras.dialects.ext.scf import _for as range_
 from aie.dialects.aiex import npu_dma_memcpy_nd, npu_sync
 
-from aie.api.dataflow.inout.inout import MyInOutProgram
+from aie.api.dataflow.inout.inout import MyInOutSequence
 from aie.api.dataflow.objectfifo import MyObjectFifo
 from aie.api.dataflow.objectfifolink import MyObjectFifoLink
 from aie.api.kernels.binkernel import BinKernel
@@ -112,26 +112,24 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
         [a_ty, b_ty, c_ty],
     )
 
-    inA = MyObjectFifo(2, a_ty)
+    inA = MyObjectFifo(2, a_ty, shim_endpoint=(0, 0))
     memAToStream = [(m // r, r * k), (k // s, s), (r, k), (s, 1)] if vectorized else []
     memA = MyObjectFifo(2, a_ty, dimensionsToStream=memAToStream)
-    inALink = MyObjectFifoLink([inA.second], [memA.first], coords=(0, 1))  # AnyMemtile
+    inALink = MyObjectFifoLink([inA.second], [memA.first], coords=(0, 1))
 
     # Input B
-    inB = MyObjectFifo(2, b_ty)
+    inB = MyObjectFifo(2, b_ty, shim_endpoint=(0, 0))
     memBToStream = [(k // s, s * n), (n // t, t), (s, n), (t, 1)] if vectorized else []
     memB = MyObjectFifo(2, b_ty, dimensionsToStream=memBToStream)
-    inBLink = MyObjectFifoLink([inB.second], [memB.first], coords=(0, 1))  # AnyMemtile
+    inBLink = MyObjectFifoLink([inB.second], [memB.first], coords=(0, 1))
 
     # Output C
     memC = MyObjectFifo(2, c_ty)
     memCToStream = (
         [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)] if vectorized else []
     )
-    outC = MyObjectFifo(2, c_ty, dimensionsToStream=memCToStream)
-    outCLink = MyObjectFifoLink(
-        [memC.second], [outC.first], coords=(0, 1)
-    )  # AnyMemtile
+    outC = MyObjectFifo(2, c_ty, dimensionsToStream=memCToStream, shim_endpoint=(0, 0))
+    outCLink = MyObjectFifoLink([memC.second], [outC.first], coords=(0, 1))
 
     def core_fn(a, b, c, zero, matmul):
         for _ in range_(0xFFFFFFFF):
@@ -199,28 +197,25 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
                     npu_sync(column=0, row=0, direction=0, channel=0)
         npu_sync(column=0, row=0, direction=0, channel=0)
 
-    inout_program = MyInOutProgram(
+    inout_sequence = MyInOutSequence(
         sequence_fn,
         [A_ty, B_ty, C_ty],
         [inA.first, inB.first, outC.second],
-        coords=(0, 0),  # AnyShim
     )
 
     worker_program = MyWorker(
         core_fn,
         [memA.second, memB.second, memC.first, zero, matmul],
-        coords=(0, 2),  # AnyCore
+        coords=(0, 2),
     )
 
     my_program = MyProgram(
         NPU1Col1(),
         worker_programs=[worker_program],
         links=[inALink, inBLink, outCLink],
-        inout_program=inout_program,
-        # placer=SequentialPlacer(pack=True)
+        inout_sequence=inout_sequence,
     )
 
-    # g = my_program.get_dataflow_graph()
     my_program.resolve_program()
 
 

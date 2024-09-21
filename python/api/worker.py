@@ -6,7 +6,7 @@ TODO:
 """
 
 import sys
-from typing import Callable, Optional, Union
+from typing import Callable
 
 from .. import ir
 from ..dialects.aie import core
@@ -20,8 +20,8 @@ from .kernels.kernel import MyKernel
 class MyWorker(MyObjectFifoEndpoint):
     def __init__(
         self,
-        core_fn: Optional[Callable[[Union[ObjectFifoHandle, MyKernel]], None]],
-        fn_args: list[Union[ObjectFifoHandle, MyKernel]] = [],
+        core_fn: Callable[[ObjectFifoHandle | MyKernel], None] | None,
+        fn_args: list[ObjectFifoHandle | MyKernel] = [],
         coords: tuple[int, int] = None,
     ):
         column, row = coords
@@ -35,7 +35,7 @@ class MyWorker(MyObjectFifoEndpoint):
             self.core_fn = do_nothing_core_fun
         else:
             self.core_fn = core_fn
-        self.link_with: Optional[str] = None
+        self.link_with: str | None = None
         self.fn_args = fn_args
         bin_names = set()
         self.__fifos = []
@@ -56,7 +56,7 @@ class MyWorker(MyObjectFifoEndpoint):
         return self.__tile
 
     def get_fifos(self) -> list[ObjectFifoHandle]:
-        return self.__fifos
+        return self.__fifos.copy()
 
     def resolve(
         self,

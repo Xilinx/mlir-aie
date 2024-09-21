@@ -5,7 +5,6 @@ TODOs:
 * tile types"
 """
 
-from typing import Optional
 from ...dialects.aie import TileOp
 
 
@@ -13,7 +12,7 @@ class MyTile:
     def __init__(self, col: int, row: int) -> None:
         self.col: int = col
         self.row: int = row
-        self.__op: Optional[TileOp] = None
+        self.__op: TileOp | None = None
 
     @property
     def op(self) -> TileOp:
