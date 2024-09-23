@@ -13,6 +13,7 @@ from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects.scf import *
+from aie.extras.dialects.ext.scf import _for as range_
 
 
 def main():
@@ -299,9 +300,11 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
 
                 @core(core_tiles[row][col], f"mm_{m}x{k}x{n}.o")
                 def core_body():
-                    for _ in for_(0xFFFFFFFF):
+                    for _ in range_(0xFFFFFFFF):
                         loop = (
-                            for_(n_tiles_per_core) if n_tiles_per_core > 1 else range(1)
+                            range_(n_tiles_per_core)
+                            if n_tiles_per_core > 1
+                            else range(1)
                         )  # Workaround for issue #1547
                         for _ in loop:
                             elem_out = C_l1l2_fifos[row][col].acquire(
@@ -309,7 +312,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
                             )
                             call(zero, [elem_out])
 
-                            for _ in for_(K // k):
+                            for _ in range_(K // k):
                                 elem_in_a = A_l2l1_fifos[row].acquire(
                                     ObjectFifoPort.Consume, 1
                                 )
@@ -319,13 +322,8 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
                                 call(matmul, [elem_in_a, elem_in_b, elem_out])
                                 A_l2l1_fifos[row].release(ObjectFifoPort.Consume, 1)
                                 B_l2l1_fifos[col].release(ObjectFifoPort.Consume, 1)
-                                yield_([])
 
                             C_l1l2_fifos[row][col].release(ObjectFifoPort.Produce, 1)
-                            yield_([])
-
-                        if n_tiles_per_core > 1:  # workaround for issue #1547
-                            yield_([])
 
         # To/from AIE-array data movement
         @runtime_sequence(

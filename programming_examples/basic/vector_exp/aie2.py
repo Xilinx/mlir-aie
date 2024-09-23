@@ -11,7 +11,7 @@ from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 
 from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
 from aie.dialects.scf import *  # scf (strcutred control flow) dialect
-from aie.extras.dialects.ext import memref, arith  # memref and arithmatic dialects
+from aie.extras.dialects.ext.scf import _for as range_
 
 
 # AI Engine structural design function
@@ -91,8 +91,8 @@ def my_eltwise_exp():
             # Compute tile i
             @core(cores[i], "kernels.a")
             def core_body():
-                for _ in for_(0xFFFFFFFF):
-                    for _ in for_(tiles):
+                for _ in range_(0xFFFFFFFF):
+                    for _ in range_(tiles):
                         elem_out = outC_fifos[outC_fifo_names[i]].acquire(
                             ObjectFifoPort.Produce, 1
                         )
@@ -106,8 +106,6 @@ def my_eltwise_exp():
                         outC_fifos[outC_fifo_names[i]].release(
                             ObjectFifoPort.Produce, 1
                         )
-                        yield_([])
-                    yield_([])
 
         # To/from AIE-array data movement
         tensor_ty = T.memref(N, T.bf16())

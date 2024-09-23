@@ -8,10 +8,9 @@
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects.scf import *
-from aie.extras.dialects.ext import memref, arith
-from aie.dialects.scf import for_, yield_
+from aie.extras.dialects.ext import memref
 from aie.extras.context import mlir_mod_ctx
-from aie.ir import MemRefType, TypeAttr
+from aie.extras.dialects.ext.scf import _for as range_
 
 import sys
 
@@ -528,14 +527,14 @@ def resnet_conv_x():
 
                 @core(cores[i][0], conv1_kernels[i])
                 def core_body():
-                    for _ in for_(sys.maxsize):
+                    for _ in range_(sys.maxsize):
 
                         # acquire weights once
                         element0Weights = wts_sub_fifos[
                             wts_sub_fifo_names[i][0]
                         ].acquire(ObjectFifoPort.Consume, 1)
                         scale = memref.load(rtp[i][0], [0])
-                        for _ in for_(tensorInH):
+                        for _ in range_(tensorInH):
                             element0ActivactionsIn = act1_fifos[
                                 act1_fifo_names[i]
                             ].acquire(ObjectFifoPort.Consume, 1)
@@ -576,11 +575,9 @@ def resnet_conv_x():
                             objectfifo_release(
                                 ObjectFifoPort.Produce, act2_fifo_names[i], 1
                             )
-                            yield_([])
                         objectfifo_release(
                             ObjectFifoPort.Consume, wts_sub_fifo_names[i][0], 1
                         )
-                        yield_([])
 
             # 3x3 conv2d OFM 0-31
             for i in range(n_cols):
@@ -588,7 +585,7 @@ def resnet_conv_x():
                 @core(cores[i][1], "conv2dk3.o")
                 def core_body():
                     scale = 1
-                    for _ in for_(sys.maxsize):
+                    for _ in range_(sys.maxsize):
 
                         # acquire weights and rtps once
                         element0Weights = wts_sub_fifos[
@@ -626,7 +623,7 @@ def resnet_conv_x():
                         )
 
                         # middle
-                        for _ in for_(tensorInH - 2):
+                        for _ in range_(tensorInH - 2):
                             elementActivactionsIn = act2_fifos[
                                 act2_fifo_names[i]
                             ].acquire(ObjectFifoPort.Consume, 3)
@@ -658,7 +655,6 @@ def resnet_conv_x():
                             objectfifo_release(
                                 ObjectFifoPort.Produce, act3_fifo_names_1[i], 1
                             )
-                            yield_([])
 
                         # last part
                         elementActivactionsIn = act2_fifos[act2_fifo_names[i]].acquire(
@@ -696,7 +692,6 @@ def resnet_conv_x():
                         objectfifo_release(
                             ObjectFifoPort.Consume, wts_sub_fifo_names[i][1], 1
                         )
-                        yield_([])
 
             # 3x3 conv2d OFM 32-63
 
@@ -705,7 +700,7 @@ def resnet_conv_x():
                 @core(cores[i][3], "conv2dk3.o")
                 def core_body():
                     scale = 1
-                    for _ in for_(sys.maxsize):
+                    for _ in range_(sys.maxsize):
 
                         # acquire weights and rtps once
                         element0Weights = wts_sub_fifos[
@@ -744,7 +739,7 @@ def resnet_conv_x():
                         )
 
                         # middle
-                        for _ in for_(tensorInH - 2):
+                        for _ in range_(tensorInH - 2):
                             elementActivactionsIn = act2_fifos[
                                 act2_fifo_names[i]
                             ].acquire(ObjectFifoPort.Consume, 3)
@@ -776,7 +771,6 @@ def resnet_conv_x():
                             objectfifo_release(
                                 ObjectFifoPort.Produce, act3_fifo_names_2[i], 1
                             )
-                            yield_([])
 
                         # last part
                         elementActivactionsIn = act2_fifos[act2_fifo_names[i]].acquire(
@@ -812,14 +806,13 @@ def resnet_conv_x():
                         objectfifo_release(
                             ObjectFifoPort.Consume, wts_sub_fifo_names[i][1], 1
                         )
-                        yield_([])
 
             # # 1x1 conv2d and add skip
             for i in range(n_cols):
 
                 @core(cores[i][2], conv3_kernels[i])
                 def core_body():
-                    for _ in for_(sys.maxsize):
+                    for _ in range_(sys.maxsize):
 
                         # acquire weights and rtps once
                         element0Weights = wts_sub_fifos[
@@ -833,7 +826,7 @@ def resnet_conv_x():
                             scale = memref.load(rtp[i][2], [0])
                             skipScale = memref.load(rtp[i][2], [1])
 
-                        for _ in for_(tensorInH):
+                        for _ in range_(tensorInH):
                             element0ActivactionsIn = act3_fifo_1[
                                 act3_fifo_names_1[i]
                             ].acquire(ObjectFifoPort.Consume, 1)
@@ -894,11 +887,9 @@ def resnet_conv_x():
                             objectfifo_release(
                                 ObjectFifoPort.Consume, skip_fifo_names[i], 1
                             )
-                            yield_([])
                         objectfifo_release(
                             ObjectFifoPort.Consume, wts_sub_fifo_names[i][2], 1
                         )
-                        yield_([])
 
             # instruction stream generation
             activationsIn = tensorInW * tensorInH * tensorInCInit

@@ -12,6 +12,7 @@ from aie.dialects.aiex import *
 from aie.dialects.scf import *
 from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
+from aie.extras.dialects.ext.scf import _for as range_
 
 width = 512
 height = 9
@@ -109,8 +110,7 @@ def color_threshold():
             # Compute tile 2
             @core(ComputeTile2, "threshold.cc.o")
             def core_body():
-                # for _ in for_(4096):
-                for _ in for_(sys.maxsize):
+                for _ in range_(sys.maxsize):
                     elemIn = inOOB_L2L1_0.acquire(ObjectFifoPort.Consume, 1)
                     elemOut = outOOB_L1L2_0.acquire(ObjectFifoPort.Produce, 1)
 
@@ -140,13 +140,11 @@ def color_threshold():
 
                     inOOB_L2L1_0.release(ObjectFifoPort.Consume, 1)
                     outOOB_L1L2_0.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # Compute tile 3
             @core(ComputeTile3, "threshold.cc.o")
             def core_body():
-                # for _ in for_(4096):
-                for _ in for_(sys.maxsize):
+                for _ in range_(sys.maxsize):
                     elemIn = inOOB_L2L1_1.acquire(ObjectFifoPort.Consume, 1)
                     elemOut = outOOB_L1L2_1.acquire(ObjectFifoPort.Produce, 1)
                     # RTPs written from the instruction stream must be read right before the kernel
@@ -175,13 +173,11 @@ def color_threshold():
 
                     inOOB_L2L1_1.release(ObjectFifoPort.Consume, 1)
                     outOOB_L1L2_1.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # Compute tile 4
             @core(ComputeTile4, "threshold.cc.o")
             def core_body():
-                # for _ in for_(4096):
-                for _ in for_(sys.maxsize):
+                for _ in range_(sys.maxsize):
                     elemIn = inOOB_L2L1_2.acquire(ObjectFifoPort.Consume, 1)
                     elemOut = outOOB_L1L2_2.acquire(ObjectFifoPort.Produce, 1)
 
@@ -211,13 +207,11 @@ def color_threshold():
 
                     inOOB_L2L1_2.release(ObjectFifoPort.Consume, 1)
                     outOOB_L1L2_2.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # Compute tile 5
             @core(ComputeTile5, "threshold.cc.o")
             def core_body():
-                # for _ in for_(4096):
-                for _ in for_(sys.maxsize):
+                for _ in range_(sys.maxsize):
                     elemIn = inOOB_L2L1_3.acquire(ObjectFifoPort.Consume, 1)
                     elemOut = outOOB_L1L2_3.acquire(ObjectFifoPort.Produce, 1)
 
@@ -247,7 +241,6 @@ def color_threshold():
 
                     inOOB_L2L1_3.release(ObjectFifoPort.Consume, 1)
                     outOOB_L1L2_3.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # To/from AIE-array data movement
 

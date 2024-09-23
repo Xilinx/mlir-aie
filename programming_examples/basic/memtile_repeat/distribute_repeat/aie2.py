@@ -13,6 +13,7 @@ from aie.dialects.aiex import *
 from aie.dialects.scf import *
 from aie.extras.dialects.ext import arith
 from aie.extras.context import mlir_mod_ctx
+from aie.extras.dialects.ext.scf import _for as range_
 
 dev = AIEDevice.npu1_1col
 col = 0
@@ -70,32 +71,28 @@ def distribute_repeat():
             # Compute tile 2
             @core(ComputeTile2)
             def core_body():
-                for _ in for_(sys.maxsize):
+                for _ in range_(sys.maxsize):
                     elemOut = of_out2.acquire(ObjectFifoPort.Produce, 1)
                     elemIn = of_in2.acquire(ObjectFifoPort.Consume, 1)
-                    for i in for_(N // 2):
+                    for i in range_(N // 2):
                         v0 = memref.load(elemIn, [i])
                         v1 = arith.addi(v0, arith.constant(1, T.i32()))
                         memref.store(v1, elemOut, [i])
-                        yield_([])
                     of_in2.release(ObjectFifoPort.Consume, 1)
                     of_out2.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # Compute tile 3
             @core(ComputeTile3)
             def core_body():
-                for _ in for_(sys.maxsize):
+                for _ in range_(sys.maxsize):
                     elemOut = of_out3.acquire(ObjectFifoPort.Produce, 1)
                     elemIn = of_in3.acquire(ObjectFifoPort.Consume, 1)
-                    for i in for_(N // 2):
+                    for i in range_(N // 2):
                         v0 = memref.load(elemIn, [i])
                         v1 = arith.addi(v0, arith.constant(2, T.i32()))
                         memref.store(v1, elemOut, [i])
-                        yield_([])
                     of_in3.release(ObjectFifoPort.Consume, 1)
                     of_out3.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # To/from AIE-array data movement
             tensor_out_ty = T.memref(out_size, T.i32())
