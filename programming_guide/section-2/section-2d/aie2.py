@@ -12,7 +12,7 @@ from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
 from aie.extras.dialects.ext.scf import (
     _for as range_,
-)  # scf (strcutred control flow) dialect
+)  # scf (structured control flow) dialect
 from aie.extras.dialects.ext import memref, arith  # memref and arithmatic dialects
 
 buffer_depth = 2
