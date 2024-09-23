@@ -10,7 +10,7 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
+from aie.extras.dialects.ext.scf import _for as range_
 from aie.extras.context import mlir_mod_ctx
 
 import aie.utils.trace as trace_utils
@@ -43,18 +43,16 @@ def my_vector_scalar():
         @core(ComputeTile2, "scale.o")
         def core_body():
             # Effective while(1)
-            for _ in for_(sys.maxsize):
+            for _ in range_(sys.maxsize):
                 elem_factor = of_factor.acquire(ObjectFifoPort.Consume, 1)
                 # Number of sub-vector "tile" iterations
-                for _ in for_(4):
+                for _ in range_(4):
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
                     call(scale_scalar, [elem_in, elem_out, elem_factor, 1024])
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
                 of_factor.release(ObjectFifoPort.Consume, 1)
-                yield_([])
 
         # To/from AIE-array data movement
         tensor_ty = T.memref(4096, T.i32())
