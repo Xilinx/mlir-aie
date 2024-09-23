@@ -18,8 +18,7 @@ from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
-
+from aie.extras.dialects.ext.scf import _for as range_
 
 matrix_rows = 7
 matrix_cols = 19
@@ -59,13 +58,12 @@ def design():
             # Core
             @core(tiles[2][0], "kernel.o")
             def core_body():
-                for _ in for_(0, 0xFFFFFFFF):
+                for _ in range_(0, 0xFFFFFFFF):
                     elem_in = fifo_in.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = fifo_out.acquire(ObjectFifoPort.Produce, 1)
                     call(passthrough_func, [elem_in, elem_out, matrix_size])
                     fifo_in.release(ObjectFifoPort.Consume, 1)
                     fifo_out.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # To/from AIE-array data movement
             @runtime_sequence(matrix_memref, matrix_memref)
