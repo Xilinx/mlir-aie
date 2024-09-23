@@ -1,4 +1,4 @@
-from typing import Sequence
+from typing import Optional, Sequence
 
 from ....ir import InsertionPoint, Value
 from ....dialects.linalg.opdsl.lang.emitter import _is_index_type
@@ -11,7 +11,7 @@ def _for(
     start,
     stop=None,
     step=None,
-    iter_args: Sequence[Value] | None = None,
+    iter_args: Optional[Sequence[Value]] = None,
     insert_yield: bool = True,
     *,
     loc=None,
