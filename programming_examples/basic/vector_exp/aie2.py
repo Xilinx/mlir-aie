@@ -10,8 +10,9 @@ from aie.dialects.aie import *  # primary mlir-aie dialect definitions
 from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 
 from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
-from aie.dialects.scf import *  # scf (strcutred control flow) dialect
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.extras.dialects.ext.scf import (
+    _for as range_,
+)  # scf (strcutred control flow) dialect
 
 
 # AI Engine structural design function

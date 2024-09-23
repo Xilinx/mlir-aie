@@ -11,7 +11,6 @@ import argparse
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
 import aie.utils.trace as trace_utils
 from aie.utils.trace import PortEvent
 from aie.extras.dialects.ext.scf import _for as range_

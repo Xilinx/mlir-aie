@@ -5,15 +5,13 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 
+import sys
+
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.dialects.ext import memref
-from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
-from aie.ir import MemRefType
 from aie.extras.dialects.ext.scf import _for as range_
-
-import sys
 
 # tracing definitions
 trace_sz_in_bytes = 8192
@@ -48,68 +46,27 @@ def bottleneck4AIEs():
             int16_ty = IntegerType.get_signless(16)
             int32_ty = IntegerType.get_signless(32)
 
-            tensorLayer1In_ty = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorL1InC,
-                ),
+            tensorLayer1In_ty = T.memref(
+                tensorInW,
+                1,
+                tensorL1InC,
                 int8_ty,
             )
-            weightsLayer1_ty = MemRefType.get((tensorL1InC * tensorL1OutC,), int8_ty)
-            tensorLayer1Out_ty = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorL1OutC,
-                ),
-                uint8_ty,
-            )
+            weightsLayer1_ty = T.memref(tensorL1InC * tensorL1OutC, int8_ty)
+            tensorLayer1Out_ty = T.memref(tensorInW, 1, tensorL1OutC, uint8_ty)
 
-            tensorLayer2In_ty = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorL2InC,
-                ),
-                uint8_ty,
-            )
-            weightsLayer2_ty = MemRefType.get(
-                (3 * 3 * tensorL2InC * tensorL2OutC,), int8_ty
-            )
-            tensorLayer2Out_ty = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorL2OutC // 2,
-                ),
-                uint8_ty,
-            )
+            tensorLayer2In_ty = T.memref(tensorInW, 1, tensorL2InC, uint8_ty)
+            weightsLayer2_ty = T.memref(3 * 3 * tensorL2InC * tensorL2OutC, int8_ty)
+            tensorLayer2Out_ty = T.memref(tensorInW, 1, tensorL2OutC // 2, uint8_ty)
 
-            tensorLayer3In_ty = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorL3InC // 2,
-                ),
-                uint8_ty,
-            )
-            weightsLayer3_ty = MemRefType.get((tensorL3InC * tensorL3OutC,), int8_ty)
-            tensorLayer3Out_ty = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorL3OutC,
-                ),
-                uint8_ty,
-            )
+            tensorLayer3In_ty = T.memref(tensorInW, 1, tensorL3InC // 2, uint8_ty)
+            weightsLayer3_ty = T.memref(tensorL3InC * tensorL3OutC, int8_ty)
+            tensorLayer3Out_ty = T.memref(tensorInW, 1, tensorL3OutC, uint8_ty)
 
-            allWeights_ty = MemRefType.get(
-                (
-                    tensorL1InC * tensorL1OutC
-                    + 3 * 3 * tensorL2InC * tensorL2OutC
-                    + tensorL3InC * tensorL3OutC,
-                ),
+            allWeights_ty = T.memref(
+                tensorL1InC * tensorL1OutC
+                + 3 * 3 * tensorL2InC * tensorL2OutC
+                + tensorL3InC * tensorL3OutC,
                 int8_ty,
             )
 
@@ -430,7 +387,6 @@ def bottleneck4AIEs():
 
                         objectfifo_release(ObjectFifoPort.Consume, "act_2_3_5", 1)
                         objectfifo_release(ObjectFifoPort.Produce, "act_5_4", 1)
-                        yield_([])
 
                     # last part
                     elementActivactionsIn = of_act_2_3_5.acquire(
@@ -458,7 +414,6 @@ def bottleneck4AIEs():
                     objectfifo_release(ObjectFifoPort.Consume, "act_2_3_5", 2)
                     objectfifo_release(ObjectFifoPort.Produce, "act_5_4", 1)
                     objectfifo_release(ObjectFifoPort.Consume, "wts_buf_01", 1)
-                    yield_([])
 
             # # 1x1 conv2d and add skip
             @core(ComputeTile4, "conv2dk1_skip.o")
@@ -512,8 +467,8 @@ def bottleneck4AIEs():
                 + tensorL3InC * tensorL3OutC
             )
 
-            activationsInL3_ty = MemRefType.get((activationsIn,), int8_ty)
-            weightsInL3_ty = MemRefType.get((totalWeights,), uint8_ty)
+            activationsInL3_ty = T.memref(activationsIn, int8_ty)
+            weightsInL3_ty = T.memref(totalWeights, uint8_ty)
 
             @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsInL3_ty)
             def sequence(inputFromL3, weightsFromL3, outputToL3):

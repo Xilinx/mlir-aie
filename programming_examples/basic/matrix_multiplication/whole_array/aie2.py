@@ -12,7 +12,6 @@ from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
 from aie.extras.dialects.ext.scf import _for as range_
 
 
