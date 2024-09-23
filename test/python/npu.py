@@ -24,11 +24,8 @@ from aie.dialects.aie import (
     tile,
 )
 from aie.dialects.aiex import npu_sync, npu_dma_memcpy_nd, runtime_sequence
-from aie.dialects.scf import for_
 from aie.extras.dialects.ext.scf import _for as range_
 from util import construct_and_print_module
-
-range_ = for_
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM

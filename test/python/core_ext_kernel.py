@@ -22,8 +22,6 @@ from aie.ir import Block, InsertionPoint
 
 from util import construct_and_print_module
 
-range_ = for_
-
 
 # CHECK:  module {
 # CHECK:    aie.device(xcve2802) {
