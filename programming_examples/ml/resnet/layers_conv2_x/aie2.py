@@ -40,98 +40,37 @@ def resnet_conv_x():
             int8_ty = IntegerType.get_signless(8)
             int32_ty = IntegerType.get_signless(32)
 
-            tensorLayer1In_ty_init = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorInCInit,
-                ),
-                int8_ty,
-            )
-            tensorLayer1In_ty_rest = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorInCRest,
-                ),
-                uint8_ty,
-            )
-            weightsLayer1_ty_init = MemRefType.get(
-                (tensorInCInit * tensorInCInit,), int8_ty
-            )
-            weightsLayer1_ty_rest = MemRefType.get(
-                (tensorInCRest * tensorInCInit,), int8_ty
+            tensorLayer1In_ty_init = T.memref(tensorInW, 1, tensorInCInit, int8_ty)
+            tensorLayer1In_ty_rest = T.memref(tensorInW, 1, tensorInCRest, uint8_ty)
+            weightsLayer1_ty_init = T.memref(tensorInCInit * tensorInCInit, int8_ty)
+            weightsLayer1_ty_rest = T.memref(tensorInCRest * tensorInCInit, int8_ty)
+
+            tensorLayer1Out_ty = T.memref(tensorInW, 1, tensorInCInit, uint8_ty)
+
+            tensorLayer2In_ty = T.memref(tensorInW, 1, tensorInCInit, uint8_ty)
+            weightsLayer2_ty = T.memref(3 * 3 * tensorInCInit * tensorInCInit, int8_ty)
+            tensorLayer2Out_ty = T.memref(tensorInW, 1, tensorInCInit // 2, uint8_ty)
+
+            tensorLayer3In_ty = T.memref(tensorInW, 1, tensorInCInit // 2, uint8_ty)
+            weightsLayer3_ty_init = T.memref(2 * tensorInCInit * tensorInCRest, int8_ty)
+            weightsLayer3_ty_rest = T.memref(
+                tensorInCRest // 4 * tensorInCRest, int8_ty
             )
 
-            tensorLayer1Out_ty = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorInCInit,
-                ),
-                uint8_ty,
-            )
+            tensorLayer3Out_ty = T.memref(tensorInW, 1, tensorInCRest, uint8_ty)
 
-            tensorLayer2In_ty = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorInCInit,
-                ),
-                uint8_ty,
-            )
-            weightsLayer2_ty = MemRefType.get(
-                (3 * 3 * tensorInCInit * tensorInCInit,), int8_ty
-            )
-            tensorLayer2Out_ty = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorInCInit // 2,
-                ),
-                uint8_ty,
-            )
-
-            tensorLayer3In_ty = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorInCInit // 2,
-                ),
-                uint8_ty,
-            )
-            weightsLayer3_ty_init = MemRefType.get(
-                (2 * tensorInCInit * tensorInCRest,), int8_ty
-            )
-            weightsLayer3_ty_rest = MemRefType.get(
-                (tensorInCRest // 4 * tensorInCRest,), int8_ty
-            )
-
-            tensorLayer3Out_ty = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorInCRest,
-                ),
-                uint8_ty,
-            )
-
-            allWeights_ty_init = MemRefType.get(
-                (
-                    tensorInCInit * tensorInCInit
-                    + 3 * 3 * tensorInCInit * tensorInCInit
-                    + tensorInCInit * tensorInCRest
-                    + tensorInCInit * tensorInCRest,
-                ),
+            allWeights_ty_init = T.memref(
+                tensorInCInit * tensorInCInit
+                + 3 * 3 * tensorInCInit * tensorInCInit
+                + tensorInCInit * tensorInCRest
+                + tensorInCInit * tensorInCRest,
                 int8_ty,
             )
 
-            allWeights_ty_rest = MemRefType.get(
-                (
-                    tensorInCRest * tensorInCInit
-                    + 3 * 3 * tensorInCInit * tensorInCInit
-                    + tensorInCInit * tensorInCRest,
-                ),
+            allWeights_ty_rest = T.memref(
+                tensorInCRest * tensorInCInit
+                + 3 * 3 * tensorInCInit * tensorInCInit
+                + tensorInCInit * tensorInCRest,
                 int8_ty,
             )
 
@@ -908,12 +847,12 @@ def resnet_conv_x():
 
             totalWeights_complete = totalWeights_init + repeat * totalWeights_rest
 
-            activationsInL3_ty = MemRefType.get((activationsIn,), int8_ty)
-            activationsOutL3_ty = MemRefType.get((acitivationsOut,), int8_ty)
-            weightsInL3_ty_init = MemRefType.get((totalWeights_init,), int8_ty)
-            weightsInL3_ty_rest = MemRefType.get((totalWeights_rest,), int8_ty)
+            activationsInL3_ty = T.memref(activationsIn, int8_ty)
+            activationsOutL3_ty = T.memref(acitivationsOut, int8_ty)
+            weightsInL3_ty_init = T.memref(totalWeights_init, int8_ty)
+            weightsInL3_ty_rest = T.memref(totalWeights_rest, int8_ty)
 
-            weightsInL3_ty_complete = MemRefType.get((totalWeights_complete,), int8_ty)
+            weightsInL3_ty_complete = T.memref(totalWeights_complete, int8_ty)
 
             @runtime_sequence(
                 activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_ty
