@@ -44,10 +44,6 @@ import pytest
 # needed since the fix isn't defined here nor conftest.py
 pytest.mark.usefixtures("ctx")
 
-
-range_ = scf.range_
-yield_ = scf.yield_
-
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
 MM2S = DMAChannelDir.MM2S
@@ -415,8 +411,6 @@ def matmul_i32_i32_already_vectorized(
                 [j, c0],
                 in_bounds=[True],
             )
-            yield_([])
-        yield_([])
 
 
 def test_tiled_nonsquare_tile_spatial_2x2_vectorized(ctx: MLIRContext, workdir: Path):

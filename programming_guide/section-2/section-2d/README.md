@@ -112,17 +112,15 @@ The core of this simple design acquires one object of each Object FIFO, adds `1`
 @core(ComputeTile)
 def core_body():
     # Effective while(1)
-    for _ in for_(0xFFFFFFFF):
+    for _ in range_(0xFFFFFFFF):
         elem_in = of_in0.acquire(ObjectFifoPort.Consume, 1)
         elem_out = of_out0.acquire(ObjectFifoPort.Produce, 1)
-        for i in for_(data_size):
+        for i in range_(data_size):
             v0 = memref.load(elem_in, [i])
             v1 = arith.addi(v0, arith.constant(1, T.i32()))
             memref.store(v1, elem_out, [i])
-            yield_([])
         of_in0.release(ObjectFifoPort.Consume, 1)
         of_out0.release(ObjectFifoPort.Produce, 1)
-        yield_([])
 ```
 Once again we apply the same logic and use a `for`-loop over our three cores to write the code which will be executed on the three compute tiles. Each tile will index the `inX_fifos` and `outX_fifos` maps to retrieve the Object FIFOs it will acquire and release from. This process results in the following code:
 ```python
@@ -130,25 +128,23 @@ for i in range(n_cores):
     # Compute tile i
     @core(ComputeTiles[i])
     def core_body():
-        for _ in for_(0xFFFFFFFF):
+        for _ in range_(0xFFFFFFFF):
             elem_in = inX_fifos[inX_fifo_names[i]].acquire(
                 ObjectFifoPort.Consume, 1
             )
             elem_out = outX_fifos[outX_fifo_names[i]].acquire(
                 ObjectFifoPort.Produce, 1
             )
-            for i in for_(tile_size):
+            for i in range_(tile_size):
                 v0 = memref.load(elem_in, [i])
                 v1 = arith.addi(v0, arith.constant(1, T.i32()))
                 memref.store(v1, elem_out, [i])
-                yield_([])
             inX_fifos[inX_fifo_names[i]].release(
                 ObjectFifoPort.Consume, 1
             )
             outX_fifos[outX_fifo_names[i]].release(
                 ObjectFifoPort.Produce, 1
             )
-            yield_([])
 ```
 
 -----
