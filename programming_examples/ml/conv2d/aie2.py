@@ -9,9 +9,9 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
 from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
+from aie.extras.dialects.ext.scf import _for as range_
 
 width = 32
 height = 32
@@ -106,13 +106,13 @@ def conv2dk1():
                 ci = 64
                 co = 64
 
-                for _ in for_(0xFFFFFFFF):
+                for _ in range_(0xFFFFFFFF):
                     elemWts = of_inOF_wts_0_L3L2.acquire(ObjectFifoPort.Consume, 1)
 
                     scale = memref.load(rtp2, [0])
                     # scale = memref.load(rtpComputeTile2, [0])
 
-                    for _ in for_(y_dim):
+                    for _ in range_(y_dim):
                         elemIn = of_act_L2_02.acquire(ObjectFifoPort.Consume, 1)
                         elemOut0 = of_out_02_L2.acquire(ObjectFifoPort.Produce, 1)
 
@@ -131,9 +131,7 @@ def conv2dk1():
 
                         objectfifo_release(ObjectFifoPort.Consume, "act_L2_02", 1)
                         objectfifo_release(ObjectFifoPort.Produce, "out_02_L2", 1)
-                        yield_([])
                     objectfifo_release(ObjectFifoPort.Consume, "inOF_wts_0_L3L2", 1)
-                    yield_([])
 
             # To/from AIE-array data movement
 

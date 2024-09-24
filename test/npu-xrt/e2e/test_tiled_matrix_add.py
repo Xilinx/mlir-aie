@@ -17,7 +17,7 @@ from aie.compiler.util import (
 from aie.dialects import aie, aiex
 from aie.dialects.aie import AIEDevice, DMAChannelDir, LockAction, WireBundle
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
-from aie.dialects.scf import for_ as range_, yield_
+from aie.extras.dialects.ext.scf import _for as range_
 from aie.extras.dialects.ext import arith, linalg
 
 # noinspection PyUnresolvedReferences
@@ -255,8 +255,6 @@ def test_tiled_matrix_add(ctx: MLIRContext, workdir: Path):
                     aie.use_lock(lock_0_2_read_in_a, Release)
                     aie.use_lock(lock_0_2_read_in_b, Release)
                     aie.use_lock(lock_0_2_write_out_c, Release)
-                    yield_([])
-                yield_([])
 
     compile_without_vectorization(ctx.module, workdir)
     xclbin_path = make_xclbin(ctx.module, workdir)
@@ -492,9 +490,6 @@ def test_matrix_add_sugar(ctx: MLIRContext, workdir: Path):
                         linalg_fill(arith.constant(RANDOM_NUMBER), outs=[buffer_0_2_c])
                         linalg.add(buffer_0_2_a, buffer_0_2_c, buffer_0_2_c)
                         linalg.add(buffer_0_2_b, buffer_0_2_c, buffer_0_2_c)
-
-                    yield_([])
-                yield_([])
 
     compile_without_vectorization(ctx.module, workdir)
     xclbin_path = make_xclbin(ctx.module, workdir)

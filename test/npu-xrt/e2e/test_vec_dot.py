@@ -23,14 +23,14 @@ from aie.dialects.aie import (
     WireBundle,
 )
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
-from aie.dialects.scf import for_ as range_, yield_
+from aie.extras.dialects.ext.scf import _for as range_
 
 # this is to get the MemRefValue caster inside of aie-python-extras
 # noinspection PyUnresolvedReferences
-from aie.extras.dialects.ext import arith, func, linalg, memref
+from aie.extras.dialects.ext import arith, linalg
 
 # noinspection PyUnresolvedReferences
-from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
+from aie.extras.testing import MLIRContext
 import aie.extras.types as T
 from aie.xrt import XCLBin
 from filelock import FileLock
@@ -250,7 +250,6 @@ def test_vec_dot(ctx: MLIRContext, workdir: Path):
                 aie.use_lock(lock_0_2_read_in_a, Release)
                 aie.use_lock(lock_0_2_read_in_b, Release)
                 aie.use_lock(lock_0_2_write_out_c, Release)
-                yield_([])
 
     compile_without_vectorization(ctx.module, workdir)
     xclbin_path = make_xclbin(ctx.module, workdir)
@@ -437,8 +436,6 @@ def test_vec_dot_sugar(ctx: MLIRContext, workdir: Path):
                     v = memref_dialect.load(output, [])
                     linalg_fill(arith.constant(0), outs=[output])
                     buffer_0_2_c[0] = v
-
-                yield_([])
 
     compile_without_vectorization(ctx.module, workdir)
     xclbin_path = make_xclbin(ctx.module, workdir)

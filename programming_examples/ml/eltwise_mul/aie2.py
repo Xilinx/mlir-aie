@@ -9,8 +9,8 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
+from aie.extras.dialects.ext.scf import _for as range_
 
 import aie.utils.trace as trace_utils
 
@@ -119,8 +119,8 @@ def my_eltwise_mul(trace_size):
             # Compute tile i
             @core(cores[i], "mul.o")
             def core_body():
-                for _ in for_(0xFFFFFFFF):
-                    for _ in for_(tiles):
+                for _ in range_(0xFFFFFFFF):
+                    for _ in range_(tiles):
                         elem_out = outC_fifos[outC_fifo_names[i]].acquire(
                             ObjectFifoPort.Produce, 1
                         )
@@ -140,8 +140,6 @@ def my_eltwise_mul(trace_size):
                         outC_fifos[outC_fifo_names[i]].release(
                             ObjectFifoPort.Produce, 1
                         )
-                        yield_([])
-                    yield_([])
 
         # To/from AIE-array data movement
         tensor_ty = T.memref(N, T.bf16())
