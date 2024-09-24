@@ -442,7 +442,7 @@ class FlowRunner:
         await write_file_async(llvmir_hacked_ir, llvmir_chesshack)
 
         if aie_target.casefold() == "AIE2".casefold():
-            target = "target_aie_ml" 
+            target = "target_aie_ml"
         else:
             target = "target"
         assert os.path.exists(llvmir_chesshack)
@@ -452,7 +452,10 @@ class FlowRunner:
                 # The path below is cheating a bit since it refers directly to the AIE1
                 # version of llvm-link, rather than calling the architecture-specific
                 # tool version.
-                opts.aietools_path + "/tps/lnx64/" + target + "/bin/LNa64bin/chess-llvm-link",
+                opts.aietools_path
+                + "/tps/lnx64/"
+                + target
+                + "/bin/LNa64bin/chess-llvm-link",
                 llvmir_chesshack,
                 chess_intrinsic_wrapper_ll_path,
                 "-S",
@@ -1187,7 +1190,9 @@ def run(mlir_module, args=None):
             xchesscc_path = os.path.dirname(xchesscc_bin_path)
             os.environ["AIETOOLS"] = xchesscc_path
             print("Found xchesscc at " + xchesscc_path)
-            os.environ["PATH"] = os.pathsep.join([os.environ["PATH"], xchesscc_bin_path])
+            os.environ["PATH"] = os.pathsep.join(
+                [os.environ["PATH"], xchesscc_bin_path]
+            )
             opts.aietools_path = xchesscc_path
     else:
         print("xchesscc not found...")
