@@ -11,9 +11,9 @@ import argparse
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
 import aie.utils.trace as trace_utils
 from aie.utils.trace import PortEvent
+from aie.extras.dialects.ext.scf import _for as range_
 
 
 def main():
@@ -214,8 +214,8 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
             # Compute tile 2
             @core(compute_tile2, f"mm_{m}x{k}x{n}.o")
             def core_body():
-                for _ in for_(0xFFFFFFFF):
-                    for _ in for_(tiles) if tiles > 1 else range(1):  # issue #1547
+                for _ in range_(0xFFFFFFFF):
+                    for _ in range_(tiles) if tiles > 1 else range(1):  # issue #1547
                         elem_out = memC.acquire(ObjectFifoPort.Produce, 1)
                         if vectorized:
                             call(zero, [elem_out])
@@ -223,7 +223,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                             call(zero_scalar, [elem_out])
 
                         for _ in (
-                            for_(K_div_k) if K_div_k > 1 else range(1)
+                            range_(K_div_k) if K_div_k > 1 else range(1)
                         ):  # issue #1547
                             elem_in_a = memA.acquire(ObjectFifoPort.Consume, 1)
                             elem_in_b = memB.acquire(ObjectFifoPort.Consume, 1)
@@ -233,13 +233,8 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                                 call(matmul_scalar, [elem_in_a, elem_in_b, elem_out])
                             memA.release(ObjectFifoPort.Consume, 1)
                             memB.release(ObjectFifoPort.Consume, 1)
-                            if K_div_k > 1:
-                                yield_([])
 
                         memC.release(ObjectFifoPort.Produce, 1)
-                        if tiles > 1:
-                            yield_([])
-                    yield_([])
 
             # To/from AIE-array data movement
 

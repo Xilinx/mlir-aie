@@ -24,13 +24,8 @@ from aie.dialects.aie import (
     tile,
 )
 from aie.dialects.aiex import npu_sync, npu_dma_memcpy_nd, runtime_sequence
-from aie.dialects.func import FuncOp
-from aie.dialects.scf import for_
-from aie.dialects.scf import yield_
-from aie.ir import TypeAttr
+from aie.extras.dialects.ext.scf import _for as range_
 from util import construct_and_print_module
-
-range_ = for_
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -72,8 +67,6 @@ def my_vector_scalar(module):
                     call(scale_int32, [elem_in, elem_out])
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
-                yield_([])
 
         @runtime_sequence(
             T.memref(N, T.i32()), T.memref(N, T.i32()), T.memref(N, T.i32())
@@ -171,11 +164,7 @@ def my_matmul(module):
                             call(matmul_scalar, [elem_in_a, elem_in_b, elem_out])
                         of_inA.release(ObjectFifoPort.Consume, 1)
                         of_inB.release(ObjectFifoPort.Consume, 1)
-                        yield_([])
-
                     of_outC.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
-                yield_([])
 
         @runtime_sequence(
             T.memref(A_sz_in_i32s, T.i32()),
@@ -311,7 +300,6 @@ def edge_detect(module):
 
                 inOF_L2L1.release(ObjectFifoPort.Consume, 1)
                 OF_2to3.release(ObjectFifoPort.Produce, 1)
-                yield_([])
 
         @core(T3, "filter2d.cc.o")
         def core_body():
@@ -362,7 +350,6 @@ def edge_detect(module):
                 )
                 OF_2to3.release(ObjectFifoPort.Consume, 1)
                 OF_3to4.release(ObjectFifoPort.Produce, 1)
-                yield_([])
 
             # Postamble : Bottom Border
             elems_in_post = OF_2to3.acquire(ObjectFifoPort.Consume, 2)
@@ -398,7 +385,6 @@ def edge_detect(module):
 
                 OF_3to4.release(ObjectFifoPort.Consume, 1)
                 OF_4to5.release(ObjectFifoPort.Produce, 1)
-                yield_([])
 
         @core(T5, "combined_gray2rgba_addWeighted.a")
         def core_body():
@@ -435,7 +421,6 @@ def edge_detect(module):
                 OF_5to5.release(ObjectFifoPort.Consume, 1)
                 inOF_L2L1.release(ObjectFifoPort.Consume, 1)
                 outOF_L1L2.release(ObjectFifoPort.Produce, 1)
-                yield_([])
 
         @runtime_sequence(
             T.memref(2304, T.i32()), T.memref(2304, T.i32()), T.memref(2304, T.i32())
@@ -487,10 +472,8 @@ def my_add_one_objFifo(module):
                     v0 = memref.load(elem_in, [i])
                     v1 = arith.addi(v0, arith.constant(1, T.i32()))
                     memref.store(v1, elem_out, [i])
-                    yield_([])
                 of_in1.release(ObjectFifoPort.Consume, 1)
                 of_out1.release(ObjectFifoPort.Produce, 1)
-                yield_([])
 
         @runtime_sequence(
             T.memref(64, T.i32()), T.memref(32, T.i32()), T.memref(64, T.i32())
