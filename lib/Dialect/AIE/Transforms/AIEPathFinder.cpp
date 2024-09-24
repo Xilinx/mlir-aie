@@ -34,26 +34,10 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
 
   pathfinder->initialize(maxCol, maxRow, device.getTargetModel());
 
-  // for each flow in the device, add it to pathfinder
-  // each source can map to multiple different destinations (fanout)
-  for (FlowOp flowOp : device.getOps<FlowOp>()) {
-    TileOp srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
-    TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
-    TileID srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
-    TileID dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
-    Port srcPort = {flowOp.getSourceBundle(), flowOp.getSourceChannel()};
-    Port dstPort = {flowOp.getDestBundle(), flowOp.getDestChannel()};
-    LLVM_DEBUG(llvm::dbgs()
-               << "\tAdding Flow: (" << srcCoords.col << ", " << srcCoords.row
-               << ")" << stringifyWireBundle(srcPort.bundle) << srcPort.channel
-               << " -> (" << dstCoords.col << ", " << dstCoords.row << ")"
-               << stringifyWireBundle(dstPort.bundle) << dstPort.channel
-               << "\n");
-    pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort,
-                        /*isPktFlow*/ false, /*isPriorityFlow*/ false);
-  }
-
-  // Control packet flows to be routed (as prioritized routings)
+  // For each flow (circuit + packet) in the device, add it to pathfinder. Each
+  // source can map to multiple different destinations (fanout). Control packet
+  // flows to be routed (as prioritized routings). Then followed by normal
+  // packet flows.
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     Region &r = pktFlowOp.getPorts();
     Block &b = r.front();
@@ -91,6 +75,24 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   // Sort ctrlPktFlows into a deterministic order; concat ctrlPktFlows to flows
   pathfinder->sortFlows(device.getTargetModel().columns(),
                         device.getTargetModel().rows());
+
+  // Add circuit flows.
+  for (FlowOp flowOp : device.getOps<FlowOp>()) {
+    TileOp srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
+    TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
+    TileID srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
+    TileID dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
+    Port srcPort = {flowOp.getSourceBundle(), flowOp.getSourceChannel()};
+    Port dstPort = {flowOp.getDestBundle(), flowOp.getDestChannel()};
+    LLVM_DEBUG(llvm::dbgs()
+               << "\tAdding Flow: (" << srcCoords.col << ", " << srcCoords.row
+               << ")" << stringifyWireBundle(srcPort.bundle) << srcPort.channel
+               << " -> (" << dstCoords.col << ", " << dstCoords.row << ")"
+               << stringifyWireBundle(dstPort.bundle) << dstPort.channel
+               << "\n");
+    pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort,
+                        /*isPktFlow*/ false, /*isPriorityFlow*/ false);
+  }
 
   // add existing connections so Pathfinder knows which resources are
   // available search all existing SwitchBoxOps for exising connections
@@ -353,19 +355,37 @@ void Pathfinder::sortFlows(const int maxCol, const int maxRow) {
     else
       normalFlows.push_back(f);
   }
+  // Get unique int identifier from a vector if pairs of int properties and
+  // their maximums.
+  auto getUniqueIdFromVecOfProperties =
+      [](std::vector<std::pair<int, int>> propertiesAndLimits) {
+        int uniqueId = 0;
+        int multiplier = 1;
+        for (auto pair : propertiesAndLimits) {
+          uniqueId += pair.first * multiplier;
+          multiplier *= pair.second;
+        }
+        return uniqueId;
+      };
   std::sort(priorityFlows.begin(), priorityFlows.end(),
-            [maxCol, maxRow](const auto &lhs, const auto &rhs) {
-              int lhsUniqueID = lhs.src.coords.col;
-              lhsUniqueID += lhs.src.coords.row * maxCol;
-              lhsUniqueID += maxRow * maxCol;
-              lhsUniqueID += getWireBundleAsInt(lhs.src.port.bundle);
-              lhsUniqueID += AIE::getMaxEnumValForWireBundle();
-              lhsUniqueID += lhs.src.port.channel;
-              int rhsUniqueID = rhs.src.coords.col;
-              rhsUniqueID += rhs.src.coords.row * maxCol;
-              rhsUniqueID += maxRow * maxCol;
-              rhsUniqueID += getWireBundleAsInt(rhs.src.port.bundle);
-              rhsUniqueID += rhs.src.port.channel;
+            [maxCol, maxRow, getUniqueIdFromVecOfProperties](const auto &lhs,
+                                                             const auto &rhs) {
+              // List of properties used in sorting: src col, src row, src
+              // wirebundle and src channel.
+              std::vector<std::pair<int, int>> lhsProperties = {
+                  {lhs.src.coords.col, maxCol},
+                  {lhs.src.coords.row, maxRow},
+                  {getWireBundleAsInt(lhs.src.port.bundle),
+                   AIE::getMaxEnumValForWireBundle()},
+                  {lhs.src.port.channel, /*don't care*/ 0}};
+              int lhsUniqueID = getUniqueIdFromVecOfProperties(lhsProperties);
+              std::vector<std::pair<int, int>> rhsProperties = {
+                  {rhs.src.coords.col, maxCol},
+                  {rhs.src.coords.row, maxRow},
+                  {getWireBundleAsInt(rhs.src.port.bundle),
+                   AIE::getMaxEnumValForWireBundle()},
+                  {rhs.src.port.channel, /*don't care*/ 0}};
+              int rhsUniqueID = getUniqueIdFromVecOfProperties(rhsProperties);
               return lhsUniqueID < rhsUniqueID;
             });
   flows = priorityFlows;
@@ -507,6 +527,7 @@ Pathfinder::findPaths(const int maxIterations) {
       for (size_t j = 0; j < sb.dstPorts.size(); j++) {
         sb.usedCapacity[i][j] = 0;
         sb.overCapacity[i][j] = 0;
+        sb.isPriority[i][j] = false;
       }
     }
   }
@@ -562,7 +583,7 @@ Pathfinder::findPaths(const int maxIterations) {
     // update used_capacity for the path between them
 
     for (const auto &[_, flows] : groupedFlows) {
-      for (const auto &[packetGroupId, _, src, dsts] : flows) {
+      for (const auto &[packetGroupId, isPriority, src, dsts] : flows) {
         // Use dijkstra to find path given current demand from the start
         // switchbox; find the shortest paths to each other switchbox. Output is
         // in the predecessor map, which must then be processed to get
@@ -593,6 +614,7 @@ Pathfinder::findPaths(const int maxIterations) {
                 std::find(sb.dstPorts.begin(), sb.dstPorts.end(), curr.port));
             assert(i < sb.srcPorts.size());
             assert(j < sb.dstPorts.size());
+            sb.isPriority[i][j] = isPriority;
             if (packetGroupId >= 0 &&
                 (sb.packetGroupId[i][j] == -1 ||
                  sb.packetGroupId[i][j] == packetGroupId)) {

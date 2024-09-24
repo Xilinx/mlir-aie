@@ -13,20 +13,7 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
-  std::ifstream instr_file(instr_path);
-  std::string line;
-  std::vector<uint32_t> instr_v;
-  while (std::getline(instr_file, line)) {
-    std::istringstream iss(line);
-    uint32_t a;
-    if (!(iss >> std::hex >> a)) {
-      throw std::runtime_error("Unable to parse instruction file\n");
-    }
-    instr_v.push_back(a);
-  }
-  return instr_v;
-}
+#include "test_utils.h"
 
 #ifndef XCLBIN
 #define XCLBIN "final.xclbin"
@@ -47,7 +34,7 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
 
 int main(int argc, const char *argv[]) {
 
-  std::vector<uint32_t> instr_v = load_instr_sequence(INSTS_TXT);
+  std::vector<uint32_t> instr_v = test_utils::load_instr_sequence(INSTS_TXT);
   assert(instr_v.size() > 0);
 
   // Get a device handle

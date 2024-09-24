@@ -51,6 +51,8 @@ using SwitchboxConnect = struct SwitchboxConnect {
   std::vector<std::vector<int>> packetFlowCount;
   // only sharing the channel with the same packet group id
   std::vector<std::vector<int>> packetGroupId;
+  // flags indicating priority routings
+  std::vector<std::vector<bool>> isPriority;
 
   // resize the matrices to the size of srcPorts and dstPorts
   void resize() {
@@ -63,6 +65,8 @@ using SwitchboxConnect = struct SwitchboxConnect {
     packetFlowCount.resize(srcPorts.size(),
                            std::vector<int>(dstPorts.size(), 0));
     packetGroupId.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
+    isPriority.resize(srcPorts.size(),
+                      std::vector<bool>(dstPorts.size(), false));
   }
 
   // update demand at the beginning of each dijkstraShortestPaths iteration
@@ -77,11 +81,13 @@ using SwitchboxConnect = struct SwitchboxConnect {
     }
   }
 
-  // inside each dijkstraShortestPaths interation, bump demand when exceeds
-  // capacity
+  // Inside each dijkstraShortestPaths interation, bump demand when exceeds
+  // capacity. If isPriority is true, then set demand to INF to ensure routing
+  // consistency for prioritized flows
   void bumpDemand(size_t i, size_t j) {
     if (usedCapacity[i][j] >= MAX_CIRCUIT_STREAM_CAPACITY) {
-      demand[i][j] *= DEMAND_COEFF;
+      demand[i][j] *=
+          isPriority[i][j] ? std::numeric_limits<int>::max() : DEMAND_COEFF;
     }
   }
 };
