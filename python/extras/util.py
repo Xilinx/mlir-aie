@@ -1,16 +1,16 @@
+from collections import defaultdict
 import contextlib
 import ctypes
-import inspect
-import platform
-import re
-import sys
-import warnings
 from dataclasses import dataclass
 from functools import wraps
-from pathlib import Path
-from typing import Callable, List, Optional, Sequence, Tuple, Union
-
+import inspect
 import numpy as np
+import platform
+from pathlib import Path
+import re
+import sys
+from typing import Callable, List, Optional, Sequence, Tuple, Union
+import warnings
 
 from .meta import op_region_builder
 from ..extras import types as T
@@ -127,21 +127,51 @@ def find_ops(op, pred: Callable[[OpView, Operation, Module], bool], single=False
     return matching
 
 
-_np_dtype_to_mlir_type_ctor = {
-    np.int8: T.i8,
-    np.int16: T.i16,
-    np.int32: T.i32,
-    # windows
-    np.intc: T.i32,
-    np.int64: T.i64,
-    # is technically wrong i guess but numpy by default casts python scalars to this
-    # so to support passing lists of ints we map to index type
-    np.longlong: T.index,
-    np.uintp: T.index,
-    np.float16: T.f16,
-    np.float32: T.f32,
-    np.float64: T.f64,
-}
+_np_dtype_to_mlir_type_ctor = defaultdict(
+    lambda: None,
+    {
+        # Signed integer types
+        np.int8: T.i8,
+        np.int16: T.i16,
+        np.int32: T.i32,
+        np.intc: T.i32,  # windows
+        np.int64: T.i64,
+        # Unsigned integer types
+        np.uint8: T.ui8,
+        np.uint16: T.ui16,
+        np.uint32: T.ui32,
+        np.uint64: T.ui64,
+        # Floating point types
+        np.float16: T.f16,
+        np.float32: T.f32,
+        np.float64: T.f64,
+        # Block floating point types
+        # bfloat16: T.bf16,
+        # Index Types
+        # this is technically wrong i guess but numpy by default casts python scalars to this
+        # so to support passing lists of ints we map to index type
+        np.longlong: T.index,
+        np.uintp: T.index,
+    },
+)
+
+NpuDType = (
+    np.int8
+    | np.int16
+    | np.int32
+    | np.intc
+    | np.int64
+    | np.uint8
+    | np.uint16
+    | np.uint32
+    | np.uint64
+    | np.float16
+    | np.float32
+    | np.float64
+    | np.longlong
+    | np.uintp
+    # | bfloat16
+)
 
 _mlir_type_ctor_to_np_dtype = lambda: {
     v: k for k, v in _np_dtype_to_mlir_type_ctor.items()
@@ -149,8 +179,13 @@ _mlir_type_ctor_to_np_dtype = lambda: {
 
 
 def np_dtype_to_mlir_type(np_dtype):
-    if typ := _np_dtype_to_mlir_type_ctor.get(np_dtype):
-        return typ()
+    mlir_type = _np_dtype_to_mlir_type_ctor[np_dtype]
+    if mlir_type:
+        return mlir_type()
+    else:
+        raise AttributeError(
+            "Failed to map np dtype to mlir python type: " + str(np_dtype)
+        )
 
 
 def mlir_type_to_np_dtype(mlir_type):
