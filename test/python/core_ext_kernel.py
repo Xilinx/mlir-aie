@@ -17,12 +17,10 @@ from aie.dialects.aie import (
     end,
 )
 from aie.extras.dialects.ext import arith
-from aie.dialects.scf import for_, yield_
-from aie.ir import TypeAttr, Block, InsertionPoint
+from aie.extras.dialects.ext.scf import _for as range_
+from aie.ir import Block, InsertionPoint
 
 from util import construct_and_print_module
-
-range_ = for_
 
 
 # CHECK:  module {
@@ -73,5 +71,4 @@ def core_ext_kernel():
                 elem0 = of1.acquire(ObjectFifoPort.Consume, 1)
                 res = call("test_func", [elem0, arith.constant(4)], [T.i32()])
                 of1.release(ObjectFifoPort.Consume, 1)
-                yield_([])
             end()

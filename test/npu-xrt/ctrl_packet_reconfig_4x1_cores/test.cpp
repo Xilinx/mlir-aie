@@ -8,11 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <boost/program_options.hpp>
 #include <cstdint>
-#include <fstream>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -31,7 +28,7 @@ constexpr int OUT_SIZE = 4 * 64 * 64;
 
 int main(int argc, const char *argv[]) {
   std::vector<uint32_t> instr_v =
-      test_utils::load_instr_sequence("aie_run_seq.txt");
+      test_utils::load_instr_sequence("aie2_run_seq.txt");
   std::vector<uint32_t> ctrlpkt_instr_v =
       test_utils::load_instr_sequence("ctrlpkt_dma_seq.txt");
   std::vector<uint32_t> ctrlPackets =
@@ -43,7 +40,7 @@ int main(int argc, const char *argv[]) {
   auto device = xrt::device(device_index);
 
   // Load the xclbin
-  auto xclbin = xrt::xclbin("base.xclbin");
+  auto xclbin = xrt::xclbin("aie1.xclbin");
 
   std::string Node = "MLIR_AIE";
 
@@ -73,8 +70,6 @@ int main(int argc, const char *argv[]) {
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(IN_DATATYPE),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_inB = xrt::bo(device, IN_SIZE * sizeof(IN_DATATYPE),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
   auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(OUT_DATATYPE),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
@@ -120,7 +115,7 @@ int main(int argc, const char *argv[]) {
   run1.set_arg(1, bo_instr);
   run1.set_arg(2, instr_v.size());
   run1.set_arg(3, bo_inA);
-  run1.set_arg(4, bo_inB);
+  run1.set_arg(4, 0);
   run1.set_arg(5, bo_out);
   run1.set_arg(6, 0);
   run1.set_arg(7, 0);

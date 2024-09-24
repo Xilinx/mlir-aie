@@ -9,7 +9,7 @@ from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
+from aie.extras.dialects.ext.scf import _for as range_
 
 
 def my_matmul():
@@ -144,7 +144,7 @@ def my_matmul():
                 # Compute tile i
                 @core(cores[i], f"mv_{m}x{k}.o")
                 def core_body():
-                    for _ in for_(0xFFFFFFFF):
+                    for _ in range_(0xFFFFFFFF):
                         elem_out = outC_fifos[outC_fifo_names[i]].acquire(
                             ObjectFifoPort.Produce,
                             1,
@@ -154,7 +154,7 @@ def my_matmul():
                         else:
                             call(zero_scalar, [elem_out])
 
-                        for _ in for_(K_div_k):
+                        for _ in range_(K_div_k):
                             elem_in_a = inA_fifos[inA_fifo_names[i]].acquire(
                                 ObjectFifoPort.Consume,
                                 1,
@@ -175,13 +175,11 @@ def my_matmul():
                                 ObjectFifoPort.Consume,
                                 1,
                             )
-                            yield_([])
 
                         outC_fifos[outC_fifo_names[i]].release(
                             ObjectFifoPort.Produce,
                             1,
                         )
-                        yield_([])
 
             # To/from AIE-array data movement
 

@@ -7,7 +7,7 @@
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
+from aie.extras.dialects.ext.scf import _for as range_
 from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
@@ -41,17 +41,15 @@ def external_mem_to_core_L2():
             @core(ComputeTile2)
             def core_body():
                 # Effective while(1)
-                for _ in for_(6):
+                for _ in range_(6):
                     elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
-                    for i in for_(8):
+                    for i in range_(8):
                         v0 = memref.load(elem_in, [i])
                         v1 = arith.addi(v0, arith.constant(1, T.i32()))
                         memref.store(v1, elem_out, [i])
-                        yield_([])
                     of_in1.release(ObjectFifoPort.Consume, 1)
                     of_out1.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             memRef_48_ty = T.memref(48, T.i32())
 
