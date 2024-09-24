@@ -14,7 +14,7 @@
 
 module {
   aie.device(npu1_1col) {
-    func.func private @sum_10_i32(memref<10xi32>, memref<10xi32>, memref<10xi32>)
+    func.func private @add_10_i32(memref<10xi32>, memref<10xi32>, memref<10xi32>)
 
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
@@ -31,7 +31,7 @@ module {
         %6 = aie.objectfifo.subview.access %4[1] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
         %7 = aie.objectfifo.acquire @output_fifo(Produce, 1) : !aie.objectfifosubview<memref<10xi32>>
         %8 = aie.objectfifo.subview.access %7[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-        func.call @sum_10_i32(%5, %6, %8) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+        func.call @add_10_i32(%5, %6, %8) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
         aie.objectfifo.release @output_fifo(Produce, 1)
         aie.objectfifo.release @input_fifo(Consume, 2)
       }

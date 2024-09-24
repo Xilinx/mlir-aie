@@ -1629,7 +1629,7 @@ struct AIEObjectFifoStatefulTransformPass
     // Statically unroll for loops or use dynamic objectFifos
     //===------------------------------------------------------------------===//
     if (clDynamicObjectFifos) {
-      if (failed(dynamicObjectFifos(device, builder, objectFifoTiles)))
+      if (failed(dynamicGlobalObjectFifos(device, builder, objectFifoTiles)))
         signalPassFailure();
     } else {
       if(failed(unrollForLoops(device, builder, objectFifoTiles)))

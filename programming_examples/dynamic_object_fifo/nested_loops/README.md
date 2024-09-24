@@ -8,11 +8,11 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# Dynamic Object FIFO - Ping Pong
+# Dynamic Object FIFO - Nested Loops
 
 Contains an example of what a ObjectFIFO lowering may look like that does not statically unroll loops, but instead chooses the buffers dynamically by using MLIR IndexSwitchOps and by keeping the ObjectFIFO state in the tile's local memory.
 
-This design implements the communication from external memory to a compute tile in the AIE array, and back. The compute tile applies a simple passthrough kernel on incoming data before sending it back out. The communication levereges ping pong data movements.
+This design implements the communication from external memory to a compute tile in the AIE array, and back. The input data consists of five rows of 10xi32 tensors. Every iteration the compute tile acquires one input row and, in a second nested loop, it applies a simple passthrough kernel on the input data. The nested loop executes five times on each input row, effectively generating an output tensor five times bigger than the size of the input tensor.
 
 ## Source Files Overview
 

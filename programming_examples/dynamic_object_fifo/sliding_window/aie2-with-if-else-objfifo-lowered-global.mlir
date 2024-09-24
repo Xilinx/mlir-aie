@@ -4,7 +4,7 @@ module {
     memref.global "public" @output_fifo : memref<10xi32>
     memref.global "public" @input_fifo_cons : memref<10xi32>
     memref.global "public" @input_fifo : memref<10xi32>
-    func.func private @sum_10_i32(memref<10xi32>, memref<10xi32>, memref<10xi32>)
+    func.func private @add_10_i32(memref<10xi32>, memref<10xi32>, memref<10xi32>)
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
     %output_fifo_cons_prod_lock = aie.lock(%tile_0_0, 2) {init = 0 : i32, sym_name = "output_fifo_cons_prod_lock"}
@@ -66,7 +66,7 @@ module {
           default {
             scf.yield %input_fifo_cons_buff_0 : memref<10xi32>
           }
-          func.call @sum_10_i32(%9, %9, %1) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+          func.call @add_10_i32(%9, %9, %1) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
         } else {
           scf.if %4 {
             aie.use_lock(%input_fifo_cons_cons_lock, AcquireGreaterEqual, 2)
@@ -98,7 +98,7 @@ module {
             default {
               scf.yield %input_fifo_cons_buff_1 : memref<10xi32>
             }
-            func.call @sum_10_i32(%9, %11, %1) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+            func.call @add_10_i32(%9, %11, %1) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
             aie.use_lock(%input_fifo_cons_prod_lock, Release, 2)
             %12 = memref.load %buffer_0_2[%c1] : memref<2xindex>
             %c2_4 = arith.constant 2 : index
@@ -134,7 +134,7 @@ module {
             default {
               scf.yield %input_fifo_cons_buff_1 : memref<10xi32>
             }
-            func.call @sum_10_i32(%9, %11, %1) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+            func.call @add_10_i32(%9, %11, %1) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
             aie.use_lock(%input_fifo_cons_prod_lock, Release, 1)
             %12 = memref.load %buffer_0_2[%c1] : memref<2xindex>
             %c1_4 = arith.constant 1 : index

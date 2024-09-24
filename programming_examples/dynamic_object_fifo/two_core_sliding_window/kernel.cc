@@ -22,7 +22,7 @@ void passthrough_10_i32(const int *__restrict in, int *__restrict out) {
 }
 
 template <typename T_in, typename T_out, unsigned long N>
-void sum(const T_in *__restrict inA, const T_in *__restrict inB, T_out *__restrict out) {
+void add(const T_in *__restrict inA, const T_in *__restrict inB, T_out *__restrict out) {
   for(int i = 0; i < N; i++) {
     out[i] = inA[i] + inB[i];
   }
@@ -30,7 +30,7 @@ void sum(const T_in *__restrict inA, const T_in *__restrict inB, T_out *__restri
 
 extern "C" {
 
-void sum_10_i32(const int *__restrict inA, const int *__restrict inB, int *__restrict out) {
-  sum<int, int, 10>(inA, inB, out);
+void add_10_i32(const int *__restrict inA, const int *__restrict inB, int *__restrict out) {
+  add<int, int, 10>(inA, inB, out);
 }
 }

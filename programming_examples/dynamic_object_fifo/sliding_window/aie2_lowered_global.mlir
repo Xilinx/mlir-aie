@@ -5,7 +5,7 @@ module {
     memref.global "public" @output_fifo : memref<10xi32>
     memref.global "public" @input_fifo_cons : memref<10xi32>
     memref.global "public" @input_fifo : memref<10xi32>
-    func.func private @sum_10_i32(memref<10xi32>, memref<10xi32>, memref<10xi32>)
+    func.func private @add_10_i32(memref<10xi32>, memref<10xi32>, memref<10xi32>)
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
     %output_fifo_cons_prod_lock = aie.lock(%tile_0_0, 2) {init = 0 : i32, sym_name = "output_fifo_cons_prod_lock"}
@@ -69,7 +69,7 @@ module {
 
       aie.use_lock(%output_fifo_prod_lock, AcquireGreaterEqual, 1)
       aie.use_lock(%input_fifo_cons_cons_lock, AcquireGreaterEqual, 1)
-      func.call @sum_10_i32(%input_0_pre, %input_0_pre, %output_0_pre) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+      func.call @add_10_i32(%input_0_pre, %input_0_pre, %output_0_pre) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
       aie.use_lock(%output_fifo_cons_lock, Release, 1)
       %output_old_state_pre = memref.load %global_state[%c1_ind] : memref<2xindex>
       %c1_0 = arith.constant 1 : index
@@ -123,7 +123,7 @@ module {
         aie.use_lock(%output_fifo_prod_lock, AcquireGreaterEqual, 1)
         aie.use_lock(%input_fifo_cons_cons_lock, AcquireGreaterEqual, 1)
         
-        func.call @sum_10_i32(%input_0, %input_1, %output_fifo_buff) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+        func.call @add_10_i32(%input_0, %input_1, %output_fifo_buff) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
         
         aie.use_lock(%input_fifo_cons_prod_lock, Release, 1)
         %input_old_state = memref.load %global_state[%c0_ind] : memref<2xindex>
@@ -182,7 +182,7 @@ module {
       aie.use_lock(%output_fifo_prod_lock, AcquireGreaterEqual, 1)
       aie.use_lock(%input_fifo_cons_cons_lock, AcquireGreaterEqual, 1)
       
-      func.call @sum_10_i32(%input_0_post, %input_1_post, %output_0_post) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+      func.call @add_10_i32(%input_0_post, %input_1_post, %output_0_post) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
       
       aie.use_lock(%input_fifo_cons_prod_lock, Release, 2)
       %input_old_state_post = memref.load %global_state[%c0_ind] : memref<2xindex>

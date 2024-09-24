@@ -14,7 +14,7 @@
 
 module {
   aie.device(npu1_1col) {
-    func.func private @sum_10_i32(memref<10xi32>, memref<10xi32>, memref<10xi32>)
+    func.func private @add_10_i32(memref<10xi32>, memref<10xi32>, memref<10xi32>)
 
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
@@ -30,7 +30,7 @@ module {
       %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
       %2 = aie.objectfifo.acquire @input_fifo(Consume, 1) : !aie.objectfifosubview<memref<10xi32>>
       %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-      func.call @sum_10_i32(%3, %3, %1) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+      func.call @add_10_i32(%3, %3, %1) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
       aie.objectfifo.release @output_fifo(Produce, 1)
 
       scf.for %arg0 = %c0 to %c8 step %c1 {
@@ -39,7 +39,7 @@ module {
         %6 = aie.objectfifo.acquire @input_fifo(Consume, 2) : !aie.objectfifosubview<memref<10xi32>>
         %7 = aie.objectfifo.subview.access %6[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
         %8 = aie.objectfifo.subview.access %6[1] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-        func.call @sum_10_i32(%7, %8, %5) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+        func.call @add_10_i32(%7, %8, %5) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
         aie.objectfifo.release @input_fifo(Consume, 1)
         aie.objectfifo.release @output_fifo(Produce, 1)
       }
@@ -49,7 +49,7 @@ module {
       %11 = aie.objectfifo.acquire @input_fifo(Consume, 2) : !aie.objectfifosubview<memref<10xi32>>
       %12 = aie.objectfifo.subview.access %11[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
       %13 = aie.objectfifo.subview.access %11[1] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-      func.call @sum_10_i32(%12, %13, %10) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+      func.call @add_10_i32(%12, %13, %10) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
       aie.objectfifo.release @input_fifo(Consume, 2)
       aie.objectfifo.release @output_fifo(Produce, 1)
 
