@@ -51,9 +51,12 @@ def my_passthrough():
 
             @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
             def sequence(A, B, C):
+                npu_dma_memcpy_nd(
+                    metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N], issue_token=True
+                )
                 npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
-                npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                npu_dma_wait("in")
+                npu_dma_wait("out")
 
     print(ctx.module)
 

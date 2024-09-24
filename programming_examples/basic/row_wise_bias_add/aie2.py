@@ -61,6 +61,7 @@ def row_wise_bias_add(M, N, m, n):
                 mem=inp,
                 sizes=[1, N // n, M, n],
                 strides=[0, n, N, 1],
+                issue_token=True,
             )
             npu_dma_memcpy_nd(
                 metadata=bias_fifo.sym_name.value,
@@ -68,6 +69,7 @@ def row_wise_bias_add(M, N, m, n):
                 mem=bias,
                 sizes=[1, 1, N // n, n],
                 strides=[0, 0, n, 1],
+                issue_token=True,
             )
             npu_dma_memcpy_nd(
                 metadata=out_fifo.sym_name.value,
@@ -76,7 +78,9 @@ def row_wise_bias_add(M, N, m, n):
                 sizes=[1, N // n, M, n],
                 strides=[0, n, N, 1],
             )
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            npu_dma_wait(in_fifo.sym_name.value)
+            npu_dma_wait(bias_fifo.sym_name.value)
+            npu_dma_wait(out_fifo.sym_name.value)
 
 
 # Declares that subsequent code is in mlir-aie context

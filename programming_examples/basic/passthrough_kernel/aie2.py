@@ -74,6 +74,7 @@ def passthroughKernel(vector_size, trace_size):
                 bd_id=0,
                 mem=inTensor,
                 sizes=[1, 1, 1, N],
+                issue_token=True,
             )
             npu_dma_memcpy_nd(
                 metadata="out",
@@ -81,7 +82,8 @@ def passthroughKernel(vector_size, trace_size):
                 mem=outTensor,
                 sizes=[1, 1, 1, N],
             )
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            npu_dma_sync("in")
+            npu_dma_sync("out")
 
 
 try:
