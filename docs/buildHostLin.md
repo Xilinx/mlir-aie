@@ -76,7 +76,6 @@ You will...
         export AIETOOLS_ROOT=$XILINX_LOC/aietools
         export PATH=$PATH:${AIETOOLS_ROOT}/bin
         export LM_LICENSE_FILE=/opt/Xilinx.lic
-        export AIETOOLS=${AIETOOLS_ROOT}
        ```
    1. Vitis requires some python3.8 libraries:
   

@@ -72,7 +72,6 @@ All steps in WSL Ubuntu terminal.
         export AIETOOLS_ROOT=$XILINX_LOC/aietools
         export PATH=$PATH:${AIETOOLS_ROOT}/bin
         export LM_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
-        export AIETOOLS=${AIETOOLS_ROOT}
        ```
 
 1. Install or Build mlir-aie tools under WSL2:
