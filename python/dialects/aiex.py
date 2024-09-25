@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from functools import partial
 import itertools
 from operator import itemgetter
-from typing import Union, Optional, Sequence
+from typing import Union, Optional
 
 import numpy as np
 
