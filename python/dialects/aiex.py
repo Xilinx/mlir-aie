@@ -35,15 +35,18 @@ register_dialect(get_dialect_registry())
 
 npu_sync = partial(npu_sync, column_num=1, row_num=1)
 
+
 def dma_wait(dma_meta: ObjectFifoType | str):
     str_name = dma_meta
     if isinstance(dma_meta, ObjectFifoType):
         str_name = dma_meta.sym_name.value
     npu_dma_wait(str_name)
 
+
 def dma_ordered_wait(dma_metas: Sequence[ObjectFifoType | str]):
     for dma_meta in dma_metas:
         dma_wait(dma_meta)
+
 
 class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
     """Specialize NpuDmaMemcpyNdOp class constructor to take python integers"""
