@@ -80,7 +80,7 @@ def my_vector_add():
                 metadata=of_in2, bd_id=2, mem=B, sizes=[1, 1, 1, N], issue_token=True
             )
             npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
-            dma_ordered_wait([of_in1, of_in2, of_out])
+            dma_wait(of_in1, of_in2, of_out)
 
 
 with mlir_mod_ctx() as ctx:

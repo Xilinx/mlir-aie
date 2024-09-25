@@ -99,7 +99,7 @@ def my_vector_scalar(vector_size, trace_size):
                 metadata=of_factor, bd_id=2, mem=F, sizes=[1, 1, 1, 1], issue_token=True
             )
             npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
-            dma_ordered_wait([of_in, of_factor, of_out])
+            dma_wait(of_in, of_factor, of_out)
 
 
 try:

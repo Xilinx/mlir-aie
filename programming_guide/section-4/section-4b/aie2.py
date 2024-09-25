@@ -89,7 +89,7 @@ def my_vector_scalar(opts):
                 issue_token=True,
             )
             npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, 4096])
-            dma_ordered_wait(of_in, of_factor, of_out)
+            dma_wait(of_in, of_factor, of_out)
 
 
 if __name__ == "__main__":

@@ -150,7 +150,7 @@ def my_eltwise_add(trace_size):
                 metadata=inB, bd_id=2, mem=B, sizes=[1, 1, 1, N], issue_token=True
             )
             npu_dma_memcpy_nd(metadata=outC, bd_id=0, mem=C, sizes=[1, 1, 1, N])
-            dma_ordered_wait([inA, inB, outC])
+            dma_wait(inA, inB, outC)
 
 
 try:

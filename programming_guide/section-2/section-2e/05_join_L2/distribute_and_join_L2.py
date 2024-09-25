@@ -99,7 +99,7 @@ def distribute_join_L2():
                 npu_dma_memcpy_nd(
                     metadata=of_out, bd_id=0, mem=outTensor, sizes=[1, 1, 1, 48]
                 )
-                dma_ordered_wait(of_in, of_out)
+                dma_wait(of_in, of_out)
 
     print(ctx.module)
 

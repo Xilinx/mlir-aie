@@ -37,16 +37,16 @@ register_dialect(get_dialect_registry())
 npu_sync = partial(npu_sync, column_num=1, row_num=1)
 
 
-def dma_wait(dma_meta: Union[ObjectFifoCreateOp, object_fifo, str]):
-    str_name = dma_meta
-    if isinstance(dma_meta, ObjectFifoCreateOp) or isinstance(dma_meta, object_fifo):
-        str_name = dma_meta.sym_name.value
-    npu_dma_wait(str_name)
-
-
-def dma_ordered_wait(dma_metas: Sequence[Union[ObjectFifoCreateOp, object_fifo, str]]):
-    for dma_meta in dma_metas:
-        dma_wait(dma_meta)
+def dma_wait(*args: Union[ObjectFifoCreateOp, str]):
+    if len(args) == 0:
+        raise ValueError(
+            "dma_wait must receive at least one dma_meta information to wait for"
+        )
+    for dma_meta in args:
+        str_name = dma_meta
+        if isinstance(dma_meta, ObjectFifoCreateOp):
+            str_name = dma_meta.sym_name.value
+        npu_dma_wait(str_name)
 
 
 class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):

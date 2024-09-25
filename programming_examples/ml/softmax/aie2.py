@@ -119,7 +119,7 @@ def vector_softmax(trace_size):
                 metadata=inA, bd_id=1, mem=A, sizes=[1, 1, 1, N], issue_token=True
             )
             npu_dma_memcpy_nd(metadata=outC, bd_id=0, mem=C, sizes=[1, 1, 1, N])
-            dma_ordered_wait([inA, outC])
+            dma_wait(inA, outC)
 
 
 try:

@@ -457,8 +457,8 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
                                 ),
                             )
                     if tb > 0 or (tb == 0 and pingpong > 0):
-                        dma_ordered_wait(C_l2l3_fifos)
-            dma_ordered_wait(C_l2l3_fifos)
+                        dma_wait(*C_l2l3_fifos)
+            dma_wait(*C_l2l3_fifos)
 
 
 if __name__ == "__main__":

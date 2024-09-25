@@ -281,7 +281,7 @@ def color_threshold():
                     mem=outTensor,
                     sizes=[1, 1, 1, tensorSize],
                 )
-                dma_ordered_wait([inOOB_L3L2, outOOB_L2L3])
+                dma_wait(inOOB_L3L2, outOOB_L2L3)
 
     # print(ctx.module.operation.verify())
     print(ctx.module)

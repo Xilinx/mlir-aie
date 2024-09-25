@@ -94,7 +94,7 @@ def my_matrix_add_one():
                 sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
                 strides=[1, 1, IMAGE_WIDTH, 1],
             )
-            dma_ordered_wait([of_in1, of_out1])
+            dma_wait(of_in1, of_out1)
 
 
 with mlir_mod_ctx() as ctx:

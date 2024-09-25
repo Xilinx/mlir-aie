@@ -165,7 +165,7 @@ def conv2dk1():
                     sizes=[1, 1, 1, tensorSize],
                     issue_token=True,
                 )
-                dma_ordered_wait([of_inOF_act_L3L2, of_inOF_wts_0_L3L2, of_outOFL2L3])
+                dma_wait(of_inOF_act_L3L2, of_inOF_wts_0_L3L2, of_outOFL2L3)
 
     #    print(ctx.module.operation.verify())
     print(ctx.module)

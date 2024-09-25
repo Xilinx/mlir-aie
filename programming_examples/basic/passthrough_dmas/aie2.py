@@ -65,7 +65,7 @@ def my_passthrough():
                     metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N], issue_token=True
                 )
                 npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
-                dma_ordered_wait([of_in, of_out])
+                dma_wait(of_in, of_out)
 
     print(ctx.module)
 

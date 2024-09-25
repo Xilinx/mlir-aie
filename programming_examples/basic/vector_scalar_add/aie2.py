@@ -72,7 +72,7 @@ def my_vector_bias_add():
             npu_dma_memcpy_nd(
                 metadata=of_out0, bd_id=0, mem=outTensor, sizes=[1, 1, 1, PROBLEM_SIZE]
             )
-            dma_ordered_wait([of_in0, of_out0])
+            dma_wait(of_in0, of_out0)
 
 
 # Declares that subsequent code is in mlir-aie context

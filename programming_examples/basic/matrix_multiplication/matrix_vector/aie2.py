@@ -182,7 +182,7 @@ def my_matmul():
                         sizes=[1, 1, 1, C_sz_div_n_cores],
                         strides=[0, 0, 0, 1],
                     )
-                dma_ordered_wait(outC_fifos)
+                dma_wait(*outC_fifos)
 
     print(ctx.module)
 

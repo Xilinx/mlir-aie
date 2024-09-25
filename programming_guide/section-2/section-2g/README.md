@@ -118,9 +118,16 @@ dma_wait(metadata)
 - **`metadata`: The ObjectFifo python object or the name of the object fifo associated with the DMA option we will wait on.
 
 **Example Usage**:
+
+Waiting on DMAs associated with one object fifo:
 ```python
 # Waits for the output data to transfer from the output object fifo to the host
 dma_wait(of_out)  
+```
+
+Waiting on DMAs associated with more than one object fifo:
+```python
+dma_wait(of_in, of_out)  
 ```
 
 #### **Best Practices for Data Movement and Synchronization**

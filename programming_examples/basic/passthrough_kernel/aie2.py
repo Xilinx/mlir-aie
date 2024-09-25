@@ -82,7 +82,7 @@ def passthroughKernel(vector_size, trace_size):
                 mem=outTensor,
                 sizes=[1, 1, 1, N],
             )
-            dma_ordered_wait([of_in, of_out])
+            dma_wait(of_in, of_out)
 
 
 try:
