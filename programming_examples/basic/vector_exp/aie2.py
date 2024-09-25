@@ -101,7 +101,7 @@ def my_eltwise_exp():
                             ObjectFifoPort.Consume, 1
                         )
 
-                        call(exp_bf16_1024, [elem_in_a, elem_out])
+                        exp_bf16_1024(elem_in_a, elem_out)
 
                         inA_fifos[inA_fifo_names[i]].release(ObjectFifoPort.Consume, 1)
                         outC_fifos[outC_fifo_names[i]].release(
