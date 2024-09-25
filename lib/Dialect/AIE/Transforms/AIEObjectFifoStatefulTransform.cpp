@@ -461,11 +461,8 @@ struct AIEObjectFifoStatefulTransformPass
                               acqMode);
     if (!dims.getValue().empty()){
       builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims, padDimensions);
-      std::cout<<"With pads dmabd"<<std::endl;
     } else{
-      auto dmas = builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims, padDimensions);
-      dmas.dump();
-      std::cout<<"Without pads dmabd"<<std::endl;
+      builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len);
     } 
 
     builder.create<UseLockOp>(builder.getUnknownLoc(), relLock,
@@ -502,7 +499,6 @@ struct AIEObjectFifoStatefulTransformPass
       relLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][1]
                                                   : locksPerFifo[op][0];
     }
-    std::cout<<"BD Block"<<std::endl;
     createBd(builder, acqLock, acqMode, acqLockAction, relLock, relMode, buff,
              offset, len, succ, dims, padDimensions);
   }
@@ -516,17 +512,8 @@ struct AIEObjectFifoStatefulTransformPass
       createShimDMA(device, builder, op, channelDir, channelIndex, lockMode,
                     dims);
     } else if (op.getProducerTileOp().isMemTile() && channelDir == DMAChannelDir::MM2S) {
-      // if(pad_dims){
-      //   std::cout<<"HERE pad"<<std::endl;
-
-        createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
+      createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
                        dims, pad_dims);
-      // } 
-      // else{
-      //   std::cout<<"HERE no-pad"<<std::endl;
-      //   createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
-      //                  dims);
-      // }
     } else if (op.getProducerTileOp().isMemTile() && channelDir == DMAChannelDir::S2MM){
       createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
                        dims, nullptr);
@@ -850,7 +837,6 @@ struct AIEObjectFifoStatefulTransformPass
       int offset = 0;
       if (isDistribute || isJoin)
         offset = extraOffset;
-      std::cout<<"MEmTile DMA"<<std::endl;
       createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum, 
                               buffersPerFifo[target][blockIndex], offset,
                               lenOut, channelDir, blockIndex, succ, dims, padDimensions);
@@ -1287,7 +1273,7 @@ struct AIEObjectFifoStatefulTransformPass
       DMAChannel producerChan =
           dmaAnalysis.getMasterDMAChannel(producer.getProducerTile());
       createDMA(device, builder, producer, producerChan.direction,
-                producerChan.channel, 0, producer.getDimensionsToStreamAttr(), nullptr);
+                producerChan.channel, 0, producer.getDimensionsToStreamAttr(), producer.getPadDimensionsAttr());
       // generate objectFifo allocation info
       builder.setInsertionPoint(&device.getBody()->back());
 
@@ -1305,7 +1291,7 @@ struct AIEObjectFifoStatefulTransformPass
         BDDimLayoutArrayAttr consumerDims =
             consumer.getDimensionsFromStreamPerConsumer()[0];
         createDMA(device, builder, consumer, consumerChan.direction,
-                  consumerChan.channel, 1, consumerDims, nullptr);
+                  consumerChan.channel, 1, consumerDims, consumer.getPadDimensionsAttr());
         // generate objectFifo allocation info
         builder.setInsertionPoint(&device.getBody()->back());
 

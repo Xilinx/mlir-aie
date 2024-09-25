@@ -54,7 +54,7 @@ def distribute_repeat():
 
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile, MemTile, 1, memRef_in_ty)
-            of_in2 = object_fifo("in2", MemTile, ComputeTile2, 2, memRef_half_ty, pad_dimensions=[(1,0),(1,1),(1,1)])
+            of_in2 = object_fifo("in2", MemTile, ComputeTile2, 2, memRef_half_ty, dimensionsToStream=[(16,2)], pad_dimensions=[(2,0)])
             of_in3 = object_fifo("in3", MemTile, ComputeTile3, 2, memRef_half_ty)
             of_in2.set_memtile_repeat(repeat_counter)
             of_in3.set_memtile_repeat(repeat_counter)
