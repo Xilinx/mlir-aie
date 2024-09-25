@@ -269,18 +269,19 @@ def color_threshold():
                 NpuWriteRTPOp("rtpComputeTile5", index=2, value=0)
 
                 npu_dma_memcpy_nd(
-                    metadata="inOOB_L3L2",
+                    metadata=inOOB_L3L2,
                     bd_id=1,
                     mem=inTensor,
                     sizes=[1, 1, 1, tensorSize],
+                    issue_token=True,
                 )
                 npu_dma_memcpy_nd(
-                    metadata="outOOB_L2L3",
+                    metadata=outOOB_L2L3,
                     bd_id=0,
                     mem=outTensor,
                     sizes=[1, 1, 1, tensorSize],
                 )
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                dma_ordered_wait([inOOB_L3L2, outOOB_L2L3])
 
     # print(ctx.module.operation.verify())
     print(ctx.module)

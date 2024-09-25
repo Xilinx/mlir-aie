@@ -76,6 +76,7 @@ def row_wise_bias_add(M, N, m, n):
                 sizes=[1, N // n, M, n],
                 strides=[0, n, N, 1],
             )
+            # of_out will only complete after of_in completes, so we just wait on of_out instead of both
             dma_wait(out_fifo)
 
 

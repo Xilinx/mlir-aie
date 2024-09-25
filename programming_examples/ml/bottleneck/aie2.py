@@ -579,6 +579,7 @@ def bottleneck4AIEs():
                     mem=weightsFromL3,
                     sizes=[1, 1, 1, totalWeights],
                 )
+                # outOFL2L3 will only complete after inOF_wts_0_L3L2 and of_inOF_act_L3L2 complete, so we just wait on outOFL2L3 instead of all
                 dma_wait(outOFL2L3)
 
     print(ctx.module)

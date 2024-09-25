@@ -917,6 +917,7 @@ def resnet_conv_x():
                     mem=outputToL3,
                     sizes=[1, 1, 1, acitivationsOut],
                 )
+                # outOFL2L3 will only complete after inputs complete, so we just wait on outOFL2L3 instead of all
                 dma_wait("outOFL2L3")
 
     res = ctx.module.operation.verify()

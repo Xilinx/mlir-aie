@@ -62,6 +62,7 @@ def simple_repeat():
                     mem=C,
                     sizes=[1, 1, 1, N * (memtile_repeat_count + 1)],
                 )
+                # of_out will only complete after of_in completes, so we just wait on of_out instead of both
                 dma_wait(of_out)
 
     print(ctx.module)

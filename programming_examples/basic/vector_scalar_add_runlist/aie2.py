@@ -71,6 +71,7 @@ def my_vector_bias_add():
             npu_dma_memcpy_nd(
                 metadata=of_out0, bd_id=0, mem=outTensor, sizes=[1, 1, 1, PROBLEM_SIZE]
             )
+            # of_out will only complete after of_in completes, so we just wait on of_out instead of both
             dma_wait(of_out0)
 
 

@@ -55,6 +55,7 @@ def my_passthrough():
             def sequence(A, B, C):
                 npu_dma_memcpy_nd(metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N])
                 npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
+                # of_out will only complete after of_in completes, so we just wait on of_out instead of both
                 dma_wait(of_out)
 
     print(ctx.module)
