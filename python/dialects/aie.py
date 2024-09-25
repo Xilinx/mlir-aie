@@ -70,14 +70,6 @@ register_dialect(get_dialect_registry())
 assert _cext.globals._check_dialect_module_loaded("aie")
 
 
-def external_func(name, inputs, outputs=None, visibility="private"):
-    if outputs is None:
-        outputs = []
-    return FuncOp(
-        name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
-    )
-
-
 # Wrapper for func CallOp.
 class call(CallOp):
     """Specialize CallOp class constructor to take python integers"""
@@ -99,6 +91,18 @@ class call(CallOp):
                 argumentsOrCallee=FlatSymbolRefAttr.get(calleeOrResults),
                 arguments=attrInputs,
             )
+
+
+class external_func(FuncOp):
+    def __init__(self, name, inputs, outputs=None, visibility="private"):
+        if outputs is None:
+            outputs = []
+        super().__init__(
+            name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
+        )
+
+    def __call__(self, *call_args):
+        return call(self, call_args)
 
 
 def bd_dim_layout(size, stride):
