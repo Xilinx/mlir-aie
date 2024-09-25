@@ -90,12 +90,16 @@ def distribute_join_L2():
             @runtime_sequence(memRef_48_ty, memRef_48_ty, memRef_48_ty)
             def sequence(inTensor, notUsed, outTensor):
                 npu_dma_memcpy_nd(
-                    metadata="out", bd_id=0, mem=outTensor, sizes=[1, 1, 1, 48]
+                    metadata=of_in,
+                    bd_id=1,
+                    mem=inTensor,
+                    sizes=[1, 1, 1, 48],
+                    issue_token=True,
                 )
                 npu_dma_memcpy_nd(
-                    metadata="in", bd_id=1, mem=inTensor, sizes=[1, 1, 1, 48]
+                    metadata=of_out, bd_id=0, mem=outTensor, sizes=[1, 1, 1, 48]
                 )
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                dma_wait(of_in, of_out)
 
     print(ctx.module)
 

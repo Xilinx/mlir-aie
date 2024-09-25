@@ -885,12 +885,6 @@ def resnet_conv_x():
                     sizes=[1, 1, 1, activationsIn],
                 )
                 npu_dma_memcpy_nd(
-                    metadata="outOFL2L3",
-                    bd_id=2,
-                    mem=outputToL3,
-                    sizes=[1, 1, 1, acitivationsOut],
-                )
-                npu_dma_memcpy_nd(
                     metadata="wts_0_L3L2",
                     bd_id=1,
                     mem=weightsFromL3,
@@ -917,8 +911,14 @@ def resnet_conv_x():
                     ],
                     sizes=[1, 1, 1, totalWeights_rest],
                 )
-
-                npu_sync(column=1, row=0, direction=0, channel=0)
+                npu_dma_memcpy_nd(
+                    metadata="outOFL2L3",
+                    bd_id=2,
+                    mem=outputToL3,
+                    sizes=[1, 1, 1, acitivationsOut],
+                )
+                # outOFL2L3 will only complete after inputs complete, so we just wait on outOFL2L3 instead of all
+                dma_wait("outOFL2L3")
 
     res = ctx.module.operation.verify()
     if res == True:
