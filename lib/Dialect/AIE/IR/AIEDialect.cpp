@@ -605,7 +605,8 @@ LogicalResult ObjectFifoAllocateOp::verify() {
 
   // if (objfifo.getProducerTile() != objfifo.getConsumerTiles()[0])
   //   return emitError(
-  //       "can only be used in object FIFOs with same producer / consumer tile");
+  //       "can only be used in object FIFOs with same producer / consumer
+  //       tile");
 
   return success();
 }
