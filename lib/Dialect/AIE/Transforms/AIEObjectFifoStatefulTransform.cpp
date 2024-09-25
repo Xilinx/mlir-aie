@@ -741,7 +741,7 @@ struct AIEObjectFifoStatefulTransformPass
               i++;
             }
             extraOffset = *getConstantIntValue(srcOffsets[i]);
-            lenOut = linkOp->getJoinTranferLengths()[i];
+            lenOut = linkOp->getJoinTransferLengths()[i];
           }
         } else if (linkOp->isDistribute()) {
           // compute offset and length
@@ -757,7 +757,7 @@ struct AIEObjectFifoStatefulTransformPass
               i++;
             }
             extraOffset = *getConstantIntValue(dstOffsets[i]);
-            lenOut = linkOp->getDistributeTranferLengths()[i];
+            lenOut = linkOp->getDistributeTransferLengths()[i];
           }
         } else {
           if (target != op) {

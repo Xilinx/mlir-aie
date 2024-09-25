@@ -12,7 +12,7 @@ from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
+from aie.extras.dialects.ext.scf import _for as range_
 
 
 def main():
@@ -230,6 +230,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                         (t, 1),
                     ],
                 )
+            of_offsets = [n * k * i for i in range(n_aie_cols)]
             object_fifo_link(
                 B_l3l2_fifos[col],
                 [B_l2l1_fifos[row][col] for row in range(n_aie_rows)],
@@ -276,9 +277,11 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
 
                 @core(core_tiles[row][col], f"mm_{m}x{k}x{n}.o")
                 def core_body():
-                    for _ in for_(0xFFFFFFFF):
+                    for _ in range_(0xFFFFFFFF):
                         loop = (
-                            for_(n_tiles_per_core) if n_tiles_per_core > 1 else range(1)
+                            range_(n_tiles_per_core)
+                            if n_tiles_per_core > 1
+                            else range(1)
                         )  # Workaround for issue #1547
                         for _ in loop:
                             if row == 0:
@@ -291,7 +294,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                             if row == 0:
                                 call(zero_scalar, [elem_out])
 
-                            for _ in for_(K // k // n_aie_rows):
+                            for _ in range_(K // k // n_aie_rows):
                                 elem_in_a = A_l2l1_fifos[row].acquire(
                                     ObjectFifoPort.Consume, 1
                                 )
@@ -318,14 +321,9 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                                 B_l2l1_fifos[row][col].release(
                                     ObjectFifoPort.Consume, 1
                                 )
-                                yield_([])
 
                             if row == 0:
                                 C_l1l2_fifos[col].release(ObjectFifoPort.Produce, 1)
-                            yield_([])
-
-                        if n_tiles_per_core > 1:  # workaround for issue #1547
-                            yield_([])
 
         # To/from AIE-array data movement
         @runtime_sequence(

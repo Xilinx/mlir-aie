@@ -63,16 +63,6 @@ AIETranslateToCDODirect(mlir::ModuleOp m, llvm::StringRef workDirPath,
                         bool bigEndian = false, bool emitUnified = false,
                         bool cdoDebug = false, bool aieSim = false,
                         bool xaieDebug = false, bool enableCores = true);
-mlir::LogicalResult
-AIETranslateToTxn(mlir::ModuleOp m, llvm::raw_ostream &output,
-                  llvm::StringRef workDirPath, bool outputBinary = false,
-                  bool aieSim = false, bool xaieDebug = false,
-                  bool enableCores = true);
-mlir::LogicalResult
-AIETranslateToControlPackets(mlir::ModuleOp m, llvm::raw_ostream &output,
-                             llvm::StringRef workDirPath,
-                             bool outputBinary = false, bool aieSim = false,
-                             bool xaieDebug = false, bool enableCores = true);
 
 #ifdef AIE_ENABLE_AIRBIN
 mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
@@ -83,13 +73,6 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
 
 mlir::LogicalResult AIETranslateToTargetArch(mlir::ModuleOp module,
                                              llvm::raw_ostream &output);
-
-std::optional<mlir::ModuleOp>
-AIETranslateBinaryToTxn(mlir::MLIRContext *ctx, std::vector<uint8_t> &binary);
-
-std::optional<mlir::ModuleOp>
-AIETranslateBinaryToCtrlpkt(mlir::MLIRContext *ctx,
-                            std::vector<uint8_t> &binary);
 
 } // namespace AIE
 

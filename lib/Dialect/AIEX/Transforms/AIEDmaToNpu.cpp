@@ -518,8 +518,13 @@ public:
 struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  WriteBdToBlockWritePattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
+private:
+  int &cachedId;
+
+public:
+  WriteBdToBlockWritePattern(MLIRContext *context, int &cachedId,
+                             PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit), cachedId(cachedId) {}
 
   LogicalResult
   matchAndRewrite(NpuWriteBdOp op, OpAdaptor adaptor,
@@ -634,10 +639,11 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
       std::string name = "blockwrite_data_";
       rewriter.setInsertionPoint(
           op->getParentOfType<AIEX::RuntimeSequenceOp>());
-      int id = 0;
+      int id = cachedId;
       while (dev.lookupSymbol(name + std::to_string(id)))
         id++;
       name += std::to_string(id);
+      cachedId = id;
       global = rewriter.create<memref::GlobalOp>(
           op->getLoc(), name, rewriter.getStringAttr("private"), memrefType,
           DenseElementsAttr::get<uint32_t>(tensorType, words), true, nullptr);
@@ -689,7 +695,8 @@ struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
     patterns.insert<PushQueuetoWrite32Pattern>(&getContext());
     patterns.insert<RtpToWrite32Pattern>(&getContext());
     patterns.insert<Write32SymToAddr>(&getContext());
-    patterns.insert<WriteBdToBlockWritePattern>(&getContext());
+    int cachedId = 0;
+    patterns.insert<WriteBdToBlockWritePattern>(&getContext(), cachedId);
 
     if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();

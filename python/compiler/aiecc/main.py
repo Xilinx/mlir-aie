@@ -430,7 +430,6 @@ class FlowRunner:
         llvmir_chesslinked_path = llvmir + "chesslinked.ll"
         if not self.opts.execute:
             return llvmir_chesslinked_path
-        llvmir = await read_file_async(llvmir)
 
         install_path = aie.compiler.aiecc.configure.install_path()
         runtime_lib_path = os.path.join(install_path, "aie_runtime_lib")
@@ -438,12 +437,25 @@ class FlowRunner:
             runtime_lib_path, aie_target.upper(), "chess_intrinsic_wrapper.ll"
         )
 
-        await write_file_async(llvmir, llvmir_chesshack)
+        llvmir_ir = await read_file_async(llvmir)
+        llvmir_hacked_ir = downgrade_ir_for_chess(llvmir_ir)
+        await write_file_async(llvmir_hacked_ir, llvmir_chesshack)
+
+        if aie_target.casefold() == "AIE2".casefold():
+            target = "target_aie_ml"
+        else:
+            target = "target"
         assert os.path.exists(llvmir_chesshack)
         await self.do_call(
             task,
             [
-                "llvm-link",
+                # The path below is cheating a bit since it refers directly to the AIE1
+                # version of llvm-link, rather than calling the architecture-specific
+                # tool version.
+                opts.aietools_path
+                + "/tps/lnx64/"
+                + target
+                + "/bin/LNa64bin/chess-llvm-link",
                 llvmir_chesshack,
                 chess_intrinsic_wrapper_ll_path,
                 "-S",
@@ -451,10 +463,6 @@ class FlowRunner:
                 llvmir_chesslinked_path,
             ],
         )
-
-        llvmir_chesslinked_ir = await read_file_async(llvmir_chesslinked_path)
-        llvmir_chesslinked_ir = downgrade_ir_for_chess(llvmir_chesslinked_ir)
-        await write_file_async(llvmir_chesslinked_ir, llvmir_chesslinked_path)
 
         return llvmir_chesslinked_path
 
@@ -513,9 +521,9 @@ class FlowRunner:
                     file_core_llvmir_chesslinked = await self.chesshack(task, file_core_llvmir, aie_target)
                     if self.opts.link and self.opts.xbridge:
                         link_with_obj = await extract_input_files(file_core_bcf)
-                        await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-d", "-f", "+P", "4", file_core_llvmir_chesslinked, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
+                        await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-d", "+Wclang,-xir", "-f", file_core_llvmir_chesslinked, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                     elif self.opts.link:
-                        await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "-f", "+P", "4", file_core_llvmir_chesslinked, "-o", file_core_obj])
+                        await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "+Wclang,-xir", "-f", file_core_llvmir_chesslinked, "-o", file_core_obj])
                         await self.do_call(task, [self.peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
                 else:
                     file_core_obj = self.unified_file_core_obj
@@ -589,7 +597,6 @@ class FlowRunner:
             )
 
     async def process_ctrlpkt(self):
-        from aie.dialects.aie import generate_ctrlpkt
 
         with Context(), Location.unknown():
             for elf in glob.glob("*.elf"):
@@ -602,11 +609,17 @@ class FlowRunner:
                     shutil.copy(elf_map, self.tmpdirname)
                 except shutil.SameFileError:
                     pass
-            input_physical = Module.parse(
-                await read_file_async(self.prepend_tmp("input_physical.mlir"))
+            input_physical = await read_file_async(
+                self.prepend_tmp("input_physical.mlir")
             )
-            ctrlpkt_file = os.path.join(self.tmpdirname, "ctrlpkt.mlir")
-            generate_ctrlpkt(input_physical.operation, ctrlpkt_file, self.tmpdirname)
+            run_passes(
+                "builtin.module(aie.device(convert-aie-to-control-packets{elf-dir="
+                + self.tmpdirname
+                + "}))",
+                input_physical,
+                self.prepend_tmp("ctrlpkt.mlir"),
+                self.opts.verbose,
+            )
 
     async def process_xclbin_gen(self):
         if opts.progress:
@@ -1108,7 +1121,7 @@ class FlowRunner:
                 self.unified_file_core_obj = self.prepend_tmp("input.o")
                 if opts.compile and opts.xchesscc:
                     file_llvmir_hacked = await self.chesshack(progress_bar.task, file_llvmir, aie_target)
-                    await self.do_call(progress_bar.task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "-f", "+P", "4", file_llvmir_hacked, "-o", self.unified_file_core_obj])
+                    await self.do_call(progress_bar.task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "+Wclang,-xir", "-f", file_llvmir_hacked, "-o", self.unified_file_core_obj])
                 elif opts.compile:
                     file_llvmir_opt = self.prepend_tmp("input.opt.ll")
                     await self.do_call(progress_bar.task, [self.peano_opt_path, "--passes=default<O2>", "-inline-threshold=10", "-S", file_llvmir, "-o", file_llvmir_opt])
@@ -1168,34 +1181,18 @@ def run(mlir_module, args=None):
     if args is not None:
         opts = aie.compiler.aiecc.cl_arguments.parse_args(args)
 
-    if "VITIS" not in os.environ:
-        # Try to find vitis in the path
-        vpp_path = shutil.which("v++")
-        if vpp_path:
-            vitis_bin_path = os.path.dirname(os.path.realpath(vpp_path))
-            vitis_path = os.path.dirname(vitis_bin_path)
-            os.environ["VITIS"] = vitis_path
-            print("Found Vitis at " + vitis_path)
-            os.environ["PATH"] = os.pathsep.join([os.environ["PATH"], vitis_bin_path])
-
     opts.aietools_path = ""
-    if "VITIS" in os.environ:
-        vitis_path = os.environ["VITIS"]
-        vitis_bin_path = os.path.join(vitis_path, "bin")
-        # Find the aietools directory, needed by xchesscc_wrapper
-
-        opts.aietools_path = os.path.join(vitis_path, "aietools")
-        if not os.path.exists(opts.aietools_path):
-            opts.aietools_path = os.path.join(vitis_path, "cardano")
-        os.environ["AIETOOLS"] = opts.aietools_path
-
-        aietools_bin_path = os.path.join(opts.aietools_path, "bin")
-        os.environ["PATH"] = os.pathsep.join(
-            [os.environ["PATH"], aietools_bin_path, vitis_bin_path]
-        )
-
+    # Try to find vitis in the path
+    xchesscc_path = shutil.which("xchesscc")
+    if xchesscc_path:
+        xchesscc_bin_path = os.path.dirname(os.path.realpath(xchesscc_path))
+        xchesscc_path = os.path.dirname(xchesscc_bin_path)
+        os.environ["AIETOOLS"] = xchesscc_path
+        print("Found xchesscc at " + xchesscc_path)
+        os.environ["PATH"] = os.pathsep.join([os.environ["PATH"], xchesscc_bin_path])
+        opts.aietools_path = xchesscc_path
     else:
-        print("Vitis not found...")
+        print("xchesscc not found...")
 
     # This path should be generated from cmake
     aie_path = aie.compiler.aiecc.configure.install_path()
