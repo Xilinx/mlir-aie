@@ -416,9 +416,8 @@ struct AIEObjectFifoStatefulTransformPass
     }
     TileOp delegate = opAlloc.getDelegateTileOp();
     int shareDir;
-    bool hasSharedMemory = 
-                    isSharedMemory(op.getProducerTileOp(),
-                                   delegate, &shareDir);
+    bool hasSharedMemory =
+        isSharedMemory(op.getProducerTileOp(), delegate, &shareDir);
     if (hasSharedMemory)
       buffer_creation_tile = delegate;
     else
