@@ -104,6 +104,8 @@ class call(CallOp):
 def bd_dim_layout(size, stride):
     return Attribute.parse(f"#aie.bd_dim_layout<{size=}, {stride=}>")
 
+def bd_pad_layout(const_pad_before, const_pad_after):
+    return Attribute.parse(f"#aie.bd_pad_layout<{const_pad_before=}, {const_pad_after=}>")
 
 @register_attribute_builder("BDDimLayoutArrayAttr")
 def bd_dim_layout_array_attr_builder(
@@ -122,6 +124,16 @@ def bd_dim_layout_array_array_attr_builder(tup_arrs: List[List[tuple]], context=
     return Attribute.parse(
         f'#aie<bd_dim_layout_array_array[{", ".join(map(str, tup_arrs))}]>',
         context=context,
+    )
+    
+@register_attribute_builder("BDPadLayoutArrayAttr")
+def bd_pad_layout_array_attr_builder(
+    tups: List[Union[Attribute, Tuple[int]]], context=None
+):
+    if isinstance(tups, list) and all(isinstance(t, tuple) for t in tups):
+        tups = list(map(lambda t: bd_pad_layout(*t), tups))
+    return Attribute.parse(
+        f'#aie<bd_pad_layout_array[{", ".join(map(str, tups))}]>', context=context
     )
 
 
@@ -279,6 +291,7 @@ class object_fifo(ObjectFifoCreateOp):
         dimensionsFromStreamPerConsumer=None,
         via_DMA=None,
         plio=None,
+        pad_dimensions=None,
     ):
         self.datatype = datatype
         if not isinstance(consumerTiles, List):
@@ -287,6 +300,8 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer = []
         if dimensionsToStream is None:
             dimensionsToStream = []
+        if pad_dimensions is None:
+            pad_dimensions = []
         int_ty = IntegerType.get_signless(32)
         of_Ty = TypeAttr.get(ObjectFifoType.get(datatype))
         super().__init__(
@@ -299,6 +314,7 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
             via_DMA=via_DMA,
             plio=plio,
+            pad_dimensions=pad_dimensions
         )
 
     def acquire(self, port, num_elem):
