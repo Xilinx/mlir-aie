@@ -441,6 +441,10 @@ class FlowRunner:
         llvmir_hacked_ir = downgrade_ir_for_chess(llvmir_ir)
         await write_file_async(llvmir_hacked_ir, llvmir_chesshack)
 
+        if aie_target.casefold() == "AIE2".casefold():
+            target = "target_aie_ml"
+        else:
+            target = "target"
         assert os.path.exists(llvmir_chesshack)
         await self.do_call(
             task,
@@ -448,7 +452,10 @@ class FlowRunner:
                 # The path below is cheating a bit since it refers directly to the AIE1
                 # version of llvm-link, rather than calling the architecture-specific
                 # tool version.
-                opts.aietools_path + "/tps/lnx64/target/bin/LNa64bin/chess-llvm-link",
+                opts.aietools_path
+                + "/tps/lnx64/"
+                + target
+                + "/bin/LNa64bin/chess-llvm-link",
                 llvmir_chesshack,
                 chess_intrinsic_wrapper_ll_path,
                 "-S",
@@ -1174,34 +1181,18 @@ def run(mlir_module, args=None):
     if args is not None:
         opts = aie.compiler.aiecc.cl_arguments.parse_args(args)
 
-    if "VITIS" not in os.environ:
-        # Try to find vitis in the path
-        vpp_path = shutil.which("v++")
-        if vpp_path:
-            vitis_bin_path = os.path.dirname(os.path.realpath(vpp_path))
-            vitis_path = os.path.dirname(vitis_bin_path)
-            os.environ["VITIS"] = vitis_path
-            print("Found Vitis at " + vitis_path)
-            os.environ["PATH"] = os.pathsep.join([os.environ["PATH"], vitis_bin_path])
-
     opts.aietools_path = ""
-    if "VITIS" in os.environ:
-        vitis_path = os.environ["VITIS"]
-        vitis_bin_path = os.path.join(vitis_path, "bin")
-        # Find the aietools directory, needed by xchesscc_wrapper
-
-        opts.aietools_path = os.path.join(vitis_path, "aietools")
-        if not os.path.exists(opts.aietools_path):
-            opts.aietools_path = os.path.join(vitis_path, "cardano")
-        os.environ["AIETOOLS"] = opts.aietools_path
-
-        aietools_bin_path = os.path.join(opts.aietools_path, "bin")
-        os.environ["PATH"] = os.pathsep.join(
-            [os.environ["PATH"], aietools_bin_path, vitis_bin_path]
-        )
-
+    # Try to find vitis in the path
+    xchesscc_path = shutil.which("xchesscc")
+    if xchesscc_path:
+        xchesscc_bin_path = os.path.dirname(os.path.realpath(xchesscc_path))
+        xchesscc_path = os.path.dirname(xchesscc_bin_path)
+        os.environ["AIETOOLS"] = xchesscc_path
+        print("Found xchesscc at " + xchesscc_path)
+        os.environ["PATH"] = os.pathsep.join([os.environ["PATH"], xchesscc_bin_path])
+        opts.aietools_path = xchesscc_path
     else:
-        print("Vitis not found...")
+        print("xchesscc not found...")
 
     # This path should be generated from cmake
     aie_path = aie.compiler.aiecc.configure.install_path()
