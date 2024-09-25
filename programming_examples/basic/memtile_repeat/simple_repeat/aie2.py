@@ -55,18 +55,14 @@ def simple_repeat():
 
             @runtime_sequence(tensor_ty, tensor_ty, tensor_out_ty)
             def sequence(A, B, C):
+                npu_dma_memcpy_nd(metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N])
                 npu_dma_memcpy_nd(
-                    metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N], issue_token=True
-                )
-
-                npu_dma_memcpy_nd(
-                    metadata="out",
+                    metadata=of_out,
                     bd_id=0,
                     mem=C,
                     sizes=[1, 1, 1, N * (memtile_repeat_count + 1)],
                 )
-                npu_dma_wait("in")
-                npu_dma_wait("out")
+                dma_wait(of_out)
 
     print(ctx.module)
 

@@ -63,12 +63,16 @@ def my_vector_bias_add():
         @runtime_sequence(tensor_ty, tensor_ty)
         def sequence(inTensor, outTensor):
             npu_dma_memcpy_nd(
-                metadata="out0", bd_id=0, mem=outTensor, sizes=[1, 1, 1, PROBLEM_SIZE]
+                metadata=of_in0,
+                bd_id=1,
+                mem=inTensor,
+                sizes=[1, 1, 1, PROBLEM_SIZE],
+                issue_token=True,
             )
             npu_dma_memcpy_nd(
-                metadata="in0", bd_id=1, mem=inTensor, sizes=[1, 1, 1, PROBLEM_SIZE]
+                metadata=of_out0, bd_id=0, mem=outTensor, sizes=[1, 1, 1, PROBLEM_SIZE]
             )
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            dma_ordered_wait([of_in0, of_out0])
 
 
 # Declares that subsequent code is in mlir-aie context

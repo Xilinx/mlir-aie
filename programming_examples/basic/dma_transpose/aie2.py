@@ -55,18 +55,15 @@ def my_passthrough():
                 # The strides below are configured to read across all rows in the same column
                 # Stride of K in dim/wrap 2 skips an entire row to read a full column
                 npu_dma_memcpy_nd(
-                    metadata=of_in.sym_name.value,
+                    metadata=of_in,
                     bd_id=1,
                     mem=A,
                     sizes=[1, K, M, 1],
                     strides=[1, 1, K, 1],
                     issue_token=True,
                 )
-                npu_dma_memcpy_nd(
-                    metadata=of_out.sym_name.value, bd_id=0, mem=C, sizes=[1, 1, 1, N]
-                )
-                dma_wait(of_in)
-                dma_wait(of_out)
+                npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
+                dma_ordered_wait([of_in, of_out])
 
     print(ctx.module)
 

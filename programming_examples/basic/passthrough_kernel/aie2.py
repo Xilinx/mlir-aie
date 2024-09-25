@@ -70,20 +70,19 @@ def passthroughKernel(vector_size, trace_size):
                 )
 
             npu_dma_memcpy_nd(
-                metadata="in",
+                metadata=of_in,
                 bd_id=0,
                 mem=inTensor,
                 sizes=[1, 1, 1, N],
                 issue_token=True,
             )
             npu_dma_memcpy_nd(
-                metadata="out",
+                metadata=of_out,
                 bd_id=1,
                 mem=outTensor,
                 sizes=[1, 1, 1, N],
             )
-            npu_dma_sync("in")
-            npu_dma_sync("out")
+            dma_ordered_wait([of_in, of_out])
 
 
 try:

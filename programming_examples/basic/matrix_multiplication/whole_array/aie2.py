@@ -372,7 +372,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
                         C_col_offset = col * n
                         C_offset = C_col_offset + C_row_offset
                         npu_dma_memcpy_nd(
-                            metadata=C_l2l3_fifos[col].sym_name.value,
+                            metadata=C_l2l3_fifos[col],
                             bd_id=bd_id_base,
                             mem=C,
                             offsets=[0, 0, 0, C_offset],
@@ -408,7 +408,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
                             )  # base address for the shim in this column
                             A_offset = A_block_offset + A_row_offset
                             npu_dma_memcpy_nd(
-                                metadata=A_l3l2_fifos[col].sym_name.value,
+                                metadata=A_l3l2_fifos[col],
                                 bd_id=bd_id_base + 2 * tile_row + 1,
                                 mem=A,
                                 offsets=[0, 0, 0, A_offset],
@@ -441,7 +441,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
                             #      ----------------
                             B_col_offset = col * n if not b_col_maj else col * n * K
                             npu_dma_memcpy_nd(
-                                metadata=B_l3l2_fifos[col].sym_name.value,
+                                metadata=B_l3l2_fifos[col],
                                 bd_id=bd_id_base + 2 * tile_row + 2,
                                 mem=B,
                                 offsets=[0, 0, 0, B_col_offset],
@@ -457,12 +457,8 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
                                 ),
                             )
                     if tb > 0 or (tb == 0 and pingpong > 0):
-                        for col in range(n_aie_cols):
-                            npu_sync(
-                                column=col, row=0, direction=0, channel=0
-                            )  # C done
-            for col in range(n_aie_cols):
-                npu_sync(column=col, row=0, direction=0, channel=0)
+                        dma_ordered_wait(C_l2l3_fifos)
+            dma_ordered_wait(C_l2l3_fifos)
 
 
 if __name__ == "__main__":
