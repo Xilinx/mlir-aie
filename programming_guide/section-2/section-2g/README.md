@@ -27,7 +27,7 @@ The operations that will be described in this section must be placed in a separa
 
 ### Guide to Managing Runtime Data Movement to/from Host Memory
 
-In high-performance computing applications, efficiently managing data movement and synchronization is crucial. This guide provides a comprehensive overview of how to utilize the `npu_dma_memcpy_nd` and `npu_sync` functions to manage data movement at runtime from/to host memory to/from the AIE array (for example, in the Ryzen™ AI NPU).
+In high-performance computing applications, efficiently managing data movement and synchronization is crucial. This guide provides a comprehensive overview of how to utilize the `npu_dma_memcpy_nd` and `dma_wait` functions to manage data movement at runtime from/to host memory to/from the AIE array (for example, in the Ryzen™ AI NPU).
 
 #### **Efficient Data Movement with `npu_dma_memcpy_nd`**
 
@@ -107,35 +107,31 @@ offsets = [0, 0, 0, 0]
 npu_dma_memcpy_nd(metadata, bd_id, mem, offsets, sizes, strides)
 ```
 
-#### **Host Synchronization with `npu_sync`**
+#### **Host Synchronization with `dma_wait`**
 
-Synchronization between DMA channels and the host is facilitated by the `npu_sync` operation, ensuring data consistency and proper execution order. The `npu_sync` operation waits until the BD in the DMA channel is complete issuing a task complete token.
+Synchronization between DMA channels and the host is facilitated by the `dma_wait` operation, ensuring data consistency and proper execution order. The `dma_wait` operation waits until the BD associated with the ObjectFifo is complete, issuing a task complete token.
 
 **Function Signature**:
 ```python
-npu_sync(column, row, direction, channel, column_num=1, row_num=1)
+dma_wait(metadata)
 ```
-- **`column`** and **`row`**: Specify the tile location for initiating or targeting the synchronization. Currently we only emit task complete tokens in the Shim Tiles (row = 0).
-- **`direction`**: Indicates the DMA direction (0 for write to host, 1 for read from host).
-- **`channel`**: Identifies the DMA channel (0 or 1) for the synchronization token.
-- **`column_num`** and **`row_num`** (optional): Define the range of tiles to wait for synchronization task complete tokens, defaulting to the specific single tile only.
+- **`metadata`: The ObjectFifo python object or the name of the object fifo associated with the DMA option we will wait on.
 
 **Example Usage**:
 ```python
-# Synchronizes operations at column 0, row 0 (Shim Tile)
-# using DMA channel 1 in direction 0 (write to host).
-npu_sync(0, 0, 0, 1)  
+# Waits for the output data to transfer from the output object fifo to the host
+dma_wait(of_out)  
 ```
 
 #### **Best Practices for Data Movement and Synchronization**
 
 - **Sync to Reuse Buffer Descriptors**: Each `npu_dma_memcpy_nd` is assigned a `bd_id`. There are a maximum of `16` BDs available to use in each Shim Tile. It is "safe" to reuse BDs once all transfers are complete, this can be managed by properly synchronizing taking into account the BDs that must have completed to transfer data into the array to complete a compute operation. And then sync on the BD that receives the data produced by the compute operation to write it back to host memory. 
 - **Note Non-blocking Transfers**: Overlap data transfers with computation by leveraging the non-blocking nature of `npu_dma_memcpy_nd`.
-- **Minimize Synchronization Overhead**: Synchronize judiciously to avoid excessive overhead that might degrade performance.
+- **Minimize Synchronization Overhead**: Synchronize/wait judiciously to avoid excessive overhead that might degrade performance.
 
 #### **Conclusion**
 
-The `npu_dma_memcpy_nd` and `npu_sync` functions are powerful tools for managing data transfers and synchronization with AI Engines in the Ryzen™ AI NPU. By understanding and effectively implementing applications leveraging these functions, developers can enhance the performance, efficiency, and accuracy of their high-performance computing applications.
+The `npu_dma_memcpy_nd` and `dma_wait` functions are powerful tools for managing data transfers and synchronization with AI Engines in the Ryzen™ AI NPU. By understanding and effectively implementing applications leveraging these functions, developers can enhance the performance, efficiency, and accuracy of their high-performance computing applications.
 
 -----
 [[Prev - Section 2f](../section-2f/)] [[Up](..)] [[Next - Section 3](../../section-3/)]

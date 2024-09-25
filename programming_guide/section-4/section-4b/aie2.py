@@ -78,10 +78,18 @@ def my_vector_scalar(opts):
                     offset=4096 * 4,  # offset in bytes
                 )
 
+            npu_dma_memcpy_nd(
+                metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, 4096], issue_token=True
+            )
+            npu_dma_memcpy_nd(
+                metadata="infactor",
+                bd_id=2,
+                mem=F,
+                sizes=[1, 1, 1, 1],
+                issue_token=True,
+            )
             npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, 4096])
-            npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, 4096])
-            npu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            dma_ordered_wait(of_in, of_factor, of_out)
 
 
 if __name__ == "__main__":
