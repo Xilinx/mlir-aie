@@ -18,6 +18,7 @@ from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
+from aie.ir import MemRefType
 from aie.extras.dialects.ext.scf import _for as range_
 
 matrix_rows = 7
