@@ -10,7 +10,9 @@ from aie.dialects.aie import *  # primary mlir-aie dialect definitions
 from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 
 from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
-from aie.dialects.scf import *  # scf (strcutred control flow) dialect
+from aie.extras.dialects.ext.scf import (
+    _for as range_,
+)  # scf (structured control flow) dialect
 from aie.extras.dialects.ext import memref, arith  # memref and arithmatic dialects
 
 n_cores = 3
@@ -82,23 +84,21 @@ def mlir_aie_design():
                 # Compute tile i
                 @core(ComputeTiles[i])
                 def core_body():
-                    for _ in for_(0xFFFFFFFF):
+                    for _ in range_(0xFFFFFFFF):
                         elem_in = inX_fifos[inX_fifo_names[i]].acquire(
                             ObjectFifoPort.Consume, 1
                         )
                         elem_out = outX_fifos[outX_fifo_names[i]].acquire(
                             ObjectFifoPort.Produce, 1
                         )
-                        for j in for_(tile_size):
+                        for j in range_(tile_size):
                             v0 = memref.load(elem_in, [j])
                             v1 = arith.addi(v0, arith.constant(1, T.i32()))
                             memref.store(v1, elem_out, [j])
-                            yield_([])
                         inX_fifos[inX_fifo_names[i]].release(ObjectFifoPort.Consume, 1)
                         outX_fifos[outX_fifo_names[i]].release(
                             ObjectFifoPort.Produce, 1
                         )
-                        yield_([])
 
     # Print the mlir conversion
     res = ctx.module.operation.verify()

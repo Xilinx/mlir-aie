@@ -205,7 +205,7 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
   }
 
   for (int i = 0; i < 4; i++) {
-    // strides[0] == 1 is ok iff the tranfer size is a multiple of
+    // strides[0] == 1 is ok iff the transfer size is a multiple of
     // addressGranularity, which is checked below
     if (i == 0 && inputStrides[i] == 1)
       continue;
@@ -347,8 +347,9 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   if (buffer.getElementTypeBitWidth() > addressGranularity) {
     return emitOpError("Maximum element bit width allowed is ")
            << addressGranularity << "bits. ";
-  } else if ((buffer.getNumElements() * buffer.getElementTypeBitWidth()) <
-             addressGranularity) {
+  } else if (buffer.hasStaticShape() &&
+             (buffer.getNumElements() * buffer.getElementTypeBitWidth()) <
+                 addressGranularity) {
     return emitOpError("Minimum data transfer size required is ")
            << addressGranularity << "bits. ";
   }

@@ -483,8 +483,9 @@ LogicalResult ObjectFifoCreateOp::verify() {
   }
 
   if (getProducerTileOp().isShimTile() && !getDimensionsToStream().empty()) {
-    return emitError("`toStream` data layout transformations are not supported "
-                     "on shim tile producers");
+    return emitError(
+        "`dimensionsToStream` data layout transformations are not supported "
+        "on shim tile producers");
   }
 
   if (getViaSharedMem().has_value()) {
@@ -514,7 +515,7 @@ ParseResult parseObjectFifoProducerTile(OpAsmParser &parser,
   std::vector<BDDimLayoutAttr> emptyDims = {};
   if (parser.parseOperand(operand))
     return failure();
-  if (succeeded(parser.parseOptionalKeyword("toStream"))) {
+  if (succeeded(parser.parseOptionalKeyword("dimensionsToStream"))) {
     if (parser.parseCustomAttributeWithFallback<BDDimLayoutArrayAttr>(
             dimensions)) {
       return failure();
@@ -531,7 +532,7 @@ void printObjectFifoProducerTile(OpAsmPrinter &printer, Operation *op,
                                  BDDimLayoutArrayAttr dimensions) {
   printer << operand;
   if (!dimensions.empty()) {
-    printer << " toStream ";
+    printer << " dimensionsToStream ";
     printer.printStrippedAttrOrType(dimensions);
   }
 }
@@ -553,7 +554,7 @@ ParseResult parseObjectFifoConsumerTiles(
     BDDimLayoutArrayAttr dimAttr =
         BDDimLayoutArrayAttr::get(parser.getContext(), {});
 
-    if (succeeded(parser.parseOptionalKeyword("fromStream"))) {
+    if (succeeded(parser.parseOptionalKeyword("dimensionsFromStream"))) {
       // If specified, parse actual data layout transform dimensions
       if (parser.parseCustomAttributeWithFallback<BDDimLayoutArrayAttr>(
               dimAttr)) {
@@ -580,7 +581,7 @@ void printObjectFifoConsumerTiles(OpAsmPrinter &printer, Operation *op,
     printer << tile;
     if (dimsPerTileAttr && tileIdx < dimsPerTileAttr.size() &&
         dimsPerTileAttr[tileIdx] && !dimsPerTileAttr[tileIdx].empty()) {
-      printer << " fromStream ";
+      printer << " dimensionsFromStream ";
       printer.printStrippedAttrOrType(dimsPerTileAttr[tileIdx]);
     }
     if (tileIdx < tiles.size() - 1) {
@@ -718,7 +719,7 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getOutputObjectFifos() {
   return outputObjFifos;
 }
 
-std::vector<int> ObjectFifoLinkOp::getJoinTranferLengths() {
+std::vector<int> ObjectFifoLinkOp::getJoinTransferLengths() {
   std::vector<int> lengths;
   if (isJoin()) {
     auto fifoOut =
@@ -738,7 +739,7 @@ std::vector<int> ObjectFifoLinkOp::getJoinTranferLengths() {
   return lengths;
 }
 
-std::vector<int> ObjectFifoLinkOp::getDistributeTranferLengths() {
+std::vector<int> ObjectFifoLinkOp::getDistributeTransferLengths() {
   std::vector<int> lengths;
   if (isDistribute()) {
     auto fifoIn =

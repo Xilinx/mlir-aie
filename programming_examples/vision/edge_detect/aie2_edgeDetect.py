@@ -9,9 +9,9 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
 from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
+from aie.extras.dialects.ext.scf import _for as range_
 
 width = 64
 height = 36
@@ -143,8 +143,7 @@ def edge_detect():
             # Compute tile 2
             @core(ComputeTile2, "rgba2gray.cc.o")
             def core_body():
-                for _ in for_(4294967295):
-                    # for _ in for_(36):
+                for _ in range_(sys.maxsize):
                     elem_in = inOF_L3L2.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = OF_2to3.acquire(ObjectFifoPort.Produce, 1)
 
@@ -152,7 +151,6 @@ def edge_detect():
 
                     inOF_L3L2.release(ObjectFifoPort.Consume, 1)
                     OF_2to3.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # Compute tile 3
             @core(ComputeTile3, "filter2d.cc.o")
@@ -171,7 +169,7 @@ def edge_detect():
                 memref.store(v1, kernel, [2, 1])
                 memref.store(v0, kernel, [2, 2])
 
-                for _ in for_(4294967295):
+                for _ in range_(sys.maxsize):
                     # Preamble : Top Border
                     elems_in_pre = OF_2to3.acquire(ObjectFifoPort.Consume, 2)
                     elem_pre_out = OF_3to4.acquire(ObjectFifoPort.Produce, 1)
@@ -189,7 +187,7 @@ def edge_detect():
                     OF_3to4.release(ObjectFifoPort.Produce, 1)
 
                     # Steady State : Middle
-                    for _ in for_(1, heightMinus1):
+                    for _ in range_(1, heightMinus1):
                         elems_in = OF_2to3.acquire(ObjectFifoPort.Consume, 3)
                         elem_out = OF_3to4.acquire(ObjectFifoPort.Produce, 1)
                         call(
@@ -205,7 +203,6 @@ def edge_detect():
                         )
                         OF_2to3.release(ObjectFifoPort.Consume, 1)
                         OF_3to4.release(ObjectFifoPort.Produce, 1)
-                        yield_([])
 
                     # Postamble : Bottom Border
                     elems_in_post = OF_2to3.acquire(ObjectFifoPort.Consume, 2)
@@ -223,7 +220,6 @@ def edge_detect():
                     )
                     OF_2to3.release(ObjectFifoPort.Consume, 2)
                     OF_3to4.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # Compute tile 4
             @core(ComputeTile4, "threshold.cc.o")
@@ -232,7 +228,7 @@ def edge_detect():
                 v_max = arith.constant(255, T.i16())
                 v_typ = arith.constant(0, T.i8())
 
-                for _ in for_(4294967295):
+                for _ in range_(sys.maxsize):
                     elem_in = OF_3to4.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = OF_4to5.acquire(ObjectFifoPort.Produce, 1)
 
@@ -250,12 +246,11 @@ def edge_detect():
 
                     OF_3to4.release(ObjectFifoPort.Consume, 1)
                     OF_4to5.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # Compute tile 5
             @core(ComputeTile5, "combined_gray2rgba_addWeighted.a")
             def core_body():
-                for _ in for_(4294967295):
+                for _ in range_(sys.maxsize):
                     elem_in = OF_4to5.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = OF_5to5.acquire(ObjectFifoPort.Produce, 1)
 
@@ -288,7 +283,6 @@ def edge_detect():
                     OF_5to5.release(ObjectFifoPort.Consume, 1)
                     inOF_L2L1.release(ObjectFifoPort.Consume, 1)
                     outOF_L1L2.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # To/from AIE-array data movement
 

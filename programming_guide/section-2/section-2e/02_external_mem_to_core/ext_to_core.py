@@ -7,7 +7,7 @@
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
+from aie.extras.dialects.ext.scf import _for as range_
 from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
@@ -36,17 +36,15 @@ def external_mem_to_core():
             @core(ComputeTile2)
             def core_body():
                 # Effective while(1)
-                for _ in for_(2):
+                for _ in range_(2):
                     elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
-                    for i in for_(24):
+                    for i in range_(24):
                         v0 = memref.load(elem_in, [i])
                         v1 = arith.addi(v0, arith.constant(1, T.i32()))
                         memref.store(v1, elem_out, [i])
-                        yield_([])
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # To/from AIE-array data movement
 

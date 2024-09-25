@@ -93,6 +93,21 @@ std::vector<uint32_t> test_utils::load_instr_sequence(std::string instr_path) {
   return instr_v;
 }
 
+std::vector<uint32_t> test_utils::load_instr_binary(std::string instr_path) {
+  std::ifstream instr_file(instr_path);
+  if (!instr_file.is_open()) {
+    throw std::runtime_error("Unable to open instruction file\n");
+  }
+  // read size of file, reserve space in  instr_v, then read the file into
+  // instr_v
+  instr_file.seekg(0, instr_file.end);
+  int size = instr_file.tellg();
+  instr_file.seekg(0, instr_file.beg);
+  std::vector<uint32_t> instr_v(size / 4);
+  instr_file.read(reinterpret_cast<char *>(instr_v.data()), size);
+  return instr_v;
+}
+
 // --------------------------------------------------------------------------
 // XRT
 // --------------------------------------------------------------------------

@@ -10,7 +10,6 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
 
 N = 4096

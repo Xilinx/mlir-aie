@@ -445,50 +445,23 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
         return -1;
       };
 
-  // To get determinsitic behaviour; allocate amsels for control packet flows
-  // before others
-  auto getWireBundleAsInt = [](WireBundle bundle) {
-    switch (bundle) {
-    case WireBundle::Core:
-      return 0;
-    case WireBundle::DMA:
-      return 1;
-    case WireBundle::FIFO:
-      return 2;
-    case WireBundle::South:
-      return 3;
-    case WireBundle::West:
-      return 4;
-    case WireBundle::North:
-      return 5;
-    case WireBundle::East:
-      return 6;
-    case WireBundle::PLIO:
-      return 7;
-    case WireBundle::NOC:
-      return 8;
-    case WireBundle::Trace:
-      return 9;
-    case WireBundle::Ctrl:
-      return 10;
+  // Sorting the packet flows in order to get determinsitic amsel allocation;
+  // allocate amsels for control packet flows before others to ensure
+  // consistency in control packet flow overlay.
+  auto getUniqueIdPerFlowPerSB = [](int flowID, WireBundle srcBundle,
+                                    SmallVector<PhysPort, 4> dests) {
+    int totalNumOfWireBundles = AIE::getMaxEnumValForWireBundle();
+    int currMultiplier = totalNumOfWireBundles;
+    int uniqueId = flowID;
+    uniqueId += currMultiplier + getWireBundleAsInt(srcBundle);
+    currMultiplier += totalNumOfWireBundles;
+    for (auto dst : dests) {
+      uniqueId += currMultiplier;
+      uniqueId += getWireBundleAsInt(dst.second.bundle);
+      currMultiplier += totalNumOfWireBundles;
     }
-    return -1;
+    return uniqueId;
   };
-  auto getUniqueIdPerFlowPerSB =
-      [getWireBundleAsInt](int flowID, WireBundle srcBundle,
-                           SmallVector<PhysPort, 4> dests) {
-        int totalNumOfWireBundles = AIE::getMaxEnumValForWireBundle();
-        int currMultiplier = totalNumOfWireBundles;
-        int uniqueId = flowID;
-        uniqueId += currMultiplier + getWireBundleAsInt(srcBundle);
-        currMultiplier += totalNumOfWireBundles;
-        for (auto dst : dests) {
-          uniqueId += currMultiplier;
-          uniqueId += getWireBundleAsInt(dst.second.bundle);
-          currMultiplier += totalNumOfWireBundles;
-        }
-        return uniqueId;
-      };
   auto getSortedPacketFlows =
       [&](DenseMap<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> pktFlows,
           DenseMap<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>>

@@ -10,8 +10,8 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
+from aie.extras.dialects.ext.scf import _for as range_
 
 import aie.utils.trace as trace_utils
 
@@ -47,13 +47,12 @@ def passthroughKernel(vector_size, trace_size):
         # Compute tile 2
         @core(ComputeTile2, "passThrough.cc.o")
         def core_body():
-            for _ in for_(sys.maxsize):
+            for _ in range_(sys.maxsize):
                 elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
                 elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
                 call(passThroughLine, [elemIn, elemOut, lineWidthInBytes])
                 of_in.release(ObjectFifoPort.Consume, 1)
                 of_out.release(ObjectFifoPort.Produce, 1)
-                yield_([])
 
         #    print(ctx.module.operation.verify())
 

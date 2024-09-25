@@ -9,7 +9,7 @@
 #
 # RUN: %python %S/aie2.py > ./aie2.mlir
 # RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
-# RUN: clang %S/test.cpp -o test -std=c++11 -Wall %xrt_flags -lrt -lstdc++
+# RUN: clang %S/test.cpp -o test -std=c++11 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
 # RUN: %run_on_npu ./test | FileCheck %s
 # CHECK: PASS!
 
@@ -17,7 +17,7 @@ from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
+from aie.extras.dialects.ext.scf import _for as range_
 
 
 dtype = T.i32
@@ -54,20 +54,18 @@ def design():
             # Core
             @core(tiles[2][0])
             def core_body():
-                for _ in for_(0xFFFFFFFF):
+                for _ in range_(0xFFFFFFFF):
                     elem_output = fifo_output.acquire(ObjectFifoPort.Produce, 1)
                     zero = constant(T.i32(), 0)
                     memref.store(zero, elem_output, [0])
-                    for _ in for_(16):
+                    for _ in range_(16):
                         elem_input = fifo_input.acquire(ObjectFifoPort.Consume, 1)
                         a = memref.load(elem_output, [0])
                         b = memref.load(elem_input, [0])
                         c = a + b
                         memref.store(c, elem_output, [0])
                         fifo_input.release(ObjectFifoPort.Consume, 1)
-                        yield_([])
                     fifo_output.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # To/from AIE-array data movement
             @runtime_sequence(memref_t, memref_t)
