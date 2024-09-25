@@ -14,7 +14,9 @@ include ${srcdir}/../../makefile-common
 
 targetname = passThroughKernel
 VPATH := ${srcdir}/../../../aie_kernels/generic
-data_size = 4096
+data_size = 20480
+
+
 trace_size = 8192
 PASSTHROUGH_SIZE = ${data_size}
 

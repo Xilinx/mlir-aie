@@ -22,8 +22,8 @@
 // Configure this to match your buffer data type
 // ------------------------------------------------------
 // using DATATYPE = std::uint8_t;
-// using DATATYPE = std::uint32_t;
-using DATATYPE = std::uint16_t;
+using DATATYPE = std::uint32_t;
+// using DATATYPE = std::uint16_t;
 #endif
 
 const int scaleFactor = 3;
@@ -100,12 +100,16 @@ int main(int argc, const char *argv[]) {
   bo_outC.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   // Execute the kernel and wait to finish
+  auto start = std::chrono::high_resolution_clock::now();
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
   unsigned int opcode = 3;
   auto run =
       kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inFactor, bo_outC);
   run.wait();
+  auto stop = std::chrono::high_resolution_clock::now();
+  float npu_time = std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count();
+  std::cout << "NPU time: " << npu_time << "us." << std::endl;
 
   // Sync device to host memories
   bo_outC.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
@@ -128,10 +132,10 @@ int main(int argc, const char *argv[]) {
     }
   }
 
-  if (trace_size > 0) {
-    test_utils::write_out_trace(((char *)bufOut) + IN_SIZE, trace_size,
-                                vm["trace_file"].as<std::string>());
-  }
+  // if (trace_size > 0) {
+  //   test_utils::write_out_trace(((char *)bufOut) + IN_SIZE, trace_size,
+  //                               vm["trace_file"].as<std::string>());
+  // }
 
   // Print Pass/Fail result of our test
   if (!errors) {
