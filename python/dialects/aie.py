@@ -317,6 +317,9 @@ class object_fifo(ObjectFifoCreateOp):
     def release(self, port, num_elem):
         return objectfifo_release(port, self.sym_name.value, num_elem)
 
+    def allocate(self, tile):
+        return objectfifo_allocate(self.sym_name.value, tile)
+
     def set_via_shared_mem(self, port):
         num = 0
         if port == ObjectFifoPort.Produce:

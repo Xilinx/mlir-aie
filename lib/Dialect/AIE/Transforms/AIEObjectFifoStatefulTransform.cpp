@@ -396,14 +396,34 @@ struct AIEObjectFifoStatefulTransformPass
       }
     }
 
-    TileOp creation_tile;
-    if (share_direction == 0 || share_direction == -1)
-      creation_tile = op.getProducerTileOp();
-    else {
+    TileOp buffer_creation_tile;
+    TileOp lock_creation_tile;
+    if (share_direction == 0 || share_direction == -1) {
+      buffer_creation_tile = op.getProducerTileOp();
+      lock_creation_tile = op.getProducerTileOp();
+    } else {
       auto consumerTileOp =
           dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
-      creation_tile = consumerTileOp;
+      buffer_creation_tile = consumerTileOp;
+      lock_creation_tile = consumerTileOp;
     }
+
+    ObjectFifoAllocateOp opAlloc;
+    auto device = op->getParentOfType<DeviceOp>();
+    for (ObjectFifoAllocateOp alloc : device.getOps<ObjectFifoAllocateOp>()) {
+      if (alloc.getObjectFifo() == op)
+        opAlloc = alloc;
+    }
+    TileOp delegate = opAlloc.getDelegateTileOp();
+    int shareDir;
+    bool hasSharedMemory = 
+                    isSharedMemory(op.getProducerTileOp(),
+                                   delegate, &shareDir);
+    if (hasSharedMemory)
+      buffer_creation_tile = delegate;
+    else
+      opAlloc.emitOpError("objectfifo has no shared memory access to "
+                          "delegate tile's memory module");
 
     // Reset opbuilder location to after the last tile declaration
     Operation *t = nullptr;
@@ -415,9 +435,9 @@ struct AIEObjectFifoStatefulTransformPass
     for (int i = 0; i < numElem; i++) {
       // if shimTile external buffers are collected from input code
       // create as many locks as there are external buffers
-      if (!creation_tile.isShimTile()) {
+      if (!buffer_creation_tile.isShimTile()) {
         auto buff = builder.create<BufferOp>(
-            builder.getUnknownLoc(), elemType, creation_tile,
+            builder.getUnknownLoc(), elemType, buffer_creation_tile,
             builder.getStringAttr(op.name().str() + "_buff_" +
                                   std::to_string(of_elem_index)),
             /*address*/ nullptr, /*initial_value*/ nullptr,
@@ -436,7 +456,7 @@ struct AIEObjectFifoStatefulTransformPass
       objFifoLinks[*linkOp] = op;
     }
     std::vector<LockOp> locks = createObjectFifoLocks(builder, lockAnalysis, op,
-                                                      numElem, creation_tile);
+                                                      numElem, lock_creation_tile);
     buffersPerFifo[op] = buffers;
     locksPerFifo[op] = locks;
   }

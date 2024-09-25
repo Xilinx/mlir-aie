@@ -594,6 +594,39 @@ void printObjectFifoConsumerTiles(OpAsmPrinter &printer, Operation *op,
 } // namespace xilinx::AIE
 
 //===----------------------------------------------------------------------===//
+// ObjectFifoAllocateOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ObjectFifoAllocateOp::verify() {
+  // ObjectFifoCreateOp objfifo = getObjectFifo();
+  // if (objfifo.getConsumerTiles().size() != 1)
+  //   return emitError(
+  //       "can only be used in 1-to-1 object FIFOs");
+
+  // if (objfifo.getProducerTile() != objfifo.getConsumerTiles()[0])
+  //   return emitError(
+  //       "can only be used in object FIFOs with same producer / consumer tile");
+
+  return success();
+}
+
+TileOp ObjectFifoAllocateOp::getDelegateTileOp() {
+  return cast<TileOp>(getDelegateTile().getDefiningOp());
+}
+
+ObjectFifoCreateOp ObjectFifoAllocateOp::getObjectFifo() {
+  Operation *parent = getOperation();
+  while ((parent = parent->getParentOp())) {
+    if (parent->hasTrait<OpTrait::SymbolTable>()) {
+      if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+          isa_and_nonnull<ObjectFifoCreateOp>(st))
+        return dyn_cast<ObjectFifoCreateOp>(st);
+    }
+  }
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // ObjectFifoLinkOp
 //===----------------------------------------------------------------------===//
 
