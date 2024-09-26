@@ -117,10 +117,6 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
             memref_b_ty = T.memref(k, n, dtype_in())
             memref_c_ty = T.memref(m, n, dtype_out())
 
-            ofifo_memref_a_ty = TypeAttr.get(ObjectFifoType.get(memref_a_ty))
-            ofifo_memref_b_ty = TypeAttr.get(ObjectFifoType.get(memref_b_ty))
-            ofifo_memref_c_ty = TypeAttr.get(ObjectFifoType.get(memref_c_ty))
-
             # AIE Core Function declarations
             func_type = "" if vectorized else "scalar_"
             zero = external_func(
@@ -286,7 +282,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                             # At the very last iteration, we may not need a 'pong' iteration
                             break
                         npu_dma_memcpy_nd(
-                            metadata="outC",
+                            metadata=outC,
                             bd_id=bd_id_base,
                             mem=C,
                             offsets=[0, 0, 0, C_row_offset],
@@ -296,7 +292,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                         for tile_row in range(num_tile_rows):
                             A_row_offset = (row_base + tile_row) * m * K
                             npu_dma_memcpy_nd(
-                                metadata="inA",
+                                metadata=inA,
                                 bd_id=bd_id_base + 2 * tile_row + 1,
                                 mem=A,
                                 offsets=[0, 0, 0, A_row_offset],
@@ -304,15 +300,15 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                                 strides=[0, k, K, 1],
                             )
                             npu_dma_memcpy_nd(
-                                metadata="inB",
+                                metadata=inB,
                                 bd_id=bd_id_base + 2 * tile_row + 2,
                                 mem=B,
                                 sizes=[N_div_n, K_div_k, k, n],
                                 strides=[n, k_x_N, N, 1],
                             )
                         if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
-                            npu_sync(column=0, row=0, direction=0, channel=0)
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                            dma_wait(outC)
+                dma_wait(outC)
 
     print(ctx.module)
 

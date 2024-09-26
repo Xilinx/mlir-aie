@@ -219,24 +219,25 @@ def conv2dk1():
                 NpuWriteRTPOp("rtp2", index=0, value=1)
 
                 npu_dma_memcpy_nd(
-                    metadata="inOF_act_L3L2",
+                    metadata=of_inOF_act_L3L2,
                     bd_id=0,
                     mem=I,
                     sizes=[1, 1, 1, tensorSize],
                 )
                 npu_dma_memcpy_nd(
-                    metadata="outOFL2L3",
+                    metadata=of_outOFL2L3,
                     bd_id=2,
                     mem=O,
                     sizes=[1, 1, 1, tensorSize],
                 )
                 npu_dma_memcpy_nd(
-                    metadata="inOF_wts_0_L3L2",
+                    metadata=of_inOF_wts_0_L3L2,
                     bd_id=2,
                     mem=W,
                     sizes=[1, 1, 1, weights],
                 )
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                # of_outOFL2L3 will only complete after of_inOF_wts_0_L3L2 and of_inOF_act_L3L2 complete, so we just wait on of_outOFL2L3 instead of all
+                dma_wait(of_outOFL2L3)
 
     #    print(ctx.module.operation.verify())
     print(ctx.module)

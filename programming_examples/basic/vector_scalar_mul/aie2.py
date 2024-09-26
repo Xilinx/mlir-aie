@@ -86,10 +86,14 @@ def my_vector_scalar(vector_size, trace_size):
                     size=trace_size,
                     offset=N_in_bytes,
                 )
-            npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
-            npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
-            npu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            npu_dma_memcpy_nd(
+                metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N], issue_token=True
+            )
+            npu_dma_memcpy_nd(
+                metadata=of_factor, bd_id=2, mem=F, sizes=[1, 1, 1, 1], issue_token=True
+            )
+            npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
+            dma_wait(of_in, of_factor, of_out)
 
 
 try:

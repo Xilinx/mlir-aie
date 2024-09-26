@@ -53,12 +53,13 @@ def external_mem_to_core():
             @runtime_sequence(memRef_48_ty, memRef_48_ty, memRef_48_ty)
             def sequence(inTensor, notUsed, outTensor):
                 npu_dma_memcpy_nd(
-                    metadata="out", bd_id=0, mem=outTensor, sizes=[1, 1, 1, 48]
+                    metadata=of_in, bd_id=1, mem=inTensor, sizes=[1, 1, 1, 48]
                 )
                 npu_dma_memcpy_nd(
-                    metadata="in", bd_id=1, mem=inTensor, sizes=[1, 1, 1, 48]
+                    metadata=of_out, bd_id=0, mem=outTensor, sizes=[1, 1, 1, 48]
                 )
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                # of_out will only complete after of_in completes, so we can just wait on of_out instead of both
+                dma_wait(of_out)
 
     res = ctx.module.operation.verify()
     if res == True:

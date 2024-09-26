@@ -221,18 +221,19 @@ def color_detect():
             @runtime_sequence(tensor_ty, memRef_16x16_ty, tensor_ty)
             def sequence(I, B, O):
                 npu_dma_memcpy_nd(
-                    metadata="inOF_L3L2",
+                    metadata=inOF_L3L2,
                     bd_id=1,
                     mem=I,
                     sizes=[1, 1, 1, height * lineWidthInBytes],
                 )
                 npu_dma_memcpy_nd(
-                    metadata="outOF_L2L3",
+                    metadata=outOF_L2L3,
                     bd_id=0,
                     mem=O,
                     sizes=[1, 1, 1, height * lineWidthInBytes],
                 )
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                # outOF_L2L3 will only complete after inOF_L3L2 completes, so we just wait on outOF_L2L3 instead of all
+                dma_wait(outOF_L2L3)
 
     print(ctx.module)
 
