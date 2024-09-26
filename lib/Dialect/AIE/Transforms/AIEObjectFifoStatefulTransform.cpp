@@ -1484,7 +1484,7 @@ struct AIEObjectFifoStatefulTransformPass
         if (auto &targetArch = dev.getTargetModel();
             targetArch.getTargetArch() == AIEArch::AIE1)
           createUseLocks(builder, op, port, acqPerFifo, numCreate,
-                        LockAction::Acquire);
+                         LockAction::Acquire);
         else
           createUseLocks(builder, op, port, acqPerFifo, numCreate,
                          LockAction::AcquireGreaterEqual);
