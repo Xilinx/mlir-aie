@@ -4,9 +4,9 @@
 _Convert AIE dialect to npu control packet operations_
 
 This pass converts aie.device operations to a sequence of control packet
-operations (writes, masked writes, and block writes) that can be used to
-to configure the npu device. A new `aiex.runtime_sequence` operation is
-inserted into the `aie.device` to contain the new control packet sequence.
+operations (`npu.control_packet`) that can be used to configure the npu
+device. A new `aiex.runtime_sequence` operation is inserted into the
+`aie.device` to contain the new control packet sequence.
 
 #### Options
 ```
@@ -18,7 +18,7 @@ _Convert AIE dialect to npu transaction operations_
 
 This pass converts aie.device operations to a sequence of transaction binary
 operations (writes, masked writes, and block writes) that can be used to
-to configure the npu device. The transaction operations are emitted as
+configure the npu device. The transaction operations are emitted as
 `npu.write32`, `npu.maskwrite32`, and `npu.blockwrite` operations. A new
 `aiex.runtime_sequence` operation is inserted into the `aie.device` to
 contain the new transaction operations sequence.
