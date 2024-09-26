@@ -1014,7 +1014,7 @@ struct AIEObjectFifoStatefulTransformPass
 
       if (locksPerFifo[target].size() == 0) {
         acc[{op, portNum}] = (acc[{op, portNum}] + numLocks) %
-                              op.size(); // update to next objFifo elem
+                             op.size(); // update to next objFifo elem
         return;
       }
 
