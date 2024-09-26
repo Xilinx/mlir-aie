@@ -1487,7 +1487,7 @@ struct AIEObjectFifoStatefulTransformPass
                         LockAction::Acquire);
         else
           createUseLocks(builder, op, port, acqPerFifo, numCreate,
-                        LockAction::AcquireGreaterEqual);
+                         LockAction::AcquireGreaterEqual);
 
         // if objFifo was linked with others, find which objFifos
         // elements to use
