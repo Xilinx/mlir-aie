@@ -18,6 +18,7 @@ n_rows = 10
 dev = AIEDevice.npu1_1col
 col = 0
 
+
 def sliding_window():
     with mlir_mod_ctx() as ctx:
 

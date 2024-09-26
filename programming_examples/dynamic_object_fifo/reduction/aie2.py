@@ -19,6 +19,7 @@ n_rows = 10
 dev = AIEDevice.npu1_1col
 col = 0
 
+
 def reduction():
     with mlir_mod_ctx() as ctx:
 

@@ -46,7 +46,9 @@ INPUT_WITH_ADDRESSES_PIPELINE = (
             Pipeline()
             .add_pass("aie-assign-lock-ids")
             .add_pass("aie-register-objectFifos")
-            .add_pass("aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos)
+            .add_pass(
+                "aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos
+            )
             .add_pass("aie-assign-bd-ids")
             .add_pass("aie-lower-cascade-flows")
             .add_pass("aie-lower-broadcast-packet")

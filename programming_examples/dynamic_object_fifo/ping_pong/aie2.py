@@ -17,6 +17,7 @@ N = 1024
 dev = AIEDevice.npu1_1col
 col = 0
 
+
 def ping_pong():
     with mlir_mod_ctx() as ctx:
 

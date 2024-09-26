@@ -19,6 +19,7 @@ n_rows = 5
 dev = AIEDevice.npu1_1col
 col = 0
 
+
 def nested_loops():
     with mlir_mod_ctx() as ctx:
 

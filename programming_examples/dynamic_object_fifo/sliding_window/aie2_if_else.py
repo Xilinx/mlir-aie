@@ -18,6 +18,7 @@ n_rows = 10
 dev = AIEDevice.npu1_1col
 col = 0
 
+
 def sliding_window():
     with mlir_mod_ctx() as ctx:
 
@@ -44,10 +45,10 @@ def sliding_window():
             def core_body():
                 for i in range_(10):
                     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
-                    if (i == 0):
+                    if i == 0:
                         elemInPre = of_in.acquire(ObjectFifoPort.Consume, 1)
                         call(add_10_i32, [elemInPre, elemInPre, elemOut])
-                    elif (i == 9):
+                    elif i == 9:
                         elemsInPost = of_in.acquire(ObjectFifoPort.Consume, 2)
                         call(add_10_i32, [elemsInPost[0], elemsInPost[1], elemOut])
                         of_in.release(ObjectFifoPort.Consume, 2)

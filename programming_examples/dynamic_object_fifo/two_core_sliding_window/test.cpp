@@ -25,9 +25,9 @@
 #define KERNEL_NAME "MLIR_AIE"
 #endif
 
-#define INPUT_SIZE  (100 * sizeof(int)) // in bytes
+#define INPUT_SIZE (100 * sizeof(int))  // in bytes
 #define OUTPUT_SIZE (100 * sizeof(int)) // in bytes
-#define WIDTH_SIZE  (10 * sizeof(int))  // in bytes
+#define WIDTH_SIZE (10 * sizeof(int))   // in bytes
 #define INPUT_ROWS  INPUT_SIZE / WIDTH_SIZE
 #define OUTPUT_ROWS OUTPUT_SIZE / WIDTH_SIZE
 
@@ -84,9 +84,9 @@ int main(int argc, const char *argv[]) {
 
   int *buf_input = bo_input.map<int *>();
   std::cout << std::endl << std::endl << "Input: " << std::endl;
-  for(int i = 0; i < INPUT_ROWS; i++) {
+  for (int i = 0; i < INPUT_ROWS; i++) {
     std::cout << "row " << i << " : ";
-    for(int j = 0; j < WIDTH_SIZE / sizeof(buf_input[0]); j++) {
+    for (int j = 0; j < WIDTH_SIZE / sizeof(buf_input[0]); j++) {
       buf_input[i * INPUT_ROWS + j] = i;
       std::cout << buf_input[i * INPUT_ROWS + j] << " ";
     }
@@ -115,7 +115,7 @@ int main(int argc, const char *argv[]) {
 
   bool pass = true;
   std::cout << std::endl << "Output: " << std::endl;
-  for(int i = 0; i < OUTPUT_ROWS; i++) {
+  for (int i = 0; i < OUTPUT_ROWS; i++) {
     std::cout << "row " << i << std::endl;
     for (int j = 0; j < WIDTH_SIZE / sizeof(buf_output[0]); j++) {
       int expected_output = 0;
