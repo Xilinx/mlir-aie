@@ -22,7 +22,7 @@ from aie.dialects.aie import (
     WireBundle,
 )
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
-from aie.dialects.scf import for_ as range_, yield_
+from aie.extras.dialects.ext.scf import _for as range_
 from aie.extras.dialects.ext import arith, linalg
 
 # noinspection PyUnresolvedReferences
@@ -254,8 +254,6 @@ def test_offsets_sizes_strides(ctx: MLIRContext, workdir: Path):
                     aie.use_lock(lock_0_2_read_in_a, Release)
                     aie.use_lock(lock_0_2_read_in_b, Release)
                     aie.use_lock(lock_0_2_write_out_c, Release)
-                    yield_([])
-                yield_([])
 
     compile_without_vectorization(ctx.module, workdir)
     xclbin_path = make_xclbin(ctx.module, workdir)
