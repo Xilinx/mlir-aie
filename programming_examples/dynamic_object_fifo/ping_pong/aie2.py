@@ -10,7 +10,7 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
+from aie.extras.dialects.ext.scf import _for as range_
 from aie.extras.context import mlir_mod_ctx
 
 N = 1024
@@ -41,13 +41,12 @@ def ping_pong():
 
             @core(ComputeTile, "kernel.o")
             def core_body():
-                for _ in for_(sys.maxsize):
+                for _ in range_(sys.maxsize):
                     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
                     call(passthrough_64_i32, [elemIn, elemOut])
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # To/from AIE-array data movement
             tensor_ty = T.memref(N // 16, T.i32())

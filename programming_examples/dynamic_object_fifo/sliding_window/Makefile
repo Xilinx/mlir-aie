@@ -35,11 +35,15 @@ host_target?=build/test
 .PHONY: all
 all: ${xclbin_target} ${host_target}
 
+build/aie.mlir: ${srcdir}/aie2.py
+	mkdir -p ${@D}
+	python3 $< > $@
+
 build/kernel.o: ${srcdir}/kernel.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}
 
-${xclbin_target}: aie2.mlir build/kernel.o
+${xclbin_target}: build/aie.mlir build/kernel.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--dynamic-objFifos --aie-generate-npu --npu-insts-name=${insts_target:build/%=%} ${<:%=../%}

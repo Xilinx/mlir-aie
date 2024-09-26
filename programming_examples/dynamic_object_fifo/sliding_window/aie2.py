@@ -1,4 +1,4 @@
-# dynamic_object_fifo/reduction/aie2.py -*- Python -*-
+# dynamic_object_fifo/sliding_window/aie2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -14,12 +14,11 @@ from aie.extras.dialects.ext.scf import _for as range_
 from aie.extras.context import mlir_mod_ctx
 
 N = 100
-O = 50
 n_rows = 10
 dev = AIEDevice.npu1_1col
 col = 0
 
-def reduction():
+def sliding_window():
     with mlir_mod_ctx() as ctx:
 
         @device(dev)
@@ -31,7 +30,7 @@ def reduction():
             ComputeTile = tile(col, 2)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, ComputeTile, [2, 4], memRef_ty)
+            of_in = object_fifo("in", ShimTile, ComputeTile, 3, memRef_ty)
             of_out = object_fifo("out", ComputeTile, ShimTile, 2, memRef_ty)
 
             # AIE Core Function declarations
@@ -43,24 +42,34 @@ def reduction():
 
             @core(ComputeTile, "kernel.o")
             def core_body():
-                for _ in range_(sys.maxsize):
+                elemOutPre = of_out.acquire(ObjectFifoPort.Produce, 1)
+                elemInPre = of_in.acquire(ObjectFifoPort.Consume, 1)
+                call(add_10_i32, [elemInPre, elemInPre, elemOutPre])
+                of_out.release(ObjectFifoPort.Produce, 1)
+
+                for _ in range_(8):
                     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elemsIn = of_in.acquire(ObjectFifoPort.Consume, 2)
                     call(add_10_i32, [elemsIn[0], elemsIn[1], elemOut])
-                    of_in.release(ObjectFifoPort.Consume, 2)
+                    of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
 
-            # To/from AIE-array data movement
-            tensor_in_ty = T.memref(N, T.i32())
-            tensor_out_ty = T.memref(O, T.i32())
+                elemOutPost = of_out.acquire(ObjectFifoPort.Produce, 1)
+                elemsInPost = of_in.acquire(ObjectFifoPort.Consume, 2)
+                call(add_10_i32, [elemsInPost[0], elemsInPost[1], elemOutPost])
+                of_in.release(ObjectFifoPort.Consume, 2)
+                of_out.release(ObjectFifoPort.Produce, 1)
 
-            @runtime_sequence(tensor_in_ty, tensor_out_ty)
+            # To/from AIE-array data movement
+            tensor_ty = T.memref(N, T.i32())
+
+            @runtime_sequence(tensor_ty, tensor_ty)
             def sequence(A, C):
-                npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, O])
+                npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
                 npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
                 npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 
 
-reduction()
+sliding_window()
