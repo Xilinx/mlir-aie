@@ -117,7 +117,7 @@ int main(int argc, const char *argv[]) {
   std::cout << std::endl << "Output: " << std::endl;
   for(int i = 0; i < OUTPUT_ROWS; i++) {
     std::cout << "row " << i << std::endl;
-    for(int j = 0; j < WIDTH_SIZE / sizeof(buf_output[0]); j++) {
+    for (int j = 0; j < WIDTH_SIZE / sizeof(buf_output[0]); j++) {
       int expected_output = 0;
       if (i == 0) {
         expected_output = buf_input[i * INPUT_ROWS] * 2;
