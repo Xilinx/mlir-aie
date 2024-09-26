@@ -94,7 +94,7 @@ class MemRef(Value, ShapedValue):
     def __repr__(self):
         return str(self)
 
-    def __getitem__(self, idx: Union[tuple | Scalar]) -> "MemRef":
+    def __getitem__(self, idx: Union[tuple, Scalar]) -> "MemRef":
         loc = get_user_code_loc()
 
         if not self.has_rank():
