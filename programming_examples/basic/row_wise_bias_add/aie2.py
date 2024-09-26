@@ -56,27 +56,28 @@ def row_wise_bias_add(M, N, m, n):
         @runtime_sequence(complete_in_memref, complete_bias_memref, complete_out_memref)
         def sequence(inp, bias, out):
             npu_dma_memcpy_nd(
-                metadata=in_fifo.sym_name.value,
+                metadata=in_fifo,
                 bd_id=0,
                 mem=inp,
                 sizes=[1, N // n, M, n],
                 strides=[0, n, N, 1],
             )
             npu_dma_memcpy_nd(
-                metadata=bias_fifo.sym_name.value,
+                metadata=bias_fifo,
                 bd_id=1,
                 mem=bias,
                 sizes=[1, 1, N // n, n],
                 strides=[0, 0, n, 1],
             )
             npu_dma_memcpy_nd(
-                metadata=out_fifo.sym_name.value,
+                metadata=out_fifo,
                 bd_id=2,
                 mem=out,
                 sizes=[1, N // n, M, n],
                 strides=[0, n, N, 1],
             )
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            # of_out will only complete after of_in completes, so we just wait on of_out instead of both
+            dma_wait(out_fifo)
 
 
 # Declares that subsequent code is in mlir-aie context
