@@ -21,10 +21,12 @@ if [ $TARGET == "AIE" ]
   then
     EXTRA_DEFS="-D__AIE_ARCH__=10 -D__AIEARCH__=10"
     AIEARCH=versal_prod
+    AIETARGET=versal_prod
 elif [ $TARGET == "AIE2" ]
   then
     EXTRA_DEFS="-D__AIE_ARCH__=20 -D__AIEARCH__=20"
-    AIEARCH=aie_ml
+    AIEARCH=aie2
+    AIETARGET=aie_ml
 fi
 if [ -z "$AIETOOLS" ]
   then
@@ -32,7 +34,7 @@ if [ -z "$AIETOOLS" ]
     exit 1
 fi
 
-LIBDIR=${AIETOOLS}/data/${AIEARCH}/lib
+LIBDIR=${AIETOOLS}/data/${AIETARGET}/lib
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 xchesscc --aiearch ${AIEARCH} -p me -C Release_LLVM -D__AIENGINE__ $EXTRA_DEFS -P $LIBDIR -d -f $@

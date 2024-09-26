@@ -29,7 +29,7 @@
 // CHECK1:    aie.flow(%[[TILE_0_4]], DMA : 0, %[[TILE_0_1]], DMA : 2)
 // CHECK1:    aie.flow(%[[TILE_0_5]], DMA : 0, %[[TILE_0_1]], DMA : 3)
 
-// CHECK2: "total_path_length": 14
+// CHECK2: "total_path_length": 19
 
 module {
  aie.device(npu1_2col) {

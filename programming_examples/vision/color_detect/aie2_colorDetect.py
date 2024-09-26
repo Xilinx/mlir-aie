@@ -10,9 +10,9 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.dialects.ext import arith
-from aie.dialects.scf import yield_, for_ as range_
 from aie.extras.context import mlir_mod_ctx
 from aie.ir import MemRefType, TypeAttr
+from aie.extras.dialects.ext.scf import _for as range_
 
 width = 64
 height = 36
@@ -111,7 +111,6 @@ def color_detect():
                     call(rgba2hueLine, [elemIn, elemOut, arith.constant(lineWidth)])
                     inOF_L3L2.release(ObjectFifoPort.Consume, 1)
                     OF_2to34.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # Compute tile 3
             @core(ComputeTile3, "threshold.cc.o")
@@ -152,7 +151,6 @@ def color_detect():
                     )
                     OF_3to3.release(ObjectFifoPort.Consume, 1)
                     OF_3to5.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # Compute tile 4
             @core(ComputeTile4, "threshold.cc.o")
@@ -193,7 +191,6 @@ def color_detect():
                     )
                     OF_4to4.release(ObjectFifoPort.Consume, 1)
                     OF_4to5.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # Compute tile 5
             @core(ComputeTile5, "combined_bitwiseOR_gray2rgba_bitwiseAND.a")
@@ -235,7 +232,6 @@ def color_detect():
                     OF_5to5b.release(ObjectFifoPort.Consume, 1)
                     inOF_L2L1.release(ObjectFifoPort.Consume, 1)
                     outOF_L1L2.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # To/from AIE-array data movement
 
@@ -252,18 +248,19 @@ def color_detect():
             @runtime_sequence(tensor_ty, memRef_16x16_ty, tensor_ty)
             def sequence(I, B, O):
                 npu_dma_memcpy_nd(
-                    metadata="inOF_L3L2",
+                    metadata=inOF_L3L2,
                     bd_id=1,
                     mem=I,
                     sizes=[1, 1, 1, height * lineWidthInBytes],
                 )
                 npu_dma_memcpy_nd(
-                    metadata="outOF_L2L3",
+                    metadata=outOF_L2L3,
                     bd_id=0,
                     mem=O,
                     sizes=[1, 1, 1, height * lineWidthInBytes],
                 )
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                # outOF_L2L3 will only complete after inOF_L3L2 completes, so we just wait on outOF_L2L3 instead of all
+                dma_wait(outOF_L2L3)
 
     print(ctx.module)
 

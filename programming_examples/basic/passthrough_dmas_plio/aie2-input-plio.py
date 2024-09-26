@@ -10,9 +10,8 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
-from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
+from aie.extras.dialects.ext.scf import _for as range_
 
 N = 1024
 
@@ -44,17 +43,18 @@ def my_passthrough():
             # Compute tile 2
             @core(ComputeTile2)
             def core_body():
-                for _ in for_(sys.maxsize):
-                    yield_([])
+                for _ in range_(sys.maxsize):
+                    pass
 
             # To/from AIE-array data movement
             tensor_ty = T.memref(N, T.i32())
 
             @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
             def sequence(A, B, C):
-                npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
-                npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                npu_dma_memcpy_nd(metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N])
+                npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
+                # of_out will only complete after of_in completes, so we just wait on of_out instead of both
+                dma_wait(of_out)
 
     print(ctx.module)
 

@@ -8,9 +8,9 @@
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
 from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
+from aie.extras.dialects.ext.scf import _for as range_
 
 import sys
 
@@ -62,17 +62,15 @@ def my_matrix_add_one():
         @core(ComputeTile2)
         def core_body():
             # Effective while(1)
-            for _ in for_(sys.maxsize):
+            for _ in range_(sys.maxsize):
                 elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
                 elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
-                for i in for_(TILE_SIZE):
+                for i in range_(TILE_SIZE):
                     v0 = memref.load(elem_in, [i])
                     v1 = arith.addi(v0, arith.constant(1, T.i32()))
                     memref.store(v1, elem_out, [i])
-                    yield_([])
                 of_in1.release(ObjectFifoPort.Consume, 1)
                 of_out1.release(ObjectFifoPort.Produce, 1)
-                yield_([])
 
         # To/from AIE-array data movement
 
@@ -81,20 +79,22 @@ def my_matrix_add_one():
         @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
         def sequence(inTensor, notUsed, outTensor):
             npu_dma_memcpy_nd(
-                metadata="out0",
+                metadata=of_in1,
+                bd_id=1,
+                mem=inTensor,
+                sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
+                strides=[1, 1, IMAGE_WIDTH, 1],
+                issue_token=True,
+            )
+
+            npu_dma_memcpy_nd(
+                metadata=of_out1,
                 bd_id=0,
                 mem=outTensor,
                 sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
                 strides=[1, 1, IMAGE_WIDTH, 1],
             )
-            npu_dma_memcpy_nd(
-                metadata="in0",
-                bd_id=1,
-                mem=inTensor,
-                sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
-                strides=[1, 1, IMAGE_WIDTH, 1],
-            )
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            dma_wait(of_in1, of_out1)
 
 
 with mlir_mod_ctx() as ctx:
