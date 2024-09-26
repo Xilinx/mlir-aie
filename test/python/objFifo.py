@@ -62,6 +62,6 @@ def objFifo_example():
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
             elem0 = of0.acquire(ObjectFifoPort.Consume, 1)
-            memref.store(arith.constant(10), elem0.result, [0])
+            elem0[0] = 10
             of0.release(ObjectFifoPort.Consume, 1)
             end()

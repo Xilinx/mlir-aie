@@ -520,7 +520,7 @@ def buffer(tile, shape, dtype, name=None, initial_value=None, loc=None, ip=None)
         initial_value=initial_value,
         loc=loc,
         ip=ip,
-    ).result
+    )
 
 
 def external_buffer(shape, dtype, name=None, loc=None, ip=None):
@@ -530,7 +530,7 @@ def external_buffer(shape, dtype, name=None, loc=None, ip=None):
         name=name,
         loc=loc,
         ip=ip,
-    ).result
+    )
 
 
 _lock = lock

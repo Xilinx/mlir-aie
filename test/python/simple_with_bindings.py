@@ -44,7 +44,5 @@ def simple_with_bindings_example():
         C = Core(tile_a)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            val = memref.load(buff, [3])
-            add = arith.addi(val, arith.constant(4))
-            memref.store(add, buff, [3])
+            buff[3] = buff[3] + 4
             end()

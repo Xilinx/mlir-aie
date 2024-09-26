@@ -56,14 +56,10 @@ def design():
             def core_body():
                 for _ in range_(0xFFFFFFFF):
                     elem_output = fifo_output.acquire(ObjectFifoPort.Produce, 1)
-                    zero = constant(0)
-                    memref.store(zero, elem_output, [0])
+                    elem_output[0] = 0
                     for _ in range_(16):
                         elem_input = fifo_input.acquire(ObjectFifoPort.Consume, 1)
-                        a = memref.load(elem_output, [0])
-                        b = memref.load(elem_input, [0])
-                        c = a + b
-                        memref.store(c, elem_output, [0])
+                        elem_output[0] = elem_output[0] + elem_input[0]
                         fifo_input.release(ObjectFifoPort.Consume, 1)
                     fifo_output.release(ObjectFifoPort.Produce, 1)
 

@@ -62,7 +62,7 @@ def design():
                 for _ in range_(0, 0xFFFFFFFF):
                     elem_in = fifo_in.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = fifo_out.acquire(ObjectFifoPort.Produce, 1)
-                    call(passthrough_func, [elem_in, elem_out, matrix_size])
+                    passthrough_func(elem_in, elem_out, matrix_size)
                     fifo_in.release(ObjectFifoPort.Consume, 1)
                     fifo_out.release(ObjectFifoPort.Produce, 1)
 

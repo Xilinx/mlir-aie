@@ -67,16 +67,13 @@ def design():
                     elem_c = fifo_c.acquire(ObjectFifoPort.Produce, 1)
                     elem_a = fifo_a.acquire(ObjectFifoPort.Consume, 1)
                     elem_b = fifo_b.acquire(ObjectFifoPort.Consume, 1)
-                    call(
-                        concat_func,
-                        [
-                            elem_a,
-                            elem_b,
-                            elem_c,
-                            memref_sz(memref_a),
-                            memref_sz(memref_b),
-                            memref_sz(memref_c),
-                        ],
+                    concat_func(
+                        elem_a,
+                        elem_b,
+                        elem_c,
+                        memref_sz(memref_a),
+                        memref_sz(memref_b),
+                        memref_sz(memref_c),
                     )
                     fifo_a.release(ObjectFifoPort.Consume, 1)
                     fifo_b.release(ObjectFifoPort.Consume, 1)
