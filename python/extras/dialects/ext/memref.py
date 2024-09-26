@@ -24,7 +24,6 @@ from ....ir import (
     ShapedType,
     Type,
     Value,
-    InsertionPoint,
 )
 
 S = ShapedType.get_dynamic_size()
@@ -95,7 +94,7 @@ class MemRef(Value, ShapedValue):
     def __repr__(self):
         return str(self)
 
-    def __getitem__(self, idx: tuple) -> "MemRef":
+    def __getitem__(self, idx: Union[tuple | Scalar]) -> "MemRef":
         loc = get_user_code_loc()
 
         if not self.has_rank():
@@ -103,9 +102,11 @@ class MemRef(Value, ShapedValue):
 
         if idx == Ellipsis or idx == slice(None):
             return self
-        if isinstance(idx, tuple) and all(i == slice(None) for i in idx):
+        elif isinstance(idx, tuple) and all(i == slice(None) for i in idx):
             return self
-        if idx is None:
+        elif isinstance(idx, Scalar):
+            idx = (idx,)
+        elif idx is None:
             return expand_shape(self, (0,), loc=loc)
 
         idx = list((idx,) if isinstance(idx, (int, slice)) else idx)
@@ -130,9 +131,8 @@ class MemRef(Value, ShapedValue):
                 idx[i] = constant(d, index=True, loc=loc)
 
         if all(isinstance(d, Scalar) for d in idx) and len(idx) == len(self.shape):
-            assert isinstance(
-                source, Scalar
-            ), "coordinate insert requires scalar element"
+            if not isinstance(source, Scalar):
+                source = Scalar(source, dtype=self.dtype)
             store(source, self, idx, loc=loc)
         else:
             _copy_to_subview(self, source, tuple(idx), loc=loc)

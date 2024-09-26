@@ -9,7 +9,7 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.extras.dialects.ext import memref, arith
+from aie.extras.dialects.ext import arith
 from aie.extras.context import mlir_mod_ctx
 from aie.extras.dialects.ext.scf import _for as range_
 
@@ -115,26 +115,19 @@ def color_threshold():
 
                     # RTPs written from the instruction stream must be read right before the kernel
                     # after the ObjectFIFO acquires
-                    thresholdValue = arith.trunci(
-                        T.i16(), memref.load(rtpComputeTile2, [0])
-                    )
-                    maxValue = arith.trunci(T.i16(), memref.load(rtpComputeTile2, [1]))
-                    thresholdType = arith.trunci(
-                        T.i8(), memref.load(rtpComputeTile2, [2])
-                    )
+                    thresholdValue = arith.trunci(T.i16(), rtpComputeTile2[0])
+                    maxValue = arith.trunci(T.i16(), rtpComputeTile2[1])
+                    thresholdType = arith.trunci(T.i8(), rtpComputeTile2[2])
                     # maxValue = arith.constant(255, T.i16())
                     # thresholdValue = arith.constant(50, T.i16())
                     # thresholdType = arith.constant(0, T.i8())
-                    call(
-                        thresholdLine,
-                        [
-                            elemIn,
-                            elemOut,
-                            arith.constant(lineWidth),
-                            thresholdValue,
-                            maxValue,
-                            thresholdType,
-                        ],
+                    thresholdLine(
+                        elemIn,
+                        elemOut,
+                        lineWidth,
+                        thresholdValue,
+                        maxValue,
+                        thresholdType,
                     )
 
                     inOOB_L2L1_0.release(ObjectFifoPort.Consume, 1)
@@ -148,26 +141,19 @@ def color_threshold():
                     elemOut = outOOB_L1L2_1.acquire(ObjectFifoPort.Produce, 1)
                     # RTPs written from the instruction stream must be read right before the kernel
                     # after the ObjectFIFO acquires
-                    thresholdValue = arith.trunci(
-                        T.i16(), memref.load(rtpComputeTile3, [0])
-                    )
-                    maxValue = arith.trunci(T.i16(), memref.load(rtpComputeTile3, [1]))
-                    thresholdType = arith.trunci(
-                        T.i8(), memref.load(rtpComputeTile3, [2])
-                    )
+                    thresholdValue = arith.trunci(T.i16(), rtpComputeTile3[0])
+                    maxValue = arith.trunci(T.i16(), rtpComputeTile3[1])
+                    thresholdType = arith.trunci(T.i8(), rtpComputeTile3[2])
                     # maxValue = arith.constant(255, T.i16())
                     # thresholdValue = arith.constant(50, T.i16())
                     # thresholdType = arith.constant(0, T.i8())
-                    call(
-                        thresholdLine,
-                        [
-                            elemIn,
-                            elemOut,
-                            arith.constant(lineWidth),
-                            thresholdValue,
-                            maxValue,
-                            thresholdType,
-                        ],
+                    thresholdLine(
+                        elemIn,
+                        elemOut,
+                        lineWidth,
+                        thresholdValue,
+                        maxValue,
+                        thresholdType,
                     )
 
                     inOOB_L2L1_1.release(ObjectFifoPort.Consume, 1)
@@ -182,26 +168,19 @@ def color_threshold():
 
                     # RTPs written from the instruction stream must be read right before the kernel
                     # after the ObjectFIFO acquires
-                    thresholdValue = arith.trunci(
-                        T.i16(), memref.load(rtpComputeTile4, [0])
-                    )
-                    maxValue = arith.trunci(T.i16(), memref.load(rtpComputeTile4, [1]))
-                    thresholdType = arith.trunci(
-                        T.i8(), memref.load(rtpComputeTile4, [2])
-                    )
+                    thresholdValue = arith.trunci(T.i16(), rtpComputeTile4[0])
+                    maxValue = arith.trunci(T.i16(), rtpComputeTile4[1])
+                    thresholdType = arith.trunci(T.i8(), rtpComputeTile4[2])
                     # maxValue = arith.constant(255, T.i16())
                     # thresholdValue = arith.constant(50, T.i16())
                     # thresholdType = arith.constant(0, T.i8())
-                    call(
-                        thresholdLine,
-                        [
-                            elemIn,
-                            elemOut,
-                            arith.constant(lineWidth),
-                            thresholdValue,
-                            maxValue,
-                            thresholdType,
-                        ],
+                    thresholdLine(
+                        elemIn,
+                        elemOut,
+                        lineWidth,
+                        thresholdValue,
+                        maxValue,
+                        thresholdType,
                     )
 
                     inOOB_L2L1_2.release(ObjectFifoPort.Consume, 1)
@@ -216,26 +195,19 @@ def color_threshold():
 
                     # RTPs written from the instruction stream must be read right before the kernel
                     # after the ObjectFIFO acquires
-                    thresholdValue = arith.trunci(
-                        T.i16(), memref.load(rtpComputeTile5, [0])
-                    )
-                    maxValue = arith.trunci(T.i16(), memref.load(rtpComputeTile5, [1]))
-                    thresholdType = arith.trunci(
-                        T.i8(), memref.load(rtpComputeTile5, [2])
-                    )
+                    thresholdValue = arith.trunci(T.i16(), rtpComputeTile5[0])
+                    maxValue = arith.trunci(T.i16(), rtpComputeTile5[1])
+                    thresholdType = arith.trunci(T.i8(), rtpComputeTile5[2])
                     # maxValue = arith.constant(255, T.i16())
                     # thresholdValue = arith.constant(50, T.i16())
                     # thresholdType = arith.constant(0, T.i8()
-                    call(
-                        thresholdLine,
-                        [
-                            elemIn,
-                            elemOut,
-                            arith.constant(lineWidth),
-                            thresholdValue,
-                            maxValue,
-                            thresholdType,
-                        ],
+                    thresholdLine(
+                        elemIn,
+                        elemOut,
+                        lineWidth,
+                        thresholdValue,
+                        maxValue,
+                        thresholdType,
                     )
 
                     inOOB_L2L1_3.release(ObjectFifoPort.Consume, 1)
