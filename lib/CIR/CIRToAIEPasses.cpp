@@ -27,8 +27,43 @@
 
 namespace xilinx::AIE::CIR {
 
-namespace {
+class CIRToAIETypes {
+  // llvm::DenseMap<mlir::Type, std::optional<mlir::Type>> types;
+  llvm::DenseMap<mlir::Type, std::optional<std::string>> types;
 
+public:
+  void analyze() {
+    // The struct has a name like "aie::device<aie::npu1>" and the
+    // "npu1" is used directly for the MLIR aie.device attribute
+    static const llvm::Regex deviceNamePattern{"^aie::device<aie::([^>]+)>$"};
+    for (auto &[type, value] : types) {
+      if (auto maybePointerType = mlir::dyn_cast<mlir::cir::PointerType>(type))
+        if (auto maybeStructType = mlir::dyn_cast<mlir::cir::StructType>(
+                maybePointerType.getPointee()))
+          if (llvm::SmallVector<llvm::StringRef> matches;
+              deviceNamePattern.match(maybeStructType.getName(), &matches))
+            // std::pair deviceName{std::string{matches[1]}, op.getLoc()};
+            value = maybeStructType.getName().str();
+    }
+  }
+
+  void analyseTypes(mlir::ModuleOp module) {
+    module->walk([this](mlir::Operation *op) {
+      for (auto result : op->getResults()) {
+        auto type = result.getType();
+        types.try_emplace(type, std::nullopt);
+      }
+    });
+    analyze();
+  }
+
+  void dump() {
+    for (auto &[type, value] : types)
+      llvm::outs() << "Type: " << type << " value: " << value << '\n';
+  }
+};
+
+namespace {
 // Lower C++ code like \code aie::device<aie::npu1> into an \code
 // aie.device(npu1){} operation
 struct DeviceLowering : public mlir::OpConversionPattern<mlir::cir::AllocaOp> {
@@ -56,8 +91,8 @@ struct DeviceLowering : public mlir::OpConversionPattern<mlir::cir::AllocaOp> {
             rewriter.create<xilinx::AIE::DeviceOp>(op.getLoc(), *deviceId);
         // The aie.device requires one block
         deviceOp.getRegion().emplaceBlock();
-        // Replace the alloca of the aie::device by a temporary cast from the
-        // aie.device to
+        // Replace the alloca of the aie::device by a temporary cast from
+        // the aie.device to
         rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
             op, op.getResult().getType(), deviceOp.getResult());
         return mlir::success();
@@ -68,14 +103,19 @@ struct DeviceLowering : public mlir::OpConversionPattern<mlir::cir::AllocaOp> {
 
 struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
   void runOnOperation() override {
+    CIRToAIETypes cat;
+    cat.analyseTypes(getOperation());
+    cat.dump();
+    cat.analyze();
+    cat.dump();
     // See mlir/examples/toy/Ch5/mlir/LowerToAffineLoops.cpp
     mlir::ConversionTarget target{getContext()};
     target.addLegalDialect<xilinx::AIE::AIEDialect>();
     target.addLegalOp<mlir::UnrealizedConversionCastOp>();
     target.addDynamicallyLegalOp<mlir::cir::AllocaOp>(
         [](mlir::cir::AllocaOp op) {
-          // The struct has a name like "aie::device<aie::npu1>" and the "npu1"
-          // is used directly for the MLIR aie.device attribute
+          // The struct has a name like "aie::device<aie::npu1>" and the
+          // "npu1" is used directly for the MLIR aie.device attribute
           static const llvm::Regex deviceNamePattern{
               "^aie::device<aie::([^>]+)>$"};
           if (auto maybeStructType =
@@ -89,7 +129,6 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
 
     mlir::RewritePatternSet patterns{&getContext()};
     patterns.add<DeviceLowering>(&getContext());
-
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();
