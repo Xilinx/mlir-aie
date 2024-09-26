@@ -15,11 +15,8 @@ from aie.dialects.aie import (
     object_fifo_link,
     tile,
 )
-from aie.dialects.scf import for_, yield_
-from aie.ir import TypeAttr
+from aie.extras.dialects.ext.scf import _for as range_
 from util import construct_and_print_module
-
-range_ = for_
 
 
 # CHECK:  module {
@@ -65,4 +62,3 @@ def codeRegion():
                 elem0 = of1.acquire(ObjectFifoPort.Consume, 1)
                 res = call("test_func", [elem0], [T.i32()])
                 of1.release(ObjectFifoPort.Consume, 1)
-                yield_([])

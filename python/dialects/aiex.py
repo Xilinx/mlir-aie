@@ -9,12 +9,14 @@ from typing import Union, Optional
 import numpy as np
 
 from ._aiex_ops_gen import *
+from ._aie_ops_gen import ObjectFifoCreateOp
 from . import aie
 from .aie import (
     DMAChannelDir,
     LockAction,
     Neighbors,
     TileOp,
+    object_fifo,
     find_matching_buffers,
     find_matching_flows,
     find_matching_locks,
@@ -26,7 +28,6 @@ from .._mlir_libs._aie import *
 from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint
 
 # noinspection PyUnresolvedReferences
-from ..extras.dialects.ext import memref
 from ..extras import types as T
 
 
@@ -36,12 +37,24 @@ register_dialect(get_dialect_registry())
 npu_sync = partial(npu_sync, column_num=1, row_num=1)
 
 
+def dma_wait(*args: Union[ObjectFifoCreateOp, str]):
+    if len(args) == 0:
+        raise ValueError(
+            "dma_wait must receive at least one dma_meta information to wait for"
+        )
+    for dma_meta in args:
+        str_name = dma_meta
+        if isinstance(dma_meta, ObjectFifoCreateOp):
+            str_name = dma_meta.sym_name.value
+        npu_dma_wait(str_name)
+
+
 class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
     """Specialize NpuDmaMemcpyNdOp class constructor to take python integers"""
 
     def __init__(
         self,
-        metadata,
+        metadata: Union[str, ObjectFifoCreateOp],
         bd_id,
         mem,
         offsets: MixedValues = None,
@@ -64,6 +77,8 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         dynamic_strides, _packed_strides, static_strides = _dispatch_mixed_values(
             strides
         )
+        if isinstance(metadata, ObjectFifoCreateOp):
+            metadata = metadata.sym_name.value
         super().__init__(
             x,
             y,

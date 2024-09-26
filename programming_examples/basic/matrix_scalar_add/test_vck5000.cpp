@@ -110,7 +110,7 @@ int main(int argc, char *argv[]) {
   }
 
   // Pass arguments in the order of dma_memcpys in the mlir
-  invoke_data_movement(queues[0], &agents[0], out, in_a);
+  invoke_data_movement(queues[0], &agents[0], in_a, out);
 
   int errors = 0;
 
