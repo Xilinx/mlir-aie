@@ -1395,7 +1395,7 @@ struct AIEObjectFifoStatefulTransformPass
         // release locks
         int numLocks = releaseOp.relNumber();
         createUseLocks(builder, op, port, relPerFifo, numLocks,
-                      LockAction::Release);
+                       LockAction::Release);
 
         // register release op
         if (releaseOps.find({op, portNum}) != releaseOps.end()) {
