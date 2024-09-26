@@ -1492,11 +1492,11 @@ struct AIEObjectFifoStatefulTransformPass
             unrollTiles.insert(t);
           }
         }
-        if (failed(dynamicGlobalObjectFifos(device, builder, dynamicTiles)))
-          signalPassFailure();
-        if (failed(unrollForLoops(device, builder, unrollTiles)))
-          signalPassFailure();
       }
+      if (failed(dynamicGlobalObjectFifos(device, builder, dynamicTiles)))
+        signalPassFailure();
+      if (failed(unrollForLoops(device, builder, unrollTiles)))
+        signalPassFailure();
     }
 
     //===------------------------------------------------------------------===//
