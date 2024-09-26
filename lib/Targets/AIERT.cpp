@@ -18,6 +18,7 @@ extern "C" {
 #include "xaiengine/xaie_elfloader.h"
 #include "xaiengine/xaie_interrupt.h"
 #include "xaiengine/xaie_locks.h"
+#include "xaiengine/xaie_mem.h"
 #include "xaiengine/xaie_plif.h"
 #include "xaiengine/xaie_ss.h"
 #include "xaiengine/xaie_txn.h"
@@ -373,6 +374,26 @@ LogicalResult AIERTControl::initLocks(DeviceOp &targetOp) {
   return success();
 }
 
+LogicalResult AIERTControl::initBuffers(DeviceOp &targetOp) {
+  // Set buffers with explicit initializers
+  targetOp.walk<WalkOrder::PreOrder>([&](BufferOp bufferOp) {
+    if (bufferOp.getInitialValue()) {
+      auto tileLoc = XAie_TileLoc(bufferOp.getTileOp().colIndex(),
+                                  bufferOp.getTileOp().rowIndex());
+      uint32_t bufferSize = bufferOp.getInitialValue().value().getNumElements() * 4;
+      auto bufferDataValues = bufferOp.getInitialValue().value().getValues<int32_t>();
+      std::vector<int32_t> bufData;
+      for (uint32_t i = 0; i < bufferSize; i++) {
+        bufData.emplace_back(*(bufferDataValues.begin() + i));
+      }
+      TRY_XAIE_API_FATAL_ERROR(XAie_DataMemBlockWrite, &devInst, tileLoc, bufferOp.getAddress().value(), bufData.data(), bufferSize);
+    } else
+      LLVM_DEBUG(llvm::dbgs()
+                 << "buffer op no initial value" << bufferOp << "\n");
+  });
+  return success();
+}
+
 LogicalResult AIERTControl::configureSwitches(DeviceOp &targetOp) {
 
   // StreamSwitch (switchbox) configuration
@@ -500,6 +521,10 @@ LogicalResult AIERTControl::configureSwitches(DeviceOp &targetOp) {
 LogicalResult AIERTControl::addInitConfig(DeviceOp &targetOp) {
 
   if (failed(initLocks(targetOp))) {
+    return failure();
+  }
+
+  if (failed(initBuffers(targetOp))) {
     return failure();
   }
 
