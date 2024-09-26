@@ -459,9 +459,15 @@ struct AIEObjectFifoStatefulTransformPass
                 BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDimensions) {
     builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqLockAction,
                               acqMode);
-    if (!dims.getValue().empty()){
-      builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims, padDimensions);
-    } else{
+    
+    if (!dims.getValue().empty() && !padDimensions.getValue().empty()){
+      auto dmas = builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims, padDimensions);
+      dmas.dump();
+    } 
+    else if (!dims.getValue().empty()){
+      builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims);
+    }
+    else{
       builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len);
     } 
 
@@ -512,7 +518,7 @@ struct AIEObjectFifoStatefulTransformPass
       createShimDMA(device, builder, op, channelDir, channelIndex, lockMode,
                     dims);
     } else if (op.getProducerTileOp().isMemTile() && channelDir == DMAChannelDir::MM2S) {
-      createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
+        createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
                        dims, pad_dims);
     } else if (op.getProducerTileOp().isMemTile() && channelDir == DMAChannelDir::S2MM){
       createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
