@@ -106,7 +106,7 @@ def vector_softmax(trace_size):
                             ObjectFifoPort.Consume, 1
                         )
 
-                        call(softmax_bf16_vector, [elem_in_a, elem_out])
+                        softmax_bf16_vector(elem_in_a, elem_out)
 
                         inA_fifos[inA_fifo_names[i]].release(ObjectFifoPort.Consume, 1)
                         outC_fifos[outC_fifo_names[i]].release(

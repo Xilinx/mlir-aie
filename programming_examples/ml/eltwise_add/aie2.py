@@ -130,10 +130,7 @@ def my_eltwise_add(trace_size):
                             ObjectFifoPort.Consume, 1
                         )
 
-                        call(
-                            eltwise_add_bf16_vector,
-                            [elem_in_a, elem_in_b, elem_out],
-                        )
+                        eltwise_add_bf16_vector(elem_in_a, elem_in_b, elem_out)
                         inA_fifos[inA_fifo_names[i]].release(ObjectFifoPort.Consume, 1)
                         inB_fifos[inB_fifo_names[i]].release(ObjectFifoPort.Consume, 1)
                         outC_fifos[outC_fifo_names[i]].release(

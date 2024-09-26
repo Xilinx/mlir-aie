@@ -57,7 +57,7 @@ def my_reduce_min():
             for _ in range_(0xFFFFFFFF):
                 elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                 elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
-                call(reduce_min_vector, [elem_in, elem_out, N])
+                reduce_min_vector(elem_in, elem_out, N)
                 of_in.release(ObjectFifoPort.Consume, 1)
                 of_out.release(ObjectFifoPort.Produce, 1)
 

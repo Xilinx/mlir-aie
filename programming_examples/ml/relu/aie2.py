@@ -104,7 +104,7 @@ def my_relu(trace_size):
                             ObjectFifoPort.Consume, 1
                         )
 
-                        call(relu, [elem_in_a, elem_out])
+                        relu(elem_in_a, elem_out)
 
                         inA_fifos[inA_fifo_names[i]].release(ObjectFifoPort.Consume, 1)
                         outC_fifos[outC_fifo_names[i]].release(
