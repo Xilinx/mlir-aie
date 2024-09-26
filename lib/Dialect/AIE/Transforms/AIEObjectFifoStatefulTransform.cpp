@@ -1461,6 +1461,7 @@ struct AIEObjectFifoStatefulTransformPass
                                consumerWireType, consumerChan.channel);
       }
     }
+
     //===------------------------------------------------------------------===//
     // Statically unroll for loops or use dynamic objectFifos
     //===------------------------------------------------------------------===//
@@ -1468,9 +1469,27 @@ struct AIEObjectFifoStatefulTransformPass
       if (failed(dynamicGlobalObjectFifos(device, builder, objectFifoTiles)))
         signalPassFailure();
     } else {
-      if(failed(unrollForLoops(device, builder, objectFifoTiles)))
-        signalPassFailure();
+      std::set<TileOp> dynamicTiles;
+      std::set<TileOp> unrollTiles;
+      for (auto c : device.getOps<CoreOp>()) {
+        TileOp t = c.getTileOp();
+        if (objectFifoTiles.count(t) > 0) {
+          if (c.getDynamicObjfifoLowering().has_value()) {
+            if (c.getDynamicObjfifoLowering().value())
+              dynamicTiles.insert(t);
+            else
+              unrollTiles.insert(t);
+          } else {
+            unrollTiles.insert(t);
+          }
+        }
+        if (failed(dynamicGlobalObjectFifos(device, builder, dynamicTiles)))
+          signalPassFailure();
+        if (failed(unrollForLoops(device, builder, unrollTiles)))
+          signalPassFailure();
+      }
     }
+
     //===------------------------------------------------------------------===//
     // Replace ops
     //===------------------------------------------------------------------===//
