@@ -25,7 +25,7 @@
 #define KERNEL_NAME "MLIR_AIE"
 #endif
 
-#define INPUT_SIZE  (1024 * sizeof(int))  // in bytes
+#define INPUT_SIZE (1024 * sizeof(int))  // in bytes
 #define OUTPUT_SIZE (1024 * sizeof(int)) // in bytes
 
 std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
@@ -105,7 +105,7 @@ int main(int argc, const char *argv[]) {
   bo_output.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   bool pass = true;
-  for(int i = 0; i < OUTPUT_SIZE/sizeof(buf_output[0]); i++) {
+  for (int i = 0; i < OUTPUT_SIZE / sizeof(buf_output[0]); i++) {
     std::cout << buf_output[i] << " ";
     pass &= buf_output[i] == i;
   }

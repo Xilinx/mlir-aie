@@ -25,11 +25,11 @@
 #define KERNEL_NAME "MLIR_AIE"
 #endif
 
-#define INPUT_SIZE  (50 * sizeof(int))  // in bytes
+#define INPUT_SIZE (50 * sizeof(int))   // in bytes
 #define OUTPUT_SIZE (250 * sizeof(int)) // in bytes
-#define WIDTH_SIZE  (10 * sizeof(int))  // in bytes
+#define WIDTH_SIZE (10 * sizeof(int))   // in bytes
 #define WIDTH 10
-#define INPUT_ROWS  INPUT_SIZE / WIDTH_SIZE
+#define INPUT_ROWS INPUT_SIZE / WIDTH_SIZE
 #define OUTPUT_ROWS OUTPUT_SIZE / WIDTH_SIZE
 
 std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
@@ -85,9 +85,9 @@ int main(int argc, const char *argv[]) {
 
   int *buf_input = bo_input.map<int *>();
   std::cout << std::endl << std::endl << "Input: " << std::endl;
-  for(int i = 0; i < INPUT_ROWS; i++) {
+  for (int i = 0; i < INPUT_ROWS; i++) {
     std::cout << "row " << i << " : ";
-    for(int j = 0; j < WIDTH; j++) {
+    for (int j = 0; j < WIDTH; j++) {
       buf_input[i * WIDTH + j] = i;
       std::cout << buf_input[i * WIDTH + j] << " ";
     }
@@ -118,13 +118,13 @@ int main(int argc, const char *argv[]) {
   std::cout << std::endl << "Output: " << std::endl;
   int expected_output = 0;
   int five_repetitions = 0;
-  for(int i = 0; i < OUTPUT_ROWS; i++) {
+  for (int i = 0; i < OUTPUT_ROWS; i++) {
     std::cout << "row " << i << std::endl;
     if (five_repetitions == 5) {
       expected_output++;
       five_repetitions = 0;
     }
-    for(int j = 0; j < WIDTH; j++) {
+    for (int j = 0; j < WIDTH; j++) {
       std::cout << "expected: " << expected_output << ", ";
       std::cout << "got: " << buf_output[i * WIDTH + j] << std::endl;
       pass &= buf_output[i * WIDTH + j] == expected_output;

@@ -9,7 +9,7 @@
 
 template <typename T_in, typename T_out, unsigned long N>
 void passthrough(const T_in *__restrict in, T_out *__restrict out) {
-  for(int i = 0; i < N; i++) {
+  for (int i = 0; i < N; i++) {
     out[i] = in[i];
   }
 }
