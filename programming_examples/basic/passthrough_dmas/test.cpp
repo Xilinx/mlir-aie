@@ -179,6 +179,7 @@ int main(int argc, const char *argv[]) {
     uint32_t ref = (i + 1);
     if (*(bufOut + i) != ref) {
       errors++;
+      std::cout<<*(bufOut+i)<<", "<<ref<<std::endl;
     }
   }
 
