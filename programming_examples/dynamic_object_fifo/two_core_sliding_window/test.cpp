@@ -122,7 +122,8 @@ int main(int argc, const char *argv[]) {
       if (i == 0) {
         expected_output = buf_input[i * INPUT_ROWS] * 2;
       } else {
-        expected_output = buf_input[(i - 1) * INPUT_ROWS] + buf_input[i * INPUT_ROWS];
+        expected_output =
+            buf_input[(i - 1) * INPUT_ROWS] + buf_input[i * INPUT_ROWS];
       }
       std::cout << "expected: " << expected_output << ", ";
       std::cout << "got: " << buf_output[i * OUTPUT_ROWS + j] << std::endl;
