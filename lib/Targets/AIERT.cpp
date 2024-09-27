@@ -377,48 +377,49 @@ LogicalResult AIERTControl::initLocks(DeviceOp &targetOp) {
 LogicalResult AIERTControl::initBuffers(DeviceOp &targetOp) {
   // Set buffers with explicit initializers
   targetOp.walk<WalkOrder::PreOrder>([&](BufferOp bufferOp) {
-    if (auto denseInit = bufferOp.getInitialValue()
-                             .value()
-                             .dyn_cast<mlir::DenseElementsAttr>()) {
-      auto tileLoc = XAie_TileLoc(bufferOp.getTileOp().colIndex(),
-                                  bufferOp.getTileOp().rowIndex());
-      std::vector<char> byteVec;
-      if (denseInit.getElementType().isIntOrIndex()) {
-        for (auto intVal : denseInit.getValues<APInt>()) {
-          // Get the size in bytes
-          size_t byteSize = (intVal.getBitWidth() + 7) / 8;
-          // Create a buffer for the integer bytes and copy
-          std::vector<char> bytes(byteSize);
-          std::copy(
-              static_cast<const char *>(static_cast<const void *>(&intVal)),
-              static_cast<const char *>(static_cast<const void *>(&intVal)) +
-                  byteSize,
-              bytes.begin());
-          byteVec.insert(byteVec.end(), bytes.begin(), bytes.end());
-        }
-      } else if (denseInit.getElementType().isa<FloatType>()) {
-        for (auto floatVal : denseInit.getValues<APFloat>()) {
-          APInt floatInt = floatVal.bitcastToAPInt();
-          // Get the size in bytes
-          size_t byteSize = (floatInt.getBitWidth() + 7) / 8;
-          // Create a buffer for the float bytes and copy
-          std::vector<char> bytes(byteSize);
-          std::copy(
-              static_cast<const char *>(static_cast<const void *>(&floatInt)),
-              static_cast<const char *>(static_cast<const void *>(&floatInt)) +
-                  byteSize,
-              bytes.begin());
-          byteVec.insert(byteVec.end(), bytes.begin(), bytes.end());
-        }
-      } else
-        llvm::outs() << "buffer op type not supported for initialization "
-                     << bufferOp << "\n";
-      TRY_XAIE_API_FATAL_ERROR(XAie_DataMemBlockWrite, &devInst, tileLoc,
-                               bufferOp.getAddress().value(), byteVec.data(),
-                               byteVec.size());
+    auto initialValue = bufferOp.getInitialValue();
+    if (!initialValue)
+      return;
+    mlir::DenseElementsAttr denseInit =
+        dyn_cast<mlir::DenseElementsAttr>(initialValue.value());
+    if (!denseInit)
+      return;
+    auto tileLoc = XAie_TileLoc(bufferOp.getTileOp().colIndex(),
+                                bufferOp.getTileOp().rowIndex());
+    std::vector<char> byteVec;
+    if (denseInit.getElementType().isIntOrIndex()) {
+      for (auto intVal : denseInit.getValues<APInt>()) {
+        // Get the size in bytes
+        size_t byteSize = (intVal.getBitWidth() + 7) / 8;
+        // Create a buffer for the integer bytes and copy
+        std::vector<char> bytes(byteSize);
+        std::copy(
+            static_cast<const char *>(static_cast<const void *>(&intVal)),
+            static_cast<const char *>(static_cast<const void *>(&intVal)) +
+                byteSize,
+            bytes.begin());
+        byteVec.insert(byteVec.end(), bytes.begin(), bytes.end());
+      }
+    } else if (denseInit.getElementType().isa<FloatType>()) {
+      for (auto floatVal : denseInit.getValues<APFloat>()) {
+        APInt floatInt = floatVal.bitcastToAPInt();
+        // Get the size in bytes
+        size_t byteSize = (floatInt.getBitWidth() + 7) / 8;
+        // Create a buffer for the float bytes and copy
+        std::vector<char> bytes(byteSize);
+        std::copy(
+            static_cast<const char *>(static_cast<const void *>(&floatInt)),
+            static_cast<const char *>(static_cast<const void *>(&floatInt)) +
+                byteSize,
+            bytes.begin());
+        byteVec.insert(byteVec.end(), bytes.begin(), bytes.end());
+      }
     } else
-      LLVM_DEBUG(llvm::dbgs()
-                 << "buffer op no initial value " << bufferOp << "\n");
+      llvm::outs() << "buffer op type not supported for initialization "
+                   << bufferOp << "\n";
+    TRY_XAIE_API_FATAL_ERROR(XAie_DataMemBlockWrite, &devInst, tileLoc,
+                             bufferOp.getAddress().value(), byteVec.data(),
+                             byteVec.size());
   });
   return success();
 }
