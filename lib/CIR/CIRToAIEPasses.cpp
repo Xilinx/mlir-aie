@@ -25,25 +25,44 @@
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
 
+using namespace std::string_literals;
+
 namespace xilinx::AIE::CIR {
 
-class CIRToAIETypes {
+struct CIRToAIETypes {
   // llvm::DenseMap<mlir::Type, std::optional<mlir::Type>> types;
-  llvm::DenseMap<mlir::Type, std::optional<std::string>> types;
+  struct AIELikeTypesDeconstruction {
+    // For example "aie::device<aie::npu1>"
+    std::string fullName;
+    // For example "aie::device"
+    std::string base;
+    // For example "npu1"
+    std::vector<std::string> subMatches;
+
+    std::string str() {
+      return "Fullname = " + fullName + ", base = " + base +
+             ", subMatches = " + llvm::join(subMatches, ", ");
+    }
+  };
+
+  llvm::DenseMap<mlir::Type, std::optional<AIELikeTypesDeconstruction>>
+      moduleTypes;
 
 public:
   void analyze() {
     // The struct has a name like "aie::device<aie::npu1>" and the
     // "npu1" is used directly for the MLIR aie.device attribute
-    static const llvm::Regex deviceNamePattern{"^aie::device<aie::([^>]+)>$"};
-    for (auto &[type, value] : types) {
+    static const llvm::Regex deviceNamePattern{"^(aie::device)<aie::([^>]+)>$"};
+    for (auto &[type, value] : moduleTypes) {
       if (auto maybePointerType = mlir::dyn_cast<mlir::cir::PointerType>(type))
         if (auto maybeStructType = mlir::dyn_cast<mlir::cir::StructType>(
                 maybePointerType.getPointee()))
           if (llvm::SmallVector<llvm::StringRef> matches;
-              deviceNamePattern.match(maybeStructType.getName(), &matches))
-            // std::pair deviceName{std::string{matches[1]}, op.getLoc()};
-            value = maybeStructType.getName().str();
+              deviceNamePattern.match(maybeStructType.getName(), &matches)) {
+            value = {.fullName = matches[0].str(), .base = matches[1].str()};
+            for (auto &e : llvm::ArrayRef(matches.begin() + 2, matches.end()))
+              value->subMatches.emplace_back(e.str());
+          }
     }
   }
 
@@ -51,15 +70,20 @@ public:
     module->walk([this](mlir::Operation *op) {
       for (auto result : op->getResults()) {
         auto type = result.getType();
-        types.try_emplace(type, std::nullopt);
+        moduleTypes.try_emplace(type, std::nullopt);
       }
     });
     analyze();
   }
 
   void dump() {
-    for (auto &[type, value] : types)
-      llvm::outs() << "Type: " << type << " value: " << value << '\n';
+    for (auto &[type, value] : moduleTypes) {
+      llvm::outs() << "Type: " << type << " value: ";
+      if (value) {
+        llvm::outs() << value->str() << '\n';
+      } else
+        llvm::outs() << "None\n";
+    }
   }
 };
 
@@ -105,7 +129,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
   void runOnOperation() override {
     CIRToAIETypes cat;
     cat.analyseTypes(getOperation());
-    cat.dump();
+    // cat.dump();
     cat.analyze();
     cat.dump();
     // See mlir/examples/toy/Ch5/mlir/LowerToAffineLoops.cpp
@@ -113,17 +137,21 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
     target.addLegalDialect<xilinx::AIE::AIEDialect>();
     target.addLegalOp<mlir::UnrealizedConversionCastOp>();
     target.addDynamicallyLegalOp<mlir::cir::AllocaOp>(
-        [](mlir::cir::AllocaOp op) {
+        [&](mlir::cir::AllocaOp op) {
           // The struct has a name like "aie::device<aie::npu1>" and the
           // "npu1" is used directly for the MLIR aie.device attribute
-          static const llvm::Regex deviceNamePattern{
-              "^aie::device<aie::([^>]+)>$"};
-          if (auto maybeStructType =
-                  mlir::dyn_cast<mlir::cir::StructType>(op.getAllocaType()))
-            if (llvm::SmallVector<llvm::StringRef> matches;
-                deviceNamePattern.match(maybeStructType.getName(), &matches))
-              // std::pair deviceName{std::string{matches[1]}, op.getLoc()};
+          if (auto type = op.getType()) {
+            llvm::errs()
+                << "target.addDynamicallyLegalOp<mlir::cir::AllocaOp>\n";
+            type.dump();
+            if (cat.moduleTypes[type] &&
+                cat.moduleTypes[type]->base == "aie::device") {
+              llvm::errs() << "False\n";
               return false;
+            }
+          }
+          llvm::errs() << "True\n";
+
           return true;
         });
 
