@@ -87,15 +87,15 @@ of0 = object_fifo("objfifo0", A, B, 3, T.memref(256, T.i32()))
 def core_body():
     for _ in range_(3):
         elem0 = of0.acquire(ObjectFifoPort.Produce, 1)
-        call(test_func, [elem0])
+        test_func(elem0)
         of0.release(ObjectFifoPort.Produce, 1)
 
 @core(B)
 def core_body():
     elems = of0.acquire(ObjectFifoPort.Consume, 3)
-    call(test_func2, [elems[0]])
-    call(test_func2, [elems[1]])
-    call(test_func2, [elems[2]])
+    test_func2(elems[0])
+    test_func2(elems[1])
+    test_func2(elems[2])
     of0.release(ObjectFifoPort.Consume, 3)
 ```
 
@@ -116,11 +116,11 @@ of0 = object_fifo("objfifo0", A, A, 3, T.memref(256, T.i32()))
 def core_body():
     for _ in range_(3):
         elem0 = of0.acquire(ObjectFifoPort.Produce, 1)
-        call(test_func, [elem0])
+        test_func(elem0)
         of0.release(ObjectFifoPort.Produce, 1)
 
         elem1 = of0.acquire(ObjectFifoPort.Consume, 1)
-        call(test_func2, [elem1])
+        test_func2(elem1)
         of0.release(ObjectFifoPort.Consume, 1)
 ```
 
@@ -144,14 +144,14 @@ The conceptual depth of the Object FIFO is `3`. The reasoning behind this choice
 def core_body():
     for _ in range_(9):
         elem0 = of0.acquire(ObjectFifoPort.Produce, 1)
-        call(produce_func, [elem0])
+        produce_func(elem0)
         of0.release(ObjectFifoPort.Produce, 1)
 
 @core(B)
 def core_body():
     for _ in range_(9):
         elems = of0.acquire(ObjectFifoPort.Consume, 2)
-        call(consume_func, [elems[0], elems[1]])
+        consume_func(elems[0], elems[1])
         of0.release(ObjectFifoPort.Consume, 2)
 ```
 Each iteration:

@@ -98,7 +98,7 @@ This access and execute pattern runs on the AIE compute core `ComputeTile2` and 
                 for _ in range_(4):
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
-                    call(scale_scalar, [elem_in, elem_out, elem_factor, 1024])
+                    scale_scalar(elem_in, elem_out, elem_factor, 1024)
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
                 of_factor.release(ObjectFifoPort.Consume, 1)
