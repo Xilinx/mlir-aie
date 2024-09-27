@@ -36,7 +36,6 @@ module {
     %in1_cons_prod_lock = aie.lock(%tile_0_2, 0) {init = 2 : i32, sym_name = "in1_cons_prod_lock"}
     %in1_cons_cons_lock = aie.lock(%tile_0_2, 1) {init = 0 : i32, sym_name = "in1_cons_cons_lock"}
     aie.flow(%tile_0_0, DMA : 0, %tile_0_2, DMA : 0)
-    //aie.flow(%tile_0_0, DMA : 1, %tile_0_1, DMA : 0)
     aie.flow(%tile_0_1, DMA : 0, %tile_0_2, DMA : 1)
     aie.flow(%tile_0_2, DMA : 0, %tile_0_0, DMA : 0)
     %core_0_2 = aie.core(%tile_0_2) {
@@ -209,12 +208,12 @@ module {
       aie.use_lock(%in2_mem_cons_lock, AcquireGreaterEqual, 1)
       aie.dma_bd(%in2_mem_buff_0 : memref<256xi32>, 0, 256)
       aie.use_lock(%in2_mem_prod_lock, Release, 1)
-      aie.next_bd ^bb5
+      aie.next_bd ^bb2
     ^bb2:
       aie.use_lock(%in2_mem_cons_lock, AcquireGreaterEqual, 1)
       aie.dma_bd(%in2_mem_buff_1 : memref<256xi32>, 0, 256)
       aie.use_lock(%in2_mem_prod_lock, Release, 1)
-      aie.next_bd ^bb4
+      aie.next_bd ^bb1
     ^bb3:
       aie.end
     }
