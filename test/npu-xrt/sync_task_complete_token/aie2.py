@@ -78,7 +78,7 @@ def design():
                             strides=[0, 0, 0, 1],
                             issue_token=True,
                         )
-                        npu_dma_wait(fifo_input)
+                        dma_wait(fifo_input)
                     # After transferring 16 input tiles, one output tile will be produced;
                     # issue a BD to transfer it back
                     npu_dma_memcpy_nd(
@@ -89,7 +89,7 @@ def design():
                         sizes=[1, 1, 1, 1],
                         strides=[0, 0, 0, 1],
                     )
-                    npu_dma_wait(fifo_output)
+                    dma_wait(fifo_output)
 
     print(ctx.module)
 
