@@ -377,19 +377,48 @@ LogicalResult AIERTControl::initLocks(DeviceOp &targetOp) {
 LogicalResult AIERTControl::initBuffers(DeviceOp &targetOp) {
   // Set buffers with explicit initializers
   targetOp.walk<WalkOrder::PreOrder>([&](BufferOp bufferOp) {
-    if (bufferOp.getInitialValue()) {
+    if (auto denseInit = bufferOp.getInitialValue()
+                             .value()
+                             .dyn_cast<mlir::DenseElementsAttr>()) {
       auto tileLoc = XAie_TileLoc(bufferOp.getTileOp().colIndex(),
                                   bufferOp.getTileOp().rowIndex());
-      uint32_t bufferSize = bufferOp.getInitialValue().value().getNumElements() * 4;
-      auto bufferDataValues = bufferOp.getInitialValue().value().getValues<int32_t>();
-      std::vector<int32_t> bufData;
-      for (uint32_t i = 0; i < bufferSize; i++) {
-        bufData.emplace_back(*(bufferDataValues.begin() + i));
-      }
-      TRY_XAIE_API_FATAL_ERROR(XAie_DataMemBlockWrite, &devInst, tileLoc, bufferOp.getAddress().value(), bufData.data(), bufferSize);
+      std::vector<char> byteVec;
+      if (denseInit.getElementType().isIntOrIndex()) {
+        for (auto intVal : denseInit.getValues<APInt>()) {
+          // Get the size in bytes
+          size_t byteSize = (intVal.getBitWidth() + 7) / 8;
+          // Create a buffer for the integer bytes and copy
+          std::vector<char> bytes(byteSize);
+          std::copy(
+              static_cast<const char *>(static_cast<const void *>(&intVal)),
+              static_cast<const char *>(static_cast<const void *>(&intVal)) +
+                  byteSize,
+              bytes.begin());
+          byteVec.insert(byteVec.end(), bytes.begin(), bytes.end());
+        }
+      } else if (denseInit.getElementType().isa<FloatType>()) {
+        for (auto floatVal : denseInit.getValues<APFloat>()) {
+          APInt floatInt = floatVal.bitcastToAPInt();
+          // Get the size in bytes
+          size_t byteSize = (floatInt.getBitWidth() + 7) / 8;
+          // Create a buffer for the float bytes and copy
+          std::vector<char> bytes(byteSize);
+          std::copy(
+              static_cast<const char *>(static_cast<const void *>(&floatInt)),
+              static_cast<const char *>(static_cast<const void *>(&floatInt)) +
+                  byteSize,
+              bytes.begin());
+          byteVec.insert(byteVec.end(), bytes.begin(), bytes.end());
+        }
+      } else
+        llvm::outs() << "buffer op type not supported for initialization "
+                     << bufferOp << "\n";
+      TRY_XAIE_API_FATAL_ERROR(XAie_DataMemBlockWrite, &devInst, tileLoc,
+                               bufferOp.getAddress().value(), byteVec.data(),
+                               byteVec.size());
     } else
       LLVM_DEBUG(llvm::dbgs()
-                 << "buffer op no initial value" << bufferOp << "\n");
+                 << "buffer op no initial value " << bufferOp << "\n");
   });
   return success();
 }
