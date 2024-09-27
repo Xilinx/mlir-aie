@@ -70,7 +70,7 @@ def design():
                     # Configure and start, and wait for 16 BDs, each transferring the next contiguous input tile.
                     for j in range(16):
                         npu_dma_memcpy_nd(
-                            metadata=fifo_input.sym_name.value,
+                            metadata=fifo_input,
                             bd_id=j,
                             mem=input,
                             offsets=[0, 0, 0, i * 16 + j],
@@ -78,18 +78,18 @@ def design():
                             strides=[0, 0, 0, 1],
                             issue_token=True,
                         )
-                        npu_dma_wait(fifo_input.sym_name.value)
+                        npu_dma_wait(fifo_input)
                     # After transferring 16 input tiles, one output tile will be produced;
                     # issue a BD to transfer it back
                     npu_dma_memcpy_nd(
-                        metadata=fifo_output.sym_name.value,
+                        metadata=fifo_output,
                         bd_id=0,
                         mem=output,
                         offsets=[0, 0, 0, i],
                         sizes=[1, 1, 1, 1],
                         strides=[0, 0, 0, 1],
                     )
-                    npu_dma_wait(fifo_output.sym_name.value)
+                    npu_dma_wait(fifo_output)
 
     print(ctx.module)
 

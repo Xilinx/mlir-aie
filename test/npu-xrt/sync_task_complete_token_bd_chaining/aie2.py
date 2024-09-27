@@ -121,19 +121,19 @@ def design():
                         repeat_count=0,
                     )
                     # Wait for the task completion token of the previously set off chain of BDs
-                    npu_dma_wait(fifo_input.sym_name.value)
+                    dma_wait(fifo_input)
 
                     # After transferring 16 input tiles, one output tile will be produced;
                     # issue a BD to transfer it back
                     npu_dma_memcpy_nd(
-                        metadata=fifo_output.sym_name.value,
+                        metadata=fifo_output,
                         bd_id=0,
                         mem=output,
                         offsets=[0, 0, 0, i],
                         sizes=[1, 1, 1, 1],
                         strides=[0, 0, 0, 1],
                     )
-                    npu_dma_wait(fifo_output.sym_name.value)
+                    dma_wait(fifo_output)
 
     print(ctx.module)
 
