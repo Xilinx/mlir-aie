@@ -15,6 +15,7 @@ from ....ir import (
     TypeAttr,
     Value,
 )
+from .arith import Scalar
 
 
 def call(
@@ -39,18 +40,25 @@ def call(
             raise ValueError(
                 "unexpected third argument when constructing a call" + "to a function"
             )
-        if not all(
-            isinstance(a, (Value, Operation, OpView)) for a in arguments_or_callee
-        ):
-            raise ValueError(
-                f"{arguments_or_callee} must all be Value, Operation, or OpView"
-            )
+
+        args = []
+        for i, a in enumerate(arguments_or_callee):
+            if isinstance(a, (int, float)):
+                # Get the type to convert the python value to based on the expected input to the function
+                # TODO: should check if it's safe to do this? What is int value is outside range?
+                args.append(
+                    Scalar(a, dtype=callee_or_results.function_type.value.inputs[i])
+                )
+            else:
+                args.append(a)
+        if not all(isinstance(a, (Value, Operation, OpView)) for a in args):
+            raise ValueError(f"{args} must all be Value, Operation, or OpView")
 
         return get_op_result_or_op_results(
             call_op_ctor(
                 callee_or_results.function_type.value.results,
                 FlatSymbolRefAttr.get(callee_or_results.sym_name.value),
-                arguments_or_callee,
+                args,
                 loc=loc,
                 ip=ip,
             )

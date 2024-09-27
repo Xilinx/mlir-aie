@@ -10,7 +10,6 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.extras.dialects.ext import arith
 from aie.extras.context import mlir_mod_ctx
 from aie.extras.dialects.ext.scf import _for as range_
 
@@ -74,9 +73,7 @@ def distribute_repeat():
                     elemOut = of_out2.acquire(ObjectFifoPort.Produce, 1)
                     elemIn = of_in2.acquire(ObjectFifoPort.Consume, 1)
                     for i in range_(N // 2):
-                        v0 = memref.load(elemIn, [i])
-                        v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elemOut, [i])
+                        elemOut[i] = elemIn[i] + 1
                     of_in2.release(ObjectFifoPort.Consume, 1)
                     of_out2.release(ObjectFifoPort.Produce, 1)
 
@@ -87,9 +84,7 @@ def distribute_repeat():
                     elemOut = of_out3.acquire(ObjectFifoPort.Produce, 1)
                     elemIn = of_in3.acquire(ObjectFifoPort.Consume, 1)
                     for i in range_(N // 2):
-                        v0 = memref.load(elemIn, [i])
-                        v1 = arith.addi(v0, arith.constant(2, T.i32()))
-                        memref.store(v1, elemOut, [i])
+                        elemOut[i] = elemIn[i] + 2
                     of_in3.release(ObjectFifoPort.Consume, 1)
                     of_out3.release(ObjectFifoPort.Produce, 1)
 

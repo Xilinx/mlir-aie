@@ -118,16 +118,12 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
             memref_c_ty = T.memref(m, n, dtype_out())
 
             # AIE Core Function declarations
-            zero_scalar = external_func(
-                f"zero_scalar_{dtype_out_str}", inputs=[memref_c_ty]
-            )
-            zero = external_func(f"zero_{dtype_out_str}", inputs=[memref_c_ty])
-            matmul_scalar = external_func(
-                f"matmul_scalar_{dtype_in_str}_{dtype_out_str}",
-                inputs=[memref_a_ty, memref_b_ty, memref_c_ty],
+            func_type = "" if vectorized else "scalar_"
+            zero = external_func(
+                f"zero_{func_type}{dtype_out_str}", inputs=[memref_c_ty]
             )
             matmul = external_func(
-                f"matmul_{dtype_in_str}_{dtype_out_str}",
+                f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}",
                 inputs=[memref_a_ty, memref_b_ty, memref_c_ty],
             )
 
@@ -213,20 +209,14 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                 for _ in range_(0xFFFFFFFF):
                     for _ in range_(tiles) if tiles > 1 else range(1):  # issue #1547
                         elem_out = memC.acquire(ObjectFifoPort.Produce, 1)
-                        if vectorized:
-                            call(zero, [elem_out])
-                        else:
-                            call(zero_scalar, [elem_out])
+                        zero(elem_out)
 
                         for _ in (
                             range_(K_div_k) if K_div_k > 1 else range(1)
                         ):  # issue #1547
                             elem_in_a = memA.acquire(ObjectFifoPort.Consume, 1)
                             elem_in_b = memB.acquire(ObjectFifoPort.Consume, 1)
-                            if vectorized:
-                                call(matmul, [elem_in_a, elem_in_b, elem_out])
-                            else:
-                                call(matmul_scalar, [elem_in_a, elem_in_b, elem_out])
+                            matmul(elem_in_a, elem_in_b, elem_out)
                             memA.release(ObjectFifoPort.Consume, 1)
                             memB.release(ObjectFifoPort.Consume, 1)
 

@@ -52,7 +52,7 @@ def core_ext_kernel():
     dev = Device(AIEDevice.xcve2802)
     dev_block = Block.create_at_start(dev.body_region)
     with InsertionPoint(dev_block):
-        external_func(
+        test_func = external_func(
             "test_func", inputs=[T.memref(8, 8, T.i32()), T.i32()], outputs=[T.i32()]
         )
 
@@ -69,6 +69,6 @@ def core_ext_kernel():
         with InsertionPoint(bb):
             for _ in range_(10):
                 elem0 = of1.acquire(ObjectFifoPort.Consume, 1)
-                res = call("test_func", [elem0, arith.constant(4)], [T.i32()])
+                res = test_func(elem0, 4)
                 of1.release(ObjectFifoPort.Consume, 1)
             end()
