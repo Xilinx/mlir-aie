@@ -50,12 +50,17 @@ def core_fn(of_in, of_out, passThroughLine):
 worker_program = MyWorker(
     core_fn, [of_in.second, of_out.first, passthrough_fn], coords=(0, 2)
 )
+
+inout_shim = MyShim(of_in.first, of_out.second, coords=(0, 2))
 inout_sequence = SimpleFifoInOutSequence(
     of_in.first, vector_size, of_out.second, vector_size
 )
 
 my_program = MyProgram(
-    NPU1Col1(), worker_programs=[worker_program], inout_sequence=inout_sequence
+    NPU1Col1(),
+    worker_programs=[worker_program],
+    inout_sequence=inout_sequence,
+    shims=inout_shim
 )
 my_program.resolve_program()
 ```
@@ -65,15 +70,14 @@ my_program.resolve_program()
 line_size = vector_size // 4
 line_type = np.ndarray[np.uint8, (line_size,)]
 
-of_in = MyObjectFifo(2, line_type) # Can default to AnyShim for endpoint if endpoint isn't core
-of_out = MyObjectFifo(2, line_type) # Can default to AnyShim for endpoint if endpoint isn't core
+of_in = MyObjectFifo(2, line_type)
+of_out = MyObjectFifo(2, line_type)
 
 passthrough_fn = BinKernel(
     "passThroughLine",
     "passThrough.cc.o",
     [line_type, line_type, np.int32],
 )
-
 
 def core_fn(of_in, of_out, passThroughLine):
     for _ in range_(vector_size // line_size):
@@ -86,13 +90,16 @@ def core_fn(of_in, of_out, passThroughLine):
 worker_program = MyWorker(
     core_fn, [of_in.second, of_out.first, passthrough_fn] # Can omit placement, default to AnyCompute
 )
+inout_shim = MyShim(of_in.first, of_out.second) # Can omit placement, default to AnyShim
 inout_sequence = SimpleFifoInOutSequence(
     of_in.first, vector_size, of_out.second, vector_size
 )
 
 my_program = MyProgram(
     NPU1Col1(), # Device
-    worker_programs=[worker_program], inout_sequence=inout_sequence,
+    worker_programs=[worker_program],
+    inout_sequence=inout_sequence,
+    shims=inout_shim,
     placer=SequentialPlacer # Placement class, initialized with device, probably with method like place_components(program_information)
 )
 
