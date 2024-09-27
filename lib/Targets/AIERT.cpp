@@ -417,7 +417,7 @@ LogicalResult AIERTControl::initBuffers(DeviceOp &targetOp) {
     } else {
       llvm::outs() << "buffer op type not supported for initialization "
                    << bufferOp << "\n";
-      return failure();
+      return;
     }
     TRY_XAIE_API_FATAL_ERROR(XAie_DataMemBlockWrite, &devInst, tileLoc,
                              bufferOp.getAddress().value(), byteVec.data(),
