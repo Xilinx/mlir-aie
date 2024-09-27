@@ -7,11 +7,9 @@
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
-from aie.extras.dialects.ext import memref, arith
-from aie.dialects.scf import for_, yield_
+from aie.extras.dialects.ext import memref
 from aie.extras.context import mlir_mod_ctx
-from aie.ir import MemRefType, TypeAttr
+from aie.extras.dialects.ext.scf import _for as range_
 
 import sys
 
@@ -42,98 +40,37 @@ def resnet_conv_x():
             int8_ty = IntegerType.get_signless(8)
             int32_ty = IntegerType.get_signless(32)
 
-            tensorLayer1In_ty_init = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorInCInit,
-                ),
-                int8_ty,
-            )
-            tensorLayer1In_ty_rest = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorInCRest,
-                ),
-                uint8_ty,
-            )
-            weightsLayer1_ty_init = MemRefType.get(
-                (tensorInCInit * tensorInCInit,), int8_ty
-            )
-            weightsLayer1_ty_rest = MemRefType.get(
-                (tensorInCRest * tensorInCInit,), int8_ty
+            tensorLayer1In_ty_init = T.memref(tensorInW, 1, tensorInCInit, int8_ty)
+            tensorLayer1In_ty_rest = T.memref(tensorInW, 1, tensorInCRest, uint8_ty)
+            weightsLayer1_ty_init = T.memref(tensorInCInit * tensorInCInit, int8_ty)
+            weightsLayer1_ty_rest = T.memref(tensorInCRest * tensorInCInit, int8_ty)
+
+            tensorLayer1Out_ty = T.memref(tensorInW, 1, tensorInCInit, uint8_ty)
+
+            tensorLayer2In_ty = T.memref(tensorInW, 1, tensorInCInit, uint8_ty)
+            weightsLayer2_ty = T.memref(3 * 3 * tensorInCInit * tensorInCInit, int8_ty)
+            tensorLayer2Out_ty = T.memref(tensorInW, 1, tensorInCInit // 2, uint8_ty)
+
+            tensorLayer3In_ty = T.memref(tensorInW, 1, tensorInCInit // 2, uint8_ty)
+            weightsLayer3_ty_init = T.memref(2 * tensorInCInit * tensorInCRest, int8_ty)
+            weightsLayer3_ty_rest = T.memref(
+                tensorInCRest // 4 * tensorInCRest, int8_ty
             )
 
-            tensorLayer1Out_ty = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorInCInit,
-                ),
-                uint8_ty,
-            )
+            tensorLayer3Out_ty = T.memref(tensorInW, 1, tensorInCRest, uint8_ty)
 
-            tensorLayer2In_ty = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorInCInit,
-                ),
-                uint8_ty,
-            )
-            weightsLayer2_ty = MemRefType.get(
-                (3 * 3 * tensorInCInit * tensorInCInit,), int8_ty
-            )
-            tensorLayer2Out_ty = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorInCInit // 2,
-                ),
-                uint8_ty,
-            )
-
-            tensorLayer3In_ty = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorInCInit // 2,
-                ),
-                uint8_ty,
-            )
-            weightsLayer3_ty_init = MemRefType.get(
-                (2 * tensorInCInit * tensorInCRest,), int8_ty
-            )
-            weightsLayer3_ty_rest = MemRefType.get(
-                (tensorInCRest // 4 * tensorInCRest,), int8_ty
-            )
-
-            tensorLayer3Out_ty = MemRefType.get(
-                (
-                    tensorInW,
-                    1,
-                    tensorInCRest,
-                ),
-                uint8_ty,
-            )
-
-            allWeights_ty_init = MemRefType.get(
-                (
-                    tensorInCInit * tensorInCInit
-                    + 3 * 3 * tensorInCInit * tensorInCInit
-                    + tensorInCInit * tensorInCRest
-                    + tensorInCInit * tensorInCRest,
-                ),
+            allWeights_ty_init = T.memref(
+                tensorInCInit * tensorInCInit
+                + 3 * 3 * tensorInCInit * tensorInCInit
+                + tensorInCInit * tensorInCRest
+                + tensorInCInit * tensorInCRest,
                 int8_ty,
             )
 
-            allWeights_ty_rest = MemRefType.get(
-                (
-                    tensorInCRest * tensorInCInit
-                    + 3 * 3 * tensorInCInit * tensorInCInit
-                    + tensorInCInit * tensorInCRest,
-                ),
+            allWeights_ty_rest = T.memref(
+                tensorInCRest * tensorInCInit
+                + 3 * 3 * tensorInCInit * tensorInCInit
+                + tensorInCInit * tensorInCRest,
                 int8_ty,
             )
 
@@ -528,14 +465,14 @@ def resnet_conv_x():
 
                 @core(cores[i][0], conv1_kernels[i])
                 def core_body():
-                    for _ in for_(sys.maxsize):
+                    for _ in range_(sys.maxsize):
 
                         # acquire weights once
                         element0Weights = wts_sub_fifos[
                             wts_sub_fifo_names[i][0]
                         ].acquire(ObjectFifoPort.Consume, 1)
                         scale = memref.load(rtp[i][0], [0])
-                        for _ in for_(tensorInH):
+                        for _ in range_(tensorInH):
                             element0ActivactionsIn = act1_fifos[
                                 act1_fifo_names[i]
                             ].acquire(ObjectFifoPort.Consume, 1)
@@ -576,11 +513,9 @@ def resnet_conv_x():
                             objectfifo_release(
                                 ObjectFifoPort.Produce, act2_fifo_names[i], 1
                             )
-                            yield_([])
                         objectfifo_release(
                             ObjectFifoPort.Consume, wts_sub_fifo_names[i][0], 1
                         )
-                        yield_([])
 
             # 3x3 conv2d OFM 0-31
             for i in range(n_cols):
@@ -588,7 +523,7 @@ def resnet_conv_x():
                 @core(cores[i][1], "conv2dk3.o")
                 def core_body():
                     scale = 1
-                    for _ in for_(sys.maxsize):
+                    for _ in range_(sys.maxsize):
 
                         # acquire weights and rtps once
                         element0Weights = wts_sub_fifos[
@@ -626,7 +561,7 @@ def resnet_conv_x():
                         )
 
                         # middle
-                        for _ in for_(tensorInH - 2):
+                        for _ in range_(tensorInH - 2):
                             elementActivactionsIn = act2_fifos[
                                 act2_fifo_names[i]
                             ].acquire(ObjectFifoPort.Consume, 3)
@@ -658,7 +593,6 @@ def resnet_conv_x():
                             objectfifo_release(
                                 ObjectFifoPort.Produce, act3_fifo_names_1[i], 1
                             )
-                            yield_([])
 
                         # last part
                         elementActivactionsIn = act2_fifos[act2_fifo_names[i]].acquire(
@@ -696,7 +630,6 @@ def resnet_conv_x():
                         objectfifo_release(
                             ObjectFifoPort.Consume, wts_sub_fifo_names[i][1], 1
                         )
-                        yield_([])
 
             # 3x3 conv2d OFM 32-63
 
@@ -705,7 +638,7 @@ def resnet_conv_x():
                 @core(cores[i][3], "conv2dk3.o")
                 def core_body():
                     scale = 1
-                    for _ in for_(sys.maxsize):
+                    for _ in range_(sys.maxsize):
 
                         # acquire weights and rtps once
                         element0Weights = wts_sub_fifos[
@@ -744,7 +677,7 @@ def resnet_conv_x():
                         )
 
                         # middle
-                        for _ in for_(tensorInH - 2):
+                        for _ in range_(tensorInH - 2):
                             elementActivactionsIn = act2_fifos[
                                 act2_fifo_names[i]
                             ].acquire(ObjectFifoPort.Consume, 3)
@@ -776,7 +709,6 @@ def resnet_conv_x():
                             objectfifo_release(
                                 ObjectFifoPort.Produce, act3_fifo_names_2[i], 1
                             )
-                            yield_([])
 
                         # last part
                         elementActivactionsIn = act2_fifos[act2_fifo_names[i]].acquire(
@@ -812,14 +744,13 @@ def resnet_conv_x():
                         objectfifo_release(
                             ObjectFifoPort.Consume, wts_sub_fifo_names[i][1], 1
                         )
-                        yield_([])
 
             # # 1x1 conv2d and add skip
             for i in range(n_cols):
 
                 @core(cores[i][2], conv3_kernels[i])
                 def core_body():
-                    for _ in for_(sys.maxsize):
+                    for _ in range_(sys.maxsize):
 
                         # acquire weights and rtps once
                         element0Weights = wts_sub_fifos[
@@ -833,7 +764,7 @@ def resnet_conv_x():
                             scale = memref.load(rtp[i][2], [0])
                             skipScale = memref.load(rtp[i][2], [1])
 
-                        for _ in for_(tensorInH):
+                        for _ in range_(tensorInH):
                             element0ActivactionsIn = act3_fifo_1[
                                 act3_fifo_names_1[i]
                             ].acquire(ObjectFifoPort.Consume, 1)
@@ -894,11 +825,9 @@ def resnet_conv_x():
                             objectfifo_release(
                                 ObjectFifoPort.Consume, skip_fifo_names[i], 1
                             )
-                            yield_([])
                         objectfifo_release(
                             ObjectFifoPort.Consume, wts_sub_fifo_names[i][2], 1
                         )
-                        yield_([])
 
             # instruction stream generation
             activationsIn = tensorInW * tensorInH * tensorInCInit
@@ -918,12 +847,12 @@ def resnet_conv_x():
 
             totalWeights_complete = totalWeights_init + repeat * totalWeights_rest
 
-            activationsInL3_ty = MemRefType.get((activationsIn,), int8_ty)
-            activationsOutL3_ty = MemRefType.get((acitivationsOut,), int8_ty)
-            weightsInL3_ty_init = MemRefType.get((totalWeights_init,), int8_ty)
-            weightsInL3_ty_rest = MemRefType.get((totalWeights_rest,), int8_ty)
+            activationsInL3_ty = T.memref(activationsIn, int8_ty)
+            activationsOutL3_ty = T.memref(acitivationsOut, int8_ty)
+            weightsInL3_ty_init = T.memref(totalWeights_init, int8_ty)
+            weightsInL3_ty_rest = T.memref(totalWeights_rest, int8_ty)
 
-            weightsInL3_ty_complete = MemRefType.get((totalWeights_complete,), int8_ty)
+            weightsInL3_ty_complete = T.memref(totalWeights_complete, int8_ty)
 
             @runtime_sequence(
                 activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_ty
@@ -956,12 +885,6 @@ def resnet_conv_x():
                     sizes=[1, 1, 1, activationsIn],
                 )
                 npu_dma_memcpy_nd(
-                    metadata="outOFL2L3",
-                    bd_id=2,
-                    mem=outputToL3,
-                    sizes=[1, 1, 1, acitivationsOut],
-                )
-                npu_dma_memcpy_nd(
                     metadata="wts_0_L3L2",
                     bd_id=1,
                     mem=weightsFromL3,
@@ -988,8 +911,14 @@ def resnet_conv_x():
                     ],
                     sizes=[1, 1, 1, totalWeights_rest],
                 )
-
-                npu_sync(column=1, row=0, direction=0, channel=0)
+                npu_dma_memcpy_nd(
+                    metadata="outOFL2L3",
+                    bd_id=2,
+                    mem=outputToL3,
+                    sizes=[1, 1, 1, acitivationsOut],
+                )
+                # outOFL2L3 will only complete after inputs complete, so we just wait on outOFL2L3 instead of all
+                dma_wait("outOFL2L3")
 
     res = ctx.module.operation.verify()
     if res == True:

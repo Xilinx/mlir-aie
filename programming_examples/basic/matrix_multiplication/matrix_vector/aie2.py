@@ -7,7 +7,7 @@
 import numpy as np
 
 from aie.extras.dialects.ext.scf import _for as range_
-from aie.dialects.aiex import npu_dma_memcpy_nd, npu_sync
+from aie.dialects.aiex import npu_dma_memcpy_nd, dma_wait
 
 from aie.api.dataflow.inout.inout import MyInOutSequence
 from aie.api.dataflow.objectfifo import MyObjectFifo
@@ -114,7 +114,7 @@ for i in range(n_cores):
 # To/from AIE-array data movement
 def sequence_fn(A, B, C, memA, inB, memC):
     npu_dma_memcpy_nd(
-        metadata=inB.name,
+        metadata=inB,
         bd_id=2,
         mem=B,
         coords=(1, 0),
@@ -125,7 +125,7 @@ def sequence_fn(A, B, C, memA, inB, memC):
         A_offset = i * M_div_m_div_n_cores * m * K
         C_offset = i * M_div_m_div_n_cores * m
         npu_dma_memcpy_nd(
-            metadata=memA[i].name,
+            metadata=memA[i],
             bd_id=1,
             mem=A,
             coords=(i, 0),
@@ -134,7 +134,7 @@ def sequence_fn(A, B, C, memA, inB, memC):
             strides=[m_x_K, k, K, 1],
         )
         npu_dma_memcpy_nd(
-            metadata=memC[i].name,
+            metadata=memC[i],
             bd_id=0,
             mem=C,
             coords=(i, 0),
@@ -144,7 +144,7 @@ def sequence_fn(A, B, C, memA, inB, memC):
         )
 
     for i in range(n_cores):
-        npu_sync(column=i, row=0, direction=0, channel=0)
+        dma_wait(*memC)
 
 
 inout_sequence = MyInOutSequence(

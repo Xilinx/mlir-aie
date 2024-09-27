@@ -209,7 +209,7 @@ The signature of the `aie.runtime_sequence()` operation lists as its arguments a
         * Analogously to the data layout transformations described [further above](#tiling-and-data-layout-transformations) to translate a `m`&times;`k` matrix into blocks of `r`&times;`s`-submatrices, this transfer translates the input `M`&times;`K` and `K`&times;`N` matrices into submatrices of size `m`&times;`k` and `k`&times;`n`.
            > Note that data layout transformations in the `npu_dma_memcpy_nd` operation are expressed in units of 4 bytes. This is why you will see all strides and the lowest-dimension length multiplied by a factor of `word_size_in` or `word_size_out` (to get the size in bytes) and then divided by four (to get the size in units of 4 bytes). This discrepancy will be streamlined in future versions.
     * The DMA transfer function `npu_dma_memcpy_nd` sends a segment of matrix C data (submatrix c) from the corresponding `outC_fifos` for the respective column, back to the host while maintaining the appropriate strides and offsets.
-    * After completing DMA transfers for each column, `npu_sync` is used to synchronize their completion.
+    * After completing DMA transfers for each column, `dma_wait` is used to synchronize their completion.
 
 The aforementioned transfers of rows of tiles of the `A` matrix are further split into a "ping" and a "pong" phase.
 This allows us to reconfigure half of the buffer descriptors used for transferring `A` concurrently with the other half running (transferring data).

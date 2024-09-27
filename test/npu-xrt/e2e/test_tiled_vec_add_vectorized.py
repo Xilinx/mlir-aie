@@ -24,7 +24,7 @@ from aie.dialects.aie import (
     WireBundle,
 )
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
-from aie.dialects.scf import for_ as range_, yield_
+from aie.extras.dialects.ext.scf import _for as range_
 from aie.dialects.transform import any_op_t, apply_registered_pass, get_parent_op
 from aie.dialects.transform.extras import named_sequence
 from aie.dialects.transform.structured import structured_match
@@ -261,7 +261,6 @@ def test_vec_add_vectorized(ctx: MLIRContext, workdir: Path):
                 aie.use_lock(lock_0_2_read_in_a, Release)
                 aie.use_lock(lock_0_2_read_in_b, Release)
                 aie.use_lock(lock_0_2_write_out_c, Release)
-                yield_([])
 
     mod_aie.finish()
     mod_aievec = ExplicitlyManagedModule()
@@ -506,7 +505,6 @@ def test_vec_add_vectorized_sugar(ctx: MLIRContext, workdir: Path):
                 ):
                     linalg_fill(arith.constant(0), outs=[buffer_0_2_c])
                     vec_add_i32_i32(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
-                yield_([])
 
     mod_aie.finish()
     mod_aievec = ExplicitlyManagedModule()

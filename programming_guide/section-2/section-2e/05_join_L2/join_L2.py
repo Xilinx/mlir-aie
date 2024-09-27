@@ -7,7 +7,7 @@
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
+from aie.extras.dialects.ext.scf import _for as range_
 from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
@@ -40,43 +40,37 @@ def join_L2():
             @core(ComputeTile0)
             def core_body():
                 # Effective while(1)
-                for _ in for_(6):
+                for _ in range_(6):
                     elem = of_out0.acquire(ObjectFifoPort.Produce, 1)
-                    for i in for_(8):
+                    for i in range_(8):
                         v0 = memref.load(elem, [i])
                         v1 = arith.constant(1, T.i32())
                         memref.store(v1, elem, [i])
-                        yield_([])
                     of_out0.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # Compute tile 3
             @core(ComputeTile1)
             def core_body():
                 # Effective while(1)
-                for _ in for_(6):
+                for _ in range_(6):
                     elem = of_out1.acquire(ObjectFifoPort.Produce, 1)
-                    for i in for_(8):
+                    for i in range_(8):
                         v0 = memref.load(elem, [i])
                         v1 = arith.constant(1, T.i32())
                         memref.store(v1, elem, [i])
-                        yield_([])
                     of_out1.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # Compute tile 4
             @core(ComputeTile2)
             def core_body():
                 # Effective while(1)
-                for _ in for_(6):
+                for _ in range_(6):
                     elem = of_out2.acquire(ObjectFifoPort.Produce, 1)
-                    for i in for_(8):
+                    for i in range_(8):
                         v0 = memref.load(elem, [i])
                         v1 = arith.constant(1, T.i32())
                         memref.store(v1, elem, [i])
-                        yield_([])
                     of_out2.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
     res = ctx.module.operation.verify()
     if res == True:

@@ -21,7 +21,7 @@ from aie.dialects.aie import (
     LockAction,
     WireBundle,
 )
-from aie.dialects.scf import for_ as range_, yield_
+from aie.extras.dialects.ext.scf import _for as range_
 from aie.extras.dialects.ext import linalg
 
 # noinspection PyUnresolvedReferences
@@ -309,8 +309,6 @@ def test_tiled_nonsquare_tile_matrix_mult(ctx: MLIRContext, workdir: Path):
                     aie.use_lock(lock_0_2_read_in_a, Release)
                     aie.use_lock(lock_0_2_read_in_b, Release)
                     aie.use_lock(lock_0_2_write_out_c, Release)
-                    yield_([])
-                yield_([])
 
     compile_without_vectorization(ctx.module, workdir)
     xclbin_path = make_xclbin(ctx.module, workdir)
@@ -567,8 +565,6 @@ def test_tiled_nonsquare_tile_matrix_mult_sugar(ctx: MLIRContext, workdir: Path)
                     ):
                         linalg.fill(0, buffer_0_2_c)
                         linalg.matmul(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
-                    yield_([])
-                yield_([])
 
     compile_without_vectorization(ctx.module, workdir)
     xclbin_path = make_xclbin(ctx.module, workdir)

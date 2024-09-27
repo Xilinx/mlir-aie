@@ -89,7 +89,6 @@ def core_body():
         elem0 = of0.acquire(ObjectFifoPort.Produce, 1)
         call(test_func, [elem0])
         of0.release(ObjectFifoPort.Produce, 1)
-        yield_([])
 
 @core(B)
 def core_body():
@@ -123,7 +122,6 @@ def core_body():
         elem1 = of0.acquire(ObjectFifoPort.Consume, 1)
         call(test_func2, [elem1])
         of0.release(ObjectFifoPort.Consume, 1)
-        yield_([])
 ```
 
 ### Specifying the Object FIFO Depth as an Array
@@ -148,7 +146,6 @@ def core_body():
         elem0 = of0.acquire(ObjectFifoPort.Produce, 1)
         call(produce_func, [elem0])
         of0.release(ObjectFifoPort.Produce, 1)
-        yield_([])
 
 @core(B)
 def core_body():
@@ -156,7 +153,6 @@ def core_body():
         elems = of0.acquire(ObjectFifoPort.Consume, 2)
         call(consume_func, [elems[0], elems[1]])
         of0.release(ObjectFifoPort.Consume, 2)
-        yield_([])
 ```
 Each iteration:
 * producer A acquires one object to produce into, calls the kernel function `produce_func` to store new data in it for B to consume, and releases the object,

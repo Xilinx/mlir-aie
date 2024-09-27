@@ -7,9 +7,8 @@
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
-from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
+from aie.extras.dialects.ext.scf import _for as range_
 
 import sys
 
@@ -43,44 +42,42 @@ def row_wise_bias_add(M, N, m, n):
 
         @core(compute_tile, "kernel.o")
         def core_body():
-            for _ in for_(0xFFFFFFFF):
-                for _ in for_(N // n):
+            for _ in range_(0xFFFFFFFF):
+                for _ in range_(N // n):
                     elem_bias = bias_fifo.acquire(ObjectFifoPort.Consume, 1)
-                    for i in for_(M // m):
+                    for _ in range_(M // m):
                         elem_in = in_fifo.acquire(ObjectFifoPort.Consume, 1)
                         elem_out = out_fifo.acquire(ObjectFifoPort.Produce, 1)
                         call(kernel_func, [elem_in, elem_bias, elem_out])
                         out_fifo.release(ObjectFifoPort.Produce, 1)
                         in_fifo.release(ObjectFifoPort.Consume, 1)
-                        yield_([])
                     bias_fifo.release(ObjectFifoPort.Consume, 1)
-                    yield_([])
-                yield_([])
 
         @runtime_sequence(complete_in_memref, complete_bias_memref, complete_out_memref)
         def sequence(inp, bias, out):
             npu_dma_memcpy_nd(
-                metadata=in_fifo.sym_name.value,
+                metadata=in_fifo,
                 bd_id=0,
                 mem=inp,
                 sizes=[1, N // n, M, n],
                 strides=[0, n, N, 1],
             )
             npu_dma_memcpy_nd(
-                metadata=bias_fifo.sym_name.value,
+                metadata=bias_fifo,
                 bd_id=1,
                 mem=bias,
                 sizes=[1, 1, N // n, n],
                 strides=[0, 0, n, 1],
             )
             npu_dma_memcpy_nd(
-                metadata=out_fifo.sym_name.value,
+                metadata=out_fifo,
                 bd_id=2,
                 mem=out,
                 sizes=[1, N // n, M, n],
                 strides=[0, n, N, 1],
             )
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            # of_out will only complete after of_in completes, so we just wait on of_out instead of both
+            dma_wait(out_fifo)
 
 
 # Declares that subsequent code is in mlir-aie context

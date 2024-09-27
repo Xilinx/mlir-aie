@@ -12,7 +12,6 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
 
 import aie.utils.test as test_utils
 

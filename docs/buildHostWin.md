@@ -52,10 +52,7 @@ All steps in WSL Ubuntu terminal.
 
 1. Install Vitis under WSL Ubuntu from [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html) and setup a AI Engine license:
     
-    - Setup your environment in the following order for aietools and Vitis:
-      ```
-      export PATH=$PATH:<Vitis_install_path>/Vitis/2023.2/aietools/bin:<Vitis_install_path>/Vitis/2023.2/bin
-      ```
+    - Install Vitis in WSL Ubuntu. We will assume you use the default installation directory, `/tools/Xilinx`.
     - Get local license for AIE Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense) providing your machine's MAC address (`ip -brief link show eth0`) 
     - copy license file (Xilinx.lic) to your preferred location (licenseFilePath) and update your setup configuration accordingly, for instance
       ```
@@ -63,6 +60,19 @@ All steps in WSL Ubuntu terminal.
       ip link add vmnic0 type dummy
       ip link set vmnic0 addr <yourMACaddress>
       ```
+    - Setup your environment using the following script for Vitis for aietools:
+       ```bash
+       #!/bin/bash
+        #################################################################################
+        # Setup Vitis (which is just for aietools)
+        #################################################################################
+        export MYXILINX_VER=2023.2
+        export MYXILINX_BASE=/tools/Xilinx
+        export XILINX_LOC=$MYXILINX_BASE/Vitis/$MYXILINX_VER
+        export AIETOOLS_ROOT=$XILINX_LOC/aietools
+        export PATH=$PATH:${AIETOOLS_ROOT}/bin
+        export LM_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
+       ```
 
 1. Install or Build mlir-aie tools under WSL2:
 

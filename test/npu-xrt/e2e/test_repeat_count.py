@@ -8,20 +8,18 @@
 import random
 import sys
 
-from aie.dialects import aie, aiex, scf
+from aie.dialects import aie, aiex
 from aie.dialects.aie import (
     AIEDevice,
     DMAChannelDir,
     LockAction,
     WireBundle,
 )
-
-range_ = scf.for_
-yield_ = scf.yield_
+from aie.extras.dialects.ext.scf import _for as range_
 
 # this is to get the MemRefValue caster inside of aie-python-extras
 # noinspection PyUnresolvedReferences
-from aie.extras.dialects.ext import arith, func, linalg, memref
+from aie.extras.dialects.ext import linalg, memref
 import aie.extras.types as T
 from aie.xrt import XCLBin
 from filelock import FileLock
@@ -32,7 +30,7 @@ from pathlib import Path
 import pytest
 
 # noinspection PyUnresolvedReferences
-from aie.extras.testing import mlir_ctx as ctx, filecheck, MLIRContext
+from aie.extras.testing import MLIRContext
 
 # needed since the fix isn't defined here nor conftest.py
 pytest.mark.usefixtures("ctx")
@@ -191,7 +189,6 @@ def test_no_loop(ctx: MLIRContext, workdir: Path):
                 with aiex.hold_lock(lock_read_weight, lock_send_weight):
                     linalg.fill(col, y)
                     linalg.add(y, buffer_weight, buffer_weight)
-                yield_([])
 
         @aie.mem(tile_c_2)
         def mem_c_2():

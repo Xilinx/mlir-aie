@@ -9,7 +9,7 @@ from aie.extras.dialects.ext import arith
 from aie.extras.dialects.ext.func import func
 from aie.extras.runtime.passes import Pipeline as p, run_pipeline
 
-from aie.dialects import affine, aievec, scf, tosa, vector
+from aie.dialects import affine, aievec, tosa, vector
 
 # noinspection PyUnresolvedReferences
 import aie.dialects.aie
@@ -19,9 +19,7 @@ from aie.dialects.aie import translate_aie_vec_to_cpp
 from aie.extras import types as T
 from aie.ir import AffineMap, AffineDimExpr
 from util import construct_and_print_module
-
-range_ = scf.for_
-yield_ = lambda: scf.yield_([])
+from aie.extras.dialects.ext.scf import _for as range_
 
 
 # CHECK-LABEL: TEST: test_emit
@@ -51,7 +49,7 @@ def test_aievec():
         B: T.memref(2048, T.i16()),
         C: T.memref(2048, T.i16()),
     ):
-        for i in scf.for_(0, 2048, 32):
+        for i in range_(0, 2048, 32):
             v0 = aievec.upd(T.vector(32, T.i16()), A, [i])
             v1 = aievec.upd(T.vector(32, T.i16()), B, [i])
             v2 = aievec.mul_elem(
@@ -68,8 +66,6 @@ def test_aievec():
                 AffineMap.get_identity(1),
                 in_bounds=[True],
             )
-
-            scf.yield_([])
 
     # CHECK-LABEL:   func.func @mul_elem(
     # CHECK-SAME:                       %[[VAL_0:.*]]: memref<2048xi16>, %[[VAL_1:.*]]: memref<2048xi16>, %[[VAL_2:.*]]: memref<2048xi16>) {
@@ -350,8 +346,6 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized(module):
                     permutation_map=perm_map,
                     in_bounds=[True],
                 )
-                yield_()
-            yield_()
 
     # CHECK-LABEL:   func.func @matmul_i32_i32(
     # CHECK-SAME:                              %[[VAL_0:.*]]: memref<16x32xi32>, %[[VAL_1:.*]]: memref<32x16xi32>, %[[VAL_2:.*]]: memref<16x16xi32>) {

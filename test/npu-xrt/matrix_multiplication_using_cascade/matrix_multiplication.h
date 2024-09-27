@@ -78,25 +78,6 @@ void parse_options(int argc, const char *argv[], po::options_description &desc,
 }
 
 // --------------------------------------------------------------------------
-// AIE Specifics
-// --------------------------------------------------------------------------
-
-std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
-  std::ifstream instr_file(instr_path);
-  std::string line;
-  std::vector<uint32_t> instr_v;
-  while (std::getline(instr_file, line)) {
-    std::istringstream iss(line);
-    uint32_t a;
-    if (!(iss >> std::hex >> a)) {
-      throw std::runtime_error("Unable to parse instruction file\n");
-    }
-    instr_v.push_back(a);
-  }
-  return instr_v;
-}
-
-// --------------------------------------------------------------------------
 // Matrix / Float / Math
 // --------------------------------------------------------------------------
 

@@ -21,50 +21,12 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include "test_utils.h"
+
 constexpr int IN_SIZE = 64;
 constexpr int OUT_SIZE = 64;
 
 namespace po = boost::program_options;
-
-void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
-  if (!vm_in.count(name)) {
-    throw std::runtime_error("Error: no " + name + " file was provided\n");
-  } else {
-    std::ifstream test(vm_in[name].as<std::string>());
-    if (!test) {
-      throw std::runtime_error("The " + name + " file " +
-                               vm_in[name].as<std::string>() +
-                               " does not exist.\n");
-    }
-  }
-}
-
-std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
-  std::ifstream instr_file(instr_path);
-  std::string line;
-  std::vector<uint32_t> instr_v;
-  while (std::getline(instr_file, line)) {
-    std::istringstream iss(line);
-    uint32_t a;
-    if (!(iss >> std::hex >> a)) {
-      throw std::runtime_error("Unable to parse instruction file\n");
-    }
-    instr_v.push_back(a);
-  }
-  return instr_v;
-}
-
-std::vector<uint32_t> load_instr_binary(std::string instr_path) {
-  std::ifstream instr_file(instr_path);
-  // read size of file, reserve space in  instr_v, then read the file into
-  // instr_v
-  instr_file.seekg(0, instr_file.end);
-  int size = instr_file.tellg();
-  instr_file.seekg(0, instr_file.beg);
-  std::vector<uint32_t> instr_v(size / 4);
-  instr_file.read(reinterpret_cast<char *>(instr_v.data()), size);
-  return instr_v;
-}
 
 int main(int argc, const char *argv[]) {
 
@@ -97,13 +59,13 @@ int main(int argc, const char *argv[]) {
   }
 
   std::vector<uint32_t> instr_0_v =
-      load_instr_sequence(vm["instr0"].as<std::string>());
+      test_utils::load_instr_sequence(vm["instr0"].as<std::string>());
 
   std::vector<uint32_t> instr_1_v =
-      load_instr_sequence(vm["instr1"].as<std::string>());
+      test_utils::load_instr_sequence(vm["instr1"].as<std::string>());
 
   std::vector<uint32_t> cfg_1_v =
-      load_instr_binary(vm["cfg"].as<std::string>());
+      test_utils::load_instr_binary(vm["cfg"].as<std::string>());
 
   int verbosity = vm["verbosity"].as<int>();
   if (verbosity >= 1) {

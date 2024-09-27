@@ -13,7 +13,7 @@ import sys
 bfloat16 = tf.bfloat16.as_numpy_dtype
 
 from aie.extras.dialects.ext.scf import _for as range_
-from aie.dialects.aiex import npu_dma_memcpy_nd, npu_sync
+from aie.dialects.aiex import npu_dma_memcpy_nd, dma_wait
 
 from aie.api.dataflow.inout.inout import MyInOutSequence
 from aie.api.dataflow.objectfifo import MyObjectFifo
@@ -22,7 +22,6 @@ from aie.api.kernels.binkernel import BinKernel
 from aie.api.phys.device import NPU1Col1
 from aie.api.program import MyProgram
 from aie.api.worker import MyWorker
-
 
 def main():
     argparser = argparse.ArgumentParser(
@@ -168,7 +167,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
                     # At the very last iteration, we may not need a 'pong' iteration
                     break
                 npu_dma_memcpy_nd(
-                    metadata=outC.name,
+                    metadata=outC,
                     bd_id=bd_id_base,
                     mem=C,
                     offsets=[0, 0, 0, C_row_offset],
@@ -179,23 +178,24 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
                 for tile_row in range(num_tile_rows):
                     A_row_offset = (row_base + tile_row) * m * K
                     npu_dma_memcpy_nd(
-                        metadata=inA.name,
+                        metadata=inA,
                         bd_id=bd_id_base + 2 * tile_row + 1,
                         mem=A,
                         offsets=[0, 0, 0, A_row_offset],
                         sizes=[N // n, K // k, m, k],
                         strides=[0, k, K, 1],
+
                     )
                     npu_dma_memcpy_nd(
-                        metadata=inB.name,
+                        metadata=inB,
                         bd_id=bd_id_base + 2 * tile_row + 2,
                         mem=B,
                         sizes=[N // n, K // k, k, n],
                         strides=[n, k * N, N, 1],
                     )
                 if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
-                    npu_sync(column=0, row=0, direction=0, channel=0)
-        npu_sync(column=0, row=0, direction=0, channel=0)
+                    dma_wait(outC)
+        dma_wait(outC)
 
     inout_sequence = MyInOutSequence(
         sequence_fn,
@@ -215,9 +215,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, vectorized):
         links=[inALink, inBLink, outCLink],
         inout_sequence=inout_sequence,
     )
-
     my_program.resolve_program()
-
 
 if __name__ == "__main__":
     main()

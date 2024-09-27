@@ -63,22 +63,19 @@ You will...
 
     1. Copy your license file (Xilinx.lic) to your preferred location, e.g. `/opt/Xilinx.lic`:
        
-    1. Setup your environment using the following script for Vitis and aietools:
+    1. Setup your environment using the following script for Vitis for aietools:
 
        ```bash
        #!/bin/bash
         #################################################################################
-        # Setup Vitis (which includes Vitis and aietools)
+        # Setup Vitis (which is just for aietools)
         #################################################################################
         export MYXILINX_VER=2023.2
         export MYXILINX_BASE=/tools/Xilinx
         export XILINX_LOC=$MYXILINX_BASE/Vitis/$MYXILINX_VER
         export AIETOOLS_ROOT=$XILINX_LOC/aietools
-        export PATH=$PATH:${AIETOOLS_ROOT}/bin:$XILINX_LOC/bin
+        export PATH=$PATH:${AIETOOLS_ROOT}/bin
         export LM_LICENSE_FILE=/opt/Xilinx.lic
-        export VITIS=${XILINX_LOC}
-        export XILINX_VITIS=${XILINX_LOC}
-        export VITIS_ROOT=${XILINX_LOC}
        ```
    1. Vitis requires some python3.8 libraries:
   

@@ -10,7 +10,6 @@ import numpy as np
 
 # TODO: move maybe to aie.api.controlflow
 from aie.extras.dialects.ext.scf import _for as range_
-
 from aie.api.dataflow.inout.simplefifoinout import SimpleFifoInOutSequence
 from aie.api.dataflow.objectfifo import MyObjectFifo
 from aie.api.kernels.binkernel import BinKernel

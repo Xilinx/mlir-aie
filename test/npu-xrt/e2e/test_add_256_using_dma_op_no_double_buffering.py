@@ -20,7 +20,7 @@ from aie.dialects.aie import (
     WireBundle,
     npu_instgen,
 )
-from aie.dialects.scf import for_ as range_, yield_
+from aie.extras.dialects.ext.scf import _for as range_
 from aie.extras.dialects.ext import arith, func, memref
 from aie.extras.runtime.passes import run_pipeline
 
@@ -90,12 +90,8 @@ def test_add_256_using_dma_op_no_double_buffering(ctx: MLIRContext, workdir: Pat
                     v0 = memref.load(buffer_0_2, [arg1])
                     v1 = arith.addi(v0, random_number)
                     memref.store(v1, buffer_0_2_1, [arg1])
-                    yield_([])
-
                 aie.use_lock(lock_0_2_0, Release)
                 aie.use_lock(lock_0_2_3, Release)
-
-                yield_([])
 
         # this is gibberish - everything from here to the end of "bobsyouruncle"
         this_is_meaningless_1 = memref.global_(

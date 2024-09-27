@@ -111,6 +111,7 @@ foreach(target ${AIE_RUNTIME_TARGETS})
           -DLibXAIE_INC_DIR=${XILINX_XAIE_INCLUDE_DIR}
           -DVITIS_ROOT=${VITIS_ROOT}
           -DVITIS_AIETOOLS_DIR=${VITIS_AIETOOLS_DIR}
+          -DXRT_ROOT=${XRT_ROOT}
           -DSysroot=${Sysroot}
           -Dhsa-runtime64_DIR=${hsa-runtime64_DIR}
           -Dhsakmt_DIR=${hsakmt_DIR}

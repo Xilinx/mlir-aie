@@ -17,6 +17,12 @@ def _for(
     loc=None,
     ip=None,
 ):
+    """
+    This is nearly identical to the convenience wrapper in scf, but with the added insert_yield parameter.
+    The insert_yield parameter defaults to True; if left as True, the user no longer needs to manually insert
+    yield operations (```yield_([])```). If the user wishes to specify yield directly (such as if there is
+    a return value from the loop body), insert_yield should be set to False.
+    """
     if step is None:
         step = 1
     if stop is None:

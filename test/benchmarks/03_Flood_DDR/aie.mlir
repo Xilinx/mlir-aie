@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: %PYTHON aiecc.py %VitisSysrootFlag% --basic-alloc-scheme --host-target=%aieHostTargetTriplet% %link_against_hsa% %s -I%host_runtime_lib%/test_lib/include -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
+// RUN: %PYTHON aiecc.py %VitisSysrootFlag% --basic-alloc-scheme --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
 module @benchmark03_Flood_DDR {

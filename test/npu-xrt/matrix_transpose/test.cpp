@@ -13,6 +13,8 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include "test_utils.h"
+
 #ifndef XCLBIN
 #define XCLBIN "final.xclbin"
 #endif
@@ -30,21 +32,6 @@
 
 #define SIZE (MATRIX_ROWS * MATRIX_COLS * sizeof(int32_t)) // in bytes
 
-std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
-  std::ifstream instr_file(instr_path);
-  std::string line;
-  std::vector<uint32_t> instr_v;
-  while (std::getline(instr_file, line)) {
-    std::istringstream iss(line);
-    uint32_t a;
-    if (!(iss >> std::hex >> a)) {
-      throw std::runtime_error("Unable to parse instruction file\n");
-    }
-    instr_v.push_back(a);
-  }
-  return instr_v;
-}
-
 void print_matrix(int32_t *buf, int n_rows, int n_cols) {
   for (int row = 0; row < n_rows; row++) {
     for (int col = 0; col < n_cols; col++) {
@@ -56,7 +43,7 @@ void print_matrix(int32_t *buf, int n_rows, int n_cols) {
 
 int main(int argc, const char *argv[]) {
 
-  std::vector<uint32_t> instr_v = load_instr_sequence(INSTS_TXT);
+  std::vector<uint32_t> instr_v = test_utils::load_instr_sequence(INSTS_TXT);
   assert(instr_v.size() > 0);
 
   // Get a device handle

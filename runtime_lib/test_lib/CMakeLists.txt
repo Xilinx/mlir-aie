@@ -8,6 +8,7 @@ cmake_minimum_required(VERSION 3.21)
 
 project("test lib for ${AIE_RUNTIME_TARGET}")
 
+# test_lib library
 add_library(test_lib STATIC test_library.cpp)
 set(TEST_LIB_PUBLIC_HEADERS
     test_library.h
@@ -40,8 +41,23 @@ if (${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
 
 endif()
 
-# copy header and source files into build area
-set(headers target.h test_library.h memory_allocator.h hsa_ext_air.h)
+find_package(XRT)
+set(BUILD_TEST_UTILS ${XRT_FOUND} AND NOT ${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
+
+# test_utils library
+if (${BUILD_TEST_UTILS})
+  add_library(test_utils STATIC test_utils.cpp)
+  set_target_properties(test_utils PROPERTIES PUBLIC_HEADER test_utils.h)
+  target_compile_options(test_utils PRIVATE -fPIC)
+
+  target_include_directories(test_utils PRIVATE
+      ${LibXAIE_INC_DIR}
+      ${XRT_INCLUDE_DIR}
+  )
+endif()
+
+# copy test_library and test_utils header files into build area
+set(headers target.h test_library.h test_utils.h memory_allocator.h hsa_ext_air.h)
 foreach(basefile ${headers})
     set(dest ${CMAKE_CURRENT_BINARY_DIR}/../include/${basefile})
     add_custom_target(aie-copy-runtime-libs-${basefile} ALL DEPENDS ${dest})
@@ -51,7 +67,8 @@ foreach(basefile ${headers})
     )
 endforeach()
 
-set(files test_library.cpp)
+# copy test_library and test_utils source files into build area
+set(files test_library.cpp test_utils.cpp)
 foreach(basefile ${files})
     set(dest ${CMAKE_CURRENT_BINARY_DIR}/../src/${basefile})
     add_custom_target(aie-copy-runtime-libs-${basefile} ALL DEPENDS ${dest})
@@ -65,10 +82,21 @@ install(TARGETS test_lib
     ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/include
 )
+if (${BUILD_TEST_UTILS})
+  install(TARGETS test_utils
+      ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
+      PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/include
+  )
+endif()
 install(FILES test_library.cpp DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/src)
 
 set(xaienginePath ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
-# Memory Allocator
+
+#
+# Memory Allocator libraries
+#
+
+# ion memory allocator library
 add_library(memory_allocator_ion STATIC memory_allocator_ion.cpp)
 set(ION_PUBLIC_HEADERS
     memory_allocator.h
@@ -93,7 +121,7 @@ install(TARGETS memory_allocator_ion
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/include
 )
 
-# If we are compiling x86_64 HSA runtime, need to link against HSA
+# HSA memory allocator library
 if (${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
   add_library(memory_allocator_hsa STATIC memory_allocator_hsa.cpp)
   set_target_properties(memory_allocator_hsa PROPERTIES PUBLIC_HEADER "memory_allocator.h")
@@ -113,6 +141,7 @@ if (${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
   )
 endif()
 
+# simulation memory allocator library
 if (VITIS_ROOT)
     add_library(memory_allocator_sim_aie STATIC memory_allocator.cpp)
     target_compile_options(memory_allocator_sim_aie PRIVATE -fPIC)
