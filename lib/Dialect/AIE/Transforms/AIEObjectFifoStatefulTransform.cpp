@@ -1544,7 +1544,8 @@ struct AIEObjectFifoStatefulTransformPass
     device.walk([&](Operation *op) {
       if (isa<ObjectFifoCreateOp, ObjectFifoLinkOp,
               ObjectFifoRegisterExternalBuffersOp, ObjectFifoAcquireOp,
-              ObjectFifoSubviewAccessOp, ObjectFifoReleaseOp>(op))
+              ObjectFifoSubviewAccessOp, ObjectFifoReleaseOp,
+              ObjectFifoAllocateOp>(op))
         opsToErase.insert(op);
     });
     topologicalSort(opsToErase);
