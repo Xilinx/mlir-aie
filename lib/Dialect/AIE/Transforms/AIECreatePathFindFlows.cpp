@@ -140,7 +140,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
           else if (dest.bundle == WireBundle::NOC)
             // must be either N2/3/4/5 -> NOC0/1/2/3
             shimCh = dest.channel + 2;
-          else if (srcBundle == WireBundle::PLIO)
+          else if (dest.bundle == WireBundle::PLIO)
             shimCh = dest.channel;
 
           ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, col);
