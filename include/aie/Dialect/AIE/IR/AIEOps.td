@@ -1731,6 +1731,31 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
   ];
 }
 
+def AIE_ObjectFifoAllocateOp: AIE_Op<"objectfifo.allocate", [HasParent<"DeviceOp">]> {
+  let summary = "Sets a tile's memory module as the target for an objectfifo's memory allocation";
+  let description = [{
+    TODO
+  }];
+
+  let arguments = (
+    ins FlatSymbolRefAttr:$objFifo_name,
+        Index:$delegateTile
+  );
+
+  let hasCustomAssemblyFormat = 1;
+
+  let assemblyFormat = [{
+    $objFifo_name `(` $delegateTile `)` attr-dict
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    ObjectFifoCreateOp getObjectFifo();
+    TileOp getDelegateTileOp();
+  }];
+}
+
 def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
   let summary = "Links two objectFifos through an intermediary tile's DMA";
   let description = [{
