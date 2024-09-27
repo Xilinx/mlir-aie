@@ -414,16 +414,18 @@ struct AIEObjectFifoStatefulTransformPass
       if (alloc.getObjectFifo() == op)
         opAlloc = alloc;
     }
-    TileOp delegate = opAlloc.getDelegateTileOp();
-    int shareDir;
-    bool hasSharedMemory = 
-                    isSharedMemory(op.getProducerTileOp(),
-                                   delegate, &shareDir);
-    if (hasSharedMemory)
-      buffer_creation_tile = delegate;
-    else
-      opAlloc.emitOpError("objectfifo has no shared memory access to "
-                          "delegate tile's memory module");
+    if (opAlloc) {
+      TileOp delegate = opAlloc.getDelegateTileOp();
+      int shareDir;
+      bool hasSharedMemory = 
+                      isSharedMemory(op.getProducerTileOp(),
+                                    delegate, &shareDir);
+      if (hasSharedMemory)
+        buffer_creation_tile = delegate;
+      else
+        opAlloc.emitOpError("objectfifo has no shared memory access to "
+                            "delegate tile's memory module");
+    }
 
     // Reset opbuilder location to after the last tile declaration
     Operation *t = nullptr;
