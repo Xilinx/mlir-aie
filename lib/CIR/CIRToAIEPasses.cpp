@@ -96,36 +96,33 @@ struct DeviceLowering : public mlir::OpConversionPattern<mlir::cir::AllocaOp> {
   // \todo Find a less ugly way to access the analysis. How is it possible for a
   // pattern to access some contextual information?
   // It should be OK since it is a module pass, so no parallelism here.
-  static inline CIRToAIETypesAnalysis* cat;
+  static inline CIRToAIETypesAnalysis *cat;
 
   mlir::LogicalResult
   matchAndRewrite(mlir::cir::AllocaOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const final {
     // The struct has a name like "aie::device<aie::npu1>" and the "npu1"
     // is used directly for the MLIR aie.device attribute
-    static const llvm::Regex deviceNamePattern{"^aie::device<aie::([^>]+)>$"};
-    if (auto maybeStructType =
-            mlir::dyn_cast<mlir::cir::StructType>(op.getAllocaType()))
-      if (llvm::SmallVector<llvm::StringRef> matches;
-          deviceNamePattern.match(maybeStructType.getName(), &matches)) {
-        auto deviceName = matches[1];
-        auto deviceId =
-            xilinx::AIE::symbolizeEnum<xilinx::AIE::AIEDevice>(deviceName);
-        if (!deviceId)
-          // Actually this test cannot happens since the API of
-          // xilinx::AIE::symbolizeEnum is strange: even if it returns a
-          // std::optional it errors without returning
-          op.emitError() << "aie::device incorrect for '" << deviceName << "'";
-        auto deviceOp =
-            rewriter.create<xilinx::AIE::DeviceOp>(op.getLoc(), *deviceId);
-        // The aie.device requires one block
-        deviceOp.getRegion().emplaceBlock();
-        // Replace the alloca of the aie::device by a temporary cast from
-        // the aie.device to
-        rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
-            op, op.getResult().getType(), deviceOp.getResult());
-        return mlir::success();
-      }
+    if (auto aieLike = cat->moduleTypes[op.getType()];
+        aieLike && aieLike->base == "aie::device") {
+      auto deviceName = aieLike->subMatches[0];
+      auto deviceId =
+          xilinx::AIE::symbolizeEnum<xilinx::AIE::AIEDevice>(deviceName);
+      if (!deviceId)
+        // Actually this test cannot happens since the API of
+        // xilinx::AIE::symbolizeEnum is strange: even if it returns a
+        // std::optional it errors without returning
+        op.emitError() << "aie::device incorrect for '" << deviceName << "'";
+      auto deviceOp =
+          rewriter.create<xilinx::AIE::DeviceOp>(op.getLoc(), *deviceId);
+      // The aie.device requires one block
+      deviceOp.getRegion().emplaceBlock();
+      // Replace the alloca of the aie::device by a temporary cast from
+      // the aie.device to
+      rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+          op, op.getResult().getType(), deviceOp.getResult());
+      return mlir::success();
+    }
     return mlir::failure();
   }
 };
@@ -143,21 +140,10 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
     target.addLegalOp<mlir::UnrealizedConversionCastOp>();
     target.addDynamicallyLegalOp<mlir::cir::AllocaOp>(
         [&](mlir::cir::AllocaOp op) {
-          // The struct has a name like "aie::device<aie::npu1>" and the
-          // "npu1" is used directly for the MLIR aie.device attribute
-          if (auto type = op.getType()) {
-            llvm::errs()
-                << "target.addDynamicallyLegalOp<mlir::cir::AllocaOp>\n";
-            type.dump();
-            if (cat.moduleTypes[type] &&
-                cat.moduleTypes[type]->base == "aie::device") {
-              llvm::errs() << "False\n";
-              return false;
-            }
-          }
-          llvm::errs() << "True\n";
-
-          return true;
+          // If the struct has a name like "aie::device<aie::npu1>", mark the
+          // operation illegal so it has to be rewritten
+          auto aieLike = cat.moduleTypes[op.getType()];
+          return !(aieLike && aieLike->base == "aie::device");
         });
 
     mlir::RewritePatternSet patterns{&getContext()};
