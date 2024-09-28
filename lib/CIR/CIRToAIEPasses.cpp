@@ -29,7 +29,7 @@ using namespace std::string_literals;
 
 namespace xilinx::AIE::CIR {
 
-struct CIRToAIETypes {
+struct CIRToAIETypesAnalysis {
   // llvm::DenseMap<mlir::Type, std::optional<mlir::Type>> types;
   struct AIELikeTypesDeconstruction {
     // For example "aie::device<aie::npu1>"
@@ -48,7 +48,6 @@ struct CIRToAIETypes {
   llvm::DenseMap<mlir::Type, std::optional<AIELikeTypesDeconstruction>>
       moduleTypes;
 
-public:
   void analyze() {
     // The struct has a name like "aie::device<aie::npu1>" and the
     // "npu1" is used directly for the MLIR aie.device attribute
@@ -66,7 +65,8 @@ public:
     }
   }
 
-  void analyseTypes(mlir::ModuleOp module) {
+public:
+  CIRToAIETypesAnalysis(mlir::ModuleOp module) {
     module->walk([this](mlir::Operation *op) {
       for (auto result : op->getResults()) {
         auto type = result.getType();
@@ -92,6 +92,11 @@ namespace {
 // aie.device(npu1){} operation
 struct DeviceLowering : public mlir::OpConversionPattern<mlir::cir::AllocaOp> {
   using mlir::OpConversionPattern<mlir::cir::AllocaOp>::OpConversionPattern;
+
+  // \todo Find a less ugly way to access the analysis. How is it possible for a
+  // pattern to access some contextual information?
+  // It should be OK since it is a module pass, so no parallelism here.
+  static inline CIRToAIETypesAnalysis* cat;
 
   mlir::LogicalResult
   matchAndRewrite(mlir::cir::AllocaOp op, OpAdaptor adaptor,
@@ -127,11 +132,11 @@ struct DeviceLowering : public mlir::OpConversionPattern<mlir::cir::AllocaOp> {
 
 struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
   void runOnOperation() override {
-    CIRToAIETypes cat;
-    cat.analyseTypes(getOperation());
-    // cat.dump();
-    cat.analyze();
-    cat.dump();
+    // Compute the analysis for the module since it is a module pass.
+    // \todo Should this be a real pass?
+    auto &cat = getAnalysis<CIRToAIETypesAnalysis>();
+    // \todo Clean up this mess
+    DeviceLowering::cat = &cat;
     // See mlir/examples/toy/Ch5/mlir/LowerToAffineLoops.cpp
     mlir::ConversionTarget target{getContext()};
     target.addLegalDialect<xilinx::AIE::AIEDialect>();
