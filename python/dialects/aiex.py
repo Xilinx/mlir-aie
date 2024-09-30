@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from functools import partial
 import itertools
 from operator import itemgetter
+from typing import get_origin
 
 import numpy as np
 
@@ -27,7 +28,7 @@ from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint
 
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
-
+from ..extras.util import np_ndarray_type_to_memref_type
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
@@ -783,7 +784,13 @@ def broadcast_flow(
 def runtime_sequence(*inputs: Type):
     def decorator(f):
         seq_op = RuntimeSequenceOp()
-        entry_block = seq_op.body.blocks.append(*inputs)
+        my_inputs = []
+        for input in inputs:
+            if get_origin(input) == np.ndarray:
+                my_inputs.append(np_ndarray_type_to_memref_type(input))
+            else:
+                my_inputs.append(input)
+        entry_block = seq_op.body.blocks.append(*my_inputs)
         args = entry_block.arguments
         with InsertionPoint(entry_block):
             f(*args)

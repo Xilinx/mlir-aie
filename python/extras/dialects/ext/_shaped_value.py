@@ -5,8 +5,6 @@ import numpy as np
 
 from ....ir import DenseElementsAttr, ShapedType, Type
 
-S = ShapedType.get_dynamic_size()
-
 
 # mixin that requires `is_constant`
 class ShapedValue:

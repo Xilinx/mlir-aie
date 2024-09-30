@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
@@ -21,12 +21,13 @@ def passthroughKernel(vector_size):
 
     @device(AIEDevice.npu1_1col)
     def device_body():
-        # define types
+        # define types - for illustrative purposes, we use equivalent types of both MLIR MemRefType and np.ndarray type in this design
         memRef_ty = T.memref(lineWidthInBytes, T.ui8())
+        line_ty = np.ndarray[np.uint8, (lineWidthInBytes,)]
 
         # AIE Core Python Function declarations
         @func(emit=True)
-        def passThroughLine(input: memRef_ty, output: memRef_ty, lineWidth: np.int32):
+        def passThroughLine(input: memRef_ty, output: line_ty, lineWidth: np.int32):
             for i in range_(lineWidth):
                 output[i] = input[i]
 
@@ -35,7 +36,7 @@ def passthroughKernel(vector_size):
         ComputeTile2 = tile(0, 2)
 
         # AIE-array data movement with object fifos
-        of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)
+        of_in = object_fifo("in", ShimTile, ComputeTile2, 2, line_ty)
         of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_ty)
 
         # Set up compute tiles
@@ -53,8 +54,9 @@ def passthroughKernel(vector_size):
         #    print(ctx.module.operation.verify())
 
         tensor_ty = T.memref(N, T.ui8())
+        vector_ty = np.ndarray[np.uint8, (N,)]
 
-        @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
+        @runtime_sequence(tensor_ty, vector_ty, tensor_ty)
         def sequence(inTensor, outTensor, notUsed):
             npu_dma_memcpy_nd(
                 metadata=of_in,

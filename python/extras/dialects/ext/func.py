@@ -5,11 +5,12 @@ from typing import get_args, get_origin
 
 from ...meta import op_region_builder
 from ...util import (
+    get_arg_types,
     get_user_code_loc,
     make_maybe_no_args_decorator,
-    get_arg_types,
-    NpuDType,
     np_dtype_to_mlir_type,
+    np_ndarray_type_to_memref_type,
+    NpuDType,
 )
 from ....dialects._ods_common import get_op_result_or_op_results
 from ....dialects.func import *
@@ -23,7 +24,6 @@ from ....ir import (
     TypeAttr,
     Value,
 )
-from .tensor import Tensor
 from .arith import Scalar
 
 
@@ -218,11 +218,9 @@ class FuncBase:
                 elif isalambda(v):
                     input_types[i] = v()
                 elif get_origin(v) == np.ndarray:
-                    input_types[i] = Tensor(v)
+                    input_types[i] = np_ndarray_type_to_memref_type(v)
                 elif v in get_args(NpuDType):
                     input_types[i] = np_dtype_to_mlir_type(v)
-                elif isinstance(v, Type):
-                    input_types[i] = v
             if len(call_args) != 0:
                 assert len(call_args) == len(input_types)
 

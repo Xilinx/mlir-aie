@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from dataclasses import dataclass
 import inspect
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, get_origin
 import contextlib
 
 import numpy as np
@@ -42,6 +42,7 @@ from ..extras.util import (
     find_ops,
     find_parent_of_type,
     get_user_code_loc,
+    np_ndarray_type_to_memref_type,
     region_adder,
 )
 
@@ -55,6 +56,7 @@ from ..ir import (
     InsertionPoint,
     IntegerAttr,
     IntegerType,
+    MemRefType,
     TypeAttr,
     UnitAttr,
     _i32ArrayAttr,
@@ -266,12 +268,14 @@ class object_fifo(ObjectFifoCreateOp):
         producerTile,
         consumerTiles,
         depth,
-        datatype,
+        datatype: MemRefType | np.ndarray,
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
         via_DMA=None,
         plio=None,
     ):
+        if get_origin(datatype) == np.ndarray:
+            datatype = np_ndarray_type_to_memref_type(datatype)
         self.datatype = datatype
         if not isinstance(consumerTiles, List):
             consumerTiles = [consumerTiles]
@@ -279,7 +283,6 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer = []
         if dimensionsToStream is None:
             dimensionsToStream = []
-        int_ty = IntegerType.get_signless(32)
         of_Ty = TypeAttr.get(ObjectFifoType.get(datatype))
         super().__init__(
             sym_name=name,
