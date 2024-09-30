@@ -13,7 +13,6 @@ from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
 from aie.extras.dialects.ext.scf import (
     _for as range_,
 )  # scf (structured control flow) dialect
-from aie.extras.dialects.ext import memref, arith  # memref and arithmatic dialects
 
 buffer_depth = 2
 data_size = 48
@@ -60,9 +59,7 @@ def mlir_aie_design():
                     elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
                     for i in range_(data_size):
-                        v0 = memref.load(elem_in, [i])
-                        v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elem_out, [i])
+                        elem_out[i] = elem_in[i] + 1
                     of_in1.release(ObjectFifoPort.Consume, 1)
                     of_out1.release(ObjectFifoPort.Produce, 1)
 

@@ -56,14 +56,10 @@ def design():
             def core_body():
                 for _ in range_(0xFFFFFFFF):
                     elem_output = fifo_output.acquire(ObjectFifoPort.Produce, 1)
-                    zero = constant(T.i32(), 0)
-                    memref.store(zero, elem_output, [0])
+                    elem_output[0] = 0
                     for _ in range_(16):
                         elem_input = fifo_input.acquire(ObjectFifoPort.Consume, 1)
-                        a = memref.load(elem_output, [0])
-                        b = memref.load(elem_input, [0])
-                        c = a + b
-                        memref.store(c, elem_output, [0])
+                        elem_output[0] = elem_output[0] + elem_input[0]
                         fifo_input.release(ObjectFifoPort.Consume, 1)
                     fifo_output.release(ObjectFifoPort.Produce, 1)
 
@@ -125,19 +121,19 @@ def design():
                         repeat_count=0,
                     )
                     # Wait for the task completion token of the previously set off chain of BDs
-                    npu_dma_wait(fifo_input.sym_name.value)
+                    dma_wait(fifo_input)
 
                     # After transferring 16 input tiles, one output tile will be produced;
                     # issue a BD to transfer it back
                     npu_dma_memcpy_nd(
-                        metadata=fifo_output.sym_name.value,
+                        metadata=fifo_output,
                         bd_id=0,
                         mem=output,
                         offsets=[0, 0, 0, i],
                         sizes=[1, 1, 1, 1],
                         strides=[0, 0, 0, 1],
                     )
-                    npu_dma_wait(fifo_output.sym_name.value)
+                    dma_wait(fifo_output)
 
     print(ctx.module)
 

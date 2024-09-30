@@ -19,7 +19,7 @@ from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.dialects.ext.scf import _for as range_
-
+from aie.ir import MemRefType
 
 dtype = T.i16
 a_len = 8
@@ -67,16 +67,13 @@ def design():
                     elem_c = fifo_c.acquire(ObjectFifoPort.Produce, 1)
                     elem_a = fifo_a.acquire(ObjectFifoPort.Consume, 1)
                     elem_b = fifo_b.acquire(ObjectFifoPort.Consume, 1)
-                    call(
-                        concat_func,
-                        [
-                            elem_a,
-                            elem_b,
-                            elem_c,
-                            memref_sz(memref_a),
-                            memref_sz(memref_b),
-                            memref_sz(memref_c),
-                        ],
+                    concat_func(
+                        elem_a,
+                        elem_b,
+                        elem_c,
+                        memref_sz(memref_a),
+                        memref_sz(memref_b),
+                        memref_sz(memref_c),
                     )
                     fifo_a.release(ObjectFifoPort.Consume, 1)
                     fifo_b.release(ObjectFifoPort.Consume, 1)
@@ -86,7 +83,7 @@ def design():
             @runtime_sequence(memref_a, memref_b, memref_c)
             def sequence(A, B, C):
                 npu_dma_memcpy_nd(
-                    metadata=fifo_a.sym_name.value,
+                    metadata=fifo_a,
                     bd_id=1,
                     mem=A,
                     offsets=[0, 0, 0, 0],
@@ -94,7 +91,7 @@ def design():
                     strides=[0, 2, a_len // 2, 1],
                 )
                 npu_dma_memcpy_nd(
-                    metadata=fifo_b.sym_name.value,
+                    metadata=fifo_b,
                     bd_id=1,
                     mem=B,
                     offsets=[0, 0, 0, 0],
@@ -102,14 +99,14 @@ def design():
                     strides=[0, 2, 4, 1],
                 )
                 npu_dma_memcpy_nd(
-                    metadata=fifo_c.sym_name.value,
+                    metadata=fifo_c,
                     bd_id=0,
                     mem=C,
                     offsets=[0, 0, 0, c_offset],
                     sizes=[1, 1, 1, c_len],
                     strides=[0, 0, 0, 1],
                 )
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                dma_wait(fifo_c)
 
     print(ctx.module)
 

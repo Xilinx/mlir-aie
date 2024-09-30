@@ -67,7 +67,9 @@ This enables looking at the data movement in the AIE-array from a logical view w
         of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_ty)
 
 ```
-We also need to set up the data movement to/from the AIE-array: configure n-dimensional DMA transfers in the shimDMAs to read/write to/from L3 external memory. For NPU, this is done with the `npu_dma_memcpy_nd` function (more details in [section 2-g](../section-2/section-2g)). Note that the n-dimensional transfer has a size of 4096 int32 elements and that the `metadata` argument  in the `npu_dma_memcpy_nd` needs to match the `name` argument of the corresponding object FIFO, in this case `in`, `inFactor` and `out`.
+We also need to set up the data movement to/from the AIE-array: configure n-dimensional DMA transfers in the shimDMAs to read/write to/from L3 external memory. For NPU, this is done with the `npu_dma_memcpy_nd` function (more details in [section 2-g](../section-2/section-2g)). Note that the n-dimensional transfer has a size of 4096 int32 elements and that the `metadata` argument  in the `npu_dma_memcpy_nd` needs by the corresponding objectFIFO python object or to match the `name` argument of the corresponding objectFIFO.
+Note that for transfers into the AIE-array that we want to explicitly wait on with `dma_wait`, we must specify `issue_token=True` in order to ensure we have
+a token to wait on. Tokens are generated automatically for `npu_dma_memcpy_nd`s in the opposite direction.
 
 ```python
         # To/from AIE-array data movement
@@ -76,10 +78,10 @@ We also need to set up the data movement to/from the AIE-array: configure n-dime
 
         @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
-            npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, 4096])
-            npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, 4096])
-            npu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            npu_dma_memcpy_nd(metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, 4096], issue_token=True)
+            npu_dma_memcpy_nd(metadata=of_factor, bd_id=2, mem=F, sizes=[1, 1, 1, 1], issue_token=True)
+            npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, 4096])
+            dma_wait(of_in, of_factor, of_out)
 ```
 
 Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in objectFIFO terminology: we need to program the acquire and release patterns of `of_in`, `of_factor` and `of_out`. Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire an object of 1024 integers to read from `of_in` and one similar sized object from `of_out`. Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective `of_in` and `of_out` objectFIFO. Finally, after the 4 sub-vector iterations, we release the `of_factor` objectFIFO.
@@ -96,7 +98,7 @@ This access and execute pattern runs on the AIE compute core `ComputeTile2` and 
                 for _ in range_(4):
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
-                    call(scale_scalar, [elem_in, elem_out, elem_factor, 1024])
+                    scale_scalar(elem_in, elem_out, elem_factor, 1024)
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
                 of_factor.release(ObjectFifoPort.Consume, 1)
