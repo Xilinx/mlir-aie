@@ -1,10 +1,16 @@
-from functools import update_wrapper
 import numpy as np
+from functools import update_wrapper
 import sys
 from typing import get_args, get_origin
 
 from ...meta import op_region_builder
-from ...util import get_user_code_loc, make_maybe_no_args_decorator, NpuDType
+from ...util import (
+    get_user_code_loc,
+    make_maybe_no_args_decorator,
+    get_arg_types,
+    NpuDType,
+    np_dtype_to_mlir_type,
+)
 from ....dialects._ods_common import get_op_result_or_op_results
 from ....dialects.func import *
 from ....ir import (
@@ -17,13 +23,14 @@ from ....ir import (
     TypeAttr,
     Value,
 )
+from .tensor import Tensor
 from .arith import Scalar
 
 
 def call(
-    callee_or_results: FuncOp | List[Type],
-    arguments_or_callee: List[Value] | FlatSymbolRefAttr | str,
-    arguments: List[Value] | None = None,
+    callee_or_results: FuncOp | List[Type] | str,
+    arguments_or_callee: List[NpuDType | np.ndarray | Value] | FlatSymbolRefAttr | str,
+    arguments: List[NpuDType | np.ndarray | Value] | None = None,
     *,
     call_op_ctor=CallOp.__base__,
     loc=None,
@@ -42,7 +49,6 @@ def call(
             raise ValueError(
                 "unexpected third argument when constructing a call" + "to a function"
             )
-
         args = []
         for i, a in enumerate(arguments_or_callee):
             if isinstance(a, (int, float)):
@@ -119,10 +125,14 @@ def prep_func_types(sig, return_types):
         for p in sig.parameters.values()
         if not p.annotation is inspect.Signature.empty
     ]
+    # convert ndarray types to memref types
     assert all(
-        isinstance(r, (str, Type)) or isalambda(r) or get_origin(r) == np.ndarray or r in get_args(NpuDType)
+        isinstance(r, (str, Type))
+        or isalambda(r)
+        or get_origin(r) == np.ndarray
+        or r in get_args(NpuDType)
         for r in input_types
-    ), f"all input types must be mlir types or np dtypes or ndarrays (tensors) {input_types=}"
+    ), f"all input types must be mlir types or ndarrays (tensors) or np dtypes {input_types=}"
     user_loc = get_user_code_loc()
     # If ir.Context is none (like for deferred func emit)
     if user_loc is None:
@@ -201,15 +211,20 @@ class FuncBase:
 
     def emit(self, *call_args, decl=False, force=False) -> FuncOp:
         if self._func_op is None or decl or force:
-            if len(call_args) == 0:
-                input_types = self.input_types[:]
-                for i, v in enumerate(input_types):
-                    if isinstance(v, str):
-                        input_types[i] = Type(eval(v, self.body_builder.__globals__))
-                    elif isalambda(v):
-                        input_types[i] = v()
-            else:
-                input_types = get_arg_types(call_args)
+            input_types = self.input_types[:]
+            for i, v in enumerate(input_types):
+                if isinstance(v, str):
+                    input_types[i] = Type(eval(v, self.body_builder.__globals__))
+                elif isalambda(v):
+                    input_types[i] = v()
+                elif get_origin(v) == np.ndarray:
+                    input_types[i] = Tensor(v)
+                elif v in get_args(NpuDType):
+                    input_types[i] = np_dtype_to_mlir_type(v)
+                elif isinstance(v, Type):
+                    input_types[i] = v
+            if len(call_args) != 0:
+                assert len(call_args) == len(input_types)
 
             function_type = TypeAttr.get(
                 FunctionType.get(
@@ -242,9 +257,9 @@ class FuncBase:
                 nonlocal return_types
                 results = self.body_builder(*args)
                 if isinstance(results, (tuple, list)):
-                    return_types.extend([r.type for r in results])
+                    return_types.extend(get_arg_types(results))
                 elif results is not None:
-                    return_types.append(results.type)
+                    return_types.extend(get_arg_types([results]))
                 return results
 
             builder_wrapper(grab_results)

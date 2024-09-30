@@ -4,7 +4,6 @@ from contextlib import contextmanager
 from functools import partial
 import itertools
 from operator import itemgetter
-from typing import Union, Optional
 
 import numpy as np
 
@@ -16,7 +15,6 @@ from .aie import (
     LockAction,
     Neighbors,
     TileOp,
-    object_fifo,
     find_matching_buffers,
     find_matching_flows,
     find_matching_locks,
@@ -37,7 +35,7 @@ register_dialect(get_dialect_registry())
 npu_sync = partial(npu_sync, column_num=1, row_num=1)
 
 
-def dma_wait(*args: Union[ObjectFifoCreateOp, str]):
+def dma_wait(*args: ObjectFifoCreateOp | str):
     if len(args) == 0:
         raise ValueError(
             "dma_wait must receive at least one dma_meta information to wait for"
@@ -54,13 +52,13 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
 
     def __init__(
         self,
-        metadata: Union[str, ObjectFifoCreateOp],
+        metadata: str | ObjectFifoCreateOp,
         bd_id,
         mem,
         offsets: MixedValues = None,
         sizes: MixedValues = None,
         strides: MixedValues = None,
-        issue_token: Optional[bool] = None,
+        issue_token: bool | None = None,
     ):
         x = 0
         y = 0
@@ -700,8 +698,8 @@ class TileArray:
 
 
 def broadcast_flow(
-    source: Union[np.ndarray, TileOp],
-    dest: Union[np.ndarray, TileOp],
+    source: np.ndarray | TileOp,
+    dest: np.ndarray | TileOp,
     source_bundle=None,
     source_channel=None,
     dest_bundle=None,

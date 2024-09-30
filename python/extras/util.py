@@ -9,8 +9,7 @@ import platform
 from pathlib import Path
 import re
 import sys
-from typing import Callable, List, Optional, Sequence, Tuple, Union
-import warnings
+from typing import Callable, List, Sequence, Tuple
 
 from .meta import op_region_builder
 from ..extras import types as T
@@ -34,20 +33,12 @@ from ..ir import (
     _GlobalDebug,
 )
 
-try:
-    from ..ir import TypeID
-except ImportError:
-    warnings.warn(
-        f"TypeID not supported by host bindings; value casting won't work correctly"
-    )
-    TypeID = object
-
 
 def is_relative_to(self, other):
     return other == self or other in self.parents
 
 
-def get_user_code_loc(user_base: Optional[Path] = None):
+def get_user_code_loc(user_base: Path | None = None):
     from .. import extras
 
     if Context.current is None:
@@ -208,8 +199,8 @@ def mlir_type_to_ctype(mlir_type):
 
 
 def infer_mlir_type(
-    py_val: Union[int, float, bool, np.ndarray], memref=False, vector=False
-) -> Union[IntegerType, F32Type, F64Type, RankedTensorType]:
+    py_val: int | float | bool | np.ndarray, memref=False, vector=False
+) -> IntegerType | F32Type | F64Type | RankedTensorType:
     """Infer MLIR type (`ir.Type`) from supported python values.
 
     Note ints and floats are mapped to 64-bit types.
@@ -329,7 +320,7 @@ def make_maybe_no_args_decorator(decorator):
 
 @dataclass
 class Successor:
-    op: Union[OpView, Operation]
+    op: OpView | Operation
     operands: List[Value]
     block: Block
     pos: int
@@ -343,7 +334,7 @@ class Successor:
 
 
 @contextlib.contextmanager
-def bb(*preds: Tuple[Union[Successor, OpView]]):
+def bb(*preds: Tuple[Successor | OpView]):
     current_ip = InsertionPoint.current
     op = current_ip.block.owner
     op_region = op.regions[0]
@@ -476,3 +467,23 @@ class getitemproperty:
 
         # f is not a bound method since it was decorated...
         return self.f(self.instance, item, **kwargs)
+
+
+def get_arg_types(objs: Sequence[int | float | Value | OpView]):
+    my_types = []
+    for o in objs:
+        if isinstance(o, Value):
+            my_types.append(o.type)
+        elif isinstance(o, OpView):
+            if len(o.results.types) != 1:
+                raise AttributeError(
+                    f"Operation given to a region op as a parameter ({o}) has more "
+                    "than one return type ({o.results.types}), which would lead to a mismatch "
+                    "between number of operands and number of operand types"
+                )
+            my_types += o.results.types
+        elif isinstance(o, (int, float)):
+            my_types.append(type(o))
+        else:
+            return None
+    return my_types
