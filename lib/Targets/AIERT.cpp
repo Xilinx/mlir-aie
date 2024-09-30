@@ -379,7 +379,8 @@ LogicalResult AIERTControl::initBuffers(DeviceOp &targetOp) {
   targetOp.walk<WalkOrder::PreOrder>([&](BufferOp bufferOp) {
     // Only use this path to init MemTile buffers
     // Otherwise init in Core ELF (PR #1049)
-    if (!bufferOp.getTileOp().isMemTile()) continue;
+    if (!bufferOp.getTileOp().isMemTile())
+      continue;
     auto initialValue = bufferOp.getInitialValue();
     if (!initialValue)
       return;
