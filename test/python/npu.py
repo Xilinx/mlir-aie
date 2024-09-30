@@ -6,12 +6,11 @@
 
 # RUN: %python %s | FileCheck %s
 
-from aie.extras.dialects.ext import memref, arith
+from aie.extras.dialects.ext import memref
 
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
-    call,
     DMAChannelDir,
     LockAction,
     ObjectFifoPort,
@@ -23,7 +22,7 @@ from aie.dialects.aie import (
     object_fifo_link,
     tile,
 )
-from aie.dialects.aiex import npu_sync, npu_dma_memcpy_nd, runtime_sequence
+from aie.dialects.aiex import dma_wait, npu_dma_memcpy_nd, runtime_sequence
 from aie.extras.dialects.ext.scf import _for as range_
 from util import construct_and_print_module
 
@@ -64,7 +63,7 @@ def my_vector_scalar(module):
                 for _ in range_(N_div_n):
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
-                    call(scale_int32, [elem_in, elem_out])
+                    scale_int32(elem_in, elem_out)
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
 
@@ -72,9 +71,9 @@ def my_vector_scalar(module):
             T.memref(N, T.i32()), T.memref(N, T.i32()), T.memref(N, T.i32())
         )
         def sequence(A, B, C):
-            npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
-            npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            npu_dma_memcpy_nd(metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N])
+            npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
+            dma_wait(of_out)
 
     assert module.operation.verify()
 
@@ -119,18 +118,10 @@ def my_matmul(module):
 
     @device(AIEDevice.npu1_4col)
     def device_body():
-        zero_scalar = external_func("zero_scalar_i16", inputs=[T.memref(m, n, T.i16())])
-        zero = external_func("zero_i16", inputs=[T.memref(m, n, T.i16())])
-        matmul_scalar = external_func(
-            "matmul_scalar_i16_i16",
-            inputs=[
-                T.memref(m, k, T.i16()),
-                T.memref(k, n, T.i16()),
-                T.memref(m, n, T.i16()),
-            ],
-        )
+        func_type = "" if vectorized else "scalar_"
+        zero = external_func(f"zero_{func_type}i16", inputs=[T.memref(m, n, T.i16())])
         matmul = external_func(
-            "matmul_i16_i16",
+            f"matmul_{func_type}i16_i16",
             inputs=[
                 T.memref(m, k, T.i16()),
                 T.memref(k, n, T.i16()),
@@ -150,18 +141,12 @@ def my_matmul(module):
             for _ in range_(0xFFFFFFFF):
                 for _ in range_(tiles):
                     elem_out = of_outC.acquire(ObjectFifoPort.Produce, 1)
-                    if vectorized:
-                        call(zero, [elem_out])
-                    else:
-                        call(zero_scalar, [elem_out])
+                    zero(elem_out)
 
                     for _ in range_(K_div_k):
                         elem_in_a = of_inA.acquire(ObjectFifoPort.Consume, 1)
                         elem_in_b = of_inB.acquire(ObjectFifoPort.Consume, 1)
-                        if vectorized:
-                            call(matmul, [elem_in_a, elem_in_b, elem_out])
-                        else:
-                            call(matmul_scalar, [elem_in_a, elem_in_b, elem_out])
+                        matmul(elem_in_a, elem_in_b, elem_out)
                         of_inA.release(ObjectFifoPort.Consume, 1)
                         of_inB.release(ObjectFifoPort.Consume, 1)
                     of_outC.release(ObjectFifoPort.Produce, 1)
@@ -183,14 +168,6 @@ def my_matmul(module):
                 num_tile_rows = min(
                     [rows_per_block, M_div_m - tile_row_block * rows_per_block]
                 )
-                npu_dma_memcpy_nd(
-                    metadata="outC",
-                    bd_id=0,
-                    mem=C,
-                    offsets=[0, 0, 0, C_row_offset_in_i32s],
-                    sizes=[num_tile_rows, N_div_n, m, n_in_i32s_out],
-                    strides=[m_x_N_in_i32s_out, n_in_i32s_out, N_in_i32s_out, 1],
-                )
                 for tile_row in range(num_tile_rows):
                     A_row_offset_in_i32s = (
                         ((tile_row_block * rows_per_block) + tile_row)
@@ -200,7 +177,7 @@ def my_matmul(module):
                         // 4
                     )
                     npu_dma_memcpy_nd(
-                        metadata="inA",
+                        metadata=of_inA,
                         bd_id=2 * tile_row + 1,
                         mem=A,
                         offsets=[0, 0, 0, A_row_offset_in_i32s],
@@ -208,14 +185,21 @@ def my_matmul(module):
                         strides=[0, k_in_i32s, K_in_i32s, 1],
                     )
                     npu_dma_memcpy_nd(
-                        metadata="inB",
+                        metadata=of_inB,
                         bd_id=2 * tile_row + 2,
                         mem=B,
                         sizes=[N_div_n, K_div_k, k, n_in_i32s],
                         strides=[n_in_i32s, k_x_N_in_i32s, N_in_i32s, 1],
                     )
-
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                npu_dma_memcpy_nd(
+                    metadata=of_outC,
+                    bd_id=0,
+                    mem=C,
+                    offsets=[0, 0, 0, C_row_offset_in_i32s],
+                    sizes=[num_tile_rows, N_div_n, m, n_in_i32s_out],
+                    strides=[m_x_N_in_i32s_out, n_in_i32s_out, N_in_i32s_out, 1],
+                )
+                dma_wait(of_outC)
 
     assert module.operation.verify()
 
@@ -296,7 +280,7 @@ def edge_detect(module):
                 elem_in = inOF_L2L1.acquire(ObjectFifoPort.Consume, 1)
                 elem_out = OF_2to3.acquire(ObjectFifoPort.Produce, 1)
 
-                call(rgba2gray_line, [elem_in, elem_out, arith.constant(64)])
+                rgba2gray_line(elem_in, elem_out, 64)
 
                 inOF_L2L1.release(ObjectFifoPort.Consume, 1)
                 OF_2to3.release(ObjectFifoPort.Produce, 1)
@@ -304,32 +288,29 @@ def edge_detect(module):
         @core(T3, "filter2d.cc.o")
         def core_body():
             kernel = memref.alloc(3, 3, T.i16())
-            v0 = arith.constant(0, T.i16())
-            v1 = arith.constant(4096, T.i16())
-            v_minus4 = arith.constant(-16384, T.i16())
-            memref.store(v0, kernel, [0, 0])
-            memref.store(v1, kernel, [0, 1])
-            memref.store(v0, kernel, [0, 2])
-            memref.store(v1, kernel, [1, 0])
-            memref.store(v_minus4, kernel, [1, 1])
-            memref.store(v1, kernel, [1, 2])
-            memref.store(v0, kernel, [2, 0])
-            memref.store(v1, kernel, [2, 1])
-            memref.store(v0, kernel, [2, 2])
+            v0 = 0
+            v1 = 4096
+            v_minus4 = -16384
+            kernel[0, 0] = v0
+            kernel[0, 1] = v1
+            kernel[0, 2] = v0
+            kernel[1, 0] = v1
+            kernel[1, 1] = v_minus4
+            kernel[1, 2] = v1
+            kernel[2, 0] = v0
+            kernel[2, 1] = v1
+            kernel[2, 2] = v0
 
             # Preamble : Top Border
             elems_in_pre = OF_2to3.acquire(ObjectFifoPort.Consume, 2)
             elem_pre_out = OF_3to4.acquire(ObjectFifoPort.Produce, 1)
-            call(
-                filter2d_line,
-                [
-                    elems_in_pre[0],
-                    elems_in_pre[0],
-                    elems_in_pre[1],
-                    elem_pre_out,
-                    arith.constant(64),
-                    kernel,
-                ],
+            filter2d_line(
+                elems_in_pre[0],
+                elems_in_pre[0],
+                elems_in_pre[1],
+                elem_pre_out,
+                64,
+                kernel,
             )
             OF_3to4.release(ObjectFifoPort.Produce, 1)
 
@@ -337,16 +318,8 @@ def edge_detect(module):
             for _ in range_(1, 35):
                 elems_in = OF_2to3.acquire(ObjectFifoPort.Consume, 3)
                 elem_out = OF_3to4.acquire(ObjectFifoPort.Produce, 1)
-                call(
-                    filter2d_line,
-                    [
-                        elems_in[0],
-                        elems_in[1],
-                        elems_in[2],
-                        elem_out,
-                        arith.constant(64),
-                        kernel,
-                    ],
+                filter2d_line(
+                    elems_in[0], elems_in[1], elems_in[2], elem_out, 64, kernel
                 )
                 OF_2to3.release(ObjectFifoPort.Consume, 1)
                 OF_3to4.release(ObjectFifoPort.Produce, 1)
@@ -354,35 +327,27 @@ def edge_detect(module):
             # Postamble : Bottom Border
             elems_in_post = OF_2to3.acquire(ObjectFifoPort.Consume, 2)
             elem_post_out = OF_3to4.acquire(ObjectFifoPort.Produce, 1)
-            call(
-                filter2d_line,
-                [
-                    elems_in_post[0],
-                    elems_in_post[1],
-                    elems_in_post[1],
-                    elem_post_out,
-                    arith.constant(64),
-                    kernel,
-                ],
+            filter2d_line(
+                elems_in_post[0],
+                elems_in_post[1],
+                elems_in_post[1],
+                elem_post_out,
+                64,
+                kernel,
             )
             OF_2to3.release(ObjectFifoPort.Consume, 2)
             OF_3to4.release(ObjectFifoPort.Produce, 1)
 
         @core(T4, "threshold.cc.o")
         def core_body():
-            v_thr = arith.constant(10, T.i16())
-            v_max = arith.constant(255, T.i16())
-            v_typ = arith.constant(0, T.i8())
+            v_thr = 10
+            v_max = 255
+            v_typ = 0
 
             for _ in range_(36):
                 elem_in = OF_3to4.acquire(ObjectFifoPort.Consume, 1)
                 elem_out = OF_4to5.acquire(ObjectFifoPort.Produce, 1)
-
-                call(
-                    threshold_line,
-                    [elem_in, elem_out, arith.constant(64), v_thr, v_max, v_typ],
-                )
-
+                threshold_line(elem_in, elem_out, 64, v_thr, v_max, v_typ)
                 OF_3to4.release(ObjectFifoPort.Consume, 1)
                 OF_4to5.release(ObjectFifoPort.Produce, 1)
 
@@ -391,9 +356,7 @@ def edge_detect(module):
             for _ in range_(36):
                 elem_in = OF_4to5.acquire(ObjectFifoPort.Consume, 1)
                 elem_out = OF_5to5.acquire(ObjectFifoPort.Produce, 1)
-
-                call(gray2rgba_line, [elem_in, elem_out, arith.constant(64)])
-
+                gray2rgba_line(elem_in, elem_out, 64)
                 OF_4to5.release(ObjectFifoPort.Consume, 1)
                 OF_5to5.release(ObjectFifoPort.Produce, 1)
 
@@ -401,21 +364,12 @@ def edge_detect(module):
                 elem_in2 = inOF_L2L1.acquire(ObjectFifoPort.Consume, 1)
                 elem_out2 = outOF_L1L2.acquire(ObjectFifoPort.Produce, 1)
 
-                alpha = arith.constant(16384, T.i16())
-                beta = arith.constant(16384, T.i16())
-                gamma = arith.constant(0, T.i8())
+                alpha = 16384
+                beta = 16384
+                gamma = 0
 
-                call(
-                    add_weighted_line,
-                    [
-                        elem_in1,
-                        elem_in2,
-                        elem_out2,
-                        arith.constant(256),
-                        alpha,
-                        beta,
-                        gamma,
-                    ],
+                add_weighted_line(
+                    elem_in1, elem_in2, elem_out2, 256, alpha, beta, gamma
                 )
 
                 OF_5to5.release(ObjectFifoPort.Consume, 1)
@@ -427,20 +381,20 @@ def edge_detect(module):
         )
         def sequence(I, B, O):
             npu_dma_memcpy_nd(
-                metadata="outOF_L2L3",
-                bd_id=0,
-                mem=O,
-                sizes=[1, 1, 36, 64],
-                strides=[0, 0, 64, 1],
-            )
-            npu_dma_memcpy_nd(
-                metadata="inOF_L3L2",
+                metadata=inOF_L3L2,
                 bd_id=1,
                 mem=I,
                 sizes=[1, 1, 36, 64],
                 strides=[0, 0, 64, 1],
             )
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            npu_dma_memcpy_nd(
+                metadata=outOF_L2L3,
+                bd_id=0,
+                mem=O,
+                sizes=[1, 1, 36, 64],
+                strides=[0, 0, 64, 1],
+            )
+            dma_wait(outOF_L2L3)
 
     assert module.operation.verify()
 
@@ -469,9 +423,7 @@ def my_add_one_objFifo(module):
                 elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
                 elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
                 for i in range_(8):
-                    v0 = memref.load(elem_in, [i])
-                    v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                    memref.store(v1, elem_out, [i])
+                    elem_out[i] = elem_in[i] + 1
                 of_in1.release(ObjectFifoPort.Consume, 1)
                 of_out1.release(ObjectFifoPort.Produce, 1)
 
@@ -480,11 +432,11 @@ def my_add_one_objFifo(module):
         )
         def sequence(inTensor, notUsed, outTensor):
             npu_dma_memcpy_nd(
-                metadata="out0", bd_id=0, mem=outTensor, sizes=[1, 1, 1, 64]
+                metadata=of_in0, bd_id=1, mem=inTensor, sizes=[1, 1, 1, 64]
             )
             npu_dma_memcpy_nd(
-                metadata="in0", bd_id=1, mem=inTensor, sizes=[1, 1, 1, 64]
+                metadata=of_out0, bd_id=0, mem=outTensor, sizes=[1, 1, 1, 64]
             )
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            dma_wait(of_out0)
 
     assert module.operation.verify()

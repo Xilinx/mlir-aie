@@ -33,12 +33,9 @@ def my_vector_scalar(vector_size, trace_size):
 
         # AIE Core Function declarations
 
-        scale_scalar = external_func(
-            "vector_scalar_mul_int16_scalar",
-            inputs=[memRef_ty, memRef_ty, memRef_ty2, T.i32()],
-        )
+        func_type = "vector" if vectorized else "scalar"
         scale = external_func(
-            "vector_scalar_mul_int16_vector",
+            f"vector_scalar_mul_int16_{func_type}",
             inputs=[memRef_ty, memRef_ty, memRef_ty2, T.i32()],
         )
 
@@ -69,10 +66,7 @@ def my_vector_scalar(vector_size, trace_size):
                 for _ in range_(N_div_n):
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
-                    if vectorized:
-                        call(scale, [elem_in, elem_out, elem_factor, n])
-                    else:
-                        call(scale_scalar, [elem_in, elem_out, elem_factor, n])
+                    scale(elem_in, elem_out, elem_factor, n)
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
                 of_factor.release(ObjectFifoPort.Consume, 1)
@@ -92,10 +86,14 @@ def my_vector_scalar(vector_size, trace_size):
                     size=trace_size,
                     offset=N_in_bytes,
                 )
-            npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
-            npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
-            npu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            npu_dma_memcpy_nd(
+                metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N], issue_token=True
+            )
+            npu_dma_memcpy_nd(
+                metadata=of_factor, bd_id=2, mem=F, sizes=[1, 1, 1, 1], issue_token=True
+            )
+            npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
+            dma_wait(of_in, of_factor, of_out)
 
 
 try:

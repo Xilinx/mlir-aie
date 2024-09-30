@@ -9,7 +9,7 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.extras.dialects.ext import memref, arith
+from aie.extras.dialects.ext import memref
 from aie.extras.context import mlir_mod_ctx
 from aie.extras.dialects.ext.scf import _for as range_
 
@@ -116,29 +116,18 @@ def conv2dk1():
                 for _ in range_(0xFFFFFFFF):
                     elemWts = of_inOF_wts_0_L3L2.acquire(ObjectFifoPort.Consume, 1)
 
-                    scale = memref.load(rtp2, [0])
+                    scale = rtp2[0]
                     # scale = memref.load(rtpComputeTile2, [0])
 
                     for _ in range_(y_dim):
                         elemIn = of_act_L2_02.acquire(ObjectFifoPort.Consume, 1)
                         elemOut0 = of_out_02_L2.acquire(ObjectFifoPort.Produce, 1)
 
-                        call(
-                            conv2dk1_i8,
-                            [
-                                elemIn,
-                                elemWts,
-                                elemOut0,
-                                arith.constant(x_dim),
-                                arith.constant(ci),
-                                arith.constant(co),
-                                scale,
-                            ],
-                        )
+                        conv2dk1_i8(elemIn, elemWts, elemOut0, x_dim, ci, co, scale)
 
-                        objectfifo_release(ObjectFifoPort.Consume, "act_L2_02", 1)
-                        objectfifo_release(ObjectFifoPort.Produce, "out_02_L2", 1)
-                    objectfifo_release(ObjectFifoPort.Consume, "inOF_wts_0_L3L2", 1)
+                        of_act_L2_02.release(ObjectFifoPort.Consume, 1)
+                        of_out_02_L2.release(ObjectFifoPort.Produce, 1)
+                    of_inOF_wts_0_L3L2.release(ObjectFifoPort.Consume, 1)
 
             # To/from AIE-array data movement
 
@@ -230,24 +219,25 @@ def conv2dk1():
                 NpuWriteRTPOp("rtp2", index=0, value=1)
 
                 npu_dma_memcpy_nd(
-                    metadata="inOF_act_L3L2",
+                    metadata=of_inOF_act_L3L2,
                     bd_id=0,
                     mem=I,
                     sizes=[1, 1, 1, tensorSize],
                 )
                 npu_dma_memcpy_nd(
-                    metadata="outOFL2L3",
+                    metadata=of_outOFL2L3,
                     bd_id=2,
                     mem=O,
                     sizes=[1, 1, 1, tensorSize],
                 )
                 npu_dma_memcpy_nd(
-                    metadata="inOF_wts_0_L3L2",
+                    metadata=of_inOF_wts_0_L3L2,
                     bd_id=2,
                     mem=W,
                     sizes=[1, 1, 1, weights],
                 )
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                # of_outOFL2L3 will only complete after of_inOF_wts_0_L3L2 and of_inOF_act_L3L2 complete, so we just wait on of_outOFL2L3 instead of all
+                dma_wait(of_outOFL2L3)
 
     #    print(ctx.module.operation.verify())
     print(ctx.module)

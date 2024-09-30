@@ -8,7 +8,6 @@
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.dialects.ext.scf import _for as range_
-from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
 
@@ -37,8 +36,7 @@ def single_buffer():
                 for _ in range_(8):
                     elem_out = of_in.acquire(ObjectFifoPort.Produce, 1)
                     for i in range_(16):
-                        v1 = arith.constant(1, T.i32())
-                        memref.store(v1, elem_out, [i])
+                        elem_out[i] = 1
                     of_in.release(ObjectFifoPort.Produce, 1)
 
             # Compute tile 3

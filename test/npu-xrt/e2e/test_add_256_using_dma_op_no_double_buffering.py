@@ -79,7 +79,6 @@ def test_add_256_using_dma_op_no_double_buffering(ctx: MLIRContext, workdir: Pat
 
         @aie.core(tile_0_2)
         def core():
-            random_number = arith.constant(RANDOM_NUMBER)
             for _ in range_(0, LEN // LOCAL_MEM_SIZE):
                 # wait on both in and out to be ready
                 # these have to be acge for some reason...
@@ -87,9 +86,7 @@ def test_add_256_using_dma_op_no_double_buffering(ctx: MLIRContext, workdir: Pat
                 aie.use_lock(lock_0_2_2, AcquireGreaterEqual)
 
                 for arg1 in range_(0, LOCAL_MEM_SIZE):
-                    v0 = memref.load(buffer_0_2, [arg1])
-                    v1 = arith.addi(v0, random_number)
-                    memref.store(v1, buffer_0_2_1, [arg1])
+                    buffer_0_2_1[arg1] = buffer_0_2[arg1] + RANDOM_NUMBER
                 aie.use_lock(lock_0_2_0, Release)
                 aie.use_lock(lock_0_2_3, Release)
 
