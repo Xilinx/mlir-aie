@@ -1,8 +1,10 @@
-import sys
 from functools import update_wrapper
+import numpy as np
+import sys
+from typing import get_args, get_origin
 
 from ...meta import op_region_builder
-from ...util import get_user_code_loc, make_maybe_no_args_decorator
+from ...util import get_user_code_loc, make_maybe_no_args_decorator, NpuDType
 from ....dialects._ods_common import get_op_result_or_op_results
 from ....dialects.func import *
 from ....ir import (
@@ -19,9 +21,9 @@ from .arith import Scalar
 
 
 def call(
-    callee_or_results: Union[FuncOp, List[Type]],
-    arguments_or_callee: Union[List[Value], FlatSymbolRefAttr, str],
-    arguments: Optional[list] = None,
+    callee_or_results: FuncOp | List[Type],
+    arguments_or_callee: List[Value] | FlatSymbolRefAttr | str,
+    arguments: List[Value] | None = None,
     *,
     call_op_ctor=CallOp.__base__,
     loc=None,
@@ -118,8 +120,9 @@ def prep_func_types(sig, return_types):
         if not p.annotation is inspect.Signature.empty
     ]
     assert all(
-        isinstance(r, (str, Type)) or isalambda(r) for r in input_types
-    ), f"all input types must be mlir types {input_types=}"
+        isinstance(r, (str, Type)) or isalambda(r) or get_origin(r) == np.ndarray or r in get_args(NpuDType)
+        for r in input_types
+    ), f"all input types must be mlir types or np dtypes or ndarrays (tensors) {input_types=}"
     user_loc = get_user_code_loc()
     # If ir.Context is none (like for deferred func emit)
     if user_loc is None:
@@ -206,7 +209,7 @@ class FuncBase:
                     elif isalambda(v):
                         input_types[i] = v()
             else:
-                input_types = [a.type for a in call_args]
+                input_types = get_arg_types(call_args)
 
             function_type = TypeAttr.get(
                 FunctionType.get(
