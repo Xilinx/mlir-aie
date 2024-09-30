@@ -14,10 +14,8 @@ from aie.extras.context import mlir_mod_ctx
 from aie.extras.dialects.ext.func import func
 from aie.extras.dialects.ext.scf import _for as range_
 
-import aie.utils.trace as trace_utils
 
-
-def passthroughKernel(vector_size, trace_size):
+def passthroughKernel(vector_size):
     N = vector_size
     lineWidthInBytes = N // 4  # chop input in 4 sub-tensors
 
@@ -35,10 +33,6 @@ def passthroughKernel(vector_size, trace_size):
         # Tile declarations
         ShimTile = tile(0, 0)
         ComputeTile2 = tile(0, 2)
-
-        # Set up a circuit-switched flow from core to shim for tracing information
-        if trace_size > 0:
-            flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
 
         # AIE-array data movement with object fifos
         of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)
@@ -62,15 +56,6 @@ def passthroughKernel(vector_size, trace_size):
 
         @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
         def sequence(inTensor, outTensor, notUsed):
-            if trace_size > 0:
-                trace_utils.configure_simple_tracing_aie2(
-                    ComputeTile2,
-                    ShimTile,
-                    ddr_id=1,
-                    size=trace_size,
-                    offset=N,
-                )
-
             npu_dma_memcpy_nd(
                 metadata=of_in,
                 bd_id=0,
@@ -92,9 +77,8 @@ try:
     if vector_size % 64 != 0 or vector_size < 512:
         print("Vector size must be a multiple of 64 and greater than or equal to 512")
         raise ValueError
-    trace_size = 0 if (len(sys.argv) != 3) else int(sys.argv[2])
 except ValueError:
     print("Argument has inappropriate value")
 with mlir_mod_ctx() as ctx:
-    passthroughKernel(vector_size, trace_size)
+    passthroughKernel(vector_size)
     print(ctx.module)
