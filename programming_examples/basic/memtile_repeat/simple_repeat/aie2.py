@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
@@ -37,22 +37,23 @@ def simple_repeat():
 
         @device(dev)
         def device_body():
-            memRef_ty = T.memref(N, T.i32())
+            tensor_ty = np.ndarray[np.int32, (N,)]
+            tensor_out_ty = np.ndarray[
+                np.int32,
+                (N * (memtile_repeat_count + 1)),
+            ]
 
             # Tile declarations
             ShimTile = tile(col, 0)
             MemTile = tile(col, 1)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, MemTile, 1, memRef_ty)
-            of_out = object_fifo("out", MemTile, ShimTile, 1, memRef_ty)
+            of_in = object_fifo("in", ShimTile, MemTile, 1, tensor_ty)
+            of_out = object_fifo("out", MemTile, ShimTile, 1, tensor_ty)
             of_out.set_memtile_repeat(memtile_repeat_count)
             object_fifo_link(of_in, of_out)
 
             # To/from AIE-array data movement
-            tensor_ty = T.memref(N, T.i32())
-            tensor_out_ty = T.memref(N * (memtile_repeat_count + 1), T.i32())
-
             @runtime_sequence(tensor_ty, tensor_ty, tensor_out_ty)
             def sequence(A, B, C):
                 npu_dma_memcpy_nd(metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N])

@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
@@ -28,15 +28,16 @@ def my_vector_scalar(vector_size, trace_size):
 
     @device(AIEDevice.npu1_1col)
     def device_body():
-        memRef_ty = T.memref(n, T.i16())
-        memRef_ty2 = T.memref(1, T.i32())
+        tensor_ty = np.ndarray[np.int16, (N,)]
+        tile_ty = np.ndarray[np.int16, (n,)]
+        scalar_ty = np.ndarray[np.int32, (1,)]
 
         # AIE Core Function declarations
 
         func_type = "vector" if vectorized else "scalar"
         scale = external_func(
             f"vector_scalar_mul_int16_{func_type}",
-            inputs=[memRef_ty, memRef_ty, memRef_ty2, T.i32()],
+            inputs=[tile_ty, tile_ty, scalar_ty, np.int32],
         )
 
         # Tile declarations
@@ -44,11 +45,11 @@ def my_vector_scalar(vector_size, trace_size):
         ComputeTile2 = tile(0, 2)
 
         # AIE-array data movement with object fifos
-        of_in = object_fifo("in", ShimTile, ComputeTile2, buffer_depth, memRef_ty)
+        of_in = object_fifo("in", ShimTile, ComputeTile2, buffer_depth, tile_ty)
         of_factor = object_fifo(
-            "infactor", ShimTile, ComputeTile2, buffer_depth, memRef_ty2
+            "infactor", ShimTile, ComputeTile2, buffer_depth, scalar_ty
         )
-        of_out = object_fifo("out", ComputeTile2, ShimTile, buffer_depth, memRef_ty)
+        of_out = object_fifo("out", ComputeTile2, ShimTile, buffer_depth, tile_ty)
 
         # Set up a circuit-switched flow from core to shim for tracing information
         if trace_size > 0:
@@ -72,9 +73,6 @@ def my_vector_scalar(vector_size, trace_size):
                 of_factor.release(ObjectFifoPort.Consume, 1)
 
         # To/from AIE-array data movement
-        tensor_ty = T.memref(N, T.i16())
-        scalar_ty = T.memref(1, T.i32())
-
         @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
 
