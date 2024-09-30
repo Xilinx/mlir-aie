@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
@@ -22,21 +22,21 @@ if len(sys.argv) == 3:
     K = int(sys.argv[2])
     N = M * K
 
+tensor_ty = np.ndarray[np.int32, (M, K)]
+
 
 def my_passthrough():
     with mlir_mod_ctx() as ctx:
 
         @device(AIEDevice.npu1_1col)
         def device_body():
-            memRef_ty = T.memref(M, K, T.i32())
-
             # Tile declarations
             ShimTile = tile(0, 0)
             ComputeTile2 = tile(0, 2)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)
-            of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_ty)
+            of_in = object_fifo("in", ShimTile, ComputeTile2, 2, tensor_ty)
+            of_out = object_fifo("out", ComputeTile2, ShimTile, 2, tensor_ty)
             object_fifo_link(of_in, of_out)
 
             # Set up compute tiles
@@ -48,8 +48,6 @@ def my_passthrough():
                     pass
 
             # To/from AIE-array data movement
-            tensor_ty = T.memref(N, T.i32())
-
             @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
             def sequence(A, B, C):
                 # The strides below are configured to read across all rows in the same column
