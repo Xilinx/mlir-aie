@@ -471,7 +471,7 @@ def resnet_conv_x():
                         element0Weights = wts_sub_fifos[
                             wts_sub_fifo_names[i][0]
                         ].acquire(ObjectFifoPort.Consume, 1)
-                        scale = memref.load(rtp[i][0], [0])
+                        scale = rtp[i][0][0]
                         for _ in range_(tensorInH):
                             element0ActivactionsIn = act1_fifos[
                                 act1_fifo_names[i]
@@ -480,30 +480,24 @@ def resnet_conv_x():
                                 act2_fifo_names[i]
                             ].acquire(ObjectFifoPort.Produce, 1)
                             if i == 0:
-                                res = call(
-                                    conv1_kernels_call[i],
-                                    [
-                                        element0ActivactionsIn,
-                                        element0Weights,
-                                        element0ActivactionsOut,
-                                        tensorInW,
-                                        tensorInCInit,
-                                        tensorInCInit,
-                                        scale,
-                                    ],
+                                conv1_kernels_call[i](
+                                    element0ActivactionsIn,
+                                    element0Weights,
+                                    element0ActivactionsOut,
+                                    tensorInW,
+                                    tensorInCInit,
+                                    tensorInCInit,
+                                    scale,
                                 )
                             else:
-                                res = call(
-                                    conv1_kernels_call[i],
-                                    [
-                                        element0ActivactionsIn,
-                                        element0Weights,
-                                        element0ActivactionsOut,
-                                        tensorInW,
-                                        tensorInCRest,
-                                        tensorInCInit,
-                                        scale,
-                                    ],
+                                conv1_kernels_call[i](
+                                    element0ActivactionsIn,
+                                    element0Weights,
+                                    element0ActivactionsOut,
+                                    tensorInW,
+                                    tensorInCRest,
+                                    tensorInCInit,
+                                    scale,
                                 )
 
                             objectfifo_release(
@@ -538,23 +532,20 @@ def resnet_conv_x():
                         element0ActivactionsOut = act3_fifo_1[
                             act3_fifo_names_1[i]
                         ].acquire(ObjectFifoPort.Produce, 1)
-                        res = call(
-                            conv2dk3,
-                            [
-                                elementActivactionsIn[0],
-                                elementActivactionsIn[0],
-                                elementActivactionsIn[1],
-                                element0Weights,
-                                element0ActivactionsOut,
-                                tensorInW,
-                                tensorInCInit,
-                                tensorInCInit // 2,
-                                3,
-                                3,
-                                0,
-                                scale,
-                                0,
-                            ],
+                        conv2dk3(
+                            elementActivactionsIn[0],
+                            elementActivactionsIn[0],
+                            elementActivactionsIn[1],
+                            element0Weights,
+                            element0ActivactionsOut,
+                            tensorInW,
+                            tensorInCInit,
+                            tensorInCInit // 2,
+                            3,
+                            3,
+                            0,
+                            scale,
+                            0,
                         )
                         objectfifo_release(
                             ObjectFifoPort.Produce, act3_fifo_names_1[i], 1
@@ -568,23 +559,20 @@ def resnet_conv_x():
                             element0ActivactionsOut = act3_fifo_1[
                                 act3_fifo_names_1[i]
                             ].acquire(ObjectFifoPort.Produce, 1)
-                            res = call(
-                                conv2dk3,
-                                [
-                                    elementActivactionsIn[0],
-                                    elementActivactionsIn[1],
-                                    elementActivactionsIn[2],
-                                    element0Weights,
-                                    element0ActivactionsOut,
-                                    tensorInW,
-                                    tensorInCInit,
-                                    tensorInCInit // 2,
-                                    3,
-                                    3,
-                                    1,
-                                    scale,
-                                    0,
-                                ],
+                            conv2dk3(
+                                elementActivactionsIn[0],
+                                elementActivactionsIn[1],
+                                elementActivactionsIn[2],
+                                element0Weights,
+                                element0ActivactionsOut,
+                                tensorInW,
+                                tensorInCInit,
+                                tensorInCInit // 2,
+                                3,
+                                3,
+                                1,
+                                scale,
+                                0,
                             )
 
                             objectfifo_release(
@@ -601,23 +589,20 @@ def resnet_conv_x():
                         element0ActivactionsOut = act3_fifo_1[
                             act3_fifo_names_1[i]
                         ].acquire(ObjectFifoPort.Produce, 1)
-                        res = call(
-                            conv2dk3,
-                            [
-                                elementActivactionsIn[0],
-                                elementActivactionsIn[1],
-                                elementActivactionsIn[1],
-                                element0Weights,
-                                element0ActivactionsOut,
-                                tensorInW,
-                                tensorInCInit,
-                                tensorInCInit // 2,
-                                3,
-                                3,
-                                2,
-                                scale,
-                                0,
-                            ],
+                        conv2dk3(
+                            elementActivactionsIn[0],
+                            elementActivactionsIn[1],
+                            elementActivactionsIn[1],
+                            element0Weights,
+                            element0ActivactionsOut,
+                            tensorInW,
+                            tensorInCInit,
+                            tensorInCInit // 2,
+                            3,
+                            3,
+                            2,
+                            scale,
+                            0,
                         )
 
                         objectfifo_release(
@@ -653,23 +638,20 @@ def resnet_conv_x():
                         element0ActivactionsOut = act3_fifo_2[
                             act3_fifo_names_2[i]
                         ].acquire(ObjectFifoPort.Produce, 1)
-                        res = call(
-                            conv2dk3,
-                            [
-                                elementActivactionsIn[0],
-                                elementActivactionsIn[0],
-                                elementActivactionsIn[1],
-                                element0Weights,
-                                element0ActivactionsOut,
-                                tensorInW,
-                                tensorInCInit,
-                                tensorInCInit // 2,
-                                3,
-                                3,
-                                0,
-                                scale,
-                                tensorInCInit // 2,
-                            ],
+                        conv2dk3(
+                            elementActivactionsIn[0],
+                            elementActivactionsIn[0],
+                            elementActivactionsIn[1],
+                            element0Weights,
+                            element0ActivactionsOut,
+                            tensorInW,
+                            tensorInCInit,
+                            tensorInCInit // 2,
+                            3,
+                            3,
+                            0,
+                            scale,
+                            tensorInCInit // 2,
                         )
 
                         objectfifo_release(
@@ -684,23 +666,20 @@ def resnet_conv_x():
                             element0ActivactionsOut = act3_fifo_2[
                                 act3_fifo_names_2[i]
                             ].acquire(ObjectFifoPort.Produce, 1)
-                            res = call(
-                                conv2dk3,
-                                [
-                                    elementActivactionsIn[0],
-                                    elementActivactionsIn[1],
-                                    elementActivactionsIn[2],
-                                    element0Weights,
-                                    element0ActivactionsOut,
-                                    tensorInW,
-                                    tensorInCInit,
-                                    tensorInCInit // 2,
-                                    3,
-                                    3,
-                                    1,
-                                    scale,
-                                    tensorInCInit // 2,
-                                ],
+                            conv2dk3(
+                                elementActivactionsIn[0],
+                                elementActivactionsIn[1],
+                                elementActivactionsIn[2],
+                                element0Weights,
+                                element0ActivactionsOut,
+                                tensorInW,
+                                tensorInCInit,
+                                tensorInCInit // 2,
+                                3,
+                                3,
+                                1,
+                                scale,
+                                tensorInCInit // 2,
                             )
 
                             objectfifo_release(
@@ -717,23 +696,20 @@ def resnet_conv_x():
                         element0ActivactionsOut = act3_fifo_2[
                             act3_fifo_names_2[i]
                         ].acquire(ObjectFifoPort.Produce, 1)
-                        res = call(
-                            conv2dk3,
-                            [
-                                elementActivactionsIn[0],
-                                elementActivactionsIn[1],
-                                elementActivactionsIn[1],
-                                element0Weights,
-                                element0ActivactionsOut,
-                                tensorInW,
-                                tensorInCInit,
-                                tensorInCInit // 2,
-                                3,
-                                3,
-                                2,
-                                scale,
-                                tensorInCInit // 2,
-                            ],
+                        conv2dk3(
+                            elementActivactionsIn[0],
+                            elementActivactionsIn[1],
+                            elementActivactionsIn[1],
+                            element0Weights,
+                            element0ActivactionsOut,
+                            tensorInW,
+                            tensorInCInit,
+                            tensorInCInit // 2,
+                            3,
+                            3,
+                            2,
+                            scale,
+                            tensorInCInit // 2,
                         )
                         objectfifo_release(
                             ObjectFifoPort.Consume, act2_fifo_names[i], 2
@@ -757,12 +733,12 @@ def resnet_conv_x():
                             wts_sub_fifo_names[i][2]
                         ].acquire(ObjectFifoPort.Consume, 1)
                         if i == 0:
-                            scale = memref.load(rtp[0][3], [0])
-                            skipScale = memref.load(rtp[0][3], [1])
-                            skipConvScale = memref.load(rtp[0][3], [2])
+                            scale = rtp[0][3][0]
+                            skipScale = rtp[0][3][1]
+                            skipConvScale = rtp[0][3][2]
                         else:
-                            scale = memref.load(rtp[i][2], [0])
-                            skipScale = memref.load(rtp[i][2], [1])
+                            scale = rtp[i][2][0]
+                            skipScale = rtp[i][2][1]
 
                         for _ in range_(tensorInH):
                             element0ActivactionsIn = act3_fifo_1[
@@ -779,38 +755,32 @@ def resnet_conv_x():
                                 ObjectFifoPort.Consume, 1
                             )
                             if i == 0:
-                                call(
-                                    conv3_kernels_call[0],
-                                    [
-                                        element0ActivactionsIn,
-                                        element1ActivactionsIn,
-                                        element0Weights,
-                                        elementActivactionsOut,
-                                        elementSkipsIn,
-                                        tensorInW,
-                                        tensorInCInit,
-                                        tensorInCRest,
-                                        tensorInCInit,
-                                        scale,
-                                        skipScale,
-                                        skipConvScale,
-                                    ],
+                                conv3_kernels_call[0](
+                                    element0ActivactionsIn,
+                                    element1ActivactionsIn,
+                                    element0Weights,
+                                    elementActivactionsOut,
+                                    elementSkipsIn,
+                                    tensorInW,
+                                    tensorInCInit,
+                                    tensorInCRest,
+                                    tensorInCInit,
+                                    scale,
+                                    skipScale,
+                                    skipConvScale,
                                 )
                             else:
-                                call(
-                                    conv3_kernels_call[i],
-                                    [
-                                        element0ActivactionsIn,
-                                        element1ActivactionsIn,
-                                        element0Weights,
-                                        elementActivactionsOut,
-                                        elementSkipsIn,
-                                        tensorInW,
-                                        tensorInCInit,
-                                        tensorInCRest,
-                                        scale,
-                                        skipScale,
-                                    ],
+                                conv3_kernels_call[i](
+                                    element0ActivactionsIn,
+                                    element1ActivactionsIn,
+                                    element0Weights,
+                                    elementActivactionsOut,
+                                    elementSkipsIn,
+                                    tensorInW,
+                                    tensorInCInit,
+                                    tensorInCRest,
+                                    scale,
+                                    skipScale,
                                 )
                             objectfifo_release(
                                 ObjectFifoPort.Consume, act3_fifo_names_1[i], 1
@@ -885,12 +855,6 @@ def resnet_conv_x():
                     sizes=[1, 1, 1, activationsIn],
                 )
                 npu_dma_memcpy_nd(
-                    metadata="outOFL2L3",
-                    bd_id=2,
-                    mem=outputToL3,
-                    sizes=[1, 1, 1, acitivationsOut],
-                )
-                npu_dma_memcpy_nd(
                     metadata="wts_0_L3L2",
                     bd_id=1,
                     mem=weightsFromL3,
@@ -917,8 +881,14 @@ def resnet_conv_x():
                     ],
                     sizes=[1, 1, 1, totalWeights_rest],
                 )
-
-                npu_sync(column=1, row=0, direction=0, channel=0)
+                npu_dma_memcpy_nd(
+                    metadata="outOFL2L3",
+                    bd_id=2,
+                    mem=outputToL3,
+                    sizes=[1, 1, 1, acitivationsOut],
+                )
+                # outOFL2L3 will only complete after inputs complete, so we just wait on outOFL2L3 instead of all
+                dma_wait("outOFL2L3")
 
     res = ctx.module.operation.verify()
     if res == True:

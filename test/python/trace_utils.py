@@ -70,7 +70,7 @@ def passthroughKernel():
                 for _ in range_(sys.maxsize):
                     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
-                    call(passThroughLine, [elemIn, elemOut, lineWidthInBytes])
+                    passThroughLine(elemIn, elemOut, lineWidthInBytes)
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
 
@@ -106,18 +106,18 @@ def passthroughKernel():
                     )
 
                 npu_dma_memcpy_nd(
-                    metadata="in",
+                    metadata=of_in,
                     bd_id=0,
                     mem=inTensor,
                     sizes=[1, 1, 1, tensorSizeInInt32s],
                 )
                 npu_dma_memcpy_nd(
-                    metadata="out",
+                    metadata=of_out,
                     bd_id=1,
                     mem=outTensor,
                     sizes=[1, 1, 1, tensorSizeInInt32s],
                 )
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                dma_wait(of_out)
 
     print(ctx.module)
 

@@ -492,6 +492,9 @@ namespace {
 
 struct ConvertAIEToTransactionPass
     : ConvertAIEToTransactionBase<ConvertAIEToTransactionPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<memref::MemRefDialect, AIEX::AIEXDialect>();
+  }
   void runOnOperation() override {
     if (failed(convertAIEToConfiguration(getOperation(), clElfDir,
                                          OutputType::Transaction)))
@@ -501,6 +504,9 @@ struct ConvertAIEToTransactionPass
 
 struct ConvertAIEToControlPacketsPass
     : public ConvertAIEToControlPacketsBase<ConvertAIEToControlPacketsPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<memref::MemRefDialect, AIEX::AIEXDialect>();
+  }
   void runOnOperation() override {
     if (failed(convertAIEToConfiguration(getOperation(), clElfDir,
                                          OutputType::ControlPacket)))

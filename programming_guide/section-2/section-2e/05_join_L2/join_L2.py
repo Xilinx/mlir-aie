@@ -8,7 +8,6 @@
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.dialects.ext.scf import _for as range_
-from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
 
@@ -43,9 +42,7 @@ def join_L2():
                 for _ in range_(6):
                     elem = of_out0.acquire(ObjectFifoPort.Produce, 1)
                     for i in range_(8):
-                        v0 = memref.load(elem, [i])
-                        v1 = arith.constant(1, T.i32())
-                        memref.store(v1, elem, [i])
+                        elem[i] = 1
                     of_out0.release(ObjectFifoPort.Produce, 1)
 
             # Compute tile 3
@@ -55,9 +52,7 @@ def join_L2():
                 for _ in range_(6):
                     elem = of_out1.acquire(ObjectFifoPort.Produce, 1)
                     for i in range_(8):
-                        v0 = memref.load(elem, [i])
-                        v1 = arith.constant(1, T.i32())
-                        memref.store(v1, elem, [i])
+                        elem[i] = 1
                     of_out1.release(ObjectFifoPort.Produce, 1)
 
             # Compute tile 4
@@ -67,9 +62,7 @@ def join_L2():
                 for _ in range_(6):
                     elem = of_out2.acquire(ObjectFifoPort.Produce, 1)
                     for i in range_(8):
-                        v0 = memref.load(elem, [i])
-                        v1 = arith.constant(1, T.i32())
-                        memref.store(v1, elem, [i])
+                        elem[i] = 1
                     of_out2.release(ObjectFifoPort.Produce, 1)
 
     res = ctx.module.operation.verify()

@@ -48,7 +48,7 @@ Now assume that the processes running on the two consumers of `of0` are as in th
 def core_body():
     elem0 = of0.acquire(ObjectFifoPort.Consume, 1)
     elem1 = of1.acquire(ObjectFifoPort.Produce, 1)
-    call(test_func2, [elem0, elem1])
+    test_func2(elem0, elem1)
     of0.release(ObjectFifoPort.Consume, 1)
     of1.release(ObjectFifoPort.Produce, 1)
 
@@ -56,7 +56,7 @@ def core_body():
 def core_body():
     elem0 = of0.acquire(ObjectFifoPort.Consume, 1)
     elem1 = of1.acquire(ObjectFifoPort.Consume, 1)
-    call(test_func2, [elem0, elem1])
+    test_func2(elem0, elem1)
     of0.release(ObjectFifoPort.Consume, 1)
     of1.release(ObjectFifoPort.Consume, 1)
 ```

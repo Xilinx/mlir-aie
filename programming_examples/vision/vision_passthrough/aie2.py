@@ -58,7 +58,7 @@ def passThroughAIE2():
                     for _ in range_(height):
                         elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
                         elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
-                        call(passThroughLine, [elemIn, elemOut, width])
+                        passThroughLine(elemIn, elemOut, width)
                         of_in.release(ObjectFifoPort.Consume, 1)
                         of_out.release(ObjectFifoPort.Produce, 1)
 
@@ -149,18 +149,19 @@ def passThroughAIE2():
                     NpuWrite32(0, 0, 0x1D20C, 0x3)
 
                 npu_dma_memcpy_nd(
-                    metadata="in",
+                    metadata=of_in,
                     bd_id=1,
                     mem=inTensor,
                     sizes=[1, 1, 1, tensorSize],
+                    issue_token=True,
                 )
                 npu_dma_memcpy_nd(
-                    metadata="out",
+                    metadata=of_out,
                     bd_id=0,
                     mem=outTensor,
                     sizes=[1, 1, 1, tensorSize],
                 )
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                dma_wait(of_in, of_out)
 
     print(ctx.module)
 
