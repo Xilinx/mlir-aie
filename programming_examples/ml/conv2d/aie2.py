@@ -74,7 +74,6 @@ def conv2dk1():
             ShimTile = tile(0, 0)
             MemTile = tile(0, 1)
             ComputeTile2 = tile(0, 2)
-            compute_tile2_col, compute_tile2_row = 0, 2
 
             # AIE-array data movement with object fifos
             # Input
@@ -109,29 +108,17 @@ def conv2dk1():
                 for _ in range_(0xFFFFFFFF):
                     elemWts = of_inOF_wts_0_L3L2.acquire(ObjectFifoPort.Consume, 1)
 
-                    scale = memref.load(rtp2, [0])
+                    scale = rtp2[0]
                     # scale = memref.load(rtpComputeTile2, [0])
 
                     for _ in range_(y_dim):
                         elemIn = of_act_L2_02.acquire(ObjectFifoPort.Consume, 1)
                         elemOut0 = of_out_02_L2.acquire(ObjectFifoPort.Produce, 1)
 
-                        call(
-                            conv2dk1_i8,
-                            [
-                                elemIn,
-                                elemWts,
-                                elemOut0,
-                                arith.constant(x_dim),
-                                arith.constant(ci),
-                                arith.constant(co),
-                                scale,
-                            ],
-                        )
-
-                        objectfifo_release(ObjectFifoPort.Consume, "act_L2_02", 1)
-                        objectfifo_release(ObjectFifoPort.Produce, "out_02_L2", 1)
-                    objectfifo_release(ObjectFifoPort.Consume, "inOF_wts_0_L3L2", 1)
+                        conv2dk1_i8(elemIn, elemWts, elemOut0, x_dim, ci, co, scale)
+                        of_act_L2_02.release(ObjectFifoPort.Consume, 1)
+                        of_out_02_L2.release(ObjectFifoPort.Produce, 1)
+                    of_inOF_wts_0_L3L2.release(ObjectFifoPort.Consume, 1)
 
             # To/from AIE-array data movement
 

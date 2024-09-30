@@ -58,7 +58,7 @@ def passThroughAIE2():
                     for _ in range_(height):
                         elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
                         elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
-                        call(passThroughLine, [elemIn, elemOut, width])
+                        passThroughLine(elemIn, elemOut, width)
                         of_in.release(ObjectFifoPort.Consume, 1)
                         of_out.release(ObjectFifoPort.Produce, 1)
 

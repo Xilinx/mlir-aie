@@ -50,18 +50,12 @@ def my_matmul():
             memRef_A_ty = T.memref(m, k, dtype_in())
 
             # AIE Core Function declarations
-            zero_scalar = external_func(
-                f"zero_scalar_{dtype_out_str}", inputs=[memRef_outC_ty]
-            )
+            func_type = "vectorized" if vectorized else "scalar"
             zero = external_func(
-                f"zero_vectorized_{dtype_out_str}", inputs=[memRef_outC_ty]
-            )
-            matvec_scalar = external_func(
-                f"matvec_scalar_{dtype_in_str}_{dtype_out_str}",
-                inputs=[memRef_A_ty, memRef_inB_ty, memRef_outC_ty],
+                f"zero_{func_type}_{dtype_out_str}", inputs=[memRef_outC_ty]
             )
             matvec = external_func(
-                f"matvec_vectorized_{dtype_in_str}_{dtype_out_str}",
+                f"matvec_{func_type}_{dtype_in_str}_{dtype_out_str}",
                 inputs=[memRef_A_ty, memRef_inB_ty, memRef_outC_ty],
             )
 
@@ -131,18 +125,12 @@ def my_matmul():
                             ObjectFifoPort.Produce,
                             1,
                         )
-                        if vectorized or True:
-                            call(zero, [elem_out])
-                        else:
-                            call(zero_scalar, [elem_out])
+                        zero(elem_out)
 
                         for _ in range_(K_div_k):
                             elem_in_a = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
                             elem_in_b = inB_fifo.acquire(ObjectFifoPort.Consume, 1)
-                            if vectorized:
-                                call(matvec, [elem_in_a, elem_in_b, elem_out])
-                            else:
-                                call(matvec_scalar, [elem_in_a, elem_in_b, elem_out])
+                            matvec(elem_in_a, elem_in_b, elem_out)
                             inA_fifos[i].release(ObjectFifoPort.Consume, 1)
                             inB_fifo.release(ObjectFifoPort.Consume, 1)
 

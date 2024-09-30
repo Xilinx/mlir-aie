@@ -62,7 +62,7 @@ def design():
                 for _ in range_(0, 0xFFFFFFFF):
                     elem_in = fifo_in.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = fifo_out.acquire(ObjectFifoPort.Produce, 1)
-                    call(passthrough_func, [elem_in, elem_out, matrix_size])
+                    passthrough_func(elem_in, elem_out, matrix_size)
                     fifo_in.release(ObjectFifoPort.Consume, 1)
                     fifo_out.release(ObjectFifoPort.Produce, 1)
 
@@ -70,7 +70,7 @@ def design():
             @runtime_sequence(matrix_memref, matrix_memref)
             def sequence(inp, out):
                 npu_dma_memcpy_nd(
-                    metadata=fifo_in.sym_name.value,
+                    metadata=fifo_in,
                     bd_id=1,
                     mem=inp,
                     offsets=[0, 0, 0, 0],
@@ -78,14 +78,14 @@ def design():
                     strides=[0, 0, 1, matrix_cols],
                 )
                 npu_dma_memcpy_nd(
-                    metadata=fifo_out.sym_name.value,
+                    metadata=fifo_out,
                     bd_id=0,
                     mem=out,
                     offsets=[0, 0, 0, 0],
                     sizes=[1, 1, 1, matrix_rows * matrix_cols],
                     strides=[0, 0, 0, 1],
                 )
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                dma_wait(fifo_out)
 
     print(ctx.module)
 

@@ -8,7 +8,6 @@
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.dialects.ext.scf import _for as range_
-from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
 
@@ -43,9 +42,7 @@ def distribute_L2():
                 for _ in range_(8):
                     elem = of_in0.acquire(ObjectFifoPort.Consume, 1)
                     for i in range_(8):
-                        v0 = memref.load(elem, [i])
-                        v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elem, [i])
+                        elem[i] = elem[i] + 1
                     of_in0.release(ObjectFifoPort.Consume, 1)
 
             # Compute tile 3
@@ -55,9 +52,7 @@ def distribute_L2():
                 for _ in range_(8):
                     elem = of_in1.acquire(ObjectFifoPort.Consume, 1)
                     for i in range_(8):
-                        v0 = memref.load(elem, [i])
-                        v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elem, [i])
+                        elem[i] = elem[i] + 1
                     of_in1.release(ObjectFifoPort.Consume, 1)
 
             # Compute tile 4
@@ -67,9 +62,7 @@ def distribute_L2():
                 for _ in range_(8):
                     elem = of_in2.acquire(ObjectFifoPort.Consume, 1)
                     for i in range_(8):
-                        v0 = memref.load(elem, [i])
-                        v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elem, [i])
+                        elem[i] = elem[i] + 1
                     of_in2.release(ObjectFifoPort.Consume, 1)
 
     res = ctx.module.operation.verify()
