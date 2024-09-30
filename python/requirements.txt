@@ -11,4 +11,3 @@ pybind11>=2.9.0, <=2.10.3
 rich
 setuptools
 wheel
-bfloat16 @ git+https://github.com/GreenWaves-Technologies/bfloat16@97e0bab # v1.2 is not available for some systems, so we use the git commit for v1.2

@@ -1,4 +1,3 @@
-from bfloat16 import bfloat16
 from collections import defaultdict
 import contextlib
 import ctypes
@@ -147,7 +146,7 @@ _np_dtype_to_mlir_type_ctor = defaultdict(
         np.float32: T.f32,
         np.float64: T.f64,
         # Block floating point types
-        bfloat16: T.bf16,
+        # bfloat16: T.bf16,
         # Index Types
         # this is technically wrong i guess but numpy by default casts python scalars to this
         # so to support passing lists of ints we map to index type
@@ -171,7 +170,7 @@ NpuDType = (
     | np.float64
     | np.longlong
     | np.uintp
-    | bfloat16
+    # | bfloat16
 )
 
 _mlir_type_ctor_to_np_dtype = lambda: {
