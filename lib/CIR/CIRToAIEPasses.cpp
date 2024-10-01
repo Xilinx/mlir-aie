@@ -26,6 +26,7 @@
 #include "clang/CIR/Dialect/IR/CIRAttrs.h"
 #include "clang/CIR/Dialect/IR/CIRDialect.h"
 #include "clang/CIR/Dialect/IR/CIRTypes.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Regex.h"
@@ -103,17 +104,18 @@ public:
 
 namespace {
 
-// Return true if the call operation calls a function with the given string
-// annotation
-bool isCallingFunctionWithAnnotation(mlir::cir::CallOp op,
-                                     llvm::StringRef annotate) {
+// Return true if the call operation calls a function with any of the given
+// string annotations
+bool isCallingFunctionWithAnnotation(
+    mlir::cir::CallOp op, llvm::ArrayRef<llvm::StringRef> anyAnnotations) {
   if (auto calledFunc =
           mlir::SymbolTable::lookupNearestSymbolFrom<mlir::cir::FuncOp>(
               op, op.getCalleeAttr())) {
     if (auto annnotations = calledFunc.getAnnotationsAttr())
       for (auto a : calledFunc.getAnnotationsAttr()) {
-        if (mlir::cast<mlir::cir::AnnotationAttr>(a).getName() == annotate)
-          return true;
+        for (auto one : anyAnnotations)
+          if (mlir::cast<mlir::cir::AnnotationAttr>(a).getName() == one)
+            return true;
       }
   }
   return false;
@@ -167,39 +169,14 @@ struct DeviceLowering : public mlir::OpConversionPattern<mlir::cir::AllocaOp> {
 // Into
 //
 // %3 = builtin.unrealized_conversion_cast %2 : // !cir.ptr<!ty_aie3A3Adevice3Caie3A3Anpu13E> to // !cir.ptr<!ty_aie3A3Atile_t3C12C_43E>
-struct TileLowering : public mlir::OpConversionPattern<mlir::cir::CallOp> {
+struct TileBufferLowering : public mlir::OpConversionPattern<mlir::cir::CallOp> {
   using mlir::OpConversionPattern<mlir::cir::CallOp>::OpConversionPattern;
 
   mlir::LogicalResult
   matchAndRewrite(mlir::cir::CallOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const final {
-    if (isCallingFunctionWithAnnotation(op, "aie.device.tile")) {
-      auto device = op.getOperand(0);
-      auto user = op.getResult().getUsers().begin();
-      // Track the alloca where the tiled is stored
-      auto store = mlir::dyn_cast<mlir::cir::StoreOp>(*user);
-      auto alloca = mlir::dyn_cast<mlir::cir::AllocaOp>(
-          store.getOperand(1).getDefiningOp());
-      // Replace the alloca by a conversion to be replaced later in
-      // another pass
-      rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
-          alloca, alloca.getResult().getType(), device);
-      // Remove the now useless original operations
-      rewriter.eraseOp(store);
-      rewriter.eraseOp(op);
-      return mlir::success();
-    }
-    return mlir::failure();
-  }
-};
-
-struct BufferLowering : public mlir::OpConversionPattern<mlir::cir::CallOp> {
-  using mlir::OpConversionPattern<mlir::cir::CallOp>::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(mlir::cir::CallOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const final {
-    if (isCallingFunctionWithAnnotation(op, "aie.tile.buffer")) {
+    if (isCallingFunctionWithAnnotation(
+            op, {"aie.device.tile", "aie.tile.buffer"})) {
       auto device = op.getOperand(0);
       auto user = op.getResult().getUsers().begin();
       // Track the alloca where the tiled is stored
@@ -238,13 +215,12 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
           return !(aieLike && aieLike->base == "aie::device");
         });
     target.addDynamicallyLegalOp<mlir::cir::CallOp>([](mlir::cir::CallOp op) {
-      return !(isCallingFunctionWithAnnotation(op, "aie.device.tile") ||
-               isCallingFunctionWithAnnotation(op, "aie.tile.buffer"));
+      return !isCallingFunctionWithAnnotation(
+          op, {"aie.device.tile", "aie.tile.buffer"});
     });
     mlir::RewritePatternSet patterns{&getContext()};
     patterns.add<DeviceLowering>(&getContext());
-    patterns.add<TileLowering>(&getContext());
-    patterns.add<BufferLowering>(&getContext());
+    patterns.add<TileBufferLowering>(&getContext());
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();
