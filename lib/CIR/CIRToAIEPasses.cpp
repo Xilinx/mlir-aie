@@ -193,6 +193,32 @@ struct TileLowering : public mlir::OpConversionPattern<mlir::cir::CallOp> {
   }
 };
 
+struct BufferLowering : public mlir::OpConversionPattern<mlir::cir::CallOp> {
+  using mlir::OpConversionPattern<mlir::cir::CallOp>::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(mlir::cir::CallOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    if (isCallingFunctionWithAnnotation(op, "aie.tile.buffer")) {
+      auto device = op.getOperand(0);
+      auto user = op.getResult().getUsers().begin();
+      // Track the alloca where the tiled is stored
+      auto store = mlir::dyn_cast<mlir::cir::StoreOp>(*user);
+      auto alloca = mlir::dyn_cast<mlir::cir::AllocaOp>(
+          store.getOperand(1).getDefiningOp());
+      // Replace the alloca by a conversion to be replaced later in
+      // another pass
+      rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+          alloca, alloca.getResult().getType(), device);
+      // Remove the now useless original operations
+      rewriter.eraseOp(store);
+      rewriter.eraseOp(op);
+      return mlir::success();
+    }
+    return mlir::failure();
+  }
+};
+
 struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
   void runOnOperation() override {
     // Compute the analysis for the module since it is a module pass.
@@ -212,11 +238,13 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
           return !(aieLike && aieLike->base == "aie::device");
         });
     target.addDynamicallyLegalOp<mlir::cir::CallOp>([](mlir::cir::CallOp op) {
-      return !isCallingFunctionWithAnnotation(op, "aie.device.tile");
+      return !(isCallingFunctionWithAnnotation(op, "aie.device.tile") ||
+               isCallingFunctionWithAnnotation(op, "aie.tile.buffer"));
     });
     mlir::RewritePatternSet patterns{&getContext()};
     patterns.add<DeviceLowering>(&getContext());
     patterns.add<TileLowering>(&getContext());
+    patterns.add<BufferLowering>(&getContext());
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();
