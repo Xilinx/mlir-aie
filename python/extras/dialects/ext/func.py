@@ -8,8 +8,6 @@ from ...util import (
     get_arg_types,
     get_user_code_loc,
     make_maybe_no_args_decorator,
-    np_dtype_to_mlir_type,
-    np_ndarray_type_to_memref_type,
     NpuDType,
 )
 from ....dialects._ods_common import get_op_result_or_op_results
@@ -217,10 +215,10 @@ class FuncBase:
                     input_types[i] = Type(eval(v, self.body_builder.__globals__))
                 elif isalambda(v):
                     input_types[i] = v()
-                elif get_origin(v) == np.ndarray:
-                    input_types[i] = np_ndarray_type_to_memref_type(v)
-                elif v in get_args(NpuDType):
-                    input_types[i] = np_dtype_to_mlir_type(v)
+                else:
+                    new_type = try_convert_np_type_to_mlir_type(v)
+                    if new_type != v:
+                        input_types[i] = new_type
             if len(call_args) != 0:
                 assert len(call_args) == len(input_types)
 

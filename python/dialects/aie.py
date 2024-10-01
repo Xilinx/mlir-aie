@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from dataclasses import dataclass
 import inspect
-from typing import List, Tuple, Dict, Any, get_origin
+from typing import List, Tuple, Dict, Any
 import contextlib
 
 import numpy as np
@@ -42,8 +42,8 @@ from ..extras.util import (
     find_ops,
     find_parent_of_type,
     get_user_code_loc,
-    np_ndarray_type_to_memref_type,
     region_adder,
+    try_convert_np_type_to_mlir_type,
 )
 
 from ..ir import (
@@ -72,6 +72,14 @@ class external_func(FuncOp):
     def __init__(self, name: str, inputs, outputs=None, visibility="private"):
         if outputs is None:
             outputs = []
+        for i, ty in enumerate(inputs):
+            new_type = try_convert_np_type_to_mlir_type(ty)
+            if new_type != ty:
+                inputs[i] = new_type
+        for i, ty in enumerate(outputs):
+            new_type = try_convert_np_type_to_mlir_type(ty)
+            if new_type != ty:
+                inputs[i] = new_type
         super().__init__(
             name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
         )
@@ -274,16 +282,14 @@ class object_fifo(ObjectFifoCreateOp):
         via_DMA=None,
         plio=None,
     ):
-        if get_origin(datatype) == np.ndarray:
-            datatype = np_ndarray_type_to_memref_type(datatype)
-        self.datatype = datatype
+        self.datatype = try_convert_np_type_to_mlir_type(datatype)
         if not isinstance(consumerTiles, List):
             consumerTiles = [consumerTiles]
         if dimensionsFromStreamPerConsumer is None:
             dimensionsFromStreamPerConsumer = []
         if dimensionsToStream is None:
             dimensionsToStream = []
-        of_Ty = TypeAttr.get(ObjectFifoType.get(datatype))
+        of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
         super().__init__(
             sym_name=name,
             producerTile=producerTile,

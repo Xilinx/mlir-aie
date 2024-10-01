@@ -9,7 +9,7 @@ import platform
 from pathlib import Path
 import re
 import sys
-from typing import Callable, List, Sequence, Tuple, get_args
+from typing import Callable, List, Sequence, Tuple, get_args, get_origin
 
 from .meta import op_region_builder
 from ..extras import types as T
@@ -243,7 +243,7 @@ def infer_mlir_type(
         else:
             return RankedTensorType.get(py_val.shape, dtype)
     elif isinstance(py_val, NpuDType):
-        return np_dtype_to_mlir_type(py_val)
+        return np_dtype_to_mlir_type(type(py_val))
     else:
         raise NotImplementedError(
             f"Unsupported Python value {py_val=} with type {type(py_val)}"
@@ -268,6 +268,16 @@ def np_ndarray_type_to_memref_type(ndarray_type):
     dtype = np_dtype_to_mlir_type(type_args[0])
     shape = type_args[1]
     return T.memref(*shape, element_type=dtype)
+
+
+def try_convert_np_type_to_mlir_type(input_type):
+    if get_origin(input_type) == np.ndarray:
+        output_type = np_ndarray_type_to_memref_type(input_type)
+    elif input_type in get_args(NpuDType):
+        output_type = np_dtype_to_mlir_type(input_type)
+    else:
+        output_type = input_type
+    return output_type
 
 
 def _get_previous_frame_idents(val, previous_frame):
