@@ -23,7 +23,7 @@ def my_vector_bias_add():
     def device_body():
         mem_tile_ty = np.ndarray[np.int32, (MEM_TILE_WIDTH,)]
         aie_tile_ty = np.ndarray[np.int32, (AIE_TILE_WIDTH,)]
-        all_data_ty = np.ndarra[np.int32, (PROBLEM_SIZE,)]
+        all_data_ty = np.ndarray[np.int32, (PROBLEM_SIZE,)]
 
         # Tile declarations
         ShimTile = tile(0, 0)

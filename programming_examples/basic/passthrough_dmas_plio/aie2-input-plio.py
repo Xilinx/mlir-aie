@@ -27,7 +27,7 @@ def my_passthrough():
 
         @device(dev)
         def device_body():
-            vector_ty = np.ndarra[np.int32, (N,)]
+            vector_ty = np.ndarray[np.int32, (N,)]
             line_ty = np.ndarray[np.int32, (line_size,)]
 
             # Tile declarations

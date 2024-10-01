@@ -19,6 +19,7 @@ memtile_repeat_count = 3
 
 if len(sys.argv) > 1:
     N = int(sys.argv[1])
+data_out_size = N * (memtile_repeat_count + 1)
 
 if len(sys.argv) > 2:
     if sys.argv[2] == "npu":
@@ -38,10 +39,7 @@ def simple_repeat():
         @device(dev)
         def device_body():
             tensor_ty = np.ndarray[np.int32, (N,)]
-            tensor_out_ty = np.ndarray[
-                np.int32,
-                (N * (memtile_repeat_count + 1)),
-            ]
+            tensor_out_ty = np.ndarray[np.int32, (data_out_size,)]
 
             # Tile declarations
             ShimTile = tile(col, 0)
@@ -61,7 +59,7 @@ def simple_repeat():
                     metadata=of_out,
                     bd_id=0,
                     mem=C,
-                    sizes=[1, 1, 1, N * (memtile_repeat_count + 1)],
+                    sizes=[1, 1, 1, data_out_size],
                 )
                 # of_out will only complete after of_in completes, so we just wait on of_out instead of both
                 dma_wait(of_out)

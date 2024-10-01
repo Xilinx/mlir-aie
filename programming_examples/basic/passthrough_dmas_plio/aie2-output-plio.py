@@ -29,7 +29,7 @@ def my_passthrough():
         @device(dev)
         def device_body():
             vector_ty = np.ndarray[np.int32, (N,)]
-            line_ty = np.ndarray[np.int32, (1024,)]
+            line_ty = np.ndarray[np.int32, (line_size,)]
 
             # Tile declarations
             ShimTile1 = tile(26, 0)

@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
-
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
@@ -32,6 +32,14 @@ tensorL2OutC = tensorL2InC
 tensorL3InC = tensorL2OutC
 tensorL3OutC = tensorL3InC * 4
 
+activationsIn = tensorInW * tensorInH * tensorInC
+acitivationsOut = activationsIn
+totalWeights = (
+    tensorL1InC * tensorL1OutC
+    + 3 * 3 * tensorL2InC * tensorL2OutC
+    + tensorL3InC * tensorL3OutC
+)
+
 
 def bottleneck4AIEs():
     with mlir_mod_ctx() as ctx:
@@ -40,34 +48,22 @@ def bottleneck4AIEs():
         def deviceBody():
 
             # define types
-            uint8_ty = IntegerType.get_unsigned(8)
-            int8_ty = IntegerType.get_signless(8)
-            int16_ty = IntegerType.get_signless(16)
-            int32_ty = IntegerType.get_signless(32)
+            activationsInL3_ty = np.ndarray[np.int8, activationsIn]
+            weightsInL3_ty = np.ndarray[np.uint8, (totalWeights,)]
 
-            tensorLayer1In_ty = T.memref(
-                tensorInW,
-                1,
-                tensorL1InC,
-                int8_ty,
-            )
-            weightsLayer1_ty = T.memref(tensorL1InC * tensorL1OutC, int8_ty)
-            tensorLayer1Out_ty = T.memref(tensorInW, 1, tensorL1OutC, uint8_ty)
+            tensorLayer1In_ty = np.ndarray[np.int8, (tensorInW, 1, tensorL1InC)]
+            weightsLayer1_ty = np.ndarray[np.int8, (tensorL1InC * tensorL1OutC,)]
+            tensorLayer1Out_ty = np.ndarray[np.uint8, (tensorInW, 1, tensorL1OutC)]
 
-            tensorLayer2In_ty = T.memref(tensorInW, 1, tensorL2InC, uint8_ty)
-            weightsLayer2_ty = T.memref(3 * 3 * tensorL2InC * tensorL2OutC, int8_ty)
-            tensorLayer2Out_ty = T.memref(tensorInW, 1, tensorL2OutC // 2, uint8_ty)
+            tensorLayer2In_ty = np.ndarray[np.uint8, (tensorInW, 1, tensorL2InC)]
+            weightsLayer2_ty = np.ndarray[
+                np.int8, (3 * 3 * tensorL2InC * tensorL2OutC,)
+            ]
+            tensorLayer2Out_ty = np.ndarray[np.uint8, (tensorInW, 1, tensorL2OutC // 2)]
 
-            tensorLayer3In_ty = T.memref(tensorInW, 1, tensorL3InC // 2, uint8_ty)
-            weightsLayer3_ty = T.memref(tensorL3InC * tensorL3OutC, int8_ty)
-            tensorLayer3Out_ty = T.memref(tensorInW, 1, tensorL3OutC, uint8_ty)
-
-            allWeights_ty = T.memref(
-                tensorL1InC * tensorL1OutC
-                + 3 * 3 * tensorL2InC * tensorL2OutC
-                + tensorL3InC * tensorL3OutC,
-                int8_ty,
-            )
+            tensorLayer3In_ty = np.ndarray[np.uint8, (tensorInW, 1, tensorL3InC // 2)]
+            weightsLayer3_ty = np.ndarray[np.int8, (tensorL3InC * tensorL3OutC)]
+            tensorLayer3Out_ty = np.ndarray[np.uint8, (tensorInW, 1, tensorL3OutC)]
 
             # kernel definitions
             conv2dk1 = external_func(
@@ -76,10 +72,10 @@ def bottleneck4AIEs():
                     tensorLayer1In_ty,
                     weightsLayer1_ty,
                     tensorLayer1Out_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
                 ],
             )
             conv2dk3 = external_func(
@@ -90,14 +86,14 @@ def bottleneck4AIEs():
                     tensorLayer2In_ty,
                     weightsLayer2_ty,
                     tensorLayer2Out_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
                 ],
             )
             conv2dk1_skip = external_func(
@@ -108,11 +104,11 @@ def bottleneck4AIEs():
                     weightsLayer3_ty,
                     tensorLayer3Out_ty,
                     tensorLayer1In_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
                 ],
             )
 
@@ -128,10 +124,10 @@ def bottleneck4AIEs():
 
             # runtime parameters
 
-            rtpComputeTile2 = Buffer(ComputeTile2, [16], T.i32(), "rtpComputeTile2")
-            rtpComputeTile3 = Buffer(ComputeTile3, [16], T.i32(), "rtpComputeTile3")
-            rtpComputeTile4 = Buffer(ComputeTile4, [16], T.i32(), "rtpComputeTile4")
-            rtpComputeTile5 = Buffer(ComputeTile5, [16], T.i32(), "rtpComputeTile5")
+            rtpComputeTile2 = Buffer(ComputeTile2, [16], np.int32, "rtpComputeTile2")
+            rtpComputeTile3 = Buffer(ComputeTile3, [16], np.int32, "rtpComputeTile3")
+            rtpComputeTile4 = Buffer(ComputeTile4, [16], np.int32, "rtpComputeTile4")
+            rtpComputeTile5 = Buffer(ComputeTile5, [16], np.int32, "rtpComputeTile5")
 
             # set up data movement with OFs
             # input tensor (with broadcast for skip connection)
@@ -149,7 +145,7 @@ def bottleneck4AIEs():
 
             # weights
             inOF_wts_0_L3L2 = object_fifo(
-                "inOF_wts_0_L3L2", ShimTile, MemTile, 1, allWeights_ty
+                "inOF_wts_0_L3L2", ShimTile, MemTile, 1, weightsInL3_ty
             )
             of_wts_buf_00 = object_fifo(
                 "wts_buf_00", MemTile, ComputeTile2, 1, weightsLayer1_ty
@@ -426,17 +422,6 @@ def bottleneck4AIEs():
                     wts_buf_02.release(ObjectFifoPort.Consume, 1)
 
             # instruction stream generation
-            activationsIn = tensorInW * tensorInH * tensorInC
-            acitivationsOut = activationsIn
-            totalWeights = (
-                tensorL1InC * tensorL1OutC
-                + 3 * 3 * tensorL2InC * tensorL2OutC
-                + tensorL3InC * tensorL3OutC
-            )
-
-            activationsInL3_ty = T.memref(activationsIn, int8_ty)
-            weightsInL3_ty = T.memref(totalWeights, uint8_ty)
-
             @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsInL3_ty)
             def sequence(inputFromL3, weightsFromL3, outputToL3):
 

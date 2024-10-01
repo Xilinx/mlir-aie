@@ -4,12 +4,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
-
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 from aie.extras.dialects.ext.scf import _for as range_
 
@@ -31,6 +30,8 @@ weights = in_channels * out_channels
 actOut = width * out_channels  # 32*64 = 2048
 bufOut = actOut * 2  # double buffer
 
+tensorSize = width * height * in_channels
+
 
 def conv2dk1():
     with mlir_mod_ctx() as ctx:
@@ -38,23 +39,14 @@ def conv2dk1():
         @device(AIEDevice.npu1_1col)
         def device_body():
 
-            actIn_ty = T.memref(actIn, T.i8())
-            bufIn_ty = T.memref(bufIn, T.i8())
+            actIn_ty = np.ndarray[np.int8, (actIn,)]
+            bufIn_ty = np.ndarray[np.int8, (bufIn,)]
 
-            weights_ty = T.memref(weights, T.i8())
+            weights_ty = np.ndarray[np.int8, (weights,)]
 
-            out_ty = T.memref(actOut, T.i8())
-            bufOut_ty = T.memref(bufOut, T.i8())
-
-            # memRef_3x3_ty = T.memref(3, 3, T.i16())
-
-            ofifo_actIn_ty = TypeAttr.get(ObjectFifoType.get(actIn_ty))
-            ofifo_bufIn_ty = TypeAttr.get(ObjectFifoType.get(bufIn_ty))
-
-            ofifo_weights_ty = TypeAttr.get(ObjectFifoType.get(weights_ty))
-
-            ofifo_out_ty = TypeAttr.get(ObjectFifoType.get(out_ty))
-            ofifo_bufOut_ty = TypeAttr.get(ObjectFifoType.get(bufOut_ty))
+            out_ty = np.ndarray[np.int8, (actOut,)]
+            bufOut_ty = np.ndarray[np.int8, (bufOut,)]
+            tensor_ty = np.ndarray[np.int8, (tensorSize,)]
 
             # AIE Core Function declarations
             conv2dk1_i8 = external_func(
@@ -63,10 +55,10 @@ def conv2dk1():
                     actIn_ty,
                     weights_ty,
                     out_ty,
-                    T.i32(),
-                    T.i32(),
-                    T.i32(),
-                    T.i32(),
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
                 ],
             )
 
@@ -95,7 +87,7 @@ def conv2dk1():
 
             # Set up compute tiles
 
-            rtp2 = Buffer(ComputeTile2, [16], T.i32(), "rtp2")
+            rtp2 = Buffer(ComputeTile2, [16], np.int32, "rtp2")
 
             # Compute tile 2
             @core(ComputeTile2, "conv2dk1_i8.o")
@@ -121,13 +113,7 @@ def conv2dk1():
                     of_inOF_wts_0_L3L2.release(ObjectFifoPort.Consume, 1)
 
             # To/from AIE-array data movement
-
-            tensorSize = width * height * in_channels
-            tensor_ty = T.memref(tensorSize, T.i8())
-            memRef_wts_ty = T.memref(weights, T.i8())
-            # memRef_16x16_ty = T.memref(16, 16, T.i32())
-
-            @runtime_sequence(tensor_ty, memRef_wts_ty, tensor_ty)
+            @runtime_sequence(tensor_ty, weights_ty, tensor_ty)
             def sequence(I, W, O):
                 NpuWriteRTPOp("rtp2", index=0, value=10)
 
