@@ -80,7 +80,7 @@ class external_func(FuncOp):
         for i, ty in enumerate(outputs):
             new_type = try_convert_np_type_to_mlir_type(ty)
             if new_type != ty:
-                inputs[i] = new_type
+                outputs[i] = new_type
         super().__init__(
             name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
         )
@@ -237,11 +237,11 @@ class Buffer(MemRef):
             assert isinstance(initial_value, np.ndarray)
             initial_value = DenseElementsAttr.get(
                 initial_value,
-                type=datatype,
+                type=try_convert_np_type_to_mlir_type(datatype),
                 context=None,
             )
         my_buffer = BufferOp(
-            buffer=T.memref(*shape, datatype),
+            buffer=T.memref(*shape, try_convert_np_type_to_mlir_type(datatype)),
             tile=tile,
             sym_name=name,
             initial_value=initial_value,

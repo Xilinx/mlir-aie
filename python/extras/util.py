@@ -263,11 +263,18 @@ def memref_type_to_np_dtype(memref_type):
     return _memref_type_to_np_dtype.get(memref_type)
 
 
-def np_ndarray_type_to_memref_type(ndarray_type):
-    type_args = get_args(ndarray_type)
-    shape = type_args[0]
-    dtype = np_dtype_to_mlir_type(get_args(type_args[1])[0])
-    return T.memref(*shape, element_type=dtype)
+def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]:
+    return get_args(ndarray_type)[0]
+
+
+def np_ndarray_type_get_dtype(ndarray_type: type[np.ndarray]) -> NpuDType:
+    return get_args(get_args(ndarray_type)[1])[0]
+
+
+def np_ndarray_type_to_memref_type(ndarray_type: type[np.ndarray]):
+    shape = np_ndarray_type_get_shape(ndarray_type)
+    dtype = np_ndarray_type_get_dtype(ndarray_type)
+    return T.memref(*shape, element_type=np_dtype_to_mlir_type(dtype))
 
 
 def try_convert_np_type_to_mlir_type(input_type):

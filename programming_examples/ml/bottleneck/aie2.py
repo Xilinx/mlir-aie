@@ -11,6 +11,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.extras.dialects.ext.scf import _for as range_
+from aie.extras.util import np_ndarray_type_get_shape
 
 # tracing definitions
 trace_sz_in_bytes = 8192
@@ -61,9 +62,9 @@ def bottleneck4AIEs():
                 (tensorInW, 1, tensorL1OutC), np.dtype[np.uint8]
             ]
 
-            tensorLayer2In_ty = (
-                np.ndarray[(tensorInW, 1, tensorL2InC), np.dtype[np.uint8]],
-            )
+            tensorLayer2In_ty = np.ndarray[
+                (tensorInW, 1, tensorL2InC), np.dtype[np.uint8]
+            ]
             weightsLayer2_ty = np.ndarray[
                 (3 * 3 * tensorL2InC * tensorL2OutC,), np.dtype[np.int8]
             ]
@@ -75,7 +76,7 @@ def bottleneck4AIEs():
                 (tensorInW, 1, tensorL3InC // 2), np.dtype[np.uint8]
             ]
             weightsLayer3_ty = np.ndarray[
-                (tensorL3InC * tensorL3OutC), np.dtype[np.int8]
+                (tensorL3InC * tensorL3OutC,), np.dtype[np.int8]
             ]
             tensorLayer3Out_ty = np.ndarray[
                 (tensorInW, 1, tensorL3OutC), np.dtype[np.uint8]
@@ -178,8 +179,9 @@ def bottleneck4AIEs():
             )
             of_offsets = [
                 0,
-                np.prod(weightsLayer1_ty.shape),
-                np.prod(weightsLayer1_ty.shape) + np.prod(weightsLayer2_ty.shape),
+                np.prod(np_ndarray_type_get_shape(weightsLayer1_ty)),
+                np.prod(np_ndarray_type_get_shape(weightsLayer1_ty))
+                + np.prod(np_ndarray_type_get_shape(weightsLayer2_ty)),
             ]
             object_fifo_link(
                 inOF_wts_0_L3L2, [of_wts_buf_00, wts_buf_01, wts_buf_02], [], of_offsets
