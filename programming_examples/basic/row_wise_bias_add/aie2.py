@@ -48,7 +48,7 @@ def row_wise_bias_add(M, N, m, n):
                     for _ in range_(M // m):
                         elem_in = in_fifo.acquire(ObjectFifoPort.Consume, 1)
                         elem_out = out_fifo.acquire(ObjectFifoPort.Produce, 1)
-                        call(kernel_func, [elem_in, elem_bias, elem_out])
+                        kernel_func(elem_in, elem_bias, elem_out)
                         out_fifo.release(ObjectFifoPort.Produce, 1)
                         in_fifo.release(ObjectFifoPort.Consume, 1)
                     bias_fifo.release(ObjectFifoPort.Consume, 1)

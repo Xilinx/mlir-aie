@@ -97,7 +97,7 @@ def my_relu(trace_size):
                         elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)
                         elem_in_a = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
 
-                        call(relu, [elem_in_a, elem_out])
+                        relu(elem_in_a, elem_out)
 
                         inA_fifos[i].release(ObjectFifoPort.Consume, 1)
                         outC_fifos[i].release(ObjectFifoPort.Produce, 1)

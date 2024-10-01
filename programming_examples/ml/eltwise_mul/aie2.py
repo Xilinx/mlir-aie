@@ -120,11 +120,7 @@ def my_eltwise_mul(trace_size):
                         elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)
                         elem_in_a = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
                         elem_in_b = inB_fifos[i].acquire(ObjectFifoPort.Consume, 1)
-
-                        call(
-                            eltwise_mul_bf16_vector,
-                            [elem_in_a, elem_in_b, elem_out],
-                        )
+                        eltwise_mul_bf16_vector(elem_in_a, elem_in_b, elem_out)
                         inA_fifos[i].release(ObjectFifoPort.Consume, 1)
                         inB_fifos[i].release(ObjectFifoPort.Consume, 1)
                         outC_fifos[i].release(ObjectFifoPort.Produce, 1)

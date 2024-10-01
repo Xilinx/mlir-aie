@@ -11,7 +11,9 @@ from ._aie_enum_gen import *
 from ._aie_ops_gen import *
 from ._aie_ops_gen import _Dialect
 from ._ods_common import _cext
-from .func import CallOp, FuncOp
+from .func import FuncOp
+from ..extras.dialects.ext.memref import MemRef
+from ..extras.dialects.ext.func import call
 from .._mlir_libs import get_dialect_registry
 
 # noinspection PyUnresolvedReferences
@@ -66,39 +68,19 @@ from ..ir import (
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
-
 assert _cext.globals._check_dialect_module_loaded("aie")
 
 
-def external_func(name, inputs, outputs=None, visibility="private"):
-    if outputs is None:
-        outputs = []
-    return FuncOp(
-        name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
-    )
+class external_func(FuncOp):
+    def __init__(self, name, inputs, outputs=None, visibility="private"):
+        if outputs is None:
+            outputs = []
+        super().__init__(
+            name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
+        )
 
-
-# Wrapper for func CallOp.
-class call(CallOp):
-    """Specialize CallOp class constructor to take python integers"""
-
-    def __init__(self, calleeOrResults, inputs=[], input_types=[]):
-        attrInputs = []
-        for i in inputs:
-            if isinstance(i, int):
-                attrInputs.append(constant(i))
-            else:
-                attrInputs.append(i)
-        if isinstance(calleeOrResults, FuncOp):
-            super().__init__(
-                calleeOrResults=calleeOrResults, argumentsOrCallee=attrInputs
-            )
-        else:
-            super().__init__(
-                calleeOrResults=input_types,
-                argumentsOrCallee=FlatSymbolRefAttr.get(calleeOrResults),
-                arguments=attrInputs,
-            )
+    def __call__(self, *call_args):
+        return call(self, call_args)
 
 
 def bd_dim_layout(size, stride):
@@ -232,9 +214,13 @@ class Core(CoreOp):
 
 # Create an aie buffer of (shape x datatype) on given tile.
 # shape examples: [256], [256, 256], [256, 256,]
-class Buffer(BufferOp):
-    def __init__(
-        self, tile, shape, datatype, name=None, initial_value=None, loc=None, ip=None
+# This class hides the BufferOp and instead pretends to be a MemRef
+class Buffer(MemRef):
+    def __init__(self):
+        raise ValueError("Should never be called")
+
+    def __new__(
+        cls, tile, shape, datatype, name=None, initial_value=None, loc=None, ip=None
     ):
         if initial_value is not None:
             assert isinstance(initial_value, np.ndarray)
@@ -243,7 +229,7 @@ class Buffer(BufferOp):
                 type=datatype,
                 context=None,
             )
-        super().__init__(
+        my_buffer = BufferOp(
             buffer=T.memref(*shape, datatype),
             tile=tile,
             sym_name=name,
@@ -251,18 +237,24 @@ class Buffer(BufferOp):
             loc=loc,
             ip=ip,
         )
+        return my_buffer.result
 
 
 # Create an aie external buffer of (shape x datatype).
 # shape examples: [256], [256, 256], [256, 256,]
-class ExternalBuffer(ExternalBufferOp):
-    def __init__(self, shape, datatype, name=None, loc=None, ip=None):
-        super().__init__(
+# This class hides the ExternalBufferOp and instead pretends to be a MemRef
+class ExternalBuffer(MemRef):
+    def __init__(self):
+        raise ValueError("Should never be called")
+
+    def __new__(cls, shape, datatype, name=None, loc=None, ip=None):
+        my_buffer = ExternalBufferOp(
             buffer=T.memref(*shape, datatype),
             sym_name=name,
             loc=loc,
             ip=ip,
         )
+        return my_buffer.result
 
 
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
@@ -311,9 +303,11 @@ class object_fifo(ObjectFifoCreateOp):
         if acq.size.value == 1:
             return ObjectFifoSubviewAccessOp(
                 self.datatype, acq.subview, acq.size.value - 1
-            )
+            ).result
         for i in range(acq.size.value):
-            objects.append(ObjectFifoSubviewAccessOp(self.datatype, acq.subview, i))
+            objects.append(
+                ObjectFifoSubviewAccessOp(self.datatype, acq.subview, i).result
+            )
         return objects
 
     def release(self, port, num_elem):
@@ -528,7 +522,7 @@ def buffer(tile, shape, dtype, name=None, initial_value=None, loc=None, ip=None)
         initial_value=initial_value,
         loc=loc,
         ip=ip,
-    ).result
+    )
 
 
 def external_buffer(shape, dtype, name=None, loc=None, ip=None):
@@ -538,7 +532,7 @@ def external_buffer(shape, dtype, name=None, loc=None, ip=None):
         name=name,
         loc=loc,
         ip=ip,
-    ).result
+    )
 
 
 _lock = lock

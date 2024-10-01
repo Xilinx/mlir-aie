@@ -292,7 +292,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                                 elem_out = C_l1l2_buffers[row][col]
 
                             if row == 0:
-                                call(zero_scalar, [elem_out])
+                                zero_scalar(elem_out)
 
                             for _ in range_(K // k // n_aie_rows):
                                 elem_in_a = A_l2l1_fifos[row].acquire(
@@ -302,19 +302,16 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                                     ObjectFifoPort.Consume, 1
                                 )
                                 if row == 0:
-                                    call(
-                                        matmul_scalar_cascade_get_only,
-                                        [elem_in_a, elem_in_b, elem_out],
+                                    matmul_scalar_cascade_get_only(
+                                        elem_in_a, elem_in_b, elem_out
                                     )
                                 elif row == n_aie_rows - 1:
-                                    call(
-                                        matmul_scalar_cascade_put_only,
-                                        [elem_in_a, elem_in_b, elem_out],
+                                    matmul_scalar_cascade_put_only(
+                                        elem_in_a, elem_in_b, elem_out
                                     )
                                 else:
-                                    call(
-                                        matmul_scalar_cascade_put_get,
-                                        [elem_in_a, elem_in_b, elem_out],
+                                    matmul_scalar_cascade_put_get(
+                                        elem_in_a, elem_in_b, elem_out
                                     )
 
                                 A_l2l1_fifos[row].release(ObjectFifoPort.Consume, 1)
