@@ -1678,7 +1678,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         // via_shared_mem==1 means use consumer tile's memory module
         OptionalAttr<AIEI32Attr>:$via_shared_mem,
         // memtile_repeat==0 means "do it once" and don't repeat
-        OptionalAttr<AIEI32Attr>:$memtile_repeat
+        OptionalAttr<AIEI32Attr>:$memtile_repeat,
+        OptionalAttr<ElementsAttr>:$init_values
   );
 
   let assemblyFormat = [{
@@ -1691,6 +1692,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         `,`
         $elemNumber
     `)` attr-dict `:` $elemType
+    custom<ObjectFifoInitValues>(ref($elemNumber), ref($elemType), $init_values)
   }];
 
   let hasVerifier = 1;
