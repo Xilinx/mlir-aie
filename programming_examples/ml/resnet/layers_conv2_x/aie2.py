@@ -11,6 +11,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.extras.dialects.ext.scf import _for as range_
+from aie.extras.util import np_ndarray_type_get_shape
 
 # tracing definitions
 trace_sz_in_bytes = 8192
@@ -475,9 +476,9 @@ def resnet_conv_x():
                     [],
                     [
                         0,
-                        np.prod(layer1_wts_sizes[i].shape),
-                        np.prod(layer1_wts_sizes[i].shape)
-                        + np.prod(weightsLayer2_ty.shape),
+                        np.prod(np_ndarray_type_get_shape(layer1_wts_sizes)),
+                        np.prod(np_ndarray_type_get_shape(layer1_wts_sizes))
+                        + np.prod(np_ndarray_type_get_shape(weightsLayer2_ty)),
                     ],
                 )
             # output tensor
