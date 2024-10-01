@@ -121,6 +121,6 @@ jobs:
             fi
 
             # filter out CODirect until I put bootgen into the image
-            export LIT_OPTS="-sv --timeout 630 -j1 --filter-out Targets/AIEGenerateCDODirect"
+            export LIT_OPTS="-sv --timeout 600 -j1 --filter-out Targets/AIEGenerateCDODirect"
             ninja check-aie
             ninja check-reference-designs
