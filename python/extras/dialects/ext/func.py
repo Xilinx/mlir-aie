@@ -9,6 +9,7 @@ from ...util import (
     get_user_code_loc,
     make_maybe_no_args_decorator,
     NpuDType,
+    try_convert_np_type_to_mlir_type,
 )
 from ....dialects._ods_common import get_op_result_or_op_results
 from ....dialects.func import *
