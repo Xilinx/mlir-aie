@@ -51,6 +51,7 @@ def bottleneck4AIEs():
             # define types
             activationsInL3_ty = np.ndarray[(activationsIn,), np.dtype[np.int8]]
             weightsInL3_ty = np.ndarray[(totalWeights,), np.dtype[np.uint8]]
+            weightsAll_ty = np.ndarray[(totalWeights,), np.dtype[np.int8]]
 
             tensorLayer1In_ty = np.ndarray[
                 (tensorInW, 1, tensorL1InC), np.dtype[np.int8]
@@ -162,7 +163,7 @@ def bottleneck4AIEs():
 
             # weights
             inOF_wts_0_L3L2 = object_fifo(
-                "inOF_wts_0_L3L2", ShimTile, MemTile, 1, weightsInL3_ty
+                "inOF_wts_0_L3L2", ShimTile, MemTile, 1, weightsAll_ty
             )
             of_wts_buf_00 = object_fifo(
                 "wts_buf_00", MemTile, ComputeTile2, 1, weightsLayer1_ty
