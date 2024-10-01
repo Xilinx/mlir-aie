@@ -12,7 +12,7 @@ from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
+from aie.extras.dialects.ext.scf import _for as range_
 
 
 def main():
@@ -277,9 +277,11 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
 
                 @core(core_tiles[row][col], f"mm_{m}x{k}x{n}.o")
                 def core_body():
-                    for _ in for_(0xFFFFFFFF):
+                    for _ in range_(0xFFFFFFFF):
                         loop = (
-                            for_(n_tiles_per_core) if n_tiles_per_core > 1 else range(1)
+                            range_(n_tiles_per_core)
+                            if n_tiles_per_core > 1
+                            else range(1)
                         )  # Workaround for issue #1547
                         for _ in loop:
                             if row == 0:
@@ -292,7 +294,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                             if row == 0:
                                 call(zero_scalar, [elem_out])
 
-                            for _ in for_(K // k // n_aie_rows):
+                            for _ in range_(K // k // n_aie_rows):
                                 elem_in_a = A_l2l1_fifos[row].acquire(
                                     ObjectFifoPort.Consume, 1
                                 )
@@ -319,14 +321,9 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                                 B_l2l1_fifos[row][col].release(
                                     ObjectFifoPort.Consume, 1
                                 )
-                                yield_([])
 
                             if row == 0:
                                 C_l1l2_fifos[col].release(ObjectFifoPort.Produce, 1)
-                            yield_([])
-
-                        if n_tiles_per_core > 1:  # workaround for issue #1547
-                            yield_([])
 
         # To/from AIE-array data movement
         @runtime_sequence(
@@ -347,7 +344,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                     C_col_offset = col * n
                     C_offset = C_col_offset + C_row_offset
                     npu_dma_memcpy_nd(
-                        metadata=C_l2l3_fifos[col].sym_name.value,
+                        metadata=C_l2l3_fifos[col],
                         bd_id=0,
                         mem=C,
                         offsets=[0, 0, 0, C_offset],
@@ -360,7 +357,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                         A_offset = A_block_offset + A_row_offset
                         B_col_offset = col * n
                         npu_dma_memcpy_nd(
-                            metadata=A_l3l2_fifos[col].sym_name.value,
+                            metadata=A_l3l2_fifos[col],
                             bd_id=2 * tile_row + 1,
                             mem=A,
                             offsets=[0, 0, 0, A_offset],
@@ -373,7 +370,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                             strides=[0, k * n_aie_rows, K, 1],
                         )
                         npu_dma_memcpy_nd(
-                            metadata=B_l3l2_fifos[col].sym_name.value,
+                            metadata=B_l3l2_fifos[col],
                             bd_id=2 * tile_row + 2,
                             mem=B,
                             offsets=[0, 0, 0, B_col_offset],
@@ -385,8 +382,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                             ],
                             strides=[n * n_aie_cols, k * n_aie_rows * N, N, 1],
                         )
-                for col in range(n_aie_cols):
-                    npu_sync(column=col, row=0, direction=0, channel=0)
+                dma_wait(*C_l2l3_fifos)
 
 
 if __name__ == "__main__":

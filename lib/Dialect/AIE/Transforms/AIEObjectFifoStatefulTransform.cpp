@@ -1014,7 +1014,7 @@ struct AIEObjectFifoStatefulTransformPass
 
       if (locksPerFifo[target].size() == 0) {
         acc[{op, portNum}] = (acc[{op, portNum}] + numLocks) %
-                              op.size(); // update to next objFifo elem
+                             op.size(); // update to next objFifo elem
         return;
       }
 
@@ -1395,7 +1395,7 @@ struct AIEObjectFifoStatefulTransformPass
         // release locks
         int numLocks = releaseOp.relNumber();
         createUseLocks(builder, op, port, relPerFifo, numLocks,
-                      LockAction::Release);
+                       LockAction::Release);
 
         // register release op
         if (releaseOps.find({op, portNum}) != releaseOps.end()) {
@@ -1484,10 +1484,10 @@ struct AIEObjectFifoStatefulTransformPass
         if (auto &targetArch = dev.getTargetModel();
             targetArch.getTargetArch() == AIEArch::AIE1)
           createUseLocks(builder, op, port, acqPerFifo, numCreate,
-                        LockAction::Acquire);
+                         LockAction::Acquire);
         else
           createUseLocks(builder, op, port, acqPerFifo, numCreate,
-                        LockAction::AcquireGreaterEqual);
+                         LockAction::AcquireGreaterEqual);
 
         // if objFifo was linked with others, find which objFifos
         // elements to use

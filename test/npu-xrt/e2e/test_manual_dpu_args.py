@@ -25,10 +25,11 @@ from aie.dialects.aie import (
 
 # this is to get the MemRefValue caster inside of aie-python-extras
 # noinspection PyUnresolvedReferences
-from aie.extras.dialects.ext import arith, func, linalg, memref, scf
+from aie.extras.dialects.ext import linalg, memref
+from aie.extras.dialects.ext.scf import _for as range_
 
 # noinspection PyUnresolvedReferences
-from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
+from aie.extras.testing import MLIRContext
 import aie.extras.types as T
 from aie.xrt import XCLBin
 from filelock import FileLock
@@ -45,9 +46,6 @@ MM2S = DMAChannelDir.MM2S
 Acquire = LockAction.Acquire
 AcquireGreaterEqual = LockAction.AcquireGreaterEqual
 Release = LockAction.Release
-
-range_ = scf.range_
-yield_ = scf.yield_
 
 
 def test_manual_args(ctx: MLIRContext, workdir: Path):
@@ -378,7 +376,6 @@ def test_manual_args_with_shim_dma(ctx: MLIRContext, workdir: Path):
                     with aiex.hold_lock(lock_read_weight, lock_send_weight):
                         linalg.fill(i, y)
                         linalg.copy(y, buffer_weight)
-                    yield_()
 
             @aie.mem(tile_c_2)
             def mem_c_2():

@@ -24,7 +24,7 @@ from aie.dialects.aie import (
     WireBundle,
 )
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
-from aie.dialects.scf import for_ as range_, yield_
+from aie.extras.dialects.ext.scf import _for as range_
 from aie.dialects.transform import any_op_t, apply_registered_pass, get_parent_op
 from aie.dialects.transform.extras import named_sequence
 from aie.dialects.transform.loop import loop_unroll
@@ -339,8 +339,6 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized(ctx: MLIRContext, workdir: 
                     aie.use_lock(lock_0_2_read_in_a, Release)
                     aie.use_lock(lock_0_2_read_in_b, Release)
                     aie.use_lock(lock_0_2_write_out_c, Release)
-                    yield_([])
-                yield_([])
 
     mod_aie.finish()
     mod_aievec = ExplicitlyManagedModule()
@@ -666,9 +664,6 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
                         linalg_fill(arith.constant(0), outs=[buffer_0_2_c])
                         matmul_i32_i32(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
 
-                    yield_([])
-                yield_([])
-
     mod_aie.finish()
     mod_aievec = ExplicitlyManagedModule()
 
@@ -798,8 +793,6 @@ def matmul_i32_i32_already_vectorized(
                 permutation_map=perm_map,
                 in_bounds=[True],
             )
-            yield_([])
-        yield_([])
 
 
 def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar_already_vectorized(
@@ -1021,9 +1014,6 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar_already_vectorized(
                         matmul_i32_i32_already_vectorized(
                             buffer_0_2_a, buffer_0_2_b, buffer_0_2_c
                         )
-
-                    yield_([])
-                yield_([])
 
     mod_aie.finish()
     mod_aievec = ExplicitlyManagedModule()
