@@ -26,6 +26,7 @@
 #include "clang/CIR/Dialect/IR/CIRAttrs.h"
 #include "clang/CIR/Dialect/IR/CIRDialect.h"
 #include "clang/CIR/Dialect/IR/CIRTypes.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
@@ -101,6 +102,23 @@ public:
 };
 
 namespace {
+
+// Return true if the call operation calls a function with the given string
+// annotation
+bool isCallingFunctionWithAnnotation(mlir::cir::CallOp op,
+                                     llvm::StringRef annotate) {
+  if (auto calledFunc =
+          mlir::SymbolTable::lookupNearestSymbolFrom<mlir::cir::FuncOp>(
+              op, op.getCalleeAttr())) {
+    if (auto annnotations = calledFunc.getAnnotationsAttr())
+      for (auto a : calledFunc.getAnnotationsAttr()) {
+        if (mlir::cast<mlir::cir::AnnotationAttr>(a).getName() == annotate)
+          return true;
+      }
+  }
+  return false;
+}
+
 // Lower C++ code like \code aie::device<aie::npu1> into an \code
 // aie.device(npu1){} operation
 struct DeviceLowering : public mlir::OpConversionPattern<mlir::cir::AllocaOp> {
@@ -155,33 +173,22 @@ struct TileLowering : public mlir::OpConversionPattern<mlir::cir::CallOp> {
   mlir::LogicalResult
   matchAndRewrite(mlir::cir::CallOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const final {
-    if (auto calledFunc =
-            mlir::SymbolTable::lookupNearestSymbolFrom<mlir::cir::FuncOp>(
-                op, op.getCalleeAttr())) {
-      if (auto annnotations = calledFunc.getAnnotationsAttr())
-        for (auto a : calledFunc.getAnnotationsAttr()) {
-          // A call with this annotation is a tile construction from a device
-          if (mlir::cast<mlir::cir::AnnotationAttr>(a).getName() ==
-              "cir.aie.device.tile") {
-            auto device = op.getOperand(0);
-            auto user = op.getResult().getUsers().begin();
-            // Track the alloca where the tiled is stored
-            auto store = mlir::dyn_cast<mlir::cir::StoreOp>(*user);
-            auto alloca = mlir::dyn_cast<mlir::cir::AllocaOp>(
-                store.getOperand(1).getDefiningOp());
-            // Replace the alloca by a conversion to be replaced later in
-            // another pass
-            rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
-                alloca, alloca.getResult().getType(), device);
-            // Remove the now useless original operations
-            rewriter.eraseOp(store);
-            rewriter.eraseOp(op);
-            return mlir::success();
-          }
-        }
+    if (isCallingFunctionWithAnnotation(op, "aie.device.tile")) {
+      auto device = op.getOperand(0);
+      auto user = op.getResult().getUsers().begin();
+      // Track the alloca where the tiled is stored
+      auto store = mlir::dyn_cast<mlir::cir::StoreOp>(*user);
+      auto alloca = mlir::dyn_cast<mlir::cir::AllocaOp>(
+          store.getOperand(1).getDefiningOp());
+      // Replace the alloca by a conversion to be replaced later in
+      // another pass
+      rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+          alloca, alloca.getResult().getType(), device);
+      // Remove the now useless original operations
+      rewriter.eraseOp(store);
+      rewriter.eraseOp(op);
+      return mlir::success();
     }
-    //
-
     return mlir::failure();
   }
 };
@@ -205,18 +212,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
           return !(aieLike && aieLike->base == "aie::device");
         });
     target.addDynamicallyLegalOp<mlir::cir::CallOp>([](mlir::cir::CallOp op) {
-      if (auto calledFunc =
-              mlir::SymbolTable::lookupNearestSymbolFrom<mlir::cir::FuncOp>(
-                  op, op.getCalleeAttr())) {
-        if (auto annnotations = calledFunc.getAnnotationsAttr())
-          for (auto a : calledFunc.getAnnotationsAttr()) {
-            auto an = mlir::cast<mlir::cir::AnnotationAttr>(a);
-            auto n = an.getName();
-            if (n == "cir.aie.device.tile")
-              return false;
-          }
-      }
-      return true;
+      return !isCallingFunctionWithAnnotation(op, "aie.device.tile");
     });
     mlir::RewritePatternSet patterns{&getContext()};
     patterns.add<DeviceLowering>(&getContext());
