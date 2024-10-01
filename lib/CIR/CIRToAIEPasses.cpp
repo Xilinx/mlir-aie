@@ -7,6 +7,8 @@
 // (c) Copyright 2024 Advanced Micro Devices, Inc.
 //===----------------------------------------------------------------------===//
 
+#include <array>
+
 #include "aie/CIR/CIRToAIEPasses.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
@@ -14,14 +16,17 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/CastInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "clang/CIR/Dialect/IR/CIRAttrs.h"
 #include "clang/CIR/Dialect/IR/CIRDialect.h"
 #include "clang/CIR/Dialect/IR/CIRTypes.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -49,19 +54,27 @@ struct CIRToAIETypesAnalysis {
       moduleTypes;
 
   void analyze() {
-    // The struct has a name like "aie::device<aie::npu1>" and the
-    // "npu1" is used directly for the MLIR aie.device attribute
-    static const llvm::Regex deviceNamePattern{"^(aie::device)<aie::([^>]+)>$"};
+    // A struct with a name like "aie::device<aie::npu1>" (and the "npu1" is
+    // used directly for the MLIR aie.device attribute) or aie::tile_t<8,50> for
+    // example
+    static const std::array typeNamePatterns{
+        llvm::Regex{"^(aie::device)<aie::([^>]+)>$"},
+        llvm::Regex{"^(aie::tile_t)<([[:digit:]]+), ([[:digit:]]+)>$"}};
+
     for (auto &[type, value] : moduleTypes) {
       if (auto maybePointerType = mlir::dyn_cast<mlir::cir::PointerType>(type))
         if (auto maybeStructType = mlir::dyn_cast<mlir::cir::StructType>(
                 maybePointerType.getPointee()))
-          if (llvm::SmallVector<llvm::StringRef> matches;
-              deviceNamePattern.match(maybeStructType.getName(), &matches)) {
-            value = {.fullName = matches[0].str(), .base = matches[1].str()};
-            for (auto &e : llvm::ArrayRef(matches.begin() + 2, matches.end()))
-              value->subMatches.emplace_back(e.str());
-          }
+          for (auto &tnp : typeNamePatterns)
+            if (llvm::SmallVector<llvm::StringRef> matches;
+                tnp.match(maybeStructType.getName(), &matches)) {
+              value = {.fullName = matches[0].str(), .base = matches[1].str()};
+              for (auto &e : llvm::ArrayRef(matches.begin() + 2, matches.end()))
+                value->subMatches.emplace_back(e.str());
+              // No need to look for a next match, go for the next type to
+              // categorize
+              break;
+            }
     }
   }
 
@@ -127,6 +140,52 @@ struct DeviceLowering : public mlir::OpConversionPattern<mlir::cir::AllocaOp> {
   }
 };
 
+// Rewrite something like
+//
+// %3 = cir.alloca !ty_aie3A3Atile_t3C12C_43E, // !cir.ptr<!ty_aie3A3Atile_t3C12C_43E>, ["t", init] {alignment = 1 : i64} %4 = // cir.alloca !ty_std3A3Aarray3Cint2C_8192UL3E, // !cir.ptr<!ty_std3A3Aarray3Cint2C_8192UL3E>, ["b", init] {alignment = 4 : i64}
+// %5 = cir.call // @_ZN3aie6deviceILNS_3$_0E42EE4tileILi1ELi4EEENS_6tile_tIXT_EXT0_EEEv(%2) : // (!cir.ptr<!ty_aie3A3Adevice3Caie3A3Anpu13E>) -> !ty_aie3A3Atile_t3C12C_43E
+// cir.store %5, %3 : !ty_aie3A3Atile_t3C12C_43E, // !cir.ptr<!ty_aie3A3Atile_t3C12C_43E>
+//
+// Into
+//
+// %3 = builtin.unrealized_conversion_cast %2 : // !cir.ptr<!ty_aie3A3Adevice3Caie3A3Anpu13E> to // !cir.ptr<!ty_aie3A3Atile_t3C12C_43E>
+struct TileLowering : public mlir::OpConversionPattern<mlir::cir::CallOp> {
+  using mlir::OpConversionPattern<mlir::cir::CallOp>::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(mlir::cir::CallOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    if (auto calledFunc =
+            mlir::SymbolTable::lookupNearestSymbolFrom<mlir::cir::FuncOp>(
+                op, op.getCalleeAttr())) {
+      if (auto annnotations = calledFunc.getAnnotationsAttr())
+        for (auto a : calledFunc.getAnnotationsAttr()) {
+          // A call with this annotation is a tile construction from a device
+          if (mlir::cast<mlir::cir::AnnotationAttr>(a).getName() ==
+              "cir.aie.device.tile") {
+            auto device = op.getOperand(0);
+            auto user = op.getResult().getUsers().begin();
+            // Track the alloca where the tiled is stored
+            auto store = mlir::dyn_cast<mlir::cir::StoreOp>(*user);
+            auto alloca = mlir::dyn_cast<mlir::cir::AllocaOp>(
+                store.getOperand(1).getDefiningOp());
+            // Replace the alloca by a conversion to be replaced later in
+            // another pass
+            rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+                alloca, alloca.getResult().getType(), device);
+            // Remove the now useless original operations
+            rewriter.eraseOp(store);
+            rewriter.eraseOp(op);
+            return mlir::success();
+          }
+        }
+    }
+    //
+
+    return mlir::failure();
+  }
+};
+
 struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
   void runOnOperation() override {
     // Compute the analysis for the module since it is a module pass.
@@ -145,9 +204,23 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
           auto aieLike = cat.moduleTypes[op.getType()];
           return !(aieLike && aieLike->base == "aie::device");
         });
-
+    target.addDynamicallyLegalOp<mlir::cir::CallOp>([](mlir::cir::CallOp op) {
+      if (auto calledFunc =
+              mlir::SymbolTable::lookupNearestSymbolFrom<mlir::cir::FuncOp>(
+                  op, op.getCalleeAttr())) {
+        if (auto annnotations = calledFunc.getAnnotationsAttr())
+          for (auto a : calledFunc.getAnnotationsAttr()) {
+            auto an = mlir::cast<mlir::cir::AnnotationAttr>(a);
+            auto n = an.getName();
+            if (n == "cir.aie.device.tile")
+              return false;
+          }
+      }
+      return true;
+    });
     mlir::RewritePatternSet patterns{&getContext()};
     patterns.add<DeviceLowering>(&getContext());
+    patterns.add<TileLowering>(&getContext());
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();
