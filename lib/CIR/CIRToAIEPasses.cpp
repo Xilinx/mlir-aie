@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include <array>
+#include <cassert>
 
 #include "aie/CIR/CIRToAIEPasses.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
@@ -16,7 +17,9 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/CastInterfaces.h"
 #include "mlir/Pass/Pass.h"
@@ -146,14 +149,13 @@ struct DeviceLowering : public mlir::OpConversionPattern<mlir::cir::AllocaOp> {
         // xilinx::AIE::symbolizeEnum is strange: even if it returns a
         // std::optional it errors without returning
         op.emitError() << "aie::device incorrect for '" << deviceName << "'";
-      auto deviceOp =
-          rewriter.create<xilinx::AIE::DeviceOp>(op.getLoc(), *deviceId);
-      // The aie.device requires one block
-      deviceOp.getRegion().emplaceBlock();
       // Replace the alloca of the aie::device by a temporary cast from
-      // the aie.device to
+      // thin air and add a named attribute to the device name to make things
+      // clearer
       rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
-          op, op.getResult().getType(), deviceOp.getResult());
+          op, op.getResult().getType(), mlir::ValueRange{},
+          std::array{rewriter.getNamedAttr(
+              "aie.device", rewriter.getAttr<mlir::StringAttr>(deviceName))});
       return mlir::success();
     }
     return mlir::failure();
