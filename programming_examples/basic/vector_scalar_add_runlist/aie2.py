@@ -8,7 +8,6 @@
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 from aie.extras.dialects.ext.scf import _for as range_
 
@@ -51,9 +50,7 @@ def my_vector_bias_add():
                 elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
                 elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
                 for i in range_(AIE_TILE_WIDTH):
-                    v0 = memref.load(elem_in, [i])
-                    v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                    memref.store(v1, elem_out, [i])
+                    elem_out[i] = elem_in[i] + 1
                 of_in1.release(ObjectFifoPort.Consume, 1)
                 of_out1.release(ObjectFifoPort.Produce, 1)
 
@@ -63,12 +60,16 @@ def my_vector_bias_add():
         @runtime_sequence(tensor_ty, tensor_ty)
         def sequence(inTensor, outTensor):
             npu_dma_memcpy_nd(
-                metadata="out0", bd_id=0, mem=outTensor, sizes=[1, 1, 1, PROBLEM_SIZE]
+                metadata=of_in0,
+                bd_id=1,
+                mem=inTensor,
+                sizes=[1, 1, 1, PROBLEM_SIZE],
             )
             npu_dma_memcpy_nd(
-                metadata="in0", bd_id=1, mem=inTensor, sizes=[1, 1, 1, PROBLEM_SIZE]
+                metadata=of_out0, bd_id=0, mem=outTensor, sizes=[1, 1, 1, PROBLEM_SIZE]
             )
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            # of_out will only complete after of_in completes, so we just wait on of_out instead of both
+            dma_wait(of_out0)
 
 
 # Declares that subsequent code is in mlir-aie context

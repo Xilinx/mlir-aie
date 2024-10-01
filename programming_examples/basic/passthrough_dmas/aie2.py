@@ -45,7 +45,7 @@ def my_passthrough():
 
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile, MemTile, 2, memRef_ty)
-            of_out = object_fifo("out", MemTile, ShimTile, 2, memRef_ty, dimensionsToStream=[(16,2)], pad_dimensions=[(2,0)])
+            of_out = object_fifo("out", MemTile, ShimTile, 2, memRef_ty, dimensionsToStream=[(16,2)], padDimensions=[(2,0)])
             object_fifo_link(of_in, of_out)
 
             # Set up compute tiles
@@ -55,9 +55,11 @@ def my_passthrough():
 
             @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
             def sequence(A, B, C):
-                npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
-                npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                npu_dma_memcpy_nd(
+                    metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N], issue_token=True
+                )
+                npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
+                dma_wait(of_in, of_out)
 
     print(ctx.module)
 

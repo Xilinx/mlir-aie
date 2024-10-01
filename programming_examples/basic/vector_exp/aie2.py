@@ -52,18 +52,15 @@ def my_eltwise_exp():
         MemTile = tile(0, 1)
         cores = [tile(0, 2 + i) for i in range(n_cores)]
 
-        inA_fifo_names = [f"memA{i}" for i in range(n_cores)]
-        outC_fifo_names = [f"memC{i}" for i in range(n_cores)]
-
-        inA_fifos = {}
-        outC_fifos = {}
+        inA_fifos = []
+        outC_fifos = []
 
         # AIE-array data movement with object fifos
         # Input A
         inA = object_fifo("inA", ShimTile, MemTile, buffer_depth, memRef_A_MT_ty)
         for i in range(n_cores):
-            inA_fifos[inA_fifo_names[i]] = object_fifo(
-                inA_fifo_names[i], MemTile, cores[i], buffer_depth, memRef_A_ty
+            inA_fifos.append(
+                object_fifo(f"memA{i}", MemTile, cores[i], buffer_depth, memRef_A_ty)
             )
         if n_cores > 1:
             of_offsets = [
@@ -71,12 +68,12 @@ def my_eltwise_exp():
             ]
         else:
             of_offsets = []
-        object_fifo_link(inA, inA_fifo_names, [], of_offsets)
+        object_fifo_link(inA, inA_fifos, [], of_offsets)
 
         # Output C
         for i in range(n_cores):
-            outC_fifos[outC_fifo_names[i]] = object_fifo(
-                outC_fifo_names[i], cores[i], MemTile, buffer_depth, memRef_C_ty
+            outC_fifos.append(
+                object_fifo(f"memC{i}", cores[i], MemTile, buffer_depth, memRef_C_ty)
             )
         outC = object_fifo("outC", MemTile, ShimTile, buffer_depth, memRef_C_MT_ty)
         if n_cores > 1:
@@ -85,7 +82,7 @@ def my_eltwise_exp():
             ]
         else:
             of_offsets = []
-        object_fifo_link(outC_fifo_names[0:n_cores], outC, of_offsets, [])
+        object_fifo_link(outC_fifos, outC, of_offsets, [])
 
         # Compute tile bodies
         for i in range(n_cores):
@@ -94,28 +91,24 @@ def my_eltwise_exp():
             def core_body():
                 for _ in range_(0xFFFFFFFF):
                     for _ in range_(tiles):
-                        elem_out = outC_fifos[outC_fifo_names[i]].acquire(
-                            ObjectFifoPort.Produce, 1
-                        )
-                        elem_in_a = inA_fifos[inA_fifo_names[i]].acquire(
-                            ObjectFifoPort.Consume, 1
-                        )
+                        elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)
+                        elem_in_a = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
 
-                        call(exp_bf16_1024, [elem_in_a, elem_out])
+                        exp_bf16_1024(elem_in_a, elem_out)
 
-                        inA_fifos[inA_fifo_names[i]].release(ObjectFifoPort.Consume, 1)
-                        outC_fifos[outC_fifo_names[i]].release(
-                            ObjectFifoPort.Produce, 1
-                        )
+                        inA_fifos[i].release(ObjectFifoPort.Consume, 1)
+                        outC_fifos[i].release(ObjectFifoPort.Produce, 1)
 
         # To/from AIE-array data movement
         tensor_ty = T.memref(N, T.bf16())
 
         @runtime_sequence(tensor_ty, tensor_ty)
         def sequence(A, C):
-            npu_dma_memcpy_nd(metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, N])
-            npu_dma_memcpy_nd(metadata="inA", bd_id=1, mem=A, sizes=[1, 1, 1, N])
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            npu_dma_memcpy_nd(
+                metadata=inA, bd_id=1, mem=A, sizes=[1, 1, 1, N], issue_token=True
+            )
+            npu_dma_memcpy_nd(metadata=outC, bd_id=0, mem=C, sizes=[1, 1, 1, N])
+            dma_wait(inA, outC)
 
 
 with mlir_mod_ctx() as ctx:

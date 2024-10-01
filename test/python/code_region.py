@@ -6,7 +6,6 @@
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
-    call,
     ObjectFifoPort,
     core,
     device,
@@ -46,7 +45,9 @@ from util import construct_and_print_module
 def codeRegion():
     @device(AIEDevice.xcve2802)
     def device_body():
-        external_func("test_func", inputs=[T.memref(8, 8, T.i32())], outputs=[T.i32()])
+        test_func = external_func(
+            "test_func", inputs=[T.memref(8, 8, T.i32())], outputs=[T.i32()]
+        )
 
         S = tile(0, 2)
         M = tile(1, 2)
@@ -60,5 +61,5 @@ def codeRegion():
         def core_body():
             for _ in range_(10):
                 elem0 = of1.acquire(ObjectFifoPort.Consume, 1)
-                res = call("test_func", [elem0], [T.i32()])
+                res = test_func(elem0)
                 of1.release(ObjectFifoPort.Consume, 1)

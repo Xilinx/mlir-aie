@@ -11,7 +11,6 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.extras.dialects.ext import memref, arith
 from aie.extras.dialects.ext.scf import _for as range_
 
 
@@ -60,10 +59,7 @@ def my_vector_mul():
                     elem_in2 = of_in2.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     for i in range_(n):
-                        v0 = memref.load(elem_in1, [i])
-                        v1 = memref.load(elem_in2, [i])
-                        v2 = arith.muli(v0, v1)
-                        memref.store(v2, elem_out, [i])
+                        elem_out[i] = elem_in1[i] * elem_in2[i]
                     of_in1.release(ObjectFifoPort.Consume, 1)
                     of_in2.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
@@ -73,10 +69,11 @@ def my_vector_mul():
 
         @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
         def sequence(A, B, C):
-            npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
-            npu_dma_memcpy_nd(metadata="in1", bd_id=1, mem=A, sizes=[1, 1, 1, N])
-            npu_dma_memcpy_nd(metadata="in2", bd_id=2, mem=B, sizes=[1, 1, 1, N])
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            npu_dma_memcpy_nd(metadata=of_in1, bd_id=1, mem=A, sizes=[1, 1, 1, N])
+            npu_dma_memcpy_nd(metadata=of_in2, bd_id=2, mem=B, sizes=[1, 1, 1, N])
+            npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
+            # of_out will only complete after of_in completes, so we just wait on of_out instead of both
+            dma_wait(of_out)
 
 
 with mlir_mod_ctx() as ctx:

@@ -55,14 +55,15 @@ def simple_repeat():
 
             @runtime_sequence(tensor_ty, tensor_ty, tensor_out_ty)
             def sequence(A, B, C):
+                npu_dma_memcpy_nd(metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N])
                 npu_dma_memcpy_nd(
-                    metadata="out",
+                    metadata=of_out,
                     bd_id=0,
                     mem=C,
                     sizes=[1, 1, 1, N * (memtile_repeat_count + 1)],
                 )
-                npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                # of_out will only complete after of_in completes, so we just wait on of_out instead of both
+                dma_wait(of_out)
 
     print(ctx.module)
 
