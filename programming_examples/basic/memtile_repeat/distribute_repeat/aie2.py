@@ -41,9 +41,10 @@ def distribute_repeat():
 
         @device(dev)
         def device_body():
-            in_ty = np.ndarray[np.int32, (N,)]
-            half_ty = np.ndarray[np.int32, (N // 2,)]
-            out_ty = np.ndarray[np.int32, (out_size,)]
+            dtype = np.dtype[np.int32]
+            in_ty = np.ndarray[(N,), dtype]
+            half_ty = np.ndarray[(N // 2,), dtype]
+            out_ty = np.ndarray[(out_size,), dtype]
 
             # Tile declarations
             ShimTile = tile(col, 0)

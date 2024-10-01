@@ -42,7 +42,7 @@ def my_matrix_add_one():
 
     @device(dev)
     def device_body():
-        tile_ty = np.ndarray[np.int32, (TILE_SIZE,)]
+        tile_ty = np.ndarray[(TILE_SIZE,), np.dtype[np.int32]]
 
         # Tile declarations
         ShimTile = tile(int(sys.argv[2]), 0)

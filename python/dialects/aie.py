@@ -44,6 +44,7 @@ from ..extras.util import (
     get_user_code_loc,
     region_adder,
     try_convert_np_type_to_mlir_type,
+    NpuDType,
 )
 
 from ..ir import (
@@ -269,6 +270,9 @@ class ExternalBuffer(MemRef):
 
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
 # depth examples: 2, [2,2,7]
+from typing import Literal
+
+
 class object_fifo(ObjectFifoCreateOp):
     def __init__(
         self,
@@ -276,7 +280,7 @@ class object_fifo(ObjectFifoCreateOp):
         producerTile,
         consumerTiles,
         depth,
-        datatype: MemRefType | np.ndarray,
+        datatype: MemRefType | type[np.ndarray],
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
         via_DMA=None,

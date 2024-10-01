@@ -28,9 +28,9 @@ def my_vector_scalar(vector_size, trace_size):
 
     @device(AIEDevice.npu1_1col)
     def device_body():
-        tensor_ty = np.ndarray[np.int16, (N,)]
-        tile_ty = np.ndarray[np.int16, (n,)]
-        scalar_ty = np.ndarray[np.int32, (1,)]
+        tensor_ty = np.ndarray[(N,), np.dtype[np.int16]]
+        tile_ty = np.ndarray[(n,), np.dtype[np.int16]]
+        scalar_ty = np.ndarray[(1,), np.dtype[np.int32]]
 
         # AIE Core Function declarations
 

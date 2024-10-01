@@ -35,19 +35,19 @@ def my_matmul():
     # FIXME vectorized kernel is currently erroneous
     vectorized = False
 
-    dtype_in = np.int16
+    dtype_in = np.dtype[np.int16]
     dtype_in_str = "i16"
-    dtype_out = np.int32
+    dtype_out = np.dtype[np.int32]
     dtype_out_str = "i32"
 
     with mlir_mod_ctx() as ctx:
 
         @device(AIEDevice.npu1_4col)
         def device_body():
-            inA_ty = np.ndarray[dtype_in, (m * k,)]
-            inB_ty = np.ndarray[dtype_in, (k,)]
-            outC_ty = np.ndarray[dtype_in, (m,)]
-            A_ty = np.ndarray[dtype_in, (m, k)]
+            inA_ty = np.ndarray[(m * k,), dtype_in]
+            inB_ty = np.ndarray[(k,), dtype_in]
+            outC_ty = np.ndarray[(m,), dtype_in]
+            A_ty = np.ndarray[(m, k), dtype_in]
 
             # AIE Core Function declarations
             func_type = "vectorized" if vectorized else "scalar"
@@ -137,9 +137,9 @@ def my_matmul():
             # To/from AIE-array data movement
 
             @runtime_sequence(
-                np.ndarray[dtype_in, (A_sz,)],
-                np.ndarray[dtype_in, (B_sz,)],
-                np.ndarray[dtype_out, (C_sz,)],
+                np.ndarray[(A_sz,), dtype_in],
+                np.ndarray[(B_sz,), dtype_in],
+                np.ndarray[(C_sz,), dtype_out],
             )
             def sequence(A, B, C):
                 npu_dma_memcpy_nd(

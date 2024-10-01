@@ -48,22 +48,38 @@ def bottleneck4AIEs():
         def deviceBody():
 
             # define types
-            activationsInL3_ty = np.ndarray[np.int8, activationsIn]
-            weightsInL3_ty = np.ndarray[np.uint8, (totalWeights,)]
+            activationsInL3_ty = np.ndarray[(activationsIn,), np.dtype[np.int8]]
+            weightsInL3_ty = np.ndarray[(totalWeights,), np.dtype[np.uint8]]
 
-            tensorLayer1In_ty = np.ndarray[np.int8, (tensorInW, 1, tensorL1InC)]
-            weightsLayer1_ty = np.ndarray[np.int8, (tensorL1InC * tensorL1OutC,)]
-            tensorLayer1Out_ty = np.ndarray[np.uint8, (tensorInW, 1, tensorL1OutC)]
-
-            tensorLayer2In_ty = np.ndarray[np.uint8, (tensorInW, 1, tensorL2InC)]
-            weightsLayer2_ty = np.ndarray[
-                np.int8, (3 * 3 * tensorL2InC * tensorL2OutC,)
+            tensorLayer1In_ty = np.ndarray[
+                (tensorInW, 1, tensorL1InC), np.dtype[np.int8]
             ]
-            tensorLayer2Out_ty = np.ndarray[np.uint8, (tensorInW, 1, tensorL2OutC // 2)]
+            weightsLayer1_ty = np.ndarray[
+                (tensorL1InC * tensorL1OutC,), np.dtype[np.int8]
+            ]
+            tensorLayer1Out_ty = np.ndarray[
+                (tensorInW, 1, tensorL1OutC), np.dtype[np.uint8]
+            ]
 
-            tensorLayer3In_ty = np.ndarray[np.uint8, (tensorInW, 1, tensorL3InC // 2)]
-            weightsLayer3_ty = np.ndarray[np.int8, (tensorL3InC * tensorL3OutC)]
-            tensorLayer3Out_ty = np.ndarray[np.uint8, (tensorInW, 1, tensorL3OutC)]
+            tensorLayer2In_ty = (
+                np.ndarray[(tensorInW, 1, tensorL2InC), np.dtype[np.uint8]],
+            )
+            weightsLayer2_ty = np.ndarray[
+                (3 * 3 * tensorL2InC * tensorL2OutC,), np.dtype[np.int8]
+            ]
+            tensorLayer2Out_ty = np.ndarray[
+                (tensorInW, 1, tensorL2OutC // 2), np.dtype[np.uint8]
+            ]
+
+            tensorLayer3In_ty = np.ndarray[
+                (tensorInW, 1, tensorL3InC // 2), np.dtype[np.uint8]
+            ]
+            weightsLayer3_ty = np.ndarray[
+                (tensorL3InC * tensorL3OutC), np.dtype[np.int8]
+            ]
+            tensorLayer3Out_ty = np.ndarray[
+                (tensorInW, 1, tensorL3OutC), np.dtype[np.uint8]
+            ]
 
             # kernel definitions
             conv2dk1 = external_func(

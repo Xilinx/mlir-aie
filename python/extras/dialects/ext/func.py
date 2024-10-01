@@ -28,8 +28,10 @@ from .arith import Scalar
 
 def call(
     callee_or_results: FuncOp | List[Type] | str,
-    arguments_or_callee: List[NpuDType | np.ndarray | Value] | FlatSymbolRefAttr | str,
-    arguments: List[NpuDType | np.ndarray | Value] | None = None,
+    arguments_or_callee: (
+        List[NpuDType | type[np.ndarray] | Value] | FlatSymbolRefAttr | str
+    ),
+    arguments: List[NpuDType | type[np.ndarray] | Value] | None = None,
     *,
     call_op_ctor=CallOp.__base__,
     loc=None,

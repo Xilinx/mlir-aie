@@ -23,8 +23,8 @@ def passthroughKernel(vector_size, trace_size):
     @device(AIEDevice.npu1_1col)
     def device_body():
         # define types
-        vector_ty = np.ndarray[np.int8, (N,)]
-        line_ty = np.ndarray[np.int8, (lineWidthInBytes,)]
+        vector_ty = np.ndarray[(N,), np.dtype[np.int8]]
+        line_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.int8]]
 
         # AIE Core Function declarations
         passThroughLine = external_func(

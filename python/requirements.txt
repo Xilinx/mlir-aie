@@ -4,7 +4,7 @@ cmake==3.27.9
 dataclasses>=0.6, <=0.8
 filelock==3.13.1
 lit
-numpy>=1.19.5, <=1.26
+numpy>=2.1 # 2.1 needed for typing improvements
 pandas
 psutil
 pybind11>=2.9.0, <=2.10.3

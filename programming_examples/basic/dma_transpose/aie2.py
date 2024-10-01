@@ -22,7 +22,7 @@ if len(sys.argv) == 3:
     K = int(sys.argv[2])
     N = M * K
 
-tensor_ty = np.ndarray[np.int32, (M, K)]
+tensor_ty = np.ndarray[(M, K), np.dtype[np.int32]]
 
 
 def my_passthrough():

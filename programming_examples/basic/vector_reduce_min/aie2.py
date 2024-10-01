@@ -31,8 +31,8 @@ def my_reduce_min():
 
     @device(dev)
     def device_body():
-        in_ty = np.ndarray[np.int32, (N,)]
-        out_ty = np.ndarray[np.int32, (1,)]
+        in_ty = np.ndarray[(N,), np.dtype[np.int32]]
+        out_ty = np.ndarray[(1,), np.dtype[np.int32]]
 
         # AIE Core Function declarations
         reduce_min_vector = external_func(

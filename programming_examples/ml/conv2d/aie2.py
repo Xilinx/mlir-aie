@@ -39,14 +39,14 @@ def conv2dk1():
         @device(AIEDevice.npu1_1col)
         def device_body():
 
-            actIn_ty = np.ndarray[np.int8, (actIn,)]
-            bufIn_ty = np.ndarray[np.int8, (bufIn,)]
+            actIn_ty = np.ndarray[(actIn,), np.dtype[np.int8]]
+            bufIn_ty = np.ndarray[(bufIn,), np.dtype[np.int8]]
 
-            weights_ty = np.ndarray[np.int8, (weights,)]
+            weights_ty = np.ndarray[(weights,), np.dtype[np.int8]]
 
-            out_ty = np.ndarray[np.int8, (actOut,)]
-            bufOut_ty = np.ndarray[np.int8, (bufOut,)]
-            tensor_ty = np.ndarray[np.int8, (tensorSize,)]
+            out_ty = np.ndarray[(actOut,), np.dtype[np.int8]]
+            bufOut_ty = np.ndarray[(bufOut,), np.dtype[np.int8]]
+            tensor_ty = np.ndarray[(tensorSize,), np.dtype[np.int8]]
 
             # AIE Core Function declarations
             conv2dk1_i8 = external_func(

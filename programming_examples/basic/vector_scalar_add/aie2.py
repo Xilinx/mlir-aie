@@ -21,9 +21,9 @@ AIE_TILE_WIDTH = 32
 def my_vector_bias_add():
     @device(AIEDevice.npu1_1col)
     def device_body():
-        mem_tile_ty = np.ndarray[np.int32, (MEM_TILE_WIDTH,)]
-        aie_tile_ty = np.ndarray[np.int32, (AIE_TILE_WIDTH,)]
-        all_data_ty = np.ndarray[np.int32, (PROBLEM_SIZE,)]
+        mem_tile_ty = np.ndarray[(AIE_TILE_WIDTH,), np.dtype[np.int32]]
+        aie_tile_ty = np.ndarray[(AIE_TILE_WIDTH,), np.dtype[np.int32]]
+        all_data_ty = np.ndarray[(PROBLEM_SIZE,), np.dtype[np.int32]]
 
         # Tile declarations
         ShimTile = tile(0, 0)

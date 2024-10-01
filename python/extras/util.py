@@ -265,8 +265,8 @@ def memref_type_to_np_dtype(memref_type):
 
 def np_ndarray_type_to_memref_type(ndarray_type):
     type_args = get_args(ndarray_type)
-    dtype = np_dtype_to_mlir_type(type_args[0])
-    shape = type_args[1]
+    shape = type_args[0]
+    dtype = np_dtype_to_mlir_type(get_args(type_args[1])[0])
     return T.memref(*shape, element_type=dtype)
 
 

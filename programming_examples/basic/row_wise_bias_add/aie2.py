@@ -21,8 +21,8 @@ def row_wise_bias_add(M, N, m, n):
     @device(AIEDevice.npu1_1col)
     def device_body():
 
-        tensor_ty = np.ndarray[np.float32, (m * n,)]
-        bias_ty = np.ndarray[np.float32, (n,)]
+        tensor_ty = np.ndarray[(m * n,), np.dtype[np.float32]]
+        bias_ty = np.ndarray[(n,), np.dtype[np.float32]]
 
         kernel_func = external_func(
             f"row_wise_bias_add_f32_f32", inputs=[tensor_ty, bias_ty, tensor_ty]

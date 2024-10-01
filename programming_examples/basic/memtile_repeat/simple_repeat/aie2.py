@@ -38,8 +38,8 @@ def simple_repeat():
 
         @device(dev)
         def device_body():
-            tensor_ty = np.ndarray[np.int32, (N,)]
-            tensor_out_ty = np.ndarray[np.int32, (data_out_size,)]
+            tensor_ty = np.ndarray[(N,), np.dtype[np.int32]]
+            tensor_out_ty = np.ndarray[(data_out_size,), np.dtype[np.int32]]
 
             # Tile declarations
             ShimTile = tile(col, 0)
