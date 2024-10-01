@@ -41,14 +41,20 @@ def my_passthrough():
 
             # Tile declarations
             ShimTile = tile(col, 0)
-            MemTile = tile(col, 1)
+            ComputeTile2 = tile(col, 2)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, MemTile, 2, memRef_ty)
-            of_out = object_fifo("out", MemTile, ShimTile, 2, memRef_ty, dimensionsToStream=[(16,2)], padDimensions=[(2,0)])
+            of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)
+            of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_ty)
             object_fifo_link(of_in, of_out)
 
             # Set up compute tiles
+
+            # Compute tile 2
+            @core(ComputeTile2)
+            def core_body():
+                for _ in range_(sys.maxsize):
+                    pass
 
             # To/from AIE-array data movement
             tensor_ty = T.memref(N, T.i32())

@@ -11,6 +11,7 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
+from aie.extras.dialects.ext.scf import _for as range_
 
 dev = AIEDevice.npu1_1col
 col = 0
@@ -52,8 +53,8 @@ def distribute_repeat():
 
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile, MemTile, 1, memRef_in_ty)
-            of_in2 = object_fifo("in2", MemTile, ComputeTile2, 2, memRef_half_ty, dimensionsToStream=[(16,2)], pad_dimensions=[(2,0)])
-            of_in3 = object_fifo("in3", MemTile, ComputeTile3, 2, memRef_half_ty, dimensionsToStream=[(10,2)], pad_dimensions=[(2,2)])
+            of_in2 = object_fifo("in2", MemTile, ComputeTile2, 2, memRef_half_ty)
+            of_in3 = object_fifo("in3", MemTile, ComputeTile3, 2, memRef_half_ty)
             of_in2.set_memtile_repeat(repeat_counter)
             of_in3.set_memtile_repeat(repeat_counter)
             object_fifo_link(of_in, [of_in2, of_in3], [], [0, N // 2])
@@ -68,26 +69,24 @@ def distribute_repeat():
             # Compute tile 2
             @core(ComputeTile2)
             def core_body():
-                for _ in for_(sys.maxsize):
+                for _ in range_(sys.maxsize):
                     elemOut = of_out2.acquire(ObjectFifoPort.Produce, 1)
                     elemIn = of_in2.acquire(ObjectFifoPort.Consume, 1)
                     for i in range_(N // 2):
                         elemOut[i] = elemIn[i] + 1
                     of_in2.release(ObjectFifoPort.Consume, 1)
                     of_out2.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # Compute tile 3
             @core(ComputeTile3)
             def core_body():
-                for _ in for_(sys.maxsize):
+                for _ in range_(sys.maxsize):
                     elemOut = of_out3.acquire(ObjectFifoPort.Produce, 1)
                     elemIn = of_in3.acquire(ObjectFifoPort.Consume, 1)
                     for i in range_(N // 2):
                         elemOut[i] = elemIn[i] + 2
                     of_in3.release(ObjectFifoPort.Consume, 1)
                     of_out3.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # To/from AIE-array data movement
             tensor_out_ty = T.memref(out_size, T.i32())
