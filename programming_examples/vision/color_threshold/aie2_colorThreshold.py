@@ -40,7 +40,7 @@ def color_threshold():
             # AIE Core Function declarations
             thresholdLine = external_func(
                 "thresholdLine",
-                inputs=[line_ty, line_ty, np.int32, np.int16, np.int16, np.int16],
+                inputs=[line_ty, line_ty, np.int32, np.int16, np.int16, np.int8],
             )
 
             # Tile declarations

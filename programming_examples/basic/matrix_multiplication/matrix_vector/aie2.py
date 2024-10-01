@@ -46,7 +46,7 @@ def my_matmul():
         def device_body():
             inA_ty = np.ndarray[(m * k,), dtype_in]
             inB_ty = np.ndarray[(k,), dtype_in]
-            outC_ty = np.ndarray[(m,), dtype_in]
+            outC_ty = np.ndarray[(m,), dtype_out]
             A_ty = np.ndarray[(m, k), dtype_in]
 
             # AIE Core Function declarations

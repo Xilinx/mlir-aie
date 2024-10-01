@@ -476,8 +476,8 @@ def resnet_conv_x():
                     [],
                     [
                         0,
-                        np.prod(np_ndarray_type_get_shape(layer1_wts_sizes)),
-                        np.prod(np_ndarray_type_get_shape(layer1_wts_sizes))
+                        np.prod(np_ndarray_type_get_shape(layer1_wts_sizes[i])),
+                        np.prod(np_ndarray_type_get_shape(layer1_wts_sizes[i]))
                         + np.prod(np_ndarray_type_get_shape(weightsLayer2_ty)),
                     ],
                 )
