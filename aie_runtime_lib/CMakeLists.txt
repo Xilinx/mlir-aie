@@ -22,7 +22,7 @@ function(add_aie_runtime_libs arch)
             COMMAND sed -i s/^target.*//
             ${CMAKE_CURRENT_BINARY_DIR}/chess_intrinsic_wrapper.ll
             DEPENDS
-            ${PROJECT_BINARY_DIR}/bin/xchesscc_wrapper
+            xchesscc_wrapper
             ${CMAKE_CURRENT_SOURCE_DIR}/chess_intrinsic_wrapper.cpp)
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/chess_intrinsic_wrapper.ll DESTINATION ${CMAKE_INSTALL_PREFIX}/aie_runtime_lib/${arch})
     add_dependencies(aie-runtime-libs ${arch}_chess_intrinsic_wrapper)
