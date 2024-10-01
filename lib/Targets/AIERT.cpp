@@ -377,16 +377,16 @@ LogicalResult AIERTControl::initLocks(DeviceOp &targetOp) {
 LogicalResult AIERTControl::initBuffers(DeviceOp &targetOp) {
   // Set buffers with explicit initializers
   targetOp.walk<WalkOrder::PreOrder>([&](BufferOp bufferOp) {
-    // Only use this path to init MemTile buffers
-    // Otherwise init in Core ELF (PR #1049)
-    if (!bufferOp.getTileOp().isMemTile())
-      continue;
     auto initialValue = bufferOp.getInitialValue();
     if (!initialValue)
       return;
     mlir::DenseElementsAttr denseInit =
         dyn_cast<mlir::DenseElementsAttr>(initialValue.value());
     if (!denseInit)
+      return;
+    // Only use this path to init MemTile buffers
+    // Otherwise init in Core ELF (PR #1049)
+    if (!bufferOp.getTileOp().isMemTile())
       return;
     auto tileLoc = XAie_TileLoc(bufferOp.getTileOp().colIndex(),
                                 bufferOp.getTileOp().rowIndex());
