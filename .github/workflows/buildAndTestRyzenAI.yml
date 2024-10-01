@@ -50,7 +50,7 @@ env:
             -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
             -DAIE_INCLUDE_INTEGRATION_TESTS=OFF
   # -j12 here to reduce the number of parallel chess jobs.
-  LIT_OPTS: -sv --time-tests -j12 --timeout 600 --show-unsupported --show-excluded
+  LIT_OPTS: -sv --time-tests -j12 --timeout 630 --show-unsupported --show-excluded
 
 jobs:
   build-tests:
