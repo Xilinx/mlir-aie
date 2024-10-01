@@ -316,7 +316,9 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         /*valid_bd=*/1,
         /* TODO: Locks */
         /*lock_rel_val=*/0, /*lock_rel_id=*/0, /*lock_acq_enable=*/0,
-        /*lock_acq_val=*/0, /*lock_ackq_id=*/0);
+        /*lock_acq_val=*/0, /*lock_ackq_id=*/0, /*d0_zero_before=*/0,
+        /*d1_zero_before=*/0, /*d2_zero_before=*/0, /*d0_zero_after=*/0,
+        /*d1_zero_after=*/0, /*d2_zero_after=*/0);
 
     return setAddressForSingleBD(builder, bd_op, tile);
   }

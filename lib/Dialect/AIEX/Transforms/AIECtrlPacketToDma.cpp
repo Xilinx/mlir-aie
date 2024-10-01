@@ -129,7 +129,7 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
                   SmallVector<Value>{}, SmallVector<Value>{},
                   SmallVector<Value>{}, ArrayRef(staticOffsets),
                   ArrayRef(staticSizes), ArrayRef(staticStrides),
-                  controllerIdPkt, metadata, 0, true);
+                  controllerIdPkt, metadata, 0, true, 0, 0, 0, 0, 0, 0);
 
               auto shimRow = builder.getI32IntegerAttr(0);
               auto shimCol = builder.getI32IntegerAttr(col);
