@@ -384,6 +384,10 @@ LogicalResult AIERTControl::initBuffers(DeviceOp &targetOp) {
         dyn_cast<mlir::DenseElementsAttr>(initialValue.value());
     if (!denseInit)
       return;
+    // Only use this path to init MemTile buffers
+    // Otherwise init in Core ELF (PR #1049)
+    if (!bufferOp.getTileOp().isMemTile())
+      return;
     auto tileLoc = XAie_TileLoc(bufferOp.getTileOp().colIndex(),
                                 bufferOp.getTileOp().rowIndex());
     std::vector<char> byteVec;
