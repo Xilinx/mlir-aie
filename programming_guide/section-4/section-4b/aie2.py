@@ -5,8 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-
 import argparse
+from numpy import np
 import sys
 
 from aie.dialects.aie import *
@@ -24,12 +24,14 @@ def my_vector_scalar(opts):
 
     @device(AIEDevice.npu1_1col)
     def device_body():
-        memRef_ty = T.memref(1024, T.i32())
+        tensor_ty = np.ndarray[(4096,), np.dtype[np.int32]]
+        tile_ty = np.ndarray[(1024,), np.dtype[np.int32]]
+        scalar_ty = np.ndarray[(1,), np.dtype[np.int32]]
 
         # AIE Core Function declarations
         scale_scalar = external_func(
             "vector_scalar_mul_aie_scalar",
-            inputs=[memRef_ty, memRef_ty, T.memref(1, T.i32()), T.i32()],
+            inputs=[tile_ty, tile_ty, scalar_ty],
         )
 
         # Tile declarations
@@ -37,11 +39,9 @@ def my_vector_scalar(opts):
         ComputeTile2 = tile(0, 2)
 
         # AIE-array data movement with object fifos
-        of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)
-        of_factor = object_fifo(
-            "infactor", ShimTile, ComputeTile2, 2, T.memref(1, T.i32())
-        )
-        of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_ty)
+        of_in = object_fifo("in", ShimTile, ComputeTile2, 2, tile_ty)
+        of_factor = object_fifo("infactor", ShimTile, ComputeTile2, 2, scalar_ty)
+        of_out = object_fifo("out", ComputeTile2, ShimTile, 2, tile_ty)
 
         # Set up compute tiles
         # Compute tile 2
@@ -64,9 +64,6 @@ def my_vector_scalar(opts):
             flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
 
         # To/from AIE-array data movement
-        tensor_ty = T.memref(4096, T.i32())
-        scalar_ty = T.memref(1, T.i32())
-
         @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
             if enableTrace:
