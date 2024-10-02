@@ -54,7 +54,7 @@ def my_vector_scalar(opts):
                 for _ in range_(4):
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
-                    call(scale_scalar, [elem_in, elem_out, elem_factor, 1024])
+                    scale_scalar(elem_in, elem_out, elem_factor, 1024)
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
                 of_factor.release(ObjectFifoPort.Consume, 1)
@@ -79,16 +79,16 @@ def my_vector_scalar(opts):
                 )
 
             npu_dma_memcpy_nd(
-                metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, 4096], issue_token=True
+                metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, 4096], issue_token=True
             )
             npu_dma_memcpy_nd(
-                metadata="infactor",
+                metadata=of_factor,
                 bd_id=2,
                 mem=F,
                 sizes=[1, 1, 1, 1],
                 issue_token=True,
             )
-            npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, 4096])
+            npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, 4096])
             dma_wait(of_in, of_factor, of_out)
 
 

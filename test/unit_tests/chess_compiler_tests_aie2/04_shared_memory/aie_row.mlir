@@ -9,8 +9,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: %PYTHON aiecc.py --aiesim --xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s %test_lib_flags %extraAieCcFlags% %S/test.cpp -o test.elf
-// RUN: %run_on_board ./test.elf
+// REQUIRES: valid_xchess_license, !hsa
+// RUN: %PYTHON aiecc.py --aiesim --xchesscc --xbridge --no-compile-host %s %test_lib_flags %S/test.cpp
 // RUN: aie_row.mlir.prj/aiesim.sh | FileCheck %s
 
 // CHECK: AIE2 ISS

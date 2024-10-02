@@ -50,7 +50,7 @@ def passthroughKernel(vector_size, trace_size):
             for _ in range_(sys.maxsize):
                 elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
                 elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
-                call(passThroughLine, [elemIn, elemOut, lineWidthInBytes])
+                passThroughLine(elemIn, elemOut, lineWidthInBytes)
                 of_in.release(ObjectFifoPort.Consume, 1)
                 of_out.release(ObjectFifoPort.Produce, 1)
 
