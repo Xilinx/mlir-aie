@@ -17,7 +17,7 @@ def distribute_join_L2():
         @device(AIEDevice.npu1_1col)
         def device_body():
             tile24_ty = np.ndarray[(24,), np.dtype[np.int32]]
-            tile8_ty = np.ndarray[(24,), np.dtype[np.int32]]
+            tile8_ty = np.ndarray[(8,), np.dtype[np.int32]]
 
             # Tile declarations
             ShimTile = tile(0, 0)

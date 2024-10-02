@@ -31,7 +31,7 @@ def my_vector_scalar(opts):
         # AIE Core Function declarations
         scale_scalar = external_func(
             "vector_scalar_mul_aie_scalar",
-            inputs=[tile_ty, tile_ty, scalar_ty],
+            inputs=[tile_ty, tile_ty, scalar_ty, np.int32],
         )
 
         # Tile declarations
