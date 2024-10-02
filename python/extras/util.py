@@ -264,7 +264,11 @@ def memref_type_to_np_dtype(memref_type):
 
 
 def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]:
-    return get_args(ndarray_type)[0]
+    shape = get_args(ndarray_type)[0]
+    assert isinstance(shape, tuple), "np.ndarray shape must be a tuple of integers"
+    for elem in shape:
+        assert isinstance(elem, int), "np.ndarray shape must be a tuple of integers"
+    return shape
 
 
 def np_ndarray_type_get_dtype(ndarray_type: type[np.ndarray]) -> NpuDType:
