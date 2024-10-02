@@ -12,7 +12,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-targetname = passThroughKernel
+targetname = passThroughPyKernel
 VPATH := ${srcdir}/../../../aie_kernels/generic
 data_size = 4096
 PASSTHROUGH_SIZE = ${data_size}
