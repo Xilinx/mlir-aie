@@ -6,8 +6,6 @@
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-import aie.ir as ir
-
 
 with mlir_mod_ctx() as ctx:
 
