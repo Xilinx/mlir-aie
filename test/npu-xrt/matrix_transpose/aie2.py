@@ -18,7 +18,6 @@ from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.ir import MemRefType
 from aie.extras.dialects.ext.scf import _for as range_
 
 matrix_rows = 7
@@ -58,7 +57,7 @@ def design():
                     fifo_out.release(ObjectFifoPort.Produce, 1)
 
             # To/from AIE-array data movement
-            @runtime_sequence(matrix_memref, matrix_memref)
+            @runtime_sequence(matrix_ty, matrix_ty)
             def sequence(inp, out):
                 npu_dma_memcpy_nd(
                     metadata=fifo_in,
