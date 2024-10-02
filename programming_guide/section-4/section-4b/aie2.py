@@ -6,7 +6,7 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import argparse
-from numpy import np
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
