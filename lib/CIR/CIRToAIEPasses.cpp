@@ -166,16 +166,16 @@ struct PrepareDeviceLowering
   }
 };
 
+// clang-format off
 // Rewrite something like
-//
 //    %2 = cir.alloca !ty_aie3A3Atile3C12C_43E, !cir.ptr<!ty_aie3A3Atile3C12C_43E>, ["t", init] {alignment = 1 : i64} loc(#loc102)
 //    %4 = cir.call @_ZN3aie6deviceILNS_3$_0E42EE4tileILi1ELi4EEENS_4tileIXT_EXT0_EEEv(%1) : (!cir.ptr<!ty_aie3A3Adevice3Caie3A3Anpu13E>) -> !ty_aie3A3Atile3C12C_43E loc(#loc70)
 //    cir.store %4, %2 : !ty_aie3A3Atile3C12C_43E, !cir.ptr<!ty_aie3A3Atile3C12C_43E> loc(#loc70)
-
 //
 // Into
 //
 //    %2 = builtin.unrealized_conversion_cast %1 : !cir.ptr<!ty_aie3A3Adevice3Caie3A3Anpu13E> to !cir.ptr<!ty_aie3A3Atile3C12C_43E> {"aie::tile" = ["1", "4"]}
+// clang-format on
 struct PrepareTileBufferLowering
     : public mlir::OpConversionPattern<mlir::cir::CallOp> {
   using mlir::OpConversionPattern<mlir::cir::CallOp>::OpConversionPattern;
@@ -219,6 +219,74 @@ struct PrepareTileBufferLowering
   }
 };
 
+/*
+  Replace the call to
+
+  cir.func internal private
+ @_ZN3aie6tile_tILi1ELi4EE7programIZ4mainE3$_0EEvOT_(%arg0:
+ !cir.ptr<!ty_aie3A3Atile_t3C12C_43E>, %arg1: !cir.ptr<!ty_anon2E0_>)
+ [#cir.annotation<name = "aie.tile.program", args = []>] extra(#fn_attr)
+
+ which ends up calling the lambda
+
+ cir.call @_ZZ4mainENK3$_0clEv(%5) : (!cir.ptr<!ty_anon2E0_>) -> ()
+
+ by just inlining the lambda body into the aie.core operation and replacing the
+ capture by the direct def/use forwarding
+
+*/
+struct PrepareCoreLowering : public mlir::OpConversionPattern<mlir::cir::CallOp> {
+  using mlir::OpConversionPattern<mlir::cir::CallOp>::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(mlir::cir::CallOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    if (isCallingFunctionWithAnnotation(op, {"aie.tile.program"})) {
+      // Get tile::program() member function
+      if (auto calledFunc =
+              mlir::SymbolTable::lookupNearestSymbolFrom<mlir::cir::FuncOp>(
+                  op, op.getCalleeAttr())) {
+        // The last function instruction is cir.return and the one before
+        // is the call to the lambda
+        // calledFunc.getBlocks().front().back().dump();
+        auto lambdaCall = mlir::dyn_cast<mlir::cir::CallOp>(
+            *std::next(calledFunc.getBlocks().front().rbegin()));
+        lambdaCall.dump();
+        if (auto lambdaFunc =
+                mlir::SymbolTable::lookupNearestSymbolFrom<mlir::cir::FuncOp>(
+                    lambdaCall, lambdaCall.getCalleeAttr())) {
+          lambdaFunc.dump();
+          assert(lambdaFunc.getLambda());
+          auto scopeOp = op->getParentOfType<mlir::cir::ScopeOp>();
+          scopeOp.dump();
+          // The aie++ tile value
+          rewriter.setInsertionPoint(op);
+#if 0
+          auto tile = op.getOperand(0);
+          auto pseudoTile = rewriter.create<mlir::UnrealizedConversionCastOp>(
+              op.getLoc(), rewriter.getIndexType(), tile);
+          pseudoTile.dump();
+          // Cannot create a CoreOp here because the verifyer will expect some
+          // AIE neighborhood
+          rewriter.create<xilinx::AIE::CoreOp>(op.getLoc(),
+                                               pseudoTile.getOutputs().front());
+#endif
+          rewriter.eraseOp(op);
+          //        rewriter.insert(coreOp);
+          // coreOp.dump();
+
+          // auto bs = lambdaFunc.getBlocks().begin();
+          //          rewriter.inlineBlockBefore(Block *source, Block *dest,
+          //          Block::iterator before)
+          return mlir::success();
+        }
+      }
+    }
+
+    return mlir::failure();
+  }
+};
+
 struct CIRToAIEPrepare : CIRToAIEPrepareBase<CIRToAIEPrepare> {
   void runOnOperation() override {
     // Compute the analysis for the module since it is a module pass.
@@ -240,11 +308,12 @@ struct CIRToAIEPrepare : CIRToAIEPrepareBase<CIRToAIEPrepare> {
         });
     target.addDynamicallyLegalOp<mlir::cir::CallOp>([](mlir::cir::CallOp op) {
       return !isCallingFunctionWithAnnotation(
-          op, {"aie.device.tile", "aie.tile.buffer"});
+          op, {"aie.device.tile", "aie.tile.buffer", "aie.tile.program"});
     });
     mlir::RewritePatternSet patterns{&getContext()};
     patterns.add<PrepareDeviceLowering>(&getContext());
     patterns.add<PrepareTileBufferLowering>(&getContext());
+    patterns.add<PrepareCoreLowering>(&getContext());
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();
