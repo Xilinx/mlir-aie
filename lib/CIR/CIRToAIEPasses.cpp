@@ -129,7 +129,8 @@ bool isCallingFunctionWithAnnotation(
 
 // Lower C++ code like \code aie::device<aie::npu1> into an \code
 // aie.device(npu1){} operation
-struct DeviceLowering : public mlir::OpConversionPattern<mlir::cir::AllocaOp> {
+struct PrepareDeviceLowering
+    : public mlir::OpConversionPattern<mlir::cir::AllocaOp> {
   using mlir::OpConversionPattern<mlir::cir::AllocaOp>::OpConversionPattern;
 
   // \todo Find a less ugly way to access the analysis. How is it possible for a
@@ -167,14 +168,16 @@ struct DeviceLowering : public mlir::OpConversionPattern<mlir::cir::AllocaOp> {
 
 // Rewrite something like
 //
-// %3 = cir.alloca !ty_aie3A3Atile_t3C12C_43E, // !cir.ptr<!ty_aie3A3Atile_t3C12C_43E>, ["t", init] {alignment = 1 : i64} %4 = // cir.alloca !ty_std3A3Aarray3Cint2C_8192UL3E, // !cir.ptr<!ty_std3A3Aarray3Cint2C_8192UL3E>, ["b", init] {alignment = 4 : i64}
-// %5 = cir.call // @_ZN3aie6deviceILNS_3$_0E42EE4tileILi1ELi4EEENS_6tile_tIXT_EXT0_EEEv(%2) : // (!cir.ptr<!ty_aie3A3Adevice3Caie3A3Anpu13E>) -> !ty_aie3A3Atile_t3C12C_43E
-// cir.store %5, %3 : !ty_aie3A3Atile_t3C12C_43E, // !cir.ptr<!ty_aie3A3Atile_t3C12C_43E>
+//    %2 = cir.alloca !ty_aie3A3Atile3C12C_43E, !cir.ptr<!ty_aie3A3Atile3C12C_43E>, ["t", init] {alignment = 1 : i64} loc(#loc102)
+//    %4 = cir.call @_ZN3aie6deviceILNS_3$_0E42EE4tileILi1ELi4EEENS_4tileIXT_EXT0_EEEv(%1) : (!cir.ptr<!ty_aie3A3Adevice3Caie3A3Anpu13E>) -> !ty_aie3A3Atile3C12C_43E loc(#loc70)
+//    cir.store %4, %2 : !ty_aie3A3Atile3C12C_43E, !cir.ptr<!ty_aie3A3Atile3C12C_43E> loc(#loc70)
+
 //
 // Into
 //
-// %3 = builtin.unrealized_conversion_cast %2 : // !cir.ptr<!ty_aie3A3Adevice3Caie3A3Anpu13E> to // !cir.ptr<!ty_aie3A3Atile_t3C12C_43E>
-struct TileBufferLowering : public mlir::OpConversionPattern<mlir::cir::CallOp> {
+//    %2 = builtin.unrealized_conversion_cast %1 : !cir.ptr<!ty_aie3A3Adevice3Caie3A3Anpu13E> to !cir.ptr<!ty_aie3A3Atile3C12C_43E> {"aie::tile" = ["1", "4"]}
+struct PrepareTileBufferLowering
+    : public mlir::OpConversionPattern<mlir::cir::CallOp> {
   using mlir::OpConversionPattern<mlir::cir::CallOp>::OpConversionPattern;
 
   // \todo Find a less ugly way to access the analysis. How is it possible for a
@@ -216,14 +219,14 @@ struct TileBufferLowering : public mlir::OpConversionPattern<mlir::cir::CallOp> 
   }
 };
 
-struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
+struct CIRToAIEPrepare : CIRToAIEPrepareBase<CIRToAIEPrepare> {
   void runOnOperation() override {
     // Compute the analysis for the module since it is a module pass.
     // \todo Should this be a real pass?
     auto &cat = getAnalysis<CIRToAIETypesAnalysis>();
     // \todo Clean up this mess
-    DeviceLowering::cat = &cat;
-    TileBufferLowering::cat = &cat;
+    PrepareDeviceLowering::cat = &cat;
+    PrepareTileBufferLowering::cat = &cat;
     // See mlir/examples/toy/Ch5/mlir/LowerToAffineLoops.cpp
     mlir::ConversionTarget target{getContext()};
     target.addLegalDialect<xilinx::AIE::AIEDialect>();
@@ -237,11 +240,70 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
         });
     target.addDynamicallyLegalOp<mlir::cir::CallOp>([](mlir::cir::CallOp op) {
       return !isCallingFunctionWithAnnotation(
-          op, {"aie.device.tile", "aie.tile.buffer", "aie.tile.program"});
+          op, {"aie.device.tile", "aie.tile.buffer"});
     });
     mlir::RewritePatternSet patterns{&getContext()};
-    patterns.add<DeviceLowering>(&getContext());
-    patterns.add<TileBufferLowering>(&getContext());
+    patterns.add<PrepareDeviceLowering>(&getContext());
+    patterns.add<PrepareTileBufferLowering>(&getContext());
+    if (failed(applyPartialConversion(getOperation(), target,
+                                      std::move(patterns))))
+      signalPassFailure();
+  }
+};
+
+struct TileLowering
+    : public mlir::OpConversionPattern<mlir::UnrealizedConversionCastOp> {
+  using mlir::OpConversionPattern<
+      mlir::UnrealizedConversionCastOp>::OpConversionPattern;
+
+  // \todo Find a less ugly way to access the analysis. How is it possible for a
+  // pattern to access some contextual information?
+  // It should be OK since it is a module pass, so no parallelism here.
+  static inline CIRToAIETypesAnalysis *cat;
+
+  mlir::LogicalResult
+  matchAndRewrite(mlir::UnrealizedConversionCastOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    if (auto aieLike = cat->moduleTypes[op.getType(0)];
+        aieLike && aieLike->base == "aie::device") {
+#if 0
+      auto
+      auto deviceName = aieLike->subMatches[0];
+      auto deviceId =
+          xilinx::AIE::symbolizeEnum<xilinx::AIE::AIEDevice>(deviceName);
+      if (!deviceId)
+        // Actually this test cannot happens since the API of
+        // xilinx::AIE::symbolizeEnum is strange: even if it returns a
+        // std::optional it errors without returning
+        op.emitError() << "aie::device incorrect for '" << deviceName << "'";
+      auto deviceOp =
+          rewriter.create<xilinx::AIE::DeviceOp>(op.getLoc(), *deviceId);
+      // The aie.device requires one block
+      deviceOp.getRegion().emplaceBlock();
+      // Replace the alloca of the aie::device by a temporary cast from
+      // the aie.device to
+      rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+          op, op.getResult().getType(), deviceOp.getResult());
+#endif
+      return mlir::success();
+    }
+    return mlir::failure();
+  }
+};
+
+struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
+  void runOnOperation() override {
+    // Compute the analysis for the module since it is a module pass.
+    // \todo Should this be a real pass?
+    auto &cat = getAnalysis<CIRToAIETypesAnalysis>();
+    // \todo Clean up this mess
+    PrepareDeviceLowering::cat = &cat;
+    // See mlir/examples/toy/Ch5/mlir/LowerToAffineLoops.cpp
+    mlir::ConversionTarget target{getContext()};
+    target.addLegalDialect<xilinx::AIE::AIEDialect>();
+    target.addIllegalOp<mlir::UnrealizedConversionCastOp>();
+    mlir::RewritePatternSet patterns{&getContext()};
+    patterns.add<TileLowering>(&getContext());
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();
@@ -249,6 +311,11 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
 };
 
 } // namespace
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createCIRToAIEPreparePass() {
+  return std::make_unique<CIRToAIEPrepare>();
+}
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createCIRToAIEPass() {
   return std::make_unique<CIRToAIE>();

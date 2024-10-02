@@ -21,6 +21,9 @@ namespace xilinx::AIE::CIR {
 #include "aie/CIR/CIRToAIEPasses.h.inc"
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createCIRToAIEPreparePass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createCIRToAIEPass();
 
 /// Generate the code for registering passes.
