@@ -162,7 +162,7 @@ def write_out_trace(trace, file_name):
 
 def execute(app, input_one, input_two=None):
     app.buffers[3].write(input_one)
-    if input_two:
+    if input_two != None:
         app.buffers[4].write(input_two)
     app.run()
     return app.buffers[5].read()
