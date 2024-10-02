@@ -4,7 +4,6 @@ from contextlib import contextmanager
 from functools import partial
 import itertools
 from operator import itemgetter
-from typing import get_origin
 
 import numpy as np
 
@@ -28,7 +27,7 @@ from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint
 
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
-from ..extras.util import np_ndarray_type_to_memref_type
+from ..extras.util import try_convert_np_type_to_mlir_type
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
