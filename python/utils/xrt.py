@@ -78,8 +78,7 @@ class AIE_Buffer:
 
     def read(self):
         self.sync_from_device()
-        data = copy.deepcopy(self.bo.read(self.len_bytes, 0))
-        return data.view(self.dtype).reshape(self.shape)
+        return self.bo.read(self.len_bytes, 0).view(self.dtype).reshape(self.shape)
 
     def write(self, v, offset=0):
         self.bo.write(v.view(np.uint8), offset)
