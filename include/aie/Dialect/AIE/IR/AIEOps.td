@@ -1708,6 +1708,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     }
 
     TileOp getProducerTileOp();
+    std::vector<std::vector<int>> getInitialValues();
 
     mlir::StringAttr name() {
       return getOperation()->getAttrOfType<mlir::StringAttr>(

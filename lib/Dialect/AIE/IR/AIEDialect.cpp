@@ -507,6 +507,25 @@ TileOp ObjectFifoCreateOp::getProducerTileOp() {
   return cast<TileOp>(getProducerTile().getDefiningOp());
 }
 
+std::vector<std::vector<int32_t>> ObjectFifoCreateOp::getInitialValues() {
+  std::vector<std::vector<int32_t>> initValuesVector;
+  if (getInitValues().has_value()) {
+    auto initValues = llvm::cast<mlir::ElementsAttr>(getInitValues().value());
+    auto fifo = llvm::cast<AIEObjectFifoType>(getElemType());
+    auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
+    int len = elemType.getNumElements();
+    for (int i = 0; i < size(); i++) {
+      std::vector<int> initBuffer;
+      for (int r = 0; r < len; r++) {
+        auto elem = initValues.getValues<mlir::ElementsAttr>()[i * len + r];
+        initBuffer.push_back(llvm::cast<IntegerAttr>(elem).getInt());
+      }
+      initValuesVector.push_back(initBuffer);
+    }
+  }
+  return initValuesVector;
+}
+
 namespace xilinx::AIE {
 
 ParseResult parseObjectFifoProducerTile(OpAsmParser &parser,
