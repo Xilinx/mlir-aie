@@ -13,15 +13,15 @@
 #include "aie/CIR/CIRToAIEPasses.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
-#include "mlir/Interfaces/CastInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -30,8 +30,8 @@
 #include "clang/CIR/Dialect/IR/CIRDialect.h"
 #include "clang/CIR/Dialect/IR/CIRTypes.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -55,6 +55,8 @@ struct CIRToAIETypesAnalysis {
     }
   };
 
+  // A map from a type do its aie:: deconstruction in the case it is a pointer
+  // type to a well known aie:: struct
   llvm::DenseMap<mlir::Type, std::optional<AIELikeTypesDeconstruction>>
       moduleTypes;
 
@@ -64,7 +66,8 @@ struct CIRToAIETypesAnalysis {
     // example
     static const std::array typeNamePatterns{
         llvm::Regex{"^(aie::device)<aie::([^>]+)>$"},
-        llvm::Regex{"^(aie::tile_t)<([[:digit:]]+), ([[:digit:]]+)>$"}};
+        llvm::Regex{"^(aie::tile)<([[:digit:]]+), ([[:digit:]]+)>$"},
+        llvm::Regex{"^(aie::buffer)<([^,]+), ([^>]+)>$"}};
 
     for (auto &[type, value] : moduleTypes) {
       if (auto maybePointerType = mlir::dyn_cast<mlir::cir::PointerType>(type))
@@ -155,7 +158,7 @@ struct DeviceLowering : public mlir::OpConversionPattern<mlir::cir::AllocaOp> {
       rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
           op, op.getResult().getType(), mlir::ValueRange{},
           std::array{rewriter.getNamedAttr(
-              "aie.device", rewriter.getAttr<mlir::StringAttr>(deviceName))});
+              aieLike->base, rewriter.getAttr<mlir::StringAttr>(deviceName))});
       return mlir::success();
     }
     return mlir::failure();
@@ -174,6 +177,11 @@ struct DeviceLowering : public mlir::OpConversionPattern<mlir::cir::AllocaOp> {
 struct TileBufferLowering : public mlir::OpConversionPattern<mlir::cir::CallOp> {
   using mlir::OpConversionPattern<mlir::cir::CallOp>::OpConversionPattern;
 
+  // \todo Find a less ugly way to access the analysis. How is it possible for a
+  // pattern to access some contextual information?
+  // It should be OK since it is a module pass, so no parallelism here.
+  static inline CIRToAIETypesAnalysis *cat;
+
   mlir::LogicalResult
   matchAndRewrite(mlir::cir::CallOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const final {
@@ -185,14 +193,24 @@ struct TileBufferLowering : public mlir::OpConversionPattern<mlir::cir::CallOp> 
       auto store = mlir::dyn_cast<mlir::cir::StoreOp>(*user);
       auto alloca = mlir::dyn_cast<mlir::cir::AllocaOp>(
           store.getOperand(1).getDefiningOp());
-      // Replace the alloca by a conversion to be replaced later in
-      // another pass
-      rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
-          alloca, alloca.getResult().getType(), device);
-      // Remove the now useless original operations
-      rewriter.eraseOp(store);
-      rewriter.eraseOp(op);
-      return mlir::success();
+      if (auto aieLike = cat->moduleTypes[alloca.getResult().getType()];
+          aieLike) {
+        // Replace the alloca by a conversion to be replaced later in
+        // another pass.
+        // Keep analyzed type information as named attribute to make things
+        // clearer
+        llvm::SmallVector<mlir::Attribute, 4> attrs;
+        for (auto e : aieLike->subMatches)
+          attrs.emplace_back(rewriter.getAttr<mlir::StringAttr>(e));
+        rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+            alloca, alloca.getResult().getType(), device,
+            std::array{rewriter.getNamedAttr(aieLike->base,
+                                             rewriter.getArrayAttr(attrs))});
+        // Remove the now useless original operations
+        rewriter.eraseOp(store);
+        rewriter.eraseOp(op);
+        return mlir::success();
+      }
     }
     return mlir::failure();
   }
@@ -205,6 +223,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
     auto &cat = getAnalysis<CIRToAIETypesAnalysis>();
     // \todo Clean up this mess
     DeviceLowering::cat = &cat;
+    TileBufferLowering::cat = &cat;
     // See mlir/examples/toy/Ch5/mlir/LowerToAffineLoops.cpp
     mlir::ConversionTarget target{getContext()};
     target.addLegalDialect<xilinx::AIE::AIEDialect>();
@@ -218,7 +237,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
         });
     target.addDynamicallyLegalOp<mlir::cir::CallOp>([](mlir::cir::CallOp op) {
       return !isCallingFunctionWithAnnotation(
-          op, {"aie.device.tile", "aie.tile.buffer"});
+          op, {"aie.device.tile", "aie.tile.buffer", "aie.tile.program"});
     });
     mlir::RewritePatternSet patterns{&getContext()};
     patterns.add<DeviceLowering>(&getContext());
