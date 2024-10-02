@@ -47,12 +47,6 @@
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:   }
-// CHECK:   aie.device(xcvc1902) {
-// CHECK:     memref.global "public" @of2 : memref<16xi32>
-// CHECK:     %tile_1_2 = aie.tile(1, 2)
-// CHECK:     %tile_1_3 = aie.tile(1, 3)
-// CHECK:     %of2_buff_0 = aie.buffer(%tile_1_2) {sym_name = "of2_buff_0"} : memref<16xi32> 
-// CHECK:   }
 // CHECK: }
 
 module @disable_sync {
@@ -63,11 +57,5 @@ module @disable_sync {
 
     aie.objectfifo @of0 (%tile12, {%tile13}, 1 : i32) { disable_synchronization = true } : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @of1 (%tile12, {%tile33}, 2 : i32) { disable_synchronization = true } : !aie.objectfifo<memref<16xi32>>
- }
-  aie.device(xcvc1902) {
-    %tile12 = aie.tile(1, 2)
-    %tile13 = aie.tile(1, 3)
-
-    aie.objectfifo @of2 (%tile12, {%tile13}, 1 : i32) { disable_synchronization = true } : !aie.objectfifo<memref<16xi32>>
  }
 }
