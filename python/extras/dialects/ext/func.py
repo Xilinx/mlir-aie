@@ -50,9 +50,11 @@ def call(
             raise ValueError(
                 "unexpected third argument when constructing a call" + "to a function"
             )
-        if len(arguments) != len(callee_or_results.function_type.value.inputs):
+        if len(arguments_or_callee) != len(
+            callee_or_results.function_type.value.inputs
+        ):
             raise ValueError(
-                f"Expected {len(callee_or_results.function_type.value.inputs)} arguments, but got {len(arguments)} arguments"
+                f"Expected {len(callee_or_results.function_type.value.inputs)} arguments, but got {len(arguments_or_callee)} arguments"
             )
         args = []
         for i, a in enumerate(arguments_or_callee):
