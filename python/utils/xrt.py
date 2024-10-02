@@ -5,12 +5,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
-
-# from npu.runtime
-import pyxrt as xrt
-
-# import npu.runtime as xrt
+import copy
 import numpy as np
+import pyxrt as xrt
 
 
 class AIE_Application:
@@ -81,7 +78,8 @@ class AIE_Buffer:
 
     def read(self):
         self.sync_from_device()
-        return self.bo.read(self.len_bytes, 0).view(self.dtype).reshape(self.shape)
+        data = copy.deepcopy(self.bo.read(self.len_bytes, 0))
+        return data.view(self.dtype).reshape(self.shape)
 
     def write(self, v, offset=0):
         self.bo.write(v.view(np.uint8), offset)
