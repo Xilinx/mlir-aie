@@ -786,10 +786,7 @@ def runtime_sequence(*inputs: Type):
         seq_op = RuntimeSequenceOp()
         my_inputs = []
         for input in inputs:
-            if get_origin(input) == np.ndarray:
-                my_inputs.append(np_ndarray_type_to_memref_type(input))
-            else:
-                my_inputs.append(input)
+            my_inputs.append(try_convert_np_type_to_mlir_type(input))
         entry_block = seq_op.body.blocks.append(*my_inputs)
         args = entry_block.arguments
         with InsertionPoint(entry_block):

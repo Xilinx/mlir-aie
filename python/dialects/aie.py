@@ -791,10 +791,13 @@ def tile(col, row, *, loc=None, ip=None):
 _orig_bd_chain = bd_chain
 
 
-def bd_chain(*inputs: T.Type):
+def bd_chain(*inputs: T.Type | type[np.ndarray]):
     def decorator(f):
         seq_op = BDChainOp(f.__name__)
-        entry_block = seq_op.body.blocks.append(*inputs)
+        my_inputs = []
+        for input in inputs:
+            my_inputs.append(try_convert_np_type_to_mlir_type(input))
+        entry_block = seq_op.body.blocks.append(*my_inputs)
         args = entry_block.arguments
         bds_ctx = bds(seq_op)
         with InsertionPoint(entry_block):

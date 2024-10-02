@@ -209,7 +209,7 @@ def edge_detect(module):
     @device(AIEDevice.npu1_4col)
     def device_body():
         vec64_ty = np.ndarray[(64,), np.dtype[np.uint8]]
-        vec256_ty = np.ndarra[(256,), np.dtype[np.uint8]]
+        vec256_ty = np.ndarray[(256,), np.dtype[np.uint8]]
         rgba2gray_line = external_func(
             "rgba2gray_line", inputs=[vec256_ty, vec64_ty, np.int32]
         )
