@@ -1,16 +1,15 @@
+from collections import defaultdict
 import contextlib
 import ctypes
-import inspect
-import platform
-import re
-import sys
-import warnings
 from dataclasses import dataclass
 from functools import wraps
-from pathlib import Path
-from typing import Callable, List, Optional, Sequence, Tuple, Union
-
+import inspect
 import numpy as np
+import platform
+from pathlib import Path
+import re
+import sys
+from typing import Callable, List, Sequence, Tuple, get_args, get_origin
 
 from .meta import op_region_builder
 from ..extras import types as T
@@ -34,20 +33,12 @@ from ..ir import (
     _GlobalDebug,
 )
 
-try:
-    from ..ir import TypeID
-except ImportError:
-    warnings.warn(
-        f"TypeID not supported by host bindings; value casting won't work correctly"
-    )
-    TypeID = object
-
 
 def is_relative_to(self, other):
     return other == self or other in self.parents
 
 
-def get_user_code_loc(user_base: Optional[Path] = None):
+def get_user_code_loc(user_base: Path | None = None):
     from .. import extras
 
     if Context.current is None:
@@ -127,21 +118,51 @@ def find_ops(op, pred: Callable[[OpView, Operation, Module], bool], single=False
     return matching
 
 
-_np_dtype_to_mlir_type_ctor = {
-    np.int8: T.i8,
-    np.int16: T.i16,
-    np.int32: T.i32,
-    # windows
-    np.intc: T.i32,
-    np.int64: T.i64,
-    # is technically wrong i guess but numpy by default casts python scalars to this
-    # so to support passing lists of ints we map to index type
-    np.longlong: T.index,
-    np.uintp: T.index,
-    np.float16: T.f16,
-    np.float32: T.f32,
-    np.float64: T.f64,
-}
+_np_dtype_to_mlir_type_ctor = defaultdict(
+    lambda: None,
+    {
+        # Signed integer types
+        np.int8: T.i8,
+        np.int16: T.i16,
+        np.int32: T.i32,
+        np.intc: T.i32,  # windows
+        np.int64: T.i64,
+        # Unsigned integer types
+        np.uint8: T.ui8,
+        np.uint16: T.ui16,
+        np.uint32: T.ui32,
+        np.uint64: T.ui64,
+        # Floating point types
+        np.float16: T.f16,
+        np.float32: T.f32,
+        np.float64: T.f64,
+        # Block floating point types
+        # bfloat16: T.bf16,
+        # Index Types
+        # this is technically wrong i guess but numpy by default casts python scalars to this
+        # so to support passing lists of ints we map to index type
+        np.longlong: T.index,
+        np.uintp: T.index,
+    },
+)
+
+NpuDType = (
+    np.int8
+    | np.int16
+    | np.int32
+    | np.intc
+    | np.int64
+    | np.uint8
+    | np.uint16
+    | np.uint32
+    | np.uint64
+    | np.float16
+    | np.float32
+    | np.float64
+    | np.longlong
+    | np.uintp
+    # | bfloat16
+)
 
 _mlir_type_ctor_to_np_dtype = lambda: {
     v: k for k, v in _np_dtype_to_mlir_type_ctor.items()
@@ -149,8 +170,13 @@ _mlir_type_ctor_to_np_dtype = lambda: {
 
 
 def np_dtype_to_mlir_type(np_dtype):
-    if typ := _np_dtype_to_mlir_type_ctor.get(np_dtype):
-        return typ()
+    mlir_type = _np_dtype_to_mlir_type_ctor[np_dtype]
+    if mlir_type:
+        return mlir_type()
+    else:
+        raise AttributeError(
+            "Failed to map np dtype to mlir python type: " + str(np_dtype)
+        )
 
 
 def mlir_type_to_np_dtype(mlir_type):
@@ -173,8 +199,8 @@ def mlir_type_to_ctype(mlir_type):
 
 
 def infer_mlir_type(
-    py_val: Union[int, float, bool, np.ndarray], memref=False, vector=False
-) -> Union[IntegerType, F32Type, F64Type, RankedTensorType]:
+    py_val: int | float | bool | np.ndarray, memref=False, vector=False
+) -> IntegerType | F32Type | F64Type | RankedTensorType:
     """Infer MLIR type (`ir.Type`) from supported python values.
 
     Note ints and floats are mapped to 64-bit types.
@@ -216,6 +242,8 @@ def infer_mlir_type(
             return VectorType.get(py_val.shape, dtype)
         else:
             return RankedTensorType.get(py_val.shape, dtype)
+    elif isinstance(py_val, NpuDType):
+        return np_dtype_to_mlir_type(type(py_val))
     else:
         raise NotImplementedError(
             f"Unsupported Python value {py_val=} with type {type(py_val)}"
@@ -233,6 +261,34 @@ def memref_type_to_np_dtype(memref_type):
         T.memref(T.i64()): np.int64,
     }
     return _memref_type_to_np_dtype.get(memref_type)
+
+
+def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]:
+    shape = get_args(ndarray_type)[0]
+    assert isinstance(shape, tuple), "np.ndarray shape must be a tuple of integers"
+    for elem in shape:
+        assert isinstance(elem, int), "np.ndarray shape must be a tuple of integers"
+    return shape
+
+
+def np_ndarray_type_get_dtype(ndarray_type: type[np.ndarray]) -> NpuDType:
+    return get_args(get_args(ndarray_type)[1])[0]
+
+
+def np_ndarray_type_to_memref_type(ndarray_type: type[np.ndarray]):
+    shape = np_ndarray_type_get_shape(ndarray_type)
+    dtype = np_ndarray_type_get_dtype(ndarray_type)
+    return T.memref(*shape, element_type=np_dtype_to_mlir_type(dtype))
+
+
+def try_convert_np_type_to_mlir_type(input_type):
+    if get_origin(input_type) == np.ndarray:
+        output_type = np_ndarray_type_to_memref_type(input_type)
+    elif input_type in get_args(NpuDType):
+        output_type = np_dtype_to_mlir_type(input_type)
+    else:
+        output_type = input_type
+    return output_type
 
 
 def _get_previous_frame_idents(val, previous_frame):
@@ -294,7 +350,7 @@ def make_maybe_no_args_decorator(decorator):
 
 @dataclass
 class Successor:
-    op: Union[OpView, Operation]
+    op: OpView | Operation
     operands: List[Value]
     block: Block
     pos: int
@@ -308,7 +364,7 @@ class Successor:
 
 
 @contextlib.contextmanager
-def bb(*preds: Tuple[Union[Successor, OpView]]):
+def bb(*preds: Tuple[Successor | OpView]):
     current_ip = InsertionPoint.current
     op = current_ip.block.owner
     op_region = op.regions[0]
@@ -441,3 +497,23 @@ class getitemproperty:
 
         # f is not a bound method since it was decorated...
         return self.f(self.instance, item, **kwargs)
+
+
+def get_arg_types(objs: Sequence[int | float | Value | OpView]):
+    my_types = []
+    for o in objs:
+        if isinstance(o, Value):
+            my_types.append(o.type)
+        elif isinstance(o, OpView):
+            if len(o.results.types) != 1:
+                raise AttributeError(
+                    f"Operation given to a region op as a parameter ({o}) has more "
+                    "than one return type ({o.results.types}), which would lead to a mismatch "
+                    "between number of operands and number of operand types"
+                )
+            my_types += o.results.types
+        elif isinstance(o, (int, float)):
+            my_types.append(type(o))
+        else:
+            return None
+    return my_types

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
-
+import numpy as np
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
@@ -46,14 +46,14 @@ def codeRegion():
     @device(AIEDevice.xcve2802)
     def device_body():
         test_func = external_func(
-            "test_func", inputs=[T.memref(8, 8, T.i32())], outputs=[T.i32()]
+            "test_func", inputs=[T.memref(8, 8, T.i32())], outputs=[np.int32]
         )
 
         S = tile(0, 2)
         M = tile(1, 2)
         N = tile(3, 3)
 
-        of0 = object_fifo("of0", S, M, 2, T.memref(256, T.i32()))
+        of0 = object_fifo("of0", S, M, 2, np.ndarray[(256,), np.dtype[np.int32]])
         of1 = object_fifo("of1", M, N, 2, T.memref(8, 8, T.i32()))
         object_fifo_link(of0, of1)
 
