@@ -966,18 +966,18 @@ struct AIEObjectFifoStatefulTransformPass
 
   // Function that generates the IR to update runtime state of objectfifo
   // accesses. Called by dynamicGlobalObjectFifos().
-  void updateGlobalState(OpBuilder &builder, ObjectFifoReleaseOp relOp,
-                         BufferOp globalState, arith::ConstantOp index,
+  void updateGlobalNextIndex(OpBuilder &builder, ObjectFifoReleaseOp relOp,
+                         BufferOp globalNextIndex, arith::ConstantOp index,
                          arith::ConstantOp size) {
     builder.setInsertionPointAfter(relOp);
     Value oldCounter = builder.create<memref::LoadOp>(
-        builder.getUnknownLoc(), globalState,
+        builder.getUnknownLoc(), globalNextIndex,
         ValueRange(ArrayRef({index.getResult()})));
     Value val = builder.create<arith::ConstantOp>(
         oldCounter.getLoc(), builder.getIndexAttr(relOp.getSize()));
     Value sum = builder.create<arith::AddIOp>(val.getLoc(), oldCounter, val);
     Value newCounter = builder.create<arith::RemSIOp>(sum.getLoc(), sum, size);
-    builder.create<memref::StoreOp>(size.getLoc(), newCounter, globalState,
+    builder.create<memref::StoreOp>(size.getLoc(), newCounter, globalNextIndex,
                                     ValueRange(ArrayRef({index.getResult()})));
   }
 
@@ -989,7 +989,8 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto coreOp : device.getOps<CoreOp>()) {
       if (objectFifoTiles.count(coreOp.getTileOp()) > 0) {
         // For each core: count the number of objectFifos and create
-        // a global state buffer just before the core.
+        // a global buffer just before the core to track index of
+        // next object to access.
         // !! NOTE !! objectFifos with same producer / consumer tile
         // need two counters (accessed based on the ObjectFifoPort)
         std::map<std::pair<ObjectFifoCreateOp, ObjectFifoPort>, int> fifoSizes;
@@ -1003,13 +1004,19 @@ struct AIEObjectFifoStatefulTransformPass
         auto memrefTy =
             MemRefType::get(SmallVector<int64_t>{(int64_t)fifoSizes.size()},
                             builder.getIndexType());
-        auto globalState = builder.create<BufferOp>(
+        auto globalNextIndex = builder.create<BufferOp>(
             builder.getUnknownLoc(), memrefTy, coreOp.getTile(),
-            /*sym_name*/ nullptr,
-            /*address*/ nullptr, /*initial_value*/ nullptr,
-            /*mem_bank*/ nullptr);
+            /*sym_name*/ nullptr, /*address*/ nullptr,
+            /*initial_value*/ nullptr, /*mem_bank*/ nullptr);
 
-        // Initialize all counters in the global state to 0.
+        // Also create a global buffer to track number of acquired objects:
+        // this will be used to determine values of useLock operations.
+        auto globalAcquires = builder.create<BufferOp>(
+            builder.getUnknownLoc(), memrefTy, coreOp.getTile(),
+            /*sym_name*/ nullptr, /*address*/ nullptr,
+            /*initial_value*/ nullptr, /*mem_bank*/ nullptr);
+
+        // Initialize all counters in the global buffers to 0.
         // Also, keep a map of the ConstantOps for the indices per OF
         // and a map with the ConstantOps for the sizes per OF.
         std::map<std::pair<ObjectFifoCreateOp, ObjectFifoPort>,
@@ -1031,21 +1038,25 @@ struct AIEObjectFifoStatefulTransformPass
               indexOp.getLoc(), builder.getIndexAttr(i.second));
           constantSizes[i.first] = size;
           builder.create<memref::StoreOp>(
-              size.getLoc(), initVal, globalState,
+              size.getLoc(), initVal, globalNextIndex,
+              ValueRange(ArrayRef({indexOp.getResult()})));
+          builder.create<memref::StoreOp>(
+              size.getLoc(), initVal, globalAcquires,
               ValueRange(ArrayRef({indexOp.getResult()})));
         }
 
         // Walk the code:
-        // - after each ObjectFifoReleaseOp: add #rel to counter and modulo by
-        // objfifo depth
-        // - before each ObjectFifoAcquireOp, load the counter and use it to
-        // index_switch
-        //   (one IndexSwithOp per AccessOp)
+        // - after each ObjectFifoReleaseOp: 
+        //    - globalNextIndex: add #rel modulo objfifo depth
+        //    - globalAcquires: reduce by #rel
+        // - before each ObjectFifoAcquireOp: 
+        //    - globalNextIndex: load index and use it to index_switch (one IndexSwithOp per AccessOp)
+        //    - globalAcquires: check global to know the useLock value
         WalkResult res = coreOp.walk([&](Operation *op) {
           if (auto relOp = dyn_cast<ObjectFifoReleaseOp>(op)) {
             ObjectFifoCreateOp createOp = relOp.getObjectFifo();
             ObjectFifoPort port = relOp.getPort();
-            updateGlobalState(builder, relOp, globalState,
+            updateGlobalNextIndex(builder, relOp, globalNextIndex,
                               globalIndices[{createOp, port}],
                               constantSizes[{createOp, port}]);
           }
@@ -1066,7 +1077,7 @@ struct AIEObjectFifoStatefulTransformPass
               // Create a switch for each subview access
               builder.setInsertionPointAfter(accessOp);
               auto switchIndex = builder.create<memref::LoadOp>(
-                  builder.getUnknownLoc(), globalState,
+                  builder.getUnknownLoc(), globalNextIndex,
                   ValueRange(
                       ArrayRef({globalIndices[{createOp, port}].getResult()})));
               unsigned caseRegionCounts = fifoSizes[{createOp, port}];
