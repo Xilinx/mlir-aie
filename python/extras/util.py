@@ -34,7 +34,9 @@ from ..ir import (
 )
 
 try:
-    from bfloat16 import bfloat16
+    from bfloat16 import bfloat16 as real_bfloat16
+
+    bfloat16 = real_bfloat16
 except:
     # Numpy doesn't support bfloat16 at this time.
     print(

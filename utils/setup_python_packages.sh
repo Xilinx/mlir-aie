@@ -22,4 +22,4 @@ else
 fi
 python3 -m pip install --upgrade pip
 python3 -m pip install -r python/requirements.txt
-python3 -m pip install bfloat16 || echo "Failed to install bfloat16, that's ok!"
+python3 -m pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
