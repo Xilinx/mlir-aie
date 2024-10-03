@@ -68,8 +68,8 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
 
-    dtype_in = dtype_map(dtype_in_str)
-    dtype_out = dtype_map(dtype_out_str)
+    dtype_in = dtype_map[dtype_in_str]
+    dtype_out = dtype_map[dtype_out_str]
 
     if dtype_in_str == "bf16":
         r = 4
