@@ -5,9 +5,8 @@
 # (c) Copyright 2023 AMD Inc.
 
 # RUN: %python %s | FileCheck %s
-
+import numpy as np
 from aie.extras.dialects.ext import memref
-
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
@@ -45,15 +44,15 @@ def my_vector_scalar(module):
 
     @device(AIEDevice.npu1_4col)
     def device_body():
-        scale_int32 = external_func(
-            "scale_int32", inputs=[T.memref(n, T.i32()), T.memref(n, T.i32())]
-        )
+        n_ty = np.ndarray[(n,), np.dtype[np.int32]]
+        N_ty = np.ndarray[(N,), np.dtype[np.int32]]
+        scale_int32 = external_func("scale_int32", inputs=[n_ty, n_ty])
 
         S = tile(0, 0)
         M = tile(0, 2)
 
-        of_in = object_fifo("in", S, M, buffer_depth, T.memref(n, T.i32()))
-        of_out = object_fifo("out", M, S, buffer_depth, T.memref(n, T.i32()))
+        of_in = object_fifo("in", S, M, buffer_depth, n_ty)
+        of_out = object_fifo("out", M, S, buffer_depth, n_ty)
 
         @core(M, "scale.o")
         def core_body():
@@ -67,9 +66,7 @@ def my_vector_scalar(module):
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
 
-        @runtime_sequence(
-            T.memref(N, T.i32()), T.memref(N, T.i32()), T.memref(N, T.i32())
-        )
+        @runtime_sequence(N_ty, N_ty, N_ty)
         def sequence(A, B, C):
             npu_dma_memcpy_nd(metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N])
             npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
@@ -119,22 +116,24 @@ def my_matmul(module):
     @device(AIEDevice.npu1_4col)
     def device_body():
         func_type = "" if vectorized else "scalar_"
-        zero = external_func(f"zero_{func_type}i16", inputs=[T.memref(m, n, T.i16())])
+        zero = external_func(
+            f"zero_{func_type}i16", inputs=[np.ndarray[(m, n), np.dtype[np.int16]]]
+        )
         matmul = external_func(
             f"matmul_{func_type}i16_i16",
             inputs=[
-                T.memref(m, k, T.i16()),
-                T.memref(k, n, T.i16()),
-                T.memref(m, n, T.i16()),
+                np.ndarray[(m, k), np.dtype[np.int16]],
+                np.ndarray[(k, n), np.dtype[np.int16]],
+                np.ndarray[(m, n), np.dtype[np.int16]],
             ],
         )
 
         S = tile(0, 0)
         M = tile(0, 2)
 
-        of_inA = object_fifo("inA", S, M, 2, T.memref(m, k, T.i16()))
-        of_inB = object_fifo("inB", S, M, 2, T.memref(k, n, T.i16()))
-        of_outC = object_fifo("outC", M, S, 2, T.memref(m, n, T.i16()))
+        of_inA = object_fifo("inA", S, M, 2, np.ndarray[(m, k), np.dtype[np.int16]])
+        of_inB = object_fifo("inB", S, M, 2, np.ndarray[(k, n), np.dtype[np.int16]])
+        of_outC = object_fifo("outC", M, S, 2, np.ndarray[(m, n), np.dtype[np.int16]])
 
         @core(M, "mm.o")
         def core_body():
@@ -152,9 +151,9 @@ def my_matmul(module):
                     of_outC.release(ObjectFifoPort.Produce, 1)
 
         @runtime_sequence(
-            T.memref(A_sz_in_i32s, T.i32()),
-            T.memref(B_sz_in_i32s, T.i32()),
-            T.memref(C_sz_in_i32s, T.i32()),
+            np.ndarray[(A_sz_in_i32s,), np.dtype[np.int32]],
+            np.ndarray[(B_sz_in_i32s,), np.dtype[np.int32]],
+            np.ndarray[(C_sz_in_i32s,), np.dtype[np.int32]],
         )
         def sequence(A, B, C):
             # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
@@ -209,46 +208,46 @@ def my_matmul(module):
 def edge_detect(module):
     @device(AIEDevice.npu1_4col)
     def device_body():
+        vec64_ty = np.ndarray[(64,), np.dtype[np.uint8]]
+        vec256_ty = np.ndarray[(256,), np.dtype[np.uint8]]
         rgba2gray_line = external_func(
-            "rgba2gray_line",
-            inputs=[T.memref(256, T.ui8()), T.memref(64, T.ui8()), T.i32()],
+            "rgba2gray_line", inputs=[vec256_ty, vec64_ty, np.int32]
         )
         filter2d_line = external_func(
             "filter2d_line",
             inputs=[
-                T.memref(64, T.ui8()),
-                T.memref(64, T.ui8()),
-                T.memref(64, T.ui8()),
-                T.memref(64, T.ui8()),
-                T.i32(),
-                T.memref(3, 3, T.i16()),
+                vec64_ty,
+                vec64_ty,
+                vec64_ty,
+                vec64_ty,
+                np.int32,
+                np.ndarray[(3, 3), np.dtype[np.int16]],
             ],
         )
         threshold_line = external_func(
             "threshold_line",
             inputs=[
-                T.memref(64, T.ui8()),
-                T.memref(64, T.ui8()),
-                T.i32(),
-                T.i16(),
-                T.i16(),
-                T.i8(),
+                vec64_ty,
+                vec64_ty,
+                np.int32,
+                np.int16,
+                np.int16,
+                np.int8,
             ],
         )
         gray2rgba_line = external_func(
-            "gray2rgba_line",
-            inputs=[T.memref(64, T.ui8()), T.memref(256, T.ui8()), T.i32()],
+            "gray2rgba_line", inputs=[vec64_ty, vec256_ty, np.int32]
         )
         add_weighted_line = external_func(
             "add_weighted_line",
             inputs=[
-                T.memref(256, T.ui8()),
-                T.memref(256, T.ui8()),
-                T.memref(256, T.ui8()),
-                T.i32(),
-                T.i16(),
-                T.i16(),
-                T.i8(),
+                vec256_ty,
+                vec256_ty,
+                vec256_ty,
+                np.int32,
+                np.int16,
+                np.int16,
+                np.int8,
             ],
         )
 
@@ -259,20 +258,18 @@ def edge_detect(module):
         T4 = tile(0, 4)
         T5 = tile(0, 5)
 
-        inOF_L3L2 = object_fifo("inOF_L3L2", S, M, 2, T.memref(256, T.ui8()))
-        inOF_L2L1 = object_fifo(
-            "inOF_L2L1", M, [T2, T5], [2, 2, 7], T.memref(256, T.ui8())
-        )
+        inOF_L3L2 = object_fifo("inOF_L3L2", S, M, 2, vec256_ty)
+        inOF_L2L1 = object_fifo("inOF_L2L1", M, [T2, T5], [2, 2, 7], vec256_ty)
         object_fifo_link(inOF_L3L2, inOF_L2L1)
 
-        outOF_L2L3 = object_fifo("outOF_L2L3", M, S, 2, T.memref(256, T.ui8()))
-        outOF_L1L2 = object_fifo("outOF_L1L2", T5, M, 2, T.memref(256, T.ui8()))
+        outOF_L2L3 = object_fifo("outOF_L2L3", M, S, 2, vec256_ty)
+        outOF_L1L2 = object_fifo("outOF_L1L2", T5, M, 2, vec256_ty)
         object_fifo_link(outOF_L1L2, outOF_L2L3)
 
-        OF_2to3 = object_fifo("OF_2to3", T2, T3, 4, T.memref(64, T.ui8()))
-        OF_3to4 = object_fifo("OF_3to4", T3, T4, 2, T.memref(64, T.ui8()))
-        OF_4to5 = object_fifo("OF_4to5", T4, T5, 2, T.memref(64, T.ui8()))
-        OF_5to5 = object_fifo("OF_5to5", T5, T5, 1, T.memref(256, T.ui8()))
+        OF_2to3 = object_fifo("OF_2to3", T2, T3, 4, vec64_ty)
+        OF_3to4 = object_fifo("OF_3to4", T3, T4, 2, vec64_ty)
+        OF_4to5 = object_fifo("OF_4to5", T4, T5, 2, vec64_ty)
+        OF_5to5 = object_fifo("OF_5to5", T5, T5, 1, vec256_ty)
 
         @core(T2, "rgba2gray.cc.o")
         def core_body():
@@ -377,7 +374,9 @@ def edge_detect(module):
                 outOF_L1L2.release(ObjectFifoPort.Produce, 1)
 
         @runtime_sequence(
-            T.memref(2304, T.i32()), T.memref(2304, T.i32()), T.memref(2304, T.i32())
+            np.ndarray[(2304,), np.dtype[np.int32]],
+            np.ndarray[(2304,), np.dtype[np.int32]],
+            np.ndarray[(2304,), np.dtype[np.int32]],
         )
         def sequence(I, B, O):
             npu_dma_memcpy_nd(
@@ -408,12 +407,15 @@ def my_add_one_objFifo(module):
         mem_tile = tile(0, 1)
         compute_tile2 = tile(0, 2)
 
-        of_in0 = object_fifo("in0", shim_tile, mem_tile, 2, T.memref(16, T.i32()))
-        of_in1 = object_fifo("in1", mem_tile, compute_tile2, 2, T.memref(8, T.i32()))
+        tile16_ty = np.ndarray[(16,), np.dtype[np.int32]]
+        tile8_ty = np.ndarray[(8,), np.dtype[np.int32]]
+
+        of_in0 = object_fifo("in0", shim_tile, mem_tile, 2, tile16_ty)
+        of_in1 = object_fifo("in1", mem_tile, compute_tile2, 2, tile16_ty)
         object_fifo_link(of_in0, of_in1)
 
-        of_out0 = object_fifo("out0", mem_tile, shim_tile, 2, T.memref(8, T.i32()))
-        of_out1 = object_fifo("out1", compute_tile2, mem_tile, 2, T.memref(16, T.i32()))
+        of_out0 = object_fifo("out0", mem_tile, shim_tile, 2, tile8_ty)
+        of_out1 = object_fifo("out1", compute_tile2, mem_tile, 2, tile16_ty)
         object_fifo_link(of_out1, of_out0)
 
         @core(compute_tile2)
@@ -428,7 +430,9 @@ def my_add_one_objFifo(module):
                 of_out1.release(ObjectFifoPort.Produce, 1)
 
         @runtime_sequence(
-            T.memref(64, T.i32()), T.memref(32, T.i32()), T.memref(64, T.i32())
+            np.ndarray[(64,), np.dtype[np.int32]],
+            np.ndarray[(32,), np.dtype[np.int32]],
+            np.ndarray[(64,), np.dtype[np.int32]],
         )
         def sequence(inTensor, notUsed, outTensor):
             npu_dma_memcpy_nd(

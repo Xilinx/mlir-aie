@@ -17,13 +17,13 @@ The design in [ext_to_coreL2.py](./ext_to_core.py) is very similar to the one in
 ```python
   # AIE-array data movement with object fifos
   # Input
-  of_in0 = object_fifo("in0", ShimTile, MemTile, 2, memRef_24_ty)
-  of_in1 = object_fifo("in1", MemTile, ComputeTile2, 2, memRef_8_ty)
+  of_in0 = object_fifo("in0", ShimTile, MemTile, 2, tile24_ty)
+  of_in1 = object_fifo("in1", MemTile, ComputeTile2, 2, tile8_ty)
   object_fifo_link(of_in0, of_in1)
 
   # Output
-  of_out0 = object_fifo("out0", MemTile, ShimTile, 2, memRef_24_ty)
-  of_out1 = object_fifo("out1", ComputeTile2, MemTile, 2, memRef_8_ty)
+  of_out0 = object_fifo("out0", MemTile, ShimTile, 2, tile24_ty)
+  of_out1 = object_fifo("out1", ComputeTile2, MemTile, 2, tile8_ty)
   object_fifo_link(of_out1, of_out0)
 ```
 

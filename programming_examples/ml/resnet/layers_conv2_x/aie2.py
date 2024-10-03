@@ -4,14 +4,14 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
+import numpy as np
+import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.extras.dialects.ext import memref
 from aie.extras.context import mlir_mod_ctx
 from aie.extras.dialects.ext.scf import _for as range_
-
-import sys
+from aie.extras.util import np_ndarray_type_get_shape
 
 # tracing definitions
 trace_sz_in_bytes = 8192
@@ -19,16 +19,32 @@ trace_sz_in_i32s = trace_sz_in_bytes // 4
 enableTrace = False
 
 # Define bottleneck layer sizes
+tensorInW = 32
+tensorInH = 32
+tensorInCInit = 64
+tensorInCRest = 4 * tensorInCInit
+n_cols = 3
+repeat = 2
+
+activationsIn = tensorInW * tensorInH * tensorInCInit
+acitivationsOut = tensorInW * tensorInH * tensorInCRest
+
+totalWeights_init = (
+    tensorInCInit * tensorInCInit
+    + 3 * 3 * tensorInCInit * tensorInCInit
+    + 2 * tensorInCInit * tensorInCRest
+)
+
+totalWeights_rest = (
+    tensorInCInit * tensorInCRest
+    + 3 * 3 * tensorInCInit * tensorInCInit
+    + tensorInCInit * tensorInCRest
+)
+
+totalWeights_complete = totalWeights_init + repeat * totalWeights_rest
 
 
 def resnet_conv_x():
-
-    tensorInW = 32
-    tensorInH = 32
-    tensorInCInit = 64
-    tensorInCRest = 4 * tensorInCInit
-    n_cols = 3
-    repeat = 2
 
     with mlir_mod_ctx() as ctx:
 
@@ -36,43 +52,77 @@ def resnet_conv_x():
         def deviceBody():
 
             # define types
-            uint8_ty = IntegerType.get_unsigned(8)
-            int8_ty = IntegerType.get_signless(8)
-            int32_ty = IntegerType.get_signless(32)
+            tensorLayer1In_ty_init = np.ndarray[
+                (tensorInW, 1, tensorInCInit), np.dtype[np.int8]
+            ]
+            tensorLayer1In_ty_rest = np.ndarray[
+                (tensorInW, 1, tensorInCRest), np.dtype[np.uint8]
+            ]
+            weightsLayer1_ty_init = np.ndarray[
+                (tensorInCInit * tensorInCInit,), np.dtype[np.int8]
+            ]
+            weightsLayer1_ty_rest = np.ndarray[
+                (tensorInCRest * tensorInCInit,), np.dtype[np.int8]
+            ]
 
-            tensorLayer1In_ty_init = T.memref(tensorInW, 1, tensorInCInit, int8_ty)
-            tensorLayer1In_ty_rest = T.memref(tensorInW, 1, tensorInCRest, uint8_ty)
-            weightsLayer1_ty_init = T.memref(tensorInCInit * tensorInCInit, int8_ty)
-            weightsLayer1_ty_rest = T.memref(tensorInCRest * tensorInCInit, int8_ty)
+            tensorLayer1Out_ty = np.ndarray[
+                (tensorInW, 1, tensorInCInit), np.dtype[np.uint8]
+            ]
 
-            tensorLayer1Out_ty = T.memref(tensorInW, 1, tensorInCInit, uint8_ty)
+            tensorLayer2In_ty = np.ndarray[
+                (
+                    tensorInW,
+                    1,
+                    tensorInCInit,
+                ),
+                np.dtype[np.uint8],
+            ]
+            weightsLayer2_ty = np.ndarray[
+                (3 * 3 * tensorInCInit * tensorInCInit,), np.dtype[np.int8]
+            ]
+            tensorLayer2Out_ty = np.ndarray[
+                (tensorInW, 1, tensorInCInit // 2), np.dtype[np.uint8]
+            ]
 
-            tensorLayer2In_ty = T.memref(tensorInW, 1, tensorInCInit, uint8_ty)
-            weightsLayer2_ty = T.memref(3 * 3 * tensorInCInit * tensorInCInit, int8_ty)
-            tensorLayer2Out_ty = T.memref(tensorInW, 1, tensorInCInit // 2, uint8_ty)
+            tensorLayer3In_ty = np.ndarray[
+                (tensorInW, 1, tensorInCInit // 2), np.dtype[np.uint8]
+            ]
+            weightsLayer3_ty_init = np.ndarray[
+                (2 * tensorInCInit * tensorInCRest,), np.dtype[np.int8]
+            ]
+            weightsLayer3_ty_rest = np.ndarray[
+                (tensorInCRest // 4 * tensorInCRest,), np.dtype[np.int8]
+            ]
 
-            tensorLayer3In_ty = T.memref(tensorInW, 1, tensorInCInit // 2, uint8_ty)
-            weightsLayer3_ty_init = T.memref(2 * tensorInCInit * tensorInCRest, int8_ty)
-            weightsLayer3_ty_rest = T.memref(
-                tensorInCRest // 4 * tensorInCRest, int8_ty
-            )
+            tensorLayer3Out_ty = np.ndarray[
+                (tensorInW, 1, tensorInCRest), np.dtype[np.uint8]
+            ]
 
-            tensorLayer3Out_ty = T.memref(tensorInW, 1, tensorInCRest, uint8_ty)
+            allWeights_ty_init = np.ndarray[
+                (
+                    tensorInCInit * tensorInCInit
+                    + 3 * 3 * tensorInCInit * tensorInCInit
+                    + tensorInCInit * tensorInCRest
+                    + tensorInCInit * tensorInCRest,
+                ),
+                np.dtype[np.int8],
+            ]
 
-            allWeights_ty_init = T.memref(
-                tensorInCInit * tensorInCInit
-                + 3 * 3 * tensorInCInit * tensorInCInit
-                + tensorInCInit * tensorInCRest
-                + tensorInCInit * tensorInCRest,
-                int8_ty,
-            )
+            allWeights_ty_rest = np.ndarray[
+                (
+                    tensorInCRest * tensorInCInit
+                    + 3 * 3 * tensorInCInit * tensorInCInit
+                    + tensorInCInit * tensorInCRest,
+                ),
+                np.dtype[np.int8],
+            ]
 
-            allWeights_ty_rest = T.memref(
-                tensorInCRest * tensorInCInit
-                + 3 * 3 * tensorInCInit * tensorInCInit
-                + tensorInCInit * tensorInCRest,
-                int8_ty,
-            )
+            activationsInL3_ty = np.ndarray[(activationsIn,), np.dtype[np.int8]]
+            activationsOutL3_ty = np.ndarray[(acitivationsOut,), np.dtype[np.int8]]
+
+            weightsInL3_ty_complete = np.ndarray[
+                (totalWeights_complete,), np.dtype[np.int8]
+            ]
 
             # kernel definitions
             conv2dk1_i8 = external_func(
@@ -81,10 +131,10 @@ def resnet_conv_x():
                     tensorLayer1In_ty_init,
                     weightsLayer1_ty_init,
                     tensorLayer1Out_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
                 ],
             )
             conv2dk3 = external_func(
@@ -95,14 +145,14 @@ def resnet_conv_x():
                     tensorLayer2In_ty,
                     weightsLayer2_ty,
                     tensorLayer2Out_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
                 ],
             )
             conv2dk1_skip_init_i8 = external_func(
@@ -113,13 +163,13 @@ def resnet_conv_x():
                     weightsLayer3_ty_init,
                     tensorLayer3Out_ty,
                     tensorLayer1In_ty_init,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
                 ],
             )
             conv2dk1_ui8 = external_func(
@@ -128,10 +178,10 @@ def resnet_conv_x():
                     tensorLayer3Out_ty,
                     weightsLayer1_ty_rest,
                     tensorLayer1Out_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
                 ],
             )
 
@@ -143,11 +193,11 @@ def resnet_conv_x():
                     weightsLayer3_ty_rest,
                     tensorLayer3Out_ty,
                     tensorLayer3Out_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
                 ],
             )
 
@@ -202,20 +252,20 @@ def resnet_conv_x():
 
             # runtime parameters
 
-            rtpComputeTile02 = Buffer(ComputeTile02, [16], T.i32(), "rtpComputeTile02")
-            rtpComputeTile03 = Buffer(ComputeTile03, [16], T.i32(), "rtpComputeTile03")
-            rtpComputeTile04 = Buffer(ComputeTile05, [16], T.i32(), "rtpComputeTile04")
-            rtpComputeTile05 = Buffer(ComputeTile04, [16], T.i32(), "rtpComputeTile05")
+            rtpComputeTile02 = Buffer(ComputeTile02, [16], np.int32, "rtpComputeTile02")
+            rtpComputeTile03 = Buffer(ComputeTile03, [16], np.int32, "rtpComputeTile03")
+            rtpComputeTile04 = Buffer(ComputeTile05, [16], np.int32, "rtpComputeTile04")
+            rtpComputeTile05 = Buffer(ComputeTile04, [16], np.int32, "rtpComputeTile05")
 
-            rtpComputeTile12 = Buffer(ComputeTile12, [16], T.i32(), "rtpComputeTile12")
-            rtpComputeTile13 = Buffer(ComputeTile13, [16], T.i32(), "rtpComputeTile13")
-            rtpComputeTile14 = Buffer(ComputeTile14, [16], T.i32(), "rtpComputeTile14")
-            rtpComputeTile15 = Buffer(ComputeTile15, [16], T.i32(), "rtpComputeTile15")
+            rtpComputeTile12 = Buffer(ComputeTile12, [16], np.int32, "rtpComputeTile12")
+            rtpComputeTile13 = Buffer(ComputeTile13, [16], np.int32, "rtpComputeTile13")
+            rtpComputeTile14 = Buffer(ComputeTile14, [16], np.int32, "rtpComputeTile14")
+            rtpComputeTile15 = Buffer(ComputeTile15, [16], np.int32, "rtpComputeTile15")
 
-            rtpComputeTile22 = Buffer(ComputeTile22, [16], T.i32(), "rtpComputeTile22")
-            rtpComputeTile23 = Buffer(ComputeTile23, [16], T.i32(), "rtpComputeTile23")
-            rtpComputeTile24 = Buffer(ComputeTile24, [16], T.i32(), "rtpComputeTile24")
-            rtpComputeTile25 = Buffer(ComputeTile25, [16], T.i32(), "rtpComputeTile25")
+            rtpComputeTile22 = Buffer(ComputeTile22, [16], np.int32, "rtpComputeTile22")
+            rtpComputeTile23 = Buffer(ComputeTile23, [16], np.int32, "rtpComputeTile23")
+            rtpComputeTile24 = Buffer(ComputeTile24, [16], np.int32, "rtpComputeTile24")
+            rtpComputeTile25 = Buffer(ComputeTile25, [16], np.int32, "rtpComputeTile25")
 
             rtp = [
                 [
@@ -237,26 +287,7 @@ def resnet_conv_x():
                     rtpComputeTile25,
                 ],
             ]
-            rtp_name = [
-                [
-                    "rtpComputeTile02",
-                    "rtpComputeTile03",
-                    "rtpComputeTile04",
-                    "rtpComputeTile05",
-                ],
-                [
-                    "rtpComputeTile12",
-                    "rtpComputeTile13",
-                    "rtpComputeTile14",
-                    "rtpComputeTile15",
-                ],
-                [
-                    "rtpComputeTile22",
-                    "rtpComputeTile23",
-                    "rtpComputeTile24",
-                    "rtpComputeTile25",
-                ],
-            ]
+
             # set up data movement with OFs
             conv1_kernels = ["conv2dk1_i8.o", "conv2dk1_ui8.o", "conv2dk1_ui8.o"]
             conv1_kernels_call = [conv2dk1_i8, conv2dk1_ui8, conv2dk1_ui8]
@@ -445,9 +476,9 @@ def resnet_conv_x():
                     [],
                     [
                         0,
-                        np.prod(layer1_wts_sizes[i].shape),
-                        np.prod(layer1_wts_sizes[i].shape)
-                        + np.prod(weightsLayer2_ty.shape),
+                        np.prod(np_ndarray_type_get_shape(layer1_wts_sizes[i])),
+                        np.prod(np_ndarray_type_get_shape(layer1_wts_sizes[i]))
+                        + np.prod(np_ndarray_type_get_shape(weightsLayer2_ty)),
                     ],
                 )
             # output tensor
@@ -800,30 +831,6 @@ def resnet_conv_x():
                         )
 
             # instruction stream generation
-            activationsIn = tensorInW * tensorInH * tensorInCInit
-            acitivationsOut = tensorInW * tensorInH * tensorInCRest
-
-            totalWeights_init = (
-                tensorInCInit * tensorInCInit
-                + 3 * 3 * tensorInCInit * tensorInCInit
-                + 2 * tensorInCInit * tensorInCRest
-            )
-
-            totalWeights_rest = (
-                tensorInCInit * tensorInCRest
-                + 3 * 3 * tensorInCInit * tensorInCInit
-                + tensorInCInit * tensorInCRest
-            )
-
-            totalWeights_complete = totalWeights_init + repeat * totalWeights_rest
-
-            activationsInL3_ty = T.memref(activationsIn, int8_ty)
-            activationsOutL3_ty = T.memref(acitivationsOut, int8_ty)
-            weightsInL3_ty_init = T.memref(totalWeights_init, int8_ty)
-            weightsInL3_ty_rest = T.memref(totalWeights_rest, int8_ty)
-
-            weightsInL3_ty_complete = T.memref(totalWeights_complete, int8_ty)
-
             @runtime_sequence(
                 activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_ty
             )
