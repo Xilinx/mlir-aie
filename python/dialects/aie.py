@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from dataclasses import dataclass
 import inspect
-from typing import List, Optional, Tuple, Union, Dict, Any
+from typing import List, Tuple, Dict, Any
 import contextlib
 
 import numpy as np
@@ -33,10 +33,6 @@ from .._mlir_libs._aie import (
     transaction_binary_to_mlir,
 )
 from ..extras import types as T
-from ..extras.dialects.ext.arith import constant
-
-# noinspection PyUnresolvedReferences
-from ..extras.dialects.ext import memref
 from ..extras.meta import region_op
 
 # this is inside the aie-python-extras (shared) namespace package
@@ -47,23 +43,25 @@ from ..extras.util import (
     find_parent_of_type,
     get_user_code_loc,
     region_adder,
+    try_convert_np_type_to_mlir_type,
+    NpuDType,
 )
 
 from ..ir import (
-    ArrayAttr,
     Attribute,
     Block,
     BlockList,
     DenseElementsAttr,
     DictAttr,
-    FlatSymbolRefAttr,
     FunctionType,
     InsertionPoint,
     IntegerAttr,
     IntegerType,
+    MemRefType,
     TypeAttr,
     UnitAttr,
     _i32ArrayAttr,
+    Location,
 )
 
 # Comes from _aie
@@ -72,9 +70,17 @@ assert _cext.globals._check_dialect_module_loaded("aie")
 
 
 class external_func(FuncOp):
-    def __init__(self, name, inputs, outputs=None, visibility="private"):
+    def __init__(self, name: str, inputs, outputs=None, visibility="private"):
         if outputs is None:
             outputs = []
+        for i, ty in enumerate(inputs):
+            new_type = try_convert_np_type_to_mlir_type(ty)
+            if new_type != ty:
+                inputs[i] = new_type
+        for i, ty in enumerate(outputs):
+            new_type = try_convert_np_type_to_mlir_type(ty)
+            if new_type != ty:
+                outputs[i] = new_type
         super().__init__(
             name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
         )
@@ -88,9 +94,7 @@ def bd_dim_layout(size, stride):
 
 
 @register_attribute_builder("BDDimLayoutArrayAttr")
-def bd_dim_layout_array_attr_builder(
-    tups: List[Union[Attribute, Tuple[int]]], context=None
-):
+def bd_dim_layout_array_attr_builder(tups: List[Attribute | Tuple[int]], context=None):
     if isinstance(tups, list) and all(isinstance(t, tuple) for t in tups):
         tups = list(map(lambda t: bd_dim_layout(*t), tups))
     return Attribute.parse(
@@ -208,7 +212,7 @@ Device = DeviceOp
 
 class Core(CoreOp):
     # Until https://github.com/llvm/llvm-project/pull/73620 gets figured out.
-    def __init__(self, tile, link_with=None):
+    def __init__(self, tile, link_with: str | None = None):
         super().__init__(result=T.index(), tile=tile, link_with=link_with)
 
 
@@ -220,17 +224,24 @@ class Buffer(MemRef):
         raise ValueError("Should never be called")
 
     def __new__(
-        cls, tile, shape, datatype, name=None, initial_value=None, loc=None, ip=None
+        cls,
+        tile,
+        shape,
+        datatype,
+        name=None,
+        initial_value: np.ndarray | None = None,
+        loc=None,
+        ip=None,
     ):
         if initial_value is not None:
             assert isinstance(initial_value, np.ndarray)
             initial_value = DenseElementsAttr.get(
                 initial_value,
-                type=datatype,
+                type=try_convert_np_type_to_mlir_type(datatype),
                 context=None,
             )
         my_buffer = BufferOp(
-            buffer=T.memref(*shape, datatype),
+            buffer=T.memref(*shape, try_convert_np_type_to_mlir_type(datatype)),
             tile=tile,
             sym_name=name,
             initial_value=initial_value,
@@ -247,7 +258,7 @@ class ExternalBuffer(MemRef):
     def __init__(self):
         raise ValueError("Should never be called")
 
-    def __new__(cls, shape, datatype, name=None, loc=None, ip=None):
+    def __new__(cls, shape, datatype, name: str | None = None, loc=None, ip=None):
         my_buffer = ExternalBufferOp(
             buffer=T.memref(*shape, datatype),
             sym_name=name,
@@ -259,6 +270,9 @@ class ExternalBuffer(MemRef):
 
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
 # depth examples: 2, [2,2,7]
+from typing import Literal
+
+
 class object_fifo(ObjectFifoCreateOp):
     def __init__(
         self,
@@ -266,21 +280,21 @@ class object_fifo(ObjectFifoCreateOp):
         producerTile,
         consumerTiles,
         depth,
-        datatype,
+        datatype: MemRefType | type[np.ndarray],
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
         via_DMA=None,
         plio=None,
+        disable_synchronization=None,
     ):
-        self.datatype = datatype
+        self.datatype = try_convert_np_type_to_mlir_type(datatype)
         if not isinstance(consumerTiles, List):
             consumerTiles = [consumerTiles]
         if dimensionsFromStreamPerConsumer is None:
             dimensionsFromStreamPerConsumer = []
         if dimensionsToStream is None:
             dimensionsToStream = []
-        int_ty = IntegerType.get_signless(32)
-        of_Ty = TypeAttr.get(ObjectFifoType.get(datatype))
+        of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
         super().__init__(
             sym_name=name,
             producerTile=producerTile,
@@ -291,6 +305,7 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
             via_DMA=via_DMA,
             plio=plio,
+            disable_synchronization=disable_synchronization,
         )
 
     def acquire(self, port, num_elem):
@@ -361,7 +376,7 @@ class packetflow(PacketFlowOp):
         dest,
         dest_port,
         dest_channel,
-        keep_pkt_header: Optional[bool] = None,
+        keep_pkt_header: bool | None = None,
     ):
         super().__init__(ID=pkt_id, keep_pkt_header=keep_pkt_header)
         bb = Block.create_at_start(self.ports)
@@ -459,9 +474,9 @@ class DMAStartOp(DMAStartOp):
         channel_dir,
         channel_index,
         *,
-        dest: Optional[Union[Successor, Block]] = None,
-        chain: Optional[Union[Successor, Block]] = None,
-        repeat_count: Optional[int] = None,
+        dest: Successor | Block | None = None,
+        chain: Successor | Block | None = None,
+        repeat_count: int | None = None,
         loc=None,
         ip=None,
     ):
@@ -511,9 +526,7 @@ def dma_start(
 
 @_cext.register_operation(_Dialect, replace=True)
 class NextBDOp(NextBDOp):
-    def __init__(
-        self, dest: Optional[Union[Successor, Block]] = None, *, loc=None, ip=None
-    ):
+    def __init__(self, dest: Successor | Block | None = None, *, loc=None, ip=None):
         if isinstance(dest, Successor):
             dest = dest.block
         if dest is None:
@@ -528,7 +541,7 @@ class NextBDOp(NextBDOp):
 
 
 def next_bd(
-    dest: Optional[Union[Successor, Block, ContextManagedBlock]] = None,
+    dest: Successor | Block | ContextManagedBlock | None = None,
     loc=None,
     ip=None,
 ):
@@ -806,10 +819,13 @@ def tile(col, row, *, loc=None, ip=None):
 _orig_bd_chain = bd_chain
 
 
-def bd_chain(*inputs: T.Type):
+def bd_chain(*inputs: T.Type | type[np.ndarray]):
     def decorator(f):
         seq_op = BDChainOp(f.__name__)
-        entry_block = seq_op.body.blocks.append(*inputs)
+        my_inputs = []
+        for input in inputs:
+            my_inputs.append(try_convert_np_type_to_mlir_type(input))
+        entry_block = seq_op.body.blocks.append(*my_inputs)
         args = entry_block.arguments
         bds_ctx = bds(seq_op)
         with InsertionPoint(entry_block):
