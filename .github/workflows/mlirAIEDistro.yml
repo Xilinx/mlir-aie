@@ -226,6 +226,7 @@ jobs:
         export PIP_NO_BUILD_ISOLATION=false
         
         pip install -r requirements.txt
+        pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
         pip install importlib-metadata
         CIBW_ARCHS=${{ matrix.ARCH }} MATRIX_OS=${{ matrix.OS }} ./scripts/download_mlir.sh
         
@@ -354,7 +355,9 @@ jobs:
       - name: Checkout reqs
         uses: actions/checkout@v3
         with:
-          sparse-checkout: python/requirements.txt
+          sparse-checkout: |
+            python/requirements.txt
+            pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
 
       - uses: actions/download-artifact@v3
         with:
@@ -369,6 +372,7 @@ jobs:
         shell: bash
         run: |
           pip install -r python/requirements.txt
+          pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
           unzip -o -q dist/mlir_aie\*.whl
           
           if [ x"${{ matrix.ENABLE_RTTI }}" == x"ON" ]; then
