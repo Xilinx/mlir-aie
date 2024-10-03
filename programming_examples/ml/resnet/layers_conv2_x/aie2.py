@@ -252,20 +252,20 @@ def resnet_conv_x():
 
             # runtime parameters
 
-            rtpComputeTile02 = Buffer(ComputeTile02, [16], np.int32, "rtpComputeTile02")
-            rtpComputeTile03 = Buffer(ComputeTile03, [16], np.int32, "rtpComputeTile03")
-            rtpComputeTile04 = Buffer(ComputeTile05, [16], np.int32, "rtpComputeTile04")
-            rtpComputeTile05 = Buffer(ComputeTile04, [16], np.int32, "rtpComputeTile05")
+            rtpComputeTile02 = buffer(ComputeTile02, [16], np.int32, "rtpComputeTile02")
+            rtpComputeTile03 = buffer(ComputeTile03, [16], np.int32, "rtpComputeTile03")
+            rtpComputeTile04 = buffer(ComputeTile05, [16], np.int32, "rtpComputeTile04")
+            rtpComputeTile05 = buffer(ComputeTile04, [16], np.int32, "rtpComputeTile05")
 
-            rtpComputeTile12 = Buffer(ComputeTile12, [16], np.int32, "rtpComputeTile12")
-            rtpComputeTile13 = Buffer(ComputeTile13, [16], np.int32, "rtpComputeTile13")
-            rtpComputeTile14 = Buffer(ComputeTile14, [16], np.int32, "rtpComputeTile14")
-            rtpComputeTile15 = Buffer(ComputeTile15, [16], np.int32, "rtpComputeTile15")
+            rtpComputeTile12 = buffer(ComputeTile12, [16], np.int32, "rtpComputeTile12")
+            rtpComputeTile13 = buffer(ComputeTile13, [16], np.int32, "rtpComputeTile13")
+            rtpComputeTile14 = buffer(ComputeTile14, [16], np.int32, "rtpComputeTile14")
+            rtpComputeTile15 = buffer(ComputeTile15, [16], np.int32, "rtpComputeTile15")
 
-            rtpComputeTile22 = Buffer(ComputeTile22, [16], np.int32, "rtpComputeTile22")
-            rtpComputeTile23 = Buffer(ComputeTile23, [16], np.int32, "rtpComputeTile23")
-            rtpComputeTile24 = Buffer(ComputeTile24, [16], np.int32, "rtpComputeTile24")
-            rtpComputeTile25 = Buffer(ComputeTile25, [16], np.int32, "rtpComputeTile25")
+            rtpComputeTile22 = buffer(ComputeTile22, [16], np.int32, "rtpComputeTile22")
+            rtpComputeTile23 = buffer(ComputeTile23, [16], np.int32, "rtpComputeTile23")
+            rtpComputeTile24 = buffer(ComputeTile24, [16], np.int32, "rtpComputeTile24")
+            rtpComputeTile25 = buffer(ComputeTile25, [16], np.int32, "rtpComputeTile25")
 
             rtp = [
                 [

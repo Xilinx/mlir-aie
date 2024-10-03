@@ -219,7 +219,7 @@ class Core(CoreOp):
 # Create an aie buffer of (shape x datatype) on given tile.
 # shape examples: [256], [256, 256], [256, 256,]
 # This class hides the BufferOp and instead pretends to be a MemRef
-class Buffer(MemRef):
+class buffer(MemRef):
     def __init__(self):
         raise ValueError("Should never be called")
 
@@ -254,7 +254,7 @@ class Buffer(MemRef):
 # Create an aie external buffer of (shape x datatype).
 # shape examples: [256], [256, 256], [256, 256,]
 # This class hides the ExternalBufferOp and instead pretends to be a MemRef
-class ExternalBuffer(MemRef):
+class external_buffer(MemRef):
     def __init__(self):
         raise ValueError("Should never be called")
 
@@ -270,9 +270,6 @@ class ExternalBuffer(MemRef):
 
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
 # depth examples: 2, [2,2,7]
-from typing import Literal
-
-
 class object_fifo(ObjectFifoCreateOp):
     def __init__(
         self,
@@ -520,30 +517,6 @@ def next_bd(
     if isinstance(dest, ContextManagedBlock):
         dest = dest.block
     return NextBDOp(dest, loc=loc, ip=ip).dest
-
-
-def buffer(tile, shape, dtype, name=None, initial_value=None, loc=None, ip=None):
-    if name is not None and not name:
-        name = _get_sym_name(inspect.currentframe().f_back, "aie\\.buffer|buffer")
-    return Buffer(
-        tile,
-        shape,
-        dtype,
-        name=name,
-        initial_value=initial_value,
-        loc=loc,
-        ip=ip,
-    )
-
-
-def external_buffer(shape, dtype, name=None, loc=None, ip=None):
-    return ExternalBuffer(
-        shape,
-        dtype,
-        name=name,
-        loc=loc,
-        ip=ip,
-    )
 
 
 _lock = lock

@@ -96,7 +96,7 @@ def conv2dk1():
 
             # Set up compute tiles
 
-            rtp2 = Buffer(ComputeTile2, [16], T.i32(), "rtp2")
+            rtp2 = buffer(ComputeTile2, [16], T.i32(), "rtp2")
 
             # Compute tile 2
             @core(ComputeTile2, "conv2dk1.o")
