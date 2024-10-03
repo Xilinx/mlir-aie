@@ -246,7 +246,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                     )
                 else:
                     C_l1l2_buffers[row][col] = buffer(
-                        core_tiles[row][col], [m, n], dtype_out(), f"C_L1L2_{col}_{row}"
+                        core_tiles[row][col], [m, n], dtype_out, f"C_L1L2_{col}_{row}"
                     )
 
             C_l2l3_fifos[col] = object_fifo(
