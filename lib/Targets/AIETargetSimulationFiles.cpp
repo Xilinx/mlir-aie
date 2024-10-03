@@ -30,7 +30,45 @@ mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module,
     break; // Should only have 1 object in iterator
   }
 
-  if ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {
+  if (arch == AIEArch::AIE2p) {
+    output
+        << "{\n"
+        << "    \"SimulationConfig\": {\n"
+        << "        \"device_json\": {\n"
+        << "            \"directory\": \"data/aie2p/devices\",\n"
+        << "            \"file\": \"aie2p_8x4_device.json\"\n"
+        << "        },\n"
+        << "        \"phy_device_file\": \"aie2p_8x4_device\",\n"
+        << "        \"aiearch\": \"aie2p\",\n"
+        << "        \"aie_freq\": 1000000000.0,\n"
+        << "        \"use_real_noc\": 1,\n"
+        << "        \"evaluate_fifo_depth\": 0,\n"
+        << "        \"noc_ip_block\": {\n"
+        << "            \"lib_path\": \"./sim/noc/liblnoc_tlm.so\",\n"
+        << "            \"traffic_file\": \"./sim/noc/noc_traffic.nts\",\n"
+        << "            \"config_file\": \"./sim/noc/noc_soln.ncr\"\n"
+        << "        },\n"
+        << "        \"pl_ip_block\": [\n"
+        << "            {\n"
+        << "                \"name\": \"ps_ps_main\",\n"
+        << "                \"ip\": \"ps\",\n"
+        << "                \"lib_path\": \"ps/ps.so\",\n"
+        << "                \"pl_freq\": 362500000.0,\n"
+        << "                \"axi_mm\": [\n"
+        << "                    {\n"
+        << "                        \"port_name\": \"ps_axi\",\n"
+        << "                        \"direction\": \"ps_to_gm\",\n"
+        << "                        \"noc_endpoint\": \"NOC_NMU128_X0Y5\",\n"
+        << "                        \"bus_width\": 0\n"
+        << "                    }\n"
+        << "                ],\n"
+        << "                \"event_bus\": []\n"
+        << "            }\n"
+        << "        ]\n"
+        << "    }\n"
+        << "}\n";
+  }
+  else if (arch == AIEArch::AIE2) {
     output
         << "{\n"
         << "    \"SimulationConfig\": {\n"
@@ -67,45 +105,6 @@ mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module,
         << "        ]\n"
         << "    }\n"
         << "}\n";
-    // AIE2 - ve2302
-    // output << "{\n"
-    //        << "    \"SimulationConfig\": {\n"
-    //        << "        \"device_json\": {\n"
-    //        << "            \"directory\": \"data/aie_ml/devices\",\n"
-    //        << "            \"file\": \"VE2302.json\"\n"
-    //        << "        },\n"
-    //        << "        \"phy_device_file\":
-    //        \"xcve2302-sfva784-1MP-e-S-es1\",\n"
-    //        << "        \"aiearch\": \"aie2\",\n"
-    //        << "        \"aie_freq\": 1150000000.0,\n"
-    //        << "        \"use_real_noc\": 1,\n"
-    //        << "        \"evaluate_fifo_depth\": 0,\n"
-    //        << "        \"noc_ip_block\": {\n"
-    //        << "            \"lib_path\": \"./sim/noc/liblnoc_tlm.so\",\n"
-    //        << "            \"traffic_file\":
-    //        \"./sim/noc/noc_traffic.nts\",\n"
-    //        << "            \"config_file\": \"./sim/noc/noc_soln.ncr\"\n"
-    //        << "        },\n"
-    //        << "        \"pl_ip_block\": [\n"
-    //        << "            {\n"
-    //        << "                \"name\": \"ps_ps_main\",\n"
-    //        << "                \"ip\": \"ps\",\n"
-    //        << "                \"lib_path\": \"ps/ps.so\",\n"
-    //        << "                \"pl_freq\": 312500000.0,\n"
-    //        << "                \"axi_mm\": [\n"
-    //        << "                    {\n"
-    //        << "                        \"port_name\": \"ps_axi\",\n"
-    //        << "                        \"direction\": \"ps_to_gm\",\n"
-    //        << "                        \"noc_endpoint\":
-    //        \"NOC_NMU128_X0Y5\",\n"
-    //        << "                        \"bus_width\": 0\n"
-    //        << "                    }\n"
-    //        << "                ],\n"
-    //        << "                \"event_bus\": []\n"
-    //        << "            }\n"
-    //        << "        ]\n"
-    //        << "    }\n"
-    //        << "}\n";
   } else if (arch == AIEArch::AIE1) { // AIEArch::AIE1
     output << "{\n"
            << "    \"SimulationConfig\": {\n"
