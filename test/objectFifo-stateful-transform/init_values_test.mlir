@@ -36,7 +36,7 @@ module @init {
     %tile12 = aie.tile(1, 2)
     %tile13 = aie.tile(1, 3)
 
-    aie.objectfifo @of0 (%tile12, {%tile13}, 2 : i32) : !aie.objectfifo<memref<3xi32>> = dense<[[0, 1, 2], [3, 4, 5]]>
+    aie.objectfifo @of0 (%tile12, {%tile13}, 2 : i32) : !aie.objectfifo<memref<3xi32>> = [[0, 1, 2], [3, 4, 5]]
  }
 //  aie.device(xcve2302) {
 //     %tile12 = aie.tile(1, 2)
@@ -44,10 +44,10 @@ module @init {
 
 //     aie.objectfifo @of1 (%tile12, {%tile13}, 2 : i32) : !aie.objectfifo<memref<2x2xi32>> = dense<[[[0, 1], [2, 3]], [[4, 5], [6, 7]]]>
 //  }
- aie.device(xcvc1902) {
-    %tile12 = aie.tile(1, 2)
-    %tile13 = aie.tile(1, 3)
+//  aie.device(xcvc1902) {
+//     %tile12 = aie.tile(1, 2)
+//     %tile13 = aie.tile(1, 3)
 
-    aie.objectfifo @of2 (%tile12, {%tile13}, 2 : i32) : !aie.objectfifo<memref<2xi32>> = dense<[[0, 1], [3, 4]]>
- }
+//     aie.objectfifo @of2 (%tile12, {%tile13}, 2 : i32) : !aie.objectfifo<memref<2xi32>> = [dense<[0, 1]>, dense<[3, 4]>]
+//  }
 }

@@ -614,39 +614,45 @@ static void printObjectFifoInitValues(OpAsmPrinter &p, ObjectFifoCreateOp op,
                                       Attribute numElem, TypeAttr type, Attribute initValues) {
   if (op.getInitValues()) {
     p << "= ";
-    p.printAttributeWithoutType(initValues);
+    int depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
+    for (int i = 0; i < depth; i++) {
+      p.printStrippedAttrOrType(llvm::dyn_cast<mlir::ArrayAttr>(initValues)[i]);
+      if (i < depth - 1) {
+        p << ", ";
+      }
+    }
   }
 }
 
 static ParseResult parseObjectFifoInitValues(OpAsmParser &parser, Attribute numElem,
                                              TypeAttr type, Attribute &initValues) {
-  int64_t depth;
-  if (isa<ArrayAttr>(numElem)) {
-    depth = llvm::dyn_cast<mlir::IntegerAttr>(llvm::dyn_cast<mlir::ArrayAttr>(numElem)[0]).getInt();
-  } else {
-    depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
-  }
+  // int depth;
+  // if (isa<ArrayAttr>(numElem)) {
+  //   depth = llvm::dyn_cast<mlir::IntegerAttr>(llvm::dyn_cast<mlir::ArrayAttr>(numElem)[0]).getInt();
+  // } else {
+  //   depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
+  // }
   auto objfifoType = llvm::cast<AIEObjectFifoType>(type.getValue());
-  auto memrefTypeNoDepth = llvm::cast<MemRefType>(objfifoType.getElementType());
-  ArrayRef shape = memrefTypeNoDepth.getShape();
-  std::vector<int64_t> newShape = {depth};
-  for (auto d : shape)
-    newShape.push_back(d);
-  auto memrefType = MemRefType::get(ArrayRef(newShape), memrefTypeNoDepth.getElementType());
+  auto memrefType = llvm::cast<MemRefType>(objfifoType.getElementType());
+  //auto initialValues = llvm::dyn_cast<mlir::ArrayAttr>(initValues);
 
   if (!memrefType.hasStaticShape())
     return parser.emitError(parser.getNameLoc())
-           << "type should be static shaped memref, but got " << memrefType;
+          << "type should be static shaped memref, but got " << memrefType;
 
   if (parser.parseOptionalEqual())
     return success();
 
-  Type tensorType = mlir::memref::getTensorTypeFromMemRefType(memrefType);
-  if (parser.parseAttribute(initValues, tensorType))
-    return failure();
-  if (!llvm::isa<ElementsAttr>(initValues))
-    return parser.emitError(parser.getNameLoc())
-           << "initial value should be an elements attribute";
+  // for (int i = 0; i < depth; i++) {
+    Type tensorType = mlir::memref::getTensorTypeFromMemRefType(memrefType);
+    if (parser.parseAttribute(initValues, tensorType))
+      return failure();
+    // if (!llvm::isa<ElementsAttr>(initValues))
+    //   return parser.emitError(parser.getNameLoc())
+    //         << "initial value should be an elements attribute";
+  //   if (parser.parseOptionalComma())
+  //     return success();
+  // }
   return success();
 }
 
