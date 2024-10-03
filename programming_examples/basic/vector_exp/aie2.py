@@ -6,7 +6,6 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
-
 from aie.dialects.aie import *  # primary mlir-aie dialect definitions
 from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 
@@ -37,9 +36,13 @@ def my_eltwise_exp():
 
         tile_ty = np.ndarray[(n,), np.dtype[bfloat16]]
 
+        # Type used in the tile memory
+        A_ty = np.ndarray[(n,), np.dtype[bfloat16]]
+        C_ty = np.ndarray[(n,), np.dtype[bfloat16]]
+
         # Type used in the memory tile which aggregates across the 4 cores
-        A_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
-        C_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
+        A_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
+        C_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
 
         # AIE Core Function declarations
 
@@ -56,14 +59,14 @@ def my_eltwise_exp():
 
         # AIE-array data movement with object fifos
         # Input A
-        inA = object_fifo("inA", ShimTile, MemTile, buffer_depth, A_ty)
+        inA = object_fifo("inA", ShimTile, MemTile, buffer_depth, A_memTile_ty)
         for i in range(n_cores):
             inA_fifos.append(
                 object_fifo(f"memA{i}", MemTile, cores[i], buffer_depth, A_ty)
             )
         if n_cores > 1:
             of_offsets = [
-                (np.prod(np_ndarray_type_get_shape(A_ty)) // n_cores) * i
+                (np.prod(np_ndarray_type_get_shape(A_memTile_ty)) // n_cores) * i
                 for i in range(n_cores)
             ]
         else:
@@ -75,10 +78,10 @@ def my_eltwise_exp():
             outC_fifos.append(
                 object_fifo(f"memC{i}", cores[i], MemTile, buffer_depth, C_ty)
             )
-        outC = object_fifo("outC", MemTile, ShimTile, buffer_depth, C_ty)
+        outC = object_fifo("outC", MemTile, ShimTile, buffer_depth, C_memTile_ty)
         if n_cores > 1:
             of_offsets = [
-                (np.prod(np_ndarray_type_get_shape(C_ty)) // n_cores) * i
+                (np.prod(np_ndarray_type_get_shape(C_memTile_ty)) // n_cores) * i
                 for i in range(n_cores)
             ]
         else:

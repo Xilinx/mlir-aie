@@ -102,7 +102,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
 
     with mlir_mod_ctx() as ctx:
 
-        C_sz_in_bytes = C_sz * dtype_out().width // 8
+        C_sz_in_bytes = C_sz * np.dtype(dtype_out).itemsize // 8
 
         @device(AIEDevice.npu1_1col)
         def device_body():
