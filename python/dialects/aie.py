@@ -226,22 +226,22 @@ class buffer(MemRef):
     def __new__(
         cls,
         tile,
-        shape,
-        datatype,
-        name=None,
+        datatype: MemRefType | type[np.ndarray],
         initial_value: np.ndarray | None = None,
+        name: str | None = None,
         loc=None,
         ip=None,
     ):
+        memref_type = try_convert_np_type_to_mlir_type(datatype)
         if initial_value is not None:
             assert isinstance(initial_value, np.ndarray)
             initial_value = DenseElementsAttr.get(
                 initial_value,
-                type=try_convert_np_type_to_mlir_type(datatype),
+                type=memref_type.dtype,
                 context=None,
             )
         my_buffer = BufferOp(
-            buffer=T.memref(*shape, try_convert_np_type_to_mlir_type(datatype)),
+            buffer=memref_type,
             tile=tile,
             sym_name=name,
             initial_value=initial_value,
@@ -258,9 +258,15 @@ class external_buffer(MemRef):
     def __init__(self):
         raise ValueError("Should never be called")
 
-    def __new__(cls, shape, datatype, name: str | None = None, loc=None, ip=None):
+    def __new__(
+        cls,
+        datatype: MemRefType | type[np.ndarray],
+        name: str | None = None,
+        loc=None,
+        ip=None,
+    ):
         my_buffer = ExternalBufferOp(
-            buffer=T.memref(*shape, datatype),
+            buffer=try_convert_np_type_to_mlir_type(datatype),
             sym_name=name,
             loc=loc,
             ip=ip,

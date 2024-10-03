@@ -283,7 +283,9 @@ def channels_basic(module):
     def npu():
         tiles = TileArray()
 
-        b = aie.buffer(tiles[2, 2].tile, (10, 10), T.i32(), name="bob")
+        b = aie.buffer(
+            tiles[2, 2].tile, np.ndarray[(10, 10), np.dtype[np.int32]], name="bob"
+        )
         c = Channel(tiles[2, 2].tile, b)
         c = Channel(
             tiles[2, 2].tile, shape=(10, 10), dtype=T.i32(), buffer_name="alice"
@@ -381,11 +383,11 @@ def buffer_test_this_needs_to_distinct_from_all_other_mentions_of_buffer_in_this
     def npu():
         tiles = TileArray()
 
-        shapes = [(10, 10)]
-        c = tiles[2, 2].buffer(shape=shapes, dtype=[T.i32()])
+        buff_type = np.ndarray[(10, 10), np.dtype[np.int32]]
+        c = tiles[2, 2].buffer(buff_type)
         # CHECK: MemRef(%buffer_2_2, memref<10x10xi32>)
         print(c)
-        cs = tiles[2:4, 2:4].buffer(shape=shapes, dtype=[T.i32()])
+        cs = tiles[2:4, 2:4].buffer(buff_type)
         assert cs.shape == (2, 2)
 
         # CHECK: (0, 0) MemRef(%buffer_2_2_0, memref<10x10xi32>)
@@ -395,8 +397,17 @@ def buffer_test_this_needs_to_distinct_from_all_other_mentions_of_buffer_in_this
         for idx, c in np.ndenumerate(cs):
             print(idx, c)
 
-        shapes = [[(1, 2), (3, 4)], [(5, 6), (7, 8)]]
-        cs = tiles[2:4, 2:4].buffer(shape=shapes, dtype=[T.i32()])
+        buff_types = [
+            [
+                np.ndarray[(1, 2), np.dtype[np.int32]],
+                np.ndarray[(3, 4), np.dtype[np.int32]],
+            ],
+            [
+                np.ndarray[(5, 6), np.dtype[np.int32]],
+                np.ndarray[(7, 8), np.dtype[np.int32]],
+            ],
+        ]
+        cs = tiles[2:4, 2:4].buffer(buff_types)
         assert cs.shape == (2, 2)
 
         # CHECK: (0, 0) MemRef(%buffer_2_2_1, memref<1x2xi32>)
