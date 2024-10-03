@@ -18,6 +18,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
@@ -363,8 +364,15 @@ struct DeviceLowering
           rewriter.create<xilinx::AIE::DeviceOp>(op.getLoc(), *deviceId);
       // The aie.device requires one block
       deviceOp.getRegion().emplaceBlock();
+      // For some reasons newCast.getResult(0).getUsers() is empty, so
+      // save the previous users
+      llvm::SmallVector<mlir::Operation *> users{op.getResult(0).getUsers()};
+      // Replace the original cast by the same but connected to the deviceOp to
+      // be able to walk down the def-use chain
+      rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+          op, op.getResult(0).getType(), deviceOp.getResult());
       rewriter.setInsertionPointToStart(deviceOp.getBody());
-      for (mlir::Operation *user : op.getResult(0).getUsers()) {
+      for (mlir::Operation *user : users) {
         if (auto tileCast =
                 mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(user)) {
           tileCast.dump();
@@ -391,10 +399,7 @@ struct DeviceLowering
           }
         }
       }
-      // Replace the alloca of the aie::device by a temporary cast from
-      // the aie.device to
-      rewriter.eraseOp(op);
-      op->getParentOfType<mlir::cir::FuncOp>().dump();
+      deviceOp->getParentOfType<mlir::cir::FuncOp>().dump();
       return mlir::success();
     }
     return mlir::failure();
