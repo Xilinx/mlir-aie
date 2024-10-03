@@ -127,6 +127,18 @@ bool isCallingFunctionWithAnnotation(
   return false;
 }
 
+// Return true if the UnrealizedConversionCast operation has any of the given
+// string annotations
+bool isUnrealizedConversionCastWithAnnotation(
+    mlir::UnrealizedConversionCastOp op,
+    llvm::ArrayRef<llvm::StringRef> anyAnnotations) {
+  for (auto attr : op->getAttrDictionary())
+    for (auto needle : anyAnnotations)
+      if (attr.getName() == needle)
+        return true;
+  return false;
+}
+
 // Lower C++ code like \code aie::device<aie::npu1> into an \code
 // aie.device(npu1){} operation
 struct PrepareDeviceLowering
@@ -235,7 +247,8 @@ struct PrepareTileBufferLowering
  capture by the direct def/use forwarding
 
 */
-struct PrepareCoreLowering : public mlir::OpConversionPattern<mlir::cir::CallOp> {
+struct PrepareCoreLowering
+    : public mlir::OpConversionPattern<mlir::cir::CallOp> {
   using mlir::OpConversionPattern<mlir::cir::CallOp>::OpConversionPattern;
 
   mlir::LogicalResult
@@ -251,15 +264,15 @@ struct PrepareCoreLowering : public mlir::OpConversionPattern<mlir::cir::CallOp>
         // calledFunc.getBlocks().front().back().dump();
         auto lambdaCall = mlir::dyn_cast<mlir::cir::CallOp>(
             *std::next(calledFunc.getBlocks().front().rbegin()));
-        lambdaCall.dump();
+        // lambdaCall.dump();
         if (auto lambdaFunc =
                 mlir::SymbolTable::lookupNearestSymbolFrom<mlir::cir::FuncOp>(
                     lambdaCall, lambdaCall.getCalleeAttr())) {
-          lambdaFunc.dump();
+          // lambdaFunc.dump();
           assert(lambdaFunc.getLambda());
-          auto scopeOp = op->getParentOfType<mlir::cir::ScopeOp>();
-          scopeOp.dump();
-          // The aie++ tile value
+          // auto scopeOp = op->getParentOfType<mlir::cir::ScopeOp>();
+          // scopeOp.dump();
+          //  The aie++ tile value
           rewriter.setInsertionPoint(op);
 #if 0
           auto tile = op.getOperand(0);
@@ -320,7 +333,7 @@ struct CIRToAIEPrepare : CIRToAIEPrepareBase<CIRToAIEPrepare> {
   }
 };
 
-struct TileLowering
+struct DeviceLowering
     : public mlir::OpConversionPattern<mlir::UnrealizedConversionCastOp> {
   using mlir::OpConversionPattern<
       mlir::UnrealizedConversionCastOp>::OpConversionPattern;
@@ -333,10 +346,11 @@ struct TileLowering
   mlir::LogicalResult
   matchAndRewrite(mlir::UnrealizedConversionCastOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const final {
+    llvm::errs() << "DeviceLowering\n";
+    op.dump();
     if (auto aieLike = cat->moduleTypes[op.getType(0)];
         aieLike && aieLike->base == "aie::device") {
-#if 0
-      auto
+      rewriter.setInsertionPoint(op);
       auto deviceName = aieLike->subMatches[0];
       auto deviceId =
           xilinx::AIE::symbolizeEnum<xilinx::AIE::AIEDevice>(deviceName);
@@ -349,11 +363,38 @@ struct TileLowering
           rewriter.create<xilinx::AIE::DeviceOp>(op.getLoc(), *deviceId);
       // The aie.device requires one block
       deviceOp.getRegion().emplaceBlock();
+      rewriter.setInsertionPointToStart(deviceOp.getBody());
+      for (mlir::Operation *user : op.getResult(0).getUsers()) {
+        if (auto tileCast =
+                mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(user)) {
+          tileCast.dump();
+          if (auto t = cat->moduleTypes[tileCast.getType(0)]) {
+            // llvm::errs() << t->str() << " value \n";
+            auto col = t->subMatches[0];
+            // llvm::errs() << "col" << col << " \n";
+            auto row = t->subMatches[1];
+            // llvm::errs() << " row " << row << " \n";
+            auto tileOp = rewriter.create<xilinx::AIE::TileOp>(
+                tileCast.getLoc(), std::stoi(col), std::stoi(row));
+            // tileOp.dump();
+            for (mlir::Operation *user : tileCast.getResult(0).getUsers()) {
+              if (auto bufCast =
+                      mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(user)) {
+                bufCast.dump();
+                (void)tileOp;
+                std::array<std::int64_t, 1> shape{8192};
+                auto mrt = mlir::MemRefType::get(shape, rewriter.getI32Type());
+                rewriter.create<xilinx::AIE::BufferOp>(bufCast.getLoc(), mrt,
+                                                       tileOp.getResult());
+              }
+            }
+          }
+        }
+      }
       // Replace the alloca of the aie::device by a temporary cast from
       // the aie.device to
-      rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
-          op, op.getResult().getType(), deviceOp.getResult());
-#endif
+      rewriter.eraseOp(op);
+      op->getParentOfType<mlir::cir::FuncOp>().dump();
       return mlir::success();
     }
     return mlir::failure();
@@ -366,13 +407,16 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
     // \todo Should this be a real pass?
     auto &cat = getAnalysis<CIRToAIETypesAnalysis>();
     // \todo Clean up this mess
-    PrepareDeviceLowering::cat = &cat;
+    DeviceLowering::cat = &cat;
     // See mlir/examples/toy/Ch5/mlir/LowerToAffineLoops.cpp
     mlir::ConversionTarget target{getContext()};
     target.addLegalDialect<xilinx::AIE::AIEDialect>();
-    target.addIllegalOp<mlir::UnrealizedConversionCastOp>();
+    target.addDynamicallyLegalOp<mlir::UnrealizedConversionCastOp>(
+        [](mlir::UnrealizedConversionCastOp op) {
+          return !isUnrealizedConversionCastWithAnnotation(op, {"aie::device"});
+        });
     mlir::RewritePatternSet patterns{&getContext()};
-    patterns.add<TileLowering>(&getContext());
+    patterns.add<DeviceLowering>(&getContext());
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();
