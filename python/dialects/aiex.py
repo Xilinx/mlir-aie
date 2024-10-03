@@ -4,11 +4,11 @@ from contextlib import contextmanager
 from functools import partial
 import itertools
 from operator import itemgetter
-from typing import Union, Optional
 
 import numpy as np
 
 from ._aiex_ops_gen import *
+from ._aie_ops_gen import ObjectFifoCreateOp
 from . import aie
 from .aie import (
     DMAChannelDir,
@@ -26,9 +26,8 @@ from .._mlir_libs._aie import *
 from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint
 
 # noinspection PyUnresolvedReferences
-from ..extras.dialects.ext import memref
 from ..extras import types as T
-
+from ..extras.util import try_convert_np_type_to_mlir_type
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
@@ -36,18 +35,30 @@ register_dialect(get_dialect_registry())
 npu_sync = partial(npu_sync, column_num=1, row_num=1)
 
 
+def dma_wait(*args: ObjectFifoCreateOp | str):
+    if len(args) == 0:
+        raise ValueError(
+            "dma_wait must receive at least one dma_meta information to wait for"
+        )
+    for dma_meta in args:
+        str_name = dma_meta
+        if isinstance(dma_meta, ObjectFifoCreateOp):
+            str_name = dma_meta.sym_name.value
+        npu_dma_wait(str_name)
+
+
 class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
     """Specialize NpuDmaMemcpyNdOp class constructor to take python integers"""
 
     def __init__(
         self,
-        metadata,
+        metadata: str | ObjectFifoCreateOp,
         bd_id,
         mem,
         offsets: MixedValues = None,
         sizes: MixedValues = None,
         strides: MixedValues = None,
-        issue_token: Optional[bool] = None,
+        issue_token: bool | None = None,
     ):
         x = 0
         y = 0
@@ -64,6 +75,8 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         dynamic_strides, _packed_strides, static_strides = _dispatch_mixed_values(
             strides
         )
+        if isinstance(metadata, ObjectFifoCreateOp):
+            metadata = metadata.sym_name.value
         super().__init__(
             x,
             y,
@@ -685,8 +698,8 @@ class TileArray:
 
 
 def broadcast_flow(
-    source: Union[np.ndarray, TileOp],
-    dest: Union[np.ndarray, TileOp],
+    source: np.ndarray | TileOp,
+    dest: np.ndarray | TileOp,
     source_bundle=None,
     source_channel=None,
     dest_bundle=None,
@@ -770,7 +783,10 @@ def broadcast_flow(
 def runtime_sequence(*inputs: Type):
     def decorator(f):
         seq_op = RuntimeSequenceOp()
-        entry_block = seq_op.body.blocks.append(*inputs)
+        my_inputs = []
+        for input in inputs:
+            my_inputs.append(try_convert_np_type_to_mlir_type(input))
+        entry_block = seq_op.body.blocks.append(*my_inputs)
         args = entry_block.arguments
         with InsertionPoint(entry_block):
             f(*args)

@@ -16,8 +16,8 @@ The design in [ext_to_core.py](./ext_to_core.py) uses an Object FIFO `of_in` to 
 
 ```python
   # AIE-array data movement with object fifos
-  of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_24_ty)   # Input
-  of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_24_ty) # Output
+  of_in = object_fifo("in", ShimTile, ComputeTile2, 2, tile_ty)   # Input
+  of_out = object_fifo("out", ComputeTile2, ShimTile, 2, tile_ty) # Output
 ```
 
 Both consumer and producer processes are running on `ComputeTile2`. The producer process acquires one object from `of_in` to consume and one object from `of_out` to produce into. It then reads the value of the input object and adds `1` to all its entries before releasing both objects.

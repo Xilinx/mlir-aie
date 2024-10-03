@@ -46,11 +46,13 @@ We also need to declare that the compute core will run an external function: a k
 
 ```python
         # Type declarations
-        memRef_ty = T.memref(1024, T.i32())
-
+        tensor_ty = np.ndarray[(4096,), np.dtype[np.int16]]
+        tile_ty = np.ndarray[(1024,), np.dtype[np.int16]]
+        scalar_ty = np.ndarray[(1,), np.dtype[np.int32]]
+        
         # AIE Core Function declarations
         scale_scalar = external_func("vector_scalar_mul_aie_scalar",
-            inputs=[memRef_ty, memRef_ty, T.memref(1, T.i32()), T.i32()],
+            inputs=[tile_ty, tile_ty, scalar_ty, np.int32],
         )
 ```
 
@@ -58,28 +60,27 @@ Since the compute core can only access L1 memory, input data needs to be explici
 
 <img align="right" width="300" height="300" src="../assets/vector_scalar.svg">
 
-This enables looking at the data movement in the AIE-array from a logical view where we deploy 3 objectFIFOs: `of_in` to bring in the vector `a`, `of_factor` to bring in the scalar factor, and `of_out` to move the output vector `c`, all using shimDMA. Note that the objects for `of_in` and `of_out` are declared to have the `memRef_ty` type: 1024 int32 elements, while the `factor` is an object containing a single integer. All objectFIFOs are set up using a depth size of 2 to enable the concurrent execution to the Shim Tile and Compute Tile DMAs with the processing on the compute core.
+This enables looking at the data movement in the AIE-array from a logical view where we deploy 3 objectFIFOs: `of_in` to bring in the vector `a`, `of_factor` to bring in the scalar factor, and `of_out` to move the output vector `c`, all using shimDMA. Note that the objects for `of_in` and `of_out` are declared to have the `tile_ty` type: 1024 int32 elements, while the `factor` is an object containing a single integer. All objectFIFOs are set up using a depth size of 2 to enable the concurrent execution to the Shim Tile and Compute Tile DMAs with the processing on the compute core.
 
 ```python
         # AIE-array data movement with object fifos
-        of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)
-        of_factor = object_fifo("infactor", ShimTile, ComputeTile2, 2, T.memref(1, T.i32()))
-        of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_ty)
+        of_in = object_fifo("in", ShimTile, ComputeTile2, 2, tile_ty)
+        of_factor = object_fifo("infactor", ShimTile, ComputeTile2, 2, scalar_ty)
+        of_out = object_fifo("out", ComputeTile2, ShimTile, 2, tile_ty)
 
 ```
-We also need to set up the data movement to/from the AIE-array: configure n-dimensional DMA transfers in the shimDMAs to read/write to/from L3 external memory. For NPU, this is done with the `npu_dma_memcpy_nd` function (more details in [section 2-g](../section-2/section-2g)). Note that the n-dimensional transfer has a size of 4096 int32 elements and that the `metadata` argument  in the `npu_dma_memcpy_nd` needs to match the `name` argument of the corresponding object FIFO, in this case `in`, `inFactor` and `out`.
+We also need to set up the data movement to/from the AIE-array: configure n-dimensional DMA transfers in the shimDMAs to read/write to/from L3 external memory. For NPU, this is done with the `npu_dma_memcpy_nd` function (more details in [section 2-g](../section-2/section-2g)). Note that the n-dimensional transfer has a size of 4096 int32 elements and that the `metadata` argument  in the `npu_dma_memcpy_nd` needs by the corresponding objectFIFO python object or to match the `name` argument of the corresponding objectFIFO.
+Note that for transfers into the AIE-array that we want to explicitly wait on with `dma_wait`, we must specify `issue_token=True` in order to ensure we have
+a token to wait on. Tokens are generated automatically for `npu_dma_memcpy_nd`s in the opposite direction.
 
 ```python
         # To/from AIE-array data movement
-        tensor_ty = T.memref(4096, T.i32())
-        scalar_ty = T.memref(1, T.i32())
-
         @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
-            npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, 4096])
-            npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, 4096])
-            npu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            npu_dma_memcpy_nd(metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, 4096], issue_token=True)
+            npu_dma_memcpy_nd(metadata=of_factor, bd_id=2, mem=F, sizes=[1, 1, 1, 1], issue_token=True)
+            npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, 4096])
+            dma_wait(of_in, of_factor, of_out)
 ```
 
 Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in objectFIFO terminology: we need to program the acquire and release patterns of `of_in`, `of_factor` and `of_out`. Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire an object of 1024 integers to read from `of_in` and one similar sized object from `of_out`. Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective `of_in` and `of_out` objectFIFO. Finally, after the 4 sub-vector iterations, we release the `of_factor` objectFIFO.
@@ -96,7 +97,7 @@ This access and execute pattern runs on the AIE compute core `ComputeTile2` and 
                 for _ in range_(4):
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
-                    call(scale_scalar, [elem_in, elem_out, elem_factor, 1024])
+                    scale_scalar(elem_in, elem_out, elem_factor, 1024)
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
                 of_factor.release(ObjectFifoPort.Consume, 1)

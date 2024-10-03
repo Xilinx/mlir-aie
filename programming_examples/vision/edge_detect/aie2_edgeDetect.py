@@ -4,12 +4,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2021 Xilinx Inc.
-
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.extras.dialects.ext import memref, arith
+from aie.extras.dialects.ext import memref
 from aie.extras.context import mlir_mod_ctx
 from aie.extras.dialects.ext.scf import _for as range_
 
@@ -22,6 +22,7 @@ if len(sys.argv) == 3:
 heightMinus1 = height - 1
 lineWidth = width
 lineWidthInBytes = width * 4
+tensorSize = width * height * 4  # 4 channels
 
 enableTrace = False
 traceSizeInBytes = 8192
@@ -33,24 +34,27 @@ def edge_detect():
 
         @device(AIEDevice.npu1_1col)
         def device_body():
-            line_bytes_ty = T.memref(lineWidthInBytes, T.ui8())
-            line_ty = T.memref(lineWidth, T.ui8())
-            memRef_3x3_ty = T.memref(3, 3, T.i16())
+            line_bytes_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
+            line_ty = np.ndarray[(lineWidth,), np.dtype[np.uint8]]
+            tensor_3x3_ty = np.ndarray[(3, 3), np.dtype[np.int16]]
+
+            tensor_ty = np.ndarray[(tensorSize,), np.dtype[np.int8]]
+            tensor_16x16_ty = np.ndarray[(16, 16), np.dtype[np.int32]]
 
             # AIE Core Function declarations
             rgba2gray_line = external_func(
-                "rgba2grayLine", inputs=[line_bytes_ty, line_ty, T.i32()]
+                "rgba2grayLine", inputs=[line_bytes_ty, line_ty, np.int32]
             )
             filter2d_line = external_func(
                 "filter2dLine",
-                inputs=[line_ty, line_ty, line_ty, line_ty, T.i32(), memRef_3x3_ty],
+                inputs=[line_ty, line_ty, line_ty, line_ty, np.int32, tensor_3x3_ty],
             )
             threshold_line = external_func(
                 "thresholdLine",
-                inputs=[line_ty, line_ty, T.i32(), T.i16(), T.i16(), T.i8()],
+                inputs=[line_ty, line_ty, np.int32, np.int16, np.int16, np.int8],
             )
             gray2rgba_line = external_func(
-                "gray2rgbaLine", inputs=[line_ty, line_bytes_ty, T.i32()]
+                "gray2rgbaLine", inputs=[line_ty, line_bytes_ty, np.int32]
             )
             add_weighted_line = external_func(
                 "addWeightedLine",
@@ -58,10 +62,10 @@ def edge_detect():
                     line_bytes_ty,
                     line_bytes_ty,
                     line_bytes_ty,
-                    T.i32(),
-                    T.i16(),
-                    T.i16(),
-                    T.i8(),
+                    np.int32,
+                    np.int16,
+                    np.int16,
+                    np.int8,
                 ],
             )
 
@@ -147,7 +151,7 @@ def edge_detect():
                     elem_in = inOF_L3L2.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = OF_2to3.acquire(ObjectFifoPort.Produce, 1)
 
-                    call(rgba2gray_line, [elem_in, elem_out, arith.constant(lineWidth)])
+                    rgba2gray_line(elem_in, elem_out, lineWidth)
 
                     inOF_L3L2.release(ObjectFifoPort.Consume, 1)
                     OF_2to3.release(ObjectFifoPort.Produce, 1)
@@ -156,33 +160,30 @@ def edge_detect():
             @core(ComputeTile3, "filter2d.cc.o")
             def core_body():
                 kernel = memref.alloc(3, 3, T.i16())
-                v0 = arith.constant(0, T.i16())
-                v1 = arith.constant(4096, T.i16())
-                v_minus4 = arith.constant(-16384, T.i16())
-                memref.store(v0, kernel, [0, 0])
-                memref.store(v1, kernel, [0, 1])
-                memref.store(v0, kernel, [0, 2])
-                memref.store(v1, kernel, [1, 0])
-                memref.store(v_minus4, kernel, [1, 1])
-                memref.store(v1, kernel, [1, 2])
-                memref.store(v0, kernel, [2, 0])
-                memref.store(v1, kernel, [2, 1])
-                memref.store(v0, kernel, [2, 2])
+                v0 = 0
+                v1 = 4096
+                v_minus4 = -16384
+                kernel[0, 0] = v0
+                kernel[0, 1] = v1
+                kernel[0, 2] = v0
+                kernel[1, 0] = v1
+                kernel[1, 1] = v_minus4
+                kernel[1, 2] = v1
+                kernel[2, 0] = v0
+                kernel[2, 1] = v1
+                kernel[2, 2] = v0
 
                 for _ in range_(sys.maxsize):
                     # Preamble : Top Border
                     elems_in_pre = OF_2to3.acquire(ObjectFifoPort.Consume, 2)
                     elem_pre_out = OF_3to4.acquire(ObjectFifoPort.Produce, 1)
-                    call(
-                        filter2d_line,
-                        [
-                            elems_in_pre[0],
-                            elems_in_pre[0],
-                            elems_in_pre[1],
-                            elem_pre_out,
-                            arith.constant(lineWidth),
-                            kernel,
-                        ],
+                    filter2d_line(
+                        elems_in_pre[0],
+                        elems_in_pre[0],
+                        elems_in_pre[1],
+                        elem_pre_out,
+                        lineWidth,
+                        kernel,
                     )
                     OF_3to4.release(ObjectFifoPort.Produce, 1)
 
@@ -190,16 +191,13 @@ def edge_detect():
                     for _ in range_(1, heightMinus1):
                         elems_in = OF_2to3.acquire(ObjectFifoPort.Consume, 3)
                         elem_out = OF_3to4.acquire(ObjectFifoPort.Produce, 1)
-                        call(
-                            filter2d_line,
-                            [
-                                elems_in[0],
-                                elems_in[1],
-                                elems_in[2],
-                                elem_out,
-                                arith.constant(lineWidth),
-                                kernel,
-                            ],
+                        filter2d_line(
+                            elems_in[0],
+                            elems_in[1],
+                            elems_in[2],
+                            elem_out,
+                            lineWidth,
+                            kernel,
                         )
                         OF_2to3.release(ObjectFifoPort.Consume, 1)
                         OF_3to4.release(ObjectFifoPort.Produce, 1)
@@ -207,16 +205,13 @@ def edge_detect():
                     # Postamble : Bottom Border
                     elems_in_post = OF_2to3.acquire(ObjectFifoPort.Consume, 2)
                     elem_post_out = OF_3to4.acquire(ObjectFifoPort.Produce, 1)
-                    call(
-                        filter2d_line,
-                        [
-                            elems_in_post[0],
-                            elems_in_post[1],
-                            elems_in_post[1],
-                            elem_post_out,
-                            arith.constant(lineWidth),
-                            kernel,
-                        ],
+                    filter2d_line(
+                        elems_in_post[0],
+                        elems_in_post[1],
+                        elems_in_post[1],
+                        elem_post_out,
+                        lineWidth,
+                        kernel,
                     )
                     OF_2to3.release(ObjectFifoPort.Consume, 2)
                     OF_3to4.release(ObjectFifoPort.Produce, 1)
@@ -224,25 +219,15 @@ def edge_detect():
             # Compute tile 4
             @core(ComputeTile4, "threshold.cc.o")
             def core_body():
-                v_thr = arith.constant(10, T.i16())
-                v_max = arith.constant(255, T.i16())
-                v_typ = arith.constant(0, T.i8())
+                v_thr = 10
+                v_max = 255
+                v_typ = 0
 
                 for _ in range_(sys.maxsize):
                     elem_in = OF_3to4.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = OF_4to5.acquire(ObjectFifoPort.Produce, 1)
 
-                    call(
-                        threshold_line,
-                        [
-                            elem_in,
-                            elem_out,
-                            arith.constant(lineWidth),
-                            v_thr,
-                            v_max,
-                            v_typ,
-                        ],
-                    )
+                    threshold_line(elem_in, elem_out, lineWidth, v_thr, v_max, v_typ)
 
                     OF_3to4.release(ObjectFifoPort.Consume, 1)
                     OF_4to5.release(ObjectFifoPort.Produce, 1)
@@ -254,7 +239,7 @@ def edge_detect():
                     elem_in = OF_4to5.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = OF_5to5.acquire(ObjectFifoPort.Produce, 1)
 
-                    call(gray2rgba_line, [elem_in, elem_out, arith.constant(lineWidth)])
+                    gray2rgba_line(elem_in, elem_out, lineWidth)
 
                     OF_4to5.release(ObjectFifoPort.Consume, 1)
                     OF_5to5.release(ObjectFifoPort.Produce, 1)
@@ -263,21 +248,18 @@ def edge_detect():
                     elem_in2 = inOF_L2L1.acquire(ObjectFifoPort.Consume, 1)
                     elem_out2 = outOF_L1L2.acquire(ObjectFifoPort.Produce, 1)
 
-                    alpha = arith.constant(16384, T.i16())
-                    beta = arith.constant(16384, T.i16())
-                    gamma = arith.constant(0, T.i8())
+                    alpha = 16384
+                    beta = 16384
+                    gamma = 0
 
-                    call(
-                        add_weighted_line,
-                        [
-                            elem_in1,
-                            elem_in2,
-                            elem_out2,
-                            arith.constant(lineWidthInBytes),
-                            alpha,
-                            beta,
-                            gamma,
-                        ],
+                    add_weighted_line(
+                        elem_in1,
+                        elem_in2,
+                        elem_out2,
+                        lineWidthInBytes,
+                        alpha,
+                        beta,
+                        gamma,
                     )
 
                     OF_5to5.release(ObjectFifoPort.Consume, 1)
@@ -285,26 +267,22 @@ def edge_detect():
                     outOF_L1L2.release(ObjectFifoPort.Produce, 1)
 
             # To/from AIE-array data movement
-
-            tensorSize = width * height * 4  # 4 channels
-            tensor_ty = T.memref(tensorSize, T.i8())
-            memRef_16x16_ty = T.memref(16, 16, T.i32())
-
-            @runtime_sequence(tensor_ty, memRef_16x16_ty, tensor_ty)
+            @runtime_sequence(tensor_ty, tensor_16x16_ty, tensor_ty)
             def sequence(I, B, O):
                 npu_dma_memcpy_nd(
-                    metadata="outOF_L2L3",
-                    bd_id=0,
-                    mem=O,
-                    sizes=[1, 1, 1, tensorSize],
-                )
-                npu_dma_memcpy_nd(
-                    metadata="inOF_L3L2",
+                    metadata=inOF_L3L2,
                     bd_id=1,
                     mem=I,
                     sizes=[1, 1, 1, tensorSize],
                 )
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                npu_dma_memcpy_nd(
+                    metadata=outOF_L2L3,
+                    bd_id=0,
+                    mem=O,
+                    sizes=[1, 1, 1, tensorSize],
+                )
+                # outOF_L2L3 will only complete after inOF_L3L2 completes, so we just wait on outOF_L2L3 instead of all
+                dma_wait(outOF_L2L3)
 
     #    print(ctx.module.operation.verify())
     print(ctx.module)

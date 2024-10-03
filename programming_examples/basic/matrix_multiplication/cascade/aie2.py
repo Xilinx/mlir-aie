@@ -292,7 +292,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                                 elem_out = C_l1l2_buffers[row][col]
 
                             if row == 0:
-                                call(zero_scalar, [elem_out])
+                                zero_scalar(elem_out)
 
                             for _ in range_(K // k // n_aie_rows):
                                 elem_in_a = A_l2l1_fifos[row].acquire(
@@ -302,19 +302,16 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                                     ObjectFifoPort.Consume, 1
                                 )
                                 if row == 0:
-                                    call(
-                                        matmul_scalar_cascade_get_only,
-                                        [elem_in_a, elem_in_b, elem_out],
+                                    matmul_scalar_cascade_get_only(
+                                        elem_in_a, elem_in_b, elem_out
                                     )
                                 elif row == n_aie_rows - 1:
-                                    call(
-                                        matmul_scalar_cascade_put_only,
-                                        [elem_in_a, elem_in_b, elem_out],
+                                    matmul_scalar_cascade_put_only(
+                                        elem_in_a, elem_in_b, elem_out
                                     )
                                 else:
-                                    call(
-                                        matmul_scalar_cascade_put_get,
-                                        [elem_in_a, elem_in_b, elem_out],
+                                    matmul_scalar_cascade_put_get(
+                                        elem_in_a, elem_in_b, elem_out
                                     )
 
                                 A_l2l1_fifos[row].release(ObjectFifoPort.Consume, 1)
@@ -344,7 +341,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                     C_col_offset = col * n
                     C_offset = C_col_offset + C_row_offset
                     npu_dma_memcpy_nd(
-                        metadata=C_l2l3_fifos[col].sym_name.value,
+                        metadata=C_l2l3_fifos[col],
                         bd_id=0,
                         mem=C,
                         offsets=[0, 0, 0, C_offset],
@@ -357,7 +354,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                         A_offset = A_block_offset + A_row_offset
                         B_col_offset = col * n
                         npu_dma_memcpy_nd(
-                            metadata=A_l3l2_fifos[col].sym_name.value,
+                            metadata=A_l3l2_fifos[col],
                             bd_id=2 * tile_row + 1,
                             mem=A,
                             offsets=[0, 0, 0, A_offset],
@@ -370,7 +367,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                             strides=[0, k * n_aie_rows, K, 1],
                         )
                         npu_dma_memcpy_nd(
-                            metadata=B_l3l2_fifos[col].sym_name.value,
+                            metadata=B_l3l2_fifos[col],
                             bd_id=2 * tile_row + 2,
                             mem=B,
                             offsets=[0, 0, 0, B_col_offset],
@@ -382,8 +379,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                             ],
                             strides=[n * n_aie_cols, k * n_aie_rows * N, N, 1],
                         )
-                for col in range(n_aie_cols):
-                    npu_sync(column=col, row=0, direction=0, channel=0)
+                dma_wait(*C_l2l3_fifos)
 
 
 if __name__ == "__main__":
