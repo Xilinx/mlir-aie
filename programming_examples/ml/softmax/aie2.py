@@ -11,6 +11,8 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.extras.dialects.ext.scf import _for as range_
+from aie.extras.util import bfloat16
+from aie.extras.util import np_ndarray_type_get_shape
 
 import aie.utils.trace as trace_utils
 
@@ -31,20 +33,20 @@ def vector_softmax(trace_size):
 
     @device(AIEDevice.npu1_1col)
     def device_body():
-        memRef_ty = T.memref(n, T.bf16())
+        tile_ty = np.ndarray[(n,), np.dtype[bfloat16]]
 
         # Type used in the tile memory
-        memRef_A_ty = T.memref(n, T.bf16())
-        memRef_C_ty = T.memref(n, T.bf16())
+        A_ty = np.ndarray[(n,), np.dtype[bfloat16]]
+        C_ty = np.ndarray[(n,), np.dtype[bfloat16]]
 
         # Type used in the memory tile which aggregates across the 4 cores
-        memRef_A_MT_ty = T.memref(n * n_cores, T.bf16())
-        memRef_C_MT_ty = T.memref(n * n_cores, T.bf16())
+        A_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
+        C_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
 
         # AIE Core Function declarations
 
         softmax_bf16_vector = external_func(
-            "softmax_bf16_vector", inputs=[memRef_ty, memRef_ty]
+            "softmax_bf16_vector", inputs=[tile_ty, tile_ty]
         )
 
         # Tile declarations
@@ -58,23 +60,25 @@ def vector_softmax(trace_size):
 
         # AIE-array data movement with object fifos
         # Input A and Output C
-        inA = object_fifo("inA", ShimTile, MemTile, buffer_depth, memRef_A_MT_ty)
-        outC = object_fifo("outC", MemTile, ShimTile, buffer_depth, memRef_C_MT_ty)
+        inA = object_fifo("inA", ShimTile, MemTile, buffer_depth, A_memTile_ty)
+        outC = object_fifo("outC", MemTile, ShimTile, buffer_depth, C_memTile_ty)
 
         for i in range(n_cores):
             inA_fifos.append(
-                object_fifo(f"memA{i}", MemTile, cores[i], buffer_depth, memRef_A_ty)
+                object_fifo(f"memA{i}", MemTile, cores[i], buffer_depth, A_ty)
             )
             outC_fifos.append(
-                object_fifo(f"memC{i}", cores[i], MemTile, buffer_depth, memRef_C_ty)
+                object_fifo(f"memC{i}", cores[i], MemTile, buffer_depth, C_ty)
             )
 
         if n_cores > 1:
             of_a_offsets = [
-                (np.prod(memRef_A_MT_ty.shape) // n_cores) * i for i in range(n_cores)
+                (np.prod(np_ndarray_type_get_shape(A_memTile_ty)) // n_cores) * i
+                for i in range(n_cores)
             ]
             of_c_offsets = [
-                (np.prod(memRef_C_MT_ty.shape) // n_cores) * i for i in range(n_cores)
+                (np.prod(np_ndarray_type_get_shape(C_memTile_ty)) // n_cores) * i
+                for i in range(n_cores)
             ]
         else:
             of_a_offsets = []
@@ -102,7 +106,7 @@ def vector_softmax(trace_size):
                         outC_fifos[i].release(ObjectFifoPort.Produce, 1)
 
         # To/from AIE-array data movement
-        tensor_ty = T.memref(N, T.bf16())
+        tensor_ty = np.ndarray[(N,), np.dtype[bfloat16]]
 
         @runtime_sequence(tensor_ty, tensor_ty)
         def sequence(A, C):
