@@ -6,7 +6,6 @@ import numpy as np
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
-    call,
     Core,
     Device,
     ObjectFifoPort,
