@@ -1,0 +1,3 @@
+# Using the commit instead of bfloat16 directly allows us to bypass https://github.com/GreenWaves-Technologies/bfloat16/issues/12
+# However, this requirement should be used conditionally as it doesn't build well with vscode due to some hardcoded flags
+git+https://github.com/GreenWaves-Technologies/bfloat16.git@97e0bab
