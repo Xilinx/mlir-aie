@@ -168,6 +168,10 @@ io_config = InterleaveConfig(in_config, out_config) # sync_behvaior=??, varargs 
 
 ```python
 import numpy as np
+from aie.dialects.api.io import MyInputDataConfig, MyOutputDataConfig, MySequentialConfig
+from aie.dialects.api.kernels import MyBinKernel
+from aie.dialects.api import MyAIEJob
+from aie.dialects.api.logical import MyDefaultPlacer
 
 # Define types
 vector_size = 4096
@@ -178,14 +182,14 @@ subvector_type = np.ndarray[(subvector_size,), np.dtype[np.uint8]]
 # Build information on input/output
 in_config = MyInputDataConfig("in", vector_type)
 out_config = MyOutputDataConfig("out", vector_type)
-io_config = SequentialConfig(in_config, out_config) #, sync_behavior=EndOnly)
+io_config = MySequentialConfig(in_config, out_config) #, sync_behavior=EndOnly)
 
 # Extract in/out fifos
 endpoints = io_config.finalize()            # generate fifo endpoints & validate
 of_in = endpoints["in"]                     # access fifo endpoints with dictionary
 of_out = endpoints["out"]                   # access fifo endpoints with dictionary
 
-passthrough_fn = BinKernel("passThroughLine", "passThrough.cc.o", [subvector_type, subvector_type, np.int32])
+passthrough_fn = MyBinKernel("passThroughLine", "passThrough.cc.o", [subvector_type, subvector_type, np.int32])
 
 def core_fn(of_in, of_out, passThroughLine):
     for _ in range_(vector_size // line_size):
@@ -197,5 +201,5 @@ def core_fn(of_in, of_out, passThroughLine):
 
 MyAIEJob(NPU1Col1(), io_config) \
     .addWorker(core_fn, [of_in, of_out, passthrough_fn]) \
-    # .addPlacer(DefaultPlacer())
+    # .addPlacer(MyDefaultPlacer())
     .emit()
