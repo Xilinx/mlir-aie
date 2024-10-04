@@ -195,10 +195,7 @@ def core_fn(of_in, of_out, passThroughLine):
         of_in.release(1)
         of_out.release(1)
 
-program = MyAIEJob(NPU1Col1(), io_config) \
-    .addWorker(core_fn, [of_in, of_out, passthrough_fn])
+MyAIEJob(NPU1Col1(), io_config) \
+    .addWorker(core_fn, [of_in, of_out, passthrough_fn]) \
     # .addPlacer(DefaultPlacer())
-
-# The placer is called during the resolve process, so the emitted ops are all placed
-program.emit()
-```
+    .emit()
