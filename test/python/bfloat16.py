@@ -7,7 +7,6 @@ from aie.extras import types as T
 from aie.extras.util import bfloat16, _pseudo_bfloat16, np_dtype_to_mlir_type
 
 
-# CHECK: PASS
 def bfloat16Conversion():
     assert np.dtype(bfloat16).itemsize == 2
     assert _pseudo_bfloat16 != np.float16
@@ -23,6 +22,7 @@ def bfloat16Conversion():
             _pseudo_bfloat16
         )
     except:
-        # CHECK: Warning
+        # CHECK: Warning! bfloat16 python package not available, so using placeholder bfloat16 type
         pass
+    # CHECK: PASS
     print("PASS")
