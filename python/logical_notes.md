@@ -107,15 +107,9 @@ my_program = MyProgram(
 my_program.resolve_program()
 ```
 
-# IO Config as FIFO Generator
+# IO Config Ideas
+
 ```python
-import numpy as np
-
-vector_size = 4096
-vector_type = np.ndarray[(vector_size,), np.dtype[np.uint8]]
-subvector_size = vector_size // 4
-subvector_type = np.ndarray[(subvector_size,), np.dtype[np.uint8]]
-
 in_config = MyInputDataConfig(
     name = "in",
 
@@ -139,6 +133,12 @@ in_config = MyInputDataConfig(
     distribute = None,                     # [Optional] None (compiler choice) | NoDistribute | SequentialDistribute | ProportionalDistribute
 )
 # Note: could be written in JSON or yaml or similar or pickled for library use
+# Alternate interface could be builder for subset of cases:
+# in_config = ConfigBuilder("in", inputdtype = np.ndarray[...]) \
+#   .tile(size=, offset=,..)
+#   .ping_pong() # true or false
+#   .l2(subtile_size=[])
+#   .distributeToEndpoints(count or offset list)
 
 out_config = MyOutputDataConfig(
     name = "out",
@@ -162,14 +162,30 @@ out_config = MyOutputDataConfig(
     distribute = None,                     # [Optional] None (compiler choice) | NoDistribute | SequentialDistribute | ProportionalDistribute
 )
 io_config = InterleaveConfig(in_config, out_config) # sync_behvaior=??, varargs for # of configs to add
+```
 
-# Build up
-# in_config = InterleaveConfig(in1_config, in2_config, sync_behavior=??)
-# in_out_config = SequentialConfig(in_confg, in_out_config)
+# IO Config Example
 
+```python
+import numpy as np
+
+# Define types
+vector_size = 4096
+vector_type = np.ndarray[(vector_size,), np.dtype[np.uint8]]
+subvector_size = vector_size // 4
+subvector_type = np.ndarray[(subvector_size,), np.dtype[np.uint8]]
+
+# Build information on input/output
+in_config = MyInputDataConfig("in", vector_type)
+out_config = MyOutputDataConfig("out", vector_type)
+io_config = SequentialConfig(in_config, out_config) #, sync_behavior=EndOnly)
+
+# Extract in/out fifos
 endpoints = io_config.finalize()            # generate fifo endpoints & validate
-in_fifo = endpoints["in"]                   # access fifo endpoints with dictionary
-out_fifo = endpoints["out"]                 # access fifo endpoints with dictionary
+of_in = endpoints["in"]                     # access fifo endpoints with dictionary
+of_out = endpoints["out"]                   # access fifo endpoints with dictionary
+
+passthrough_fn = BinKernel("passThroughLine", "passThrough.cc.o", [subvector_type, subvector_type, np.int32])
 
 def core_fn(of_in, of_out, passThroughLine):
     for _ in range_(vector_size // line_size):
@@ -179,17 +195,10 @@ def core_fn(of_in, of_out, passThroughLine):
         of_in.release(1)
         of_out.release(1)
 
-fn_executor = CoreFnExecutor(
-    core_fn, [of_in, of_out, passthrough_fn] # Can omit placement, default to AnyCompute
-)
-
-my_program = MyProgram(
-    NPU1Col1(), # Device
-    fn_executors=[fn_executor],
-    io_config=io_config,
-    placer=Default
-)
+program = MyAIEJob(NPU1Col1(), io_config) \
+    .addWorker(core_fn, [of_in, of_out, passthrough_fn])
+    # .addPlacer(DefaultPlacer())
 
 # The placer is called during the resolve process, so the emitted ops are all placed
-my_program.resolve_program()
+program.emit()
 ```
