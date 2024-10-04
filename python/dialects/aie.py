@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from dataclasses import dataclass
 import inspect
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional, Union
 import contextlib
 
 import numpy as np
@@ -388,21 +388,45 @@ class packetflow(PacketFlowOp):
 
 core = region_op(Core, terminator=lambda *_: EndOp())
 device = region_op(Device)
-mem = region_op(
-    lambda tile, *, loc=None, ip=None: MemOp(T.index(), tile, loc=loc, ip=ip)
-)
-shim_dma = region_op(
-    lambda tile, *, loc=None, ip=None: ShimDMAOp(T.index(), tile, loc=loc, ip=ip)
-)
-memtile_dma = region_op(
-    lambda tile, *, loc=None, ip=None: MemTileDMAOp(T.index(), tile, loc=loc, ip=ip)
-)
 switchbox = region_op(
     lambda tile, *, loc=None, ip=None: SwitchboxOp(T.index(), tile, loc=loc, ip=ip)
 )
 shim_mux = region_op(
     lambda tile, *, loc=None, ip=None: ShimMuxOp(T.index(), tile, loc=loc, ip=ip)
 )
+
+
+def get_dma_region_decorator(op_obj_constructor):
+    def decorator(f):
+        f_sig = inspect.signature(f)
+        op = op_obj_constructor()
+        entry_block = op.body.blocks.append()
+        bds_ctx = bds(op)
+        with InsertionPoint(entry_block):
+            with bds_ctx as bd:
+                if len(f_sig.parameters) == 0:
+                    f()
+                elif len(f_sig.parameters) == 1:
+                    f(bd)
+                else:
+                    raise RuntimeError(
+                        "Expected function to take zero or one argument(s)."
+                    )
+        return op
+
+    return decorator
+
+
+def mem(tile):
+    return get_dma_region_decorator(lambda: MemOp(T.index(), tile))
+
+
+def shim_mem(tile):
+    return get_dma_region_decorator(lambda: ShimDMAOp(T.index(), tile))
+
+
+def memtile_dma(tile):
+    return get_dma_region_decorator(lambda: MemTileDMAOp(T.index(), tile))
 
 
 @region_op
@@ -487,12 +511,16 @@ def dma_start(
     channel_dir,
     channel_index,
     *,
-    dest: Successor | Block | None = None,
-    chain: Successor | Block | None = None,
+    dest: Optional[Union[Successor, Block, ContextManagedBlock]] = None,
+    chain: Optional[Union[Successor, Block, ContextManagedBlock]] = None,
     loc=None,
     ip=None,
 ):
-    op = DMAStartOp(channel_dir, channel_index, dest=dest, chain=chain, loc=loc, ip=ip)
+    chain_block = chain.block if isinstance(chain, ContextManagedBlock) else chain
+    dest_block = dest.block if isinstance(dest, ContextManagedBlock) else dest
+    op = DMAStartOp(
+        channel_dir, channel_index, dest=dest_block, chain=chain_block, loc=loc, ip=ip
+    )
     return op.dest, op.chain
 
 
