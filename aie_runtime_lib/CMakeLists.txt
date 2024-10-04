@@ -49,7 +49,12 @@ function(add_aie_runtime_libs arch)
 
 endfunction()
 
-add_subdirectory(AIE)
-add_subdirectory(AIE2)
+# Compile AIE runtime libs if component found
+if(AIETools_AIE_FOUND)
+  add_subdirectory(AIE)
+endif()
+if(AIETools_AIE2_FOUND)
+  add_subdirectory(AIE2)
+endif()
 
 
