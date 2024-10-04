@@ -181,7 +181,7 @@ subvector_type = np.ndarray[(subvector_size,), np.dtype[np.uint8]]
 
 # Build information on input/output
 in_config = MyInputDataConfig("in", vector_type)
-out_config = MyOutputDataConfig("out", vector_type)
+out_config = MyOutputDataConfig("out", vector_type) # in_config.generate_reverse_config()?
 io_config = MySequentialConfig(in_config, out_config) #, sync_behavior=EndOnly)
 
 # Extract in/out fifos
