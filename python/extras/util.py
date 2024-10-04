@@ -48,7 +48,8 @@ try:
 except:
     # Numpy doesn't support bfloat16 at this time. Using hacky extension of np.float16 as a placeholder, for now.
     print(
-        "Warning! bfloat16 python package not available, so using placeholder bfloat16 type"
+        "Warning! bfloat16 python package not available, so using placeholder bfloat16 type",
+        file=sys.stderr,
     )
     bfloat16 = _pseudo_bfloat16
 
