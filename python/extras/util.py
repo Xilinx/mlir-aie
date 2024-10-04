@@ -36,7 +36,7 @@ from ..ir import (
 
 class _pseudo_bfloat16(np.float16):
     def __init__(*args, **kwargs):
-        raise AttributeError(
+        raise TypeError(
             "This is a placeholder class for bfloat16. Install bfloat16 python package in order to instantiate bfloat16 values"
         )
 

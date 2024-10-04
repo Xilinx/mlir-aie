@@ -1,4 +1,4 @@
-# Copyright (C) 2022, Advanced Micro Devices, Inc.
+# Copyright (C) 2024, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 import numpy as np
 from aie.extras import types as T
@@ -16,6 +16,7 @@ def bfloat16Conversion():
     assert _pseudo_bfloat16 != np.float16
     assert np_dtype_to_mlir_type(_pseudo_bfloat16) == T.bf16()
     try:
+        # Import actual bfloat16 (if it's available) for additional tests
         from bfloat16 import bfloat16 as real_bfloat16
 
         assert real_bfloat16 == bfloat16
@@ -26,4 +27,7 @@ def bfloat16Conversion():
         )
     except ModuleNotFoundError:
         pass
-    print("PASS!")
+    try:
+        _pseudo_bfloat16(1)  # Should not be able to instantiate
+    except TypeError:
+        print("PASS!")
