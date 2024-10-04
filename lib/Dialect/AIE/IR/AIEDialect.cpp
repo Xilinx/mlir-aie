@@ -507,6 +507,25 @@ TileOp ObjectFifoCreateOp::getProducerTileOp() {
   return cast<TileOp>(getProducerTile().getDefiningOp());
 }
 
+std::vector<std::vector<int32_t>> ObjectFifoCreateOp::getInitialValues() {
+  std::vector<std::vector<int32_t>> initValuesVector;
+  if (getInitValues().has_value()) {
+    auto initValues = llvm::cast<mlir::ElementsAttr>(getInitValues().value());
+    auto fifo = llvm::cast<AIEObjectFifoType>(getElemType());
+    auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
+    int len = elemType.getNumElements();
+    for (int i = 0; i < size(); i++) {
+      std::vector<int> initBuffer;
+      for (int r = 0; r < len; r++) {
+        auto elem = initValues.getValues<mlir::ElementsAttr>()[i * len + r];
+        initBuffer.push_back(llvm::cast<IntegerAttr>(elem).getInt());
+      }
+      initValuesVector.push_back(initBuffer);
+    }
+  }
+  return initValuesVector;
+}
+
 namespace xilinx::AIE {
 
 ParseResult parseObjectFifoProducerTile(OpAsmParser &parser,
@@ -589,6 +608,46 @@ void printObjectFifoConsumerTiles(OpAsmPrinter &printer, Operation *op,
     }
     tileIdx++;
   }
+}
+
+static void printObjectFifoInitValues(OpAsmPrinter &p, ObjectFifoCreateOp op,
+                                      Attribute numElem, TypeAttr type, Attribute initValues) {
+  if (op.getInitValues()) {
+    p << "= ";
+    p.printAttributeWithoutType(initValues);
+  }
+}
+
+static ParseResult parseObjectFifoInitValues(OpAsmParser &parser, Attribute numElem,
+                                             TypeAttr type, Attribute &initValues) {
+  int64_t depth;
+  if (isa<ArrayAttr>(numElem)) {
+    depth = llvm::dyn_cast<mlir::IntegerAttr>(llvm::dyn_cast<mlir::ArrayAttr>(numElem)[0]).getInt();
+  } else {
+    depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
+  }
+  auto objfifoType = llvm::cast<AIEObjectFifoType>(type.getValue());
+  auto memrefTypeNoDepth = llvm::cast<MemRefType>(objfifoType.getElementType());
+  ArrayRef shape = memrefTypeNoDepth.getShape();
+  std::vector<int64_t> newShape = {depth};
+  for (auto d : shape)
+    newShape.push_back(d);
+  auto memrefType = MemRefType::get(ArrayRef(newShape), memrefTypeNoDepth.getElementType());
+
+  if (!memrefType.hasStaticShape())
+    return parser.emitError(parser.getNameLoc())
+           << "type should be static shaped memref, but got " << memrefType;
+
+  if (parser.parseOptionalEqual())
+    return success();
+
+  Type tensorType = mlir::memref::getTensorTypeFromMemRefType(memrefType);
+  if (parser.parseAttribute(initValues, tensorType))
+    return failure();
+  if (!llvm::isa<ElementsAttr>(initValues))
+    return parser.emitError(parser.getNameLoc())
+           << "initial value should be an elements attribute";
+  return success();
 }
 
 } // namespace xilinx::AIE
