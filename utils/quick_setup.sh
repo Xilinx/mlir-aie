@@ -58,7 +58,6 @@ fi
 python3 -m pip install --upgrade pip
 VPP=`which xchesscc`
 if test -f "$VPP"; then
-  AIETOOLS="`dirname $VPP`/../aietools"
   mkdir -p my_install
   pushd my_install
   pip download mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/
