@@ -300,6 +300,8 @@ struct AIEObjectFifoStatefulTransformPass
                                             ObjectFifoCreateOp op, int numElem,
                                             TileOp creation_tile) {
     std::vector<LockOp> locks;
+    if (op.getDisableSynchronization())
+      return locks;
     auto dev = op->getParentOfType<DeviceOp>();
     auto &target = dev.getTargetModel();
     if (creation_tile.isShimTile()) {
@@ -458,15 +460,16 @@ struct AIEObjectFifoStatefulTransformPass
                 LockAction acqLockAction, LockOp relLock, int relMode,
                 MyOp buff, int offset, int len, Block *succ,
                 BDDimLayoutArrayAttr dims) {
-    builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqLockAction,
-                              acqMode);
+    if (acqLock)
+      builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqLockAction,
+                                acqMode);
     if (!dims.getValue().empty())
       builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims);
     else
       builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len);
-
-    builder.create<UseLockOp>(builder.getUnknownLoc(), relLock,
-                              LockAction::Release, relMode);
+    if (acqLock)
+      builder.create<UseLockOp>(builder.getUnknownLoc(), relLock,
+                                LockAction::Release, relMode);
     builder.create<NextBDOp>(builder.getUnknownLoc(), succ);
   }
 
@@ -483,21 +486,23 @@ struct AIEObjectFifoStatefulTransformPass
     int acqMode = 1;
     int relMode = 1;
     auto acqLockAction = LockAction::Acquire;
-    auto dev = op->getParentOfType<DeviceOp>();
-    if (auto &target = dev.getTargetModel();
-        target.getTargetArch() == AIEArch::AIE1) {
-      acqMode = lockMode == 0 ? 1 : 0;
-      relMode = lockMode == 0 ? 0 : 1;
-      acqLock = locksPerFifo[op][blockIndex];
-      relLock = locksPerFifo[op][blockIndex];
-    } else {
-      acqMode = acqNum;
-      relMode = relNum;
-      acqLockAction = LockAction::AcquireGreaterEqual;
-      acqLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][0]
-                                                  : locksPerFifo[op][1];
-      relLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][1]
-                                                  : locksPerFifo[op][0];
+    if (locksPerFifo[op].size() > 0) {
+      auto dev = op->getParentOfType<DeviceOp>();
+      if (auto &target = dev.getTargetModel();
+          target.getTargetArch() == AIEArch::AIE1) {
+        acqMode = lockMode == 0 ? 1 : 0;
+        relMode = lockMode == 0 ? 0 : 1;
+        acqLock = locksPerFifo[op][blockIndex];
+        relLock = locksPerFifo[op][blockIndex];
+      } else {
+        acqMode = acqNum;
+        relMode = relNum;
+        acqLockAction = LockAction::AcquireGreaterEqual;
+        acqLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][0]
+                                                    : locksPerFifo[op][1];
+        relLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][1]
+                                                    : locksPerFifo[op][0];
+      }
     }
     createBd(builder, acqLock, acqMode, acqLockAction, relLock, relMode, buff,
              offset, len, succ, dims);
@@ -1130,6 +1135,16 @@ struct AIEObjectFifoStatefulTransformPass
     auto dev = op->getParentOfType<DeviceOp>();
     if (auto &targetArch = dev.getTargetModel();
         targetArch.getTargetArch() == AIEArch::AIE1) {
+
+      if (locksPerFifo[target].size() == 0) {
+        for (int i = 0; i < numLocks; i++) {
+          int lockID = acc[{op, portNum}];
+          acc[{op, portNum}] =
+              (lockID + 1) % op.size(); // update to next objFifo elem
+        }
+        return;
+      }
+
       int lockMode = 0;
       if ((port == ObjectFifoPort::Produce &&
            lockAction == LockAction::Release) ||
@@ -1147,6 +1162,13 @@ struct AIEObjectFifoStatefulTransformPass
     } else {
       if (numLocks == 0)
         return;
+
+      if (locksPerFifo[target].size() == 0) {
+        acc[{op, portNum}] = (acc[{op, portNum}] + numLocks) %
+                             op.size(); // update to next objFifo elem
+        return;
+      }
+
       // search for the correct lock based on the port of the acq/rel
       // operation e.g. acq as consumer is the read lock (second)
       LockOp lock;
@@ -1337,6 +1359,8 @@ struct AIEObjectFifoStatefulTransformPass
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
             builder, datatype, consumerFifoName, consumerTile, consumerTile,
             consumerObjFifoSize, emptyDims, fromStreamDims);
+        if (createOp.getDisableSynchronization())
+          consumerFifo.setDisableSynchronization(true);
         replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
 
         // identify external buffers that were registered to the consumer fifo

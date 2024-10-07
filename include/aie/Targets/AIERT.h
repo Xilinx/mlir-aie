@@ -205,6 +205,7 @@ struct AIERTControl {
   mlir::LogicalResult configureLocksAndBd(mlir::Block &block,
                                           XAie_LocType tileLoc);
   mlir::LogicalResult initLocks(DeviceOp &targetOp);
+  mlir::LogicalResult initBuffers(DeviceOp &targetOp);
   mlir::LogicalResult configureSwitches(DeviceOp &targetOp);
   mlir::LogicalResult addInitConfig(DeviceOp &targetOp);
   mlir::LogicalResult addCoreEnable(DeviceOp &targetOp);
