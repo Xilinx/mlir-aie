@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2021 Xilinx Inc.
-
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
@@ -22,6 +22,7 @@ if len(sys.argv) == 3:
 heightMinus1 = height - 1
 lineWidth = width
 lineWidthInBytes = width * 4
+tensorSize = width * height * 4  # 4 channels
 
 enableTrace = False
 traceSizeInBytes = 8192
@@ -33,24 +34,27 @@ def edge_detect():
 
         @device(AIEDevice.npu1_1col)
         def device_body():
-            line_bytes_ty = T.memref(lineWidthInBytes, T.ui8())
-            line_ty = T.memref(lineWidth, T.ui8())
-            memRef_3x3_ty = T.memref(3, 3, T.i16())
+            line_bytes_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
+            line_ty = np.ndarray[(lineWidth,), np.dtype[np.uint8]]
+            tensor_3x3_ty = np.ndarray[(3, 3), np.dtype[np.int16]]
+
+            tensor_ty = np.ndarray[(tensorSize,), np.dtype[np.int8]]
+            tensor_16x16_ty = np.ndarray[(16, 16), np.dtype[np.int32]]
 
             # AIE Core Function declarations
             rgba2gray_line = external_func(
-                "rgba2grayLine", inputs=[line_bytes_ty, line_ty, T.i32()]
+                "rgba2grayLine", inputs=[line_bytes_ty, line_ty, np.int32]
             )
             filter2d_line = external_func(
                 "filter2dLine",
-                inputs=[line_ty, line_ty, line_ty, line_ty, T.i32(), memRef_3x3_ty],
+                inputs=[line_ty, line_ty, line_ty, line_ty, np.int32, tensor_3x3_ty],
             )
             threshold_line = external_func(
                 "thresholdLine",
-                inputs=[line_ty, line_ty, T.i32(), T.i16(), T.i16(), T.i8()],
+                inputs=[line_ty, line_ty, np.int32, np.int16, np.int16, np.int8],
             )
             gray2rgba_line = external_func(
-                "gray2rgbaLine", inputs=[line_ty, line_bytes_ty, T.i32()]
+                "gray2rgbaLine", inputs=[line_ty, line_bytes_ty, np.int32]
             )
             add_weighted_line = external_func(
                 "addWeightedLine",
@@ -58,10 +62,10 @@ def edge_detect():
                     line_bytes_ty,
                     line_bytes_ty,
                     line_bytes_ty,
-                    T.i32(),
-                    T.i16(),
-                    T.i16(),
-                    T.i8(),
+                    np.int32,
+                    np.int16,
+                    np.int16,
+                    np.int8,
                 ],
             )
 
@@ -263,12 +267,7 @@ def edge_detect():
                     outOF_L1L2.release(ObjectFifoPort.Produce, 1)
 
             # To/from AIE-array data movement
-
-            tensorSize = width * height * 4  # 4 channels
-            tensor_ty = T.memref(tensorSize, T.i8())
-            memRef_16x16_ty = T.memref(16, 16, T.i32())
-
-            @runtime_sequence(tensor_ty, memRef_16x16_ty, tensor_ty)
+            @runtime_sequence(tensor_ty, tensor_16x16_ty, tensor_ty)
             def sequence(I, B, O):
                 npu_dma_memcpy_nd(
                     metadata=inOF_L3L2,

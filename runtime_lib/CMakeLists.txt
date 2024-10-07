@@ -51,13 +51,13 @@ foreach(target ${AIE_RUNTIME_TARGETS})
     find_package(LibXAIE REQUIRED)
     message(STATUS "FOUND LibXAIE: ${LibXAIE_FOUND}, XILINX_XAIE_LIB_DIR: ${XILINX_XAIE_LIB_DIR}, XILINX_XAIE_INCLUDE_DIR: ${XILINX_XAIE_INCLUDE_DIR}")
 
-  elseif (DEFINED VITIS_ROOT)
+  elseif (DEFINED VITIS_AIETOOLS_DIR)
   
     # if no LibXAIE_{target}_DIR specified, build xaiengine_${target} from Vitis
-    message("LibXAIE_${target}_DIR not specified: Building xaiengine for ${target} from Vitis at ${VITIS_ROOT}.") 
+    message("LibXAIE_${target}_DIR not specified: Building xaiengine for ${target} from aietools at ${VITIS_AIETOOLS_DIR}.") 
     set(LibXAIE_FOUND TRUE)
     set(XILINX_XAIE_INCLUDE_DIR ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
-    set(XILINX_XAIE_LIBS ${VITIS_ROOT}/aietools/lib/lnx64.o/libxaiengine.so)
+    set(XILINX_XAIE_LIBS ${VITIS_AIETOOLS_DIR}/lib/lnx64.o/libxaiengine.so)
 
   endif()
 

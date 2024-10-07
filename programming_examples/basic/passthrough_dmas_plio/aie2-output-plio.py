@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
@@ -14,9 +14,11 @@ from aie.extras.context import mlir_mod_ctx
 from aie.extras.dialects.ext.scf import _for as range_
 
 N = 1024
+line_size = 1024
 
 if len(sys.argv) > 1:
     N = int(sys.argv[1])
+    assert N % line_size == 0
 
 dev = AIEDevice.xcvc1902
 
@@ -26,7 +28,8 @@ def my_passthrough():
 
         @device(dev)
         def device_body():
-            memRef_ty = T.memref(1024, T.i32())
+            vector_ty = np.ndarray[(N,), np.dtype[np.int32]]
+            line_ty = np.ndarray[(line_size,), np.dtype[np.int32]]
 
             # Tile declarations
             ShimTile1 = tile(26, 0)
@@ -34,10 +37,8 @@ def my_passthrough():
             ComputeTile2 = tile(30, 2)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile1, ComputeTile2, 2, memRef_ty)
-            of_out = object_fifo(
-                "out", ComputeTile2, ShimTile2, 2, memRef_ty, plio=True
-            )
+            of_in = object_fifo("in", ShimTile1, ComputeTile2, 2, line_ty)
+            of_out = object_fifo("out", ComputeTile2, ShimTile2, 2, line_ty, plio=True)
             object_fifo_link(of_in, of_out)
 
             # Set up compute tiles
@@ -49,9 +50,7 @@ def my_passthrough():
                     pass
 
             # To/from AIE-array data movement
-            tensor_ty = T.memref(N, T.i32())
-
-            @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
+            @runtime_sequence(vector_ty, vector_ty, vector_ty)
             def sequence(A, B, C):
                 npu_dma_memcpy_nd(metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N])
                 npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])

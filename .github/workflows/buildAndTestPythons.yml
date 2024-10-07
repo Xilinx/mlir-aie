@@ -35,7 +35,7 @@ jobs:
       matrix:
         build_type: [ Assert, Release ]
         ubuntu_version: [ 20.04, 22.04, 24.04 ]
-        python_version: [ "3.8", "3.9", "3.10", "3.11", "3.12" ]
+        python_version: [ "3.10", "3.11", "3.12" ]
 
     steps:
       # Clone the repo and its submodules. Do shallow clone to save clone
@@ -54,6 +54,7 @@ jobs:
         run: |
           
           pip install -r python/requirements.txt
+          pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
 
       - name: Install packages
         run: |
