@@ -69,7 +69,7 @@ if test -f "$VPP"; then
   unzip -q llvm_aie*.whl
   rm -rf mlir*.whl
   rm -rf llvm_aie*.whl
-  pip install https://github.com/makslevental/mlir-python-extras/archive/d84f05582adb2eed07145dabce1e03e13d0e29a6.zip
+  # pip install https://github.com/makslevental/mlir-python-extras/archive/d84f05582adb2eed07145dabce1e03e13d0e29a6.zip
   export PATH=`realpath llvm-aie/bin`:`realpath mlir_aie/bin`:`realpath mlir/bin`:$PATH
   export LD_LIBRARY_PATH=`realpath llvm-aie/lib`:`realpath mlir_aie/lib`:`realpath mlir/lib`:$LD_LIBRARY_PATH
   export PYTHONPATH=`realpath mlir_aie/python`:$PYTHONPATH
@@ -77,6 +77,7 @@ if test -f "$VPP"; then
   popd
   python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements.txt
   python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_ml.txt
+  python3 -m pip install --upgrade --force-reinstall --no-cache-dirpip python/requirements_bfloat16.txt || echo "Failed to install bfloat16, that's ok!"
   pushd programming_examples
 else
   echo "Vitis not found! Exiting..."

@@ -2,7 +2,8 @@ import operator
 from abc import abstractmethod
 from copy import deepcopy
 from functools import cached_property, partialmethod
-from typing import Optional, Tuple
+import numpy as np
+from typing import Tuple
 
 from ...util import get_user_code_loc, infer_mlir_type, mlir_type_to_np_dtype
 from ...._mlir_libs._mlir import register_value_caster
@@ -43,13 +44,13 @@ from ....ir import (
 
 
 def constant(
-    value: Union[int, float, bool, np.ndarray],
-    type: Optional[Type] = None,
-    index: Optional[bool] = None,
+    value: int | float | bool | np.ndarray,
+    type: Type | None = None,
+    index: bool | None = None,
     *,
-    vector: Optional[bool] = False,
-    loc: Location = None,
-    ip: InsertionPoint = None,
+    vector: bool | None = False,
+    loc: Location | None = None,
+    ip: InsertionPoint | None = None,
 ) -> Value:
     """Instantiate arith.constant with value `value`.
 
@@ -215,7 +216,7 @@ class ArithValueMeta(type(Value)):
 
 
 @register_attribute_builder("Arith_CmpIPredicateAttr", replace=True)
-def _arith_CmpIPredicateAttr(predicate: Union[str, Attribute], context: Context):
+def _arith_CmpIPredicateAttr(predicate: str | Attribute, context: Context):
     predicates = {
         "eq": CmpIPredicate.eq,
         "ne": CmpIPredicate.ne,
@@ -235,7 +236,7 @@ def _arith_CmpIPredicateAttr(predicate: Union[str, Attribute], context: Context)
 
 
 @register_attribute_builder("Arith_CmpFPredicateAttr", replace=True)
-def _arith_CmpFPredicateAttr(predicate: Union[str, Attribute], context: Context):
+def _arith_CmpFPredicateAttr(predicate: str | Attribute, context: Context):
     predicates = {
         "false": CmpFPredicate.AlwaysFalse,
         # ordered comparison
@@ -271,10 +272,10 @@ def _binary_op(
     lhs: "ArithValue",
     rhs: "ArithValue",
     op: str,
-    predicate: str = None,
-    signedness: str = None,
+    predicate: str | None = None,
+    signedness: str | None = None,
     *,
-    loc: Location = None,
+    loc: Location | None = None,
 ) -> "ArithValue":
     """Generic for handling infix binary operator dispatch.
 
@@ -373,7 +374,7 @@ class ArithValue(Value, metaclass=ArithValueMeta):
                           Value.__init__
     """
 
-    def __init__(self, val, *, fold: Optional[bool] = None):
+    def __init__(self, val, *, fold: bool | None = None):
         self._fold = fold if fold is not None else False
         super().__init__(val)
 
@@ -464,7 +465,7 @@ class Scalar(ArithValue):
         return self.type
 
     @cached_property
-    def literal_value(self) -> Union[int, float, bool]:
+    def literal_value(self) -> int | float | bool:
         if not self.is_constant():
             raise ValueError("Can't build literal from non-constant Scalar")
         return self.owner.opview.literal_value

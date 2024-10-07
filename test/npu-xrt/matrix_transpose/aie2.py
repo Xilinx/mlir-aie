@@ -13,24 +13,16 @@
 # RUN: clang %S/test.cpp -o test -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
 # RUN: %run_on_npu ./test | FileCheck %s
 # CHECK: PASS!
-
+import numpy as np
 from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.ir import MemRefType
 from aie.extras.dialects.ext.scf import _for as range_
 
 matrix_rows = 7
 matrix_cols = 19
 matrix_size = matrix_rows * matrix_cols
-
-
-def memref_sz(m: MemRefType):
-    sz = 1
-    for s in m.shape:
-        sz *= s
-    return sz
 
 
 def design():
@@ -39,10 +31,10 @@ def design():
 
         @device(AIEDevice.npu1_4col)
         def device_body():
-            matrix_memref = T.memref(matrix_size, T.i32())
+            matrix_ty = np.ndarray[(matrix_size,), np.dtype[np.int32]]
 
             passthrough_func = external_func(
-                "passthrough", inputs=[matrix_memref, matrix_memref, T.i32()]
+                "passthrough", inputs=[matrix_ty, matrix_ty, np.int32]
             )
 
             # Tile declarations as tile[row][col]
@@ -51,10 +43,8 @@ def design():
             # Mem tiles: tiles[1][0..3]
             # Cores: tiles[2..5][0..3]
 
-            fifo_in = object_fifo("fifo_in", tiles[0][0], tiles[2][0], 2, matrix_memref)
-            fifo_out = object_fifo(
-                "fifo_out", tiles[2][0], tiles[0][0], 2, matrix_memref
-            )
+            fifo_in = object_fifo("fifo_in", tiles[0][0], tiles[2][0], 2, matrix_ty)
+            fifo_out = object_fifo("fifo_out", tiles[2][0], tiles[0][0], 2, matrix_ty)
 
             # Core
             @core(tiles[2][0], "kernel.o")
@@ -67,7 +57,7 @@ def design():
                     fifo_out.release(ObjectFifoPort.Produce, 1)
 
             # To/from AIE-array data movement
-            @runtime_sequence(matrix_memref, matrix_memref)
+            @runtime_sequence(matrix_ty, matrix_ty)
             def sequence(inp, out):
                 npu_dma_memcpy_nd(
                     metadata=fifo_in,

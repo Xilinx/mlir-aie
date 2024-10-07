@@ -84,13 +84,14 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: macos-12
-            ARCH: x86_64
-            ENABLE_RTTI: ON
+# Disabled because macos mlir wheels are out of date, and we don't currently build for them
+#          - OS: macos-12
+#            ARCH: x86_64
+#            ENABLE_RTTI: ON
 
-          - OS: macos-14
-            ARCH: arm64
-            ENABLE_RTTI: ON
+#          - OS: macos-14
+#            ARCH: arm64
+#            ENABLE_RTTI: ON
 
 # disabled because openssl dep isn't being compiled from source
 # (and hence system openssl can't be linked against during cross-compile)
@@ -106,13 +107,14 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
-          - OS: macos-12
-            ARCH: x86_64
-            ENABLE_RTTI: OFF
+# Disabled because macos mlir wheels are out of date, and we don't currently build for them
+#          - OS: macos-12
+#            ARCH: x86_64
+#            ENABLE_RTTI: OFF
 
-          - OS: macos-14
-            ARCH: arm64
-            ENABLE_RTTI: OFF
+#          - OS: macos-14
+#            ARCH: arm64
+#            ENABLE_RTTI: OFF
 
 # disabled because openssl dep isn't being compiled from source
 # (and hence system openssl can't be linked against during cross-compile)
@@ -226,6 +228,7 @@ jobs:
         export PIP_NO_BUILD_ISOLATION=false
         
         pip install -r requirements.txt
+        pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
         pip install importlib-metadata
         CIBW_ARCHS=${{ matrix.ARCH }} MATRIX_OS=${{ matrix.OS }} ./scripts/download_mlir.sh
         
@@ -334,9 +337,10 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: macos-12
-            ARCH: x86_64
-            ENABLE_RTTI: ON
+# Disabled because macos mlir wheels are out of date, and we don't currently build for them
+#          - OS: macos-12
+#            ARCH: x86_64
+#            ENABLE_RTTI: ON
 
           - OS: ubuntu-20.04
             ARCH: x86_64
@@ -346,15 +350,18 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
-          - OS: macos-12
-            ARCH: x86_64
-            ENABLE_RTTI: OFF
+# Disabled because macos mlir wheels are out of date, and we don't currently build for them
+#          - OS: macos-12
+#            ARCH: x86_64
+#            ENABLE_RTTI: OFF
 
     steps:
       - name: Checkout reqs
         uses: actions/checkout@v3
         with:
-          sparse-checkout: python/requirements.txt
+          sparse-checkout: |
+            python/requirements.txt
+            pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
 
       - uses: actions/download-artifact@v3
         with:
@@ -369,6 +376,7 @@ jobs:
         shell: bash
         run: |
           pip install -r python/requirements.txt
+          pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
           unzip -o -q dist/mlir_aie\*.whl
           
           if [ x"${{ matrix.ENABLE_RTTI }}" == x"ON" ]; then
@@ -405,13 +413,14 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: macos-12
-            ARCH: x86_64
-            ENABLE_RTTI: ON
+# Disabled because macos mlir wheels are out of date, and we don't currently build for them
+#          - OS: macos-12
+#            ARCH: x86_64
+#            ENABLE_RTTI: ON
 
-          - OS: macos-14
-            ARCH: arm64
-            ENABLE_RTTI: ON
+#          - OS: macos-14
+#            ARCH: arm64
+#            ENABLE_RTTI: ON
 
           - OS: ubuntu-20.04
             ARCH: x86_64
@@ -425,13 +434,14 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
-          - OS: macos-12
-            ARCH: x86_64
-            ENABLE_RTTI: OFF
+# Disabled because macos mlir wheels are out of date, and we don't currently build for them
+#          - OS: macos-12
+#            ARCH: x86_64
+#            ENABLE_RTTI: OFF
 
-          - OS: macos-14
-            ARCH: arm64
-            ENABLE_RTTI: OFF
+#          - OS: macos-14
+#            ARCH: arm64
+#            ENABLE_RTTI: OFF
 
     steps:
       - uses: actions/download-artifact@v3

@@ -10,7 +10,8 @@ add_custom_target(aie-runtime-libs ALL)
 
 function(add_aie_runtime_libs arch) 
   # Precompile the intrinsic wrappers.  
-  if(DEFINED VITIS_ROOT)
+  if(DEFINED VITIS_AIETOOLS_DIR)
+    string(TOLOWER ${arch} aiearch)
     add_custom_target(${arch}_chess_intrinsic_wrapper ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/chess_intrinsic_wrapper.ll)
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/chess_intrinsic_wrapper.ll
             COMMAND ${PROJECT_BINARY_DIR}/bin/xchesscc_wrapper ${arch}
@@ -48,7 +49,12 @@ function(add_aie_runtime_libs arch)
 
 endfunction()
 
-add_subdirectory(AIE)
-add_subdirectory(AIE2)
+# Compile AIE runtime libs if component found
+if(AIETools_AIE_FOUND)
+  add_subdirectory(AIE)
+endif()
+if(AIETools_AIE2_FOUND)
+  add_subdirectory(AIE2)
+endif()
 
 

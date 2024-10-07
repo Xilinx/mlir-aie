@@ -76,6 +76,7 @@ target_suffix?=${M}x${K}x${N}
 mlir_target?=build/aie_${target_suffix}.mlir
 xclbin_target?=build/final_${target_suffix}.xclbin
 insts_target?=build/insts_${target_suffix}.txt
+aie_py_src?=aie2.py
 
 runargs?=-v 2 --warmup 1 --iters 1
 aieargs+=-M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
@@ -89,7 +90,7 @@ build/%.o: ${kernels_dir}/%.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
 
-${mlir_target}: ${srcdir}/aie2.py
+${mlir_target}: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${aieargs} > $@
 

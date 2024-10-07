@@ -1,5 +1,5 @@
 import inspect
-from typing import Sequence, Union
+from typing import Sequence
 
 import numpy as np
 
@@ -31,7 +31,7 @@ S = ShapedType.get_dynamic_size()
 
 def _alloc(
     op_ctor,
-    *sizes_element_type: Sequence[Union[int, Value]],
+    *sizes_element_type: Sequence[int | Value],
     loc=None,
     ip=None,
 ):
@@ -54,17 +54,17 @@ def _alloc(
     )
 
 
-def alloc(*sizes: Union[int, Value], element_type: Type = None):
+def alloc(*sizes: int | Value, element_type: Type = None):
     loc = get_user_code_loc()
     return _alloc(AllocOp, *sizes, element_type, loc=loc, ip=None)
 
 
-def alloca(*sizes: Union[int, Value], element_type: Type = None):
+def alloca(*sizes: int | Value, element_type: Type = None):
     loc = get_user_code_loc()
     return _alloc(AllocaOp, *sizes, element_type, loc=loc, ip=None)
 
 
-def load(mem: Value, indices: Sequence[Union[Value, int]], *, loc=None, ip=None):
+def load(mem: Value, indices: Sequence[int | Value], *, loc=None, ip=None):
     if loc is None:
         loc = get_user_code_loc()
     indices = list(indices)
@@ -75,7 +75,7 @@ def load(mem: Value, indices: Sequence[Union[Value, int]], *, loc=None, ip=None)
 
 
 def store(
-    value: Value, mem: Value, indices: Sequence[Union[Value, int]], *, loc=None, ip=None
+    value: Value, mem: Value, indices: Sequence[int | Value], *, loc=None, ip=None
 ):
     if loc is None:
         loc = get_user_code_loc()
@@ -94,7 +94,7 @@ class MemRef(Value, ShapedValue):
     def __repr__(self):
         return str(self)
 
-    def __getitem__(self, idx: Union[tuple, Scalar]) -> "MemRef":
+    def __getitem__(self, idx: tuple | Scalar) -> "MemRef":
         loc = get_user_code_loc()
 
         if not self.has_rank():

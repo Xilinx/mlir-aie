@@ -58,9 +58,9 @@ M, K, N = 16, 32, 16
 
 @func.func(sym_visibility="private")
 def matmul_i32_i32(
-    A: T.memref(M, K, T.i32()),
-    B: T.memref(K, N, T.i32()),
-    C: T.memref(M, N, T.i32()),
+    A: np.ndarray[(M, K), np.dtype[np.int32]],
+    B: np.ndarray[(K, N), np.dtype[np.int32]],
+    C: np.ndarray[(M, N), np.dtype[np.int32]],
 ):
     linalg.matmul(A, B, C)
 
