@@ -36,30 +36,28 @@ from aie.dialects import aie as aiedialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
-INPUT_WITH_ADDRESSES_PIPELINE = (
-    lambda basic_alloc_scheme=False, ctrl_pkt_overlay=False: (
+INPUT_WITH_ADDRESSES_PIPELINE = lambda scheme="", ctrl_pkt_overlay=False: (
+    Pipeline()
+    .lower_affine()
+    .add_pass("aie-canonicalize-device")
+    .Nested(
+        "aie.device",
         Pipeline()
-        .lower_affine()
-        .add_pass("aie-canonicalize-device")
-        .Nested(
-            "aie.device",
-            Pipeline()
-            .add_pass("aie-assign-lock-ids")
-            .add_pass("aie-register-objectFifos")
-            .add_pass("aie-objectFifo-stateful-transform")
-            .add_pass("aie-assign-bd-ids")
-            .add_pass("aie-lower-cascade-flows")
-            .add_pass("aie-lower-broadcast-packet")
-            .add_pass("aie-lower-multicast")
-            .add_pass("aie-assign-tile-controller-ids")
-            .add_pass(
-                "aie-generate-column-control-overlay",
-                route_shim_to_tile_ctrl=ctrl_pkt_overlay,
-            )
-            .add_pass("aie-assign-buffer-addresses", basic_alloc=basic_alloc_scheme),
+        .add_pass("aie-assign-lock-ids")
+        .add_pass("aie-register-objectFifos")
+        .add_pass("aie-objectFifo-stateful-transform")
+        .add_pass("aie-assign-bd-ids")
+        .add_pass("aie-lower-cascade-flows")
+        .add_pass("aie-lower-broadcast-packet")
+        .add_pass("aie-lower-multicast")
+        .add_pass("aie-assign-tile-controller-ids")
+        .add_pass(
+            "aie-generate-column-control-overlay",
+            route_shim_to_tile_ctrl=ctrl_pkt_overlay,
         )
-        .convert_scf_to_cf()
+        .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
     )
+    .convert_scf_to_cf()
 )
 
 LOWER_TO_LLVM_PIPELINE = (
@@ -1056,9 +1054,12 @@ class FlowRunner:
             )
 
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
-            pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
-                opts.basic_alloc_scheme, opts.ctrl_pkt_overlay
-            ).materialize(module=True)
+            if opts.alloc_scheme:
+                pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
+                    opts.alloc_scheme
+                ).materialize(module=True)
+            else:
+                pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE().materialize(module=True)
             run_passes(
                 pass_pipeline,
                 self.mlir_module_str,

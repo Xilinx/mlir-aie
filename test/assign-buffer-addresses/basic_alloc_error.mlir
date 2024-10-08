@@ -1,4 +1,4 @@
-//===- simple.mlir ---------------------------------------------*- MLIR -*-===//
+//===- basic_alloc_error.mlir ---------------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-assign-buffer-addresses="basic-alloc" %s 2>&1 | FileCheck %s
+// RUN: not aie-opt --aie-assign-buffer-addresses="alloc-scheme=basic-sequential" %s 2>&1 | FileCheck %s
 // CHECK:   error: 'aie.tile' op allocated buffers exceeded available memory
 // CHECK:   (stack) : 0x0-0x3FF     (1024 bytes)
 // CHECK:   b       : 0x400-0x83FF         (32768 bytes)

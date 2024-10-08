@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: %PYTHON aiecc.py %VitisSysrootFlag% --basic-alloc-scheme --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %S/test.cpp -o test.elf
+// RUN: %PYTHON aiecc.py %VitisSysrootFlag% --alloc-scheme=basic-sequential --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
 module @benchmark01_DDR_SHIM_fill_rate {
@@ -61,4 +61,3 @@ module @benchmark01_DDR_SHIM_fill_rate {
       aie.end
    }
 }
-
