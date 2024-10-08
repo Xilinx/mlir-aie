@@ -103,7 +103,7 @@ inline void registerAllTranslationsWithoutToLLVMIR() {
 }
 } // namespace mlir
 
-void version_printer(raw_ostream &os) {
+void version_printer(llvm::raw_ostream &os) {
   os << "aie-translate " << AIE_GIT_COMMIT << "\n";
 }
 

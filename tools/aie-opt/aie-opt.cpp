@@ -27,7 +27,7 @@
 #include "clang/CIR/Dialect/Passes.h"
 #include "clang/CIR/Passes.h"
 
-void version_printer(raw_ostream &os) {
+void version_printer(llvm::raw_ostream &os) {
   os << "aie-opt " << AIE_GIT_COMMIT << "\n";
 }
 
@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
 
   xilinx::aievec::registerTransformDialectExtension(registry);
 
-  cl::AddExtraVersionPrinter(version_printer);
+  llvm::cl::AddExtraVersionPrinter(version_printer);
 
   // ClangIR dialect
   registry.insert<mlir::cir::CIRDialect>();
