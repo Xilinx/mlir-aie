@@ -659,7 +659,7 @@ class TileArray:
             return aie.buffer(*args, **kwargs)
 
         # np.vectorize doesn't seem to play well with ndarray types, so I use this buffer_creator hack
-        r = np.vectorize(buffer_creator, otypes=[object])(*args, **kwargs)
+        r = np.vectorize(buffer_constructor, otypes=[object])(*args, **kwargs)
 
         if r.size == 1:
             r = r[0]
