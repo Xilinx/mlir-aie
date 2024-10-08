@@ -42,9 +42,12 @@ IMAGE_SIZE = [28, 28]
 
 # Model Params
 LINEAR_INPUTS = np.prod(IMAGE_SIZE)         # Image dimension TODO: change if resize?
-LINEAR_OUTPUTS = 1 #20                      # Will use 20 neurons so will have 20 outputs
+LINEAR_OUTPUTS = 20                         # Will use 20 neurons so will have 20 outputs
 OUTPUT_CLASSES = 10                         # Number of classes (10 digits)
 USE_BIAS = False                            # TODO: for simplicity at first
+
+# Training
+TRAINING_EPOCHS = 10
 
 ###############################################################################################################
 ##################################### Get dataset (from reference)
@@ -81,7 +84,8 @@ class SimpleMLP(nn.Module):
             nn.Flatten(),
             nn.Linear(LINEAR_INPUTS, LINEAR_OUTPUTS, bias=USE_BIAS),
             nn.ReLU(),
-            nn.Linear(LINEAR_OUTPUTS, OUTPUT_CLASSES, bias=USE_BIAS)
+            nn.Linear(LINEAR_OUTPUTS, OUTPUT_CLASSES, bias=USE_BIAS),
+            # TODO: need to move softmax from loss function into model
         )
 
     def forward(self, x):
@@ -137,8 +141,7 @@ def train(data_loader, model, criterion, optimizer):
     accuracy = total_correct/num_items
     print(f"Average loss: {train_loss:7f}, accuracy: {accuracy:.2%}")
 
-epochs = 1 # TODO: I reduced from 10 to 1
-for epoch in range(epochs):
+for epoch in range(TRAINING_EPOCHS):
     print(f"Training epoch: {epoch+1}")
     train(train_loader, model, criterion, optimizer)
 
