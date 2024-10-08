@@ -21,6 +21,7 @@
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
@@ -30,6 +31,7 @@
 #include "clang/CIR/Dialect/IR/CIRAttrs.h"
 #include "clang/CIR/Dialect/IR/CIRDialect.h"
 #include "clang/CIR/Dialect/IR/CIRTypes.h"
+#include "clang/CIR/LowerToMLIR.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -138,6 +140,36 @@ bool isUnrealizedConversionCastWithAnnotation(
       if (attr.getName() == needle)
         return true;
   return false;
+}
+
+// Generate the equivalent memref type of an aie::buffer
+mlir::MemRefType bufferMemrefType(mlir::Type buffer,
+                                  mlir::ConversionPatternRewriter &rewriter) {
+  static mlir::TypeConverter typeConverter = cir::prepareTypeConverter();
+  buffer.dump();
+  if (auto p = mlir::dyn_cast<mlir::cir::PointerType>(buffer)) {
+    if (auto bufferType =
+            mlir::dyn_cast<mlir::cir::StructType>(p.getPointee())) {
+      bufferType.dump();
+      // For now the aie::buffer is implemented as a std::array in the buffer
+      // struct
+      auto members = bufferType.getMembers();
+      if (auto stdArrayType =
+              mlir::dyn_cast<mlir::cir::StructType>(members.front())) {
+        stdArrayType.dump();
+        // Access the array inside the std::array struct
+        if (auto arrayType = mlir::dyn_cast<mlir::cir::ArrayType>(
+                stdArrayType.getMembers().front())) {
+          arrayType.dump();
+          auto memref = mlir::dyn_cast<mlir::MemRefType>(
+              typeConverter.convertType(arrayType));
+          memref.dump();
+          return memref;
+        }
+      }
+    }
+  }
+  return {};
 }
 
 // Lower C++ code like \code aie::device<aie::npu1> into an \code
@@ -390,8 +422,7 @@ struct DeviceLowering
                       mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(user)) {
                 bufCast.dump();
                 (void)tileOp;
-                std::array<std::int64_t, 1> shape{8192};
-                auto mrt = mlir::MemRefType::get(shape, rewriter.getI32Type());
+                auto mrt = bufferMemrefType(bufCast.getType(0), rewriter);
                 rewriter.create<xilinx::AIE::BufferOp>(bufCast.getLoc(), mrt,
                                                        tileOp.getResult());
               }
