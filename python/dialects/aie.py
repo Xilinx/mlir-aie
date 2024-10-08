@@ -227,13 +227,13 @@ class buffer(MemRef):
         cls,
         tile,
         datatype: MemRefType | type[np.ndarray],
-        initial_value: np.ndarray | None = None,
         name: str | None = None,
+        initial_value: np.ndarray | None = None,
         loc=None,
         ip=None,
     ):
         memref_type = try_convert_np_type_to_mlir_type(datatype)
-        if initial_value is not None:
+        if not (initial_value is None):
             assert isinstance(initial_value, np.ndarray)
             initial_value = DenseElementsAttr.get(
                 initial_value,
