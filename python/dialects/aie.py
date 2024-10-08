@@ -237,7 +237,7 @@ class buffer(MemRef):
             assert isinstance(initial_value, np.ndarray)
             initial_value = DenseElementsAttr.get(
                 initial_value,
-                type=memref_type.dtype,
+                type=memref_type.element_type,
                 context=None,
             )
         my_buffer = BufferOp(
