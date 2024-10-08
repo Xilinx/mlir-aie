@@ -87,7 +87,7 @@ def conv2dk1():
 
             # Set up compute tiles
 
-            rtp2 = buffer(ComputeTile2, np.ndarray[(16), np.int32], "rtp2")
+            rtp2 = buffer(ComputeTile2, np.ndarray[(16,), np.int32], "rtp2")
 
             # Compute tile 2
             @core(ComputeTile2, "conv2dk1_i8.o")

@@ -143,16 +143,16 @@ def bottleneck4AIEs():
             # runtime parameters
 
             rtpComputeTile2 = buffer(
-                ComputeTile2, np.ndarray[(16), np.int32], "rtpComputeTile2"
+                ComputeTile2, np.ndarray[(16,), np.int32], "rtpComputeTile2"
             )
             rtpComputeTile3 = buffer(
-                ComputeTile3, np.ndarray[(16), np.int32], "rtpComputeTile3"
+                ComputeTile3, np.ndarray[(16,), np.int32], "rtpComputeTile3"
             )
             rtpComputeTile4 = buffer(
-                ComputeTile4, np.ndarray[(16), np.int32], "rtpComputeTile4"
+                ComputeTile4, np.ndarray[(16,), np.int32], "rtpComputeTile4"
             )
             rtpComputeTile5 = buffer(
-                ComputeTile5, np.ndarray[(16), np.int32], "rtpComputeTile5"
+                ComputeTile5, np.ndarray[(16,), np.int32], "rtpComputeTile5"
             )
 
             # set up data movement with OFs

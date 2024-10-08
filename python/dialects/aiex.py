@@ -440,8 +440,7 @@ class Channel:
         self,
         tile,
         buffer=None,
-        shape=None,
-        dtype=None,
+        datatype: MemRefType | type[np.ndarray] | None = None,
         buffer_name=None,
         initial_value=None,
         producer_lock_id=None,
@@ -457,12 +456,11 @@ class Channel:
     ):
         if buffer is None:
             assert (
-                shape is not None and dtype is not None
-            ), f"must provide either existing buffer or buffer shape and dtype"
+                datatype is not None
+            ), f"must provide either existing buffer or datatype"
             buffer = aie.buffer(
                 tile,
-                shape,
-                dtype,
+                datatype,
                 name=buffer_name,
                 initial_value=initial_value,
                 loc=loc,
@@ -588,9 +586,9 @@ class TileArray:
         return broadcast_flow(self.df, other.df, *args, **kwargs)
 
     def channel(self, *args, **kwargs):
-        args = _broadcast_args_to((self.df,) + args, self.shape)
+        args = _broadcast_args_to((self.df,) + args, self.datatype)
         kwargs = dict(
-            zip(kwargs.keys(), _broadcast_args_to(kwargs.values(), self.shape))
+            zip(kwargs.keys(), _broadcast_args_to(kwargs.values(), self.datatype))
         )
         r = np.vectorize(Channel, otypes=[object])(*args, **kwargs)
         if r.size == 1:
@@ -648,9 +646,9 @@ class TileArray:
         return find_matching_buffers(self, **kwargs)
 
     def buffer(self, *args, **kwargs):
-        args = _broadcast_args_to((self.df,) + args, self.shape)
+        args = _broadcast_args_to((self.df,) + args, self.datatype)
         kwargs = dict(
-            zip(kwargs.keys(), _broadcast_args_to(kwargs.values(), self.shape))
+            zip(kwargs.keys(), _broadcast_args_to(kwargs.values(), self.datatype))
         )
         r = np.vectorize(aie.buffer, otypes=[object])(*args, **kwargs)
         if r.size == 1:
@@ -658,9 +656,9 @@ class TileArray:
         return r
 
     def lock(self, *args, **kwargs):
-        args = _broadcast_args_to((self.df,) + args, self.shape)
+        args = _broadcast_args_to((self.df,) + args, self.datatype)
         kwargs = dict(
-            zip(kwargs.keys(), _broadcast_args_to(kwargs.values(), self.shape))
+            zip(kwargs.keys(), _broadcast_args_to(kwargs.values(), self.datatype))
         )
         r = np.vectorize(aie.lock, otypes=[object])(*args, **kwargs)
         if r.size == 1:

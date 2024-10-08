@@ -288,7 +288,9 @@ def channels_basic(module):
         )
         c = Channel(tiles[2, 2].tile, b)
         c = Channel(
-            tiles[2, 2].tile, shape=(10, 10), dtype=T.i32(), buffer_name="alice"
+            tiles[2, 2].tile,
+            datatype=np.ndarray[(10, 10), np.dtype[np.int32]],
+            buffer_name="alice",
         )
 
     # CHECK: %bob = aie.buffer(%tile_2_2) {sym_name = "bob"} : memref<10x10xi32>
@@ -307,7 +309,9 @@ def channels_basic(module):
         tiles = TileArray()
 
         c = Channel(
-            tiles[2, 2].tile, shape=(10, 10), dtype=T.i32(), buffer_name="alice"
+            tiles[2, 2].tile,
+            datatype=np.ndarray[(10, 10), np.dtype[np.int32]],
+            buffer_name="alice",
         )
 
         @aie.mem(tiles[2, 2].tile)
@@ -346,11 +350,11 @@ def nd_channels(module):
     def npu():
         tiles = TileArray()
 
-        shapes = np.array([(10, 10)], dtype="i,i").astype(object)
-        c = tiles[2, 2].channel(shape=shapes, dtype=[T.i32()])
+        datatypes = [np.array([(10, 10)], dtype="i,i").astype(object)]
+        c = tiles[2, 2].channel(datatype=datatypes)
         # CHECK: <Channel: buffer=MemRef(%buffer_2_2, memref<10x10xi32>) producer_lock=Scalar(%buffer_2_2_producer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_producer_lock"}) consumer_lock=Scalar(%buffer_2_2_consumer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_consumer_lock"})>
         print(c)
-        cs = tiles[2:4, 2:4].channel(shape=shapes, dtype=[T.i32()])
+        cs = tiles[2:4, 2:4].channel(datatype=datatypes)
         assert cs.shape == (2, 2)
 
         # CHECK: (0, 0) <Channel: buffer=MemRef(%buffer_2_2_0, memref<10x10xi32>) producer_lock=Scalar(%buffer_2_2_0_producer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_0_producer_lock"}) consumer_lock=Scalar(%buffer_2_2_0_consumer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_0_consumer_lock"})>
@@ -360,10 +364,8 @@ def nd_channels(module):
         for idx, c in np.ndenumerate(cs):
             print(idx, c)
 
-        shapes = np.array([[(1, 2), (3, 4)], [(5, 6), (7, 8)]], dtype="i,i").astype(
-            object
-        )
-        cs = tiles[2:4, 2:4].channel(shape=shapes, dtype=[T.i32()])
+        datatypes = np.array([[(1, 2), (3, 4)], [(5, 6), (7, 8)]], dtype="i,i")
+        cs = tiles[2:4, 2:4].channel(datatype=datatypes)
         assert cs.shape == (2, 2)
 
         # CHECK: (0, 0) <Channel: buffer=MemRef(%buffer_2_2_1, memref<1x2xi32>) producer_lock=Scalar(%buffer_2_2_1_producer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_1_producer_lock"}) consumer_lock=Scalar(%buffer_2_2_1_consumer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_1_consumer_lock"})>
