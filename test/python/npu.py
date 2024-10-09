@@ -7,7 +7,6 @@
 # RUN: %python %s | FileCheck %s
 import numpy as np
 from aie.extras.dialects.ext import memref
-from aie.extras.dialects.ext.arith import constant
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
@@ -285,10 +284,10 @@ def edge_detect(module):
 
         @core(T3, "filter2d.cc.o")
         def core_body():
-            kernel = memref.alloc(3, 3, T.i16())
-            v0 = constant(0, T.i16())
-            v1 = constant(4096, T.i16())
-            v_minus4 = constant(-16384, T.i16())
+            kernel = memref.alloc((3, 3), T.i16())
+            v0 = 0
+            v1 = 4096
+            v_minus4 = -16384
             kernel[0, 0] = v0
             kernel[0, 1] = v1
             kernel[0, 2] = v0
@@ -426,7 +425,7 @@ def my_add_one_objFifo(module):
                 elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
                 elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
                 for i in range(8):
-                    elem_out[i] = elem_in[i] + constant(1, T.i32())
+                    elem_out[i] = elem_in[i] + 1
                 of_in1.release(ObjectFifoPort.Consume, 1)
                 of_out1.release(ObjectFifoPort.Produce, 1)
 

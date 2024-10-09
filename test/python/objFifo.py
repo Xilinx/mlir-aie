@@ -12,8 +12,6 @@ from aie.dialects.aie import (
     Core,
     end,
 )
-import aie.extras.types as T
-from aie.extras.dialects.ext.arith import constant
 from aie.ir import InsertionPoint, Block
 
 from util import construct_and_print_module
@@ -31,8 +29,8 @@ from util import construct_and_print_module
 # CHECK:      %core_1_2 = aie.core(%tile_1_2) {
 # CHECK:        %0 = aie.objectfifo.acquire @of0(Consume, 1) : !aie.objectfifosubview<memref<256xi32>>
 # CHECK:        %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<256xi32>> -> memref<256xi32>
-# CHECK:        %c10_i32 = arith.constant 10 : i32
 # CHECK:        %c0 = arith.constant 0 : index
+# CHECK:        %c10_i32 = arith.constant 10 : i32
 # CHECK:        memref.store %c10_i32, %1[%c0] : memref<256xi32>
 # CHECK:        aie.objectfifo.release @of0(Consume, 1)
 # CHECK:        aie.end
@@ -61,6 +59,6 @@ def objFifo_example():
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
             elem0 = of0.acquire(ObjectFifoPort.Consume, 1)
-            elem0[0] = constant(10, T.i32())
+            elem0[0] = 10
             of0.release(ObjectFifoPort.Consume, 1)
             end()

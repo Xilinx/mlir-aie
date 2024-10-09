@@ -11,4 +11,4 @@ pybind11>=2.9.0, <=2.10.3
 rich
 setuptools
 wheel
-git+https://github.com/makslevental/mlir-python-extras.git@9033351
+git+https://github.com/hunhoffe/mlir-python-extras.git@4743810 # TODO(erika): temporary, until can upstream
