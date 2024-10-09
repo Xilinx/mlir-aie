@@ -363,9 +363,6 @@ def resnet_conv_x():
                 conv2dk1_skip_ui8,
             ]
 
-            act1_fifo_names = ["act1_00_02_01", "act1_04_15_01", "act1_13_22_21"]
-            act1_fifos = {}
-
             # input tensor (with broadcast for skip connection)
             act1_fifo_names = ["act1_00_02_01", "act1_04_15_11", "act1_13_22_21"]
             act1_fifos = {}
