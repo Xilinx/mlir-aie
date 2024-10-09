@@ -19,6 +19,7 @@ from aie.dialects.aie import translate_aie_vec_to_cpp
 from aie.ir import AffineMap, AffineDimExpr
 from util import construct_and_print_module
 
+
 # CHECK-LABEL: TEST: test_emit
 # CHECK: module {
 # CHECK:   func.func @demo_fun1() -> i32 {
