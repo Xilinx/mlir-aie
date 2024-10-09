@@ -13,13 +13,13 @@ from ._aie_ops_gen import _Dialect
 from ._ods_common import _cext
 from .func import FuncOp
 from ..helpers.dialects.ext.func import call
-from ..extras.dialects.ext.arith import Scalar, constant, ShapedValue
+from ..extras.dialects.ext.arith import Scalar, constant
+from ..extras.dialects.ext._shaped_value import ShapedValue
 from ..extras.dialects.ext.memref import (
     MemRef,
     store as memref_store,
     load as memref_load,
 )
-from ..extras.dialects.ext.func import call
 from .._mlir_libs import get_dialect_registry
 
 # noinspection PyUnresolvedReferences
