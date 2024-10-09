@@ -33,8 +33,8 @@ from ..dialects.aie import (
     translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
 )
-from ..helpers.runtime.passes import Pipeline, run_pipeline
-from ..helpers.util import find_ops
+from ..extras.runtime.passes import Pipeline, run_pipeline
+from ..extras.util import find_ops
 from ..ir import Context, Module
 
 VITIS_DIR = Path(os.getenv("VITIS_DIR", "/opt/tools/Xilinx/Vitis/2023.2")).absolute()

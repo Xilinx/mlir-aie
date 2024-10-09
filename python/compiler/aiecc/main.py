@@ -23,8 +23,8 @@ from textwrap import dedent
 import time
 import uuid
 
-from aie.helpers.runtime.passes import Pipeline
-from aie.helpers.util import find_ops
+from aie.extras.runtime.passes import Pipeline
+from aie.extras.util import find_ops
 import aiofiles
 import rich.progress as progress
 

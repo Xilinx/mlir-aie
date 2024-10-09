@@ -28,14 +28,15 @@ from aie.dialects.transform import any_op_t, apply_registered_pass, get_parent_o
 from aie.dialects.transform.extras import named_sequence
 from aie.dialects.transform.loop import loop_unroll
 from aie.dialects.transform.structured import structured_match
-from aie.helpers.context import ExplicitlyManagedModule
-from aie.helpers.dialects.ext import arith, func, linalg
-from aie.helpers.runtime.passes import Pipeline, run_pipeline
+from aie.extras.context import ExplicitlyManagedModule
+from aie.extras.dialects.ext import arith, linalg
+from aie.extras.runtime.passes import Pipeline, run_pipeline
+from aie.helpers.dialects.ext import func
 
 # noinspection PyUnresolvedReferences
 from aie.helpers.testing import MLIRContext, mlir_ctx as ctx
-import aie.helpers.types as T
-from aie.helpers.util import find_ops
+import aie.extras.types as T
+from aie.extras.util import find_ops
 from aie.ir import StringAttr, UnitAttr
 from aie.xrt import XCLBin
 from filelock import FileLock

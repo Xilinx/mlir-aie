@@ -26,11 +26,11 @@ from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
 from aie.helpers.dialects.ext.scf import _for as range_
 
 # noinspection PyUnresolvedReferences
-from aie.helpers.dialects.ext import arith, linalg
+from aie.extras.dialects.ext import arith, linalg
 
 # noinspection PyUnresolvedReferences
 from aie.helpers.testing import MLIRContext
-import aie.helpers.types as T
+import aie.extras.types as T
 from aie.xrt import XCLBin
 from filelock import FileLock
 import numpy as np

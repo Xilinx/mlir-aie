@@ -24,7 +24,7 @@ from aie.dialects.aie import (
     get_target_model,
 )
 from aie.ir import InsertionPoint, Block
-from aie.helpers.context import mlir_mod_ctx
+from aie.extras.context import mlir_mod_ctx
 from aie.extras import types as T
 
 from util import construct_and_print_module

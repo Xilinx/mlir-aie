@@ -21,12 +21,13 @@ from aie.dialects.aie import (
     npu_instgen,
 )
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.dialects.ext import func, memref
-from aie.helpers.runtime.passes import run_pipeline
+from aie.helpers.dialects.ext import func
+from aie.extras.dialects.ext import memref
+from aie.extras.runtime.passes import run_pipeline
 
 # noinspection PyUnresolvedReferences
-from aie.helpers.testing import MLIRContext, mlir_ctx as ctx
-import aie.helpers.types as T
+from aie.ext.testing import MLIRContext, mlir_ctx as ctx
+import aie.extras.types as T
 from aie.xrt import XCLBin
 from filelock import FileLock
 import numpy as np

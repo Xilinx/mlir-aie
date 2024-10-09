@@ -3,7 +3,7 @@
 
 # RUN: %python %s | FileCheck %s
 
-from aie.helpers.context import mlir_mod_ctx
+from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 

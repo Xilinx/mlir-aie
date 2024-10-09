@@ -4,7 +4,7 @@
 # RUN: %PYTHON %s | FileCheck %s
 
 from aie.dialects.aiex import GetTileOp
-from aie.helpers.dialects.ext import arith
+from aie.extras.dialects.ext import arith
 from aie.extras import types as T
 from util import construct_and_print_module
 
