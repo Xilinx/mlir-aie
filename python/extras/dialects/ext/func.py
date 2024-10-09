@@ -1,11 +1,16 @@
-import sys
 import numpy as np
 from functools import update_wrapper
-from typing import get_origin
+import sys
+from typing import get_args, get_origin
 
-from ....api.tensor import MyTensorType
 from ...meta import op_region_builder
-from ...util import get_user_code_loc, make_maybe_no_args_decorator, get_arg_types
+from ...util import (
+    get_arg_types,
+    get_user_code_loc,
+    make_maybe_no_args_decorator,
+    NpuDType,
+    try_convert_np_type_to_mlir_type,
+)
 from ....dialects._ods_common import get_op_result_or_op_results
 from ....dialects.func import *
 from ....ir import (
@@ -18,13 +23,15 @@ from ....ir import (
     TypeAttr,
     Value,
 )
+from .arith import Scalar
 
 
 def call(
-    callee_or_results: FuncOp | List[Type],
-    arguments_or_callee: List[Value] | FlatSymbolRefAttr,
-    str,
-    arguments: list | None = None,
+    callee_or_results: FuncOp | List[Type] | str,
+    arguments_or_callee: (
+        List[NpuDType | type[np.ndarray] | Value] | FlatSymbolRefAttr | str
+    ),
+    arguments: List[NpuDType | type[np.ndarray] | Value] | None = None,
     *,
     call_op_ctor=CallOp.__base__,
     loc=None,
@@ -43,18 +50,30 @@ def call(
             raise ValueError(
                 "unexpected third argument when constructing a call" + "to a function"
             )
-        if not all(
-            isinstance(a, (Value, Operation, OpView)) for a in arguments_or_callee
+        if len(arguments_or_callee) != len(
+            callee_or_results.function_type.value.inputs
         ):
             raise ValueError(
-                f"{arguments_or_callee} must all be Value, Operation, or OpView"
+                f"Expected {len(callee_or_results.function_type.value.inputs)} arguments, but got {len(arguments_or_callee)} arguments"
             )
+        args = []
+        for i, a in enumerate(arguments_or_callee):
+            if isinstance(a, (int, float)):
+                # Get the type to convert the python value to based on the expected input to the function
+                # TODO: should check if it's safe to do this? What is int value is outside range?
+                args.append(
+                    Scalar(a, dtype=callee_or_results.function_type.value.inputs[i])
+                )
+            else:
+                args.append(a)
+        if not all(isinstance(a, (Value, Operation, OpView)) for a in args):
+            raise ValueError(f"{args} must all be Value, Operation, or OpView")
 
         return get_op_result_or_op_results(
             call_op_ctor(
                 callee_or_results.function_type.value.results,
                 FlatSymbolRefAttr.get(callee_or_results.sym_name.value),
-                arguments_or_callee,
+                args,
                 loc=loc,
                 ip=ip,
             )
@@ -115,9 +134,12 @@ def prep_func_types(sig, return_types):
     ]
     # convert ndarray types to memref types
     assert all(
-        isinstance(r, (str, Type)) or isalambda(r) or get_origin(r) == np.ndarray
+        isinstance(r, (str, Type))
+        or isalambda(r)
+        or get_origin(r) == np.ndarray
+        or r in get_args(NpuDType)
         for r in input_types
-    ), f"all input types must be mlir types or ndarrays (tensors) {input_types=}"
+    ), f"all input types must be mlir types or ndarrays (tensors) or np dtypes {input_types=}"
     user_loc = get_user_code_loc()
     # If ir.Context is none (like for deferred func emit)
     if user_loc is None:
@@ -196,17 +218,18 @@ class FuncBase:
 
     def emit(self, *call_args, decl=False, force=False) -> FuncOp:
         if self._func_op is None or decl or force:
-            if len(call_args) == 0:
-                input_types = self.input_types[:]
-                for i, v in enumerate(input_types):
-                    if isinstance(v, str):
-                        input_types[i] = Type(eval(v, self.body_builder.__globals__))
-                    elif isalambda(v):
-                        input_types[i] = v()
-                    elif get_origin(v) == np.ndarray:
-                        input_types[i] = MyTensorType.get_memref_type(v)
-            else:
-                input_types = get_arg_types(call_args)
+            input_types = self.input_types[:]
+            for i, v in enumerate(input_types):
+                if isinstance(v, str):
+                    input_types[i] = Type(eval(v, self.body_builder.__globals__))
+                elif isalambda(v):
+                    input_types[i] = v()
+                else:
+                    new_type = try_convert_np_type_to_mlir_type(v)
+                    if new_type != v:
+                        input_types[i] = new_type
+            if len(call_args) != 0:
+                assert len(call_args) == len(input_types)
 
             function_type = TypeAttr.get(
                 FunctionType.get(

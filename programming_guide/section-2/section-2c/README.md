@@ -107,7 +107,7 @@ of0 = object_fifo
         A,
         B,
         3,
-        T.memref((4, 8), T.i8()),
+        np.ndarray[(4, 8), np.dtype[np.int8]],
         [
             (2, 16),
             (3, 2),

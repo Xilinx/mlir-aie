@@ -60,9 +60,9 @@ k = K // tiles
 
 @func.func(sym_visibility="private")
 def vec_add_i32_i32(
-    a: T.memref(k, T.i32()),
-    b: T.memref(k, T.i32()),
-    c: T.memref(k, T.i32()),
+    a: np.ndarray[(k,), np.dtype[np.int32]],
+    b: np.ndarray[(k,), np.dtype[np.int32]],
+    c: np.ndarray[(k,), np.dtype[np.int32]],
 ):
     linalg.add(a, b, c)
 

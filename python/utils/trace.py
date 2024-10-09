@@ -5,8 +5,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
-
-import typing
 from aie.dialects.aiex import *
 from aie.dialects.aie import get_target_model
 from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEvent

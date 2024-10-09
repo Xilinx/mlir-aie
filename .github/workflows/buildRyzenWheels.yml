@@ -52,6 +52,7 @@ jobs:
           python -m venv aie-venv
           source aie-venv/bin/activate
           pip install -r python/requirements.txt
+          pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
 
           VERSION=$(utils/clone-llvm.sh --get-wheel-version)
           pip -q download mlir==$VERSION \
@@ -158,6 +159,7 @@ jobs:
           python -m venv aie-venv
           source aie-venv/bin/activate
           pip install -r python/requirements.txt
+          pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
           source aie-venv/bin/activate
           
           export MLIR_INSTALL_ABS_PATH=$PWD/mlir

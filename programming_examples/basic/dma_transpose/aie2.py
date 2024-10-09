@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-
+import numpy as np
 import sys
 import numpy as np
 
@@ -26,7 +26,7 @@ if len(sys.argv) == 3:
     N = M * K
 
 my_dtype = np.uint32
-obj_type = np.ndarray[my_dtype, (M, K)]
+obj_type = np.ndarray[(M, K), np.dtype[my_dtype]]
 
 of_in = MyObjectFifo(2, obj_type, shim_endpoint=(0, 0))
 of_out = MyObjectFifo(2, obj_type, shim_endpoint=(0, 0))

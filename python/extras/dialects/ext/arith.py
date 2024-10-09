@@ -2,6 +2,7 @@ import operator
 from abc import abstractmethod
 from copy import deepcopy
 from functools import cached_property, partialmethod
+import numpy as np
 from typing import Tuple
 
 from ...util import get_user_code_loc, infer_mlir_type, mlir_type_to_np_dtype
@@ -48,8 +49,8 @@ def constant(
     index: bool | None = None,
     *,
     vector: bool | None = False,
-    loc: Location = None,
-    ip: InsertionPoint = None,
+    loc: Location | None = None,
+    ip: InsertionPoint | None = None,
 ) -> Value:
     """Instantiate arith.constant with value `value`.
 
@@ -271,10 +272,10 @@ def _binary_op(
     lhs: "ArithValue",
     rhs: "ArithValue",
     op: str,
-    predicate: str = None,
-    signedness: str = None,
+    predicate: str | None = None,
+    signedness: str | None = None,
     *,
-    loc: Location = None,
+    loc: Location | None = None,
 ) -> "ArithValue":
     """Generic for handling infix binary operator dispatch.
 

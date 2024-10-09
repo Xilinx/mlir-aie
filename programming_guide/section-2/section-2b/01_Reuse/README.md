@@ -18,23 +18,23 @@ In the example below `of0` is created between producer A and consumer B with a d
 ```python
 A = tile(1, 3)
 B = tile(2, 4)
-of0 = object_fifo("objfifo0", A, B, 3, T.memref(256, T.i32())) # 3 objects: object0, object1, object2
+of0 = object_fifo("objfifo0", A, B, 3, np.ndarray[(256,), np.dtype[np.int32]]) # 3 objects: object0, object1, object2
 
 @core(B)
 def core_body():
     ### Situation 1
     elems = of0.acquire(ObjectFifoPort.Consume, 2) # acquires object0 and object1
-    call(test_func2, [elems[0], elems[1]])
+    test_func2(elems[0], elems[1])
     of0.release(ObjectFifoPort.Consume, 1) # releases object0
 
     ### Situation 2
     elems_2 = of0.acquire(ObjectFifoPort.Consume, 2) # acquires object2; object1 was previously acquired
-    call(test_func2, [elems_2[0], elems_2[1]])
+    test_func2(elems_2[0], elems_2[1])
     of0.release(ObjectFifoPort.Consume, 1) # releases object1
 
     ### Situation 3
     elems_3 = of0.acquire(ObjectFifoPort.Consume, 2) # acquires object0; object2 was previously acquired
-    call(test_func2, [elems_3[0], elems_3[1]])
+    test_func2(elems_3[0], elems_3[1])
     of0.release(ObjectFifoPort.Consume, 1) # releases object2
 
     ### Situation 4
@@ -53,13 +53,13 @@ The situations above can be fused into a `for`-loop with 4 iterations. By contin
 ```python
 A = tile(1, 3)
 B = tile(2, 4)
-of0 = object_fifo("objfifo0", A, B, 3, T.memref(256, T.i32())) # 3 objects: object0, object1, object2
+of0 = object_fifo("objfifo0", A, B, 3, np.ndarray[(256,), np.dtype[np.int32]]) # 3 objects: object0, object1, object2
 
 @core(B)
 def core_body():
     for _ in range_(4):
         elems = of0.acquire(ObjectFifoPort.Consume, 2)
-        call(test_func2, [elems[0], elems[1]])
+        test_func2(elems[0], elems[1])
         of0.release(ObjectFifoPort.Consume, 1)
 ```
 

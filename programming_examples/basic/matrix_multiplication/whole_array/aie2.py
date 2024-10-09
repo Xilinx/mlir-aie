@@ -4,15 +4,24 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2023 AMD Inc.
-
-import sys
 import argparse
+import numpy as np
+import sys
 
 from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.dialects.ext.scf import _for as range_
+from aie.extras.util import bfloat16
+
+dtype_map = {
+    "bf16": bfloat16,
+    "i8": np.int8,
+    "i16": np.int16,
+    "f32": np.float32,
+    "i32": np.int32,
+}
 
 
 def main():
@@ -64,24 +73,8 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
 
-    dtype_in = None
-    if dtype_in_str == "bf16":
-        dtype_in = T.bf16
-    elif dtype_in_str == "i8":
-        dtype_in = T.i8
-    elif dtype_in_str == "i16":
-        dtype_in = T.i16
-    dtype_out = None
-    if dtype_out_str == "bf16":
-        dtype_out = T.bf16
-    elif dtype_out_str == "i8":
-        dtype_out = T.i8
-    elif dtype_out_str == "i16":
-        dtype_out = T.i16
-    elif dtype_out_str == "f32":
-        dtype_out = T.f32
-    elif dtype_out_str == "i32":
-        dtype_out = T.i32
+    dtype_in = dtype_map[dtype_in_str]
+    dtype_out = dtype_map[dtype_out_str]
 
     if dtype_in_str == "bf16":
         r = 4
@@ -146,15 +139,15 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
 
     @device(dev)
     def device_body():
-        A_l2_memref_ty = T.memref(m * k * n_A_tiles_per_shim, dtype_in())
-        B_l2_memref_ty = T.memref(k * n, dtype_in())
-        C_l2_memref_ty = T.memref(m * n * n_aie_rows, dtype_out())
-        A_l1_memref_ty = T.memref(m, k, dtype_in())
-        B_l1_memref_ty = T.memref(k, n, dtype_in())
-        C_l1_memref_ty = T.memref(m, n, dtype_out())
+        A_l2_ty = np.ndarray[(m * k * n_A_tiles_per_shim,), np.dtype[dtype_in]]
+        B_l2_ty = np.ndarray[(k * n,), np.dtype[dtype_in]]
+        C_l2_ty = np.ndarray[(m * n * n_aie_rows,), np.dtype[dtype_out]]
+        A_l1_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
+        B_l1_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
+        C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
         # AIE Core Function declarations
-        zero = external_func(f"zero_{dtype_out_str}", inputs=[C_l1_memref_ty])
+        zero = external_func(f"zero_{dtype_out_str}", inputs=[C_l1_ty])
         matmul_vectorized_func_name = (
             f"matmul_{dtype_in_str}_{dtype_out_str}"
             if not b_col_maj
@@ -162,7 +155,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
         )
         matmul = external_func(
             matmul_vectorized_func_name,
-            inputs=[A_l1_memref_ty, B_l1_memref_ty, C_l1_memref_ty],
+            inputs=[A_l1_ty, B_l1_ty, C_l1_ty],
         )
 
         # Tile declarations as tile[row][col]
@@ -190,7 +183,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
                 mem_tiles[row // n_A_tiles_per_shim],
                 core_tiles[row][0:n_aie_cols],  # broadcast along one row
                 fifo_depth,
-                A_l1_memref_ty,
+                A_l1_ty,
                 [
                     (m // r, r * k),
                     (k // s, s),
@@ -204,7 +197,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
                 shim_tiles[col],
                 mem_tiles[col],
                 fifo_depth,
-                A_l2_memref_ty,
+                A_l2_ty,
             )
             # If n_cols == n_rows, n_A_tiles_per_shim is 1 and
             # this simply links a_l3l2_fifos[col] to a_l2l1_fifos[row] directly,
@@ -231,7 +224,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
                 shim_tiles[col],
                 mem_tiles[col],
                 fifo_depth,
-                B_l2_memref_ty,
+                B_l2_ty,
             )
             B_l2l1_fifos[col] = object_fifo(
                 f"B_L2L1_{col}",
@@ -240,7 +233,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
                     core_tiles[j][col] for j in range(n_aie_rows)
                 ],  # broadcast along one column
                 fifo_depth,
-                B_l1_memref_ty,
+                B_l1_ty,
                 (
                     [
                         (k // s, s * n),
@@ -267,14 +260,14 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
                     core_tiles[row][col],
                     mem_tiles[col],
                     fifo_depth,
-                    C_l1_memref_ty,
+                    C_l1_ty,
                 )
             C_l2l3_fifos[col] = object_fifo(
                 f"C_L2L3_{col}",
                 mem_tiles[col],
                 shim_tiles[col],
                 fifo_depth,
-                C_l2_memref_ty,
+                C_l2_ty,
                 [
                     (m // r, r * n),
                     (r, t),
@@ -309,7 +302,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
                             elem_out = C_l1l2_fifos[row][col].acquire(
                                 ObjectFifoPort.Produce, 1
                             )
-                            call(zero, [elem_out])
+                            zero(elem_out)
 
                             for _ in range_(K // k):
                                 elem_in_a = A_l2l1_fifos[row].acquire(
@@ -318,7 +311,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
                                 elem_in_b = B_l2l1_fifos[col].acquire(
                                     ObjectFifoPort.Consume, 1
                                 )
-                                call(matmul, [elem_in_a, elem_in_b, elem_out])
+                                matmul(elem_in_a, elem_in_b, elem_out)
                                 A_l2l1_fifos[row].release(ObjectFifoPort.Consume, 1)
                                 B_l2l1_fifos[col].release(ObjectFifoPort.Consume, 1)
 
@@ -326,9 +319,9 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_m
 
         # To/from AIE-array data movement
         @runtime_sequence(
-            T.memref(M * K, dtype_in()),
-            T.memref(K * N, dtype_in()),
-            T.memref(M * N, dtype_out()),
+            np.ndarray[(M * K,), np.dtype[dtype_in]],
+            np.ndarray[(K * N,), np.dtype[dtype_in]],
+            np.ndarray[(M * N,), np.dtype[dtype_out]],
         )
         def sequence(A, B, C):
             # We are limited in the number of BDs. After synchronizing, we can reuse BDs.

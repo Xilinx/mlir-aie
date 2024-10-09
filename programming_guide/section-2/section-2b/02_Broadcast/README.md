@@ -22,7 +22,7 @@ A = tile(1, 1)
 B = tile(1, 3)
 C = tile(2, 3)
 D = tile(3, 3)
-of0 = object_fifo("objfifo0", A, [B, C, D], 3, T.memref(256, T.i32()))
+of0 = object_fifo("objfifo0", A, [B, C, D], 3, np.ndarray[(256,), np.dtype[np.int32]])
 ```
 
 The `depth` input of an Object FIFO can also be specified as an array of integers, which describe the number of objects that are available to each tile (the producer tile plus each consumer tile) when accessing the Object FIFO. For the previous example, each of the four tiles has a resource pool of 3 objects available to perform the data movement of `of_0`.
@@ -34,8 +34,8 @@ The main advantage of this feature comes to light during a situation like the on
 A = tile(1, 3)
 B = tile(2, 3)
 C = tile(2, 4)
-of0 = object_fifo("objfifo0", A, [B, C], 1, T.memref(256, T.i32()))
-of1 = object_fifo("objfifo1", B, C, 1, T.memref(256, T.i32()))
+of0 = object_fifo("objfifo0", A, [B, C], 1, np.ndarray[(256,), np.dtype[np.int32]])
+of1 = object_fifo("objfifo1", B, C, 1, np.ndarray[(256,), np.dtype[np.int32]])
 ```
 
 The situation can be viewed as in the figure below:
@@ -48,7 +48,7 @@ Now assume that the processes running on the two consumers of `of0` are as in th
 def core_body():
     elem0 = of0.acquire(ObjectFifoPort.Consume, 1)
     elem1 = of1.acquire(ObjectFifoPort.Produce, 1)
-    call(test_func2, [elem0, elem1])
+    test_func2(elem0, elem1)
     of0.release(ObjectFifoPort.Consume, 1)
     of1.release(ObjectFifoPort.Produce, 1)
 
@@ -56,7 +56,7 @@ def core_body():
 def core_body():
     elem0 = of0.acquire(ObjectFifoPort.Consume, 1)
     elem1 = of1.acquire(ObjectFifoPort.Consume, 1)
-    call(test_func2, [elem0, elem1])
+    test_func2(elem0, elem1)
     of0.release(ObjectFifoPort.Consume, 1)
     of1.release(ObjectFifoPort.Consume, 1)
 ```
@@ -67,7 +67,7 @@ To further represent this we can take the slightly lower-level view that the con
 
 To avoid having the production of A impacted by the skip-connection, an additional object is required by C for `of0`. It can be used as buffering space for data coming from `of0` while waiting for the data from B via `of1`. To achieve this `of0` is created with an array of integers for its `depth`:
 ```python
-of0 = object_fifo("objfifo0", A, [B, C], [1, 1, 2], T.memref(256, T.i32()))
+of0 = object_fifo("objfifo0", A, [B, C], [1, 1, 2], np.ndarray[(256,), np.dtype[np.int32]])
 ```
 where tiles A and B retain the original depth of 1 while C now has a depth of 2 objects. This change can be visualized as in the figure below where the pool of objects of `of0` in tile C has increased:
 

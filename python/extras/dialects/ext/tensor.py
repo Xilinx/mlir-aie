@@ -1,9 +1,7 @@
 import inspect
 from dataclasses import dataclass
-from typing import Any, List, Tuple, Union
-
-# noinspection PyUnresolvedReferences
 import numpy as np
+from typing import Any, List, Tuple, Sequence
 
 from ._shaped_value import ShapedValue
 from .arith import ArithValue, Scalar, constant
@@ -18,6 +16,7 @@ from ....dialects.transform.structured import _get_int_array_array_attr
 from ....ir import RankedTensorType, ShapedType, Type, Value
 
 S = ShapedType.get_dynamic_size()
+EllipsisType = type(Ellipsis)
 
 
 def empty(*sizes: int | Value, element_type: Type = None, loc=None, ip=None):
@@ -104,7 +103,7 @@ def insert_slice(
 
 @register_value_caster(RankedTensorType.static_typeid)
 class Tensor(ShapedValue, ArithValue):
-    def __getitem__(self, idx: tuple) -> "Tensor":
+    def __getitem__(self, idx: tuple[int | Value] | EllipsisType | None) -> "Tensor":
         loc = get_user_code_loc()
 
         if not self.has_rank():
@@ -203,9 +202,9 @@ class Tensor(ShapedValue, ArithValue):
 
 @dataclass(frozen=True)
 class _Indexer:
-    indices: Tuple[Union[int, Scalar, slice, "Ellipsis", None]]
-    newaxis_dims: Tuple[int, "Ellipsis"]
-    in_shape: Tuple[Value | int]
+    indices: Tuple[int | Scalar | slice | EllipsisType | None]
+    newaxis_dims: Tuple[int, EllipsisType]
+    in_shape: Tuple[int | Value]
 
     def is_constant(self):
         return all(_is_constant_index(i) for i in self.indices)
@@ -436,7 +435,7 @@ def _canonicalize_tuple_index(idx: Tuple[Any], rank: int):
 
 
 def _indices_to_indexer(
-    idx: Tuple[Union[Scalar, slice, "Ellipsis", None]], in_shape: Tuple[int]
+    idx: Tuple[Scalar | slice | EllipsisType | None], in_shape: Tuple[int]
 ) -> _Indexer:
     """Processes sequence of index objects and constructs _Indexer with
     corresponding indexing tensor and collapse dims (i.e., scatter/gather dims).
@@ -453,7 +452,7 @@ def _indices_to_indexer(
 
     in_axis = 0  # Current axis in input.
     out_axis = 0  # Current axis in output.
-    indices: List[Union[Scalar, slice, Ellipsis, None]] = [slice(None)] * len(in_shape)
+    indices: List[Scalar | slice | EllipsisType | None] = [slice(None)] * len(in_shape)
     newaxis_dims: List[int] = []
 
     if any(_is_index_tensor(i) or _is_int_arraylike(i) for i in idx):

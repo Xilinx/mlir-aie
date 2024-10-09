@@ -5,12 +5,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
-
-# from npu.runtime
-import pyxrt as xrt
-
-# import npu.runtime as xrt
+import copy
 import numpy as np
+import pyxrt as xrt
 
 
 class AIE_Application:
@@ -133,8 +130,11 @@ def setup_aie(
     trace_size=16384,
 ):
     app = AIE_Application(xclbin_path, insts_path, kernel_name)
+
     app.register_buffer(3, shape=in_0_shape, dtype=in_0_dtype)
-    app.register_buffer(4, shape=in_1_shape, dtype=in_1_dtype)
+    if in_1_shape or in_1_dtype:
+        app.register_buffer(4, shape=in_1_shape, dtype=in_1_dtype)
+
     if enable_trace:
         out_buf_len_bytes = np.prod(out_buf_shape) * np.dtype(out_buf_dtype).itemsize
         out_buf_shape = (out_buf_len_bytes + trace_size,)
@@ -159,8 +159,9 @@ def write_out_trace(trace, file_name):
         f.write(out_str)
 
 
-def execute(app, ifm_mem_fmt, total_wts):
-    app.buffers[3].write(ifm_mem_fmt)  # input's standard format CYX | scalar YCX
-    app.buffers[4].write(total_wts)  # wts's standard format OIYX | scalar OIYX
+def execute(app, input_one, input_two=None):
+    app.buffers[3].write(input_one)
+    if not (input_two is None):
+        app.buffers[4].write(input_two)
     app.run()
     return app.buffers[5].read()

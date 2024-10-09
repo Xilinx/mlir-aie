@@ -14,7 +14,7 @@ Single tile performs a very simple reduction operation where the kernel loads da
 
 The kernel executes on AIE tile (0, 2). Input data is brought to the local memory of the tile from Shim tile (0, 0). The size of the input data `N` from the Shim tile is `1024xi32`. The data is copied to the AIE tile, where the reduction is performed. The single output data value is copied from the AIE tile to the Shim tile.
 
-This example does not contain a C++ kernel file. The kernel is expressed in Python bindings for the `memref` and `arith` dialects that is then compiled with the AIE compiler to generate the AIE core binary. This also enables design portability across AIE generations (NOTE: the kernel runs on the scalar processor not the vector processor, and therefore is not optimized).
+This example does not contain a C++ kernel file. The kernel is expressed in Python bindings that is then compiled with the AIE compiler to generate the AIE core binary. This also enables design portability across AIE generations (NOTE: the kernel runs on the scalar processor not the vector processor, and therefore is not optimized).
 
 ## Source Files Overview
 

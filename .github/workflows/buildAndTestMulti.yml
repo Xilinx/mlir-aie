@@ -95,6 +95,7 @@ jobs:
         run: |
           
           pip install -r python/requirements.txt
+          pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
 
       - name: Setup Cpp
         uses: aminya/setup-cpp@v1

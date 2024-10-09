@@ -17,8 +17,8 @@ class MLIRContext:
 @contextmanager
 def mlir_mod_ctx(
     src: str | None = None,
-    context: ir.Context = None,
-    location: ir.Location = None,
+    context: ir.Context | None = None,
+    location: ir.Location | None = None,
     allow_unregistered_dialects=False,
 ) -> MLIRContext:
     if context is None:

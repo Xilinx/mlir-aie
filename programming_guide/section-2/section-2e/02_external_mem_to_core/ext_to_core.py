@@ -4,11 +4,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 AMD Inc.
-
+import numpy as np
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.dialects.ext.scf import _for as range_
-from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
 
@@ -17,7 +16,7 @@ def external_mem_to_core():
 
         @device(AIEDevice.npu1_1col)
         def device_body():
-            memRef_24_ty = T.memref(24, T.i32())
+            tile_ty = np.ndarray[(24,), np.dtype[np.int32]]
 
             # Tile declarations
             ShimTile = tile(0, 0)
@@ -25,10 +24,10 @@ def external_mem_to_core():
 
             # AIE-array data movement with object fifos
             # Input
-            of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_24_ty)
+            of_in = object_fifo("in", ShimTile, ComputeTile2, 2, tile_ty)
 
             # Output
-            of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_24_ty)
+            of_out = object_fifo("out", ComputeTile2, ShimTile, 2, tile_ty)
 
             # Set up compute tiles
 
@@ -40,17 +39,15 @@ def external_mem_to_core():
                     elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     for i in range_(24):
-                        v0 = memref.load(elem_in, [i])
-                        v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elem_out, [i])
+                        elem_out[i] = elem_in[i] + 1
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
 
             # To/from AIE-array data movement
 
-            memRef_48_ty = T.memref(48, T.i32())
+            data_ty = np.ndarray[(48,), np.dtype[np.int32]]
 
-            @runtime_sequence(memRef_48_ty, memRef_48_ty, memRef_48_ty)
+            @runtime_sequence(data_ty, data_ty, data_ty)
             def sequence(inTensor, notUsed, outTensor):
                 npu_dma_memcpy_nd(
                     metadata=of_in, bd_id=1, mem=inTensor, sizes=[1, 1, 1, 48]

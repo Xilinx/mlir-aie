@@ -5,7 +5,6 @@
 #
 # (c) Copyright 2023 AMD Inc.
 import numpy as np
-
 from aie.extras.dialects.ext.scf import _for as range_
 from aie.dialects.aiex import npu_dma_memcpy_nd, dma_wait
 
@@ -45,14 +44,14 @@ dtype_in_str = "i16"
 dtype_out = np.int32
 dtype_out_str = "i32"
 
-# Input/output tensor definitions # TODO: can simplify if single value?
-inA_ty = np.ndarray[dtype_in, (M * K,)]
-inB_ty = np.ndarray[dtype_in, (K,)]
-outC_ty = np.ndarray[dtype_out, (M,)]
-a_ty = np.ndarray[dtype_in, (m, k)]
-a_flat_ty = np.ndarray[dtype_in, (m * k,)]
-b_ty = np.ndarray[dtype_in, (k,)]
-c_ty = np.ndarray[dtype_out, (m,)]
+# Input/output tensor definitions
+inA_ty = np.ndarray[(M * K,), np.dtype[dtype_in]]
+inB_ty = np.ndarray[(K,), np.dtype[dtype_in]]
+outC_ty = np.ndarray[(M,), np.dtype[dtype_out]]
+a_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
+a_flat_ty = np.ndarray[(m * k,), np.dtype[dtype_in]]
+b_ty = np.ndarray[(k,), np.dtype[dtype_in]]
+c_ty = np.ndarray[(m,), np.dtype[dtype_out]]
 
 # AIE Core Function declarations
 scalar_str = "" if vectorized else "scalar_"

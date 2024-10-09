@@ -47,7 +47,7 @@ An Object FIFO is created between a producer, or source tile, and a consumer, or
 ```python
 A = tile(1, 3)
 B = tile(2, 4)
-of0 = object_fifo("objfifo0", A, B, 3, T.memref(256, T.i32()))
+of0 = object_fifo("objfifo0", A, B, 3, np.ndarray[(256,), np.dtype[np.int32]])
 ```
 The created Object FIFO is stored in the `of0` variable and is named `objfifo0`. It has a depth of `3` objects of datatype `<256xi32>`. The figure below represents a logical view of `of0` where no assumptions are made about where the tiles and the Object FIFO resources are placed:
 
@@ -81,21 +81,21 @@ Below you can see an example of two processes that are <u>iterating over the obj
 ```python
 A = tile(1, 3)
 B = tile(2, 4)
-of0 = object_fifo("objfifo0", A, B, 3, T.memref(256, T.i32()))
+of0 = object_fifo("objfifo0", A, B, 3, np.ndarray[(256,), np.dtype[np.int32]])
 
 @core(A)
 def core_body():
     for _ in range_(3):
         elem0 = of0.acquire(ObjectFifoPort.Produce, 1)
-        call(test_func, [elem0])
+        test_func(elem0)
         of0.release(ObjectFifoPort.Produce, 1)
 
 @core(B)
 def core_body():
     elems = of0.acquire(ObjectFifoPort.Consume, 3)
-    call(test_func2, [elems[0]])
-    call(test_func2, [elems[1]])
-    call(test_func2, [elems[2]])
+    test_func2(elems[0])
+    test_func2(elems[1])
+    test_func2(elems[2])
     of0.release(ObjectFifoPort.Consume, 3)
 ```
 
@@ -110,17 +110,17 @@ Examples of designs that use these features are available in Section 2e: [01_sin
 An Object FIFO can be created with the same tile as both its producer and consumer tile. This is mostly done to ensure proper synchronization within the process itself, as opposed to synchronization across multiple processes running on different tiles, as we have seen in examples up until this point. Composing two kernels with access to a shared buffer is an application that leverages this property of the Object FIFO, as showcased in the code snippet below, where `test_func` and  `test_func2` are composed using `of0`:
 ```python
 A = tile(1, 3)
-of0 = object_fifo("objfifo0", A, A, 3, T.memref(256, T.i32()))
+of0 = object_fifo("objfifo0", A, A, 3, np.ndarray[(256,), np.dtype[np.int32]])
 
 @core(A)
 def core_body():
     for _ in range_(3):
         elem0 = of0.acquire(ObjectFifoPort.Produce, 1)
-        call(test_func, [elem0])
+        test_func(elem0)
         of0.release(ObjectFifoPort.Produce, 1)
 
         elem1 = of0.acquire(ObjectFifoPort.Consume, 1)
-        call(test_func2, [elem1])
+        test_func2(elem1)
         of0.release(ObjectFifoPort.Consume, 1)
 ```
 
@@ -136,7 +136,7 @@ For example, in the code snippet below `of0` describes the data movement between
 ```python
 A = tile(1, 3)
 B = tile(2, 4)
-of0 = object_fifo("objfifo0", A, B, 3, T.memref(256, T.i32()))
+of0 = object_fifo("objfifo0", A, B, 3, np.ndarray[(256,), np.dtype[np.int32]])
 ```
 The conceptual depth of the Object FIFO is `3`. The reasoning behind this choice of depth can be understood by looking at the acquire and release patterns of the two actors:
 ```python
@@ -144,14 +144,14 @@ The conceptual depth of the Object FIFO is `3`. The reasoning behind this choice
 def core_body():
     for _ in range_(9):
         elem0 = of0.acquire(ObjectFifoPort.Produce, 1)
-        call(produce_func, [elem0])
+        produce_func(elem0)
         of0.release(ObjectFifoPort.Produce, 1)
 
 @core(B)
 def core_body():
     for _ in range_(9):
         elems = of0.acquire(ObjectFifoPort.Consume, 2)
-        call(consume_func, [elems[0], elems[1]])
+        consume_func(elems[0], elems[1])
         of0.release(ObjectFifoPort.Consume, 2)
 ```
 Each iteration:
@@ -162,7 +162,7 @@ A conceptual depth of `2` would have sufficed for this system to function withou
 
 The equivalent of this conceptual depth of `3` using an array of depths would be:
 ```python
-of0 = object_fifo("objfifo0", A, B, [1, 2], T.memref(256, T.i32()))
+of0 = object_fifo("objfifo0", A, B, [1, 2], np.ndarray[(256,), np.dtype[np.int32]])
 ```
 where `1` is the number of resources available locally to producer A and `2` is the number available to consumer B.
 

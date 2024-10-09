@@ -11,7 +11,9 @@ from ._aie_enum_gen import *
 from ._aie_ops_gen import *
 from ._aie_ops_gen import _Dialect
 from ._ods_common import _cext
-from .func import CallOp, FuncOp
+from .func import FuncOp
+from ..extras.dialects.ext.memref import MemRef
+from ..extras.dialects.ext.func import call
 from .._mlir_libs import get_dialect_registry
 
 # noinspection PyUnresolvedReferences
@@ -31,10 +33,6 @@ from .._mlir_libs._aie import (
     transaction_binary_to_mlir,
 )
 from ..extras import types as T
-from ..extras.dialects.ext.arith import constant
-
-# noinspection PyUnresolvedReferences
-from ..extras.dialects.ext import memref
 from ..extras.meta import region_op
 
 # this is inside the aie-python-extras (shared) namespace package
@@ -45,60 +43,50 @@ from ..extras.util import (
     find_parent_of_type,
     get_user_code_loc,
     region_adder,
+    try_convert_np_type_to_mlir_type,
+    NpuDType,
 )
 
 from ..ir import (
-    ArrayAttr,
     Attribute,
     Block,
     BlockList,
     DenseElementsAttr,
     DictAttr,
-    FlatSymbolRefAttr,
     FunctionType,
     InsertionPoint,
     IntegerAttr,
     IntegerType,
+    MemRefType,
     TypeAttr,
     UnitAttr,
     _i32ArrayAttr,
+    Location,
 )
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
-
 assert _cext.globals._check_dialect_module_loaded("aie")
 
 
-def external_func(name, inputs, outputs=None, visibility="private"):
-    if outputs is None:
-        outputs = []
-    return FuncOp(
-        name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
-    )
+class external_func(FuncOp):
+    def __init__(self, name: str, inputs, outputs=None, visibility="private"):
+        if outputs is None:
+            outputs = []
+        for i, ty in enumerate(inputs):
+            new_type = try_convert_np_type_to_mlir_type(ty)
+            if new_type != ty:
+                inputs[i] = new_type
+        for i, ty in enumerate(outputs):
+            new_type = try_convert_np_type_to_mlir_type(ty)
+            if new_type != ty:
+                outputs[i] = new_type
+        super().__init__(
+            name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
+        )
 
-
-# Wrapper for func CallOp.
-class call(CallOp):
-    """Specialize CallOp class constructor to take python integers"""
-
-    def __init__(self, calleeOrResults, inputs=[], input_types=[]):
-        attrInputs = []
-        for i in inputs:
-            if isinstance(i, int):
-                attrInputs.append(constant(i))
-            else:
-                attrInputs.append(i)
-        if isinstance(calleeOrResults, FuncOp):
-            super().__init__(
-                calleeOrResults=calleeOrResults, argumentsOrCallee=attrInputs
-            )
-        else:
-            super().__init__(
-                calleeOrResults=input_types,
-                argumentsOrCallee=FlatSymbolRefAttr.get(calleeOrResults),
-                arguments=attrInputs,
-            )
+    def __call__(self, *call_args):
+        return call(self, call_args)
 
 
 def bd_dim_layout(size, stride):
@@ -224,47 +212,67 @@ Device = DeviceOp
 
 class Core(CoreOp):
     # Until https://github.com/llvm/llvm-project/pull/73620 gets figured out.
-    def __init__(self, tile, link_with=None):
+    def __init__(self, tile, link_with: str | None = None):
         super().__init__(result=T.index(), tile=tile, link_with=link_with)
 
 
 # Create an aie buffer of (shape x datatype) on given tile.
 # shape examples: [256], [256, 256], [256, 256,]
-class Buffer(BufferOp):
-    def __init__(
-        self, tile, shape, datatype, name=None, initial_value=None, loc=None, ip=None
+# This class hides the BufferOp and instead pretends to be a MemRef
+class Buffer(MemRef):
+    def __init__(self):
+        raise ValueError("Should never be called")
+
+    def __new__(
+        cls,
+        tile,
+        shape,
+        datatype,
+        name=None,
+        initial_value: np.ndarray | None = None,
+        loc=None,
+        ip=None,
     ):
         if initial_value is not None:
             assert isinstance(initial_value, np.ndarray)
             initial_value = DenseElementsAttr.get(
                 initial_value,
-                type=datatype,
+                type=try_convert_np_type_to_mlir_type(datatype),
                 context=None,
             )
-        super().__init__(
-            buffer=T.memref(*shape, datatype),
+        my_buffer = BufferOp(
+            buffer=T.memref(*shape, try_convert_np_type_to_mlir_type(datatype)),
             tile=tile,
             sym_name=name,
             initial_value=initial_value,
             loc=loc,
             ip=ip,
         )
+        return my_buffer.result
 
 
 # Create an aie external buffer of (shape x datatype).
 # shape examples: [256], [256, 256], [256, 256,]
-class ExternalBuffer(ExternalBufferOp):
-    def __init__(self, shape, datatype, name=None, loc=None, ip=None):
-        super().__init__(
+# This class hides the ExternalBufferOp and instead pretends to be a MemRef
+class ExternalBuffer(MemRef):
+    def __init__(self):
+        raise ValueError("Should never be called")
+
+    def __new__(cls, shape, datatype, name: str | None = None, loc=None, ip=None):
+        my_buffer = ExternalBufferOp(
             buffer=T.memref(*shape, datatype),
             sym_name=name,
             loc=loc,
             ip=ip,
         )
+        return my_buffer.result
 
 
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
 # depth examples: 2, [2,2,7]
+from typing import Literal
+
+
 class object_fifo(ObjectFifoCreateOp):
     def __init__(
         self,
@@ -272,22 +280,23 @@ class object_fifo(ObjectFifoCreateOp):
         producerTile,
         consumerTiles,
         depth,
-        datatype,
+        datatype: MemRefType | type[np.ndarray],
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
         via_DMA=None,
         plio=None,
+        disable_synchronization=None,
         ip=None,
         loc=None,
     ):
-        self.datatype = datatype
+        self.datatype = try_convert_np_type_to_mlir_type(datatype)
         if not isinstance(consumerTiles, List):
             consumerTiles = [consumerTiles]
         if dimensionsFromStreamPerConsumer is None:
             dimensionsFromStreamPerConsumer = []
         if dimensionsToStream is None:
             dimensionsToStream = []
-        of_Ty = TypeAttr.get(ObjectFifoType.get(datatype))
+        of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
         super().__init__(
             sym_name=name,
             producerTile=producerTile,
@@ -298,6 +307,7 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
             via_DMA=via_DMA,
             plio=plio,
+            disable_synchronization=disable_synchronization,
             ip=ip,
             loc=loc,
         )
@@ -310,9 +320,11 @@ class object_fifo(ObjectFifoCreateOp):
         if acq.size.value == 1:
             return ObjectFifoSubviewAccessOp(
                 self.datatype, acq.subview, acq.size.value - 1
-            )
+            ).result
         for i in range(acq.size.value):
-            objects.append(ObjectFifoSubviewAccessOp(self.datatype, acq.subview, i))
+            objects.append(
+                ObjectFifoSubviewAccessOp(self.datatype, acq.subview, i).result
+            )
         return objects
 
     def release(self, port, num_elem):
@@ -384,21 +396,45 @@ class packetflow(PacketFlowOp):
 
 core = region_op(Core, terminator=lambda *_: EndOp())
 device = region_op(Device)
-mem = region_op(
-    lambda tile, *, loc=None, ip=None: MemOp(T.index(), tile, loc=loc, ip=ip)
-)
-shim_dma = region_op(
-    lambda tile, *, loc=None, ip=None: ShimDMAOp(T.index(), tile, loc=loc, ip=ip)
-)
-memtile_dma = region_op(
-    lambda tile, *, loc=None, ip=None: MemTileDMAOp(T.index(), tile, loc=loc, ip=ip)
-)
 switchbox = region_op(
     lambda tile, *, loc=None, ip=None: SwitchboxOp(T.index(), tile, loc=loc, ip=ip)
 )
 shim_mux = region_op(
     lambda tile, *, loc=None, ip=None: ShimMuxOp(T.index(), tile, loc=loc, ip=ip)
 )
+
+
+def get_dma_region_decorator(op_obj_constructor):
+    def decorator(f):
+        f_sig = inspect.signature(f)
+        op = op_obj_constructor()
+        entry_block = op.body.blocks.append()
+        bds_ctx = bds(op)
+        with InsertionPoint(entry_block):
+            with bds_ctx as bd:
+                if len(f_sig.parameters) == 0:
+                    f()
+                elif len(f_sig.parameters) == 1:
+                    f(bd)
+                else:
+                    raise RuntimeError(
+                        "Expected function to take zero or one argument(s)."
+                    )
+        return op
+
+    return decorator
+
+
+def mem(tile):
+    return get_dma_region_decorator(lambda: MemOp(T.index(), tile))
+
+
+def shim_mem(tile):
+    return get_dma_region_decorator(lambda: ShimDMAOp(T.index(), tile))
+
+
+def memtile_dma(tile):
+    return get_dma_region_decorator(lambda: MemTileDMAOp(T.index(), tile))
 
 
 @region_op
@@ -483,12 +519,16 @@ def dma_start(
     channel_dir,
     channel_index,
     *,
-    dest: Successor | Block | None = None,
-    chain: Successor | Block | None = None,
+    dest: Successor | Block | ContextManagedBlock | None = None,
+    chain: Successor | Block | ContextManagedBlock | None = None,
     loc=None,
     ip=None,
 ):
-    op = DMAStartOp(channel_dir, channel_index, dest=dest, chain=chain, loc=loc, ip=ip)
+    chain_block = chain.block if isinstance(chain, ContextManagedBlock) else chain
+    dest_block = dest.block if isinstance(dest, ContextManagedBlock) else dest
+    op = DMAStartOp(
+        channel_dir, channel_index, dest=dest_block, chain=chain_block, loc=loc, ip=ip
+    )
     return op.dest, op.chain
 
 
@@ -529,7 +569,7 @@ def buffer(tile, shape, dtype, name=None, initial_value=None, loc=None, ip=None)
         initial_value=initial_value,
         loc=loc,
         ip=ip,
-    ).result
+    )
 
 
 def external_buffer(shape, dtype, name=None, loc=None, ip=None):
@@ -539,7 +579,7 @@ def external_buffer(shape, dtype, name=None, loc=None, ip=None):
         name=name,
         loc=loc,
         ip=ip,
-    ).result
+    )
 
 
 _lock = lock
@@ -789,10 +829,13 @@ def tile(col, row, *, loc=None, ip=None):
 _orig_bd_chain = bd_chain
 
 
-def bd_chain(*inputs: T.Type):
+def bd_chain(*inputs: T.Type | type[np.ndarray]):
     def decorator(f):
         seq_op = BDChainOp(f.__name__)
-        entry_block = seq_op.body.blocks.append(*inputs)
+        my_inputs = []
+        for input in inputs:
+            my_inputs.append(try_convert_np_type_to_mlir_type(input))
+        entry_block = seq_op.body.blocks.append(*my_inputs)
         args = entry_block.arguments
         bds_ctx = bds(seq_op)
         with InsertionPoint(entry_block):

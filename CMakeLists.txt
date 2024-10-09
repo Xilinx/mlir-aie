@@ -24,6 +24,8 @@ set(AIE_RUNTIME_TEST_TARGET
     "x86_64"
     CACHE STRING "Runtime architecture to test with.")
 
+set(AIE_VITIS_COMPONENTS "AIE;AIE2" CACHE STRING "Vitis components")
+
 if(POLICY CMP0068)
   cmake_policy(SET CMP0068 NEW)
   set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
@@ -97,7 +99,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(AIE_TOOLS_BINARY_DIR ${AIE_BINARY_DIR}/bin)
 set(AIE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
-find_package(Vitis 2023.2 COMPONENTS AIE AIE2)
+find_package(Vitis 2023.2 COMPONENTS ${AIE_VITIS_COMPONENTS})
 configure_file(./utils/vitisVariables.config.in
                ${CMAKE_BINARY_DIR}/utils/vitisVariables.config @ONLY)
 find_package(XRT)

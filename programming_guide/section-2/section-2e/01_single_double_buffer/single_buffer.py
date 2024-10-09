@@ -4,11 +4,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 AMD Inc.
-
+import numpy as np
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.dialects.ext.scf import _for as range_
-from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
 
@@ -17,7 +16,7 @@ def single_buffer():
 
         @device(AIEDevice.npu1_1col)
         def device_body():
-            memRef_16_ty = T.memref(16, T.i32())
+            data_ty = np.ndarray[(16,), np.dtype[np.int32]]
 
             # Tile declarations
             ComputeTile2 = tile(0, 2)
@@ -26,7 +25,7 @@ def single_buffer():
             # AIE-array data movement with object fifos
             # Input
             of_in = object_fifo(
-                "in", ComputeTile2, ComputeTile3, 1, memRef_16_ty
+                "in", ComputeTile2, ComputeTile3, 1, data_ty
             )  # single buffer
 
             # Set up compute tiles
@@ -37,8 +36,7 @@ def single_buffer():
                 for _ in range_(8):
                     elem_out = of_in.acquire(ObjectFifoPort.Produce, 1)
                     for i in range_(16):
-                        v1 = arith.constant(1, T.i32())
-                        memref.store(v1, elem_out, [i])
+                        elem_out[i] = 1
                     of_in.release(ObjectFifoPort.Produce, 1)
 
             # Compute tile 3

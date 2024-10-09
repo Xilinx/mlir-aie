@@ -5,10 +5,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+import numpy as np
 import sys
 import numpy as np
 
-# TODO: move maybe to aie.api.controlflow
 from aie.extras.dialects.ext.scf import _for as range_
 from aie.api.dataflow.inout.simplefifoinout import SimpleFifoInOutSequence
 from aie.api.dataflow.objectfifo import MyObjectFifo
@@ -16,6 +16,8 @@ from aie.api.kernels.binkernel import BinKernel
 from aie.api.phys.device import NPU1Col1
 from aie.api.program import MyProgram
 from aie.api.worker import MyWorker
+
+import aie.utils.trace as trace_utils
 
 try:
     vector_size = int(sys.argv[1])
@@ -29,7 +31,6 @@ assert vector_size % 4 == 0
 line_size = vector_size // 4
 line_type = np.ndarray[np.uint8, (line_size,)]
 
-# TODO: rely on depth inference
 of_in = MyObjectFifo(2, line_type, shim_endpoint=(0, 0))
 of_out = MyObjectFifo(2, line_type, shim_endpoint=(0, 0))
 
@@ -48,8 +49,6 @@ def core_fn(of_in, of_out, passThroughLine):
         of_in.release(1)
         of_out.release(1)
 
-
-# TODO: clean up placement
 worker_program = MyWorker(
     core_fn, [of_in.second, of_out.first, passthrough_fn], coords=(0, 2)
 )

@@ -34,7 +34,7 @@ from aie.extras.dialects.ext import arith, func, linalg
 from aie.extras.runtime.passes import Pipeline, run_pipeline
 
 # noinspection PyUnresolvedReferences
-from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
+from aie.extras.testing import MLIRContext, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.extras.util import find_ops
 from aie.ir import AffineDimExpr, AffineMap, StringAttr, UnitAttr
@@ -70,8 +70,8 @@ tile_m_C, tile_n_C = M // tile_rows_C, N // tile_cols_C
 
 @func.func(sym_visibility="private")
 def matmul_i32_i32(
-    A: T.memref(tile_m_A, tile_n_A, T.i32()),
-    B: T.memref(tile_m_B, tile_n_B, T.i32()),
+    A: np.ndarray[(tile_m_A, tile_n_A), np.dtype[np.int32]],
+    B: np.ndarray[(tile_m_B, tile_n_B), np.dtype[np.int32]],
     C: T.memref(tile_m_C, tile_n_C, T.i32()),
 ):
     linalg.matmul(A, B, C)
@@ -765,9 +765,9 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
 
 @func.func(sym_visibility="private")
 def matmul_i32_i32_already_vectorized(
-    A: T.memref(tile_m_A, tile_n_A, T.i32()),
+    A: np.ndarray[(tile_m_A, tile_n_A), np.dtype[np.int32]],
     B: T.memref(tile_m_B, tile_n_B, T.i32()),
-    C: T.memref(tile_m_C, tile_n_C, T.i32()),
+    C: np.ndarray[(tile_m_C, tile_n_C), np.dtype[np.int32]],
 ):
     vec16int32 = T.vector(16, T.i32())
     vec16int64 = T.vector(16, T.i64())

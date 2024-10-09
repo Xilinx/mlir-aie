@@ -4,11 +4,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 AMD Inc.
-
+import numpy as np
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.dialects.ext.scf import _for as range_
-from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
 
@@ -17,8 +16,8 @@ def distribute_L2():
 
         @device(AIEDevice.npu1_1col)
         def device_body():
-            memRef_24_ty = T.memref(24, T.i32())
-            memRef_8_ty = T.memref(8, T.i32())
+            tile24_ty = np.ndarray[(24,), np.dtype[np.int32]]
+            tile8_ty = np.ndarray[(8,), np.dtype[np.int32]]
 
             # Tile declarations
             ShimTile = tile(0, 0)
@@ -29,10 +28,10 @@ def distribute_L2():
 
             # AIE-array data movement with object fifos
             # Input
-            of_in = object_fifo("in", ShimTile, MemTile, 2, memRef_24_ty)
-            of_in0 = object_fifo("in0", MemTile, ComputeTile0, 2, memRef_8_ty)
-            of_in1 = object_fifo("in1", MemTile, ComputeTile1, 2, memRef_8_ty)
-            of_in2 = object_fifo("in2", MemTile, ComputeTile2, 2, memRef_8_ty)
+            of_in = object_fifo("in", ShimTile, MemTile, 2, tile24_ty)
+            of_in0 = object_fifo("in0", MemTile, ComputeTile0, 2, tile8_ty)
+            of_in1 = object_fifo("in1", MemTile, ComputeTile1, 2, tile8_ty)
+            of_in2 = object_fifo("in2", MemTile, ComputeTile2, 2, tile8_ty)
             object_fifo_link(of_in, [of_in0, of_in1, of_in2], [], [0, 8, 16])
 
             # Set up compute tiles
@@ -43,9 +42,7 @@ def distribute_L2():
                 for _ in range_(8):
                     elem = of_in0.acquire(ObjectFifoPort.Consume, 1)
                     for i in range_(8):
-                        v0 = memref.load(elem, [i])
-                        v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elem, [i])
+                        elem[i] = elem[i] + 1
                     of_in0.release(ObjectFifoPort.Consume, 1)
 
             # Compute tile 3
@@ -55,9 +52,7 @@ def distribute_L2():
                 for _ in range_(8):
                     elem = of_in1.acquire(ObjectFifoPort.Consume, 1)
                     for i in range_(8):
-                        v0 = memref.load(elem, [i])
-                        v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elem, [i])
+                        elem[i] = elem[i] + 1
                     of_in1.release(ObjectFifoPort.Consume, 1)
 
             # Compute tile 4
@@ -67,9 +62,7 @@ def distribute_L2():
                 for _ in range_(8):
                     elem = of_in2.acquire(ObjectFifoPort.Consume, 1)
                     for i in range_(8):
-                        v0 = memref.load(elem, [i])
-                        v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elem, [i])
+                        elem[i] = elem[i] + 1
                     of_in2.release(ObjectFifoPort.Consume, 1)
 
     res = ctx.module.operation.verify()
