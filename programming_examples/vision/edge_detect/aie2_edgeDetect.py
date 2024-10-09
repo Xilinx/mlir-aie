@@ -161,8 +161,15 @@ def edge_detect():
                 v0 = 0
                 v1 = 4096
                 v_minus4 = -16384
-                initial_value = np.array([[v0, v1, v0], [v1, v_minus4, v1], [v0, v1, v0]], dtype=np.int16)
-                kernel = buffer(ComputeTile3, np.ndarray[(3, 3), np.dtype[np.int16]], "kernel", initial_value=initial_value)
+                initial_value = np.array(
+                    [[v0, v1, v0], [v1, v_minus4, v1], [v0, v1, v0]], dtype=np.int16
+                )
+                kernel = buffer(
+                    ComputeTile3,
+                    np.ndarray[(3, 3), np.dtype[np.int16]],
+                    "kernel",
+                    initial_value=initial_value,
+                )
 
                 for _ in range_(sys.maxsize):
                     # Preamble : Top Border
