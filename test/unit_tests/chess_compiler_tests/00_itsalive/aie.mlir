@@ -9,13 +9,15 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// REQUIRES: peano
 // RUN: %PYTHON aiecc.py --no-unified --xchesscc    --xbridge %s
 // RUN: %PYTHON aiecc.py --unified    --xchesscc    --xbridge %s
-// RUN: %PYTHON aiecc.py --no-unified --no-xchesscc --xbridge %s
-// RUN: %PYTHON aiecc.py --unified    --no-xchesscc --xbridge %s
-// RUN: %PYTHON aiecc.py --no-unified --xchesscc    --no-xbridge %s
-// RUN: %PYTHON aiecc.py --unified    --xchesscc    --no-xbridge %s
+
+// These cases mix chess and peano, which is not supported.
+// DONTREQUIRES: peano
+// DONTRUN: %PYTHON aiecc.py --no-unified --no-xchesscc --xbridge %s
+// DONTRUN: %PYTHON aiecc.py --unified    --no-xchesscc --xbridge %s
+// DONTRUN: %PYTHON aiecc.py --no-unified --xchesscc    --no-xbridge %s
+// DONTRUN: %PYTHON aiecc.py --unified    --xchesscc    --no-xbridge %s
 
 module @test00_itsalive {
   %tile12 = aie.tile(1, 2)
