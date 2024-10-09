@@ -143,16 +143,28 @@ def bottleneck4AIEs():
             # runtime parameters
 
             rtpComputeTile2 = buffer(
-                ComputeTile2, np.ndarray[(16,), np.int32], "rtpComputeTile2"
+                ComputeTile2,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile2",
+                use_write_rtp=True,
             )
             rtpComputeTile3 = buffer(
-                ComputeTile3, np.ndarray[(16,), np.int32], "rtpComputeTile3"
+                ComputeTile3,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile3",
+                use_write_rtp=True,
             )
             rtpComputeTile4 = buffer(
-                ComputeTile4, np.ndarray[(16,), np.int32], "rtpComputeTile4"
+                ComputeTile4,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile4",
+                use_write_rtp=True,
             )
             rtpComputeTile5 = buffer(
-                ComputeTile5, np.ndarray[(16,), np.int32], "rtpComputeTile5"
+                ComputeTile5,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile5",
+                use_write_rtp=True,
             )
 
             # set up data movement with OFs
@@ -532,13 +544,12 @@ def bottleneck4AIEs():
                     npu_write32(0, 2, 0x1D20C, 0x3)
 
                 # write RTP parameters
-                NpuWriteRTPOp("rtpComputeTile2", index=0, value=1)  # scale
-                NpuWriteRTPOp("rtpComputeTile3", index=0, value=1)  # scale
-                NpuWriteRTPOp("rtpComputeTile5", index=0, value=1)  # scale
-                NpuWriteRTPOp(
-                    "rtpComputeTile4", index=0, value=1
-                )  # scale: conv1x1 with the same scale as the input so we match the scaling factor of output after conv1x1 and the initial input
-                NpuWriteRTPOp("rtpComputeTile4", index=1, value=0)  # skip_scale
+                rtpComputeTile2[0] = 1  # scale
+                rtpComputeTile3[0] = 1  # scale
+                rtpComputeTile5[0] = 1  # scale
+                # scale: conv1x1 with the same scale as the input so we match the scaling factor of output after conv1x1 and the initial input
+                rtpComputeTile4[0] = 1
+                rtpComputeTile4[1] = 0  # skip_scale
 
                 npu_dma_memcpy_nd(
                     metadata=of_inOF_act_L3L2,

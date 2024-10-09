@@ -74,6 +74,17 @@ from ..ir import (
 register_dialect(get_dialect_registry())
 assert _cext.globals._check_dialect_module_loaded("aie")
 
+# Included in aie instead of aiex to avoid circular imports, as buffer uses this
+from ._aiex_ops_gen import NpuWriteRTPOp
+
+
+class npu_write_rtp(NpuWriteRTPOp):
+    def __init__(self, buffer, index, value, loc=None, ip=None):
+        buff_name = buffer
+        if isinstance(buffer, BufferOp):
+            buff_name = buffer.sym_name.value
+        super().__init__(buffer=buff_name, index=index, value=value, loc=loc, ip=ip)
+
 
 class external_func(FuncOp):
     def __init__(self, name: str, inputs, outputs=None, visibility="private"):
@@ -235,12 +246,12 @@ class buffer(BufferOp, ShapedValue):
         datatype: MemRefType | type[np.ndarray],
         name: str | None = None,
         initial_value: np.ndarray | None = None,
-        write_fn=memref_store,  # Can supply npu_rtp_write() or memref.store() (default)
+        use_write_rtp: bool = False,
         loc=None,
         ip=None,
     ):
         self.type = try_convert_np_type_to_mlir_type(datatype)
-        self.write_fn = write_fn
+        self.use_write_rtp = use_write_rtp
         if not (initial_value is None):
             assert isinstance(initial_value, np.ndarray)
             initial_value = DenseElementsAttr.get(
@@ -301,17 +312,31 @@ class buffer(BufferOp, ShapedValue):
         if not self.has_rank():
             raise ValueError("only ranked memref slicing/indexing supported")
 
-        idx = list((idx,) if isinstance(idx, (Scalar, int, Value)) else idx)
-        for i, d in enumerate(idx):
-            if isinstance(d, int):
-                idx[i] = constant(d, index=True, loc=loc)
-
-        if all(isinstance(d, Scalar) for d in idx) and len(idx) == len(self.shape):
-            if not isinstance(source, Scalar):
-                source = Scalar(source, dtype=self.dtype)
-            self.write_fn(source, self, idx, loc=loc)
+        if self.use_write_rtp:
+            if (isinstance(idx, int) and len(self.shape) == 1) or (
+                all(isinstance(d, int) for d in idx) and len(idx == len(self.shape))
+            ):
+                npu_write_rtp(self, idx, source, loc=loc)
+            else:
+                raise ValueError(
+                    "Buffer slicing not supported, only indexing supported"
+                )
         else:
-            raise ValueError("Buffer slicing not supported, only indexing supported")
+            idx = list((idx,) if isinstance(idx, (Scalar, int, Value)) else idx)
+            for i, d in enumerate(idx):
+                if isinstance(d, int):
+                    idx[i] = constant(d, index=True, loc=loc)
+
+            if all(isinstance(d, (Scalar)) for d in idx) and len(idx) == len(
+                self.shape
+            ):
+                if not isinstance(source, Scalar):
+                    source = Scalar(source, dtype=self.dtype)
+                memref_store(source, self, idx, loc=loc)
+            else:
+                raise ValueError(
+                    "Buffer slicing not supported, only indexing supported"
+                )
 
 
 # Create an aie external buffer of (shape x datatype).
