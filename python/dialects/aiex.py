@@ -23,11 +23,11 @@ from .aie import (
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint
+from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint, MemRefType
 
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
-from ..extras.util import try_convert_np_type_to_mlir_type
+from ..extras.util import try_convert_np_type_to_mlir_type, np_ndarray_type_get_shape
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
@@ -461,8 +461,7 @@ class Channel:
             ), f"must provide either existing buffer or buffer shape and dtype"
             buffer = aie.buffer(
                 tile,
-                shape,
-                dtype,
+                np.ndarray[shape, np.dtype[dtype]],
                 name=buffer_name,
                 initial_value=initial_value,
                 loc=loc,
@@ -652,7 +651,16 @@ class TileArray:
         kwargs = dict(
             zip(kwargs.keys(), _broadcast_args_to(kwargs.values(), self.shape))
         )
-        r = np.vectorize(aie.buffer, otypes=[object])(*args, **kwargs)
+
+        def buffer_constructor(*args, **kwargs):
+            kwargs["datatype"] = np.ndarray[kwargs["shape"], np.dtype[kwargs["dtype"]]]
+            del kwargs["shape"]
+            del kwargs["dtype"]
+            return aie.buffer(*args, **kwargs)
+
+        # np.vectorize doesn't seem to play well with ndarray types, so I use this buffer_creator hack
+        r = np.vectorize(buffer_constructor, otypes=[object])(*args, **kwargs)
+
         if r.size == 1:
             r = r[0]
         return r
