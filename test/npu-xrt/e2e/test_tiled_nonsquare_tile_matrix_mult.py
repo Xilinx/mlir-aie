@@ -25,7 +25,7 @@ from aie.helpers.dialects.ext.scf import _for as range_
 from aie.extras.dialects.ext import linalg
 
 # noinspection PyUnresolvedReferences
-from aie.helpers.testing import MLIRContext, mlir_ctx as ctx
+from aie.extras.testing import MLIRContext, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.util import tiling_calculator_n_tiles
 from aie.xrt import XCLBin

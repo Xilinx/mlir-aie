@@ -29,7 +29,7 @@ from pathlib import Path
 import pytest
 
 # noinspection PyUnresolvedReferences
-from aie.helpers.testing import MLIRContext
+from aie.extras.testing import MLIRContext
 
 # needed since the fix isn't defined here nor conftest.py
 pytest.mark.usefixtures("ctx")

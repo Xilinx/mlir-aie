@@ -33,7 +33,7 @@ from aie.extras.dialects.ext import arith, linalg, vector
 from aie.helpers.dialects.ext import func
 
 # noinspection PyUnresolvedReferences
-from aie.helpers.testing import MLIRContext, mlir_ctx as ctx
+from aie.extras.testing import MLIRContext, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.ir import UnitAttr
 from aie.util import tiling_calculator_n_tiles

@@ -29,7 +29,7 @@ from aie.helpers.dialects.ext.scf import _for as range_
 from aie.extras.dialects.ext import arith, linalg
 
 # noinspection PyUnresolvedReferences
-from aie.helpers.testing import MLIRContext
+from aie.extras.testing import MLIRContext
 import aie.extras.types as T
 from aie.xrt import XCLBin
 from filelock import FileLock

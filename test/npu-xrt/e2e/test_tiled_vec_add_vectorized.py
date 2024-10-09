@@ -34,7 +34,7 @@ from aie.extras.runtime.passes import Pipeline, run_pipeline
 from aie.helpers.dialects.ext import func
 
 # noinspection PyUnresolvedReferences
-from aie.helpers.testing import MLIRContext, mlir_ctx as ctx
+from aie.extras.testing import MLIRContext, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.extras.util import find_ops
 from aie.ir import StringAttr, UnitAttr
