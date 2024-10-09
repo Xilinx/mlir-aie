@@ -8,7 +8,7 @@ import numpy as np
 import sys
 import argparse
 
-from aie.helpers.context import mlir_mod_ctx
+from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *

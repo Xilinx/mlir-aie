@@ -7,7 +7,7 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 from aie.dialects.aie import *  # primary mlir-aie dialect definitions
-from aie.helpers.context import mlir_mod_ctx  # mlir ctx wrapper
+from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 
 from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
 from aie.helpers.dialects.ext.scf import (
