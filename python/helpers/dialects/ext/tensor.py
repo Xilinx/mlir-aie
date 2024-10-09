@@ -5,7 +5,7 @@ from typing import Any, List, Tuple, Sequence
 
 from ._shaped_value import ShapedValue
 from .arith import ArithValue, Scalar, constant
-from ... import types as T
+from ....extras import types as T
 from ...util import _unpack_sizes_element_type, _update_caller_vars, get_user_code_loc
 from ...._mlir_libs._mlir import register_value_caster
 from ....dialects import tensor

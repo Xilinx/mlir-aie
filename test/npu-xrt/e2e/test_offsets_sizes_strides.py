@@ -22,12 +22,12 @@ from aie.dialects.aie import (
     WireBundle,
 )
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
-from aie.extras.dialects.ext.scf import _for as range_
-from aie.extras.dialects.ext import arith, linalg
+from aie.helpers.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext import arith, linalg
 
 # noinspection PyUnresolvedReferences
-from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
-import aie.extras.types as T
+from aie.helpers.testing import MLIRContext, mlir_ctx as ctx
+import aie.helpers.types as T
 from aie.xrt import XCLBin
 from filelock import FileLock
 import numpy as np

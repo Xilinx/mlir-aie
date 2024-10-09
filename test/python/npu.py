@@ -6,7 +6,7 @@
 
 # RUN: %python %s | FileCheck %s
 import numpy as np
-from aie.extras.dialects.ext import memref
+from aie.helpers.dialects.ext import memref
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
@@ -22,7 +22,7 @@ from aie.dialects.aie import (
     tile,
 )
 from aie.dialects.aiex import dma_wait, npu_dma_memcpy_nd, runtime_sequence
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 from util import construct_and_print_module
 
 DMA = WireBundle.DMA

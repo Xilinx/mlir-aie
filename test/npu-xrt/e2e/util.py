@@ -9,7 +9,7 @@ import collections
 from itertools import islice, zip_longest
 
 from aie.dialects import aie
-from aie.extras.util import find_ops
+from aie.helpers.util import find_ops
 from aie.ir import UnitAttr
 
 

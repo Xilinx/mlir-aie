@@ -21,12 +21,12 @@ from aie.dialects.aie import (
     LockAction,
     WireBundle,
 )
-from aie.extras.dialects.ext.scf import _for as range_
-from aie.extras.dialects.ext import linalg
+from aie.helpers.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext import linalg
 
 # noinspection PyUnresolvedReferences
-from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
-import aie.extras.types as T
+from aie.helpers.testing import MLIRContext, mlir_ctx as ctx
+import aie.helpers.types as T
 from aie.util import tiling_calculator_n_tiles
 from aie.xrt import XCLBin
 from filelock import FileLock

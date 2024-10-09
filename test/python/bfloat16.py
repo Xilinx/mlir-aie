@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 import numpy as np
 from aie.extras import types as T
-from aie.extras.util import bfloat16, _pseudo_bfloat16, np_dtype_to_mlir_type
+from aie.helpers.util import bfloat16, _pseudo_bfloat16, np_dtype_to_mlir_type
 from util import construct_and_print_module
 
 # RUN: %PYTHON %s | FileCheck %s

@@ -8,7 +8,7 @@ from .._mlir_libs._aie import *
 from .._mlir_libs import get_dialect_registry
 
 # noinspection PyUnresolvedReferences
-from ..extras.dialects.ext import memref
+from ..helpers.dialects.ext import memref
 
 # Comes from _aie
 register_dialect(get_dialect_registry())

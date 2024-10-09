@@ -10,8 +10,8 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.extras.context import mlir_mod_ctx
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.context import mlir_mod_ctx
+from aie.helpers.dialects.ext.scf import _for as range_
 
 N = 4096
 dev = AIEDevice.npu1_1col

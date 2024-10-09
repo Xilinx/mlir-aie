@@ -15,12 +15,11 @@ from aie.dialects.aie import (
     LockAction,
     WireBundle,
 )
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 
-# this is to get the MemRefValue caster inside of aie-python-extras
 # noinspection PyUnresolvedReferences
-from aie.extras.dialects.ext import linalg, memref
-import aie.extras.types as T
+from aie.helpers.dialects.ext import linalg, memref
+import aie.helpers.types as T
 from aie.xrt import XCLBin
 from filelock import FileLock
 import numpy as np
@@ -30,7 +29,7 @@ from pathlib import Path
 import pytest
 
 # noinspection PyUnresolvedReferences
-from aie.extras.testing import MLIRContext
+from aie.helpers.testing import MLIRContext
 
 # needed since the fix isn't defined here nor conftest.py
 pytest.mark.usefixtures("ctx")

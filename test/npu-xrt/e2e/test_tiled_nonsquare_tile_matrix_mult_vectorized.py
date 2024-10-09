@@ -24,19 +24,19 @@ from aie.dialects.aie import (
     WireBundle,
 )
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 from aie.dialects.transform import any_op_t, apply_registered_pass, get_parent_op
 from aie.dialects.transform.extras import named_sequence
 from aie.dialects.transform.loop import loop_unroll
 from aie.dialects.transform.structured import structured_match
-from aie.extras.context import ExplicitlyManagedModule
-from aie.extras.dialects.ext import arith, func, linalg
-from aie.extras.runtime.passes import Pipeline, run_pipeline
+from aie.helpers.context import ExplicitlyManagedModule
+from aie.helpers.dialects.ext import arith, func, linalg
+from aie.helpers.runtime.passes import Pipeline, run_pipeline
 
 # noinspection PyUnresolvedReferences
-from aie.extras.testing import MLIRContext, mlir_ctx as ctx
-import aie.extras.types as T
-from aie.extras.util import find_ops
+from aie.helpers.testing import MLIRContext, mlir_ctx as ctx
+import aie.helpers.types as T
+from aie.helpers.util import find_ops
 from aie.ir import AffineDimExpr, AffineMap, StringAttr, UnitAttr
 from aie.util import tiling_calculator_n_tiles
 from aie.xrt import XCLBin

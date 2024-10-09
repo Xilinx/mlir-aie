@@ -17,13 +17,12 @@ from aie.compiler.util import (
 from aie.dialects import aie, aiex
 from aie.dialects.aie import AIEDevice, DMAChannelDir
 
-# this is to get the MemRefValue caster inside of aie-python-extras
 # noinspection PyUnresolvedReferences
-from aie.extras.dialects.ext import arith, func, linalg, memref
+from aie.helpers.dialects.ext import linalg, memref
 
 # noinspection PyUnresolvedReferences
-from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
-import aie.extras.types as T
+from aie.helpers.testing import MLIRContext, mlir_ctx as ctx
+import aie.helpers.types as T
 from aie.xrt import XCLBin
 from filelock import FileLock
 import numpy as np

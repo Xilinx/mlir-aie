@@ -7,14 +7,14 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 from aie.dialects.aie import *  # primary mlir-aie dialect definitions
-from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
+from aie.helpers.context import mlir_mod_ctx  # mlir ctx wrapper
 
 from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
-from aie.extras.dialects.ext.scf import (
+from aie.helpers.dialects.ext.scf import (
     _for as range_,
 )  # scf (structured control flow) dialect
-from aie.extras.util import bfloat16
-from aie.extras.util import np_ndarray_type_get_shape
+from aie.helpers.util import bfloat16
+from aie.helpers.util import np_ndarray_type_get_shape
 
 
 # AI Engine structural design function

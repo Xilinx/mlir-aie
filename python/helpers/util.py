@@ -11,7 +11,7 @@ import re
 import sys
 from typing import Callable, List, Sequence, Tuple, get_args, get_origin
 
-from .meta import op_region_builder
+from ..extras.meta import op_region_builder
 from ..extras import types as T
 from ..ir import (
     Block,
@@ -59,12 +59,12 @@ def is_relative_to(self, other):
 
 
 def get_user_code_loc(user_base: Path | None = None):
-    from .. import extras
+    from .. import helpers
 
     if Context.current is None:
         return
 
-    mlir_extras_root_path = Path(extras.__path__[0])
+    mlir_extras_root_path = Path(helpers.__path__[0])
 
     prev_frame = inspect.currentframe().f_back
     if user_base is None:

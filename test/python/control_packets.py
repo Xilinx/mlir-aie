@@ -10,7 +10,7 @@
 
 from aie.dialects.aie import *
 import aie.dialects.aiex as aiex
-from aie.extras.context import mlir_mod_ctx
+from aie.helpers.context import mlir_mod_ctx
 
 from aie.dialects.aie import generate_control_packets
 

@@ -13,11 +13,11 @@
 # RUN: %run_on_npu ./test | FileCheck %s
 # CHECK: PASS!
 
-from aie.extras.context import mlir_mod_ctx
+from aie.helpers.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 
 
 dtype = T.i32

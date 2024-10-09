@@ -6,10 +6,10 @@
 # (c) Copyright 2023 AMD Inc.
 import numpy as np
 
-from aie.extras.context import mlir_mod_ctx
+from aie.helpers.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 
 
 def my_matmul():

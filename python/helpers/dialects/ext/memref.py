@@ -6,8 +6,8 @@ import numpy as np
 from ._shaped_value import ShapedValue
 from .arith import Scalar, constant
 from .tensor import _indices_to_indexer, compute_result_shape_reassoc_list
-from ... import types as T
-from ...meta import region_op
+from ....extras import types as T
+from ....extras.meta import region_op
 from ...util import (
     _get_sym_name,
     _unpack_sizes_element_type,

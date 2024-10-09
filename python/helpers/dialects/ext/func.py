@@ -3,7 +3,7 @@ from functools import update_wrapper
 import sys
 from typing import get_args, get_origin
 
-from ...meta import op_region_builder
+from ....extras.meta import op_region_builder
 from ...util import (
     get_arg_types,
     get_user_code_loc,

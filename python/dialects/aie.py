@@ -12,8 +12,8 @@ from ._aie_ops_gen import *
 from ._aie_ops_gen import _Dialect
 from ._ods_common import _cext
 from .func import FuncOp
-from ..extras.dialects.ext.memref import MemRef
-from ..extras.dialects.ext.func import call
+from ..helpers.dialects.ext.memref import MemRef
+from ..helpers.dialects.ext.func import call
 from .._mlir_libs import get_dialect_registry
 
 # noinspection PyUnresolvedReferences
@@ -34,9 +34,7 @@ from .._mlir_libs._aie import (
 )
 from ..extras import types as T
 from ..extras.meta import region_op
-
-# this is inside the aie-python-extras (shared) namespace package
-from ..extras.util import (
+from ..helpers.util import (
     Successor,
     _get_sym_name,
     find_ops,
@@ -44,7 +42,6 @@ from ..extras.util import (
     get_user_code_loc,
     region_adder,
     try_convert_np_type_to_mlir_type,
-    NpuDType,
 )
 
 from ..ir import (

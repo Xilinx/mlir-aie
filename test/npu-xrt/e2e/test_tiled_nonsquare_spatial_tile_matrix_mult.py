@@ -26,14 +26,14 @@ from aie.dialects.aie import (
     WireBundle,
 )
 from aie.dialects.aiex import TileArray
-from aie.extras.context import ExplicitlyManagedModule
+from aie.helpers.context import ExplicitlyManagedModule
 
 # noinspection PyUnresolvedReferences
-from aie.extras.dialects.ext import arith, func, linalg, vector
+from aie.helpers.dialects.ext import arith, func, linalg, vector
 
 # noinspection PyUnresolvedReferences
-from aie.extras.testing import MLIRContext, mlir_ctx as ctx
-import aie.extras.types as T
+from aie.helpers.testing import MLIRContext, mlir_ctx as ctx
+import aie.helpers.types as T
 from aie.ir import UnitAttr
 from aie.util import tiling_calculator_n_tiles
 from aie.xrt import XCLBin

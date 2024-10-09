@@ -11,3 +11,4 @@ pybind11>=2.9.0, <=2.10.3
 rich
 setuptools
 wheel
+https://github.com/makslevental/mlir-python-extras/archive/d84f05582adb2eed07145dabce1e03e13d0e29a6.zip

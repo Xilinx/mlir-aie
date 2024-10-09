@@ -27,7 +27,7 @@ from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint
 
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
-from ..extras.util import try_convert_np_type_to_mlir_type
+from ..helpers.util import try_convert_np_type_to_mlir_type
 
 # Comes from _aie
 register_dialect(get_dialect_registry())

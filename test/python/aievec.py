@@ -5,21 +5,19 @@
 
 import inspect
 
-from aie.extras.dialects.ext import arith
-from aie.extras.dialects.ext.func import func
-from aie.extras.runtime.passes import Pipeline as p, run_pipeline
+from aie.helpers.dialects.ext import arith
+from aie.helpers.dialects.ext.func import func
+from aie.helpers.runtime.passes import Pipeline as p, run_pipeline
 
 from aie.dialects import affine, aievec, tosa, vector
 
-# noinspection PyUnresolvedReferences
-import aie.dialects.aie
 from aie.dialects.aie import translate_aie_vec_to_cpp
 
 # noinspection PyUnresolvedReferences
 from aie.extras import types as T
 from aie.ir import AffineMap, AffineDimExpr
 from util import construct_and_print_module
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 
 
 # CHECK-LABEL: TEST: test_emit
