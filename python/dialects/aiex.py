@@ -836,3 +836,11 @@ def dma_start_bd_chain_for(symbol, args, alloc, *pyargs, **kwargs):
     return DMAStartBdChainForOp(
         T.index(), chain_sym, args, alloc_sym, *pyargs, **kwargs
     )
+
+
+# NpuWriteRTPOp("rtp2", index=0, value=10)
+class npu_write_rtp(NpuWriteRTPOp):
+    def __init__(self, buffer, index, value, loc=None, ip=None):
+        super().__init__(
+            buffer=buffer.get_name(), index=index, value=value, loc=loc, ip=ip
+        )

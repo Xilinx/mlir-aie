@@ -12,8 +12,14 @@ from ._aie_ops_gen import *
 from ._aie_ops_gen import _Dialect
 from ._ods_common import _cext
 from .func import FuncOp
-from ..extras.dialects.ext.memref import MemRef
+from ..extras.dialects.ext.arith import Scalar, constant
+from ..extras.dialects.ext.memref import (
+    MemRef,
+    store as memref_store,
+    load as memref_load,
+)
 from ..extras.dialects.ext.func import call
+from ..extras.dialects.ext._shaped_value import ShapedValue
 from .._mlir_libs import get_dialect_registry
 
 # noinspection PyUnresolvedReferences
@@ -60,8 +66,8 @@ from ..ir import (
     MemRefType,
     TypeAttr,
     UnitAttr,
+    Value,
     _i32ArrayAttr,
-    Location,
 )
 
 # Comes from _aie
@@ -219,36 +225,93 @@ class Core(CoreOp):
 # Create an aie buffer of (shape x datatype) on given tile.
 # shape examples: [256], [256, 256], [256, 256,]
 # This class hides the BufferOp and instead pretends to be a MemRef
-class buffer(MemRef):
+class buffer(BufferOp, ShapedValue):
     def __init__(self):
         raise ValueError("Should never be called")
 
-    def __new__(
-        cls,
+    def __init__(
+        self,
         tile,
         datatype: MemRefType | type[np.ndarray],
         name: str | None = None,
         initial_value: np.ndarray | None = None,
+        write_fn=memref_store,  # Can supply npu_rtp_write() or memref.store() (default)
         loc=None,
         ip=None,
     ):
-        memref_type = try_convert_np_type_to_mlir_type(datatype)
+        self.type = try_convert_np_type_to_mlir_type(datatype)
+        self.write_fn = write_fn
         if not (initial_value is None):
             assert isinstance(initial_value, np.ndarray)
             initial_value = DenseElementsAttr.get(
                 initial_value,
-                type=memref_type.element_type,
+                type=self.type.element_type,
                 context=None,
             )
-        my_buffer = BufferOp(
-            buffer=memref_type,
+        super().__init__(
+            buffer=self.type,
             tile=tile,
             sym_name=name,
             initial_value=initial_value,
             loc=loc,
             ip=ip,
         )
-        return my_buffer.result
+
+    def get_name(self):
+        return self.result.get_name()
+
+    def __str__(self):
+        return str(self.result)
+
+    def __repr__(self):
+        return str(self)
+
+    @property
+    def owner(self):
+        return self.result.owner
+
+    def __getitem__(self, idx: tuple | Scalar) -> "MemRef":
+        loc = get_user_code_loc()
+
+        if not self.has_rank():
+            raise ValueError("only ranked memref slicing/indexing supported")
+
+        if idx == Ellipsis or idx == slice(None):
+            return self
+        elif isinstance(idx, tuple) and all(i == slice(None) for i in idx):
+            return self
+        elif isinstance(idx, Scalar):
+            idx = (idx,)
+        elif idx is None:
+            raise ValueError("Operation not supported for buffer")
+
+        idx = list((idx,) if isinstance(idx, (int, slice)) else idx)
+        for i, d in enumerate(idx):
+            if isinstance(d, int):
+                idx[i] = constant(d, index=True, loc=loc)
+
+        if all(isinstance(d, Scalar) for d in idx) and len(idx) == len(self.shape):
+            return memref_load(self, idx, loc=loc)
+        else:
+            raise ValueError("Buffer slicing not supported, only indexing supported")
+
+    def __setitem__(self, idx, source):
+        loc = get_user_code_loc()
+
+        if not self.has_rank():
+            raise ValueError("only ranked memref slicing/indexing supported")
+
+        idx = list((idx,) if isinstance(idx, (Scalar, int, Value)) else idx)
+        for i, d in enumerate(idx):
+            if isinstance(d, int):
+                idx[i] = constant(d, index=True, loc=loc)
+
+        if all(isinstance(d, Scalar) for d in idx) and len(idx) == len(self.shape):
+            if not isinstance(source, Scalar):
+                source = Scalar(source, dtype=self.dtype)
+            self.write_fn(source, self, idx, loc=loc)
+        else:
+            raise ValueError("Buffer slicing not supported, only indexing supported")
 
 
 # Create an aie external buffer of (shape x datatype).
