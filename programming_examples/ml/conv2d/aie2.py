@@ -87,7 +87,12 @@ def conv2dk1():
 
             # Set up compute tiles
 
-            rtp2 = Buffer(ComputeTile2, [16], np.int32, "rtp2")
+            rtp2 = buffer(
+                ComputeTile2,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtp2",
+                use_write_rtp=True,
+            )
 
             # Compute tile 2
             @core(ComputeTile2, "conv2dk1_i8.o")
@@ -115,7 +120,7 @@ def conv2dk1():
             # To/from AIE-array data movement
             @runtime_sequence(tensor_ty, weights_ty, tensor_ty)
             def sequence(I, W, O):
-                NpuWriteRTPOp("rtp2", index=0, value=10)
+                rtp2[0] = 10
 
                 npu_dma_memcpy_nd(
                     metadata=of_inOF_act_L3L2,

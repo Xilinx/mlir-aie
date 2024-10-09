@@ -252,20 +252,80 @@ def resnet_conv_x():
 
             # runtime parameters
 
-            rtpComputeTile02 = Buffer(ComputeTile02, [16], np.int32, "rtpComputeTile02")
-            rtpComputeTile03 = Buffer(ComputeTile03, [16], np.int32, "rtpComputeTile03")
-            rtpComputeTile04 = Buffer(ComputeTile05, [16], np.int32, "rtpComputeTile04")
-            rtpComputeTile05 = Buffer(ComputeTile04, [16], np.int32, "rtpComputeTile05")
+            rtpComputeTile02 = buffer(
+                ComputeTile02,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile02",
+                use_write_rtp=True,
+            )
+            rtpComputeTile03 = buffer(
+                ComputeTile03,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile03",
+                use_write_rtp=True,
+            )
+            rtpComputeTile04 = buffer(
+                ComputeTile05,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile04",
+                use_write_rtp=True,
+            )
+            rtpComputeTile05 = buffer(
+                ComputeTile04,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile05",
+                use_write_rtp=True,
+            )
 
-            rtpComputeTile12 = Buffer(ComputeTile12, [16], np.int32, "rtpComputeTile12")
-            rtpComputeTile13 = Buffer(ComputeTile13, [16], np.int32, "rtpComputeTile13")
-            rtpComputeTile14 = Buffer(ComputeTile14, [16], np.int32, "rtpComputeTile14")
-            rtpComputeTile15 = Buffer(ComputeTile15, [16], np.int32, "rtpComputeTile15")
+            rtpComputeTile12 = buffer(
+                ComputeTile12,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile12",
+                use_write_rtp=True,
+            )
+            rtpComputeTile13 = buffer(
+                ComputeTile13,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile13",
+                use_write_rtp=True,
+            )
+            rtpComputeTile14 = buffer(
+                ComputeTile14,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile14",
+                use_write_rtp=True,
+            )
+            rtpComputeTile15 = buffer(
+                ComputeTile15,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile15",
+                use_write_rtp=True,
+            )
 
-            rtpComputeTile22 = Buffer(ComputeTile22, [16], np.int32, "rtpComputeTile22")
-            rtpComputeTile23 = Buffer(ComputeTile23, [16], np.int32, "rtpComputeTile23")
-            rtpComputeTile24 = Buffer(ComputeTile24, [16], np.int32, "rtpComputeTile24")
-            rtpComputeTile25 = Buffer(ComputeTile25, [16], np.int32, "rtpComputeTile25")
+            rtpComputeTile22 = buffer(
+                ComputeTile22,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile22",
+                use_write_rtp=True,
+            )
+            rtpComputeTile23 = buffer(
+                ComputeTile23,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile23",
+                use_write_rtp=True,
+            )
+            rtpComputeTile24 = buffer(
+                ComputeTile24,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile24",
+                use_write_rtp=True,
+            )
+            rtpComputeTile25 = buffer(
+                ComputeTile25,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile25",
+                use_write_rtp=True,
+            )
 
             rtp = [
                 [
@@ -303,176 +363,191 @@ def resnet_conv_x():
                 conv2dk1_skip_ui8,
             ]
 
-            act1_fifo_names = ["act1_00_02_01", "act1_04_15_01", "act1_13_22_21"]
-            act1_fifos = {}
-
             # input tensor (with broadcast for skip connection)
             act1_fifo_names = ["act1_00_02_01", "act1_04_15_11", "act1_13_22_21"]
-            act1_fifos = {}
+            act1_fifos = []
 
-            skip_fifo_names = ["skip_0", "skip_1", "skip_2"]
-            skip_fifos = {}
+            skip_fifos = []
 
-            act1_fifos[act1_fifo_names[0]] = object_fifo(
-                act1_fifo_names[0],
-                shims[0],
-                [cores[0][0], mems[0]],
-                [2, 2, 4],
-                laye1_act_sizes[0],
+            act1_fifos.append(
+                object_fifo(
+                    act1_fifo_names[0],
+                    shims[0],
+                    [cores[0][0], mems[0]],
+                    [2, 2, 4],
+                    laye1_act_sizes[0],
+                )
             )
-            skip_fifos[skip_fifo_names[0]] = object_fifo(
-                skip_fifo_names[0], mems[0], cores[0][2], 2, laye1_act_sizes[0]
+            skip_fifos.append(
+                object_fifo("skip_0", mems[0], cores[0][2], 2, laye1_act_sizes[0])
             )
-            object_fifo_link(act1_fifo_names[0], skip_fifo_names[0])
+            object_fifo_link(act1_fifos[0], skip_fifos[0])
 
             for i in range(1, repeat + 1):
                 if i == 1:
-                    act1_fifos[act1_fifo_names[i]] = object_fifo(
-                        act1_fifo_names[i],
-                        cores[i - 1][2],
-                        [cores[i][0], mems[i - 1]],
-                        [2, 2, 4],
-                        laye1_act_sizes[i],
+                    act1_fifos.append(
+                        object_fifo(
+                            act1_fifo_names[i],
+                            cores[i - 1][2],
+                            [cores[i][0], mems[i - 1]],
+                            [2, 2, 4],
+                            laye1_act_sizes[i],
+                        )
                     )
-                    skip_fifos[skip_fifo_names[i]] = object_fifo(
-                        skip_fifo_names[i],
-                        mems[i - 1],
-                        cores[i][2],
-                        2,
-                        laye1_act_sizes[i],
+                    skip_fifos.append(
+                        object_fifo(
+                            f"skip_{i}",
+                            mems[i - 1],
+                            cores[i][2],
+                            2,
+                            laye1_act_sizes[i],
+                        )
                     )
-                    object_fifo_link(act1_fifo_names[i], skip_fifo_names[i])
+                    object_fifo_link(act1_fifos[i], skip_fifos[i])
                 else:
-                    act1_fifos[act1_fifo_names[i]] = object_fifo(
-                        act1_fifo_names[i],
-                        cores[i - 1][2],
-                        [cores[i][0], mems[i]],
-                        [2, 2, 4],
-                        laye1_act_sizes[i],
+                    act1_fifos.append(
+                        object_fifo(
+                            act1_fifo_names[i],
+                            cores[i - 1][2],
+                            [cores[i][0], mems[i]],
+                            [2, 2, 4],
+                            laye1_act_sizes[i],
+                        )
                     )
-                    skip_fifos[skip_fifo_names[i]] = object_fifo(
-                        skip_fifo_names[i],
-                        mems[i],
-                        cores[i][2],
-                        2,
-                        laye1_act_sizes[i],
+                    skip_fifos.append(
+                        object_fifo(
+                            f"skip_{i}",
+                            mems[i],
+                            cores[i][2],
+                            2,
+                            laye1_act_sizes[i],
+                        )
                     )
-                    object_fifo_link(act1_fifo_names[i], skip_fifo_names[i])
+                    object_fifo_link(act1_fifos[i], skip_fifos[i])
 
             act2_fifo_names = ["act2_02_03_05", "act2_15_12_14", "act2_22_23_25"]
-            act2_fifos = {}
+            act2_fifos = []
 
             act3_fifo_names_1 = ["act3_03_04", "act3_14_13", "act3_23_24"]
-            act3_fifo_1 = {}
+            act3_fifos_1 = []
 
             act3_fifo_names_2 = ["act3_05_04", "act3_12_13", "act3_25_24"]
-            act3_fifo_2 = {}
+            act3_fifos_2 = []
 
             for i in range(n_cols):
                 if i == 1:
                     # 1x1 -> 3x3
-                    act2_fifos[act2_fifo_names[i]] = object_fifo(
-                        act2_fifo_names[i],
-                        cores[i][0],
-                        [cores[i][3], cores[i][1]],
-                        4,
-                        tensorLayer1Out_ty,
+                    act2_fifos.append(
+                        object_fifo(
+                            act2_fifo_names[i],
+                            cores[i][0],
+                            [cores[i][3], cores[i][1]],
+                            4,
+                            tensorLayer1Out_ty,
+                        )
                     )
 
                     # 3x3 -> 1x1
-                    act3_fifo_1[act3_fifo_names_1[i]] = object_fifo(
-                        act3_fifo_names_1[i],
-                        cores[i][1],
-                        cores[i][2],
-                        2,
-                        tensorLayer2Out_ty,
+                    act3_fifos_1.append(
+                        object_fifo(
+                            act3_fifo_names_1[i],
+                            cores[i][1],
+                            cores[i][2],
+                            2,
+                            tensorLayer2Out_ty,
+                        )
                     )
                     # 3x3 -> 1x1
-                    act3_fifo_2[act3_fifo_names_2[i]] = object_fifo(
-                        act3_fifo_names_2[i],
-                        cores[i][3],
-                        cores[i][2],
-                        2,
-                        tensorLayer2Out_ty,
+                    act3_fifos_2.append(
+                        object_fifo(
+                            act3_fifo_names_2[i],
+                            cores[i][3],
+                            cores[i][2],
+                            2,
+                            tensorLayer2Out_ty,
+                        )
                     )
                 else:
                     # 1x1 -> 3x3
-                    act2_fifos[act2_fifo_names[i]] = object_fifo(
-                        act2_fifo_names[i],
-                        cores[i][0],
-                        [cores[i][1], cores[i][3]],
-                        4,
-                        tensorLayer1Out_ty,
+                    act2_fifos.append(
+                        object_fifo(
+                            act2_fifo_names[i],
+                            cores[i][0],
+                            [cores[i][1], cores[i][3]],
+                            4,
+                            tensorLayer1Out_ty,
+                        )
                     )
 
                     # 3x3 -> 1x1
-                    act3_fifo_1[act3_fifo_names_1[i]] = object_fifo(
-                        act3_fifo_names_1[i],
-                        cores[i][1],
-                        cores[i][2],
-                        2,
-                        tensorLayer2Out_ty,
+                    act3_fifos_1.append(
+                        object_fifo(
+                            act3_fifo_names_1[i],
+                            cores[i][1],
+                            cores[i][2],
+                            2,
+                            tensorLayer2Out_ty,
+                        )
                     )
                     # 3x3 -> 1x1
-                    act3_fifo_2[act3_fifo_names_2[i]] = object_fifo(
-                        act3_fifo_names_2[i],
-                        cores[i][3],
-                        cores[i][2],
-                        2,
-                        tensorLayer2Out_ty,
+                    act3_fifos_2.append(
+                        object_fifo(
+                            act3_fifo_names_2[i],
+                            cores[i][3],
+                            cores[i][2],
+                            2,
+                            tensorLayer2Out_ty,
+                        )
                     )
-            wts_fifo_names = ["wts_0_L3L2", "wts_1_L3L2", "wts_2_L3L2"]
-            wts_fifos = {}
-            wts_sub_fifo_names = [
-                ["wts_buf_00", "wts_buf_01", "wts_buf_02"],
-                ["wts_buf_10", "wts_buf_11", "wts_buf_12"],
-                ["wts_buf_20", "wts_buf_21", "wts_buf_22"],
-            ]
-            wts_sub_fifos = {}
+            wts_fifos = []
+            wts_sub_fifos = [[], [], []]
 
             for i in range(n_cols):
 
-                wts_fifos[wts_fifo_names[i]] = object_fifo(
-                    wts_fifo_names[i], shims[i], mems[i], 1, wts_sizes[i]
+                wts_fifos.append(
+                    object_fifo(f"wts_{i}_L3L2", shims[i], mems[i], 1, wts_sizes[i])
                 )
-                wts_sub_fifos[wts_sub_fifo_names[i][0]] = object_fifo(
-                    wts_sub_fifo_names[i][0],
-                    mems[i],
-                    cores[i][0],
-                    1,
-                    layer1_wts_sizes[i],
+                wts_sub_fifos[i].append(
+                    object_fifo(
+                        f"wts_buf_{i}0",
+                        mems[i],
+                        cores[i][0],
+                        1,
+                        layer1_wts_sizes[i],
+                    )
                 )
                 if i == 1:
-                    wts_sub_fifos[wts_sub_fifo_names[i][1]] = object_fifo(
-                        wts_sub_fifo_names[i][1],
-                        mems[i],
-                        [cores[i][3], cores[i][1]],
-                        1,
-                        weightsLayer2_ty,
+                    wts_sub_fifos[i].append(
+                        object_fifo(
+                            f"wts_buf_{i}1",
+                            mems[i],
+                            [cores[i][3], cores[i][1]],
+                            1,
+                            weightsLayer2_ty,
+                        )
                     )
-
                 else:
-                    wts_sub_fifos[wts_sub_fifo_names[i][1]] = object_fifo(
-                        wts_sub_fifo_names[i][1],
-                        mems[i],
-                        [cores[i][1], cores[i][3]],
-                        1,
-                        weightsLayer2_ty,
+                    wts_sub_fifos[i].append(
+                        object_fifo(
+                            f"wts_buf_{i}1",
+                            mems[i],
+                            [cores[i][1], cores[i][3]],
+                            1,
+                            weightsLayer2_ty,
+                        )
                     )
-                wts_sub_fifos[wts_sub_fifo_names[i][2]] = object_fifo(
-                    wts_sub_fifo_names[i][2],
-                    mems[i],
-                    cores[i][2],
-                    1,
-                    layer3_wts_sizes[i],
+                wts_sub_fifos[i].append(
+                    object_fifo(
+                        f"wts_buf_{i}2",
+                        mems[i],
+                        cores[i][2],
+                        1,
+                        layer3_wts_sizes[i],
+                    )
                 )
                 object_fifo_link(
-                    wts_fifo_names[i],
-                    [
-                        wts_sub_fifo_names[i][0],
-                        wts_sub_fifo_names[i][1],
-                        wts_sub_fifo_names[i][2],
-                    ],
+                    wts_fifos[i],
+                    wts_sub_fifos[i],
                     [],
                     [
                         0,
@@ -485,12 +560,11 @@ def resnet_conv_x():
             outOFL2L3 = object_fifo(
                 "outOFL2L3", cores[2][2], shims[1], 2, tensorLayer3Out_ty
             )
-            conv3_out_fifo = [
-                act1_fifos[act1_fifo_names[1]],
-                act1_fifos[act1_fifo_names[2]],
+            conv3_out_fifos = [
+                act1_fifos[1],
+                act1_fifos[2],
                 outOFL2L3,
             ]
-            conv3_out_fifo_names = ["act1_04_15_11", "act1_13_22_21", "outOFL2L3"]
             # # 1x1 conv2d
             for i in range(n_cols):
 
@@ -499,17 +573,17 @@ def resnet_conv_x():
                     for _ in range_(sys.maxsize):
 
                         # acquire weights once
-                        element0Weights = wts_sub_fifos[
-                            wts_sub_fifo_names[i][0]
-                        ].acquire(ObjectFifoPort.Consume, 1)
+                        element0Weights = wts_sub_fifos[i][0].acquire(
+                            ObjectFifoPort.Consume, 1
+                        )
                         scale = rtp[i][0][0]
                         for _ in range_(tensorInH):
-                            element0ActivactionsIn = act1_fifos[
-                                act1_fifo_names[i]
-                            ].acquire(ObjectFifoPort.Consume, 1)
-                            element0ActivactionsOut = act2_fifos[
-                                act2_fifo_names[i]
-                            ].acquire(ObjectFifoPort.Produce, 1)
+                            element0ActivactionsIn = act1_fifos[i].acquire(
+                                ObjectFifoPort.Consume, 1
+                            )
+                            element0ActivactionsOut = act2_fifos[i].acquire(
+                                ObjectFifoPort.Produce, 1
+                            )
                             if i == 0:
                                 conv1_kernels_call[i](
                                     element0ActivactionsIn,
@@ -531,16 +605,9 @@ def resnet_conv_x():
                                     scale,
                                 )
 
-                            objectfifo_release(
-                                ObjectFifoPort.Consume, act1_fifo_names[i], 1
-                            )
-
-                            objectfifo_release(
-                                ObjectFifoPort.Produce, act2_fifo_names[i], 1
-                            )
-                        objectfifo_release(
-                            ObjectFifoPort.Consume, wts_sub_fifo_names[i][0], 1
-                        )
+                            act1_fifos[i].release(ObjectFifoPort.Consume, 1)
+                            act2_fifos[i].release(ObjectFifoPort.Produce, 1)
+                        wts_sub_fifos[i][0].release(ObjectFifoPort.Consume, 1)
 
             # 3x3 conv2d OFM 0-31
             for i in range(n_cols):
@@ -551,18 +618,18 @@ def resnet_conv_x():
                     for _ in range_(sys.maxsize):
 
                         # acquire weights and rtps once
-                        element0Weights = wts_sub_fifos[
-                            wts_sub_fifo_names[i][1]
-                        ].acquire(ObjectFifoPort.Consume, 1)
+                        element0Weights = wts_sub_fifos[i][1].acquire(
+                            ObjectFifoPort.Consume, 1
+                        )
                         # scale = memref.load(rtpComputeTile03, 0)
 
                         # pre-amble: top row
-                        elementActivactionsIn = act2_fifos[act2_fifo_names[i]].acquire(
+                        elementActivactionsIn = act2_fifos[i].acquire(
                             ObjectFifoPort.Consume, 2
                         )
-                        element0ActivactionsOut = act3_fifo_1[
-                            act3_fifo_names_1[i]
-                        ].acquire(ObjectFifoPort.Produce, 1)
+                        element0ActivactionsOut = act3_fifos_1[i].acquire(
+                            ObjectFifoPort.Produce, 1
+                        )
                         conv2dk3(
                             elementActivactionsIn[0],
                             elementActivactionsIn[0],
@@ -578,18 +645,16 @@ def resnet_conv_x():
                             scale,
                             0,
                         )
-                        objectfifo_release(
-                            ObjectFifoPort.Produce, act3_fifo_names_1[i], 1
-                        )
+                        act3_fifos_1[i].release(ObjectFifoPort.Produce, 1)
 
                         # middle
                         for _ in range_(tensorInH - 2):
-                            elementActivactionsIn = act2_fifos[
-                                act2_fifo_names[i]
-                            ].acquire(ObjectFifoPort.Consume, 3)
-                            element0ActivactionsOut = act3_fifo_1[
-                                act3_fifo_names_1[i]
-                            ].acquire(ObjectFifoPort.Produce, 1)
+                            elementActivactionsIn = act2_fifos[i].acquire(
+                                ObjectFifoPort.Consume, 3
+                            )
+                            element0ActivactionsOut = act3_fifos_1[i].acquire(
+                                ObjectFifoPort.Produce, 1
+                            )
                             conv2dk3(
                                 elementActivactionsIn[0],
                                 elementActivactionsIn[1],
@@ -606,20 +671,16 @@ def resnet_conv_x():
                                 0,
                             )
 
-                            objectfifo_release(
-                                ObjectFifoPort.Consume, act2_fifo_names[i], 1
-                            )
-                            objectfifo_release(
-                                ObjectFifoPort.Produce, act3_fifo_names_1[i], 1
-                            )
+                            act2_fifos[i].release(ObjectFifoPort.Consume, 1)
+                            act3_fifos_1[i].release(ObjectFifoPort.Produce, 1)
 
                         # last part
-                        elementActivactionsIn = act2_fifos[act2_fifo_names[i]].acquire(
+                        elementActivactionsIn = act2_fifos[i].acquire(
                             ObjectFifoPort.Consume, 2
                         )
-                        element0ActivactionsOut = act3_fifo_1[
-                            act3_fifo_names_1[i]
-                        ].acquire(ObjectFifoPort.Produce, 1)
+                        element0ActivactionsOut = act3_fifos_1[i].acquire(
+                            ObjectFifoPort.Produce, 1
+                        )
                         conv2dk3(
                             elementActivactionsIn[0],
                             elementActivactionsIn[1],
@@ -635,17 +696,9 @@ def resnet_conv_x():
                             scale,
                             0,
                         )
-
-                        objectfifo_release(
-                            ObjectFifoPort.Consume, act2_fifo_names[i], 2
-                        )
-                        objectfifo_release(
-                            ObjectFifoPort.Produce, act3_fifo_names_1[i], 1
-                        )
-
-                        objectfifo_release(
-                            ObjectFifoPort.Consume, wts_sub_fifo_names[i][1], 1
-                        )
+                        act2_fifos[i].release(ObjectFifoPort.Consume, 2)
+                        act3_fifos_1[i].release(ObjectFifoPort.Produce, 1)
+                        wts_sub_fifos[i][1].release(ObjectFifoPort.Consume, 1)
 
             # 3x3 conv2d OFM 32-63
 
@@ -657,18 +710,18 @@ def resnet_conv_x():
                     for _ in range_(sys.maxsize):
 
                         # acquire weights and rtps once
-                        element0Weights = wts_sub_fifos[
-                            wts_sub_fifo_names[i][1]
-                        ].acquire(ObjectFifoPort.Consume, 1)
+                        element0Weights = wts_sub_fifos[i][1].acquire(
+                            ObjectFifoPort.Consume, 1
+                        )
                         # scale = memref.load(rtpComputeTile05, 0)
 
                         # pre-amble: top row
-                        elementActivactionsIn = act2_fifos[act2_fifo_names[i]].acquire(
+                        elementActivactionsIn = act2_fifos[i].acquire(
                             ObjectFifoPort.Consume, 2
                         )
-                        element0ActivactionsOut = act3_fifo_2[
-                            act3_fifo_names_2[i]
-                        ].acquire(ObjectFifoPort.Produce, 1)
+                        element0ActivactionsOut = act3_fifos_2[i].acquire(
+                            ObjectFifoPort.Produce, 1
+                        )
                         conv2dk3(
                             elementActivactionsIn[0],
                             elementActivactionsIn[0],
@@ -685,18 +738,16 @@ def resnet_conv_x():
                             tensorInCInit // 2,
                         )
 
-                        objectfifo_release(
-                            ObjectFifoPort.Produce, act3_fifo_names_2[i], 1
-                        )
+                        act3_fifos_2[i].release(ObjectFifoPort.Produce, 1)
 
                         # middle
                         for _ in range_(tensorInH - 2):
-                            elementActivactionsIn = act2_fifos[
-                                act2_fifo_names[i]
-                            ].acquire(ObjectFifoPort.Consume, 3)
-                            element0ActivactionsOut = act3_fifo_2[
-                                act3_fifo_names_2[i]
-                            ].acquire(ObjectFifoPort.Produce, 1)
+                            elementActivactionsIn = act2_fifos[i].acquire(
+                                ObjectFifoPort.Consume, 3
+                            )
+                            element0ActivactionsOut = act3_fifos_2[i].acquire(
+                                ObjectFifoPort.Produce, 1
+                            )
                             conv2dk3(
                                 elementActivactionsIn[0],
                                 elementActivactionsIn[1],
@@ -713,20 +764,16 @@ def resnet_conv_x():
                                 tensorInCInit // 2,
                             )
 
-                            objectfifo_release(
-                                ObjectFifoPort.Consume, act2_fifo_names[i], 1
-                            )
-                            objectfifo_release(
-                                ObjectFifoPort.Produce, act3_fifo_names_2[i], 1
-                            )
+                            act2_fifos[i].release(ObjectFifoPort.Consume, 1)
+                            act3_fifos_2[i].release(ObjectFifoPort.Produce, 1)
 
                         # last part
-                        elementActivactionsIn = act2_fifos[act2_fifo_names[i]].acquire(
+                        elementActivactionsIn = act2_fifos[i].acquire(
                             ObjectFifoPort.Consume, 2
                         )
-                        element0ActivactionsOut = act3_fifo_2[
-                            act3_fifo_names_2[i]
-                        ].acquire(ObjectFifoPort.Produce, 1)
+                        element0ActivactionsOut = act3_fifos_2[i].acquire(
+                            ObjectFifoPort.Produce, 1
+                        )
                         conv2dk3(
                             elementActivactionsIn[0],
                             elementActivactionsIn[1],
@@ -742,15 +789,9 @@ def resnet_conv_x():
                             scale,
                             tensorInCInit // 2,
                         )
-                        objectfifo_release(
-                            ObjectFifoPort.Consume, act2_fifo_names[i], 2
-                        )
-                        objectfifo_release(
-                            ObjectFifoPort.Produce, act3_fifo_names_2[i], 1
-                        )
-                        objectfifo_release(
-                            ObjectFifoPort.Consume, wts_sub_fifo_names[i][1], 1
-                        )
+                        act2_fifos[i].release(ObjectFifoPort.Consume, 2)
+                        act3_fifos_2[i].release(ObjectFifoPort.Produce, 1)
+                        wts_sub_fifos[i][1].release(ObjectFifoPort.Consume, 1)
 
             # # 1x1 conv2d and add skip
             for i in range(n_cols):
@@ -760,9 +801,9 @@ def resnet_conv_x():
                     for _ in range_(sys.maxsize):
 
                         # acquire weights and rtps once
-                        element0Weights = wts_sub_fifos[
-                            wts_sub_fifo_names[i][2]
-                        ].acquire(ObjectFifoPort.Consume, 1)
+                        element0Weights = wts_sub_fifos[i][2].acquire(
+                            ObjectFifoPort.Consume, 1
+                        )
                         if i == 0:
                             scale = rtp[0][3][0]
                             skipScale = rtp[0][3][1]
@@ -772,17 +813,17 @@ def resnet_conv_x():
                             skipScale = rtp[i][2][1]
 
                         for _ in range_(tensorInH):
-                            element0ActivactionsIn = act3_fifo_1[
-                                act3_fifo_names_1[i]
-                            ].acquire(ObjectFifoPort.Consume, 1)
-                            element1ActivactionsIn = act3_fifo_2[
-                                act3_fifo_names_2[i]
-                            ].acquire(ObjectFifoPort.Consume, 1)
+                            element0ActivactionsIn = act3_fifos_1[i].acquire(
+                                ObjectFifoPort.Consume, 1
+                            )
+                            element1ActivactionsIn = act3_fifos_2[i].acquire(
+                                ObjectFifoPort.Consume, 1
+                            )
 
-                            elementActivactionsOut = conv3_out_fifo[i].acquire(
+                            elementActivactionsOut = conv3_out_fifos[i].acquire(
                                 ObjectFifoPort.Produce, 1
                             )
-                            elementSkipsIn = skip_fifos[skip_fifo_names[i]].acquire(
+                            elementSkipsIn = skip_fifos[i].acquire(
                                 ObjectFifoPort.Consume, 1
                             )
                             if i == 0:
@@ -813,22 +854,11 @@ def resnet_conv_x():
                                     scale,
                                     skipScale,
                                 )
-                            objectfifo_release(
-                                ObjectFifoPort.Consume, act3_fifo_names_1[i], 1
-                            )
-                            objectfifo_release(
-                                ObjectFifoPort.Consume, act3_fifo_names_2[i], 1
-                            )
-                            objectfifo_release(
-                                ObjectFifoPort.Produce, conv3_out_fifo_names[i], 1
-                            )
-
-                            objectfifo_release(
-                                ObjectFifoPort.Consume, skip_fifo_names[i], 1
-                            )
-                        objectfifo_release(
-                            ObjectFifoPort.Consume, wts_sub_fifo_names[i][2], 1
-                        )
+                            act3_fifos_1[i].release(ObjectFifoPort.Consume, 1)
+                            act3_fifos_2[i].release(ObjectFifoPort.Consume, 1)
+                            conv3_out_fifos[i].release(ObjectFifoPort.Produce, 1)
+                            skip_fifos[i].release(ObjectFifoPort.Consume, 1)
+                        wts_sub_fifos[i][2].release(ObjectFifoPort.Consume, 1)
 
             # instruction stream generation
             @runtime_sequence(
@@ -836,40 +866,40 @@ def resnet_conv_x():
             )
             def sequence(inputFromL3, weightsFromL3, outputToL3):
 
-                NpuWriteRTPOp("rtpComputeTile02", index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile03", index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile04", index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile05", index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile05", index=1, value=0)
-                NpuWriteRTPOp("rtpComputeTile05", index=2, value=1)
+                rtpComputeTile02[0] = 1
+                rtpComputeTile03[0] = 1
+                rtpComputeTile04[0] = 1
+                rtpComputeTile05[0] = 1
+                rtpComputeTile05[1] = 0
+                rtpComputeTile05[2] = 1
 
-                NpuWriteRTPOp("rtpComputeTile15", index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile14", index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile12", index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile13", index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile13", index=1, value=0)
+                rtpComputeTile15[0] = 1
+                rtpComputeTile14[0] = 1
+                rtpComputeTile12[0] = 1
+                rtpComputeTile13[0] = 1
+                rtpComputeTile13[1] = 0
 
-                NpuWriteRTPOp("rtpComputeTile22", index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile23", index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile25", index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile24", index=0, value=1)
-                NpuWriteRTPOp("rtpComputeTile24", index=1, value=0)
+                rtpComputeTile22[0] = 1
+                rtpComputeTile23[0] = 1
+                rtpComputeTile25[0] = 1
+                rtpComputeTile24[0] = 1
+                rtpComputeTile24[1] = 0
 
                 npu_dma_memcpy_nd(
-                    metadata="act1_00_02_01",
+                    metadata=act1_fifos[0],
                     bd_id=0,
                     mem=inputFromL3,
                     sizes=[1, 1, 1, activationsIn],
                 )
                 npu_dma_memcpy_nd(
-                    metadata="wts_0_L3L2",
+                    metadata=wts_fifos[0],
                     bd_id=1,
                     mem=weightsFromL3,
                     sizes=[1, 1, 1, totalWeights_init],
                 )
 
                 npu_dma_memcpy_nd(
-                    metadata="wts_1_L3L2",
+                    metadata=wts_fifos[1],
                     bd_id=1,
                     mem=weightsFromL3,
                     offsets=[0, 0, 0, totalWeights_init],
@@ -877,7 +907,7 @@ def resnet_conv_x():
                 )
 
                 npu_dma_memcpy_nd(
-                    metadata="wts_2_L3L2",
+                    metadata=wts_fifos[2],
                     bd_id=1,
                     mem=weightsFromL3,
                     offsets=[
@@ -889,13 +919,13 @@ def resnet_conv_x():
                     sizes=[1, 1, 1, totalWeights_rest],
                 )
                 npu_dma_memcpy_nd(
-                    metadata="outOFL2L3",
+                    metadata=outOFL2L3,
                     bd_id=2,
                     mem=outputToL3,
                     sizes=[1, 1, 1, acitivationsOut],
                 )
                 # outOFL2L3 will only complete after inputs complete, so we just wait on outOFL2L3 instead of all
-                dma_wait("outOFL2L3")
+                dma_wait(outOFL2L3)
 
     res = ctx.module.operation.verify()
     if res == True:

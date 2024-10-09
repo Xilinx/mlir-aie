@@ -96,7 +96,9 @@ def conv2dk1():
 
             # Set up compute tiles
 
-            rtp2 = Buffer(ComputeTile2, [16], T.i32(), "rtp2")
+            rtp2 = buffer(
+                ComputeTile2, T.memref(16, T.i32()), "rtp2", use_write_rtp=True
+            )
 
             # Compute tile 2
             @core(ComputeTile2, "conv2dk1.o")
@@ -204,7 +206,7 @@ def conv2dk1():
                     # Set start BD to our shim bd_Id (3)
                     npu_write32(column=0, row=0, address=0x1D20C, value=trace_bd_id)
 
-                NpuWriteRTPOp("rtp2", index=0, value=1)
+                rtp2[0] = 1
 
                 npu_dma_memcpy_nd(
                     metadata=of_inOF_act_L3L2,

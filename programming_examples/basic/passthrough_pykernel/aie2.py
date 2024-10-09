@@ -21,7 +21,7 @@ def passthroughKernel(vector_size):
 
     @device(AIEDevice.npu1_1col)
     def device_body():
-        # define types - for illustrative purposes, we use equivalent types of both MLIR MemRefType and np.ndarray type in this design
+        # define types
         line_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
 
         # AIE Core Python Function declarations
