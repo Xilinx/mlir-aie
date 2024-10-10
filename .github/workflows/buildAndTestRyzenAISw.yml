@@ -61,7 +61,7 @@ jobs:
         id: runcmd
         with:
           distro: none
-          base_image: ghcr.io/xilinx/mlir-aie/ubuntu22-ryzenai-1.3.0ea
+          base_image: ghcr.io/xilinx/mlir-aie/ubuntu22-ryzenai-1.3.0ea:latest
           githubToken: ${{ github.token }}
           dockerRunArgs: |
             --mac-address ${{ secrets.XILINX_MAC }}
