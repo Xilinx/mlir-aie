@@ -443,6 +443,8 @@ class FlowRunner:
 
         if aie_target.casefold() == "AIE2".casefold():
             target = "target_aie_ml"
+        elif aie_target.casefold() == "AIE2P".casefold():
+            target = "target_aie2p"
         else:
             target = "target"
         assert os.path.exists(llvmir_chesshack)
