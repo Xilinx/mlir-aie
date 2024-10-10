@@ -288,6 +288,10 @@ if config.enable_chess_tests:
     else:
         print("Chess not found")
 
+# add vitis components as available features
+for c in config.vitis_components:
+    config.available_features.add(f"aietools_{c.lower()}")
+
 tool_dirs = [config.aie_tools_dir, config.peano_tools_dir, config.llvm_tools_dir]
 tools = [
     "aie-opt",

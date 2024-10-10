@@ -294,6 +294,10 @@ if config.enable_chess_tests:
     else:
         print("Chess not found")
 
+# add vitis components as available features
+for c in config.vitis_components:
+    config.available_features.add(f"aietools_{c.lower()}")
+
 tools = [
     "aie-opt",
     "aie-translate",

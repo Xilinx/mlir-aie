@@ -1194,7 +1194,13 @@ def run(mlir_module, args=None):
         os.environ["PATH"] = os.pathsep.join([os.environ["PATH"], xchesscc_bin_path])
         opts.aietools_path = xchesscc_path
     else:
-        print("xchesscc not found...")
+        print("xchesscc not found.")
+
+    if opts.aietools_path is None:
+        print("Could not find aietools from Vitis or Ryzen AI Software.")
+        opts.aietools_path = "<aietools not found>"
+
+    os.environ["AIETOOLS"] = opts.aietools_path
 
     # This path should be generated from cmake
     aie_path = aie.compiler.aiecc.configure.install_path()
