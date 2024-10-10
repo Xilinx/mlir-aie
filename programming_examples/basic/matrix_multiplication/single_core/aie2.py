@@ -106,27 +106,9 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
 
         @device(AIEDevice.npu1_1col)
         def device_body():
-            a_ty = np.ndarray[
-                (
-                    m,
-                    k,
-                ),
-                np.dtype[dtype_in],
-            ]
-            b_ty = np.ndarray[
-                (
-                    k,
-                    n,
-                ),
-                np.dtype[dtype_in],
-            ]
-            c_ty = np.ndarray[
-                (
-                    m,
-                    n,
-                ),
-                np.dtype[dtype_out],
-            ]
+            a_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
+            b_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
+            c_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
             # AIE Core Function declarations
             func_type = "" if vectorized else "scalar_"

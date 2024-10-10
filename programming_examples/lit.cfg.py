@@ -131,19 +131,19 @@ if config.xrt_lib_dir:
         result = result.stdout.decode("utf-8").split("\n")
         # Starting with Linux 6.8 the format is like "[0000:66:00.1]  :  RyzenAI-npu1"
         # Starting with Linux 6.10 the format is like "|[0000:41:00.1]  ||RyzenAI-npu1  |"
-        p = re.compile("[\|]?\[.+:.+:.+\].+(Phoenix|RyzenAI-(npu\d))")
+        p = re.compile(r"[\|]?(\[.+:.+:.+\]).+(Phoenix|RyzenAI-(npu\d))")
         for l in result:
             m = p.match(l)
-            if m:
-                print("Found Ryzen AI device:", m.group().split()[0])
-                if len(m.groups()) == 2:
-                    # Prepare the future
-                    aie_model = m.group(2)
-                    print("\tmodel:", aie_model)
-                config.available_features.add("ryzen_ai")
-                run_on_npu = (
-                    f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
-                )
+            if not m:
+                continue
+            print("Found Ryzen AI device:", m.group(1))
+            if len(m.groups()) == 3:
+                print("\tmodel:", m.group(3))
+            config.available_features.add("ryzen_ai")
+            run_on_npu = (
+                f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
+            )
+            break
     except:
         print("Failed to run xrt-smi")
         pass
