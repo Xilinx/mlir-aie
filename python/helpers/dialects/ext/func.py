@@ -3,14 +3,9 @@ from functools import update_wrapper
 import sys
 from typing import get_args, get_origin
 
-from ...meta import op_region_builder
-from ...util import (
-    get_arg_types,
-    get_user_code_loc,
-    make_maybe_no_args_decorator,
-    NpuDType,
-    try_convert_np_type_to_mlir_type,
-)
+from ....extras.meta import op_region_builder
+from ....extras.util import get_user_code_loc, make_maybe_no_args_decorator
+from ...util import get_arg_types, NpuDType, try_convert_np_type_to_mlir_type
 from ....dialects._ods_common import get_op_result_or_op_results
 from ....dialects.func import *
 from ....ir import (
@@ -23,7 +18,7 @@ from ....ir import (
     TypeAttr,
     Value,
 )
-from .arith import Scalar
+from ....extras.dialects.ext.arith import Scalar
 
 
 def call(

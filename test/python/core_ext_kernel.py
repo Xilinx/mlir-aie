@@ -15,7 +15,7 @@ from aie.dialects.aie import (
     tile,
     end,
 )
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 from aie.ir import Block, InsertionPoint
 
 from util import construct_and_print_module

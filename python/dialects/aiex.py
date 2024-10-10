@@ -27,7 +27,7 @@ from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint, MemRefTy
 
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
-from ..extras.util import try_convert_np_type_to_mlir_type, np_ndarray_type_get_shape
+from ..helpers.util import try_convert_np_type_to_mlir_type, np_ndarray_type_get_shape
 
 # Comes from _aie
 register_dialect(get_dialect_registry())

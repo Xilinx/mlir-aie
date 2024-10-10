@@ -29,7 +29,8 @@ from aie.dialects.aiex import TileArray
 from aie.extras.context import ExplicitlyManagedModule
 
 # noinspection PyUnresolvedReferences
-from aie.extras.dialects.ext import arith, func, linalg, vector
+from aie.extras.dialects.ext import arith, linalg, vector
+from aie.helpers.dialects.ext import func
 
 # noinspection PyUnresolvedReferences
 from aie.extras.testing import MLIRContext, mlir_ctx as ctx
