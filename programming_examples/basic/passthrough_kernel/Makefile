@@ -12,6 +12,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
+devicename = npu
 targetname = passThroughKernel
 VPATH := ${srcdir}/../../../aie_kernels/generic
 data_size = 4096
@@ -24,7 +25,7 @@ all: build/final_${data_size}.xclbin
 
 build/aie2_lineBased_8b_${data_size}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
-	python3 $< ${data_size} 0 > $@
+	python3 $< ${devicename} ${data_size} 0 > $@
 
 build/aie_trace__lineBased_8b_${data_size}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
@@ -32,7 +33,14 @@ build/aie_trace__lineBased_8b_${data_size}.mlir: ${srcdir}/aie2.py
 
 build/passThrough.cc.o: passThrough.cc
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+	ifeq ($(devicename), npu) 
+		cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+	else ifeq ($(devicename), npu2)
+			cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+		else
+			echo "Device type not supported"
+		endif
+	endif
 	
 build/final_${data_size}.xclbin: build/aie2_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}

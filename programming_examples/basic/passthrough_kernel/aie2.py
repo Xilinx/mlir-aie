@@ -19,8 +19,18 @@ import aie.utils.trace as trace_utils
 def passthroughKernel(vector_size, trace_size):
     N = vector_size
     lineWidthInBytes = N // 4  # chop input in 4 sub-tensors
+    
+    if len(sys.argv) != 3:
+        raise ValueError("[ERROR] Need command line arguments (Device name, Vector size)")
 
-    @device(AIEDevice.npu1_1col)
+    if sys.argv[1] == "npu":
+        dev = AIEDevice.npu1_1col
+    elif sys.argv[1] == "npu2":
+        dev = AIEDevice.npu2
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+
+    @device(dev)
     def device_body():
         # define types
         vector_ty = np.ndarray[(N,), np.dtype[np.uint8]]
