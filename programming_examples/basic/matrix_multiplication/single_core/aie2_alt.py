@@ -8,16 +8,25 @@
 # This alternative implementation uses configure_task instructions instead of
 # dma_memcpy_nd in the runtime sequence configuration. It is otherwise
 # identical.
-
-import sys
 import argparse
+import numpy as np
+import sys
 
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
 import aie.utils.trace as trace_utils
 from aie.utils.trace import PortEvent
+from aie.extras.dialects.ext.scf import _for as range_
+from aie.extras.util import bfloat16
+
+dtype_map = {
+    "bf16": bfloat16,
+    "i8": np.int8,
+    "i16": np.int16,
+    "f32": np.float32,
+    "i32": np.int32,
+}
 
 
 def main():
@@ -77,24 +86,8 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
     enable_tracing = False
     trace_size = 65536
 
-    dtype_in = None
-    if dtype_in_str == "bf16":
-        dtype_in = T.bf16
-    elif dtype_in_str == "i8":
-        dtype_in = T.i8
-    elif dtype_in_str == "i16":
-        dtype_in = T.i16
-    dtype_out = None
-    if dtype_out_str == "bf16":
-        dtype_out = T.bf16
-    elif dtype_out_str == "i8":
-        dtype_out = T.i8
-    elif dtype_out_str == "i16":
-        dtype_out = T.i16
-    elif dtype_out_str == "f32":
-        dtype_out = T.f32
-    elif dtype_out_str == "i32":
-        dtype_out = T.i32
+    dtype_in = dtype_map[dtype_in_str]
+    dtype_out = dtype_map[dtype_out_str]
 
     A_sz = M * K
     B_sz = K * N
@@ -113,30 +106,20 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
 
     with mlir_mod_ctx() as ctx:
 
-        C_sz_in_bytes = C_sz * dtype_out().width // 8
+        C_sz_in_bytes = C_sz * np.dtype(dtype_out).itemsize // 8
 
         @device(AIEDevice.npu1_1col)
         def device_body():
-            memref_a_ty = T.memref(m, k, dtype_in())
-            memref_b_ty = T.memref(k, n, dtype_in())
-            memref_c_ty = T.memref(m, n, dtype_out())
-
-            ofifo_memref_a_ty = TypeAttr.get(ObjectFifoType.get(memref_a_ty))
-            ofifo_memref_b_ty = TypeAttr.get(ObjectFifoType.get(memref_b_ty))
-            ofifo_memref_c_ty = TypeAttr.get(ObjectFifoType.get(memref_c_ty))
+            a_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
+            b_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
+            c_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
             # AIE Core Function declarations
-            zero_scalar = external_func(
-                f"zero_scalar_{dtype_out_str}", inputs=[memref_c_ty]
-            )
-            zero = external_func(f"zero_{dtype_out_str}", inputs=[memref_c_ty])
-            matmul_scalar = external_func(
-                f"matmul_scalar_{dtype_in_str}_{dtype_out_str}",
-                inputs=[memref_a_ty, memref_b_ty, memref_c_ty],
-            )
+            func_type = "" if vectorized else "scalar_"
+            zero = external_func(f"zero_{func_type}{dtype_out_str}", inputs=[c_ty])
             matmul = external_func(
-                f"matmul_{dtype_in_str}_{dtype_out_str}",
-                inputs=[memref_a_ty, memref_b_ty, memref_c_ty],
+                f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}",
+                inputs=[a_ty, b_ty, c_ty],
             )
 
             # Tile declarations
@@ -147,13 +130,13 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
 
             # AIE-array data movement with object fifos
             # Input A
-            inA = object_fifo("inA", shim_tile, mem_tile, 2, memref_a_ty)
+            inA = object_fifo("inA", shim_tile, mem_tile, 2, a_ty)
             memA = object_fifo(
                 "memA",
                 mem_tile,
                 compute_tile2,
                 2,
-                memref_a_ty,
+                a_ty,
                 (
                     [
                         (m // r, r * k),
@@ -168,13 +151,13 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
             object_fifo_link(inA, memA)
 
             # Input B
-            inB = object_fifo("inB", shim_tile, mem_tile, 2, memref_b_ty)
+            inB = object_fifo("inB", shim_tile, mem_tile, 2, b_ty)
             memB = object_fifo(
                 "memB",
                 mem_tile,
                 compute_tile2,
                 2,
-                memref_b_ty,
+                b_ty,
                 (
                     [
                         (k // s, s * n),
@@ -189,13 +172,13 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
             object_fifo_link(inB, memB)
 
             # Output C
-            memC = object_fifo("memC", compute_tile2, mem_tile, 2, memref_c_ty)
+            memC = object_fifo("memC", compute_tile2, mem_tile, 2, c_ty)
             outC = object_fifo(
                 "outC",
                 mem_tile,
                 shim_tile,
                 2,
-                memref_c_ty,
+                c_ty,
                 (
                     [
                         (m // r, r * n),
@@ -218,39 +201,27 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
             # Compute tile 2
             @core(compute_tile2, f"mm_{m}x{k}x{n}.o")
             def core_body():
-                for _ in for_(0xFFFFFFFF):
-                    for _ in for_(tiles) if tiles > 1 else range(1):  # issue #1547
+                for _ in range_(0xFFFFFFFF):
+                    for _ in range_(tiles) if tiles > 1 else range(1):  # issue #1547
                         elem_out = memC.acquire(ObjectFifoPort.Produce, 1)
-                        if vectorized:
-                            call(zero, [elem_out])
-                        else:
-                            call(zero_scalar, [elem_out])
+                        zero(elem_out)
 
                         for _ in (
-                            for_(K_div_k) if K_div_k > 1 else range(1)
+                            range_(K_div_k) if K_div_k > 1 else range(1)
                         ):  # issue #1547
                             elem_in_a = memA.acquire(ObjectFifoPort.Consume, 1)
                             elem_in_b = memB.acquire(ObjectFifoPort.Consume, 1)
-                            if vectorized:
-                                call(matmul, [elem_in_a, elem_in_b, elem_out])
-                            else:
-                                call(matmul_scalar, [elem_in_a, elem_in_b, elem_out])
+                            matmul(elem_in_a, elem_in_b, elem_out)
                             memA.release(ObjectFifoPort.Consume, 1)
                             memB.release(ObjectFifoPort.Consume, 1)
-                            if K_div_k > 1:
-                                yield_([])
-
                         memC.release(ObjectFifoPort.Produce, 1)
-                        if tiles > 1:
-                            yield_([])
-                    yield_([])
 
             # To/from AIE-array data movement
 
             @runtime_sequence(
-                T.memref(A_sz, dtype_in()),
-                T.memref(B_sz, dtype_in()),
-                T.memref(C_sz, dtype_out()),
+                np.ndarray[(A_sz,), np.dtype[dtype_in]],
+                np.ndarray[(B_sz,), np.dtype[dtype_in]],
+                np.ndarray[(C_sz,), np.dtype[dtype_out]],
             )
             def sequence(A, B, C):
 
