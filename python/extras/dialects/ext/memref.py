@@ -63,8 +63,7 @@ def alloca(*sizes: int | Value, element_type: Type = None):
     loc = get_user_code_loc()
     return _alloc(AllocaOp, *sizes, element_type, loc=loc, ip=None)
 
-
-def load(mem: Value, indices: Sequence[int | Value], *, loc=None, ip=None):
+def load(mem: Value, indices: Sequence[Value | int], *, loc=None, ip=None):
     if loc is None:
         loc = get_user_code_loc()
     indices = list(indices)
@@ -75,7 +74,7 @@ def load(mem: Value, indices: Sequence[int | Value], *, loc=None, ip=None):
 
 
 def store(
-    value: Value, mem: Value, indices: Sequence[int | Value], *, loc=None, ip=None
+    value: Value, mem: Value, indices: Sequence[Value | int], *, loc=None, ip=None
 ):
     if loc is None:
         loc = get_user_code_loc()
@@ -109,7 +108,7 @@ class MemRef(Value, ShapedValue):
         elif idx is None:
             return expand_shape(self, (0,), loc=loc)
 
-        idx = list((idx,) if isinstance(idx, (int, slice)) else idx)
+        idx = list((idx,) if isinstance(idx, (Scalar, int, slice)) else idx)
         for i, d in enumerate(idx):
             if isinstance(d, int):
                 idx[i] = constant(d, index=True, loc=loc)

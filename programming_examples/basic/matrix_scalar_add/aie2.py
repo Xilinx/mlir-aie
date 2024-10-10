@@ -8,10 +8,14 @@
 import numpy as np
 import sys
 
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
-from aie.extras.context import mlir_mod_ctx
+from aie.extras.dialects.ext.arith import constant
+from aie.extras.dialects.ext.func import func
 from aie.extras.dialects.ext.scf import _for as range_
+from aie.api.dataflow.inout.simplefifoinout import SimpleFifoInOutSequence
+from aie.api.dataflow.objectfifo import MyObjectFifo
+from aie.api.phys.device import NPU1Col1, XCVC1902
+from aie.api.program import MyProgram
+from aie.api.worker import MyWorker
 
 # Size of the entire image
 IMAGE_HEIGHT = 16
@@ -28,71 +32,61 @@ NUM_4D = IMAGE_HEIGHT / TILE_HEIGHT
 
 objfifo_capacity = 4
 
+if len(sys.argv) != 3:
+    raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
+if sys.argv[1] == "npu":
+    dev = NPU1Col1()
+elif sys.argv[1] == "xcvc1902":
+    dev = XCVC1902()
+else:
+    raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
-def my_matrix_add_one():
+col = int(sys.argv[2])
+my_dtype = np.int32
+tile_ty = np.ndarray[my_dtype, (TILE_SIZE,)]
 
-    if len(sys.argv) != 3:
-        raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
-    if sys.argv[1] == "npu":
-        dev = AIEDevice.npu1_1col
-    elif sys.argv[1] == "xcvc1902":
-        dev = AIEDevice.xcvc1902
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-
-    @device(dev)
-    def device_body():
-        tile_ty = np.ndarray[(TILE_SIZE,), np.dtype[np.int32]]
-
-        # Tile declarations
-        ShimTile = tile(int(sys.argv[2]), 0)
-        ComputeTile2 = tile(int(sys.argv[2]), 2)
-
-        # AIE-array data movement with object fifos
-        # Input
-        of_in1 = object_fifo("in0", ShimTile, ComputeTile2, objfifo_capacity, tile_ty)
-
-        # Output
-        of_out1 = object_fifo("out0", ComputeTile2, ShimTile, objfifo_capacity, tile_ty)
-
-        # Set up compute tile 2
-        @core(ComputeTile2)
-        def core_body():
-            # Effective while(1)
-            for _ in range_(sys.maxsize):
-                elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
-                elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
-                for i in range_(TILE_SIZE):
-                    elem_out[i] = elem_in[i] + 1
-                of_in1.release(ObjectFifoPort.Consume, 1)
-                of_out1.release(ObjectFifoPort.Produce, 1)
-
-        # To/from AIE-array data movement
-        @runtime_sequence(tile_ty, tile_ty, tile_ty)
-        def sequence(inTensor, notUsed, outTensor):
-            npu_dma_memcpy_nd(
-                metadata=of_in1,
-                bd_id=1,
-                mem=inTensor,
-                sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
-                strides=[1, 1, IMAGE_WIDTH, 1],
-                issue_token=True,
-            )
-
-            npu_dma_memcpy_nd(
-                metadata=of_out1,
-                bd_id=0,
-                mem=outTensor,
-                sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
-                strides=[1, 1, IMAGE_WIDTH, 1],
-            )
-            dma_wait(of_in1, of_out1)
+# AIE-array data movement with object fifos
+of_in = MyObjectFifo(objfifo_capacity, tile_ty, shim_endpoint=(col, 0))
+of_out = MyObjectFifo(objfifo_capacity, tile_ty, shim_endpoint=(col, 0))
 
 
-with mlir_mod_ctx() as ctx:
-    my_matrix_add_one()
-    res = ctx.module.operation.verify()
-    if res == True:
-        print(ctx.module)
-    else:
-        print(res)
+@func
+def add_kernel(elem_in: tile_ty, elem_out: tile_ty):
+    for i in range_(TILE_SIZE):
+        elem_out[i] = elem_in[i] + constant(1)
+
+
+def core_fn(of_in, of_out, add_kernel):
+    # Effective while(1)
+    for _ in range_(sys.maxsize):
+        elem_in = of_in.acquire(1)
+        elem_out = of_out.acquire(1)
+        add_kernel(elem_in, elem_out)
+        of_in.release(1)
+        of_out.release(1)
+
+
+# Set up worker
+worker_program = MyWorker(
+    core_fn,
+    [of_in.second, of_out.first, add_kernel],
+    coords=(col, 2),
+)
+
+# To/from AIE-array data movement
+inout_sequence = SimpleFifoInOutSequence(
+    of_in.first,
+    TILE_SIZE,
+    of_out.second,
+    TILE_SIZE,
+    in_sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
+    in_strides=[1, 1, IMAGE_WIDTH, 1],
+    out_sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
+    out_strides=[1, 1, IMAGE_WIDTH, 1],
+    dtype=my_dtype,
+)
+
+my_program = MyProgram(
+    dev, worker_programs=[worker_program], inout_sequence=inout_sequence
+)
+my_program.resolve_program()

@@ -152,10 +152,8 @@ int main(int argc, const char *argv[]) {
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_inA = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(3));
-  auto bo_inB = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(4));
   auto bo_out = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(5));
+                        kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
@@ -169,15 +167,19 @@ int main(int argc, const char *argv[]) {
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
+  // sync host to device memories
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
+  // Execute the kernel and wait to finish
   if (verbosity >= 1)
-    std::cout << "Running Kernel." << std::endl;
+    std::cout << "Running Kernel.\n";
   unsigned int opcode = 3;
-  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out);
   run.wait();
 
+  // Sync device to host memories
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   uint32_t *bufOut = bo_out.map<uint32_t *>();

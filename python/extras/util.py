@@ -11,6 +11,8 @@ import re
 import sys
 from typing import Callable, List, Sequence, Tuple, get_args, get_origin
 
+bfloat16 = tf.bfloat16.as_numpy_dtype
+
 from .meta import op_region_builder
 from ..extras import types as T
 from ..ir import (
@@ -52,6 +54,15 @@ except:
         file=sys.stderr,
     )
     bfloat16 = _pseudo_bfloat16
+
+E = TypeVar("E")
+
+
+def single_elem_or_list_to_list(val: list[E] | E) -> list[T]:
+    """does not work for list of lists but still useful"""
+    if not isinstance(val, list):
+        return [val]
+    return val
 
 
 def is_relative_to(self, other):
@@ -189,7 +200,6 @@ _mlir_type_ctor_to_np_dtype = lambda: {
     v: k for k, v in _np_dtype_to_mlir_type_ctor.items()
 }
 
-
 def np_dtype_to_mlir_type(np_dtype):
     mlir_type = _np_dtype_to_mlir_type_ctor[np_dtype]
     if mlir_type:
@@ -201,8 +211,33 @@ def np_dtype_to_mlir_type(np_dtype):
 
 
 def mlir_type_to_np_dtype(mlir_type):
-    _mlir_type_to_np_dtype = {v(): k for k, v in _np_dtype_to_mlir_type_ctor.items()}
-    return _mlir_type_to_np_dtype.get(mlir_type)
+    # Must define dynamically because you can't instantiate v() outside of context
+    mlir_type_ctor_to_np_dtype = defaultdict(
+        lambda: None,
+        {v(): k for k, v in _np_dtype_to_mlir_type_ctor.items()},
+    )
+
+    np_dtype = mlir_type_ctor_to_np_dtype.get(mlir_type)
+    if np_dtype:
+        return np_dtype
+    else:
+        raise AttributeError("Failed to map mlir python type to np dtype")
+
+
+def np_ndarray_type_to_mlir_type(
+    np_ndarray_type: np.ndarray[np.generic.dtype, np.generic.shape]
+) -> MemRefType:
+    args = get_args(np_ndarray_type)
+    dtype: np.generic.dtype = args[0]
+    shape: np.generic.shape = args[1]
+    return MemRefType.get(shape=shape, element_type=np_dtype_to_mlir_type(dtype))
+
+
+def get_np_ndarray_type_shape(
+    np_ndarray_type: np.ndarray[np.generic.dtype, np.generic.shape]
+) -> np.generic.shape:
+    args = get_args(np_ndarray_type)
+    return args[1]
 
 
 _mlir_type_to_ctype = {
@@ -518,7 +553,6 @@ class getitemproperty:
 
         # f is not a bound method since it was decorated...
         return self.f(self.instance, item, **kwargs)
-
 
 def get_arg_types(objs: Sequence[int | float | Value | OpView]):
     my_types = []
