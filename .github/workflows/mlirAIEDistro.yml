@@ -389,6 +389,8 @@ jobs:
           fi
           
           python -c 'import aie.ir'
+          python -c 'import aie.extras'
+          python -c 'import aie.helpers'
 
   upload_wheels:
 
