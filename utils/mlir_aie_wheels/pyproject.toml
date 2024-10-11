@@ -10,7 +10,7 @@ environment = { PATH = "/usr/lib/ccache:/usr/lib64/ccache:/usr/lib/ccache/bin:$P
 before-build = [
     "{project}/scripts/docker_prepare_ccache.sh",
     "pip install -r requirements.txt",
-    "pip install -r requirements_extras.txt,
+    "pip install -r requirements_extras.txt",
     "{project}/scripts/download_mlir.sh",
 ]
 environment-pass = [
