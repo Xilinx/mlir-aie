@@ -10,6 +10,7 @@ environment = { PATH = "/usr/lib/ccache:/usr/lib64/ccache:/usr/lib/ccache/bin:$P
 before-build = [
     "{project}/scripts/docker_prepare_ccache.sh",
     "pip install -r requirements.txt",
+    "HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install git+https://github.com/hunhoffe/mlir-python-extras@09f0650",
     "{project}/scripts/download_mlir.sh",
 ]
 environment-pass = [
@@ -33,6 +34,7 @@ repair-wheel-command = [
 environment = { PATH = "/usr/local/opt/ccache/libexec:$PATH", PIP_NO_BUILD_ISOLATION = "false" }
 before-build = [
     "pip install -r requirements.txt",
+    "HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install git+https://github.com/hunhoffe/mlir-python-extras@09f0650",
     "{project}/scripts/download_mlir.sh",
 ]
 repair-wheel-command = [
@@ -44,5 +46,6 @@ environment = { PIP_NO_BUILD_ISOLATION = "false" }
 before-build = [
     "pip install delvewheel",
     "pip install -r requirements.txt",
+    "HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install git+https://github.com/hunhoffe/mlir-python-extras@09f0650",
     "bash {project}\\scripts\\download_mlir.sh",
 ]

@@ -228,6 +228,7 @@ jobs:
         export PIP_NO_BUILD_ISOLATION=false
         
         pip install -r requirements.txt
+        HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install git+https://github.com/hunhoffe/mlir-python-extras@09f0650
         pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
         pip install importlib-metadata
         CIBW_ARCHS=${{ matrix.ARCH }} MATRIX_OS=${{ matrix.OS }} ./scripts/download_mlir.sh
@@ -361,7 +362,7 @@ jobs:
         with:
           sparse-checkout: |
             python/requirements.txt
-            pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
+            python/requirements_bfloat16.txt
 
       - uses: actions/download-artifact@v3
         with:
@@ -376,6 +377,7 @@ jobs:
         shell: bash
         run: |
           pip install -r python/requirements.txt
+          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install git+https://github.com/hunhoffe/mlir-python-extras@09f0650
           pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
           unzip -o -q dist/mlir_aie\*.whl
           
