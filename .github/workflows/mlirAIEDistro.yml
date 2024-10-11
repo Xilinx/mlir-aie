@@ -362,6 +362,7 @@ jobs:
         with:
           sparse-checkout: |
             python/requirements.txt
+            python/requirements_extras.txt
             python/requirements_bfloat16.txt
 
       - uses: actions/download-artifact@v3
