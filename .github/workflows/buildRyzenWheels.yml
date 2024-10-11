@@ -52,7 +52,7 @@ jobs:
           python -m venv aie-venv
           source aie-venv/bin/activate
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install git+https://github.com/hunhoffe/mlir-python-extras@09f0650
+          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
 
           VERSION=$(utils/clone-llvm.sh --get-wheel-version)
@@ -160,7 +160,7 @@ jobs:
           python -m venv aie-venv
           source aie-venv/bin/activate
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install git+https://github.com/hunhoffe/mlir-python-extras@09f0650
+          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
           source aie-venv/bin/activate
           

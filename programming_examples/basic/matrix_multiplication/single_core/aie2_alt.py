@@ -17,8 +17,8 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 import aie.utils.trace as trace_utils
 from aie.utils.trace import PortEvent
-from aie.extras.dialects.ext.scf import _for as range_
-from aie.helpers.util import bfloat16
+from aie.helpers.dialects.ext.scf import _for as range_
+from aie.extras.util import bfloat16
 
 dtype_map = {
     "bf16": bfloat16,

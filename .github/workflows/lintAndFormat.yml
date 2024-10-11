@@ -43,7 +43,7 @@ jobs:
           
           pip install cmake==3.27.9 numpy psutil pybind11 rich pkginfo lit PyYAML requests
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install git+https://github.com/hunhoffe/mlir-python-extras@09f0650
+          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
 
       - name: Get MLIR
@@ -206,7 +206,7 @@ jobs:
         run: |
           pip install cmake numpy psutil pybind11 rich lit
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install git+https://github.com/hunhoffe/mlir-python-extras@09f0650
+          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
 
       - name: Install packages
@@ -240,7 +240,7 @@ jobs:
         if: steps.changed-files.outputs.changed-files != ''
         run: |
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install git+https://github.com/hunhoffe/mlir-python-extras@09f0650
+          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
 
       - name: Build and generate coverage (Release)
