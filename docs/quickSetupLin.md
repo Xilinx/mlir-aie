@@ -194,6 +194,14 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 ## Build a Design
 
+> Remember to set up your environment including Vitis, your license, XRT, and IRON
+> ```
+>   source yourVitisSetupScript.sh
+>   export LM_LICENSE_FILE=/opt/Xilinx.lic
+>   source /opt/xilinx/xrt/setup.sh
+>   source utils/setup_iron_env.sh
+> ```
+
 For your design of interest, for instance from [programming_examples](../programming_examples/), 2 steps are needed: (i) build the AIE desgin and then (ii) build the host code.
 
 ### Build Device AIE Part
