@@ -9,58 +9,49 @@ from ..extras.context import mlir_mod_ctx
 from ..extras.dialects.ext.func import FuncBase
 from ..dialects.aie import device
 
-from .worker import MyWorker
-from .phys.device import MyDevice
-from .dataflow.inout.inout import InOutSequence
-from .dataflow.objectfifolink import MyObjectFifoLink
+from .worker import Worker
+from .phys.device import Device
+from .io.coordinator import IOCoordinator
 
 
-class MyProgram:
+class Program:
     def __init__(
         self,
-        device: MyDevice,
-        worker_programs: list[MyWorker],
-        inout_sequence: InOutSequence,
-        links: list[MyObjectFifoLink] = [],
+        device: Device,
+        worker_programs: list[Worker],
+        io_coordinator: IOCoordinator,
     ):
         self.__device = device
         self.__worker_programs = worker_programs
-        self.__inout_sequence = inout_sequence
-        self.__links = links
+        self.__io_coordinator = io_coordinator
 
-    def resolve_program(self):
+    def resolve_program(self, generate_placement: bool = False):
         with mlir_mod_ctx() as ctx:
 
             @device(self.__device.resolve())
             def device_body():
                 # Collect all fifos
-                all_fifos = self.__inout_sequence.get_fifos()
+                all_fifos = set()
+                all_fifos.update(self.__io_coordinator.get_fifos())
                 for w in self.__worker_programs:
-                    all_fifos.extend(w.get_fifos())
+                    all_fifos.update(w.get_fifos())
 
                 # Collect all tiles
-                my_tiles = set()
+                all_tiles = set()
                 for w in self.__worker_programs:
-                    my_tiles.add(w.tile)
-                for l in self.__links:
-                    my_tiles.add(l.tile)
+                    all_tiles.add(w.tile)
                 for f in all_fifos:
-                    my_tiles.add(f.end1_tile())
-                    my_tiles.update(f.end2_tiles())
+                    all_tiles.add(f.end1_tile())
+                    all_tiles.update(f.end2_tiles())
 
                 # Resolve tiles
-                for t in my_tiles:
+                for t in all_tiles:
                     self.__device.resolve_tile(t)
                     self._print_verify(ctx)
 
                 # Generate fifos
                 for f in all_fifos:
                     f.resolve()
-                    self._print_verify(ctx)
-
-                # Generate object fifo links
-                for l in self.__links:
-                    l.resolve()
                     self._print_verify(ctx)
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
@@ -73,7 +64,7 @@ class MyProgram:
                         self._print_verify(ctx)
 
                 # In/Out Sequence
-                self.__inout_sequence.resolve()
+                self.__io_coordinator.resolve()
                 self._print_verify(ctx)
 
                 # Generate core programs

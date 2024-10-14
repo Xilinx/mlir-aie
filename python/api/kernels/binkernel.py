@@ -7,23 +7,20 @@ TODO:
 import numpy as np
 from typing import get_origin
 
-from ... import ir
+from ... import ir  # type: ignore
 
 from ...extras.util import np_dtype_to_mlir_type
-from ...dialects.func import FuncOp
+from ...extras.dialects.ext.func import FuncOp  # type: ignore
 from ...dialects.aie import external_func, call
-from ...extras.util import np_ndarray_type_to_mlir_type
-from .kernel import MyKernel
+from .kernel import Kernel
 
 
-class BinKernel(MyKernel):
+class BinKernel(Kernel):
     def __init__(
         self,
         name: str,
         bin_name: str,
-        inout_types: list[
-            np.ndarray[np.generic.dtype, np.generic.shape] | np.dtype
-        ] = [],
+        inout_types: list[type[np.ndarray] | np.dtype] = [],
     ) -> None:
         self.__name = name
         self.__bin_name = bin_name
@@ -36,17 +33,13 @@ class BinKernel(MyKernel):
 
     def resolve(
         self,
-        loc: ir.Location = None,
-        ip: ir.InsertionPoint = None,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
     ) -> None:
         if self.__op == None:
             resolved_inout_types = []
             for t in self.__inout_types:
-                if get_origin(t) == np.ndarray:
-                    dtype = np_ndarray_type_to_mlir_type(t)
-                else:
-                    dtype = np_dtype_to_mlir_type(t)
-                resolved_inout_types.append(dtype)
+                resolved_inout_types.append(np_dtype_to_mlir_type(t))
             self.__op = external_func(self.__name, inputs=resolved_inout_types)
 
     def __call__(self, *args, **kwargs):

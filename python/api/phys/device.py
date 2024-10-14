@@ -14,18 +14,18 @@ devs = {
 }
 """
 
-from ... import ir
-from ...dialects.aie import AIEDevice, tile, TileOp
+from ... import ir  # type: ignore
+from ...dialects.aie import AIEDevice, tile, TileOp  # type: ignore
 from ..resolvable import Resolvable
-from .tile import MyTile
+from .tile import Tile
 
 
-class MyDevice(Resolvable):
+class Device(Resolvable):
     """
     Note: this class is abstract because it does not implement Resolve
     """
 
-    class __MyDeviceTile(Resolvable):
+    class __DeviceTile(Resolvable):
         """
         Interior class for tiles objects owned by a particular device
         """
@@ -38,8 +38,8 @@ class MyDevice(Resolvable):
 
         def resolve(
             self,
-            loc: ir.Location = None,
-            ip: ir.InsertionPoint = None,
+            loc: ir.Location | None = None,
+            ip: ir.InsertionPoint | None = None,
         ) -> None:
             if self.__op == None:
                 self.__op = tile(self.__col, self.__row, loc=loc, ip=ip)
@@ -57,11 +57,11 @@ class MyDevice(Resolvable):
     def __init__(self, cols: int, rows: int) -> None:
         self.__cols = cols
         self.__rows = rows
-        self.__tiles: list[list[MyDevice.__MyDeviceTile]] = []
+        self.__tiles: list[list[Device.__DeviceTile]] = []
         for c in range(self.__cols):
             self.__tiles.append([])
             for r in range(self.__rows):
-                self.__tiles[c].append(MyDevice.__MyDeviceTile(c, r))
+                self.__tiles[c].append(Device.__DeviceTile(c, r))
 
     @property
     def rows(self) -> int:
@@ -73,45 +73,45 @@ class MyDevice(Resolvable):
 
     def resolve_tile(
         self,
-        tile: MyTile,
-        loc: ir.Location = None,
-        ip: ir.InsertionPoint = None,
+        tile: Tile,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
     ) -> None:
         self.__tiles[tile.col][tile.row].resolve(loc, ip)
         tile.op = self.__tiles[tile.col][tile.row].op
 
 
-class NPU1Col1(MyDevice):
+class NPU1Col1(Device):
     def __init__(self) -> None:
         super().__init__(cols=1, rows=4)
 
     def resolve(
         self,
-        loc: ir.Location = None,
-        ip: ir.InsertionPoint = None,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
     ) -> None:
         return AIEDevice.npu1_1col
 
 
-class NPU1Col4(MyDevice):
+class NPU1Col4(Device):
     def __init__(self) -> None:
         super().__init__(cols=4, rows=4)
 
     def resolve(
         self,
-        loc: ir.Location = None,
-        ip: ir.InsertionPoint = None,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
     ) -> None:
         return AIEDevice.npu1_1col
 
 
-class XCVC1902(MyDevice):
+class XCVC1902(Device):
     def __init__(self) -> None:
-        super().__init__(cols=1, rows=1)  # TODO: this is just dummy for now
+        super().__init__(cols=1, rows=1)  # TODO: fill in with actual values
 
     def resolve(
         self,
-        loc: ir.Location = None,
-        ip: ir.InsertionPoint = None,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
     ) -> None:
         return AIEDevice.xcvc1902

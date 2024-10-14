@@ -8,29 +8,33 @@ TODO:
 import sys
 from typing import Callable
 
-from .. import ir
+from .. import ir  # type: ignore
 from ..dialects.aie import core
-from ..dialects.scf import yield_, for_
-from .phys.tile import MyTile
+from ..extras.dialects.ext.scf import _for as range_
+from .phys.tile import Tile
 from .dataflow.objectfifo import ObjectFifoHandle
-from .dataflow.endpoint import MyObjectFifoEndpoint
-from .kernels.kernel import MyKernel
+from .dataflow.endpoint import ObjectFifoEndpoint
+from .kernels.binkernel import BinKernel
+from .kernels.kernel import Kernel
 
 
-class MyWorker(MyObjectFifoEndpoint):
+class Worker(ObjectFifoEndpoint):
     def __init__(
         self,
-        core_fn: Callable[[ObjectFifoHandle | MyKernel], None] | None,
-        fn_args: list[ObjectFifoHandle | MyKernel] = [],
-        coords: tuple[int, int] = None,
+        core_fn: Callable[[ObjectFifoHandle | Kernel], None] | None,
+        fn_args: list[ObjectFifoHandle | Kernel] = [],
+        coords: tuple[int, int] | None = None,
     ):
-        column, row = coords
-        self.__tile = MyTile(column, row)
+        self.__tile = None
+        if coords:
+            column, row = coords
+            self.__tile = Tile(column, row)
+
         if core_fn is None:
 
             def do_nothing_core_fun() -> None:
-                for _ in for_(sys.maxsize):
-                    yield_([])
+                for _ in range_(sys.maxsize):
+                    pass
 
             self.core_fn = do_nothing_core_fun
         else:
@@ -41,7 +45,7 @@ class MyWorker(MyObjectFifoEndpoint):
         self.__fifos = []
 
         for arg in self.fn_args:
-            if isinstance(arg, MyKernel):
+            if isinstance(arg, BinKernel):
                 bin_names.add(arg.bin_name)
             elif isinstance(arg, ObjectFifoHandle):
                 arg.set_endpoint(self)
@@ -52,7 +56,7 @@ class MyWorker(MyObjectFifoEndpoint):
             self.link_with = list(bin_names)[0]
 
     @property
-    def tile(self) -> MyTile:
+    def tile(self) -> Tile | None:
         return self.__tile
 
     def get_fifos(self) -> list[ObjectFifoHandle]:
@@ -60,9 +64,10 @@ class MyWorker(MyObjectFifoEndpoint):
 
     def resolve(
         self,
-        loc: ir.Location = None,
-        ip: ir.InsertionPoint = None,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
     ) -> None:
+        assert self.__tile != None
         my_tile = self.__tile.op
         my_link = self.link_with
 

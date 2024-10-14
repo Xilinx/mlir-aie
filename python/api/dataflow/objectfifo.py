@@ -5,60 +5,54 @@ TODO:
 * join/distribute
 """
 
-# Address circular dependency between MyObjectFifo and ObjectFifoHandle
+# Address circular dependency between ObjectFifo and ObjectFifoHandle
 from __future__ import annotations
 import numpy as np
 
-from ... import ir
-from ..._mlir_libs._aie import ObjectFifoSubviewType
-from ...dialects._aie_enum_gen import ObjectFifoPort
+from ... import ir  # type: ignore
+from ..._mlir_libs._aie import ObjectFifoSubviewType  # type: ignore
+from ...dialects._aie_enum_gen import ObjectFifoPort  # type: ignore
 from ...dialects._aie_ops_gen import (
     ObjectFifoCreateOp,
     ObjectFifoSubviewAccessOp,
     ObjectFifoAcquireOp,
     objectfifo_release,
-)
+)  # type: ignore
 from ...dialects.aie import object_fifo
-from ...extras.util import np_ndarray_type_to_mlir_type
+from ...extras.util import np_ndarray_type_to_memref_type
 
 from ..resolvable import Resolvable
-from .endpoint import MyObjectFifoEndpoint
-from ..phys.tile import MyTile
+from .endpoint import ObjectFifoEndpoint
+from ..phys.tile import Tile
 
 
-class MyObjectFifo(Resolvable):
+class ObjectFifo(Resolvable):
     __of_index = 0
 
     def __init__(
         self,
         depth: int,
-        obj_type: np.ndarray[np.generic.dtype, np.generic.shape],
-        name: str = None,
-        end1: MyObjectFifoEndpoint = None,
-        end2: MyObjectFifoEndpoint = None,
-        dimensionsToStream=None,  # TODO(erika): needs a type
-        dimensionsFromStreamPerConsumer=None,  # TODO(erika): needs a type
-        shim_endpoint: tuple[int, int] | None = None,
+        obj_type: type[np.ndarray],
+        name: str | None = None,
+        end1: ObjectFifoEndpoint | None = None,
+        end2: list[ObjectFifoEndpoint] = [],
+        dimensionsToStream=None,
+        dimensionsFromStreamPerConsumer=None,
     ):
         self.__depth = depth
         self.__obj_type = obj_type
-        self.end1: MyObjectFifoEndpoint = end1
-        self.end2: MyObjectFifoEndpoint = end2
+        self.end1 = end1
+        self.end2 = end2
         self.dimensionToStream = dimensionsToStream
         self.dimensionsFromStreamPerConsumer = dimensionsFromStreamPerConsumer
 
         if name is None:
-            self.name = f"myof{MyObjectFifo.__get_index()}"
+            self.name = f"of{ObjectFifo.__get_index()}"
         else:
             self.name = name
         self.__op: ObjectFifoCreateOp | None = None
         self.__first: ObjectFifoHandle = ObjectFifoHandle(self, True)
         self.__second: ObjectFifoHandle = ObjectFifoHandle(self, False)
-        if shim_endpoint:
-            column, row = shim_endpoint
-            self.__shim_endpoint = MyTile(col=column, row=row)
-        else:
-            self.__shim_endpoint = shim_endpoint
 
     @classmethod
     def __get_index(cls) -> int:
@@ -79,73 +73,65 @@ class MyObjectFifo(Resolvable):
     def second(self) -> ObjectFifoHandle:
         return self.__second
 
-    def end1_tile(self) -> MyTile:
+    def end1_tile(self) -> Tile | None:
         if self.end1 == None:
-            if self.end2 != None and self.__shim_endpoint != None:
-                return self.__shim_endpoint
-            else:
-                assert False, "ObjectFifo end1 not set"
-        else:
-            return self.end1.tile
+            return None
+        return self.end1.tile
 
-    def end2_tiles(self) -> list[MyTile]:
-        if self.end2 == None:
-            if self.end1 != None and self.__shim_endpoint != None:
-                return [self.__shim_endpoint]
-            else:
-                assert False, "ObjectFifo end2 not set"
-        else:
-            return [self.end2.tile]
+    def end2_tiles(self) -> list[Tile | None] | None:
+        if self.end2 == []:
+            return None
+        return [e.tile for e in self.end2]
 
     @property
-    def obj_type(self) -> np.ndarray[np.generic.dtype, np.generic.shape]:
+    def obj_type(self) -> type[np.ndarray]:
         return self.__obj_type
 
     def resolve(
         self,
-        loc: ir.Location = None,
-        ip: ir.InsertionPoint = None,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
     ) -> None:
         if self.__op == None:
             tile1 = self.end1_tile()
             tiles2 = self.end2_tiles()
+            assert tile1 != None
+            assert tiles2 != None and len(tiles2) >= 1
+            for t in tiles2:
+                assert t != None
 
             self.__op = object_fifo(
                 self.name,
                 tile1.op,
                 [t.op for t in tiles2],
                 self.__depth,
-                np_ndarray_type_to_mlir_type(self.__obj_type),
+                np_ndarray_type_to_memref_type(self.__obj_type),
                 dimensionsToStream=self.dimensionToStream,
                 dimensionsFromStreamPerConsumer=self.dimensionsFromStreamPerConsumer,
                 loc=loc,
                 ip=ip,
             )
 
-    def _set_endpoint(self, endpoint: MyObjectFifoEndpoint, first: bool = True) -> None:
+    def _set_endpoint(self, endpoint: ObjectFifoEndpoint, first: bool = True) -> None:
         if first:
-            assert self.end1 == None and (
-                self.end2 == None or self.__shim_endpoint == None
-            ), "ObjectFifo already assigned endpoint 1"
+            assert self.end1 == None, "ObjectFifo already assigned endpoint 1"
             self.end1 = endpoint
         else:
-            assert self.end2 == None and (
-                self.end1 == None or self.__shim_endpoint == None
-            ), "ObjectFifo already assigned endpoint 2"
-            self.end2 = endpoint
+            assert self.end2 == None, "ObjectFifo already assigned endpoint 2"
+            self.end2.append(endpoint)
 
     def _acquire(
         self,
         port: ObjectFifoPort,
         num_elem: int,
-        loc: ir.Location = None,
-        ip: ir.InsertionPoint = None,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
     ):
         assert num_elem > 0, "Must consume at least one element"
         assert (
             num_elem <= self.__depth
         ), "Cannot consume elements to exceed ObjectFifo depth"
-        memref_ty = np_ndarray_type_to_mlir_type(self.__obj_type)
+        memref_ty = np_ndarray_type_to_memref_type(self.__obj_type)
         subview_t = ObjectFifoSubviewType.get(memref_ty)
         acq = ObjectFifoAcquireOp(subview_t, port, self.name, num_elem, loc=loc, ip=ip)
 
@@ -168,8 +154,8 @@ class MyObjectFifo(Resolvable):
         self,
         port: ObjectFifoPort,
         num_elem: int,
-        loc: ir.Location = None,
-        ip: ir.InsertionPoint = None,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
     ):
         assert num_elem > 0, "Must consume at least one element"
         assert (
@@ -179,7 +165,7 @@ class MyObjectFifo(Resolvable):
 
 
 class ObjectFifoHandle(Resolvable):
-    def __init__(self, of: MyObjectFifo, is_first: bool):
+    def __init__(self, of: ObjectFifo, is_first: bool):
         self.__port: ObjectFifoPort = (
             ObjectFifoPort.Produce if is_first else ObjectFifoPort.Consume
         )
@@ -187,12 +173,18 @@ class ObjectFifoHandle(Resolvable):
         self.__object_fifo = of
 
     def acquire(
-        self, num_elem: int, loc: ir.Location = None, ip: ir.InsertionPoint = None
+        self,
+        num_elem: int,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
     ):
         return self.__object_fifo._acquire(self.__port, num_elem, loc=loc, ip=ip)
 
     def release(
-        self, num_elem: int, loc: ir.Location = None, ip: ir.InsertionPoint = None
+        self,
+        num_elem: int,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
     ):
         return self.__object_fifo._release(self.__port, num_elem, loc=loc, ip=ip)
 
@@ -205,21 +197,21 @@ class ObjectFifoHandle(Resolvable):
         return self.__object_fifo.op
 
     @property
-    def obj_type(self) -> np.ndarray[np.generic.dtype, np.generic.shape]:
+    def obj_type(self) -> type[np.ndarray]:
         return self.__object_fifo.obj_type
 
-    def end1_tile(self) -> MyTile:
+    def end1_tile(self) -> Tile | None:
         return self.__object_fifo.end1_tile()
 
-    def end2_tiles(self) -> list[MyTile]:
+    def end2_tiles(self) -> list[Tile | None] | None:
         return self.__object_fifo.end2_tiles()
 
-    def set_endpoint(self, endpoint: MyObjectFifoEndpoint) -> None:
+    def set_endpoint(self, endpoint: ObjectFifoEndpoint) -> None:
         self.__object_fifo._set_endpoint(endpoint, first=self.__is_first)
 
     def resolve(
         self,
-        loc: ir.Location = None,
-        ip: ir.InsertionPoint = None,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
     ) -> None:
         return self.__object_fifo.resolve(loc=loc, ip=ip)

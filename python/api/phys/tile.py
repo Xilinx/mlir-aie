@@ -8,7 +8,7 @@ TODOs:
 from ...dialects.aie import TileOp
 
 
-class MyTile:
+class Tile:
     def __init__(self, col: int, row: int) -> None:
         self.col: int = col
         self.row: int = row

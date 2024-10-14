@@ -7,11 +7,11 @@ TODO:
 """
 
 from abc import abstractmethod
-from ..phys.tile import MyTile
+from ..phys.tile import Tile
 from ..resolvable import Resolvable
 
 
-class MyObjectFifoEndpoint(Resolvable):
+class ObjectFifoEndpoint(Resolvable):
     @property
     @abstractmethod
-    def tile(self) -> MyTile: ...
+    def tile(self) -> Tile | None: ...
