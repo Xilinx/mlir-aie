@@ -424,7 +424,7 @@ def my_add_one_objFifo(module):
             for _ in range_(8):
                 elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
                 elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
-                for i in range(8):
+                for i in range_(8):
                     elem_out[i] = elem_in[i] + 1
                 of_in1.release(ObjectFifoPort.Consume, 1)
                 of_out1.release(ObjectFifoPort.Produce, 1)
