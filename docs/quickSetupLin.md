@@ -62,7 +62,7 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
     git clone https://github.com/amd/xdna-driver.git
     export XDNA_SRC_DIR=$(realpath xdna-driver)
     cd xdna-driver
-    git reset --hard 537a509a3ab1b698c9c9f6ebcd88035b2fe8359b
+    git reset --hard 3d5a8cf1af2adfbb6306ad71b45e5f3e1ffc5b37
     git submodule update --init --recursive
     ```
 
