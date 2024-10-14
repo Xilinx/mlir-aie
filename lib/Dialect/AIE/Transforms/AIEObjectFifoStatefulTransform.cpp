@@ -972,8 +972,8 @@ struct AIEObjectFifoStatefulTransformPass
   // Function that generates the IR to update runtime state of objectfifo
   // accesses. Called by dynamicGlobalObjectFifos().
   void updateGlobalNextIndex(OpBuilder &builder, ObjectFifoReleaseOp relOp,
-                         BufferOp globalNextIndex, arith::ConstantOp index,
-                         arith::ConstantOp size) {
+                             BufferOp globalNextIndex, arith::ConstantOp index,
+                             arith::ConstantOp size) {
     builder.setInsertionPointAfter(relOp);
     Value oldCounter = builder.create<memref::LoadOp>(
         builder.getUnknownLoc(), globalNextIndex,
@@ -1040,17 +1040,18 @@ struct AIEObjectFifoStatefulTransformPass
         }
 
         // Walk the code:
-        // - after each ObjectFifoReleaseOp: 
+        // - after each ObjectFifoReleaseOp:
         //    - globalNextIndex: add #rel modulo objfifo depth
-        // - before each ObjectFifoAcquireOp: 
-        //    - globalNextIndex: load index and use it to index_switch (one IndexSwithOp per AccessOp)
+        // - before each ObjectFifoAcquireOp:
+        //    - globalNextIndex: load index and use it to index_switch (one
+        //    IndexSwithOp per AccessOp)
         WalkResult res = coreOp.walk([&](Operation *op) {
           if (auto relOp = dyn_cast<ObjectFifoReleaseOp>(op)) {
             ObjectFifoCreateOp createOp = relOp.getObjectFifo();
             ObjectFifoPort port = relOp.getPort();
             updateGlobalNextIndex(builder, relOp, globalNextIndex,
-                              globalIndices[{createOp, port}],
-                              constantSizes[{createOp, port}]);
+                                  globalIndices[{createOp, port}],
+                                  constantSizes[{createOp, port}]);
           }
           if (auto acqOp = dyn_cast<ObjectFifoAcquireOp>(op)) {
             std::vector<ObjectFifoSubviewAccessOp> accessOps;
