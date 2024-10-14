@@ -283,10 +283,12 @@ def channels_basic(module):
     def npu():
         tiles = TileArray()
 
-        b = aie.buffer(tiles[2, 2].tile, (10, 10), T.i32(), name="bob")
+        b = aie.buffer(
+            tiles[2, 2].tile, np.ndarray[(10, 10), np.dtype[np.int32]], name="bob"
+        )
         c = Channel(tiles[2, 2].tile, b)
         c = Channel(
-            tiles[2, 2].tile, shape=(10, 10), dtype=T.i32(), buffer_name="alice"
+            tiles[2, 2].tile, shape=(10, 10), dtype=np.int32, buffer_name="alice"
         )
 
     # CHECK: %bob = aie.buffer(%tile_2_2) {sym_name = "bob"} : memref<10x10xi32>
@@ -305,7 +307,7 @@ def channels_basic(module):
         tiles = TileArray()
 
         c = Channel(
-            tiles[2, 2].tile, shape=(10, 10), dtype=T.i32(), buffer_name="alice"
+            tiles[2, 2].tile, shape=(10, 10), dtype=np.int32, buffer_name="alice"
         )
 
         @aie.mem(tiles[2, 2].tile)
@@ -345,10 +347,10 @@ def nd_channels(module):
         tiles = TileArray()
 
         shapes = np.array([(10, 10)], dtype="i,i").astype(object)
-        c = tiles[2, 2].channel(shape=shapes, dtype=[T.i32()])
+        c = tiles[2, 2].channel(shape=shapes, dtype=[np.int32])
         # CHECK: <Channel: buffer=MemRef(%buffer_2_2, memref<10x10xi32>) producer_lock=Scalar(%buffer_2_2_producer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_producer_lock"}) consumer_lock=Scalar(%buffer_2_2_consumer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_consumer_lock"})>
         print(c)
-        cs = tiles[2:4, 2:4].channel(shape=shapes, dtype=[T.i32()])
+        cs = tiles[2:4, 2:4].channel(shape=shapes, dtype=[np.int32])
         assert cs.shape == (2, 2)
 
         # CHECK: (0, 0) <Channel: buffer=MemRef(%buffer_2_2_0, memref<10x10xi32>) producer_lock=Scalar(%buffer_2_2_0_producer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_0_producer_lock"}) consumer_lock=Scalar(%buffer_2_2_0_consumer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_0_consumer_lock"})>
@@ -361,7 +363,7 @@ def nd_channels(module):
         shapes = np.array([[(1, 2), (3, 4)], [(5, 6), (7, 8)]], dtype="i,i").astype(
             object
         )
-        cs = tiles[2:4, 2:4].channel(shape=shapes, dtype=[T.i32()])
+        cs = tiles[2:4, 2:4].channel(shape=shapes, dtype=[np.int32])
         assert cs.shape == (2, 2)
 
         # CHECK: (0, 0) <Channel: buffer=MemRef(%buffer_2_2_1, memref<1x2xi32>) producer_lock=Scalar(%buffer_2_2_1_producer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_1_producer_lock"}) consumer_lock=Scalar(%buffer_2_2_1_consumer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_1_consumer_lock"})>
@@ -382,10 +384,10 @@ def buffer_test_this_needs_to_distinct_from_all_other_mentions_of_buffer_in_this
         tiles = TileArray()
 
         shapes = [(10, 10)]
-        c = tiles[2, 2].buffer(shape=shapes, dtype=[T.i32()])
+        c = tiles[2, 2].buffer(shape=shapes, dtype=[np.int32])
         # CHECK: MemRef(%buffer_2_2, memref<10x10xi32>)
         print(c)
-        cs = tiles[2:4, 2:4].buffer(shape=shapes, dtype=[T.i32()])
+        cs = tiles[2:4, 2:4].buffer(shape=shapes, dtype=[np.int32])
         assert cs.shape == (2, 2)
 
         # CHECK: (0, 0) MemRef(%buffer_2_2_0, memref<10x10xi32>)
@@ -396,7 +398,7 @@ def buffer_test_this_needs_to_distinct_from_all_other_mentions_of_buffer_in_this
             print(idx, c)
 
         shapes = [[(1, 2), (3, 4)], [(5, 6), (7, 8)]]
-        cs = tiles[2:4, 2:4].buffer(shape=shapes, dtype=[T.i32()])
+        cs = tiles[2:4, 2:4].buffer(shape=shapes, dtype=[np.int32])
         assert cs.shape == (2, 2)
 
         # CHECK: (0, 0) MemRef(%buffer_2_2_1, memref<1x2xi32>)

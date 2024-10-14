@@ -9,7 +9,6 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.extras.dialects.ext import memref
 from aie.extras.context import mlir_mod_ctx
 from aie.extras.dialects.ext.scf import _for as range_
 
@@ -159,19 +158,18 @@ def edge_detect():
             # Compute tile 3
             @core(ComputeTile3, "filter2d.cc.o")
             def core_body():
-                kernel = memref.alloc(3, 3, T.i16())
                 v0 = 0
                 v1 = 4096
                 v_minus4 = -16384
-                kernel[0, 0] = v0
-                kernel[0, 1] = v1
-                kernel[0, 2] = v0
-                kernel[1, 0] = v1
-                kernel[1, 1] = v_minus4
-                kernel[1, 2] = v1
-                kernel[2, 0] = v0
-                kernel[2, 1] = v1
-                kernel[2, 2] = v0
+                initial_value = np.array(
+                    [[v0, v1, v0], [v1, v_minus4, v1], [v0, v1, v0]], dtype=np.int16
+                )
+                kernel = buffer(
+                    ComputeTile3,
+                    np.ndarray[(3, 3), np.dtype[np.int16]],
+                    "kernel",
+                    initial_value=initial_value,
+                )
 
                 for _ in range_(sys.maxsize):
                     # Preamble : Top Border

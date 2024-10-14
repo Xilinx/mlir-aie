@@ -58,7 +58,6 @@ fi
 python3 -m pip install --upgrade pip
 VPP=`which xchesscc`
 if test -f "$VPP"; then
-  AIETOOLS="`dirname $VPP`/../aietools"
   mkdir -p my_install
   pushd my_install
   pip download mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/
@@ -77,7 +76,7 @@ if test -f "$VPP"; then
   popd
   python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements.txt
   python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_ml.txt
-  python3 -m pip install --upgrade --force-reinstall --no-cache-dirpip python/requirements_bfloat16.txt || echo "Failed to install bfloat16, that's ok!"
+  python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16, that's ok!"
   pushd programming_examples
 else
   echo "Vitis not found! Exiting..."
