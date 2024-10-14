@@ -5,6 +5,7 @@
 #
 # (c) Copyright 2023 AMD Inc.
 import argparse
+from ml_dtypes import bfloat16
 import numpy as np
 import sys
 
@@ -14,7 +15,6 @@ from aie.dialects.aiex import *
 import aie.utils.trace as trace_utils
 from aie.utils.trace import PortEvent
 from aie.extras.dialects.ext.scf import _for as range_
-from aie.extras.util import bfloat16
 
 dtype_map = {
     "bf16": bfloat16,

@@ -32,26 +32,7 @@ from ..ir import (
     VectorType,
     _GlobalDebug,
 )
-
-
-class _pseudo_bfloat16(np.float16):
-    def __init__(*args, **kwargs):
-        raise TypeError(
-            "This is a placeholder class for bfloat16. Install bfloat16 python package in order to instantiate bfloat16 values"
-        )
-
-
-try:
-    from bfloat16 import bfloat16 as real_bfloat16
-
-    bfloat16 = real_bfloat16
-except:
-    # Numpy doesn't support bfloat16 at this time. Using hacky extension of np.float16 as a placeholder, for now.
-    print(
-        "Warning! bfloat16 python package not available, so using placeholder bfloat16 type",
-        file=sys.stderr,
-    )
-    bfloat16 = _pseudo_bfloat16
+from ml_dtypes import bfloat16
 
 
 def is_relative_to(self, other):
@@ -158,7 +139,6 @@ _np_dtype_to_mlir_type_ctor = defaultdict(
         np.float64: T.f64,
         # Block floating point types
         bfloat16: T.bf16,
-        _pseudo_bfloat16: T.bf16,  # If bfloat16 == psuedo_bfloat16, this is okay because duplicate keys are removed
         # Index Types
         # this is technically wrong i guess but numpy by default casts python scalars to this
         # so to support passing lists of ints we map to index type
