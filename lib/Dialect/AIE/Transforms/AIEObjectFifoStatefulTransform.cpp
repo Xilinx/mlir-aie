@@ -1049,8 +1049,8 @@ struct AIEObjectFifoStatefulTransformPass
             ObjectFifoCreateOp createOp = relOp.getObjectFifo();
             ObjectFifoPort port = relOp.getPort();
             updateGlobalNextIndex(builder, relOp, globalNextIndex,
-                              globalIndices[{createOp, port}],
-                              constantSizes[{createOp, port}]);
+                                  globalIndices[{createOp, port}],
+                                  constantSizes[{createOp, port}]);
           }
           if (auto acqOp = dyn_cast<ObjectFifoAcquireOp>(op)) {
             std::vector<ObjectFifoSubviewAccessOp> accessOps;
