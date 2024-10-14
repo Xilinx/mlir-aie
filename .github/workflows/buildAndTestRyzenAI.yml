@@ -169,3 +169,33 @@ jobs:
           ninja check-programming-guide
 
           popd
+
+  build-quick-setup:
+    name: Run Examples on Ryzen AI using quick_setup.sh Environment
+    runs-on: amd7940hs
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "true"
+
+      # Launch an ssh session via a proxy server if there is a need
+      # for debug. This seems to live for 35 min max
+      # https://github.com/mxschmitt/action-tmate
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        # To run this, launch it manually on the default branch and
+        # click on "launch_tmate_terminal_for_debug"
+        if: github.event_name == 'workflow_dispatch'
+                && inputs.launch_tmate_terminal_for_debug
+
+      - name: Run commands
+        run: |
+
+          pip cache purge
+          source /opt/xilinx/xrt/setup.sh
+          source utils/quick_setup.sh
+
+          ninja install
+          ninja check-reference-designs
+          ninja check-programming-guide
+          popd
