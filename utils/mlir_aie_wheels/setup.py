@@ -269,5 +269,5 @@ setup(
     ext_modules=[CMakeExtension("_mlir_aie", sourcedir=MLIR_AIE_SOURCE_DIR)],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
-    python_requires=">=3.8",
+    python_requires=">=3.10",
 )
