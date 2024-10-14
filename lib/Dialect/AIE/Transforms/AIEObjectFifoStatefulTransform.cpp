@@ -1086,12 +1086,11 @@ struct AIEObjectFifoStatefulTransformPass
                   ValueRange(
                       ArrayRef({globalIndices[{createOp, port}].getResult()})));
               unsigned caseRegionCounts = fifoSizes[{createOp, port}];
-              SmallVector<int64_t, 4> caseValues;
+              std::vector<int64_t> caseValues;
               for (int i = 0; i < fifoSizes[{createOp, port}]; ++i) {
                 caseValues.push_back(i);
               }
-              auto cases =
-                  DenseI64ArrayAttr::get(builder.getContext(), caseValues);
+              auto cases = ArrayRef(caseValues);
               auto switchOp = builder.create<scf::IndexSwitchOp>(
                   switchIndex.getLoc(),
                   TypeRange({buffersPerFifo[createOp][0].getType()}),
