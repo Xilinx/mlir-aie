@@ -50,35 +50,6 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 ### Install the XDNA Driver
 
-1. Install a more recent CMake, which is needed for building XRT.
-   
-   1. Download CMake 3.28 binaries into `NEW_CMAKE_DIR`.
-      ```bash
-      mkdir cmake
-      export NEW_CMAKE_DIR=$(realpath cmake)
-      cd cmake
-      wget https://github.com/Kitware/CMake/releases/download/v3.28.3/cmake-3.28.3-linux-x86_64.sh
-      chmod +x ./cmake-3.28.3-linux-x86_64.sh
-      ./cmake-3.28.3-linux-x86_64.sh
-      ```
-
-   1. Answer the prompts with **y** (accept license), then **n** (include subdirectory).
-
-   1. Add new cmake directory to your `PATH`.
-
-      ```bash
-      export PATH="${NEW_CMAKE_DIR}/bin":"${PATH}"
-      ```
-   
-   1. Verify the install of CMake was successful.
-
-      ```bash
-      cmake --version
-      ```
-
-      > The frist line this prints should read
-      > ```cmake version 3.28.3```
-
 1. Install the following prerequisite packages.
  
    ```bash
