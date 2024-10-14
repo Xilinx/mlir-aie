@@ -987,8 +987,7 @@ struct AIEObjectFifoStatefulTransformPass
   }
 
   // Function that generates the IR for objectfifo accesses to be handled at
-  // runtime (the lowering pass no longer needs to keep the state of
-  // acquire / release ops).
+  // runtime.
   LogicalResult dynamicGlobalObjectFifos(DeviceOp &device, OpBuilder &builder,
                                          std::set<TileOp> objectFifoTiles) {
     for (auto coreOp : device.getOps<CoreOp>()) {
@@ -1010,13 +1009,6 @@ struct AIEObjectFifoStatefulTransformPass
             MemRefType::get(SmallVector<int64_t>{(int64_t)fifoSizes.size()},
                             builder.getIndexType());
         auto globalNextIndex = builder.create<BufferOp>(
-            builder.getUnknownLoc(), memrefTy, coreOp.getTile(),
-            /*sym_name*/ nullptr, /*address*/ nullptr,
-            /*initial_value*/ nullptr, /*mem_bank*/ nullptr);
-
-        // Also create a global buffer to track number of acquired objects:
-        // this will be used to determine values of useLock operations.
-        auto globalAcquires = builder.create<BufferOp>(
             builder.getUnknownLoc(), memrefTy, coreOp.getTile(),
             /*sym_name*/ nullptr, /*address*/ nullptr,
             /*initial_value*/ nullptr, /*mem_bank*/ nullptr);
@@ -1045,18 +1037,13 @@ struct AIEObjectFifoStatefulTransformPass
           builder.create<memref::StoreOp>(
               size.getLoc(), initVal, globalNextIndex,
               ValueRange(ArrayRef({indexOp.getResult()})));
-          builder.create<memref::StoreOp>(
-              size.getLoc(), initVal, globalAcquires,
-              ValueRange(ArrayRef({indexOp.getResult()})));
         }
 
         // Walk the code:
         // - after each ObjectFifoReleaseOp: 
         //    - globalNextIndex: add #rel modulo objfifo depth
-        //    - globalAcquires: reduce by #rel
         // - before each ObjectFifoAcquireOp: 
         //    - globalNextIndex: load index and use it to index_switch (one IndexSwithOp per AccessOp)
-        //    - globalAcquires: check global to know the useLock value
         WalkResult res = coreOp.walk([&](Operation *op) {
           if (auto relOp = dyn_cast<ObjectFifoReleaseOp>(op)) {
             ObjectFifoCreateOp createOp = relOp.getObjectFifo();
