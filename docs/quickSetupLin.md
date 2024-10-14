@@ -12,11 +12,6 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 > **NOTE:** Some manufacturers only provide Windows executables to update the BIOS, please do this before installing Ubuntu. 
 
-#### BIOS Settings:
-1. Turn off SecureBoot (Allows for unsigned drivers to be installed)
-
-   ```BIOS → Security → Secure boot → Disable```
-
 ## Prerequisites
 
 ### Install Xilinx Vitis 2023.2 
