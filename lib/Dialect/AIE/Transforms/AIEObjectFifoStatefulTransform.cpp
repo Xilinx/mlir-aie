@@ -1104,9 +1104,9 @@ struct AIEObjectFifoStatefulTransformPass
                   buffersPerFifo[createOp][bufferIndex].getResult());
               for (int i = 0; i < fifoSizes[{createOp, port}]; ++i) {
                 // Create other cases of IndexSwitchOp
+                builder.createBlock(&switchOp.getCaseRegions()[i]);
                 builder.setInsertionPoint(&switchOp.getCaseBlock(i),
                                           switchOp.getCaseBlock(i).begin());
-                builder.createBlock(&switchOp.getCaseRegions()[i]);
                 int bufferToBeAccesed =
                     (accessOp.getIndex() + i) % fifoSizes[{createOp, port}];
                 builder.create<scf::YieldOp>(
