@@ -972,8 +972,8 @@ struct AIEObjectFifoStatefulTransformPass
   // Function that generates the IR to update runtime state of objectfifo
   // accesses. Called by dynamicGlobalObjectFifos().
   void updateGlobalNextIndex(OpBuilder &builder, ObjectFifoReleaseOp relOp,
-                         BufferOp globalNextIndex, arith::ConstantOp index,
-                         arith::ConstantOp size) {
+                             BufferOp globalNextIndex, arith::ConstantOp index,
+                             arith::ConstantOp size) {
     builder.setInsertionPointAfter(relOp);
     Value oldCounter = builder.create<memref::LoadOp>(
         builder.getUnknownLoc(), globalNextIndex,
