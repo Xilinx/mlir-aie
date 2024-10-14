@@ -50,33 +50,72 @@ All steps in WSL Ubuntu terminal.
       locale-gen en_US.UTF-8
       ```
 
-1. Install Vitis under WSL Ubuntu from [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html) and setup a AI Engine license:
-    
-    - Install Vitis in WSL Ubuntu. We will assume you use the default installation directory, `/tools/Xilinx`.
-    - Get local license for AIE Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense) providing your machine's MAC address (`ip -brief link show eth0`) 
-    - copy license file (Xilinx.lic) to your preferred location (licenseFilePath) and update your setup configuration accordingly, for instance
-      ```
-      export XILINXD_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
-      ip link add vmnic0 type dummy
-      ip link set vmnic0 addr <yourMACaddress>
-      ```
-    - Setup your environment using the following script for Vitis for aietools:
-       ```bash
-       #!/bin/bash
-        #################################################################################
-        # Setup Vitis (which is just for aietools)
-        #################################################################################
-        export MYXILINX_VER=2023.2
-        export MYXILINX_BASE=/tools/Xilinx
-        export XILINX_LOC=$MYXILINX_BASE/Vitis/$MYXILINX_VER
-        export AIETOOLS_ROOT=$XILINX_LOC/aietools
-        export PATH=$PATH:${AIETOOLS_ROOT}/bin
-        export LM_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
-       ```
+1. Install AIETools under WSL Ubuntu
+
+    1. Option A - Supporting AMD Ryzen™ AI with AIE-ML (AIE2) and AIE2P: Install AMD Vitis™ AIE Essentials under WSL Ubuntu from [Ryzen AI Software 1.3 Early Accesss](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab). 
+
+
+      > This is an early access lounge, you must register and be granted access at this time.
+
+      - Install Vitis™ AIE Essentials in WSL Ubuntu. We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
+      - Download VAIML Installer for Linux based compilation: `ryzen_ai-1.3.0ea1.tgz`
+      - Extract the required tools:
+         ``` bash
+            tar -xzvf ryzen_ai-1.3.0ea1.tgz
+            cd ryzen_ai-1.3.0
+            mkdir vitis_aie_essentials
+            mv vitis_aie_essentials*.whl vitis_aie_essentials
+            cd vitis_aie_essentials
+            unzip vitis_aie_essentials*.whl
+         ```
+      - Get local license for AIE Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense) providing your machine's MAC address (`ip -brief link show eth0`) 
+      - copy license file (Xilinx.lic) to your preferred location (licenseFilePath) and update your setup configuration accordingly, for instance
+        ```
+        export XILINXD_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
+        ip link add vmnic0 type dummy
+        ip link set vmnic0 addr <yourMACaddress>
+        ```
+      - Setup your environment using the following script for Vitis for aietools:
+         ```bash
+         #!/bin/bash
+          #################################################################################
+          # Setup Vitis AIE Essentials
+          #################################################################################
+          export AIETOOLS_ROOT=/tools/ryzen_ai-1.3.0/vitis_aie_essentials
+          export PATH=$PATH:${AIETOOLS_ROOT}/bin
+          export LM_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
+         ```
+    1. Option B - Supporting AMD Ryzen™ AI and AMD Versal™ with AIE and AIE-ML (AIE2): Install Vitis under WSL Ubuntu from [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html) and setup a AI Engine license:
+
+
+      - Install Vitis in WSL Ubuntu. We will assume you use the default installation directory, `/tools/Xilinx`.
+      - Get local license for AIE Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense) providing your machine's MAC address (`ip -brief link show eth0`) 
+      - copy license file (Xilinx.lic) to your preferred location (licenseFilePath) and update your setup configuration accordingly, for instance
+        ```
+        export XILINXD_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
+        ip link add vmnic0 type dummy
+        ip link set vmnic0 addr <yourMACaddress>
+        ```
+      - Setup your environment using the following script for Vitis for aietools:
+         ```bash
+         #!/bin/bash
+          #################################################################################
+          # Setup Vitis (which is just for aietools)
+          #################################################################################
+          export MYXILINX_VER=2023.2
+          export MYXILINX_BASE=/tools/Xilinx
+          export XILINX_LOC=$MYXILINX_BASE/Vitis/$MYXILINX_VER
+          export AIETOOLS_ROOT=$XILINX_LOC/aietools
+          export PATH=$PATH:${AIETOOLS_ROOT}/bin
+          export LM_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
+         ```
 
 1. Install or Build mlir-aie tools under WSL2:
 
    * Use quick setup script to install from whls:
+
+     >  NOTE: Installing the mlir-aie tools from wheels via the quick setup path supports AIE-ML (AIE2) and AIE2P, it does NOT support Versal™ devices with AIE. 
+
      ```
      source utils/quick_setup.sh
      # NOTE: this will install mlir-aie in my_install/mlir_aie
