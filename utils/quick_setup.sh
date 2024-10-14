@@ -65,9 +65,8 @@ if test -f "$VPP"; then
   export PYTHONPATH=`realpath mlir_aie/python`:$PYTHONPATH
   export PEANO_DIR=`realpath llvm-aie`
   popd
-  python3.10 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements.txt
-  python3.10 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_ml.txt
-  python3.10 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16, that's ok!"
+  python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements.txt
+  python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_ml.txt
   pushd programming_examples
 else
   echo "Vitis not found! Exiting..."

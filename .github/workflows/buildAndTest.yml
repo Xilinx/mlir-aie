@@ -51,9 +51,7 @@ jobs:
 
       - name: Install Python packages
         run: |
-          
           pip install -r python/requirements.txt
-          pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
 
       - name: Install packages
         run: |
