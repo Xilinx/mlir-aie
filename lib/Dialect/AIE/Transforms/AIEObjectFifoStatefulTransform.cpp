@@ -1042,8 +1042,9 @@ struct AIEObjectFifoStatefulTransformPass
         // Walk the code:
         // - after each ObjectFifoReleaseOp:
         //    - globalNextIndex: add #rel modulo objfifo depth
-        // - before each ObjectFifoAcquireOp: 
-        //    - globalNextIndex: load index and use it to index_switch (one IndexSwithOp per AccessOp)
+        // - before each ObjectFifoAcquireOp:
+        //    - globalNextIndex: load index and use it to index_switch (one
+        //    IndexSwithOp per AccessOp)
         WalkResult res = coreOp.walk([&](Operation *op) {
           if (auto relOp = dyn_cast<ObjectFifoReleaseOp>(op)) {
             ObjectFifoCreateOp createOp = relOp.getObjectFifo();
