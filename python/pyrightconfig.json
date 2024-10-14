@@ -1,0 +1,27 @@
+{
+    "include": [
+      "api"
+    ],
+  
+    "exclude": [
+      "**/__pycache__",
+    ],
+  
+    "ignore": [
+    ],
+  
+    "defineConstant": {
+      "DEBUG": true
+    },
+  
+    "reportMissingImports": "error",
+  
+    "pythonVersion": "3.10",
+    "pythonPlatform": "Linux",
+  
+    "executionEnvironments": [
+      {
+        "root": "api"
+      }
+    ]
+  }

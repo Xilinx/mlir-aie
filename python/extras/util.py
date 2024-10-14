@@ -518,3 +518,15 @@ def get_arg_types(objs: Sequence[int | float | Value | OpView]):
         else:
             return None
     return my_types
+
+
+class DataTileSpecifier:
+    """TODO: define what this is"""
+
+    pass
+
+
+class DataTiler:
+    """An iterator of some sort that translates to sizes/offsets/strides"""
+
+    pass
