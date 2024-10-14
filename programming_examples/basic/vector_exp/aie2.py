@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-
+import numpy as np
 from aie.dialects.aie import *  # primary mlir-aie dialect definitions
 from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 
@@ -13,6 +13,8 @@ from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
 from aie.extras.dialects.ext.scf import (
     _for as range_,
 )  # scf (structured control flow) dialect
+from aie.extras.util import bfloat16
+from aie.extras.util import np_ndarray_type_get_shape
 
 
 # AI Engine structural design function
@@ -32,19 +34,19 @@ def my_eltwise_exp():
     @device(AIEDevice.npu1_1col)
     def device_body():
 
-        memRef_ty = T.memref(n, T.bf16())
+        tile_ty = np.ndarray[(n,), np.dtype[bfloat16]]
 
         # Type used in the tile memory
-        memRef_A_ty = T.memref(n, T.bf16())
-        memRef_C_ty = T.memref(n, T.bf16())
+        A_ty = np.ndarray[(n,), np.dtype[bfloat16]]
+        C_ty = np.ndarray[(n,), np.dtype[bfloat16]]
 
         # Type used in the memory tile which aggregates across the 4 cores
-        memRef_A_MT_ty = T.memref(n * n_cores, T.bf16())
-        memRef_C_MT_ty = T.memref(n * n_cores, T.bf16())
+        A_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
+        C_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
 
         # AIE Core Function declarations
 
-        exp_bf16_1024 = external_func("exp_bf16_1024", inputs=[memRef_ty, memRef_ty])
+        exp_bf16_1024 = external_func("exp_bf16_1024", inputs=[tile_ty, tile_ty])
 
         # Tile declarations
         ShimTile = tile(0, 0)
@@ -57,14 +59,15 @@ def my_eltwise_exp():
 
         # AIE-array data movement with object fifos
         # Input A
-        inA = object_fifo("inA", ShimTile, MemTile, buffer_depth, memRef_A_MT_ty)
+        inA = object_fifo("inA", ShimTile, MemTile, buffer_depth, A_memTile_ty)
         for i in range(n_cores):
             inA_fifos.append(
-                object_fifo(f"memA{i}", MemTile, cores[i], buffer_depth, memRef_A_ty)
+                object_fifo(f"memA{i}", MemTile, cores[i], buffer_depth, A_ty)
             )
         if n_cores > 1:
             of_offsets = [
-                (np.prod(memRef_A_MT_ty.shape) // n_cores) * i for i in range(n_cores)
+                (np.prod(np_ndarray_type_get_shape(A_memTile_ty)) // n_cores) * i
+                for i in range(n_cores)
             ]
         else:
             of_offsets = []
@@ -73,12 +76,13 @@ def my_eltwise_exp():
         # Output C
         for i in range(n_cores):
             outC_fifos.append(
-                object_fifo(f"memC{i}", cores[i], MemTile, buffer_depth, memRef_C_ty)
+                object_fifo(f"memC{i}", cores[i], MemTile, buffer_depth, C_ty)
             )
-        outC = object_fifo("outC", MemTile, ShimTile, buffer_depth, memRef_C_MT_ty)
+        outC = object_fifo("outC", MemTile, ShimTile, buffer_depth, C_memTile_ty)
         if n_cores > 1:
             of_offsets = [
-                (np.prod(memRef_C_MT_ty.shape) // n_cores) * i for i in range(n_cores)
+                (np.prod(np_ndarray_type_get_shape(C_memTile_ty)) // n_cores) * i
+                for i in range(n_cores)
             ]
         else:
             of_offsets = []
@@ -94,13 +98,13 @@ def my_eltwise_exp():
                         elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)
                         elem_in_a = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
 
-                        call(exp_bf16_1024, [elem_in_a, elem_out])
+                        exp_bf16_1024(elem_in_a, elem_out)
 
                         inA_fifos[i].release(ObjectFifoPort.Consume, 1)
                         outC_fifos[i].release(ObjectFifoPort.Produce, 1)
 
         # To/from AIE-array data movement
-        tensor_ty = T.memref(N, T.bf16())
+        tensor_ty = np.ndarray[(N,), np.dtype[bfloat16]]
 
         @runtime_sequence(tensor_ty, tensor_ty)
         def sequence(A, C):

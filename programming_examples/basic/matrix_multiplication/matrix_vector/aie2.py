@@ -4,9 +4,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2023 AMD Inc.
+import numpy as np
 
 from aie.extras.context import mlir_mod_ctx
-
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.dialects.ext.scf import _for as range_
@@ -35,34 +35,26 @@ def my_matmul():
     # FIXME vectorized kernel is currently erroneous
     vectorized = False
 
-    dtype_in = T.i16
+    dtype_in = np.dtype[np.int16]
     dtype_in_str = "i16"
-    dtype_out = T.i32
+    dtype_out = np.dtype[np.int32]
     dtype_out_str = "i32"
 
     with mlir_mod_ctx() as ctx:
 
         @device(AIEDevice.npu1_4col)
         def device_body():
-            memRef_inA_ty = T.memref(m * k, dtype_in())
-            memRef_inB_ty = T.memref(k, dtype_in())
-            memRef_outC_ty = T.memref(m, dtype_out())
-            memRef_A_ty = T.memref(m, k, dtype_in())
+            inA_ty = np.ndarray[(m * k,), dtype_in]
+            inB_ty = np.ndarray[(k,), dtype_in]
+            outC_ty = np.ndarray[(m,), dtype_out]
+            A_ty = np.ndarray[(m, k), dtype_in]
 
             # AIE Core Function declarations
-            zero_scalar = external_func(
-                f"zero_scalar_{dtype_out_str}", inputs=[memRef_outC_ty]
-            )
-            zero = external_func(
-                f"zero_vectorized_{dtype_out_str}", inputs=[memRef_outC_ty]
-            )
-            matvec_scalar = external_func(
-                f"matvec_scalar_{dtype_in_str}_{dtype_out_str}",
-                inputs=[memRef_A_ty, memRef_inB_ty, memRef_outC_ty],
-            )
+            func_type = "vectorized" if vectorized else "scalar"
+            zero = external_func(f"zero_{func_type}_{dtype_out_str}", inputs=[outC_ty])
             matvec = external_func(
-                f"matvec_vectorized_{dtype_in_str}_{dtype_out_str}",
-                inputs=[memRef_A_ty, memRef_inB_ty, memRef_outC_ty],
+                f"matvec_{func_type}_{dtype_in_str}_{dtype_out_str}",
+                inputs=[A_ty, inB_ty, outC_ty],
             )
 
             # Tile declarations
@@ -89,7 +81,7 @@ def my_matmul():
             # Input A
             for i in range(n_cores):
                 memA_fifos.append(
-                    object_fifo(f"memA{i}", ShimTiles[i], MemTiles[i], 2, memRef_inA_ty)
+                    object_fifo(f"memA{i}", ShimTiles[i], MemTiles[i], 2, inA_ty)
                 )
                 inA_fifos.append(
                     object_fifo(
@@ -97,7 +89,7 @@ def my_matmul():
                         MemTiles[i],
                         cores[i],
                         2,
-                        memRef_A_ty,
+                        A_ty,
                         (
                             [
                                 (k // 2 // 2, 2),
@@ -113,12 +105,12 @@ def my_matmul():
 
                 # Output C
                 outC_fifos.append(
-                    object_fifo(f"outC{i}", cores[i], ShimTiles[i], 2, memRef_outC_ty)
+                    object_fifo(f"outC{i}", cores[i], ShimTiles[i], 2, outC_ty)
                 )
 
             # Input B
             inB_fifo = object_fifo(
-                "inB", ShimTiles[1 % n_cores], cores[0:n_cores], 2, memRef_inB_ty
+                "inB", ShimTiles[1 % n_cores], cores[0:n_cores], 2, inB_ty
             )
 
             # Set up compute tiles
@@ -131,18 +123,12 @@ def my_matmul():
                             ObjectFifoPort.Produce,
                             1,
                         )
-                        if vectorized or True:
-                            call(zero, [elem_out])
-                        else:
-                            call(zero_scalar, [elem_out])
+                        zero(elem_out)
 
                         for _ in range_(K_div_k):
                             elem_in_a = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
                             elem_in_b = inB_fifo.acquire(ObjectFifoPort.Consume, 1)
-                            if vectorized:
-                                call(matvec, [elem_in_a, elem_in_b, elem_out])
-                            else:
-                                call(matvec_scalar, [elem_in_a, elem_in_b, elem_out])
+                            matvec(elem_in_a, elem_in_b, elem_out)
                             inA_fifos[i].release(ObjectFifoPort.Consume, 1)
                             inB_fifo.release(ObjectFifoPort.Consume, 1)
 
@@ -151,9 +137,9 @@ def my_matmul():
             # To/from AIE-array data movement
 
             @runtime_sequence(
-                T.memref(A_sz, dtype_in()),
-                T.memref(B_sz, dtype_in()),
-                T.memref(C_sz, dtype_out()),
+                np.ndarray[(A_sz,), dtype_in],
+                np.ndarray[(B_sz,), dtype_in],
+                np.ndarray[(C_sz,), dtype_out],
             )
             def sequence(A, B, C):
                 npu_dma_memcpy_nd(

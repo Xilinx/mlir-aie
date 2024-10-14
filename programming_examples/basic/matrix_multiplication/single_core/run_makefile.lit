@@ -3,8 +3,8 @@
 //
 // REQUIRES: ryzen_ai, chess
 //
-// RUN: mkdir -p %S/test_i8
-// RUN: cd %S/test_i8
+// RUN: mkdir -p %S/test_1
+// RUN: cd %S/test_1
 // RUN: make -f %S/Makefile clean
 // RUN: make -f %S/Makefile 
 // RUN: %run_on_npu make -f %S/Makefile run | FileCheck %s

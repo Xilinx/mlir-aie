@@ -103,7 +103,7 @@ MlirStringRef aieTranslateToNPU(MlirOperation moduleOp) {
   return mlirStringRefCreate(cStr, npu.size());
 }
 
-MlirStringRef AIETranslateControlPacketsToUI32Vec(MlirOperation moduleOp) {
+MlirStringRef aieTranslateControlPacketsToUI32Vec(MlirOperation moduleOp) {
   std::string npu;
   llvm::raw_string_ostream os(npu);
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
