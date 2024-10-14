@@ -13,12 +13,7 @@
 #
 ##===----------------------------------------------------------------------===##
 
-python3 -m virtualenv sandbox
-# The real path to source might depend on the virtualenv version
-if [ -r sandbox/local/bin/activate ]; then
-  source sandbox/local/bin/activate
-else
-  source sandbox/bin/activate
-fi
+python3 -m venv sandbox
+source sandbox/bin/activate
 python3 -m pip install --upgrade pip
 python3 -m pip install -r python/requirements.txt
