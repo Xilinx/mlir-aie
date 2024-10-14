@@ -9,6 +9,7 @@
 # dma_memcpy_nd in the runtime sequence configuration. It is otherwise
 # identical.
 import argparse
+from ml_dtypes import bfloat16
 import numpy as np
 import sys
 
@@ -18,7 +19,6 @@ from aie.dialects.aiex import *
 import aie.utils.trace as trace_utils
 from aie.utils.trace import PortEvent
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.util import bfloat16
 
 dtype_map = {
     "bf16": bfloat16,

@@ -53,7 +53,6 @@ jobs:
         run: |
           pip install -r python/requirements.txt
           HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
-          pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
 
       - name: Install packages
         run: |

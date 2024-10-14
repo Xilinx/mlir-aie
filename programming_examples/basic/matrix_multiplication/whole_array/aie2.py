@@ -5,6 +5,7 @@
 #
 # (c) Copyright 2023 AMD Inc.
 import argparse
+from ml_dtypes import bfloat16
 import numpy as np
 import sys
 
@@ -13,7 +14,6 @@ from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.util import bfloat16
 
 dtype_map = {
     "bf16": bfloat16,
