@@ -193,7 +193,6 @@ jobs:
 
           pip cache purge
           source /opt/xilinx/xrt/setup.sh
-          python -m pip install virtualenv
           source utils/quick_setup.sh
           build-mlir-aie-from-wheels.sh ./my_install/mlir
 
