@@ -195,8 +195,13 @@ jobs:
           source /opt/xilinx/xrt/setup.sh
           python -m pip install virtualenv
           source utils/quick_setup.sh
+          build-mlir-aie-from-wheels.sh ./my_install/mlir
+
+          mkdir build
+          pushd build
 
           ninja install
           ninja check-reference-designs
           ninja check-programming-guide
+          
           popd
