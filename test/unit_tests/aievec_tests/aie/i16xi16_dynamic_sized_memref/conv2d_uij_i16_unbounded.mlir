@@ -6,7 +6,7 @@
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=16" --aie-vectorize="shift=10 zero-offset=4" | aie-translate --aievec-to-cpp -o gen.cc
 // RUN: xchesscc_wrapper aie -f -g +s +w work +o work -I%S -I. -c %S/kernel.cc -o kernel.o
 // RUN: xchesscc_wrapper aie -f -g +s +w work +o work -I%S -I. %S/i16xi16.cc work/kernel.o
-// RUN: cp -r %S/data . && xca_udm_dbg -qf -T -P %aietools/data/versal_prod/lib -t "%S/../profiling.tcl ./work/a.out"
+// RUN: cp -r %S/data . && xca_udm_dbg -qf -T -P %aietools/data/versal_prod/lib -t "%S/../../profiling.tcl ./work/a.out"
 
 func.func @conv2d(%A: memref<?x?xi16>, %B: memref<?xi16>, %C: memref<?x?xi16>) {
     %c0 = arith.constant 0 : index

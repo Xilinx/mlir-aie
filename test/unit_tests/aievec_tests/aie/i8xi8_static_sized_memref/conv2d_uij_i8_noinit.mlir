@@ -2,7 +2,7 @@
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=16" --aie-vectorize="shift=0 dup-factor=2" | aie-translate --aievec-to-cpp -o gen.cc
 // RUN: xchesscc_wrapper aie -f -g +s +w work +o work -I%S -I. -c %S/kernel.cc -o kernel.o
 // RUN: xchesscc_wrapper aie -f -g +s +w work +o work -I%S -I. %S/i8xi8.cc work/kernel.o
-// RUN: cp -r %S/data . && xca_udm_dbg -qf -T -P %aietools/data/versal_prod/lib -t "%S/../profiling.tcl ./work/a.out"
+// RUN: cp -r %S/data . && xca_udm_dbg -qf -T -P %aietools/data/versal_prod/lib -t "%S/../../profiling.tcl ./work/a.out"
 
 func.func @conv2d (%A: memref<18x288xi8>, %B: memref<48xi8>, %C: memref<16x256xi8>) {
     affine.for %arg3 = 0 to 16 {

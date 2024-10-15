@@ -2,12 +2,12 @@
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=32" -aieml=true --aie-vectorize="shift=0 dup-factor=2" | aie-translate -aie2=true --aievec-to-cpp -o gen_aie-ml.cc
 // RUN: xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I. -c %S/kernel.cc -o kernel.o
 // RUN: xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I. %S/i8xi8.cc work/kernel.o
-// RUN: cp -r %S/data . && xca_udm_dbg --aiearch aie-ml -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../profiling.tcl ./work/a.out"
+// RUN: cp -r %S/data . && xca_udm_dbg --aiearch aie-ml -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../../profiling.tcl ./work/a.out"
 
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=32" --convert-vector-to-aievec="aie-target=aie2" -lower-affine | aie-translate -aie2=true --aievec-to-cpp -o convert_aie-ml.cc
 // RUN: xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I. -c %S/convert_kernel.cc -o convert_kernel.o
 // RUN: xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I. %S/i8xi8.cc work/convert_kernel.o
-// RUN: cp -r %S/data . && xca_udm_dbg --aiearch aie-ml -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../profiling.tcl ./work/a.out"
+// RUN: cp -r %S/data . && xca_udm_dbg --aiearch aie-ml -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../../profiling.tcl ./work/a.out"
 
 func.func @conv2d (%A: memref<18x288xi8>, %B: memref<48xi8>, %C: memref<16x256xi8>) {
     affine.for %arg3 = 0 to 16 {
