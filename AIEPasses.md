@@ -126,6 +126,11 @@ Extend the body of each loop that contains operations on objectFifos such that i
 based on the number of elements in the objectFifos. If the number of iterations of the loop 
 cannot be divided pefectly by the unrolling factor, the pass duplicates the loop body after 
 the original loop.
+
+#### Options
+```
+-dynamic-objFifos : Flag to enable dynamic object fifo lowering in cores instead of loop unrolling.
+```
 ### `-aie-register-objectFifos`
 
 _Generate acquire/release patterns for producer/consumer processes registered to an objectFifo_

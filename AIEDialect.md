@@ -291,6 +291,9 @@ reserved for the stack.  The default value is 1024.  The stack (and other data a
 are always stored in the local core memory, to avoid conflicts with static data allocations
 in other cores.
 
+This op has an optional `dynamic_objfifo_lowering` attribute, to finely control whether the
+objectfifos in this core should be lowered using the dynamic runtime lowering.
+
 Examples:
 ```
 %tile = aie.tile(1, 1)
@@ -317,6 +320,7 @@ Interfaces: `FlowEndPoint`, `InferTypeOpInterface`, `OpAsmOpInterface`, `TileEle
 <tr><td><code>stack_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>link_with</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>elf_file</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>dynamic_objfifo_lowering</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
 
 #### Operands:
