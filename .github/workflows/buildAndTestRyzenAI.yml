@@ -197,7 +197,7 @@ jobs:
           cd ..
           ./utils/build-mlir-aie-from-wheels.sh ./my_install/mlir
 
-          mkdir build
+          # build is created by the build-mlir-aie-from-wheels.sh script
           pushd build
 
           ninja install
