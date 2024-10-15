@@ -9,13 +9,13 @@ import numpy as np
 import sys
 
 from aie.api.io.iocoordinator import IOCoordinator
-from aie.api.dataflow.iofifo import IOObjectFifo
-from aie.api.kernels import BinKernel
+from aie.api.dataflow.objectfifo import ObjectFifo
+from aie.api.kernels.binkernel import BinKernel
 from aie.api.program import Program
 from aie.api.worker import Worker
-from aie.api.phys.devices import NPU1Col1
+from aie.api.phys.device import NPU1Col1
 from aie.extras.dialects.ext.scf import _for as range_
-from aie.helpers.datatiler import DataTiler
+from aie.extras.util import DataTiler
 
 try:
     vector_size = int(sys.argv[1])
@@ -30,16 +30,17 @@ line_type = np.ndarray[(line_size,), np.dtype[np.uint8]]
 vector_type = np.ndarray[(vector_size,), np.dtype[np.uint8]]
 
 io = IOCoordinator()
-a_in = io.input(vector_type)
-b_out = io.output(vector_type)
+a_in = io.inout_data(vector_type)
+b_out = io.inout_data(vector_type)
 
-of_in = IOObjectFifo(2, line_type, io)
-of_out = IOObjectFifo(2, line_type, io)
+of_in = ObjectFifo(2, line_type)
+of_out = ObjectFifo(2, line_type)
 
 tiler = DataTiler(vector_type)
-for t in io.tile_loop(tiler):
-    of_in.fill(t, a_in, coords=(0, 0))
-    of_out.drain(t, b_out, coords=(0, 0))
+tile_iter = io.tile_loop(tiler)
+for t in tile_iter:
+    io.fill(of_in.first, t, a_in, coords=(0, 0))
+    io.drain(of_out.second, t, b_out, coords=(0, 0))
 
 passthrough_fn = BinKernel(
     "passThroughLine",
@@ -57,9 +58,9 @@ def core_fn(of_in, of_out, passThroughLine):
         of_out.release(1)
 
 
-my_worker = Worker(core_fn, [of_in, of_out, passthrough_fn], coords=(0, 2))
+my_worker = Worker(core_fn, [of_in.second, of_out.first, passthrough_fn], coords=(0, 2))
 my_program = Program(NPU1Col1(), io, workers=[my_worker])
-module = my_program.resovle_program()
+module = my_program.resolve_program()
 module.validate()
 print(module)
 

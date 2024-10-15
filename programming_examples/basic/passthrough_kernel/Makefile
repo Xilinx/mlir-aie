@@ -30,6 +30,13 @@ build/aie_trace__lineBased_8b_${data_size}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< ${data_size} ${trace_size} > $@
 
+build/iron2_aie2_lineBased_8b_${data_size}.mlir: ${srcdir}/iron2_aie2.py
+	mkdir -p ${@D}
+	python3 $< ${data_size} 0 > $@
+
+mlir_diff: build/aie2_lineBased_8b_${data_size}.mlir build/iron2_aie2_lineBased_8b_${data_size}.mlir
+	diff build/aie2_lineBased_8b_${data_size}.mlir build/iron2_aie2_lineBased_8b_${data_size}.mlir
+
 build/passThrough.cc.o: passThrough.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}

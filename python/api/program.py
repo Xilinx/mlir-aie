@@ -11,18 +11,18 @@ from ..dialects.aie import device
 
 from .worker import Worker
 from .phys.device import Device
-from .io.coordinator import IOCoordinator
+from .io.iocoordinator import IOCoordinator
 
 
 class Program:
     def __init__(
         self,
         device: Device,
-        worker_programs: list[Worker],
         io_coordinator: IOCoordinator,
+        workers: list[Worker],
     ):
         self.__device = device
-        self.__worker_programs = worker_programs
+        self.__workers = workers
         self.__io_coordinator = io_coordinator
 
     def resolve_program(self, generate_placement: bool = False):
@@ -33,16 +33,16 @@ class Program:
                 # Collect all fifos
                 all_fifos = set()
                 all_fifos.update(self.__io_coordinator.get_fifos())
-                for w in self.__worker_programs:
+                for w in self.__workers:
                     all_fifos.update(w.get_fifos())
 
                 # Collect all tiles
-                all_tiles = set()
-                for w in self.__worker_programs:
-                    all_tiles.add(w.tile)
+                all_tiles = []
+                for w in self.__workers:
+                    all_tiles.append(w.tile)
                 for f in all_fifos:
-                    all_tiles.add(f.end1_tile())
-                    all_tiles.update(f.end2_tiles())
+                    all_tiles.append(f.end1_tile())
+                    all_tiles.extend(f.end2_tiles())
 
                 # Resolve tiles
                 for t in all_tiles:
@@ -55,7 +55,7 @@ class Program:
                     self._print_verify(ctx)
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
-                for w in self.__worker_programs:
+                for w in self.__workers:
                     for arg in w.fn_args:
                         if isinstance(arg, FuncBase):
                             arg.emit()
@@ -68,7 +68,7 @@ class Program:
                 self._print_verify(ctx)
 
                 # Generate core programs
-                for w in self.__worker_programs:
+                for w in self.__workers:
                     w.resolve()
                     self._print_verify(ctx)
 

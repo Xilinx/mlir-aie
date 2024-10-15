@@ -114,10 +114,12 @@ class ObjectFifo(Resolvable):
 
     def _set_endpoint(self, endpoint: ObjectFifoEndpoint, first: bool = True) -> None:
         if first:
-            assert self.end1 == None, "ObjectFifo already assigned endpoint 1"
+            assert (
+                self.end1 == None or self.end1 == endpoint
+            ), f"ObjectFifo already assigned endpoint 1 ({self.end1})"
             self.end1 = endpoint
         else:
-            assert self.end2 == None, "ObjectFifo already assigned endpoint 2"
+            # TODO: need rules about shim tiles here
             self.end2.append(endpoint)
 
     def _acquire(

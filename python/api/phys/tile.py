@@ -21,5 +21,16 @@ class Tile:
 
     @op.setter
     def op(self, op: TileOp):
-        assert self.__op == None
+        assert self.__op == None or self.__op == op
         self.__op = op
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Tile):
+            return NotImplemented
+        return self.col == other.col and self.row == other.row
+
+    def __str__(self) -> str:
+        return f"Tile({self.col}, {self.row})"
+
+    def __hash__(self):
+        return hash(str(self))
