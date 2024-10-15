@@ -47,6 +47,7 @@ passthrough_fn = BinKernel(
     [line_type, line_type, np.int32],
 )
 
+
 def core_fn(of_in, of_out, passThroughLine):
     for _ in range_(vector_size // line_size):
         elemOut = of_out.acquire(1)
@@ -55,11 +56,13 @@ def core_fn(of_in, of_out, passThroughLine):
         of_in.release(1)
         of_out.release(1)
 
+
 my_worker = Worker(core_fn, [of_in, of_out, passthrough_fn], coords=(0, 2))
 my_program = Program(NPU1Col1(), io, workers=[my_worker])
-my_program.validate()
-print(my_program.resolve_program())
+module = my_program.resovle_program()
+module.validate()
+print(module)
 
-#A: np.ndarray[(vector_size,), np.dtype[np.uint8]] = ...
-#C: np.ndarray[(vector_size,), np.dtype[np.uint8]] = ...
-#my_program.run(inputs=A, outputs=C)
+# A: np.ndarray[(vector_size,), np.dtype[np.uint8]] = ...
+# C: np.ndarray[(vector_size,), np.dtype[np.uint8]] = ...
+# my_program.run(inputs=A, outputs=C)
