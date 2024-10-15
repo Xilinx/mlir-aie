@@ -7,6 +7,7 @@
 // (c) Copyright 2024 Advanced Micro Devices, Inc.
 //===----------------------------------------------------------------------===//
 
+#include <any>
 #include <array>
 #include <cassert>
 
@@ -51,6 +52,8 @@ struct CIRToAIETypesAnalysis {
     std::string base;
     // For example "npu1"
     std::vector<std::string> subMatches;
+    // To attach something, like the aie.tile operation for example
+    std::any data;
 
     std::string str() {
       return "Fullname = " + fullName + ", base = " + base +
@@ -347,33 +350,41 @@ struct CIRToAIEPrepare : CIRToAIEPrepareBase<CIRToAIEPrepare> {
     target.addLegalOp<mlir::UnrealizedConversionCastOp>();
     target.addDynamicallyLegalOp<mlir::cir::AllocaOp>(
         [&](mlir::cir::AllocaOp op) {
-          // If the struct has a name like "aie::device<aie::npu1>", mark the
-          // operation illegal so it has to be rewritten
+          // If the struct has a name like "aie::device<aie::npu1>", mark
+          // the operation illegal so it has to be rewritten
           auto aieLike = cat.moduleTypes[op.getType()];
           return !(aieLike && aieLike->base == "aie::device");
         });
     target.addDynamicallyLegalOp<mlir::cir::CallOp>([](mlir::cir::CallOp op) {
       return !isCallingFunctionWithAnnotation(
-          op, {"aie.device.tile", "aie.tile.buffer", "aie.tile.program"});
+          op, {"aie.device.tile", "aie.tile.buffer"});
     });
     mlir::RewritePatternSet patterns{&getContext()};
     patterns.add<PrepareDeviceLowering>(&getContext());
     patterns.add<PrepareTileBufferLowering>(&getContext());
-    patterns.add<PrepareCoreLowering>(&getContext());
+    //    patterns.add<PrepareCoreLowering>(&getContext());
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();
   }
 };
 
+void eraseOpAndUsers(mlir::Operation *op,
+                     mlir::ConversionPatternRewriter &rewriter) {
+  for (auto result : op->getResults())
+    for (auto *user : result.getUsers())
+      rewriter.eraseOp(user);
+  rewriter.eraseOp(op);
+}
+
 struct DeviceLowering
     : public mlir::OpConversionPattern<mlir::UnrealizedConversionCastOp> {
   using mlir::OpConversionPattern<
       mlir::UnrealizedConversionCastOp>::OpConversionPattern;
 
-  // \todo Find a less ugly way to access the analysis. How is it possible for a
-  // pattern to access some contextual information?
-  // It should be OK since it is a module pass, so no parallelism here.
+  // \todo Find a less ugly way to access the analysis. How is it possible
+  // for a pattern to access some contextual information? It should be OK
+  // since it is a module pass, so no parallelism here.
   static inline CIRToAIETypesAnalysis *cat;
 
   mlir::LogicalResult
@@ -399,11 +410,11 @@ struct DeviceLowering
       // For some reasons newCast.getResult(0).getUsers() is empty, so
       // save the previous users
       llvm::SmallVector<mlir::Operation *> users{op.getResult(0).getUsers()};
-      // Replace the original cast by the same but connected to the deviceOp to
-      // be able to walk down the def-use chain
+      // Replace the original cast by the same but connected to the deviceOp
       rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
           op, op.getResult(0).getType(), deviceOp.getResult());
       rewriter.setInsertionPointToStart(deviceOp.getBody());
+      llvm::SmallVector<mlir::UnrealizedConversionCastOp> bufferCastToErase;
       for (mlir::Operation *user : users) {
         if (auto tileCast =
                 mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(user)) {
@@ -416,20 +427,37 @@ struct DeviceLowering
             // llvm::errs() << " row " << row << " \n";
             auto tileOp = rewriter.create<xilinx::AIE::TileOp>(
                 tileCast.getLoc(), std::stoi(col), std::stoi(row));
-            // tileOp.dump();
             for (mlir::Operation *user : tileCast.getResult(0).getUsers()) {
               if (auto bufCast =
                       mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(user)) {
                 bufCast.dump();
-                (void)tileOp;
                 auto mrt = bufferMemrefType(bufCast.getType(0), rewriter);
-                rewriter.create<xilinx::AIE::BufferOp>(bufCast.getLoc(), mrt,
-                                                       tileOp.getResult());
+                auto bufferOp = rewriter.create<xilinx::AIE::BufferOp>(
+                    bufCast.getLoc(), mrt, tileOp.getResult());
+                // Keep track of the buffer op behind the C++ type
+                cat->moduleTypes[bufCast.getType(0)]->data = bufferOp;
+                bufferCastToErase.push_back(bufCast);
+                continue;
+              }
+              if (auto callOp = mlir::dyn_cast<mlir::cir::CallOp>(user)) {
+                if (isCallingFunctionWithAnnotation(callOp,
+                                                    {"aie.tile.program"})) {
+                  // lowerTileProgram(tileOp, callOp, rewriter);
+                  // Erase the call operation representing the core op which has
+                  // been translated
+                  rewriter.eraseOp(callOp);
+                }
               }
             }
           }
+          // Erase the cast representing the tile op which has been translated
+          rewriter.eraseOp(tileCast);
+
         }
       }
+      // Erase the casts representing the buffer ops which have been translated
+      for (auto bufferCast : bufferCastToErase)
+        eraseOpAndUsers(bufferCast, rewriter);
       deviceOp->getParentOfType<mlir::cir::FuncOp>().dump();
       return mlir::success();
     }
