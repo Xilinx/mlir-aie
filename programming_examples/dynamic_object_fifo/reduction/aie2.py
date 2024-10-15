@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
@@ -25,41 +25,40 @@ def reduction():
 
         @device(dev)
         def device_body():
-            memRef_ty = T.memref(N // n_rows, T.i32())
+            tile_ty = np.ndarray[(N // n_rows,), np.dtype[np.int32]]
 
             # Tile declarations
             ShimTile = tile(col, 0)
             ComputeTile = tile(col, 2)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, ComputeTile, [2, 4], memRef_ty)
-            of_out = object_fifo("out", ComputeTile, ShimTile, 2, memRef_ty)
+            of_in = object_fifo("in", ShimTile, ComputeTile, [2, 4], tile_ty)
+            of_out = object_fifo("out", ComputeTile, ShimTile, 2, tile_ty)
 
             # AIE Core Function declarations
-            add_10_i32 = external_func(
-                "add_10_i32", inputs=[memRef_ty, memRef_ty, memRef_ty]
-            )
+            add_10_i32 = external_func("add_10_i32", inputs=[tile_ty, tile_ty, tile_ty])
 
             # Set up compute tiles
-
             @core(ComputeTile, "kernel.o")
             def core_body():
                 for _ in range_(sys.maxsize):
                     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elemsIn = of_in.acquire(ObjectFifoPort.Consume, 2)
-                    call(add_10_i32, [elemsIn[0], elemsIn[1], elemOut])
+                    add_10_i32(elemsIn[0], elemsIn[1], elemOut)
                     of_in.release(ObjectFifoPort.Consume, 2)
                     of_out.release(ObjectFifoPort.Produce, 1)
 
             # To/from AIE-array data movement
-            tensor_in_ty = T.memref(N, T.i32())
-            tensor_out_ty = T.memref(O, T.i32())
+            tensor_in_ty = np.ndarray[(N,), np.dtype[np.int32]]
+            tensor_out_ty = np.ndarray[(O,), np.dtype[np.int32]]
 
             @runtime_sequence(tensor_in_ty, tensor_out_ty)
             def sequence(A, C):
-                npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, O])
-                npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                npu_dma_memcpy_nd(
+                    metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N], issue_token=True
+                )
+                npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, O])
+                dma_wait(of_in, of_out)
 
     print(ctx.module)
 

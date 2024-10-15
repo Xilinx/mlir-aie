@@ -253,9 +253,10 @@ try:
 except Exception as e:
     print("Peano not found, but expected at ", peano_tools_dir)
 
-print("Looking for Chess...")
-# test if LM_LICENSE_FILE valid
-if config.enable_chess_tests:
+if not config.enable_chess_tests:
+    print("Chess tests disabled")
+else:
+    print("Looking for Chess...")
     result = None
     if config.vitis_root:
         result = shutil.which("xchesscc")
@@ -271,6 +272,7 @@ if config.enable_chess_tests:
         if xilinxd_license_file != None:
             llvm_config.with_environment("XILINXD_LICENSE_FILE", xilinxd_license_file)
 
+        # test if LM_LICENSE_FILE valid
         validate_chess = False
         if validate_chess:
             import subprocess
@@ -293,6 +295,18 @@ if config.enable_chess_tests:
         )
     else:
         print("Chess not found")
+
+# look for aiesimulator
+result = shutil.which("aiesimulator")
+if result != None:
+    print("aiesimulator found: " + result)
+    config.available_features.add("aiesimulator")
+else:
+    print("aiesimulator not found")
+
+# add vitis components as available features
+for c in config.vitis_components:
+    config.available_features.add(f"aietools_{c.lower()}")
 
 tools = [
     "aie-opt",

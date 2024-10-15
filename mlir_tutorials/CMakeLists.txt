@@ -119,11 +119,6 @@ set(CONFIG_ENABLE_BOARD_TESTS 1)
 else()
 set(CONFIG_ENABLE_BOARD_TESTS 0)
 endif()
-if(LibXAIE_FOUND)
-set(CONFIG_HAS_LIBXAIE 1)
-else()
-set(CONFIG_HAS_LIBXAIE 0)
-endif()
 configure_lit_site_cfg(
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
   ${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py
