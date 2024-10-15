@@ -14,6 +14,7 @@
 # source ./utils/quick_setup.sh
 #
 ##===----------------------------------------------------------------------===##
+set -x
 
 echo "Setting up RyzenAI developement tools..."
 if [[ $WSL_DISTRO_NAME == "" ]]; then
