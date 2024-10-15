@@ -34,15 +34,13 @@ class ObjectFifo(Resolvable):
         depth: int,
         obj_type: type[np.ndarray],
         name: str | None = None,
-        end1: ObjectFifoEndpoint | None = None,
-        end2: list[ObjectFifoEndpoint] = [],
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
     ):
         self.__depth = depth
         self.__obj_type = obj_type
-        self.end1 = end1
-        self.end2 = end2
+        self.end1 = None
+        self.end2 = []
         self.dimensionToStream = dimensionsToStream
         self.dimensionsFromStreamPerConsumer = dimensionsFromStreamPerConsumer
 

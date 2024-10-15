@@ -33,12 +33,11 @@ io = IOCoordinator()
 a_in = io.inout_data(vector_type)
 b_out = io.inout_data(vector_type)
 
-of_in = ObjectFifo(2, line_type)
-of_out = ObjectFifo(2, line_type)
+of_in = ObjectFifo(2, line_type, "in")
+of_out = ObjectFifo(2, line_type, "out")
 
 tiler = DataTiler(vector_type)
-tile_iter = io.tile_loop(tiler)
-for t in tile_iter:
+for t in io.tile_loop(tiler):
     io.fill(of_in.first, t, a_in, coords=(0, 0))
     io.drain(of_out.second, t, b_out, coords=(0, 0))
 
@@ -50,7 +49,7 @@ passthrough_fn = BinKernel(
 
 
 def core_fn(of_in, of_out, passThroughLine):
-    for _ in range_(vector_size // line_size):
+    for _ in range_(sys.maxsize):
         elemOut = of_out.acquire(1)
         elemIn = of_in.acquire(1)
         passThroughLine(elemIn, elemOut, line_size)
@@ -59,10 +58,9 @@ def core_fn(of_in, of_out, passThroughLine):
 
 
 my_worker = Worker(core_fn, [of_in.second, of_out.first, passthrough_fn], coords=(0, 2))
+
 my_program = Program(NPU1Col1(), io, workers=[my_worker])
-module = my_program.resolve_program()
-module.validate()
-print(module)
+my_program.resolve_program()
 
 # A: np.ndarray[(vector_size,), np.dtype[np.uint8]] = ...
 # C: np.ndarray[(vector_size,), np.dtype[np.uint8]] = ...

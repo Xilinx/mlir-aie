@@ -10,8 +10,8 @@ from typing import get_origin
 from ... import ir  # type: ignore
 
 from ...extras.util import np_dtype_to_mlir_type
-from ...extras.dialects.ext.func import FuncOp  # type: ignore
-from ...dialects.aie import external_func, call
+from ...extras.dialects.ext.func import FuncOp, call  # type: ignore
+from ...dialects.aie import external_func
 from .kernel import Kernel
 
 
@@ -37,11 +37,8 @@ class BinKernel(Kernel):
         ip: ir.InsertionPoint | None = None,
     ) -> None:
         if self.__op == None:
-            resolved_inout_types = []
-            for t in self.__inout_types:
-                resolved_inout_types.append(np_dtype_to_mlir_type(t))
-            self.__op = external_func(self.__name, inputs=resolved_inout_types)
+            self.__op = external_func(self.__name, inputs=self.__inout_types)
 
     def __call__(self, *args, **kwargs):
         assert self.__op, "Need to resolve BinKernel before it can be called"
-        call(self.__name, args, kwargs)
+        call(self.__op, args, **kwargs)
