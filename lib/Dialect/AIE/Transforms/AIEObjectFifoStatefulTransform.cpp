@@ -991,6 +991,8 @@ struct AIEObjectFifoStatefulTransformPass
   LogicalResult dynamicGlobalObjectFifos(DeviceOp &device, OpBuilder &builder,
                                          std::set<TileOp> objectFifoTiles) {
     for (auto coreOp : device.getOps<CoreOp>()) {
+      if (objectFifoTiles.count(coreOp.getTileOp()) <= 0)
+        continue;
       if (objectFifoTiles.count(coreOp.getTileOp()) > 0) {
         // For each core: count the number of objectFifos and create
         // a global buffer just before the core to track index of
