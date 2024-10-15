@@ -37,7 +37,7 @@ from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
 INPUT_WITH_ADDRESSES_PIPELINE = (
-    lambda basic_alloc_scheme=False, ctrl_pkt_overlay=False: (
+    lambda basic_alloc_scheme=False, dynamic_objFifos=False, ctrl_pkt_overlay=False: (
         Pipeline()
         .lower_affine()
         .add_pass("aie-canonicalize-device")
@@ -46,7 +46,9 @@ INPUT_WITH_ADDRESSES_PIPELINE = (
             Pipeline()
             .add_pass("aie-assign-lock-ids")
             .add_pass("aie-register-objectFifos")
-            .add_pass("aie-objectFifo-stateful-transform")
+            .add_pass(
+                "aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos
+            )
             .add_pass("aie-assign-bd-ids")
             .add_pass("aie-lower-cascade-flows")
             .add_pass("aie-lower-broadcast-packet")
@@ -1057,7 +1059,7 @@ class FlowRunner:
 
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
             pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
-                opts.basic_alloc_scheme, opts.ctrl_pkt_overlay
+                opts.basic_alloc_scheme, opts.dynamic_objFifos, opts.ctrl_pkt_overlay
             ).materialize(module=True)
             run_passes(
                 pass_pipeline,
