@@ -191,6 +191,7 @@ jobs:
 
           pip cache purge
           source /opt/xilinx/xrt/setup.sh
+          export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
           source utils/quick_setup.sh
           pwd
           ./utils/build-mlir-aie-from-wheels.sh ./my_install/mlir
