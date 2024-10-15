@@ -1183,7 +1183,7 @@ def run(mlir_module, args=None):
     if args is not None:
         opts = aie.compiler.aiecc.cl_arguments.parse_args(args)
 
-    opts.aietools_path = ""
+    opts.aietools_path = None
     # Try to find vitis in the path
     xchesscc_path = shutil.which("xchesscc")
     if xchesscc_path:
