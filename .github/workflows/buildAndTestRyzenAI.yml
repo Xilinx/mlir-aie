@@ -193,7 +193,8 @@ jobs:
           source /opt/xilinx/xrt/setup.sh
           export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
           source utils/quick_setup.sh
-          pwd
+          # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
+          cd ..
           ./utils/build-mlir-aie-from-wheels.sh ./my_install/mlir
 
           mkdir build
