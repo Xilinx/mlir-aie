@@ -5,8 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-
-import sys
+import numpy as np
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
@@ -25,41 +24,40 @@ def nested_loops():
 
         @device(dev)
         def device_body():
-            memRef_ty = T.memref(N // n_rows, T.i32())
+            tensor_ty = np.ndarray[(N // n_rows,), np.dtype[np.int32]]
 
             # Tile declarations
             ShimTile = tile(col, 0)
             ComputeTile = tile(col, 2)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, ComputeTile, 2, memRef_ty)
-            of_out = object_fifo("out", ComputeTile, ShimTile, 2, memRef_ty)
+            of_in = object_fifo("in", ShimTile, ComputeTile, 2, tensor_ty)
+            of_out = object_fifo("out", ComputeTile, ShimTile, 2, tensor_ty)
 
             # AIE Core Function declarations
             passthrough_10_i32 = external_func(
-                "passthrough_10_i32", inputs=[memRef_ty, memRef_ty]
+                "passthrough_10_i32", inputs=[tensor_ty, tensor_ty]
             )
 
             # Set up compute tiles
-
             @core(ComputeTile, "kernel.o")
             def core_body():
                 for _ in range_(5):
                     elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
                     for _ in range_(5):
                         elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
-                        call(passthrough_10_i32, [elemIn, elemOut])
+                        passthrough_10_i32(elemIn, elemOut)
                         of_out.release(ObjectFifoPort.Produce, 1)
                     of_in.release(ObjectFifoPort.Consume, 1)
 
             # To/from AIE-array data movement
-            tensor_ty = T.memref(N // n_rows, T.i32())
-
             @runtime_sequence(tensor_ty, tensor_ty)
             def sequence(A, C):
-                npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, O])
-                npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                npu_dma_memcpy_nd(
+                    metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N], issue_token=True
+                )
+                npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, O])
+                dma_wait(of_in, of_out)
 
     print(ctx.module)
 
