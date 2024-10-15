@@ -3,8 +3,8 @@
 
 // REQUIRES: valid_xchess_license
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=32" --convert-vector-to-aievec="aie-target=aie2" -lower-affine | aie-translate -aie2=true --aievec-to-cpp -o convert_aie-ml.cc
-// RUN: xchesscc -f -g +s -p me -P %aietools/data/aie_ml/lib/ +w work +o work -I%S -I. -c %S/convert_kernel.cc -o convert_kernel.o
-// RUN: xchesscc -f -g +s -p me -P %aietools/data/aie_ml/lib/ +w work +o work -I%S -I. %S/i8xi8.cc work/convert_kernel.o
+// RUN: xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I. -c %S/convert_kernel.cc -o convert_kernel.o
+// RUN: xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I. %S/i8xi8.cc work/convert_kernel.o
 // RUN: cp -r %S/data . && xca_udm_dbg --aiearch aie-ml -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../profiling.tcl ./work/a.out"
 
 func.func @conv2d (%A: memref<18x288xi8>, %B: memref<48xi8>, %C: memref<16x256xi8>) {
