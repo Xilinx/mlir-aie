@@ -89,6 +89,13 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
     dtype_in = dtype_map[dtype_in_str]
     dtype_out = dtype_map[dtype_out_str]
 
+    assert np.issubdtype(dtype_in, np.integer) == np.issubdtype(
+        dtype_out, np.integer
+    ), f"Input dtype ({dtype_in}) and output dtype ({dtype_out}) must either both be integral or both be float"
+    assert (
+        np.dtype(dtype_out).itemsize >= np.dtype(dtype_in).itemsize
+    ), f"Output dtype ({dtype_out}) must be equal or larger to input dtype ({dtype_in})"
+
     A_sz = M * K
     B_sz = K * N
     C_sz = M * N
