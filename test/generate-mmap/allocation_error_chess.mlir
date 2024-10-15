@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: chess
+// REQUIRES: chess, aietools_aie
 // RUN: not aiecc.py --basic-alloc-scheme --xchesscc --xbridge %s 2>&1 | FileCheck %s --check-prefix=CHESS
 // CHESS: Error: could not find free space for SpaceSymbol x in memory DMb
 
