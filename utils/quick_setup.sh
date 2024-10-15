@@ -47,7 +47,7 @@ rm -rf ironenv
 rm -rf my_install
 python3.10 -m venv ironenv
 source ironenv/bin/activate
-python3.10 -m pip install --upgrade pip
+python3 -m pip install --upgrade pip
 VPP=`which xchesscc`
 if test -f "$VPP"; then
   mkdir -p my_install

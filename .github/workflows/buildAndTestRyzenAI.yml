@@ -192,7 +192,8 @@ jobs:
           pip cache purge
           source /opt/xilinx/xrt/setup.sh
           source utils/quick_setup.sh
-          utils/build-mlir-aie-from-wheels.sh ./my_install/mlir
+          pwd
+          ./utils/build-mlir-aie-from-wheels.sh ./my_install/mlir
 
           mkdir build
           pushd build
