@@ -228,6 +228,7 @@ jobs:
         export PIP_NO_BUILD_ISOLATION=false
         
         pip install -r requirements.txt
+        HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
         pip install importlib-metadata
         CIBW_ARCHS=${{ matrix.ARCH }} MATRIX_OS=${{ matrix.OS }} ./scripts/download_mlir.sh
         
@@ -360,6 +361,7 @@ jobs:
         with:
           sparse-checkout: |
             python/requirements.txt
+            python/requirements_extras.txt
 
       - uses: actions/download-artifact@v3
         with:
@@ -374,6 +376,7 @@ jobs:
         shell: bash
         run: |
           pip install -r python/requirements.txt
+          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           unzip -o -q dist/mlir_aie\*.whl
           
           if [ x"${{ matrix.ENABLE_RTTI }}" == x"ON" ]; then
@@ -383,6 +386,8 @@ jobs:
           fi
           
           python -c 'import aie.ir'
+          python -c 'import aie.extras'
+          python -c 'import aie.helpers'
 
   upload_wheels:
 
