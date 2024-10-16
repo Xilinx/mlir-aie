@@ -1681,7 +1681,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         // via_shared_mem==1 means use consumer tile's memory module
         OptionalAttr<AIEI32Attr>:$via_shared_mem,
         // repeat_count==1 means "do it once"
-        OptionalAttr<AIEI32Attr>:$repeat_count
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count
   );
 
   let assemblyFormat = [{
