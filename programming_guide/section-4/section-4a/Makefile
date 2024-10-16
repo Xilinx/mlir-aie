@@ -20,12 +20,12 @@ build/aie.mlir: ${srcdir}/aie2.py
 
 build/scale.o: ${srcdir}/vector_scalar_mul.cc
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
 
 build/final.xclbin: build/aie.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-    			--no-xchesscc --no-xbridge --peano ${PEANO_DIR} \
+    			--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
