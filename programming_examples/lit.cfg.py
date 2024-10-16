@@ -313,7 +313,6 @@ else:
 for c in config.vitis_components:
     config.available_features.add(f"aietools_{c.lower()}")
 
-tool_dirs = [config.aie_tools_dir, config.peano_tools_dir, config.llvm_tools_dir]
 tools = [
     "aie-opt",
     "aie-translate",
