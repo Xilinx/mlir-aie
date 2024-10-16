@@ -10,7 +10,7 @@ from typing import Callable
 
 from .. import ir  # type: ignore
 from ..dialects.aie import core
-from ..extras.dialects.ext.scf import _for as range_
+from ..helpers.dialects.ext.scf import _for as range_
 from .phys.tile import Tile
 from .dataflow.objectfifo import ObjectFifoHandle
 from .dataflow.endpoint import ObjectFifoEndpoint

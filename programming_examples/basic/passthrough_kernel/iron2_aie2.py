@@ -14,8 +14,8 @@ from aie.api.kernels.binkernel import BinKernel
 from aie.api.program import Program
 from aie.api.worker import Worker
 from aie.api.phys.device import NPU1Col1
-from aie.extras.dialects.ext.scf import _for as range_
-from aie.extras.util import DataTiler
+from aie.helpers.dialects.ext.scf import _for as range_
+from aie.helpers.util import DataTiler
 
 try:
     vector_size = int(sys.argv[1])

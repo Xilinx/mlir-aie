@@ -5,12 +5,10 @@ TODO:
 """
 
 import numpy as np
-from typing import get_origin
 
 from ... import ir  # type: ignore
-
-from ...extras.util import np_dtype_to_mlir_type
-from ...extras.dialects.ext.func import FuncOp, call  # type: ignore
+from ...extras.dialects.ext.func import FuncOp
+from ...helpers.dialects.ext.func import call
 from ...dialects.aie import external_func
 from .kernel import Kernel
 

@@ -19,7 +19,7 @@ from ...dialects._aie_ops_gen import (
     objectfifo_release,
 )  # type: ignore
 from ...dialects.aie import object_fifo
-from ...extras.util import np_ndarray_type_to_memref_type
+from ...helpers.util import np_ndarray_type_to_memref_type
 
 from ..resolvable import Resolvable
 from .endpoint import ObjectFifoEndpoint

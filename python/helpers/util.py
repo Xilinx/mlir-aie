@@ -195,3 +195,33 @@ def get_arg_types(objs: Sequence[int | float | Value | OpView]):
         else:
             return None
     return my_types
+
+
+class DataTileSpecifier:
+    """TODO: define what this is"""
+
+    def __init__(self, sizes, offsets, strides):
+        self.sizes = sizes
+        self.offsets = offsets
+        self.strides = strides
+
+
+class DataTiler:
+    """An iterator of some sort that translates to sizes/offsets/strides"""
+
+    def __init__(self, start_tensor_type: type[np.ndarray]):
+        self.__start_tensor_type = start_tensor_type
+        self.__offsets = [0, 0, 0, 0]
+        self.__sizes = np_ndarray_type_get_shape(self.__start_tensor_type)
+        self.__strides = [1, 1, 1, 1]
+        self.__count = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.__count == 0:
+            self.__count += 1
+            return DataTileSpecifier(self.__sizes, self.__offsets, self.__strides)
+        else:
+            raise StopIteration

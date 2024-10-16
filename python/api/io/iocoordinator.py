@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from ...dialects.aiex import runtime_sequence
-from ...extras.util import DataTiler
+from ...helpers.util import DataTiler
 from ..dataflow.objectfifo import ObjectFifoHandle
 from ..dataflow.endpoint import ObjectFifoEndpoint
 from ..phys.tile import Tile
