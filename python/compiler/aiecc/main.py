@@ -24,8 +24,6 @@ import time
 import uuid
 
 from aie.extras.runtime.passes import Pipeline
-
-# this is inside the aie-python-extras (shared) namespace package
 from aie.extras.util import find_ops
 import aiofiles
 import rich.progress as progress
