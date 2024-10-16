@@ -1,4 +1,4 @@
-//===- memtile_repeat_test.mlir --------------------------------*- MLIR -*-===//
+//===- memtile_repeat_count_test.mlir ---------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -120,8 +120,8 @@ module @memtileRepeat {
     %tile33 = aie.tile(3, 3)
 
     aie.objectfifo @of0 (%tile10, {%tile11}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
-    aie.objectfifo @of1 (%tile11, {%tile12}, 2 : i32) {memtile_repeat = 2 : i32} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @of2 (%tile11, {%tile33}, 2 : i32) {memtile_repeat = 2 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of1 (%tile11, {%tile12}, 2 : i32) {repeat_count = 3 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of2 (%tile11, {%tile33}, 2 : i32) {repeat_count = 3 : i32} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo.link [@of0] -> [@of1, @of2] ([] [0, 16])
  }
 }

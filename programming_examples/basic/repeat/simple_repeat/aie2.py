@@ -1,4 +1,4 @@
-# memtile_repeat/simple_repeat/aie2.py -*- Python -*-
+# repeat/simple_repeat/aie2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -15,11 +15,11 @@ from aie.extras.context import mlir_mod_ctx
 N = 4096
 dev = AIEDevice.npu1_1col
 col = 0
-memtile_repeat_count = 3
+memtile_repeat_count = 4
 
 if len(sys.argv) > 1:
     N = int(sys.argv[1])
-data_out_size = N * (memtile_repeat_count + 1)
+data_out_size = N * memtile_repeat_count
 
 if len(sys.argv) > 2:
     if sys.argv[2] == "npu":
@@ -48,7 +48,7 @@ def simple_repeat():
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile, MemTile, 1, tensor_ty)
             of_out = object_fifo("out", MemTile, ShimTile, 1, tensor_ty)
-            of_out.set_memtile_repeat(memtile_repeat_count)
+            of_out.set_repeat_count(memtile_repeat_count)
             object_fifo_link(of_in, of_out)
 
             # To/from AIE-array data movement
