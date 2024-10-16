@@ -173,6 +173,7 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=$PWD/../mlir_aie \
             -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
+            -DPEANO_INSTALL_DIR=$PEANO_INSTALL_DIR \
             $CMAKE_ARGS
 
           ninja install
