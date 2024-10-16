@@ -430,7 +430,7 @@ struct AIEObjectFifoStatefulTransformPass
     }
     if (linked) {
       if (linkOp->getRepeatCount().has_value())
-        numElem *= linkOp->getRepeatCount().value() + 1;
+        numElem *= linkOp->getRepeatCount().value();
       if (linkOp->isDistribute())
         numElem *= linkOp->getFifoOuts().size();
       else if (linkOp->isJoin())
@@ -541,12 +541,33 @@ struct AIEObjectFifoStatefulTransformPass
     auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
     int len = elemType.getNumElements();
 
+    // check for repeat count
+    int repeatCount = 1;
+    if (!dims.getValue().empty()) {
+      auto highestStride = dims.getValue().begin()->getStride() - 1;
+      if (highestStride == 0) {
+        repeatCount = dims.getValue().begin()->getSize();
+        dims = AIE::BDDimLayoutArrayAttr::get(op->getContext(),
+                                              dims.getValue().drop_front(1));
+      }
+    }
+    if (op.getRepeatCount().has_value())
+      repeatCount = op.getRepeatCount().value();
+
     // search for the buffers/locks (based on if this objFifo has a link)
     ObjectFifoCreateOp target = op;
     if (std::optional<ObjectFifoLinkOp> linkOp = getOptionalLinkOp(op);
-        linkOp.has_value())
-      if (objFifoLinks.find(linkOp.value()) != objFifoLinks.end())
+        linkOp.has_value()) {
+      if (objFifoLinks.find(linkOp.value()) != objFifoLinks.end()) {
         target = objFifoLinks[linkOp.value()];
+        if (target == op) {
+          if (linkOp->getRepeatCount().has_value()) {
+            acqNum *= linkOp->getRepeatCount().value();
+            relNum *= linkOp->getRepeatCount().value();
+          }
+        }
+      }
+    }
 
     // search for MemOp
     Operation *producerMem = nullptr;
@@ -581,7 +602,7 @@ struct AIEObjectFifoStatefulTransformPass
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, /*repeatCount*/ 0, bdBlock,
+                               channelIndex, repeatCount - 1, bdBlock,
                                endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
@@ -700,7 +721,7 @@ struct AIEObjectFifoStatefulTransformPass
     int relNum = 1;
 
     // check for repeat count
-    int repeatCount = 0;
+    int repeatCount = 1;
     if (!dims.getValue().empty()) {
       auto highestStride = dims.getValue().begin()->getStride() - 1;
       if (highestStride == 0) {
@@ -709,8 +730,8 @@ struct AIEObjectFifoStatefulTransformPass
                                               dims.getValue().drop_front(1));
       }
     }
-    if (op.getMemtileRepeat().has_value())
-      repeatCount = op.getMemtileRepeat().value();
+    if (op.getRepeatCount().has_value())
+      repeatCount = op.getRepeatCount().value();
 
     // search for the buffers/locks (based on if this objFifo has a link)
     // identify size difference between input and output memrefs
@@ -726,9 +747,8 @@ struct AIEObjectFifoStatefulTransformPass
 
         if (target == op) {
           if (linkOp->getRepeatCount().has_value()) {
-            // +1 for original data movement
-            acqNum *= linkOp->getRepeatCount().value() + 1;
-            relNum *= linkOp->getRepeatCount().value() + 1;
+            acqNum *= linkOp->getRepeatCount().value();
+            relNum *= linkOp->getRepeatCount().value();
           }
         }
 
@@ -816,7 +836,7 @@ struct AIEObjectFifoStatefulTransformPass
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, repeatCount, bdBlock, endBlock);
+                               channelIndex, repeatCount - 1, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
@@ -1170,8 +1190,12 @@ struct AIEObjectFifoStatefulTransformPass
 
       // Only FIFOs using DMA are split into two ends;
       // skip in shared memory case
-      if (int share_direction = 0; !requiresDMAs(createOp, share_direction))
+      if (int share_direction = 0; !requiresDMAs(createOp, share_direction)) {
+        if (createOp.getRepeatCount().has_value())
+          createOp->emitWarning("Repeat unavailable for tiles sharing memory; "
+                                "ignoring `repeat_count`");
         continue;
+      }
 
       for (auto consumerTile : createOp.getConsumerTiles()) {
         auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());

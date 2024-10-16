@@ -52,7 +52,7 @@ def objFifo_example():
 
         of0 = object_fifo("of0", S, T_, 2, np.ndarray[(256,), np.dtype[np.int32]])
         of1 = object_fifo("of1", M, T_, 2, np.ndarray[(256,), np.dtype[np.int32]])
-        of1.set_memtile_repeat(4)
+        of1.set_repeat_count(4)
         of2 = object_fifo("of2", T_, C_, 2, np.ndarray[(256,), np.dtype[np.int32]])
         of2.set_via_shared_mem(ObjectFifoPort.Consume)
 

@@ -1,4 +1,4 @@
-//===- memtile_repeat_test.mlir --------------------------------*- MLIR -*-===//
+//===- repeat_count_test.mlir -----------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -10,7 +10,7 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK: module @memtileRepeat {
+// CHECK: module @repeatCount {
 // CHECK:   aie.device(npu1) {
 // CHECK:     memref.global "public" @of2_cons : memref<16xi32>
 // CHECK:     memref.global "public" @of2 : memref<16xi32>
@@ -112,16 +112,11 @@
 // CHECK:   }
 // CHECK: }
 
-module @memtileRepeat {
+module @repeatCount {
  aie.device(npu1) {
-    %tile10 = aie.tile(1, 0)
-    %tile11 = aie.tile(1, 1)
     %tile12 = aie.tile(1, 2)
-    %tile33 = aie.tile(3, 3)
+    %tile13 = aie.tile(1, 3)
 
-    aie.objectfifo @of0 (%tile10, {%tile11}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
-    aie.objectfifo @of1 (%tile11, {%tile12}, 2 : i32) {memtile_repeat = 2 : i32} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @of2 (%tile11, {%tile33}, 2 : i32) {memtile_repeat = 2 : i32} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo.link [@of0] -> [@of1, @of2] ([] [0, 16])
+    aie.objectfifo @of (%tile12, {%tile13}, 2 : i32) {repeat_count = 3 : i32} : !aie.objectfifo<memref<16xi32>>
  }
 }
