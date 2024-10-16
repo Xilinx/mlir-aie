@@ -7,10 +7,6 @@
 
 // RUN: aie-opt --aie-dma-tasks-to-npu %s | FileCheck %s
 
-// This test ensures that a buffer descriptor configuration that references a buffer
-// on a mem tile gets lowered to the correct NPU instruction sequence register write
-// setting that BD's address.
-
 module {
   aie.device(npu1_4col) {
     %tile_0_0 = aie.tile(0, 0)
