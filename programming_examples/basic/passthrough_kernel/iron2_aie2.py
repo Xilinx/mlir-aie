@@ -32,6 +32,7 @@ vector_type = np.ndarray[(vector_size,), np.dtype[np.uint8]]
 io = IOCoordinator()
 a_in = io.inout_data(vector_type)
 b_out = io.inout_data(vector_type)
+_unused = io.inout_data(vector_type)
 
 of_in = ObjectFifo(2, line_type, "in")
 of_out = ObjectFifo(2, line_type, "out")
@@ -39,7 +40,7 @@ of_out = ObjectFifo(2, line_type, "out")
 tiler = DataTiler(vector_type)
 for t in io.tile_loop(tiler):
     io.fill(of_in.first, t, a_in, coords=(0, 0))
-    io.drain(of_out.second, t, b_out, coords=(0, 0))
+    io.drain(of_out.second, t, b_out, coords=(0, 0), wait=True)
 
 passthrough_fn = BinKernel(
     "passThroughLine",

@@ -63,14 +63,14 @@ class Program:
                             arg.resolve()
                         self._print_verify(ctx)
 
-                # In/Out Sequence
-                self.__io_coordinator.resolve()
-                self._print_verify(ctx)
-
                 # Generate core programs
                 for w in self.__workers:
                     w.resolve()
                     self._print_verify(ctx)
+
+                # In/Out Sequence
+                self.__io_coordinator.resolve()
+                self._print_verify(ctx)
 
             print(ctx.module)
 

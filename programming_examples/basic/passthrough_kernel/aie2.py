@@ -68,7 +68,7 @@ def passthroughKernel(vector_size, trace_size):
                     offset=N,
                 )
 
-            in_task = dma_configure_task_for(of_in, issue_token=True)
+            in_task = dma_configure_task_for(of_in)
             with bds(in_task) as bd:
                 with bd[0]:
                     dma_bd(inTensor, len=N)
@@ -82,8 +82,8 @@ def passthroughKernel(vector_size, trace_size):
                     EndOp()
             dma_start_task(out_task)
 
-            dma_await_task(in_task)
             dma_await_task(out_task)
+            dma_free_task(in_task)
 
 
 try:

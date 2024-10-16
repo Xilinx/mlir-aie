@@ -204,6 +204,7 @@ class DataTileSpecifier:
         self.sizes = sizes
         self.offsets = offsets
         self.strides = strides
+        self.len = np.prod(sizes)
 
 
 class DataTiler:

@@ -46,6 +46,11 @@ build/final_${data_size}.xclbin: build/aie2_lineBased_8b_${data_size}.mlir build
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
 
+build/iron2_final_${data_size}.xclbin: build/iron2_aie2_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--xclbin-name=${@F} --npu-insts-name=iron2_insts_${data_size}.txt $(<:%=../%)
+
 build/final_trace_${data_size}.xclbin: build/aie2_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
@@ -70,6 +75,9 @@ run: ${targetname}_${data_size}.exe build/final_${data_size}.xclbin build/insts_
 
 run_py: build/final_${data_size}.xclbin build/insts_${data_size}.txt
 	${powershell} python3 ${srcdir}/test.py -s ${data_size} -x build/final_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE
+
+run_iron2_py: build/iron2_final_${data_size}.xclbin build/iron2_insts_${data_size}.txt
+	${powershell} python3 ${srcdir}/test.py -s ${data_size} -x build/iron2_final_${data_size}.xclbin -i build/iron2_insts_${data_size}.txt -k MLIR_AIE
 
 trace: ${targetname}_${data_size}.exe build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt 
 	${powershell} ./$< -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size}

@@ -2,12 +2,17 @@
 from __future__ import annotations
 
 import numpy as np
+from ... import ir  # type: ignore
 
 from ...dialects.aiex import runtime_sequence
-from ...helpers.util import DataTiler
+from ...dialects._aiex_ops_gen import dma_free_task
+from ...helpers.util import DataTiler, DataTileSpecifier
 from ..dataflow.objectfifo import ObjectFifoHandle
 from ..dataflow.endpoint import ObjectFifoEndpoint
 from ..phys.tile import Tile
+from ..resolvable import Resolvable
+from .dmatask import DMATask
+from .inoutdata import InOutData
 
 from .shimpolicy import SingleShimPolicy, DistributeShimPolicy, ShimPlacementPolicy
 from .syncpolicy import (
@@ -18,17 +23,6 @@ from .syncpolicy import (
     NSyncPolicy,
     DMASyncPolicy,
 )
-
-
-class DataTileSpecifier:
-    """TODO: move to utils, define what this is"""
-
-    pass
-
-
-class InOutData:
-    def __init__(self, inout_type: type[np.ndarray]):
-        self.inout_type = inout_type
 
 
 class IOEndpoint(ObjectFifoEndpoint):
@@ -65,11 +59,11 @@ class IOIterator:
             tile_next = next(self.data_tile_iterator)
             return tile_next
         except StopIteration:
-            self.io_coord._insert_sync("HI")
+            # self.io_coord._insert_sync("HI")
             raise StopIteration
 
 
-class IOCoordinator:
+class IOCoordinator(Resolvable):
     def __init__(
         self,
         shim_policy: ShimPlacementPolicy = SingleShimPolicy,
@@ -90,6 +84,7 @@ class IOCoordinator:
         in_fifo: ObjectFifoHandle,
         data_tile: DataTileSpecifier,
         source: InOutData,
+        wait: bool = False,
         coords: tuple[int, int] | None = None,
     ) -> None:
         assert source in self.__inout_data
@@ -98,13 +93,14 @@ class IOCoordinator:
             io_endpoint = IOEndpoint(column, row)
             in_fifo.set_endpoint(io_endpoint)
         self.__fifos.add(in_fifo)
-        self.__ops.append(f"DMA fill({in_fifo}, {data_tile}, {source})")
+        self.__ops.append(DMATask(in_fifo, source, data_tile, wait))
 
     def drain(
         self,
         out_fifo: ObjectFifoHandle,
         data_tile: DataTileSpecifier,
         dest: InOutData,
+        wait: bool = False,
         coords: tuple[int, int] | None = None,
     ) -> None:
         assert dest in self.__inout_data
@@ -113,16 +109,13 @@ class IOCoordinator:
             io_endpoint = IOEndpoint(column, row)
             out_fifo.set_endpoint(io_endpoint)
         self.__fifos.add(out_fifo)
-        self.__ops.append(f"DMA drain({out_fifo}, {data_tile}, {dest})")
+        self.__ops.append(DMATask(out_fifo, dest, data_tile, wait))
 
     def get_fifos(self) -> list[ObjectFifoHandle]:
         return self.__fifos.copy()
 
     def tile_loop(self, iter: DataTiler) -> IOIterator:
         return IOIterator(self, iter)
-
-    def _insert_sync(self, sync_str):
-        self.__ops.append(f"Sync HERE({sync_str})")
 
     def resolve(
         self,
@@ -133,5 +126,16 @@ class IOCoordinator:
 
         @runtime_sequence(*inout_types)
         def sequence(*args):
-            print(args)
-            print(self.__ops)
+
+            for io_data, io_data_val in zip(self.__inout_data, args):
+                io_data.op = io_data_val
+
+            no_waits = []
+            for dma_task in self.__ops:
+                dma_task.resolve()
+                if dma_task.will_wait():
+                    for t in no_waits:
+                        dma_free_task(t.task)
+                    no_waits = []
+                else:
+                    no_waits.append(dma_task)
