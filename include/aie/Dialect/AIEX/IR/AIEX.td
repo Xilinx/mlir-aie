@@ -877,13 +877,7 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"RuntimeSe
         DMAChannelDir:$direction,
         I32Attr:$channel,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$d0_zero_before,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$d1_zero_before,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$d2_zero_before,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$d0_zero_after,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$d1_zero_after,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$d2_zero_after
+        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count
   );
 
   let regions = (

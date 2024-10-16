@@ -363,6 +363,9 @@ public:
     // column
     column = IntegerAttr::get(i32ty, col);
 
+    // row
+    row = IntegerAttr::get(i32ty, 0);
+
     // arg_idx
     AIEX::RuntimeSequenceOp seq_op =
         op->getParentOfType<AIEX::RuntimeSequenceOp>();
@@ -478,6 +481,10 @@ public:
     // This logic is kept for now for backward compatibility.
     if (!isMM2S)
       issue_token = BoolAttr::get(ctx, true);
+
+    // TODO: Need to add a check to only allow zero padding on MM2S channel of MemTile
+    // As of now, run time MemTile DMA configuration is supported only from BD level, not at
+    // NpuDmaMemcpyNdOp.
 
     rewriter.create<NpuWriteBdOp>(
         op->getLoc(), column, bd_id, buffer_length, buffer_offset,
@@ -608,6 +615,10 @@ public:
       words[7] |= (op.getLockAcqEnable() & 0x1) << 12;
       words[7] |= (op.getLockAcqVal() & 0xef) << 5;
       words[7] |= op.getLockAcqId() & 0xf;
+
+      if(op.getD0ZeroBefore() || op.getD1ZeroBefore() || op.getD2ZeroBefore() || op.getD0ZeroAfter() || op.getD1ZeroAfter() || op.getD2ZeroAfter()){
+        op->emitError("Zero padding is only available on MemTile");
+      }
     } else if (tm.isMemTile(op.getColumn(), op.getRow())) {
       bd_addr = (op.getColumn() << tm.getColumnShift()) |
                 (op.getRow() << tm.getRowShift()) | (0xA0000 + bd_id * 0x20);
