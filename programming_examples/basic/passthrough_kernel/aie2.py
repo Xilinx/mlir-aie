@@ -68,20 +68,22 @@ def passthroughKernel(vector_size, trace_size):
                     offset=N,
                 )
 
-            npu_dma_memcpy_nd(
-                metadata=of_in,
-                bd_id=0,
-                mem=inTensor,
-                sizes=[1, 1, 1, N],
-                issue_token=True,
-            )
-            npu_dma_memcpy_nd(
-                metadata=of_out,
-                bd_id=1,
-                mem=outTensor,
-                sizes=[1, 1, 1, N],
-            )
-            dma_wait(of_in, of_out)
+            in_task = dma_configure_task_for(of_in, issue_token=True)
+            with bds(in_task) as bd:
+                with bd[0]:
+                    dma_bd(inTensor, len=N)
+                    EndOp()
+            dma_start_task(in_task)
+
+            out_task = dma_configure_task_for(of_out, issue_token=True)
+            with bds(out_task) as bd:
+                with bd[0]:
+                    dma_bd(outTensor, len=N)
+                    EndOp()
+            dma_start_task(out_task)
+
+            dma_await_task(in_task)
+            dma_await_task(out_task)
 
 
 try:
