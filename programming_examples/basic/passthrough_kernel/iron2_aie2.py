@@ -8,12 +8,12 @@
 import numpy as np
 import sys
 
-from aie.api.io.iocoordinator import IOCoordinator
-from aie.api.dataflow.objectfifo import ObjectFifo
-from aie.api.kernels.binkernel import BinKernel
-from aie.api.program import Program
-from aie.api.worker import Worker
-from aie.api.phys.device import NPU1Col1
+from aie.iron2.io.iocoordinator import IOCoordinator
+from aie.iron2.dataflow.objectfifo import ObjectFifo
+from aie.iron2.kernels.binkernel import BinKernel
+from aie.iron2.program import Program
+from aie.iron2.worker import Worker
+from aie.iron2.phys.device import NPU1Col1
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.helpers.util import DataTiler
 

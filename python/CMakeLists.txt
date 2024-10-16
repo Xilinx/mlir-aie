@@ -44,13 +44,13 @@ declare_mlir_python_sources(AIEPythonSources.Helpers
     helpers/runtime/*.py
 )
 
-declare_mlir_python_sources(AIEPythonSources.Api
+declare_mlir_python_sources(AIEPythonSources.Iron2
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
-    api/*.py
-    api/dataflow/*.py
-    api/kernels/*.py
-    api/phys/*.py
+    iron2/*.py
+    iron2/dataflow/*.py
+    iron2/kernels/*.py
+    iron2/phys/*.py
 )
 
 
