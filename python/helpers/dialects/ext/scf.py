@@ -3,8 +3,7 @@ from typing import Sequence
 from ....ir import InsertionPoint, Value
 from ....dialects.linalg.opdsl.lang.emitter import _is_index_type
 from ....dialects.scf import ForOp, yield_
-
-from .arith import constant, index_cast
+from ....extras.dialects.ext.arith import constant, index_cast
 
 
 def _for(
