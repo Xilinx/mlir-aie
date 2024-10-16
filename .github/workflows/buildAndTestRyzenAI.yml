@@ -159,7 +159,9 @@ jobs:
           # That means wheels have file with time stamps in the future which makes ninja loop
           # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
           find llvm-aie -exec touch -a -m -t 201108231405.14 {} \;
-          export PEANO_DIR=$PWD/llvm-aie
+          PEANO_DIR=$PWD/llvm-aie
+          export PATH=$PEANO_DIR/bin:$PATH
+          export LD_LIBRARY_PATH=$PEANO_DIR/lib:$LD_LIBRARY_PATH
 
           mkdir build
           pushd build

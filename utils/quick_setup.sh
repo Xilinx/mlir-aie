@@ -68,7 +68,7 @@ if test -f "$VPP"; then
   unzip -q llvm_aie*.whl
   rm -rf mlir*.whl
   rm -rf llvm_aie*.whl
-  export PEANO_DIR=`realpath llvm-aie`
+  export PEANO_INSTALL_DIR=`realpath llvm-aie`
   popd
   python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements.txt
   HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_extras.txt
