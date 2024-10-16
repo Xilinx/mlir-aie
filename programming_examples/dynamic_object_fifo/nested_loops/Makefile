@@ -30,7 +30,7 @@ CXX=g++-13 -ggdb
 #mlir_target?=build/aie.mlir
 xclbin_target?=build/final.xclbin
 insts_target?=build/insts.txt
-host_target?=build/test
+host_target?=test.exe
 
 .PHONY: all
 all: ${xclbin_target} ${host_target}
@@ -49,8 +49,15 @@ ${xclbin_target}: build/aie.mlir build/kernel.o
 				--dynamic-objFifos --aie-generate-npu --npu-insts-name=${insts_target:build/%=%} ${<:%=../%}
 
 ${host_target}: ${srcdir}/test.cpp ${xclbin_target}
-	mkdir -p ${@D}
-	${CXX} ${XRT_FLAGS} -DM=$M -DN=$N -o $@ $< ${XRT_LIBS}
+	rm -rf _build
+	mkdir -p _build
+	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${host_target}
+	cd _build && ${powershell} cmake --build . --config Release
+ifeq "${powershell}" "powershell.exe"
+	cp _build/${host_target}.exe $@
+else
+	cp _build/${host_target} $@ 
+endif
 
 .PHONY: run
 run: ${host_target}
@@ -63,4 +70,5 @@ sign: ${xclbin_target}
 
 .PHONY: clean
 clean:
-	-rm -r build
+	rm -rf build _build ${targetname}
+
