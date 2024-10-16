@@ -8,7 +8,8 @@ CHESSCC2_FLAGS = -f -p me -P ${AIE2_INCLUDE_DIR} -I ${AIETOOLS_DIR}/include -D__
 CHESS_FLAGS = -P ${AIE_INCLUDE_DIR}
 
 CHESSCCWRAP1_FLAGS = aie -I ${AIETOOLS_DIR}/include 
-CHESSCCWRAP2_FLAGS = aie2 -I ${AIETOOLS_DIR}/include 
+CHESSCCWRAP2_FLAGS = aie2 -I ${AIETOOLS_DIR}/include
+PEANOWRAP2_FLAGS = -O2 -v -std=c++20 --target=aie2-none-unknown-elf -I ${AIETOOLS_DIR}/include 
 
 TEST_POWERSHELL := $(shell command -v powershell.exe >/dev/null 2>&1 && echo yes || echo no)
 ifeq ($(TEST_POWERSHELL),yes)
