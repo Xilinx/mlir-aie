@@ -7,10 +7,19 @@
 # (c) Copyright 2021 Xilinx Inc.
 # (c) Copyright 2022-2024 Advanced Micro Devices, Inc.
 
-AIETOOLS=`realpath $(dirname $(which xchesscc))/../`
-
 TARGET=${1^^}
 shift
+
+# check to see if the next command line argument is -aietools
+if [ "$1" == "-aietools" ]
+  then
+    AIETOOLS=$2
+    shift
+    shift
+fi
+
+AIETOOLS_PATH=`realpath $(dirname $(which xchesscc))/../`
+AIETOOLS="${AIETOOLS:-${AIETOOLS_PATH}}"
 
 if [ $TARGET != "AIE" -a $TARGET != "AIE2" ]
   then
@@ -35,6 +44,7 @@ if [ -z "$AIETOOLS" ]
 fi
 
 LIBDIR=${AIETOOLS}/data/${AIETARGET}/lib
+INCDIR=${AIETOOLS}/include
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-xchesscc --aiearch ${AIEARCH} -p me -C Release_LLVM -D__AIENGINE__ $EXTRA_DEFS -P $LIBDIR -d -f $@
+xchesscc --aiearch ${AIEARCH} -p me -C Release_LLVM -D__AIENGINE__ $EXTRA_DEFS -I $INCDIR -P $LIBDIR -d -f $@
