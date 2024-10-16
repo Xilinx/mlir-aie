@@ -36,12 +36,12 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/trace_events_enum.py
 )
 
-declare_mlir_python_sources(AIEPythonSources.Extras
+declare_mlir_python_sources(AIEPythonSources.Helpers
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
-    extras/*.py
-    extras/dialects/ext/*.py
-    extras/runtime/*.py
+    helpers/*.py
+    helpers/dialects/ext/*.py
+    helpers/runtime/*.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Api

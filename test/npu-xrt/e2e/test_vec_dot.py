@@ -23,9 +23,8 @@ from aie.dialects.aie import (
     WireBundle,
 )
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 
-# this is to get the MemRefValue caster inside of aie-python-extras
 # noinspection PyUnresolvedReferences
 from aie.extras.dialects.ext import arith, linalg
 
