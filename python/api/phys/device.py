@@ -83,7 +83,7 @@ class Device(Resolvable):
 
 class NPU1Col1(Device):
     def __init__(self) -> None:
-        super().__init__(cols=1, rows=4)
+        super().__init__(cols=1, rows=6)
 
     def resolve(
         self,
@@ -95,7 +95,7 @@ class NPU1Col1(Device):
 
 class NPU1Col4(Device):
     def __init__(self) -> None:
-        super().__init__(cols=4, rows=4)
+        super().__init__(cols=4, rows=6)
 
     def resolve(
         self,

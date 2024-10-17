@@ -201,6 +201,7 @@ class ObjectFifoHandle(Resolvable):
         offsets: list[int],
         coords: tuple[int, int],
         depths: list[int] | None = None,
+        types: list[type[np.ndarray]] = None,
         dimensions=None,
     ) -> list[ObjectFifo]:
         num_subfifos = len(offsets)
@@ -209,19 +210,24 @@ class ObjectFifoHandle(Resolvable):
         if isinstance(depths, list):
             assert len(depths) == len(offsets)
 
+        if types is None:
+            types = [self.__object_fifo.obj_type] * num_subfifos
+        if isinstance(types, list):
+            assert len(types) == len(offsets)
+
         # Create subfifos
         subfifos = []
         for i in range(num_subfifos):
             subfifos.append(
                 ObjectFifo(
                     depths[i],
-                    self.__object_fifo.obj_type,
+                    types[i],
                     name=self.__object_fifo.name + f"_join{i}",
                 )
             )
 
         # Create link and set it as endpoints
-        link = ObjectFifoLink(subfifos, self.__object_fifo, coords, [], offsets)
+        link = ObjectFifoLink(subfifos, self.__object_fifo, coords, offsets, [])
         self.set_endpoint(link)
         for i in range(num_subfifos):
             subfifos[i].second.set_endpoint(link)
@@ -232,6 +238,7 @@ class ObjectFifoHandle(Resolvable):
         offsets: list[int],
         coords: tuple[int, int],
         depths: list[int] | None = None,
+        types: list[type[np.ndarray]] = None,
         dimensions=None,
     ) -> list[ObjectFifo]:
         num_subfifos = len(offsets)
@@ -240,19 +247,24 @@ class ObjectFifoHandle(Resolvable):
         if isinstance(depths, list):
             assert len(depths) == len(offsets)
 
+        if types is None:
+            types = [self.__object_fifo.obj_type] * num_subfifos
+        if isinstance(types, list):
+            assert len(types) == len(offsets)
+
         # Create subfifos
         subfifos = []
         for i in range(num_subfifos):
             subfifos.append(
                 ObjectFifo(
                     depths[i],
-                    self.__object_fifo.obj_type,
+                    types[i],
                     name=self.__object_fifo.name + f"_split{i}",
                 )
             )
 
         # Create link and set it as endpoints
-        link = ObjectFifoLink(self.__object_fifo, subfifos, coords, offsets, [])
+        link = ObjectFifoLink(self.__object_fifo, subfifos, coords, [], offsets)
         self.set_endpoint(link)
         for i in range(num_subfifos):
             subfifos[i].first.set_endpoint(link)
