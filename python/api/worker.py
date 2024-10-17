@@ -32,7 +32,7 @@ class Worker(ObjectFifoEndpoint):
 
         if core_fn is None:
 
-            def do_nothing_core_fun() -> None:
+            def do_nothing_core_fun(*args) -> None:
                 for _ in range_(sys.maxsize):
                     pass
 

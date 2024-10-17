@@ -52,7 +52,6 @@ def my_passthrough():
             def sequence(A, B, C):
                 # The strides below are configured to read across all rows in the same column
                 # Stride of K in dim/wrap 2 skips an entire row to read a full column
-                """
                 npu_dma_memcpy_nd(
                     metadata=of_in,
                     bd_id=1,
@@ -63,25 +62,6 @@ def my_passthrough():
                 )
                 npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
                 dma_wait(of_in, of_out)
-                """
-
-                in_task = dma_configure_task_for(of_in)
-                with bds(in_task) as bd:
-                    with bd[0]:
-                        dma_bd(A, len=N, dimensions=list(zip([1, K, M, 1], [1, 1, K, 1])))
-                        EndOp()
-                dma_start_task(in_task)
-
-                out_task = dma_configure_task_for(of_out, issue_token=True)
-                with bds(out_task) as bd:
-                    with bd[0]:
-                        dma_bd(C, len=N)
-                        EndOp()
-                dma_start_task(out_task)
-
-                dma_await_task(out_task)
-                dma_free_task(in_task)
-
 
     print(ctx.module)
 

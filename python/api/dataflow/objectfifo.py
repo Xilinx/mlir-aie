@@ -18,8 +18,8 @@ from ...dialects._aie_ops_gen import (
     ObjectFifoAcquireOp,
     objectfifo_release,
 )  # type: ignore
-from ...dialects.aie import object_fifo
-from ...helpers.util import np_ndarray_type_to_memref_type
+from ...dialects.aie import object_fifo, object_fifo_link
+from ...helpers.util import np_ndarray_type_to_memref_type, single_elem_or_list_to_list
 
 from ..resolvable import Resolvable
 from .endpoint import ObjectFifoEndpoint
@@ -214,4 +214,31 @@ class ObjectFifoHandle(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        return self.__object_fifo.resolve(loc=loc, ip=ip)
+        self.__object_fifo.resolve(loc=loc, ip=ip)
+
+
+class ObjectFifoLink(Resolvable):
+    def __init__(
+        self,
+        srcs: list[ObjectFifoHandle] | ObjectFifoHandle,
+        dsts: list[ObjectFifoHandle] | ObjectFifoHandle,
+    ):
+        self.__srcs = single_elem_or_list_to_list(srcs)
+        self.__dsts = single_elem_or_list_to_list(dsts)
+        assert len(self.__srcs) > 0 and len(self.__dsts) > 0
+        assert len(self.__srcs) == 1 or len(self.__dsts) == 1
+        self.__op = None
+
+    def resolve(
+        self,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
+    ) -> None:
+        if self.__op == None:
+            for s in self.__srcs:
+                s.resolve()
+            for d in self.__dsts:
+                d.resolve()
+            src_ops = [s.op for s in self.__srcs]
+            dst_ops = [d.op for d in self.__dsts]
+            self.__op = object_fifo_link(src_ops, dst_ops)
