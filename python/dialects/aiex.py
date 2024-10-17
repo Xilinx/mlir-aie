@@ -4,7 +4,6 @@ from contextlib import contextmanager
 from functools import partial
 import itertools
 from operator import itemgetter
-from typing import Union, Optional
 
 import numpy as np
 
@@ -16,7 +15,6 @@ from .aie import (
     LockAction,
     Neighbors,
     TileOp,
-    object_fifo,
     find_matching_buffers,
     find_matching_flows,
     find_matching_locks,
@@ -25,11 +23,11 @@ from .aie import (
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint
+from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint, MemRefType
 
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
-
+from ..helpers.util import try_convert_np_type_to_mlir_type, np_ndarray_type_get_shape
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
@@ -37,7 +35,7 @@ register_dialect(get_dialect_registry())
 npu_sync = partial(npu_sync, column_num=1, row_num=1)
 
 
-def dma_wait(*args: Union[ObjectFifoCreateOp, str]):
+def dma_wait(*args: ObjectFifoCreateOp | str):
     if len(args) == 0:
         raise ValueError(
             "dma_wait must receive at least one dma_meta information to wait for"
@@ -54,13 +52,13 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
 
     def __init__(
         self,
-        metadata: Union[str, ObjectFifoCreateOp],
+        metadata: str | ObjectFifoCreateOp,
         bd_id,
         mem,
         offsets: MixedValues = None,
         sizes: MixedValues = None,
         strides: MixedValues = None,
-        issue_token: Optional[bool] = None,
+        issue_token: bool | None = None,
     ):
         x = 0
         y = 0
@@ -463,8 +461,7 @@ class Channel:
             ), f"must provide either existing buffer or buffer shape and dtype"
             buffer = aie.buffer(
                 tile,
-                shape,
-                dtype,
+                np.ndarray[shape, np.dtype[dtype]],
                 name=buffer_name,
                 initial_value=initial_value,
                 loc=loc,
@@ -654,7 +651,16 @@ class TileArray:
         kwargs = dict(
             zip(kwargs.keys(), _broadcast_args_to(kwargs.values(), self.shape))
         )
-        r = np.vectorize(aie.buffer, otypes=[object])(*args, **kwargs)
+
+        def buffer_constructor(*args, **kwargs):
+            kwargs["datatype"] = np.ndarray[kwargs["shape"], np.dtype[kwargs["dtype"]]]
+            del kwargs["shape"]
+            del kwargs["dtype"]
+            return aie.buffer(*args, **kwargs)
+
+        # np.vectorize doesn't seem to play well with ndarray types, so I use this buffer_creator hack
+        r = np.vectorize(buffer_constructor, otypes=[object])(*args, **kwargs)
+
         if r.size == 1:
             r = r[0]
         return r
@@ -700,8 +706,8 @@ class TileArray:
 
 
 def broadcast_flow(
-    source: Union[np.ndarray, TileOp],
-    dest: Union[np.ndarray, TileOp],
+    source: np.ndarray | TileOp,
+    dest: np.ndarray | TileOp,
     source_bundle=None,
     source_channel=None,
     dest_bundle=None,
@@ -785,7 +791,10 @@ def broadcast_flow(
 def runtime_sequence(*inputs: Type):
     def decorator(f):
         seq_op = RuntimeSequenceOp()
-        entry_block = seq_op.body.blocks.append(*inputs)
+        my_inputs = []
+        for input in inputs:
+            my_inputs.append(try_convert_np_type_to_mlir_type(input))
+        entry_block = seq_op.body.blocks.append(*my_inputs)
         args = entry_block.arguments
         with InsertionPoint(entry_block):
             f(*args)

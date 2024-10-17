@@ -30,8 +30,8 @@ Below is an example of a link created between two FIFOs `of0` and `of1`, where t
 A = tile(1, 0)
 B = tile(1, 1)
 C = tile(1, 3)
-of0 = object_fifo("objfifo0", A, B, 2, T.memref(256, T.i32()))
-of1 = object_fifo("objfifo1", B, C, 2, T.memref(256, T.i32()))
+of0 = object_fifo("objfifo0", A, B, 2, np.ndarray[(256,), np.dtype[np.int32]])
+of1 = object_fifo("objfifo1", B, C, 2, np.ndarray[(256,), np.dtype[np.int32]])
 object_fifo_link(of0, of1)
 ```
 
@@ -53,9 +53,9 @@ A = tile(1, 0)
 B = tile(1, 1)
 C = tile(1, 3)
 D = tile(2, 3)
-of0 = object_fifo("objfifo0", A, B, 2, T.memref(256, T.i32()))
-of1 = object_fifo("objfifo1", B, C, 2, T.memref(128, T.i32()))
-of2 = object_fifo("objfifo2", B, D, 2, T.memref(128, T.i32()))
+of0 = object_fifo("objfifo0", A, B, 2, np.ndarray[(256,), np.dtype[np.int32]])
+of1 = object_fifo("objfifo1", B, C, 2, np.ndarray[(256,), np.dtype[np.int32]])
+of2 = object_fifo("objfifo2", B, D, 2, np.ndarray[(256,), np.dtype[np.int32]])
 object_fifo_link(of0, [of1, of2])
 ```
 
@@ -75,9 +75,9 @@ A = tile(1, 0)
 B = tile(1, 1)
 C = tile(1, 3)
 D = tile(2, 3)
-of0 = object_fifo("objfifo0", B, A, 2, T.memref(256, T.i32()))
-of1 = object_fifo("objfifo1", C, B, 2, T.memref(128, T.i32()))
-of2 = object_fifo("objfifo2", D, B, 2, T.memref(128, T.i32()))
+of0 = object_fifo("objfifo0", B, A, 2, np.ndarray[(256,), np.dtype[np.int32]])
+of1 = object_fifo("objfifo1", C, B, 2, np.ndarray[(256,), np.dtype[np.int32]])
+of2 = object_fifo("objfifo2", D, B, 2, np.ndarray[(256,), np.dtype[np.int32]])
 object_fifo_link([of1, of2], of0)
 ```
 
