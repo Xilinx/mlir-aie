@@ -3,13 +3,15 @@ AIETOOLS_DIR ?= $(shell realpath $(dir $(shell which xchesscc))/../)
 AIE_INCLUDE_DIR ?= ${AIETOOLS_DIR}/data/versal_prod/lib
 AIE2_INCLUDE_DIR ?= ${AIETOOLS_DIR}/data/aie_ml/lib
 
+WARNING_FLAGS = -Wno-parentheses -Wno-attributes -Wno-macro-redefined
+
 CHESSCC1_FLAGS = -f -p me -P ${AIE_INCLUDE_DIR} -I ${AIETOOLS_DIR}/include
 CHESSCC2_FLAGS = -f -p me -P ${AIE2_INCLUDE_DIR} -I ${AIETOOLS_DIR}/include -D__AIENGINE__=2 -D__AIEARCH__=20
 CHESS_FLAGS = -P ${AIE_INCLUDE_DIR}
 
 CHESSCCWRAP1_FLAGS = aie -I ${AIETOOLS_DIR}/include 
 CHESSCCWRAP2_FLAGS = aie2 -I ${AIETOOLS_DIR}/include
-PEANOWRAP2_FLAGS = -O2 -v -std=c++20 --target=aie2-none-unknown-elf -DNDEBUG -I ${AIETOOLS_DIR}/include 
+PEANOWRAP2_FLAGS = -O2 -v -std=c++20 --target=aie2-none-unknown-elf ${WARNING_FLAGS} -DNDEBUG -I ${AIETOOLS_DIR}/include 
 
 TEST_POWERSHELL := $(shell command -v powershell.exe >/dev/null 2>&1 && echo yes || echo no)
 ifeq ($(TEST_POWERSHELL),yes)
