@@ -217,6 +217,7 @@ class DataTiler:
         strides=None,
         dimensions=None,
     ):
+        assert total_data > 0
         self.__offset = initial_offset
         self.__dimensions = dimensions
         if dimensions:
@@ -224,7 +225,6 @@ class DataTiler:
                 raise ValueError(
                     f"My only supply either dimensions ({dimensions}) OR sizes ({sizes}) and strides ({strides})"
                 )
-            self.__dimensions = dimensions
         else:
             if strides and not sizes:
                 sizes = [1, 1, 1, total_data]
