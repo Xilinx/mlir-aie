@@ -9,9 +9,8 @@ import numpy as np
 import sys
 
 from aie.api.io.iocoordinator import IOCoordinator
-from aie.api.dataflow.objectfifo import ObjectFifo, ObjectFifoLink
+from aie.api.dataflow.objectfifo import ObjectFifo
 from aie.api.program import Program
-from aie.api.worker import Worker
 from aie.api.phys.device import NPU1Col1
 from aie.helpers.util import DataTiler
 
@@ -32,8 +31,7 @@ _unused = io.inout_data(tensor_ty)
 c_out = io.inout_data(tensor_ty)
 
 of_in = ObjectFifo(2, tensor_ty, "in")
-of_out = ObjectFifo(2, tensor_ty, "out")
-link = ObjectFifoLink(of_in, of_out)
+of_out = of_in.second.forward(coords=(0, 2))
 
 tiler = DataTiler(N, sizes=[1, K, M, 1], strides=[1, 1, K, 1])
 tiler2 = DataTiler(N)
@@ -42,6 +40,5 @@ for t in io.tile_loop(tiler):
     t2 = next(tiler2)
     io.drain(of_out.second, t2, c_out, coords=(0, 0), wait=True)
 
-my_worker = Worker(core_fn=None, fn_args=[of_in.second, of_out.first], coords=(0, 2))
-my_program = Program(NPU1Col1(), io, workers=[my_worker], links=[link])
+my_program = Program(NPU1Col1(), io)
 my_program.resolve_program()

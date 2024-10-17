@@ -10,14 +10,8 @@ from __future__ import annotations
 import numpy as np
 
 from ... import ir  # type: ignore
-from ..._mlir_libs._aie import ObjectFifoSubviewType  # type: ignore
 from ...dialects._aie_enum_gen import ObjectFifoPort  # type: ignore
-from ...dialects._aie_ops_gen import (
-    ObjectFifoCreateOp,
-    ObjectFifoSubviewAccessOp,
-    ObjectFifoAcquireOp,
-    objectfifo_release,
-)  # type: ignore
+from ...dialects._aie_ops_gen import ObjectFifoCreateOp  # type: ignore
 from ...dialects.aie import object_fifo, object_fifo_link
 from ...helpers.util import np_ndarray_type_to_memref_type, single_elem_or_list_to_list
 
@@ -57,6 +51,10 @@ class ObjectFifo(Resolvable):
         idx = cls.__of_index
         cls.__of_index += 1
         return idx
+
+    @property
+    def depth(self) -> int:
+        return self.__depth
 
     @property
     def op(self) -> ObjectFifoCreateOp:
@@ -109,6 +107,12 @@ class ObjectFifo(Resolvable):
                 loc=loc,
                 ip=ip,
             )
+
+            if isinstance(self.end1, ObjectFifoLink):
+                self.end1.resolve()
+            for e in self.end2:
+                if isinstance(self.end2, ObjectFifoLink):
+                    e.resolve()
 
     def _set_endpoint(self, endpoint: ObjectFifoEndpoint, first: bool = True) -> None:
         if first:
@@ -192,6 +196,80 @@ class ObjectFifoHandle(Resolvable):
     def set_endpoint(self, endpoint: ObjectFifoEndpoint) -> None:
         self.__object_fifo._set_endpoint(endpoint, first=self.__is_first)
 
+    def join(
+        self,
+        offsets: list[int],
+        coords: tuple[int, int],
+        depths: list[int] | None = None,
+        dimensions=None,
+    ) -> list[ObjectFifo]:
+        num_subfifos = len(offsets)
+        if depths is None:
+            depths = [self.__object_fifo.depth] * num_subfifos
+        if isinstance(depths, list):
+            assert len(depths) == len(offsets)
+
+        # Create subfifos
+        subfifos = []
+        for i in range(num_subfifos):
+            subfifos.append(
+                ObjectFifo(
+                    depths[i],
+                    self.__object_fifo.obj_type,
+                    name=self.__object_fifo.name + f"_join{i}",
+                )
+            )
+
+        # Create link and set it as endpoints
+        link = ObjectFifoLink(subfifos, self.__object_fifo, coords, [], offsets)
+        self.set_endpoint(link)
+        for i in range(num_subfifos):
+            subfifos[i].second.set_endpoint(link)
+        return subfifos
+
+    def split(
+        self,
+        offsets: list[int],
+        coords: tuple[int, int],
+        depths: list[int] | None = None,
+        dimensions=None,
+    ) -> list[ObjectFifo]:
+        num_subfifos = len(offsets)
+        if depths is None:
+            depths = [self.__object_fifo.depth] * num_subfifos
+        if isinstance(depths, list):
+            assert len(depths) == len(offsets)
+
+        # Create subfifos
+        subfifos = []
+        for i in range(num_subfifos):
+            subfifos.append(
+                ObjectFifo(
+                    depths[i],
+                    self.__object_fifo.obj_type,
+                    name=self.__object_fifo.name + f"_split{i}",
+                )
+            )
+
+        # Create link and set it as endpoints
+        link = ObjectFifoLink(self.__object_fifo, subfifos, coords, offsets, [])
+        self.set_endpoint(link)
+        for i in range(num_subfifos):
+            subfifos[i].first.set_endpoint(link)
+        return subfifos
+
+    def forward(self, coords: tuple[int, int], depth: int | None = None) -> ObjectFifo:
+        assert not self.__is_first
+        if depth is None:
+            depth = self.__object_fifo.depth
+        forward_fifo = ObjectFifo(
+            depth, self.__object_fifo.obj_type, name=self.__object_fifo.name + f"_fwd"
+        )
+        link = ObjectFifoLink(self.__object_fifo, forward_fifo, coords, [], [])
+        self.set_endpoint(link)
+        forward_fifo.first.set_endpoint(link)
+        return forward_fifo
+
     def resolve(
         self,
         loc: ir.Location | None = None,
@@ -200,17 +278,37 @@ class ObjectFifoHandle(Resolvable):
         self.__object_fifo.resolve(loc=loc, ip=ip)
 
 
-class ObjectFifoLink(Resolvable):
+class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
     def __init__(
         self,
         srcs: list[ObjectFifoHandle] | ObjectFifoHandle,
         dsts: list[ObjectFifoHandle] | ObjectFifoHandle,
+        coords: tuple[int, int],
+        src_offsets: list[int] = [],
+        dst_offsets: list[int] = [],
     ):
         self.__srcs = single_elem_or_list_to_list(srcs)
         self.__dsts = single_elem_or_list_to_list(dsts)
+        self.__src_offsets = src_offsets
+        self.__dst_offsets = dst_offsets
+
         assert len(self.__srcs) > 0 and len(self.__dsts) > 0
         assert len(self.__srcs) == 1 or len(self.__dsts) == 1
+        if len(self.__src_offsets) > 0:
+            assert len(self.__src_offsets) == len(self.__srcs)
+        if len(self.__dst_offsets) > 0:
+            assert len(self.__dst_offsets) == len(self.__dsts)
+
+        self.__tile = None
+        if coords:
+            column, row = coords
+            self.__tile = Tile(column, row)
+
         self.__op = None
+
+    @property
+    def tile(self) -> Tile | None:
+        return self.__tile
 
     def resolve(
         self,
@@ -224,4 +322,6 @@ class ObjectFifoLink(Resolvable):
                 d.resolve()
             src_ops = [s.op for s in self.__srcs]
             dst_ops = [d.op for d in self.__dsts]
-            self.__op = object_fifo_link(src_ops, dst_ops)
+            self.__op = object_fifo_link(
+                src_ops, dst_ops, self.__src_offsets, self.__dst_offsets
+            )

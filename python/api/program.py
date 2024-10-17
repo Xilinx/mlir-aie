@@ -20,13 +20,11 @@ class Program:
         self,
         device: Device,
         io_coordinator: IOCoordinator,
-        workers: list[Worker],
-        links: list[ObjectFifoLink] = [],
+        workers: list[Worker] = [],
     ):
         self.__device = device
         self.__workers = workers
         self.__io_coordinator = io_coordinator
-        self.__links = links
 
     def resolve_program(self, generate_placement: bool = False):
         with mlir_mod_ctx() as ctx:
@@ -55,11 +53,6 @@ class Program:
                 # Generate fifos
                 for f in all_fifos:
                     f.resolve()
-                    self._print_verify(ctx)
-
-                # Generate links
-                for l in self.__links:
-                    l.resolve()
                     self._print_verify(ctx)
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
