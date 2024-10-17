@@ -1,10 +1,13 @@
-# vector_scalar_add/aie2.py -*- Python -*-
+# neighbor_tile_memory_access/aie2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+
+# Adapted from vector_scalar_add/aie2.py but with link between ComputeTiles
+
 import numpy as np
 import sys
 
@@ -27,33 +30,31 @@ def my_vector_bias_add():
 
         # Tile declarations
         ShimTile = tile(0, 0)
-        MemTile = tile(0, 1)
         ComputeTile2 = tile(0, 2)
+        ComputeTile3 = tile(0, 3)
 
         # AIE-array data movement with object fifos
         # Input
-        of_in0 = object_fifo("in0", ShimTile, MemTile, 2, mem_tile_ty)
-        of_in1 = object_fifo("in1", MemTile, ComputeTile2, 2, aie_tile_ty)
+        of_in0 = object_fifo("in0", ShimTile, ComputeTile2, 2, mem_tile_ty)
+        of_in1 = object_fifo("in1", ComputeTile2, ComputeTile3, 2, aie_tile_ty)
         object_fifo_link(of_in0, of_in1)
 
         # Output
-        of_out0 = object_fifo("out0", MemTile, ShimTile, 2, mem_tile_ty)
-        of_out1 = object_fifo("out1", ComputeTile2, MemTile, 2, aie_tile_ty)
-        object_fifo_link(of_out1, of_out0)
+        of_out0 = object_fifo("out0", ComputeTile3, ShimTile, 2, mem_tile_ty)
 
         # Set up compute tiles
 
-        # Compute tile 2
-        @core(ComputeTile2)
+        # Compute tile 3
+        @core(ComputeTile3)
         def core_body():
             # Effective while(1)
             for _ in range_(sys.maxsize):
                 elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
-                elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
+                elem_out = of_out0.acquire(ObjectFifoPort.Produce, 1)
                 for i in range_(AIE_TILE_WIDTH):
                     elem_out[i] = elem_in[i] + 1
                 of_in1.release(ObjectFifoPort.Consume, 1)
-                of_out1.release(ObjectFifoPort.Produce, 1)
+                of_out0.release(ObjectFifoPort.Produce, 1)
 
         # To/from AIE-array data movement
         @runtime_sequence(all_data_ty, all_data_ty)
