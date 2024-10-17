@@ -1,0 +1,3 @@
+ # This can't go in the normal requirements file because the way the wheels build parses requirements.txt
+ # does not support github packages
+git+https://github.com/makslevental/mlir-python-extras@b2b8d72

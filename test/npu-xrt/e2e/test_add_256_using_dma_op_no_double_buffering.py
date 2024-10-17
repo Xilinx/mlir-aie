@@ -20,12 +20,13 @@ from aie.dialects.aie import (
     WireBundle,
     npu_instgen,
 )
-from aie.extras.dialects.ext.scf import _for as range_
-from aie.extras.dialects.ext import arith, func, memref
+from aie.helpers.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext import func
+from aie.extras.dialects.ext import memref
 from aie.extras.runtime.passes import run_pipeline
 
 # noinspection PyUnresolvedReferences
-from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
+from aie.extras.testing import MLIRContext, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.xrt import XCLBin
 from filelock import FileLock
@@ -106,8 +107,8 @@ def test_add_256_using_dma_op_no_double_buffering(ctx: MLIRContext, workdir: Pat
 
         @func.func(emit=True)
         def bobsyouruncle(
-            arg0: T.memref(LEN, T.i32()),
-            _arg1: T.memref(1, T.i32()),
+            arg0: np.ndarray[(LEN,), np.dtype[np.int32]],
+            _arg1: np.ndarray[(1,), np.dtype[np.int32]],
             arg2: T.memref(LEN, T.i32()),
         ):
             aiex.npu_dma_memcpy_nd(

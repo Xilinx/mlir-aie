@@ -1,4 +1,4 @@
-//===- allocation_error.mlir -----------------------------------*- MLIR -*-===//
+//===- allocation_error_chess.mlir -----------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: chess
+// REQUIRES: chess, aietools_aie
 // RUN: not aiecc.py --basic-alloc-scheme --xchesscc --xbridge %s 2>&1 | FileCheck %s --check-prefix=CHESS
 // CHESS: Error: could not find free space for SpaceSymbol x in memory DMb
 

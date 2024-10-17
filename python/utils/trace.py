@@ -5,19 +5,17 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
-
-import typing
 from aie.dialects.aiex import *
 from aie.dialects.aie import get_target_model
 from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEvent
 
 
 class GenericEvent:
-    def __init__(self, code: typing.Union[CoreEvent, MemEvent, PLEvent, MemTileEvent]):
+    def __init__(self, code: CoreEvent | MemEvent | PLEvent | MemTileEvent):
         # For backwards compatibility, allow integer as event
         if isinstance(code, int):
             code = CoreEvent(code)
-        self.code: typing.Union[CoreEvent, MemEvent, PLEvent, MemTileEvent] = code
+        self.code: CoreEvent | MemEvent | PLEvent | MemTileEvent = code
 
     def get_register_writes(self):
         """
