@@ -218,30 +218,35 @@ struct AIEObjectFifoStatefulTransformPass
 
     // Only test for this objfifo belonging to a LinkOp if we are in the shared
     // memory case; otherwise, we will return `true` in any case.
+    // if (hasSharedMemory) {
+    //   if (auto linkOp = getOptionalLinkOp(createOp)) {
+    //     splitBecauseLink.push_back(createOp);
+    //     isUsedInLinkOp = true;
     bool isLinkProvidingSharedMemory = false;
     if (hasSharedMemory) {
       if (auto linkOp = getOptionalLinkOp(createOp)) {
         splitBecauseLink.push_back(createOp);
-
+        isUsedInLinkOp = true;
         int share_dir = 0;
-        if (!linkOp->isDistribute() && !linkOp->isJoin()) {
+        if(!linkOp->isDistribute() && !linkOp->isJoin()){
           TileOp producerTile = createOp.getProducerTileOp();
-          if (auto consumerTile =
-                  createOp.getConsumerTiles().front().getDefiningOp()) {
-            if (auto consumerTileOp = dyn_cast<TileOp>(consumerTile)) {
-              isLinkProvidingSharedMemory =
-                  isSharedMemory(producerTile, consumerTileOp, &share_dir);
+          if(auto consumerTile = createOp.getConsumerTiles().front().getDefiningOp()){
+            if(auto consumerTileOp = dyn_cast<TileOp>(consumerTile)){
+             isLinkProvidingSharedMemory = isSharedMemory(producerTile, consumerTileOp, &share_dir);
             }
           }
-          if (createOp.getViaSharedMem().has_value() &&
-              isLinkProvidingSharedMemory) {
+          if(createOp.getViaSharedMem().has_value() && isLinkProvidingSharedMemory){
             checkAndApplyViaSharedMemAttribute(createOp, share_dir);
-            if (share_direction == share_dir)
+            if(share_direction == share_dir)
               isUsedInLinkOp = false;
-            else
+            else 
               isUsedInLinkOp = true;
           }
-        } else
+          else if(isLinkProvidingSharedMemory){
+              isUsedInLinkOp = false;
+          }
+        }
+        else
           isUsedInLinkOp = true;
       }
     }
@@ -320,8 +325,6 @@ struct AIEObjectFifoStatefulTransformPass
                                             ObjectFifoCreateOp op, int numElem,
                                             TileOp creation_tile) {
     std::vector<LockOp> locks;
-    if (op.getDisableSynchronization())
-      return locks;
     auto dev = op->getParentOfType<DeviceOp>();
     auto &target = dev.getTargetModel();
     if (creation_tile.isShimTile()) {
@@ -480,16 +483,15 @@ struct AIEObjectFifoStatefulTransformPass
                 LockAction acqLockAction, LockOp relLock, int relMode,
                 MyOp buff, int offset, int len, Block *succ,
                 BDDimLayoutArrayAttr dims) {
-    if (acqLock)
-      builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqLockAction,
-                                acqMode);
+    builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqLockAction,
+                              acqMode);
     if (!dims.getValue().empty())
       builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims);
     else
       builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len);
-    if (acqLock)
-      builder.create<UseLockOp>(builder.getUnknownLoc(), relLock,
-                                LockAction::Release, relMode);
+
+    builder.create<UseLockOp>(builder.getUnknownLoc(), relLock,
+                              LockAction::Release, relMode);
     builder.create<NextBDOp>(builder.getUnknownLoc(), succ);
   }
 
@@ -506,23 +508,21 @@ struct AIEObjectFifoStatefulTransformPass
     int acqMode = 1;
     int relMode = 1;
     auto acqLockAction = LockAction::Acquire;
-    if (locksPerFifo[op].size() > 0) {
-      auto dev = op->getParentOfType<DeviceOp>();
-      if (auto &target = dev.getTargetModel();
-          target.getTargetArch() == AIEArch::AIE1) {
-        acqMode = lockMode == 0 ? 1 : 0;
-        relMode = lockMode == 0 ? 0 : 1;
-        acqLock = locksPerFifo[op][blockIndex];
-        relLock = locksPerFifo[op][blockIndex];
-      } else {
-        acqMode = acqNum;
-        relMode = relNum;
-        acqLockAction = LockAction::AcquireGreaterEqual;
-        acqLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][0]
-                                                    : locksPerFifo[op][1];
-        relLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][1]
-                                                    : locksPerFifo[op][0];
-      }
+    auto dev = op->getParentOfType<DeviceOp>();
+    if (auto &target = dev.getTargetModel();
+        target.getTargetArch() == AIEArch::AIE1) {
+      acqMode = lockMode == 0 ? 1 : 0;
+      relMode = lockMode == 0 ? 0 : 1;
+      acqLock = locksPerFifo[op][blockIndex];
+      relLock = locksPerFifo[op][blockIndex];
+    } else {
+      acqMode = acqNum;
+      relMode = relNum;
+      acqLockAction = LockAction::AcquireGreaterEqual;
+      acqLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][0]
+                                                  : locksPerFifo[op][1];
+      relLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][1]
+                                                  : locksPerFifo[op][0];
     }
     createBd(builder, acqLock, acqMode, acqLockAction, relLock, relMode, buff,
              offset, len, succ, dims);
@@ -1005,16 +1005,6 @@ struct AIEObjectFifoStatefulTransformPass
     auto dev = op->getParentOfType<DeviceOp>();
     if (auto &targetArch = dev.getTargetModel();
         targetArch.getTargetArch() == AIEArch::AIE1) {
-
-      if (locksPerFifo[target].size() == 0) {
-        for (int i = 0; i < numLocks; i++) {
-          int lockID = acc[{op, portNum}];
-          acc[{op, portNum}] =
-              (lockID + 1) % op.size(); // update to next objFifo elem
-        }
-        return;
-      }
-
       int lockMode = 0;
       if ((port == ObjectFifoPort::Produce &&
            lockAction == LockAction::Release) ||
@@ -1032,13 +1022,6 @@ struct AIEObjectFifoStatefulTransformPass
     } else {
       if (numLocks == 0)
         return;
-
-      if (locksPerFifo[target].size() == 0) {
-        acc[{op, portNum}] = (acc[{op, portNum}] + numLocks) %
-                             op.size(); // update to next objFifo elem
-        return;
-      }
-
       // search for the correct lock based on the port of the acq/rel
       // operation e.g. acq as consumer is the read lock (second)
       LockOp lock;
@@ -1229,8 +1212,6 @@ struct AIEObjectFifoStatefulTransformPass
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
             builder, datatype, consumerFifoName, consumerTile, consumerTile,
             consumerObjFifoSize, emptyDims, fromStreamDims);
-        if (createOp.getDisableSynchronization())
-          consumerFifo.setDisableSynchronization(true);
         replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
 
         // identify external buffers that were registered to the consumer fifo
@@ -1538,33 +1519,32 @@ struct AIEObjectFifoStatefulTransformPass
         auto acqOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
         if (ObjectFifoCreateOp op = acqOp.getObjectFifo();
             getOptionalLinkOp(op)) {
-          if (auto linkOp = getOptionalLinkOp(op)) {
-            if (!linkOp->isDistribute() && !linkOp->isJoin()) {
-              for (auto consumerTile : op.getConsumerTiles()) {
-                if (auto consumerTileOp =
-                        dyn_cast<TileOp>(consumerTile.getDefiningOp())) {
-                  int share_dir_value = 0;
-                  int *share_dir = &share_dir_value;
-                  bool sharing = isSharedMemory(op.getProducerTileOp(),
-                                                consumerTileOp, share_dir);
-                  if (sharing) {
-                    accessOp.getOutput().replaceAllUsesWith(
-                        subviews[acqOp][accessOp.getIndex()]->getBuffer());
-                  } else {
-                    accessOp->emitOpError(
-                        "currently cannot access objectFifo used in "
-                        "ObjectFifoLinkOp");
+              if(auto linkOp = getOptionalLinkOp(op)){
+                if(!linkOp->isDistribute() && !linkOp->isJoin()){
+                  for (auto consumerTile : op.getConsumerTiles()) {
+                    if (auto consumerTileOp =
+                      dyn_cast<TileOp>(consumerTile.getDefiningOp())){
+                      int share_dir_value = 0;
+                      int *share_dir = &share_dir_value;
+                      bool sharing = isSharedMemory(op.getProducerTileOp(), consumerTileOp, share_dir);
+                      if(sharing){   
+                        accessOp.getOutput().replaceAllUsesWith(
+                          subviews[acqOp][accessOp.getIndex()]->getBuffer());
+                      }
+                      else{
+                        accessOp->emitOpError("currently cannot access objectFifo used in "
+                                "ObjectFifoLinkOp");
+                      }
+                    }
                   }
                 }
+                else
+                      accessOp->emitOpError("currently cannot access objectFifo used in "
+                                "ObjectFifoLinkOp");
               }
-            } else
-              accessOp->emitOpError(
-                  "currently cannot access objectFifo used in "
-                  "ObjectFifoLinkOp");
-          } else
-            accessOp->emitOpError("currently cannot access objectFifo used in "
-                                  "ObjectFifoLinkOp");
-          return;
+              else
+                accessOp->emitOpError("currently cannot access objectFifo used in "
+                                "ObjectFifoLinkOp");
         }
         accessOp.getOutput().replaceAllUsesWith(
             subviews[acqOp][accessOp.getIndex()]->getBuffer());
