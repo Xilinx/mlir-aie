@@ -12,7 +12,6 @@
 #define NOCPP
 
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 #include <aie_api/aie.hpp>
@@ -37,39 +36,33 @@ extern "C" {
 #if BIT_WIDTH == 8
 
 void passThroughLine(uint8_t *in, uint8_t *out, int32_t lineWidth) {
-  printf("passThroughLine BIT_WIDTH\n");
   passThrough_aie<uint8_t, 64>(in, out, 1, lineWidth);
 }
 
 void passThroughTile(uint8_t *in, uint8_t *out, int32_t tileHeight,
                      int32_t tileWidth) {
-  printf("passThroughTile BIT_WIDTH\n");
   passThrough_aie<uint8_t, 64>(in, out, tileHeight, tileWidth);
 }
 
 #elif BIT_WIDTH == 16
 
 void passThroughLine(int16_t *in, int16_t *out, int32_t lineWidth) {
-  printf("passThroughLine BIT_WIDTH\n");
   passThrough_aie<int16_t, 32>(in, out, 1, lineWidth);
 }
 
 void passThroughTile(int16_t *in, int16_t *out, int32_t tileHeight,
                      int32_t tileWidth) {
-  printf("passThroughTile BIT_WIDTH\n");
   passThrough_aie<int16_t, 32>(in, out, tileHeight, tileWidth);
 }
 
 #else // 32
 
 void passThroughLine(int32_t *in, int32_t *out, int32_t lineWidth) {
-  printf("passThroughLine BIT_WIDTH\n");
   passThrough_aie<int32_t, 16>(in, out, 1, lineWidth);
 }
 
 void passThroughTile(int32_t *in, int32_t *out, int32_t tileHeight,
                      int32_t tileWidth) {
-  printf("passThroughTile BIT_WIDTH\n");
   passThrough_aie<int32_t, 16>(in, out, tileHeight, tileWidth);
 }
 

@@ -29,7 +29,7 @@ mlir: build/aie2_lineBased_8b_${COLORDETECT_WIDTH}.mlir
 
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
 
 build/combined_bitwiseOR_gray2rgba_bitwiseAND.a: build/bitwiseOR.cc.o build/gray2rgba.cc.o build/bitwiseAND.cc.o
 	mkdir -p ${@D}
@@ -42,6 +42,7 @@ build/aie2_lineBased_8b_${COLORDETECT_WIDTH}.mlir: ${srcdir}/aie2_colorDetect.py
 build/final_${COLORDETECT_WIDTH}.xclbin: build/aie2_lineBased_8b_${COLORDETECT_WIDTH}.mlir build/rgba2hue.cc.o build/threshold.cc.o build/combined_bitwiseOR_gray2rgba_bitwiseAND.a
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host --basic-alloc-scheme \
+    	--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp

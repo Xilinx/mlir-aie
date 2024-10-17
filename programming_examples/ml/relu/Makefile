@@ -21,7 +21,7 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 build/%.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
 
 build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
@@ -34,11 +34,13 @@ build/aie_trace.mlir: ${srcdir}/aie2.py
 build/final.xclbin: build/aie.mlir build/relu.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+    	--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
 build/final_trace.xclbin: build/aie_trace.mlir build/relu.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+    	--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
 ${targetname}.exe: ${srcdir}/test.cpp

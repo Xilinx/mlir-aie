@@ -1,7 +1,7 @@
 // (c) Copyright 2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: ryzen_ai, chess
+// REQUIRES: ryzen_ai, peano 
 //
 // RUN: mkdir -p %S/test_4_col_i8
 // RUN: cd %S/test_4_col_i8
