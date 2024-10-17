@@ -36,6 +36,12 @@ BUILD_DIR=${2:-"build"}
 INSTALL_DIR=${3:-"install"}
 LLVM_ENABLE_RTTI=${LLVM_ENABLE_RTTI:OFF}
 
+if [ "$#" -ge 4 ]; then
+  PEANO_INSTALL_DIR=`realpath $4`
+  echo "PEANO_INSTALL_DIR DIR: $PEANO_INSTALL_DIR"
+  export PEANO_INSTALL_DIR=${PEANO_INSTALL_DIR}
+fi
+
 mkdir -p $BUILD_DIR
 mkdir -p $INSTALL_DIR
 cd $BUILD_DIR
@@ -56,9 +62,8 @@ CMAKE_CONFIGS="\
     -DAIE_RUNTIME_TARGETS=x86_64 \
     -DAIE_RUNTIME_TEST_TARGET=x86_64 "
 
-if [ "$#" -eq 4 ]; then
-  PEANO_INSTALL_DIR=`realpath $4`
-  CMAKE_CONFIGS="${CMAKE_CONFIGS} -DPEANO_INSTALL_DIR=$(PEANO_INSTALL_DIR)"
+if [ "$#" -ge 4 ]; then
+  CMAKE_CONFIGS="${CMAKE_CONFIGS} -DPEANO_INSTALL_DIR=${PEANO_INSTALL_DIR}"
 fi 
 
 if [ -x "$(command -v lld)" ]; then
