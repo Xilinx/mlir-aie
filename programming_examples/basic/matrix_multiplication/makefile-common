@@ -81,6 +81,8 @@ aie_py_src?=aie2.py
 runargs?=-v 2 --warmup 1 --iters 1
 aieargs+=-M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
 
+CHESS?=false
+
 kernels_dir=${srcdir}/../../../../aie_kernels/aie2
 
 .PHONY: all
@@ -97,7 +99,9 @@ ${mlir_target}: ${srcdir}/${aie_py_src}
 ${xclbin_target}: ${mlir_target} ${kernels:%=build/%.o}
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-    			--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+				$(if $(shell [ $(CHESS) != true ] && echo true), \
+					--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR}, \
+				) \
 				--aie-generate-npu --npu-insts-name=${insts_target:build/%=%} $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp ${srcdir}/../test.cpp ${srcdir}/../common.h
