@@ -32,6 +32,11 @@ xclbin_target?=build/final.xclbin
 insts_target?=build/insts.txt
 host_target?=build/test
 
+experimental_mlir_target?=build/experimental_aie.mlir
+experimental_xclbin_target?=build/experimental_final.xclbin
+experimental_insts_target?=build/experimental_insts.txt
+experimental_host_target?=build/experimental_test
+
 M=768
 N=2304
 m=96
@@ -48,18 +53,37 @@ ${mlir_target}: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< $M $N $m $n > $@
 
+${experimental_mlir_target}: ${srcdir}/experimental_aie2.py
+	mkdir -p ${@D}
+	python3 $< $M $N $m $n > $@
+
 ${xclbin_target}: ${mlir_target} build/kernel.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-npu --npu-insts-name=${insts_target:build/%=%} ${<:%=../%}
 
+${experimental_xclbin_target}: ${experimental_mlir_target} build/kernel.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py -v --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				--aie-generate-npu --npu-insts-name=${experimental_insts_target:build/%=%} ${<:%=../%}
+
 ${host_target}: ${srcdir}/test.cpp ${xclbin_target}
 	mkdir -p ${@D}
+	${CXX} ${XRT_FLAGS} -DM=$M -DN=$N -o $@ $< ${XRT_LIBS}
+
+${experimental_host_target}: ${srcdir}/test.cpp ${experimental_xclbin_target}
+	mkdir -p ${@D}
+	mv ${experimental_xclbin_target} ${xclbin_target}
+	mv ${experimental_insts_target} ${insts_target}
 	${CXX} ${XRT_FLAGS} -DM=$M -DN=$N -o $@ $< ${XRT_LIBS}
 
 .PHONY: run
 run: ${host_target}
 	./${host_target}
+
+.PHONY: run_experimental
+run_experimental: ${experimental_host_target}
+	./${experimental_host_target}
 
 xclbin_sign=${XILINX_XRT}/amdxdna/setup_xclbin_firmware.sh 
 .PHONY: sign
