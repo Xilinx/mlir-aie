@@ -1,18 +1,20 @@
 # Address circular dependency between IOCoordinator and InOutData
 from __future__ import annotations
 
+from contextlib import contextmanager
 import numpy as np
+
+
 from ... import ir  # type: ignore
 
 from ...dialects.aiex import runtime_sequence
 from ...dialects._aiex_ops_gen import dma_free_task
 from ...helpers.util import DataTiler, DataTileSpec
 from ..dataflow.objectfifo import ObjectFifoHandle
-from ..dataflow.endpoint import ObjectFifoEndpoint
-from ..phys.tile import Tile
 from ..resolvable import Resolvable
 from .dmatask import DMATask
 from .inoutdata import InOutData
+from .ioendpoint import IOEndpoint
 
 from .shimpolicy import SingleShimPolicy, DistributeShimPolicy, ShimPlacementPolicy
 from .syncpolicy import (
@@ -23,23 +25,6 @@ from .syncpolicy import (
     NSyncPolicy,
     DMASyncPolicy,
 )
-
-
-class IOEndpoint(ObjectFifoEndpoint):
-    def __init__(self, column: int, row: int) -> IOEndpoint:
-        self.__tile = Tile(column, row)
-
-    @property
-    def tile(self) -> Tile | None:
-        return self.__tile
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, IOEndpoint):
-            return NotImplemented
-        return self.tile() == other.tile()
-
-    def __str__(self) -> str:
-        return f"IOEndpoint({self.tile})"
 
 
 class IOIterator:
@@ -75,9 +60,10 @@ class IOCoordinator(Resolvable):
         self.__ops = []
         self.__fifos = set()
 
-    def inout_data(self, input_type: type[np.ndarray]) -> InOutData:
-        self.__inout_data.append(InOutData(input_type))
-        return self.__inout_data[-1]
+    @contextmanager
+    def build_sequence(self, *input_types: type[np.ndarray]):
+        self.__inout_data = list(map(InOutData, input_types))
+        yield tuple(self.__inout_data)
 
     def fill(
         self,
@@ -114,8 +100,10 @@ class IOCoordinator(Resolvable):
     def get_fifos(self) -> list[ObjectFifoHandle]:
         return self.__fifos.copy()
 
-    def tile_loop(self, iter: DataTiler) -> IOIterator:
-        return IOIterator(self, iter)
+    def tile_loop(self, *args: DataTiler) -> IOIterator:
+        if len(args) == 1:
+            return IOIterator(self, *args)
+        return IOIterator(self, zip(*args))
 
     def resolve(
         self,

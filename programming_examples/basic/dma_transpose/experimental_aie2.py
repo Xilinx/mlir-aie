@@ -25,20 +25,16 @@ if len(sys.argv) == 3:
 
 tensor_ty = np.ndarray[(M, K), np.dtype[np.int32]]
 
-io = IOCoordinator()
-a_in = io.inout_data(tensor_ty)
-_unused = io.inout_data(tensor_ty)
-c_out = io.inout_data(tensor_ty)
-
-of_in = ObjectFifo(2, tensor_ty, "in")
+of_in = ObjectFifo(2, tensor_ty)
 of_out = of_in.second.forward(coords=(0, 2))
 
-tiler = DataTiler(N, sizes=[1, K, M, 1], strides=[1, 1, K, 1])
-tiler2 = DataTiler(N)
-for t in io.tile_loop(tiler):
-    io.fill(of_in.first, t, a_in, coords=(0, 0))
-    t2 = next(tiler2)
-    io.drain(of_out.second, t2, c_out, coords=(0, 0), wait=True)
+io = IOCoordinator()
+with io.build_sequence(tensor_ty, tensor_ty, tensor_ty) as (a_in, _, c_out):
+    tiler_in = DataTiler(N, sizes=[1, K, M, 1], strides=[1, 1, K, 1])
+    tiler_out = DataTiler(N)
+    for t_in, t_out in io.tile_loop(tiler_in, tiler_out):
+        io.fill(of_in.first, t_in, a_in, coords=(0, 0))
+        io.drain(of_out.second, t_out, c_out, coords=(0, 0), wait=True)
 
 my_program = Program(NPU1Col1(), io)
 my_program.resolve_program()

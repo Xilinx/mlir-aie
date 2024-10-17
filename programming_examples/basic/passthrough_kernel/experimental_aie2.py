@@ -29,18 +29,14 @@ line_size = vector_size // 4
 line_type = np.ndarray[(line_size,), np.dtype[np.uint8]]
 vector_type = np.ndarray[(vector_size,), np.dtype[np.uint8]]
 
-io = IOCoordinator()
-a_in = io.inout_data(vector_type)
-b_out = io.inout_data(vector_type)
-_unused = io.inout_data(vector_type)
-
 of_in = ObjectFifo(2, line_type, "in")
 of_out = ObjectFifo(2, line_type, "out")
 
-tiler = DataTiler(vector_size)
-for t in io.tile_loop(tiler):
-    io.fill(of_in.first, t, a_in, coords=(0, 0))
-    io.drain(of_out.second, t, b_out, coords=(0, 0), wait=True)
+io = IOCoordinator()
+with io.build_sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
+    for t in io.tile_loop(DataTiler(vector_size)):
+        io.fill(of_in.first, t, a_in, coords=(0, 0))
+        io.drain(of_out.second, t, b_out, coords=(0, 0), wait=True)
 
 passthrough_fn = BinKernel(
     "passThroughLine",
@@ -62,7 +58,3 @@ my_worker = Worker(core_fn, [of_in.second, of_out.first, passthrough_fn], coords
 
 my_program = Program(NPU1Col1(), io, workers=[my_worker])
 my_program.resolve_program()
-
-# A: np.ndarray[(vector_size,), np.dtype[np.uint8]] = ...
-# C: np.ndarray[(vector_size,), np.dtype[np.uint8]] = ...
-# my_program.run(inputs=A, outputs=C)

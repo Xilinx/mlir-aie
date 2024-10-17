@@ -64,17 +64,16 @@ def my_matrix_add_one():
     my_worker = Worker(core_fn, fn_args=[of_in.second, of_out.first], coords=(col, 2))
 
     io = IOCoordinator()
-    in_tensor = io.inout_data(tile_ty)
-    _unused = io.inout_data(tile_ty)
-    out_tensor = io.inout_data(tile_ty)
-
-    # we only run this program on a single tile of data so use TILE_SIZE for total data instead of IMAGE_SIZE
-    tiler = DataTiler(
-        TILE_SIZE, sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH], strides=[1, 1, IMAGE_WIDTH, 1]
-    )
-    for t in io.tile_loop(tiler):
-        io.fill(of_in.first, t, in_tensor, coords=(col, 0))
-        io.drain(of_out.second, t, out_tensor, coords=(col, 0), wait=True)
+    with io.build_sequence(tile_ty, tile_ty, tile_ty) as (in_tensor, _, out_tensor):
+        # we only run this program on a single tile of data so use TILE_SIZE for total data instead of IMAGE_SIZE
+        tiler = DataTiler(
+            TILE_SIZE,
+            sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
+            strides=[1, 1, IMAGE_WIDTH, 1],
+        )
+        for t in io.tile_loop(tiler):
+            io.fill(of_in.first, t, in_tensor, coords=(col, 0))
+            io.drain(of_out.second, t, out_tensor, coords=(col, 0), wait=True)
     return Program(dev, io, workers=[my_worker])
 
 

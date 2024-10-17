@@ -38,20 +38,14 @@ if len(sys.argv) > 3:
 vector_ty = np.ndarray[(N,), np.dtype[np.int32]]
 line_ty = np.ndarray[(line_size,), np.dtype[np.int32]]
 
-io = IOCoordinator()
-a_in = io.inout_data(vector_ty)
-_unused = io.inout_data(vector_ty)
-c_out = io.inout_data(vector_ty)
-
 of_in = ObjectFifo(2, line_ty, "in")
-of_out = ObjectFifo(2, line_ty, "out")
-link = ObjectFifoLink(of_in, of_out)
+of_out = of_in.second.forward(coords=(0, 2))
 
-tiler = DataTiler(N)
-for t in io.tile_loop(tiler):
-    io.fill(of_in.first, t, a_in, coords=(col, 0))
-    io.drain(of_out.second, t, c_out, coords=(col, 0), wait=True)
+io = IOCoordinator()
+with io.build_sequence(vector_ty, vector_ty, vector_ty) as (a_in, _, c_out):
+    for t in io.tile_loop(DataTiler(N)):
+        io.fill(of_in.first, t, a_in, coords=(col, 0))
+        io.drain(of_out.second, t, c_out, coords=(col, 0), wait=True)
 
-my_worker = Worker(core_fn=None, fn_args=[of_in.second, of_out.first], coords=(col, 2))
-my_program = Program(dev, io, workers=[my_worker], links=[link])
+my_program = Program(dev, io)
 my_program.resolve_program()
