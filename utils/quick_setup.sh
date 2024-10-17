@@ -37,10 +37,6 @@ if ! hash python3.10; then
    echo "This script requires python3.10"
    return 1
 fi
-if ! hash virtualenv; then
-  echo "virtualenv is not installed"
-  return 1
-fi
 if ! hash unzip; then
   echo "unzip is not installed"
   return 1
@@ -48,13 +44,8 @@ fi
 # if an install is already present, remove it to start from a clean slate
 rm -rf ironenv
 rm -rf my_install
-python3 -m virtualenv ironenv
-# The real path to source might depend on the virtualenv version
-if [ -r ironenv/local/bin/activate ]; then
-  source ironenv/local/bin/activate
-else
-  source ironenv/bin/activate
-fi
+python3.10 -m venv ironenv
+source ironenv/bin/activate
 python3 -m pip install --upgrade pip
 VPP=`which xchesscc`
 if test -f "$VPP"; then
