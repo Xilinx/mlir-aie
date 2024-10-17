@@ -27,8 +27,8 @@ def my_vector_bias_add():
 
         # Tile declarations
         ShimTile = tile(0, 0)
+        MemTile = tile(0, 1)
         ComputeTile2 = tile(0, 2)
-        ComputeTile3 = tile(0, 3)
 
         # AIE-array data movement with object fifos
         # Input
@@ -44,16 +44,16 @@ def my_vector_bias_add():
         # Set up compute tiles
 
         # Compute tile 2
-        @core(ComputeTile3)
+        @core(ComputeTile2)
         def core_body():
             # Effective while(1)
             for _ in range_(sys.maxsize):
                 elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
-                elem_out = of_out0.acquire(ObjectFifoPort.Produce, 1)
+                elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
                 for i in range_(AIE_TILE_WIDTH):
                     elem_out[i] = elem_in[i] + 1
                 of_in1.release(ObjectFifoPort.Consume, 1)
-                of_out0.release(ObjectFifoPort.Produce, 1)
+                of_out1.release(ObjectFifoPort.Produce, 1)
 
         # To/from AIE-array data movement
         @runtime_sequence(all_data_ty, all_data_ty)
