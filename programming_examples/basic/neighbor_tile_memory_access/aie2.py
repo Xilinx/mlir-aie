@@ -51,7 +51,7 @@ def my_vector_bias_add():
             for _ in range_(sys.maxsize):
                 elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
                 elem_out = of_out0.acquire(ObjectFifoPort.Produce, 1)
-                for i in range_(AIE_TILE_WIDTH): 
+                for i in range_(AIE_TILE_WIDTH):
                     elem_out[i] = elem_in[i] + 1
                 of_in1.release(ObjectFifoPort.Consume, 1)
                 of_out0.release(ObjectFifoPort.Produce, 1)
