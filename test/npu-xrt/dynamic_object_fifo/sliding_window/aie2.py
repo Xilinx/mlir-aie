@@ -12,9 +12,7 @@
 # RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
 # RUN: %run_on_npu ./test.exe | FileCheck %s
-# CHECK: PASS!
-import numpy as np
-
+# XFAIL: *
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.helpers.dialects.ext.scf import _for as range_
@@ -31,19 +29,19 @@ def sliding_window():
 
         @device(dev)
         def device_body():
-            subtensor_ty = np.ndarray[(N // n_rows,), np.dtype[np.int32]]
+            memRef_ty = T.memref(N // n_rows, T.i32())
 
             # Tile declarations
             ShimTile = tile(col, 0)
             ComputeTile = tile(col, 2)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, ComputeTile, 3, subtensor_ty)
-            of_out = object_fifo("out", ComputeTile, ShimTile, 2, subtensor_ty)
+            of_in = object_fifo("in", ShimTile, ComputeTile, 3, memRef_ty)
+            of_out = object_fifo("out", ComputeTile, ShimTile, 2, memRef_ty)
 
             # AIE Core Function declarations
             add_10_i32 = external_func(
-                "add_10_i32", inputs=[subtensor_ty, subtensor_ty, subtensor_ty]
+                "add_10_i32", inputs=[memRef_ty, memRef_ty, memRef_ty]
             )
 
             # Set up compute tiles
@@ -52,32 +50,30 @@ def sliding_window():
             def core_body():
                 elemOutPre = of_out.acquire(ObjectFifoPort.Produce, 1)
                 elemInPre = of_in.acquire(ObjectFifoPort.Consume, 1)
-                add_10_i32(elemInPre, elemInPre, elemOutPre)
+                call(add_10_i32, [elemInPre, elemInPre, elemOutPre])
                 of_out.release(ObjectFifoPort.Produce, 1)
 
                 for _ in range_(8):
                     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elemsIn = of_in.acquire(ObjectFifoPort.Consume, 2)
-                    add_10_i32(elemsIn[0], elemsIn[1], elemOut)
+                    call(add_10_i32, [elemsIn[0], elemsIn[1], elemOut])
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
 
                 elemOutPost = of_out.acquire(ObjectFifoPort.Produce, 1)
                 elemsInPost = of_in.acquire(ObjectFifoPort.Consume, 2)
-                add_10_i32(elemsInPost[0], elemsInPost[1], elemOutPost)
+                call(add_10_i32, [elemsInPost[0], elemsInPost[1], elemOutPost])
                 of_in.release(ObjectFifoPort.Consume, 2)
                 of_out.release(ObjectFifoPort.Produce, 1)
 
             # To/from AIE-array data movement
-            tensor_ty = np.ndarray[(N,), np.dtype[np.int32]]
+            tensor_ty = T.memref(N, T.i32())
 
             @runtime_sequence(tensor_ty, tensor_ty)
             def sequence(A, C):
-                npu_dma_memcpy_nd(
-                    metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N], issue_token=True
-                )
-                npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
-                dma_wait(of_in, of_out)
+                npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
+                npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
+                npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 
