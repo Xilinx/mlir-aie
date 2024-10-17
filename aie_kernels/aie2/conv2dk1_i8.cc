@@ -111,10 +111,10 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 
   // const int iw_32_rem = (input_width / 4) % 8;
   // const int iw_32_rem = (32 / 4) % 8;
-  // static_assert((input_width / 4) % 8 == 0);
+  assert((input_width / 4) % 8 == 0);
   const int iw_32_rem = 0; // TODO - See restriction
 
-  // static_assert((input_channels / 8) > 2); // Assume IC >= 16
+  assert((input_channels / 8) > 2); // Assume IC >= 16
 
   if (iw_32 > 0) {
 
