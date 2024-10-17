@@ -3,6 +3,8 @@
 //
 // REQUIRES: ryzen_ai, chess
 //
+// RUN: mkdir -p %S/test_experimental
+// RUN: cd %S/test_experimental
 // RUN: make -f %S/Makefile clean
 // RUN: make -f %S/Makefile 
 // RUN: %run_on_npu make -f %S/Makefile run_experimental_py | FileCheck %s

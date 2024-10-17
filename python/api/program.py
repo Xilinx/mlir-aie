@@ -21,7 +21,7 @@ class Program:
         device: Device,
         io_coordinator: IOCoordinator,
         workers: list[Worker],
-        links: list[ObjectFifoLink],
+        links: list[ObjectFifoLink] = [],
     ):
         self.__device = device
         self.__workers = workers

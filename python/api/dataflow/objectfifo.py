@@ -131,24 +131,7 @@ class ObjectFifo(Resolvable):
         assert (
             num_elem <= self.__depth
         ), "Cannot consume elements to exceed ObjectFifo depth"
-        memref_ty = np_ndarray_type_to_memref_type(self.__obj_type)
-        subview_t = ObjectFifoSubviewType.get(memref_ty)
-        acq = ObjectFifoAcquireOp(subview_t, port, self.name, num_elem, loc=loc, ip=ip)
-
-        objects = []
-        if acq.size.value == 1:
-            return ObjectFifoSubviewAccessOp(
-                memref_ty,
-                acq.subview,
-                acq.size.value - 1,
-                loc=loc,
-                ip=ip,
-            )
-        for i in range(acq.size.value):
-            objects.append(
-                ObjectFifoSubviewAccessOp(memref_ty, acq.subview, i, loc=loc, ip=ip)
-            )
-        return objects
+        return self.op.acquire(port, num_elem)
 
     def _release(
         self,
@@ -161,7 +144,7 @@ class ObjectFifo(Resolvable):
         assert (
             num_elem <= self.__depth
         ), "Cannot consume elements to exceed ObjectFifo depth"
-        objectfifo_release(port, self.name, num_elem, loc=loc, ip=ip)
+        self.op.release(port, num_elem)
 
 
 class ObjectFifoHandle(Resolvable):
