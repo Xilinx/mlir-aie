@@ -66,6 +66,9 @@ if test -f "$VPP"; then
   python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_ml.txt
   source utils/env_setup.sh my_install/mlir_aie my_install/mlir
   pushd programming_examples
+  echo "PATH              : $PATH"
+  echo "LD_LIBRARY_PATH   : $LD_LIBRARY_PATH"
+  echo "PYTHONPATH        : $PYTHONPATH"
 else
   echo "Vitis not found! Exiting..."
 fi
