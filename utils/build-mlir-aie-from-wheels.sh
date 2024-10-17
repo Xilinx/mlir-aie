@@ -56,9 +56,9 @@ CMAKE_CONFIGS="\
     -DAIE_RUNTIME_TARGETS=x86_64 \
     -DAIE_RUNTIME_TEST_TARGET=x86_64 "
 
-if [ "$#" -ge 4 ]; then
+if [ "$#" -eq 4 ]; then
   PEANO_INSTALL_DIR=`realpath $4`
-  CMAKE_CONFIGS="${CMAKE_CONFIGS} -DPEANO_INSTALL_DIR=${PEANO_INSTALL_DIR}"
+  CMAKE_CONFIGS="${CMAKE_CONFIGS} -DPEANO_INSTALL_DIR=$(PEANO_INSTALL_DIR)"
 fi 
 
 if [ -x "$(command -v lld)" ]; then
