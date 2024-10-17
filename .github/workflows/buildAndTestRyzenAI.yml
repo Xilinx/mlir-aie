@@ -138,7 +138,6 @@ jobs:
           source utils/quick_setup.sh
           # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
           cd ..
-          ls $PWD/my_install
           ./utils/build-mlir-aie-from-wheels.sh ./my_install/mlir build install ./my_install/llvm-aie
 
           # build is created by the build-mlir-aie-from-wheels.sh script
