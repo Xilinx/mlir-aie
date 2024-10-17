@@ -13,7 +13,11 @@ function(add_aie_kernels arch)
     if(EXISTS "${PROJECT_SOURCE_DIR}/tools/chess-clang/xchesscc_wrapper")
         add_custom_target(${arch}_kernels ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/mm.o)
         add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/mm.o
-                      COMMAND ${PROJECT_SOURCE_DIR}/tools/chess-clang/xchesscc_wrapper ${arch} -I ${VITIS_AIETOOLS_DIR}/include -c ${CMAKE_CURRENT_SOURCE_DIR}/mm.cc -o ${CMAKE_CURRENT_BINARY_DIR}/mm.o
+                      COMMAND ${PROJECT_SOURCE_DIR}/tools/chess-clang/xchesscc_wrapper ${arch}
+                        -aietools ${VITIS_AIETOOLS_DIR}
+                        -I ${VITIS_AIETOOLS_DIR}/include
+                        -c ${CMAKE_CURRENT_SOURCE_DIR}/mm.cc
+                        -o ${CMAKE_CURRENT_BINARY_DIR}/mm.o
                       DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/mm.cc)
         add_dependencies(aie-kernels ${arch}_kernels)
     

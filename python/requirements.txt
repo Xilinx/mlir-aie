@@ -1,6 +1,6 @@
 PyYAML>=5.3.1, <=6.0.1
 aiofiles
-cmake==3.27.9
+cmake>=3.29
 dataclasses>=0.6, <=0.8
 filelock==3.13.1
 lit
