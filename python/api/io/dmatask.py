@@ -7,7 +7,7 @@ from ...dialects.aie import bds, dma_bd
 from ..dataflow.objectfifo import ObjectFifoHandle
 from ..resolvable import Resolvable
 from .inoutdata import InOutData
-from ...helpers.util import DataTileSpecifier
+from ...helpers.util import DataTileSpec
 
 
 class DMATask(Resolvable):
@@ -15,7 +15,7 @@ class DMATask(Resolvable):
         self,
         object_fifo: ObjectFifoHandle,
         inout_data: InOutData,
-        data_tile: DataTileSpecifier,
+        data_tile: DataTileSpec,
         wait=False,
     ):
         self.__object_fifo = object_fifo
@@ -42,7 +42,11 @@ class DMATask(Resolvable):
         )
         with bds(self.__task) as bd:
             with bd[0]:
-                dma_bd(self.__inout_data.op, len=self.__data_tile_spec.len)
+                dma_bd(
+                    self.__inout_data.op,
+                    len=self.__data_tile_spec.transfer_len,
+                    dimensions=self.__data_tile_spec.dimensions,
+                )
                 EndOp()
         dma_start_task(self.__task)
         if self.__wait:

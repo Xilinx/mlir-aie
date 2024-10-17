@@ -6,7 +6,7 @@ from ... import ir  # type: ignore
 
 from ...dialects.aiex import runtime_sequence
 from ...dialects._aiex_ops_gen import dma_free_task
-from ...helpers.util import DataTiler, DataTileSpecifier
+from ...helpers.util import DataTiler, DataTileSpec
 from ..dataflow.objectfifo import ObjectFifoHandle
 from ..dataflow.endpoint import ObjectFifoEndpoint
 from ..phys.tile import Tile
@@ -82,7 +82,7 @@ class IOCoordinator(Resolvable):
     def fill(
         self,
         in_fifo: ObjectFifoHandle,
-        data_tile: DataTileSpecifier,
+        data_tile: DataTileSpec,
         source: InOutData,
         wait: bool = False,
         coords: tuple[int, int] | None = None,
@@ -98,7 +98,7 @@ class IOCoordinator(Resolvable):
     def drain(
         self,
         out_fifo: ObjectFifoHandle,
-        data_tile: DataTileSpecifier,
+        data_tile: DataTileSpec,
         dest: InOutData,
         wait: bool = False,
         coords: tuple[int, int] | None = None,

@@ -8,12 +8,12 @@
 import numpy as np
 import sys
 
-from aie.iron2.io.iocoordinator import IOCoordinator
-from aie.iron2.dataflow.objectfifo import ObjectFifo
-from aie.iron2.kernels.binkernel import BinKernel
-from aie.iron2.program import Program
-from aie.iron2.worker import Worker
-from aie.iron2.phys.device import NPU1Col1
+from aie.api.io.iocoordinator import IOCoordinator
+from aie.api.dataflow.objectfifo import ObjectFifo
+from aie.api.kernels.binkernel import BinKernel
+from aie.api.program import Program
+from aie.api.worker import Worker
+from aie.api.phys.device import NPU1Col1
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.helpers.util import DataTiler
 
@@ -37,7 +37,7 @@ _unused = io.inout_data(vector_type)
 of_in = ObjectFifo(2, line_type, "in")
 of_out = ObjectFifo(2, line_type, "out")
 
-tiler = DataTiler(vector_type)
+tiler = DataTiler(vector_size)
 for t in io.tile_loop(tiler):
     io.fill(of_in.first, t, a_in, coords=(0, 0))
     io.drain(of_out.second, t, b_out, coords=(0, 0), wait=True)

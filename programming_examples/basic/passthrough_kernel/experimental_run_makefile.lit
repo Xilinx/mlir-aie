@@ -5,6 +5,6 @@
 //
 // RUN: make -f %S/Makefile clean
 // RUN: make -f %S/Makefile 
-// RUN: %run_on_npu make -f %S/Makefile run_iron2_py | FileCheck %s
+// RUN: %run_on_npu make -f %S/Makefile run_experimental_py | FileCheck %s
 // CHECK: Running...
 // CHECK: PASS!
