@@ -14,11 +14,11 @@
 #include "xrt/xrt_kernel.h"
 
 #ifndef XCLBIN
-#define XCLBIN "build/final.xclbin"
+#define XCLBIN "final.xclbin"
 #endif
 
 #ifndef INSTS_TXT
-#define INSTS_TXT "build/insts.txt"
+#define INSTS_TXT "insts.txt"
 #endif
 
 #ifndef KERNEL_NAME
