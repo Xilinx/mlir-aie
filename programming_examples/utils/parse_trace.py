@@ -4,8 +4,7 @@ import argparse
 import sys
 import re
 
-# from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEvent
-from trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEvent
+from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEvent
 
 # Number of different trace types, currently 4
 # core:    pkt type 0
