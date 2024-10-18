@@ -215,7 +215,7 @@ For your design of interest, for instance from [programming_examples](../program
     make run
     ```
 
-### [IRON AIE Application Programming Guide](programming_guide)
+1. Continue to the [IRON AIE Application Programming Guide](programming_guide)
 
 # Detailed Getting Started Guides and Documentation: 
 
@@ -226,6 +226,8 @@ For your design of interest, for instance from [programming_examples](../program
 [Getting Started and Running on Windows Ryzen™ AI](docs/buildHostWin.md)
 
 [Getting Started and Running on Linux Ryzen™ AI](docs/buildHostLin.md)
+
+[IRON AIE Application Programming Guide](programming_guide)
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
 
