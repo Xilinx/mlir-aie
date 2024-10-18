@@ -243,13 +243,10 @@ struct AIEObjectFifoStatefulTransformPass
             checkAndApplyViaSharedMemAttribute(createOp, share_dir);
             if (share_direction == share_dir)
               isUsedInLinkOp = false;
-            else
-              isUsedInLinkOp = true;
           } else if (isLinkProvidingSharedMemory) {
             isUsedInLinkOp = false;
           }
-        } else
-          isUsedInLinkOp = true;
+        } 
       }
     }
 
