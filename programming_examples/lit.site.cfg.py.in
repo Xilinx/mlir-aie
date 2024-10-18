@@ -60,10 +60,15 @@ config.enable_board_tests = @CONFIG_ENABLE_BOARD_TESTS@
 config.vitis_root = "@VITIS_ROOT@"
 config.vitis_aietools_dir = "@VITIS_AIETOOLS_DIR@"
 config.vitis_sysroot = "@Sysroot@"
-config.has_libxaie = @CONFIG_HAS_LIBXAIE@
 config.extraAieCcFlags = "@extraAieCcFlags@"
 config.aieHostTarget = "@AIE_RUNTIME_TEST_TARGET@"
 config.aieInstallPrefix = "@CMAKE_INSTALL_PREFIX@"
+
+config.vitis_components = []
+if lit.util.pythonize_bool("@AIETools_AIE_FOUND@"):
+    config.vitis_components.append("AIE")
+if lit.util.pythonize_bool("@AIETools_AIE2_FOUND@"):
+    config.vitis_components.append("AIE2")
 
 # Support substitution of the tools_dir with user parameters. This is
 # used when we can't determine the tool dir at configuration time.

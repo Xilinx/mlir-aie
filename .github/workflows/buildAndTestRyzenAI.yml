@@ -79,6 +79,7 @@ jobs:
           python -m venv aie-venv
           source aie-venv/bin/activate
           pip install -r python/requirements.txt
+          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_ml.txt
           pip install jupyter
           sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
@@ -110,7 +111,7 @@ jobs:
 
           popd
 
-  build-examples:
+  build-quick-setup:
     name: Run Examples on Ryzen AI
     runs-on: amd7940hs
     steps:
@@ -133,34 +134,14 @@ jobs:
 
           pip cache purge
           source /opt/xilinx/xrt/setup.sh
-          python -m venv aie-venv
-          source aie-venv/bin/activate
-          pip install -r python/requirements.txt
-          pip install -r python/requirements_ml.txt
-          pip install jupyter
-          sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
-            $(python -c 'import site; print(site.getsitepackages()[0])')/jupyter_client/runapp.py
+          export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
+          source utils/quick_setup.sh
+          # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
+          cd ..
+          ./utils/build-mlir-aie-from-wheels.sh ./my_install/mlir
 
-          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
-          pip -q download mlir==$VERSION \
-            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
-          unzip -q mlir-*.whl
-          # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
-          # That means wheels have file with time stamps in the future which makes ninja loop
-          # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
-          find mlir -exec touch -a -m -t 201108231405.14 {} \;
-
-          mkdir build
+          # build is created by the build-mlir-aie-from-wheels.sh script
           pushd build
-
-          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
-          cmake .. -G Ninja \
-            -DPython3_EXECUTABLE=$(which python) \
-            -DLLVM_EXTERNAL_LIT=$(which lit) \
-            -DCMAKE_INSTALL_PREFIX=$PWD/../mlir_aie \
-            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
-            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
-            $CMAKE_ARGS
 
           ninja install
           ninja check-reference-designs

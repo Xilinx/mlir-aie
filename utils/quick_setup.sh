@@ -37,10 +37,6 @@ if ! hash python3.10; then
    echo "This script requires python3.10"
    return 1
 fi
-if ! hash virtualenv; then
-  echo "virtualenv is not installed"
-  return 1
-fi
 if ! hash unzip; then
   echo "unzip is not installed"
   return 1
@@ -48,13 +44,8 @@ fi
 # if an install is already present, remove it to start from a clean slate
 rm -rf ironenv
 rm -rf my_install
-python3 -m virtualenv ironenv
-# The real path to source might depend on the virtualenv version
-if [ -r ironenv/local/bin/activate ]; then
-  source ironenv/local/bin/activate
-else
-  source ironenv/bin/activate
-fi
+python3.10 -m venv ironenv
+source ironenv/bin/activate
 python3 -m pip install --upgrade pip
 VPP=`which xchesscc`
 if test -f "$VPP"; then
@@ -68,13 +59,13 @@ if test -f "$VPP"; then
   unzip -q llvm_aie*.whl
   rm -rf mlir*.whl
   rm -rf llvm_aie*.whl
-  # pip install https://github.com/makslevental/mlir-python-extras/archive/d84f05582adb2eed07145dabce1e03e13d0e29a6.zip
   export PATH=`realpath llvm-aie/bin`:`realpath mlir_aie/bin`:`realpath mlir/bin`:$PATH
   export LD_LIBRARY_PATH=`realpath llvm-aie/lib`:`realpath mlir_aie/lib`:`realpath mlir/lib`:$LD_LIBRARY_PATH
   export PYTHONPATH=`realpath mlir_aie/python`:$PYTHONPATH
   export PEANO_DIR=`realpath llvm-aie`
   popd
   python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements.txt
+  HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_extras.txt
   python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_ml.txt
   pushd programming_examples
 else

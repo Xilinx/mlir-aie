@@ -4,7 +4,15 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2024 AMD Inc.
+
+# REQUIRES: ryzen_ai, valid_xchess_license
+#
+# RUN: %python %S/aie2.py 4096 > ./aie2.mlir
+# RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
+# RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
+# RUN: %run_on_npu ./test.exe -x final.xclbin -i insts.txt -k MLIR_AIE -l 4096 | FileCheck %s
+# CHECK: PASS!
 import numpy as np
 import sys
 
