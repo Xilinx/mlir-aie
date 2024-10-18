@@ -3,8 +3,8 @@
 //
 // REQUIRES: ryzen_ai, peano 
 //
-// RUN: mkdir -p %S/test_4_col
-// RUN: cd %S/test_4_col
+// RUN: mkdir -p test_4_col
+// RUN: cd test_4_col
 // RUN: make -f %S/Makefile clean
 // RUN: env n_aie_cols=4 make -f %S/Makefile 
 // RUN: %run_on_npu env n_aie_cols=4 make -f %S/Makefile run | FileCheck %s
