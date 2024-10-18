@@ -246,7 +246,7 @@ struct AIEObjectFifoStatefulTransformPass
           } else if (isLinkProvidingSharedMemory) {
             isUsedInLinkOp = false;
           }
-        } 
+        }
       }
     }
 
