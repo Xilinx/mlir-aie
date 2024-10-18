@@ -185,7 +185,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 1. Source `utils/quick_setup.sh` to setup the prerequisites and
    install the mlir-aie and llvm compiler tools from whls.
 
-## Build an IRON Design for AIEs in an AMD Ryzen™ AI NPU
+## Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU
 
 > Remember to set up your environment including Vitis™ AIE Essentials, your license, XRT, and IRON
 > ```
@@ -203,7 +203,7 @@ For your design of interest, for instance from [programming_examples](../program
 
 ### Build and Run Host Part
 
-1. Build: Goto the same design of interest folder where the AIE design just got built (see above)
+1. Build: Goto the same design of interest folder where the AIE design just was built (see above)
     ```bash
     make <testName>.exe
     ```
