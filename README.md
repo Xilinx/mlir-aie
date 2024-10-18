@@ -170,14 +170,6 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    sudo apt install libopencv-dev python3-opencv
    ```
 
-1. Install python3.10 needed for the prebuilt mlir-aie tools:
-
-   ```bash
-   sudo add-apt-repository ppa:deadsnakes/ppa
-   sudo apt update
-   sudo apt install python3.10
-   ```
-
 1. Remember to source the Vitis™ AIE Essentials setup script from [above](#install-aietools).
    
 1. Remember to source the XRT setup script: `source /opt/xilinx/xrt/setup.sh`
