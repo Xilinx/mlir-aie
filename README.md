@@ -16,7 +16,7 @@ This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for A
 
 This project is primarily intended to support the open-source community, particularly tool builders, with low-level access to AIE devices and enable the development of a wide variety of programming models from higher level abstractions. We provide an example programming flow: Interface Representation for hands-ON (IRON) close-to-metal programming of the AIE-array. IRON is an open access toolkit enabling performance engineers to build fast and efficient, often specialized designs through a set of Python language bindings around the mlir-aie dialect. As such, it contains some examples, however this project is not intended to represent an end-to-end compilation flow for all application designs. If you're looking for an out-of-the-box experience for highly efficient machine learning, check out the [AMD Ryzen™ AI Software Platform](https://github.com/amd/RyzenAI-SW/).
 
-# Getting Started for AMD Ryzen™ AI - Quick Linux Setup Instructions
+# Getting Started for AMD Ryzen™ AI - Linux Quick Setup Instructions
 
 These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 24.10** install with Linux 6.11 kernel. 
 
@@ -174,7 +174,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    
 1. Remember to source the XRT setup script: `source /opt/xilinx/xrt/setup.sh`
 
-### Install IRON for Ryzen™ AI AIE Application Development
+## Install IRON for AMD Ryzen™ AI AIE Application Development
 
 1. Clone [the mlir-aie repository](https://github.com/Xilinx/mlir-aie.git), best under /home/username for speed (yourPathToBuildMLIR-AIE): 
    ```bash
@@ -185,7 +185,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 1. Source `utils/quick_setup.sh` to setup the prerequisites and
    install the mlir-aie and llvm compiler tools from whls.
 
-## Build a Design
+## Build an IRON Design for AIEs in an AMD Ryzen™ AI NPU
 
 > Remember to set up your environment including Vitis™ AIE Essentials, your license, XRT, and IRON
 > ```
@@ -214,6 +214,8 @@ For your design of interest, for instance from [programming_examples](../program
     ```bash
     make run
     ```
+
+## Learn more about NPU programming with IRON
 
 1. Continue to the [IRON AIE Application Programming Guide](programming_guide)
 
