@@ -12,14 +12,14 @@ from ._aie_ops_gen import *
 from ._aie_ops_gen import _Dialect
 from ._ods_common import _cext
 from .func import FuncOp
+from ..helpers.dialects.ext.func import call
 from ..extras.dialects.ext.arith import Scalar, constant
+from ..extras.dialects.ext._shaped_value import ShapedValue
 from ..extras.dialects.ext.memref import (
     MemRef,
     store as memref_store,
     load as memref_load,
 )
-from ..extras.dialects.ext.func import call
-from ..extras.dialects.ext._shaped_value import ShapedValue
 from .._mlir_libs import get_dialect_registry
 
 # noinspection PyUnresolvedReferences
@@ -40,8 +40,6 @@ from .._mlir_libs._aie import (
 )
 from ..extras import types as T
 from ..extras.meta import region_op
-
-# this is inside the aie-python-extras (shared) namespace package
 from ..extras.util import (
     Successor,
     _get_sym_name,
@@ -49,9 +47,8 @@ from ..extras.util import (
     find_parent_of_type,
     get_user_code_loc,
     region_adder,
-    try_convert_np_type_to_mlir_type,
-    NpuDType,
 )
+from ..helpers.util import try_convert_np_type_to_mlir_type
 
 from ..ir import (
     Attribute,
@@ -229,8 +226,13 @@ Device = DeviceOp
 
 class Core(CoreOp):
     # Until https://github.com/llvm/llvm-project/pull/73620 gets figured out.
-    def __init__(self, tile, link_with: str | None = None):
-        super().__init__(result=T.index(), tile=tile, link_with=link_with)
+    def __init__(self, tile, link_with=None, dynamic_objfifo_lowering=None):
+        super().__init__(
+            result=T.index(),
+            tile=tile,
+            link_with=link_with,
+            dynamic_objfifo_lowering=dynamic_objfifo_lowering,
+        )
 
 
 # Create an aie buffer of (shape x datatype) on given tile.

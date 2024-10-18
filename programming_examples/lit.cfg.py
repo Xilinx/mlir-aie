@@ -222,8 +222,6 @@ def prepend_path(path):
 
 
 # Setup the path.
-prepend_path(config.llvm_tools_dir)
-prepend_path(config.peano_tools_dir)
 prepend_path(config.aie_tools_dir)
 # llvm_config.with_environment('LM_LICENSE_FILE', os.getenv('LM_LICENSE_FILE'))
 # llvm_config.with_environment('XILINXD_LICENSE_FILE', os.getenv('XILINXD_LICENSE_FILE'))
@@ -232,24 +230,39 @@ if config.vitis_root:
     prepend_path(config.vitis_aietools_bin)
     llvm_config.with_environment("VITIS", config.vitis_root)
 
+peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
+prepend_path(config.llvm_tools_dir)
+prepend_path(peano_tools_dir)
+# Certainly the prepend works but I would rather be explicit
+config.substitutions.append(("%LLVM_TOOLS_DIR", config.llvm_tools_dir))
+
+prepend_path(config.aie_tools_dir)
+
+tool_dirs = [config.aie_tools_dir, config.llvm_tools_dir]
+
 # Test to see if we have the peano backend.
 try:
     result = subprocess.run(
-        [os.path.join(config.peano_tools_dir, "llc"), "-mtriple=aie", "--version"],
+        [os.path.join(peano_tools_dir, "llc"), "-mtriple=aie", "--version"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
     if re.search("Xilinx AI Engine", result.stdout.decode("utf-8")) is not None:
         config.available_features.add("peano")
-        print("Peano found: " + shutil.which("llc"))
+        config.substitutions.append(("%PEANO_INSTALL_DIR", config.peano_install_dir))
+        config.environment["PEANO_INSTALL_DIR"] = config.peano_install_dir
+        print("Peano found: " + os.path.join(peano_tools_dir, "llc"))
+        tool_dirs.append(os.path.join(peano_tools_dir, "bin"))
     else:
-        print("Peano not found, but expected at ", config.peano_tools_dir)
+        print("Peano not found, but expected at ", peano_tools_dir)
 except Exception as e:
-    print("Peano not found, but expected at ", config.peano_tools_dir)
+    print("Peano not found, but expected at ", peano_tools_dir)
 
-print("Looking for Chess...")
-# test if LM_LICENSE_FILE valid
-if config.enable_chess_tests:
+
+if not config.enable_chess_tests:
+    print("Chess tests disabled")
+else:
+    print("Looking for Chess...")
     result = None
     if config.vitis_root:
         result = shutil.which("xchesscc")
@@ -265,6 +278,7 @@ if config.enable_chess_tests:
         if xilinxd_license_file != None:
             llvm_config.with_environment("XILINXD_LICENSE_FILE", xilinxd_license_file)
 
+        # test if LM_LICENSE_FILE valid
         validate_chess = False
         if validate_chess:
             import subprocess
@@ -288,7 +302,18 @@ if config.enable_chess_tests:
     else:
         print("Chess not found")
 
-tool_dirs = [config.aie_tools_dir, config.peano_tools_dir, config.llvm_tools_dir]
+# look for aiesimulator
+result = shutil.which("aiesimulator")
+if result != None:
+    print("aiesimulator found: " + result)
+    config.available_features.add("aiesimulator")
+else:
+    print("aiesimulator not found")
+
+# add vitis components as available features
+for c in config.vitis_components:
+    config.available_features.add(f"aietools_{c.lower()}")
+
 tools = [
     "aie-opt",
     "aie-translate",

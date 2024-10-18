@@ -93,9 +93,8 @@ jobs:
 
       - name: Install Python packages
         run: |
-          
           pip install -r python/requirements.txt
-          pip install -r python/requirements_bfloat16.txt || echo "Failed to install bfloat16; this is ok!"
+          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
 
       - name: Setup Cpp
         uses: aminya/setup-cpp@v1
