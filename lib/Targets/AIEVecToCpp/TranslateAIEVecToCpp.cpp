@@ -1045,12 +1045,12 @@ static LogicalResult printOperation(CppEmitter &emitter,
   os << emitter.getOrCreateName(lhs);
   os << ", ";
   os << emitter.getOrCreateName(rhs);
-  os << ", ";
+  os << ", static_cast<uint32_t>(";
 
   if (!emitter.hasValueInScope(shift))
     return failure();
   os << emitter.getOrCreateName(shift);
-  os << ")";
+  os << "))";
 
   return success();
 }
@@ -1473,12 +1473,10 @@ static LogicalResult printOperation(CppEmitter &emitter,
   os << opname;
   os << "(" << lhsName;
   if ((lsize == 32) && iType)
-    os << " ,"
-       << "undef_v16int32()";
+    os << " ," << "undef_v16int32()";
   os << " ," << rhsName;
   if ((lsize == 32) && iType)
-    os << " , "
-       << "broadcast_zero_s32()";
+    os << " , " << "broadcast_zero_s32()";
   os << ")";
   return success();
 }
