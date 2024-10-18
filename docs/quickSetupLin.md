@@ -18,41 +18,46 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 ## Prerequisites
 
-### Install Xilinx Vitis 2023.2 
+### Install AIETools
 
-1. Install Vitis under from [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html). You will need to run the installer as root. We will assume you use the default installation directory, `/tools/Xilinx`.
+#### Supporting AMD Ryzen™ AI with AIE-ML (AIE2) and AIE2P: Install AMD Vitis™ AIE Essentials 
 
-   > This is a large download. A wired connection will speed things up. Be prepared to spend multiple hours on this step.
+1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3 Early Accesss](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab). We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
 
-1. Set up a AI Engine license.
+   > This is an early access lounge, you must register and be granted access at this time.
 
-    1. Get a local license for AIE Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense).
+    1. Download VAIML Installer for Linux based compilation: `ryzen_ai-1.3.0ea1.tgz`
+ 
+    1. Extract the required tools:
+
+       ``` bash
+          tar -xzvf ryzen_ai-1.3.0ea1.tgz
+          cd ryzen_ai-1.3.0
+          mkdir vitis_aie_essentials
+          mv vitis_aie_essentials*.whl vitis_aie_essentials
+          cd vitis_aie_essentials
+          unzip vitis_aie_essentials*.whl
+       ```
+
+1. Set up an AI Engine license.
+
+    1. Get a local license for AI Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense).
 
     1. Copy your license file (Xilinx.lic) to your preferred location, e.g. `/opt/Xilinx.lic`:
        
-    1. Setup your environment using the following script for Vitis for aietools:
+1. Setup your environment using the following script for Vitis™ for AIETools:
 
-       ```bash
-       #!/bin/bash
-        #################################################################################
-        # Setup Vitis (which is just for aietools)
-        #################################################################################
-        export MYXILINX_VER=2023.2
-        export MYXILINX_BASE=/tools/Xilinx
-        export XILINX_LOC=$MYXILINX_BASE/Vitis/$MYXILINX_VER
-        export AIETOOLS_ROOT=$XILINX_LOC/aietools
-        export PATH=$PATH:${AIETOOLS_ROOT}/bin
-        export LM_LICENSE_FILE=/opt/Xilinx.lic
-       ```
-   1. Vitis requires some python3.8 libraries:
-  
-      ```bash
-      sudo add-apt-repository ppa:deadsnakes/ppa
-      sudo apt-get update
-      sudo apt install libpython3.8-dev
-      ```
+   ```bash
+   #!/bin/bash
+    #################################################################################
+    # Setup Vitis AIE Essentials
+    #################################################################################
+    export AIETOOLS_ROOT=/tools/ryzen_ai-1.3.0/vitis_aie_essentials
+    export PATH=$PATH:${AIETOOLS_ROOT}/bin
+    export LM_LICENSE_FILE=/opt/Xilinx.lic
+   ```
 
-### Install the XDNA Driver
+### Install the XDNA™ Driver
 
 1. Install the following prerequisite packages.
  
@@ -61,7 +66,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    libidn11-dev
    ```
 
-1. Clone the XDNA driver repository and its submodules.
+1. Clone the XDNA™ driver repository and its submodules.
     ```bash
     git clone https://github.com/amd/xdna-driver.git
     export XDNA_SRC_DIR=$(realpath xdna-driver)
@@ -107,7 +112,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
     ./build.sh -package
     ```
 
-1. Install XDNA.
+1. Install XDNA™.
 
     ```bash
     cd $XDNA_SRC_DIR/build/Release
@@ -147,8 +152,8 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    sudo apt install libopencv-dev python3-opencv
    ```
 
-1. Remember to source the aietools/Vitis setup script from [above](#install-xilinx-vitis-20232).
-
+1. Remember to source the Vitis™ AIE Essentials setup script from [above](#install-aietools).
+   
 1. Remeber to source the xrt setup script: `source /opt/xilinx/xrt/setup.sh`
 
 ### Install IRON for Ryzen™ AI AIE Application Development
@@ -164,12 +169,12 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 ## Build a Design
 
-> Remember to set up your environment including Vitis, your license, XRT, and IRON
+> Remember to set up your environment including Vitis™ AIE Essentials, your license, XRT, and IRON
 > ```
 >   source yourVitisSetupScript.sh
 >   export LM_LICENSE_FILE=/opt/Xilinx.lic
 >   source /opt/xilinx/xrt/setup.sh
->   source utils/setup_iron_env.sh
+>   source utils/env_setup.sh my_install/mlir_aie my_install/mlir my_install/llvm-aie
 > ```
 
 For your design of interest, for instance from [programming_examples](../programming_examples/), 2 steps are needed: (i) build the AIE desgin and then (ii) build the host code.
@@ -189,8 +194,7 @@ For your design of interest, for instance from [programming_examples](../program
 
 1. Run (program arguments are just an example for add_one design)
     ```bash
-    cd Release
-    .\<testName>.exe -x ..\..\build\final.xclbin -k MLIR_AIE -i ..\..\build\insts.txt -v 1
+    make run
     ```
 
 # Troubleshooting
