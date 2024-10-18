@@ -170,7 +170,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    sudo apt install libopencv-dev python3-opencv
    ```
 
-1. Install python3.10 needed for the prebuilt mlir-aie:
+1. Install python3.10 needed for the prebuilt mlir-aie tools:
 
    ```bash
    sudo add-apt-repository ppa:deadsnakes/ppa
