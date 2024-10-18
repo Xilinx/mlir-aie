@@ -7,26 +7,33 @@
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 # 
 ##===----------------------------------------------------------------------===##
-srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-subdir=cascade
-targetname=matrixMultiplication
 
-M?=512
-K?=512
-N?=512
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+subdir=single_core
+targetname=matrixMultiplication
+kernels=mm
+
+M?=256
+K?=256
+N?=256
 m?=64
 k?=64
-n?=64
-n_aie_cols?=4
+n?=32
 
 kernels=mm_${m}x${k}x${n}
-aieargs+=-m $m -k $k -n $n --n-aie-cols ${n_aie_cols}
-target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
+aieargs+=-m $m -k $k -n $n
+target_suffix=${M}x${K}x${N}_${m}x${k}x${n}
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=aie2_alt.py
+endif
 
 include ${srcdir}/../makefile-common
 
 CHESS=true
 
-build/mm_${m}x${k}x${n}.o: ${kernels_dir}/cascade_mm.cc
+build/mm_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
+

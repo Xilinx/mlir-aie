@@ -24,7 +24,7 @@ kristof: build/insts_${data_size}.txt
 
 build/%.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
 
 build/aie_${data_size}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
@@ -38,11 +38,13 @@ build/aie_trace_${data_size}.mlir: aie2.py
 build/final_${data_size}.xclbin: build/aie_${data_size}.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+    			--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 				--aie-generate-npu --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
 
 build/final_trace_${data_size}.xclbin: build/aie_trace_${data_size}.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+    			--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 				--aie-generate-npu --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
 
 ${targetname}_${data_size}.exe: ${srcdir}/test.cpp
