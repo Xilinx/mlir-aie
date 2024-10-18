@@ -53,7 +53,7 @@ template <int X, int Y> struct tile {
   // loc(#loc63)
   void program(auto &&code) __attribute__((annotate("aie.tile.program"))) {
     // Use this since std::function crashes ClangIR 2024/09/12
-    tile_code<decltype(&code)> = &code;
+    //tile_code<decltype(&code)> = &code;
     // Just to instantiate the lambda body while waiting for std::function
     code();
   }

@@ -19,6 +19,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/SymbolTable.h"
@@ -369,12 +370,60 @@ struct CIRToAIEPrepare : CIRToAIEPrepareBase<CIRToAIEPrepare> {
   }
 };
 
+#if 0
 void eraseOpAndUsers(mlir::Operation *op,
                      mlir::ConversionPatternRewriter &rewriter) {
   for (auto result : op->getResults())
     for (auto *user : result.getUsers())
       rewriter.eraseOp(user);
   rewriter.eraseOp(op);
+}
+#endif
+
+// Lower aie::tile::program(<tile code>)
+void lowerTileProgram(xilinx::AIE::TileOp t, mlir::cir::CallOp c,
+                      mlir::ConversionPatternRewriter &rewriter) {
+  if (auto calledFunc =
+          mlir::SymbolTable::lookupNearestSymbolFrom<mlir::cir::FuncOp>(
+              c, c.getCalleeAttr())) {
+    // The last function instruction is cir.return and the one before
+    // is the call to the lambda
+    // calledFunc.getBlocks().front().back().dump();
+    auto lambdaCall = mlir::dyn_cast<mlir::cir::CallOp>(
+        *std::next(calledFunc.getBlocks().front().rbegin()));
+    lambdaCall.emitRemark("lambdaCall");
+    if (auto lambdaFunc =
+            mlir::SymbolTable::lookupNearestSymbolFrom<mlir::cir::FuncOp>(
+                lambdaCall, lambdaCall.getCalleeAttr())) {
+      lambdaFunc.emitRemark("Tile core lambda");
+      assert(lambdaFunc.getLambda());
+      auto scopeOp = c->getParentOfType<mlir::cir::ScopeOp>();
+      scopeOp.emitRemark("Scope");
+      // Create the core op at the end of the block owning the tile op, which is
+      // inside the device op region
+      rewriter.setInsertionPointToEnd(t->getBlock());
+      auto coreOp = rewriter.create<xilinx::AIE::CoreOp>(c.getLoc(), t);
+      // Create the empty block of the core op region
+      coreOp.getRegion().emplaceBlock();
+      coreOp.emitRemark("Brand-new core");
+      mlir::UnrealizedConversionCastOp ucc;
+      scopeOp.getRegion().front().walk<mlir::WalkOrder::PreOrder>(
+          [&](mlir::UnrealizedConversionCastOp u) {
+            u.emitRemark("Found UnrealizedConversionCastOp inside the scope");
+            ucc = u;
+            return mlir::WalkResult::interrupt();
+          });
+      // Values can be replaced while cloning, not operations
+      mlir::IRMapping irm;
+      // Connect the input of old cast inside the clone to the output of tile op
+      irm.map(ucc.getOperand(0), t.getResult());
+      rewriter.setInsertionPointToEnd(&coreOp.getRegion().front());
+      auto *clone = rewriter.clone(*scopeOp.getOperation(), irm);
+      clone->emitRemark("Clone");
+      coreOp.emitRemark("Stuffed core");
+      scopeOp.emitRemark("Scope after cloning");
+    }
+  }
 }
 
 struct DeviceLowering
@@ -390,11 +439,9 @@ struct DeviceLowering
   mlir::LogicalResult
   matchAndRewrite(mlir::UnrealizedConversionCastOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const final {
-    llvm::errs() << "DeviceLowering\n";
-    op.dump();
+    op.emitRemark("DeviceLowering");
     if (auto aieLike = cat->moduleTypes[op.getType(0)];
         aieLike && aieLike->base == "aie::device") {
-      rewriter.setInsertionPoint(op);
       auto deviceName = aieLike->subMatches[0];
       auto deviceId =
           xilinx::AIE::symbolizeEnum<xilinx::AIE::AIEDevice>(deviceName);
@@ -402,23 +449,18 @@ struct DeviceLowering
         // Actually this test cannot happens since the API of
         // xilinx::AIE::symbolizeEnum is strange: even if it returns a
         // std::optional it errors without returning
-        op.emitError() << "aie::device incorrect for '" << deviceName << "'";
+        op.emitError("aie::device incorrect for '") << deviceName << "'";
+      rewriter.setInsertionPoint(op);
       auto deviceOp =
           rewriter.create<xilinx::AIE::DeviceOp>(op.getLoc(), *deviceId);
       // The aie.device requires one block
       deviceOp.getRegion().emplaceBlock();
-      // For some reasons newCast.getResult(0).getUsers() is empty, so
-      // save the previous users
-      llvm::SmallVector<mlir::Operation *> users{op.getResult(0).getUsers()};
-      // Replace the original cast by the same but connected to the deviceOp
-      rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
-          op, op.getResult(0).getType(), deviceOp.getResult());
+      // Create all the following code inside the device region
       rewriter.setInsertionPointToStart(deviceOp.getBody());
-      llvm::SmallVector<mlir::UnrealizedConversionCastOp> bufferCastToErase;
-      for (mlir::Operation *user : users) {
+      for (mlir::Operation *user : op.getResult(0).getUsers()) {
         if (auto tileCast =
                 mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(user)) {
-          tileCast.dump();
+          tileCast.emitRemark("tileCast from device");
           if (auto t = cat->moduleTypes[tileCast.getType(0)]) {
             // llvm::errs() << t->str() << " value \n";
             auto col = t->subMatches[0];
@@ -430,35 +472,47 @@ struct DeviceLowering
             for (mlir::Operation *user : tileCast.getResult(0).getUsers()) {
               if (auto bufCast =
                       mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(user)) {
-                bufCast.dump();
+                bufCast.emitRemark("Buffer cast from tile");
                 auto mrt = bufferMemrefType(bufCast.getType(0), rewriter);
                 auto bufferOp = rewriter.create<xilinx::AIE::BufferOp>(
                     bufCast.getLoc(), mrt, tileOp.getResult());
                 // Keep track of the buffer op behind the C++ type
                 cat->moduleTypes[bufCast.getType(0)]->data = bufferOp;
-                bufferCastToErase.push_back(bufCast);
+                // Erase the buffer cast which has been translated
+                rewriter.eraseOp(bufCast);
                 continue;
               }
               if (auto callOp = mlir::dyn_cast<mlir::cir::CallOp>(user)) {
+                callOp.emitRemark("CallOp using a tile");
                 if (isCallingFunctionWithAnnotation(callOp,
                                                     {"aie.tile.program"})) {
-                  // lowerTileProgram(tileOp, callOp, rewriter);
-                  // Erase the call operation representing the core op which has
-                  // been translated
-                  rewriter.eraseOp(callOp);
+                  // if (false)
+                  lowerTileProgram(tileOp, callOp, rewriter);
+                  // Erase the scope owning the call operation representing the
+                  // core op which has been translated
+                  rewriter.eraseOp(
+                      callOp->getParentOfType<mlir::cir::ScopeOp>());
                 }
+                continue;
               }
+              user->emitError("User of tile cast not handled");
             }
           }
           // Erase the cast representing the tile op which has been translated
           rewriter.eraseOp(tileCast);
-
+          continue;
         }
+        user->emitRemark("User of device cast not handled");
       }
-      // Erase the casts representing the buffer ops which have been translated
-      for (auto bufferCast : bufferCastToErase)
-        eraseOpAndUsers(bufferCast, rewriter);
-      deviceOp->getParentOfType<mlir::cir::FuncOp>().dump();
+      // Replace the original cast by the same but connected to the device
+      rewriter.setInsertionPoint(op);
+      rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+          op, op.getResult(0).getType(), deviceOp.getResult());
+      for (mlir::Operation *user : op.getResult(0).getUsers()) {
+        user->emitRemark("User of cast");
+      }
+      deviceOp->getParentOfType<mlir::cir::FuncOp>().emitRemark(
+          "Rewritten function");
       return mlir::success();
     }
     return mlir::failure();
