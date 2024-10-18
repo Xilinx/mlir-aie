@@ -3,7 +3,8 @@ import json
 import argparse
 import sys
 import re
-#from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEvent
+
+# from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEvent
 from trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEvent
 
 # Number of different trace types, currently 4
@@ -14,8 +15,8 @@ from trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEvent
 NumTraceTypes = 4
 NUM_EVENTS = 8  # number of events we can view per trace
 
-#DEBUG = False
-#DEBUG = True
+# DEBUG = False
+# DEBUG = True
 
 
 def parse_args():
@@ -25,7 +26,7 @@ def parse_args():
     parser.add_argument(
         "--colshift", help="column shift adjustment to source mlir", required=False
     )
-    parser.add_argument("--debug", help="debug mode",required=False)
+    parser.add_argument("--debug", help="debug mode", required=False)
     # TODO tracelabels removed since we can have multiple sets of labels for each pkt_type & loc combination
     # parser.add_argument('--tracelabels',
     #         nargs='+',
@@ -613,7 +614,7 @@ def parse_mlir_trace_events(lines):
                     row = int(result.group(3 * i2 + 3))
                 elif var == "column":
                     col = int(result.group(3 * i2 + 3)) + colshift
-                    #col = 1 if col == 0 else col
+                    # col = 1 if col == 0 else col
                 elif var == "value":
                     if result.group(3 * i2 + 2) == "0x":
                         value = int(result.group(3 * i2 + 3), 16)
@@ -760,9 +761,9 @@ def lookup_event_name_by_type(trace_type, code):
         events_enum = CoreEvent
     elif trace_type == 1:  # Mem traces
         events_enum = MemEvent
-    elif trace_type == 2: # Shim traces
+    elif trace_type == 2:  # Shim traces
         events_enum = PLEvent
-    elif trace_type == 3: # MemTile traces
+    elif trace_type == 3:  # MemTile traces
         events_enum = MemTileEvent
     if events_enum is not None and code in set(x.value for x in events_enum):
         event = events_enum(code).name
@@ -880,7 +881,7 @@ opts = parse_args()
 
 DEBUG = opts.debug
 if DEBUG:
-	print("Debug mode enable\n")
+    print("Debug mode enable\n")
 
 # set colshift based on optional argument
 colshift = int(opts.colshift) if opts.colshift else 0

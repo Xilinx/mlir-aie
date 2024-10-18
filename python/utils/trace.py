@@ -72,11 +72,13 @@ MemTilePortEventCodes = { MemTileEvent.PORT_IDLE_0, MemTileEvent.PORT_IDLE_1,
 
 # fmt: on
 
+
 class PacketType(IntEnum):
     CORE = 0
     MEM = 1
     SHIMTILE = 2
     MEMTILE = 3
+
 
 class PortEvent(GenericEvent):
     def __init__(self, code, port_number, master=True):
@@ -126,6 +128,7 @@ class PortEvent(GenericEvent):
 
         return ret
 
+
 class MemTilePortEvent(GenericEvent):
     def __init__(self, code, port_number, master=True):
         # For backwards compatibility, allow integer as event
@@ -174,6 +177,7 @@ class MemTilePortEvent(GenericEvent):
 
         return ret
 
+
 def extract_trace(out_buf, out_buf_shape, out_buf_dtype, trace_size):
     trace_size_words = trace_size // 4
     out_buf_flat = out_buf.reshape((-1,)).view(np.uint32)
@@ -196,7 +200,6 @@ def pack4bytes(b3, b2, b1, b0):
     w |= (b1 & 0xFF) << 8
     w |= (b0 & 0xFF) << 0
     return w
-
 
 
 # Configure tracing, see https://github.com/Xilinx/mlir-aie/blob/resnet/docs/Tracing.md
@@ -252,7 +255,7 @@ def configure_coretile_tracing_aie2(
     ],
     enable_packet=0,
     packet_id=0,
-    packet_type=PacketType.CORE
+    packet_type=PacketType.CORE,
 ):
     # For backwards compatibility, allow integers for start/stop events
     if isinstance(start, int):
@@ -304,7 +307,7 @@ def configure_coretile_tracing_aie2(
         column=int(tile.col),
         row=int(tile.row),
         address=0x340D4,
-        value= ((packet_type & 0x7) << 12) | (packet_id & 0x1F) if enable_packet else 0
+        value=((packet_type & 0x7) << 12) | (packet_id & 0x1F) if enable_packet else 0,
     )
     # 0x340E0: Trace Event Group 1  (Which events to trace)
     #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
@@ -343,8 +346,8 @@ def configure_memtile_tracing_aie2(
     start=MemTileEvent.TRUE,
     stop=MemTileEvent.NONE,
     events=[
-        MemTilePortEvent(MemTileEvent.PORT_RUNNING_0, 0, True),   # master(0)
-        MemTilePortEvent(MemTileEvent.PORT_RUNNING_1, 1, True),   # master(1)
+        MemTilePortEvent(MemTileEvent.PORT_RUNNING_0, 0, True),  # master(0)
+        MemTilePortEvent(MemTileEvent.PORT_RUNNING_1, 1, True),  # master(1)
         MemTilePortEvent(MemTileEvent.PORT_RUNNING_2, 0, False),  # slave(0)
         MemTilePortEvent(MemTileEvent.PORT_RUNNING_3, 1, False),  # slave(1)
         MemTilePortEvent(MemTileEvent.PORT_RUNNING_4, 2, False),  # slave(2)
@@ -354,7 +357,7 @@ def configure_memtile_tracing_aie2(
     ],
     enable_packet=0,
     packet_id=0,
-    packet_type=PacketType.MEMTILE
+    packet_type=PacketType.MEMTILE,
 ):
     # For backwards compatibility, allow integers for start/stop events
     if isinstance(start, int):
@@ -406,7 +409,7 @@ def configure_memtile_tracing_aie2(
         column=int(tile.col),
         row=int(tile.row),
         address=0x940D4,
-        value= ((packet_type & 0x7) << 12) | (packet_id & 0x1F) if enable_packet else 0
+        value=((packet_type & 0x7) << 12) | (packet_id & 0x1F) if enable_packet else 0,
     )
     # 0x340E0: Trace Event Group 1  (Which events to trace)
     #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
@@ -463,7 +466,7 @@ def configure_timer_ctrl_memtile_aie2(tile, event):
 
 
 # Configure broadcast event based on an internal triggered event.
-# `num` is the broadcaast number we want to broadcast on 
+# `num` is the broadcaast number we want to broadcast on
 # and `event` is the triggering broadcast event.
 def configure_broadcast_core_aie2(tile, num, event):
     addr = 0x34010 + num * 4
@@ -490,7 +493,7 @@ def configure_event_gen_core_aie2(tile, event):
 
 # Configure shim tile for tracing.
 # This configures the shim tile / bd to process a specficic packet id and packet type.
-# It also configures the address patch. 
+# It also configures the address patch.
 def configure_shimtile_tracing_aie2(
     shim,
     channel=1,
@@ -498,7 +501,7 @@ def configure_shimtile_tracing_aie2(
     ddr_id=2,
     size=8192,
     offset=0,
-	enable_token=0,
+    enable_token=0,
     enable_packet=0,
     packet_id=0,
     packet_type=PacketType.CORE,
@@ -542,13 +545,13 @@ def configure_shimtile_tracing_aie2(
     )
     addr = (int(shim.col) << tm.get_column_shift()) | (0x1D004 + bd_id * 0x20)
     npu_address_patch(addr=addr, arg_idx=ddr_id, arg_plus=offset)
-    
+
     # configure S2MM channel
     npu_write32(
         column=int(shim.col),
         row=int(shim.row),
         address=0x1D204 if channel == 0 else 0x1D20C,
-        value= ((enable_token & 0x1) << 31) | bd_id,
+        value=((enable_token & 0x1) << 31) | bd_id,
     )
 
 
@@ -595,8 +598,8 @@ def configure_shimtile_tracing_aie2(
 
 
 # This does a simple circuit switched trace config for a given tile
-# and shim. Since we're not doing packete switching, we're not synchronizing 
-# any timers. This works fine for a trace of a single tile though it does use 
+# and shim. Since we're not doing packete switching, we're not synchronizing
+# any timers. This works fine for a trace of a single tile though it does use
 # a stream for routing the trace (which is the same as multi-tile tracing
 # except that can be shared with trace packets)
 def configure_simple_tracing_aie2(
@@ -624,7 +627,7 @@ def configure_simple_tracing_aie2(
     configure_shimtile_tracing_aie2(shim, channel, bd_id, ddr_id, size, offset)
 
 
-# Wrapper to configure the core tile and shim tile for packet tracing. This does 
+# Wrapper to configure the core tile and shim tile for packet tracing. This does
 # the following:
 # 1. Configure core tile based on start/ stop, events, and flow id. The flow id
 #    needs to be unique per flow.
@@ -632,7 +635,7 @@ def configure_simple_tracing_aie2(
 #    tiles keying off this event has a synchronized timer so their trace are
 #    synchronized. This event is also used as the start event for tracing.
 # 3. Configure shim tile to receive this flow and move the data to offset/ size.
-# 
+#
 def configure_core_packet_tracing_aie2(
     tile,
     shim,
@@ -640,8 +643,8 @@ def configure_core_packet_tracing_aie2(
     bd_id=15,
     size=8192,
     offset=0,
-	enable_token=0,
-    brdcst_event=0x7a, # event 122 - broadcast 15
+    enable_token=0,
+    brdcst_event=0x7A,  # event 122 - broadcast 15
     channel=1,
     ddr_id=2,
     stop=CoreEvent.NONE,
@@ -656,15 +659,27 @@ def configure_core_packet_tracing_aie2(
         CoreEvent.LOCK_STALL,
     ],
 ):
-    configure_coretile_tracing_aie2(tile, brdcst_event, stop, events, 1, flow_id, PacketType.CORE)
+    configure_coretile_tracing_aie2(
+        tile, brdcst_event, stop, events, 1, flow_id, PacketType.CORE
+    )
     configure_timer_ctrl_core_aie2(tile, brdcst_event)
-    configure_shimtile_tracing_aie2(shim, channel, bd_id, ddr_id, size, offset, enable_token,
-                                    1, flow_id, PacketType.CORE)
+    configure_shimtile_tracing_aie2(
+        shim,
+        channel,
+        bd_id,
+        ddr_id,
+        size,
+        offset,
+        enable_token,
+        1,
+        flow_id,
+        PacketType.CORE,
+    )
 
 
 # Configures mem tile for packet trcing. This is very simila rot configure_core_packet_tracing_aie2
 # and maybe they can be combined if we pass the tile type to select the correct address offsets.
-# As it stands, we call configure_memtile_tracing_aie2 and configure_timer_ctrl_memtile_aie2 instead 
+# As it stands, we call configure_memtile_tracing_aie2 and configure_timer_ctrl_memtile_aie2 instead
 # of the core tile variants. The default events we care about are also different for the memtile.
 def configure_memtile_packet_tracing_aie2(
     tile,
@@ -673,13 +688,13 @@ def configure_memtile_packet_tracing_aie2(
     bd_id=15,
     size=8192,
     offset=0,
-	enable_token=0,
-    brdcst_event=0x9d, # event 157 - broadcast 15
+    enable_token=0,
+    brdcst_event=0x9D,  # event 157 - broadcast 15
     channel=1,
     ddr_id=2,
     stop=MemTileEvent.NONE,
     events=[
-        MemTilePortEvent(MemTileEvent.PORT_RUNNING_0, 0, True),   # master(0)
+        MemTilePortEvent(MemTileEvent.PORT_RUNNING_0, 0, True),  # master(0)
         # MemTilePortEvent(MemTileEvent.PORT_RUNNING_1, 1, True),   # master(1)
         MemTilePortEvent(MemTileEvent.PORT_RUNNING_1, 14, False),  # slave(14/ north1)
         MemTilePortEvent(MemTileEvent.PORT_RUNNING_2, 0, False),  # slave(0)
@@ -688,41 +703,58 @@ def configure_memtile_packet_tracing_aie2(
         MemTilePortEvent(MemTileEvent.PORT_RUNNING_5, 3, False),  # slave(3)
         MemTilePortEvent(MemTileEvent.PORT_RUNNING_6, 4, False),  # slave(4)
         MemTilePortEvent(MemTileEvent.PORT_RUNNING_7, 5, False),  # slave(5)
-
         # MemTilePortEvent(MemTileEvent.PORT_RUNNING_4, 13, False),  # slave(13/ north0)
         # MemTilePortEvent(MemTileEvent.PORT_RUNNING_5, 14, False),  # slave(14/ north1)
         # MemTilePortEvent(MemTileEvent.PORT_RUNNING_6, 17, False),  # slave(17/ trace)
         # MemTilePortEvent(MemTileEvent.PORT_RUNNING_7, 8, True),  # masteer(9/ south1)
     ],
 ):
-    configure_memtile_tracing_aie2(tile, brdcst_event, stop, events, 1, flow_id, PacketType.MEMTILE)
+    configure_memtile_tracing_aie2(
+        tile, brdcst_event, stop, events, 1, flow_id, PacketType.MEMTILE
+    )
     configure_timer_ctrl_memtile_aie2(tile, brdcst_event)
-    configure_shimtile_tracing_aie2(shim, channel, bd_id, ddr_id, size, offset, enable_token,
-                                    1, flow_id, PacketType.MEMTILE)
+    configure_shimtile_tracing_aie2(
+        shim,
+        channel,
+        bd_id,
+        ddr_id,
+        size,
+        offset,
+        enable_token,
+        1,
+        flow_id,
+        PacketType.MEMTILE,
+    )
 
 
 # Wrapper around packeflows to itereate over tiles to trace and route them
 # to the shim for outputing the trace to L3 memory. This uses default values for the packet id
 # that increases for each tile we trace. This should match the tile trace config that's set by
 # configure_core_packet_tracing_aie2
-def configure_packet_tracing_flow(
-    tiles_to_trace, 
-    shim
-):
+def configure_packet_tracing_flow(tiles_to_trace, shim):
     for i in range(len(tiles_to_trace)):
-        packetflow(i+1, tiles_to_trace[i], WireBundle.Trace, 0, shim, WireBundle.DMA, 1, keep_pkt_header=True)
-    
+        packetflow(
+            i + 1,
+            tiles_to_trace[i],
+            WireBundle.Trace,
+            0,
+            shim,
+            WireBundle.DMA,
+            1,
+            keep_pkt_header=True,
+        )
+
 
 # Configure the shim tile to support packet tracing via:
 # 1. Set an event generation to create a custom user event 1 (127, 0x7f)
 # 2. Custom event also triggers a broadcast event (by default broadcast 15)
 # 3. Custom event also resets timer (will be true for all tiles) so all timers are synchronized
 # The actual shim dma config is done via configure_shimtile_tracing_aie2 but this tends to be done
-# for each tile we're tracing. 
+# for each tile we're tracing.
 def configure_shim_packet_tracing_aie2(
     shim,
     brdcst_num=15,
-    user_event=0x7f, # 127: user even t#1
+    user_event=0x7F,  # 127: user even t#1
 ):
     configure_timer_ctrl_core_aie2(shim, user_event)
     configure_broadcast_core_aie2(shim, brdcst_num, user_event)
@@ -736,9 +768,16 @@ def configure_packet_tracing_aie2(
     shim,
     trace_size,
     trace_offset,
-	enable_token=0,
+    enable_token=0,
 ):
     for i in range(len(tiles_to_trace)):
-        configure_core_packet_tracing_aie2(tiles_to_trace[i], shim, i+1, 15-i, trace_size, trace_offset, enable_token)
+        configure_core_packet_tracing_aie2(
+            tiles_to_trace[i],
+            shim,
+            i + 1,
+            15 - i,
+            trace_size,
+            trace_offset,
+            enable_token,
+        )
     configure_shim_packet_tracing_aie2(shim)
-
