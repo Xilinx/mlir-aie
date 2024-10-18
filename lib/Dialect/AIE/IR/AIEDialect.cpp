@@ -494,10 +494,9 @@ LogicalResult ObjectFifoCreateOp::verify() {
           "`via_shared_mem` can only be used in 1-to-1 object FIFOs");
   }
 
-  if (getMemtileRepeat().has_value()) {
-    if (!getProducerTileOp().isMemTile())
-      return emitError("`memtile_repeat` can only be used with a mem tile "
-                       "producer");
+  if (getRepeatCount().has_value()) {
+    if (getProducerTileOp().isShimTile())
+      return emitError("`repeat_count` unavailable for shim tiles");
   }
 
   return success();
@@ -602,9 +601,17 @@ LogicalResult ObjectFifoLinkOp::verify() {
     return emitError("ObjectFifoLinkOp does not support 'join' and "
                      "'distribute' at the same time");
 
-  if (auto sharedTile = getOptionalSharedTile(); !sharedTile)
+  auto sharedTile = getOptionalSharedTile();
+  if (!sharedTile)
     return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
                      "shared tile between objectFifos");
+
+  TileOp tile = cast<TileOp>(sharedTile.value().getDefiningOp());
+  if (!tile.isMemTile()) {
+    if (isJoin() || isDistribute())
+      return emitError("ObjectFifoLinkOp join and distribute are "
+                       "unavailable on compute or shim tiles");
+  }
 
   if (isJoin()) {
     if (getFifoIns().size() != getSrcOffsets().size())
@@ -643,8 +650,8 @@ LogicalResult ObjectFifoLinkOp::verify() {
 
     std::vector<int> repeat_counts;
     for (auto fifoOut : getOutputObjectFifos()) {
-      if (fifoOut.getMemtileRepeat().has_value())
-        repeat_counts.push_back(fifoOut.getMemtileRepeat().value());
+      if (fifoOut.getRepeatCount().has_value())
+        repeat_counts.push_back(fifoOut.getRepeatCount().value());
       else
         repeat_counts.push_back(0);
     }
@@ -761,8 +768,8 @@ std::vector<int> ObjectFifoLinkOp::getDistributeTransferLengths() {
 
 std::optional<int> ObjectFifoLinkOp::getRepeatCount() {
   for (auto fifoOut : getOutputObjectFifos())
-    if (fifoOut.getMemtileRepeat().has_value())
-      return {fifoOut.getMemtileRepeat().value()};
+    if (fifoOut.getRepeatCount().has_value())
+      return {fifoOut.getRepeatCount().value()};
   return {};
 }
 

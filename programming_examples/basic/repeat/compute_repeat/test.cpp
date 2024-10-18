@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2023, Advanced Micro Devices, Inc.
+// Copyright (C) 2024, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -65,8 +65,8 @@ int main(int argc, const char *argv[]) {
       "path of file containing userspace instructions to be sent to the LX6")(
       "length,l", po::value<int>()->default_value(4096),
       "the length of the transfer in int32_t")(
-      "repeat,r", po::value<int>()->default_value(3),
-      "the memtile repeat count");
+      "repeat,r", po::value<int>()->default_value(4),
+      "the compute tile repeat count");
   po::variables_map vm;
 
   try {
@@ -148,7 +148,7 @@ int main(int argc, const char *argv[]) {
                         kernel.group_id(3));
   auto bo_inB = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(4));
-  auto bo_out = xrt::bo(device, N * (repeat_count + 1) * sizeof(int32_t),
+  auto bo_out = xrt::bo(device, N * repeat_count * sizeof(int32_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   if (verbosity >= 1)
@@ -177,7 +177,7 @@ int main(int argc, const char *argv[]) {
   uint32_t *bufOut = bo_out.map<uint32_t *>();
 
   int errors = 0;
-  for (uint32_t i = 0; i < N * (repeat_count + 1); i++) {
+  for (uint32_t i = 0; i < N * repeat_count; i++) {
     uint32_t ref = (i % N) + 1;
     if (*(bufOut + i) != ref) {
       std::cout << "error at index[" << i << "]: expected " << ref << " got "
