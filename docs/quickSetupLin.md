@@ -154,7 +154,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 1. Remember to source the Vitis™ AIE Essentials setup script from [above](#install-aietools).
    
-1. Remeber to source the xrt setup script: `source /opt/xilinx/xrt/setup.sh`
+1. Remember to source the XRT setup script: `source /opt/xilinx/xrt/setup.sh`
 
 ### Install IRON for Ryzen™ AI AIE Application Development
 
