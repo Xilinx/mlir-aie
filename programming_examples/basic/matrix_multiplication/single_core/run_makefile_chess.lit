@@ -3,7 +3,7 @@
 //
 // REQUIRES: ryzen_ai, chess 
 //
-// RUN: make -f %S/Makefile clean
-// RUN: make -f %S/Makefile 
-// RUN: %run_on_npu make -f %S/Makefile run | FileCheck %s
+// RUN: make -f %S/Makefile.chess clean
+// RUN: make -f %S/Makefile.chess
+// RUN: %run_on_npu make -f %S/Makefile.chess run | FileCheck %s
 // CHECK: PASS!

@@ -38,7 +38,7 @@ concurrency:
 env:
   DEBIAN_FRONTEND: noninteractive
   XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
-  VITIS: /opt/Xilinx/Vitis/2023.2
+  VITIS: /opt/ryzen_ai-1.3.0/vitis_aie_essentials
   CMAKE_ARGS: |
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
@@ -97,7 +97,7 @@ jobs:
           mkdir build
           pushd build
 
-          export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
+          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
           cmake .. -G Ninja \
             -DPython3_EXECUTABLE=$(which python) \
             -DLLVM_EXTERNAL_LIT=$(which lit) \
@@ -134,11 +134,11 @@ jobs:
 
           pip cache purge
           source /opt/xilinx/xrt/setup.sh
-          export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
+          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
           source utils/quick_setup.sh
           # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
           cd ..
-          ./utils/build-mlir-aie-from-wheels.sh ./my_install/mlir
+          ./utils/build-mlir-aie-from-wheels.sh ./my_install/mlir build install ./my_install/llvm-aie
 
           # build is created by the build-mlir-aie-from-wheels.sh script
           pushd build
