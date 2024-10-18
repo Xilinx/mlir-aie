@@ -24,7 +24,7 @@ from util import construct_and_print_module
 # CHECK:      %tile_1_2 = aie.tile(1, 2)
 # CHECK:      %tile_1_3 = aie.tile(1, 3)
 # CHECK:      aie.objectfifo @of0(%tile_0_0, {%tile_1_2}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
-# CHECK:      aie.objectfifo @of1(%tile_0_1, {%tile_1_2}, 2 : i32) {memtile_repeat = 4 : i32} : !aie.objectfifo<memref<256xi32>>
+# CHECK:      aie.objectfifo @of1(%tile_0_1, {%tile_1_2}, 2 : i32) {repeat_count = 4 : i32} : !aie.objectfifo<memref<256xi32>>
 # CHECK:      aie.objectfifo @of2(%tile_1_2, {%tile_1_3}, 2 : i32) {via_shared_mem = 1 : i32} : !aie.objectfifo<memref<256xi32>>
 # CHECK:      %core_1_2 = aie.core(%tile_1_2) {
 # CHECK:        %0 = aie.objectfifo.acquire @of0(Consume, 1) : !aie.objectfifosubview<memref<256xi32>>
