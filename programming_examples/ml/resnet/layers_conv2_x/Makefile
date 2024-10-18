@@ -45,7 +45,7 @@ build/conv2dk1_skip.o: conv2dk1_skip.cc
 build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1_i8.o build/conv2dk1_skip_init.o build/conv2dk3.o build/conv2dk1_skip.o build/conv2dk1_ui8.o
 	mkdir -p ${@D}
 	cd ${@D} &&	aiecc.py --basic-alloc-scheme --aie-generate-cdo --aie-generate-npu --no-compile-host \
-    	--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 clean:
 	rm -rf build log

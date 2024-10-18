@@ -34,13 +34,13 @@ build/aie_trace.mlir: ${srcdir}/aie2.py
 build/final.xclbin: build/aie.mlir build/add.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
-    	--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
 build/final_trace.xclbin: build/aie_trace.mlir build/add.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
-    	--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
 ${targetname}.exe: ${srcdir}/test.cpp
