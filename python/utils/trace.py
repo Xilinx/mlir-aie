@@ -84,7 +84,7 @@ class PortEvent(GenericEvent):
     def __init__(self, code, port_number, master=True):
         # For backwards compatibility, allow integer as event
         if isinstance(code, int):
-            code = MemTileEvent(code)
+            code = CoreEvent(code)
         assert code in PortEventCodes
         # fmt: off
         self.event_number = (
