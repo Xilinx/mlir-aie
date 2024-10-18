@@ -20,7 +20,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 ### Install AIETools
 
-#### Supporting AMD Ryzen™ AI with AIE-ML (AIE2) and AIE2P: Install AMD Vitis™ AIE Essentials 
+#### Supporting AMD Ryzen™ AI with AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P): Install AMD Vitis™ AIE Essentials 
 
 1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3 Early Accesss](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab). We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
 
@@ -201,7 +201,7 @@ For your design of interest, for instance from [programming_examples](../program
 
 ## License Errors When Trying to Compile
 
-The `v++` compiler for the NPU device code requires a valid Vitis license. If you are getting errors related to this:
+The `v++` compiler for the NPU device code requires a valid Vitis™ license. If you are getting errors related to this:
 
 1. You have obtained a valid license, as described [above](#install-xilinx-vitis-20232-and-other-mlir-aie-prerequisites). 
 1. Make sure you have set the environment variable `LM_LICENSE_FILE` to point to your license file, see [above](#setting-up-your-environment).
