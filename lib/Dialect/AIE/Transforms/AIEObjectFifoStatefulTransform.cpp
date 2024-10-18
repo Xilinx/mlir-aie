@@ -542,6 +542,11 @@ struct AIEObjectFifoStatefulTransformPass
     auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
     int len = elemType.getNumElements();
 
+    // check for repeat count
+    int repeatCount = 1;
+    if (op.getRepeatCount().has_value())
+      repeatCount = op.getRepeatCount().value();
+
     // search for the buffers/locks (based on if this objFifo has a link)
     ObjectFifoCreateOp target = op;
     if (std::optional<ObjectFifoLinkOp> linkOp = getOptionalLinkOp(op);
@@ -549,7 +554,6 @@ struct AIEObjectFifoStatefulTransformPass
       if (objFifoLinks.find(linkOp.value()) != objFifoLinks.end()) {
         target = objFifoLinks[linkOp.value()];
         if (target == op) {
-          // check for repeat count
           if (linkOp->getRepeatCount().has_value()) {
             acqNum *= linkOp->getRepeatCount().value();
             relNum *= linkOp->getRepeatCount().value();
@@ -591,7 +595,7 @@ struct AIEObjectFifoStatefulTransformPass
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, /*repeatCount*/ 0, bdBlock,
+                               channelIndex, repeatCount - 1, bdBlock,
                                endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
@@ -711,14 +715,6 @@ struct AIEObjectFifoStatefulTransformPass
 
     // check for repeat count
     int repeatCount = 1;
-    if (!dims.getValue().empty()) {
-      auto highestStride = dims.getValue().begin()->getStride() - 1;
-      if (highestStride == 0) {
-        repeatCount = dims.getValue().begin()->getSize();
-        dims = AIE::BDDimLayoutArrayAttr::get(op->getContext(),
-                                              dims.getValue().drop_front(1));
-      }
-    }
     if (op.getRepeatCount().has_value())
       repeatCount = op.getRepeatCount().value();
 
@@ -825,8 +821,7 @@ struct AIEObjectFifoStatefulTransformPass
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, repeatCount - 1, bdBlock,
-                               endBlock);
+                               channelIndex, repeatCount - 1, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
