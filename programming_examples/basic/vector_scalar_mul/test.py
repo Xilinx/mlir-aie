@@ -7,8 +7,10 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 import sys
-from aie.utils.xrt import setup_aie, execute as execute_on_aie
+import time
+from aie.utils.xrt import setup_aie, write_out_trace, execute
 import aie.utils.test as test_utils
+
 
 
 def main(opts):
@@ -18,6 +20,10 @@ def main(opts):
     vector_dtype = np.int16
     scalar_dtype = np.int32
     scale_factor = 3
+    size_out = data_size*2
+    print("output buffer size: "+str(size_out))
+
+    enable_trace = opts.trace_size > 0
 
     app = setup_aie(
         opts.xclbin,
@@ -28,11 +34,34 @@ def main(opts):
         scalar_dtype,
         data_size,
         vector_dtype,
+		enable_trace=enable_trace,
+		trace_size=opts.trace_size,
     )
     input_vector = np.arange(1, data_size + 1, dtype=vector_dtype)
     input_factor = np.array([3], dtype=scalar_dtype)
-    aie_output = execute_on_aie(app, input_vector, input_factor)
+    #aie_output = execute_on_aie(app, input_vector, input_factor)
+
+
+    start = time.time_ns()
+    full_output = execute(app, input_vector, input_factor) 
+    stop = time.time_ns()
+    npu_time = stop - start
+    print("npu_time: ",npu_time)
+
+    # aie_output = full_output[:size_out].view(np.int8)
+    # aie_output = full_output[:size_out].view(np.uint8)
+    aie_output = full_output[:size_out].view(np.int16)
+    if enable_trace:
+        trace_buffer = full_output[size_out:].view(np.uint32)
+
     ref = np.arange(1, data_size + 1, dtype=vector_dtype) * scale_factor
+
+    if enable_trace:
+        # trace_buffer = full_output[3920:]
+        print("trace_buffer shape: ",trace_buffer.shape)
+        print("trace_buffer dtype: ",trace_buffer.dtype)
+        # write_out_trace(trace_buffer, str(opts.trace_file))
+        write_out_trace(trace_buffer, "trace.txt")
 
     # Copy output results and verify they are correct
     errors = 0
