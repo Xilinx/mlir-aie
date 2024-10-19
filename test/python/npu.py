@@ -22,7 +22,7 @@ from aie.dialects.aie import (
     tile,
 )
 from aie.dialects.aiex import dma_wait, npu_dma_memcpy_nd, runtime_sequence
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 from util import construct_and_print_module
 
 DMA = WireBundle.DMA
@@ -284,7 +284,7 @@ def edge_detect(module):
 
         @core(T3, "filter2d.cc.o")
         def core_body():
-            kernel = memref.alloc(3, 3, T.i16())
+            kernel = memref.alloc((3, 3), T.i16())
             v0 = 0
             v1 = 4096
             v_minus4 = -16384
