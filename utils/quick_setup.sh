@@ -33,7 +33,13 @@ if [[ $WSL_DISTRO_NAME == "" ]]; then
 else
   echo "Environment is WSL"
 fi
-if [! hash python3.10] || [! hash python3.12]; then
+if hash python3.12; then
+   echo "Using python version `python3.12 --version`"
+   my_python=python3.12
+elif hash python3.10; then
+   echo "Using python version `python3.10 --version`"
+   my_python=python3.10
+else
    echo "This script requires python3.10 or python3.12"
    return 1
 fi
@@ -44,7 +50,7 @@ fi
 # if an install is already present, remove it to start from a clean slate
 rm -rf ironenv
 rm -rf my_install
-python3 -m venv ironenv
+$my_python -m venv ironenv
 source ironenv/bin/activate
 python3 -m pip install --upgrade pip
 VPP=`which xchesscc`
