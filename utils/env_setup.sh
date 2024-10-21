@@ -39,6 +39,7 @@ if [[ $PEANO_INSTALL_DIR == "" ]]; then
   unzip -q llvm_aie*.whl
   rm -rf llvm_aie*.whl
   export PEANO_INSTALL_DIR=`realpath llvm-aie`
+  popd
 fi
 
 export PATH=${PEANO_INSTALL_DIR}/bin:${MLIR_AIE_INSTALL_DIR}/bin:${LLVM_INSTALL_DIR}/bin:${PATH} 

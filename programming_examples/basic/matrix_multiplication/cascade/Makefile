@@ -25,8 +25,6 @@ target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
 
 include ${srcdir}/../makefile-common
 
-CHESS=true
-
 build/mm_${m}x${k}x${n}.o: ${kernels_dir}/cascade_mm.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -fno-unroll-loops -DBIT_WIDTH=8 -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
