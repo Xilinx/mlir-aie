@@ -82,7 +82,7 @@ jobs:
 
             git submodule update --init --recursive
 
-            apt install python3.10-venv
+            apt install python3.12-venv
             python -m venv aie-venv
             source aie-venv/bin/activate
             pip install -r python/requirements.txt

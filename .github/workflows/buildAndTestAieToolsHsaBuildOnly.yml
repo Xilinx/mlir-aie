@@ -107,7 +107,7 @@ jobs:
             cp -a third_party/aie-rt/driver/src/*.so* /install/aie-rt/lib
             cp -a third_party/aie-rt/driver/include /install/aie-rt
 
-            apt install python3.10-venv
+            apt install python3.12-venv
             python -m venv aie-venv
             source aie-venv/bin/activate
             pip install -r python/requirements.txt
