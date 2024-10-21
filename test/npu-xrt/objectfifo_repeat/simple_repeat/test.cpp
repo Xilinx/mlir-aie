@@ -64,7 +64,9 @@ int main(int argc, const char *argv[]) {
       "instr,i", po::value<std::string>()->required(),
       "path of file containing userspace instructions to be sent to the LX6")(
       "length,l", po::value<int>()->default_value(4096),
-      "the length of the transfer in int32_t");
+      "the length of the transfer in int32_t")(
+      "repeat,r", po::value<int>()->default_value(4),
+      "the memtile repeat count");
   po::variables_map vm;
 
   try {
@@ -92,12 +94,11 @@ int main(int argc, const char *argv[]) {
     std::cout << "Sequence instr count: " << instr_v.size() << std::endl;
 
   int N = vm["length"].as<int>();
-  if ((N % 2 == 1)) {
-    std::cerr << "Length must be a multiple of 2." << std::endl;
+  if ((N % 1024)) {
+    std::cerr << "Length must be a multiple of 1024." << std::endl;
     return 1;
   }
-  int repeat_count = 7;
-  int out_size = N * repeat_count;
+  int repeat_count = vm["repeat"].as<int>();
 
   // Start the XRT test code
   // Get a device handle
@@ -147,7 +148,7 @@ int main(int argc, const char *argv[]) {
                         kernel.group_id(3));
   auto bo_inB = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(4));
-  auto bo_out = xrt::bo(device, out_size * sizeof(int32_t),
+  auto bo_out = xrt::bo(device, N * repeat_count * sizeof(int32_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   if (verbosity >= 1)
@@ -177,16 +178,8 @@ int main(int argc, const char *argv[]) {
 
   int errors = 0;
 
-  for (uint32_t i = 0; i < out_size / 2; i++) {
-    uint32_t ref = (i % (N / 2)) + 2;
-    if (*(bufOut + i) != ref) {
-      std::cout << "error at index[" << i << "]: expected " << ref << " got "
-                << *(bufOut + i) << std::endl;
-      errors++;
-    }
-  }
-  for (uint32_t i = out_size / 2; i < out_size; i++) {
-    uint32_t ref = (i % (N / 2)) + (N / 2) + 3;
+  for (uint32_t i = 0; i < N * repeat_count; i++) {
+    +uint32_t ref = (i % N) + 1;
     if (*(bufOut + i) != ref) {
       std::cout << "error at index[" << i << "]: expected " << ref << " got "
                 << *(bufOut + i) << std::endl;
