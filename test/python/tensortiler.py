@@ -34,7 +34,7 @@ def tensortiler_simple():
     assert (
         t.sizes == expected_sizes
     ), f"Expected sizes {expected_sizes} but got {t.sizes}"
-    expected_strides = [6, 3, 3, 1]
+    expected_strides = [1, 3, 3, 1]
     assert (
         t.strides == expected_strides
     ), f"Expected strides {expected_strides} but got {t.strides}"
@@ -101,7 +101,7 @@ def tensortiler_tensor_row_major_tile_col_major():
     assert (
         t.sizes == expected_sizes
     ), f"Expected sizes {expected_sizes} but got {t.sizes}"
-    expected_strides = [36, 4, 1, 12]
+    expected_strides = [1, 36, 1, 12]
     assert (
         t.strides == expected_strides
     ), f"Expected strides {expected_strides} but got {t.strides}"
@@ -162,7 +162,7 @@ def tensortiler_tensor_col_major_tile_col_major():
     assert (
         t.sizes == expected_sizes
     ), f"Expected sizes {expected_sizes} but got {t.sizes}"
-    expected_strides = [4, 36, 1, 12]
+    expected_strides = [1, 1, 1, 12]
     assert (
         t.strides == expected_strides
     ), f"Expected strides {expected_strides} but got {t.strides}"
@@ -223,7 +223,7 @@ def tensortiler_tensor_col_major_tile_row_major():
     assert (
         t.sizes == expected_sizes
     ), f"Expected sizes {expected_sizes} but got {t.sizes}"
-    expected_strides = [4, 36, 12, 1]
+    expected_strides = [1, 4, 12, 1]
     assert (
         t.strides == expected_strides
     ), f"Expected strides {expected_strides} but got {t.strides}"

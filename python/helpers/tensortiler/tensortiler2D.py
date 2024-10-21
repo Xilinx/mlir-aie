@@ -74,6 +74,11 @@ class TensorTile2DIter:
 
 
 class TensorTiler2D:
+    """
+    This class tries really hard to keep the innermost stride dimension as 1,
+    but is not always successful.
+    """
+
     def __init__(
         self,
         tensor_height: int,
@@ -94,27 +99,71 @@ class TensorTiler2D:
         self.__num_tiles_per_row = self.__tensor_width // self.__tile_width
         self.__num_tiles_per_column = self.__tensor_height // self.__tile_height
 
-        # For row-major tiling for row-major tiles
-        self.__sizes = [
-            self.__num_tiles_per_column,
-            self.__num_tiles_per_row,
-            self.__tile_height,
-            self.__tile_width,
-        ]
-        self.__strides = [
-            self.__tile_width * self.__tile_height * self.__num_tiles_per_row,
-            self.__tile_width,
-            self.__tensor_width,
-            1,
-        ]
-
         self.__tensor_col_major = tensor_col_major
-        if tensor_col_major:
-            self.__sizes[0], self.__sizes[1] = self.__sizes[1], self.__sizes[0]
-            self.__strides[0], self.__strides[1] = self.__strides[1], self.__strides[0]
-        if tile_col_major:
-            self.__sizes[2], self.__sizes[3] = self.__sizes[3], self.__sizes[2]
-            self.__strides[2], self.__strides[3] = self.__strides[3], self.__strides[2]
+        self.__tile_col_major = tile_col_major
+
+        if not self.__tile_col_major and (
+            self.__tensor_col_major or self.__tile_width == self.__tensor_width
+        ):
+            # This will work in one piece
+            self.__sizes = [
+                1,
+                self.__num_tiles_per_row,
+                self.__tensor_height,
+                self.__tile_width,
+            ]
+            self.__strides = [1, self.__tile_width, self.__tensor_width, 1]
+        elif self.__tile_col_major and (
+            not self.__tensor_col_major or self.__tile_height == self.__tensor_height
+        ):
+            # This will also work in one piece
+            self.__sizes = [
+                1,
+                self.__num_tiles_per_column,
+                self.__tensor_width,
+                self.__tile_height,
+            ]
+            self.__strides = [
+                1,
+                self.__tensor_width * self.__tile_height,
+                1,
+                self.__tensor_width,
+            ]
+        else:
+            # These cases need to be done either column by column or row by row
+            self.__sizes = [
+                self.__num_tiles_per_column,
+                self.__num_tiles_per_row,
+                self.__tile_height,
+                self.__tile_width,
+            ]
+            self.__strides = [
+                self.__tile_width * self.__tile_height * self.__num_tiles_per_row,
+                self.__tile_width,
+                self.__tensor_width,
+                1,
+            ]
+
+            if self.__tensor_col_major:
+                self.__sizes[0], self.__sizes[1] = self.__sizes[1], self.__sizes[0]
+                self.__strides[0], self.__strides[1] = (
+                    self.__strides[1],
+                    self.__strides[0],
+                )
+            if self.__tile_col_major:
+                self.__sizes[2], self.__sizes[3] = self.__sizes[3], self.__sizes[2]
+                self.__strides[2], self.__strides[3] = (
+                    self.__strides[3],
+                    self.__strides[2],
+                )
+
+    @property
+    def sizes(self):
+        return self.__sizes.copy()
+
+    @property
+    def strides(self):
+        return self.__strides.copy()
 
     def tile_iter(self, chunk_height: int = 1, chunk_width: int = 1, col_major=False):
         assert self.__num_tiles_per_row % chunk_width == 0
@@ -138,18 +187,50 @@ class TensorTiler2D:
             return offset
 
         iter_sizes = self.__sizes.copy()
+        iter_strides = self.__strides.copy()
 
-        size_idx = [0, 1]
-        if self.__tensor_col_major:
-            size_idx = [1, 0]
-        iter_sizes[size_idx[0]] = chunk_height
-        iter_sizes[size_idx[1]] = chunk_width
+        if self.__tile_col_major and not self.__tensor_col_major:
+            iter_sizes[1] = chunk_height
+            iter_sizes[2] = chunk_width * self.__tile_width
+        elif not self.__tile_col_major and self.__tensor_col_major:
+            iter_sizes[1] = chunk_width
+            iter_sizes[2] = chunk_height * self.__tile_height
+        elif chunk_width == 1 and not self.__tile_col_major:
+            if self.__tile_col_major:
+                iter_sizes = [1, chunk_height, self.__tile_width, self.__tile_height]
+                iter_strides = [
+                    1,
+                    self.__tile_height * self.__tensor_width,
+                    1,
+                    self.__tensor_width,
+                ]
+            else:
+                iter_sizes = [
+                    1,
+                    1,
+                    self.__tile_height * chunk_height,
+                    self.__tile_width,
+                ]
+                iter_strides = [1, self.__tile_width, self.__tensor_width, 1]
+        elif chunk_height == 1:
+            if self.__tile_col_major:
+                iter_sizes = [1, 1, self.__tile_width * chunk_width, self.__tile_height]
+                iter_strides = [1, 1, 1, self.__tensor_width]
+            else:
+                iter_sizes = [1, chunk_width, self.__tile_height, self.__tile_width]
+                iter_strides = [1, self.__tile_width, self.__tensor_width, 1]
+        else:
+            size_idx = [0, 1]
+            if self.__tensor_col_major:
+                size_idx = [1, 0]
+            iter_sizes[size_idx[0]] = chunk_height
+            iter_sizes[size_idx[1]] = chunk_width
 
         return TensorTile2DIter(
             self.__tensor_height,
             self.__tensor_width,
             iter_sizes,
-            self.__strides,
+            iter_strides,
             offset_fn=calc_offset,
             num_steps=steps,
         )
