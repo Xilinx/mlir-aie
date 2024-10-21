@@ -2,6 +2,12 @@ import inspect
 from aie.ir import Context, Location, Module, InsertionPoint
 
 
+# Run test
+def construct_test(f):
+    print("\nTEST:", f.__name__)
+    f()
+
+
 # Create and print ModuleOp.
 def construct_and_print_module(f):
     print("\nTEST:", f.__name__)
