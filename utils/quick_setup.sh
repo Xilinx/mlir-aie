@@ -54,7 +54,7 @@ if test -f "$VPP"; then
   pip download mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/
   unzip -q mlir_aie-*_x86_64.whl
   pushd mlir_aie/python
-  pip download aie_python_bindings
+  pip download aie_python_bindings -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/
   unzip -q -o aie_python_bindings*.whl
   rm *.whl
   popd
