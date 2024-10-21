@@ -179,7 +179,7 @@ int main(int argc, const char *argv[]) {
   int errors = 0;
 
   for (uint32_t i = 0; i < N * repeat_count; i++) {
-    +uint32_t ref = (i % N) + 1;
+    uint32_t ref = (i % N) + 1;
     if (*(bufOut + i) != ref) {
       std::cout << "error at index[" << i << "]: expected " << ref << " got "
                 << *(bufOut + i) << std::endl;
