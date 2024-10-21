@@ -27,6 +27,15 @@ class TensorTile:
             show_numbers=show_numbers,
         )
 
+    def access_map(self):
+        return TensorTiler2D.access_order_map(
+            self.tensor_height,
+            self.tensor_width,
+            self.sizes,
+            self.strides,
+            offset=self.offset,
+        )
+
 
 class TensorTile2DIter:
     def __init__(
@@ -315,4 +324,14 @@ class TensorTiler2D:
             tile_width=tile_width,
             show_arrows=show_arrows,
             show_numbers=show_numbers,
+        )
+
+    def access_map(self):
+        return self.access_order_map(
+            self.__tensor_height,
+            self.__tensor_width,
+            self.__sizes,
+            self.__strides,
+            self.__tile_height,
+            self.__tile_width,
         )
