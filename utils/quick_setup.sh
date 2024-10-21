@@ -33,8 +33,8 @@ if [[ $WSL_DISTRO_NAME == "" ]]; then
 else
   echo "Environment is WSL"
 fi
-if ! hash python3.10; then
-   echo "This script requires python3.10"
+if [! hash python3.10] || [! hash python3.12]; then
+   echo "This script requires python3.10 or python3.12"
    return 1
 fi
 if ! hash unzip; then
@@ -44,7 +44,7 @@ fi
 # if an install is already present, remove it to start from a clean slate
 rm -rf ironenv
 rm -rf my_install
-python3.10 -m venv ironenv
+python3 -m venv ironenv
 source ironenv/bin/activate
 python3 -m pip install --upgrade pip
 VPP=`which xchesscc`
@@ -53,6 +53,11 @@ if test -f "$VPP"; then
   pushd my_install
   pip download mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/
   unzip -q mlir_aie-*_x86_64.whl
+  pushd mlir_aie/python
+  pip download aie_python_bindings
+  unzip -q -o aie_python_bindings*.whl
+  rm *.whl
+  popd
   pip download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro/
   unzip -q mlir-*_x86_64.whl
   pip -q download llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
