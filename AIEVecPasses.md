@@ -4,6 +4,7 @@
 _Vectorize the output of affine supervectorizer to AIE vector abstraction_
 
 
+
 #### Options
 ```
 -shift                 : Shift parameter for rounding and saturation

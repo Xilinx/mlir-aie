@@ -2,6 +2,7 @@
 # 'ADF' Dialect
 
 Types and operations for the ADF dialect
+
 This is an MLIR dialect designed to capture the Xilinx Adaptive Data Flow
 (ADF) Graph semantics.  This dialect is intended to be converible to/from the
 C++ graph syntax, but to represent the graph abstractly, rather than at
@@ -249,6 +250,7 @@ Syntax:
 ```
 
 
+
 #### Parameters:
 
 | Parameter | C++ type | Description |
@@ -268,6 +270,7 @@ Syntax:
 ```
 
 
+
 #### Parameters:
 
 | Parameter | C++ type | Description |
@@ -285,6 +288,7 @@ Syntax:
   mlir::Type   # type
 >
 ```
+
 
 
 #### Parameters:
@@ -308,6 +312,7 @@ Syntax:
 ```
 
 
+
 #### Parameters:
 
 | Parameter | C++ type | Description |
@@ -323,11 +328,13 @@ Syntax:
 Syntax: `!ADF.acc48`
 
 
+
 ### acc80Type
 
 
 
 Syntax: `!ADF.acc80`
+
 
 
 ### accfloatType
@@ -337,11 +344,13 @@ Syntax: `!ADF.acc80`
 Syntax: `!ADF.accfloat`
 
 
+
 ### cacc48Type
 
 
 
 Syntax: `!ADF.cacc48`
+
 
 
 ### cacc80Type
@@ -351,11 +360,13 @@ Syntax: `!ADF.cacc48`
 Syntax: `!ADF.cacc80`
 
 
+
 ### caccfloatType
 
 
 
 Syntax: `!ADF.caccfloat`
+
 
 
 ### cfloatType
@@ -365,11 +376,13 @@ Syntax: `!ADF.caccfloat`
 Syntax: `!ADF.cfloat`
 
 
+
 ### cint16Type
 
 
 
 Syntax: `!ADF.cint16`
+
 
 
 ### cint32Type
@@ -379,11 +392,13 @@ Syntax: `!ADF.cint16`
 Syntax: `!ADF.cint32`
 
 
+
 ### floatType
 
 
 
 Syntax: `!ADF.float`
+
 
 
 ### int8Type
@@ -393,11 +408,13 @@ Syntax: `!ADF.float`
 Syntax: `!ADF.int8`
 
 
+
 ### int16Type
 
 
 
 Syntax: `!ADF.int16`
+
 
 
 ### int32Type
@@ -407,11 +424,13 @@ Syntax: `!ADF.int16`
 Syntax: `!ADF.int32`
 
 
+
 ### int64Type
 
 
 
 Syntax: `!ADF.int64`
+
 
 
 ### uint8Type
@@ -421,11 +440,13 @@ Syntax: `!ADF.int64`
 Syntax: `!ADF.uint8`
 
 
+
 ### uint16Type
 
 
 
 Syntax: `!ADF.uint16`
+
 
 
 ### uint32Type
@@ -435,10 +456,12 @@ Syntax: `!ADF.uint16`
 Syntax: `!ADF.uint32`
 
 
+
 ### uint64Type
 
 
 
 Syntax: `!ADF.uint64`
+
 
 

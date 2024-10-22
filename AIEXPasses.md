@@ -3,6 +3,7 @@
 
 _Assign IDs to Buffer Descriptors Configured in the Runtime Sequence_
 
+
 ### `-aie-create-cores`
 
 _Create CoreOp, MemOp, and FlowOp of AIE dialect_
@@ -43,13 +44,16 @@ operations.
 
 _Infer aie.tile ops from aiex.control_packet addresses_
 
+
 ### `-aie-ctrl-packet-to-dma`
 
 _Lowers npu.control_packet op to npu.dma_memcpy_nd op_
 
+
 ### `-aie-dma-tasks-to-npu`
 
 _Lower configured DMA tasks to NPU instructions_
+
 
 ### `-aie-dma-to-npu`
 ### `-aie-herd-routing`
@@ -85,6 +89,7 @@ Inlines pre-defined `aie.bd_chains` at `aiex.start_task` use sites to become `ai
 ### `-aie-substitute-shim-dma-allocations`
 
 _Replace symbolic references to `aie.shim_dma_allocation` ops with their `(tile, direction, channel)` triple_
+
 
 ### `-aiex-standard-lowering`
 

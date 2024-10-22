@@ -2,6 +2,7 @@
 # 'aievec' Dialect
 
 Types and operations for AIE vector dialect
+
 [TOC]
 
 ## Operations
@@ -409,6 +410,7 @@ operation ::= `aievec.ext_elem` $source `,` $index attr-dict `:` type($source) `
 AMD - specific extract element
                   intrinsic. Extract element determined by index from vector.
     `$result = ext_elem($source, $index)`.
+
 Traits: `AlwaysSpeculatableImplTrait`
 
 Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
@@ -1307,6 +1309,7 @@ Enum cases:
 * t16_2x16 (`T16_2X16`)
 * t8_8x4 (`T8_8X4`)
 * t8_4x8 (`T8_4X8`)
+
 #### Parameters:
 
 | Parameter | C++ type | Description |
