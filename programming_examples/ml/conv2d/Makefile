@@ -26,7 +26,7 @@ build/${mlirFileName}.mlir: ${srcdir}/aie2.py
 build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1_i8.o 
 	mkdir -p ${@D} 
 	cd ${@D} && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
-    	--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 
 run_py: build/final.xclbin build/insts.txt
