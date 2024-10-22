@@ -45,7 +45,6 @@ def generate_module(tensor_height, tensor_width, tile_height, tile_width):
                 "access_counter",
                 initial_value=np.array([0], dtype=TensorTiler2D.DTYPE),
             )
-                            
             for _ in range_(sys.maxsize):
                 elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
                 for i in range_(tile_size):
