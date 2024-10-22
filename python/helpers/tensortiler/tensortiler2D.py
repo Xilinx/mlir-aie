@@ -1,4 +1,7 @@
 import numpy as np
+import os
+import sys
+from typing import Callable
 
 
 class TensorTile:
@@ -16,8 +19,14 @@ class TensorTile:
         self.sizes = sizes
         self.strides = strides
 
-    def visualize(self, show_arrows: bool = True, show_numbers: bool = False):
-        TensorTiler2D.access_heatmap(
+    def visualize(
+        self,
+        show_arrows: bool = True,
+        show_numbers: bool = False,
+        file_path: str | None = None,
+        show_plot: bool = True,
+    ) -> None:
+        TensorTiler2D.generate_access_graph(
             self.tensor_height,
             self.tensor_width,
             self.sizes,
@@ -25,10 +34,12 @@ class TensorTile:
             offset=self.offset,
             show_arrows=show_arrows,
             show_numbers=show_numbers,
+            file_path=file_path,
+            show_plot=show_plot,
         )
 
-    def access_map(self):
-        return TensorTiler2D.access_order_map(
+    def access_order(self) -> np.ndarray:
+        return TensorTiler2D.get_access_order_tensor(
             self.tensor_height,
             self.tensor_width,
             self.sizes,
@@ -44,7 +55,7 @@ class TensorTile2DIter:
         tensor_width: int,
         sizes: list[int],
         strides: list[int],
-        offset_fn,
+        offset_fn: Callable[[int], int],
         num_steps: int,
     ):
         self.__num_steps = num_steps
@@ -59,7 +70,7 @@ class TensorTile2DIter:
     def __iter__(self):
         return self
 
-    def __next__(self):
+    def __next__(self) -> TensorTile:
         if self.__current_step == self.__num_steps:
             raise StopIteration
         step = self.__current_step
@@ -75,9 +86,11 @@ class TensorTile2DIter:
 
 class TensorTiler2D:
     """
-    This class tries really hard to keep the innermost stride dimension as 1,
-    but is not always successful.
+    This is an experimental class to help with defining data transformations.
+    It is a work in progress.
     """
+
+    DTYPE = np.int32
 
     def __init__(
         self,
@@ -85,11 +98,15 @@ class TensorTiler2D:
         tensor_width: int,
         tile_height: int,
         tile_width: int,
-        tensor_col_major=False,
-        tile_col_major=False,
+        tensor_col_major: bool = False,
+        tile_col_major: bool = False,
     ):
-        assert tensor_height % tile_height == 0
-        assert tensor_width % tile_width == 0
+        assert (
+            tensor_height % tile_height == 0
+        ), "Tensor height must be divisible by tile height"
+        assert (
+            tensor_width % tile_width == 0
+        ), "Tensor width must be divisible by tile width"
 
         self.__tensor_height = tensor_height
         self.__tensor_width = tensor_width
@@ -105,7 +122,7 @@ class TensorTiler2D:
         if not self.__tile_col_major and (
             self.__tensor_col_major or self.__tile_width == self.__tensor_width
         ):
-            # This will work in one piece
+            # This is a special case where we can express the transformation with a less complicated transform
             self.__sizes = [
                 1,
                 self.__num_tiles_per_row,
@@ -116,7 +133,7 @@ class TensorTiler2D:
         elif self.__tile_col_major and (
             not self.__tensor_col_major or self.__tile_height == self.__tensor_height
         ):
-            # This will also work in one piece
+            # This is a special case where we can express the transformation with a less complicated transform
             self.__sizes = [
                 1,
                 self.__num_tiles_per_column,
@@ -130,7 +147,15 @@ class TensorTiler2D:
                 self.__tensor_width,
             ]
         else:
-            # These cases need to be done either column by column or row by row
+            """
+            This is the case that *should* always represent a correct/valid
+            transformation (according to my modelling using visualization tools).
+
+            It should work even with the special cases above.
+
+            But in my experience, these transformations are not always valid to the NPU
+            as stride dimension size may exceed allowable, hence the special cases above.
+            """
             self.__sizes = [
                 self.__num_tiles_per_column,
                 self.__num_tiles_per_row,
@@ -158,14 +183,16 @@ class TensorTiler2D:
                 )
 
     @property
-    def sizes(self):
+    def sizes(self) -> list[int]:
         return self.__sizes.copy()
 
     @property
-    def strides(self):
+    def strides(self) -> list[int]:
         return self.__strides.copy()
 
-    def tile_iter(self, chunk_height: int = 1, chunk_width: int = 1, col_major=False):
+    def tile_iter(
+        self, chunk_height: int = 1, chunk_width: int = 1, col_major: bool = False
+    ) -> TensorTile2DIter:
         assert self.__num_tiles_per_row % chunk_width == 0
         assert self.__num_tiles_per_column % chunk_height == 0
 
@@ -190,12 +217,15 @@ class TensorTiler2D:
         iter_strides = self.__strides.copy()
 
         if self.__tile_col_major and not self.__tensor_col_major:
+            # This is a special case where we can combine a chunk into one logical tile (horizontally)
             iter_sizes[1] = chunk_height
             iter_sizes[2] = chunk_width * self.__tile_width
         elif not self.__tile_col_major and self.__tensor_col_major:
+            # This is a special case where we can combine a chunk into one logical tile (vertically)
             iter_sizes[1] = chunk_width
             iter_sizes[2] = chunk_height * self.__tile_height
-        elif chunk_width == 1 and not self.__tile_col_major:
+        elif chunk_width == 1:
+            # These are two more special cases; we can combine tiles here too to get a simpler transform
             if self.__tile_col_major:
                 iter_sizes = [1, chunk_height, self.__tile_width, self.__tile_height]
                 iter_strides = [
@@ -213,6 +243,7 @@ class TensorTiler2D:
                 ]
                 iter_strides = [1, self.__tile_width, self.__tensor_width, 1]
         elif chunk_height == 1:
+            # These are two more special cases; we can combine tiles here too to get a simpler transform
             if self.__tile_col_major:
                 iter_sizes = [1, 1, self.__tile_width * chunk_width, self.__tile_height]
                 iter_strides = [1, 1, 1, self.__tensor_width]
@@ -220,11 +251,19 @@ class TensorTiler2D:
                 iter_sizes = [1, chunk_width, self.__tile_height, self.__tile_width]
                 iter_strides = [1, self.__tile_width, self.__tensor_width, 1]
         else:
+            # This should always be the case that creates a correct transfrom;
+            # however, it may be needlessly complex (large values in out dimensions)
             size_idx = [0, 1]
             if self.__tensor_col_major:
                 size_idx = [1, 0]
             iter_sizes[size_idx[0]] = chunk_height
             iter_sizes[size_idx[1]] = chunk_width
+
+        if iter_strides[3] != 1:
+            print(
+                f"WARNING: innermost strides dimension in {iter_strides[3]}, but current hardware requires it to be 1.",
+                file=sys.stderr,
+            )
 
         return TensorTile2DIter(
             self.__tensor_height,
@@ -235,16 +274,18 @@ class TensorTiler2D:
             num_steps=steps,
         )
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"sizes={self.__sizes}, strides={self.__strides}"
 
     @classmethod
-    def _generate_access_map(
+    def _generate_access_graph_from_tensor(
         cls,
-        access_order_map: type[np.ndarray],
-        title="Access Order",
-        show_arrows=True,
-        show_numbers=False,
+        access_order_tensor: np.ndarray,
+        title: str = "Access Order",
+        show_arrows: bool = True,
+        show_numbers: bool = False,
+        file_path: str | None = None,
+        show_plot: bool = True,
     ):
         try:
             import matplotlib
@@ -252,34 +293,35 @@ class TensorTiler2D:
             import matplotlib.patheffects as pe
         except:
             raise ImportError(
-                "You must pip install matplotlib in order to render visual access maps"
+                "You must pip install matplotlib in order to render access graphs"
             )
 
-        # In inches
+        # In inches, this is a little hacky
+        # should maybe be defined by the size of the tensor e.g., how many elem per inch
         matplotlib.rcParams["figure.figsize"] = [10, 7]
 
         _fig, ax = plt.subplots()
-        _heatmap = ax.pcolor(access_order_map, cmap="gnuplot2")
+        _heatmap = ax.pcolor(access_order_tensor, cmap="gnuplot2")
 
         # Thanks to https://stackoverflow.com/questions/14406214/moving-x-axis-to-the-top-of-a-plot-in-matplotlib
         # put the major ticks at the middle of each cell, (0, 0) in upper left corner
-        ax.set_xticks(np.arange(access_order_map.shape[1]) + 0.5, minor=False)
-        ax.set_yticks(np.arange(access_order_map.shape[0]) + 0.5, minor=False)
+        ax.set_xticks(np.arange(access_order_tensor.shape[1]) + 0.5, minor=False)
+        ax.set_yticks(np.arange(access_order_tensor.shape[0]) + 0.5, minor=False)
         ax.invert_yaxis()
         ax.xaxis.tick_top()
         ax.set_xticklabels(
-            np.arange(0, access_order_map.shape[1]), minor=False, rotation="vertical"
+            np.arange(0, access_order_tensor.shape[1]), minor=False, rotation="vertical"
         )
-        ax.set_yticklabels(np.arange(0, access_order_map.shape[0]), minor=False)
+        ax.set_yticklabels(np.arange(0, access_order_tensor.shape[0]), minor=False)
         plt.title(title)
 
-        # add numbers to the plot
+        # Add numbers to the plot
         if show_numbers:
-            # thanks to https://stackoverflow.com/questions/37719304/python-imshow-set-certain-value-to-defined-color
-            # thanks to tmdavison answer here https://stackoverflow.com/a/40890587/7871710
-            for i in range(access_order_map.shape[0]):
-                for j in range(access_order_map.shape[1]):
-                    c = access_order_map[i, j]
+            # Thanks to https://stackoverflow.com/questions/37719304/python-imshow-set-certain-value-to-defined-color
+            # Thanks to tmdavison answer here https://stackoverflow.com/a/40890587/7871710
+            for i in range(access_order_tensor.shape[0]):
+                for j in range(access_order_tensor.shape[1]):
+                    c = access_order_tensor[i, j]
                     if c != -1:
                         ax.text(
                             j + 0.45,
@@ -290,13 +332,13 @@ class TensorTiler2D:
                             ],
                         )
 
-        # add arrows to show access order
+        # Add arrows to show access order
         if show_arrows:
             order_dict = {}
-            for i in range(access_order_map.shape[0]):
-                for j in range(access_order_map.shape[1]):
-                    if access_order_map[i, j] != -1:
-                        order_dict[access_order_map[i, j]] = (i, j)
+            for i in range(access_order_tensor.shape[0]):
+                for j in range(access_order_tensor.shape[1]):
+                    if access_order_tensor[i, j] != -1:
+                        order_dict[access_order_tensor[i, j]] = (i, j)
             for i in range(len(order_dict) - 1):
                 y1, x1 = order_dict[i]
                 y2, x2 = order_dict[i + 1]
@@ -311,10 +353,19 @@ class TensorTiler2D:
                     overhang=0.2,
                     path_effects=[pe.withStroke(linewidth=3, foreground="white")],
                 )
-        plt.show()
+
+        if show_plot:
+            plt.show()
+        if file_path:
+            if os.path.exists(file_path):
+                print(
+                    f"Cannot save plot to {file_path}; file already exists",
+                    file=sys.stderr,
+                )
+            plt.savefig(file_path)
 
     @classmethod
-    def access_order_map(
+    def get_access_order_tensor(
         cls,
         tensor_height: int,
         tensor_width: int,
@@ -323,37 +374,44 @@ class TensorTiler2D:
         tile_height: int | None = None,
         tile_width: int | None = None,
         offset: int = 0,
-    ):
-        assert tensor_height > 0 and tensor_width > 0
-        assert len(sizes) == 4
-        assert len(strides) == 4
+    ) -> np.ndarray:
+        assert tensor_height > 0 and tensor_width > 0, "Tensor dimensions must be > 0"
+        assert len(sizes) == 4, "Sizes should be a list of size 4"
+        assert len(strides) == 4, "Strides should be a list of size 4"
         assert (tile_height is None and tile_width is None) or (
             (tile_height != None and tile_width != None)
             and (tile_height > 0 and tile_width > 0)
-        )
+        ), "Tile Height and Tile Width should both be specified, or neither specified"
 
         # Generate access order map
         access_order_tensor = np.full(
-            (tensor_height * tensor_width,), -1, dtype=np.int32
+            (tensor_height * tensor_width,), -1, dtype=cls.DTYPE
         )
         access_count = 0
         for i in range(sizes[0]):
             for j in range(sizes[1]):
                 for k in range(sizes[2]):
                     for l in range(sizes[3]):
-                        access_order_tensor[
+                        access_idx = (
                             offset
                             + i * strides[0]
                             + j * strides[1]
                             + k * strides[2]
                             + l * strides[3]
-                        ] = access_count
+                        )
+                        assert (
+                            access_order_tensor[access_idx] == -1
+                        ), f"Attempted to access index={access_idx} twice."
+                        access_order_tensor[access_idx] = access_count
                         access_count += 1
+        assert access_count <= np.prod(
+            access_order_tensor.shape
+        ), f"Access pattern has too many elements (expected max {np.prod(access_order_tensor.shape)}, got {access_count})"
         access_order_tensor = access_order_tensor.reshape((tensor_height, tensor_width))
         return access_order_tensor
 
     @classmethod
-    def access_heatmap(
+    def generate_access_graph(
         cls,
         tensor_height: int,
         tensor_width: int,
@@ -362,10 +420,12 @@ class TensorTiler2D:
         tile_height: int | None = None,
         tile_width: int | None = None,
         offset: int = 0,
-        show_arrows=True,
-        show_numbers=False,
+        show_arrows: bool = True,
+        show_numbers: bool = False,
+        file_path: str | None = None,
+        show_plot: bool = True,
     ):
-        access_order_tensor = cls.access_order_map(
+        access_order_tensor = cls.get_access_order_tensor(
             tensor_height,
             tensor_width,
             sizes,
@@ -377,15 +437,25 @@ class TensorTiler2D:
 
         # Show a graph for a single tile
         if tile_height != None and tile_width != None:
-            cls._generate_access_map(
+            if file_path:
+                tile_file_path = file_path + ".tile.png"
+            else:
+                tile_file_path = None
+            cls._generate_access_graph_from_tensor(
                 access_order_tensor[0:tile_height, 0:tile_width],
                 title="Per-Tile Access Order",
                 show_arrows=show_arrows,
                 show_numbers=show_numbers,
+                file_path=tile_file_path,
+                show_plot=show_plot,
             )
 
-        cls._generate_access_map(
-            access_order_tensor, show_arrows=show_arrows, show_numbers=show_numbers
+        cls._generate_access_graph_from_tensor(
+            access_order_tensor,
+            show_arrows=show_arrows,
+            show_numbers=show_numbers,
+            file_path=file_path,
+            show_plot=show_plot,
         )
 
     def visualize(
@@ -393,10 +463,12 @@ class TensorTiler2D:
         show_tile: bool = True,
         show_arrows: bool = True,
         show_numbers: bool = False,
-    ):
+        file_path: str | None = None,
+        show_plot: bool = True,
+    ) -> None:
         tile_height = self.__tile_height if show_tile else None
         tile_width = self.__tile_width if show_tile else None
-        self.access_heatmap(
+        self.generate_access_graph(
             self.__tensor_height,
             self.__tensor_width,
             self.__sizes,
@@ -405,10 +477,13 @@ class TensorTiler2D:
             tile_width=tile_width,
             show_arrows=show_arrows,
             show_numbers=show_numbers,
+            file_path=file_path,
+            show_plot=show_plot,
         )
 
-    def access_map(self):
-        return self.access_order_map(
+    def access_order(self) -> np.ndarray:
+        # Call class method
+        return self.get_access_order_tensor(
             self.__tensor_height,
             self.__tensor_width,
             self.__sizes,
