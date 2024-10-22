@@ -19,7 +19,7 @@ This data movement transformation can be visualized as a map which shows the ord
 <p align="center">
   <img
     src="transpose_data.png">
-    <h3 align="center"> Visualization of the Transpose Data Transformation. 
+    <h3 align="center"> Visualization of the Transpose Data Transformation for M=32, K=16. 
  </h3> 
 </p>
 
