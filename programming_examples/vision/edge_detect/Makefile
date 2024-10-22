@@ -42,7 +42,7 @@ build/aie2_lineBased_8b_${EDGEDETECT_WIDTH}.mlir: ${srcdir}/aie2_edgeDetect.py
 build/final_${EDGEDETECT_WIDTH}.xclbin: build/aie2_lineBased_8b_${EDGEDETECT_WIDTH}.mlir build/rgba2gray.cc.o build/gray2rgba.cc.o build/filter2d.cc.o build/threshold.cc.o build/addWeighted.cc.o build/combined_gray2rgba_addWeighted.a
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host --basic-alloc-scheme \
-    	--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
