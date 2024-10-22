@@ -20,7 +20,7 @@ data_str=${tensor_height}_${tensor_width}_${tile_height}_${tile_width}
 
 .PHONY: all template clean
 
-all: build/final_${data_size}.xclbin
+all: build/final_${data_str}.xclbin
 
 build/aie_${data_str}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
