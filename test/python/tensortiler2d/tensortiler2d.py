@@ -394,3 +394,24 @@ def tensortiler_tensor_iter_chunk_col_major():
 
     # CHECK: Pass!
     print("Pass!")
+
+
+# CHECK-LABEL: access_order_from_sizes_strides
+@construct_test
+def access_order_from_sizes_strides():
+    access_order = TensorTiler2D.get_access_order_tensor(
+        8, 16, [1, 8, 8, 2], [0, 2, 16, 1]
+    )
+    # fmt: off
+    reference_order = [
+        [  0,   1,  16,  17,  32,  33,  48,  49,  64,  65,  80,  81,  96,  97, 112, 113],
+        [  2,   3,  18,  19,  34,  35,  50,  51,  66,  67,  82,  83,  98,  99, 114, 115],
+        [  4,   5,  20,  21,  36,  37,  52,  53,  68,  69,  84,  85, 100, 101, 116, 117],
+        [  6,   7,  22,  23,  38,  39,  54,  55,  70,  71,  86,  87, 102, 103, 118, 119],
+        [  8,   9,  24,  25,  40,  41,  56,  57,  72,  73,  88,  89, 104, 105, 120, 121],
+        [ 10,  11,  26,  27,  42,  43,  58,  59,  74,  75,  90,  91, 106, 107, 122, 123],
+        [ 12,  13,  28,  29,  44,  45,  60,  61,  76,  77,  92,  93, 108, 109, 124, 125],
+        [ 14,  15,  30,  31,  46,  47,  62,  63,  78,  79,  94,  95, 110, 111, 126, 127]
+    ]
+    # fmt: on
+    np.equal(access_order, reference_order)
