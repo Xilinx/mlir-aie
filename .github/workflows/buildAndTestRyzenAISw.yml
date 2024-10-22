@@ -121,7 +121,7 @@ jobs:
                 -DAIE_ENABLE_PYTHON_PASSES=OFF \
                 -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
                 -DAIE_INCLUDE_INTEGRATION_TESTS=OFF \
-                -DAIE_VITIS_COMPOONENTS=AIE2;AIE2P \
+                -DAIE_VITIS_COMPOONENTS="AIE2;AIE2P" \
                 -DPython3_EXECUTABLE=$(which python) \
                 -DLLVM_EXTERNAL_LIT=$(which lit) \
                 -DCMAKE_INSTALL_PREFIX=/workspace/install \
