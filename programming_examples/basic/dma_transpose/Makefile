@@ -44,5 +44,9 @@ endif
 run: ${targetname}.exe build/final.xclbin build/insts.txt
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --M ${M} --K ${K}
 
+generate_access_map: ${srcdir}/aie2.py
+	mkdir -p ${@D}
+	python3 $< --generate-access-map ${M} ${K}
+
 clean:
 	rm -rf build _build inst ${targetname}.exe
