@@ -46,16 +46,14 @@ def generate_module(tensor_height, tensor_width, tile_height, tile_width):
         @runtime_sequence(flattened_tensor)
         def sequence(access_count):
             tiler = TensorTiler2D(tensor_height, tensor_width, tile_height, tile_width)
-            for t in tiler.tile_iter():
-                npu_dma_memcpy_nd(
-                    metadata=of_out,
-                    bd_id=1,
-                    mem=access_count,
-                    sizes=t.sizes,
-                    strides=t.strides,
-                    offsets=[1, 1, 1, t.offset],
-                )
-                dma_wait(of_out)
+            npu_dma_memcpy_nd(
+                metadata=of_out,
+                bd_id=1,
+                mem=access_count,
+                sizes=tiler.sizes,
+                strides=tiler.strides,
+            )
+            dma_wait(of_out)
 
 
 def main(opts):

@@ -10,7 +10,7 @@
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-include ${srcdir}/../../makefile-common
+include ${srcdir}/../../../makefile-common
 
 tensor_height = 32
 tensor_width = 32
