@@ -12,7 +12,7 @@ def rectangular_tiler_col_major_tensor():
     tiler = TensorTiler2D(8, 16, 4, 2, tensor_col_major=True)
     access_order = tiler.access_order()
     reference_access = np.array(
-        #fmt: off
+        # fmt: off
         [
             [  0,   1,  16,  17,  32,  33,  48,  49,  64,  65,  80,  81,  96,  97, 112, 113],
             [  2,   3,  18,  19,  34,  35,  50,  51,  66,  67,  82,  83,  98,  99, 114, 115],
@@ -23,13 +23,13 @@ def rectangular_tiler_col_major_tensor():
             [ 12,  13,  28,  29,  44,  45,  60,  61,  76,  77,  92,  93, 108, 109, 124, 125],
             [ 14,  15,  30,  31,  46,  47,  62,  63,  78,  79,  94,  95, 110, 111, 126, 127],
         ],
-        #fmt: on
+        # fmt: on
         dtype=TensorTiler2D.DTYPE,
     )
     assert (reference_access == access_order).all()
 
     tile1_reference_order = np.array(
-        #fmt: off
+        # fmt: off
         [
             [-1, -1, -1, -1,  0,  1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
             [-1, -1, -1, -1,  2,  3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
@@ -40,7 +40,7 @@ def rectangular_tiler_col_major_tensor():
             [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
             [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
         ],
-        #fmt: on
+        # fmt: on
         dtype=TensorTiler2D.DTYPE,
     )
 

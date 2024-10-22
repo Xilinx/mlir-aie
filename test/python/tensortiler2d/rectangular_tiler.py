@@ -12,7 +12,7 @@ def rectangular_tiler():
     tiler = TensorTiler2D(16, 8, 4, 4)
     access_order = tiler.access_order()
     reference_access = np.array(
-        #fmt: off
+        # fmt: off
         [
             [  0,   1,   2,   3,  16,  17,  18,  19],
             [  4,   5,   6,   7,  20,  21,  22,  23],
@@ -31,13 +31,13 @@ def rectangular_tiler():
             [104, 105, 106, 107, 120, 121, 122, 123],
             [108, 109, 110, 111, 124, 125, 126, 127],
         ],
-        #fmt: on
+        # fmt: on
         dtype=TensorTiler2D.DTYPE,
     )
     assert (reference_access == access_order).all()
 
     tile1_reference_order = np.array(
-        #fmt: off
+        # fmt: off
         [
             [-1, -1, -1, -1, -1, -1, -1, -1],
             [-1, -1, -1, -1, -1, -1, -1, -1],
@@ -56,7 +56,7 @@ def rectangular_tiler():
             [ 8,  9, 10, 11, -1, -1, -1, -1],
             [12, 13, 14, 15, -1, -1, -1, -1],
         ],
-        #fmt: on
+        # fmt: on
         dtype=TensorTiler2D.DTYPE,
     )
 

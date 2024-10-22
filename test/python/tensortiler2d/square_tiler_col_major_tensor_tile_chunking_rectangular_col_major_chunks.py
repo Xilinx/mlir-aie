@@ -12,7 +12,7 @@ def square_tiler_col_major_tensor_tile_chunking_rectangular_col_major_chunks():
     tiler = TensorTiler2D(16, 16, 4, 4, tensor_col_major=True)
     access_order = tiler.access_order()
     reference_access = np.array(
-        #fmt: off
+        # fmt: off
         [
             [  0,  1,  2,  3, 64, 65, 66, 67,128,129,130,131,192,193,194,195,],
             [  4,  5,  6,  7, 68, 69, 70, 71,132,133,134,135,196,197,198,199,],
@@ -31,13 +31,13 @@ def square_tiler_col_major_tensor_tile_chunking_rectangular_col_major_chunks():
             [ 56, 57, 58, 59,120,121,122,123,184,185,186,187,248,249,250,251,],
             [ 60, 61, 62, 63,124,125,126,127,188,189,190,191,252,253,254,255,],
         ],
-        #fmt: on
+        # fmt: on
         dtype=TensorTiler2D.DTYPE,
     )
     assert (reference_access == access_order).all()
 
     tile1_reference_order = np.array(
-        #fmt: off
+        # fmt: off
         [
             [ 0,  1,  2,  3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
             [ 4,  5,  6,  7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
@@ -56,7 +56,7 @@ def square_tiler_col_major_tensor_tile_chunking_rectangular_col_major_chunks():
             [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
             [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
         ],
-        #fmt: on
+        # fmt: on
         dtype=TensorTiler2D.DTYPE,
     )
 
