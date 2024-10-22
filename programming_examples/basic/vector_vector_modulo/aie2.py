@@ -5,14 +5,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.extras.dialects.ext import memref, arith
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 
 
 def my_vector_add():
@@ -34,7 +33,8 @@ def my_vector_add():
 
     @device(dev)
     def device_body():
-        memRef_ty = T.memref(n, T.i32())
+        tensor_ty = np.ndarray[(N,), np.dtype[np.int32]]
+        tile_ty = np.ndarray[(n,), np.dtype[np.int32]]
 
         # AIE Core Function declarations
 
@@ -43,9 +43,9 @@ def my_vector_add():
         ComputeTile2 = tile(int(sys.argv[2]), 2)
 
         # AIE-array data movement with object fifos
-        of_in1 = object_fifo("in1", ShimTile, ComputeTile2, buffer_depth, memRef_ty)
-        of_in2 = object_fifo("in2", ShimTile, ComputeTile2, buffer_depth, memRef_ty)
-        of_out = object_fifo("out", ComputeTile2, ShimTile, buffer_depth, memRef_ty)
+        of_in1 = object_fifo("in1", ShimTile, ComputeTile2, buffer_depth, tile_ty)
+        of_in2 = object_fifo("in2", ShimTile, ComputeTile2, buffer_depth, tile_ty)
+        of_out = object_fifo("out", ComputeTile2, ShimTile, buffer_depth, tile_ty)
 
         # Set up compute tiles
 
@@ -60,17 +60,12 @@ def my_vector_add():
                     elem_in2 = of_in2.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     for i in range_(n):
-                        v0 = memref.load(elem_in1, [i])
-                        v1 = memref.load(elem_in2, [i])
-                        v2 = arith.remsi(v0, v1)
-                        memref.store(v2, elem_out, [i])
+                        elem_out[i] = elem_in1[i] % elem_in2[i]
                     of_in1.release(ObjectFifoPort.Consume, 1)
                     of_in2.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
 
         # To/from AIE-array data movement
-        tensor_ty = T.memref(N, T.i32())
-
         @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
         def sequence(A, B, C):
             npu_dma_memcpy_nd(

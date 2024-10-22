@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: peano, !hsa
+// REQUIRES: aiesimulator, peano, !hsa
 
 // RUN: %PYTHON aiecc.py --aiesim --no-xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf

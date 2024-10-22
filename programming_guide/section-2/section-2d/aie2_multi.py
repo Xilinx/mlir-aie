@@ -5,15 +5,14 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-
+import numpy as np
 from aie.dialects.aie import *  # primary mlir-aie dialect definitions
 from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 
 from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
-from aie.extras.dialects.ext.scf import (
+from aie.helpers.dialects.ext.scf import (
     _for as range_,
 )  # scf (structured control flow) dialect
-from aie.extras.dialects.ext import memref, arith  # memref and arithmatic dialects
 
 n_cores = 3
 buffer_depth = 2
@@ -29,8 +28,8 @@ def mlir_aie_design():
         # Device declaration - aie2 device xcvc1902
         @device(AIEDevice.xcvc1902)
         def device_body():
-            memRef_16_ty = T.memref(16, T.i32())
-            memRef_48_ty = T.memref(48, T.i32())
+            tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
+            data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 
             # Tile(s) declarations
             ShimTile = tile(0, 0)
@@ -40,44 +39,40 @@ def mlir_aie_design():
             # Data movement with object FIFOs
 
             # Input data movement
+            inX_fifos = []
 
-            inX_fifo_names = [
-                f"in{i}" for i in range(n_cores)
-            ]  # list of input object FIFO names
-            inX_fifos = {}  # map name to its object FIFO
-
-            of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, memRef_48_ty)
+            of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, data_ty)
             for i in range(n_cores):
-                inX_fifos[inX_fifo_names[i]] = object_fifo(
-                    inX_fifo_names[i],
-                    MemTile,
-                    ComputeTiles[i],
-                    buffer_depth,
-                    memRef_16_ty,
+                inX_fifos.append(
+                    object_fifo(
+                        f"in{i}",
+                        MemTile,
+                        ComputeTiles[i],
+                        buffer_depth,
+                        tile_ty,
+                    )
                 )
             if n_cores > 1:
-                of_offsets = [16 * i for i in range(n_cores)]
+                of_offsets = [tile_size * i for i in range(n_cores)]
             else:
                 of_offsets = []
-            object_fifo_link(of_in, inX_fifo_names[0:n_cores], [], of_offsets)
+            object_fifo_link(of_in, inX_fifos, [], of_offsets)
 
             # Output data movement
+            outX_fifos = []
 
-            outX_fifo_names = [
-                f"out{i}" for i in range(n_cores)
-            ]  # list of output object FIFO names
-            outX_fifos = {}  # map name to its object FIFO
-
-            of_out = object_fifo("out", MemTile, ShimTile, buffer_depth, memRef_48_ty)
+            of_out = object_fifo("out", MemTile, ShimTile, buffer_depth, data_ty)
             for i in range(n_cores):
-                outX_fifos[outX_fifo_names[i]] = object_fifo(
-                    outX_fifo_names[i],
-                    ComputeTiles[i],
-                    MemTile,
-                    buffer_depth,
-                    memRef_16_ty,
+                outX_fifos.append(
+                    object_fifo(
+                        f"out{i}",
+                        ComputeTiles[i],
+                        MemTile,
+                        buffer_depth,
+                        tile_ty,
+                    )
                 )
-            object_fifo_link(outX_fifo_names[0:n_cores], of_out, of_offsets, [])
+            object_fifo_link(outX_fifos, of_out, of_offsets, [])
 
             # Set up compute tiles
             for i in range(n_cores):
@@ -85,20 +80,12 @@ def mlir_aie_design():
                 @core(ComputeTiles[i])
                 def core_body():
                     for _ in range_(0xFFFFFFFF):
-                        elem_in = inX_fifos[inX_fifo_names[i]].acquire(
-                            ObjectFifoPort.Consume, 1
-                        )
-                        elem_out = outX_fifos[outX_fifo_names[i]].acquire(
-                            ObjectFifoPort.Produce, 1
-                        )
+                        elem_in = inX_fifos[i].acquire(ObjectFifoPort.Consume, 1)
+                        elem_out = outX_fifos[i].acquire(ObjectFifoPort.Produce, 1)
                         for j in range_(tile_size):
-                            v0 = memref.load(elem_in, [j])
-                            v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                            memref.store(v1, elem_out, [j])
-                        inX_fifos[inX_fifo_names[i]].release(ObjectFifoPort.Consume, 1)
-                        outX_fifos[outX_fifo_names[i]].release(
-                            ObjectFifoPort.Produce, 1
-                        )
+                            elem_out[j] = elem_in[j] + 1
+                        inX_fifos[i].release(ObjectFifoPort.Consume, 1)
+                        outX_fifos[i].release(ObjectFifoPort.Produce, 1)
 
     # Print the mlir conversion
     res = ctx.module.operation.verify()

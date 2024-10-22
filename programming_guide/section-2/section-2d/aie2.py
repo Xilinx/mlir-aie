@@ -5,15 +5,14 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-
+import numpy as np
 from aie.dialects.aie import *  # primary mlir-aie dialect definitions
 from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 
 from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
-from aie.extras.dialects.ext.scf import (
+from aie.helpers.dialects.ext.scf import (
     _for as range_,
 )  # scf (structured control flow) dialect
-from aie.extras.dialects.ext import memref, arith  # memref and arithmatic dialects
 
 buffer_depth = 2
 data_size = 48
@@ -27,7 +26,7 @@ def mlir_aie_design():
         # Device declaration - aie2 device xcvc1902
         @device(AIEDevice.xcvc1902)
         def device_body():
-            memRef_48_ty = T.memref(data_size, T.i32())
+            data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 
             # Tile(s) declarations
             ShimTile = tile(0, 0)
@@ -37,19 +36,13 @@ def mlir_aie_design():
             # Data movement with object FIFOs
 
             # Input data movement
-
-            of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, memRef_48_ty)
-            of_in1 = object_fifo(
-                "in1", MemTile, ComputeTile, buffer_depth, memRef_48_ty
-            )
+            of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, data_ty)
+            of_in1 = object_fifo("in1", MemTile, ComputeTile, buffer_depth, data_ty)
             object_fifo_link(of_in, of_in1)
 
             # Output data movement
-
-            of_out = object_fifo("out", MemTile, ShimTile, buffer_depth, memRef_48_ty)
-            of_out1 = object_fifo(
-                "out1", ComputeTile, MemTile, buffer_depth, memRef_48_ty
-            )
+            of_out = object_fifo("out", MemTile, ShimTile, buffer_depth, data_ty)
+            of_out1 = object_fifo("out1", ComputeTile, MemTile, buffer_depth, data_ty)
             object_fifo_link(of_out1, of_out)
 
             # Set up compute tiles
@@ -60,9 +53,7 @@ def mlir_aie_design():
                     elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
                     for i in range_(data_size):
-                        v0 = memref.load(elem_in, [i])
-                        v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elem_out, [i])
+                        elem_out[i] = elem_in[i] + 1
                     of_in1.release(ObjectFifoPort.Consume, 1)
                     of_out1.release(ObjectFifoPort.Produce, 1)
 

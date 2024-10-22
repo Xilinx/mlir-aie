@@ -5,28 +5,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
-
-import os
-from torch.utils.data import Dataset
-
-# from PIL import Image
-import json
-import sys
 import csv
 import json
-import argparse
-import numpy as np
-
-# import cv2
-import numpy as np
-
-# from PIL import Image
-from pathlib import Path
-import torch
-import torch.nn as nn
-
-# from prettytable import PrettyTable
 import math
+import numpy as np
+import os
+import torch
 
 
 # class ImageNetKaggle(Dataset):

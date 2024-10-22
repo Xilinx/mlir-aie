@@ -17,7 +17,6 @@ ACDC_AIE = $(dir $(shell which aie-opt))/..
 targetname = reduce_max
 devicename = npu
 col = 0
-CHESS_FLAGS=${CHESSCCWRAP2_FLAGS}
 
 all: build/final.xclbin build/insts.txt
 
@@ -25,7 +24,7 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
 
 build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
@@ -34,6 +33,7 @@ build/aie.mlir: ${srcdir}/aie2.py
 build/final.xclbin: build/aie.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+    			--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp

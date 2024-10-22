@@ -9,10 +9,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: valid_xchess_license, !hsa
+// REQUIRES: aiesimulator, valid_xchess_license, !hsa
 // RUN: xchesscc_wrapper aie2 -c %S/kernel.cc
-// RUN: %PYTHON aiecc.py --aiesim --xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %S/test.cpp -o test.elf
-// RUN: %run_on_board ./test.elf
+// RUN: %PYTHON aiecc.py --aiesim --xchesscc --xbridge --no-compile-host %s %test_lib_flags %S/test.cpp
 
 // FIXME this hangs in simulation
 // RU: aie.mlir.prj/aiesim.sh | FileCheck %s

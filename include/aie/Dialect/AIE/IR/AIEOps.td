@@ -295,7 +295,8 @@ def AIE_CoreOp: AIE_Op<"core", [
     ins Index:$tile,
     DefaultValuedAttr<AIEI32Attr, "0x400">:$stack_size,
     OptionalAttr<StrAttr>:$link_with,
-    OptionalAttr<StrAttr>:$elf_file
+    OptionalAttr<StrAttr>:$elf_file,
+    OptionalAttr<BoolAttr>:$dynamic_objfifo_lowering
   );
   let summary = "Declare a core module";
   let description = [{
@@ -309,6 +310,9 @@ def AIE_CoreOp: AIE_Op<"core", [
     reserved for the stack.  The default value is 1024.  The stack (and other data allocations)
     are always stored in the local core memory, to avoid conflicts with static data allocations
     in other cores.
+
+    This op has an optional `dynamic_objfifo_lowering` attribute, to finely control whether the
+    objectfifos in this core should be lowered using the dynamic runtime lowering.
 
     Examples:
     ```
@@ -1674,6 +1678,9 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
         DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
         DefaultValuedAttr<BoolAttr, "false">:$plio,
+        // disable_synchronization==true will skip lock generation for 
+        // objectfifo synchronous accesses
+        DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
         // via_shared_mem==0 means use producer tile's memory module
         // via_shared_mem==1 means use consumer tile's memory module
         OptionalAttr<AIEI32Attr>:$via_shared_mem,

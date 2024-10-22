@@ -4,14 +4,14 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
-
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.extras.dialects.ext import memref
 from aie.extras.context import mlir_mod_ctx
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
+from aie.helpers.util import np_ndarray_type_get_shape
 
 # tracing definitions
 trace_sz_in_bytes = 8192
@@ -33,6 +33,14 @@ tensorL2OutC = tensorL2InC
 tensorL3InC = tensorL2OutC
 tensorL3OutC = tensorL3InC * 4
 
+activationsIn = tensorInW * tensorInH * tensorInC
+acitivationsOut = activationsIn
+totalWeights = (
+    tensorL1InC * tensorL1OutC
+    + 3 * 3 * tensorL2InC * tensorL2OutC
+    + tensorL3InC * tensorL3OutC
+)
+
 
 def bottleneck4AIEs():
     with mlir_mod_ctx() as ctx:
@@ -41,34 +49,39 @@ def bottleneck4AIEs():
         def deviceBody():
 
             # define types
-            uint8_ty = IntegerType.get_unsigned(8)
-            int8_ty = IntegerType.get_signless(8)
-            int16_ty = IntegerType.get_signless(16)
-            int32_ty = IntegerType.get_signless(32)
+            activationsInL3_ty = np.ndarray[(activationsIn,), np.dtype[np.int8]]
+            weightsInL3_ty = np.ndarray[(totalWeights,), np.dtype[np.uint8]]
+            weightsAll_ty = np.ndarray[(totalWeights,), np.dtype[np.int8]]
 
-            tensorLayer1In_ty = T.memref(
-                tensorInW,
-                1,
-                tensorL1InC,
-                int8_ty,
-            )
-            weightsLayer1_ty = T.memref(tensorL1InC * tensorL1OutC, int8_ty)
-            tensorLayer1Out_ty = T.memref(tensorInW, 1, tensorL1OutC, uint8_ty)
+            tensorLayer1In_ty = np.ndarray[
+                (tensorInW, 1, tensorL1InC), np.dtype[np.int8]
+            ]
+            weightsLayer1_ty = np.ndarray[
+                (tensorL1InC * tensorL1OutC,), np.dtype[np.int8]
+            ]
+            tensorLayer1Out_ty = np.ndarray[
+                (tensorInW, 1, tensorL1OutC), np.dtype[np.uint8]
+            ]
 
-            tensorLayer2In_ty = T.memref(tensorInW, 1, tensorL2InC, uint8_ty)
-            weightsLayer2_ty = T.memref(3 * 3 * tensorL2InC * tensorL2OutC, int8_ty)
-            tensorLayer2Out_ty = T.memref(tensorInW, 1, tensorL2OutC // 2, uint8_ty)
+            tensorLayer2In_ty = np.ndarray[
+                (tensorInW, 1, tensorL2InC), np.dtype[np.uint8]
+            ]
+            weightsLayer2_ty = np.ndarray[
+                (3 * 3 * tensorL2InC * tensorL2OutC,), np.dtype[np.int8]
+            ]
+            tensorLayer2Out_ty = np.ndarray[
+                (tensorInW, 1, tensorL2OutC // 2), np.dtype[np.uint8]
+            ]
 
-            tensorLayer3In_ty = T.memref(tensorInW, 1, tensorL3InC // 2, uint8_ty)
-            weightsLayer3_ty = T.memref(tensorL3InC * tensorL3OutC, int8_ty)
-            tensorLayer3Out_ty = T.memref(tensorInW, 1, tensorL3OutC, uint8_ty)
-
-            allWeights_ty = T.memref(
-                tensorL1InC * tensorL1OutC
-                + 3 * 3 * tensorL2InC * tensorL2OutC
-                + tensorL3InC * tensorL3OutC,
-                int8_ty,
-            )
+            tensorLayer3In_ty = np.ndarray[
+                (tensorInW, 1, tensorL3InC // 2), np.dtype[np.uint8]
+            ]
+            weightsLayer3_ty = np.ndarray[
+                (tensorL3InC * tensorL3OutC,), np.dtype[np.int8]
+            ]
+            tensorLayer3Out_ty = np.ndarray[
+                (tensorInW, 1, tensorL3OutC), np.dtype[np.uint8]
+            ]
 
             # kernel definitions
             conv2dk1 = external_func(
@@ -77,10 +90,10 @@ def bottleneck4AIEs():
                     tensorLayer1In_ty,
                     weightsLayer1_ty,
                     tensorLayer1Out_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
                 ],
             )
             conv2dk3 = external_func(
@@ -91,14 +104,14 @@ def bottleneck4AIEs():
                     tensorLayer2In_ty,
                     weightsLayer2_ty,
                     tensorLayer2Out_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
                 ],
             )
             conv2dk1_skip = external_func(
@@ -109,11 +122,11 @@ def bottleneck4AIEs():
                     weightsLayer3_ty,
                     tensorLayer3Out_ty,
                     tensorLayer1In_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
-                    int32_ty,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
                 ],
             )
 
@@ -129,10 +142,30 @@ def bottleneck4AIEs():
 
             # runtime parameters
 
-            rtpComputeTile2 = Buffer(ComputeTile2, [16], T.i32(), "rtpComputeTile2")
-            rtpComputeTile3 = Buffer(ComputeTile3, [16], T.i32(), "rtpComputeTile3")
-            rtpComputeTile4 = Buffer(ComputeTile4, [16], T.i32(), "rtpComputeTile4")
-            rtpComputeTile5 = Buffer(ComputeTile5, [16], T.i32(), "rtpComputeTile5")
+            rtpComputeTile2 = buffer(
+                ComputeTile2,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile2",
+                use_write_rtp=True,
+            )
+            rtpComputeTile3 = buffer(
+                ComputeTile3,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile3",
+                use_write_rtp=True,
+            )
+            rtpComputeTile4 = buffer(
+                ComputeTile4,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile4",
+                use_write_rtp=True,
+            )
+            rtpComputeTile5 = buffer(
+                ComputeTile5,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile5",
+                use_write_rtp=True,
+            )
 
             # set up data movement with OFs
             # input tensor (with broadcast for skip connection)
@@ -150,7 +183,7 @@ def bottleneck4AIEs():
 
             # weights
             inOF_wts_0_L3L2 = object_fifo(
-                "inOF_wts_0_L3L2", ShimTile, MemTile, 1, allWeights_ty
+                "inOF_wts_0_L3L2", ShimTile, MemTile, 1, weightsAll_ty
             )
             of_wts_buf_00 = object_fifo(
                 "wts_buf_00", MemTile, ComputeTile2, 1, weightsLayer1_ty
@@ -167,8 +200,9 @@ def bottleneck4AIEs():
             )
             of_offsets = [
                 0,
-                np.prod(weightsLayer1_ty.shape),
-                np.prod(weightsLayer1_ty.shape) + np.prod(weightsLayer2_ty.shape),
+                np.prod(np_ndarray_type_get_shape(weightsLayer1_ty)),
+                np.prod(np_ndarray_type_get_shape(weightsLayer1_ty))
+                + np.prod(np_ndarray_type_get_shape(weightsLayer2_ty)),
             ]
             object_fifo_link(
                 inOF_wts_0_L3L2, [of_wts_buf_00, wts_buf_01, wts_buf_02], [], of_offsets
@@ -198,10 +232,9 @@ def bottleneck4AIEs():
             @core(ComputeTile2, "conv2dk1.o")
             def core_body():
                 for _ in range_(sys.maxsize):
-
                     # acquire weights once
                     element0Weights = of_wts_buf_00.acquire(ObjectFifoPort.Consume, 1)
-                    scale = memref.load(rtpComputeTile2, [0])
+                    scale = rtpComputeTile2[0]
                     for _ in range_(tensorInH):
                         element0ActivactionsIn = of_inOF_act_L3L2.acquire(
                             ObjectFifoPort.Consume, 1
@@ -209,24 +242,18 @@ def bottleneck4AIEs():
                         element0ActivactionsOut = of_act_2_3_5.acquire(
                             ObjectFifoPort.Produce, 1
                         )
-                        res = call(
-                            conv2dk1,
-                            [
-                                element0ActivactionsIn,
-                                element0Weights,
-                                element0ActivactionsOut,
-                                tensorInW,
-                                tensorL1InC,
-                                tensorL1OutC,
-                                scale,
-                            ],
+                        conv2dk1(
+                            element0ActivactionsIn,
+                            element0Weights,
+                            element0ActivactionsOut,
+                            tensorInW,
+                            tensorL1InC,
+                            tensorL1OutC,
+                            scale,
                         )
-
-                        objectfifo_release(ObjectFifoPort.Consume, "inOF_act_L3L2", 1)
-
-                        objectfifo_release(ObjectFifoPort.Produce, "act_2_3_5", 1)
-
-                    objectfifo_release(ObjectFifoPort.Consume, "wts_buf_00", 1)
+                        of_inOF_act_L3L2.release(ObjectFifoPort.Consume, 1)
+                        of_act_2_3_5.release(ObjectFifoPort.Produce, 1)
+                    of_wts_buf_00.release(ObjectFifoPort.Consume, 1)
 
             # 3x3 conv2d OFM 0-31
             @core(ComputeTile3, "conv2dk3.o")
@@ -243,25 +270,22 @@ def bottleneck4AIEs():
                         ObjectFifoPort.Consume, 2
                     )
                     element0ActivactionsOut = act_3_4.acquire(ObjectFifoPort.Produce, 1)
-                    res = call(
-                        conv2dk3,
-                        [
-                            elementActivactionsIn[0],
-                            elementActivactionsIn[0],
-                            elementActivactionsIn[1],
-                            element0Weights,
-                            element0ActivactionsOut,
-                            tensorInW,
-                            tensorL2InC,
-                            tensorL2OutC,
-                            3,
-                            3,
-                            0,
-                            scale,
-                            0,
-                        ],
+                    conv2dk3(
+                        elementActivactionsIn[0],
+                        elementActivactionsIn[0],
+                        elementActivactionsIn[1],
+                        element0Weights,
+                        element0ActivactionsOut,
+                        tensorInW,
+                        tensorL2InC,
+                        tensorL2OutC,
+                        3,
+                        3,
+                        0,
+                        scale,
+                        0,
                     )
-                    objectfifo_release(ObjectFifoPort.Produce, "act_3_4", 1)
+                    act_3_4.release(ObjectFifoPort.Produce, 1)
 
                     # middle
                     for _ in range_(tensorInH - 2):
@@ -271,39 +295,10 @@ def bottleneck4AIEs():
                         element0ActivactionsOut = act_3_4.acquire(
                             ObjectFifoPort.Produce, 1
                         )
-                        res = call(
-                            conv2dk3,
-                            [
-                                elementActivactionsIn[0],
-                                elementActivactionsIn[1],
-                                elementActivactionsIn[2],
-                                element0Weights,
-                                element0ActivactionsOut,
-                                tensorInW,
-                                tensorL2InC,
-                                tensorL2OutC,
-                                3,
-                                3,
-                                1,
-                                scale,
-                                0,
-                            ],
-                        )
-
-                        objectfifo_release(ObjectFifoPort.Consume, "act_2_3_5", 1)
-                        objectfifo_release(ObjectFifoPort.Produce, "act_3_4", 1)
-
-                    # last part
-                    elementActivactionsIn = of_act_2_3_5.acquire(
-                        ObjectFifoPort.Consume, 2
-                    )
-                    element0ActivactionsOut = act_3_4.acquire(ObjectFifoPort.Produce, 1)
-                    res = call(
-                        conv2dk3,
-                        [
+                        conv2dk3(
                             elementActivactionsIn[0],
                             elementActivactionsIn[1],
-                            elementActivactionsIn[1],
+                            elementActivactionsIn[2],
                             element0Weights,
                             element0ActivactionsOut,
                             tensorInW,
@@ -311,16 +306,37 @@ def bottleneck4AIEs():
                             tensorL2OutC,
                             3,
                             3,
-                            2,
+                            1,
                             scale,
                             0,
-                        ],
+                        )
+                        of_act_2_3_5.release(ObjectFifoPort.Consume, 1)
+                        act_3_4.release(ObjectFifoPort.Produce, 1)
+
+                    # last part
+                    elementActivactionsIn = of_act_2_3_5.acquire(
+                        ObjectFifoPort.Consume, 2
+                    )
+                    element0ActivactionsOut = act_3_4.acquire(ObjectFifoPort.Produce, 1)
+                    conv2dk3(
+                        elementActivactionsIn[0],
+                        elementActivactionsIn[1],
+                        elementActivactionsIn[1],
+                        element0Weights,
+                        element0ActivactionsOut,
+                        tensorInW,
+                        tensorL2InC,
+                        tensorL2OutC,
+                        3,
+                        3,
+                        2,
+                        scale,
+                        0,
                     )
 
-                    objectfifo_release(ObjectFifoPort.Consume, "act_2_3_5", 2)
-                    objectfifo_release(ObjectFifoPort.Produce, "act_3_4", 1)
-
-                    objectfifo_release(ObjectFifoPort.Consume, "wts_buf_01", 1)
+                    of_act_2_3_5.release(ObjectFifoPort.Consume, 2)
+                    act_3_4.release(ObjectFifoPort.Produce, 1)
+                    wts_buf_01.release(ObjectFifoPort.Consume, 1)
 
             # 3x3 conv2d OFM 32-63
             @core(ComputeTile5, "conv2dk3.o")
@@ -337,26 +353,22 @@ def bottleneck4AIEs():
                         ObjectFifoPort.Consume, 2
                     )
                     element0ActivactionsOut = act_5_4.acquire(ObjectFifoPort.Produce, 1)
-                    res = call(
-                        conv2dk3,
-                        [
-                            elementActivactionsIn[0],
-                            elementActivactionsIn[0],
-                            elementActivactionsIn[1],
-                            element0Weights,
-                            element0ActivactionsOut,
-                            tensorInW,
-                            tensorL2InC,
-                            tensorL2OutC,
-                            3,
-                            3,
-                            0,
-                            scale,
-                            tensorL2OutC // 2,
-                        ],
+                    conv2dk3(
+                        elementActivactionsIn[0],
+                        elementActivactionsIn[0],
+                        elementActivactionsIn[1],
+                        element0Weights,
+                        element0ActivactionsOut,
+                        tensorInW,
+                        tensorL2InC,
+                        tensorL2OutC,
+                        3,
+                        3,
+                        0,
+                        scale,
+                        tensorL2OutC // 2,
                     )
-
-                    objectfifo_release(ObjectFifoPort.Produce, "act_5_4", 1)
+                    act_5_4.release(ObjectFifoPort.Produce, 1)
 
                     # middle
                     for _ in range_(tensorInH - 2):
@@ -366,39 +378,10 @@ def bottleneck4AIEs():
                         element0ActivactionsOut = act_5_4.acquire(
                             ObjectFifoPort.Produce, 1
                         )
-                        res = call(
-                            conv2dk3,
-                            [
-                                elementActivactionsIn[0],
-                                elementActivactionsIn[1],
-                                elementActivactionsIn[2],
-                                element0Weights,
-                                element0ActivactionsOut,
-                                tensorInW,
-                                tensorL2InC,
-                                tensorL2OutC,
-                                3,
-                                3,
-                                1,
-                                scale,
-                                tensorL2OutC // 2,
-                            ],
-                        )
-
-                        objectfifo_release(ObjectFifoPort.Consume, "act_2_3_5", 1)
-                        objectfifo_release(ObjectFifoPort.Produce, "act_5_4", 1)
-
-                    # last part
-                    elementActivactionsIn = of_act_2_3_5.acquire(
-                        ObjectFifoPort.Consume, 2
-                    )
-                    element0ActivactionsOut = act_5_4.acquire(ObjectFifoPort.Produce, 1)
-                    res = call(
-                        conv2dk3,
-                        [
+                        conv2dk3(
                             elementActivactionsIn[0],
                             elementActivactionsIn[1],
-                            elementActivactionsIn[1],
+                            elementActivactionsIn[2],
                             element0Weights,
                             element0ActivactionsOut,
                             tensorInW,
@@ -406,14 +389,36 @@ def bottleneck4AIEs():
                             tensorL2OutC,
                             3,
                             3,
-                            2,
+                            1,
                             scale,
                             tensorL2OutC // 2,
-                        ],
+                        )
+                        of_act_2_3_5.release(ObjectFifoPort.Consume, 1)
+                        act_5_4.release(ObjectFifoPort.Produce, 1)
+
+                    # last part
+                    elementActivactionsIn = of_act_2_3_5.acquire(
+                        ObjectFifoPort.Consume, 2
                     )
-                    objectfifo_release(ObjectFifoPort.Consume, "act_2_3_5", 2)
-                    objectfifo_release(ObjectFifoPort.Produce, "act_5_4", 1)
-                    objectfifo_release(ObjectFifoPort.Consume, "wts_buf_01", 1)
+                    element0ActivactionsOut = act_5_4.acquire(ObjectFifoPort.Produce, 1)
+                    conv2dk3(
+                        elementActivactionsIn[0],
+                        elementActivactionsIn[1],
+                        elementActivactionsIn[1],
+                        element0Weights,
+                        element0ActivactionsOut,
+                        tensorInW,
+                        tensorL2InC,
+                        tensorL2OutC,
+                        3,
+                        3,
+                        2,
+                        scale,
+                        tensorL2OutC // 2,
+                    )
+                    of_act_2_3_5.release(ObjectFifoPort.Consume, 2)
+                    act_5_4.release(ObjectFifoPort.Produce, 1)
+                    wts_buf_01.release(ObjectFifoPort.Consume, 1)
 
             # # 1x1 conv2d and add skip
             @core(ComputeTile4, "conv2dk1_skip.o")
@@ -422,8 +427,8 @@ def bottleneck4AIEs():
 
                     # acquire weights and rtps once
                     element0Weights = wts_buf_02.acquire(ObjectFifoPort.Consume, 1)
-                    scale = memref.load(rtpComputeTile4, [0])
-                    skipScale = memref.load(rtpComputeTile4, [1])
+                    scale = rtpComputeTile4[0]
+                    skipScale = rtpComputeTile4[1]
 
                     for _ in range_(tensorInH):
                         element0ActivactionsIn = act_3_4.acquire(
@@ -437,39 +442,25 @@ def bottleneck4AIEs():
                             ObjectFifoPort.Produce, 1
                         )
 
-                        call(
-                            conv2dk1_skip,
-                            [
-                                element0ActivactionsIn,
-                                element1ActivactionsIn,
-                                element0Weights,
-                                elementActivactionsOut,
-                                elementSkipsIn,
-                                tensorInW,
-                                tensorL3InC,
-                                tensorL3OutC,
-                                scale,
-                                skipScale,
-                            ],
+                        conv2dk1_skip(
+                            element0ActivactionsIn,
+                            element1ActivactionsIn,
+                            element0Weights,
+                            elementActivactionsOut,
+                            elementSkipsIn,
+                            tensorInW,
+                            tensorL3InC,
+                            tensorL3OutC,
+                            scale,
+                            skipScale,
                         )
-                        objectfifo_release(ObjectFifoPort.Produce, "outOFL2L3", 1)
-                        objectfifo_release(ObjectFifoPort.Consume, "act_3_4", 1)
-                        objectfifo_release(ObjectFifoPort.Consume, "act_5_4", 1)
-                        objectfifo_release(ObjectFifoPort.Consume, "skip_buf", 1)
-                    objectfifo_release(ObjectFifoPort.Consume, "wts_buf_02", 1)
+                        outOFL2L3.release(ObjectFifoPort.Produce, 1)
+                        act_3_4.release(ObjectFifoPort.Consume, 1)
+                        act_5_4.release(ObjectFifoPort.Consume, 1)
+                        of_skip_buf.release(ObjectFifoPort.Consume, 1)
+                    wts_buf_02.release(ObjectFifoPort.Consume, 1)
 
             # instruction stream generation
-            activationsIn = tensorInW * tensorInH * tensorInC
-            acitivationsOut = activationsIn
-            totalWeights = (
-                tensorL1InC * tensorL1OutC
-                + 3 * 3 * tensorL2InC * tensorL2OutC
-                + tensorL3InC * tensorL3OutC
-            )
-
-            activationsInL3_ty = T.memref(activationsIn, int8_ty)
-            weightsInL3_ty = T.memref(totalWeights, uint8_ty)
-
             @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsInL3_ty)
             def sequence(inputFromL3, weightsFromL3, outputToL3):
 
@@ -553,13 +544,12 @@ def bottleneck4AIEs():
                     npu_write32(0, 2, 0x1D20C, 0x3)
 
                 # write RTP parameters
-                NpuWriteRTPOp("rtpComputeTile2", index=0, value=1)  # scale
-                NpuWriteRTPOp("rtpComputeTile3", index=0, value=1)  # scale
-                NpuWriteRTPOp("rtpComputeTile5", index=0, value=1)  # scale
-                NpuWriteRTPOp(
-                    "rtpComputeTile4", index=0, value=1
-                )  # scale: conv1x1 with the same scale as the input so we match the scaling factor of output after conv1x1 and the initial input
-                NpuWriteRTPOp("rtpComputeTile4", index=1, value=0)  # skip_scale
+                rtpComputeTile2[0] = 1  # scale
+                rtpComputeTile3[0] = 1  # scale
+                rtpComputeTile5[0] = 1  # scale
+                # scale: conv1x1 with the same scale as the input so we match the scaling factor of output after conv1x1 and the initial input
+                rtpComputeTile4[0] = 1
+                rtpComputeTile4[1] = 0  # skip_scale
 
                 npu_dma_memcpy_nd(
                     metadata=of_inOF_act_L3L2,

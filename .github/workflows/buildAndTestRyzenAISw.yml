@@ -1,0 +1,134 @@
+name: Build and Test with Ryzen AI Sofware
+
+on:
+  push:
+    branches:
+      - main
+      - ryzen-ai-sw-test
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      AIE_COMMIT:
+        description: 'which aie commit to build'
+        type: string
+        required: false
+        default: ''
+      LIT_FILTER:
+        description: 'LIT_FILTER for tests (regex of paths in test/)'
+        type: string
+        required: false
+        default: ''
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-build-test-ryzenai-tools-linux-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+
+jobs:
+  build-repo:
+    name: Build and Test with Ryzen AI Software
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Free disk space
+        uses: descriptinc/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: false
+
+      - name: Docker prune
+        shell: bash
+        run: |
+          docker system prune -a -f
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: "true"
+      - uses: uraimo/run-on-arch-action@v2.5.0
+        name: Build and Test
+        id: runcmd
+        with:
+          distro: none
+          base_image: ghcr.io/xilinx/mlir-aie/ubuntu22-ryzenai-1.3.0ea
+          githubToken: ${{ github.token }}
+          dockerRunArgs: |
+            --mac-address ${{ secrets.XILINX_MAC }}
+          run: |
+
+            MLIR_DIR=$PWD
+            pushd /workspace
+
+            # this is the inverse of `base64 -w 1000000 Xilinx.lic`
+            # the -w ("wrap after 1000000 cols") is so that there are no spaces in the XILINX_LIC env var
+            echo -n "${{ secrets.XILINX_LIC }}" | base64 --decode > /workspace/Xilinx.lic
+            export XILINXD_LICENSE_FILE=/workspace/Xilinx.lic
+
+            ccrypt -d -K ${{ secrets.RYZEN_AI_SW_KEY }} /workspace/ryzen_ai-1.3.0ea1.tgz.cpt
+            tar xvf /workspace/ryzen_ai-1.3.0ea1.tgz
+            pushd /workspace/ryzen_ai-1.3.0
+            ./install_ryzen_ai_1_3.sh -a yes -p /workspace/venv -l
+            popd
+
+            export LD_LIBRARY_PATH=
+            export PYTHONPATH=
+            source /workspace/venv/bin/activate
+            source /opt/xilinx/xrt/setup.sh
+            popd
+            
+            if [ x"${{ inputs.AIE_COMMIT }}" != x"" ]; then
+              git reset --hard ${{ inputs.AIE_COMMIT }}
+            fi
+
+            pip install onnxruntime==1.17.0
+            pip install -r python/requirements.txt
+            pip install -r python/requirements_ml.txt
+            HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+
+            VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+
+            cd /workspace
+            pip -q download mlir==$VERSION \
+              -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+            unzip -q mlir-*.whl
+
+            mkdir -p /workspace/install
+            mkdir -p /workspace/build
+
+            pushd /workspace/build
+
+            cmake $MLIR_DIR -G Ninja \
+                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+                -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+                -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+                -DXRT_ROOT=/opt/xilinx/xrt \
+                -DAIE_ENABLE_PYTHON_PASSES=OFF \
+                -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
+                -DAIE_INCLUDE_INTEGRATION_TESTS=OFF \
+                -DAIE_VITIS_COMPOONENTS=AIE2 \
+                -DPython3_EXECUTABLE=$(which python) \
+                -DLLVM_EXTERNAL_LIT=$(which lit) \
+                -DCMAKE_INSTALL_PREFIX=/workspace/install \
+                -DCMAKE_MODULE_PATH=$MLIR_DIR/cmake/modulesXilinx \
+                -DMLIR_DIR=/workspace/mlir/lib/cmake/mlir
+
+            ninja install
+            ninja check-aie
+
+            popd
