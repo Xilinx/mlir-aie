@@ -131,7 +131,8 @@ def setup_aie(
 ):
     app = AIE_Application(xclbin_path, insts_path, kernel_name)
 
-    app.register_buffer(3, shape=in_0_shape, dtype=in_0_dtype)
+    if in_0_shape or in_0_dtype:
+        app.register_buffer(3, shape=in_0_shape, dtype=in_0_dtype)
     if in_1_shape or in_1_dtype:
         app.register_buffer(4, shape=in_1_shape, dtype=in_1_dtype)
 
@@ -159,8 +160,9 @@ def write_out_trace(trace, file_name):
         f.write(out_str)
 
 
-def execute(app, input_one, input_two=None):
-    app.buffers[3].write(input_one)
+def execute(app, input_one=None, input_two=None):
+    if not (input_one is None):
+        app.buffers[3].write(input_one)
     if not (input_two is None):
         app.buffers[4].write(input_two)
     app.run()
