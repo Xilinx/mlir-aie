@@ -233,7 +233,10 @@ def emit_partition(mlir_module_str, kernel_id="0x901", start_columns=None):
         # XCLbin at all, since it is basically describing information
         # which is already inherent in the CDO.
         # For the time being, we just leave it here.
-        if len(device) > 0 and (int(device[0].device) in [int(aiedialect.AIEDevice.npu1), int(aiedialect.AIEDevice.npu2)]):
+        if len(device) > 0 and (
+            int(device[0].device)
+            in [int(aiedialect.AIEDevice.npu1), int(aiedialect.AIEDevice.npu2)]
+        ):
             start_columns = [0]
         else:
             start_columns = list(range(1, 6 - num_cols))
