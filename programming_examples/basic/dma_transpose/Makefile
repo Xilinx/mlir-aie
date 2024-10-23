@@ -31,6 +31,7 @@ build/experimental_aie.mlir: ${srcdir}/experimental_aie2.py
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				--no-xchesscc --no-xbridge \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
 build/experimental_final.xclbin: build/experimental_aie.mlir

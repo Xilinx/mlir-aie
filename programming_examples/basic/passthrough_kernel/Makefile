@@ -39,11 +39,12 @@ mlir_diff: build/aie2_lineBased_8b_${data_size}.mlir build/experimental_aie2_lin
 
 build/passThrough.cc.o: passThrough.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
 	
 build/final_${data_size}.xclbin: build/aie2_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
 
 build/experimental_final_${data_size}.xclbin: build/experimental_aie2_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
@@ -54,6 +55,7 @@ build/experimental_final_${data_size}.xclbin: build/experimental_aie2_lineBased_
 build/final_trace_${data_size}.xclbin: build/aie2_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
 
 ${targetname}_${data_size}.exe: ${srcdir}/test.cpp

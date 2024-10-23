@@ -51,9 +51,10 @@ def my_vector_scalar(vector_size, trace_size):
         )
         of_out = object_fifo("out", ComputeTile2, ShimTile, buffer_depth, tile_ty)
 
-        # Set up a circuit-switched flow from core to shim for tracing information
+        # Set up a packet-switched flow from core to shim for tracing information
+        tiles_to_trace = [ComputeTile2]
         if trace_size > 0:
-            flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
+            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
         # Set up compute tiles
 
@@ -77,13 +78,10 @@ def my_vector_scalar(vector_size, trace_size):
         def sequence(A, F, C):
 
             if trace_size > 0:
-                trace_utils.configure_simple_tracing_aie2(
-                    ComputeTile2,
-                    ShimTile,
-                    ddr_id=2,
-                    size=trace_size,
-                    offset=N_in_bytes,
+                trace_utils.configure_packet_tracing_aie2(
+                    tiles_to_trace, ShimTile, trace_size, N_in_bytes
                 )
+
             npu_dma_memcpy_nd(
                 metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N], issue_token=True
             )
