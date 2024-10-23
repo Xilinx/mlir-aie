@@ -14,7 +14,7 @@ from aie.api.program import Program
 from aie.api.kernels.binkernel import BinKernel
 from aie.api.worker import Worker
 from aie.api.phys.device import NPU1Col1
-from aie.helpers.util import DataTiler
+from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D
 from aie.helpers.dialects.ext.scf import _for as range_
 
 
@@ -47,16 +47,16 @@ def row_wise_bias_add(M, N, m, n):
                 bias_fifo.release(1)
 
     io = IOCoordinator()
-    inp = io.inout_data(tensor_ty)
-    bias = io.inout_data(bias_ty)
-    out = io.inout_data(tensor_ty)
-
-    tiler = DataTiler(M * N, sizes=[1, N // n, M, n], strides=[0, n, N, 1])
-    bias_tiler = DataTiler(N, sizes=[1, 1, N // n, n], strides=[0, 0, n, 1])
-    for t in io.tile_loop(tiler):
-        io.fill(in_fifo.first, t, inp, coords=(0, 0))
-        io.fill(bias_fifo.first, next(bias_tiler), bias, coords=(0, 0))
-        io.drain(out_fifo.second, t, out, coords=(0, 0), wait=True)
+    with io.build_sequence(tensor_ty, bias_ty, tensor_ty) as (inp, bias, out):
+        tiler = TensorTiler2D(M, N, m, n, tensor_col_major=True)
+        bias_tiler = TensorTiler2D(1, N, 1, n)
+        for t, bias_t in io.tile_loop(
+            tiler.tile_iter(chunk_height=M // m, chunk_width=N // n),
+            bias_tiler.tile_iter(chunk_width=N // n),
+        ):
+            io.fill(in_fifo.first, t, inp, coords=(0, 0))
+            io.fill(bias_fifo.first, bias_t, bias, coords=(0, 0))
+            io.drain(out_fifo.second, t, out, coords=(0, 0), wait=True)
 
     my_worker = Worker(
         core_fn,

@@ -66,6 +66,7 @@ ${xclbin_target}: ${mlir_target} build/kernel.o
 ${experimental_xclbin_target}: ${experimental_mlir_target} build/kernel.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				--no-xchesscc --no-xbridge \
 				--aie-generate-npu --npu-insts-name=${experimental_insts_target:build/%=%} ${<:%=../%}
 
 ${host_target}: ${srcdir}/test.cpp ${xclbin_target}
