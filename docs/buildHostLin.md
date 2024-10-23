@@ -24,20 +24,19 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 ## Overview
 You will...
 
+1. Install the compiler toolchain, allowing you to compile your own NPU designs from source. As part of this, you will need to...
+
+   1. [...install prerequisites.](#prerequisites)
+   
+   1. ...install MLIR-AIE [from precompiled binaries (fast)](#option-a---quick-setup-for-ryzen-ai-application-development) or [from source (slow)](#option-b---build-mlir-aie-tools-from-source-for-development).
+  
 1. Install a driver for the Ryzen™ AI. As part of this, you will need to...
 
-   1. [...install Xilinx Vitis and obtain a license.](#install-xilinx-vitis-20232)
+   1. [...install AIE Tools and obtain a license.](#install-aietools)
 
    1. [...compile and install a more recent Linux kernel.](#update-linux)
 
-   1. [...compile and install the XDNA driver from source.](#install-the-xdna-driver)
-
-1. Install the compiler toolchain, allowing you to compile your own NPU designs from source. As part of this, you will need to...
-
-
-   1. [...install prerequisites.](#install-mlir-aie-prerequisites)
-   
-   1. ...install MLIR-AIE [from precompiled binaries (fast)](#option-a---quick-setup-for-ryzen-ai-application-development) or [from source (slow)](#option-b---build-mlir-aie-tools-from-source-for-development).
+   1. [...compile and install the XDNA™ driver from source.](#install-the-xdna-driver)
 
 1. Build and execute one of the example designs. This consists of...
 
@@ -47,23 +46,62 @@ You will...
    
    3. [...building and executing host (x86) code and device (NPU) code.](#build-and-run-host-part) 
 
-> Be advised that two of the steps (Linux compilation and Vitis install) may take hours. If you decide to build mlir-aie from source, this will also take a long time as it contains an LLVM build. Allocate enough time and patience. Once done, you will have an amazing toolchain allowing you to harness this great hardware at your hands.
+> Be advised that some of the potential steps (Linux kernel compilation and installing AIE Tools from Vitis™) may take hours. If you decide to build mlir-aie from source, this will also take a long time as it contains an LLVM build. Allocate enough time and patience. Once done, you will have an amazing toolchain allowing you to harness this great hardware at your hands.
 
 ## Prerequisites
 
-### Install Xilinx Vitis 2023.2 
+### Install AIETools
 
-1. Install Vitis under from [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html). You will need to run the installer as root. We will assume you use the default installation directory, `/tools/Xilinx`.
+#### Option A - Supporting AMD Ryzen™ AI with AIE-ML (AIE2) and AIE2P: Install AMD Vitis™ AIE Essentials 
 
-   > This is a large download. A wired connection will speed things up. Be prepared to spend multiple hours on this step.
+1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3 Early Accesss](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab). We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
 
-1. Set up a AI Engine license.
+   > This is an early access lounge, you must register and be granted access at this time.
 
-    1. Get a local license for AIE Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense).
+    1. Download VAIML Installer for Linux based compilation: `ryzen_ai-1.3.0ea1.tgz`
+ 
+    1. Extract the required tools:
+
+       ``` bash
+          tar -xzvf ryzen_ai-1.3.0ea1.tgz
+          cd ryzen_ai-1.3.0
+          mkdir vitis_aie_essentials
+          mv vitis_aie_essentials*.whl vitis_aie_essentials
+          cd vitis_aie_essentials
+          unzip vitis_aie_essentials*.whl
+       ```
+
+1. Set up an AI Engine license.
+
+    1. Get a local license for AI Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense).
 
     1. Copy your license file (Xilinx.lic) to your preferred location, e.g. `/opt/Xilinx.lic`:
        
     1. Setup your environment using the following script for Vitis for aietools:
+
+       ```bash
+       #!/bin/bash
+        #################################################################################
+        # Setup Vitis AIE Essentials
+        #################################################################################
+        export AIETOOLS_ROOT=/tools/ryzen_ai-1.3.0/vitis_aie_essentials
+        export PATH=$PATH:${AIETOOLS_ROOT}/bin
+        export LM_LICENSE_FILE=/opt/Xilinx.lic
+       ```
+      
+#### Option B - Supporting AMD Ryzen™ AI and AMD Versal™ with AIE and AIE-ML (AIE2): Install AMD Vitis™ 2023.2 
+
+1. Install Vitis™ under from [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html). You will need to run the installer as root. We will assume you use the default installation directory, `/tools/Xilinx`.
+
+   > This is a large download. A wired connection will speed things up. Be prepared to spend multiple hours on this step.
+
+1. Set up an AI Engine license.
+
+    1. Get a local license for AI Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense).
+
+    1. Copy your license file (Xilinx.lic) to your preferred location, e.g. `/opt/Xilinx.lic`:
+       
+    1. Setup your environment using the following script for Vitis™ for aietools:
 
        ```bash
        #!/bin/bash
@@ -77,7 +115,7 @@ You will...
         export PATH=$PATH:${AIETOOLS_ROOT}/bin
         export LM_LICENSE_FILE=/opt/Xilinx.lic
        ```
-   1. Vitis requires some python3.8 libraries:
+   1. Vitis™ requires some python3.8 libraries:
   
       ```bash
       sudo add-apt-repository ppa:deadsnakes/ppa
@@ -144,7 +182,7 @@ You will...
     sudo shutdown --reboot 0
     ```
 
-### Install the XDNA Driver
+### Install the XDNA™ Driver
 
 1. Install a more recent CMake, which is needed for building XRT.
    
@@ -182,7 +220,7 @@ You will...
    libidn11-dev
    ```
 
-1. Clone the XDNA driver repository and its submodules.
+1. Clone the XDNA™ driver repository and its submodules.
     ```bash
     git clone https://github.com/amd/xdna-driver.git
     export XDNA_SRC_DIR=$(realpath xdna-driver)
@@ -202,7 +240,7 @@ You will...
        sudo ./tools/amdxdna_deps.sh
        ```
 
-    2. Build XRT. Remember to source the aietools/Vitis setup script from [above](#install-xilinx-vitis-20232).
+    2. Build XRT. Remember to source the aietools/Vitis™ setup script from [above](#install-aietools).
 
        ```bash
        cd $XDNA_SRC_DIR/xrt/build
@@ -228,7 +266,7 @@ You will...
     ./build.sh -package
     ```
 
-1. Install XDNA.
+1. Install XDNA™.
 
     ```bash
     cd $XDNA_SRC_DIR/build/Release
@@ -268,11 +306,13 @@ You will...
    sudo apt install libopencv-dev python3-opencv
    ```
 
-1. Remember to source the aietools/Vitis setup script from [above](#install-xilinx-vitis-20232).
+1. Remember to source the aietools/Vitis™ setup script from [above](#install-aietools).
 
 1. Choose *one* of the two options (A or B) below for installing MLIR-AIE.
 
 ### Option A - Quick Setup for Ryzen™ AI Application Development
+
+   > NOTE: Installing the mlir-aie tools from wheels via the quick setup path supports AIE-ML (AIE2) and AIE2P, it does NOT support Versal™ devices with AIE. 
 
 1. Clone [the mlir-aie repository](https://github.com/Xilinx/mlir-aie.git), best under /home/username for speed (yourPathToBuildMLIR-AIE): 
    ```bash
@@ -380,7 +420,7 @@ sudo rmmod amdxdna.ko
 sudo insmod $XDNA_SRC_DIR/build/Release/bins/driver/amdxdna.ko
 ```
 
-If you installed the AMD XDNA driver using `.deb` packages as outlined above, and `insmod` does not work, you may instead want to try:
+If you installed the AMD XDNA™ driver using `.deb` packages as outlined above, and `insmod` does not work, you may instead want to try:
 
 ```bash
 sudo modprobe -r amdxdna
@@ -423,7 +463,7 @@ rm /lib/firmware/amdnpu/1502/<your tests>.xclbin
 
 The `v++` compiler for the NPU device code requires a valid Vitis license. If you are getting errors related to this:
 
-1. You have obtained a valid license, as described [above](#install-xilinx-vitis-20232-and-other-mlir-aie-prerequisites). 
+1. You have obtained a valid license, as described [above](#prerequisites). 
 1. Make sure you have set the environment variable `LM_LICENSE_FILE` to point to your license file, see [above](#setting-up-your-environment).
 1. Make sure the ethernet interface whose MAC address you used to generate the license is still available on your machine. For example, if you used the MAC address of a removable USB Ethernet adapter, and then removed that adapter, the license check will fail. You can list MAC addresses of interfaces on your machine using `ip link`.
 

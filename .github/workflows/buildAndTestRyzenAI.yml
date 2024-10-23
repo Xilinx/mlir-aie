@@ -46,6 +46,7 @@ env:
             -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
             -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
             -DXRT_ROOT=/opt/xilinx/xrt \
+            -DAIE_VITIS_COMPONENTS=AIE2;AIE2P \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
             -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
             -DAIE_INCLUDE_INTEGRATION_TESTS=OFF

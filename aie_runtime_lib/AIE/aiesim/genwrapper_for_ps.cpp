@@ -1,3 +1,12 @@
+//===- genwrapper_for_ps.mlir ----------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2024 Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
 #include <adf/wrapper/wrapper.h>
 #include <xtlm.h>
 #define BUSWIDTH 128
