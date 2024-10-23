@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+import itertools
 import numpy as np
 import sys
 
@@ -13,7 +14,7 @@ from aie.api.dataflow.objectfifo import ObjectFifo
 from aie.api.program import Program
 from aie.api.worker import Worker
 from aie.api.phys.device import NPU1Col1
-from aie.helpers.util import DataTiler
+from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D
 from aie.helpers.dialects.ext.scf import _for as range_
 
 # Size of the entire image
@@ -66,12 +67,8 @@ def my_matrix_add_one():
     io = IOCoordinator()
     with io.build_sequence(tile_ty, tile_ty, tile_ty) as (in_tensor, _, out_tensor):
         # we only run this program on a single tile of data so use TILE_SIZE for total data instead of IMAGE_SIZE
-        tiler = DataTiler(
-            TILE_SIZE,
-            sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
-            strides=[1, 1, IMAGE_WIDTH, 1],
-        )
-        for t in io.tile_loop(tiler):
+        tiler = TensorTiler2D(IMAGE_HEIGHT, IMAGE_WIDTH, TILE_HEIGHT, TILE_WIDTH)
+        for t in io.tile_loop(itertools.islice(tiler.tile_iter(), 0, 1)):
             io.fill(of_in.first, t, in_tensor, coords=(col, 0))
             io.drain(of_out.second, t, out_tensor, coords=(col, 0), wait=True)
     return Program(dev, io, workers=[my_worker])

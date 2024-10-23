@@ -15,7 +15,7 @@ class IOEndpoint(ObjectFifoEndpoint):
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, IOEndpoint):
             return NotImplemented
-        return self.tile() == other.tile()
+        return self.tile == other.tile
 
     def __str__(self) -> str:
         return f"IOEndpoint({self.tile})"
