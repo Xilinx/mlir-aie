@@ -37,6 +37,7 @@ build/final.xclbin: build/aie.mlir
 build/experimental_final.xclbin: build/experimental_aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				--no-xchesscc --no-xbridge \
 				--aie-generate-npu --npu-insts-name=experimental_insts.txt $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
@@ -57,6 +58,10 @@ run_experimental: ${targetname}.exe build/experimental_final.xclbin build/experi
 	${powershell} ./$< -x build/experimental_final.xclbin -i build/experimental_insts.txt -k MLIR_AIE --M ${M} --K ${K}
 
 generate_access_map: ${srcdir}/aie2.py
+	mkdir -p ${@D}
+	python3 $< --generate-access-map ${M} ${K}
+
+generate_experimental_access_map: ${srcdir}/experimental_aie2.py
 	mkdir -p ${@D}
 	python3 $< --generate-access-map ${M} ${K}
 

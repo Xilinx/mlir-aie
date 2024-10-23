@@ -9,7 +9,7 @@ from ... import ir  # type: ignore
 
 from ...dialects.aiex import runtime_sequence
 from ...dialects._aiex_ops_gen import dma_free_task
-from ...helpers.util import DataTiler, DataTileSpec
+from ...helpers.tensortiler.tensortiler2D import TensorTile2DIter, TensorTile
 from ..dataflow.objectfifo import ObjectFifoHandle
 from ..resolvable import Resolvable
 from .dmatask import DMATask
@@ -31,7 +31,7 @@ class IOIterator:
     def __init__(
         self,
         io_coord: IOCoordinator,
-        data_tile_iterator: DataTiler,
+        data_tile_iterator: TensorTile2DIter,
     ) -> IOIterator:
         self.io_coord = io_coord
         self.data_tile_iterator = data_tile_iterator
@@ -68,7 +68,7 @@ class IOCoordinator(Resolvable):
     def fill(
         self,
         in_fifo: ObjectFifoHandle,
-        data_tile: DataTileSpec,
+        data_tile: TensorTile,
         source: InOutData,
         wait: bool = False,
         coords: tuple[int, int] | None = None,
@@ -84,7 +84,7 @@ class IOCoordinator(Resolvable):
     def drain(
         self,
         out_fifo: ObjectFifoHandle,
-        data_tile: DataTileSpec,
+        data_tile: TensorTile,
         dest: InOutData,
         wait: bool = False,
         coords: tuple[int, int] | None = None,
@@ -100,7 +100,7 @@ class IOCoordinator(Resolvable):
     def get_fifos(self) -> list[ObjectFifoHandle]:
         return self.__fifos.copy()
 
-    def tile_loop(self, *args: DataTiler) -> IOIterator:
+    def tile_loop(self, *args: TensorTile) -> IOIterator:
         if len(args) == 1:
             return IOIterator(self, *args)
         return IOIterator(self, zip(*args))

@@ -12,6 +12,7 @@ class TensorTile:
         offset: int,
         sizes: list[int],
         strides: list[int],
+        transfer_len: int | None = None,
         repeats: bool = False,
     ):
         self.tensor_height = tensor_height
@@ -20,6 +21,11 @@ class TensorTile:
         self.sizes = sizes
         self.strides = strides
         self.repeats = repeats
+        self.transfer_len = transfer_len
+
+    @property
+    def dimensions(self) -> list[tuple[int, int]]:
+        return list(zip(self.sizes, self.strides))
 
     def visualize(
         self,
@@ -60,10 +66,12 @@ class TensorTile2DIter:
         strides: list[int],
         offset_fn: Callable[[int], int],
         num_steps: int,
+        transfer_len: int | None = None,
         repeats: bool = False,
     ):
         self.__num_steps = num_steps
         self.__current_step = 0
+        self.__transfer_len = transfer_len
         self.__repeats = repeats
 
         self.__tensor_height = tensor_height
@@ -86,6 +94,7 @@ class TensorTile2DIter:
             self.__offset_fn(step),
             self.__sizes,
             self.__strides,
+            self.__transfer_len,
             self.__repeats,
         )
 
@@ -102,25 +111,32 @@ class TensorTiler2D:
         self,
         tensor_height: int,
         tensor_width: int,
-        tile_height: int,
-        tile_width: int,
+        tile_height: int | None = None,
+        tile_width: int | None = None,
         tensor_col_major: bool = False,
         tile_col_major: bool = False,
     ):
-        assert (
-            tensor_height % tile_height == 0
-        ), f"Tensor height ({tensor_height}) must be divisible by tile height ({tile_height})"
-        assert (
-            tensor_width % tile_width == 0
-        ), f"Tensor width ({tensor_width}), must be divisible by tile width ({tile_width})"
-
         self.__tensor_height = tensor_height
         self.__tensor_width = tensor_width
         self.__tile_height = tile_height
         self.__tile_width = tile_width
+        if tile_height is None or tile_width is None:
+            assert (
+                tile_height is None and tile_width is None
+            ), f"Must supply both or neither of tile_height and tile_width"
+            self.__tile_height = self.__tensor_height
+            self.__tile_width = self.__tensor_width
+            tile_col_major = tensor_col_major
+
+        assert (
+            self.__tensor_height % self.__tile_height == 0
+        ), f"Tensor height ({self.__tensor_height}) must be divisible by tile height ({self.__tile_height})"
+        assert (
+            self.__tensor_width % self.__tile_width == 0
+        ), f"Tensor width ({self.__tensor_width}), must be divisible by tile width ({self.__tile_width})"
 
         self.__num_tiles_per_row = self.__tensor_width // self.__tile_width
-        self.__num_tiles_per_column = self.__tensor_height // self.__tile_height
+        self.__num_tiles_per_col = self.__tensor_height // self.__tile_height
 
         self.__tensor_col_major = tensor_col_major
         self.__tile_col_major = tile_col_major
@@ -142,7 +158,7 @@ class TensorTiler2D:
             # This is a special case where we can express the transformation with a less complicated transform
             self.__sizes = [
                 1,
-                self.__num_tiles_per_column,
+                self.__num_tiles_per_col,
                 self.__tensor_width,
                 self.__tile_height,
             ]
@@ -163,7 +179,7 @@ class TensorTiler2D:
             as stride dimension size may exceed allowable, hence the special cases above.
             """
             self.__sizes = [
-                self.__num_tiles_per_column,
+                self.__num_tiles_per_col,
                 self.__num_tiles_per_row,
                 self.__tile_height,
                 self.__tile_width,
@@ -206,21 +222,21 @@ class TensorTiler2D:
             self.__num_tiles_per_row % chunk_width == 0
         ), f"Tiles per row ({self.__num_tiles_per_row}) must be divisible by chunk width ({chunk_width})"
         assert (
-            self.__num_tiles_per_column % chunk_height == 0
-        ), f"Tiles per row ({self.__num_tiles_per_column}) must be divisible by chunk width ({chunk_height})"
+            self.__num_tiles_per_col % chunk_height == 0
+        ), f"Tiles per row ({self.__num_tiles_per_col}) must be divisible by chunk width ({chunk_height})"
 
         chunks_per_row = self.__num_tiles_per_row // chunk_width
-        chunks_per_column = self.__num_tiles_per_column // chunk_height
+        chunks_per_col = self.__num_tiles_per_col // chunk_height
 
-        steps = chunks_per_row * chunks_per_column
+        steps = chunks_per_row * chunks_per_col
 
         def calc_offset(iter_num):
             if not col_major:
                 row_idx = iter_num % chunks_per_row
                 col_idx = iter_num // chunks_per_row
             else:
-                col_idx = iter_num % chunks_per_column
-                row_idx = iter_num // chunks_per_column
+                col_idx = iter_num % chunks_per_col
+                row_idx = iter_num // chunks_per_col
 
             offset = row_idx * chunk_width * self.__tile_width
             offset += col_idx * chunk_height * self.__tensor_width * self.__tile_height
@@ -292,6 +308,10 @@ class TensorTiler2D:
             iter_strides,
             offset_fn=calc_offset,
             num_steps=steps,
+            transfer_len=chunk_width
+            * chunk_height
+            * self.__tile_height
+            * self.__tile_width,
         )
 
     def __str__(self) -> str:

@@ -197,67 +197,6 @@ def get_arg_types(objs: Sequence[int | float | Value | OpView]):
     return my_types
 
 
-class DataTileSpec:
-    def __init__(self, offset, dimensions, transfer_len):
-        self.offset = offset
-        self.dimensions = dimensions
-        self.sizes = [size for (size, _stride) in dimensions] if dimensions else None
-        self.strides = (
-            [stride for (_size, stride) in dimensions] if dimensions else None
-        )
-        self.transfer_len = transfer_len
-
-
-class DataTiler:
-    def __init__(
-        self,
-        total_data: int,
-        initial_offset: int = 0,
-        sizes=None,
-        strides=None,
-        dimensions=None,
-    ):
-        assert total_data > 0
-        self.__offset = initial_offset
-        self.__dimensions = dimensions
-        if dimensions:
-            if sizes or strides:
-                raise ValueError(
-                    f"My only supply either dimensions ({dimensions}) OR sizes ({sizes}) and strides ({strides})"
-                )
-        else:
-            if strides and not sizes:
-                sizes = [1, 1, 1, total_data]
-            elif sizes and not strides:
-                strides = [0, 0, 0, 1]
-
-            if not sizes and not sizes:
-                self.__len = total_data
-                self.__transfer_len = total_data
-            else:
-                self.__dimensions = list(zip(sizes, strides))
-
-        if self.__dimensions:
-            self.__len = np.prod([size for (size, _stride) in self.__dimensions])
-            self.__transfer_len = self.__len // self.__dimensions[0][0]
-        self.__num_tiles = total_data // self.__len
-        self.__tile_num = 0
-
-    def __iter__(self):
-        return self
-
-    def __next__(self) -> DataTileSpec:
-        if self.__num_tiles > self.__tile_num:
-            data_tile_spec = DataTileSpec(
-                self.__offset, self.__dimensions, self.__transfer_len
-            )
-            self.__tile_num += 1
-            self.__offset += self.__len
-            return data_tile_spec
-        else:
-            raise StopIteration
-
-
 E = TypeVar("E")
 
 

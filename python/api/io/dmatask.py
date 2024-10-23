@@ -7,7 +7,7 @@ from ...dialects.aie import bds, dma_bd
 from ..dataflow.objectfifo import ObjectFifoHandle
 from ..resolvable import Resolvable
 from .inoutdata import InOutData
-from ...helpers.util import DataTileSpec
+from ...helpers.tensortiler.tensortiler2D import TensorTile
 
 
 class DMATask(Resolvable):
@@ -15,7 +15,7 @@ class DMATask(Resolvable):
         self,
         object_fifo: ObjectFifoHandle,
         inout_data: InOutData,
-        data_tile: DataTileSpec,
+        data_tile: TensorTile,
         wait=False,
     ):
         self.__object_fifo = object_fifo

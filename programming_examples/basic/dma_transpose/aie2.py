@@ -13,20 +13,16 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.tensortiler.tensortiler2D import TensorTile
+from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D
 
 
 def my_passthrough(M, K, N, generate_acccess_map=False):
     tensor_ty = np.ndarray[(M, K), np.dtype[np.int32]]
-    data_transform = TensorTile(
-        tensor_height=M,
-        tensor_width=K,
-        sizes=[1, K, M, 1],
-        strides=[1, 1, K, 1],
-        offset=0,
-    )
+    tile_in = next(TensorTiler2D(M, K, tensor_col_major=True).tile_iter())
+    tile_out = next(TensorTiler2D(K, M).tile_iter())
+
     if generate_acccess_map:
-        data_transform.visualize(file_path="transpose_data.png")
+        data_transform.visualize(file_path="transpose_data.png", show_tile=False)
         return
 
     with mlir_mod_ctx() as ctx:
@@ -59,11 +55,17 @@ def my_passthrough(M, K, N, generate_acccess_map=False):
                     metadata=of_in,
                     bd_id=1,
                     mem=A,
-                    sizes=data_transform.sizes,
-                    strides=data_transform.strides,
+                    sizes=tile_in.sizes,
+                    strides=tile_in.strides,
                     issue_token=True,
                 )
-                npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
+                npu_dma_memcpy_nd(
+                    metadata=of_out,
+                    bd_id=0,
+                    mem=C,
+                    sizes=tile_out.sizes,
+                    strides=tile_out.strides,
+                )
                 dma_wait(of_in, of_out)
 
     print(ctx.module)
