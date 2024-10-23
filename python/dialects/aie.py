@@ -411,7 +411,7 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
             via_DMA=via_DMA,
             plio=plio,
-            padDimensions=padDimensions
+            padDimensions=padDimensions,
             disable_synchronization=disable_synchronization,
         )
 
