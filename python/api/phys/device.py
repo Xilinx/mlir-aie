@@ -102,7 +102,7 @@ class NPU1Col4(Device):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        return AIEDevice.npu1_1col
+        return AIEDevice.npu1_4col
 
 
 class XCVC1902(Device):
