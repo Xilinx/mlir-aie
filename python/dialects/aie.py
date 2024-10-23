@@ -106,8 +106,12 @@ class external_func(FuncOp):
 def bd_dim_layout(size, stride):
     return Attribute.parse(f"#aie.bd_dim_layout<{size=}, {stride=}>")
 
+
 def bd_pad_layout(const_pad_before, const_pad_after):
-    return Attribute.parse(f"#aie.bd_pad_layout<{const_pad_before=}, {const_pad_after=}>")
+    return Attribute.parse(
+        f"#aie.bd_pad_layout<{const_pad_before=}, {const_pad_after=}>"
+    )
+
 
 @register_attribute_builder("BDDimLayoutArrayAttr")
 def bd_dim_layout_array_attr_builder(tups: List[Attribute | Tuple[int]], context=None):
@@ -125,7 +129,8 @@ def bd_dim_layout_array_array_attr_builder(tup_arrs: List[List[tuple]], context=
         f'#aie<bd_dim_layout_array_array[{", ".join(map(str, tup_arrs))}]>',
         context=context,
     )
-    
+
+
 @register_attribute_builder("BDPadLayoutArrayAttr")
 def bd_pad_layout_array_attr_builder(
     tups: List[Union[Attribute, Tuple[int]]], context=None
