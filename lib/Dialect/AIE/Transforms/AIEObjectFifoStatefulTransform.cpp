@@ -364,13 +364,12 @@ struct AIEObjectFifoStatefulTransformPass
     }
 
     TileOp creation_tile;
+    auto consumerTileOp =
+          dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
     if (share_direction == 0 || share_direction == -1)
       creation_tile = op.getProducerTileOp();
-    else {
-      auto consumerTileOp =
-          dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
+    else
       creation_tile = consumerTileOp;
-    }
 
     ObjectFifoAllocateOp opAlloc;
     auto device = op->getParentOfType<DeviceOp>();
@@ -380,10 +379,11 @@ struct AIEObjectFifoStatefulTransformPass
     }
     if (opAlloc) {
       TileOp delegate = opAlloc.getDelegateTileOp();
-      int shareDir;
-      bool hasSharedMemory =
-          isSharedMemory(op.getProducerTileOp(), delegate, &shareDir);
-      if (hasSharedMemory)
+      int prodShareDir;
+      int consShareDir;
+      isSharedMemory(delegate, op.getProducerTileOp(), &prodShareDir);
+      isSharedMemory(delegate, consumerTileOp, &consShareDir);
+      if (prodShareDir == -1 && consShareDir == -1)
         creation_tile = delegate;
       else
         opAlloc.emitOpError("objectfifo has no shared memory access to "
