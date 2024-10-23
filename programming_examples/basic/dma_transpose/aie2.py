@@ -22,7 +22,7 @@ def my_passthrough(M, K, N, generate_acccess_map=False):
     tile_out = next(TensorTiler2D(K, M).tile_iter())
 
     if generate_acccess_map:
-        data_transform.visualize(file_path="transpose_data.png", show_tile=False)
+        tile_in.visualize(file_path="transpose_data.png")
         return
 
     with mlir_mod_ctx() as ctx:

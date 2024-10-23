@@ -26,8 +26,6 @@ def my_passthrough(M, K, N, generate_acccess_map=False):
         tiler_in.visualize(file_path="experimental_transpose_data.png", show_tile=False)
         return
 
-    tensor_ty = np.ndarray[(M, K), np.dtype[np.int32]]
-
     of_in = ObjectFifo(2, tensor_ty)
     of_out = of_in.second.forward(coords=(0, 2))
 
