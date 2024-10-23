@@ -9,11 +9,10 @@ import numpy as np
 import sys
 
 from aie.api.io.iocoordinator import IOCoordinator
-from aie.api.dataflow.objectfifo import ObjectFifo, ObjectFifoLink
+from aie.api.dataflow.objectfifo import ObjectFifo
 from aie.api.program import Program
-from aie.api.worker import Worker
 from aie.api.phys.device import NPU1Col1
-from aie.helpers.util import DataTiler
+from aie.helpers.tensortiler.tensortiler2D import TensorTile
 
 N = 4096
 dev = None
@@ -43,7 +42,8 @@ of_out = of_in.second.forward(coords=(0, 2))
 
 io = IOCoordinator()
 with io.build_sequence(vector_ty, vector_ty, vector_ty) as (a_in, _, c_out):
-    for t in io.tile_loop(DataTiler(N)):
+    tile = TensorTile(1, N, 0, sizes=[1, 1, 1, N], strides=[0, 0, 0, 1])
+    for t in io.tile_loop(iter([tile])):
         io.fill(of_in.first, t, a_in, coords=(col, 0))
         io.drain(of_out.second, t, c_out, coords=(col, 0), wait=True)
 

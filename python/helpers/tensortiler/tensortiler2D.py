@@ -56,6 +56,13 @@ class TensorTile:
             allow_repeat=self.repeats,
         )
 
+    def __str__(self) -> str:
+        return (
+            f"TensorTile(tensor_height={self.tensor_height}, tensor_width={self.tensor_width}, "
+            f"offset={self.offset}, sizes={self.sizes}, strides={self.strides}, "
+            f"transfer_len={self.transfer_len})"
+        )
+
 
 class TensorTile2DIter:
     def __init__(
