@@ -12,12 +12,14 @@ class TensorTile:
         offset: int,
         sizes: list[int],
         strides: list[int],
+        repeats: bool = False,
     ):
         self.tensor_height = tensor_height
         self.tensor_width = tensor_width
         self.offset = offset
         self.sizes = sizes
         self.strides = strides
+        self.repeats = repeats
 
     def visualize(
         self,
@@ -45,6 +47,7 @@ class TensorTile:
             self.sizes,
             self.strides,
             offset=self.offset,
+            allow_repeat=self.repeats,
         )
 
 
@@ -57,9 +60,11 @@ class TensorTile2DIter:
         strides: list[int],
         offset_fn: Callable[[int], int],
         num_steps: int,
+        repeats: bool = False,
     ):
         self.__num_steps = num_steps
         self.__current_step = 0
+        self.__repeats = repeats
 
         self.__tensor_height = tensor_height
         self.__tensor_width = tensor_width
@@ -81,6 +86,7 @@ class TensorTile2DIter:
             self.__offset_fn(step),
             self.__sizes,
             self.__strides,
+            self.__repeats,
         )
 
 
@@ -103,10 +109,10 @@ class TensorTiler2D:
     ):
         assert (
             tensor_height % tile_height == 0
-        ), "Tensor height must be divisible by tile height"
+        ), f"Tensor height ({tensor_height}) must be divisible by tile height ({tile_height})"
         assert (
             tensor_width % tile_width == 0
-        ), "Tensor width must be divisible by tile width"
+        ), f"Tensor width ({tensor_width}), must be divisible by tile width ({tile_width})"
 
         self.__tensor_height = tensor_height
         self.__tensor_width = tensor_width
@@ -191,10 +197,17 @@ class TensorTiler2D:
         return self.__strides.copy()
 
     def tile_iter(
-        self, chunk_height: int = 1, chunk_width: int = 1, col_major: bool = False
+        self,
+        chunk_height: int = 1,
+        chunk_width: int = 1,
+        col_major: bool = False,
     ) -> TensorTile2DIter:
-        assert self.__num_tiles_per_row % chunk_width == 0
-        assert self.__num_tiles_per_column % chunk_height == 0
+        assert (
+            self.__num_tiles_per_row % chunk_width == 0
+        ), f"Tiles per row ({self.__num_tiles_per_row}) must be divisible by chunk width ({chunk_width})"
+        assert (
+            self.__num_tiles_per_column % chunk_height == 0
+        ), f"Tiles per row ({self.__num_tiles_per_column}) must be divisible by chunk width ({chunk_height})"
 
         chunks_per_row = self.__num_tiles_per_row // chunk_width
         chunks_per_column = self.__num_tiles_per_column // chunk_height
@@ -258,6 +271,13 @@ class TensorTiler2D:
                 size_idx = [1, 0]
             iter_sizes[size_idx[0]] = chunk_height
             iter_sizes[size_idx[1]] = chunk_width
+
+        # TODO: for contemplation later
+        """
+        if chunk_width == 1 and chunk_height == 1:
+            iter_strides = [0, 0, 0, 1]
+            iter_sizes = [1, 1, self.__tile_width, self.__tile_height]
+        """
 
         if iter_strides[3] != 1:
             print(
@@ -374,6 +394,7 @@ class TensorTiler2D:
         tile_height: int | None = None,
         tile_width: int | None = None,
         offset: int = 0,
+        allow_repeat: bool = False,
     ) -> np.ndarray:
         assert tensor_height > 0 and tensor_width > 0, "Tensor dimensions must be > 0"
         assert len(sizes) == 4, "Sizes should be a list of size 4"
@@ -399,9 +420,10 @@ class TensorTiler2D:
                             + k * strides[2]
                             + l * strides[3]
                         )
-                        assert (
-                            access_order_tensor[access_idx] == -1
-                        ), f"Attempted to access index={access_idx} twice."
+                        if not allow_repeat:
+                            assert (
+                                access_order_tensor[access_idx] == -1
+                            ), f"Attempted to access index={access_idx} twice."
                         access_order_tensor[access_idx] = access_count
                         access_count += 1
         assert access_count <= np.prod(
