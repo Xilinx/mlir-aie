@@ -53,14 +53,12 @@ endif
 run: ${targetname}.exe build/final.xclbin build/insts.txt
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --M ${M} --K ${K}
 
-<<<<<<< HEAD
 run_experimental: ${targetname}.exe build/experimental_final.xclbin build/experimental_insts.txt
 	${powershell} ./$< -x build/experimental_final.xclbin -i build/experimental_insts.txt -k MLIR_AIE --M ${M} --K ${K}
-=======
+
 generate_access_map: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< --generate-access-map ${M} ${K}
->>>>>>> tiler-helper
 
 clean:
 	rm -rf build _build inst ${targetname}.exe
