@@ -1681,9 +1681,6 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         // disable_synchronization==true will skip lock generation for 
         // objectfifo synchronous accesses
         DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
-        // via_shared_mem==0 means use producer tile's memory module
-        // via_shared_mem==1 means use consumer tile's memory module
-        OptionalAttr<AIEI32Attr>:$via_shared_mem,
         // memtile_repeat==0 means "do it once" and don't repeat
         OptionalAttr<AIEI32Attr>:$memtile_repeat
   );

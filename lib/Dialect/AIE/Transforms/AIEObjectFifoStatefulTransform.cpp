@@ -230,42 +230,6 @@ struct AIEObjectFifoStatefulTransformPass
            isUsedInLinkOp;
   }
 
-  // Checks if via_shared_mem attribute of the objectfifo is set and if so
-  // tries to apply it. If the desired shared memory module is available to
-  // both producer and consumer then it will be used, otherwise a warning is
-  // emitted and the original shared memory module is used instead.
-  void checkAndApplyViaSharedMemAttribute(ObjectFifoCreateOp createOp,
-                                          int &share_direction) {
-    if (createOp.getViaSharedMem().has_value()) {
-      int desiredSharedTile = createOp.getViaSharedMem().value();
-      int desiredSharedModule = 1;
-      if (desiredSharedTile == 0)
-        desiredSharedModule = -1;
-      if (share_direction != desiredSharedModule) {
-        bool desiredSharedModuleIsShared = false;
-        int newShareDirection = 0;
-        for (auto consumerTile : createOp.getConsumerTiles()) {
-          if (auto consumerTileOp =
-                  dyn_cast<TileOp>(consumerTile.getDefiningOp()))
-            if (share_direction == -1)
-              ///   * -1 if the shared memory module is that of the first input
-              ///   tile,
-              ///   * 1 if it is that of the second input tile
-              desiredSharedModuleIsShared =
-                  isSharedMemory(consumerTileOp, createOp.getProducerTileOp(),
-                                 &newShareDirection);
-        }
-        if (desiredSharedModuleIsShared) {
-          if (share_direction == newShareDirection)
-            share_direction = (share_direction == -1) ? 1 : -1;
-          else
-            createOp->emitWarning("Memory module specified by `via_shared_mem` "
-                                  "is not available as shared memory module");
-        }
-      }
-    }
-  }
-
   /// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
   /// if it belongs to one.
   std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
@@ -399,16 +363,13 @@ struct AIEObjectFifoStatefulTransformPass
       }
     }
 
-    TileOp buffer_creation_tile;
-    TileOp lock_creation_tile;
-    if (share_direction == 0 || share_direction == -1) {
-      buffer_creation_tile = op.getProducerTileOp();
-      lock_creation_tile = op.getProducerTileOp();
-    } else {
+    TileOp creation_tile;
+    if (share_direction == 0 || share_direction == -1)
+      creation_tile = op.getProducerTileOp();
+    else {
       auto consumerTileOp =
           dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
-      buffer_creation_tile = consumerTileOp;
-      lock_creation_tile = consumerTileOp;
+      creation_tile = consumerTileOp;
     }
 
     ObjectFifoAllocateOp opAlloc;
@@ -424,7 +385,7 @@ struct AIEObjectFifoStatefulTransformPass
                       isSharedMemory(op.getProducerTileOp(),
                                     delegate, &shareDir);
       if (hasSharedMemory)
-        buffer_creation_tile = delegate;
+        creation_tile = delegate;
       else
         opAlloc.emitOpError("objectfifo has no shared memory access to "
                             "delegate tile's memory module");
@@ -440,9 +401,9 @@ struct AIEObjectFifoStatefulTransformPass
     for (int i = 0; i < numElem; i++) {
       // if shimTile external buffers are collected from input code
       // create as many locks as there are external buffers
-      if (!buffer_creation_tile.isShimTile()) {
+      if (!creation_tile.isShimTile()) {
         auto buff = builder.create<BufferOp>(
-            builder.getUnknownLoc(), elemType, buffer_creation_tile,
+            builder.getUnknownLoc(), elemType, creation_tile,
             builder.getStringAttr(op.name().str() + "_buff_" +
                                   std::to_string(of_elem_index)),
             /*address*/ nullptr, /*initial_value*/ nullptr,
@@ -461,7 +422,7 @@ struct AIEObjectFifoStatefulTransformPass
       objFifoLinks[*linkOp] = op;
     }
     std::vector<LockOp> locks = createObjectFifoLocks(builder, lockAnalysis, op,
-                                                      numElem, lock_creation_tile);
+                                                      numElem, creation_tile);
     buffersPerFifo[op] = buffers;
     locksPerFifo[op] = locks;
   }
@@ -1437,14 +1398,9 @@ struct AIEObjectFifoStatefulTransformPass
 
       // if split, the necessary size for producer fifo might change
       if (shared) {
-        checkAndApplyViaSharedMemAttribute(createOp, share_direction);
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
       } else {
-        if (createOp.getViaSharedMem().has_value())
-          createOp->emitWarning("No access to shared memory module; ignoring "
-                                "`via_shared_mem`");
-
         if (isa<ArrayAttr>(createOp.getElemNumber()))
           createOp.setElemNumberAttr(
               builder.getI32IntegerAttr(createOp.size()));
