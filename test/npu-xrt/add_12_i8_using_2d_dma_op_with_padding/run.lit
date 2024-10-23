@@ -8,5 +8,3 @@
 // RUN: %run_on_npu ./test.exe aie.xclbin | FileCheck %s
 // CHECK: PASS!
 //
-// XFAIL: peano
-
