@@ -18,7 +18,7 @@ In the example below `of0` is created between producer A and consumer B with a d
 ```python
 A = tile(1, 3)
 B = tile(2, 4)
-of0 = object_fifo("objfifo0", A, B, 3, T.memref(256, T.i32())) # 3 objects: object0, object1, object2
+of0 = object_fifo("objfifo0", A, B, 3, np.ndarray[(256,), np.dtype[np.int32]]) # 3 objects: object0, object1, object2
 
 @core(B)
 def core_body():
@@ -53,7 +53,7 @@ The situations above can be fused into a `for`-loop with 4 iterations. By contin
 ```python
 A = tile(1, 3)
 B = tile(2, 4)
-of0 = object_fifo("objfifo0", A, B, 3, T.memref(256, T.i32())) # 3 objects: object0, object1, object2
+of0 = object_fifo("objfifo0", A, B, 3, np.ndarray[(256,), np.dtype[np.int32]]) # 3 objects: object0, object1, object2
 
 @core(B)
 def core_body():

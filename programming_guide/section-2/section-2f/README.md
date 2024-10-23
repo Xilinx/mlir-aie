@@ -55,7 +55,7 @@ tile_a = tile(1, 3)
 
 prod_lock = lock(tile_a, lock_id=0, init=1)
 cons_lock = lock(tile_a, lock_id=1, init=0)
-buff_in = buffer(tile=tile_a, shape=(256,), dtype=T.i32()) # 256xi32
+buff_in = buffer(tile=tile_a, datatype=np.ndarray[(256,), np.dtype[np.int32]]) # 256xi32
 
 @mem(tile_a)
 def mem_body():
@@ -78,8 +78,8 @@ tile_a = tile(1, 3)
 
 prod_lock = lock(tile_a, lock_id=0, init=2) # note that the producer lock now has 2 tokens
 cons_lock = lock(tile_a, lock_id=1, init=0)
-buff_ping = buffer(tile=tile_a, shape=(256,), dtype=T.i32()) # 256xi32
-buff_pong = buffer(tile=tile_a, shape=(256,), dtype=T.i32()) # 256xi32
+buff_ping = buffer(tile=tile_a, datatype=np.ndarray[(256,), np.dtype[np.int32]]) # 256xi32
+buff_pong = buffer(tile=tile_a, datatype=np.ndarray[(256,), np.dtype[np.int32]]) # 256xi32
 
 @mem(tile_a)
 def mem_body():
@@ -130,11 +130,11 @@ tile_b = tile(1, 3)
 
 prod_lock_a = lock(tile_a, lock_id=0, init=1)
 cons_lock_a = lock(tile_a, lock_id=1, init=0)
-buff_a = buffer(tile=tile_a, shape=(256,), dtype=T.i32()) # 256xi32
+buff_a = buffer(tile=tile_a, np.ndarray[(256,), np.dtype[np.int32]]) # 256xi32
 
 prod_lock_b = lock(tile_b, lock_id=0, init=1)
 cons_lock_b = lock(tile_b, lock_id=1, init=0)
-buff_b = buffer(tile=tile_b, shape=(256,), dtype=T.i32()) # 256xi32
+buff_b = buffer(tile=tile_b, np.ndarray[(256,), np.dtype[np.int32]]) # 256xi32
 
 aie.flow(tile_a, WireBundle.DMA, 0, tile_b, WireBundle.DMA, 1)
 

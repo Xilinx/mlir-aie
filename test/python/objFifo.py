@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
-
-import aie.extras.types as T
+import numpy as np
 from aie.dialects.aie import (
     AIEDevice,
     ObjectFifoPort,
@@ -12,10 +11,8 @@ from aie.dialects.aie import (
     Device,
     Core,
     end,
-    buffer,
 )
-from aie.extras.dialects.ext import memref, arith
-from aie.ir import InsertionPoint, TypeAttr, Block, IntegerAttr, IntegerType
+from aie.ir import InsertionPoint, Block
 
 from util import construct_and_print_module
 
@@ -52,10 +49,10 @@ def objFifo_example():
         T_ = tile(1, 2)
         C_ = tile(1, 3)
 
-        of0 = object_fifo("of0", S, T_, 2, T.memref(256, T.i32()))
-        of1 = object_fifo("of1", M, T_, 2, T.memref(256, T.i32()))
+        of0 = object_fifo("of0", S, T_, 2, np.ndarray[(256,), np.dtype[np.int32]])
+        of1 = object_fifo("of1", M, T_, 2, np.ndarray[(256,), np.dtype[np.int32]])
         of1.set_memtile_repeat(4)
-        of2 = object_fifo("of2", T_, C_, 2, T.memref(256, T.i32()))
+        of2 = object_fifo("of2", T_, C_, 2, np.ndarray[(256,), np.dtype[np.int32]])
         of2.set_via_shared_mem(ObjectFifoPort.Consume)
 
         C = Core(T_)

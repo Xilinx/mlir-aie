@@ -9,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: valid_xchess_license, !hsa
+// REQUIRES: aiesimulator, valid_xchess_license, !hsa
 // RUN: %PYTHON aiecc.py --aiesim --xchesscc --xbridge %s %test_lib_flags %S/test.cpp
 // RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
 
