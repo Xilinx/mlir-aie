@@ -482,9 +482,9 @@ public:
     if (!isMM2S)
       issue_token = BoolAttr::get(ctx, true);
 
-    // TODO: Need to add a check to only allow zero padding on MM2S channel of MemTile
-    // As of now, run time MemTile DMA configuration is supported only from BD level, not at
-    // NpuDmaMemcpyNdOp.
+    // TODO: Need to add a check to only allow zero padding on MM2S channel of
+    // MemTile As of now, run time MemTile DMA configuration is supported only
+    // from BD level, not at NpuDmaMemcpyNdOp.
 
     rewriter.create<NpuWriteBdOp>(
         op->getLoc(), column, bd_id, buffer_length, buffer_offset,
@@ -492,7 +492,7 @@ public:
         d0_stride, d1_size, d1_stride, d2_stride, iteration_current,
         iteration_size, iteration_stride, next_bd, row, use_next_bd, valid_bd,
         lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id,
-        d0_zero_before, d1_zero_before, d2_zero_before, d0_zero_after, 
+        d0_zero_before, d1_zero_before, d2_zero_before, d0_zero_after,
         d1_zero_after, d2_zero_after);
 
     uint64_t addr = getBufferDescriptorAddressRegisterAddress(
@@ -616,7 +616,9 @@ public:
       words[7] |= (op.getLockAcqVal() & 0xef) << 5;
       words[7] |= op.getLockAcqId() & 0xf;
 
-      if(op.getD0ZeroBefore() || op.getD1ZeroBefore() || op.getD2ZeroBefore() || op.getD0ZeroAfter() || op.getD1ZeroAfter() || op.getD2ZeroAfter()){
+      if (op.getD0ZeroBefore() || op.getD1ZeroBefore() ||
+          op.getD2ZeroBefore() || op.getD0ZeroAfter() || op.getD1ZeroAfter() ||
+          op.getD2ZeroAfter()) {
         op->emitError("Zero padding is only available on MemTile");
       }
     } else if (tm.isMemTile(op.getColumn(), op.getRow())) {
