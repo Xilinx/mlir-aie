@@ -10,6 +10,7 @@ from ml_dtypes import bfloat16
 
 from aie.api.io.iocoordinator import IOCoordinator
 from aie.api.dataflow.objectfifo import ObjectFifo
+from aie.api.placers import SequentialPlacer
 from aie.api.program import Program
 from aie.api.worker import Worker
 from aie.api.kernels.binkernel import BinKernel
@@ -39,10 +40,10 @@ def my_eltwise_exp():
     A_fifo = ObjectFifo(buffer_depth, memtile_ty, "inA")
     C_fifo = ObjectFifo(buffer_depth, memtile_ty, "outC")
     a_fifos = A_fifo.second.split(
-        [n * i for i in range(n_cores)], coords=(0, 1), types=[tile_ty] * n_cores
+        [n * i for i in range(n_cores)], types=[tile_ty] * n_cores
     )
     c_fifos = C_fifo.first.join(
-        [n * i for i in range(n_cores)], coords=(0, 1), types=[tile_ty] * n_cores
+        [n * i for i in range(n_cores)], types=[tile_ty] * n_cores
     )
 
     io = IOCoordinator()
@@ -56,8 +57,8 @@ def my_eltwise_exp():
             transfer_len=N,
         )
         for t in io.tile_loop(iter([tile])):
-            io.fill(A_fifo.first, t, a_in, coords=(0, 0))
-            io.drain(C_fifo.second, t, c_out, coords=(0, 0), wait=True)
+            io.fill(A_fifo.first, t, a_in)
+            io.drain(C_fifo.second, t, c_out, wait=True)
 
     def core_fn(a_in, c_out, exp_bf16_1024):
         for _ in range_(0xFFFFFFFF):
@@ -72,13 +73,11 @@ def my_eltwise_exp():
     for i in range(n_cores):
         workers.append(
             Worker(
-                core_fn,
-                fn_args=[a_fifos[i].second, c_fifos[i].first, exp_bf16_1024],
-                coords=(0, 2 + i),
+                core_fn, fn_args=[a_fifos[i].second, c_fifos[i].first, exp_bf16_1024]
             )
         )
 
     return Program(NPU1Col1(), io, workers=workers)
 
 
-my_eltwise_exp().resolve_program()
+my_eltwise_exp().resolve_program(SequentialPlacer())

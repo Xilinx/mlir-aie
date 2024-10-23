@@ -12,6 +12,7 @@ import sys
 from aie.api.io.iocoordinator import IOCoordinator
 from aie.api.dataflow.objectfifo import ObjectFifo
 from aie.api.program import Program
+from aie.api.placers import SequentialPlacer
 from aie.api.worker import Worker
 from aie.api.phys.device import NPU1Col1
 from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D
@@ -62,16 +63,16 @@ def my_matrix_add_one():
             of_in1.release(1)
             of_out1.release(1)
 
-    my_worker = Worker(core_fn, fn_args=[of_in.second, of_out.first], coords=(col, 2))
+    my_worker = Worker(core_fn, fn_args=[of_in.second, of_out.first])
 
     io = IOCoordinator()
     with io.build_sequence(tile_ty, tile_ty, tile_ty) as (in_tensor, _, out_tensor):
         tiler = TensorTiler2D(IMAGE_HEIGHT, IMAGE_WIDTH, TILE_HEIGHT, TILE_WIDTH)
         for t in io.tile_loop(itertools.islice(tiler.tile_iter(), 0, 1)):
-            io.fill(of_in.first, t, in_tensor, coords=(col, 0))
-            io.drain(of_out.second, t, out_tensor, coords=(col, 0), wait=True)
+            io.fill(of_in.first, t, in_tensor)
+            io.drain(of_out.second, t, out_tensor, wait=True)
 
     return Program(dev, io, workers=[my_worker])
 
 
-my_matrix_add_one().resolve_program()
+my_matrix_add_one().resolve_program(SequentialPlacer())

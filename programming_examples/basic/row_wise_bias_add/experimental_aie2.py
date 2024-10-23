@@ -10,6 +10,7 @@ import sys
 
 from aie.api.io.iocoordinator import IOCoordinator
 from aie.api.dataflow.objectfifo import ObjectFifo
+from aie.api.placers import SequentialPlacer
 from aie.api.program import Program
 from aie.api.kernels.binkernel import BinKernel
 from aie.api.worker import Worker
@@ -54,14 +55,13 @@ def row_wise_bias_add(M, N, m, n):
             tiler.tile_iter(chunk_height=M // m, chunk_width=N // n),
             bias_tiler.tile_iter(chunk_width=N // n),
         ):
-            io.fill(in_fifo.first, t, inp, coords=(0, 0))
-            io.fill(bias_fifo.first, bias_t, bias, coords=(0, 0))
-            io.drain(out_fifo.second, t, out, coords=(0, 0), wait=True)
+            io.fill(in_fifo.first, t, inp)
+            io.fill(bias_fifo.first, bias_t, bias)
+            io.drain(out_fifo.second, t, out, wait=True)
 
     my_worker = Worker(
         core_fn,
         fn_args=[in_fifo.second, bias_fifo.second, out_fifo.first, kernel_func],
-        coords=(0, 2),
     )
     return Program(NPU1Col1(), io, workers=[my_worker])
 
@@ -69,4 +69,4 @@ def row_wise_bias_add(M, N, m, n):
 program = row_wise_bias_add(
     int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
 )
-program.resolve_program()
+program.resolve_program(SequentialPlacer())

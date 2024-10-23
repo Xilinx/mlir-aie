@@ -11,6 +11,7 @@ import sys
 from aie.api.io.iocoordinator import IOCoordinator
 from aie.api.dataflow.objectfifo import ObjectFifo
 from aie.api.kernels.binkernel import BinKernel
+from aie.api.placers import SequentialPlacer
 from aie.api.program import Program
 from aie.api.worker import Worker
 from aie.api.phys.device import NPU1Col1
@@ -43,8 +44,8 @@ with io.build_sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _
         transfer_len=vector_size,
     )
     for t in io.tile_loop(iter([tile])):
-        io.fill(of_in.first, t, a_in, coords=(0, 0))
-        io.drain(of_out.second, t, b_out, coords=(0, 0), wait=True)
+        io.fill(of_in.first, t, a_in)
+        io.drain(of_out.second, t, b_out, wait=True)
 
 passthrough_fn = BinKernel(
     "passThroughLine",
@@ -62,7 +63,7 @@ def core_fn(of_in, of_out, passThroughLine):
         of_out.release(1)
 
 
-my_worker = Worker(core_fn, [of_in.second, of_out.first, passthrough_fn], coords=(0, 2))
+my_worker = Worker(core_fn, [of_in.second, of_out.first, passthrough_fn])
 
 my_program = Program(NPU1Col1(), io, workers=[my_worker])
-my_program.resolve_program()
+my_program.resolve_program(SequentialPlacer())
