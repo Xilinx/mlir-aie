@@ -41,7 +41,7 @@ set(AIE_RUNTIME_TARGETS "x86_64" CACHE STRING "Architectures to compile the runt
 list(GET AIE_RUNTIME_TARGETS 0 firstRuntimeTarget)
 set(AIE_RUNTIME_TEST_TARGET ${firstRuntimeTarget} CACHE STRING "Runtime architecture to test with.")
 
-set(AIE_VITIS_COMPONENTS "AIE;AIE2" CACHE STRING "Vitis components")
+set(AIE_VITIS_COMPONENTS "AIE;AIE2;AIE2P" CACHE STRING "Vitis components")
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
