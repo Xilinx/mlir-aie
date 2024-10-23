@@ -8,21 +8,21 @@
 # 
 ##===----------------------------------------------------------------------===##
 
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+
+include ${srcdir}/../../makefile-common
+
 # ---
 
 # The following environment variables that point to the Xilinx runtime (XRT)
 # should be set up by an environment setup script already.
 XILINX_XRT?=/opt/xilinx/xrt
-XILINX_VITIS?=$(shell realpath $(dir $(shell which vitis))/../)
 
 # ---
-
-srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 XILINX_XRT_INCLUDE?=${XILINX_XRT}/include
 XILINX_XRT_LIB?=${XILINX_XRT}/lib
 
-CHESSCCWRAP2_FLAGS=aie2 -I${XILINX_VITIS}/aietools/include 
 XRT_FLAGS=-I${XILINX_XRT_INCLUDE} -L${XILINX_XRT_LIB}
 XRT_LIBS=-lxrt_coreutil
 CXX=g++-13 -ggdb 
@@ -42,7 +42,7 @@ all: ${xclbin_target} ${host_target}
 
 build/kernel.o: ${srcdir}/kernel.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DDIM_m=$m -DDIM_n=$n -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DDIM_m=$m -DDIM_n=$n -c $< -o ${@F}
 
 ${mlir_target}: ${srcdir}/aie2.py
 	mkdir -p ${@D}
@@ -51,6 +51,7 @@ ${mlir_target}: ${srcdir}/aie2.py
 ${xclbin_target}: ${mlir_target} build/kernel.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				--no-xchesscc --no-xbridge \
 				--aie-generate-npu --npu-insts-name=${insts_target:build/%=%} ${<:%=../%}
 
 ${host_target}: ${srcdir}/test.cpp ${xclbin_target}

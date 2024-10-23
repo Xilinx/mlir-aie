@@ -4,14 +4,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
-
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 
 width = 32
 height = 32
@@ -31,6 +30,8 @@ weights = in_channels * out_channels
 actOut = width * out_channels  # 32*64 = 2048
 bufOut = actOut * 2  # double buffer
 
+tensorSize = width * height * in_channels
+
 enableTrace = False
 trace_size = 16384
 traceSizeInInt32s = trace_size // 4
@@ -42,23 +43,15 @@ def conv2dk1():
         @device(AIEDevice.npu1_1col)
         def device_body():
 
-            actIn_ty = T.memref(actIn, T.i8())
-            bufIn_ty = T.memref(bufIn, T.i8())
+            actIn_ty = np.ndarray[(actIn,), np.dtype[np.int8]]
+            bufIn_ty = np.ndarray[(bufIn,), np.dtype[np.int8]]
 
-            weights_ty = T.memref(weights, T.i8())
+            weights_ty = np.ndarray[(weights,), np.dtype[np.int8]]
 
-            out_ty = T.memref(actOut, T.ui8())
-            bufOut_ty = T.memref(bufOut, T.ui8())
+            out_ty = np.ndarray[(actOut,), np.dtype[np.int8]]
+            bufOut_ty = np.ndarray[(bufOut,), np.dtype[np.int8]]
 
-            # memRef_3x3_ty = T.memref(3, 3, T.i16())
-
-            ofifo_actIn_ty = TypeAttr.get(ObjectFifoType.get(actIn_ty))
-            ofifo_bufIn_ty = TypeAttr.get(ObjectFifoType.get(bufIn_ty))
-
-            ofifo_weights_ty = TypeAttr.get(ObjectFifoType.get(weights_ty))
-
-            ofifo_out_ty = TypeAttr.get(ObjectFifoType.get(out_ty))
-            ofifo_bufOut_ty = TypeAttr.get(ObjectFifoType.get(bufOut_ty))
+            tensor_ty = np.ndarray[(tensorSize,), np.dtype[np.int8]]
 
             # AIE Core Function declarations
             conv2dk1_i8 = external_func(
@@ -67,10 +60,10 @@ def conv2dk1():
                     actIn_ty,
                     weights_ty,
                     out_ty,
-                    T.i32(),
-                    T.i32(),
-                    T.i32(),
-                    T.i32(),
+                    np.int32,
+                    np.int32,
+                    np.int32,
+                    np.int32,
                 ],
             )
 
@@ -103,7 +96,9 @@ def conv2dk1():
 
             # Set up compute tiles
 
-            rtp2 = Buffer(ComputeTile2, [16], T.i32(), "rtp2")
+            rtp2 = buffer(
+                ComputeTile2, T.memref(16, T.i32()), "rtp2", use_write_rtp=True
+            )
 
             # Compute tile 2
             @core(ComputeTile2, "conv2dk1.o")
@@ -116,38 +111,22 @@ def conv2dk1():
                 for _ in range_(0xFFFFFFFF):
                     elemWts = of_inOF_wts_0_L3L2.acquire(ObjectFifoPort.Consume, 1)
 
-                    scale = memref.load(rtp2, [0])
+                    scale = rtp2[0]
                     # scale = memref.load(rtpComputeTile2, [0])
 
                     for _ in range_(y_dim):
                         elemIn = of_act_L2_02.acquire(ObjectFifoPort.Consume, 1)
                         elemOut0 = of_out_02_L2.acquire(ObjectFifoPort.Produce, 1)
 
-                        call(
-                            conv2dk1_i8,
-                            [
-                                elemIn,
-                                elemWts,
-                                elemOut0,
-                                arith.constant(x_dim),
-                                arith.constant(ci),
-                                arith.constant(co),
-                                scale,
-                            ],
-                        )
+                        conv2dk1_i8(elemIn, elemWts, elemOut0, x_dim, ci, co, scale)
 
-                        objectfifo_release(ObjectFifoPort.Consume, "act_L2_02", 1)
-                        objectfifo_release(ObjectFifoPort.Produce, "out_02_L2", 1)
-                    objectfifo_release(ObjectFifoPort.Consume, "inOF_wts_0_L3L2", 1)
+                        of_act_L2_02.release(ObjectFifoPort.Consume, 1)
+                        of_out_02_L2.release(ObjectFifoPort.Produce, 1)
+                    of_inOF_wts_0_L3L2.release(ObjectFifoPort.Consume, 1)
 
             # To/from AIE-array data movement
 
-            tensorSize = width * height * in_channels
-            tensor_ty = T.memref(tensorSize, T.i8())
-            memRef_wts_ty = T.memref(weights, T.i8())
-            # memRef_16x16_ty = T.memref(16, 16, T.i32())
-
-            @runtime_sequence(tensor_ty, memRef_wts_ty, tensor_ty)
+            @runtime_sequence(tensor_ty, weights_ty, tensor_ty)
             def sequence(I, W, O):
                 if enableTrace:
                     # 0x340D0: Trace Control 0
@@ -227,27 +206,28 @@ def conv2dk1():
                     # Set start BD to our shim bd_Id (3)
                     npu_write32(column=0, row=0, address=0x1D20C, value=trace_bd_id)
 
-                NpuWriteRTPOp("rtp2", index=0, value=1)
+                rtp2[0] = 1
 
                 npu_dma_memcpy_nd(
-                    metadata="inOF_act_L3L2",
+                    metadata=of_inOF_act_L3L2,
                     bd_id=0,
                     mem=I,
                     sizes=[1, 1, 1, tensorSize],
                 )
                 npu_dma_memcpy_nd(
-                    metadata="outOFL2L3",
+                    metadata=of_outOFL2L3,
                     bd_id=2,
                     mem=O,
                     sizes=[1, 1, 1, tensorSize],
                 )
                 npu_dma_memcpy_nd(
-                    metadata="inOF_wts_0_L3L2",
+                    metadata=of_inOF_wts_0_L3L2,
                     bd_id=2,
                     mem=W,
                     sizes=[1, 1, 1, weights],
                 )
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                # of_outOFL2L3 will only complete after of_inOF_wts_0_L3L2 and of_inOF_act_L3L2 complete, so we just wait on of_outOFL2L3 instead of all
+                dma_wait(of_outOFL2L3)
 
     #    print(ctx.module.operation.verify())
     print(ctx.module)

@@ -38,7 +38,7 @@ concurrency:
 env:
   DEBIAN_FRONTEND: noninteractive
   XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
-  VITIS: /opt/Xilinx/Vitis/2023.2
+  VITIS: /opt/ryzen_ai-1.3.0/vitis_aie_essentials
   CMAKE_ARGS: |
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
@@ -79,63 +79,7 @@ jobs:
           python -m venv aie-venv
           source aie-venv/bin/activate
           pip install -r python/requirements.txt
-          pip install -r python/requirements_ml.txt
-          pip install jupyter
-          sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
-            $(python -c 'import site; print(site.getsitepackages()[0])')/jupyter_client/runapp.py
-
-          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
-          pip -q download mlir==$VERSION \
-            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
-          unzip -q mlir-*.whl
-          # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
-          # That means wheels have file with time stamps in the future which makes ninja loop
-          # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
-          find mlir -exec touch -a -m -t 201108231405.14 {} \;
-
-          mkdir build
-          pushd build
-
-          export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
-          cmake .. -G Ninja \
-            -DPython3_EXECUTABLE=$(which python) \
-            -DLLVM_EXTERNAL_LIT=$(which lit) \
-            -DCMAKE_INSTALL_PREFIX=$PWD/../mlir_aie \
-            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
-            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
-            $CMAKE_ARGS
-
-          ninja install
-          ninja check-aie
-
-          popd
-
-  build-examples:
-    name: Run Examples on Ryzen AI
-    runs-on: amd7940hs
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: "true"
-
-      # Launch an ssh session via a proxy server if there is a need
-      # for debug. This seems to live for 35 min max
-      # https://github.com/mxschmitt/action-tmate
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
-        # To run this, launch it manually on the default branch and
-        # click on "launch_tmate_terminal_for_debug"
-        if: github.event_name == 'workflow_dispatch'
-                && inputs.launch_tmate_terminal_for_debug
-
-      - name: Run commands
-        run: |
-
-          pip cache purge
-          source /opt/xilinx/xrt/setup.sh
-          python -m venv aie-venv
-          source aie-venv/bin/activate
-          pip install -r python/requirements.txt
+          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_ml.txt
           pip install jupyter
           sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
@@ -161,6 +105,43 @@ jobs:
             -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
             $CMAKE_ARGS
+
+          ninja install
+          ninja check-aie
+
+          popd
+
+  build-quick-setup:
+    name: Run Examples on Ryzen AI
+    runs-on: amd7940hs
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "true"
+
+      # Launch an ssh session via a proxy server if there is a need
+      # for debug. This seems to live for 35 min max
+      # https://github.com/mxschmitt/action-tmate
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        # To run this, launch it manually on the default branch and
+        # click on "launch_tmate_terminal_for_debug"
+        if: github.event_name == 'workflow_dispatch'
+                && inputs.launch_tmate_terminal_for_debug
+
+      - name: Run commands
+        run: |
+
+          pip cache purge
+          source /opt/xilinx/xrt/setup.sh
+          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
+          source utils/quick_setup.sh
+          # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
+          cd ..
+          ./utils/build-mlir-aie-from-wheels.sh ./my_install/mlir build install ./my_install/llvm-aie
+
+          # build is created by the build-mlir-aie-from-wheels.sh script
+          pushd build
 
           ninja install
           ninja check-reference-designs

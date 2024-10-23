@@ -4,13 +4,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2023 AMD Inc.
-
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 
 width = 512  # 1920 // 8
 height = 9  # 1080 // 8
@@ -19,6 +19,7 @@ if len(sys.argv) == 3:
     height = int(sys.argv[2])
 
 lineWidthInBytes = width
+tensorSize = width * height
 
 enableTrace = False
 traceSizeInBytes = 8192
@@ -31,11 +32,12 @@ def passThroughAIE2():
         @device(AIEDevice.npu1_1col)
         def device_body():
             # define types
-            line_ty = T.memref(lineWidthInBytes, T.ui8())
+            tensor_ty = np.ndarray[(tensorSize,), np.dtype[np.int8]]
+            line_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
 
             # AIE Core Function declarations
             passThroughLine = external_func(
-                "passThroughLine", inputs=[line_ty, line_ty, T.i32()]
+                "passThroughLine", inputs=[line_ty, line_ty, np.int32]
             )
 
             # Tile declarations
@@ -58,14 +60,11 @@ def passThroughAIE2():
                     for _ in range_(height):
                         elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
                         elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
-                        call(passThroughLine, [elemIn, elemOut, width])
+                        passThroughLine(elemIn, elemOut, width)
                         of_in.release(ObjectFifoPort.Consume, 1)
                         of_out.release(ObjectFifoPort.Produce, 1)
 
             #    print(ctx.module.operation.verify())
-
-            tensorSize = width * height
-            tensor_ty = T.memref(tensorSize, T.i8())
 
             @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
             def sequence(inTensor, notUsed, outTensor):
@@ -149,18 +148,19 @@ def passThroughAIE2():
                     NpuWrite32(0, 0, 0x1D20C, 0x3)
 
                 npu_dma_memcpy_nd(
-                    metadata="in",
+                    metadata=of_in,
                     bd_id=1,
                     mem=inTensor,
                     sizes=[1, 1, 1, tensorSize],
+                    issue_token=True,
                 )
                 npu_dma_memcpy_nd(
-                    metadata="out",
+                    metadata=of_out,
                     bd_id=0,
                     mem=outTensor,
                     sizes=[1, 1, 1, tensorSize],
                 )
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                dma_wait(of_in, of_out)
 
     print(ctx.module)
 

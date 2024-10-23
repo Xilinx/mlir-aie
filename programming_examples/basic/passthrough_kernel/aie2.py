@@ -5,13 +5,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 
 import aie.utils.trace as trace_utils
 
@@ -23,11 +23,12 @@ def passthroughKernel(vector_size, trace_size):
     @device(AIEDevice.npu1_1col)
     def device_body():
         # define types
-        memRef_ty = T.memref(lineWidthInBytes, T.ui8())
+        vector_ty = np.ndarray[(N,), np.dtype[np.uint8]]
+        line_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
 
         # AIE Core Function declarations
         passThroughLine = external_func(
-            "passThroughLine", inputs=[memRef_ty, memRef_ty, T.i32()]
+            "passThroughLine", inputs=[line_ty, line_ty, np.int32]
         )
 
         # Tile declarations
@@ -39,8 +40,8 @@ def passthroughKernel(vector_size, trace_size):
             flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
 
         # AIE-array data movement with object fifos
-        of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)
-        of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_ty)
+        of_in = object_fifo("in", ShimTile, ComputeTile2, 2, line_ty)
+        of_out = object_fifo("out", ComputeTile2, ShimTile, 2, line_ty)
 
         # Set up compute tiles
 
@@ -50,15 +51,13 @@ def passthroughKernel(vector_size, trace_size):
             for _ in range_(sys.maxsize):
                 elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
                 elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
-                call(passThroughLine, [elemIn, elemOut, lineWidthInBytes])
+                passThroughLine(elemIn, elemOut, lineWidthInBytes)
                 of_in.release(ObjectFifoPort.Consume, 1)
                 of_out.release(ObjectFifoPort.Produce, 1)
 
         #    print(ctx.module.operation.verify())
 
-        tensor_ty = T.memref(N, T.ui8())
-
-        @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
+        @runtime_sequence(vector_ty, vector_ty, vector_ty)
         def sequence(inTensor, outTensor, notUsed):
             if trace_size > 0:
                 trace_utils.configure_simple_tracing_aie2(
@@ -70,18 +69,19 @@ def passthroughKernel(vector_size, trace_size):
                 )
 
             npu_dma_memcpy_nd(
-                metadata="in",
+                metadata=of_in,
                 bd_id=0,
                 mem=inTensor,
                 sizes=[1, 1, 1, N],
+                issue_token=True,
             )
             npu_dma_memcpy_nd(
-                metadata="out",
+                metadata=of_out,
                 bd_id=1,
                 mem=outTensor,
                 sizes=[1, 1, 1, N],
             )
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            dma_wait(of_in, of_out)
 
 
 try:

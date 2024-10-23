@@ -1,6 +1,8 @@
 # Copyright (C) 2023, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+# REQUIRES: chess
+
 # RUN: %PYTHON %s --compile --xchesscc --no-link -nv | FileCheck %s
 
 # CHECK: xchesscc_wrapper aie

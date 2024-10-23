@@ -8,12 +8,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-//  clang -O2 --target=aie -c %S/kernel.cc
-// REQUIRES: valid_xchess_license
+// REQUIRES: aiesimulator, valid_xchess_license, !hsa
 // RUN: xchesscc_wrapper aie2 -c %S/kernel.cc
-// RUN: %PYTHON aiecc.py --aiesim --chesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %S/test.cpp -o test.elf
-// RUN: %run_on_board ./test.elf
-// UN: aie.mlir.prj/aiesim.sh
+// RUN: %PYTHON aiecc.py --aiesim --chesscc --xbridge --no-compile-host %s %test_lib_flags %S/test.cpp
+
+// RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
+// CHECK: PASS!
+
 // XFAIL: *
 
 module @test_chess_04_deprecated_shim_dma_precompiled_kernel{

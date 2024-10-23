@@ -27,15 +27,15 @@ static void _reduce_add_vector(int32_t *restrict in, int32_t *restrict out,
       running_total = test;
     }
   after_vector = running_total;
-  v16int32 first = shift_bytes(after_vector, after_vector, 32);
+  v16int32 first = shift_bytes(after_vector, after_vector, 32U);
   v16int32 second = add(after_vector, first);
-  v16int32 second_shift = shift_bytes(second, second, 16);
+  v16int32 second_shift = shift_bytes(second, second, 16U);
   v16int32 third = add(second, second_shift);
-  v16int32 third_shift = shift_bytes(third, third, 8);
+  v16int32 third_shift = shift_bytes(third, third, 8U);
   v16int32 fourth = add(third, third_shift);
-  v16int32 fourth_shift = shift_bytes(fourth, fourth, 4);
+  v16int32 fourth_shift = shift_bytes(fourth, fourth, 4U);
   v16int32 fifth = add(fourth, fourth_shift);
-  int32_t last = extract_elem(fifth, 0);
+  int32_t last = extract_elem(fifth, 0U);
   *(int32_t *)out = last;
   return;
 }

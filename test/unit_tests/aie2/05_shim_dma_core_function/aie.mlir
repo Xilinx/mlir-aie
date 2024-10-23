@@ -65,7 +65,7 @@ module @test_chess_05_shim_dma_core_function {
     %m73 = aie.mem(%t73) {
         %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^dma0)
       ^dma0:
-        %dstDma = aie.dma_start("MM2S", 1, ^bd2, ^end)
+        %dstDma = aie.dma_start("MM2S", 0, ^bd2, ^end)
       ^bd0:
         aie.use_lock(%lock_a_write, AcquireGreaterEqual, 1)
         aie.dma_bd(%buf_a_ping : memref<16xi32>, 0, 16)
@@ -100,7 +100,7 @@ module @test_chess_05_shim_dma_core_function {
 
     // Shim DMA connection to kernel
     aie.flow(%t70, "DMA" : 0, %t73, "DMA" : 0)
-    aie.flow(%t73, "DMA" : 1, %t70, "DMA" : 0)
+    aie.flow(%t73, "DMA" : 0, %t70, "DMA" : 0)
 
     // Shim DMA loads large buffer to local memory
     %dma = aie.shim_dma(%t70) {
