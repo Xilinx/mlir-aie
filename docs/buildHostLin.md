@@ -1,6 +1,6 @@
 # Linux Setup and Build Instructions
 
-These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 22.04 LTS** install. Only Ubuntu 22.04 LTS is supported. 
+These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 22.04 LTS** install. Ubuntu 22.04 LTS, Ubuntu 24.04 LTS and Ubuntu 24.10 are supported by this toolchain. 
 
 ## Initial Setup
 
@@ -46,13 +46,13 @@ You will...
    
    3. [...building and executing host (x86) code and device (NPU) code.](#build-and-run-host-part) 
 
-> Be advised that some of the potential steps (Linux kernel compilation and installing AIE Tools from Vitis™) may take hours. If you decide to build mlir-aie from source, this will also take a long time as it contains an LLVM build. Allocate enough time and patience. Once done, you will have an amazing toolchain allowing you to harness this great hardware at your hands.
+> Be advised that some of the potential steps (Linux kernel compilation and installing AIE Tools from Vitis™) may take hours. If you decide to build mlir-aie and/or LLVM from source, this will also take time, especially the LLVM build. Allocate enough time and patience. Once done, you will have an amazing toolchain allowing you to harness this great hardware at your hands.
 
 ## Prerequisites
 
 ### Install AIETools
 
-#### Option A - Supporting AMD Ryzen™ AI with AIE-ML (AIE2) and AIE2P: Install AMD Vitis™ AIE Essentials 
+#### Option A - Supporting AMD Ryzen™ AI with AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P): Install AMD Vitis™ AIE Essentials 
 
 1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3 Early Accesss](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab). We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
 
@@ -89,7 +89,7 @@ You will...
         export LM_LICENSE_FILE=/opt/Xilinx.lic
        ```
       
-#### Option B - Supporting AMD Ryzen™ AI and AMD Versal™ with AIE and AIE-ML (AIE2): Install AMD Vitis™ 2023.2 
+#### Option B - Supporting AMD Ryzen™ AI and AMD Versal™ with AIE and AIE-ML/XDNA™ (AIE2): Install AMD Vitis™ 2023.2 
 
 1. Install Vitis™ under from [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html). You will need to run the installer as root. We will assume you use the default installation directory, `/tools/Xilinx`.
 
@@ -123,9 +123,20 @@ You will...
       sudo apt install libpython3.8-dev
       ```
 
-### Update Linux
+### Update Linux for Ubuntu 22.04 and 24.04
 
-> The reason we need to update the kernel is that the XDNA driver requires IOMMU SVA support.
+> The reason we need to update the kernel is that the XDNA driver requires IOMMU SVA support. This step is required for Ubuntu 22.04 LTS. 
+> If you are using Ubuntu 24.04 you can install a prebuilt kernel from the [Ubuntu Mainline Kernel PPA](https://kernel.ubuntu.com/mainline/v6.11/). 
+>  ```bash
+>     wget https://kernel.ubuntu.com/mainline/v6.11/amd64/linux-headers-6.11.0-061100-generic_6.11.0-061100.202409151536_amd64.deb
+>     wget https://kernel.ubuntu.com/mainline/v6.11/amd64/linux-headers-6.11.0-061100_6.11.0-061100.202409151536_all.deb
+>     wget https://kernel.ubuntu.com/mainline/v6.11/amd64/linux-image-unsigned-6.11.0-061100-generic_6.11.0-061100.202409151536_amd64.deb
+>     wget https://kernel.ubuntu.com/mainline/v6.11/amd64/linux-modules-6.11.0-061100-generic_6.11.0-061100.202409151536_amd64.deb
+>     sudo dpkg -i linux-headers-6.11.0-061100*.deb
+>     sudo dpkg -i linux-headers-6.11.0-061100-generic*.deb
+>     sudo dpkg -i linux-image*.deb
+>     sudo dpkg -i linux-modules*.deb
+>  ```
 
 1. Disable **Secure Boot** in the BIOS. This allows for unsigned drivers to be installed.
 
@@ -225,7 +236,7 @@ You will...
     git clone https://github.com/amd/xdna-driver.git
     export XDNA_SRC_DIR=$(realpath xdna-driver)
     cd xdna-driver
-    git reset --hard 537a509a3ab1b698c9c9f6ebcd88035b2fe8359b
+    git reset --hard 3d5a8cf1af2adfbb6306ad71b45e5f3e1ffc5b37
     git submodule update --init --recursive
     ```
 
@@ -350,7 +361,7 @@ export PATH="${NEW_CMAKE_DIR}/bin":"${PATH}"
 
 cd ${MLIR_AIE_BUILD_DIR}
 source ${MLIR_AIE_BUILD_DIR}/ironenv/bin/activate
-source ${MLIR_AIE_BUILD_DIR}/utils/env_setup.sh ${MLIR_AIE_BUILD_DIR}/my_install/mlir_aie ${MLIR_AIE_BUILD_DIR}/my_install/mlir
+source ${MLIR_AIE_BUILD_DIR}/utils/env_setup.sh ${MLIR_AIE_BUILD_DIR}/my_install/mlir_aie ${MLIR_AIE_BUILD_DIR}/my_install/mlir ${MLIR_AIE_BUILD_DIR}/my_install/llvm-aie
 ```
 
 > Replace `${MLIR_AIE_BUILD_DIR}` with the directory in which you *built* mlir-aie above. Replace `${NEW_CMAKE_DIR}` with the directory in which you installed CMake 3.28 above. Instead of search and replace, you can also define these values as environment variables.
@@ -380,7 +391,7 @@ For your design of interest, for instance from [programming_examples](../program
 
 ### Build and Run Host Part
 
-Note that your design of interest might need an adapted `CMakeLists.txt` file. Also pay attention to accurately set the paths CMake parameters `BOOST_ROOT`, `XRT_INC_DIR` and `XRT_LIB_DIR` used in the `CMakeLists.txt`, either in the file or as CMake command line parameters.
+> Note that your design of interest might need an adapted `CMakeLists.txt` file. Also pay attention to accurately set the paths CMake parameters `BOOST_ROOT`, `XRT_INC_DIR` and `XRT_LIB_DIR` used in the `CMakeLists.txt`, either in the file or as CMake command line parameters.
 
 1. Build: Goto the same design of interest folder where the AIE design just got built (see above)
     ```bash
@@ -397,20 +408,6 @@ Note that your design of interest might need an adapted `CMakeLists.txt` file. A
 
 # Troubleshooting
 
-## Signing your XCLBIN (older xdna Linux drivers)
-
-1. Signing your array configuration binary aka. XCLBIN
-    ```bash
-    sudo bash
-    source /opt/xilinx/xrt/setup.sh
-    # Assume adding an unsigned xclbin on Phoenix, run
-    /opt/xilinx/xrt/amdxdna/setup_xclbin_firmware.sh -dev Phoenix -xclbin <your test>.xclbin
-
-    # <your test>_unsigned.xclbin will be added into /lib/firmware/amdxdna/<version>/ and symbolic link will create.
-    # When xrt_plugin package is removed, it will automatically cleanup.
-    ```
-    1. Alternatively, you can `sudo chown -R $USER /lib/firmware/amdnpu/1502/` and remove the check for root in `/opt/xilinx/xrt/amdxdna/setup_xclbin_firmware.sh` (look for `!!! Please run as root !!!`).
-
 ## Resetting the NPU
 
 It is possible to hang the NPU in an unstable state. To reset the NPU:
@@ -425,38 +422,6 @@ If you installed the AMD XDNA™ driver using `.deb` packages as outlined above,
 ```bash
 sudo modprobe -r amdxdna
 sudo modprobe -v amdxdna
-```
-
-## `xrt_core::system_error` - Unsigned xclbins
-
-If you are able to successfully build your design, but are getting the following error when trying to execute it:
-
-```
-terminate called after throwing an instance of 'xrt_core::system_error'
-  what():  DRM_IOCTL_AMDXDNA_CREATE_HWCTX IOCTL failed (err=2): No such file or directory
-Aborted (core dumped)
-```
-
-This may be because you did not sign your `final.xclbin`. The device only allows executing signed xclbins for some versions of the driver. Follow step 3 under section [Build Device AIE Part](#build-device-aie-part) above.
-
-## Signing the `xclbin` hangs
-
-As outlined above, `.xclbin` files must be signed to be able to run on the device. Signing is done by running
-
-```
-/opt/xilinx/xrt/amdxdna/setup_xclbin_firmware.sh -dev Phoenix -xclbin <your test>.xclbin
-```
-
-This may hang after the following output if you have too many signed `.xclbin`s:
-
-```
-Copy <your test>.xclbin to /lib/firmware/amdnpu/1502/<your test>.xclbin
-```
-
-If this happens, clear all your previously signed `.xclbin`s as follows (you will of course have to re-sign the ones you remove in this step if you want to run them again, but chances are you have many old unneeded `.xclbin`s in there):
-
-```
-rm /lib/firmware/amdnpu/1502/<your tests>.xclbin
 ```
 
 ## License Errors When Trying to Compile
