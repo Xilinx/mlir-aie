@@ -16,8 +16,9 @@ import sys
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
+import aie.utils.trace as trace_utils
+from aie.utils.trace import PortEvent
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.util import DataTiler
 
 dtype_map = {
     "bf16": bfloat16,
@@ -82,6 +83,8 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
     assert n % t == 0
 
     vectorized = True
+    enable_tracing = False
+    trace_size = 65536
 
     dtype_in = dtype_map[dtype_in_str]
     dtype_out = dtype_map[dtype_out_str]
@@ -196,6 +199,10 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
             )
             object_fifo_link(memC, outC)
 
+            # Set up a circuit-switched flow from core to shim for tracing information
+            if enable_tracing:
+                flow(compute_tile2, WireBundle.Trace, 0, shim_tile, WireBundle.DMA, 1)
+
             # Set up compute tiles
 
             # Compute tile 2
@@ -224,6 +231,38 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                 np.ndarray[(C_sz,), np.dtype[dtype_out]],
             )
             def sequence(A, B, C):
+
+                if enable_tracing:
+                    trace_utils.configure_simple_tracing_aie2(
+                        compute_tile2,
+                        shim_tile,
+                        ddr_id=2,
+                        size=trace_size,
+                        offset=C_sz_in_bytes,
+                        events=[
+                            PortEvent(
+                                trace_utils.CoreEvent.PORT_RUNNING_0,
+                                port_number=1,
+                                master=True,
+                            ),
+                            PortEvent(
+                                trace_utils.CoreEvent.PORT_RUNNING_1,
+                                port_number=2,
+                                master=True,
+                            ),
+                            PortEvent(
+                                trace_utils.CoreEvent.PORT_RUNNING_2,
+                                port_number=5,
+                                master=True,
+                            ),
+                            trace_utils.CoreEvent.INSTR_EVENT_0,
+                            trace_utils.CoreEvent.INSTR_EVENT_1,
+                            trace_utils.CoreEvent.MEMORY_STALL,
+                            trace_utils.CoreEvent.LOCK_STALL,
+                            trace_utils.CoreEvent.INSTR_VECTOR,
+                        ],
+                    )
+
                 # These lists will hold handles to the DMA tasks we configure
                 # on the shim. We can later use these handles to start those
                 # tasks and wait for their completion.
@@ -233,35 +272,23 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
 
                 # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
                 rows_per_block = 4
-                assert M_div_m % rows_per_block == 0
-                num_tile_rows = rows_per_block // 2
-
-                a_tiler = DataTiler(
-                    total_data=A_sz, dimensions=[(1, 0), (K_div_k, k), (m, K), (k, 1)]
-                )
-
-                # Send all of B
-                b_tiler = DataTiler(
-                    total_data=B_sz,
-                    dimensions=[(N_div_n, n), (K_div_k, k_x_N), (k, N), (n, 1)],
-                )
-                b_tile = next(b_tiler)
-
-                c_tiler = DataTiler(
-                    total_data=C_sz,
-                    dimensions=[
-                        (rows_per_block // 2, m_x_N),
-                        (N_div_n, n),
-                        (m, N),
-                        (n, 1),
-                    ],
-                )
-
-                for tile_row_block in range(M_div_m // rows_per_block):
+                for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
                     # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
                     # that's what this loop is for
                     for pingpong in [0, 1]:
-                        c_tile = next(c_tiler)
+                        C_row_offset = (
+                            tile_row_block * rows_per_block * m * N
+                            + pingpong * rows_per_block // 2 * m * N
+                        )
+                        row_base = (
+                            tile_row_block * rows_per_block
+                            + pingpong * rows_per_block // 2
+                        )
+                        num_tile_rows = min([rows_per_block // 2, M_div_m - row_base])
+                        if num_tile_rows <= 0:
+                            # At the very last iteration, we may not need a 'pong' iteration
+                            break
+
                         # -- C --
                         # Configure a task on the same channel wehere the
                         # objectFifo "outC" expects its data to be streamed in
@@ -278,9 +305,14 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                             with bd[0]:
                                 dma_bd(
                                     C,
-                                    offset=c_tile.offset,
-                                    len=c_tile.transfer_len,
-                                    dimensions=c_tile.dimensions,
+                                    offset=C_row_offset,
+                                    len=N * m,
+                                    dimensions=[
+                                        (num_tile_rows, m_x_N),
+                                        (N_div_n, n),
+                                        (m, N),
+                                        (n, 1),
+                                    ],
                                 )
                                 EndOp()
                         dma_start_task(c_task)
@@ -288,7 +320,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
 
                         for tile_row in range(num_tile_rows):
                             # -- A --
-                            a_tile = next(a_tiler)
+                            A_row_offset = (row_base + tile_row) * m * K
                             a_task = dma_configure_task_for(
                                 inA, repeat_count=N_div_n - 1, issue_token=False
                             )
@@ -296,9 +328,14 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                                 with bd[0]:
                                     dma_bd(
                                         A,
-                                        offset=a_tile.offset,
-                                        len=a_tile.transfer_len,
-                                        dimensions=a_tile.dimensions,
+                                        offset=A_row_offset,
+                                        len=m * K,
+                                        dimensions=[
+                                            (1, 0),  # repeat/wrap w/o stride
+                                            (K_div_k, k),
+                                            (m, K),
+                                            (k, 1),
+                                        ],
                                     )
                                     EndOp()
                             dma_start_task(a_task)
@@ -312,9 +349,14 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                                 with bd[0]:
                                     dma_bd(
                                         B,
-                                        offset=b_tile.offset,
-                                        len=b_tile.transfer_len,
-                                        dimensions=b_tile.dimensions,
+                                        offset=0,
+                                        len=K * n,
+                                        dimensions=[
+                                            (N_div_n, n),
+                                            (K_div_k, k_x_N),
+                                            (k, N),
+                                            (n, 1),
+                                        ],
                                     )
                                     EndOp()
                             dma_start_task(b_task)
