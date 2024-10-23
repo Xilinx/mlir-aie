@@ -11,7 +11,7 @@ from typing import Callable
 from .. import ir  # type: ignore
 from ..dialects.aie import core
 from ..helpers.dialects.ext.scf import _for as range_
-from .phys.tile import Tile
+from .phys.tile import PlacementTile, AnyComputeTile, Tile
 from .dataflow.objectfifo import ObjectFifoHandle
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .kernels.binkernel import BinKernel
@@ -23,13 +23,9 @@ class Worker(ObjectFifoEndpoint):
         self,
         core_fn: Callable[[ObjectFifoHandle | Kernel], None] | None,
         fn_args: list[ObjectFifoHandle | Kernel] = [],
-        coords: tuple[int, int] | None = None,
+        placement: PlacementTile | None = AnyComputeTile,
     ):
-        self.__tile = None
-        if coords:
-            column, row = coords
-            self.__tile = Tile(column, row)
-
+        self.__tile = placement
         if core_fn is None:
 
             def do_nothing_core_fun(*args) -> None:
@@ -56,8 +52,14 @@ class Worker(ObjectFifoEndpoint):
             self.link_with = list(bin_names)[0]
 
     @property
-    def tile(self) -> Tile | None:
-        return self.__tile
+    def tile(self) -> PlacementTile | None:
+        return self.__placement
+
+    def place(self, tile: Tile) -> None:
+        assert not isinstance(
+            self.__placement, Tile
+        ), f"Worker already placed at {self.tile}, cannot place {tile}"
+        self.__placement = tile
 
     def get_fifos(self) -> list[ObjectFifoHandle]:
         return self.__fifos.copy()

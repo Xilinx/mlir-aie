@@ -28,6 +28,10 @@ class DMATask(Resolvable):
         return self.__wait
 
     @property
+    def fifo(self) -> ObjectFifoHandle:
+        return self.__object_fifo
+
+    @property
     def task(self):
         assert self.__task != None
         return self.__task

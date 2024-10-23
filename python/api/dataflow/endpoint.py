@@ -14,3 +14,6 @@ class ObjectFifoEndpoint:
     @property
     @abstractmethod
     def tile(self) -> Tile | None: ...
+
+    @abstractmethod
+    def place(self, tile: Tile) -> None: ...

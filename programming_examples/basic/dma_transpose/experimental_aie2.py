@@ -11,8 +11,10 @@ import sys
 
 from aie.api.io.iocoordinator import IOCoordinator
 from aie.api.dataflow.objectfifo import ObjectFifo
+from aie.api.placers import SequentialPlacer
 from aie.api.program import Program
 from aie.api.phys.device import NPU1Col1
+from aie.api.phys.tile import AnyComputeTile
 from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D
 
 
@@ -27,15 +29,15 @@ def my_passthrough(M, K, N, generate_acccess_map=False):
         return
 
     of_in = ObjectFifo(2, tensor_ty)
-    of_out = of_in.second.forward(coords=(0, 2))
+    of_out = of_in.second.forward(AnyComputeTile)
 
     io = IOCoordinator()
     with io.build_sequence(tensor_ty, tensor_ty, tensor_ty) as (a_in, _, c_out):
         for t_in, t_out in io.tile_loop(tiler_in.tile_iter(), tiler_out.tile_iter()):
-            io.fill(of_in.first, t_in, a_in, coords=(0, 0))
-            io.drain(of_out.second, t_out, c_out, coords=(0, 0), wait=True)
+            io.fill(of_in.first, t_in, a_in)
+            io.drain(of_out.second, t_out, c_out, wait=True)
 
-    my_program = Program(NPU1Col1(), io)
+    my_program = Program(NPU1Col1(), io, placer=SequentialPlacer)
     my_program.resolve_program()
 
 

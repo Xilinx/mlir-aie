@@ -11,6 +11,7 @@ from ...dialects.aiex import runtime_sequence
 from ...dialects._aiex_ops_gen import dma_free_task
 from ...helpers.tensortiler.tensortiler2D import TensorTile2DIter, TensorTile
 from ..dataflow.objectfifo import ObjectFifoHandle
+from ..phys.tile import PlacementTile, AnyShimTile, Tile
 from ..resolvable import Resolvable
 from .dmatask import DMATask
 from .inoutdata import InOutData
@@ -71,13 +72,11 @@ class IOCoordinator(Resolvable):
         data_tile: TensorTile,
         source: InOutData,
         wait: bool = False,
-        coords: tuple[int, int] | None = None,
+        placement: PlacementTile = AnyShimTile,
     ) -> None:
         assert source in self.__inout_data
-        if coords:
-            column, row = coords
-            io_endpoint = IOEndpoint(column, row)
-            in_fifo.set_endpoint(io_endpoint)
+        io_endpoint = IOEndpoint(placement)
+        in_fifo.set_endpoint(io_endpoint)
         self.__fifos.add(in_fifo)
         self.__ops.append(DMATask(in_fifo, source, data_tile, wait))
 
@@ -87,13 +86,11 @@ class IOCoordinator(Resolvable):
         data_tile: TensorTile,
         dest: InOutData,
         wait: bool = False,
-        coords: tuple[int, int] | None = None,
+        placement: PlacementTile = AnyShimTile,
     ) -> None:
         assert dest in self.__inout_data
-        if coords:
-            column, row = coords
-            io_endpoint = IOEndpoint(column, row)
-            out_fifo.set_endpoint(io_endpoint)
+        io_endpoint = IOEndpoint(placement)
+        out_fifo.set_endpoint(io_endpoint)
         self.__fifos.add(out_fifo)
         self.__ops.append(DMATask(out_fifo, dest, data_tile, wait))
 
@@ -104,6 +101,30 @@ class IOCoordinator(Resolvable):
         if len(args) == 1:
             return IOIterator(self, *args)
         return IOIterator(self, zip(*args))
+
+    def place_tasks(self, shim_tiles: list[Tile]) -> None:
+        if self.__placement_policy == SingleShimPolicy:
+            for op in self.__ops:
+                ofe = op.fifo.get_endpoint()
+                assert isinstance(ofe, IOEndpoint)
+                if ofe.tile == AnyShimTile:
+                    ofe.place(shim_tiles[0])
+
+        elif isinstance(self.__placement_policy, DistributeShimPolicy):
+            placement_shim_tiles = shim_tiles[: self.__placement_policy.num_shim_tiles]
+            shim_idx = 0
+            chunk_size = self.__placement_policy.chunk_size
+            chunk_idx = 0
+
+            for op in self.__ops:
+                ofe = op.fifo.get_endpoint()
+                assert isinstance(ofe, IOEndpoint)
+                if ofe.tile == AnyShimTile:
+                    ofe.place(placement_shim_tiles[shim_idx])
+                    chunk_idx += 1
+                    if chunk_idx == chunk_size:
+                        chunk_idx = 0
+                        shim_idx = (shim_idx + 1) % len(placement_shim_tiles)
 
     def resolve(
         self,

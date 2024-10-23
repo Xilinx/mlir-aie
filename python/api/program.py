@@ -13,6 +13,7 @@ from .worker import Worker
 from .phys.device import Device
 from .io.iocoordinator import IOCoordinator
 from .dataflow.objectfifo import ObjectFifoLink
+from .placers import Placer
 
 
 class Program:
@@ -21,12 +22,13 @@ class Program:
         device: Device,
         io_coordinator: IOCoordinator,
         workers: list[Worker] = [],
+        placer: type[Placer] | None = None,
     ):
         self.__device = device
         self.__workers = workers
         self.__io_coordinator = io_coordinator
 
-    def resolve_program(self, generate_placement: bool = False):
+    def resolve_program(self, placer):
         with mlir_mod_ctx() as ctx:
 
             @device(self.__device.resolve())
@@ -36,6 +38,8 @@ class Program:
                 all_fifos.update(self.__io_coordinator.get_fifos())
                 for w in self.__workers:
                     all_fifos.update(w.get_fifos())
+
+                placer(self.__device, self.__io_coordinator, self.__workers, all_fifos)
 
                 # Collect all tiles
                 all_tiles = []

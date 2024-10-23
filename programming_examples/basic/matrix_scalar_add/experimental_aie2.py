@@ -71,8 +71,7 @@ def my_matrix_add_one():
             io.fill(of_in.first, t, in_tensor, coords=(col, 0))
             io.drain(of_out.second, t, out_tensor, coords=(col, 0), wait=True)
 
-    program = Program(dev, io, workers=[my_worker])
-    program.resolve_program()
+    return Program(dev, io, workers=[my_worker])
 
 
 my_matrix_add_one().resolve_program()

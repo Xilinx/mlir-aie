@@ -12,6 +12,12 @@ class IOEndpoint(ObjectFifoEndpoint):
     def tile(self) -> Tile | None:
         return self.__tile
 
+    def place(self, tile: Tile) -> None:
+        assert not isinstance(
+            self.__tile, Tile
+        ), f"Worker already placed at {self.tile}, cannot place {tile}"
+        self.__tile == tile
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, IOEndpoint):
             return NotImplemented

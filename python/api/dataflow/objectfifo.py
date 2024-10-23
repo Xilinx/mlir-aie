@@ -17,7 +17,7 @@ from ...helpers.util import np_ndarray_type_to_memref_type, single_elem_or_list_
 
 from ..resolvable import Resolvable
 from .endpoint import ObjectFifoEndpoint
-from ..phys.tile import Tile
+from ..phys.tile import PlacementTile, AnyMemTile
 
 
 class ObjectFifo(Resolvable):
@@ -69,15 +69,21 @@ class ObjectFifo(Resolvable):
     def second(self) -> ObjectFifoHandle:
         return self.__second
 
-    def end1_tile(self) -> Tile | None:
+    def end1_tile(self) -> PlacementTile | None:
         if self.end1 == None:
             return None
         return self.end1.tile
 
-    def end2_tiles(self) -> list[Tile | None] | None:
+    def end2_tiles(self) -> list[PlacementTile | None] | None:
         if self.end2 == []:
             return None
         return [e.tile for e in self.end2]
+
+    def _get_endpoint(self, is_first: bool) -> list[ObjectFifoEndpoint]:
+        if is_first:
+            return [self.end1]
+        else:
+            return self.end2.copy()
 
     @property
     def obj_type(self) -> type[np.ndarray]:
@@ -196,10 +202,13 @@ class ObjectFifoHandle(Resolvable):
     def set_endpoint(self, endpoint: ObjectFifoEndpoint) -> None:
         self.__object_fifo._set_endpoint(endpoint, first=self.__is_first)
 
+    def get_endpoint(self) -> ObjectFifoEndpoint:
+        return self.__object_fifo._get_endpoint(first=self.__is_first)
+
     def join(
         self,
         offsets: list[int],
-        coords: tuple[int, int],
+        placement: PlacementTile = AnyMemTile,
         depths: list[int] | None = None,
         types: list[type[np.ndarray]] = None,
         dimensions=None,
@@ -227,7 +236,7 @@ class ObjectFifoHandle(Resolvable):
             )
 
         # Create link and set it as endpoints
-        link = ObjectFifoLink(subfifos, self.__object_fifo, coords, offsets, [])
+        link = ObjectFifoLink(subfifos, self.__object_fifo, placement, offsets, [])
         self.set_endpoint(link)
         for i in range(num_subfifos):
             subfifos[i].second.set_endpoint(link)
@@ -236,7 +245,7 @@ class ObjectFifoHandle(Resolvable):
     def split(
         self,
         offsets: list[int],
-        coords: tuple[int, int],
+        placement: PlacementTile = AnyMemTile,
         depths: list[int] | None = None,
         types: list[type[np.ndarray]] = None,
         dimensions=None,
@@ -264,20 +273,22 @@ class ObjectFifoHandle(Resolvable):
             )
 
         # Create link and set it as endpoints
-        link = ObjectFifoLink(self.__object_fifo, subfifos, coords, [], offsets)
+        link = ObjectFifoLink(self.__object_fifo, subfifos, placement, [], offsets)
         self.set_endpoint(link)
         for i in range(num_subfifos):
             subfifos[i].first.set_endpoint(link)
         return subfifos
 
-    def forward(self, coords: tuple[int, int], depth: int | None = None) -> ObjectFifo:
+    def forward(
+        self, placement: PlacementTile = AnyMemTile, depth: int | None = None
+    ) -> ObjectFifo:
         assert not self.__is_first
         if depth is None:
             depth = self.__object_fifo.depth
         forward_fifo = ObjectFifo(
             depth, self.__object_fifo.obj_type, name=self.__object_fifo.name + f"_fwd"
         )
-        link = ObjectFifoLink(self.__object_fifo, forward_fifo, coords, [], [])
+        link = ObjectFifoLink(self.__object_fifo, forward_fifo, placement, [], [])
         self.set_endpoint(link)
         forward_fifo.first.set_endpoint(link)
         return forward_fifo
@@ -295,7 +306,7 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
         self,
         srcs: list[ObjectFifoHandle] | ObjectFifoHandle,
         dsts: list[ObjectFifoHandle] | ObjectFifoHandle,
-        coords: tuple[int, int],
+        placement: PlacementTile = AnyMemTile,
         src_offsets: list[int] = [],
         dst_offsets: list[int] = [],
     ):
@@ -311,15 +322,11 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
         if len(self.__dst_offsets) > 0:
             assert len(self.__dst_offsets) == len(self.__dsts)
 
-        self.__tile = None
-        if coords:
-            column, row = coords
-            self.__tile = Tile(column, row)
-
+        self.__tile = placement
         self.__op = None
 
     @property
-    def tile(self) -> Tile | None:
+    def tile(self) -> PlacementTile | None:
         return self.__tile
 
     def resolve(

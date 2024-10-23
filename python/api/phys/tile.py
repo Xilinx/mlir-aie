@@ -34,3 +34,18 @@ class Tile:
 
     def __hash__(self):
         return hash(str(self))
+
+
+class AnyShimTile:
+    pass
+
+
+class AnyMemTile:
+    pass
+
+
+class AnyComputeTile:
+    pass
+
+
+PlacementTile = Tile | AnyShimTile | AnyMemTile | AnyComputeTile

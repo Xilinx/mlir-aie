@@ -34,7 +34,14 @@ of_out = ObjectFifo(2, line_type, "out")
 
 io = IOCoordinator()
 with io.build_sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
-    tile = TensorTile(1, vector_size, 0, sizes=[1, 1, 1, vector_size], strides=[0, 0, 0, 1], transfer_len=vector_size,)
+    tile = TensorTile(
+        1,
+        vector_size,
+        0,
+        sizes=[1, 1, 1, vector_size],
+        strides=[0, 0, 0, 1],
+        transfer_len=vector_size,
+    )
     for t in io.tile_loop(iter([tile])):
         io.fill(of_in.first, t, a_in, coords=(0, 0))
         io.drain(of_out.second, t, b_out, coords=(0, 0), wait=True)
@@ -44,6 +51,7 @@ passthrough_fn = BinKernel(
     "passThrough.cc.o",
     [line_type, line_type, np.int32],
 )
+
 
 def core_fn(of_in, of_out, passThroughLine):
     for _ in range_(sys.maxsize):
