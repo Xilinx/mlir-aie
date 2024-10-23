@@ -14,7 +14,7 @@ from aie.api.program import Program
 from aie.api.worker import Worker
 from aie.api.kernels.binkernel import BinKernel
 from aie.api.phys.device import NPU1Col1
-from aie.helpers.util import DataTiler
+from aie.helpers.tensortiler.tensortiler2D import TensorTile
 from aie.helpers.dialects.ext.scf import _for as range_
 
 
@@ -47,7 +47,15 @@ def my_eltwise_exp():
 
     io = IOCoordinator()
     with io.build_sequence(tensor_ty, tensor_ty) as (a_in, c_out):
-        for t in io.tile_loop(DataTiler(N)):
+        tile = TensorTile(
+            1,
+            N,
+            0,
+            sizes=[1, 1, 1, N],
+            strides=[0, 0, 0, 1],
+            transfer_len=N,
+        )
+        for t in io.tile_loop(iter([tile])):
             io.fill(A_fifo.first, t, a_in, coords=(0, 0))
             io.drain(C_fifo.second, t, c_out, coords=(0, 0), wait=True)
 

@@ -34,7 +34,6 @@ of_out = ObjectFifo(2, line_type, "out")
 
 io = IOCoordinator()
 with io.build_sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
-    # TODO: make data type aware?
     tile = TensorTile(
         1,
         vector_size,
