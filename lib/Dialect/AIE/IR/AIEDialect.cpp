@@ -891,8 +891,7 @@ LogicalResult ObjectFifoReleaseOp::verify() {
   auto coreTile = parent.getTile();
   auto objFifo = getObjectFifo();
   if (!objFifo)
-    return emitError(
-      "cannot retrieve associated object FIFO");
+    return emitError("cannot retrieve associated object FIFO");
   if (getPort() == ObjectFifoPort::Produce) {
     if (coreTile != objFifo.getProducerTile())
       return parent.emitOpError(
