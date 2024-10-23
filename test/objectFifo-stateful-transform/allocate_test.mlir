@@ -11,11 +11,12 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
-// CHECK:           memref.global "public" @of : memref<16xi32>
+// CHECK:           memref.global "public" @of1 : memref<16xi32>
+// CHECK:           memref.global "public" @of0 : memref<16xi32>
 // CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
 // CHECK:           %[[VAL_1:.*]] = aie.tile(1, 3)
 // CHECK:           %of1_buff_0 = aie.buffer(%[[VAL_1]]) {sym_name = "of1_buff_0"} : memref<16xi32> 
-// CHECK:           %of1_buff_0 = aie.buffer(%[[VAL_1]]) {sym_name = "of1_buff_1"} : memref<16xi32> 
+// CHECK:           %of1_buff_1 = aie.buffer(%[[VAL_1]]) {sym_name = "of1_buff_1"} : memref<16xi32> 
 // CHECK:           %of1_prod_lock = aie.lock(%[[VAL_1]], 2) {init = 2 : i32, sym_name = "of1_prod_lock"}
 // CHECK:           %of1_cons_lock = aie.lock(%[[VAL_1]], 3) {init = 0 : i32, sym_name = "of1_cons_lock"}
 // CHECK:           %of0_buff_0 = aie.buffer(%[[VAL_1]]) {sym_name = "of0_buff_0"} : memref<16xi32> 
