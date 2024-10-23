@@ -42,7 +42,7 @@ of_out = of_in.second.forward(coords=(0, 2))
 
 io = IOCoordinator()
 with io.build_sequence(vector_ty, vector_ty, vector_ty) as (a_in, _, c_out):
-    tile = TensorTile(1, N, 0, sizes=[1, 1, 1, N], strides=[0, 0, 0, 1])
+    tile = TensorTile(1, N, 0, sizes=[1, 1, 1, N], strides=[0, 0, 0, 1], transfer_len=N)
     for t in io.tile_loop(iter([tile])):
         io.fill(of_in.first, t, a_in, coords=(col, 0))
         io.drain(of_out.second, t, c_out, coords=(col, 0), wait=True)
