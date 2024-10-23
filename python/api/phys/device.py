@@ -4,7 +4,7 @@ TODOs:
 * doc
 * other devices
 * error handling
-
+ 
 devs = {
     1: AIEDevice.npu1_1col,
     2: AIEDevice.npu1_2col,
@@ -14,6 +14,7 @@ devs = {
 }
 """
 
+from abc import abstractmethod
 from ... import ir  # type: ignore
 from ...dialects.aie import AIEDevice, tile, TileOp  # type: ignore
 from ..resolvable import Resolvable
@@ -31,9 +32,9 @@ class Device(Resolvable):
         """
 
         def __init__(self, col: int, row: int) -> None:
-            self.__col: int = col
-            self.__row: int = row
-            self.__op: TileOp | None = None
+            self._col: int = col
+            self._row: int = row
+            self._op: TileOp | None = None
             super().__init__()
 
         def resolve(
@@ -41,35 +42,44 @@ class Device(Resolvable):
             loc: ir.Location | None = None,
             ip: ir.InsertionPoint | None = None,
         ) -> None:
-            if self.__op == None:
-                self.__op = tile(self.__col, self.__row, loc=loc, ip=ip)
+            if self._op == None:
+                self._op = tile(self._col, self._row, loc=loc, ip=ip)
 
         @property
         def op(self) -> TileOp:
-            assert self.__op != None
-            return self.__op
+            assert self._op != None
+            return self._op
 
         @op.setter
         def op(self, op: TileOp):
-            assert self.__op == None
-            self.__op = op
+            assert self._op == None
+            self._op = op
 
     def __init__(self, cols: int, rows: int) -> None:
-        self.__cols = cols
-        self.__rows = rows
-        self.__tiles: list[list[Device.__DeviceTile]] = []
-        for c in range(self.__cols):
-            self.__tiles.append([])
-            for r in range(self.__rows):
-                self.__tiles[c].append(Device.__DeviceTile(c, r))
+        self._cols = cols
+        self._rows = rows
+        self._tiles: list[list[Device.__DeviceTile]] = []
+        for c in range(self._cols):
+            self._tiles.append([])
+            for r in range(self._rows):
+                self._tiles[c].append(Device.__DeviceTile(c, r))
 
     @property
     def rows(self) -> int:
-        return self.__rows
+        return self._rows
 
     @property
     def cols(self) -> int:
-        return self.__cols
+        return self._cols
+
+    @abstractmethod
+    def get_shim_tiles(self) -> list[Tile]: ...
+
+    @abstractmethod
+    def get_mem_tiles(self) -> list[Tile]: ...
+
+    @abstractmethod
+    def get_compute_tiles(self) -> list[Tile]: ...
 
     def resolve_tile(
         self,
@@ -77,13 +87,22 @@ class Device(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        self.__tiles[tile.col][tile.row].resolve(loc, ip)
-        tile.op = self.__tiles[tile.col][tile.row].op
+        self._tiles[tile.col][tile.row].resolve(loc, ip)
+        tile.op = self._tiles[tile.col][tile.row].op
 
 
 class NPU1Col1(Device):
     def __init__(self) -> None:
         super().__init__(cols=1, rows=6)
+
+    def get_shim_tiles(self) -> list[Tile]:
+        return [Tile(0, 0)]
+
+    def get_mem_tiles(self) -> list[Tile]:
+        return [Tile(0, 1)]
+
+    def get_compute_tiles(self) -> list[Tile]:
+        return [Tile(0, row) for row in range(2, self._rows)]
 
     def resolve(
         self,
@@ -97,6 +116,25 @@ class NPU1Col4(Device):
     def __init__(self) -> None:
         super().__init__(cols=4, rows=6)
 
+    def get_shim_tiles(self) -> list[Tile]:
+        shim_tiles = []
+        for col in range(self._cols):
+            shim_tiles.append(Tile(col, 0))
+        return shim_tiles
+
+    def get_mem_tiles(self) -> list[Tile]:
+        mem_tiles = []
+        for col in range(self._cols):
+            mem_tiles.append(Tile(col, 1))
+        return mem_tiles
+
+    def get_compute_tiles(self) -> list[Tile]:
+        compute_tiles = []
+        for col in range(self._cols):
+            for row in range(2, self._rows):
+                compute_tiles.append(Tile(col, row))
+        return compute_tiles
+
     def resolve(
         self,
         loc: ir.Location | None = None,
@@ -107,7 +145,9 @@ class NPU1Col4(Device):
 
 class XCVC1902(Device):
     def __init__(self) -> None:
-        super().__init__(cols=1, rows=1)  # TODO: fill in with actual values
+        raise NotImplementedError(
+            "This device type is not yet implementated for the experimental API"
+        )
 
     def resolve(
         self,

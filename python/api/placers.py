@@ -2,12 +2,14 @@ from abc import ABCMeta, abstractmethod
 
 from .phys.device import Device
 from .io.iocoordinator import IOCoordinator
+from .io.ioendpoint import IOEndpoint
 from .worker import Worker
-from .phys.tile import AnyComputeTile, AnyShimTile, AnyMemTile
+from .phys.tile import AnyComputeTile, AnyMemTile
 from .dataflow.objectfifo import ObjectFifoHandle
 
 
-class Placer(meta=ABCMeta):
+class Placer(metaclass=ABCMeta):
+
     @abstractmethod
     def make_placement(
         self,
@@ -20,6 +22,9 @@ class Placer(meta=ABCMeta):
 
 class SequentialPlacer(Placer):
 
+    def __init__(self):
+        super().__init__()
+
     def make_placement(
         self,
         device: Device,
@@ -27,28 +32,35 @@ class SequentialPlacer(Placer):
         workers: list[Worker],
         object_fifos: list[ObjectFifoHandle],
     ):
-        shims = self.__device.get_shim_tiles()
+        shims = device.get_shim_tiles()
 
-        mems = self.__device.get_mem_tiles()
+        mems = device.get_mem_tiles()
         mem_idx = 0  # Loop over memtiles
 
-        cores = self.__device.get_core_tiles()
-        core_idx = 0  # Will not loop over core tiles
+        computes = device.get_compute_tiles()
+        compute_idx = 0  # Will not loop over core tiles
 
-        io.place_tasks(shims)
         for worker in workers:
             if worker.tile == AnyComputeTile:
-                assert core_idx < len(cores), "Ran out of cores for placement!"
-                worker.place(cores[core_idx])
-                core_idx += 1
+                assert compute_idx < len(
+                    computes
+                ), "Ran out of compute tiles for placement!"
+                worker.place(computes[compute_idx])
+                compute_idx += 1
 
         for of in object_fifos:
-            of_endpoints = [of.end1] + of.end2
+            of_endpoints = of.get_all_endpoints()
+            # IOEndpoints are placed by the IOCoordinator
+            of_endpoints = [of for of in of_endpoints if not isinstance(of, IOEndpoint)]
             for ofe in of_endpoints:
                 if ofe.tile == AnyMemTile:
                     ofe.place(mems[mem_idx])
                     mem_idx = (mem_idx + 1) % len(mems)
                 elif ofe.tile == AnyComputeTile:
-                    assert core_idx < len(cores), "Ran out of cores for placement!"
-                    ofe.place(cores[core_idx])
-                    core_idx += 1
+                    assert compute_idx < len(
+                        computes
+                    ), "Ran out of compute tiles for placement!"
+                    ofe.place(computes[compute_idx])
+                    compute_idx += 1
+
+        io.place_tasks(shims)

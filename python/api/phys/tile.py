@@ -12,17 +12,17 @@ class Tile:
     def __init__(self, col: int, row: int) -> None:
         self.col: int = col
         self.row: int = row
-        self.__op: TileOp | None = None
+        self._op: TileOp | None = None
 
     @property
     def op(self) -> TileOp:
-        assert self.__op != None
-        return self.__op
+        assert self._op != None
+        return self._op
 
     @op.setter
     def op(self, op: TileOp):
-        assert self.__op == None or self.__op == op
-        self.__op = op
+        assert self._op == None or self._op == op
+        self._op = op
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Tile):

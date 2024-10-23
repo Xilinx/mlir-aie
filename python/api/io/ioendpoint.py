@@ -1,22 +1,22 @@
 from __future__ import annotations
 
 from ..dataflow.endpoint import ObjectFifoEndpoint
-from ..phys.tile import Tile
+from ..phys.tile import Tile, PlacementTile
 
 
 class IOEndpoint(ObjectFifoEndpoint):
-    def __init__(self, column: int, row: int) -> IOEndpoint:
-        self.__tile = Tile(column, row)
+    def __init__(self, placement: PlacementTile) -> IOEndpoint:
+        self._tile = placement
 
     @property
-    def tile(self) -> Tile | None:
-        return self.__tile
+    def tile(self) -> PlacementTile:
+        return self._tile
 
     def place(self, tile: Tile) -> None:
         assert not isinstance(
-            self.__tile, Tile
-        ), f"Worker already placed at {self.tile}, cannot place {tile}"
-        self.__tile == tile
+            self._tile, Tile
+        ), f"Worker already placed at {self._tile}, cannot place {tile}"
+        self._tile = tile
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, IOEndpoint):

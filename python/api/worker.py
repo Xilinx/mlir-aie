@@ -25,7 +25,7 @@ class Worker(ObjectFifoEndpoint):
         fn_args: list[ObjectFifoHandle | Kernel] = [],
         placement: PlacementTile | None = AnyComputeTile,
     ):
-        self.__tile = placement
+        self._tile = placement
         if core_fn is None:
 
             def do_nothing_core_fun(*args) -> None:
@@ -38,39 +38,39 @@ class Worker(ObjectFifoEndpoint):
         self.link_with: str | None = None
         self.fn_args = fn_args
         bin_names = set()
-        self.__fifos = []
+        self._fifos = []
 
         for arg in self.fn_args:
             if isinstance(arg, BinKernel):
                 bin_names.add(arg.bin_name)
             elif isinstance(arg, ObjectFifoHandle):
                 arg.set_endpoint(self)
-                self.__fifos.append(arg)
+                self._fifos.append(arg)
 
         assert len(bin_names) <= 1, "Right now only link with one bin"
         if len(bin_names) == 1:
             self.link_with = list(bin_names)[0]
 
     @property
-    def tile(self) -> PlacementTile | None:
-        return self.__placement
+    def tile(self) -> PlacementTile:
+        return self._tile
 
     def place(self, tile: Tile) -> None:
         assert not isinstance(
-            self.__placement, Tile
+            self._tile, Tile
         ), f"Worker already placed at {self.tile}, cannot place {tile}"
-        self.__placement = tile
+        self._tile = tile
 
     def get_fifos(self) -> list[ObjectFifoHandle]:
-        return self.__fifos.copy()
+        return self._fifos.copy()
 
     def resolve(
         self,
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        assert self.__tile != None
-        my_tile = self.__tile.op
+        assert self._tile != None
+        my_tile = self._tile.op
         my_link = self.link_with
 
         @core(my_tile, my_link)

@@ -12,7 +12,6 @@ from ..dialects.aie import device
 from .worker import Worker
 from .phys.device import Device
 from .io.iocoordinator import IOCoordinator
-from .dataflow.objectfifo import ObjectFifoLink
 from .placers import Placer
 
 
@@ -22,28 +21,30 @@ class Program:
         device: Device,
         io_coordinator: IOCoordinator,
         workers: list[Worker] = [],
-        placer: type[Placer] | None = None,
     ):
-        self.__device = device
-        self.__workers = workers
-        self.__io_coordinator = io_coordinator
+        self._device = device
+        self._workers = workers
+        self._io_coordinator = io_coordinator
 
-    def resolve_program(self, placer):
+    def resolve_program(self, placer: Placer | None = None):
         with mlir_mod_ctx() as ctx:
 
-            @device(self.__device.resolve())
+            @device(self._device.resolve())
             def device_body():
                 # Collect all fifos
                 all_fifos = set()
-                all_fifos.update(self.__io_coordinator.get_fifos())
-                for w in self.__workers:
+                all_fifos.update(self._io_coordinator.get_fifos())
+                for w in self._workers:
                     all_fifos.update(w.get_fifos())
 
-                placer(self.__device, self.__io_coordinator, self.__workers, all_fifos)
+                if placer:
+                    placer.make_placement(
+                        self._device, self._io_coordinator, self._workers, all_fifos
+                    )
 
                 # Collect all tiles
                 all_tiles = []
-                for w in self.__workers:
+                for w in self._workers:
                     all_tiles.append(w.tile)
                 for f in all_fifos:
                     all_tiles.append(f.end1_tile())
@@ -51,7 +52,7 @@ class Program:
 
                 # Resolve tiles
                 for t in all_tiles:
-                    self.__device.resolve_tile(t)
+                    self._device.resolve_tile(t)
                     self._print_verify(ctx)
 
                 # Generate fifos
@@ -60,7 +61,7 @@ class Program:
                     self._print_verify(ctx)
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
-                for w in self.__workers:
+                for w in self._workers:
                     for arg in w.fn_args:
                         if isinstance(arg, FuncBase):
                             arg.emit()
@@ -69,12 +70,12 @@ class Program:
                         self._print_verify(ctx)
 
                 # Generate core programs
-                for w in self.__workers:
+                for w in self._workers:
                     w.resolve()
                     self._print_verify(ctx)
 
                 # In/Out Sequence
-                self.__io_coordinator.resolve()
+                self._io_coordinator.resolve()
                 self._print_verify(ctx)
 
             print(ctx.module)

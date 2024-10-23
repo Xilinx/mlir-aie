@@ -55,16 +55,16 @@ class IOCoordinator(Resolvable):
         shim_policy: ShimPlacementPolicy = SingleShimPolicy,
         sync_policy: DMASyncPolicy = SingleSyncPolicy,
     ) -> IOCoordinator:
-        self.__shim_policy = shim_policy
-        self.__sync_policy = sync_policy
-        self.__inout_data = []
-        self.__ops = []
-        self.__fifos = set()
+        self._shim_policy = shim_policy
+        self._sync_policy = sync_policy
+        self._inout_data = []
+        self._ops = []
+        self._fifos = set()
 
     @contextmanager
     def build_sequence(self, *input_types: type[np.ndarray]):
-        self.__inout_data = list(map(InOutData, input_types))
-        yield tuple(self.__inout_data)
+        self._inout_data = list(map(InOutData, input_types))
+        yield tuple(self._inout_data)
 
     def fill(
         self,
@@ -74,11 +74,11 @@ class IOCoordinator(Resolvable):
         wait: bool = False,
         placement: PlacementTile = AnyShimTile,
     ) -> None:
-        assert source in self.__inout_data
+        assert source in self._inout_data
         io_endpoint = IOEndpoint(placement)
         in_fifo.set_endpoint(io_endpoint)
-        self.__fifos.add(in_fifo)
-        self.__ops.append(DMATask(in_fifo, source, data_tile, wait))
+        self._fifos.add(in_fifo)
+        self._ops.append(DMATask(in_fifo, source, data_tile, wait))
 
     def drain(
         self,
@@ -88,14 +88,14 @@ class IOCoordinator(Resolvable):
         wait: bool = False,
         placement: PlacementTile = AnyShimTile,
     ) -> None:
-        assert dest in self.__inout_data
+        assert dest in self._inout_data
         io_endpoint = IOEndpoint(placement)
         out_fifo.set_endpoint(io_endpoint)
-        self.__fifos.add(out_fifo)
-        self.__ops.append(DMATask(out_fifo, dest, data_tile, wait))
+        self._fifos.add(out_fifo)
+        self._ops.append(DMATask(out_fifo, dest, data_tile, wait))
 
     def get_fifos(self) -> list[ObjectFifoHandle]:
-        return self.__fifos.copy()
+        return self._fifos.copy()
 
     def tile_loop(self, *args: TensorTile) -> IOIterator:
         if len(args) == 1:
@@ -103,22 +103,28 @@ class IOCoordinator(Resolvable):
         return IOIterator(self, zip(*args))
 
     def place_tasks(self, shim_tiles: list[Tile]) -> None:
-        if self.__placement_policy == SingleShimPolicy:
-            for op in self.__ops:
+        if self._shim_policy == SingleShimPolicy:
+            for op in self._ops:
                 ofe = op.fifo.get_endpoint()
-                assert isinstance(ofe, IOEndpoint)
+                ofe = ofe[0]  # un-listify
+                assert isinstance(
+                    ofe, IOEndpoint
+                ), f"Expected IOEndpoint, but found {type(ofe)}"
                 if ofe.tile == AnyShimTile:
                     ofe.place(shim_tiles[0])
 
-        elif isinstance(self.__placement_policy, DistributeShimPolicy):
-            placement_shim_tiles = shim_tiles[: self.__placement_policy.num_shim_tiles]
+        elif isinstance(self._shim_policy, DistributeShimPolicy):
+            placement_shim_tiles = shim_tiles[: self._shim_policy.num_shim_tiles]
             shim_idx = 0
-            chunk_size = self.__placement_policy.chunk_size
+            chunk_size = self._shim_policy.chunk_size
             chunk_idx = 0
 
-            for op in self.__ops:
+            for op in self._ops:
                 ofe = op.fifo.get_endpoint()
-                assert isinstance(ofe, IOEndpoint)
+                ofe = ofe[0]  # un-listify
+                assert isinstance(
+                    ofe, IOEndpoint
+                ), f"Expected IOEndpoint, but found {type(ofe)}"
                 if ofe.tile == AnyShimTile:
                     ofe.place(placement_shim_tiles[shim_idx])
                     chunk_idx += 1
@@ -131,16 +137,16 @@ class IOCoordinator(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        inout_types = [inout_data.inout_type for inout_data in self.__inout_data]
+        inout_types = [inout_data.inout_type for inout_data in self._inout_data]
 
         @runtime_sequence(*inout_types)
         def sequence(*args):
 
-            for io_data, io_data_val in zip(self.__inout_data, args):
+            for io_data, io_data_val in zip(self._inout_data, args):
                 io_data.op = io_data_val
 
             no_waits = []
-            for dma_task in self.__ops:
+            for dma_task in self._ops:
                 dma_task.resolve()
                 if dma_task.will_wait():
                     for t in no_waits:

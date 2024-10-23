@@ -5,14 +5,14 @@ from ...extras.dialects.ext.memref import MemRef
 class InOutData:
     def __init__(self, inout_type: type[np.ndarray]):
         self.inout_type = inout_type
-        self.__op = None
+        self._op = None
 
     @property
     def op(self) -> MemRef:
-        assert self.__op != None
-        return self.__op
+        assert self._op != None
+        return self._op
 
     @op.setter
     def op(self, op: MemRef):
-        assert self.__op == None
-        self.__op = op
+        assert self._op == None
+        self._op = op

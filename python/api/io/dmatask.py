@@ -18,50 +18,50 @@ class DMATask(Resolvable):
         data_tile: TensorTile,
         wait=False,
     ):
-        self.__object_fifo = object_fifo
-        self.__inout_data = inout_data
-        self.__tensor_tile = data_tile
-        self.__wait = wait
-        self.__task = None
+        self._object_fifo = object_fifo
+        self._inout_data = inout_data
+        self._tensor_tile = data_tile
+        self._wait = wait
+        self._task = None
 
     def will_wait(self):
-        return self.__wait
+        return self._wait
 
     @property
     def fifo(self) -> ObjectFifoHandle:
-        return self.__object_fifo
+        return self._object_fifo
 
     @property
     def task(self):
-        assert self.__task != None
-        return self.__task
+        assert self._task != None
+        return self._task
 
     def resolve(
         self,
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        self.__task = dma_configure_task_for(
-            self.__object_fifo.op, issue_token=self.__wait
+        self._task = dma_configure_task_for(
+            self._object_fifo.op, issue_token=self._wait
         )
 
         # TODO(erika) - fix issue w/ passthrough_kernel and remove this hack
         if (
-            self.__tensor_tile.transfer_len == self.__tensor_tile.tensor_width
-            and self.__tensor_tile.tensor_height == 1
+            self._tensor_tile.transfer_len == self._tensor_tile.tensor_width
+            and self._tensor_tile.tensor_height == 1
         ):
             dimensions = None
         else:
-            dimensions = self.__tensor_tile.dimensions
+            dimensions = self._tensor_tile.dimensions
 
-        with bds(self.__task) as bd:
+        with bds(self._task) as bd:
             with bd[0]:
                 dma_bd(
-                    self.__inout_data.op,
-                    len=self.__tensor_tile.transfer_len,
+                    self._inout_data.op,
+                    len=self._tensor_tile.transfer_len,
                     dimensions=dimensions,
                 )
                 EndOp()
-        dma_start_task(self.__task)
-        if self.__wait:
-            dma_await_task(self.__task)
+        dma_start_task(self._task)
+        if self._wait:
+            dma_await_task(self._task)
