@@ -42,7 +42,15 @@ def my_passthrough():
 
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile, MemTile, 1, memRef_ty)
-            of_out = object_fifo("out", MemTile, ShimTile, 1, memRef_ty2, dimensionsToStream=[(5, 5), (5, 5)], padDimensions=[(2, 0), (3, 0)])
+            of_out = object_fifo(
+                "out",
+                MemTile,
+                ShimTile,
+                1,
+                memRef_ty2,
+                dimensionsToStream=[(5, 5), (5, 5)],
+                padDimensions=[(2, 0), (3, 0)],
+            )
             object_fifo_link(of_in, of_out)
 
             # To/from AIE-array data movement
