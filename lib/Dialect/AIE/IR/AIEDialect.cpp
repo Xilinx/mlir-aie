@@ -596,8 +596,7 @@ LogicalResult ObjectFifoAllocateOp::verify() {
   if (!objFifo)
     return emitError("cannot retrieve associated object FIFO");
   if (objFifo.getConsumerTiles().size() != 1)
-    return emitError(
-        "can only be used in 1-to-1 object FIFOs");
+    return emitError("can only be used in 1-to-1 object FIFOs");
   return success();
 }
 
