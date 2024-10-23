@@ -20,7 +20,7 @@ class DMATask(Resolvable):
     ):
         self.__object_fifo = object_fifo
         self.__inout_data = inout_data
-        self.__data_tile_spec = data_tile
+        self.__tensor_tile = data_tile
         self.__wait = wait
         self.__task = None
 
@@ -40,12 +40,22 @@ class DMATask(Resolvable):
         self.__task = dma_configure_task_for(
             self.__object_fifo.op, issue_token=self.__wait
         )
+
+        # TODO(erika) - fix issue w/ passthrough_kernel and remove this hack
+        if (
+            self.__tensor_tile.transfer_len == self.__tensor_tile.tensor_width
+            and self.__tensor_tile.tensor_height == 1
+        ):
+            dimensions = None
+        else:
+            dimensions = self.__tensor_tile.dimensions
+
         with bds(self.__task) as bd:
             with bd[0]:
                 dma_bd(
                     self.__inout_data.op,
-                    len=self.__data_tile_spec.transfer_len,
-                    dimensions=self.__data_tile_spec.dimensions,
+                    len=self.__tensor_tile.transfer_len,
+                    dimensions=dimensions,
                 )
                 EndOp()
         dma_start_task(self.__task)

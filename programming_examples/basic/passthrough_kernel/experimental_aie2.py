@@ -15,7 +15,7 @@ from aie.api.program import Program
 from aie.api.worker import Worker
 from aie.api.phys.device import NPU1Col1
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.util import DataTiler
+from aie.helpers.tensortiler.tensortiler2D import TensorTile
 
 try:
     vector_size = int(sys.argv[1])
@@ -34,7 +34,16 @@ of_out = ObjectFifo(2, line_type, "out")
 
 io = IOCoordinator()
 with io.build_sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
-    for t in io.tile_loop(DataTiler(vector_size)):
+    # TODO: make data type aware?
+    tile = TensorTile(
+        1,
+        vector_size,
+        0,
+        sizes=[1, 1, 1, vector_size],
+        strides=[0, 0, 0, 1],
+        transfer_len=vector_size,
+    )
+    for t in io.tile_loop(iter([tile])):
         io.fill(of_in.first, t, a_in, coords=(0, 0))
         io.drain(of_out.second, t, b_out, coords=(0, 0), wait=True)
 
