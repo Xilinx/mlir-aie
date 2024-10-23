@@ -52,7 +52,7 @@ All steps in WSL Ubuntu terminal.
 
 1. Install AIETools under WSL Ubuntu
 
-    1. Option A - Supporting AMD Ryzen™ AI with AIE-ML (AIE2) and AIE2P: Install AMD Vitis™ AIE Essentials under WSL Ubuntu from [Ryzen AI Software 1.3 Early Accesss](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab). 
+    1. Option A -  Supporting AMD Ryzen™ AI with AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P): Install AMD Vitis™ AIE Essentials under WSL Ubuntu from [Ryzen AI Software 1.3 Early Accesss](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab). 
 
 
       > This is an early access lounge, you must register and be granted access at this time.
@@ -85,7 +85,7 @@ All steps in WSL Ubuntu terminal.
           export PATH=$PATH:${AIETOOLS_ROOT}/bin
           export LM_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
          ```
-    1. Option B - Supporting AMD Ryzen™ AI and AMD Versal™ with AIE and AIE-ML (AIE2): Install Vitis under WSL Ubuntu from [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html) and setup a AI Engine license:
+    1. Option B - Supporting AMD Ryzen™ AI and AMD Versal™ with AIE and AIE-ML/XDNA™ (AIE2): Install Vitis under WSL Ubuntu from [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html) and setup a AI Engine license:
 
 
       - Install Vitis in WSL Ubuntu. We will assume you use the default installation directory, `/tools/Xilinx`.
@@ -114,7 +114,7 @@ All steps in WSL Ubuntu terminal.
 
    * Use quick setup script to install from whls:
 
-     >  NOTE: Installing the mlir-aie tools from wheels via the quick setup path supports AIE-ML (AIE2) and AIE2P, it does NOT support Versal™ devices with AIE. 
+     >  NOTE: Installing the mlir-aie tools from wheels via the quick setup path supports AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P), it does NOT support Versal™ devices with AIE. 
 
      ```
      source utils/quick_setup.sh
