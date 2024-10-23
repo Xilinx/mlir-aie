@@ -609,7 +609,7 @@ ObjectFifoCreateOp ObjectFifoAllocateOp::getObjectFifo() {
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
-          isa_and_nonnull<ObjectFifoCreateOp>(st)) 
+          isa_and_nonnull<ObjectFifoCreateOp>(st))
         return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
