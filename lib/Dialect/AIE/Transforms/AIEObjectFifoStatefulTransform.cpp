@@ -219,10 +219,34 @@ struct AIEObjectFifoStatefulTransformPass
 
     // Only test for this objfifo belonging to a LinkOp if we are in the shared
     // memory case; otherwise, we will return `true` in any case.
+    // if (hasSharedMemory) {
+    //   if (auto linkOp = getOptionalLinkOp(createOp)) {
+    //     splitBecauseLink.push_back(createOp);
+    //     isUsedInLinkOp = true;
+    bool isLinkProvidingSharedMemory = false;
     if (hasSharedMemory) {
       if (auto linkOp = getOptionalLinkOp(createOp)) {
         splitBecauseLink.push_back(createOp);
         isUsedInLinkOp = true;
+        int share_dir = 0;
+        if (!linkOp->isDistribute() && !linkOp->isJoin()) {
+          TileOp producerTile = createOp.getProducerTileOp();
+          if (auto consumerTile =
+                  createOp.getConsumerTiles().front().getDefiningOp()) {
+            if (auto consumerTileOp = dyn_cast<TileOp>(consumerTile)) {
+              isLinkProvidingSharedMemory =
+                  isSharedMemory(producerTile, consumerTileOp, &share_dir);
+            }
+          }
+          if (createOp.getViaSharedMem().has_value() &&
+              isLinkProvidingSharedMemory) {
+            checkAndApplyViaSharedMemAttribute(createOp, share_dir);
+            if (share_direction == share_dir)
+              isUsedInLinkOp = false;
+          } else if (isLinkProvidingSharedMemory) {
+            isUsedInLinkOp = false;
+          }
+        }
       }
     }
 
@@ -1692,9 +1716,32 @@ struct AIEObjectFifoStatefulTransformPass
         auto acqOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
         if (ObjectFifoCreateOp op = acqOp.getObjectFifo();
             getOptionalLinkOp(op)) {
-          accessOp->emitOpError("currently cannot access objectFifo used in "
-                                "ObjectFifoLinkOp");
-          return;
+          if (auto linkOp = getOptionalLinkOp(op)) {
+            if (!linkOp->isDistribute() && !linkOp->isJoin()) {
+              for (auto consumerTile : op.getConsumerTiles()) {
+                if (auto consumerTileOp =
+                        dyn_cast<TileOp>(consumerTile.getDefiningOp())) {
+                  int share_dir_value = 0;
+                  int *share_dir = &share_dir_value;
+                  bool sharing = isSharedMemory(op.getProducerTileOp(),
+                                                consumerTileOp, share_dir);
+                  if (sharing) {
+                    accessOp.getOutput().replaceAllUsesWith(
+                        subviews[acqOp][accessOp.getIndex()]->getBuffer());
+                  } else {
+                    accessOp->emitOpError(
+                        "currently cannot access objectFifo used in "
+                        "ObjectFifoLinkOp");
+                  }
+                }
+              }
+            } else
+              accessOp->emitOpError(
+                  "currently cannot access objectFifo used in "
+                  "ObjectFifoLinkOp");
+          } else
+            accessOp->emitOpError("currently cannot access objectFifo used in "
+                                  "ObjectFifoLinkOp");
         }
         accessOp.getOutput().replaceAllUsesWith(
             subviews[acqOp][accessOp.getIndex()]->getBuffer());
