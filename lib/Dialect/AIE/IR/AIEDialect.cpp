@@ -491,12 +491,6 @@ LogicalResult ObjectFifoCreateOp::verify() {
         "on shim tile producers");
   }
 
-  if (getViaSharedMem().has_value()) {
-    if (getConsumerTiles().size() > 1)
-      return emitError(
-          "`via_shared_mem` can only be used in 1-to-1 object FIFOs");
-  }
-
   if (getMemtileRepeat().has_value()) {
     if (!getProducerTileOp().isMemTile())
       return emitError("`memtile_repeat` can only be used with a mem tile "
@@ -595,6 +589,35 @@ void printObjectFifoConsumerTiles(OpAsmPrinter &printer, Operation *op,
 }
 
 } // namespace xilinx::AIE
+
+//===----------------------------------------------------------------------===//
+// ObjectFifoAllocateOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ObjectFifoAllocateOp::verify() {
+  ObjectFifoCreateOp objFifo = getObjectFifo();
+  if (!objFifo)
+    return emitError("cannot retrieve associated object FIFO");
+  if (objFifo.getConsumerTiles().size() != 1)
+    return emitError("can only be used in 1-to-1 object FIFOs");
+  return success();
+}
+
+TileOp ObjectFifoAllocateOp::getDelegateTileOp() {
+  return cast<TileOp>(getDelegateTile().getDefiningOp());
+}
+
+ObjectFifoCreateOp ObjectFifoAllocateOp::getObjectFifo() {
+  Operation *parent = getOperation();
+  while ((parent = parent->getParentOp())) {
+    if (parent->hasTrait<OpTrait::SymbolTable>()) {
+      if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+          isa_and_nonnull<ObjectFifoCreateOp>(st))
+        return dyn_cast<ObjectFifoCreateOp>(st);
+    }
+  }
+  return {};
+}
 
 //===----------------------------------------------------------------------===//
 // ObjectFifoLinkOp
@@ -810,6 +833,8 @@ LogicalResult ObjectFifoAcquireOp::verify() {
 
   auto coreTile = parent.getTile();
   auto objFifo = getObjectFifo();
+  if (!objFifo)
+    return emitError("cannot retrieve associated object FIFO");
   if (getPort() == ObjectFifoPort::Produce) {
     if (coreTile != objFifo.getProducerTile())
       return parent.emitOpError(
@@ -868,6 +893,8 @@ LogicalResult ObjectFifoReleaseOp::verify() {
 
   auto coreTile = parent.getTile();
   auto objFifo = getObjectFifo();
+  if (!objFifo)
+    return emitError("cannot retrieve associated object FIFO");
   if (getPort() == ObjectFifoPort::Produce) {
     if (coreTile != objFifo.getProducerTile())
       return parent.emitOpError(
