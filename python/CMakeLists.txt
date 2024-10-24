@@ -42,7 +42,19 @@ declare_mlir_python_sources(AIEPythonSources.Helpers
     helpers/*.py
     helpers/dialects/ext/*.py
     helpers/runtime/*.py
+    helpers/tensortiler/*.py
 )
+
+declare_mlir_python_sources(AIEPythonSources.Api
+  ADD_TO_PARENT AIEPythonSources
+  SOURCES_GLOB
+    api/*.py
+    api/dataflow/*.py
+    api/io/*py
+    api/kernels/*.py
+    api/phys/*.py
+)
+
 
 declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT AIEPythonSources.Dialects

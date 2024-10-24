@@ -5,7 +5,7 @@ import multiprocessing
 import numbers
 import os
 from collections import defaultdict
-from typing import List, Tuple, Dict, Set
+from typing import List, Tuple, Dict, Set, TypeVar
 
 
 def build_graph(max_cols, max_rows, target_model):
@@ -505,3 +505,13 @@ def _to_js(sizes_strides):
         {sizes_strides}
     ])
     """
+
+
+E = TypeVar("E")
+
+
+def single_elem_or_list_to_list(val: list[E] | E) -> list[E]:
+    """does not work for list of lists but still useful"""
+    if not isinstance(val, list):
+        return [val]
+    return val

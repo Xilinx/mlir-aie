@@ -33,11 +33,21 @@ build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
+build/experimental_aie.mlir: ${srcdir}/experimental_aie2.py
+	mkdir -p ${@D}
+	python3 $< > $@
+
 build/final.xclbin: build/aie.mlir build/kernels.a
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--no-xchesscc --no-xbridge \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
+
+build/experimental_final.xclbin: build/experimental_aie.mlir build/kernels.a
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				--no-xchesscc --no-xbridge \
+				--aie-generate-npu --npu-insts-name=experimental_insts.txt $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -52,6 +62,9 @@ endif
 
 run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
+
+run_experimental: ${targetname}.exe build/experimental_final.xclbin build/experimental_insts.txt 
+	${powershell} ./$< -x build/experimental_final.xclbin -i build/experimental_insts.txt -k MLIR_AIE
 
 clean: 
 	rm -rf build _build ${targetname}.exe 

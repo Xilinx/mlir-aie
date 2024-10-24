@@ -12,6 +12,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
+from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D
 
 # Size of the entire image
 IMAGE_HEIGHT = 16
@@ -68,14 +69,17 @@ def my_matrix_add_one():
                 of_out1.release(ObjectFifoPort.Produce, 1)
 
         # To/from AIE-array data movement
+        tiler = TensorTiler2D(IMAGE_HEIGHT, IMAGE_WIDTH, TILE_HEIGHT, TILE_WIDTH)
+        t = next(tiler.tile_iter())  # Only transfer one tile of data
+
         @runtime_sequence(tile_ty, tile_ty, tile_ty)
         def sequence(inTensor, notUsed, outTensor):
             npu_dma_memcpy_nd(
                 metadata=of_in1,
                 bd_id=1,
                 mem=inTensor,
-                sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
-                strides=[1, 1, IMAGE_WIDTH, 1],
+                sizes=t.sizes,
+                strides=t.strides,
                 issue_token=True,
             )
 
@@ -83,8 +87,8 @@ def my_matrix_add_one():
                 metadata=of_out1,
                 bd_id=0,
                 mem=outTensor,
-                sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
-                strides=[1, 1, IMAGE_WIDTH, 1],
+                sizes=t.sizes,
+                strides=t.strides,
             )
             dma_wait(of_in1, of_out1)
 

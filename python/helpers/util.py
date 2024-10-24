@@ -1,7 +1,7 @@
 from collections import defaultdict
 import numpy as np
 import sys
-from typing import Sequence, get_args, get_origin
+from typing import Sequence, get_args, get_origin, TypeVar
 
 from ..extras import types as T
 from ..ir import (
@@ -195,3 +195,13 @@ def get_arg_types(objs: Sequence[int | float | Value | OpView]):
         else:
             return None
     return my_types
+
+
+E = TypeVar("E")
+
+
+def single_elem_or_list_to_list(val: list[E] | E) -> list[E]:
+    """does not work for list of lists but still useful"""
+    if not isinstance(val, list):
+        return [val]
+    return val
