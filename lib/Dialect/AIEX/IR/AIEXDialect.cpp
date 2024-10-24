@@ -198,8 +198,8 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
              << i << " must be a positive integer.";
     }
   }
-  // A value of zero is allowable for the fourth-dimension stride, as such a
-  // "repeat" can be accomplished by setting size==1 and repeat_count=size.
+  // A value of zero is allowable for the fourth-dimension stride
+  // (this indicates an interation stride for the repeat of 0)
   if (inputSizes[3] > 1 && inputStrides[3] < 0) {
     return forOp->emitOpError("Stride 3 must be a non-negative integer.");
   }
