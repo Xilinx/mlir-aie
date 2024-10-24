@@ -20,6 +20,11 @@ m=32
 k=32
 
 kernels=mv_${m}x${k}
+use_experimental?=0
+
+ifeq (${use_experimental}, 1)
+aie_py_src=experimental_aie2.py
+endif
 
 SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 include ${SELF_DIR}../makefile-common
