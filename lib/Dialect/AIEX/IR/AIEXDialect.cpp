@@ -200,10 +200,6 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
     return forOp->emitOpError("Stride 3 must be a non-negative integer.");
   }
 
-  if (skipTransformationChecks) {
-    return success();
-  }
-
   for (int i = 0; i < 4; i++) {
     // strides[0] == 1 is ok iff the transfer size is a multiple of
     // addressGranularity, which is checked below
@@ -219,7 +215,7 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
     }
   }
 
-  if (hardwareSizes[0] > (1 << wrap_bits) - 1)
+  if (!skipTransformationChecks && hardwareSizes[0] > (1 << wrap_bits) - 1)
     return forOp->emitOpError(
         "Size 0 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
         "] range.");
