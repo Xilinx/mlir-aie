@@ -1,4 +1,4 @@
-name: Build wheels on/for Ryzen AI
+name: Build wheels for Ryzen AI
 
 on:
   pull_request:
@@ -22,66 +22,94 @@ concurrency:
 
 env:
   DEBIAN_FRONTEND: noninteractive
+  VITIS: /opt/ryzen_ai-1.3.0/vitis_aie_essentials
   XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
 
 jobs:
   build-repo:
     name: Build and upload mlir_aie wheels
 
-    runs-on: amd7940hs
+    runs-on: ubuntu-latest
 
     permissions:
       id-token: write
       contents: write
+      packages: read
 
     steps:
+      - name: Free disk space
+        uses: descriptinc/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: false
 
       - uses: actions/checkout@v4
         with:
           submodules: "true"
 
-      - uses: actions/setup-python@v5
+      - uses: uraimo/run-on-arch-action@v2.7.0
+        name: Build mlir-aie
+        id: runcmd
         with:
-          python-version: '3.10'
+          distro: none
+          arch: none
+          base_image: ghcr.io/xilinx/mlir-aie/ubuntu22-ryzenai-1.3.0ea:1.1
+          githubToken: ${{ github.token }}
+          dockerRunArgs: |
+            --mac-address 02:42:ac:11:00:02
+          env: |
+            VITIS: ${{ env.VITIS }}
+            XILINXD_LICENSE_FILE: ${{ env.XILINXD_LICENSE_FILE }}
+          run: |
+            git config --global --add safe.directory $PWD
+            MLIR_VERSION=$(git rev-parse --short HEAD)
+            echo "Building mlir-aie version $MLIR_VERSION"
 
-      - name: Build mlir-aie distro
-        run: |
-          
-          pip cache purge
-          
-          python -m venv aie-venv
-          source aie-venv/bin/activate
-          pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+            python -m venv ${{ github.workspace }}/aie-venv
+            source ${{ github.workspace }}/aie-venv/bin/activate
 
-          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
-          pip -q download mlir==$VERSION \
-            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
-          unzip -q mlir-*.whl
-          # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
-          # That means wheels have file with time stamps in the future which makes ninja loop
-          # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
-          find mlir -exec touch -a -m -t 201108231405.14 {} \;
-          
-          export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
-          export MLIR_INSTALL_ABS_PATH=$PWD/mlir
-          export MLIR_AIE_SOURCE_DIR=$PWD
-          export WHEELHOUSE_DIR=$PWD/wheelhouse
-          export CMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx
-          export XRT_ROOT=/opt/xilinx/xrt
-          export AIE_PROJECT_COMMIT=$(git rev-parse --short HEAD)
-          export DATETIME=$(date +"%Y%m%d%H")
-          
-          pushd utils/mlir_aie_wheels
-          
-          pip install wheel auditwheel patchelf importlib_metadata
-          CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
-          
-          popd
-          
-          auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/mlir_aie-*.whl --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so --exclude libmlir_float16_utils.so
-          WHL_FN=$(ls $WHEELHOUSE_DIR/repaired_wheel/mlir_aie*whl)
-          mv "$WHL_FN" "`echo $WHL_FN | sed "s/cp310-cp310/py3-none/"`"
+            echo "Installing vitis_aie_essentials ..."
+            pushd /opt
+            tar xfz /workspace/vaie.tgz
+            popd
+
+            pip install -r python/requirements.txt
+            pip install -r python/requirements_ml.txt
+            HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+
+            VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+            pip -q download mlir==$VERSION \
+              -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+            unzip -q mlir-*.whl
+            # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
+            # That means wheels have file with time stamps in the future which makes ninja loop
+            # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
+            find mlir -exec touch -a -m -t 201108231405.14 {} \;
+
+            export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
+            export MLIR_INSTALL_ABS_PATH=$PWD/mlir
+            export MLIR_AIE_SOURCE_DIR=$PWD
+            export WHEELHOUSE_DIR=$PWD/wheelhouse
+            export CMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx
+            export XRT_ROOT=/opt/xilinx/xrt
+            export AIE_PROJECT_COMMIT=$MLIR_VERSION
+            export AIE_VITIS_COMPONENTS='AIE2;AIE2P'
+            export DATETIME=$(date +"%Y%m%d%H")
+
+            pushd utils/mlir_aie_wheels
+
+            pip install wheel auditwheel patchelf importlib_metadata
+            CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
+
+            popd
+
+            auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/mlir_aie-*.whl --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so --exclude libmlir_float16_utils.so
+            WHL_FN=$(ls $WHEELHOUSE_DIR/repaired_wheel/mlir_aie*whl)
+            mv "$WHL_FN" "`echo $WHL_FN | sed "s/cp310-cp310/py3-none/"`"
 
       - name: Upload mlir_aie
         uses: actions/upload-artifact@v3
@@ -104,14 +132,13 @@ jobs:
 
   build-wheel:
     name: Build wheel
-
-    runs-on: amd7940hs
-
+    runs-on: ubuntu-latest
     needs: build-repo
 
     permissions:
       id-token: write
       contents: write
+      packages: read
 
     strategy:
       fail-fast: false
@@ -127,10 +154,6 @@ jobs:
           fetch-depth: 2
           submodules: "true"
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python_version }}
-
       - uses: actions/download-artifact@v3
         with:
           # unpacks default artifact into dist/
@@ -138,48 +161,65 @@ jobs:
           name: mlir_aie
           path: .
 
-      - name: Build mlir-aie python bindings
-        run: |
+      - uses: uraimo/run-on-arch-action@v2.5.0
+        name: Build mlir-aie python bindings
+        id: runcmd
+        with:
+          distro: none
+          arch: none
+          base_image: ghcr.io/xilinx/mlir-aie/ubuntu22-ryzenai-1.3.0ea:1.1
+          githubToken: ${{ github.token }}
+          dockerRunArgs: |
+            --mac-address 02:42:ac:11:00:02
+          env: |
+            VITIS: ${{ env.VITIS }}
+            XILINXD_LICENSE_FILE: ${{ env.XILINXD_LICENSE_FILE }}
+          run: |
+            git config --global --add safe.directory $PWD
+            MLIR_VERSION=$(git rev-parse --short HEAD)
+            echo "Building mlir-aie version $MLIR_VERSION ..."
 
-          # faster to do this twice instead of upload the directory with ~4000 files in it...
-          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
-          pip -q download mlir==$VERSION \
-            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
-          unzip -q mlir-*.whl
-          # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
-          # That means wheels have file with time stamps in the future which makes ninja loop
-          # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
-          find mlir -exec touch -a -m -t 201108231405.14 {} \;
-          
-          unzip -q mlir_aie-*.whl
-          find mlir_aie -exec touch -a -m -t 201108231405.14 {} \;
-          
-          python -m venv aie-venv
-          source aie-venv/bin/activate
-          pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
-          source aie-venv/bin/activate
-          
-          export MLIR_INSTALL_ABS_PATH=$PWD/mlir
-          export MLIR_AIE_INSTALL_ABS_PATH=$PWD/mlir_aie
-          export WHEELHOUSE_DIR=$PWD/wheelhouse
-          export CMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx
-          export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
-          export XRT_ROOT=/opt/xilinx/xrt
-          export AIE_PROJECT_COMMIT=$(git rev-parse --short HEAD)
-          export DATETIME=$(date +"%Y%m%d%H")
-          
-          cp python/requirements.txt utils/mlir_aie_wheels/python_bindings
-          
-          pushd utils/mlir_aie_wheels/python_bindings
-          
-          pip install wheel auditwheel patchelf
-          CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
-          DEBUG=1 CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
-          
-          popd
-          
-          auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/aie_python_bindings*whl --plat manylinux_2_35_x86_64
+            # faster to do this twice instead of upload the directory with ~4000 files in it...
+            VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+            pip -q download mlir==$VERSION \
+              -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+            unzip -q mlir-*.whl
+            # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
+            # That means wheels have file with time stamps in the future which makes ninja loop
+            # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
+            find mlir -exec touch -a -m -t 201108231405.14 {} \;
+
+            unzip -q mlir_aie-*.whl
+            find mlir_aie -exec touch -a -m -t 201108231405.14 {} \;
+
+            python${{ matrix.python_version }} -m venv aie-venv
+            source aie-venv/bin/activate
+
+            pip install -r python/requirements.txt
+            HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+            source aie-venv/bin/activate
+
+            export MLIR_INSTALL_ABS_PATH=$PWD/mlir
+            export MLIR_AIE_INSTALL_ABS_PATH=$PWD/mlir_aie
+            export WHEELHOUSE_DIR=$PWD/wheelhouse
+            export CMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx
+
+            export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
+            export XRT_ROOT=/opt/xilinx/xrt
+            export AIE_PROJECT_COMMIT=$MLIR_VERSION
+            export DATETIME=$(date +"%Y%m%d%H")
+
+            cp python/requirements.txt utils/mlir_aie_wheels/python_bindings
+
+            pushd utils/mlir_aie_wheels/python_bindings
+
+            pip install wheel auditwheel patchelf
+            CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
+            DEBUG=1 CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
+
+            popd
+
+            auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/aie_python_bindings*whl --plat manylinux_2_35_x86_64
 
       - uses: geekyeggo/delete-artifact@v4
         if: github.event_name == 'pull_request'
