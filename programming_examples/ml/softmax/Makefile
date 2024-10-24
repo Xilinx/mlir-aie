@@ -71,7 +71,7 @@ endif
 run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
-profile: ${targetname}.exe build/final.xclbin build/insts.txt 
+profile: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -p results.csv
 
 trace: ${targetname}.exe build/final_trace.xclbin
