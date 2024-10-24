@@ -64,6 +64,8 @@ jobs:
           githubToken: ${{ github.token }}
           dockerRunArgs: |
             --mac-address 02:42:ac:11:00:02
+          env: |
+            XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
           run: |
 
             MLIR_DIR=$PWD
