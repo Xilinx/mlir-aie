@@ -19,6 +19,7 @@ import aie.utils.trace as trace_utils
 def passthroughKernel(dev, vector_size, trace_size):
     N = vector_size
     lineWidthInBytes = N // 4  # chop input in 4 sub-tensors
+
     @device(dev)
     def device_body():
         # define types
