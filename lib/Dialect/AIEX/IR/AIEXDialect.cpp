@@ -185,10 +185,6 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
     return forOp->emitOpError(msg.str());
   }
 
-  if (skipTransformationChecks) {
-    return success();
-  }
-
   for (int i = 0; i < 3; i++) {
     if (inputSizes[i] > 1 && inputStrides[i] < 1) {
       // If inputSize[i] == 1, anything is allowable in the stride, since that
@@ -202,6 +198,10 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
   // (this indicates an interation stride for the repeat of 0)
   if (inputSizes[3] > 1 && inputStrides[3] < 0) {
     return forOp->emitOpError("Stride 3 must be a non-negative integer.");
+  }
+
+  if (skipTransformationChecks) {
+    return success();
   }
 
   for (int i = 0; i < 4; i++) {
@@ -322,9 +322,10 @@ int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
   return offset;
 }
 
-// dma_memcpy_nd transfers of the form [1, 1, 1, len][0, 0, 0, 1] do not
+// dma_memcpy_nd transfers of the form [*, 1, 1, len][*, 0, 0, 1] do not
 // specify any data layout transformation, but simply express a contiguous
-// transfer of `len`.
+// transfer of `len`. We exclude checks to 4th dimension, because repeat count
+// is still possible without a data layout transformation.
 bool AIEX::NpuDmaMemcpyNdOp::isLinearTransferWithoutTransformation() {
   llvm::SmallVector<int64_t, 4> inputSizes =
       llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
@@ -334,9 +335,8 @@ bool AIEX::NpuDmaMemcpyNdOp::isLinearTransferWithoutTransformation() {
       llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
         return getConstantIntValue(s).value();
       });
-  return (inputSizes[1] == 1 && inputSizes[2] == 1 && inputSizes[3] == 1 &&
-          inputStrides[0] == 1 && inputStrides[1] == 0 &&
-          inputStrides[2] == 0 && inputStrides[3] == 0);
+  return (inputSizes[1] == 1 && inputSizes[2] == 1 && inputStrides[0] == 1 &&
+          inputStrides[1] == 0 && inputStrides[2] == 0);
 }
 
 LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
