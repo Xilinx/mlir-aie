@@ -40,10 +40,10 @@ def my_eltwise_exp():
     A_fifo = ObjectFifo(buffer_depth, memtile_ty, "inA")
     C_fifo = ObjectFifo(buffer_depth, memtile_ty, "outC")
     a_fifos = A_fifo.second.split(
-        [n * i for i in range(n_cores)], types=[tile_ty] * n_cores
+        offsets=[n * i for i in range(n_cores)], types=[tile_ty] * n_cores
     )
     c_fifos = C_fifo.first.join(
-        [n * i for i in range(n_cores)], types=[tile_ty] * n_cores
+        offset=[n * i for i in range(n_cores)], types=[tile_ty] * n_cores
     )
 
     io = IOCoordinator()
