@@ -189,22 +189,32 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
     return success();
   }
 
-  for (int i = 0; i < 3; i++) {
+  // Don't check inputStrides[3] unless memtiles as it may be 1 to signify
+  // repeat count if shim tile or compute tile
+  int stridesToCheck = targetModel.isMemTile(tileCol, tileRow) ? 4 : 3;
+
+  for (int i = 0; i < stridesToCheck; i++) {
     if (inputSizes[i] > 1 && inputStrides[i] < 1) {
       // If inputSize[i] == 1, anything is allowable in the stride, since that
       // stride will never be applied. For any larger size, we must verify that
       // the stride is positive.
       return forOp->emitOpError("Stride ")
              << i << " must be a positive integer.";
+    } else if (inputSizes[i] == 1 && inputStrides[i] != 0) {
+      forOp->emitWarning("Non-zero stride specified for size of 1; "
+                         "this stride value will have no effect");
     }
   }
-  // A value of zero is allowable for the fourth-dimension stride, as such a
-  // "repeat" can be accomplished by setting size==1 and repeat_count=size.
-  if (inputSizes[3] > 1 && inputStrides[3] < 0) {
-    return forOp->emitOpError("Stride 3 must be a non-negative integer.");
+  // A value of zero is allowable for the last-dimension stride, as such a
+  // "repeat" can be accomplished by setting strides[n]=1 and
+  // size[n]=repeat_count.
+  if (!targetModel.isMemTile(tileCol, tileRow) &&
+      inputSizes[stridesToCheck] > 1 && inputStrides[stridesToCheck] != 1) {
+    return forOp->emitOpError(
+        "Highest stride must be 1 to specify a repeat count.");
   }
 
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < stridesToCheck; i++) {
     // strides[0] == 1 is ok iff the transfer size is a multiple of
     // addressGranularity, which is checked below
     if (i == 0 && inputStrides[i] == 1)
