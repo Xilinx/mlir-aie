@@ -161,7 +161,7 @@ jobs:
           name: mlir_aie
           path: .
 
-      - uses: uraimo/run-on-arch-action@v2.5.0
+      - uses: uraimo/run-on-arch-action@v2.7.0
         name: Build mlir-aie python bindings
         id: runcmd
         with:
