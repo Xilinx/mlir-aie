@@ -3,6 +3,8 @@
 //
 // REQUIRES: ryzen_ai, chess
 //
+// RUN: mkdir -p test_stx
+// RUN: cd test_stx
 // RUN: make -f %S/Makefile clean
 // RUN: make -f %S/Makefile device=npu2 
 // RUN: %run_on_npu2 make -f %S/Makefile run device=npu2 | FileCheck %s

@@ -3,6 +3,8 @@
 //
 // REQUIRES: ryzen_ai, peano 
 //
+// RUN: mkdir -p test
+// RUN: cd test
 // RUN: make -f %S/Makefile clean
 // RUN: make -f %S/Makefile 
 // RUN: %run_on_npu make -f %S/Makefile run | FileCheck %s
