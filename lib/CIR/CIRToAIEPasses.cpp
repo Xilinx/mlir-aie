@@ -14,6 +14,7 @@
 #include "aie/CIR/CIRToAIEPasses.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
+#include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -35,6 +36,9 @@
 #include "clang/CIR/Dialect/IR/CIRTypes.h"
 #include "clang/CIR/LowerToMLIR.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Regex.h"
@@ -370,15 +374,30 @@ struct CIRToAIEPrepare : CIRToAIEPrepareBase<CIRToAIEPrepare> {
   }
 };
 
-#if 0
-void eraseOpAndUsers(mlir::Operation *op,
-                     mlir::ConversionPatternRewriter &rewriter) {
-  for (auto result : op->getResults())
-    for (auto *user : result.getUsers())
-      rewriter.eraseOp(user);
-  rewriter.eraseOp(op);
+// Erase a range of Operation* and its users recursively
+template <typename OpRange>
+void eraseOpsAndUsers(OpRange &&opsToErase) {
+  llvm::SetVector<mlir::Operation *> allOpsAndUsers;
+  llvm::SmallVector<mlir::Operation *> newOps{
+      std::forward<OpRange>(opsToErase)};
+  // While there are some operations to process
+  while (!newOps.empty()) {
+    auto *op = newOps.pop_back_val();
+    // If the operation has not been visited yet, add it to the set and process
+    // its users
+    if (allOpsAndUsers.insert(op))
+      for (auto result : op->getResults())
+        for (auto *user : result.getUsers())
+          // Add each user to the visit queue
+          newOps.push_back(user);
+  }
+  // To avoid erasing operations with some users, topologically sort the
+  // operations according to their use-def chains and erase them in reverse
+  // order
+  mlir::topologicalSort(allOpsAndUsers);
+  for (auto *op : llvm::reverse(allOpsAndUsers))
+    op->erase();
 }
-#endif
 
 // Lower aie::tile::program(<tile code>)
 void lowerTileProgram(xilinx::AIE::TileOp t, mlir::cir::CallOp c,
@@ -519,11 +538,40 @@ struct DeviceLoweringRP
   }
 };
 
+void deviceLowering(mlir::Operation *op, CIRToAIETypesAnalysis &cat) {
+  llvm::SmallVector<mlir::Operation *> opsToErase;
+  op->walk<mlir::WalkOrder::PreOrder>([&](mlir::UnrealizedConversionCastOp u) {
+    u.emitRemark(
+        "DeviceLowering found UnrealizedConversionCastOp inside the scope");
+    if (!isUnrealizedConversionCastWithAnnotation(u, {"aie::device"}))
+      return;
+    if (auto aieLike = cat.moduleTypes[u.getType(0)];
+        aieLike && aieLike->base == "aie::device") {
+      auto deviceName = aieLike->subMatches[0];
+      auto deviceId =
+          xilinx::AIE::symbolizeEnum<xilinx::AIE::AIEDevice>(deviceName);
+      if (!deviceId)
+        // Actually this test cannot happens since the API of
+        // xilinx::AIE::symbolizeEnum is strange: even if it returns a
+        // std::optional it errors without returning
+        u.emitError("aie::device incorrect for '") << deviceName << "'";
+      mlir::OpBuilder b{u};
+      auto deviceOp = b.create<xilinx::AIE::DeviceOp>(u.getLoc(), *deviceId);
+      // The aie.device requires one block
+      deviceOp.getRegion().emplaceBlock();
+      // Move all the code depending on the device to the trash for now
+      opsToErase.push_back(u);
+    }
+  });
+  // Remove the useless operations
+  eraseOpsAndUsers(opsToErase);
+}
+
 struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
   void runOnOperation() override {
     // Compute the analysis for the module since it is a module pass.
-    // \todo Should this be a real pass?
-    auto &cat = getAnalysis<CIRToAIETypesAnalysis>();
+    deviceLowering(getOperation(), getAnalysis<CIRToAIETypesAnalysis>());
+#if 0
     // \todo Clean up this mess
     DeviceLoweringRP::cat = &cat;
     // See mlir/examples/toy/Ch5/mlir/LowerToAffineLoops.cpp
@@ -538,6 +586,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();
+#endif
   }
 };
 
