@@ -132,22 +132,20 @@ if config.xrt_lib_dir:
         result = result.stdout.decode("utf-8").split("\n")
         # Starting with Linux 6.8 the format is like "[0000:66:00.1]  :  RyzenAI-npu1"
         # Starting with Linux 6.10 the format is like "|[0000:41:00.1]  ||RyzenAI-npu1  |"
-        p = re.compile(r"[\|]?(\[.+:.+:.+\]).+(Phoenix|RyzenAI-(npu1\d))")
-        p2 = re.compile(r"[\|]?(\[.+:.+:.+\]).+(Phoenix|RyzenAI-(npu4\d))")
+        p = re.compile(r"[\|]?(\[.+:.+:.+\]).+(Phoenix|RyzenAI-(npu\d))")
         for l in result:
             m = p.match(l)
-            m2 = p2.match(l)
-            if not m and not m2:
+            if not m:
                 continue
             print("Found Ryzen AI device:", m.group(1))
             if len(m.groups()) == 3:
                 print("\tmodel:", m.group(3))
             config.available_features.add("ryzen_ai")
-            if m:
+            if m.group(3) == "npu1":
                 run_on_npu = (
                     f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )
-            if m2:
+            if m.group(3) == "npu4":
                 run_on_npu2 = (
                     f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )
