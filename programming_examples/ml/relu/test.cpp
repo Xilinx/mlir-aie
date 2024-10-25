@@ -10,6 +10,7 @@
 
 #include <bits/stdc++.h>
 #include <boost/program_options.hpp>
+#include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -42,7 +43,7 @@ int verify(int size, std::vector<T> A, std::vector<T> B, int verbosity) {
   int errors = 0;
   for (uint32_t i = 0; i < size; i++) {
     // If the input is nan, lets just say its good
-    if (isnan(A[i]))
+    if (std::isnan(A[i]))
       continue;
 
     T ref = (T)0;
