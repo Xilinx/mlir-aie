@@ -141,11 +141,11 @@ if config.xrt_lib_dir:
             if len(m.groups()) == 3:
                 print("\tmodel:", m.group(3))
             config.available_features.add("ryzen_ai")
-            if m.group(3) == "npu1":
+            if str(m.group(3)) == "npu1":
                 run_on_npu = (
                     f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )
-            if m.group(3) == "npu4":
+            if str(m.group(3)) == "npu4":
                 run_on_npu2 = (
                     f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )
