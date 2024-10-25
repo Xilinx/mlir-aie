@@ -15,7 +15,6 @@ from aie.api.placers import SequentialPlacer
 from aie.api.program import Program
 from aie.api.worker import Worker
 from aie.api.phys.device import NPU1Col1
-from aie.helpers.dialects.ext.scf import _for as range_
 from aie.helpers.tensortiler.tensortiler2D import TensorTile
 
 try:
@@ -34,7 +33,7 @@ of_in = ObjectFifo(2, line_type, "in")
 of_out = ObjectFifo(2, line_type, "out")
 
 io = IOCoordinator()
-with io.build_sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
+with io.runtime_sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
     tile = TensorTile(
         1,
         vector_size,
@@ -55,15 +54,16 @@ passthrough_fn = BinKernel(
 
 
 def core_fn(of_in, of_out, passThroughLine):
-    for _ in range_(sys.maxsize):
-        elemOut = of_out.acquire(1)
-        elemIn = of_in.acquire(1)
-        passThroughLine(elemIn, elemOut, line_size)
-        of_in.release(1)
-        of_out.release(1)
+    elemOut = of_out.acquire(1)
+    elemIn = of_in.acquire(1)
+    passThroughLine(elemIn, elemOut, line_size)
+    of_in.release(1)
+    of_out.release(1)
 
 
-my_worker = Worker(core_fn, [of_in.second, of_out.first, passthrough_fn])
+my_worker = Worker(
+    core_fn, [of_in.second, of_out.first, passthrough_fn], while_true=True
+)
 
 my_program = Program(NPU1Col1(), io, workers=[my_worker])
 my_program.resolve_program(SequentialPlacer())

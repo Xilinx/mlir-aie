@@ -54,19 +54,17 @@ def my_matrix_add_one():
 
     # Set up compute tile 2
     def core_fn(of_in1, of_out1):
-        # Effective while(1)
-        for _ in range_(sys.maxsize):
-            elem_in = of_in1.acquire(1)
-            elem_out = of_out1.acquire(1)
-            for i in range_(TILE_SIZE):
-                elem_out[i] = elem_in[i] + 1
-            of_in1.release(1)
-            of_out1.release(1)
+        elem_in = of_in1.acquire(1)
+        elem_out = of_out1.acquire(1)
+        for i in range_(TILE_SIZE):
+            elem_out[i] = elem_in[i] + 1
+        of_in1.release(1)
+        of_out1.release(1)
 
-    my_worker = Worker(core_fn, fn_args=[of_in.second, of_out.first])
+    my_worker = Worker(core_fn, fn_args=[of_in.second, of_out.first], while_true=True)
 
     io = IOCoordinator()
-    with io.build_sequence(tile_ty, tile_ty, tile_ty) as (in_tensor, _, out_tensor):
+    with io.runtime_sequence(tile_ty, tile_ty, tile_ty) as (in_tensor, _, out_tensor):
         tiler = TensorTiler2D(IMAGE_HEIGHT, IMAGE_WIDTH, TILE_HEIGHT, TILE_WIDTH)
         for t in io.tile_loop(itertools.islice(tiler.tile_iter(), 0, 1)):
             io.fill(of_in.first, t, in_tensor)

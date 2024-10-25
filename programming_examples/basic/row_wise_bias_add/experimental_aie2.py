@@ -36,19 +36,18 @@ def row_wise_bias_add(M, N, m, n):
     out_fifo = ObjectFifo(2, tensor_ty, "out_fifo")
 
     def core_fn(in_fifo, bias_fifo, out_fifo, kernel_func):
-        for _ in range_(0xFFFFFFFF):
-            for _ in range_(N // n):
-                elem_bias = bias_fifo.acquire(1)
-                for _ in range_(M // m):
-                    elem_in = in_fifo.acquire(1)
-                    elem_out = out_fifo.acquire(1)
-                    kernel_func(elem_in, elem_bias, elem_out)
-                    out_fifo.release(1)
-                    in_fifo.release(1)
-                bias_fifo.release(1)
+        for _ in range_(N // n):
+            elem_bias = bias_fifo.acquire(1)
+            for _ in range_(M // m):
+                elem_in = in_fifo.acquire(1)
+                elem_out = out_fifo.acquire(1)
+                kernel_func(elem_in, elem_bias, elem_out)
+                out_fifo.release(1)
+                in_fifo.release(1)
+            bias_fifo.release(1)
 
     io = IOCoordinator()
-    with io.build_sequence(tensor_ty, bias_ty, tensor_ty) as (inp, bias, out):
+    with io.runtime_sequence(tensor_ty, bias_ty, tensor_ty) as (inp, bias, out):
         tiler = TensorTiler2D(M, N, m, n, tensor_col_major=True)
         bias_tiler = TensorTiler2D(1, N, 1, n)
         for t, bias_t in io.tile_loop(
@@ -62,6 +61,7 @@ def row_wise_bias_add(M, N, m, n):
     my_worker = Worker(
         core_fn,
         fn_args=[in_fifo.second, bias_fifo.second, out_fifo.first, kernel_func],
+        while_true=True,
     )
     return Program(NPU1Col1(), io, workers=[my_worker])
 

@@ -24,8 +24,10 @@ class Worker(ObjectFifoEndpoint):
         core_fn: Callable[[ObjectFifoHandle | Kernel], None] | None,
         fn_args: list[ObjectFifoHandle | Kernel] = [],
         placement: PlacementTile | None = AnyComputeTile,
+        while_true: bool = False,
     ):
         self._tile = placement
+        self._while_true = while_true
         if core_fn is None:
 
             def do_nothing_core_fun(*args) -> None:
@@ -75,4 +77,5 @@ class Worker(ObjectFifoEndpoint):
 
         @core(my_tile, my_link)
         def core_body():
-            self.core_fn(*self.fn_args)
+            for _ in range_(sys.maxsize) if self._while_true else range(1):
+                self.core_fn(*self.fn_args)

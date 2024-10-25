@@ -32,7 +32,7 @@ def my_passthrough(M, K, N, generate_acccess_map=False):
     of_out = of_in.second.forward()
 
     io = IOCoordinator()
-    with io.build_sequence(tensor_ty, tensor_ty, tensor_ty) as (a_in, _, c_out):
+    with io.runtime_sequence(tensor_ty, tensor_ty, tensor_ty) as (a_in, _, c_out):
         for t_in, t_out in io.tile_loop(tiler_in.tile_iter(), tiler_out.tile_iter()):
             task_group = io.task_group()
             io.fill(of_in.first, t_in, a_in, task_group)

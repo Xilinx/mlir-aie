@@ -62,7 +62,7 @@ class IOCoordinator(Resolvable):
         self._fifos = set()
 
     @contextmanager
-    def build_sequence(self, *input_types: type[np.ndarray]):
+    def runtime_sequence(self, *input_types: type[np.ndarray]):
         self._inout_data = list(map(InOutData, input_types))
         yield tuple(self._inout_data)
 

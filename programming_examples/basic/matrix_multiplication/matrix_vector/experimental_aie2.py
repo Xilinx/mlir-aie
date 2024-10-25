@@ -61,16 +61,15 @@ def my_matmul():
     )
 
     def core_fn(of_a, of_b, of_c, zero, matvec):
-        for _ in range_(0xFFFFFFFF):
-            elem_out = of_c.acquire(1)
-            zero(elem_out)
-            for _ in range_(K_div_k):
-                elem_in_a = of_a.acquire(1)
-                elem_in_b = of_b.acquire(1)
-                matvec(elem_in_a, elem_in_b, elem_out)
-                of_a.release(1)
-                of_b.release(1)
-            of_c.release(1)
+        elem_out = of_c.acquire(1)
+        zero(elem_out)
+        for _ in range_(K_div_k):
+            elem_in_a = of_a.acquire(1)
+            elem_in_b = of_b.acquire(1)
+            matvec(elem_in_a, elem_in_b, elem_out)
+            of_a.release(1)
+            of_b.release(1)
+        of_c.release(1)
 
     memA_fifos = []
     coreA_fifos = []
@@ -85,11 +84,12 @@ def my_matmul():
         w = Worker(
             core_fn,
             [coreA_fifos[i].second, B_fifo.second, outC_fifos[i].first, zero, matvec],
+            while_true=True,
         )
         workers.append(w)
 
     io = IOCoordinator()
-    with io.build_sequence(allA_ty, allB_ty, allC_ty) as (a_in, b_in, c_out):
+    with io.runtime_sequence(allA_ty, allB_ty, allC_ty) as (a_in, b_in, c_out):
         A_tiler = TensorTiler2D(M, K, m, k)
         A_tile_iter = A_tiler.tile_iter(
             chunk_height=M_div_m_div_n_cores, chunk_width=K_div_k

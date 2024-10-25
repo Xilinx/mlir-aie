@@ -47,7 +47,7 @@ def my_eltwise_exp():
     )
 
     io = IOCoordinator()
-    with io.build_sequence(tensor_ty, tensor_ty) as (a_in, c_out):
+    with io.runtime_sequence(tensor_ty, tensor_ty) as (a_in, c_out):
         tile = TensorTile(
             1,
             N,
