@@ -54,11 +54,15 @@ endif
 
 build/final_trace_${data_size}.xclbin: build/aie2_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
 ifeq ($(device),npu)
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--no-xchesscc --no-xbridge \
-endif
 		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
+else
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
+endif
+
 
 ${targetname}_${data_size}.exe: ${srcdir}/test.cpp
 	rm -rf _build
