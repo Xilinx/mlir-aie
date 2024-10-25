@@ -27,7 +27,7 @@
 #include "clang/CIR/Dialect/Passes.h"
 #include "clang/CIR/Passes.h"
 
-void version_printer(llvm::raw_ostream &os) {
+static void versionPrinter(llvm::raw_ostream &os) {
   os << "aie-opt " << AIE_GIT_COMMIT << "\n";
 }
 
@@ -50,36 +50,36 @@ int main(int argc, char **argv) {
 
   xilinx::aievec::registerTransformDialectExtension(registry);
 
-  llvm::cl::AddExtraVersionPrinter(version_printer);
+  llvm::cl::AddExtraVersionPrinter(versionPrinter);
 
   // ClangIR dialect
   registry.insert<mlir::cir::CIRDialect>();
 
   // ClangIR-specific passes
-  ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
-    return ::cir::createConvertMLIRToLLVMPass();
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return cir::createConvertMLIRToLLVMPass();
   });
-  ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
     return mlir::createCIRSimplifyPass();
   });
 
-  ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
     return mlir::createSCFPreparePass();
   });
-  ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
-    return ::cir::createConvertCIRToMLIRPass();
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return cir::createConvertCIRToMLIRPass();
   });
 
   mlir::PassPipelineRegistration<mlir::EmptyPipelineOptions> pipeline(
       "cir-to-llvm", "", [](mlir::OpPassManager &pm) {
-        ::cir::direct::populateCIRToLLVMPasses(pm);
+        cir::direct::populateCIRToLLVMPasses(pm, /* useCCLowering */ true);
       });
 
-  ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
     return mlir::createFlattenCFGPass();
   });
 
-  ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
     return mlir::createReconcileUnrealizedCastsPass();
   });
 
