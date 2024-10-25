@@ -321,7 +321,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       if (padDims && target_model.isMemTile(tile.getCol(), tile.getRow()) &&
           channelDir == AIE::DMAChannelDir::MM2S) {
         return bd_op->emitOpError()
-               << "Padding requires n-d data layouts expressed as"
+               << "Padding requires n-d data layouts expressed as "
                << "wrap(s) and stride(s).";
       } else if (padDims) {
         return bd_op->emitOpError() << "Padding is supported only on MemTiles.";
