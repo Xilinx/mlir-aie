@@ -426,7 +426,7 @@ void lowerTileProgram(xilinx::AIE::TileOp t, mlir::cir::CallOp c,
   }
 }
 
-struct DeviceLowering
+struct DeviceLoweringRP
     : public mlir::OpConversionPattern<mlir::UnrealizedConversionCastOp> {
   using mlir::OpConversionPattern<
       mlir::UnrealizedConversionCastOp>::OpConversionPattern;
@@ -525,7 +525,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
     // \todo Should this be a real pass?
     auto &cat = getAnalysis<CIRToAIETypesAnalysis>();
     // \todo Clean up this mess
-    DeviceLowering::cat = &cat;
+    DeviceLoweringRP::cat = &cat;
     // See mlir/examples/toy/Ch5/mlir/LowerToAffineLoops.cpp
     mlir::ConversionTarget target{getContext()};
     target.addLegalDialect<xilinx::AIE::AIEDialect>();
@@ -534,7 +534,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
           return !isUnrealizedConversionCastWithAnnotation(op, {"aie::device"});
         });
     mlir::RewritePatternSet patterns{&getContext()};
-    patterns.add<DeviceLowering>(&getContext());
+    patterns.add<DeviceLoweringRP>(&getContext());
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();
