@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
+# CHECK: aie.objectfifo @out(%tile_0_1 dimensionsToStream [<size = 5, stride = 5>, <size = 5, stride = 5>], {%tile_0_0}, 1 : i32) {padDimensions = #aie<bd_pad_layout_array[<const_pad_before = 2, const_pad_after = 0>, <const_pad_before = 3, const_pad_after = 0>]>} : !aie.objectfifo<memref<56xi32>>
 import sys
 
 from aie.dialects.aie import *
