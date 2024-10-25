@@ -545,6 +545,10 @@ for(int i = 0; i < 8 /*size_2*/; i++)
       // access/store element at/to index (i * 16 /*stride_2*/ + j * 1 /*stride_1*/ + k * 2 /*stride_0*/)
 ```
 
+Note that an additional dimension of sizes/strides is accepted (5th dimension for memtiles, 4th otherwise);
+the additional size value is interpreted as a repeat count whereas the additional stride value is
+interpreted as an iteration stride.
+
 #### Important gotcha regarding strides
 
 All strides are expressed in multiples of the element width (just like `len` and `offset`)
