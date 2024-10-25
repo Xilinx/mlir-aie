@@ -144,13 +144,13 @@ if config.xrt_lib_dir:
                 print("\tmodel:", m.group(3))
             config.available_features.add("ryzen_ai")
             if m:
-              run_on_npu = (
-                 f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
-              )
+                run_on_npu = (
+                    f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
+                )
             if m2:
-              run_on_npu2 = (
-                 f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
-              )
+                run_on_npu2 = (
+                    f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
+                )
             break
     except:
         print("Failed to run xrt-smi")
