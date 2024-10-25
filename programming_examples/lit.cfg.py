@@ -159,6 +159,7 @@ else:
     print("xrt not found")
 
 config.substitutions.append(("%run_on_npu", run_on_npu))
+config.substitutions.append(("%run_on_npu2", run_on_npu2))
 config.substitutions.append(("%xrt_flags", xrt_flags))
 config.substitutions.append(("%XRT_DIR", config.xrt_dir))
 config.environment["XRT_HACK_UNSECURE_LOADING_XCLBIN"] = "1"
