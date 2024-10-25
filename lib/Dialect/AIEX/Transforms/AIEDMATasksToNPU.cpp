@@ -283,7 +283,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
             padBefore[i] = (*padDims)[j].getConstPadBefore();
             padAfter[i] = (*padDims)[j].getConstPadAfter();
           }
-      } else {
+      } else if (padDims) {
         return bd_op->emitOpError()
                << "supports padding only for MM2S direction on MemTiles.";
       }
