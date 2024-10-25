@@ -46,6 +46,7 @@ llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
 llvm_config.with_environment("PYTHONPATH", os.path.join(config.aie_obj_root, "python"))
 
 run_on_npu = "echo"
+run_on_npu2 = "echo"
 xrt_flags = ""
 
 # Not using run_on_board anymore, need more specific per-platform commands
@@ -131,18 +132,25 @@ if config.xrt_lib_dir:
         result = result.stdout.decode("utf-8").split("\n")
         # Starting with Linux 6.8 the format is like "[0000:66:00.1]  :  RyzenAI-npu1"
         # Starting with Linux 6.10 the format is like "|[0000:41:00.1]  ||RyzenAI-npu1  |"
-        p = re.compile(r"[\|]?(\[.+:.+:.+\]).+(Phoenix|RyzenAI-(npu\d))")
+        p = re.compile(r"[\|]?(\[.+:.+:.+\]).+(Phoenix|RyzenAI-(npu1\d))")
+        p2 = re.compile(r"[\|]?(\[.+:.+:.+\]).+(Phoenix|RyzenAI-(npu4\d))")
         for l in result:
             m = p.match(l)
-            if not m:
+            m2 = p2.match(l)
+            if not m and not m2:
                 continue
             print("Found Ryzen AI device:", m.group(1))
             if len(m.groups()) == 3:
                 print("\tmodel:", m.group(3))
             config.available_features.add("ryzen_ai")
-            run_on_npu = (
-                f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
-            )
+            if m:
+              run_on_npu = (
+                 f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
+              )
+            if m2:
+              run_on_npu2 = (
+                 f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
+              )
             break
     except:
         print("Failed to run xrt-smi")
