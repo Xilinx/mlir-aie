@@ -14,9 +14,8 @@ module {
     %buf = aie.buffer(%tile_0_1) { address = 0xBEEF : i32 } : memref<32xi8> 
 
     aiex.runtime_sequence(%arg0: memref<32xi8>) {
-      // expected-error@+1 {{Mismatch number of dimensions between padding(s) and wrap(s) and stride(s).}} 
-
       %t1 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
+      // expected-error@+1 {{Mismatch number of dimensions between padding(s) and wrap(s) and stride(s).}} 
           aie.dma_bd(%buf : memref<32xi8>, 4, 16,
                      [<size=2, stride=4>], [<const_pad_before=2, const_pad_after=1>, <const_pad_before=1, const_pad_after=1>]) 
                      {bd_id = 0 : i32}
