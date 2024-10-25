@@ -25,8 +25,8 @@ TILE_SIZE = TILE_WIDTH * TILE_HEIGHT
 def my_matrix_add_one():
     tile_ty = np.ndarray[(TILE_SIZE,), np.dtype[np.int32]]
 
-    of_in = ObjectFifo(4, tile_ty, "in0")
-    of_out = ObjectFifo(4, tile_ty, "out0")
+    of_in = ObjectFifo(2, tile_ty, "in0")
+    of_out = ObjectFifo(2, tile_ty, "out0")
 
     def core_fn(of_in1, of_out1):
         elem_in = of_in1.acquire(1)
