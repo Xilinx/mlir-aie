@@ -66,7 +66,7 @@ vck5000: build/aie.mlir
 			-Wl,-R/opt/xaiengine/lib \
 			-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
 
-run: ${targetname}.exe build/final.xclbin build/insts.txt 
+run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
 run_experimental: ${targetname}.exe build/experimental_final.xclbin build/experimental_insts.txt 
