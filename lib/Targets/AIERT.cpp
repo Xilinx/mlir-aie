@@ -69,7 +69,12 @@ AIERTControl::AIERTControl(const AIE::BaseNPUTargetModel &tm)
     devGen = XAIE_DEV_GEN_AIE;
     break;
   case AIEArch::AIE2:
-    devGen = XAIE_DEV_GEN_AIEML;
+    // FIXME: What if we don't have an IPU?  aie-rt
+    // models non-IPU devices differently.
+    devGen = XAIE_DEV_GEN_AIE2IPU;
+    break;
+  case AIEArch::AIE2p:
+    devGen = XAIE_DEV_GEN_AIE2P_STRIX_B0;
     break;
   default:
     assert(false);
@@ -534,7 +539,8 @@ LogicalResult AIERTControl::configureSwitches(DeviceOp &targetOp) {
   }
 
   // Cascade configuration
-  if (targetModel.getTargetArch() == AIEArch::AIE2) {
+  if ((targetModel.getTargetArch() == AIEArch::AIE2) ||
+      (targetModel.getTargetArch() == AIEArch::AIE2p)) {
     for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {
       TileOp tile = cast<TileOp>(configOp.getTile().getDefiningOp());
       auto tileLoc = XAie_TileLoc(tile.getCol(), tile.getRow());

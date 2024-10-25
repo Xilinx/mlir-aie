@@ -11,6 +11,7 @@
 #include <bits/stdc++.h>
 
 #include <boost/program_options.hpp>
+#include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -42,9 +43,9 @@ int verify(int CSize, std::vector<T> A, std::vector<T> C, int verbosity) {
     std::bfloat16_t ref = exp(A[i]);
     // Let's check if they are inf or nan, and if so just pass because
     // comparisions will then fail, even for matches
-    if (isinf(ref) || isinf(C[i]))
+    if (std::isinf(ref) || std::isinf(C[i]))
       break;
-    if (isnan(ref) || isnan(C[i]))
+    if (std::isnan(ref) || std::isnan(C[i]))
       break;
     if (!test_utils::nearly_equal(ref, C[i], 0.0078125)) {
       std::cout << "Error in output " << C[i] << " != " << ref << std::endl;
