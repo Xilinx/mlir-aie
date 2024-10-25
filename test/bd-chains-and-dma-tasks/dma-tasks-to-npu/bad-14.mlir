@@ -5,7 +5,7 @@
 //
 // (c) Copyright 2024 AMD Inc.
 
-// RUN: aie-opt --aie-dma-tasks-to-npu %s | FileCheck %s
+// RUN: aie-opt --verify-diagnostics --aie-dma-tasks-to-npu %s 
        
 module {
   aie.device(npu1_4col) {
