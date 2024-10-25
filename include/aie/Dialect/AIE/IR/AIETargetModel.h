@@ -511,6 +511,22 @@ public:
   bool isVirtualized() const override { return true; }
 };
 
+// The full Strix. NPU
+class NPU2TargetModel : public BaseNPUTargetModel {
+public:
+  NPU2TargetModel() = default;
+
+  AIEArch getTargetArch() const override;
+
+  int columns() const override { return 8; }
+
+  bool isShimNOCTile(int col, int row) const override { return row == 0; }
+
+  bool isShimPLTile(int col, int row) const override { return false; }
+
+  bool isVirtualized() const override { return false; }
+};
+
 } // namespace xilinx::AIE
 
 namespace llvm {
