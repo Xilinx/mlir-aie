@@ -538,7 +538,11 @@ struct DeviceLoweringRP
   }
 };
 
-void deviceLowering(mlir::Operation *op, CIRToAIETypesAnalysis &cat) {
+
+
+struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
+
+  void deviceLowering(mlir::Operation *op, CIRToAIETypesAnalysis &cat) {
   llvm::SmallVector<mlir::Operation *> opsToErase;
   op->walk<mlir::WalkOrder::PreOrder>([&](mlir::UnrealizedConversionCastOp u) {
     u.emitRemark(
@@ -555,11 +559,13 @@ void deviceLowering(mlir::Operation *op, CIRToAIETypesAnalysis &cat) {
         // xilinx::AIE::symbolizeEnum is strange: even if it returns a
         // std::optional it errors without returning
         u.emitError("aie::device incorrect for '") << deviceName << "'";
+      // Create an aie.device just before its equivalent
+      // UnrealizedConversionCast
       mlir::OpBuilder b{u};
       auto deviceOp = b.create<xilinx::AIE::DeviceOp>(u.getLoc(), *deviceId);
       // The aie.device requires one block
       deviceOp.getRegion().emplaceBlock();
-      // Move all the code depending on the device to the trash for now
+      // Lazily move all the code depending on the device to the trash
       opsToErase.push_back(u);
     }
   });
@@ -567,7 +573,6 @@ void deviceLowering(mlir::Operation *op, CIRToAIETypesAnalysis &cat) {
   eraseOpsAndUsers(opsToErase);
 }
 
-struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
   void runOnOperation() override {
     // Compute the analysis for the module since it is a module pass.
     deviceLowering(getOperation(), getAnalysis<CIRToAIETypesAnalysis>());
