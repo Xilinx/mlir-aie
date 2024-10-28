@@ -249,11 +249,6 @@ class TensorTiler2D:
         assert (
             self._num_tiles_per_col % tile_group_height == 0
         ), f"Tiles per row ({self._num_tiles_per_col}) must be divisible by Tile group width ({tile_group_height})"
-        if tile_group_height > 1 or tile_group_width > 1:
-            assert (
-                tile_repeat == 1
-            ), "[Under Development] Tile repeat only supported with tile_group_height, tile_group_width = 1, 1"
-
         tile_groups_per_row = self._num_tiles_per_row // tile_group_width
         tile_groups_per_col = self._num_tiles_per_col // tile_group_height
 
@@ -331,10 +326,7 @@ class TensorTiler2D:
         if tile_repeat != 1:
             assert (
                 iter_sizes[0] == 1
-            ), "[Under Development] Highest size dim must be 1 for tile repeat"
-            assert (
-                iter_strides[0] == 0
-            ), "[Under Development] Highest strides dim must be 0 for tile repeat"
+            ), f"Highest (sizes, strides) dim must be (1, 0) for tile repeat but is ({iter_sizes[0]}, {iter_strides[0]})"
             iter_sizes[0] = tile_repeat
 
         return TensorTile2DIter(
@@ -515,7 +507,7 @@ class TensorTiler2D:
                             + j * strides[1]
                             + k * strides[2]
                             + l * strides[3]
-                        )
+                        ) % np.prod(access_count_tensor.shape)
                         access_count_tensor[access_idx] += 1
                         access_order_tensor[access_idx] = access_count
                         access_count += 1
