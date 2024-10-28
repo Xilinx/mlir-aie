@@ -31,7 +31,7 @@ def matrix_vector_tiling_sweep():
                     tensor_height=M, tensor_width=K, tile_height=m, tile_width=k
                 )
                 A_tile_iter = A_tiler.tile_iter(
-                    chunk_height=M_div_m_div_n_cores, chunk_width=K // k
+                    tile_group_height=M_div_m_div_n_cores, tile_group_width=K // k
                 )
 
                 C_tiler = TensorTiler2D(

@@ -254,9 +254,9 @@ def tensortiler_tensor_col_major_tile_row_major():
     print("Pass!")
 
 
-# CHECK-LABEL: tensortiler_tensor_iter_chunk_row_major
+# CHECK-LABEL: tensortiler_tensor_iter_group_row_major
 @construct_test
-def tensortiler_tensor_iter_chunk_row_major():
+def tensortiler_tensor_iter_group_row_major():
     TENSOR_HEIGHT = 12
     TENSOR_WIDTH = 12
     TILE_HEIGHT = 3
@@ -270,7 +270,7 @@ def tensortiler_tensor_iter_chunk_row_major():
     )
 
     expected_tile = np.array([[0, 1], [2, 3], [4, 5]])
-    expected_chunk = np.array(
+    expected_group = np.array(
         [
             [0, 1, 6, 7],
             [2, 3, 8, 9],
@@ -281,12 +281,12 @@ def tensortiler_tensor_iter_chunk_row_major():
         ]
     )
 
-    CHUNK_HEIGHT = 2
-    CHUNK_WIDTH = 2
-    iter = tiler.tile_iter(chunk_height=CHUNK_HEIGHT, chunk_width=CHUNK_WIDTH)
+    GROUP_HEIGHT = 2
+    GROUP_WIDTH = 2
+    iter = tiler.tile_iter(tile_group_height=GROUP_HEIGHT, tile_group_width=GROUP_WIDTH)
     tiles = list(iter)
-    expected_num_tiles = (TENSOR_HEIGHT // (TILE_HEIGHT * CHUNK_HEIGHT)) * (
-        TENSOR_WIDTH // (TILE_WIDTH * CHUNK_WIDTH)
+    expected_num_tiles = (TENSOR_HEIGHT // (TILE_HEIGHT * GROUP_HEIGHT)) * (
+        TENSOR_WIDTH // (TILE_WIDTH * GROUP_WIDTH)
     )
     assert (
         len(tiles) == expected_num_tiles
@@ -301,7 +301,7 @@ def tensortiler_tensor_iter_chunk_row_major():
     ), f"Expected tensor width {TENSOR_WIDTH} but got {t.tensor_width}"
     assert t.offset == 0, f"Expected offset 0 but got {t.offset}"
 
-    expected_sizes = [CHUNK_HEIGHT, CHUNK_WIDTH, TILE_HEIGHT, TILE_WIDTH]
+    expected_sizes = [GROUP_HEIGHT, GROUP_WIDTH, TILE_HEIGHT, TILE_WIDTH]
     assert (
         t.sizes == expected_sizes
     ), f"Expected sizes {expected_sizes} but got {t.sizes}"
@@ -322,10 +322,10 @@ def tensortiler_tensor_iter_chunk_row_major():
         t.tensor_width == TENSOR_WIDTH
     ), f"Expected tensor width {TENSOR_WIDTH} but got {t.tensor_width}"
     assert (
-        t.offset == CHUNK_WIDTH * TILE_WIDTH
-    ), f"Expected offset {CHUNK_WIDTH * TILE_WIDTH} but got {t.offset}"
+        t.offset == GROUP_WIDTH * TILE_WIDTH
+    ), f"Expected offset {GROUP_WIDTH * TILE_WIDTH} but got {t.offset}"
 
-    expected_sizes = [CHUNK_HEIGHT, CHUNK_WIDTH, TILE_HEIGHT, TILE_WIDTH]
+    expected_sizes = [GROUP_HEIGHT, GROUP_WIDTH, TILE_HEIGHT, TILE_WIDTH]
     assert (
         t.sizes == expected_sizes
     ), f"Expected sizes {expected_sizes} but got {t.sizes}"
@@ -335,28 +335,28 @@ def tensortiler_tensor_iter_chunk_row_major():
     ), f"Expected strides {expected_strides} but got {t.strides}"
 
     assert (
-        expected_chunk
+        expected_group
         == t.access_order()[
-            0 : CHUNK_HEIGHT * TILE_HEIGHT,
-            CHUNK_WIDTH * TILE_WIDTH : 2 * CHUNK_WIDTH * TILE_WIDTH,
+            0 : GROUP_HEIGHT * TILE_HEIGHT,
+            GROUP_WIDTH * TILE_WIDTH : 2 * GROUP_WIDTH * TILE_WIDTH,
         ]
-    ).all(), f"Expected {expected_chunk} but got {t.access_order()[0:CHUNK_HEIGHT * TILE_HEIGHT, CHUNK_WIDTH * TILE_WIDTH : 2 * CHUNK_WIDTH * TILE_WIDTH]}"
+    ).all(), f"Expected {expected_group} but got {t.access_order()[0:GROUP_HEIGHT * TILE_HEIGHT, GROUP_WIDTH * TILE_WIDTH : 2 * GROUP_WIDTH * TILE_WIDTH]}"
     assert (
         t.access_count()[
-            0 : CHUNK_HEIGHT * TILE_HEIGHT,
-            CHUNK_WIDTH * TILE_WIDTH : 2 * CHUNK_WIDTH * TILE_WIDTH,
+            0 : GROUP_HEIGHT * TILE_HEIGHT,
+            GROUP_WIDTH * TILE_WIDTH : 2 * GROUP_WIDTH * TILE_WIDTH,
         ]
         == 1
     ).all()
-    assert (t.access_count()[0:TENSOR_HEIGHT, 0 : CHUNK_WIDTH * TILE_WIDTH] == 0).all()
+    assert (t.access_count()[0:TENSOR_HEIGHT, 0 : GROUP_WIDTH * TILE_WIDTH] == 0).all()
     assert (
-        t.access_count()[0:TENSOR_HEIGHT, CHUNK_WIDTH * TILE_WIDTH * 2 : TENSOR_WIDTH]
+        t.access_count()[0:TENSOR_HEIGHT, GROUP_WIDTH * TILE_WIDTH * 2 : TENSOR_WIDTH]
         == 0
     ).all()
     assert (
         t.access_count()[
-            CHUNK_HEIGHT * TILE_HEIGHT : TENSOR_HEIGHT,
-            CHUNK_WIDTH * TILE_WIDTH : 2 * CHUNK_WIDTH * TILE_WIDTH,
+            GROUP_HEIGHT * TILE_HEIGHT : TENSOR_HEIGHT,
+            GROUP_WIDTH * TILE_WIDTH : 2 * GROUP_WIDTH * TILE_WIDTH,
         ]
         == 0
     ).all()
@@ -365,16 +365,16 @@ def tensortiler_tensor_iter_chunk_row_major():
     print("Pass!")
 
 
-# CHECK-LABEL: tensortiler_tensor_iter_chunk_col_major
+# CHECK-LABEL: tensortiler_tensor_iter_group_col_major
 @construct_test
-def tensortiler_tensor_iter_chunk_col_major():
+def tensortiler_tensor_iter_group_col_major():
     TENSOR_HEIGHT = 12
     TENSOR_WIDTH = 8
     TILE_HEIGHT = 3
     TILE_WIDTH = 2
 
     expected_tile = np.array([[0, 1], [2, 3], [4, 5]])
-    expected_chunk = np.array(
+    expected_group = np.array(
         [
             [0, 1, 6, 7],
             [2, 3, 8, 9],
@@ -396,14 +396,14 @@ def tensortiler_tensor_iter_chunk_col_major():
     access_count = tiler.access_count()
     assert (access_count == 1).all()
 
-    CHUNK_HEIGHT = 2
-    CHUNK_WIDTH = 2
+    GROUP_HEIGHT = 2
+    GROUP_WIDTH = 2
     iter = tiler.tile_iter(
-        chunk_height=CHUNK_HEIGHT, chunk_width=CHUNK_WIDTH, col_major=True
+        tile_group_height=GROUP_HEIGHT, tile_group_width=GROUP_WIDTH, col_major=True
     )
     tiles = list(iter)
-    expected_num_tiles = (TENSOR_HEIGHT // (TILE_HEIGHT * CHUNK_HEIGHT)) * (
-        TENSOR_WIDTH // (TILE_WIDTH * CHUNK_WIDTH)
+    expected_num_tiles = (TENSOR_HEIGHT // (TILE_HEIGHT * GROUP_HEIGHT)) * (
+        TENSOR_WIDTH // (TILE_WIDTH * GROUP_WIDTH)
     )
     assert (
         len(tiles) == expected_num_tiles
@@ -418,7 +418,7 @@ def tensortiler_tensor_iter_chunk_col_major():
     ), f"Expected tensor width {TENSOR_WIDTH} but got {t.tensor_width}"
     assert t.offset == 0, f"Expected offset 0 but got {t.offset}"
 
-    expected_sizes = [CHUNK_HEIGHT, CHUNK_WIDTH, TILE_HEIGHT, TILE_WIDTH]
+    expected_sizes = [GROUP_HEIGHT, GROUP_WIDTH, TILE_HEIGHT, TILE_WIDTH]
     assert (
         t.sizes == expected_sizes
     ), f"Expected sizes {expected_sizes} but got {t.sizes}"
@@ -428,20 +428,20 @@ def tensortiler_tensor_iter_chunk_col_major():
     ), f"Expected strides {expected_strides} but got {t.strides}"
 
     assert (
-        expected_chunk
+        expected_group
         == t.access_order()[
-            0 : TILE_HEIGHT * CHUNK_HEIGHT, 0 : TILE_WIDTH * CHUNK_WIDTH
+            0 : TILE_HEIGHT * GROUP_HEIGHT, 0 : TILE_WIDTH * GROUP_WIDTH
         ]
-    ).all(), f"Expected {expected_chunk} but got {t.access_order()[0:TILE_HEIGHT*CHUNK_HEIGHT, 0:TILE_WIDTH*CHUNK_WIDTH]}"
+    ).all(), f"Expected {expected_group} but got {t.access_order()[0:TILE_HEIGHT*GROUP_HEIGHT, 0:TILE_WIDTH*GROUP_WIDTH]}"
     assert (
-        t.access_count()[0 : TILE_HEIGHT * CHUNK_HEIGHT, 0 : TILE_WIDTH * CHUNK_WIDTH]
+        t.access_count()[0 : TILE_HEIGHT * GROUP_HEIGHT, 0 : TILE_WIDTH * GROUP_WIDTH]
         == 1
     ).all()
     assert (
-        t.access_count()[0:TENSOR_HEIGHT, TILE_WIDTH * CHUNK_WIDTH : TENSOR_WIDTH] == 0
+        t.access_count()[0:TENSOR_HEIGHT, TILE_WIDTH * GROUP_WIDTH : TENSOR_WIDTH] == 0
     ).all()
     assert (
-        t.access_count()[TILE_HEIGHT * CHUNK_HEIGHT : TENSOR_HEIGHT, 0:TENSOR_WIDTH]
+        t.access_count()[TILE_HEIGHT * GROUP_HEIGHT : TENSOR_HEIGHT, 0:TENSOR_WIDTH]
         == 0
     ).all()
 
@@ -454,7 +454,7 @@ def tensortiler_tensor_iter_chunk_col_major():
     ), f"Expected tensor width {TENSOR_WIDTH} but got {t.tensor_width}"
     assert t.offset == 48, f"Expected offset 48 but got {t.offset}"
 
-    expected_sizes = [CHUNK_HEIGHT, CHUNK_WIDTH, TILE_HEIGHT, TILE_WIDTH]
+    expected_sizes = [GROUP_HEIGHT, GROUP_WIDTH, TILE_HEIGHT, TILE_WIDTH]
     assert (
         t.sizes == expected_sizes
     ), f"Expected sizes {expected_sizes} but got {t.sizes}"
@@ -464,16 +464,16 @@ def tensortiler_tensor_iter_chunk_col_major():
     ), f"Expected strides {expected_strides} but got {t.strides}"
 
     assert (
-        expected_chunk
+        expected_group
         == t.access_order()[
-            CHUNK_HEIGHT * TILE_HEIGHT : 2 * CHUNK_HEIGHT * TILE_HEIGHT,
-            0 : TILE_WIDTH * CHUNK_WIDTH,
+            GROUP_HEIGHT * TILE_HEIGHT : 2 * GROUP_HEIGHT * TILE_HEIGHT,
+            0 : TILE_WIDTH * GROUP_WIDTH,
         ]
-    ).all(), f"Expected {expected_chunk} but got {t.access_order()[CHUNK_HEIGHT * TILE_HEIGHT : 2 * CHUNK_HEIGHT * TILE_HEIGHT, 0:TILE_WIDTH * CHUNK_WIDTH]}"
+    ).all(), f"Expected {expected_group} but got {t.access_order()[GROUP_HEIGHT * TILE_HEIGHT : 2 * GROUP_HEIGHT * TILE_HEIGHT, 0:TILE_WIDTH * GROUP_WIDTH]}"
     assert (
         t.access_count()[
-            CHUNK_HEIGHT * TILE_HEIGHT : 2 * CHUNK_HEIGHT * TILE_HEIGHT,
-            0 : TILE_WIDTH * CHUNK_WIDTH,
+            GROUP_HEIGHT * TILE_HEIGHT : 2 * GROUP_HEIGHT * TILE_HEIGHT,
+            0 : TILE_WIDTH * GROUP_WIDTH,
         ]
         == 1
     ).all()

@@ -30,6 +30,7 @@ class TensorTile:
         show_numbers: bool = False,
         file_path: str | None = None,
         show_plot: bool = True,
+        plot_access_count: bool = False,
     ) -> None:
         TensorTiler2D.generate_access_graphs(
             self.tensor_height,
@@ -41,28 +42,25 @@ class TensorTile:
             show_numbers=show_numbers,
             file_path=file_path,
             show_plot=show_plot,
+            plot_access_count=plot_access_count,
         )
 
-    def access_tensors(
-        self, allow_repeat=False
-    ) -> tuple[np.ndarray, np.ndarray | None]:
+    def access_tensors(self) -> tuple[np.ndarray, np.ndarray]:
         return TensorTiler2D.get_access_tensors(
             self.tensor_height,
             self.tensor_width,
             self.sizes,
             self.strides,
             offset=self.offset,
-            allow_repeat=allow_repeat,
         )
 
-    def access_order(self, allow_repeat=False) -> np.ndarray:
+    def access_order(self) -> np.ndarray:
         return TensorTiler2D.get_access_tensors(
             self.tensor_height,
             self.tensor_width,
             self.sizes,
             self.strides,
             offset=self.offset,
-            allow_repeat=allow_repeat,
         )[0]
 
     def access_count(self) -> np.ndarray:
@@ -72,7 +70,6 @@ class TensorTile:
             self.sizes,
             self.strides,
             offset=self.offset,
-            allow_repeat=True,
         )[1]
 
     def __str__(self) -> str:
@@ -238,49 +235,59 @@ class TensorTiler2D:
 
     def tile_iter(
         self,
-        chunk_height: int = 1,
-        chunk_width: int = 1,
+        tile_group_height: int = 1,
+        tile_group_width: int = 1,
+        tile_repeat: int = 1,
         col_major: bool = False,
     ) -> TensorTile2DIter:
         assert (
-            self._num_tiles_per_row % chunk_width == 0
-        ), f"Tiles per row ({self._num_tiles_per_row}) must be divisible by chunk width ({chunk_width})"
+            tile_group_height >= 1 and tile_group_width >= 1 and tile_repeat >= 1
+        ), f"Tile group height, Tile group width, tile repeat ({tile_group_height}, {tile_group_width}, {tile_repeat}) must be >0"
         assert (
-            self._num_tiles_per_col % chunk_height == 0
-        ), f"Tiles per row ({self._num_tiles_per_col}) must be divisible by chunk width ({chunk_height})"
+            self._num_tiles_per_row % tile_group_width == 0
+        ), f"Tiles per row ({self._num_tiles_per_row}) must be divisible by Tile group width ({tile_group_width})"
+        assert (
+            self._num_tiles_per_col % tile_group_height == 0
+        ), f"Tiles per row ({self._num_tiles_per_col}) must be divisible by Tile group width ({tile_group_height})"
+        if tile_group_height > 1 or tile_group_width > 1:
+            assert (
+                tile_repeat == 1
+            ), "[Under Development] Tile repeat only supported with tile_group_height, tile_group_width = 1, 1"
 
-        chunks_per_row = self._num_tiles_per_row // chunk_width
-        chunks_per_col = self._num_tiles_per_col // chunk_height
+        tile_groups_per_row = self._num_tiles_per_row // tile_group_width
+        tile_groups_per_col = self._num_tiles_per_col // tile_group_height
 
-        steps = chunks_per_row * chunks_per_col
+        steps = tile_groups_per_row * tile_groups_per_col
 
         def calc_offset(iter_num):
             if not col_major:
-                row_idx = iter_num % chunks_per_row
-                col_idx = iter_num // chunks_per_row
+                row_idx = iter_num % tile_groups_per_row
+                col_idx = iter_num // tile_groups_per_row
             else:
-                col_idx = iter_num % chunks_per_col
-                row_idx = iter_num // chunks_per_col
+                col_idx = iter_num % tile_groups_per_col
+                row_idx = iter_num // tile_groups_per_col
 
-            offset = row_idx * chunk_width * self._tile_width
-            offset += col_idx * chunk_height * self._tensor_width * self._tile_height
+            offset = row_idx * tile_group_width * self._tile_width
+            offset += (
+                col_idx * tile_group_height * self._tensor_width * self._tile_height
+            )
             return offset
 
         iter_sizes = self._sizes.copy()
         iter_strides = self._strides.copy()
 
         if self._tile_col_major and not self._tensor_col_major:
-            # This is a special case where we can combine a chunk into one logical tile (horizontally)
-            iter_sizes[1] = chunk_height
-            iter_sizes[2] = chunk_width * self._tile_width
+            # This is a special case where we can combine a tile group into one logical tile (horizontally)
+            iter_sizes[1] = tile_group_height
+            iter_sizes[2] = tile_group_width * self._tile_width
         elif not self._tile_col_major and self._tensor_col_major:
-            # This is a special case where we can combine a chunk into one logical tile (vertically)
-            iter_sizes[1] = chunk_width
-            iter_sizes[2] = chunk_height * self._tile_height
-        elif chunk_width == 1:
+            # This is a special case where we can combine a tile group into one logical tile (vertically)
+            iter_sizes[1] = tile_group_width
+            iter_sizes[2] = tile_group_height * self._tile_height
+        elif tile_group_width == 1:
             # These are two more special cases; we can combine tiles here too to get a simpler transform
             if self._tile_col_major:
-                iter_sizes = [1, chunk_height, self._tile_width, self._tile_height]
+                iter_sizes = [1, tile_group_height, self._tile_width, self._tile_height]
                 iter_strides = [
                     1,
                     self._tile_height * self._tensor_width,
@@ -291,17 +298,22 @@ class TensorTiler2D:
                 iter_sizes = [
                     1,
                     1,
-                    self._tile_height * chunk_height,
+                    self._tile_height * tile_group_height,
                     self._tile_width,
                 ]
                 iter_strides = [1, self._tile_width, self._tensor_width, 1]
-        elif chunk_height == 1:
+        elif tile_group_height == 1:
             # These are two more special cases; we can combine tiles here too to get a simpler transform
             if self._tile_col_major:
-                iter_sizes = [1, 1, self._tile_width * chunk_width, self._tile_height]
+                iter_sizes = [
+                    1,
+                    1,
+                    self._tile_width * tile_group_width,
+                    self._tile_height,
+                ]
                 iter_strides = [1, 1, 1, self._tensor_width]
             else:
-                iter_sizes = [1, chunk_width, self._tile_height, self._tile_width]
+                iter_sizes = [1, tile_group_width, self._tile_height, self._tile_width]
                 iter_strides = [1, self._tile_width, self._tensor_width, 1]
         else:
             # This should always be the case that creates a correct transfrom;
@@ -309,12 +321,21 @@ class TensorTiler2D:
             size_idx = [0, 1]
             if self._tensor_col_major:
                 size_idx = [1, 0]
-            iter_sizes[size_idx[0]] = chunk_height
-            iter_sizes[size_idx[1]] = chunk_width
+            iter_sizes[size_idx[0]] = tile_group_height
+            iter_sizes[size_idx[1]] = tile_group_width
 
         iter_sizes, iter_strides = self._validate_and_clean_sizes_strides(
             iter_sizes, iter_strides
         )
+
+        if tile_repeat != 1:
+            assert (
+                iter_sizes[0] == 1
+            ), "[Under Development] Highest size dim must be 1 for tile repeat"
+            assert (
+                iter_strides[0] == 0
+            ), "[Under Development] Highest strides dim must be 0 for tile repeat"
+            iter_sizes[0] = tile_repeat
 
         return TensorTile2DIter(
             self._tensor_height,
@@ -374,7 +395,9 @@ class TensorTiler2D:
                 for j in range(access_order_tensor.shape[1]):
                     if access_order_tensor[i, j] != -1:
                         order_dict[access_order_tensor[i, j]] = (i, j)
-            for i in range(len(order_dict) - 1):
+            order_keys = list(order_dict.keys())
+            order_keys.sort()
+            for i in range(order_keys[0], order_keys[-1]):
                 y1, x1 = order_dict[i]
                 y2, x2 = order_dict[i + 1]
                 ax_order.arrow(
@@ -462,8 +485,7 @@ class TensorTiler2D:
         tile_height: int | None = None,
         tile_width: int | None = None,
         offset: int = 0,
-        allow_repeat: bool = False,
-    ) -> (np.ndarray, np.ndarray | None):
+    ) -> tuple[np.ndarray, np.ndarray | None]:
         assert tensor_height > 0 and tensor_width > 0, "Tensor dimensions must be > 0"
         assert len(sizes) == 4, "Sizes should be a list of size 4"
         assert len(strides) == 4, "Strides should be a list of size 4"
@@ -478,12 +500,9 @@ class TensorTiler2D:
         )
 
         # Create access count map (if repeat allowed)
-        if allow_repeat:
-            access_count_tensor = np.full(
-                (tensor_height * tensor_width,), 0, dtype=cls.DTYPE
-            )
-        else:
-            access_count_tensor = None
+        access_count_tensor = np.full(
+            (tensor_height * tensor_width,), 0, dtype=cls.DTYPE
+        )
 
         access_count = 0
         for i in range(sizes[0]):
@@ -497,24 +516,12 @@ class TensorTiler2D:
                             + k * strides[2]
                             + l * strides[3]
                         )
-                        if not allow_repeat:
-                            assert (
-                                access_order_tensor[access_idx] == -1
-                            ), f"Attempted to access index={access_idx} twice."
-                        else:
-                            access_count_tensor[access_idx] += 1
+                        access_count_tensor[access_idx] += 1
                         access_order_tensor[access_idx] = access_count
                         access_count += 1
-        if not allow_repeat:
-            assert access_count <= np.prod(
-                access_order_tensor.shape
-            ), f"Access pattern has too many elements (expected max {np.prod(access_order_tensor.shape)}, got {access_count})"
 
         access_order_tensor = access_order_tensor.reshape((tensor_height, tensor_width))
-        if allow_repeat:
-            access_count_tensor = access_count_tensor.reshape(
-                (tensor_height, tensor_width)
-            )
+        access_count_tensor = access_count_tensor.reshape((tensor_height, tensor_width))
         return access_order_tensor, access_count_tensor
 
     @classmethod
@@ -531,7 +538,7 @@ class TensorTiler2D:
         show_numbers: bool = False,
         file_path: str | None = None,
         show_plot: bool = True,
-        allow_repeat: bool = False,
+        plot_access_count: bool = False,
     ):
         access_order_tensor, access_count_tensor = cls.get_access_tensors(
             tensor_height,
@@ -541,7 +548,6 @@ class TensorTiler2D:
             tile_height=tile_height,
             tile_width=tile_width,
             offset=offset,
-            allow_repeat=allow_repeat,
         )
 
         # Show a graph for a single tile
@@ -554,7 +560,7 @@ class TensorTiler2D:
                 access_order_tensor[0:tile_height, 0:tile_width],
                 (
                     None
-                    if not allow_repeat
+                    if not plot_access_count
                     else access_count_tensor[0:tile_height, 0:tile_width]
                 ),
                 title="Per-Tile Access Order",
@@ -566,7 +572,7 @@ class TensorTiler2D:
 
         cls._generate_access_graphs_from_tensor(
             access_order_tensor,
-            access_count_tensor,
+            (None if not plot_access_count else access_count_tensor),
             show_arrows=show_arrows,
             show_numbers=show_numbers,
             file_path=file_path,
@@ -607,7 +613,7 @@ class TensorTiler2D:
         show_numbers: bool = False,
         file_path: str | None = None,
         show_plot: bool = True,
-        allow_repeat: bool = False,
+        plot_access_count: bool = False,
     ) -> None:
         tile_height = self._tile_height if show_tile else None
         tile_width = self._tile_width if show_tile else None
@@ -622,11 +628,10 @@ class TensorTiler2D:
             show_numbers=show_numbers,
             file_path=file_path,
             show_plot=show_plot,
-            allow_repeat=allow_repeat,
+            plot_access_count=plot_access_count,
         )
 
-    def access_order(self, allow_repeat: bool = False) -> np.ndarray:
-        # Call class method
+    def access_order(self) -> np.ndarray:
         return self.get_access_tensors(
             self._tensor_height,
             self._tensor_width,
@@ -634,11 +639,9 @@ class TensorTiler2D:
             self._strides,
             self._tile_height,
             self._tile_width,
-            allow_repeat=allow_repeat,
         )[0]
 
     def access_count(self) -> np.ndarray:
-        # Call class method
         return self.get_access_tensors(
             self._tensor_height,
             self._tensor_width,
@@ -646,5 +649,4 @@ class TensorTiler2D:
             self._strides,
             self._tile_height,
             self._tile_width,
-            allow_repeat=True,
         )[1]

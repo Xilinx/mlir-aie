@@ -26,7 +26,9 @@ def my_passthrough(M, K, N, generate_acccess_map=False):
         offset=0,
     )
     if generate_acccess_map:
-        data_transform.visualize(file_path="transpose_data.png")
+        data_transform.visualize(
+            plot_access_count=False, file_path="transpose_data.png"
+        )
         return
 
     with mlir_mod_ctx() as ctx:

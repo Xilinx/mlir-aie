@@ -51,10 +51,10 @@ def row_wise_bias_add(M, N, m, n):
 
         tiler = TensorTiler2D(M, N, m, n, tensor_col_major=True)
         t = next(
-            tiler.tile_iter(chunk_height=M // m, chunk_width=N // n)
+            tiler.tile_iter(tile_group_height=M // m, tile_group_width=N // n)
         )  # Transfer all tiles at once
         bias_tiler = TensorTiler2D(1, N, 1, n)
-        bias_t = next(bias_tiler.tile_iter(chunk_width=N // n))
+        bias_t = next(bias_tiler.tile_iter(tile_group_width=N // n))
 
         @runtime_sequence(tensor_ty, bias_ty, tensor_ty)
         def sequence(inp, bias, out):

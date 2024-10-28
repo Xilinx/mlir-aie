@@ -6,9 +6,9 @@ from util import construct_test
 # RUN: %python %s | FileCheck %s
 
 
-# CHECK-LABEL: square_tiler_tile_chunking_col_major_chunks
+# CHECK-LABEL: square_tiler_tile_grouping_col_major_groups
 @construct_test
-def square_tiler_tile_chunking_col_major_chunks():
+def square_tiler_tile_grouping_col_major_groups():
     tiler = TensorTiler2D(32, 32, 8, 8)
     access_order = tiler.access_order()
     reference_access = np.array(
