@@ -59,21 +59,16 @@ def my_vector_scalar(opts):
                     of_out.release(ObjectFifoPort.Produce, 1)
                 of_factor.release(ObjectFifoPort.Consume, 1)
 
-        # Set up a circuit-switched flow from core to shim for tracing information
+        # Set up a packet-switched flow from core to shim for tracing information
+        tiles_to_trace = [ ComputeTile2 ]
         if enableTrace:
-            flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
+            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
         # To/from AIE-array data movement
         @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
             if enableTrace:
-                trace_utils.configure_simple_tracing_aie2(
-                    ComputeTile2,
-                    ShimTile,
-                    ddr_id=2,
-                    size=trace_size,
-                    offset=4096 * 4,  # offset in bytes
-                )
+                trace_utils.configure_packet_tracing_aie2(tiles_to_trace, ShimTile, opts.trace_size, 4096 * 4)
 
             npu_dma_memcpy_nd(
                 metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, 4096], issue_token=True
