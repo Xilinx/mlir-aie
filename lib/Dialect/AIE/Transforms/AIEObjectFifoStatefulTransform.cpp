@@ -365,7 +365,7 @@ struct AIEObjectFifoStatefulTransformPass
 
     TileOp creation_tile;
     auto consumerTileOp =
-          dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
+        dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
     if (share_direction == 0 || share_direction == -1)
       creation_tile = op.getProducerTileOp();
     else
