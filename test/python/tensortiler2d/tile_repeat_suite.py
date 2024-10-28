@@ -3,6 +3,20 @@ import numpy as np
 from aie.helpers.tensortiler.tensortiler2d import TensorTiler2D
 from util import construct_test
 
+#### Tests for Repeat
+# - [x] Repeat1: Test repeat whole tensor, tile row wise
+# - [x] Repeat2: Test repeat whole tensor, tile column wise
+# - [x] Repeat3: Test tepeat tile, iter row major
+# - [x] Repeat4: Test repeat tile, tile col major
+# - [x] Repeat5: Test repeat tile, iter and tile col major
+# - [x] Repeat6: Test repeat tile, tile chunk width
+# - [x] Repeat7: Test repeat tile, tile chunk width and tile col major
+# - [x] Repeat8: Test repeat tile, tile chunk height
+# - [x] Repeat9: Test repeat tile, tile chunk height and tile col major
+# - [x] Repeat10: Test repeat tile, tile chunk both and tensor col major
+# - [x] Repeat11: Test repeat tile, tile chunk both and tile col major
+
+
 # RUN: %python %s | FileCheck %s
 
 
@@ -350,6 +364,64 @@ def tile_repeat7():
     print("Pass!")
 
 
+# CHECK-LABEL: tile_repeat8
+@construct_test
+def tile_repeat8():
+    # Tile repeat, tile group width
+    TENSOR_HEIGHT = 16
+    TENSOR_WIDTH = 16
+    TILE_HEIGHT = 4
+    TILE_WIDTH = 4
+    REPEAT_COUNT = 3
+    TILE_GROUP_HEIGHT = 2
+    tiler = TensorTiler2D(TENSOR_HEIGHT, TENSOR_WIDTH, TILE_HEIGHT, TILE_WIDTH)
+    tiles = list(
+        tiler.tile_iter(tile_repeat=REPEAT_COUNT, tile_group_height=TILE_GROUP_HEIGHT)
+    )
+    tile = tiles[0]
+    access_order, access_count = tile.access_tensors()
+    assert (
+        access_count[0 : TILE_HEIGHT * TILE_GROUP_HEIGHT, 0:TILE_WIDTH] == REPEAT_COUNT
+    ).all()
+
+    reference_order = np.array(
+        [
+            # fmt: off
+            [  0,   1,   2,   3], 
+            [  4,   5,   6,   7], 
+            [  8,   9,  10,  11],
+            [ 12,  13,  14,  15],
+            [ 16,  17,  18,  19],
+            [ 20,  21,  22,  23],
+            [ 24,  25,  26,  27],
+            [ 28,  29,  30,  31],
+            # fmt: on
+        ],
+        dtype=np.int32,
+    )
+    reference_order = reference_order + (
+        TILE_HEIGHT * TILE_GROUP_HEIGHT * TILE_WIDTH * (REPEAT_COUNT - 1)
+    )
+    assert (
+        access_order[0 : TILE_HEIGHT * TILE_GROUP_HEIGHT, 0:TILE_WIDTH]
+        == reference_order
+    ).all(), f"{reference_order} {access_order}"
+
+    tile = tiles[1]
+    access_order, access_count = tile.access_tensors()
+    assert (
+        access_count[0 : TILE_HEIGHT * TILE_GROUP_HEIGHT, TILE_WIDTH : TILE_WIDTH * 2]
+        == REPEAT_COUNT
+    ).all()
+    assert (
+        access_order[0 : TILE_HEIGHT * TILE_GROUP_HEIGHT, TILE_WIDTH : TILE_WIDTH * 2]
+        == reference_order
+    ).all(), f"{reference_order} {access_order}"
+
+    # CHECK: Pass!
+    print("Pass!")
+
+
 # CHECK-LABEL: tile_repeat9
 @construct_test
 def tile_repeat9():
@@ -403,6 +475,166 @@ def tile_repeat9():
     ).all()
     assert (
         access_order[0 : TILE_HEIGHT * TILE_GROUP_HEIGHT, TILE_WIDTH : TILE_WIDTH * 2]
+        == reference_order
+    ).all(), f"{reference_order} {access_order}"
+
+    # CHECK: Pass!
+    print("Pass!")
+
+
+# CHECK-LABEL: tile_repeat10
+@construct_test
+def tile_repeat10():
+    # Tile repeat and tile group height and tile group width and tensor col major
+    TENSOR_HEIGHT = 16
+    TENSOR_WIDTH = 16
+    TILE_HEIGHT = 4
+    TILE_WIDTH = 4
+    REPEAT_COUNT = 3
+    TILE_GROUP_HEIGHT = 2
+    TILE_GROUP_WIDTH = 2
+    tiler = TensorTiler2D(
+        TENSOR_HEIGHT, TENSOR_WIDTH, TILE_HEIGHT, TILE_WIDTH, tensor_col_major=True
+    )
+    tiles = list(
+        tiler.tile_iter(
+            tile_group_height=TILE_GROUP_HEIGHT,
+            tile_group_width=TILE_GROUP_WIDTH,
+            tile_repeat=REPEAT_COUNT,
+        )
+    )
+    tile = tiles[0]
+    access_order, access_count = tile.access_tensors()
+    assert (
+        access_count[
+            0 : TILE_HEIGHT * TILE_GROUP_HEIGHT, 0 : TILE_WIDTH * TILE_GROUP_HEIGHT
+        ]
+        == REPEAT_COUNT
+    ).all()
+
+    reference_order = np.array(
+        [
+            # fmt: off
+            [ 0,  1,  2,  3, 32, 33, 34, 35],
+            [ 4,  5,  6,  7, 36, 37, 38, 39],
+            [ 8,  9, 10, 11, 40, 41, 42, 43],
+            [12, 13, 14, 15, 44, 45, 46, 47],
+            [16, 17, 18, 19, 48, 49, 50, 51],
+            [20, 21, 22, 23, 52, 53, 54, 55],
+            [24, 25, 26, 27, 56, 57, 58, 59],
+            [28, 29, 30, 31, 60, 61, 62, 63],
+            # fmt: on
+        ],
+        dtype=np.int32,
+    )
+    reference_order = reference_order + (
+        TILE_HEIGHT
+        * TILE_GROUP_HEIGHT
+        * TILE_WIDTH
+        * TILE_GROUP_WIDTH
+        * (REPEAT_COUNT - 1)
+    )
+    assert (
+        access_order[
+            0 : TILE_HEIGHT * TILE_GROUP_HEIGHT, 0 : TILE_WIDTH * TILE_GROUP_WIDTH
+        ]
+        == reference_order
+    ).all(), f"{reference_order} {access_order}"
+
+    tile = tiles[1]
+    access_order, access_count = tile.access_tensors()
+    assert (
+        access_count[
+            0 : TILE_HEIGHT * TILE_GROUP_HEIGHT,
+            TILE_WIDTH * TILE_GROUP_WIDTH : TILE_WIDTH * TILE_GROUP_WIDTH * 2,
+        ]
+        == REPEAT_COUNT
+    ).all()
+    assert (
+        access_order[
+            0 : TILE_HEIGHT * TILE_GROUP_HEIGHT,
+            TILE_WIDTH * TILE_GROUP_WIDTH : TILE_WIDTH * TILE_GROUP_WIDTH * 2,
+        ]
+        == reference_order
+    ).all(), f"{reference_order} {access_order}"
+
+    # CHECK: Pass!
+    print("Pass!")
+
+
+# CHECK-LABEL: tile_repeat11
+@construct_test
+def tile_repeat11():
+    # Tile repeat and tile group height and tile group width and tile col major
+    TENSOR_HEIGHT = 16
+    TENSOR_WIDTH = 16
+    TILE_HEIGHT = 4
+    TILE_WIDTH = 4
+    REPEAT_COUNT = 3
+    TILE_GROUP_HEIGHT = 2
+    TILE_GROUP_WIDTH = 2
+    tiler = TensorTiler2D(
+        TENSOR_HEIGHT, TENSOR_WIDTH, TILE_HEIGHT, TILE_WIDTH, tile_col_major=True
+    )
+    tiles = list(
+        tiler.tile_iter(
+            tile_group_height=TILE_GROUP_HEIGHT,
+            tile_group_width=TILE_GROUP_WIDTH,
+            tile_repeat=REPEAT_COUNT,
+        )
+    )
+    tile = tiles[0]
+    access_order, access_count = tile.access_tensors()
+    assert (
+        access_count[
+            0 : TILE_HEIGHT * TILE_GROUP_HEIGHT, 0 : TILE_WIDTH * TILE_GROUP_HEIGHT
+        ]
+        == REPEAT_COUNT
+    ).all()
+
+    reference_order = np.array(
+        [
+            # fmt: off
+            [ 0,  4,  8, 12, 16, 20, 24, 28],
+            [ 1,  5,  9, 13, 17, 21, 25, 29],
+            [ 2,  6, 10, 14, 18, 22, 26, 30],
+            [ 3,  7, 11, 15, 19, 23, 27, 31],
+            [32, 36, 40, 44, 48, 52, 56, 60],
+            [33, 37, 41, 45, 49, 53, 57, 61],
+            [34, 38, 42, 46, 50, 54, 58, 62],
+            [35, 39, 43, 47, 51, 55, 59, 63],
+            # fmt: on
+        ],
+        dtype=np.int32,
+    )
+    reference_order = reference_order + (
+        TILE_HEIGHT
+        * TILE_GROUP_HEIGHT
+        * TILE_WIDTH
+        * TILE_GROUP_WIDTH
+        * (REPEAT_COUNT - 1)
+    )
+    assert (
+        access_order[
+            0 : TILE_HEIGHT * TILE_GROUP_HEIGHT, 0 : TILE_WIDTH * TILE_GROUP_WIDTH
+        ]
+        == reference_order
+    ).all(), f"{reference_order} {access_order}"
+
+    tile = tiles[1]
+    access_order, access_count = tile.access_tensors()
+    assert (
+        access_count[
+            0 : TILE_HEIGHT * TILE_GROUP_HEIGHT,
+            TILE_WIDTH * TILE_GROUP_WIDTH : TILE_WIDTH * TILE_GROUP_WIDTH * 2,
+        ]
+        == REPEAT_COUNT
+    ).all()
+    assert (
+        access_order[
+            0 : TILE_HEIGHT * TILE_GROUP_HEIGHT,
+            TILE_WIDTH * TILE_GROUP_WIDTH : TILE_WIDTH * TILE_GROUP_WIDTH * 2,
+        ]
         == reference_order
     ).all(), f"{reference_order} {access_order}"
 
