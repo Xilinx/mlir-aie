@@ -1,6 +1,6 @@
 import numpy as np
 
-from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D
+from aie.helpers.tensortiler.tensortiler2d import TensorTiler2D
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -14,10 +14,12 @@ def tensortiler_simple():
 
     tiler = TensorTiler2D(TENSOR_HEIGHT, TENSOR_WIDTH, TENSOR_HEIGHT, TENSOR_WIDTH)
     access_map = tiler.access_order()
+    count_map = tiler.access_count()
 
     expected = np.array([[0, 1, 2], [3, 4, 5]])
     assert expected.shape == access_map.shape
     assert (expected == access_map).all()
+    assert (count_map == 1).all()
 
     iter = tiler.tile_iter()
     t = next(iter)
@@ -42,6 +44,7 @@ def tensortiler_simple():
     assert (
         expected == t.access_order()
     ).all(), f"Expected {expected} but got {t.access_order()}"
+    assert (t.access_count() == 1).all()
 
     try:
         next(iter)
@@ -70,10 +73,12 @@ def tensortiler_tensor_row_major_tile_col_major():
         tile_col_major=True,
     )
     access_map = tiler.access_order()
+    count_map = tiler.access_count()
 
     expected_tile = np.array([[0, 3, 6, 9], [1, 4, 7, 10], [2, 5, 8, 11]])
     assert (TENSOR_HEIGHT, TENSOR_WIDTH) == access_map.shape
     assert (expected_tile == access_map[0:TILE_HEIGHT, 0:TILE_WIDTH]).all()
+    assert (count_map == 1).all()
 
     expected_tile = expected_tile
     expected_tile2 = np.array([[12, 15, 18, 21], [13, 16, 19, 22], [14, 17, 20, 23]])
@@ -109,6 +114,9 @@ def tensortiler_tensor_row_major_tile_col_major():
     assert (
         expected_tile == t.access_order()[0:TILE_HEIGHT, 0:TILE_WIDTH]
     ).all(), f"Expected {expected_tile} but got {t.access_order()[0:TILE_HEIGHT, 0:TILE_WIDTH]}"
+    assert (t.access_count()[0:TILE_HEIGHT, 0:TILE_WIDTH] == 1).all()
+    assert (t.access_count()[0:TENSOR_HEIGHT, TILE_WIDTH:TENSOR_WIDTH] == 0).all()
+    assert (t.access_count()[TILE_HEIGHT:TENSOR_HEIGHT, 0:TILE_WIDTH] == 0).all()
 
     # CHECK: Pass!
     print("Pass!")
@@ -131,10 +139,12 @@ def tensortiler_tensor_col_major_tile_col_major():
         tile_col_major=True,
     )
     access_map = tiler.access_order()
+    access_count = tiler.access_count()
 
     expected_tile = np.array([[0, 3, 6, 9], [1, 4, 7, 10], [2, 5, 8, 11]])
     assert (TENSOR_HEIGHT, TENSOR_WIDTH) == access_map.shape
     assert (expected_tile == access_map[0:TILE_HEIGHT, 0:TILE_WIDTH]).all()
+    assert (access_count == 1).all()
 
     expected_tile = expected_tile
     expected_tile2 = np.array([[12, 15, 18, 21], [13, 16, 19, 22], [14, 17, 20, 23]])
@@ -170,6 +180,9 @@ def tensortiler_tensor_col_major_tile_col_major():
     assert (
         expected_tile == t.access_order()[0:TILE_HEIGHT, 0:TILE_WIDTH]
     ).all(), f"Expected {expected_tile} but got {t.access_order()[0:TILE_HEIGHT, 0:TILE_WIDTH]}"
+    assert (t.access_count()[0:TILE_HEIGHT, 0:TILE_WIDTH] == 1).all()
+    assert (t.access_count()[0:TENSOR_HEIGHT, TILE_WIDTH:TENSOR_WIDTH] == 0).all()
+    assert (t.access_count()[TILE_HEIGHT:TENSOR_HEIGHT, 0:TILE_WIDTH] == 0).all()
 
     # CHECK: Pass!
     print("Pass!")
@@ -231,6 +244,9 @@ def tensortiler_tensor_col_major_tile_row_major():
     assert (
         expected_tile == t.access_order()[0:TILE_HEIGHT, 0:TILE_WIDTH]
     ).all(), f"Expected {expected_tile} but got {t.access_order()[0:TILE_HEIGHT, 0:TILE_WIDTH]}"
+    assert (t.access_count()[0:TILE_HEIGHT, 0:TILE_WIDTH] == 1).all()
+    assert (t.access_count()[0:TENSOR_HEIGHT, TILE_WIDTH:TENSOR_WIDTH] == 0).all()
+    assert (t.access_count()[TILE_HEIGHT:TENSOR_HEIGHT, 0:TILE_WIDTH] == 0).all()
 
     # CHECK: Pass!
     print("Pass!")
@@ -252,10 +268,20 @@ def tensortiler_tensor_iter_chunk_row_major():
     )
 
     expected_tile = np.array([[0, 1], [2, 3], [4, 5]])
+    expected_chunk = np.array(
+        [
+            [0, 1, 6, 7],
+            [2, 3, 8, 9],
+            [4, 5, 10, 11],
+            [12, 13, 18, 19],
+            [14, 15, 20, 21],
+            [16, 17, 22, 23],
+        ]
+    )
 
     CHUNK_HEIGHT = 2
     CHUNK_WIDTH = 2
-    iter = tiler.tile_iter(chunk_height=2, chunk_width=2)
+    iter = tiler.tile_iter(chunk_height=CHUNK_HEIGHT, chunk_width=CHUNK_WIDTH)
     tiles = list(iter)
     expected_num_tiles = (TENSOR_HEIGHT // (TILE_HEIGHT * CHUNK_HEIGHT)) * (
         TENSOR_WIDTH // (TILE_WIDTH * CHUNK_WIDTH)
@@ -307,11 +333,31 @@ def tensortiler_tensor_iter_chunk_row_major():
     ), f"Expected strides {expected_strides} but got {t.strides}"
 
     assert (
-        expected_tile
+        expected_chunk
         == t.access_order()[
-            0:TILE_HEIGHT, CHUNK_WIDTH * TILE_WIDTH : CHUNK_WIDTH * (TILE_WIDTH + 1)
+            0 : CHUNK_HEIGHT * TILE_HEIGHT,
+            CHUNK_WIDTH * TILE_WIDTH : 2 * CHUNK_WIDTH * TILE_WIDTH,
         ]
-    ).all(), f"Expected {expected_tile} but got {t.access_order()[0:TILE_HEIGHT, CHUNK_WIDTH*TILE_WIDTH:CHUNK_WIDTH*(TILE_WIDTH+1)]}"
+    ).all(), f"Expected {expected_chunk} but got {t.access_order()[0:CHUNK_HEIGHT * TILE_HEIGHT, CHUNK_WIDTH * TILE_WIDTH : 2 * CHUNK_WIDTH * TILE_WIDTH]}"
+    assert (
+        t.access_count()[
+            0 : CHUNK_HEIGHT * TILE_HEIGHT,
+            CHUNK_WIDTH * TILE_WIDTH : 2 * CHUNK_WIDTH * TILE_WIDTH,
+        ]
+        == 1
+    ).all()
+    assert (t.access_count()[0:TENSOR_HEIGHT, 0 : CHUNK_WIDTH * TILE_WIDTH] == 0).all()
+    assert (
+        t.access_count()[0:TENSOR_HEIGHT, CHUNK_WIDTH * TILE_WIDTH * 2 : TENSOR_WIDTH]
+        == 0
+    ).all()
+    assert (
+        t.access_count()[
+            CHUNK_HEIGHT * TILE_HEIGHT : TENSOR_HEIGHT,
+            CHUNK_WIDTH * TILE_WIDTH : 2 * CHUNK_WIDTH * TILE_WIDTH,
+        ]
+        == 0
+    ).all()
 
     # CHECK: Pass!
     print("Pass!")
@@ -326,6 +372,16 @@ def tensortiler_tensor_iter_chunk_col_major():
     TILE_WIDTH = 2
 
     expected_tile = np.array([[0, 1], [2, 3], [4, 5]])
+    expected_chunk = np.array(
+        [
+            [0, 1, 6, 7],
+            [2, 3, 8, 9],
+            [4, 5, 10, 11],
+            [12, 13, 18, 19],
+            [14, 15, 20, 21],
+            [16, 17, 22, 23],
+        ]
+    )
 
     tiler = TensorTiler2D(
         TENSOR_HEIGHT,
@@ -336,7 +392,9 @@ def tensortiler_tensor_iter_chunk_col_major():
 
     CHUNK_HEIGHT = 2
     CHUNK_WIDTH = 2
-    iter = tiler.tile_iter(chunk_height=2, chunk_width=2, col_major=True)
+    iter = tiler.tile_iter(
+        chunk_height=CHUNK_HEIGHT, chunk_width=CHUNK_WIDTH, col_major=True
+    )
     tiles = list(iter)
     expected_num_tiles = (TENSOR_HEIGHT // (TILE_HEIGHT * CHUNK_HEIGHT)) * (
         TENSOR_WIDTH // (TILE_WIDTH * CHUNK_WIDTH)
@@ -364,8 +422,22 @@ def tensortiler_tensor_iter_chunk_col_major():
     ), f"Expected strides {expected_strides} but got {t.strides}"
 
     assert (
-        expected_tile == t.access_order()[0:TILE_HEIGHT, 0:TILE_WIDTH]
-    ).all(), f"Expected {expected_tile} but got {t.access_order()[0:TILE_HEIGHT, 0:TILE_WIDTH]}"
+        expected_chunk
+        == t.access_order()[
+            0 : TILE_HEIGHT * CHUNK_HEIGHT, 0 : TILE_WIDTH * CHUNK_WIDTH
+        ]
+    ).all(), f"Expected {expected_chunk} but got {t.access_order()[0:TILE_HEIGHT*CHUNK_HEIGHT, 0:TILE_WIDTH*CHUNK_WIDTH]}"
+    assert (
+        t.access_count()[0 : TILE_HEIGHT * CHUNK_HEIGHT, 0 : TILE_WIDTH * CHUNK_WIDTH]
+        == 1
+    ).all()
+    assert (
+        t.access_count()[0:TENSOR_HEIGHT, TILE_WIDTH * CHUNK_WIDTH : TENSOR_WIDTH] == 0
+    ).all()
+    assert (
+        t.access_count()[TILE_HEIGHT * CHUNK_HEIGHT : TENSOR_HEIGHT, 0:TENSOR_WIDTH]
+        == 0
+    ).all()
 
     t = tiles[1]
     assert (
@@ -386,11 +458,20 @@ def tensortiler_tensor_iter_chunk_col_major():
     ), f"Expected strides {expected_strides} but got {t.strides}"
 
     assert (
-        expected_tile
+        expected_chunk
         == t.access_order()[
-            CHUNK_HEIGHT * TILE_HEIGHT : (CHUNK_HEIGHT + 1) * TILE_HEIGHT, 0:TILE_WIDTH
+            CHUNK_HEIGHT * TILE_HEIGHT : 2 * CHUNK_HEIGHT * TILE_HEIGHT,
+            0 : TILE_WIDTH * CHUNK_WIDTH,
         ]
-    ).all(), f"Expected {expected_tile} but got {t.access_order()[CHUNK_HEIGHT*TILE_HEIGHT:(CHUNK_HEIGHT+1)*TILE_HEIGHT, 0:TILE_WIDTH]}"
+    ).all(), f"Expected {expected_chunk} but got {t.access_order()[CHUNK_HEIGHT * TILE_HEIGHT : 2 * CHUNK_HEIGHT * TILE_HEIGHT, 0:TILE_WIDTH * CHUNK_WIDTH]}"
+    assert (
+        t.access_count()[
+            CHUNK_HEIGHT * TILE_HEIGHT : 2 * CHUNK_HEIGHT * TILE_HEIGHT,
+            0 : TILE_WIDTH * CHUNK_WIDTH,
+        ]
+        == 1
+    ).all()
+    # TODO: Could check other regions are 0
 
     # CHECK: Pass!
     print("Pass!")
@@ -399,7 +480,7 @@ def tensortiler_tensor_iter_chunk_col_major():
 # CHECK-LABEL: access_order_from_sizes_strides
 @construct_test
 def access_order_from_sizes_strides():
-    access_order = TensorTiler2D.get_access_order_tensor(
+    access_order, _ = TensorTiler2D.get_access_tensors(
         8, 16, [1, 8, 8, 2], [0, 2, 16, 1]
     )
     # fmt: off
@@ -415,3 +496,8 @@ def access_order_from_sizes_strides():
     ]
     # fmt: on
     np.equal(access_order, reference_order)
+
+    _, access_count = TensorTiler2D.get_access_tensors(
+        8, 16, [1, 8, 8, 2], [0, 2, 16, 1], allow_repeat=True
+    )
+    assert (access_count == 1).all()

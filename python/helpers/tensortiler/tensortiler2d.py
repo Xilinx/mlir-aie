@@ -42,14 +42,37 @@ class TensorTile:
             show_plot=show_plot,
         )
 
-    def access_order(self) -> np.ndarray:
-        return TensorTiler2D.get_access_order_tensor(
+    def access_tensors(
+        self, allow_repeat=False
+    ) -> tuple[np.ndarray, np.ndarray | None]:
+        return TensorTiler2D.get_access_tensors(
             self.tensor_height,
             self.tensor_width,
             self.sizes,
             self.strides,
             offset=self.offset,
+            allow_repeat=allow_repeat,
         )
+
+    def access_order(self, allow_repeat=False) -> np.ndarray:
+        return TensorTiler2D.get_access_tensors(
+            self.tensor_height,
+            self.tensor_width,
+            self.sizes,
+            self.strides,
+            offset=self.offset,
+            allow_repeat=allow_repeat,
+        )[0]
+
+    def access_count(self) -> np.ndarray:
+        return TensorTiler2D.get_access_tensors(
+            self.tensor_height,
+            self.tensor_width,
+            self.sizes,
+            self.strides,
+            offset=self.offset,
+            allow_repeat=True,
+        )[1]
 
     def __str__(self) -> str:
         return (
@@ -323,7 +346,10 @@ class TensorTiler2D:
                 "You must pip install matplotlib in order to render access graphs"
             )
 
-        fig, (ax_order, ax_count) = plt.subplots(1, 2)
+        if not (access_count_tensor is None):
+            fig, (ax_order, ax_count) = plt.subplots(1, 2)
+        else:
+            fig, ax_order = plt.subplots()
         _access_heatmap = ax_order.pcolor(access_order_tensor, cmap="gnuplot2")
 
         # Thanks to https://stackoverflow.com/questions/14406214/moving-x-axis-to-the-top-of-a-plot-in-matplotlib

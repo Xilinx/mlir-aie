@@ -8,7 +8,7 @@
 import argparse
 import numpy as np
 
-from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D
+from aie.helpers.tensortiler.tensortiler2d import TensorTiler2D
 from aie.utils.xrt import setup_aie, execute as execute_on_aie
 
 

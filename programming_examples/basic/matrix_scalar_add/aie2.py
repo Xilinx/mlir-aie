@@ -12,7 +12,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D
+from aie.helpers.tensortiler.tensortiler2d import TensorTiler2D
 
 # Size of the entire image
 IMAGE_HEIGHT = 16

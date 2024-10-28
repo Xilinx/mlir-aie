@@ -14,7 +14,7 @@ from aie.dialects.aiex import *
 from aie.dialects import arith
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D
+from aie.helpers.tensortiler.tensortiler2d import TensorTiler2D
 
 
 def generate_module(tensor_height, tensor_width, tile_height, tile_width):

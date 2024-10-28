@@ -1,6 +1,6 @@
 import numpy as np
 
-from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D
+from aie.helpers.tensortiler.tensortiler2d import TensorTiler2D
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -56,13 +56,14 @@ def matrix_vector_tiling_sweep():
                         or A_strides != A_tile.strides
                     ):
                         # There may be different but equivalent transformations
-                        reference_access = TensorTiler2D.get_access_order_tensor(
+                        reference_access, _ = TensorTiler2D.get_access_tensors(
                             M, K, sizes=A_sizes, strides=A_strides, offset=A_offset
                         )
-                        new_access = A_tile.access_order()
+                        new_access, _ = A_tile.access_tensors()
                         assert (
                             reference_access == new_access
                         ).all(), f"Expected (sizes={A_sizes}, strides={A_strides}, offset={A_offset}), got (sizes={A_tile.sizes}, strides={A_tile.strides}, offset={A_tile.offset})"
+                        assert ()
 
                     # Current way of calculting sizes/strides/offsets
                     C_offset = i * M_div_m_div_n_cores * m
@@ -77,10 +78,10 @@ def matrix_vector_tiling_sweep():
                         or C_strides != C_tile.strides
                     ):
                         # There may be different but equivalent transformations
-                        reference_access = TensorTiler2D.get_access_order_tensor(
+                        reference_access, _ = TensorTiler2D.get_access_tensors(
                             1, C_sz, sizes=C_sizes, strides=C_strides, offset=C_offset
                         )
-                        new_access = C_tile.access_order()
+                        new_access, _ = C_tile.access_tensors()
                         assert (
                             reference_access == new_access
                         ).all(), f"Expected (sizes={C_sizes}, strides={C_strides}, offset={C_offset}), got (sizes={C_tile.sizes}, strides={C_tile.strides}, offset={C_tile.offset})"

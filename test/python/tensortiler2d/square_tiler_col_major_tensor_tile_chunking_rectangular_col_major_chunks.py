@@ -1,6 +1,6 @@
 import numpy as np
 
-from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D
+from aie.helpers.tensortiler.tensortiler2d import TensorTiler2D
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s

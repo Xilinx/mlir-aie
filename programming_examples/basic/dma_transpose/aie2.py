@@ -13,7 +13,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.tensortiler.tensortiler2D import TensorTile
+from aie.helpers.tensortiler.tensortiler2d import TensorTile
 
 
 def my_passthrough(M, K, N, generate_acccess_map=False):
