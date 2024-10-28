@@ -4,9 +4,10 @@
  // REQUIRES: ryzen_ai, peano 
  //
  // RUN: make -f %S/Makefile clean
- // RUN: make -f %S/Makefile 
+ // RUN: CHESS=false make -f %S/Makefile 
  // RUN: %run_on_npu make -f %S/Makefile run | FileCheck %s
  // RUN: %run_on_npu make -f %S/Makefile run_py | FileCheck %s
  // RUN: make -f %S/Makefile clean
- // RUN: %run_on_npu make -f %S/Makefile trace_py | FileCheck %s
+ // RUN: CHESS=false %run_on_npu make -f %S/Makefile trace | FileCheck %s
+ // RUN: CHESS=false %run_on_npu make -f %S/Makefile trace_py | FileCheck %s
  // CHECK: PASS!
