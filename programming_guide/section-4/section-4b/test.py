@@ -118,7 +118,6 @@ def main(opts):
         npu_time_min = min(npu_time_min, npu_time)
         npu_time_max = max(npu_time_max, npu_time)
 
-
     # Write trace results
     if enable_trace:
         trace_utils.write_out_trace(trace_buffer, str(opts.trace_file))

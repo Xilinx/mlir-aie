@@ -60,7 +60,7 @@ def my_vector_scalar(opts):
                 of_factor.release(ObjectFifoPort.Consume, 1)
 
         # Set up a packet-switched flow from core to shim for tracing information
-        tiles_to_trace = [ ComputeTile2 ]
+        tiles_to_trace = [ComputeTile2]
         if enableTrace:
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
@@ -68,7 +68,9 @@ def my_vector_scalar(opts):
         @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
             if enableTrace:
-                trace_utils.configure_packet_tracing_aie2(tiles_to_trace, ShimTile, opts.trace_size, 4096 * 4)
+                trace_utils.configure_packet_tracing_aie2(
+                    tiles_to_trace, ShimTile, opts.trace_size, 4096 * 4
+                )
 
             npu_dma_memcpy_nd(
                 metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, 4096], issue_token=True
