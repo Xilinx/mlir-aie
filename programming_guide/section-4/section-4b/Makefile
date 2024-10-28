@@ -37,7 +37,7 @@ build/final.xclbin: build/aie.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
     			$(if $(shell [ $(use_chess) != true ] && echo true), \
-    			    --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+    			    --no-xchesscc --no-xbridge \
     			) \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
@@ -45,7 +45,7 @@ build/trace.xclbin: build/aie_trace.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
     			$(if $(shell [ $(use_chess) != true ] && echo true), \
-    			    --no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+    			    --no-xchesscc --no-xbridge \
     			) \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 

@@ -17,6 +17,7 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 targetname = vectorScalar
 data_size = 4096
 trace_size = 8192
+use_chess = true
 
 all: build/final_${data_size}.xclbin build/insts_${data_size}.txt
 
@@ -24,7 +25,11 @@ kristof: build/insts_${data_size}.txt
 
 build/%.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
+ifeq ($(use_chess), true)
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}; 
+else 
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}; 
+endif
 
 build/aie_${data_size}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
@@ -39,12 +44,17 @@ build/final_${data_size}.xclbin: build/aie_${data_size}.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--no-xchesscc --no-xbridge \
+    			$(if $(shell [ $(use_chess) != true ] && echo true), \
+    			    --no-xchesscc --no-xbridge \
+    			) \
 				--aie-generate-npu --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
 
 build/final_trace_${data_size}.xclbin: build/aie_trace_${data_size}.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--no-xchesscc --no-xbridge \
+    			$(if $(shell [ $(use_chess) != true ] && echo true), \
+    			    --no-xchesscc --no-xbridge \
+    			) \
 				--aie-generate-npu --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
 
 ${targetname}_${data_size}.exe: ${srcdir}/test.cpp
