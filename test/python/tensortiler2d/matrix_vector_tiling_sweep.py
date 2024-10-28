@@ -9,9 +9,6 @@ from util import construct_test
 # CHECK-LABEL: matrix_vector_tiling_sweep
 @construct_test
 def matrix_vector_tiling_sweep():
-    """
-    TODO: only porting A and C right now, B requires a tile repeat count which TensorTiler2D does not currently support
-    """
     cores_sweep = [1, 2, 4]
     M_sweep = range(512, 4096, 512)
     K_sweep = range(512, 4096, 512)
@@ -34,6 +31,11 @@ def matrix_vector_tiling_sweep():
                     tile_group_height=M_div_m_div_n_cores, tile_group_width=K // k
                 )
 
+                B_tiler = TensorTiler2D(
+                    tensor_height=1, tensor_width=K, tile_height=1, tile_width=K
+                )
+                B_tile = next(B_tiler.tile_iter(tile_repeat=M_div_m_div_n_cores))
+
                 C_tiler = TensorTiler2D(
                     tensor_height=1,
                     tensor_width=C_sz,
@@ -41,6 +43,24 @@ def matrix_vector_tiling_sweep():
                     tile_width=C_sz_div_n_cores,
                 )
                 C_tile_iter = C_tiler.tile_iter()
+
+                B_sizes = [M_div_m_div_n_cores, 1, 1, K]
+                B_strides = [0, 0, 0, 1]
+                if B_sizes != B_tile.sizes or B_strides != B_tile.strides:
+                    reference_access, reference_count = (
+                        TensorTiler2D.get_access_tensors(
+                            1, K, sizes=B_sizes, strides=B_strides
+                        )
+                    )
+                    new_access, new_count = B_tile.access_tensors()
+                    assert (reference_access == new_access).all(), (
+                        f"B access orders do not match. "
+                        "Expected (sizes={B_sizes}, strides={B_strides}), got (sizes={B_tile.sizes}, strides={B_tile.strides})"
+                    )
+                    assert (reference_count == new_count).all(), (
+                        f"B access counts do not match. "
+                        "Expected (sizes={B_sizes}, strides={B_strides}), got (sizes={B_tile.sizes}, strides={B_tile.strides})"
+                    )
 
                 for i in range(n_cores):
                     # Current way of calculting sizes/strides/offsets
@@ -56,14 +76,20 @@ def matrix_vector_tiling_sweep():
                         or A_strides != A_tile.strides
                     ):
                         # There may be different but equivalent transformations
-                        reference_access, _ = TensorTiler2D.get_access_tensors(
-                            M, K, sizes=A_sizes, strides=A_strides, offset=A_offset
+                        reference_access, reference_count = (
+                            TensorTiler2D.get_access_tensors(
+                                M, K, sizes=A_sizes, strides=A_strides, offset=A_offset
+                            )
                         )
-                        new_access, _ = A_tile.access_tensors()
-                        assert (
-                            reference_access == new_access
-                        ).all(), f"Expected (sizes={A_sizes}, strides={A_strides}, offset={A_offset}), got (sizes={A_tile.sizes}, strides={A_tile.strides}, offset={A_tile.offset})"
-                        assert ()
+                        new_access, new_count = A_tile.access_tensors()
+                        assert (reference_access == new_access).all(), (
+                            f"A access orders do not match. "
+                            "Expected (sizes={A_sizes}, strides={A_strides}, offset={A_offset}), got (sizes={A_tile.sizes}, strides={A_tile.strides}, offset={A_tile.offset})"
+                        )
+                        assert (reference_count == new_count).all(), (
+                            f"A access counts do not match. "
+                            "Expected (sizes={A_sizes}, strides={A_strides}, offset={A_offset}), got (sizes={A_tile.sizes}, strides={A_tile.strides}, offset={A_tile.offset})"
+                        )
 
                     # Current way of calculting sizes/strides/offsets
                     C_offset = i * M_div_m_div_n_cores * m
@@ -78,12 +104,24 @@ def matrix_vector_tiling_sweep():
                         or C_strides != C_tile.strides
                     ):
                         # There may be different but equivalent transformations
-                        reference_access, _ = TensorTiler2D.get_access_tensors(
-                            1, C_sz, sizes=C_sizes, strides=C_strides, offset=C_offset
+                        reference_access, reference_count = (
+                            TensorTiler2D.get_access_tensors(
+                                1,
+                                C_sz,
+                                sizes=C_sizes,
+                                strides=C_strides,
+                                offset=C_offset,
+                            )
                         )
-                        new_access, _ = C_tile.access_tensors()
-                        assert (
-                            reference_access == new_access
-                        ).all(), f"Expected (sizes={C_sizes}, strides={C_strides}, offset={C_offset}), got (sizes={C_tile.sizes}, strides={C_tile.strides}, offset={C_tile.offset})"
+                        new_access, new_count = C_tile.access_tensors()
+                        assert (reference_access == new_access).all(), (
+                            f"C access orders do not match. "
+                            "Expected (sizes={C_sizes}, strides={C_strides}, offset={C_offset}), got (sizes={C_tile.sizes}, strides={C_tile.strides}, offset={C_tile.offset})"
+                        )
+                        assert (reference_access == new_count).all(), (
+                            f"C access counts do not match. "
+                            "Expected (sizes={C_sizes}, strides={C_strides}, offset={C_offset}), got (sizes={C_tile.sizes}, strides={C_tile.strides}, offset={C_tile.offset})"
+                        )
+
     # CHECK: Pass!
     print("Pass!")
