@@ -68,7 +68,7 @@ def row_wise_bias_add(M, N, m, n):
                 metadata=bias_fifo,
                 bd_id=1,
                 mem=bias,
-                tensor_tile=t,
+                tensor_tile=bias_t,
             )
             npu_dma_memcpy_nd(
                 metadata=out_fifo,
