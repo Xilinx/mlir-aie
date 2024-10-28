@@ -28,6 +28,7 @@ from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint, MemRefTy
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
 from ..helpers.util import try_convert_np_type_to_mlir_type, np_ndarray_type_get_shape
+from ..helpers.tensortiler.tensortiler2d import TensorTile
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
@@ -55,19 +56,29 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         metadata: str | ObjectFifoCreateOp,
         bd_id,
         mem,
-        offsets: MixedValues = None,
-        sizes: MixedValues = None,
-        strides: MixedValues = None,
+        tensor_tile: TensorTile | None = None,
+        offsets: MixedValues | None = None,
+        sizes: MixedValues | None = None,
+        strides: MixedValues | None = None,
         issue_token: bool | None = None,
     ):
         x = 0
         y = 0
-        if offsets is None:
-            offsets = [0] * 4
-        if sizes is None:
-            sizes = [0] * 4
-        if strides is None:
-            strides = [0] * 3 + [1]
+        if tensor_tile and not (offsets is None and sizes is None and strides is None):
+            raise ValueError(
+                "NpuDmaMemcpyNd can take either a tensor_tile OR (sizes and/or strides and/or offsets), but not both."
+            )
+        if tensor_tile:
+            sizes = tensor_tile.sizes.copy()
+            strides = tensor_tile.strides.copy()
+            offsets = [0, 0, 0, tensor_tile.offset]
+        else:
+            if offsets is None:
+                offsets = [0] * 4
+            if sizes is None:
+                sizes = [0] * 4
+            if strides is None:
+                strides = [0] * 3 + [1]
         dynamic_offsets, _packed_offsets, static_offsets = _dispatch_mixed_values(
             offsets
         )

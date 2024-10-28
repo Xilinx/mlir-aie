@@ -12,7 +12,7 @@ def tensortiler_simple():
     TENSOR_HEIGHT = 2
     TENSOR_WIDTH = 3
 
-    tiler = TensorTiler2D(TENSOR_HEIGHT, TENSOR_WIDTH, TENSOR_HEIGHT, TENSOR_WIDTH)
+    tiler = TensorTiler2D(TENSOR_HEIGHT, TENSOR_WIDTH)
     access_map = tiler.access_order()
     count_map = tiler.access_count()
 
@@ -23,6 +23,9 @@ def tensortiler_simple():
 
     iter = tiler.tile_iter()
     t = next(iter)
+
+    as_t = tiler.as_tile()
+    assert t == as_t, "as_tile() failed"
 
     assert (
         t.tensor_height == TENSOR_HEIGHT

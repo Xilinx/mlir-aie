@@ -79,6 +79,21 @@ class TensorTile:
             f"transfer_len={self.transfer_len})"
         )
 
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return (
+                self.tensor_height == other.tensor_height
+                and self.tensor_width == other.tensor_width
+                and self.offset == other.offset
+                and self.sizes == other.sizes
+                and self.strides == other.strides
+            )
+        else:
+            return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
 
 class TensorTile2DIter:
     def __init__(
@@ -232,6 +247,15 @@ class TensorTiler2D:
     @property
     def strides(self) -> list[int]:
         return self._strides.copy()
+
+    def as_tile(self) -> TensorTile:
+        return TensorTile(
+            tensor_height=self._tensor_height,
+            tensor_width=self._tensor_width,
+            offset=0,
+            sizes=self._sizes.copy(),
+            strides=self._strides.copy(),
+        )
 
     def tile_iter(
         self,

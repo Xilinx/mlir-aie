@@ -60,9 +60,7 @@ def generate_module(tensor_height, tensor_width, tile_height, tile_width):
                     metadata=of_out,
                     bd_id=1,
                     mem=access_count,
-                    sizes=t.sizes,
-                    strides=t.strides,
-                    offsets=[0, 0, 0, t.offset],
+                    tensor_tile=t,
                 )
                 dma_wait(of_out)
 

@@ -62,22 +62,19 @@ def row_wise_bias_add(M, N, m, n):
                 metadata=in_fifo,
                 bd_id=0,
                 mem=inp,
-                sizes=t.sizes,
-                strides=t.strides,
+                tensor_tile=t,
             )
             npu_dma_memcpy_nd(
                 metadata=bias_fifo,
                 bd_id=1,
                 mem=bias,
-                sizes=bias_t.sizes,
-                strides=bias_t.strides,
+                tensor_tile=t,
             )
             npu_dma_memcpy_nd(
                 metadata=out_fifo,
                 bd_id=2,
                 mem=out,
-                sizes=t.sizes,
-                strides=t.strides,
+                tensor_tile=t,
             )
             # of_out will only complete after of_in completes, so we just wait on of_out instead of both
             dma_wait(out_fifo)

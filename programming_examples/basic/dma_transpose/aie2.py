@@ -61,11 +61,10 @@ def my_passthrough(M, K, N, generate_acccess_map=False):
                     metadata=of_in,
                     bd_id=1,
                     mem=A,
-                    sizes=data_transform.sizes,
-                    strides=data_transform.strides,
+                    tensor_tile=data_transform,
                     issue_token=True,
                 )
-                npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
+                npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, tensor=[1, 1, 1, N])
                 dma_wait(of_in, of_out)
 
     print(ctx.module)

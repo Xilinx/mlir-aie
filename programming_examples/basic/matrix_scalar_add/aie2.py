@@ -70,7 +70,7 @@ def my_matrix_add_one():
 
         # To/from AIE-array data movement
         tiler = TensorTiler2D(IMAGE_HEIGHT, IMAGE_WIDTH, TILE_HEIGHT, TILE_WIDTH)
-        t = next(tiler.tile_iter())  # Only transfer one tile of data
+        t = next(tiler.tile_iter())  # Only transfer one (first) tile of data
 
         @runtime_sequence(tile_ty, tile_ty, tile_ty)
         def sequence(inTensor, notUsed, outTensor):
@@ -78,8 +78,7 @@ def my_matrix_add_one():
                 metadata=of_in1,
                 bd_id=1,
                 mem=inTensor,
-                sizes=t.sizes,
-                strides=t.strides,
+                tensor_tile=t,
                 issue_token=True,
             )
 
@@ -87,8 +86,7 @@ def my_matrix_add_one():
                 metadata=of_out1,
                 bd_id=0,
                 mem=outTensor,
-                sizes=t.sizes,
-                strides=t.strides,
+                tensor_tile=t,
             )
             dma_wait(of_in1, of_out1)
 
