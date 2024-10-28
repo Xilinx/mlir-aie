@@ -16,8 +16,9 @@ class TensorTile:
         self.tensor_height = tensor_height
         self.tensor_width = tensor_width
         self.offset = offset
-        self.sizes = sizes
-        self.strides = strides
+        self.sizes, self.strides = TensorTiler2D._validate_and_clean_sizes_strides(
+            sizes, strides
+        )
 
     @property
     def dimensions(self) -> list[tuple[int, int]]:
@@ -97,8 +98,9 @@ class TensorTile2DIter:
 
         self._tensor_height = tensor_height
         self._tensor_width = tensor_width
-        self._sizes = sizes
-        self._strides = strides
+        self._sizes, self._strides = TensorTiler2D._validate_and_clean_sizes_strides(
+            sizes, strides
+        )
         self._offset_fn = offset_fn
 
     def __iter__(self):
@@ -170,7 +172,7 @@ class TensorTiler2D:
                 self._tensor_height,
                 self._tile_width,
             ]
-            self._strides = [1, self._tile_width, self._tensor_width, 1]
+            self._strides = [0, self._tile_width, self._tensor_width, 1]
         elif self._tile_col_major and (
             not self._tensor_col_major or self._tile_height == self._tensor_height
         ):
@@ -182,7 +184,7 @@ class TensorTiler2D:
                 self._tile_height,
             ]
             self._strides = [
-                1,
+                0,
                 self._tensor_width * self._tile_height,
                 1,
                 self._tensor_width,
@@ -222,6 +224,9 @@ class TensorTiler2D:
                     self._strides[3],
                     self._strides[2],
                 )
+        self._sizes, self._strides = self._validate_and_clean_sizes_strides(
+            self._sizes, self._strides
+        )
 
     @property
     def sizes(self) -> list[int]:
@@ -307,12 +312,9 @@ class TensorTiler2D:
             iter_sizes[size_idx[0]] = chunk_height
             iter_sizes[size_idx[1]] = chunk_width
 
-        # TODO: for contemplation later
-        """
-        if chunk_width == 1 and chunk_height == 1:
-            iter_strides = [0, 0, 0, 1]
-            iter_sizes = [1, 1, self._tile_width, self._tile_height]
-        """
+        iter_sizes, iter_strides = self._validate_and_clean_sizes_strides(
+            iter_sizes, iter_strides
+        )
 
         return TensorTile2DIter(
             self._tensor_height,
@@ -570,6 +572,33 @@ class TensorTiler2D:
             file_path=file_path,
             show_plot=show_plot,
         )
+
+    @classmethod
+    def _validate_and_clean_sizes_strides(
+        cls, sizes: list[int], strides: list[int]
+    ) -> tuple[list[int], list[int]]:
+        sizes = sizes.copy()
+        strides = strides.copy()
+
+        # Validate sizes/strides
+        assert len(sizes) == 4
+        assert len(strides) == 4
+        for s in sizes:
+            assert s >= 1, "Size must be positive"
+        for s in strides:
+            assert s >= 0, "Stride must be >= 0"
+
+        # Clean (set size=1, stride=0 for as many dims as possible)
+        for i in range(3):
+            if sizes[i] == 1:
+                if i != 3:
+                    strides[i] = 0
+                else:
+                    # smallest stride dim should always be 1
+                    strides[i] = 1
+            else:
+                break
+        return sizes, strides
 
     def visualize(
         self,

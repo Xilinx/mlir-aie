@@ -36,7 +36,7 @@ def tensortiler_simple():
     assert (
         t.sizes == expected_sizes
     ), f"Expected sizes {expected_sizes} but got {t.sizes}"
-    expected_strides = [1, 3, 3, 1]
+    expected_strides = [0, 0, 3, 1]
     assert (
         t.strides == expected_strides
     ), f"Expected strides {expected_strides} but got {t.strides}"
@@ -106,7 +106,7 @@ def tensortiler_tensor_row_major_tile_col_major():
     assert (
         t.sizes == expected_sizes
     ), f"Expected sizes {expected_sizes} but got {t.sizes}"
-    expected_strides = [1, 36, 1, 12]
+    expected_strides = [0, 0, 1, 12]
     assert (
         t.strides == expected_strides
     ), f"Expected strides {expected_strides} but got {t.strides}"
@@ -172,7 +172,7 @@ def tensortiler_tensor_col_major_tile_col_major():
     assert (
         t.sizes == expected_sizes
     ), f"Expected sizes {expected_sizes} but got {t.sizes}"
-    expected_strides = [1, 36, 1, 12]
+    expected_strides = [0, 0, 1, 12]
     assert (
         t.strides == expected_strides
     ), f"Expected strides {expected_strides} but got {t.strides}"
@@ -205,10 +205,12 @@ def tensortiler_tensor_col_major_tile_row_major():
         tile_col_major=False,
     )
     access_map = tiler.access_order()
+    access_count = tiler.access_count()
 
     expected_tile = np.array([[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]])
     assert (TENSOR_HEIGHT, TENSOR_WIDTH) == access_map.shape
     assert (expected_tile == access_map[0:TILE_HEIGHT, 0:TILE_WIDTH]).all()
+    assert (access_count == 1).all()
 
     expected_tile = expected_tile
     expected_tile2 = np.array([[12, 13, 14, 15], [16, 17, 18, 19], [20, 21, 22, 23]])
@@ -236,7 +238,7 @@ def tensortiler_tensor_col_major_tile_row_major():
     assert (
         t.sizes == expected_sizes
     ), f"Expected sizes {expected_sizes} but got {t.sizes}"
-    expected_strides = [1, 4, 12, 1]
+    expected_strides = [0, 0, 12, 1]
     assert (
         t.strides == expected_strides
     ), f"Expected strides {expected_strides} but got {t.strides}"
@@ -389,6 +391,10 @@ def tensortiler_tensor_iter_chunk_col_major():
         TILE_HEIGHT,
         TILE_WIDTH,
     )
+    access_order = tiler.access_order()
+    assert (access_order[0:TILE_HEIGHT, 0:TILE_WIDTH] == expected_tile).all()
+    access_count = tiler.access_count()
+    assert (access_count == 1).all()
 
     CHUNK_HEIGHT = 2
     CHUNK_WIDTH = 2
