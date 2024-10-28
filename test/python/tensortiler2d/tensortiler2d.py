@@ -504,6 +504,6 @@ def access_order_from_sizes_strides():
     np.equal(access_order, reference_order)
 
     _, access_count = TensorTiler2D.get_access_tensors(
-        8, 16, [1, 8, 8, 2], [0, 2, 16, 1], allow_repeat=True
+        8, 16, [1, 8, 8, 2], [0, 2, 16, 1]
     )
     assert (access_count == 1).all()

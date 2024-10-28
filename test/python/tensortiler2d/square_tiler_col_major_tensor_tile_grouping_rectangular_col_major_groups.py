@@ -6,7 +6,7 @@ from util import construct_test
 # RUN: %python %s | FileCheck %s
 
 
-# CHECK-LABEL: square_tiler_col_major_tensor_tile_grouping_rectangular_col_major_grups
+# CHECK-LABEL: square_tiler_col_major_tensor_tile_grouping_rectangular_col_major_groups
 @construct_test
 def square_tiler_col_major_tensor_tile_grouping_rectangular_col_major_groups():
     tiler = TensorTiler2D(16, 16, 4, 4, tensor_col_major=True)
