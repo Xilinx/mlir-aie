@@ -230,42 +230,6 @@ struct AIEObjectFifoStatefulTransformPass
            isUsedInLinkOp;
   }
 
-  // Checks if via_shared_mem attribute of the objectfifo is set and if so
-  // tries to apply it. If the desired shared memory module is available to
-  // both producer and consumer then it will be used, otherwise a warning is
-  // emitted and the original shared memory module is used instead.
-  void checkAndApplyViaSharedMemAttribute(ObjectFifoCreateOp createOp,
-                                          int &share_direction) {
-    if (createOp.getViaSharedMem().has_value()) {
-      int desiredSharedTile = createOp.getViaSharedMem().value();
-      int desiredSharedModule = 1;
-      if (desiredSharedTile == 0)
-        desiredSharedModule = -1;
-      if (share_direction != desiredSharedModule) {
-        bool desiredSharedModuleIsShared = false;
-        int newShareDirection = 0;
-        for (auto consumerTile : createOp.getConsumerTiles()) {
-          if (auto consumerTileOp =
-                  dyn_cast<TileOp>(consumerTile.getDefiningOp()))
-            if (share_direction == -1)
-              ///   * -1 if the shared memory module is that of the first input
-              ///   tile,
-              ///   * 1 if it is that of the second input tile
-              desiredSharedModuleIsShared =
-                  isSharedMemory(consumerTileOp, createOp.getProducerTileOp(),
-                                 &newShareDirection);
-        }
-        if (desiredSharedModuleIsShared) {
-          if (share_direction == newShareDirection)
-            share_direction = (share_direction == -1) ? 1 : -1;
-          else
-            createOp->emitWarning("Memory module specified by `via_shared_mem` "
-                                  "is not available as shared memory module");
-        }
-      }
-    }
-  }
-
   /// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
   /// if it belongs to one.
   std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
@@ -400,12 +364,30 @@ struct AIEObjectFifoStatefulTransformPass
     }
 
     TileOp creation_tile;
+    auto consumerTileOp =
+        dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
     if (share_direction == 0 || share_direction == -1)
       creation_tile = op.getProducerTileOp();
-    else {
-      auto consumerTileOp =
-          dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
+    else
       creation_tile = consumerTileOp;
+
+    ObjectFifoAllocateOp opAlloc;
+    auto device = op->getParentOfType<DeviceOp>();
+    for (ObjectFifoAllocateOp alloc : device.getOps<ObjectFifoAllocateOp>()) {
+      if (alloc.getObjectFifo() == op)
+        opAlloc = alloc;
+    }
+    if (opAlloc) {
+      TileOp delegate = opAlloc.getDelegateTileOp();
+      int prodShareDir;
+      int consShareDir;
+      isSharedMemory(delegate, op.getProducerTileOp(), &prodShareDir);
+      isSharedMemory(delegate, consumerTileOp, &consShareDir);
+      if (prodShareDir == -1 && consShareDir == -1)
+        creation_tile = delegate;
+      else
+        opAlloc.emitOpError("objectfifo has no shared memory access to "
+                            "delegate tile's memory module");
     }
 
     // Reset opbuilder location to after the last tile declaration
@@ -1415,14 +1397,9 @@ struct AIEObjectFifoStatefulTransformPass
 
       // if split, the necessary size for producer fifo might change
       if (shared) {
-        checkAndApplyViaSharedMemAttribute(createOp, share_direction);
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
       } else {
-        if (createOp.getViaSharedMem().has_value())
-          createOp->emitWarning("No access to shared memory module; ignoring "
-                                "`via_shared_mem`");
-
         if (isa<ArrayAttr>(createOp.getElemNumber()))
           createOp.setElemNumberAttr(
               builder.getI32IntegerAttr(createOp.size()));
@@ -1721,7 +1698,8 @@ struct AIEObjectFifoStatefulTransformPass
     device.walk([&](Operation *op) {
       if (isa<ObjectFifoCreateOp, ObjectFifoLinkOp,
               ObjectFifoRegisterExternalBuffersOp, ObjectFifoAcquireOp,
-              ObjectFifoSubviewAccessOp, ObjectFifoReleaseOp>(op))
+              ObjectFifoSubviewAccessOp, ObjectFifoReleaseOp,
+              ObjectFifoAllocateOp>(op))
         opsToErase.insert(op);
     });
     topologicalSort(opsToErase);
