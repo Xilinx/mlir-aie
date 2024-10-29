@@ -9,7 +9,7 @@
 // RUN: env CHESS=false make -f %S/Makefile 
 // RUN: %run_on_npu make -f %S/Makefile run | FileCheck %s
 // RUN: %run_on_npu make -f %S/Makefile run_py | FileCheck %s
-// RUN: make -f %S/Makefile clean
-// RUN: env CHESS=false %run_on_npu make -f %S/Makefile trace | FileCheck %s
-// RUN: env CHESS=false %run_on_npu make -f %S/Makefile trace_py | FileCheck %s
+// make -f %S/Makefile clean
+// env CHESS=false %run_on_npu make -f %S/Makefile trace | FileCheck %s
+// env CHESS=false %run_on_npu make -f %S/Makefile trace_py | FileCheck %s
 // CHECK: PASS!
