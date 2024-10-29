@@ -36,7 +36,6 @@
 #include "clang/CIR/Dialect/IR/CIRTypes.h"
 #include "clang/CIR/LowerToMLIR.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -151,8 +150,7 @@ bool isUnrealizedConversionCastWithAnnotation(
 }
 
 // Generate the equivalent memref type of an aie::buffer
-mlir::MemRefType bufferMemrefType(mlir::Type buffer,
-                                  mlir::ConversionPatternRewriter &rewriter) {
+mlir::MemRefType bufferMemrefType(mlir::Type buffer) {
   static mlir::TypeConverter typeConverter = cir::prepareTypeConverter();
   buffer.dump();
   if (auto p = mlir::dyn_cast<mlir::cir::PointerType>(buffer)) {
@@ -374,29 +372,45 @@ struct CIRToAIEPrepare : CIRToAIEPrepareBase<CIRToAIEPrepare> {
   }
 };
 
-// Erase a range of Operation* and its users recursively
+// Erase a range of Operation* and its users recursively.
+// Only consider the use-def chains and not the regions of blocks yet.
 template <typename OpRange>
 void eraseOpsAndUsers(OpRange &&opsToErase) {
   llvm::SetVector<mlir::Operation *> allOpsAndUsers;
   llvm::SmallVector<mlir::Operation *> newOps{
       std::forward<OpRange>(opsToErase)};
-  // While there are some operations to process
+  //  While there are some operations to process
   while (!newOps.empty()) {
     auto *op = newOps.pop_back_val();
+    op->emitRemark("eraseOpsAndUsers: newOps.pop_back_val()");
     // If the operation has not been visited yet, add it to the set and process
     // its users
-    if (allOpsAndUsers.insert(op))
+    if (allOpsAndUsers.insert(op)) {
+      op->emitRemark("eraseOpsAndUsers: inserted!");
       for (auto result : op->getResults())
-        for (auto *user : result.getUsers())
+        for (auto *user : result.getUsers()) {
           // Add each user to the visit queue
           newOps.push_back(user);
+          user->emitRemark("eraseOpsAndUsers: append to visit queue");
+        }
+    }
   }
-  // To avoid erasing operations with some users, topologically sort the
+  // To avoid erasing operations with remaining users, topologically sort the
   // operations according to their use-def chains and erase them in reverse
   // order
-  mlir::topologicalSort(allOpsAndUsers);
-  for (auto *op : llvm::reverse(allOpsAndUsers))
+  for (auto *op : allOpsAndUsers)
+    op->emitRemark("eraseOpsAndUsers: allOpsAndUsers");
+  // Does not work here
+  // auto sorted = mlir::topologicalSort(allOpsAndUsers);
+  llvm::SmallVector<mlir::Operation *> sorted{allOpsAndUsers.begin(),
+                                              allOpsAndUsers.end()};
+  mlir::computeTopologicalSorting(sorted);
+  for (auto *op : sorted)
+    op->emitRemark("eraseOpsAndUsers: topologicalSort");
+  for (auto *op : llvm::reverse(sorted)) {
+    op->emitRemark("eraseOpsAndUsers: reverse");
     op->erase();
+  }
 }
 
 // Lower aie::tile::program(<tile code>)
@@ -492,7 +506,7 @@ struct DeviceLoweringRP
               if (auto bufCast =
                       mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(user)) {
                 bufCast.emitRemark("Buffer cast from tile");
-                auto mrt = bufferMemrefType(bufCast.getType(0), rewriter);
+                auto mrt = bufferMemrefType(bufCast.getType(0));
                 auto bufferOp = rewriter.create<xilinx::AIE::BufferOp>(
                     bufCast.getLoc(), mrt, tileOp.getResult());
                 // Keep track of the buffer op behind the C++ type
@@ -538,44 +552,117 @@ struct DeviceLoweringRP
   }
 };
 
-
-
 struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
 
-  void deviceLowering(mlir::Operation *op, CIRToAIETypesAnalysis &cat) {
-  llvm::SmallVector<mlir::Operation *> opsToErase;
-  op->walk<mlir::WalkOrder::PreOrder>([&](mlir::UnrealizedConversionCastOp u) {
-    u.emitRemark(
-        "DeviceLowering found UnrealizedConversionCastOp inside the scope");
-    if (!isUnrealizedConversionCastWithAnnotation(u, {"aie::device"}))
-      return;
-    if (auto aieLike = cat.moduleTypes[u.getType(0)];
-        aieLike && aieLike->base == "aie::device") {
-      auto deviceName = aieLike->subMatches[0];
-      auto deviceId =
-          xilinx::AIE::symbolizeEnum<xilinx::AIE::AIEDevice>(deviceName);
-      if (!deviceId)
-        // Actually this test cannot happens since the API of
-        // xilinx::AIE::symbolizeEnum is strange: even if it returns a
-        // std::optional it errors without returning
-        u.emitError("aie::device incorrect for '") << deviceName << "'";
-      // Create an aie.device just before its equivalent
-      // UnrealizedConversionCast
-      mlir::OpBuilder b{u};
-      auto deviceOp = b.create<xilinx::AIE::DeviceOp>(u.getLoc(), *deviceId);
-      // The aie.device requires one block
-      deviceOp.getRegion().emplaceBlock();
-      // Lazily move all the code depending on the device to the trash
-      opsToErase.push_back(u);
+  static inline CIRToAIETypesAnalysis *cat;
+
+  bool tryBufferLowering(mlir::Operation *op, xilinx::AIE::TileOp tileOp,
+                         mlir::OpBuilder &b,
+                         llvm::SmallVector<mlir::Operation *> &opsToErase) {
+    if (auto bufCast = mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(op)) {
+      bufCast.emitRemark("Buffer cast from tile");
+      auto mrt = bufferMemrefType(bufCast.getType(0));
+      auto bufferOp = b.create<xilinx::AIE::BufferOp>(bufCast.getLoc(), mrt,
+                                                      tileOp.getResult());
+      // Keep track of the buffer op behind the C++ type
+      cat->moduleTypes[bufCast.getType(0)]->data = bufferOp;
+      // The bufCast should be removed as a dependent of its tile cast later,
+      // but be redundant here for symmetry
+      opsToErase.push_back(bufCast);
+      // The lowering is a success, no need to look further.
+      return true;
     }
-  });
-  // Remove the useless operations
-  eraseOpsAndUsers(opsToErase);
-}
+    // Notify to try something else
+    return false;
+  }
+
+  bool
+  tryTileProgramLowering(mlir::Operation *op, xilinx::AIE::TileOp tileOp,
+                         mlir::OpBuilder &b,
+                         llvm::SmallVector<mlir::Operation *> &opsToErase) {
+    if (auto callOp = mlir::dyn_cast<mlir::cir::CallOp>(op)) {
+      callOp.emitRemark("CallOp using a tile");
+      if (isCallingFunctionWithAnnotation(callOp, {"aie.tile.program"})) {
+        // if (false)
+        // lowerTileProgram(tileOp, callOp, rewriter);
+        // Erase the scope owning the call operation representing the
+        // core op which has been translated
+        // opsToErase.push_back(callOp->getParentOfType<mlir::cir::ScopeOp>());
+        // The bufCast should be removed as a dependent of its tile cast later.
+        // The lowering is a success, no need to look further.
+        return true;
+      }
+    }
+    // Notify to try something else
+    return false;
+  }
+
+  bool tryTileLowering(mlir::Operation *op, mlir::OpBuilder &b,
+                       llvm::SmallVector<mlir::Operation *> &opsToErase) {
+    if (auto tileCast = mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(op)) {
+      tileCast.emitRemark("tryTileLowering: tileCast from device");
+      if (auto t = cat->moduleTypes[tileCast.getType(0)]) {
+        // llvm::errs() << t->str() << " value \n";
+        auto col = t->subMatches[0];
+        // llvm::errs() << "col" << col << " \n";
+        auto row = t->subMatches[1];
+        // llvm::errs() << " row " << row << " \n";
+        auto tileOp = b.create<xilinx::AIE::TileOp>(
+            tileCast.getLoc(), std::stoi(col), std::stoi(row));
+        for (mlir::Operation *user : tileCast.getResult(0).getUsers())
+          if (!(tryBufferLowering(user, tileOp, b, opsToErase) ||
+                tryTileProgramLowering(user, tileOp, b, opsToErase)))
+            user->emitError("User of tile cast not handled");
+        // Tile lowering is done
+        return true;
+      }
+    }
+    // Try some other lowering
+    return false;
+  }
+
+  void deviceLowering(mlir::Operation *op) {
+    llvm::SmallVector<mlir::Operation *> opsToErase;
+    op->walk<mlir::WalkOrder::PreOrder>([&](mlir::UnrealizedConversionCastOp
+                                                u) {
+      u.emitRemark(
+          "DeviceLowering found UnrealizedConversionCastOp inside the module");
+      if (!isUnrealizedConversionCastWithAnnotation(u, {"aie::device"}))
+        return;
+      if (auto aieLike = cat->moduleTypes[u.getType(0)];
+          aieLike && aieLike->base == "aie::device") {
+        auto deviceName = aieLike->subMatches[0];
+        auto deviceId =
+            xilinx::AIE::symbolizeEnum<xilinx::AIE::AIEDevice>(deviceName);
+        if (!deviceId)
+          // Actually this test cannot happens since the API of
+          // xilinx::AIE::symbolizeEnum is strange: even if it returns a
+          // std::optional it errors without returning
+          u.emitError("aie::device incorrect for '") << deviceName << "'";
+        // Create an aie.device just before its equivalent
+        // UnrealizedConversionCast. Since we visit in PreOrder mode, this
+        // should be fine.
+        mlir::OpBuilder b{u};
+        auto deviceOp = b.create<xilinx::AIE::DeviceOp>(u.getLoc(), *deviceId);
+        // The aie.device requires one block
+        deviceOp.getRegion().emplaceBlock();
+        // Create all the following code inside the device region
+        b.setInsertionPointToStart(deviceOp.getBody());
+        // Lazily move all the code depending on the device to the trash
+        opsToErase.push_back(u);
+        for (mlir::Operation *user : u.getResult(0).getUsers())
+          if (!tryTileLowering(user, b, opsToErase))
+            user->emitRemark("User of device cast not handled");
+      }
+    });
+    // Remove the useless operations
+    eraseOpsAndUsers(opsToErase);
+  }
 
   void runOnOperation() override {
     // Compute the analysis for the module since it is a module pass.
-    deviceLowering(getOperation(), getAnalysis<CIRToAIETypesAnalysis>());
+    cat = &getAnalysis<CIRToAIETypesAnalysis>();
+    deviceLowering(getOperation());
 #if 0
     // \todo Clean up this mess
     DeviceLoweringRP::cat = &cat;
