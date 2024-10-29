@@ -4,14 +4,15 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2021 Xilinx Inc.
-
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.dialects.ext import arith
 from aie.extras.context import mlir_mod_ctx
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.util import np_ndarray_type_get_shape
+from aie.helpers.dialects.ext.scf import _for as range_
 
 width = 512
 height = 9
@@ -21,6 +22,7 @@ if len(sys.argv) == 3:
 
 lineWidth = width
 lineWidthChannels = width * 4  # 4 channels
+tensorSize = width * height
 
 enableTrace = False
 traceSizeInBytes = 8192
@@ -32,13 +34,13 @@ def color_threshold():
 
         @device(AIEDevice.npu1_1col)
         def device_body():
-            line_channels_ty = T.memref(lineWidthChannels, T.ui8())
-            line_ty = T.memref(lineWidth, T.ui8())
+            line_channels_ty = np.ndarray[(lineWidthChannels,), np.dtype[np.uint8]]
+            line_ty = np.ndarray[(lineWidth,), np.dtype[np.uint8]]
 
             # AIE Core Function declarations
             thresholdLine = external_func(
                 "thresholdLine",
-                inputs=[line_ty, line_ty, T.i32(), T.i16(), T.i16(), T.i8()],
+                inputs=[line_ty, line_ty, np.int32, np.int16, np.int16, np.int8],
             )
 
             # Tile declarations
@@ -67,7 +69,9 @@ def color_threshold():
             inOOB_L2L1_3 = object_fifo(
                 "inOOB_L2L1_3", MemTile, ComputeTile5, 2, line_ty
             )
-            of_offsets = [np.prod(line_ty.shape) * i for i in range(4)]
+            of_offsets = [
+                np.prod(np_ndarray_type_get_shape(line_ty)) * i for i in range(4)
+            ]
             object_fifo_link(
                 inOOB_L3L2,
                 [inOOB_L2L1_0, inOOB_L2L1_1, inOOB_L2L1_2, inOOB_L2L1_3],
@@ -99,10 +103,30 @@ def color_threshold():
             )
 
             # Runtime parameters
-            rtpComputeTile2 = Buffer(ComputeTile2, [16], T.i32(), "rtpComputeTile2")
-            rtpComputeTile3 = Buffer(ComputeTile3, [16], T.i32(), "rtpComputeTile3")
-            rtpComputeTile4 = Buffer(ComputeTile4, [16], T.i32(), "rtpComputeTile4")
-            rtpComputeTile5 = Buffer(ComputeTile5, [16], T.i32(), "rtpComputeTile5")
+            rtpComputeTile2 = buffer(
+                ComputeTile2,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile2",
+                use_write_rtp=True,
+            )
+            rtpComputeTile3 = buffer(
+                ComputeTile3,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile3",
+                use_write_rtp=True,
+            )
+            rtpComputeTile4 = buffer(
+                ComputeTile4,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile4",
+                use_write_rtp=True,
+            )
+            rtpComputeTile5 = buffer(
+                ComputeTile5,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile5",
+                use_write_rtp=True,
+            )
 
             # Set up compute tiles
 
@@ -118,9 +142,6 @@ def color_threshold():
                     thresholdValue = arith.trunci(T.i16(), rtpComputeTile2[0])
                     maxValue = arith.trunci(T.i16(), rtpComputeTile2[1])
                     thresholdType = arith.trunci(T.i8(), rtpComputeTile2[2])
-                    # maxValue = arith.constant(255, T.i16())
-                    # thresholdValue = arith.constant(50, T.i16())
-                    # thresholdType = arith.constant(0, T.i8())
                     thresholdLine(
                         elemIn,
                         elemOut,
@@ -144,9 +165,6 @@ def color_threshold():
                     thresholdValue = arith.trunci(T.i16(), rtpComputeTile3[0])
                     maxValue = arith.trunci(T.i16(), rtpComputeTile3[1])
                     thresholdType = arith.trunci(T.i8(), rtpComputeTile3[2])
-                    # maxValue = arith.constant(255, T.i16())
-                    # thresholdValue = arith.constant(50, T.i16())
-                    # thresholdType = arith.constant(0, T.i8())
                     thresholdLine(
                         elemIn,
                         elemOut,
@@ -171,9 +189,6 @@ def color_threshold():
                     thresholdValue = arith.trunci(T.i16(), rtpComputeTile4[0])
                     maxValue = arith.trunci(T.i16(), rtpComputeTile4[1])
                     thresholdType = arith.trunci(T.i8(), rtpComputeTile4[2])
-                    # maxValue = arith.constant(255, T.i16())
-                    # thresholdValue = arith.constant(50, T.i16())
-                    # thresholdType = arith.constant(0, T.i8())
                     thresholdLine(
                         elemIn,
                         elemOut,
@@ -198,9 +213,6 @@ def color_threshold():
                     thresholdValue = arith.trunci(T.i16(), rtpComputeTile5[0])
                     maxValue = arith.trunci(T.i16(), rtpComputeTile5[1])
                     thresholdType = arith.trunci(T.i8(), rtpComputeTile5[2])
-                    # maxValue = arith.constant(255, T.i16())
-                    # thresholdValue = arith.constant(50, T.i16())
-                    # thresholdType = arith.constant(0, T.i8()
                     thresholdLine(
                         elemIn,
                         elemOut,
@@ -214,31 +226,28 @@ def color_threshold():
                     outOOB_L1L2_3.release(ObjectFifoPort.Produce, 1)
 
             # To/from AIE-array data movement
-
-            tensorSize = width * height
-
             @runtime_sequence(
-                T.memref(tensorSize, T.i8()),
-                T.memref(32, T.i32()),  # not used
-                T.memref(tensorSize, T.i8()),
+                np.ndarray[(tensorSize,), np.dtype[np.int8]],
+                np.ndarray[(32,), np.dtype[np.int32]],  # not used
+                np.ndarray[(tensorSize,), np.dtype[np.int8]],
             )
             def sequence(inTensor, notUsed, outTensor):
                 # thresholdValue, maxValue, thresholdType
-                NpuWriteRTPOp("rtpComputeTile2", index=0, value=50)
-                NpuWriteRTPOp("rtpComputeTile2", index=1, value=255)
-                NpuWriteRTPOp("rtpComputeTile2", index=2, value=0)
+                rtpComputeTile2[0] = 50
+                rtpComputeTile2[1] = 255
+                rtpComputeTile2[2] = 0
 
-                NpuWriteRTPOp("rtpComputeTile3", index=0, value=50)
-                NpuWriteRTPOp("rtpComputeTile3", index=1, value=255)
-                NpuWriteRTPOp("rtpComputeTile3", index=2, value=0)
+                rtpComputeTile3[0] = 50
+                rtpComputeTile3[1] = 255
+                rtpComputeTile3[2] = 0
 
-                NpuWriteRTPOp("rtpComputeTile4", index=0, value=50)
-                NpuWriteRTPOp("rtpComputeTile4", index=1, value=255)
-                NpuWriteRTPOp("rtpComputeTile4", index=2, value=0)
+                rtpComputeTile4[0] = 50
+                rtpComputeTile4[1] = 255
+                rtpComputeTile4[2] = 0
 
-                NpuWriteRTPOp("rtpComputeTile5", index=0, value=50)
-                NpuWriteRTPOp("rtpComputeTile5", index=1, value=255)
-                NpuWriteRTPOp("rtpComputeTile5", index=2, value=0)
+                rtpComputeTile5[0] = 50
+                rtpComputeTile5[1] = 255
+                rtpComputeTile5[2] = 0
 
                 npu_dma_memcpy_nd(
                     metadata=inOOB_L3L2,

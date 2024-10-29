@@ -2,12 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
-
+import numpy as np
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-import aie.ir as ir
-
 
 with mlir_mod_ctx() as ctx:
 
@@ -19,9 +17,9 @@ with mlir_mod_ctx() as ctx:
         mem_tile = tile(0, 1)
 
         # CHECK: %[[buf0:.+]] = aie.buffer
-        buf0 = buffer(mem_tile, (16,), T.i16())
+        buf0 = buffer(mem_tile, np.ndarray[(16,), np.dtype[np.int16]])
         # CHECK: %[[buf1:.+]] = aie.buffer
-        buf1 = buffer(mem_tile, (32,), T.i16())
+        buf1 = buffer(mem_tile, T.memref(32, T.i16()))
 
         of0 = object_fifo("of0", shim_tile, mem_tile, 2, T.memref(256, T.i32()))
 

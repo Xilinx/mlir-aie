@@ -4,14 +4,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2021 Xilinx Inc.
-
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.extras.dialects.ext import memref
+from aie.helpers.dialects.ext.scf import _for as range_
 from aie.extras.context import mlir_mod_ctx
-from aie.extras.dialects.ext.scf import _for as range_
 
 width = 64
 height = 36
@@ -22,6 +21,7 @@ if len(sys.argv) == 3:
 heightMinus1 = height - 1
 lineWidth = width
 lineWidthInBytes = width * 4
+tensorSize = width * height * 4  # 4 channels
 
 enableTrace = False
 traceSizeInBytes = 8192
@@ -33,24 +33,27 @@ def edge_detect():
 
         @device(AIEDevice.npu1_1col)
         def device_body():
-            line_bytes_ty = T.memref(lineWidthInBytes, T.ui8())
-            line_ty = T.memref(lineWidth, T.ui8())
-            memRef_3x3_ty = T.memref(3, 3, T.i16())
+            line_bytes_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
+            line_ty = np.ndarray[(lineWidth,), np.dtype[np.uint8]]
+            tensor_3x3_ty = np.ndarray[(3, 3), np.dtype[np.int16]]
+
+            tensor_ty = np.ndarray[(tensorSize,), np.dtype[np.int8]]
+            tensor_16x16_ty = np.ndarray[(16, 16), np.dtype[np.int32]]
 
             # AIE Core Function declarations
             rgba2gray_line = external_func(
-                "rgba2grayLine", inputs=[line_bytes_ty, line_ty, T.i32()]
+                "rgba2grayLine", inputs=[line_bytes_ty, line_ty, np.int32]
             )
             filter2d_line = external_func(
                 "filter2dLine",
-                inputs=[line_ty, line_ty, line_ty, line_ty, T.i32(), memRef_3x3_ty],
+                inputs=[line_ty, line_ty, line_ty, line_ty, np.int32, tensor_3x3_ty],
             )
             threshold_line = external_func(
                 "thresholdLine",
-                inputs=[line_ty, line_ty, T.i32(), T.i16(), T.i16(), T.i8()],
+                inputs=[line_ty, line_ty, np.int32, np.int16, np.int16, np.int8],
             )
             gray2rgba_line = external_func(
-                "gray2rgbaLine", inputs=[line_ty, line_bytes_ty, T.i32()]
+                "gray2rgbaLine", inputs=[line_ty, line_bytes_ty, np.int32]
             )
             add_weighted_line = external_func(
                 "addWeightedLine",
@@ -58,10 +61,10 @@ def edge_detect():
                     line_bytes_ty,
                     line_bytes_ty,
                     line_bytes_ty,
-                    T.i32(),
-                    T.i16(),
-                    T.i16(),
-                    T.i8(),
+                    np.int32,
+                    np.int16,
+                    np.int16,
+                    np.int8,
                 ],
             )
 
@@ -155,19 +158,18 @@ def edge_detect():
             # Compute tile 3
             @core(ComputeTile3, "filter2d.cc.o")
             def core_body():
-                kernel = memref.alloc(3, 3, T.i16())
                 v0 = 0
                 v1 = 4096
                 v_minus4 = -16384
-                kernel[0, 0] = v0
-                kernel[0, 1] = v1
-                kernel[0, 2] = v0
-                kernel[1, 0] = v1
-                kernel[1, 1] = v_minus4
-                kernel[1, 2] = v1
-                kernel[2, 0] = v0
-                kernel[2, 1] = v1
-                kernel[2, 2] = v0
+                initial_value = np.array(
+                    [[v0, v1, v0], [v1, v_minus4, v1], [v0, v1, v0]], dtype=np.int16
+                )
+                kernel = buffer(
+                    ComputeTile3,
+                    np.ndarray[(3, 3), np.dtype[np.int16]],
+                    "kernel",
+                    initial_value=initial_value,
+                )
 
                 for _ in range_(sys.maxsize):
                     # Preamble : Top Border
@@ -263,12 +265,7 @@ def edge_detect():
                     outOF_L1L2.release(ObjectFifoPort.Produce, 1)
 
             # To/from AIE-array data movement
-
-            tensorSize = width * height * 4  # 4 channels
-            tensor_ty = T.memref(tensorSize, T.i8())
-            memRef_16x16_ty = T.memref(16, 16, T.i32())
-
-            @runtime_sequence(tensor_ty, memRef_16x16_ty, tensor_ty)
+            @runtime_sequence(tensor_ty, tensor_16x16_ty, tensor_ty)
             def sequence(I, B, O):
                 npu_dma_memcpy_nd(
                     metadata=inOF_L3L2,

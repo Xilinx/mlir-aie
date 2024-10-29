@@ -136,12 +136,12 @@ else:
     config.substitutions.append(("%link_against_hsa%", ""))
     config.substitutions.append(("%HSA_DIR%", ""))
 
+
 if config.xrt_lib_dir:
     print("xrt found at", os.path.dirname(config.xrt_lib_dir))
     xrt_flags = "-I{} -L{} -luuid -lxrt_coreutil".format(
         config.xrt_include_dir, config.xrt_lib_dir
     )
-    config.available_features.add("xrt")
     try:
         # xbutil is deprecated/renamed to xrt-smi, leaving it xbutil for now for
         # compatibility with older versions of XRT
@@ -153,19 +153,19 @@ if config.xrt_lib_dir:
         result = result.stdout.decode("utf-8").split("\n")
         # Starting with Linux 6.8 the format is like "[0000:66:00.1]  :  RyzenAI-npu1"
         # Starting with Linux 6.10 the format is like "|[0000:41:00.1]  ||RyzenAI-npu1  |"
-        p = re.compile("[\|]?\[.+:.+:.+\].+(Phoenix|RyzenAI-(npu\d))")
+        p = re.compile(r"[\|]?(\[.+:.+:.+\]).+(Phoenix|RyzenAI-(npu\d))")
         for l in result:
             m = p.match(l)
-            if m:
-                print("Found Ryzen AI device:", m.group().split()[0])
-                if len(m.groups()) == 2:
-                    # Prepare the future
-                    aie_model = m.group(2)
-                    print("\tmodel:", aie_model)
-                config.available_features.add("ryzen_ai")
-                run_on_npu = (
-                    f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
-                )
+            if not m:
+                continue
+            print("Found Ryzen AI device:", m.group(1))
+            if len(m.groups()) == 3:
+                print("\tmodel:", m.group(3))
+            config.available_features.add("ryzen_ai")
+            run_on_npu = (
+                f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
+            )
+            break
     except:
         print("Failed to run xrt-smi")
         pass
@@ -253,9 +253,10 @@ try:
 except Exception as e:
     print("Peano not found, but expected at ", peano_tools_dir)
 
-print("Looking for Chess...")
-# test if LM_LICENSE_FILE valid
-if config.enable_chess_tests:
+if not config.enable_chess_tests:
+    print("Chess tests disabled")
+else:
+    print("Looking for Chess...")
     result = None
     if config.vitis_root:
         result = shutil.which("xchesscc")
@@ -271,6 +272,7 @@ if config.enable_chess_tests:
         if xilinxd_license_file != None:
             llvm_config.with_environment("XILINXD_LICENSE_FILE", xilinxd_license_file)
 
+        # test if LM_LICENSE_FILE valid
         validate_chess = False
         if validate_chess:
             import subprocess
@@ -293,6 +295,18 @@ if config.enable_chess_tests:
         )
     else:
         print("Chess not found")
+
+# look for aiesimulator
+result = shutil.which("aiesimulator")
+if result != None:
+    print("aiesimulator found: " + result)
+    config.available_features.add("aiesimulator")
+else:
+    print("aiesimulator not found")
+
+# add vitis components as available features
+for c in config.vitis_components:
+    config.available_features.add(f"aietools_{c.lower()}")
 
 tools = [
     "aie-opt",

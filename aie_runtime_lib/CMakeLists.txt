@@ -10,18 +10,22 @@ add_custom_target(aie-runtime-libs ALL)
 
 function(add_aie_runtime_libs arch) 
   # Precompile the intrinsic wrappers.  
-  if(DEFINED VITIS_ROOT)
+  if(DEFINED VITIS_AIETOOLS_DIR)
+    string(TOLOWER ${arch} aiearch)
     add_custom_target(${arch}_chess_intrinsic_wrapper ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/chess_intrinsic_wrapper.ll)
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/chess_intrinsic_wrapper.ll
-            COMMAND ${VITIS_XCHESSCC} -p me -P ${VITIS_${arch}_INCLUDE_DIR}
-            -C Release_LLVM
-            -I ${VITIS_${arch}_INCLUDE_DIR}/runtime/include/
-            -d -c ${CMAKE_CURRENT_SOURCE_DIR}/chess_intrinsic_wrapper.cpp
-            -f +f
+            COMMAND ${PROJECT_BINARY_DIR}/bin/xchesscc_wrapper ${arch}
+            -aietools ${AIETOOLS_DIR}
+            -c ${CMAKE_CURRENT_SOURCE_DIR}/chess_intrinsic_wrapper.cpp
+            -d # Disassemble output
+            -f # Use LLVM frontend
+            +f # ... and emit LLVMIR
             -o ${CMAKE_CURRENT_BINARY_DIR}/chess_intrinsic_wrapper.ll
             COMMAND sed -i s/^target.*//
             ${CMAKE_CURRENT_BINARY_DIR}/chess_intrinsic_wrapper.ll
-            DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/chess_intrinsic_wrapper.cpp)
+            DEPENDS
+            xchesscc_wrapper
+            ${CMAKE_CURRENT_SOURCE_DIR}/chess_intrinsic_wrapper.cpp)
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/chess_intrinsic_wrapper.ll DESTINATION ${CMAKE_INSTALL_PREFIX}/aie_runtime_lib/${arch})
     add_dependencies(aie-runtime-libs ${arch}_chess_intrinsic_wrapper)
   endif()
@@ -46,7 +50,15 @@ function(add_aie_runtime_libs arch)
 
 endfunction()
 
-add_subdirectory(AIE)
-add_subdirectory(AIE2)
+# Compile AIE runtime libs if component found
+if(AIETools_AIE_FOUND)
+  add_subdirectory(AIE)
+endif()
+if(AIETools_AIE2_FOUND)
+  add_subdirectory(AIE2)
+endif()
+if(AIETools_AIE2P_FOUND)
+  add_subdirectory(AIE2P)
+endif()
 
 

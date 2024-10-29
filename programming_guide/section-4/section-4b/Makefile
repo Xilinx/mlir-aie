@@ -10,11 +10,12 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../../programming_examples/makefile-common
 
+
 all: build/final.xclbin
 
 targetname = myFirstProgram
-
 trace_size = 8192
+CHESS ?= true
 
 build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
@@ -26,16 +27,26 @@ build/aie_trace.mlir: ${srcdir}/aie2.py
 
 build/scale.o: ${srcdir}/vector_scalar_mul.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}
+ifeq ($(CHESS), true)
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}; 
+else 
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}; 
+endif
 
 build/final.xclbin: build/aie.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+    			$(if $(shell [ $(CHESS) != true ] && echo true), \
+    			    --no-xchesscc --no-xbridge \
+    			) \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
 build/trace.xclbin: build/aie_trace.mlir build/scale.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py -v --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+    			$(if $(shell [ $(CHESS) != true ] && echo true), \
+    			    --no-xchesscc --no-xbridge \
+    			) \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp

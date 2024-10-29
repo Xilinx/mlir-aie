@@ -24,8 +24,6 @@ import time
 import uuid
 
 from aie.extras.runtime.passes import Pipeline
-
-# this is inside the aie-python-extras (shared) namespace package
 from aie.extras.util import find_ops
 import aiofiles
 import rich.progress as progress
@@ -37,7 +35,7 @@ from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
 INPUT_WITH_ADDRESSES_PIPELINE = (
-    lambda basic_alloc_scheme=False, ctrl_pkt_overlay=False: (
+    lambda basic_alloc_scheme=False, dynamic_objFifos=False, ctrl_pkt_overlay=False: (
         Pipeline()
         .lower_affine()
         .add_pass("aie-canonicalize-device")
@@ -46,7 +44,9 @@ INPUT_WITH_ADDRESSES_PIPELINE = (
             Pipeline()
             .add_pass("aie-assign-lock-ids")
             .add_pass("aie-register-objectFifos")
-            .add_pass("aie-objectFifo-stateful-transform")
+            .add_pass(
+                "aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos
+            )
             .add_pass("aie-assign-bd-ids")
             .add_pass("aie-lower-cascade-flows")
             .add_pass("aie-lower-broadcast-packet")
@@ -233,7 +233,10 @@ def emit_partition(mlir_module_str, kernel_id="0x901", start_columns=None):
         # XCLbin at all, since it is basically describing information
         # which is already inherent in the CDO.
         # For the time being, we just leave it here.
-        if len(device) > 0 and int(device[0].device) == int(aiedialect.AIEDevice.npu1):
+        if len(device) > 0 and (
+            int(device[0].device)
+            in [int(aiedialect.AIEDevice.npu1), int(aiedialect.AIEDevice.npu2)]
+        ):
             start_columns = [0]
         else:
             start_columns = list(range(1, 6 - num_cols))
@@ -443,6 +446,8 @@ class FlowRunner:
 
         if aie_target.casefold() == "AIE2".casefold():
             target = "target_aie_ml"
+        elif aie_target.casefold() == "AIE2P".casefold():
+            target = "target_aie2p"
         else:
             target = "target"
         assert os.path.exists(llvmir_chesshack)
@@ -1057,7 +1062,7 @@ class FlowRunner:
 
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
             pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
-                opts.basic_alloc_scheme, opts.ctrl_pkt_overlay
+                opts.basic_alloc_scheme, opts.dynamic_objFifos, opts.ctrl_pkt_overlay
             ).materialize(module=True)
             run_passes(
                 pass_pipeline,
@@ -1076,7 +1081,7 @@ class FlowRunner:
                 self.opts.verbose,
             )
             aie_target = t.stdout.strip()
-            if not re.fullmatch("AIE.?", aie_target):
+            if not re.fullmatch("AIE.?.?", aie_target):
                 print(
                     "Unexpected target " + aie_target + ". Exiting...",
                     file=sys.stderr,
@@ -1181,20 +1186,39 @@ def run(mlir_module, args=None):
     if args is not None:
         opts = aie.compiler.aiecc.cl_arguments.parse_args(args)
 
-    opts.aietools_path = ""
-    # Try to find vitis in the path
+    opts.aietools_path = None
+
+    # If Ryzen AI Software is installed then use it for aietools
+    try:
+        import ryzen_ai.__about__
+
+        version = ryzen_ai.__about__.__version__
+        path = os.path.realpath(ryzen_ai.__path__[0])
+        print(f"Found Ryzen AI software version {version} at {path}")
+        # if ryzenai software is pip installed then the path is something like:
+        # <workdir>/venv/lib/python3.10/site-packages/
+        opts.aietools_path = os.path.realpath(os.path.join(path, ".."))
+    except:
+        pass
+
+    # Try to find xchesscc in the path
     xchesscc_path = shutil.which("xchesscc")
     if xchesscc_path:
         xchesscc_bin_path = os.path.dirname(os.path.realpath(xchesscc_path))
         xchesscc_path = os.path.dirname(xchesscc_bin_path)
-        os.environ["AIETOOLS"] = xchesscc_path
-        print("Found xchesscc at " + xchesscc_path)
+        print(f"Found xchesscc at {xchesscc_path}")
         os.environ["PATH"] = os.pathsep.join([os.environ["PATH"], xchesscc_bin_path])
-        opts.aietools_path = xchesscc_path
+        if opts.aietools_path is None:
+            opts.aietools_path = xchesscc_path
     else:
-        print("xchesscc not found...")
+        print("xchesscc not found.")
 
-    # This path should be generated from cmake
+    if opts.aietools_path is None:
+        print("Could not find aietools from Vitis or Ryzen AI Software.")
+        opts.aietools_path = "<aietools not found>"
+
+    os.environ["AIETOOLS"] = opts.aietools_path
+
     aie_path = aie.compiler.aiecc.configure.install_path()
     peano_path = os.path.join(opts.peano_install_dir, "bin")
     os.environ["PATH"] = os.pathsep.join([aie_path, os.environ["PATH"]])

@@ -33,13 +33,15 @@ if [[ $WSL_DISTRO_NAME == "" ]]; then
 else
   echo "Environment is WSL"
 fi
-if ! hash python3.10; then
-   echo "This script requires python3.10"
+if hash python3.12; then
+   echo "Using python version `python3.12 --version`"
+   my_python=python3.12
+elif hash python3.10; then
+   echo "Using python version `python3.10 --version`"
+   my_python=python3.10
+else
+   echo "This script requires python3.10 or python3.12"
    return 1
-fi
-if ! hash virtualenv; then
-  echo "virtualenv is not installed"
-  return 1
 fi
 if ! hash unzip; then
   echo "unzip is not installed"
@@ -48,36 +50,36 @@ fi
 # if an install is already present, remove it to start from a clean slate
 rm -rf ironenv
 rm -rf my_install
-python3 -m virtualenv ironenv
-# The real path to source might depend on the virtualenv version
-if [ -r ironenv/local/bin/activate ]; then
-  source ironenv/local/bin/activate
-else
-  source ironenv/bin/activate
-fi
+$my_python -m venv ironenv
+source ironenv/bin/activate
 python3 -m pip install --upgrade pip
 VPP=`which xchesscc`
 if test -f "$VPP"; then
-  AIETOOLS="`dirname $VPP`/../aietools"
   mkdir -p my_install
   pushd my_install
   pip download mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/
   unzip -q mlir_aie-*_x86_64.whl
+  pushd mlir_aie/python
+  pip download aie_python_bindings -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/
+  unzip -q -o aie_python_bindings*.whl
+  rm *.whl
+  popd
   pip download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro/
   unzip -q mlir-*_x86_64.whl
   pip -q download llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
   unzip -q llvm_aie*.whl
   rm -rf mlir*.whl
   rm -rf llvm_aie*.whl
-  pip install https://github.com/makslevental/mlir-python-extras/archive/d84f05582adb2eed07145dabce1e03e13d0e29a6.zip
-  export PATH=`realpath llvm-aie/bin`:`realpath mlir_aie/bin`:`realpath mlir/bin`:$PATH
-  export LD_LIBRARY_PATH=`realpath llvm-aie/lib`:`realpath mlir_aie/lib`:`realpath mlir/lib`:$LD_LIBRARY_PATH
-  export PYTHONPATH=`realpath mlir_aie/python`:$PYTHONPATH
-  export PEANO_DIR=`realpath llvm-aie`
+  export PEANO_INSTALL_DIR=`realpath llvm-aie`
   popd
   python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements.txt
+  HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_extras.txt
   python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_ml.txt
+  source utils/env_setup.sh my_install/mlir_aie my_install/mlir
   pushd programming_examples
+  echo "PATH              : $PATH"
+  echo "LD_LIBRARY_PATH   : $LD_LIBRARY_PATH"
+  echo "PYTHONPATH        : $PYTHONPATH"
 else
   echo "Vitis not found! Exiting..."
 fi

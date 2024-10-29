@@ -34,7 +34,7 @@ void matmul_scalar_cascade_put_only(T_in *a, T_in *b, T_out *c) {
         running_sum += a[row * colA + i] * b[i * colB + col];
       }
       v16int32 v16 = undef_v16int32();
-      v16 = upd_elem(v16, 0, running_sum);
+      v16 = upd_elem(v16, 0, (int)running_sum);
       put_mcd(v16);
     }
   }
@@ -51,7 +51,7 @@ void matmul_scalar_cascade_get_only(T_in *a, T_in *b, T_out *c) {
         running_sum += a[row * colA + i] * b[i * colB + col];
       }
       v16int32 v16 = get_scd_v16int32();
-      running_sum += ext_elem(v16, 0);
+      running_sum += ext_elem(v16, 0U);
       c[row * colB + col] += running_sum;
     }
   }
@@ -68,8 +68,8 @@ void matmul_scalar_cascade_put_get(T_in *a, T_in *b, T_out *c) {
         running_sum += a[row * colA + i] * b[i * colB + col];
       }
       v16int32 v16 = get_scd_v16int32();
-      running_sum += ext_elem(v16, 0);
-      v16 = upd_elem(v16, 0, running_sum);
+      running_sum += ext_elem(v16, 0U);
+      v16 = upd_elem(v16, 0, (int)running_sum);
       put_mcd(v16);
     }
   }

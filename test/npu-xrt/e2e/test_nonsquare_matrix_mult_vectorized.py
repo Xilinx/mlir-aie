@@ -29,11 +29,11 @@ from aie.dialects.transform.extras import named_sequence
 from aie.dialects.transform.loop import loop_unroll
 from aie.dialects.transform.structured import structured_match
 from aie.extras.context import ExplicitlyManagedModule
-from aie.extras.dialects.ext import arith, func, linalg
 from aie.extras.runtime.passes import Pipeline, run_pipeline
+from aie.helpers.dialects.ext import func
 
 # noinspection PyUnresolvedReferences
-from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
+from aie.extras.testing import MLIRContext, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.extras.util import find_ops
 from aie.ir import StringAttr, UnitAttr
@@ -58,9 +58,9 @@ M, K, N = 16, 32, 16
 
 @func.func(sym_visibility="private")
 def matmul_i32_i32(
-    A: T.memref(M, K, T.i32()),
-    B: T.memref(K, N, T.i32()),
-    C: T.memref(M, N, T.i32()),
+    A: np.ndarray[(M, K), np.dtype[np.int32]],
+    B: np.ndarray[(K, N), np.dtype[np.int32]],
+    C: np.ndarray[(M, N), np.dtype[np.int32]],
 ):
     linalg.matmul(A, B, C)
 

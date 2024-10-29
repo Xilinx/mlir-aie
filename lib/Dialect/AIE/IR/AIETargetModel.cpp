@@ -705,5 +705,7 @@ void AIETargetModel::validate() const {
              getNumDestSwitchboxConnections(j, i, WireBundle::FIFO));
 }
 
+AIEArch NPU2TargetModel::getTargetArch() const { return AIEArch::AIE2p; }
+
 } // namespace AIE
 } // namespace xilinx

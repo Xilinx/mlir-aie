@@ -17,7 +17,7 @@ all: build/conv2dk1_i8.o build/final.xclbin
 
 build/conv2dk1_i8.o: conv2dk1_i8.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DINT8_ACT -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DINT8_ACT -c $< -o ${@F}
 
 build/${mlirFileName}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
@@ -26,6 +26,7 @@ build/${mlirFileName}.mlir: ${srcdir}/aie2.py
 build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1_i8.o 
 	mkdir -p ${@D} 
 	cd ${@D} && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 
 run_py: build/final.xclbin build/insts.txt

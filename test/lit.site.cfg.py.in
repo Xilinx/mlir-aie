@@ -58,7 +58,6 @@ config.enable_board_tests = lit.util.pythonize_bool("@ENABLE_BOARD_TESTS@")
 config.enable_python_tests = lit.util.pythonize_bool("@ENABLE_PYTHON_TESTS@")
 config.python_passes = lit.util.pythonize_bool("@AIE_ENABLE_PYTHON_PASSES@")
 config.xrt_python_bindings = lit.util.pythonize_bool("@AIE_ENABLE_XRT_PYTHON_BINDINGS@")
-config.has_libxaie = lit.util.pythonize_bool("@LibXAIE_FOUND@")
 config.has_mlir_runtime_libraries = lit.util.pythonize_bool("@HAS_MLIR_RUNTIME_LIBRARIES@")
 config.aie_enable_airbin = lit.util.pythonize_bool("@AIE_ENABLE_AIRBIN@")
 
@@ -69,6 +68,12 @@ config.vitis_sysroot = "@Sysroot@"
 config.extraAieCcFlags = "@extraAieCcFlags@"
 config.aieHostTarget = "@AIE_RUNTIME_TEST_TARGET@"
 config.aieInstallPrefix = "@CMAKE_INSTALL_PREFIX@"
+
+config.vitis_components = []
+if lit.util.pythonize_bool("@AIETools_AIE_FOUND@"):
+    config.vitis_components.append("AIE")
+if lit.util.pythonize_bool("@AIETools_AIE2_FOUND@"):
+    config.vitis_components.append("AIE2")
 
 # Support substitution of the tools_dir with user parameters. This is
 # used when we can't determine the tool dir at configuration time.

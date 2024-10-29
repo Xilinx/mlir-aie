@@ -142,6 +142,7 @@ class CMakeBuild(build_ext):
             "-DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON",
             "-DLLVM_CCACHE_BUILD=ON",
             f"-DLLVM_ENABLE_RTTI={os.getenv('ENABLE_RTTI', 'ON')}",
+            f"-DAIE_VITIS_COMPONENTS={os.getenv('AIE_VITIS_COMPONENTS', 'AIE2')}",
             "-DAIE_ENABLE_BINDINGS_PYTHON=ON",
             "-DAIE_ENABLE_PYTHON_PASSES=OFF",
             "-DMLIR_DETECT_PYTHON_ENV_PRIME_SEARCH=ON",
@@ -269,5 +270,5 @@ setup(
     ext_modules=[CMakeExtension("_mlir_aie", sourcedir=MLIR_AIE_SOURCE_DIR)],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
-    python_requires=">=3.8",
+    python_requires=">=3.10",
 )

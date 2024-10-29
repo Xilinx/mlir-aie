@@ -5,108 +5,69 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-
 import numpy as np
-import pyxrt as xrt
 import sys
-
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
-
+import time
+from aie.utils.xrt import setup_aie, write_out_trace, execute
 import aie.utils.test as test_utils
-import aie.utils.trace as trace_utils
 
 
 def main(opts):
+    print("Running...\n")
 
-    # Load instruction sequence
-    with open(opts.instr, "r") as f:
-        instr_text = f.read().split("\n")
-        instr_text = [l for l in instr_text if l != ""]
-        instr_v = np.array([int(i, 16) for i in instr_text], dtype=np.uint32)
+    data_size = int(opts.size)
+    vector_dtype = np.int16
+    scalar_dtype = np.int32
+    scale_factor = 3
+    size_out = data_size * 2
+    print("output buffer size: " + str(size_out))
 
-    # ------------------------------------------------------------
-    # Configure this to match your design's buffer size and type
-    # ------------------------------------------------------------
-    INOUT0_VOLUME = int(opts.size)  # Input only, 64x uint32_t in this example
-    INOUT1_VOLUME = int(1)  # Input only, 1 uint32_t scale factor
-    INOUT2_VOLUME = int(opts.size)  # Output only, 64x uint32_t in this example
+    enable_trace = opts.trace_size > 0
 
-    INOUT0_DATATYPE = np.int16
-    INOUT1_DATATYPE = np.int32
-    INOUT2_DATATYPE = np.int16
+    app = setup_aie(
+        opts.xclbin,
+        opts.instr,
+        data_size,
+        vector_dtype,
+        1,
+        scalar_dtype,
+        data_size,
+        vector_dtype,
+        enable_trace=enable_trace,
+        trace_size=opts.trace_size,
+    )
+    input_vector = np.arange(1, data_size + 1, dtype=vector_dtype)
+    input_factor = np.array([3], dtype=scalar_dtype)
+    # aie_output = execute_on_aie(app, input_vector, input_factor)
 
-    INOUT0_SIZE = INOUT0_VOLUME * INOUT0_DATATYPE().itemsize
-    INOUT1_SIZE = INOUT1_VOLUME * INOUT1_DATATYPE().itemsize
-    INOUT2_SIZE = INOUT2_VOLUME * INOUT2_DATATYPE().itemsize
+    start = time.time_ns()
+    full_output = execute(app, input_vector, input_factor)
+    stop = time.time_ns()
+    npu_time = stop - start
+    print("npu_time: ", npu_time)
 
-    OUT_SIZE = INOUT2_SIZE + int(opts.trace_size)
+    # aie_output = full_output[:size_out].view(np.int8)
+    # aie_output = full_output[:size_out].view(np.uint8)
+    aie_output = full_output[:size_out].view(np.int16)
+    if enable_trace:
+        trace_buffer = full_output[size_out:].view(np.uint32)
 
-    # ------------------------------------------------------
-    # Get device, load the xclbin & kernel and register them
-    # ------------------------------------------------------
-    (device, kernel) = test_utils.init_xrt_load_kernel(opts)
+    ref = np.arange(1, data_size + 1, dtype=vector_dtype) * scale_factor
 
-    # ------------------------------------------------------
-    # Initialize input/ output buffer sizes and sync them
-    # ------------------------------------------------------
-    bo_instr = xrt.bo(device, len(instr_v) * 4, xrt.bo.cacheable, kernel.group_id(1))
-    bo_inout0 = xrt.bo(device, INOUT0_SIZE, xrt.bo.host_only, kernel.group_id(3))
-    bo_inout1 = xrt.bo(device, INOUT1_SIZE, xrt.bo.host_only, kernel.group_id(4))
-    bo_inout2 = xrt.bo(device, OUT_SIZE, xrt.bo.host_only, kernel.group_id(5))
-
-    # Initialize instruction buffer
-    bo_instr.write(instr_v, 0)
-
-    # Initialize data buffers
-    inout0 = np.arange(1, INOUT0_VOLUME + 1, dtype=INOUT0_DATATYPE)
-    scale_factor = np.array([3], dtype=INOUT1_DATATYPE)
-    inout2 = np.zeros(OUT_SIZE, dtype=np.uint8)
-    bo_inout0.write(inout0, 0)
-    bo_inout1.write(scale_factor, 0)
-    bo_inout2.write(inout2, 0)
-
-    # Sync buffers to update input buffer values
-    bo_instr.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
-    bo_inout0.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
-    bo_inout1.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
-    bo_inout2.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
-
-    # ------------------------------------------------------
-    # Initialize run configs
-    # ------------------------------------------------------
-    errors = 0
-
-    # ------------------------------------------------------
-    # Main run loop
-    # ------------------------------------------------------
-
-    # Run kernel
-    if opts.verbosity >= 1:
-        print("Running Kernel.")
-    opcode = 3
-    h = kernel(opcode, bo_instr, len(instr_v), bo_inout0, bo_inout1, bo_inout2)
-    h.wait()
-    bo_inout2.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
+    if enable_trace:
+        # trace_buffer = full_output[3920:]
+        print("trace_buffer shape: ", trace_buffer.shape)
+        print("trace_buffer dtype: ", trace_buffer.dtype)
+        # write_out_trace(trace_buffer, str(opts.trace_file))
+        write_out_trace(trace_buffer, "trace.txt")
 
     # Copy output results and verify they are correct
-    entire_buffer = bo_inout2.read(OUT_SIZE, 0).view(np.uint16)
-    output_buffer = entire_buffer[:INOUT2_VOLUME]
+    errors = 0
     if opts.verify:
         if opts.verbosity >= 1:
             print("Verifying results ...")
-        ref = np.arange(1, INOUT0_VOLUME + 1, dtype=INOUT0_DATATYPE) * scale_factor
-        e = np.equal(output_buffer, ref)
-        errors = errors + np.size(e) - np.count_nonzero(e)
-
-    # Write trace values if trace_size > 0
-    if opts.trace_size > 0:
-        trace_buffer = entire_buffer[INOUT2_VOLUME:]
-        trace_utils.write_out_trace(trace_buffer, str(opts.trace_file))
-
-    # ------------------------------------------------------
-    # Print verification and timing results
-    # ------------------------------------------------------
+        e = np.equal(ref, aie_output)
+        errors = np.size(e) - np.count_nonzero(e)
 
     if not errors:
         print("\nPASS!\n")
@@ -119,8 +80,6 @@ def main(opts):
 
 if __name__ == "__main__":
     p = test_utils.create_default_argparser()
-    p.add_argument(
-        "-s", "--size", required=True, dest="size", help="Passthrough kernel size"
-    )
+    p.add_argument("-s", "--size", required=True, dest="size", help="Vector size")
     opts = p.parse_args(sys.argv[1:])
     main(opts)
