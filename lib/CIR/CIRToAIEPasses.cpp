@@ -567,7 +567,8 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
       // Keep track of the buffer op behind the C++ type
       cat->moduleTypes[bufCast.getType(0)]->data = bufferOp;
       // The bufCast should be removed as a dependent of its tile cast later,
-      // but be redundant here for symmetry
+      // but be redundant here for symmetry and to exercise the final erasing
+      // and its topological sort
       opsToErase.push_back(bufCast);
       // The lowering is a success, no need to look further.
       return true;
@@ -576,18 +577,61 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
     return false;
   }
 
+  // Lower aie::tile::program(<tile code>) to aie.core
   bool
   tryTileProgramLowering(mlir::Operation *op, xilinx::AIE::TileOp tileOp,
                          mlir::OpBuilder &b,
                          llvm::SmallVector<mlir::Operation *> &opsToErase) {
     if (auto callOp = mlir::dyn_cast<mlir::cir::CallOp>(op)) {
-      callOp.emitRemark("CallOp using a tile");
+      callOp.emitRemark("tryTileProgramLowering: CallOp using a tile");
       if (isCallingFunctionWithAnnotation(callOp, {"aie.tile.program"})) {
-        // if (false)
-        // lowerTileProgram(tileOp, callOp, rewriter);
-        // Erase the scope owning the call operation representing the
-        // core op which has been translated
-        // opsToErase.push_back(callOp->getParentOfType<mlir::cir::ScopeOp>());
+        if (auto calledFunc =
+                mlir::SymbolTable::lookupNearestSymbolFrom<mlir::cir::FuncOp>(
+                    callOp, callOp.getCalleeAttr())) {
+          // The last function instruction is cir.return and the one before
+          // is the call to the lambda
+          // calledFunc.getBlocks().front().back().dump();
+          auto lambdaCall = mlir::dyn_cast<mlir::cir::CallOp>(
+              *std::next(calledFunc.getBlocks().front().rbegin()));
+          lambdaCall.emitRemark("lambdaCall");
+          if (auto lambdaFunc =
+                  mlir::SymbolTable::lookupNearestSymbolFrom<mlir::cir::FuncOp>(
+                      lambdaCall, lambdaCall.getCalleeAttr())) {
+            lambdaFunc.emitRemark("tryTileProgramLowering: Tile core lambda");
+            assert(lambdaFunc.getLambda());
+            auto scopeOp = callOp->getParentOfType<mlir::cir::ScopeOp>();
+            scopeOp.emitRemark("tryTileProgramLowering: Scope");
+            // Create the aie.core op at the end of the block owning the
+            // aie.tile op, which is the one inside the aie.device op region
+            b.setInsertionPointToEnd(tileOp->getBlock());
+            auto coreOp =
+                b.create<xilinx::AIE::CoreOp>(callOp.getLoc(), tileOp);
+            // Create the empty block of the aie.core op region
+            coreOp.getRegion().emplaceBlock();
+            // The aie.core requires a terminator
+            b.setInsertionPointToEnd(&coreOp.getRegion().back());
+            b.create<xilinx::AIE::EndOp>(callOp.getLoc());
+            coreOp.emitRemark("tryTileProgramLowering: Brand-new core");
+            // Get the cast connecting the aie.tile to the lambda call
+            auto tileCastOp =
+                callOp.getArgOperand(0)
+                    .getDefiningOp<mlir::UnrealizedConversionCastOp>();
+            tileCastOp.emitRemark(
+                "tryTileProgramLowering: tileCastOp as callOp first argument");
+            // Values can be replaced while cloning, not operations
+            mlir::IRMapping irm;
+            // Connect the input of old cast inside the clone to the output of
+            // the new aie.tile op
+            irm.map(tileCastOp.getOperand(0), tileOp.getResult());
+            b.setInsertionPointToStart(&coreOp.getRegion().front());
+            auto *clone = b.clone(*scopeOp.getOperation(), irm);
+            clone->emitRemark("tryTileProgramLowering: Clone");
+            coreOp.emitRemark("tryTileProgramLowering: Stuffed core");
+            scopeOp.emitRemark("tryTileProgramLowering: Scope after cloning");
+            coreOp->getParentOfType<mlir::cir::FuncOp>().emitRemark(
+                "tryTileProgramLowering: Top function");
+          }
+        }
         // The bufCast should be removed as a dependent of its tile cast later.
         // The lowering is a success, no need to look further.
         return true;
@@ -623,6 +667,8 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
 
   void deviceLowering(mlir::Operation *op) {
     llvm::SmallVector<mlir::Operation *> opsToErase;
+    // Use pre-order walk to enable rewriting the code before the visited
+    // operation
     op->walk<mlir::WalkOrder::PreOrder>([&](mlir::UnrealizedConversionCastOp
                                                 u) {
       u.emitRemark(
@@ -640,7 +686,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
           // std::optional it errors without returning
           u.emitError("aie::device incorrect for '") << deviceName << "'";
         // Create an aie.device just before its equivalent
-        // UnrealizedConversionCast. Since we visit in PreOrder mode, this
+        // UnrealizedConversionCast. Since we visit in pre-order mode, this
         // should be fine.
         mlir::OpBuilder b{u};
         auto deviceOp = b.create<xilinx::AIE::DeviceOp>(u.getLoc(), *deviceId);
@@ -653,6 +699,8 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
         for (mlir::Operation *user : u.getResult(0).getUsers())
           if (!tryTileLowering(user, b, opsToErase))
             user->emitRemark("User of device cast not handled");
+        // Note: aie.device does not require a terminator
+        deviceOp.emitRemark("DeviceLowering: end");
       }
     });
     // Remove the useless operations
