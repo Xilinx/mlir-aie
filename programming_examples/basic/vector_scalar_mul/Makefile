@@ -35,7 +35,7 @@ build/aie_${data_size}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< ${data_size} 0 > $@
 
-build/aie_trace_${data_size}.mlir: aie2.py
+build/aie_trace_${data_size}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< ${data_size} ${trace_size} > $@
 
