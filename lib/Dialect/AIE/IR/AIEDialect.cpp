@@ -503,30 +503,16 @@ LogicalResult ObjectFifoCreateOp::verify() {
                        "producer");
   }
 
+  if (getInitValues().has_value()) {
+    if ((int)getInitValues().value().size() != size())
+      return emitError("`init_values` does not initialize all objects");
+  }
+
   return success();
 }
 
 TileOp ObjectFifoCreateOp::getProducerTileOp() {
   return cast<TileOp>(getProducerTile().getDefiningOp());
-}
-
-std::vector<std::vector<int32_t>> ObjectFifoCreateOp::getInitialValues() {
-  std::vector<std::vector<int32_t>> initValuesVector;
-  if (getInitValues().has_value()) {
-    auto initValues = llvm::cast<mlir::ElementsAttr>(getInitValues().value());
-    auto fifo = llvm::cast<AIEObjectFifoType>(getElemType());
-    auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
-    int len = elemType.getNumElements();
-    for (int i = 0; i < size(); i++) {
-      std::vector<int> initBuffer;
-      for (int r = 0; r < len; r++) {
-        auto elem = initValues.getValues<mlir::ElementsAttr>()[i * len + r];
-        initBuffer.push_back(llvm::cast<IntegerAttr>(elem).getInt());
-      }
-      initValuesVector.push_back(initBuffer);
-    }
-  }
-  return initValuesVector;
 }
 
 namespace xilinx::AIE {
@@ -629,33 +615,32 @@ static void printObjectFifoInitValues(OpAsmPrinter &p, ObjectFifoCreateOp op,
 
 static ParseResult parseObjectFifoInitValues(OpAsmParser &parser, Attribute numElem,
                                              TypeAttr type, Attribute &initValues) {
-  // int depth;
-  // if (isa<ArrayAttr>(numElem)) {
-  //   depth = llvm::dyn_cast<mlir::IntegerAttr>(llvm::dyn_cast<mlir::ArrayAttr>(numElem)[0]).getInt();
-  // } else {
-  //   depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
-  // }
+  int depth;
+  if (isa<ArrayAttr>(numElem)) {
+    depth = llvm::dyn_cast<mlir::IntegerAttr>(llvm::dyn_cast<mlir::ArrayAttr>(numElem)[0]).getInt();
+  } else {
+    depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
+  }
   auto objfifoType = llvm::cast<AIEObjectFifoType>(type.getValue());
   auto memrefType = llvm::cast<MemRefType>(objfifoType.getElementType());
-  //auto initialValues = llvm::dyn_cast<mlir::ArrayAttr>(initValues);
 
   if (!memrefType.hasStaticShape())
     return parser.emitError(parser.getNameLoc())
-          << "type should be static shaped memref, but got " << memrefType;
+           << "type should be static shaped memref, but got " << memrefType;
 
   if (parser.parseOptionalEqual())
     return success();
 
-  // for (int i = 0; i < depth; i++) {
-    Type tensorType = mlir::memref::getTensorTypeFromMemRefType(memrefType);
-    if (parser.parseAttribute(initValues, tensorType))
-      return failure();
-    // if (!llvm::isa<ElementsAttr>(initValues))
-    //   return parser.emitError(parser.getNameLoc())
-    //         << "initial value should be an elements attribute";
-  //   if (parser.parseOptionalComma())
-  //     return success();
-  // }
+  Type tensorType = mlir::memref::getTensorTypeFromMemRefType(memrefType);
+  if (parser.parseAttribute(initValues, tensorType))
+    return failure();
+  for (int i = 0; i < depth; i++) {
+    auto initialValues = llvm::dyn_cast<mlir::ArrayAttr>(initValues);
+    if (!llvm::isa<ElementsAttr>(initialValues[i]))
+      return parser.emitError(parser.getNameLoc())
+            << "initial value should be an elements attribute";
+  }
+
   return success();
 }
 

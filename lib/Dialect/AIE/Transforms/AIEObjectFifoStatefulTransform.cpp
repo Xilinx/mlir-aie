@@ -304,6 +304,8 @@ struct AIEObjectFifoStatefulTransformPass
       return locks;
     auto dev = op->getParentOfType<DeviceOp>();
     auto &target = dev.getTargetModel();
+    // if shimTile external buffers are collected from input code
+    // create as many locks as there are external buffers
     if (creation_tile.isShimTile()) {
       numElem = 1;
       if (!externalBuffersPerFifo[op].empty())
@@ -327,7 +329,7 @@ struct AIEObjectFifoStatefulTransformPass
       }
     } else {
       // create corresponding aie2 locks
-      auto initValues = op.getInitialValues();
+      auto initValues = op.getInitValues().value();
       int prodLockID = lockAnalysis.getLockID(creation_tile);
       assert(prodLockID >= 0 && "No more locks to allocate!");
       auto prodLock = builder.create<LockOp>(
@@ -418,12 +420,10 @@ struct AIEObjectFifoStatefulTransformPass
     }
     builder.setInsertionPointAfter(t);
     for (int i = 0; i < numElem; i++) {
-      // if shimTile external buffers are collected from input code
-      // create as many locks as there are external buffers
       mlir::ElementsAttr initValues = nullptr;
       if (!creation_tile.isShimTile()) {
         if (op.getInitValues().has_value()) {
-          initValues = builder.getI32VectorAttr(ArrayRef(op.getInitialValues()[i]));
+          initValues = llvm::cast<mlir::ElementsAttr>(op.getInitValues().value()[i]);
         }
         auto buff = builder.create<BufferOp>(
             builder.getUnknownLoc(), elemType, creation_tile,
