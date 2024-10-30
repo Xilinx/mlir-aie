@@ -600,7 +600,8 @@ void printObjectFifoConsumerTiles(OpAsmPrinter &printer, Operation *op,
 }
 
 static void printObjectFifoInitValues(OpAsmPrinter &p, ObjectFifoCreateOp op,
-                                      Attribute numElem, TypeAttr type, Attribute initValues) {
+                                      Attribute numElem, TypeAttr type,
+                                      Attribute initValues) {
   if (op.getInitValues()) {
     p << "= ";
     int depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
