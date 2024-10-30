@@ -1436,7 +1436,8 @@ struct AIEObjectFifoStatefulTransformPass
           if (!createOp.getInitValues().has_value()) {
             int prodMaxAcquire = findObjectFifoSize(
                 device, createOp.getProducerTileOp(), createOp);
-            createOp.setElemNumberAttr(builder.getI32IntegerAttr(prodMaxAcquire));
+            createOp.setElemNumberAttr(
+                builder.getI32IntegerAttr(prodMaxAcquire));
           }
         }
         createObjectFifoElements(builder, lockAnalysis, createOp,
