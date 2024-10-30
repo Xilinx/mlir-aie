@@ -329,11 +329,11 @@ struct AIEObjectFifoStatefulTransformPass
       }
     } else {
       // create corresponding aie2 locks
-      auto initValues = op.getInitValues().value();
+      auto initValues = op.getInitValues().has_value() ? op.getInitValues().value().size() : 0;
       int prodLockID = lockAnalysis.getLockID(creation_tile);
       assert(prodLockID >= 0 && "No more locks to allocate!");
       auto prodLock = builder.create<LockOp>(
-          builder.getUnknownLoc(), creation_tile, prodLockID, numElem - initValues.size());
+          builder.getUnknownLoc(), creation_tile, prodLockID, numElem - initValues);
       prodLock.getOperation()->setAttr(
           SymbolTable::getSymbolAttrName(),
           builder.getStringAttr(op.name().str() + "_prod_lock"));
@@ -342,7 +342,7 @@ struct AIEObjectFifoStatefulTransformPass
       int consLockID = lockAnalysis.getLockID(creation_tile);
       assert(consLockID >= 0 && "No more locks to allocate!");
       auto consLock = builder.create<LockOp>(builder.getUnknownLoc(),
-                                             creation_tile, consLockID, initValues.size());
+                                             creation_tile, consLockID, initValues);
       consLock.getOperation()->setAttr(
           SymbolTable::getSymbolAttrName(),
           builder.getStringAttr(op.name().str() + "_cons_lock"));
