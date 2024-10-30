@@ -21,8 +21,8 @@ def my_passthrough(M, K, N, generate_acccess_map=False):
     data_transform = TensorTile(
         tensor_height=M,
         tensor_width=K,
-        sizes=[1, K, M, 1],
-        strides=[1, 1, K, 1],
+        sizes=[1, 1, K, M],
+        strides=[1, 1, 1, K],
         offset=0,
     )
     if generate_acccess_map:
