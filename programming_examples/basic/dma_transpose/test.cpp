@@ -186,11 +186,11 @@ int main(int argc, const char *argv[]) {
   std::vector<uint32_t> refVecA(N);
 
   // Doing a transpose on the source vector to produce a ref vector
-  for (uint32_t i = 0; i < M; i++) {
-    for (uint32_t j = 0; j < K; j++) {
-      uint32_t src_index = i * K + j;
-      uint32_t dst_index = j * M + i;
-      refVecA[dst_index] = srcVecA[src_index];
+  uint32_t dst_index = 0;
+  for (uint32_t i = 0; i < K; i++) {
+    for (uint32_t j = 0; j < M; j++) {
+      uint32_t src_index = j * K + i;
+      refVecA[dst_index++] = srcVecA[src_index];
     }
   }
 
