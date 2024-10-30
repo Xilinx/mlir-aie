@@ -423,7 +423,8 @@ struct AIEObjectFifoStatefulTransformPass
       mlir::ElementsAttr initValues = nullptr;
       if (!creation_tile.isShimTile()) {
         if (op.getInitValues().has_value()) {
-          initValues = llvm::cast<mlir::ElementsAttr>(op.getInitValues().value()[i]);
+          initValues =
+              llvm::cast<mlir::ElementsAttr>(op.getInitValues().value()[i]);
         }
         auto buff = builder.create<BufferOp>(
             builder.getUnknownLoc(), elemType, creation_tile,
