@@ -2,11 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
-
+import numpy as np
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
-    call,
     Core,
     Device,
     ObjectFifoPort,
@@ -16,8 +15,7 @@ from aie.dialects.aie import (
     tile,
     end,
 )
-from aie.extras.dialects.ext import arith
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 from aie.ir import Block, InsertionPoint
 
 from util import construct_and_print_module
@@ -53,7 +51,9 @@ def core_ext_kernel():
     dev_block = Block.create_at_start(dev.body_region)
     with InsertionPoint(dev_block):
         test_func = external_func(
-            "test_func", inputs=[T.memref(8, 8, T.i32()), T.i32()], outputs=[T.i32()]
+            "test_func",
+            inputs=[np.ndarray[(8, 8), np.dtype[np.int32]], np.int32],
+            outputs=[T.i32()],
         )
 
         S = tile(0, 2)

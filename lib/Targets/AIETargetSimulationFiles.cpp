@@ -23,16 +23,50 @@ namespace AIE {
 mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module,
                                             llvm::raw_ostream &output) {
   DeviceOp targetOp;
+  AIEArch arch = AIEArch::AIE1;
   for (auto tOp : module.getOps<DeviceOp>()) {
     targetOp = tOp;
+    arch = targetOp.getTargetModel().getTargetArch();
     break; // Should only have 1 object in iterator
   }
-  AIEArch arch = AIEArch::AIE1;
-  if (targetOp) {
-    arch = targetOp.getTargetModel().getTargetArch();
-  }
 
-  if (arch == AIEArch::AIE2) {
+  if (arch == AIEArch::AIE2p) {
+    output << "{\n"
+           << "    \"SimulationConfig\": {\n"
+           << "        \"device_json\": {\n"
+           << "            \"directory\": \"data/aie2p/devices\",\n"
+           << "            \"file\": \"aie2p_8x4_device.json\"\n"
+           << "        },\n"
+           << "        \"phy_device_file\": \"aie2p_8x4_device\",\n"
+           << "        \"aiearch\": \"aie2p\",\n"
+           << "        \"aie_freq\": 1000000000.0,\n"
+           << "        \"use_real_noc\": 1,\n"
+           << "        \"evaluate_fifo_depth\": 0,\n"
+           << "        \"noc_ip_block\": {\n"
+           << "            \"lib_path\": \"./sim/noc/liblnoc_tlm.so\",\n"
+           << "            \"traffic_file\": \"./sim/noc/noc_traffic.nts\",\n"
+           << "            \"config_file\": \"./sim/noc/noc_soln.ncr\"\n"
+           << "        },\n"
+           << "        \"pl_ip_block\": [\n"
+           << "            {\n"
+           << "                \"name\": \"ps_ps_main\",\n"
+           << "                \"ip\": \"ps\",\n"
+           << "                \"lib_path\": \"ps/ps.so\",\n"
+           << "                \"pl_freq\": 362500000.0,\n"
+           << "                \"axi_mm\": [\n"
+           << "                    {\n"
+           << "                        \"port_name\": \"ps_axi\",\n"
+           << "                        \"direction\": \"ps_to_gm\",\n"
+           << "                        \"noc_endpoint\": \"NOC_NMU128_X0Y5\",\n"
+           << "                        \"bus_width\": 0\n"
+           << "                    }\n"
+           << "                ],\n"
+           << "                \"event_bus\": []\n"
+           << "            }\n"
+           << "        ]\n"
+           << "    }\n"
+           << "}\n";
+  } else if (arch == AIEArch::AIE2) {
     output
         << "{\n"
         << "    \"SimulationConfig\": {\n"
@@ -69,46 +103,7 @@ mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module,
         << "        ]\n"
         << "    }\n"
         << "}\n";
-    // AIE2 - ve2302
-    // output << "{\n"
-    //        << "    \"SimulationConfig\": {\n"
-    //        << "        \"device_json\": {\n"
-    //        << "            \"directory\": \"data/aie_ml/devices\",\n"
-    //        << "            \"file\": \"VE2302.json\"\n"
-    //        << "        },\n"
-    //        << "        \"phy_device_file\":
-    //        \"xcve2302-sfva784-1MP-e-S-es1\",\n"
-    //        << "        \"aiearch\": \"aie2\",\n"
-    //        << "        \"aie_freq\": 1150000000.0,\n"
-    //        << "        \"use_real_noc\": 1,\n"
-    //        << "        \"evaluate_fifo_depth\": 0,\n"
-    //        << "        \"noc_ip_block\": {\n"
-    //        << "            \"lib_path\": \"./sim/noc/liblnoc_tlm.so\",\n"
-    //        << "            \"traffic_file\":
-    //        \"./sim/noc/noc_traffic.nts\",\n"
-    //        << "            \"config_file\": \"./sim/noc/noc_soln.ncr\"\n"
-    //        << "        },\n"
-    //        << "        \"pl_ip_block\": [\n"
-    //        << "            {\n"
-    //        << "                \"name\": \"ps_ps_main\",\n"
-    //        << "                \"ip\": \"ps\",\n"
-    //        << "                \"lib_path\": \"ps/ps.so\",\n"
-    //        << "                \"pl_freq\": 312500000.0,\n"
-    //        << "                \"axi_mm\": [\n"
-    //        << "                    {\n"
-    //        << "                        \"port_name\": \"ps_axi\",\n"
-    //        << "                        \"direction\": \"ps_to_gm\",\n"
-    //        << "                        \"noc_endpoint\":
-    //        \"NOC_NMU128_X0Y5\",\n"
-    //        << "                        \"bus_width\": 0\n"
-    //        << "                    }\n"
-    //        << "                ],\n"
-    //        << "                \"event_bus\": []\n"
-    //        << "            }\n"
-    //        << "        ]\n"
-    //        << "    }\n"
-    //        << "}\n";
-  } else { // AIEArch::AIE1
+  } else if (arch == AIEArch::AIE1) { // AIEArch::AIE1
     output << "{\n"
            << "    \"SimulationConfig\": {\n"
            << "        \"device_json\": {\n"
@@ -246,7 +241,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
          << "\n";
   output << "<POWERDATA data=\"AI-Engine Compiler\" dataVersion=\"2022.2\" "
             "design=\"graph\" date=\"2023\">\n";
-  if (arch == AIEArch::AIE2) {
+  if ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {
     output
         // AIE2 xcve2802
         << " <DEVICE part=\"xcve2802\" grade=\"extended\" package=\"vsvh1760\" "
@@ -265,7 +260,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
   auto module_tile_ops = targetOp.getOps<TileOp>();
   int num_tiles = std::distance(module_tile_ops.begin(), module_tile_ops.end());
   // TODO: clk_freq only 1150 for AIE2
-  if (arch == AIEArch::AIE2) {
+  if ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {
     output << "    <AIE_MODULE name=\"graph\" num_tiles=\""
            << std::to_string(num_tiles) << "\" clk_freq=\"1150\">\n";
   } else {
@@ -290,7 +285,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
     if (tileOp.isShimNOCorPLTile() || tileOp.isMemTile())
       continue; // Skip shim and mem tiles (handled below)
 
-    if (arch == AIEArch::AIE2) {
+    if ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {
 
       output << "      <TILE name=\"CR(" <<
           // CR coordinates ignores shim, and 2 mem rows hence row-3
@@ -343,7 +338,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
 
   // For each ShimOp in the module, generate a <SHIM> section
   for (ShimDMAOp shimOp : targetOp.getOps<ShimDMAOp>()) {
-    if (arch == AIEArch::AIE2) {
+    if ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {
       auto noc_label = (targetOp.getTargetModel().isShimNOCTile(
                            shimOp.colIndex(), shimOp.rowIndex()))
                            ? "AIE_PL_NOC_SIM"
@@ -373,7 +368,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
   }
 
   // For each memTile
-  if (arch == AIEArch::AIE2) {
+  if ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {
     for (TileOp tileOp : module_tile_ops) {
       int col = tileOp.colIndex();
       int row = tileOp.rowIndex();

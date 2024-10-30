@@ -16,7 +16,7 @@ It shows a number of features which can then be expanded to more realistic desig
 
 Firstly, a 2D DMA pattern is set up to access data from the input and output memories. Small `8x16` subtiles are accessed from the larger `16x128` input and output matrix.  Thinking about input and output spaces are large grids, with smaller grids of work being dispatched to individual AIE cores is a fundamental, reusable concept.
 
-Secondly, the design shows how the bodies of work done by each AIE core is a combination of data movement (the object FIFO acquire and releases) together with compute, which in this case is expressed using a number of different MLIR dialects, like arith, memref, etc. next to mlir-aie.
+Secondly, the design shows how the bodies of work done by each AIE core is a combination of data movement (the object FIFO acquire and releases) together with compute.
 
 Finally, the overall structural design shows how complete designs are a combination of a static design, consisting of cores, connections and some part of the data movement, together with a run time sequence for controlling the design.
 

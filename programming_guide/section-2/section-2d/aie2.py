@@ -5,12 +5,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-
+import numpy as np
 from aie.dialects.aie import *  # primary mlir-aie dialect definitions
 from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 
 from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
-from aie.extras.dialects.ext.scf import (
+from aie.helpers.dialects.ext.scf import (
     _for as range_,
 )  # scf (structured control flow) dialect
 
@@ -26,7 +26,7 @@ def mlir_aie_design():
         # Device declaration - aie2 device xcvc1902
         @device(AIEDevice.xcvc1902)
         def device_body():
-            memRef_48_ty = T.memref(data_size, T.i32())
+            data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 
             # Tile(s) declarations
             ShimTile = tile(0, 0)
@@ -36,19 +36,13 @@ def mlir_aie_design():
             # Data movement with object FIFOs
 
             # Input data movement
-
-            of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, memRef_48_ty)
-            of_in1 = object_fifo(
-                "in1", MemTile, ComputeTile, buffer_depth, memRef_48_ty
-            )
+            of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, data_ty)
+            of_in1 = object_fifo("in1", MemTile, ComputeTile, buffer_depth, data_ty)
             object_fifo_link(of_in, of_in1)
 
             # Output data movement
-
-            of_out = object_fifo("out", MemTile, ShimTile, buffer_depth, memRef_48_ty)
-            of_out1 = object_fifo(
-                "out1", ComputeTile, MemTile, buffer_depth, memRef_48_ty
-            )
+            of_out = object_fifo("out", MemTile, ShimTile, buffer_depth, data_ty)
+            of_out1 = object_fifo("out1", ComputeTile, MemTile, buffer_depth, data_ty)
             object_fifo_link(of_out1, of_out)
 
             # Set up compute tiles

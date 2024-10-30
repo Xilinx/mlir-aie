@@ -393,7 +393,9 @@ Operations can be performed on the objectFIFO in the cores: elements can be acqu
 }
 ```
 
-For correct execution, loops that contain objectFIFO operations must be unrolled based on objectFIFO size; the previous code in core12 becomes:
+For correct execution, objectfifo operations must be lowered such that each iteration of execution, new elements are accessed (based on acquire / release patterns). Two different lowering techniques are described below:
+
+In the default lowering, loops that contain objectFIFO operations are unrolled based on objectFIFO size; the previous code in core12 becomes:
 ```
 %core12 = AIE.core(%tile12) {
 	%c0 = arith.constant 0 : index
@@ -415,6 +417,47 @@ For correct execution, loops that contain objectFIFO operations must be unrolled
 	AIE.end
 }
 ```
+
+Another lowering technique generates MLIR operations that ensure the acquire / release patterns are taken into account at runtime and their effects are stored in a global buffer. This global state buffer is then used to correctly access objectfifos using a SCF.IndexSwitchOps; the previous code in core12 becomes:
+```
+%of0_buff_0 = aie.buffer(%tile_0_2) {sym_name = "of0_buff_0"} : memref<16xi32> 
+%of0_buff_1 = aie.buffer(%tile_0_2) {sym_name = "of0_buff_1"} : memref<16xi32> 
+%of0_prod_lock = aie.lock(%tile_0_2, 0) {init = 2 : i32, sym_name = "of0_prod_lock"}
+%of0_cons_lock = aie.lock(%tile_0_2, 1) {init = 0 : i32, sym_name = "of0_cons_lock"}
+%buffer_0_2 = aie.buffer(%tile_0_2) : memref<1xindex> 
+%core_0_2 = aie.core(%tile_0_2) {
+	%c0 = arith.constant 0 : index
+	%c0_0 = arith.constant 0 : index
+	%c2 = arith.constant 2 : index
+	memref.store %c0, %buffer_0_2[%c0_0] : memref<1xindex>
+	%c0_1 = arith.constant 0 : index
+	%c1 = arith.constant 1 : index
+	%c12 = arith.constant 12 : index
+	scf.for %arg0 = %c0_1 to %c12 step %c1 {
+		aie.use_lock(%of0_prod_lock, AcquireGreaterEqual, 1)
+		%0 = memref.load %buffer_0_2[%c0_0] : memref<1xindex>
+		%1 = scf.index_switch %0 -> memref<16xi32> 
+		case 0 {
+			scf.yield %of0_buff_0 : memref<16xi32>
+		}
+		case 1 {
+			scf.yield %of0_buff_1 : memref<16xi32>
+		}
+		default {
+			scf.yield %of0_buff_0 : memref<16xi32>
+		}
+		func.call @some_work(%1) : (memref<16xi32>) -> ()
+		aie.use_lock(%of0_cons_lock, Release, 1)
+		%2 = memref.load %buffer_0_2[%c0_0] : memref<1xindex>
+		%c1_2 = arith.constant 1 : index
+		%3 = arith.addi %2, %c1_2 : index
+		%4 = arith.remsi %3, %c2 : index
+		memref.store %4, %buffer_0_2[%c0_0] : memref<1xindex>
+	}
+	aie.end
+}
+```
+This lowering can be enabled for each core by setting the `dynamic_objfifo_lowering` attribute of the CoreOp to true, or enabled for all the cores in the design at once by setting the `dynamic-objFifos` flag of aiecc (which is then passed to the --aie-objectFifo-stateful-transform lowering pass).
 
 ObjectFIFOs can be established between tiles on the shim row and AIE tiles in order to bring data in from or out to external memory locations. These external memory locations are pointed to using AIE.external_buffer operations and they need to be explicitly registered to an objectFIFO so that it knows where the data has been allocated externally (in this case, the objectFIFO lowering will only allocate memory elements required by AIE tiles):
 ```

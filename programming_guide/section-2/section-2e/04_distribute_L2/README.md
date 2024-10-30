@@ -17,10 +17,10 @@ The design in [distribute_L2.py](./distribute_L2.py) uses an Object FIFO `of_in`
 ```python
   # AIE-array data movement with object fifos
   # Input
-  of_in = object_fifo("in", ShimTile, MemTile, 2, memRef_24_ty)
-  of_in0 = object_fifo("in0", MemTile, ComputeTile0, 2, memRef_8_ty)
-  of_in1 = object_fifo("in1", MemTile, ComputeTile1, 2, memRef_8_ty)
-  of_in2 = object_fifo("in2", MemTile, ComputeTile2, 2, memRef_8_ty)
+  of_in = object_fifo("in", ShimTile, MemTile, 2, tile24_ty)
+  of_in0 = object_fifo("in0", MemTile, ComputeTile0, 2, tile8_ty)
+  of_in1 = object_fifo("in1", MemTile, ComputeTile1, 2, tile8_ty)
+  of_in2 = object_fifo("in2", MemTile, ComputeTile2, 2, tile8_ty)
   object_fifo_link(of_in, [of_in0, of_in1, of_in2], [], [0, 8, 16])
 ```
 

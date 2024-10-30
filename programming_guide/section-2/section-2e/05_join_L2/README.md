@@ -17,10 +17,10 @@ The design in [join_L2.py](./join_L2.py) uses three Object FIFOs from each of th
 ```python
   # AIE-array data movement with object fifos
   # Output
-  of_out = object_fifo("out", MemTile, ShimTile, 2, memRef_24_ty)
-  of_out0 = object_fifo("out0", ComputeTile0, MemTile, 2, memRef_8_ty)
-  of_out1 = object_fifo("out1", ComputeTile1, MemTile, 2, memRef_8_ty)
-  of_out2 = object_fifo("out2", ComputeTile2, MemTile, 2, memRef_8_ty)
+  of_out = object_fifo("out", MemTile, ShimTile, 2, tile24_ty)
+  of_out0 = object_fifo("out0", ComputeTile0, MemTile, 2, tile8_ty)
+  of_out1 = object_fifo("out1", ComputeTile1, MemTile, 2, tile8_ty)
+  of_out2 = object_fifo("out2", ComputeTile2, MemTile, 2, tile8_ty)
   object_fifo_link([of_out0, of_out1, of_out2], of_out, [0, 8, 16], [])
 ```
 

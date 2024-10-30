@@ -23,10 +23,9 @@ from aie.dialects.aie import (
     WireBundle,
 )
 
-# this is to get the MemRefValue caster inside of aie-python-extras
 # noinspection PyUnresolvedReferences
 from aie.extras.dialects.ext import linalg, memref
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 
 # noinspection PyUnresolvedReferences
 from aie.extras.testing import MLIRContext

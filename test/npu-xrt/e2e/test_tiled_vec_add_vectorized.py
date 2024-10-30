@@ -24,16 +24,17 @@ from aie.dialects.aie import (
     WireBundle,
 )
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 from aie.dialects.transform import any_op_t, apply_registered_pass, get_parent_op
 from aie.dialects.transform.extras import named_sequence
 from aie.dialects.transform.structured import structured_match
 from aie.extras.context import ExplicitlyManagedModule
-from aie.extras.dialects.ext import arith, func, linalg
+from aie.extras.dialects.ext import arith, linalg
 from aie.extras.runtime.passes import Pipeline, run_pipeline
+from aie.helpers.dialects.ext import func
 
 # noinspection PyUnresolvedReferences
-from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
+from aie.extras.testing import MLIRContext, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.extras.util import find_ops
 from aie.ir import StringAttr, UnitAttr
@@ -60,9 +61,9 @@ k = K // tiles
 
 @func.func(sym_visibility="private")
 def vec_add_i32_i32(
-    a: T.memref(k, T.i32()),
-    b: T.memref(k, T.i32()),
-    c: T.memref(k, T.i32()),
+    a: np.ndarray[(k,), np.dtype[np.int32]],
+    b: np.ndarray[(k,), np.dtype[np.int32]],
+    c: np.ndarray[(k,), np.dtype[np.int32]],
 ):
     linalg.add(a, b, c)
 

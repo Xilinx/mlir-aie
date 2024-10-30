@@ -9,6 +9,7 @@ include("../aiert.cmake")
 message("Building xaiengine for ${AIE_RUNTIME_TARGET} for CDO backend.")
 
 set(XAIE_SOURCE ../../../third_party/aie-rt/driver/src)
+set(BOOTGEN_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/bootgen)
 
 add_aiert_headers(xaienginecdo
                     ${XAIE_SOURCE}
@@ -18,5 +19,6 @@ add_aiert_headers(xaienginecdo
 add_aiert_library(xaienginecdo ${XAIE_SOURCE})
 
 target_compile_definitions(xaienginecdo PRIVATE -D__AIECDO__)
+target_include_directories(xaienginecdo SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR}/cdo-driver)
 
 install(TARGETS xaienginecdo DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/cdo)

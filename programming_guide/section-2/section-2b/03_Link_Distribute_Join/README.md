@@ -21,6 +21,8 @@ class object_fifo_link(ObjectFifoLinkOp):
         self,
         fifoIns,
         fifoOuts,
+        srcOffsets=[],
+        dstOffsets=[],
     )
 ```
 A link allows the user to specify a set of input Object FIFOs via the `fifoIns` input and a set of output ones via the `fifoOuts` input. Each Object FIFO may be specified either using its `name` or its Python object. Both inputs can be either a single Object FIFO or an array of them. It is required that there exists at least one shared tile between the consumer tiles of `fifoIns` and the producer tiles of `fifoOuts` for a link to be valid. This is because the implicit copy of data will be done using the Data Movement Accelerators (DMAs) of that tile.
@@ -30,8 +32,8 @@ Below is an example of a link created between two FIFOs `of0` and `of1`, where t
 A = tile(1, 0)
 B = tile(1, 1)
 C = tile(1, 3)
-of0 = object_fifo("objfifo0", A, B, 2, T.memref(256, T.i32()))
-of1 = object_fifo("objfifo1", B, C, 2, T.memref(256, T.i32()))
+of0 = object_fifo("objfifo0", A, B, 2, np.ndarray[(256,), np.dtype[np.int32]])
+of1 = object_fifo("objfifo1", B, C, 2, np.ndarray[(256,), np.dtype[np.int32]])
 object_fifo_link(of0, of1)
 ```
 
@@ -47,16 +49,17 @@ Currently, the Object FIFO lowering uses the order in which the output FIFOs are
 
 <img src="./../../../assets/Distribute.png" height="200">
 
-The following code snippet describes the figure above. There are three Object FIFOs: `of0` has a producer tile A and a consumer tile B, while `of1` and `of2` have B as their producer tile and C and D respectively as their consumer tiles. The link specifies that data from `of0` is distributed to `of1` and `of2`. In this link, B is the shared tile where the implicit data copy will take place via B's DMAs. We can also note how `of1` and `of2`'s datatypes are half of `of0`'s, which means that the first half of objects in `of0` will go to `of1` and the second half to `of2`, based on their order in the link.
+The following code snippet describes the figure above. There are three Object FIFOs: `of0` has a producer tile A and a consumer tile B, while `of1` and `of2` have B as their producer tile and C and D respectively as their consumer tiles. The link specifies that data from `of0` is distributed to `of1` and `of2`. In this link, B is the shared tile where the implicit data copy will take place via B's DMAs. We can also note how `of1` and `of2`'s datatypes are half of `of0`'s, which means that the first half of objects in `of0` will go to `of1` and the second half to `of2`, based on their order in the link. This is explicitly set by specifying the `dstOffsets` option on the link.
+
 ```python
 A = tile(1, 0)
 B = tile(1, 1)
 C = tile(1, 3)
 D = tile(2, 3)
-of0 = object_fifo("objfifo0", A, B, 2, T.memref(256, T.i32()))
-of1 = object_fifo("objfifo1", B, C, 2, T.memref(128, T.i32()))
-of2 = object_fifo("objfifo2", B, D, 2, T.memref(128, T.i32()))
-object_fifo_link(of0, [of1, of2])
+of0 = object_fifo("objfifo0", A, B, 2, np.ndarray[(256,), np.dtype[np.int32]])
+of1 = object_fifo("objfifo1", B, C, 2, np.ndarray[(128,), np.dtype[np.int32]])
+of2 = object_fifo("objfifo2", B, D, 2, np.ndarray[(128,), np.dtype[np.int32]])
+object_fifo_link(of0, [of1, of2], [], [0, 128])
 ```
 
 A full design example that uses this feature is available in Section 2e: [04_distribute_L2](../../section-2e/04_distribute_L2/).
@@ -75,10 +78,10 @@ A = tile(1, 0)
 B = tile(1, 1)
 C = tile(1, 3)
 D = tile(2, 3)
-of0 = object_fifo("objfifo0", B, A, 2, T.memref(256, T.i32()))
-of1 = object_fifo("objfifo1", C, B, 2, T.memref(128, T.i32()))
-of2 = object_fifo("objfifo2", D, B, 2, T.memref(128, T.i32()))
-object_fifo_link([of1, of2], of0)
+of0 = object_fifo("objfifo0", B, A, 2, np.ndarray[(256,), np.dtype[np.int32]])
+of1 = object_fifo("objfifo1", C, B, 2, np.ndarray[(128,), np.dtype[np.int32]])
+of2 = object_fifo("objfifo2", D, B, 2, np.ndarray[(128,), np.dtype[np.int32]])
+object_fifo_link([of1, of2], of0, [0, 128], [])
 ```
 
 A full design example that uses these features is available in Section 2e: [05_join_L2](../../section-2e/05_join_L2/).

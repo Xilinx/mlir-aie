@@ -1045,12 +1045,12 @@ static LogicalResult printOperation(CppEmitter &emitter,
   os << emitter.getOrCreateName(lhs);
   os << ", ";
   os << emitter.getOrCreateName(rhs);
-  os << ", ";
+  os << ", static_cast<uint32_t>(";
 
   if (!emitter.hasValueInScope(shift))
     return failure();
   os << emitter.getOrCreateName(shift);
-  os << ")";
+  os << "))";
 
   return success();
 }

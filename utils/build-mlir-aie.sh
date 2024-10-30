@@ -15,6 +15,7 @@
 #
 # <build dir>    - optional, mlir-aie/build dir name, default is 'build'
 # <install dir>  - optional, mlir-aie/install dir name, default is 'install'
+# <target>       - optional, target to build for, default is 'x86_64'
 #
 ##===----------------------------------------------------------------------===##
 
@@ -31,6 +32,7 @@ echo "LLVM BUILD DIR: $LLVM_BUILD_DIR"
 
 BUILD_DIR=${2:-"build"}
 INSTALL_DIR=${3:-"install"}
+BUILD_TARGET=${4:-"x86_64"}
 LLVM_ENABLE_RTTI=${LLVM_ENABLE_RTTI:OFF}
 
 mkdir -p $BUILD_DIR
@@ -52,9 +54,9 @@ CMAKE_CONFIGS="\
     -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DLLVM_ENABLE_RTTI=$LLVM_ENABLE_RTTI \
-    -DAIE_RUNTIME_TARGETS=x86_64;aarch64 \
+    -DAIE_RUNTIME_TARGETS=$BUILD_TARGET \
     -DAIE_ENABLE_PYTHON_PASSES=OFF \
-    -DAIE_RUNTIME_TEST_TARGET=aarch64"
+    -DAIE_RUNTIME_TEST_TARGET=$BUILD_TARGET"
 
 if [ -x "$(command -v lld)" ]; then
   CMAKE_CONFIGS="${CMAKE_CONFIGS} -DLLVM_USE_LINKER=lld"

@@ -1,5 +1,6 @@
 /build*
 /install*
+/my_install*
 /sandbox*
 /llvm*
 /cmakeModules*

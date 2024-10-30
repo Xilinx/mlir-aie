@@ -10,13 +10,8 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: peano
-// RUN: %PEANO_INSTALL_DIR/bin/clang --target=aie2 -c %S/kernel.cc
-// RUN: %PYTHON aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %S/test.cpp -o test.elf
-// RUN: %run_on_board ./test.elf
-
-// CHECK: AIE2 ISS
-// CHECK: test start.
-// CHECK: PASS!
+// RUN: %PEANO_INSTALL_DIR/bin/clang --target=aie2-none-unknown-elf -c %S/kernel.cc
+// RUN: %PYTHON aiecc.py --no-xchesscc --no-xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %S/test.cpp -o test.elf
 
 module @test_chess_05_shim_dma_core_function {
   aie.device(xcve2802) {

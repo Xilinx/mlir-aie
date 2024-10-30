@@ -43,20 +43,20 @@ Once the tiles have been declared, the next step is to set up the data movement 
 ```python
 data_size = 48
 buffer_depth = 2
-memRef_48_ty = T.memref(48, T.i32())
+data_ty = np.ndarray[(48,), np.dtype[np.int32]]
 
 
 # Input data movement
 
-of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, memRef_data_ty)
-of_in0 = object_fifo("in0", MemTile, ComputeTile, buffer_depth, memRef_data_ty)
+of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, data_ty)
+of_in0 = object_fifo("in0", MemTile, ComputeTile, buffer_depth, data_ty)
 object_fifo_link(of_in, of_in0)
 
 
 # Output data movement
 
-of_out = object_fifo("out", MemTile, ShimTile, buffer_depth, memRef_data_ty)
-of_out0 = object_fifo("out0", ComputeTile, MemTile, buffer_depth, memRef_data_ty)
+of_out = object_fifo("out", MemTile, ShimTile, buffer_depth, data_ty)
+of_out0 = object_fifo("out0", ComputeTile, MemTile, buffer_depth, data_ty)
 object_fifo_link(of_out0, of_out)
 ```
 
@@ -69,16 +69,16 @@ data_size = 48
 tile_size = data_size // 3
 
 buffer_depth = 2
-memRef_data_ty = T.memref(data_size, T.i32())
-memRef_tiles_ty = T.memref(tile_size, T.i32())
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
 
 # Input data movement
 inX_fifos = []
 
-of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, memRef_data_ty)
+of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, data_ty)
 for i in range(n_cores):
     inX_fifos.append(object_fifo(
-        f"in{i}", MemTile, ComputeTiles[i], buffer_depth, memRef_tiles_ty
+        f"in{i}", MemTile, ComputeTiles[i], buffer_depth, tile_ty
     ))
 
 # Calculate the offsets into the input/output data for the join/distribute
@@ -92,10 +92,10 @@ object_fifo_link(of_in, inX_fifos, [], of_offsets)
 # Output data movement
 outX_fifos = []
 
-of_out = object_fifo("out", ShimTile, MemTile, buffer_depth, memRef_data_ty)
+of_out = object_fifo("out", ShimTile, MemTile, buffer_depth, data_ty)
 for i in range(n_cores):
     outX_fifos.append(object_fifo(
-        f"out{i}", ComputeTiles[i], MemTile, buffer_depth, memRef_tiles_ty
+        f"out{i}", ComputeTiles[i], MemTile, buffer_depth, tile_ty
     ))
 object_fifo_link(outX_fifos, of_out, of_offsets, [])
 ```

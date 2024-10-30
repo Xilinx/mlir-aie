@@ -5,12 +5,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-
+import numpy as np
 from aie.dialects.aie import *  # primary mlir-aie dialect definitions
 from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 
 from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
-from aie.extras.dialects.ext.scf import (
+from aie.helpers.dialects.ext.scf import (
     _for as range_,
 )  # scf (structured control flow) dialect
 
@@ -28,8 +28,8 @@ def mlir_aie_design():
         # Device declaration - aie2 device xcvc1902
         @device(AIEDevice.xcvc1902)
         def device_body():
-            memRef_16_ty = T.memref(16, T.i32())
-            memRef_48_ty = T.memref(48, T.i32())
+            tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
+            data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 
             # Tile(s) declarations
             ShimTile = tile(0, 0)
@@ -41,7 +41,7 @@ def mlir_aie_design():
             # Input data movement
             inX_fifos = []
 
-            of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, memRef_48_ty)
+            of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, data_ty)
             for i in range(n_cores):
                 inX_fifos.append(
                     object_fifo(
@@ -49,11 +49,11 @@ def mlir_aie_design():
                         MemTile,
                         ComputeTiles[i],
                         buffer_depth,
-                        memRef_16_ty,
+                        tile_ty,
                     )
                 )
             if n_cores > 1:
-                of_offsets = [16 * i for i in range(n_cores)]
+                of_offsets = [tile_size * i for i in range(n_cores)]
             else:
                 of_offsets = []
             object_fifo_link(of_in, inX_fifos, [], of_offsets)
@@ -61,7 +61,7 @@ def mlir_aie_design():
             # Output data movement
             outX_fifos = []
 
-            of_out = object_fifo("out", MemTile, ShimTile, buffer_depth, memRef_48_ty)
+            of_out = object_fifo("out", MemTile, ShimTile, buffer_depth, data_ty)
             for i in range(n_cores):
                 outX_fifos.append(
                     object_fifo(
@@ -69,7 +69,7 @@ def mlir_aie_design():
                         ComputeTiles[i],
                         MemTile,
                         buffer_depth,
-                        memRef_16_ty,
+                        tile_ty,
                     )
                 )
             object_fifo_link(outX_fifos, of_out, of_offsets, [])

@@ -4,14 +4,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2023 Xilinx Inc.
-
+import numpy as np
 import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.ir import MemRefType, TypeAttr
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 
 width = 64
 height = 36
@@ -21,6 +20,7 @@ if len(sys.argv) == 3:
 
 lineWidth = width
 lineWidthInBytes = width * 4
+tensorSize = width * height * 4  # 4 channels
 
 enableTrace = False
 traceSize = 1024
@@ -31,29 +31,29 @@ def color_detect():
 
         @device(AIEDevice.npu1_1col)
         def deviceBody():
-            line_bytes_ty = MemRefType.get((lineWidthInBytes,), T.ui8())
-            line_ty = MemRefType.get((lineWidth,), T.ui8())
+            line_bytes_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
+            line_ty = np.ndarray[(lineWidth,), np.dtype[np.uint8]]
 
-            ofifo_line_bytes_ty = TypeAttr.get(ObjectFifoType.get(line_bytes_ty))
-            ofifo_line_ty = TypeAttr.get(ObjectFifoType.get(line_ty))
+            tensor_ty = np.ndarray[(tensorSize,), np.dtype[np.int8]]
+            tensor_16x16_ty = np.ndarray[(16, 16), np.dtype[np.int32]]
 
             # AIE Core Function declarations
             rgba2hueLine = external_func(
-                "rgba2hueLine", inputs=[line_bytes_ty, line_ty, T.i32()]
+                "rgba2hueLine", inputs=[line_bytes_ty, line_ty, np.int32]
             )
             thresholdLine = external_func(
                 "thresholdLine",
-                inputs=[line_ty, line_ty, T.i32(), T.i16(), T.i16(), T.i8()],
+                inputs=[line_ty, line_ty, np.int32, np.int16, np.int16, np.int8],
             )
             bitwiseORLine = external_func(
-                "bitwiseORLine", inputs=[line_ty, line_ty, line_ty, T.i32()]
+                "bitwiseORLine", inputs=[line_ty, line_ty, line_ty, np.int32]
             )
             gray2rgbaLine = external_func(
-                "gray2rgbaLine", inputs=[line_ty, line_bytes_ty, T.i32()]
+                "gray2rgbaLine", inputs=[line_ty, line_bytes_ty, np.int32]
             )
             bitwiseANDLine = external_func(
                 "bitwiseANDLine",
-                inputs=[line_bytes_ty, line_bytes_ty, line_bytes_ty, T.i32()],
+                inputs=[line_bytes_ty, line_bytes_ty, line_bytes_ty, np.int32],
             )
 
             # Tile declarations
@@ -207,18 +207,7 @@ def color_detect():
                     outOF_L1L2.release(ObjectFifoPort.Produce, 1)
 
             # To/from AIE-array data movement
-
-            tensorSize = width * height * 4  # 4 channels
-            tensor_ty = MemRefType.get((tensorSize,), T.i8())
-            memRef_16x16_ty = MemRefType.get(
-                (
-                    16,
-                    16,
-                ),
-                T.i32(),
-            )
-
-            @runtime_sequence(tensor_ty, memRef_16x16_ty, tensor_ty)
+            @runtime_sequence(tensor_ty, tensor_16x16_ty, tensor_ty)
             def sequence(I, B, O):
                 npu_dma_memcpy_nd(
                     metadata=inOF_L3L2,

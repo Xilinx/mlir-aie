@@ -2,11 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
-
+import numpy as np
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-import aie.ir as ir
 
 
 with mlir_mod_ctx() as ctx:
@@ -18,9 +17,11 @@ with mlir_mod_ctx() as ctx:
         # CHECK: %[[tile1:.+]] = aie.tile
         mem_tile = tile(0, 1)
 
-        of0 = object_fifo("of0", shim_tile, mem_tile, 2, T.memref(256, T.i32()))
+        of0 = object_fifo(
+            "of0", shim_tile, mem_tile, 2, np.ndarray[(256,), np.dtype[np.int32]]
+        )
 
-        @bd_chain(T.memref(16, T.i16()), T.memref(32, T.i16()))
+        @bd_chain(np.ndarray[(16,), np.dtype[np.int16]], T.memref(32, T.i16()))
         def my_chain(bd, a, b):
             with bd[0]:
                 dma_bd(a)
@@ -29,7 +30,7 @@ with mlir_mod_ctx() as ctx:
                 dma_bd(b)
                 EndOp()
 
-        @runtime_sequence(T.memref(16, T.i16()), T.memref(32, T.i16()))
+        @runtime_sequence(np.ndarray[(16,), np.dtype[np.int16]], T.memref(32, T.i16()))
         def seq(a, b):
             # CHECK: %[[tsk0:.+]] = aiex.dma_start_bd_chain @my_chain({{.+}}) on (%[[tile0]], MM2S, 1)
             tsk0 = dma_start_bd_chain(

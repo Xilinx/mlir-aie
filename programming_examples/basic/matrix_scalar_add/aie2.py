@@ -5,13 +5,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+import numpy as np
+import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.extras.dialects.ext.scf import _for as range_
-
-import sys
+from aie.helpers.dialects.ext.scf import _for as range_
 
 # Size of the entire image
 IMAGE_HEIGHT = 16
@@ -42,7 +42,7 @@ def my_matrix_add_one():
 
     @device(dev)
     def device_body():
-        memRef_ty = T.memref(TILE_SIZE, T.i32())
+        tile_ty = np.ndarray[(TILE_SIZE,), np.dtype[np.int32]]
 
         # Tile declarations
         ShimTile = tile(int(sys.argv[2]), 0)
@@ -50,12 +50,10 @@ def my_matrix_add_one():
 
         # AIE-array data movement with object fifos
         # Input
-        of_in1 = object_fifo("in0", ShimTile, ComputeTile2, objfifo_capacity, memRef_ty)
+        of_in1 = object_fifo("in0", ShimTile, ComputeTile2, objfifo_capacity, tile_ty)
 
         # Output
-        of_out1 = object_fifo(
-            "out0", ComputeTile2, ShimTile, objfifo_capacity, memRef_ty
-        )
+        of_out1 = object_fifo("out0", ComputeTile2, ShimTile, objfifo_capacity, tile_ty)
 
         # Set up compute tile 2
         @core(ComputeTile2)
@@ -70,10 +68,7 @@ def my_matrix_add_one():
                 of_out1.release(ObjectFifoPort.Produce, 1)
 
         # To/from AIE-array data movement
-
-        tensor_ty = T.memref(TILE_SIZE, T.i32())
-
-        @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
+        @runtime_sequence(tile_ty, tile_ty, tile_ty)
         def sequence(inTensor, notUsed, outTensor):
             npu_dma_memcpy_nd(
                 metadata=of_in1,

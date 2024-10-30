@@ -73,4 +73,7 @@ This IRON AIE programming guide first introduces the language bindings for AIE-a
 * [AIE1 Architecture Manual - AM009](https://docs.amd.com/r/en-US/am009-versal-ai-engine/Overview)
 * [AIE2 Architecture Manual - AM020](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Overview)
 
+## AMD XDNA™ references
+* [AMD XDNA™ NPU in Ryzen™ AI Processors](https://ieeexplore.ieee.org/document/10592049)
+
 
