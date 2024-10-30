@@ -619,7 +619,9 @@ static ParseResult parseObjectFifoInitValues(OpAsmParser &parser,
                                              Attribute &initValues) {
   int depth;
   if (isa<ArrayAttr>(numElem)) {
-    depth = llvm::dyn_cast<mlir::IntegerAttr>(llvm::dyn_cast<mlir::ArrayAttr>(numElem)[0]).getInt();
+    depth = llvm::dyn_cast<mlir::IntegerAttr>(
+                llvm::dyn_cast<mlir::ArrayAttr>(numElem)[0])
+                .getInt();
   } else {
     depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
   }
