@@ -79,8 +79,7 @@ class TensorTile:
     def __str__(self) -> str:
         return (
             f"TensorTile(tensor_height={self.tensor_height}, tensor_width={self.tensor_width}, "
-            f"offset={self.offset}, sizes={self.sizes}, strides={self.strides}, "
-            f"transfer_len={self.transfer_len})"
+            f"offset={self.offset}, sizes={self.sizes}, strides={self.strides})"
         )
 
     def __eq__(self, other):
@@ -269,6 +268,7 @@ class TensorTiler2D:
         tile_repeat_step_vertical: int | None = None,
         tile_repeat: int = 1,
         col_major: bool = False,
+        iter_step: int = 1,
     ) -> TensorTile2DIter:
         assert (
             tile_group_height >= 1 and tile_group_width >= 1 and tile_repeat >= 1
@@ -308,8 +308,13 @@ class TensorTiler2D:
             steps_per_col = tile_repeat_step_vertical
 
         steps = steps_per_row * steps_per_col
+        assert (
+            iter_step == 1 or steps % iter_step == 0
+        ), "Cannot iterate in steps of the given size, must be divisible by total steps"
 
         def calc_offset(iter_num):
+            if iter_step != 1:
+                iter_num *= iter_step
             if not col_major:
                 row_idx = iter_num % steps_per_row
                 col_idx = iter_num // steps_per_row
@@ -409,6 +414,14 @@ class TensorTiler2D:
                 iter_sizes[0] == 1 and iter_strides[0] == 0
             ), f"Highest (sizes, strides) dim must be (1, 0) for tile repeat but is ({iter_sizes}, {iter_strides})"
             iter_sizes[0] = tile_repeat
+
+        if iter_step != 1:
+            # TODO: unchecked with other features, including repeat
+            assert (
+                iter_sizes[0] == 1 and iter_strides[0] == 0
+            ), f"Highest (sizes, strides) dim must be (1, 0) for iter step but is ({iter_sizes}, {iter_strides})"
+            iter_sizes[0] = iter_step
+            iter_strides[0] = tile_group_height * self._tile_height * self._tensor_width
 
         return TensorTile2DIter(
             self._tensor_height,
