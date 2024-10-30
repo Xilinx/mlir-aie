@@ -4,6 +4,10 @@ import sys
 from typing import Callable
 
 
+def ceildiv(a, b):
+    return -(a // -b)
+
+
 class TensorTile:
     def __init__(
         self,
@@ -261,6 +265,8 @@ class TensorTiler2D:
         self,
         tile_group_height: int = 1,
         tile_group_width: int = 1,
+        tile_repeat_step_horizontal: int | None = None,
+        tile_repeat_step_vertical: int | None = None,
         tile_repeat: int = 1,
         col_major: bool = False,
     ) -> TensorTile2DIter:
@@ -268,23 +274,48 @@ class TensorTiler2D:
             tile_group_height >= 1 and tile_group_width >= 1 and tile_repeat >= 1
         ), f"Tile group height, Tile group width, tile repeat ({tile_group_height}, {tile_group_width}, {tile_repeat}) must be >0"
         assert (
+            tile_repeat_step_horizontal is None or tile_repeat_step_horizontal > 0
+        ) and (
+            tile_repeat_step_vertical is None or tile_repeat_step_vertical > 0
+        ), f"Tile repeat step horizontal and vertical ({tile_repeat_step_horizontal}, {tile_repeat_step_vertical}) must be None or >0"
+        assert (tile_group_height == 1 or tile_repeat_step_vertical is None) and (
+            tile_group_width == 1 or tile_repeat_step_horizontal is None
+        ), f"Cannot specify both tile_step and tile_group for given dimension"
+        assert (
             self._num_tiles_per_row % tile_group_width == 0
-        ), f"Tiles per row ({self._num_tiles_per_row}) must be divisible by Tile group width ({tile_group_width})"
+        ), f"Tiles per row ({self._num_tiles_per_row}) must be divisible by tile group width ({tile_group_width})"
         assert (
             self._num_tiles_per_col % tile_group_height == 0
-        ), f"Tiles per row ({self._num_tiles_per_col}) must be divisible by Tile group width ({tile_group_height})"
-        tile_groups_per_row = self._num_tiles_per_row // tile_group_width
-        tile_groups_per_col = self._num_tiles_per_col // tile_group_height
+        ), f"Tiles per row ({self._num_tiles_per_col}) must be divisible by tile group width ({tile_group_height})"
 
-        steps = tile_groups_per_row * tile_groups_per_col
+        steps_per_row = self._num_tiles_per_row // tile_group_width
+        steps_per_col = self._num_tiles_per_col // tile_group_height
+
+        if tile_repeat_step_horizontal:
+            assert (
+                self._num_tiles_per_row % tile_repeat_step_horizontal == 0
+            ), f"Tiles per row ({self._num_tiles_per_row}) must be divisible by tile repeat step horizontal ({tile_repeat_step_horizontal})"
+            steps_per_row = self._num_tiles_per_row // tile_repeat_step_horizontal
+        if tile_repeat_step_vertical:
+            assert (
+                self._num_tiles_per_col % tile_repeat_step_vertical == 0
+            ), f"Tiles per col ({self._num_tiles_per_col}) must be divisible by tile repeat step vertical ({tile_repeat_step_vertical})"
+            steps_per_col = self._num_tiles_per_col // tile_repeat_step_vertical
+
+        if tile_repeat_step_horizontal:
+            steps_per_row = tile_repeat_step_horizontal
+        if tile_repeat_step_vertical:
+            steps_per_col = tile_repeat_step_vertical
+
+        steps = steps_per_row * steps_per_col
 
         def calc_offset(iter_num):
             if not col_major:
-                row_idx = iter_num % tile_groups_per_row
-                col_idx = iter_num // tile_groups_per_row
+                row_idx = iter_num % steps_per_row
+                col_idx = iter_num // steps_per_row
             else:
-                col_idx = iter_num % tile_groups_per_col
-                row_idx = iter_num // tile_groups_per_col
+                col_idx = iter_num % steps_per_col
+                row_idx = iter_num // steps_per_col
 
             offset = row_idx * tile_group_width * self._tile_width
             offset += (
@@ -347,10 +378,36 @@ class TensorTiler2D:
             iter_sizes, iter_strides
         )
 
+        if tile_repeat_step_horizontal:
+            tile_row_repeats = ceildiv(
+                (self._tensor_width // self._tile_width), tile_repeat_step_horizontal
+            )
+            assert (
+                iter_sizes[1] == 1 and iter_strides[1] == 0
+            ), f"Cannot do col tile repeat step horizontal, sizes={iter_sizes}, strides={iter_strides}"
+            iter_sizes[1] = tile_row_repeats
+            iter_strides[1] = self._tile_width * tile_repeat_step_horizontal
+
+        if tile_repeat_step_vertical:
+            tile_col_repeats = ceildiv(
+                (self._tensor_height // self._tile_height), tile_repeat_step_vertical
+            )
+            assert (
+                iter_sizes[1] == 1 and iter_strides[1] == 0
+            ), f"Cannot do tile repeat step vertical, sizes={iter_sizes}, strides={iter_strides}"
+            iter_sizes[1] = tile_col_repeats
+            iter_strides[1] = (
+                self._tensor_width * self._tile_height * tile_repeat_step_vertical
+            )
+
+        iter_sizes, iter_strides = self._validate_and_clean_sizes_strides(
+            iter_sizes, iter_strides
+        )
+
         if tile_repeat != 1:
             assert (
-                iter_sizes[0] == 1
-            ), f"Highest (sizes, strides) dim must be (1, 0) for tile repeat but is ({iter_sizes[0]}, {iter_strides[0]})"
+                iter_sizes[0] == 1 and iter_strides[0] == 0
+            ), f"Highest (sizes, strides) dim must be (1, 0) for tile repeat but is ({iter_sizes}, {iter_strides})"
             iter_sizes[0] = tile_repeat
 
         return TensorTile2DIter(
@@ -390,6 +447,10 @@ class TensorTiler2D:
         else:
             fig, ax_order = plt.subplots()
         _access_heatmap = ax_order.pcolor(access_order_tensor, cmap="gnuplot2")
+
+        # TODO: make function of tensor dims? keep in mind different # of subplots?
+        fig.set_figheight(15)
+        fig.set_figwidth(15)
 
         # Thanks to https://stackoverflow.com/questions/14406214/moving-x-axis-to-the-top-of-a-plot-in-matplotlib
         # put the major ticks at the middle of each cell, (0, 0) in upper left corner
