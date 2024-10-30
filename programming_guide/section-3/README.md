@@ -46,8 +46,8 @@ We also need to declare that the compute core will run an external function: a k
 
 ```python
         # Type declarations
-        tensor_ty = np.ndarray[(4096,), np.dtype[np.int16]]
-        tile_ty = np.ndarray[(1024,), np.dtype[np.int16]]
+        tensor_ty = np.ndarray[(4096,), np.dtype[np.int32]]
+        tile_ty = np.ndarray[(1024,), np.dtype[np.int32]]
         scalar_ty = np.ndarray[(1,), np.dtype[np.int32]]
         
         # AIE Core Function declarations
