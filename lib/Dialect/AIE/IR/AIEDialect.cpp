@@ -614,8 +614,9 @@ static void printObjectFifoInitValues(OpAsmPrinter &p, ObjectFifoCreateOp op,
   }
 }
 
-static ParseResult parseObjectFifoInitValues(OpAsmParser &parser, Attribute numElem,
-                                             TypeAttr type, Attribute &initValues) {
+static ParseResult parseObjectFifoInitValues(OpAsmParser &parser,
+                                             Attribute numElem, TypeAttr type,
+                                             Attribute &initValues) {
   int depth;
   if (isa<ArrayAttr>(numElem)) {
     depth = llvm::dyn_cast<mlir::IntegerAttr>(llvm::dyn_cast<mlir::ArrayAttr>(numElem)[0]).getInt();
