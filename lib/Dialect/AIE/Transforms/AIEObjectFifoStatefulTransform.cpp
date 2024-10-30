@@ -329,7 +329,9 @@ struct AIEObjectFifoStatefulTransformPass
       }
     } else {
       // create corresponding aie2 locks
-      auto initValues = op.getInitValues().has_value() ? op.getInitValues().value().size() : 0;
+      auto initValues = op.getInitValues().has_value()
+                            ? op.getInitValues().value().size()
+                            : 0;
       int prodLockID = lockAnalysis.getLockID(creation_tile);
       assert(prodLockID >= 0 && "No more locks to allocate!");
       auto prodLock = builder.create<LockOp>(
