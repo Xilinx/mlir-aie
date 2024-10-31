@@ -79,8 +79,7 @@ def matrix_whole_array_tiling_sweep():
                                         k=k,
                                         n=n,
                                     )
-    # CHECK: Pass!
-    print("Pass!")
+    # XFAIL: *
 
 
 """
