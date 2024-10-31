@@ -834,6 +834,7 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
         I32Attr:$d0_stride,
         I32Attr:$d1_size,
         I32Attr:$d1_stride,
+        I32Attr:$d2_size,
         I32Attr:$d2_stride,
         I32Attr:$iteration_current,
         I32Attr:$iteration_size,

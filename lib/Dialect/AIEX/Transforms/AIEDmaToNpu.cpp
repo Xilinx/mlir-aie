@@ -325,6 +325,7 @@ public:
     auto d0_stride = zero;
     auto d1_size = zero;
     auto d1_stride = zero;
+    auto d2_size = zero;
     auto d2_stride = zero;
     auto iteration_current = zero;
     auto iteration_size = zero;
@@ -422,6 +423,12 @@ public:
 
       // d2_stride
       d2_stride = IntegerAttr::get(i32ty, strides[2]);
+
+      // d2_size
+      if(targetModel.isMemTile(col, 0)) // Need to be any row
+        d2_size = IntegerAttr::get(i32ty, sizes[2]);
+      else
+        d2_size = IntegerAttr::get(i32ty, 1);
     }
     // iteration_current, iteration_size, iteration_stride, repeat_count
     if (inputSizes[3] > 1) {
@@ -481,14 +488,14 @@ public:
     if (!isMM2S)
       issue_token = BoolAttr::get(ctx, true);
 
-    // TODO: Need to add a check to only allow zero padding on MM2S channel of
-    // MemTile As of now, run time MemTile DMA configuration is supported only
-    // from BD level, not at NpuDmaMemcpyNdOp.
+
+    if(targetModel.isMemTile(col, 0) && (!isMM2S) && (op.getD0ZeroBefore() != 0 || op.getD0ZeroAfter() != 0 || op.getD1ZeroBefore() != 0 || op.getD1ZeroAfter() != 0 || op.getD2ZeroBefore() != 0 || op.getD2ZeroAfter() != 0))
+      op->emitOpError("MemTile supports zero padding only on MM2S direction");
 
     rewriter.create<NpuWriteBdOp>(
         op->getLoc(), column, bd_id, buffer_length, buffer_offset,
         enable_packet, out_of_order_id, packet_id, packet_type, d0_size,
-        d0_stride, d1_size, d1_stride, d2_stride, iteration_current,
+        d0_stride, d1_size, d1_stride, d2_size, d2_stride, iteration_current,
         iteration_size, iteration_stride, next_bd, row, use_next_bd, valid_bd,
         lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id,
         d0_zero_before, d1_zero_before, d2_zero_before, d0_zero_after,
