@@ -272,20 +272,4 @@ def AIEGenerateColumnControlOverlay : Pass<"aie-generate-column-control-overlay"
   ];
 }
 
-def CIRtoAIEidioms : Pass<"cir-to-aie-idioms", "mlir::ModuleOp"> {
-  let summary = "Transform some AIE++ patterns in CIR into AIE equivalent operations";
-  let description = [{
-    Some AIE constructs are represented in AIE++ by C++ abstractions expressed
-    in normal C++. These are compiled to CIR as plain C++ constructs.
-    This pass recognize these AIE++ C++ constructs and replace them by
-    equivalent AIE operations.
-  }];
-
-  let constructor = "xilinx::AIE::createCIRtoAIEidiomsPass()";
-  let dependentDialects = [
-    "mlir::cir::CIRDialect",
-    "xilinx::AIE::AIEDialect",
-  ];
-}
-
 #endif
