@@ -334,9 +334,12 @@ struct AIEObjectFifoStatefulTransformPass
                             : 0;
       int prodLockID = lockAnalysis.getLockID(creation_tile);
       assert(prodLockID >= 0 && "No more locks to allocate!");
+      int prodLockValue = numElem - initValues;
+      if (op.getMemtileRepeat().has_value())
+        prodLockValue *= op.getMemtileRepeat().value() + 1;
       auto prodLock =
           builder.create<LockOp>(builder.getUnknownLoc(), creation_tile,
-                                 prodLockID, numElem - initValues);
+                                 prodLockID, prodLockValue);
       prodLock.getOperation()->setAttr(
           SymbolTable::getSymbolAttrName(),
           builder.getStringAttr(op.name().str() + "_prod_lock"));
@@ -344,8 +347,11 @@ struct AIEObjectFifoStatefulTransformPass
 
       int consLockID = lockAnalysis.getLockID(creation_tile);
       assert(consLockID >= 0 && "No more locks to allocate!");
+      int consLockValue = initValues;
+      if (op.getMemtileRepeat().has_value())
+        consLockValue *= op.getMemtileRepeat().value() + 1;
       auto consLock = builder.create<LockOp>(
-          builder.getUnknownLoc(), creation_tile, consLockID, initValues);
+          builder.getUnknownLoc(), creation_tile, consLockID, consLockValue);
       consLock.getOperation()->setAttr(
           SymbolTable::getSymbolAttrName(),
           builder.getStringAttr(op.name().str() + "_cons_lock"));

@@ -1690,7 +1690,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         OptionalAttr<AIEI32Attr>:$via_shared_mem,
         // memtile_repeat==0 means "do it once" and don't repeat
         OptionalAttr<AIEI32Attr>:$memtile_repeat,
-        OptionalAttr<ArrayAttr>:$init_values
+        OptionalAttr<ArrayAttr>:$initValues
   );
 
   let assemblyFormat = [{
@@ -1703,7 +1703,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         `,`
         $elemNumber
     `)` attr-dict `:` $elemType
-    custom<ObjectFifoInitValues>(ref($elemNumber), ref($elemType), $init_values)
+    custom<ObjectFifoInitValues>(ref($elemNumber), ref($elemType), $initValues)
   }];
 
   let hasVerifier = 1;
