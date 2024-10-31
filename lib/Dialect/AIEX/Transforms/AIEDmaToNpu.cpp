@@ -428,7 +428,7 @@ public:
       if (targetModel.isMemTile(col, 0)) // Need to be any row
         d2_size = IntegerAttr::get(i32ty, sizes[2]);
       else
-        d2_size = IntegerAttr::get(i32ty, 1);
+        d2_size = IntegerAttr::get(i32ty, 0);
     }
     // iteration_current, iteration_size, iteration_stride, repeat_count
     if (inputSizes[3] > 1) {

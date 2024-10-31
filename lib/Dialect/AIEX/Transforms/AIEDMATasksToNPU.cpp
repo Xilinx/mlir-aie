@@ -243,7 +243,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         bd_op.getDimensions();
     llvm::SmallVector<int64_t, 4> sizes = llvm::SmallVector<int64_t, 4>(4, 0);
     llvm::SmallVector<int64_t, 4> strides = llvm::SmallVector<int64_t, 4>(4, 0);
-    int64_t d2size = 1;
+    int64_t d2size = 0;
 
     // Padding
     std::optional<llvm::ArrayRef<AIE::BDPadLayoutAttr>> padDims =
@@ -274,7 +274,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       }
       d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))
                    ? (*dims)[2].getSize()
-                   : 1;
+                   : 0;
       if (target_model.isMemTile(tile.getCol(), tile.getRow()) &&
           channelDir == AIE::DMAChannelDir::MM2S) {
         if (padDims && (padDims->size() > dims->size()))

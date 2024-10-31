@@ -523,7 +523,7 @@ struct AIEObjectFifoStatefulTransformPass
       createShimDMA(device, builder, op, channelDir, channelIndex, lockMode,
                     dims);
     } else if (op.getProducerTileOp().isMemTile() &&
-               channelDir == DMAChannelDir::MM2S) {
+           channelDir == DMAChannelDir::MM2S) {
       createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
                        dims, pad_dims);
     } else if (op.getProducerTileOp().isMemTile() &&
@@ -1479,7 +1479,7 @@ struct AIEObjectFifoStatefulTransformPass
             consumer.getDimensionsFromStreamPerConsumer()[0];
         createDMA(device, builder, consumer, consumerChan.direction,
                   consumerChan.channel, 1, consumerDims,
-                  consumer.getPadDimensionsAttr());
+                  nullptr);
         // generate objectFifo allocation info
         builder.setInsertionPoint(&device.getBody()->back());
 

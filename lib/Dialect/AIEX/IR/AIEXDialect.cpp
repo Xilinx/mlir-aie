@@ -459,13 +459,13 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
     return emitOpError("Iteration Size exceeds the [0:63] range.");
   if (getIterationStride() > 0xFFFFF)
     return emitOpError("Iteration Stride exceeds the [0:1M-1] range.");
-  if (targetModel.isShimNOCTile(getColumn(), getRow()) && getD2Size() != 1)
+  if (targetModel.isShimNOCTile(getColumn(), getRow()) && getD2Size() != 0)
     return emitOpError("ShimTile only supports 2 dimensions of sizes.");
   if (targetModel.isShimNOCTile(getColumn(), getRow()) &&
       (getD0ZeroBefore() != 0 || getD0ZeroAfter() != 0 ||
        getD1ZeroBefore() != 0 || getD1ZeroAfter() != 0 ||
        getD2ZeroBefore() != 0 || getD2ZeroAfter() != 0))
-    return emitOpError("ShimTile doesn't support zero padding");
+    return emitOpError("ShimTile doesn't support zero padding.");
   return success();
 }
 
