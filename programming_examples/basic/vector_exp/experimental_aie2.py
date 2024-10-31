@@ -39,10 +39,10 @@ def my_eltwise_exp():
 
     A_fifo = ObjectFifo(buffer_depth, memtile_ty, "inA")
     C_fifo = ObjectFifo(buffer_depth, memtile_ty, "outC")
-    a_fifos = A_fifo.second.split(
+    a_fifos = A_fifo.cons.split(
         offsets=[n * i for i in range(n_cores)], types=[tile_ty] * n_cores
     )
-    c_fifos = C_fifo.first.join(
+    c_fifos = C_fifo.prod.join(
         offset=[n * i for i in range(n_cores)], types=[tile_ty] * n_cores
     )
 
@@ -57,8 +57,8 @@ def my_eltwise_exp():
             transfer_len=N,
         )
         for t in io.tile_loop(iter([tile])):
-            io.fill(A_fifo.first, t, a_in)
-            io.drain(C_fifo.second, t, c_out, wait=True)
+            io.fill(A_fifo.prod, t, a_in)
+            io.drain(C_fifo.cons, t, c_out, wait=True)
 
     def core_fn(a_in, c_out, exp_bf16_1024):
         for _ in range_(0xFFFFFFFF):
@@ -72,9 +72,7 @@ def my_eltwise_exp():
     workers = []
     for i in range(n_cores):
         workers.append(
-            Worker(
-                core_fn, fn_args=[a_fifos[i].second, c_fifos[i].first, exp_bf16_1024]
-            )
+            Worker(core_fn, fn_args=[a_fifos[i].cons, c_fifos[i].prod, exp_bf16_1024])
         )
 
     return Program(NPU1Col1(), io, workers=workers)

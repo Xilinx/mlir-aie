@@ -47,8 +47,8 @@ class Program:
                 for w in self._workers:
                     all_tiles.append(w.tile)
                 for f in all_fifos:
-                    all_tiles.append(f.end1_tile())
-                    all_tiles.extend(f.end2_tiles())
+                    all_tiles.append(f.end_prod_tile())
+                    all_tiles.extend(f.end_cons_tiles())
 
                 # Resolve tiles
                 for t in all_tiles:

@@ -33,8 +33,8 @@ class ObjectFifo(Resolvable):
     ):
         self._depth = depth
         self._obj_type = obj_type
-        self.end1 = None
-        self.end2 = []
+        self.end_prod = None
+        self.end_cons = []
         self.dimensionToStream = dimensionsToStream
         self.dimensionsFromStreamPerConsumer = dimensionsFromStreamPerConsumer
 
@@ -43,8 +43,8 @@ class ObjectFifo(Resolvable):
         else:
             self.name = name
         self._op: ObjectFifoCreateOp | None = None
-        self._first: ObjectFifoHandle = ObjectFifoHandle(self, True)
-        self._second: ObjectFifoHandle = ObjectFifoHandle(self, False)
+        self._prod: ObjectFifoHandle = ObjectFifoHandle(self, True)
+        self._cons: ObjectFifoHandle = ObjectFifoHandle(self, False)
 
     @classmethod
     def __get_index(cls) -> int:
@@ -62,28 +62,28 @@ class ObjectFifo(Resolvable):
         return self._op
 
     @property
-    def first(self) -> ObjectFifoHandle:
-        return self._first
+    def prod(self) -> ObjectFifoHandle:
+        return self._prod
 
     @property
-    def second(self) -> ObjectFifoHandle:
-        return self._second
+    def cons(self) -> ObjectFifoHandle:
+        return self._cons
 
-    def end1_tile(self) -> PlacementTile | None:
-        if self.end1 == None:
+    def end_prod_tile(self) -> PlacementTile | None:
+        if self.end_prod == None:
             return None
-        return self.end1.tile
+        return self.end_prod.tile
 
-    def end2_tiles(self) -> list[PlacementTile | None] | None:
-        if self.end2 == []:
+    def end_cons_tiles(self) -> list[PlacementTile | None] | None:
+        if self.end_cons == []:
             return None
-        return [e.tile for e in self.end2]
+        return [e.tile for e in self.end_cons]
 
     def _get_endpoint(self, is_first: bool) -> list[ObjectFifoEndpoint]:
         if is_first:
-            return [self.end1]
+            return [self.end_prod]
         else:
-            return self.end2.copy()
+            return self.end_cons.copy()
 
     @property
     def obj_type(self) -> type[np.ndarray]:
@@ -95,8 +95,8 @@ class ObjectFifo(Resolvable):
         ip: ir.InsertionPoint | None = None,
     ) -> None:
         if self._op == None:
-            tile1 = self.end1_tile()
-            tiles2 = self.end2_tiles()
+            tile1 = self.end_prod_tile()
+            tiles2 = self.end_cons_tiles()
             assert tile1 != None
             assert tiles2 != None and len(tiles2) >= 1
             for t in tiles2:
@@ -114,21 +114,21 @@ class ObjectFifo(Resolvable):
                 ip=ip,
             )
 
-            if isinstance(self.end1, ObjectFifoLink):
-                self.end1.resolve()
-            for e in self.end2:
-                if isinstance(self.end2, ObjectFifoLink):
+            if isinstance(self.end_prod, ObjectFifoLink):
+                self.end_prod.resolve()
+            for e in self.end_cons:
+                if isinstance(self.end_cons, ObjectFifoLink):
                     e.resolve()
 
     def _set_endpoint(self, endpoint: ObjectFifoEndpoint, first: bool = True) -> None:
         if first:
             assert (
-                self.end1 == None or self.end1 == endpoint
-            ), f"ObjectFifo already assigned endpoint 1 ({self.end1})"
-            self.end1 = endpoint
+                self.end_prod == None or self.end_prod == endpoint
+            ), f"ObjectFifo already assigned endpoint 1 ({self.end_prod})"
+            self.end_prod = endpoint
         else:
             # TODO: need rules about shim tiles here
-            self.end2.append(endpoint)
+            self.end_cons.append(endpoint)
 
     def _acquire(
         self,
@@ -193,11 +193,11 @@ class ObjectFifoHandle(Resolvable):
     def obj_type(self) -> type[np.ndarray]:
         return self._object_fifo.obj_type
 
-    def end1_tile(self) -> Tile | None:
-        return self._object_fifo.end1_tile()
+    def end_prod_tile(self) -> Tile | None:
+        return self._object_fifo.end_prod_tile()
 
-    def end2_tiles(self) -> list[Tile | None] | None:
-        return self._object_fifo.end2_tiles()
+    def end_cons_tiles(self) -> list[Tile | None] | None:
+        return self._object_fifo.end_cons_tiles()
 
     def set_endpoint(self, endpoint: ObjectFifoEndpoint) -> None:
         self._object_fifo._set_endpoint(endpoint, first=self._is_first)
@@ -244,7 +244,7 @@ class ObjectFifoHandle(Resolvable):
         link = ObjectFifoLink(subfifos, self._object_fifo, placement, offsets, [])
         self.set_endpoint(link)
         for i in range(num_subfifos):
-            subfifos[i].second.set_endpoint(link)
+            subfifos[i].cons.set_endpoint(link)
         return subfifos
 
     def split(
@@ -281,7 +281,7 @@ class ObjectFifoHandle(Resolvable):
         link = ObjectFifoLink(self._object_fifo, subfifos, placement, [], offsets)
         self.set_endpoint(link)
         for i in range(num_subfifos):
-            subfifos[i].first.set_endpoint(link)
+            subfifos[i].prod.set_endpoint(link)
         return subfifos
 
     def forward(
@@ -295,7 +295,7 @@ class ObjectFifoHandle(Resolvable):
         )
         link = ObjectFifoLink(self._object_fifo, forward_fifo, placement, [], [])
         self.set_endpoint(link)
-        forward_fifo.first.set_endpoint(link)
+        forward_fifo.prod.set_endpoint(link)
         return forward_fifo
 
     def resolve(

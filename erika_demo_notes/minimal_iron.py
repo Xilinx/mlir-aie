@@ -17,6 +17,7 @@ IMAGE_SIZE = IMAGE_WIDTH * IMAGE_HEIGHT
 TILE_HEIGHT, TILE_WIDTH = 8, 16
 TILE_SIZE = TILE_WIDTH * TILE_HEIGHT
 
+# fmt: off
 with mlir_mod_ctx() as ctx:
     def my_matrix_add_one():
         @device(AIEDevice.npu1_1col)
@@ -54,3 +55,4 @@ with mlir_mod_ctx() as ctx:
                     strides=[1, 1, IMAGE_WIDTH, 1],
                 )
                 dma_wait(of_in1, of_out1)
+# fmt: on

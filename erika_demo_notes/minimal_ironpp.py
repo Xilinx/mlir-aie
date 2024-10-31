@@ -8,12 +8,12 @@
 import itertools
 import numpy as np
 
-from aie.api.io.iocoordinator import IOCoordinator
-from aie.api.dataflow.objectfifo import ObjectFifo
-from aie.api.program import Program
-from aie.api.placers import SequentialPlacer
-from aie.api.worker import Worker
-from aie.api.phys.device import NPU1Col1
+from aie.ironpp.io.iocoordinator import IOCoordinator
+from aie.ironpp.dataflow.objectfifo import ObjectFifo
+from aie.ironpp.program import Program
+from aie.ironpp.placers import SequentialPlacer
+from aie.ironpp.worker import Worker
+from aie.ironpp.phys.device import NPU1Col1
 from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D
 from aie.helpers.dialects.ext.scf import _for as range_
 
@@ -22,6 +22,7 @@ IMAGE_SIZE = IMAGE_WIDTH * IMAGE_HEIGHT
 TILE_HEIGHT, TILE_WIDTH = 8, 16
 TILE_SIZE = TILE_WIDTH * TILE_HEIGHT
 
+# fmt: off
 def my_matrix_add_one():
     tile_ty = np.ndarray[(TILE_SIZE,), np.dtype[np.int32]]
 
@@ -37,17 +38,18 @@ def my_matrix_add_one():
         of_out1.release(1)
 
     my_worker = Worker(core_fn, 
-                       fn_args=[of_in.second, of_out.first],
+                       fn_args=[of_in.cons, of_out.prod],
                        while_true=True)
 
     io = IOCoordinator()
     with io.runtime_sequence(tile_ty, tile_ty, tile_ty) as (in_tensor, _, out_tensor):
         tiler = TensorTiler2D(IMAGE_HEIGHT, IMAGE_WIDTH, TILE_HEIGHT, TILE_WIDTH)
         for t in io.tile_loop(itertools.islice(tiler.tile_iter(), 0, 1)):
-            io.fill(of_in.first, t, in_tensor)
-            io.drain(of_out.second, t, out_tensor, wait=True)
+            io.fill(of_in.prod, t, in_tensor)
+            io.drain(of_out.cons, t, out_tensor, wait=True)
 
     return Program(NPU1Col1(), io, workers=[my_worker])
 
 
 my_matrix_add_one().resolve_program(SequentialPlacer())
+# fmt: on

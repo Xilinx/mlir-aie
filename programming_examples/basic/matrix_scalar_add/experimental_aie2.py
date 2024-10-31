@@ -61,14 +61,14 @@ def my_matrix_add_one():
         of_in1.release(1)
         of_out1.release(1)
 
-    my_worker = Worker(core_fn, fn_args=[of_in.second, of_out.first], while_true=True)
+    my_worker = Worker(core_fn, fn_args=[of_in.cons, of_out.prod], while_true=True)
 
     io = IOCoordinator()
     with io.runtime_sequence(tile_ty, tile_ty, tile_ty) as (in_tensor, _, out_tensor):
         tiler = TensorTiler2D(IMAGE_HEIGHT, IMAGE_WIDTH, TILE_HEIGHT, TILE_WIDTH)
         for t in io.tile_loop(itertools.islice(tiler.tile_iter(), 0, 1)):
-            io.fill(of_in.first, t, in_tensor)
-            io.drain(of_out.second, t, out_tensor, wait=True)
+            io.fill(of_in.prod, t, in_tensor)
+            io.drain(of_out.cons, t, out_tensor, wait=True)
 
     return Program(dev, io, workers=[my_worker])
 

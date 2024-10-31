@@ -43,8 +43,8 @@ with io.runtime_sequence(vector_type, vector_type, vector_type) as (a_in, b_out,
         transfer_len=vector_size,
     )
     for t in io.tile_loop(iter([tile])):
-        io.fill(of_in.first, t, a_in)
-        io.drain(of_out.second, t, b_out, wait=True)
+        io.fill(of_in.prod, t, a_in)
+        io.drain(of_out.cons, t, b_out, wait=True)
 
 passthrough_fn = BinKernel(
     "passThroughLine",
@@ -61,9 +61,7 @@ def core_fn(of_in, of_out, passThroughLine):
     of_out.release(1)
 
 
-my_worker = Worker(
-    core_fn, [of_in.second, of_out.first, passthrough_fn], while_true=True
-)
+my_worker = Worker(core_fn, [of_in.cons, of_out.prod, passthrough_fn], while_true=True)
 
 my_program = Program(NPU1Col1(), io, workers=[my_worker])
 my_program.resolve_program(SequentialPlacer())

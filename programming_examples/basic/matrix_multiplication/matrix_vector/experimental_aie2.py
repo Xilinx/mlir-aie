@@ -79,11 +79,11 @@ def my_matmul():
     for i in range(n_cores):
         a_fifo = ObjectFifo(2, inA_ty, f"memA{i}")
         memA_fifos.append(a_fifo)
-        coreA_fifos.append(a_fifo.second.forward())  # TODO: transform if vectorized
+        coreA_fifos.append(a_fifo.cons.forward())  # TODO: transform if vectorized
         outC_fifos.append(ObjectFifo(2, outC_ty, f"outC{i}"))
         w = Worker(
             core_fn,
-            [coreA_fifos[i].second, B_fifo.second, outC_fifos[i].first, zero, matvec],
+            [coreA_fifos[i].cons, B_fifo.cons, outC_fifos[i].prod, zero, matvec],
             while_true=True,
         )
         workers.append(w)
@@ -102,11 +102,11 @@ def my_matmul():
         b_tile = TensorTile(
             1, K, offset=0, sizes=[M_div_m_div_n_cores, 1, 1, K], strides=[0, 0, 0, 1]
         )
-        io.fill(B_fifo.first, b_tile, b_in)
+        io.fill(B_fifo.prod, b_tile, b_in)
 
         for i, (a_tile, c_tile) in enumerate(io.tile_loop(A_tile_iter, C_tile_iter)):
-            io.fill(memA_fifos[i].first, a_tile, a_in)
-            io.drain(outC_fifos[i].second, c_tile, c_out, wait=True)
+            io.fill(memA_fifos[i].prod, a_tile, a_in)
+            io.drain(outC_fifos[i].cons, c_tile, c_out, wait=True)
 
     my_program = Program(NPU1Col4(), io, workers)
     my_program.resolve_program(SequentialPlacer())

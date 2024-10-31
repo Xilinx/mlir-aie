@@ -29,13 +29,13 @@ def my_passthrough(M, K, N, generate_acccess_map=False):
         return
 
     of_in = ObjectFifo(2, tensor_ty)
-    of_out = of_in.second.forward(AnyComputeTile)
+    of_out = of_in.cons.forward(AnyComputeTile)
 
     io = IOCoordinator()
     with io.runtime_sequence(tensor_ty, tensor_ty, tensor_ty) as (a_in, _, c_out):
         for t_in, t_out in io.tile_loop(tiler_in.tile_iter(), tiler_out.tile_iter()):
-            io.fill(of_in.first, t_in, a_in)
-            io.drain(of_out.second, t_out, c_out, wait=True)
+            io.fill(of_in.prod, t_in, a_in)
+            io.drain(of_out.cons, t_out, c_out, wait=True)
 
     my_program = Program(NPU1Col1(), io)
     my_program.resolve_program(SequentialPlacer())

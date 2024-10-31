@@ -54,13 +54,13 @@ def row_wise_bias_add(M, N, m, n):
             tiler.tile_iter(chunk_height=M // m, chunk_width=N // n),
             bias_tiler.tile_iter(chunk_width=N // n),
         ):
-            io.fill(in_fifo.first, t, inp)
-            io.fill(bias_fifo.first, bias_t, bias)
-            io.drain(out_fifo.second, t, out, wait=True)
+            io.fill(in_fifo.prod, t, inp)
+            io.fill(bias_fifo.prod, bias_t, bias)
+            io.drain(out_fifo.cons, t, out, wait=True)
 
     my_worker = Worker(
         core_fn,
-        fn_args=[in_fifo.second, bias_fifo.second, out_fifo.first, kernel_func],
+        fn_args=[in_fifo.cons, bias_fifo.cons, out_fifo.prod, kernel_func],
         while_true=True,
     )
     return Program(NPU1Col1(), io, workers=[my_worker])
