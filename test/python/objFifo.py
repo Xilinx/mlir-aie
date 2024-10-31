@@ -55,6 +55,15 @@ def objFifo_example():
         of2 = object_fifo("of2", T_, C_, 2, np.ndarray[(256,), np.dtype[np.int32]])
         of2.set_via_shared_mem(ObjectFifoPort.Consume)
 
+        of3 = object_fifo(
+            "of3",
+            M,
+            C_,
+            2,
+            np.ndarray[(2,), np.dtype[np.int32]],
+            initValues = [],
+        )
+
         C = Core(T_)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):

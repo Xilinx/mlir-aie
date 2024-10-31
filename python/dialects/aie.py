@@ -379,6 +379,7 @@ class object_fifo(ObjectFifoCreateOp):
         via_DMA=None,
         plio=None,
         disable_synchronization=None,
+        initValues=None,
     ):
         self.datatype = try_convert_np_type_to_mlir_type(datatype)
         if not isinstance(consumerTiles, List):
@@ -387,6 +388,8 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer = []
         if dimensionsToStream is None:
             dimensionsToStream = []
+        if initValues is None:
+            initValues = []
         of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
         super().__init__(
             sym_name=name,
@@ -399,6 +402,7 @@ class object_fifo(ObjectFifoCreateOp):
             via_DMA=via_DMA,
             plio=plio,
             disable_synchronization=disable_synchronization,
+            initValues=initValues,
         )
 
     def acquire(self, port, num_elem):
