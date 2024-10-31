@@ -80,6 +80,7 @@ static LogicalResult generateCDOBinariesSeparately(AIERTControl &ctl,
                                                    bool enableCores) {
   auto ps = std::filesystem::path::preferred_separator;
 
+  LLVM_DEBUG(llvm::dbgs() << "Generating aie_cdo_elfs.bin");
   if (failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_elfs.bin")
               .str(),
@@ -88,12 +89,14 @@ static LogicalResult generateCDOBinariesSeparately(AIERTControl &ctl,
           })))
     return failure();
 
+  LLVM_DEBUG(llvm::dbgs() << "Generating aie_cdo_init.bin");
   if (failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_init.bin")
               .str(),
           [&ctl, &targetOp] { return ctl.addInitConfig(targetOp); })))
     return failure();
 
+  LLVM_DEBUG(llvm::dbgs() << "Generating aie_cdo_enable.bin");
   if (enableCores &&
       failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_enable.bin")

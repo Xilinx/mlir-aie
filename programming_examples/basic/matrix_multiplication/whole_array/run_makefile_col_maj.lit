@@ -3,8 +3,8 @@
 //
 // REQUIRES: ryzen_ai, peano 
 //
-// RUN: mkdir -p %S/test_b_col_maj
-// RUN: cd %S/test_b_col_maj
+// RUN: mkdir -p test_b_col_maj
+// RUN: cd test_b_col_maj
 // RUN: make -f %S/Makefile clean
 // RUN: env n_aie_cols=4 b_col_maj=1 dtype_in=bf16 dtype_out=f32 M=256 K=256 N=256 m=32 k=32 n=32 make -f %S/Makefile 
 // RUN: %run_on_npu env n_aie_cols=4 b_col_maj=1 dtype_in=bf16 dtype_out=f32 M=256 K=256 N=256 m=32 k=32 n=32 make -f %S/Makefile run | FileCheck %s

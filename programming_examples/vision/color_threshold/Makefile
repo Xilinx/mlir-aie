@@ -35,7 +35,7 @@ build/aie2_${COLORTHRESHOLD_WIDTH}.mlir: ${srcdir}/aie2_colorThreshold.py
 build/final_${COLORTHRESHOLD_WIDTH}.xclbin: build/aie2_${COLORTHRESHOLD_WIDTH}.mlir build/threshold.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host --basic-alloc-scheme \
-    	--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
@@ -49,7 +49,7 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: ${targetname}.exe build/final_${COLORTHRESHOLD_WIDTH}.xclbin build/insts.txt
+run: ${targetname}.exe build/final_${COLORTHRESHOLD_WIDTH}.xclbin
 	${powershell} ./$< -x build/final_${COLORTHRESHOLD_WIDTH}.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:

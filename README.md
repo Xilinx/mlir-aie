@@ -1,7 +1,5 @@
 # MLIR-based AI Engine toolchain
 
-[![Build and Test](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTest.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTest.yml)
-
 [![Build and Test across Python versions](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml)
 
 [![Build and Test with AIE tools on Ryzen AI](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml)
@@ -210,7 +208,7 @@ For your design of interest, for instance from [programming_examples](../program
     > Note that the host code target has a `.exe` file extension even on Linux. Although unusual, this is an easy way for us to distinguish whether we want to compile device code or host code.
 
 
-1. Run (program arguments are just an example for add_one design)
+1. Run (program arguments are just an example for vector_scalar_add design)
     ```bash
     make run
     ```

@@ -30,7 +30,7 @@ build/conv2dk1.o: conv2dk1.cc
 build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1.o  
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
-    	--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
+		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%) 
 
 clean:
@@ -38,5 +38,5 @@ clean:
 		chess* *.o insts.txt \
 		*.log aie_partition.json *.bin BOOT.BIN _x test.exe
 
-run_py: 
+run_py: build/final.xclbin
 	${powershell} python3  ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE

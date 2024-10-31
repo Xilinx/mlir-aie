@@ -24,7 +24,7 @@ set(AIE_RUNTIME_TEST_TARGET
     "x86_64"
     CACHE STRING "Runtime architecture to test with.")
 
-set(AIE_VITIS_COMPONENTS "AIE;AIE2" CACHE STRING "Vitis components")
+set(AIE_VITIS_COMPONENTS "AIE;AIE2;AIE2P" CACHE STRING "Vitis components")
 
 if(POLICY CMP0068)
   cmake_policy(SET CMP0068 NEW)

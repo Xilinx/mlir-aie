@@ -141,7 +141,6 @@ add_aiert_library(xaienginecdo_static ${XAIE_SOURCE_DIR} STATIC)
 
 target_link_libraries(xaienginecdo_static PRIVATE cdo_driver_mlir_aie)
 target_compile_definitions(xaienginecdo_static PRIVATE -D__AIECDO__ -D__AIEDEBUG__)
-target_include_directories(xaienginecdo_static SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR})
 
 # just to make cmake happy since AIETargets will need to re-export
 # make sure not abs path...

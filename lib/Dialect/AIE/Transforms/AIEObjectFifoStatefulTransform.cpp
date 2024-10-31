@@ -48,11 +48,11 @@ public:
   LockAnalysis(DeviceOp &device) {
     // go over the locks created for each tile and update the index in
     // locksPerTile
-    for (auto lockOp : device.getOps<LockOp>()) {
+    device.walk([&](LockOp lockOp) {
       auto tile = lockOp.getTile();
       auto lockID = lockOp.getLockIDValue();
       locksPerTile[{tile, lockID}] = 1;
-    }
+    });
   }
 
   /// Given a tile, returns next usable lockID for that tile.
