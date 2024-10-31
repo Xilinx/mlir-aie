@@ -301,7 +301,7 @@ struct AIEObjectFifoStatefulTransformPass
   std::vector<LockOp> createObjectFifoLocks(OpBuilder &builder,
                                             LockAnalysis &lockAnalysis,
                                             ObjectFifoCreateOp op, int numElem,
-                                            TileOp creation_tile) {
+                                            TileOp creation_tile, bool linked) {
     std::vector<LockOp> locks;
     if (op.getDisableSynchronization())
       return locks;
@@ -331,8 +331,12 @@ struct AIEObjectFifoStatefulTransformPass
       // create corresponding aie2 locks
       int prodLockID = lockAnalysis.getLockID(creation_tile);
       assert(prodLockID >= 0 && "No more locks to allocate!");
+      int prodLockValue = numElem;
+      if (!linked && op.getRepeatCount().has_value())
+        prodLockValue *= op.getRepeatCount().value();
       auto prodLock = builder.create<LockOp>(
-          builder.getUnknownLoc(), creation_tile, prodLockID, numElem);
+          builder.getUnknownLoc(), creation_tile, prodLockID,
+          prodLockValue);
       prodLock.getOperation()->setAttr(
           SymbolTable::getSymbolAttrName(),
           builder.getStringAttr(op.name().str() + "_prod_lock"));
@@ -340,8 +344,12 @@ struct AIEObjectFifoStatefulTransformPass
 
       int consLockID = lockAnalysis.getLockID(creation_tile);
       assert(consLockID >= 0 && "No more locks to allocate!");
+      int consLockValue = 0;
+      if (!linked && op.getRepeatCount().has_value())
+        consLockValue *= op.getRepeatCount().value();
       auto consLock = builder.create<LockOp>(builder.getUnknownLoc(),
-                                             creation_tile, consLockID, 0);
+                                             creation_tile, consLockID,
+                                             consLockValue);
       consLock.getOperation()->setAttr(
           SymbolTable::getSymbolAttrName(),
           builder.getStringAttr(op.name().str() + "_cons_lock"));
@@ -442,7 +450,8 @@ struct AIEObjectFifoStatefulTransformPass
       objFifoLinks[*linkOp] = op;
     }
     std::vector<LockOp> locks = createObjectFifoLocks(builder, lockAnalysis, op,
-                                                      numElem, creation_tile);
+                                                      numElem, creation_tile,
+                                                      linked);
     buffersPerFifo[op] = buffers;
     locksPerFifo[op] = locks;
   }
