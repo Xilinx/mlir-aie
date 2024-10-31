@@ -347,9 +347,8 @@ struct AIEObjectFifoStatefulTransformPass
       int consLockValue = 0;
       if (!linked && op.getRepeatCount().has_value())
         consLockValue *= op.getRepeatCount().value();
-      auto consLock = builder.create<LockOp>(builder.getUnknownLoc(),
-                                             creation_tile, consLockID,
-                                             consLockValue);
+      auto consLock = builder.create<LockOp>(
+          builder.getUnknownLoc(), creation_tile, consLockID, consLockValue);
       consLock.getOperation()->setAttr(
           SymbolTable::getSymbolAttrName(),
           builder.getStringAttr(op.name().str() + "_cons_lock"));
@@ -449,9 +448,8 @@ struct AIEObjectFifoStatefulTransformPass
         numElem *= linkOp->getFifoIns().size();
       objFifoLinks[*linkOp] = op;
     }
-    std::vector<LockOp> locks = createObjectFifoLocks(builder, lockAnalysis, op,
-                                                      numElem, creation_tile,
-                                                      linked);
+    std::vector<LockOp> locks = createObjectFifoLocks(
+        builder, lockAnalysis, op, numElem, creation_tile, linked);
     buffersPerFifo[op] = buffers;
     locksPerFifo[op] = locks;
   }
