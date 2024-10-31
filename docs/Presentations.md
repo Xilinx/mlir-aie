@@ -9,7 +9,7 @@
   </thead>
   <tbody>
     <tr>
-      <td style="vertical-align: middle;">MICRO 2024 Workshop - Leveraging the IRON AI Engine API to program the Ryzne AI NPU</td>
+      <td style="vertical-align: middle;">MICRO 2024 Workshop - Leveraging the IRON AI Engine API to program the Ryzen AI NPU</td>
       <td style="vertical-align: middle;"><a href="https://www.amd.com/content/dam/amd/en/documents/products/processors/ryzen/ai/iron-for-ryzen-ai-tutorial-micro-2024.pdf"><img src="https://xilinx.github.io/xup_aie_training/images/pdf.png" alt="alt text" /></a></td>
     </tr>
     <tr>
