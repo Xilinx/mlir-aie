@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: %PYTHON aiecc.py --unified %s
-// RUN: %PYTHON aiecc.py --no-unified %s
+// RUN: %PYTHON aiecc.py --unified --alloc-scheme basic-sequential %s
+// RUN: %PYTHON aiecc.py --no-unified --alloc-scheme basic-sequential %s
 
 module @test00_itsalive {
   %tile12 = aie.tile(1, 2)

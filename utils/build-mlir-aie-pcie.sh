@@ -53,7 +53,7 @@ if [ -z "$LIBXAIE_DIR" ] || [ -z "$HSAKMT_DIR" ]; then
   mkdir aie-rt-x86_64-hsa
   mkdir aie-rt-x86_64-hsa/lib/
   cd aie-rt
-  git checkout phoenix_v2023.2
+  git checkout strix_2024.2 
   cd driver/src
   make -f Makefile.Linux CFLAGS="-D__AIEAMDAIR__"
   cp -r ../include ../../../aie-rt-x86_64-hsa
