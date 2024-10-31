@@ -15,7 +15,9 @@ def run_checks(n_aie_cols, n_aie_rows, M, N, K, m, n, k):
 
     # Define tilers
     c_tiler = TensorTiler2D(M, N, m * n_aie_rows, n)
-    c_iter = c_tiler.tile_iter(tile_repeat_step_horizontal=n_aie_cols, iter_step=tb_n_rows)
+    c_iter = c_tiler.tile_iter(
+        tile_repeat_step_horizontal=n_aie_cols, iter_step=tb_n_rows
+    )
 
     for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
         for pingpong in [0, 1]:
@@ -54,6 +56,7 @@ def run_checks(n_aie_cols, n_aie_rows, M, N, K, m, n, k):
                     print(f"Expected: {expected_c_tile}")
                     print(f"Actual: {c_tile}")
 
+
 def matrix_whole_array_tiling_sweep():
     n_aie_cols_sweep = [1, 2, 4]  # TODO: when partial, add 3
     n_aie_rows_sweep = [1, 2, 4]  # TODO: when partial, add 3
@@ -83,6 +86,7 @@ def matrix_whole_array_tiling_sweep():
                                         n=n,
                                     )
                                     return
+
 
 if __name__ == "__main__":
     matrix_whole_array_tiling_sweep()
