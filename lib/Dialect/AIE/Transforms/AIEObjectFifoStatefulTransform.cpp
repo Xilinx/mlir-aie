@@ -523,11 +523,10 @@ struct AIEObjectFifoStatefulTransformPass
       createShimDMA(device, builder, op, channelDir, channelIndex, lockMode,
                     dims);
     } else if (op.getProducerTileOp().isMemTile() &&
-               channelDir == DMAChannelDir::MM2S) {
+               channelDir == DMAChannelDir::MM2S && !pad_dims.empty()) {
       createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
                        dims, pad_dims);
-    } else if (op.getProducerTileOp().isMemTile() &&
-               channelDir == DMAChannelDir::S2MM) {
+    } else if (op.getProducerTileOp().isMemTile()) {
       createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
                        dims, nullptr);
     } else {
