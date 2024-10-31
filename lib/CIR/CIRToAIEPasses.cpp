@@ -365,16 +365,6 @@ struct PrepareCoreLowering
           // scopeOp.dump();
           //  The aie++ tile value
           rewriter.setInsertionPoint(op);
-#if 0
-          auto tile = op.getOperand(0);
-          auto pseudoTile = rewriter.create<mlir::UnrealizedConversionCastOp>(
-              op.getLoc(), rewriter.getIndexType(), tile);
-          pseudoTile.dump();
-          // Cannot create a CoreOp here because the verifyer will expect some
-          // AIE neighborhood
-          rewriter.create<xilinx::AIE::CoreOp>(op.getLoc(),
-                                               pseudoTile.getOutputs().front());
-#endif
           rewriter.eraseOp(op);
           //        rewriter.insert(coreOp);
           // coreOp.dump();
@@ -464,145 +454,6 @@ void eraseOpsAndUsers(OpRange &&opsToErase) {
     op->erase();
   }
 }
-
-// Lower aie::tile::program(<tile code>)
-void lowerTileProgram(xilinx::AIE::TileOp t, mlir::cir::CallOp c,
-                      mlir::ConversionPatternRewriter &rewriter) {
-  if (auto calledFunc =
-          mlir::SymbolTable::lookupNearestSymbolFrom<mlir::cir::FuncOp>(
-              c, c.getCalleeAttr())) {
-    // The last function instruction is cir.return and the one before
-    // is the call to the lambda
-    // calledFunc.getBlocks().front().back().dump();
-    auto lambdaCall = mlir::dyn_cast<mlir::cir::CallOp>(
-        *std::next(calledFunc.getBlocks().front().rbegin()));
-    lambdaCall.emitRemark("lambdaCall");
-    if (auto lambdaFunc =
-            mlir::SymbolTable::lookupNearestSymbolFrom<mlir::cir::FuncOp>(
-                lambdaCall, lambdaCall.getCalleeAttr())) {
-      lambdaFunc.emitRemark("Tile core lambda");
-      assert(lambdaFunc.getLambda());
-      auto scopeOp = c->getParentOfType<mlir::cir::ScopeOp>();
-      scopeOp.emitRemark("Scope");
-      // Create the core op at the end of the block owning the tile op, which is
-      // inside the device op region
-      rewriter.setInsertionPointToEnd(t->getBlock());
-      auto coreOp = rewriter.create<xilinx::AIE::CoreOp>(c.getLoc(), t);
-      // Create the empty block of the core op region
-      coreOp.getRegion().emplaceBlock();
-      coreOp.emitRemark("Brand-new core");
-      mlir::UnrealizedConversionCastOp ucc;
-      scopeOp.getRegion().front().walk<mlir::WalkOrder::PreOrder>(
-          [&](mlir::UnrealizedConversionCastOp u) {
-            u.emitRemark("Found UnrealizedConversionCastOp inside the scope");
-            ucc = u;
-            return mlir::WalkResult::interrupt();
-          });
-      // Values can be replaced while cloning, not operations
-      mlir::IRMapping irm;
-      // Connect the input of old cast inside the clone to the output of tile op
-      irm.map(ucc.getOperand(0), t.getResult());
-      rewriter.setInsertionPointToEnd(&coreOp.getRegion().front());
-      auto *clone = rewriter.clone(*scopeOp.getOperation(), irm);
-      clone->emitRemark("Clone");
-      coreOp.emitRemark("Stuffed core");
-      scopeOp.emitRemark("Scope after cloning");
-    }
-  }
-}
-
-struct DeviceLoweringRP
-    : public mlir::OpConversionPattern<mlir::UnrealizedConversionCastOp> {
-  using mlir::OpConversionPattern<
-      mlir::UnrealizedConversionCastOp>::OpConversionPattern;
-
-  // \todo Find a less ugly way to access the analysis. How is it possible
-  // for a pattern to access some contextual information? It should be OK
-  // since it is a module pass, so no parallelism here.
-  static inline CIRToAIETypesAnalysis *cat;
-
-  mlir::LogicalResult
-  matchAndRewrite(mlir::UnrealizedConversionCastOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const final {
-    op.emitRemark("DeviceLowering");
-    if (auto aieLike = cat->moduleTypes[op.getType(0)];
-        aieLike && aieLike->base == "aie::device") {
-      auto deviceName = aieLike->subMatches[0];
-      auto deviceId =
-          xilinx::AIE::symbolizeEnum<xilinx::AIE::AIEDevice>(deviceName);
-      if (!deviceId)
-        // Actually this test cannot happens since the API of
-        // xilinx::AIE::symbolizeEnum is strange: even if it returns a
-        // std::optional it errors without returning
-        op.emitError("aie::device incorrect for '") << deviceName << "'";
-      rewriter.setInsertionPoint(op);
-      auto deviceOp =
-          rewriter.create<xilinx::AIE::DeviceOp>(op.getLoc(), *deviceId);
-      // The aie.device requires one block
-      deviceOp.getRegion().emplaceBlock();
-      // Create all the following code inside the device region
-      rewriter.setInsertionPointToStart(deviceOp.getBody());
-      for (mlir::Operation *user : op.getResult(0).getUsers()) {
-        if (auto tileCast =
-                mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(user)) {
-          tileCast.emitRemark("tileCast from device");
-          if (auto t = cat->moduleTypes[tileCast.getType(0)]) {
-            // llvm::errs() << t->str() << " value \n";
-            auto col = t->subMatches[0];
-            // llvm::errs() << "col" << col << " \n";
-            auto row = t->subMatches[1];
-            // llvm::errs() << " row " << row << " \n";
-            auto tileOp = rewriter.create<xilinx::AIE::TileOp>(
-                tileCast.getLoc(), std::stoi(col), std::stoi(row));
-            for (mlir::Operation *user : tileCast.getResult(0).getUsers()) {
-              if (auto bufCast =
-                      mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(user)) {
-                bufCast.emitRemark("Buffer cast from tile");
-                auto mrt = bufferMemrefType(bufCast.getType(0));
-                auto bufferOp = rewriter.create<xilinx::AIE::BufferOp>(
-                    bufCast.getLoc(), mrt, tileOp.getResult());
-                // Keep track of the buffer op behind the C++ type
-                cat->moduleTypes[bufCast.getType(0)]->data = bufferOp;
-                // Erase the buffer cast which has been translated
-                rewriter.eraseOp(bufCast);
-                continue;
-              }
-              if (auto callOp = mlir::dyn_cast<mlir::cir::CallOp>(user)) {
-                callOp.emitRemark("CallOp using a tile");
-                if (isCallingFunctionWithAnnotation(callOp,
-                                                    {"aie.tile.program"})) {
-                  // if (false)
-                  lowerTileProgram(tileOp, callOp, rewriter);
-                  // Erase the scope owning the call operation representing the
-                  // core op which has been translated
-                  rewriter.eraseOp(
-                      callOp->getParentOfType<mlir::cir::ScopeOp>());
-                }
-                continue;
-              }
-              user->emitError("User of tile cast not handled");
-            }
-          }
-          // Erase the cast representing the tile op which has been translated
-          rewriter.eraseOp(tileCast);
-          continue;
-        }
-        user->emitRemark("User of device cast not handled");
-      }
-      // Replace the original cast by the same but connected to the device
-      rewriter.setInsertionPoint(op);
-      rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
-          op, op.getResult(0).getType(), deviceOp.getResult());
-      for (mlir::Operation *user : op.getResult(0).getUsers()) {
-        user->emitRemark("User of cast");
-      }
-      deviceOp->getParentOfType<mlir::cir::FuncOp>().emitRemark(
-          "Rewritten function");
-      return mlir::success();
-    }
-    return mlir::failure();
-  }
-};
 
 struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
 
@@ -768,22 +619,6 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
     // Compute the analysis for the module since it is a module pass.
     cat = &getAnalysis<CIRToAIETypesAnalysis>();
     deviceLowering(getOperation());
-#if 0
-    // \todo Clean up this mess
-    DeviceLoweringRP::cat = &cat;
-    // See mlir/examples/toy/Ch5/mlir/LowerToAffineLoops.cpp
-    mlir::ConversionTarget target{getContext()};
-    target.addLegalDialect<xilinx::AIE::AIEDialect>();
-    target.addDynamicallyLegalOp<mlir::UnrealizedConversionCastOp>(
-        [](mlir::UnrealizedConversionCastOp op) {
-          return !isUnrealizedConversionCastWithAnnotation(op, {"aie::device"});
-        });
-    mlir::RewritePatternSet patterns{&getContext()};
-    patterns.add<DeviceLoweringRP>(&getContext());
-    if (failed(applyPartialConversion(getOperation(), target,
-                                      std::move(patterns))))
-      signalPassFailure();
-#endif
   }
 };
 
