@@ -3,6 +3,39 @@ import os
 import sys
 from typing import Callable
 
+"""
+# Notes:
+* Tensor must be divisible evenly by Tile
+* TileGroups may NOT be divisible evenly by Tensor (iter supports partial)
+* TileStepGroups may NOT be divisible evenly by Tensor (iter supports partial)
+
+## Configuration Fields
+- `tile_group_height: int = 1`: Contiguous group of tiles within column; will access tile to tile within a tile group before accessing another group. Tiles within a group are traversed based on `tensor_col_major` parameter of `TensorTiler2D` init method.
+- `tile_group_width: int = 1`: Contiguous group of tiles within row; will access tile to tile within a tile group before accessing another group. Tiles within a gorup are traversed based on `tensor_col_major` parameter of `TensorTiler2D` init method.
+- `tile_repeat_step_horizontal: int | None = None`: Pattern of accessing tiles with a skip (step) between them. The step value indicates the number of tiles before a repeat happens; e.g., with 1, all tyles in a row are selected. With 2, every other tile in the row is selected. Tile groups within the row are accessed sequentially along the row.
+- `tile_repeat_step_vertical: int | None = None`: Pattern of accessing tiles with a skip (step) between them. The step value indicates the number of tiles before a repeat happens; e.g., with 1, all tyles in a row are selected. With 2, every other tile in the row is selected. Tile groups within the row are accessed sequentially along the row.
+- `tile_repeat: int = 1`: Respecting access order of elements within a tile, this field will repeat the tile access pattern without offset, effectively specifying 'n' copies of the tile.
+- `col_major: bool = False`: Order in which the iterator produces tiles
+- `tile_step_priority: int = False`: By default, tiles within a group at each step in a `tile_repeat_step_(horizontal|vertical)` are accessed before the repeat step is done. This flips the order, so that all tiles in a repeat step row/column are accessed before this pattern is repeated across the group.
+
+
+TileIterTypes:
+- SimpleTiler(RepeatCount=N)
+- TileGroupTiler(TileGroupWidth=N, TileGroupHeight=N, RepeatCount=N, TileColMajor=True|False, IterColMajor=True|False)
+- TileStepGroupVerticalTiler(VerticalTileStep, RepeatCount=All|N, HorizontalRepeat=N, TileColMajor=True|False, IterColMajor=True|False, IterScheme=TensorComplete|BlockComplete)
+- TileStepGroupHorizontalTiler(HorizontalTileStep, RepeatCount=All|N, VerticalRepeat=N, TileColMajor=True|False, IterColMajor=True|False, IterScheme=TensorComplete|BlockComplete)
+
+Base Code Includes:
+* Graphing, including iterative gif
+* Graphing for larger sizes
+
+## Valid Configurations:
+- Can always specify row/column major for iterator, always affected (if applicable) by tile_col_major/tensor_col_major
+- Any Combination Of: (TileGroupWidth, TileGroupHeight, TileRepeat)
+- TileRepeatStepHorizontal + Any of(TileGroupWidth, tile_step_priority)
+- TileRepeatStepVertical + Any of (TileGroupHeight tile_step_priority)
+"""
+
 
 def ceildiv(a, b):
     return -(a // -b)
