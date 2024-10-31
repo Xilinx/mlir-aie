@@ -6,10 +6,10 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 
-# REQUIRES: ryzen_ai, valid_xchess_license
+# REQUIRES: ryzen_ai, peano
 #
 # RUN: %python %S/aie2.py 4096 > ./aie2.mlir
-# RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
+# RUN: %python aiecc.py --no-aiesim --no-xchesscc --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
 # RUN: %run_on_npu ./test.exe -x final.xclbin -i insts.txt -k MLIR_AIE -l 4096 | FileCheck %s
 # CHECK: PASS!
@@ -19,6 +19,7 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
+from aie.helpers.dialects.ext.scf import _for as range_
 
 N = 4096
 dev = AIEDevice.npu1_1col
@@ -57,7 +58,18 @@ def compute_repeat():
             of_in = object_fifo("in", ShimTile, ComputeTile, 1, tensor_ty)
             of_out = object_fifo("out", ComputeTile, ShimTile, 1, tensor_ty)
             of_out.set_repeat_count(repeat_count)
-            object_fifo_link(of_in, of_out)
+            #object_fifo_link(of_in, of_out)
+
+            # Compute tile
+            @core(ComputeTile)
+            def core_body():
+                for _ in range_(sys.maxsize):
+                    elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
+                    elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
+                    for i in range_(N):
+                        elemOut[i] = elemIn[i]
+                    of_in.release(ObjectFifoPort.Consume, 1)
+                    of_out.release(ObjectFifoPort.Produce, 1)
 
             # To/from AIE-array data movement
             @runtime_sequence(tensor_ty, tensor_ty, tensor_out_ty)

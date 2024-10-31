@@ -1590,6 +1590,9 @@ struct AIEObjectFifoStatefulTransformPass
 
         // release locks
         int numLocks = releaseOp.relNumber();
+        // account for repetition
+        if (op.getRepeatCount().has_value())
+          numLocks *= op.getRepeatCount().value();
         createUseLocks(builder, op, port, relPerFifo, numLocks,
                        LockAction::Release);
 
@@ -1675,6 +1678,10 @@ struct AIEObjectFifoStatefulTransformPass
           numCreate = numLocks - alreadyAcq;
         else
           numCreate = 0;
+
+        // account for repetition
+        if (op.getRepeatCount().has_value())
+          numCreate *= op.getRepeatCount().value();
 
         auto dev = op->getParentOfType<DeviceOp>();
         if (auto &targetArch = dev.getTargetModel();
