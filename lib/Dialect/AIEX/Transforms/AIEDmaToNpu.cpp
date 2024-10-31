@@ -425,7 +425,7 @@ public:
       d2_stride = IntegerAttr::get(i32ty, strides[2]);
 
       // d2_size
-      if(targetModel.isMemTile(col, 0)) // Need to be any row
+      if (targetModel.isMemTile(col, 0)) // Need to be any row
         d2_size = IntegerAttr::get(i32ty, sizes[2]);
       else
         d2_size = IntegerAttr::get(i32ty, 1);
@@ -488,8 +488,10 @@ public:
     if (!isMM2S)
       issue_token = BoolAttr::get(ctx, true);
 
-
-    if(targetModel.isMemTile(col, 0) && (!isMM2S) && (op.getD0ZeroBefore() != 0 || op.getD0ZeroAfter() != 0 || op.getD1ZeroBefore() != 0 || op.getD1ZeroAfter() != 0 || op.getD2ZeroBefore() != 0 || op.getD2ZeroAfter() != 0))
+    if (targetModel.isMemTile(col, 0) && (!isMM2S) &&
+        (op.getD0ZeroBefore() != 0 || op.getD0ZeroAfter() != 0 ||
+         op.getD1ZeroBefore() != 0 || op.getD1ZeroAfter() != 0 ||
+         op.getD2ZeroBefore() != 0 || op.getD2ZeroAfter() != 0))
       op->emitOpError("MemTile supports zero padding only on MM2S direction");
 
     rewriter.create<NpuWriteBdOp>(
