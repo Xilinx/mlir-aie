@@ -10,6 +10,7 @@
 #include <any>
 #include <array>
 #include <cassert>
+#include <queue>
 
 #include "aie/CIR/CIRToAIEPasses.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
@@ -176,6 +177,57 @@ mlir::MemRefType bufferMemrefType(mlir::Type buffer) {
     }
   }
   return {};
+}
+
+// Since an aie.device has its own symbol table, copy recursively all the
+// symbols defined at the module level which are referenced by operations inside
+// an aie.device into the aie.device.
+void cloneReferencedSymbolsIntoDevice(xilinx::AIE::DeviceOp device) {
+  // Speed-up symbol look-ups by defining some SymbolTable
+  mlir::SymbolTable deviceSymbolTable{device};
+  auto module = device->getParentOfType<mlir::ModuleOp>();
+  mlir::SymbolTable moduleSymbolTable{module};
+  mlir::OpBuilder builder{device};
+  // Look recursively starting from the aie.device itself
+  std::queue<mlir::Operation *> toVisit{{device}};
+  while (!toVisit.empty()) {
+    auto *opToVisit = toVisit.front();
+    toVisit.pop();
+    opToVisit->walk([&](mlir::Operation *op) {
+      // Only look at the operations using some symbols
+      if (auto user = mlir::dyn_cast<mlir::SymbolUserOpInterface>(op)) {
+        op->emitRemark(
+            "importCalledFunctionsInSymbolTable: SymbolUserOpInterface!");
+        // Look for all the symbol references used by this operation
+        op->getAttrDictionary().walk([&](mlir::SymbolRefAttr symbolRef) {
+          op->emitRemark("importCalledFunctionsInSymbolTable: symbolRef = ")
+              << symbolRef;
+          if (deviceSymbolTable.lookup(symbolRef.getRootReference())) {
+            llvm::errs() << "In Device!\n";
+            // No need to visit it again if it is already in the device
+            return;
+          }
+          // Get the referenced operation from the module symbol table
+          auto *moduleSymbol =
+              moduleSymbolTable.lookup(symbolRef.getRootReference());
+          assert(moduleSymbol && "The symbol should be found in the module");
+          llvm::errs() << "In Module!\n";
+          moduleSymbol->emitRemark(
+              "importCalledFunctionsInSymbolTable: cloning...");
+          // Newly discovered function not already in the device is used by
+          // existing code and do not refer // TODO: o internal code, so add
+          // it at the beginning inside the aie.device
+          builder.setInsertionPointToStart(device.getBody());
+          auto *clone = builder.clone(*moduleSymbol);
+          deviceSymbolTable.insert(clone);
+          clone->emitRemark("importCalledFunctionsInSymbolTable: clone");
+          // Need to handle any missing symbols from the newly created
+          // operation
+          toVisit.push(clone);
+        });
+      }
+    });
+  }
 }
 
 // Lower C++ code like \code aie::device<aie::npu1> into an \code
@@ -610,6 +662,8 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
             coreOp.getRegion().emplaceBlock();
             // The aie.core requires a terminator
             b.setInsertionPointToEnd(&coreOp.getRegion().back());
+            // Add right away an aie.end to have the verifyers happy even if it
+            // makes the following more complicated
             b.create<xilinx::AIE::EndOp>(callOp.getLoc());
             coreOp.emitRemark("tryTileProgramLowering: Brand-new core");
             // Get the cast connecting the aie.tile to the lambda call
@@ -625,6 +679,10 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
             irm.map(tileCastOp.getOperand(0), tileOp.getResult());
             b.setInsertionPointToStart(&coreOp.getRegion().front());
             auto *clone = b.clone(*scopeOp.getOperation(), irm);
+            // Since aie.device has a SymbolTable, all the called function need
+            // to be present in the aie.device
+            cloneReferencedSymbolsIntoDevice(
+                clone->getParentOfType<xilinx::AIE::DeviceOp>());
             clone->emitRemark("tryTileProgramLowering: Clone");
             coreOp.emitRemark("tryTileProgramLowering: Stuffed core");
             scopeOp.emitRemark("tryTileProgramLowering: Scope after cloning");
