@@ -653,13 +653,12 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
             assert(lambdaFunc.getLambda());
             auto scopeOp = callOp->getParentOfType<mlir::cir::ScopeOp>();
             scopeOp.emitRemark("tryTileProgramLowering: Scope");
-            // Create the aie.core op at the end of the block owning the
-            // aie.tile op, which is the one inside the aie.device op region
-            b.setInsertionPointToEnd(tileOp->getBlock());
             auto coreOp =
                 b.create<xilinx::AIE::CoreOp>(callOp.getLoc(), tileOp);
             // Create the empty block of the aie.core op region
             coreOp.getRegion().emplaceBlock();
+            // Do not mess up with current insertion point inside aie.tile
+            mlir::OpBuilder::InsertionGuard _{b};
             // The aie.core requires a terminator
             b.setInsertionPointToEnd(&coreOp.getRegion().back());
             // Add right away an aie.end to have the verifyers happy even if it
