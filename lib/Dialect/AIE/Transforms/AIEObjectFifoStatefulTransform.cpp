@@ -335,8 +335,7 @@ struct AIEObjectFifoStatefulTransformPass
       if (!linked && op.getRepeatCount().has_value())
         prodLockValue *= op.getRepeatCount().value();
       auto prodLock = builder.create<LockOp>(
-          builder.getUnknownLoc(), creation_tile, prodLockID,
-          prodLockValue);
+          builder.getUnknownLoc(), creation_tile, prodLockID, prodLockValue);
       prodLock.getOperation()->setAttr(
           SymbolTable::getSymbolAttrName(),
           builder.getStringAttr(op.name().str() + "_prod_lock"));
