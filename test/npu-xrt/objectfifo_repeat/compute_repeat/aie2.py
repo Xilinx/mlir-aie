@@ -58,7 +58,6 @@ def compute_repeat():
             of_in = object_fifo("in", ShimTile, ComputeTile, 1, tensor_ty)
             of_out = object_fifo("out", ComputeTile, ShimTile, 1, tensor_ty)
             of_out.set_repeat_count(repeat_count)
-            #object_fifo_link(of_in, of_out)
 
             # Compute tile
             @core(ComputeTile)
