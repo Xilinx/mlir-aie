@@ -52,6 +52,7 @@ module {
                          d1_size = 8 : i32,
                          d1_zero_after = 0 : i32,
                          d1_zero_before = 0 : i32,
+                         d2_size = 1 : i32,
                          d2_stride = 9 : i32,
                          d2_zero_after = 0 : i32,
                          d2_zero_before = 0 : i32,

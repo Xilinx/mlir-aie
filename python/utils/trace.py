@@ -533,6 +533,7 @@ def configure_shimtile_tracing_aie2(
         d1_stride=0,
         d1_zero_after=0,
         d1_zero_before=0,
+        d2_size=1,
         d2_stride=0,
         d2_zero_after=0,
         d2_zero_before=0,
