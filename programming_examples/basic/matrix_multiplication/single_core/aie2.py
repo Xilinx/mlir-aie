@@ -48,7 +48,15 @@ def main():
     argparser.add_argument("--trace_size", type=int, default=0)
     args = argparser.parse_args()
     my_matmul(
-        args.M, args.K, args.N, args.m, args.k, args.n, args.dtype_in, args.dtype_out, args.trace_size
+        args.M,
+        args.K,
+        args.N,
+        args.m,
+        args.k,
+        args.n,
+        args.dtype_in,
+        args.dtype_out,
+        args.trace_size,
     )
 
 
