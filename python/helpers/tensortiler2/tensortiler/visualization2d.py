@@ -2,6 +2,8 @@ import numpy as np
 import os
 import sys
 
+from .utils import ceildiv
+
 
 def visualize_from_access_tensors(
     access_order_tensor: np.ndarray,
@@ -20,15 +22,22 @@ def visualize_from_access_tensors(
             "You must pip install matplotlib in order to render access graphs"
         )
 
+    tensor_height, tensor_width = access_order_tensor.shape
+    fig_width = 7
+    if tensor_width < 32:
+        fig_width = 5
+    height_width_ratio = ceildiv(tensor_height, tensor_width)
+    fig_height = min(fig_width, fig_width * height_width_ratio)
+
     if not (access_count_tensor is None):
-        fig, (ax_order, ax_count) = plt.subplots(1, 2)
+        fig_height *= 2
+        fig, (ax_order, ax_count) = plt.subplots(2, 1)
     else:
         fig, ax_order = plt.subplots()
-    _access_heatmap = ax_order.pcolor(access_order_tensor, cmap="gnuplot2")
 
-    # TODO: make function of tensor dims? keep in mind different # of subplots?
-    fig.set_figheight(15)
-    fig.set_figwidth(15)
+    fig.set_figheight(fig_height)
+    fig.set_figwidth(fig_width)
+    _access_heatmap = ax_order.pcolor(access_order_tensor, cmap="gnuplot2")
 
     # Thanks to https://stackoverflow.com/questions/14406214/moving-x-axis-to-the-top-of-a-plot-in-matplotlib
     # put the major ticks at the middle of each cell, (0, 0) in upper left corner
