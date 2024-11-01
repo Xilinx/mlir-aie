@@ -464,9 +464,13 @@ struct AIEObjectFifoStatefulTransformPass
       builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqLockAction,
                                 acqMode);
 
-    if (!dims.getValue().empty() && !padDimensions.getValue().empty()) {
-      builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims,
-                              padDimensions);
+    if (!dims.getValue().empty() && padDimensions) {
+      if (!padDimensions.getValue().empty())
+        builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len,
+                                dims, padDimensions);
+      else
+        builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len,
+                                dims);
     } else if (!dims.getValue().empty()) {
       builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims);
     } else {
@@ -523,11 +527,13 @@ struct AIEObjectFifoStatefulTransformPass
       createShimDMA(device, builder, op, channelDir, channelIndex, lockMode,
                     dims);
     } else if (op.getProducerTileOp().isMemTile() &&
-           channelDir == DMAChannelDir::MM2S) {
+               channelDir == DMAChannelDir::MM2S &&
+               !pad_dims.getValue().empty()) {
       createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
                        dims, pad_dims);
     } else if (op.getProducerTileOp().isMemTile() &&
-               channelDir == DMAChannelDir::S2MM) {
+               (channelDir == DMAChannelDir::S2MM ||
+                pad_dims.getValue().empty())) {
       createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
                        dims, nullptr);
     } else {
@@ -1478,8 +1484,7 @@ struct AIEObjectFifoStatefulTransformPass
         BDDimLayoutArrayAttr consumerDims =
             consumer.getDimensionsFromStreamPerConsumer()[0];
         createDMA(device, builder, consumer, consumerChan.direction,
-                  consumerChan.channel, 1, consumerDims,
-                  nullptr);
+                  consumerChan.channel, 1, consumerDims, nullptr);
         // generate objectFifo allocation info
         builder.setInsertionPoint(&device.getBody()->back());
 
