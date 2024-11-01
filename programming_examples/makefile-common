@@ -3,7 +3,7 @@ AIETOOLS_DIR ?= $(shell realpath $(dir $(shell which xchesscc))/../)
 AIE_INCLUDE_DIR ?= ${AIETOOLS_DIR}/data/versal_prod/lib
 AIE2_INCLUDE_DIR ?= ${AIETOOLS_DIR}/data/aie_ml/lib
 
-AIEOPT_DIR ?= $(shell realpath $(dir $(shell which aie-opt))/../)
+AIEOPT_DIR ?= $(shell realpath $(dir $(shell which aie-opt))/..)
 
 WARNING_FLAGS = -Wno-parentheses -Wno-attributes -Wno-macro-redefined
 
