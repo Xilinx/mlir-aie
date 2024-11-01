@@ -1,3 +1,5 @@
+from collections import abc
+from copy import deepcopy
 from typing import Callable, Sequence
 
 from .tensortile import TensorTile
@@ -8,7 +10,11 @@ from .utils import (
 )
 
 
-class TensorTileIter:
+class TensorTileSequence(abc.MutableSequence, abc.Iterable):
+    """
+    TensorTileSequence is a MutableSequence and an Iterable which is a thin wrapper around a list[TensorTiles].
+    """
+
     def __init__(
         self,
         tensor_dims: Sequence[int],
@@ -54,13 +60,12 @@ class TensorTileIter:
         # Validate and set num steps
         if num_steps < 1:
             raise ValueError(f"Number of steps must be >= 1 (but is {num_steps})")
-        self._num_steps = num_steps
 
         # Pre-calculate tiles, because better for error handling up-front (and for visualizing full iter)
         # This is somewhat against the mentality behind iterations, but should be okay at the scale this
         # class will be used for (e.g., no scalability concerns with keeping all tiles in mem)
         self._tiles = []
-        for step in range(self._num_steps):
+        for step in range(num_steps):
             self._offset = self._offset_fn(step, self._offset)
             self._sizes = self._sizes_fn(step, self._sizes)
             self._strides = self._strides_fn(step, self._strides)
@@ -74,20 +79,31 @@ class TensorTileIter:
                 )
             )
 
-    def __iter__(self):
-        return self
+    def __contains__(self, tile: TensorTile):
+        return tile in self._tiles
 
-    def __next__(self) -> TensorTile:
-        if self._current_step == self._num_steps:
-            raise StopIteration
-        self._current_step += 1
-        return self._tiles[self._current_step - 1]
+    def __iter__(self):
+        return deepcopy(self._tiles)
+
+    def __len__(self) -> int:
+        return len(self._tiles)
+
+    def __getitem__(self, idx: int) -> TensorTile:
+        return self._tiles[idx]
+
+    def __setitem__(self, idx: int, tile: TensorTile):
+        self._tiles[idx] = deepcopy(tile)
+
+    def __delitem__(self, idx: int):
+        del self._tiles[idx]
+
+    def insert(self, idx: int, tile: TensorTile):
+        self._tiles.insert(idx, tile)
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
             return (
                 self._tiles == other._tiles
-                and self._num_steps == other._num_steps
                 and self._current_step == other._current_step
             )
         else:
