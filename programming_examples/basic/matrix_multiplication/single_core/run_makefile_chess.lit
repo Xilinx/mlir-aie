@@ -7,5 +7,7 @@
 // RUN: cd test_chess
 // RUN: make -f %S/Makefile.chess clean
 // RUN: make -f %S/Makefile.chess
+// RUN: make -f %S/Makefile.chess clean
+// RUN: make -f %S/Makefile.chess trace
 // RUN: %run_on_npu make -f %S/Makefile.chess run | FileCheck %s
 // CHECK: PASS!
