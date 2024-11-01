@@ -90,7 +90,11 @@ all: ${xclbin_target} ${targetname}.exe
 
 build/%.o: ${kernels_dir}/%.cc
 	mkdir -p ${@D}
+ifeq ($(CHESS), true)
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+else
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+endif
 
 ${mlir_target}: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}

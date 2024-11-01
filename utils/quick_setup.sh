@@ -53,33 +53,28 @@ rm -rf my_install
 $my_python -m venv ironenv
 source ironenv/bin/activate
 python3 -m pip install --upgrade pip
-VPP=`which xchesscc`
-if test -f "$VPP"; then
-  mkdir -p my_install
-  pushd my_install
-  pip download mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/
-  unzip -q mlir_aie-*_x86_64.whl
-  pushd mlir_aie/python
-  pip download aie_python_bindings -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/
-  unzip -q -o aie_python_bindings*.whl
-  rm *.whl
-  popd
-  pip download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro/
-  unzip -q mlir-*_x86_64.whl
-  pip -q download llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
-  unzip -q llvm_aie*.whl
-  rm -rf mlir*.whl
-  rm -rf llvm_aie*.whl
-  export PEANO_INSTALL_DIR=`realpath llvm-aie`
-  popd
-  python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements.txt
-  HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_extras.txt
-  python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_ml.txt
-  source utils/env_setup.sh my_install/mlir_aie my_install/mlir
-  pushd programming_examples
-  echo "PATH              : $PATH"
-  echo "LD_LIBRARY_PATH   : $LD_LIBRARY_PATH"
-  echo "PYTHONPATH        : $PYTHONPATH"
-else
-  echo "Vitis not found! Exiting..."
-fi
+mkdir -p my_install
+pushd my_install
+pip download mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/
+unzip -q mlir_aie-*_x86_64.whl
+pushd mlir_aie/python
+pip download aie_python_bindings -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/
+unzip -q -o aie_python_bindings*.whl
+rm *.whl
+popd
+pip download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro/
+unzip -q mlir-*_x86_64.whl
+pip -q download llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+unzip -q llvm_aie*.whl
+rm -rf mlir*.whl
+rm -rf llvm_aie*.whl
+export PEANO_INSTALL_DIR=`realpath llvm-aie`
+popd
+python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements.txt
+HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_extras.txt
+python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_ml.txt
+source utils/env_setup.sh my_install/mlir_aie my_install/mlir
+pushd programming_examples
+echo "PATH              : $PATH"
+echo "LD_LIBRARY_PATH   : $LD_LIBRARY_PATH"
+echo "PYTHONPATH        : $PYTHONPATH"
