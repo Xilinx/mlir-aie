@@ -79,7 +79,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
     assert n % t == 0
 
     vectorized = True
-    enable_tracing = True
+    enable_tracing = False
     trace_size = 65536
 
     dtype_in = dtype_map[dtype_in_str]
