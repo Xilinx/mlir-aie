@@ -34,6 +34,24 @@ Base Code Includes:
 - Any Combination Of: (TileGroupWidth, TileGroupHeight, TileRepeat)
 - TileRepeatStepHorizontal + Any of(TileGroupWidth, tile_step_priority)
 - TileRepeatStepVertical + Any of (TileGroupHeight tile_step_priority)
+
+TODOs: Change to TensorDims, just assert 2 for now
+
+What should API look like?
+
+* TensorTile(TensorDims, Offset, Sizes, Strides)
+  * Use dims to get access_tensors (remove access_count, access_order)
+  * Use dims to get visualize() e.g. if len(dims) == 2, TensorTiler2D.visualize(...)
+  * Can have dict for each dim, translate 1 to 2
+* TensorTileIter(TensorDims, size_fn, stride_fn, offset_fn, num_steps)
+  * visualize_animate()
+* TensorTiler2D:
+    * Cannot instantiate; use as class variable only.
+    * TensorTiler2D.simple_tiler(TensorDims, TileDims, TileColMajor, IterColMajor, RepeatCount) -> TensorTilerIter()
+    * TensorTiler2D.group_tiler(TensorDis, TileDims, TileGroupDims, TileColMajor, IterColMajor, RepeatCount) -> TensorTilerIter()
+    * TensorTiler2D.step_horizontal_tiler(TensorDims, TileDims, TileStepHorizontal, TileStepRepeat, VerticalRepeat, TileColMajor, IterScheme=TensorFill|BlockFill, IterColMajor, BlockColMajor??)
+    * TensorTiler2D.step_vertical_tiler(TensorDims, TileDims, TileStepVertical, TileStepRepeat, HorizontalRepeat, TileColMajor, IterScheme=TensorFill|BlockFill, IterColMajor, BlockColMajor??)
+    * ?? Step both tilers?
 """
 
 
