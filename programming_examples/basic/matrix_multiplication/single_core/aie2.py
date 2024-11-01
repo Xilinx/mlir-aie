@@ -79,7 +79,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
     assert n % t == 0
 
     vectorized = True
-    enable_tracing = False
+    enable_tracing = True
     trace_size = 65536
 
     dtype_in = dtype_map[dtype_in_str]
@@ -109,7 +109,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
 
     with mlir_mod_ctx() as ctx:
 
-        C_sz_in_bytes = C_sz * np.dtype(dtype_out).itemsize // 8
+        C_sz_in_bytes = C_sz * np.dtype(dtype_out).itemsize
 
         @device(AIEDevice.npu1_1col)
         def device_body():
