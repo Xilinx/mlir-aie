@@ -100,6 +100,56 @@ class TensorTiler2D:
             iter_sizes = [1, 1, tile_width, tile_height]
             iter_strides = [0, 0, 1, tensor_width]
 
+        if tile_group_height != 1 or tile_group_width != 1:
+            if tile_col_major and not tile_group_col_major:
+                # This is a special case where we can combine a tile group into one logical tile (horizontally)
+                iter_sizes[1], iter_sizes[2] = (
+                    tile_group_height,
+                    tile_group_width * tile_width,
+                )
+                iter_strides[2] = tile_group_width * tile_width  # TODO: this is a guess
+            elif not tile_col_major and tile_group_col_major:
+                # This is a special case where we can combine a tile group into one logical tile (vertically)
+                iter_sizes[1], iter_sizes[2] = (
+                    tile_group_width,
+                    tile_group_height * tile_height,
+                )
+                iter_strides[2] = (
+                    tensor_width * tile_height * tile_group_height
+                )  # TODO: this is a guess
+            elif tile_group_width == 1:
+                # These are two more special cases; we can combine tiles here too to get a simpler transform
+                if tile_col_major:
+                    iter_sizes[1] = tile_group_height
+                    iter_strides[1] = tile_height * tensor_width
+                else:
+                    iter_sizes[2] = tile_height * tile_group_height
+                    iter_strides[1], iter_strides[2] = tile_width, tensor_width
+            elif tile_group_height == 1:
+                # These are two more special cases; we can combine tiles here too to get a simpler transform
+                if tile_col_major:
+                    iter_sizes[2] = tile_width * tile_group_width
+                else:
+                    iter_sizes[1] = tile_group_width
+                    iter_strides[1], iter_strides[2] = tile_width, tensor_width
+            else:
+                # This should always be the case that creates a correct transfrom;
+                # however, it may be needlessly complex (large values in out dimensions)
+                idx_order = [0, 1]
+                if tile_group_col_major:
+                    idx_order = [1, 0]
+                iter_sizes[idx_order[0]] = tile_group_height
+                iter_sizes[idx_order[1]] = tile_group_width
+                iter_strides[idx_order[0]] = (
+                    tile_width * tile_group_width * tile_height * tile_group_height
+                )
+                iter_strides[idx_order[1]] = tile_width
+                print("TODO: In catch all")
+
+        iter_sizes, iter_strides = validate_and_clean_sizes_strides(
+            iter_sizes, iter_strides
+        )
+
         calc_sizes = None
         if tile_group_height != 1 or tile_group_width != 1:
             iter_sizes, iter_strides = cls.__sizes_strides_for_tile_group(
@@ -145,7 +195,7 @@ class TensorTiler2D:
                 partial_both_sizes, partial_both_strides = (
                     cls.__sizes_strides_for_tile_group(
                         tile_dims,
-                        (partial_tile_group_height, tile_group_width),
+                        (partial_tile_group_height, partial_tile_group_width),
                         iter_sizes,
                         iter_strides,
                         tile_col_major,
@@ -156,8 +206,6 @@ class TensorTiler2D:
                 assert (
                     iter_strides == partial_both_strides
                 ), "If this is not true, need a strides fn for partials"
-
-            if partial_tile_group_width or partial_tile_group_height:
 
                 def sizes_fn(step_num, _prev_sizes):
                     if (
