@@ -27,8 +27,8 @@ class TensorTiler2D:
         iter_col_major: bool = False,
         tile_repeat: int = 1,
     ) -> TensorTileSequence:
-        # Special case of tile_group_iter where tile_group_dims=(1, 1)
-        cls.tile_group_iter(
+        # Special case of tile_group_iter
+        return cls.tile_group_iter(
             tensor_dims=tensor_dims,
             tile_dims=tile_dims,
             tile_col_major=tile_col_major,
@@ -46,7 +46,7 @@ class TensorTiler2D:
         tile_group_col_major: bool = False,
         iter_col_major: bool = False,
         tile_repeat: int = 1,
-        allow_partial: bool = False,  # TODO: handle partial tile groups?
+        allow_partial: bool = False,
     ) -> TensorTileSequence:
         tensor_height, tensor_width = validate_tensor_dims(tensor_dims, expected_dims=2)
         tile_height, tile_width = validate_tensor_dims(tile_dims, expected_dims=2)
@@ -65,11 +65,11 @@ class TensorTiler2D:
         if tile_repeat < 1:
             raise ValueError(f"Tile repeat must be >= 1 but is {tile_repeat}")
         if not allow_partial:
-            if tensor_width % (tile_width * tile_group_width) != 1:
+            if tensor_width % (tile_width * tile_group_width) != 0:
                 raise ValueError(
                     f"allow_partial={allow_partial} but tensor does not divide evenly into tile groups in width"
                 )
-            if tensor_height % (tile_height * tile_group_height) != 1:
+            if tensor_height % (tile_height * tile_group_height) != 0:
                 raise ValueError(
                     f"allow_partial={allow_partial} but tensor does not divide evenly into tile groups in height"
                 )
@@ -195,11 +195,11 @@ class TensorTiler2D:
 
         return TensorTileSequence(
             (tensor_height, tensor_width),
-            iter_sizes,
-            iter_strides,
+            num_steps,
+            sizes=iter_sizes,
+            strides=iter_strides,
             offset_fn=calc_offset,
             sizes_fn=calc_sizes,
-            num_steps=num_steps,
         )
 
     @classmethod

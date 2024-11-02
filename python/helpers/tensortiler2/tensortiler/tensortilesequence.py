@@ -18,13 +18,13 @@ class TensorTileSequence(abc.MutableSequence, abc.Iterable):
     def __init__(
         self,
         tensor_dims: Sequence[int],
-        offset: int | None,
-        sizes: Sequence[int] | None,
-        strides: Sequence[int] | None,
-        offset_fn: Callable[[int, int], int] | None,
-        sizes_fn: Callable[[int, Sequence[int]], Sequence[int]] | None,
-        strides_fn: Callable[[int, Sequence[int]], Sequence[int]] | None,
         num_steps: int,
+        offset: int | None = None,
+        sizes: Sequence[int] | None = None,
+        strides: Sequence[int] | None = None,
+        offset_fn: Callable[[int, int], int] | None = None,
+        sizes_fn: Callable[[int, Sequence[int]], Sequence[int]] | None = None,
+        strides_fn: Callable[[int, Sequence[int]], Sequence[int]] | None = None,
     ):
         self._current_step = 0
 
@@ -41,19 +41,19 @@ class TensorTileSequence(abc.MutableSequence, abc.Iterable):
         if offset_fn is None:
             if self._offset is None:
                 raise ValueError("Offset must be provided if offset_fn is None")
-            self._offset_fn = lambda _x: self._offset
+            self._offset_fn = lambda _step, _prev_offset: self._offset
         else:
             self._offset_fn = offset_fn
         if sizes_fn is None:
             if self._sizes is None:
                 raise ValueError("Sizes must be provided if size_fn is None")
-            self._sizes_fn = lambda _x: self._sizes
+            self._sizes_fn = lambda _step, _prev_sizes: self._sizes
         else:
             self._sizes_fn = sizes_fn
         if strides_fn is None:
             if self._strides is None:
                 raise ValueError("Strides must be provided if stride_fn is None")
-            self._strides_fn = lambda _x: self._strides
+            self._strides_fn = lambda _step, _prev_strides: self._strides
         else:
             self._strides_fn = strides_fn
 
@@ -83,7 +83,7 @@ class TensorTileSequence(abc.MutableSequence, abc.Iterable):
         return tile in self._tiles
 
     def __iter__(self):
-        return deepcopy(self._tiles)
+        return iter(deepcopy(self._tiles))
 
     def __len__(self) -> int:
         return len(self._tiles)

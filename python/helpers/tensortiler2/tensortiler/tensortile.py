@@ -60,7 +60,9 @@ class TensorTile:
         # Use itertools.product to collapse len(sizes) nested forloop into one forloop
         access_count = 0
         for dims in itertools.product(*[range(0, n) for n in self._sizes]):
-            access_idx = np.sum(np.multiply(dims, self._strides)) % total_elems
+            access_idx = (
+                self._offset + np.sum(np.multiply(dims, self._strides))
+            ) % total_elems
             access_count_tensor[access_idx] += 1
             access_order_tensor[access_idx] = access_count
             access_count += 1

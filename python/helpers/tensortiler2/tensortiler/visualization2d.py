@@ -38,12 +38,11 @@ def visualize_from_access_tensors(
     if tensor_width < 32:
         fig_width = 5
     height_width_ratio = ceildiv(tensor_height, tensor_width)
-    # A little extra height to accommodate labels/titles
-    fig_height = min(fig_width, fig_width * height_width_ratio) + 1.5
+    fig_height = min(fig_width, fig_width * height_width_ratio)
 
     if not (access_count_tensor is None):
         fig_height *= 2
-        fig, (ax_order, ax_count) = plt.subplots(1, 2)
+        fig, (ax_order, ax_count) = plt.subplots(2, 1)
     else:
         fig, ax_order = plt.subplots()
 
@@ -59,7 +58,6 @@ def visualize_from_access_tensors(
     ax_order.set_title("Access Order")
 
     if not (access_count_tensor is None):
-        print("PLOTTING COUNTS")
         max_count = np.max(access_count_tensor)
         _count_heatmap = ax_count.pcolormesh(
             xs, ys, access_count_tensor, cmap="gnuplot2"
@@ -96,6 +94,7 @@ def visualize_from_access_tensors(
                 path_effects=[pe.withStroke(linewidth=3, foreground="white")],
             )
 
+    plt.tight_layout()
     if show_plot:
         plt.show()
     if file_path:
