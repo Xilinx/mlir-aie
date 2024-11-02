@@ -27,8 +27,8 @@ class TensorTiler2D:
         iter_col_major: bool = False,
         tile_repeat: int = 1,
     ) -> TensorTileSequence:
-        # Special case of tile_group_iter
-        return cls.tile_group_iter(
+        # Special case of group_tiler
+        return cls.group_tiler(
             tensor_dims=tensor_dims,
             tile_dims=tile_dims,
             tile_col_major=tile_col_major,
@@ -37,7 +37,7 @@ class TensorTiler2D:
         )
 
     @classmethod
-    def tile_group_iter(
+    def group_tiler(
         cls,
         tensor_dims: Sequence[int],
         tile_dims: Sequence[int],
@@ -73,11 +73,8 @@ class TensorTiler2D:
                 raise ValueError(
                     f"allow_partial={allow_partial} but tensor does not divide evenly into tile groups in height"
                 )
-        else:
-            partial_tile_group_width = tensor_width % (tile_width * tile_group_width)
-            partial_tile_group_height = tensor_height % (
-                tile_height * tile_group_height
-            )
+        partial_tile_group_width = tensor_width % (tile_width * tile_group_width)
+        partial_tile_group_height = tensor_height % (tile_height * tile_group_height)
 
         steps_per_row = ceildiv(tensor_width, (tile_width * tile_group_width))
         steps_per_col = ceildiv(tensor_height, (tile_height * tile_group_height))

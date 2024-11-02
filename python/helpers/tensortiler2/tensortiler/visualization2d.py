@@ -1,3 +1,6 @@
+import matplotlib.animation as animation
+import matplotlib.patheffects as pe
+import matplotlib.pyplot as plt
 import numpy as np
 import os
 import sys
@@ -9,9 +12,7 @@ def animate_from_access_tensors(
     access_order_tensors: list[np.ndarray],
     access_count_tensors: list[np.ndarray] | None,
     title: str = "Animated Access Visualization",
-    file_path: str | None = None,
-    show_plot: bool = True,
-):
+) -> animation.FuncAnimation:
     if len(access_order_tensors) < 1:
         raise ValueError("At least one access order tensor is required.")
     if not (access_count_tensors is None):
@@ -23,13 +24,6 @@ def animate_from_access_tensors(
             raise ValueError(
                 "Number of access count tensors and number of access order tensors should be equal"
             )
-    try:
-        import matplotlib.animation as animation
-        import matplotlib.pyplot as plt
-    except:
-        raise ImportError(
-            "You must pip install matplotlib in order to render access graphs"
-        )
 
     tensor_height, tensor_width = access_order_tensors[0].shape
     fig_width = 7
@@ -60,44 +54,28 @@ def animate_from_access_tensors(
         ax_count.set_title(f"Access Counts")
 
     def animate_order(i):
-        access_heatmap = ax_order.pcolormesh(
-            xs, ys, access_order_tensors[i], cmap="gnuplot2"
-        )
+        access_heatmap = ax_order.pcolormesh(access_order_tensors[i])
 
         if not (access_count_tensors is None):
             count_heatmap = ax_count.pcolormesh(
-                xs, ys, access_count_tensors[0], cmap="gnuplot2"
+                xs, ys, access_count_tensors[i], cmap="gnuplot2"
             )
-        return (
-            access_heatmap,
-            count_heatmap,
-        )
+            return (
+                access_heatmap,
+                count_heatmap,
+            )
+        return access_heatmap
 
-    _animation = animation.FuncAnimation(fig, animate_order, frames=30, interval=40)
+    _animation = animation.FuncAnimation(
+        fig,
+        animate_order,
+        frames=len(access_order_tensors),
+        interval=100 * len(access_order_tensors),
+    )
 
     plt.tight_layout()
-    if show_plot:
-        plt.show()
-    if file_path:
-        if os.path.exists(file_path):
-            print(
-                f"Cannot save plot to {file_path}; file already exists",
-                file=sys.stderr,
-            )
-        if file_path.endswith(".gif"):
-            _animation.save(filename="/tmp/pillow_example.gif", writer="pillow")
-        elif (
-            file_path.endswith(".html")
-            or file_path.endswith(".htm")
-            or file_path.endswith(".png")
-        ):
-            _animation.save(filename="/tmp/html_example.html", writer="html")
-        else:
-            raise ValueError(
-                f"Cannot write to file, unknown format: {file_path}. Expected *.gif, *.png, *.html, *.htm"
-            )
-        plt.savefig(file_path)
     plt.close()
+    return _animation
 
 
 def visualize_from_access_tensors(
@@ -108,14 +86,6 @@ def visualize_from_access_tensors(
     file_path: str | None = None,
     show_plot: bool = True,
 ):
-    try:
-        import matplotlib.pyplot as plt
-        import matplotlib.patheffects as pe
-    except:
-        raise ImportError(
-            "You must pip install matplotlib in order to render access graphs"
-        )
-
     tensor_height, tensor_width = access_order_tensor.shape
     if tensor_height * tensor_width >= 1024:
         if show_arrows:
