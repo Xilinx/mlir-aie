@@ -9,7 +9,7 @@ from .utils import (
     validate_offset,
     validate_tensor_dims,
 )
-from .visualization2d import visualize_from_access_tensors
+from .visualization2d import animate_from_access_tensors, visualize_from_access_tensors
 
 
 class TensorTileSequence(abc.MutableSequence, abc.Iterable):
@@ -87,12 +87,28 @@ class TensorTileSequence(abc.MutableSequence, abc.Iterable):
         file_path: str | None = None,
         show_plot: bool = True,
         plot_access_count: bool = False,
+        animate: bool = True,
     ) -> None:
         if title is None:
             title = "TensorTileSequence"
         if len(self._tensor_dims) == 2:
             highest_count = 1
             total_elems = np.prod(self._tensor_dims)
+
+            if animate:
+                animate_order_frames = [
+                    np.full(total_elems, -1, TensorTile._DTYPE).reshape(
+                        self._tensor_dims
+                    )
+                ]
+                if plot_access_count:
+                    animate_count_frames = [
+                        np.full(total_elems, 0, TensorTile._DTYPE).reshape(
+                            self._tensor_dims
+                        )
+                    ]
+                else:
+                    animate_count_frames = None
             access_order = np.full(total_elems, 0, TensorTile._DTYPE).reshape(
                 self._tensor_dims
             )
@@ -105,22 +121,36 @@ class TensorTileSequence(abc.MutableSequence, abc.Iterable):
 
             for t in self._tiles:
                 t_access_order, t_access_count = t.access_tensors()
-                t_access_order[t_access_order != -1] += highest_count
-                t_access_order[t_access_order == -1] = 0
-                highest_count = np.max(t_access_order)
+                if animate:
+                    animate_order_frames.append(t_access_order)
+                    if plot_access_count:
+                        animate_count_frames.append(t_access_count)
+                else:
+                    t_access_order[t_access_order != -1] += highest_count
+                    t_access_order[t_access_order == -1] = 0
+                    highest_count = np.max(t_access_order)
 
-                access_order += t_access_order
-                if plot_access_count:
-                    access_count += t_access_count
+                    access_order += t_access_order
+                    if plot_access_count:
+                        access_count += t_access_count
 
-            visualize_from_access_tensors(
-                access_order,
-                access_count,
-                title=title,
-                show_arrows=False,
-                file_path=file_path,
-                show_plot=show_plot,
-            )
+            if animate:
+                animate_from_access_tensors(
+                    animate_order_frames,
+                    animate_count_frames,
+                    title=title,
+                    file_path=file_path,
+                    show_plot=show_plot,
+                )
+            else:
+                visualize_from_access_tensors(
+                    access_order,
+                    access_count,
+                    title=title,
+                    show_arrows=False,
+                    file_path=file_path,
+                    show_plot=show_plot,
+                )
 
         else:
             raise NotImplementedError(
