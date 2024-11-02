@@ -76,8 +76,13 @@ struct CIRToAIETypesAnalysis {
     // used directly for the MLIR aie.device attribute) or aie::tile_t<8,50> for
     // example
     static const std::array typeNamePatterns{
-        llvm::Regex{"^(aie::device)<aie::([^>]+)>$"},
-        llvm::Regex{"^(aie::tile)<([[:digit:]]+), ([[:digit:]]+)>$"},
+        // A struct with a name like "aie::device<aie::npu1, aie::(lambda at
+        // ./aie++.hpp:76:54)>.0". Drop the non-interesting unique-ing lambda
+        // part of the type
+        llvm::Regex{"^(aie::device)<aie::([^,]+).*$"},
+        // A struct with a name like "aie::tile_t<8,50, aie::device<>>" for
+        // example
+        llvm::Regex{"^(aie::tile)<([[:digit:]]+), ([[:digit:]]+), .*$"},
         llvm::Regex{"^(aie::buffer)<([^,]+), ([^>]+)>$"}};
 
     for (auto &[type, value] : moduleTypes) {

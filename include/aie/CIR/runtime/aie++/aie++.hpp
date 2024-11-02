@@ -23,11 +23,15 @@ struct buffer{
 // Typically compiled as:
 // !ty_22aie3A3Atile3C12C_43E22 = !cir.struct<struct "aie::tile<1, 4>"
 // {!cir.int<u, 8>}>
-template <int X, int Y> struct tile {
+//
+// The tile depends on a Device since we can have programs with different
+// devices at the same time
+template <int X, int Y, typename Device> struct tile {
   static constexpr auto x() { return X; }
   static constexpr auto y() { return Y; }
+  // Only tiles from a same device are comparable
   template <int X2, int Y2>
-  friend constexpr auto operator==(const tile &, const tile<X2, Y2> &) {
+  friend constexpr auto operator==(const tile &, const tile<X2, Y2, Device> &) {
     return X == X2 && Y == Y2;
   };
   /*  template <int X1, int Y1, int X2, int Y2>
@@ -71,11 +75,16 @@ template <typename Storage> struct tile_handle {
 enum : std::int8_t { npu1 = 42};
 
 // Typically compiled as:
-// !ty_22aie3A3Adevice3Caie3A3Anpu13E22 = !cir.struct<struct
-// "aie::device<aie::npu1>" {!cir.int<u, 8>}>
-template <auto Name = npu1> struct device {
+// !ty_aie3A3Adevice3Caie3A3Anpu12C_aie3A3A28lambda_at_2E2Faie2B2B2Ehpp3A763A54293E
+// = !cir.struct<struct "aie::device<aie::npu1, aie::(lambda at
+// ./aie++.hpp:76:54)>" {!cir.int<u, 8>}>
+//
+// "Unique" with the lambda is used to generate a different type for multiple
+// instantiation, so we can have a design with several accelerators of the same
+// type
+template <auto Name = npu1, typename Unique=decltype([]{})> struct device {
   template <int X, int Y>
-  tile<X, Y> tile()
+  tile<X, Y, device> tile()
       __attribute__((annotate("aie.device.tile", X, Y, Name, std::to_underlying(Name)))) {
     return {};
   };
