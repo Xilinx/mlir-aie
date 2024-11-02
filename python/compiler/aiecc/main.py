@@ -334,7 +334,12 @@ def run_passes(pass_pipeline, mlir_module_str, outputfile=None, verbose=False):
         print("Running:", pass_pipeline)
     with Context() as ctx, Location.unknown():
         module = Module.parse(mlir_module_str)
-        PassManager.parse(pass_pipeline).run(module.operation)
+        pm = PassManager.parse(pass_pipeline)
+        try:
+            pm.run(module.operation)
+        except Exception as e:
+            print("Error running pass pipeline: ", pass_pipeline, e)
+            raise(e)
         mlir_module_str = str(module)
         if outputfile:
             with open(outputfile, "w") as g:
