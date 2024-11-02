@@ -1,5 +1,6 @@
 from collections import abc
 from copy import deepcopy
+import numpy as np
 from typing import Callable, Sequence
 
 from .tensortile import TensorTile
@@ -8,6 +9,7 @@ from .utils import (
     validate_offset,
     validate_tensor_dims,
 )
+from .visualization2d import visualize_from_access_tensors
 
 
 class TensorTileSequence(abc.MutableSequence, abc.Iterable):
@@ -77,6 +79,52 @@ class TensorTileSequence(abc.MutableSequence, abc.Iterable):
                     self._sizes,
                     self._strides,
                 )
+            )
+
+    def visualize(
+        self,
+        title: str = None,
+        file_path: str | None = None,
+        show_plot: bool = True,
+        plot_access_count: bool = False,
+    ) -> None:
+        if title is None:
+            title = "TensorTileSequence"
+        if len(self._tensor_dims) == 2:
+            highest_count = 1
+            total_elems = np.prod(self._tensor_dims)
+            access_order = np.full(total_elems, 0, TensorTile._DTYPE).reshape(
+                self._tensor_dims
+            )
+            if plot_access_count:
+                access_count = np.full(total_elems, 0, TensorTile._DTYPE).reshape(
+                    self._tensor_dims
+                )
+            else:
+                access_count = None
+
+            for t in self._tiles:
+                t_access_order, t_access_count = t.access_tensors()
+                t_access_order[t_access_order != -1] += highest_count
+                t_access_order[t_access_order == -1] = 0
+                highest_count = np.max(t_access_order)
+
+                access_order += t_access_order
+                if plot_access_count:
+                    access_count += t_access_count
+
+            visualize_from_access_tensors(
+                access_order,
+                access_count,
+                title=title,
+                show_arrows=False,
+                file_path=file_path,
+                show_plot=show_plot,
+            )
+
+        else:
+            raise NotImplementedError(
+                "Visualization is only currently supported for 1- or 2-dimensional tensors"
             )
 
     def __contains__(self, tile: TensorTile):
