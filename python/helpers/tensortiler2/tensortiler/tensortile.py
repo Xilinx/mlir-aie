@@ -50,6 +50,7 @@ class TensorTile:
 
     def access_tensors(self) -> tuple[np.ndarray, np.ndarray]:
         # TODO: should access order be a list of lists instead of generate two separate tensors?
+        # TODO: for performance, should cache and return copies? Or just cache?
 
         # Initialize access order and count maps
         total_elems = np.prod(self._tensor_dims)
@@ -70,8 +71,7 @@ class TensorTile:
 
     def visualize(
         self,
-        show_arrows: bool = True,
-        show_numbers: bool = False,
+        show_arrows: bool | None = None,
         title: str = None,
         file_path: str | None = None,
         show_plot: bool = True,
@@ -88,7 +88,6 @@ class TensorTile:
                 access_count,
                 title=title,
                 show_arrows=show_arrows,
-                show_numbers=show_numbers,
                 file_path=file_path,
                 show_plot=show_plot,
             )
@@ -98,10 +97,7 @@ class TensorTile:
             )
 
     def __str__(self) -> str:
-        return (
-            f"TensorTile(tensor_dims={self._tensor_dims}, "
-            f"offset={self._offset}, sizes={self._sizes}, strides={self._strides})"
-        )
+        return f"TensorTile(offset={self._offset}, sizes={self._sizes}, strides={self._strides})"
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
