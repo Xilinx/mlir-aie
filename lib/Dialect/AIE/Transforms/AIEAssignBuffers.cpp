@@ -66,14 +66,26 @@ LogicalResult basicAllocation(TileOp tile) {
     maxDataMemorySize = targetModel.getLocalMemorySize();
 
   SmallVector<BufferOp, 4> buffers;
-  // Collect all the buffers for this tile.
+  std::list<BufferOp> allocated_buffers;
+  // Collect all the buffers for this tile. If the buffer has an address, add
+  // it to allocated_buffers. Otherwise, add it to buffers.
   device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
-    if (buffer.getTileOp() == tile)
-      buffers.push_back(buffer);
+    if (buffer.getTileOp() == tile) {
+      if (buffer.getAddress())
+        allocated_buffers.push_back(buffer);
+      else
+        buffers.push_back(buffer);
+    }
   });
-  // Sort by allocation size.
+
+  // Sort buffers by allocation size.
   std::sort(buffers.begin(), buffers.end(), [](BufferOp a, BufferOp b) {
     return a.getAllocationSize() > b.getAllocationSize();
+  });
+
+  // Sort allocated_buffers by address
+  allocated_buffers.sort([](BufferOp a, BufferOp b) {
+    return a.getAddress().value() < b.getAddress().value();
   });
 
   // Address range owned by the MemTile is 0x80000.
@@ -87,9 +99,18 @@ LogicalResult basicAllocation(TileOp tile) {
     address += stacksize;
   }
 
+  // As the next address to allocate is assigned, skip over any buffers with the
+  // from the allocated_buffers list.
+  auto current_alloc = allocated_buffers.begin();
   for (auto buffer : buffers) {
-    if (buffer.getAddress())
-      buffer->emitWarning("Overriding existing address");
+    assert(!buffer.getAddress());
+    while (current_alloc != allocated_buffers.end() &&
+           address + buffer.getAllocationSize() >
+               current_alloc->getAddress().value()) {
+      address = current_alloc->getAddress().value() +
+                current_alloc->getAllocationSize();
+      current_alloc++;
+    }
     buffer.setAddress(address);
     address += buffer.getAllocationSize();
   }
@@ -142,25 +163,29 @@ void setAndUpdateAddressInBank(BufferOp buffer, int64_t start_addr,
 // returns true and if not, the function emits a warning that the address
 // will be overwritten and returns false (which will cause the buffer to be
 // added to the list of buffers without addresses, to be completed later on).
-bool checkAndAddBufferWithAddress(BufferOp buffer, int numBanks,
-                                  std::vector<int64_t> &nextAddrInBanks,
-                                  std::vector<BankLimits> &bankLimits) {
-  if (auto addrAttr = buffer->getAttrOfType<IntegerAttr>("address")) {
-    int addr = addrAttr.getInt();
-    for (int i = 0; i < numBanks; i++) {
-      if (bankLimits[i].startAddr <= addr && addr < bankLimits[i].endAddr) {
-        if (addr >= nextAddrInBanks[i]) {
-          nextAddrInBanks[i] = addr + buffer.getAllocationSize();
-          buffer.setMemBank(i);
-        } else {
-          buffer->emitWarning("Overriding existing address");
-          return false;
-        }
-      }
-    }
-    return true;
+FailureOr<bool>
+checkAndAddBufferWithAddress(BufferOp buffer, int numBanks,
+                             std::vector<int64_t> &nextAddrInBanks,
+                             std::vector<BankLimits> &bankLimits) {
+  auto addrAttr = buffer->getAttrOfType<IntegerAttr>("address");
+  if (!addrAttr)
+    return false;
+
+  int addr = addrAttr.getInt();
+  for (int i = 0; i < numBanks; i++) {
+    // if the address is not within the bank, continue
+    if (addr < bankLimits[i].startAddr && addr >= bankLimits[i].endAddr)
+      continue;
+
+    // if the allocator already overwrote this address, fail
+    if (addr < nextAddrInBanks[i])
+      return buffer->emitOpError("would override allocated address");
+
+    // the allocator can accomadate this existing allocation
+    nextAddrInBanks[i] = addr + buffer.getAllocationSize();
+    buffer.setMemBank(i);
   }
-  return false;
+  return true;
 }
 
 // Function that checks whether the given buffer already has a set mem_bank
@@ -169,22 +194,21 @@ bool checkAndAddBufferWithAddress(BufferOp buffer, int numBanks,
 // function emits a warning that the mem_bank will be overwritten and returns
 // false (which will cause the buffer to be added to the list of buffers
 // without addresses, to be completed later on).
-bool checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,
-                                  std::vector<int64_t> &nextAddrInBanks,
-                                  std::vector<BankLimits> &bankLimits) {
-  if (auto memBankAttr = buffer->getAttrOfType<IntegerAttr>("mem_bank")) {
-    int mem_bank = memBankAttr.getInt();
-    int64_t startAddr = nextAddrInBanks[mem_bank];
-    int64_t endAddr = startAddr + buffer.getAllocationSize();
-    if (endAddr <= bankLimits[mem_bank].endAddr) {
-      setAndUpdateAddressInBank(buffer, startAddr, endAddr, nextAddrInBanks);
-    } else {
-      buffer->emitWarning("Overriding existing mem_bank");
-      return false;
-    }
-    return true;
-  }
-  return false;
+FailureOr<bool>
+checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,
+                             std::vector<int64_t> &nextAddrInBanks,
+                             std::vector<BankLimits> &bankLimits) {
+  auto memBankAttr = buffer->getAttrOfType<IntegerAttr>("mem_bank");
+  if (!memBankAttr)
+    return false;
+
+  int mem_bank = memBankAttr.getInt();
+  int64_t startAddr = nextAddrInBanks[mem_bank];
+  int64_t endAddr = startAddr + buffer.getAllocationSize();
+  if (endAddr > bankLimits[mem_bank].endAddr)
+    return buffer->emitOpError("would override allocated address");
+  setAndUpdateAddressInBank(buffer, startAddr, endAddr, nextAddrInBanks);
+  return true;
 }
 
 // Prints the memory map across banks
@@ -378,11 +402,13 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
   // the above.
   for (auto buffer : allBuffers) {
     if (buffer.getTileOp() == tile) {
-      bool has_addr = checkAndAddBufferWithAddress(buffer, numBanks,
+      auto has_addr = checkAndAddBufferWithAddress(buffer, numBanks,
                                                    nextAddrInBanks, bankLimits);
-      bool has_bank = checkAndAddBufferWithMemBank(buffer, numBanks,
+      auto has_bank = checkAndAddBufferWithMemBank(buffer, numBanks,
                                                    nextAddrInBanks, bankLimits);
-      if (!has_addr && !has_bank)
+      if (failed(has_addr) || failed(has_bank))
+        return failure();
+      if (!has_addr.value() && !has_bank.value())
         buffersToAlloc.push_back(buffer);
       else
         preAllocatedBuffers.push_back(buffer);
