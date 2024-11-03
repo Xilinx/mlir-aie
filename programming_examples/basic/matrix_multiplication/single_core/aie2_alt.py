@@ -49,9 +49,18 @@ def main():
         choices=["bf16", "i8", "i16", "f32", "i32"],
         default="i32",
     )
+    argparser.add_argument("--trace_size", type=int, default=0)
     args = argparser.parse_args()
     my_matmul(
-        args.M, args.K, args.N, args.m, args.k, args.n, args.dtype_in, args.dtype_out
+        args.M,
+        args.K,
+        args.N,
+        args.m,
+        args.k,
+        args.n,
+        args.dtype_in,
+        args.dtype_out,
+        args.trace_size,
     )
 
 
@@ -59,7 +68,7 @@ def ceildiv(a, b):
     return (a + b - 1) // b
 
 
-def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
+def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
 
     assert M % m == 0
     assert K % k == 0
@@ -83,8 +92,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
     assert n % t == 0
 
     vectorized = True
-    enable_tracing = False
-    trace_size = 65536
+    enable_tracing = True if trace_size > 0 else False
 
     dtype_in = dtype_map[dtype_in_str]
     dtype_out = dtype_map[dtype_out_str]
@@ -113,7 +121,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
 
     with mlir_mod_ctx() as ctx:
 
-        C_sz_in_bytes = C_sz * np.dtype(dtype_out).itemsize // 8
+        C_sz_in_bytes = C_sz * np.dtype(dtype_out).itemsize
 
         @device(AIEDevice.npu1_1col)
         def device_body():
@@ -199,9 +207,10 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
             )
             object_fifo_link(memC, outC)
 
-            # Set up a circuit-switched flow from core to shim for tracing information
-            if enable_tracing:
-                flow(compute_tile2, WireBundle.Trace, 0, shim_tile, WireBundle.DMA, 1)
+            # Set up a packet-switched flow from core to shim for tracing information
+            tiles_to_trace = [compute_tile2]
+            if trace_size > 0:
+                trace_utils.configure_packet_tracing_flow(tiles_to_trace, shim_tile)
 
             # Set up compute tiles
 
@@ -233,34 +242,8 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
             def sequence(A, B, C):
 
                 if enable_tracing:
-                    trace_utils.configure_simple_tracing_aie2(
-                        compute_tile2,
-                        shim_tile,
-                        ddr_id=2,
-                        size=trace_size,
-                        offset=C_sz_in_bytes,
-                        events=[
-                            PortEvent(
-                                trace_utils.CoreEvent.PORT_RUNNING_0,
-                                port_number=1,
-                                master=True,
-                            ),
-                            PortEvent(
-                                trace_utils.CoreEvent.PORT_RUNNING_1,
-                                port_number=2,
-                                master=True,
-                            ),
-                            PortEvent(
-                                trace_utils.CoreEvent.PORT_RUNNING_2,
-                                port_number=5,
-                                master=True,
-                            ),
-                            trace_utils.CoreEvent.INSTR_EVENT_0,
-                            trace_utils.CoreEvent.INSTR_EVENT_1,
-                            trace_utils.CoreEvent.MEMORY_STALL,
-                            trace_utils.CoreEvent.LOCK_STALL,
-                            trace_utils.CoreEvent.INSTR_VECTOR,
-                        ],
+                    trace_utils.configure_packet_tracing_aie2(
+                        tiles_to_trace, shim_tile, trace_size, C_sz_in_bytes
                     )
 
                 # These lists will hold handles to the DMA tasks we configure
