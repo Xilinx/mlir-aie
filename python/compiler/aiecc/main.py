@@ -58,8 +58,7 @@ INPUT_WITH_ADDRESSES_PIPELINE = (
             ),
         )
         .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
-    )
-    .convert_scf_to_cf()
+    ).convert_scf_to_cf()
 )
 
 LOWER_TO_LLVM_PIPELINE = (
