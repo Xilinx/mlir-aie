@@ -1,3 +1,4 @@
+from functools import partial
 import numpy as np
 from typing import Sequence
 
@@ -73,9 +74,12 @@ class TensorTiler2D:
                 raise ValueError(
                     f"allow_partial={allow_partial} but tensor does not divide evenly into tile groups in height"
                 )
-        partial_tile_group_width = tensor_width % (tile_width * tile_group_width)
-        partial_tile_group_height = tensor_height % (tile_height * tile_group_height)
-
+        partial_tile_group_width = (
+            tensor_width % (tile_width * tile_group_width)
+        ) // tile_width
+        partial_tile_group_height = (
+            tensor_height % (tile_height * tile_group_height)
+        ) // tile_height
         steps_per_row = ceildiv(tensor_width, (tile_width * tile_group_width))
         steps_per_col = ceildiv(tensor_height, (tile_height * tile_group_height))
 
@@ -93,6 +97,122 @@ class TensorTiler2D:
             offset += col_idx * tile_group_height * tensor_width * tile_height
             return offset
 
+        calc_sizes = None
+        calc_strides = None
+        iter_sizes, iter_strides = cls.__sizes_strides_for_tile_group_with_repeat(
+            tensor_dims,
+            tile_dims,
+            tile_group_dims,
+            tile_col_major,
+            tile_group_col_major,
+            tile_repeat,
+        )
+
+        if partial_tile_group_width:
+            partial_row_sizes, partial_row_strides = (
+                cls.__sizes_strides_for_tile_group_with_repeat(
+                    tensor_dims,
+                    tile_dims,
+                    (tile_group_height, partial_tile_group_width),
+                    tile_col_major,
+                    tile_group_col_major,
+                    tile_repeat,
+                )
+            )
+
+        if partial_tile_group_height:
+            partial_col_sizes, partial_col_strides = (
+                cls.__sizes_strides_for_tile_group_with_repeat(
+                    tensor_dims,
+                    tile_dims,
+                    (partial_tile_group_height, tile_group_width),
+                    tile_col_major,
+                    tile_group_col_major,
+                    tile_repeat,
+                )
+            )
+
+        if partial_tile_group_width and partial_tile_group_height:
+            partial_both_sizes, partial_both_strides = (
+                cls.__sizes_strides_for_tile_group_with_repeat(
+                    tensor_dims,
+                    tile_dims,
+                    (partial_tile_group_height, partial_tile_group_width),
+                    tile_col_major,
+                    tile_group_col_major,
+                    tile_repeat,
+                )
+            )
+
+            def sizes_or_strides_fn(step_num, _prev_sizes, strides_or_sizes):
+                normal, partial_both, partial_col, partial_row = strides_or_sizes
+                if not iter_col_major:
+                    row_idx = step_num % steps_per_row
+                    col_idx = step_num // steps_per_row
+                else:
+                    col_idx = step_num % steps_per_col
+                    row_idx = step_num // steps_per_col
+
+                if (
+                    partial_tile_group_width
+                    and partial_tile_group_height
+                    and step_num == num_steps - 1
+                ):
+                    return partial_both
+                elif row_idx == steps_per_row - 1:
+                    return partial_col
+                elif col_idx == steps_per_col - 1:
+                    return partial_row
+                return normal
+
+            sizes_fn = partial(
+                sizes_or_strides_fn,
+                strides_or_sizes=[
+                    iter_sizes,
+                    partial_both_sizes,
+                    partial_col_sizes,
+                    partial_row_sizes,
+                ],
+            )
+            strides_fn = partial(
+                sizes_or_strides_fn,
+                strides_or_sizes=[
+                    iter_strides,
+                    partial_both_strides,
+                    partial_col_strides,
+                    partial_row_strides,
+                ],
+            )
+
+            calc_sizes = sizes_fn
+            calc_strides = strides_fn
+
+        return TensorTileSequence(
+            (tensor_height, tensor_width),
+            num_steps,
+            sizes=iter_sizes,
+            strides=iter_strides,
+            offset_fn=calc_offset,
+            sizes_fn=calc_sizes,
+            strides_fn=calc_strides,
+        )
+
+    @classmethod
+    def __sizes_strides_for_tile_group_with_repeat(
+        cls,
+        tensor_dims: Sequence[int],
+        tile_dims: Sequence[int],
+        tile_group_dims: Sequence[int],
+        tile_col_major: bool,
+        tile_group_col_major: bool,
+        tile_repeat: int,
+    ) -> tuple[Sequence[int], Sequence[int]]:
+
+        # Interior method, assumes all validation already done
+        _tensor_height, tensor_width = tensor_dims
+        tile_height, tile_width = tile_dims
+        tile_group_height, tile_group_width = tile_group_dims
+
         if not tile_col_major:
             iter_sizes = [1, 1, tile_height, tile_width]
             iter_strides = [0, 0, tensor_width, 1]
@@ -107,16 +227,16 @@ class TensorTiler2D:
                     tile_group_height,
                     tile_group_width * tile_width,
                 )
-                iter_strides[2] = tile_group_width * tile_width  # TODO: this is a guess
+                iter_strides[2] = 1
+                iter_strides[1] = tensor_width * tile_height
             elif not tile_col_major and tile_group_col_major:
                 # This is a special case where we can combine a tile group into one logical tile (vertically)
                 iter_sizes[1], iter_sizes[2] = (
                     tile_group_width,
                     tile_group_height * tile_height,
                 )
-                iter_strides[2] = (
-                    tensor_width * tile_height * tile_group_height
-                )  # TODO: this is a guess
+                iter_strides[1] = tile_width
+                iter_strides[2] = tensor_width
             elif tile_group_width == 1:
                 # These are two more special cases; we can combine tiles here too to get a simpler transform
                 if tile_col_major:
@@ -140,93 +260,12 @@ class TensorTiler2D:
                     idx_order = [1, 0]
                 iter_sizes[idx_order[0]] = tile_group_height
                 iter_sizes[idx_order[1]] = tile_group_width
-                iter_strides[idx_order[0]] = (
-                    tile_width * tile_group_width * tile_height * tile_group_height
-                )
+                iter_strides[idx_order[0]] = tensor_width * tile_height
                 iter_strides[idx_order[1]] = tile_width
-                print("TODO: In catch all")
 
         iter_sizes, iter_strides = validate_and_clean_sizes_strides(
             iter_sizes, iter_strides
         )
-
-        calc_sizes = None
-        if tile_group_height != 1 or tile_group_width != 1:
-            iter_sizes, iter_strides = cls.__sizes_strides_for_tile_group(
-                tile_dims,
-                tile_group_dims,
-                iter_sizes,
-                iter_strides,
-                tile_col_major,
-                tile_group_col_major,
-            )
-
-            if partial_tile_group_width:
-                partial_row_sizes, partial_row_strides = (
-                    cls.__sizes_strides_for_tile_group(
-                        tile_dims,
-                        (tile_group_height, partial_tile_group_width),
-                        iter_sizes,
-                        iter_strides,
-                        tile_col_major,
-                        tile_group_col_major,
-                    )
-                )
-                # I think this should always be true
-                assert (
-                    iter_strides == partial_row_strides
-                ), "If this is not true, need a strides fn for partials"
-            if partial_tile_group_height:
-                partial_col_sizes, partial_col_strides = (
-                    cls.__sizes_strides_for_tile_group(
-                        tile_dims,
-                        (partial_tile_group_height, tile_group_width),
-                        iter_sizes,
-                        iter_strides,
-                        tile_col_major,
-                        tile_group_col_major,
-                    )
-                )
-                # I think this should always be true
-                assert (
-                    iter_strides == partial_col_strides
-                ), "If this is not true, need a strides fn for partials"
-            if partial_tile_group_width and partial_tile_group_height:
-                partial_both_sizes, partial_both_strides = (
-                    cls.__sizes_strides_for_tile_group(
-                        tile_dims,
-                        (partial_tile_group_height, partial_tile_group_width),
-                        iter_sizes,
-                        iter_strides,
-                        tile_col_major,
-                        tile_group_col_major,
-                    )
-                )
-                # I think this should always be true
-                assert (
-                    iter_strides == partial_both_strides
-                ), "If this is not true, need a strides fn for partials"
-
-                def sizes_fn(step_num, _prev_sizes):
-                    if (
-                        partial_tile_group_width
-                        and partial_tile_group_height
-                        and step_num == num_steps - 1
-                    ):
-                        # Final tile may be partial in both directions
-                        return partial_both_sizes
-                    if not iter_col_major:
-                        if step_num % steps_per_row == 0:
-                            return partial_row_sizes
-                        if step_num >= steps_per_row * (steps_per_col - 1):
-                            return partial_col_sizes
-                    else:
-                        if step_num % steps_per_col == 0:
-                            return partial_col_sizes
-                        if step_num >= steps_per_col * (steps_per_row - 1):
-                            return partial_row_sizes
-
-                calc_sizes = sizes_fn
 
         if tile_repeat != 1:
             if iter_sizes[1] == 1 and iter_strides[0] == 0:
@@ -238,49 +277,7 @@ class TensorTiler2D:
                     )
                 iter_sizes[0] = tile_repeat
 
-        return TensorTileSequence(
-            (tensor_height, tensor_width),
-            num_steps,
-            sizes=iter_sizes,
-            strides=iter_strides,
-            offset_fn=calc_offset,
-            sizes_fn=calc_sizes,
-        )
-
-    @classmethod
-    def __sizes_strides_for_tile_group(
-        cls,
-        tile_dims: Sequence[int],
-        tile_group_dims: Sequence[int],
-        sizes: Sequence[int],
-        strides: Sequence[int],
-        tile_col_major: bool = False,
-        tile_group_col_major: bool = False,
-    ) -> tuple[Sequence[int], Sequence[int]]:
-        # Interior method, assumes all validation already done
-        tile_height, tile_width = tile_dims
-        tile_group_height, tile_group_width = tile_group_dims
-
-        if tile_group_height != 1 or tile_group_width != 1:
-            if tile_col_major and not tile_group_col_major:
-                # This is a special case where we can combine a tile group into one logical tile (horizontally)
-                sizes[1] = tile_group_height
-                sizes[2] = tile_group_width * tile_width
-            elif not tile_col_major and tile_group_col_major:
-                # This is a special case where we can combine a tile group into one logical tile (vertically)
-                sizes[1] = tile_group_width
-                sizes[2] = tile_group_height * tile_height
-            else:
-                # This should always be the case that creates a correct transfrom;
-                # however, it may be needlessly complex (large values in out dims)
-                size_idx = [0, 1]
-                if tile_group_col_major:
-                    size_idx = [1, 0]
-                sizes[size_idx[0]] = tile_group_height
-                sizes[size_idx[1]] = tile_group_width
-
-        sizes, strides = validate_and_clean_sizes_strides(sizes, strides)
-        return sizes, strides
+        return iter_sizes, iter_strides
 
     """
     # TileStepGroupVerticalTiler(VerticalTileStep, RepeatCount=All|N, HorizontalRepeat=N, TileColMajor=True|False, IterColMajor=True|False, IterScheme=TensorComplete|BlockComplete)
