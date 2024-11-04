@@ -22,6 +22,8 @@ This repetition is achieved using the Data Movement Accelerator (DMA) of the sha
 
 For more information into DMAs and their buffer descriptors you can refer to the [Advanced Topic of Section 2a](../../section-2a/README.md#advanced-topic-data-movement-accelerators) and [Section 2f](../../section-2f/).
 
+TODO: explain that it only works on objectfifos of size 1 and it adjusts values derived from the acquire release ops
+
 One particularity of this feature is the repeat pattern for Object FIFOs with a size greater than 1. The data movement generated for Object FIFOs follows a cyclic pattern of First In First Out and when this is paired with a repeat it results in the repetition of the entire cyclic pattern instead of the repetition of each individual object. This is shown in the figure below with the red arrow representing the repeat value:
 
 <img src="./../../../assets/RepeatSharedTile_2.png" height="300">
