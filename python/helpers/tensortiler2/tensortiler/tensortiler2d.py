@@ -208,9 +208,6 @@ class TensorTiler2D:
             strides_fn=calc_strides,
         )
 
-    class StepIterScheme(Enum):
-        DEPTH_FIRST = 1
-
     @classmethod
     def step_tiler(
         cls,
@@ -261,9 +258,9 @@ class TensorTiler2D:
         steps_per_row = (tensor_width // (tile_width * tile_repeat_width)) + (
             tensor_width % (tile_width * tile_repeat_width)
         ) // tile_width
-        steps_per_col = (tensor_width // (tile_width * tile_repeat_width)) + (
-            tensor_width % (tile_width * tile_repeat_width)
-        ) // tile_width
+        steps_per_col = (tensor_height // (tile_height * tile_repeat_height)) + (
+            tensor_height % (tile_height * tile_repeat_height)
+        ) // tile_height
 
         num_steps = steps_per_row * steps_per_col
 
