@@ -1064,7 +1064,7 @@ class FlowRunner:
 
             if opts.alloc_scheme:
                 pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
-                    opts.alloc_scheme
+                    opts.alloc_scheme, opts.dynamic_objFifos, opts.ctrl_pkt_overlay
                 ).materialize(module=True)
             else:
                 pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE().materialize(module=True)
