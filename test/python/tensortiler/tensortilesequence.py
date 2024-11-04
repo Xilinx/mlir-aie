@@ -9,7 +9,10 @@ from util import construct_test
 # CHECK-LABEL: tensor_tile_sequence
 @construct_test
 def tensor_tile_sequence():
-    # Valid
+
+    empty_tiles = TensorTileSequence((2, 2), 0)
+    assert len(empty_tiles) == 0
+
     def offset_fn(step, _prev_offset):
         return step
 
@@ -41,6 +44,9 @@ def tensor_tile_sequence():
     )
     assert tiles != tiles4
 
+    tiles4_copy = TensorTileSequence.from_tiles(tiles4)
+    assert tiles_copy4 == tiles4
+
     # CHECK: Pass!
     print("Pass!")
 
@@ -48,11 +54,9 @@ def tensor_tile_sequence():
 # CHECK-LABEL: tensor_tile_sequence_invalid
 @construct_test
 def tensor_tile_sequence_invalid():
-    # Valid
     def offset_fn(step, _prev_offset):
         return step
 
-    # Bad tensor dims
     try:
         tiles = TensorTileSequence(
             (0, 2), 4, sizes=[1, 1], strides=[1, 1], offset_fn=offset_fn
@@ -98,8 +102,23 @@ def tensor_tile_sequence_invalid():
         # Good
         pass
     try:
-        tiles = TensorTileSequence((2, 2), 0, strides=[1, 1], sizes=[1, 1])
+        tiles = TensorTileSequence((2, 2), 1, strides=[1, 1], sizes=[1, 1])
         raise Exception("Should fail, missing offset")
+    except ValueError:
+        # Good
+        pass
+
+    tiles = TensorTileSequence((2, 3), 1, strides=[0, 1], sizes=[1, 1])
+    try:
+        tiles.append(TensorTile(3, 2), offset=0, strides=[0, 1], sizes=[1, 1])
+        raise Exception("Should not be able to add tile with inconsistent tensor dim")
+    except ValueError:
+        # Good
+        pass
+
+    try:
+        TensorTileSequence.from_tiles([])
+        raise Exception("Should not be able to create sequence from no tiles")
     except ValueError:
         # Good
         pass

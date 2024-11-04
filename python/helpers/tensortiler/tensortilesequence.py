@@ -1,3 +1,4 @@
+from __future__ import annotations
 from collections import abc
 from copy import deepcopy
 import matplotlib.animation as animation
@@ -33,54 +34,89 @@ class TensorTileSequence(abc.MutableSequence, abc.Iterable):
 
         # Check tensor dims, offset, sizes, strides
         self._tensor_dims = validate_tensor_dims(tensor_dims)
-        self._offset = offset
-        if not (self._offset is None):
-            self._offset = validate_offset(self._offset)
-        self._sizes, self._strides = validate_and_clean_sizes_strides(
+        if not (offset is None):
+            offset = validate_offset(offset)
+        sizes, strides = validate_and_clean_sizes_strides(
             sizes, strides, allow_none=True
         )
 
-        # Make sure values or not None if iteration functions are None; also set default iter fn
-        if offset_fn is None:
-            if self._offset is None:
-                raise ValueError("Offset must be provided if offset_fn is None")
-            self._offset_fn = lambda _step, _prev_offset: self._offset
-        else:
-            self._offset_fn = offset_fn
-        if sizes_fn is None:
-            if self._sizes is None:
-                raise ValueError("Sizes must be provided if size_fn is None")
-            self._sizes_fn = lambda _step, _prev_sizes: self._sizes
-        else:
-            self._sizes_fn = sizes_fn
-        if strides_fn is None:
-            if self._strides is None:
-                raise ValueError("Strides must be provided if stride_fn is None")
-            self._strides_fn = lambda _step, _prev_strides: self._strides
-        else:
-            self._strides_fn = strides_fn
-
         # Validate and set num steps
-        if num_steps < 1:
-            raise ValueError(f"Number of steps must be >= 1 (but is {num_steps})")
+        if num_steps < 0:
+            raise ValueError(f"Number of steps must be positive (but is {num_steps})")
 
-        # Pre-calculate tiles, because better for error handling up-front (and for visualizing full iter)
-        # This is somewhat against the mentality behind iterations, but should be okay at the scale this
-        # class will be used for (e.g., no scalability concerns with keeping all tiles in mem)
-        self._tiles = []
-        for step in range(num_steps):
-            self._offset = self._offset_fn(step, self._offset)
-            self._sizes = self._sizes_fn(step, self._sizes)
-            self._strides = self._strides_fn(step, self._strides)
-
-            self._tiles.append(
-                TensorTile(
-                    self._tensor_dims,
-                    self._offset,
-                    self._sizes,
-                    self._strides,
+        if num_steps == 0:
+            if (
+                offset != None
+                or sizes != None
+                or strides != None
+                or offset_fn != None
+                or sizes_fn != None
+                or strides_fn != None
+            ):
+                raise ValueError(
+                    f"If num_steps=0, no sizes/strides/offset information may be specified"
                 )
+        else:
+            # Make sure values or not None if iteration functions are None; also set default iter fn
+            if offset_fn is None:
+                if offset is None:
+                    raise ValueError("Offset must be provided if offset_fn is None")
+                offset_fn = lambda _step, _prev_offset: offset
+            else:
+                offset_fn = offset_fn
+            if sizes_fn is None:
+                if sizes is None:
+                    raise ValueError("Sizes must be provided if size_fn is None")
+                sizes_fn = lambda _step, _prev_sizes: sizes
+            else:
+                sizes_fn = sizes_fn
+            if strides_fn is None:
+                if strides is None:
+                    raise ValueError("Strides must be provided if stride_fn is None")
+                strides_fn = lambda _step, _prev_strides: strides
+            else:
+                strides_fn = strides_fn
+
+            # Pre-calculate tiles, because better for error handling up-front (and for visualizing full iter)
+            # This is somewhat against the mentality behind iterations, but should be okay at the scale this
+            # class will be used for (e.g., no scalability concerns with keeping all tiles in mem)
+            self._tiles = []
+            for step in range(num_steps):
+                offset = offset_fn(step, offset)
+                sizes = sizes_fn(step, sizes)
+                strides = strides_fn(step, strides)
+
+                self._tiles.append(
+                    TensorTile(
+                        self._tensor_dims,
+                        offset,
+                        sizes,
+                        strides,
+                    )
+                )
+
+    @classmethod
+    def from_tiles(cls, tiles: Sequence[TensorTile]) -> TensorTileSequence:
+        if len(tiles) < 1:
+            raise ValueError(
+                "Received no tiles; must have at least one tile to create a tile sequence."
             )
+        tensor_dims = tiles[0].tensor_dims
+        for t in tiles:
+            if t.tensor_dims != tensor_dims:
+                raise ValueError(
+                    f"Tiles have multiple tensor dimensions (found {tensor_dims} and {t.tensor_dims})"
+                )
+        tileseq = cls(
+            tensor_dims,
+            num_steps=1,
+            offset=tiles[0].offset,
+            sizes=tiles[0].sizes,
+            strides=tiles[0].strides,
+        )
+        for t in tiles[1:]:
+            tileseq.append(t)
+        return tileseq
 
     def animate(
         self, title: str = None, animate_access_count: bool = False
@@ -178,12 +214,20 @@ class TensorTileSequence(abc.MutableSequence, abc.Iterable):
         return self._tiles[idx]
 
     def __setitem__(self, idx: int, tile: TensorTile):
+        if self._tensor_dims != tile.tensor_dims:
+            raise ValueError(
+                f"Cannot add tile with tensor dims {tile.tensor_dims} to sequence of tiles with tensor dims {self._tensor_dims}"
+            )
         self._tiles[idx] = deepcopy(tile)
 
     def __delitem__(self, idx: int):
         del self._tiles[idx]
 
     def insert(self, idx: int, tile: TensorTile):
+        if self._tensor_dims != tile.tensor_dims:
+            raise ValueError(
+                f"Cannot add tile with tensor dims {tile.tensor_dims} to sequence of tiles with tensor dims {self._tensor_dims}"
+            )
         self._tiles.insert(idx, tile)
 
     def __eq__(self, other):
