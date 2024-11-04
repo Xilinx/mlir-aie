@@ -23,12 +23,16 @@ class TensorTile:
     ):
         self._tensor_dims = validate_tensor_dims(tensor_dims)
         self._offset = validate_offset(offset)
+        if self._offset >= np.prod(tensor_dims):
+            raise ValueError(
+                f"Offset too large: {self._offset}. Max value allowed for tensor: {np.prod(tensor_dims)}"
+            )
         self._sizes, self._strides = validate_and_clean_sizes_strides(sizes, strides)
 
     @property
     def tensor_dims(self) -> Sequence[int]:
         # Copy to prevent callers from mutating self
-        return deepcopy(self.tensor_dims)
+        return deepcopy(self._tensor_dims)
 
     @property
     def offset(self) -> int:
