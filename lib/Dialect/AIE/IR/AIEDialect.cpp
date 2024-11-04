@@ -109,6 +109,7 @@ static VirtualizedNPUTargetModel NPUmodel1col(1);
 static VirtualizedNPUTargetModel NPUmodel2col(2);
 static VirtualizedNPUTargetModel NPUmodel3col(3);
 static VirtualizedNPUTargetModel NPUmodel4col(4);
+static NPU2TargetModel NPU2model;
 
 const AIETargetModel &getTargetModel(Operation *op) {
   if (auto t = dyn_cast<AIETarget>(op))
@@ -139,6 +140,8 @@ const AIETargetModel &getTargetModel(AIEDevice device) {
     return NPUmodel3col;
   case AIEDevice::npu1_4col:
     return NPUmodel4col;
+  case AIEDevice::npu2:
+    return NPU2model;
   }
   return VC1902model;
 }
@@ -997,7 +1000,8 @@ LogicalResult ConfigureCascadeOp::verify() {
   if (t.isMemTile(tile.colIndex(), tile.rowIndex()))
     return emitOpError("memTile row has no cascade stream interface");
 
-  if (t.getTargetArch() == AIEArch::AIE2) {
+  if ((t.getTargetArch() == AIEArch::AIE2) ||
+      (t.getTargetArch() == AIEArch::AIE2p)) {
     if (inputDir == CascadeDir::South || inputDir == CascadeDir::East) {
       return emitOpError("input direction of cascade must be North or West on ")
              << stringifyAIEArch(t.getTargetArch());
@@ -1043,7 +1047,8 @@ LogicalResult GetCascadeOp::verify() {
   if (targetModel.getTargetArch() == AIEArch::AIE1) {
     if (bits != 384)
       return emitOpError("must be a 384-bit type");
-  } else if (targetModel.getTargetArch() == AIEArch::AIE2) {
+  } else if ((targetModel.getTargetArch() == AIEArch::AIE2) ||
+             (targetModel.getTargetArch() == AIEArch::AIE2p)) {
     if (bits != 512)
       return emitOpError("must be a 512-bit type");
   } else

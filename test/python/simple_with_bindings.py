@@ -12,7 +12,6 @@ from aie.dialects.aie import (
     end,
     buffer,
 )
-from aie.extras.dialects.ext import memref, arith
 from aie.ir import InsertionPoint, Block
 
 from util import construct_and_print_module
@@ -39,7 +38,7 @@ def simple_with_bindings_example():
     dev_block = Block.create_at_start(dev.body_region)
     with InsertionPoint(dev_block):
         tile_a = tile(1, 4)
-        buff = buffer(tile=tile_a, shape=(256,), dtype=T.i32())
+        buff = buffer(tile_a, T.memref(256, T.i32()))
 
         C = Core(tile_a)
         bb = Block.create_at_start(C.body)

@@ -11,8 +11,8 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.dialects.ext import arith
 from aie.extras.context import mlir_mod_ctx
-from aie.extras.util import np_ndarray_type_get_shape
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.util import np_ndarray_type_get_shape
+from aie.helpers.dialects.ext.scf import _for as range_
 
 width = 512
 height = 9
@@ -103,10 +103,30 @@ def color_threshold():
             )
 
             # Runtime parameters
-            rtpComputeTile2 = Buffer(ComputeTile2, [16], np.int32, "rtpComputeTile2")
-            rtpComputeTile3 = Buffer(ComputeTile3, [16], np.int32, "rtpComputeTile3")
-            rtpComputeTile4 = Buffer(ComputeTile4, [16], np.int32, "rtpComputeTile4")
-            rtpComputeTile5 = Buffer(ComputeTile5, [16], np.int32, "rtpComputeTile5")
+            rtpComputeTile2 = buffer(
+                ComputeTile2,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile2",
+                use_write_rtp=True,
+            )
+            rtpComputeTile3 = buffer(
+                ComputeTile3,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile3",
+                use_write_rtp=True,
+            )
+            rtpComputeTile4 = buffer(
+                ComputeTile4,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile4",
+                use_write_rtp=True,
+            )
+            rtpComputeTile5 = buffer(
+                ComputeTile5,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtpComputeTile5",
+                use_write_rtp=True,
+            )
 
             # Set up compute tiles
 
@@ -213,21 +233,21 @@ def color_threshold():
             )
             def sequence(inTensor, notUsed, outTensor):
                 # thresholdValue, maxValue, thresholdType
-                NpuWriteRTPOp("rtpComputeTile2", index=0, value=50)
-                NpuWriteRTPOp("rtpComputeTile2", index=1, value=255)
-                NpuWriteRTPOp("rtpComputeTile2", index=2, value=0)
+                rtpComputeTile2[0] = 50
+                rtpComputeTile2[1] = 255
+                rtpComputeTile2[2] = 0
 
-                NpuWriteRTPOp("rtpComputeTile3", index=0, value=50)
-                NpuWriteRTPOp("rtpComputeTile3", index=1, value=255)
-                NpuWriteRTPOp("rtpComputeTile3", index=2, value=0)
+                rtpComputeTile3[0] = 50
+                rtpComputeTile3[1] = 255
+                rtpComputeTile3[2] = 0
 
-                NpuWriteRTPOp("rtpComputeTile4", index=0, value=50)
-                NpuWriteRTPOp("rtpComputeTile4", index=1, value=255)
-                NpuWriteRTPOp("rtpComputeTile4", index=2, value=0)
+                rtpComputeTile4[0] = 50
+                rtpComputeTile4[1] = 255
+                rtpComputeTile4[2] = 0
 
-                NpuWriteRTPOp("rtpComputeTile5", index=0, value=50)
-                NpuWriteRTPOp("rtpComputeTile5", index=1, value=255)
-                NpuWriteRTPOp("rtpComputeTile5", index=2, value=0)
+                rtpComputeTile5[0] = 50
+                rtpComputeTile5[1] = 255
+                rtpComputeTile5[2] = 0
 
                 npu_dma_memcpy_nd(
                     metadata=inOOB_L3L2,

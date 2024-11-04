@@ -26,7 +26,7 @@ mlir: build/aie2_${COLORTHRESHOLD_WIDTH}.mlir
 
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -d -DBIT_WIDTH=8 -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
 	
 build/aie2_${COLORTHRESHOLD_WIDTH}.mlir: ${srcdir}/aie2_colorThreshold.py
 	mkdir -p ${@D}
@@ -35,6 +35,7 @@ build/aie2_${COLORTHRESHOLD_WIDTH}.mlir: ${srcdir}/aie2_colorThreshold.py
 build/final_${COLORTHRESHOLD_WIDTH}.xclbin: build/aie2_${COLORTHRESHOLD_WIDTH}.mlir build/threshold.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host --alloc-scheme=basic-sequential \
+		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
@@ -48,7 +49,7 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: ${targetname}.exe build/final_${COLORTHRESHOLD_WIDTH}.xclbin build/insts.txt
+run: ${targetname}.exe build/final_${COLORTHRESHOLD_WIDTH}.xclbin
 	${powershell} ./$< -x build/final_${COLORTHRESHOLD_WIDTH}.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:

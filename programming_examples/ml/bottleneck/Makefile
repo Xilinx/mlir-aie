@@ -23,22 +23,28 @@ insts.txt: build/${mlirFileName}.mlir
 	aiecc.py -v --aie-only-generate-npu --npu-insts-name=$@ $<
 
 build/conv2dk1.o: conv2dk1.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -DINT8_ACT -c $< -o $@
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DINT8_ACT -c $< -o ${@F}
 
 build/conv2dk3.o: conv2dk3.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -DUINT8_ACT -c $< -o $@
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DUINT8_ACT -c $< -o ${@F}
 
 build/conv2dk1_skip.o: conv2dk1_skip.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -DINT8_ACT -c $< -o $@
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DINT8_ACT -c $< -o$ ${@F} 
 
 build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1.o build/conv2dk3.o build/conv2dk1_skip.o  
-	cd build && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host --alloc-scheme=basic-sequential \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--alloc-scheme=basic-sequential \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%) 
 
 clean:
 	rm -rf build *.elf* *.lst *.bif ${mlirFileName}.mlir.prj log .xclbin sim \
 		chess* *.o insts.txt \
 		*.log aie_partition.json *.bin BOOT.BIN _x test.exe
 
-run_py: 
+run_py: build/final.xclbin
 	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE

@@ -90,7 +90,8 @@ def LockBlocking: I32EnumAttr<"LockBlocking", "lock operation is blocking",
 def AIEArch: I32EnumAttr<"AIEArch", "AIE Architecture",
   [
     I32EnumAttrCase<"AIE1", 1>,
-    I32EnumAttrCase<"AIE2", 2>
+    I32EnumAttrCase<"AIE2", 2>,
+    I32EnumAttrCase<"AIE2p", 3>,
   ]> {
 
   let cppNamespace = "xilinx::AIE";
@@ -105,7 +106,8 @@ def AIEDevice: I32EnumAttr<"AIEDevice", "AIE Device",
     I32EnumAttrCase<"npu1_1col", 5>,
     I32EnumAttrCase<"npu1_2col", 6>,
     I32EnumAttrCase<"npu1_3col", 7>,
-    I32EnumAttrCase<"npu1_4col", 8>
+    I32EnumAttrCase<"npu1_4col", 8>,
+    I32EnumAttrCase<"npu2", 9>,
   ]> {
 
   let cppNamespace = "xilinx::AIE";

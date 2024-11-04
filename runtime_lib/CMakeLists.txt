@@ -141,11 +141,17 @@ add_aiert_library(xaienginecdo_static ${XAIE_SOURCE_DIR} STATIC)
 
 target_link_libraries(xaienginecdo_static PRIVATE cdo_driver_mlir_aie)
 target_compile_definitions(xaienginecdo_static PRIVATE -D__AIECDO__ -D__AIEDEBUG__)
-target_include_directories(xaienginecdo_static SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR})
 
 # just to make cmake happy since AIETargets will need to re-export
 # make sure not abs path...
 # https://github.com/Kitware/CMake/blob/16b1f0c3e99023316b12fdabd1980a18b738d942/Source/cmExportInstallFileGenerator.cxx#L224
 install(TARGETS xaienginecdo_static DESTINATION lib EXPORT xaienginecdo_static)
 install(EXPORT xaienginecdo_static DESTINATION lib/cmake/aie)
+
+include("aie_api/aieapi.cmake")
+set(AIEAPI_SOURCE_DIR "../third_party/aie_api/include/aie_api")
+add_aie_api_headers(${AIEAPI_SOURCE_DIR}
+        ${AIE_BINARY_DIR}/include
+        ${CMAKE_INSTALL_PREFIX}/include
+)
 

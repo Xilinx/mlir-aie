@@ -15,9 +15,8 @@ from aie.dialects.aie import (
     LockAction,
     WireBundle,
 )
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 
-# this is to get the MemRefValue caster inside of aie-python-extras
 # noinspection PyUnresolvedReferences
 from aie.extras.dialects.ext import linalg, memref
 import aie.extras.types as T

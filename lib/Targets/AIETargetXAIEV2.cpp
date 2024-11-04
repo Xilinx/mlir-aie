@@ -124,10 +124,12 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       }
     }
 
-    if (0 != ndims && AIEArch::AIE2 != targetModel.getTargetArch())
-      return memOp.emitOpError("DMA contains at least one multi-dimensional "
-                               "buffer descriptor. This is currently only "
-                               "supported for AIE-ML devices.");
+    if (0 != ndims)
+      if ((AIEArch::AIE2 != targetModel.getTargetArch()) &&
+          (AIEArch::AIE2p != targetModel.getTargetArch()))
+        return memOp.emitOpError("DMA contains at least one multi-dimensional "
+                                 "buffer descriptor. This is currently only "
+                                 "supported for AIE-ML and later devices.");
 
     int acqValue = 0, relValue = 0;
     bool hasAcq = false, hasRel = false;
@@ -316,6 +318,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   auto arch = targetModel.getTargetArch();
   std::string AIE1_device("XAIE_DEV_GEN_AIE");
   std::string AIE2_device("XAIE_DEV_GEN_AIEML");
+  std::string AIE2p_device("XAIE_DEV_GEN_AIE2P");
   std::string device;
   switch (arch) {
   case AIEArch::AIE1:
@@ -323,6 +326,9 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     break;
   case AIEArch::AIE2:
     device = AIE2_device;
+    break;
+  case AIEArch::AIE2p:
+    device = AIE2p_device;
     break;
   }
   output << "  ctx->AieConfigPtr.AieGen = " << device << ";\n";

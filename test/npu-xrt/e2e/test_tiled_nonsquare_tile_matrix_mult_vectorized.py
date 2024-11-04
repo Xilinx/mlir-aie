@@ -24,13 +24,14 @@ from aie.dialects.aie import (
     WireBundle,
 )
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 from aie.dialects.transform import any_op_t, apply_registered_pass, get_parent_op
 from aie.dialects.transform.extras import named_sequence
 from aie.dialects.transform.loop import loop_unroll
 from aie.dialects.transform.structured import structured_match
 from aie.extras.context import ExplicitlyManagedModule
-from aie.extras.dialects.ext import arith, func, linalg
+from aie.extras.dialects.ext import arith, linalg
+from aie.helpers.dialects.ext import func
 from aie.extras.runtime.passes import Pipeline, run_pipeline
 
 # noinspection PyUnresolvedReferences

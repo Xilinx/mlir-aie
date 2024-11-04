@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: valid_xchess_license, !hsa
+// REQUIRES: aiesimulator, valid_xchess_license, !hsa
 // RUN: xchesscc_wrapper aie -c %S/kernel.cc
 // RUN: %PYTHON aiecc.py --aiesim --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf

@@ -3,7 +3,6 @@
 
 # RUN: %python %s | FileCheck %s
 import numpy as np
-import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
     ObjectFifoPort,

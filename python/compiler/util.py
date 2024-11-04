@@ -34,8 +34,6 @@ from ..dialects.aie import (
     translate_mlir_to_llvmir,
 )
 from ..extras.runtime.passes import Pipeline, run_pipeline
-
-# this is inside the aie-python-extras (shared) namespace package
 from ..extras.util import find_ops
 from ..ir import Context, Module
 

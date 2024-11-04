@@ -200,6 +200,11 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
     "mlir::memref::MemRefDialect",
     "xilinx::AIE::AIEDialect",
   ];
+
+  let options = [
+    Option<"clDynamicObjectFifos", "dynamic-objFifos", "bool", /*default=*/"false", 
+    "Flag to enable dynamic object fifo lowering in cores instead of loop unrolling.">
+  ];
 }
 
 def AIEObjectFifoRegisterProcess : Pass<"aie-register-objectFifos", "DeviceOp"> {

@@ -11,7 +11,7 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.scf import _for as range_
 
 N = 4096
 M = 64
@@ -56,8 +56,8 @@ def my_passthrough():
                     metadata=of_in,
                     bd_id=1,
                     mem=A,
-                    sizes=[1, K, M, 1],
-                    strides=[1, 1, K, 1],
+                    sizes=[1, 1, K, M],
+                    strides=[1, 1, 1, K],
                     issue_token=True,
                 )
                 npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])

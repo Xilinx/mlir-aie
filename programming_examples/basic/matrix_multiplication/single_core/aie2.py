@@ -5,6 +5,7 @@
 #
 # (c) Copyright 2023 AMD Inc.
 import argparse
+from ml_dtypes import bfloat16
 import numpy as np
 import sys
 
@@ -13,8 +14,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 import aie.utils.trace as trace_utils
 from aie.utils.trace import PortEvent
-from aie.extras.dialects.ext.scf import _for as range_
-from aie.extras.util import bfloat16
+from aie.helpers.dialects.ext.scf import _for as range_
 
 dtype_map = {
     "bf16": bfloat16,
@@ -45,9 +45,18 @@ def main():
         choices=["bf16", "i8", "i16", "f32", "i32"],
         default="i32",
     )
+    argparser.add_argument("--trace_size", type=int, default=0)
     args = argparser.parse_args()
     my_matmul(
-        args.M, args.K, args.N, args.m, args.k, args.n, args.dtype_in, args.dtype_out
+        args.M,
+        args.K,
+        args.N,
+        args.m,
+        args.k,
+        args.n,
+        args.dtype_in,
+        args.dtype_out,
+        args.trace_size,
     )
 
 
@@ -55,7 +64,7 @@ def ceildiv(a, b):
     return (a + b - 1) // b
 
 
-def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
+def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
 
     assert M % m == 0
     assert K % k == 0
@@ -79,11 +88,17 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
     assert n % t == 0
 
     vectorized = True
-    enable_tracing = False
-    trace_size = 65536
+    enable_tracing = True if trace_size > 0 else False
 
     dtype_in = dtype_map[dtype_in_str]
     dtype_out = dtype_map[dtype_out_str]
+
+    assert np.issubdtype(dtype_in, np.integer) == np.issubdtype(
+        dtype_out, np.integer
+    ), f"Input dtype ({dtype_in}) and output dtype ({dtype_out}) must either both be integral or both be float"
+    assert (
+        np.dtype(dtype_out).itemsize >= np.dtype(dtype_in).itemsize
+    ), f"Output dtype ({dtype_out}) must be equal or larger to input dtype ({dtype_in})"
 
     A_sz = M * K
     B_sz = K * N
@@ -102,31 +117,13 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
 
     with mlir_mod_ctx() as ctx:
 
-        C_sz_in_bytes = C_sz * np.dtype(dtype_out).itemsize // 8
+        C_sz_in_bytes = C_sz * np.dtype(dtype_out).itemsize
 
         @device(AIEDevice.npu1_1col)
         def device_body():
-            a_ty = np.ndarray[
-                (
-                    m,
-                    k,
-                ),
-                np.dtype[dtype_in],
-            ]
-            b_ty = np.ndarray[
-                (
-                    k,
-                    n,
-                ),
-                np.dtype[dtype_in],
-            ]
-            c_ty = np.ndarray[
-                (
-                    m,
-                    n,
-                ),
-                np.dtype[dtype_out],
-            ]
+            a_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
+            b_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
+            c_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
             # AIE Core Function declarations
             func_type = "" if vectorized else "scalar_"
@@ -206,9 +203,10 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
             )
             object_fifo_link(memC, outC)
 
-            # Set up a circuit-switched flow from core to shim for tracing information
-            if enable_tracing:
-                flow(compute_tile2, WireBundle.Trace, 0, shim_tile, WireBundle.DMA, 1)
+            # Set up a packet-switched flow from core to shim for tracing information
+            tiles_to_trace = [compute_tile2]
+            if trace_size > 0:
+                trace_utils.configure_packet_tracing_flow(tiles_to_trace, shim_tile)
 
             # Set up compute tiles
 
@@ -241,34 +239,8 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
             def sequence(A, B, C):
 
                 if enable_tracing:
-                    trace_utils.configure_simple_tracing_aie2(
-                        compute_tile2,
-                        shim_tile,
-                        ddr_id=2,
-                        size=trace_size,
-                        offset=C_sz_in_bytes,
-                        events=[
-                            PortEvent(
-                                trace_utils.CoreEvent.PORT_RUNNING_0,
-                                port_number=1,
-                                master=True,
-                            ),
-                            PortEvent(
-                                trace_utils.CoreEvent.PORT_RUNNING_1,
-                                port_number=2,
-                                master=True,
-                            ),
-                            PortEvent(
-                                trace_utils.CoreEvent.PORT_RUNNING_2,
-                                port_number=5,
-                                master=True,
-                            ),
-                            trace_utils.CoreEvent.INSTR_EVENT_0,
-                            trace_utils.CoreEvent.INSTR_EVENT_1,
-                            trace_utils.CoreEvent.MEMORY_STALL,
-                            trace_utils.CoreEvent.LOCK_STALL,
-                            trace_utils.CoreEvent.INSTR_VECTOR,
-                        ],
+                    trace_utils.configure_packet_tracing_aie2(
+                        tiles_to_trace, shim_tile, trace_size, C_sz_in_bytes
                     )
 
                 # only do 4 tile rows at a time before synchronizing, so we can reuse BDs

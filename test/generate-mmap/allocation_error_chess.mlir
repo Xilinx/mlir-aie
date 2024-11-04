@@ -1,4 +1,4 @@
-//===- allocation_error.mlir -----------------------------------*- MLIR -*-===//
+//===- allocation_error_chess.mlir -----------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,10 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: chess
-// RUN: not aiecc.py --alloc-scheme=basic-sequential --xchesscc --xbridge %s
-// 2>&1 | FileCheck %s --check-prefix=CHESS CHESS: Error: could not find free
-// space for SpaceSymbol x in memory DMb
+// REQUIRES: chess, aietools_aie
+// RUN: not aiecc.py --alloc-scheme=basic-sequential --xchesscc --xbridge %s 2>&1 | FileCheck %s --check-prefix=CHESS
+// CHESS: Error: could not find free space for SpaceSymbol x in memory DMb
 
 // If we use all of the local memory, then linking the AIE executable should
 // fail. The fundamental problem here is that we can stuff things in the

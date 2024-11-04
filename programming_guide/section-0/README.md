@@ -16,9 +16,11 @@ This programming guide focuses on application programming for the NPU found in R
 
 * [Phoenix Point Mini PC: Minisforum UM790 Pro : AMD Ryzen™ 9 7940HS](https://store.minisforum.com/products/minisforum-um790-pro?variant=43865372786933)
 
+* [Phoenix Point Laptop: ASUS Vivobook Pro 15 M6500XV-EB96 : AMD Ryzen™ 9 7940HS](https://www.asus.com/us/laptops/for-creators/vivobook/asus-vivobook-pro-15-oled-m6500/)
+  
 * [Hawk Point Mini PC: GMKtec NucBox K8 : AMD Ryzen™ 7 8845HS](https://www.gmktec.com/products/amd-ryzen-7-8845hs-mini-pc-nucbox-k8?spm=..product_fe40bedf-d378-40fc-a60a-54d18f1dbc53.header_1.1&variant=71118fa4-6acb-4d6e-abcb-1d3cf00e6438)
 
-* [Phoenix Point Laptop: ASUS Vivobook Pro 15 M6500XV-EB96 : AMD Ryzen™ 9 7940HS](https://www.asus.com/us/laptops/for-creators/vivobook/asus-vivobook-pro-15-oled-m6500/)
+* [Strix Point Mini PC: Beelink SER9 : AMD Ryzen™ AI 9 HX 370](https://www.bee-link.com/products/beelink-ser9-ai-9-hx-370)
 
 ## <ins>AMD Ryzen™ AI Initial Setup</ins>
 

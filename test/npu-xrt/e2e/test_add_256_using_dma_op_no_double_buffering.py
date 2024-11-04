@@ -20,8 +20,9 @@ from aie.dialects.aie import (
     WireBundle,
     npu_instgen,
 )
-from aie.extras.dialects.ext.scf import _for as range_
-from aie.extras.dialects.ext import func, memref
+from aie.helpers.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext import func
+from aie.extras.dialects.ext import memref
 from aie.extras.runtime.passes import run_pipeline
 
 # noinspection PyUnresolvedReferences

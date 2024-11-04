@@ -11,8 +11,8 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.extras.dialects.ext.func import func
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.ext.func import func
+from aie.helpers.dialects.ext.scf import _for as range_
 
 
 def passthroughKernel(vector_size):
@@ -21,7 +21,7 @@ def passthroughKernel(vector_size):
 
     @device(AIEDevice.npu1_1col)
     def device_body():
-        # define types - for illustrative purposes, we use equivalent types of both MLIR MemRefType and np.ndarray type in this design
+        # define types
         line_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
 
         # AIE Core Python Function declarations

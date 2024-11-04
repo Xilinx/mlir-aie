@@ -39,6 +39,8 @@ K?=512
 N?=512
 dtype_in?=i16
 dtype_out?=i32
+trace_size?=65536
+
 
 ifeq ($(dtype_in),bf16)
 	dtype_in_cpp=std::bfloat16_t
@@ -70,16 +72,18 @@ ifeq ($(dtype_out),i8)
 	dtype_acc_cpp=int8_t
 endif
 
-trace_size?=65536
-
 target_suffix?=${M}x${K}x${N}
 mlir_target?=build/aie_${target_suffix}.mlir
+trace_mlir_target?=build/aie_trace_${target_suffix}.mlir
 xclbin_target?=build/final_${target_suffix}.xclbin
+trace_xclbin_target?=build/trace_${target_suffix}.xclbin
 insts_target?=build/insts_${target_suffix}.txt
 aie_py_src?=aie2.py
 
 runargs?=-v 2 --warmup 1 --iters 1
 aieargs+=-M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
+
+CHESS?=false
 
 kernels_dir=${srcdir}/../../../../aie_kernels/aie2
 
@@ -88,15 +92,30 @@ all: ${xclbin_target} ${targetname}.exe
 
 build/%.o: ${kernels_dir}/%.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
 
 ${mlir_target}: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${aieargs} > $@
+	python3 $< ${aieargs} --trace_size 0 > $@
+
+${trace_mlir_target}: ${srcdir}/${aie_py_src}
+	mkdir -p ${@D}
+	python3 $< ${aieargs} --trace_size ${trace_size} > $@
 
 ${xclbin_target}: ${mlir_target} ${kernels:%=build/%.o}
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				$(if $(shell [ $(CHESS) != true ] && echo true), \
+					--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR}, \
+				) \
+				--aie-generate-npu --npu-insts-name=${insts_target:build/%=%} $(<:%=../%)
+
+${trace_xclbin_target}: ${trace_mlir_target} ${kernels:%=build/%.o}
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				$(if $(shell [ $(CHESS) != true ] && echo true), \
+					--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR}, \
+				) \
 				--aie-generate-npu --npu-insts-name=${insts_target:build/%=%} $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp ${srcdir}/../test.cpp ${srcdir}/../common.h
@@ -121,14 +140,16 @@ run: ${targetname}.exe ${xclbin_target}
 	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
 	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N ${runargs}
 
-trace: ${targetname}.exe ${xclbin_target} ${insts_target}
+trace: ${targetname}.exe ${trace_xclbin_target} ${insts_target}
 	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
-	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N -v 1 --warmup 0 --iters 1 -t ${trace_size}
-	../../../utils/parse_trace.py --filename trace.txt --mlir ${mlir_target} --colshift 1 > trace_mm.json
+	${powershell} ./$< -x ${trace_xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N ${runargs} -t ${trace_size}
+	../../../utils/parse_trace.py --filename trace.txt --mlir ${trace_mlir_target} --colshift 1 > trace_mm.json
+
+#	${powershell} ./$< -x ${trace_xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N -v 1 --warmup 0 --iters 1 -t ${trace_size}
 
 .PHONY: parse_trace
 parse_trace:
-	../../../utils/parse_trace.py --filename trace.txt --mlir ${mlir_target} --colshift 1 > trace_mm.json
+	../../../utils/parse_trace.py --filename trace.txt --mlir ${trace_mlir_target} --colshift 1 > trace_mm.json
 
 .PHONY: clean
 clean: clean_trace
