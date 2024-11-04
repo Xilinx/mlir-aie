@@ -10,12 +10,12 @@
 // RUN: not aie-opt --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
 // CHECK:   error: Failed to allocate buffer: "act_3_4_buff_2" with size: 2048 bytes.
 // CHECK: note: see current operation: %10 = "aie.buffer"(%0) <{sym_name = "act_3_4_buff_2"}> : (index) -> memref<512xi32>
-// CHECK: error: 'aie.tile' op All requested buffers don't fit in the available memory: Bank aware
+// CHECK: error: 'aie.tile' op Not all requested buffers fit in the available memory.
 
 // CHECK:   %tile12 = aie.tile(1, 2)
 // CHECK:             ^
 
-// CHECK: error: 'aie.tile' op allocated buffers exceeded available memory: Sequential
+// CHECK: error: 'aie.tile' op allocated buffers exceeded available memory
 // CHECK: (no stack allocated)
 
 // CHECK:   %tile12 = aie.tile(1, 2)

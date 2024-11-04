@@ -14,7 +14,7 @@
 // CHECK:     %C_L1L2_0_0_buff_0 = aie.buffer(%tile_0_2) : memref<64x96xf32> 
 // CHECK:                          ^
 // CHECK: note: see current operation: %1 = "aie.buffer"(%0) <{sym_name = "_anonymous0"}> : (index) -> memref<64x96xf32>
-// CHECK: error: 'aie.tile' op All requested buffers don't fit in the available memory: Bank aware
+// CHECK: error: 'aie.tile' op Not all requested buffers fit in the available memory.
 
 // CHECK: note: see current operation: %0 = "aie.tile"() <{col = 0 : i32, row = 2 : i32}> : () -> index
 // CHECK: note: Current configuration of buffers in bank(s) : MemoryMap:

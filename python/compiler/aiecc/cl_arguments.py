@@ -148,7 +148,7 @@ def parse_args(args=None):
         "--alloc-scheme",
         dest="alloc_scheme",
         default=None,
-        help="Choose allocation scheme for AIE buffer address assignment; possibilities: basic-sequential, bank-aware. By default, bank-aware is tried followed by basic-sequential if it fails.",
+        help="Allocation scheme for AIE buffers: basic-sequential, bank-aware (default).",
     )
     parser.add_argument(
         "--generate-ctrl-pkt-overlay",
