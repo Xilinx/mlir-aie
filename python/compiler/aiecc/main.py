@@ -55,10 +55,11 @@ INPUT_WITH_ADDRESSES_PIPELINE = (
             .add_pass(
                 "aie-generate-column-control-overlay",
                 route_shim_to_tile_ctrl=ctrl_pkt_overlay,
-            ),
+            )
+            .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
         )
-        .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
-    ).convert_scf_to_cf()
+        .convert_scf_to_cf()
+    )
 )
 
 LOWER_TO_LLVM_PIPELINE = (
