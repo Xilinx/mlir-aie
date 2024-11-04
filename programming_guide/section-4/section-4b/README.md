@@ -34,21 +34,33 @@ Enabling trace support can be done with the following steps:
 Enabling tracing means (1a) configuring the trace units for a given tile and then (1b) routing the generated events packets through the stream switches to the shim DMA where we can write them to a buffer in DDR for post-runtime processing.
 
 ### <u>(1a) Configure trace units for an AIE tile</u>
-The first necessary component for trace configuration is setting the right values for the trace control registers for each tile that we want to enable tracing for. In addition, the generated trace packets will need to be routed to shimDMA and then written to one of the 3 inout buffers. We have abstracted these two steps with the python wrapper function `configure_simple_tracing_aie2` which is in [python/utils/test.py](../../../python/utils/test.py) and is described in more detail the [README](../../../python/utils) under `python/utils`. An example of how this function is used is shown below for quick reference
+The first necessary component for trace configuration is setting the right values for the trace control registers for each tile that we want to enable tracing for. In addition, the generated trace packets will need to be routed to shimDMA and then written to one of the 3 inout buffers. We have abstracted these two steps with the python wrapper function `configure_packet_tracing_aie2` which is in [python/utils/test.py](../../../python/utils/test.py) and is described in more detail the [README](../../../python/utils) under `python/utils`. An example of how this function is used is shown below for quick reference
 ```python
-    trace_utils.configure_simple_tracing_aie2(
-        ComputeTile2,
-        ShimTile,
-        ddr_id=2,
-        size=traceSizeInBytes,
-        offset=tensorSize,
-    )
+    trace_utils.configure_packet_tracing_aie2(tiles_to_trace, ShimTile, opts.trace_size, 4096*4)
 ```
+The arguments for this example are
+* *tiles_to_trace* - array of compute tiles we want to trace
+* *ShimTile* - shim tile that the trace is going out to
+* *opts.trace_size* - the trace buffer size in bytes
+* *4096*4* - the output buffer offset in bytes where the trace data begins
+
 This block is defined within the sequence definition for `@runtime_sequence` where we define the shimDMA data movement to the 3 inout buffers.
-> **Note** This simplification works very well for the trace buffer from a single tile to the shimDMA. However, if we want to do something more advaned like allocating the trace buffer from multiple tiles into a single larger buffer, this function will not be able to express that. For that, please consult the [README](../../../python/utils) under `python/utils` for more guidance on how to customize the trace configuration.
+> **Note** This simplified wrapper is an enahnced version of the simpler `configure_simple_tracing_aie2` used previously which routed the trace from a single compute tile using circuit switched routing. This enhanced version relies on packet swtiched routing and supports tracing from multiple tiles by synchronizing the start event for each tile's trace unit to a user generated event. More details can be found in the [README](../../../python/utils) under `python/utils` for more guidance on how to customize the trace configuration.
 
 ### <u>(1b) Define trace event routes from tile to shimDMA</u>
 Once the trace units and shimDMA are configured, we need to define how the trace packets are routed from compute tile to shim tile. This is done via circuit switched flows or packet switched flows as described below. Note that trace units in the MemTile and ShimTile can also be configured and routed.
+
+We can simplify the defining the packet switched flows for the tiles we're tracing with the function `configure_packet_tracing_flow` defined in [python/utils/test.py](../../../python/utils/test.py) and is described in more detail the [README](../../../python/utils) under `python/utils`. An example of how this function is used is shown below for quick reference
+```python
+    trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+```
+The arguments for this example are
+* *tiles_to_trace* - array of compute tiles we want to trace
+* *ShimTile* - shim tile that the trace is going out to
+
+> **Note** The synchronization of this function with the previous is `configure_packet_tracing_aie` is important because we track the route IDs and bd numbers of each configured trace. Do not mix and match these with circuit switched routing as they are intended to work together as a packet tracing pair.
+
+More details about the mechanics for circuit and packet switched flows is described below if interested. Otherwise, you can skip ahead to 2. Configure host code to read trace data and write it to a text file.
 
 #### <u>Circuit switched flows</u>
 An example of a simple circuit switch routing flow to route trace event packets from a compute tile to a shimDMA would be:

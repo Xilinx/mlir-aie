@@ -148,3 +148,10 @@ target_compile_definitions(xaienginecdo_static PRIVATE -D__AIECDO__ -D__AIEDEBUG
 install(TARGETS xaienginecdo_static DESTINATION lib EXPORT xaienginecdo_static)
 install(EXPORT xaienginecdo_static DESTINATION lib/cmake/aie)
 
+include("aie_api/aieapi.cmake")
+set(AIEAPI_SOURCE_DIR "../third_party/aie_api/include/aie_api")
+add_aie_api_headers(${AIEAPI_SOURCE_DIR}
+        ${AIE_BINARY_DIR}/include
+        ${CMAKE_INSTALL_PREFIX}/include
+)
+
