@@ -56,6 +56,7 @@ class TensorTileSequence(abc.MutableSequence, abc.Iterable):
                 raise ValueError(
                     f"If num_steps=0, no sizes/strides/offset information may be specified"
                 )
+            self._tiles = []
         else:
             # Make sure values or not None if iteration functions are None; also set default iter fn
             if offset_fn is None:

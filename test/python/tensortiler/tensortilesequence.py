@@ -45,7 +45,7 @@ def tensor_tile_sequence():
     assert tiles != tiles4
 
     tiles4_copy = TensorTileSequence.from_tiles(tiles4)
-    assert tiles_copy4 == tiles4
+    assert tiles4_copy == tiles4
 
     # CHECK: Pass!
     print("Pass!")
@@ -108,9 +108,9 @@ def tensor_tile_sequence_invalid():
         # Good
         pass
 
-    tiles = TensorTileSequence((2, 3), 1, strides=[0, 1], sizes=[1, 1])
+    tiles = TensorTileSequence((2, 3), 1, offset=0, strides=[0, 1], sizes=[1, 1])
     try:
-        tiles.append(TensorTile(3, 2), offset=0, strides=[0, 1], sizes=[1, 1])
+        tiles.append(TensorTile((3, 2), offset=0, strides=[0, 1], sizes=[1, 1]))
         raise Exception("Should not be able to add tile with inconsistent tensor dim")
     except ValueError:
         # Good
