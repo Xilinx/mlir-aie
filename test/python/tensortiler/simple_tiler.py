@@ -10,7 +10,6 @@ from util import construct_test
 @construct_test
 def simple_tiler():
 
-    # TODO:
     tiles = TensorTiler2D.simple_tiler((9, 4), (3, 2))
     assert len(tiles) == 6
 
@@ -137,7 +136,7 @@ def simple_tiler_invalid():
         pass
     try:
         tiles_repeat = TensorTiler2D.simple_tiler(
-            (9, 4), (4, 2), tile_col_major=True, pattern_repeat=0
+            (9, 4), (4, 2), tile_col_major=True, pattern_repeat=5
         )
         raise ValueError("Indivisible tile (height)")
     except ValueError:
@@ -145,7 +144,7 @@ def simple_tiler_invalid():
         pass
     try:
         tiles_repeat = TensorTiler2D.simple_tiler(
-            (9, 4), (3, 3), tile_col_major=True, pattern_repeat=0
+            (9, 4), (3, 3), tile_col_major=True, pattern_repeat=5
         )
         raise ValueError("Indivisible tile (width)")
     except ValueError:
