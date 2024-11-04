@@ -28,8 +28,8 @@ LogicalResult checkAndPrintOverflow(TileOp tile, int address,
                                     int maxDataMemorySize, int stacksize,
                                     SmallVector<BufferOp, 4> buffers) {
   if (address > maxDataMemorySize) {
-    InFlightDiagnostic error = tile.emitOpError(
-        "allocated buffers exceeded available memory\n");
+    InFlightDiagnostic error =
+        tile.emitOpError("allocated buffers exceeded available memory\n");
     auto &note = error.attachNote() << "MemoryMap:\n";
     auto printbuffer = [&](StringRef name, int address, int size) {
       note << "\t" << name << " \t"
@@ -191,8 +191,8 @@ bool checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,
 void printMemMap(TileOp tile, SmallVector<BufferOp, 4> allocatedBuffers,
                  SmallVector<BufferOp, 4> preAllocatedBuffers, int numBanks,
                  std::vector<BankLimits> &bankLimits, int stacksize) {
-  InFlightDiagnostic error =
-      tile.emitOpError("Not all requested buffers fit in the available memory.\n");
+  InFlightDiagnostic error = tile.emitOpError(
+      "Not all requested buffers fit in the available memory.\n");
   auto &note = error.attachNote()
                << "Current configuration of buffers in bank(s) : ";
   note << "MemoryMap:\n";
@@ -283,8 +283,8 @@ LogicalResult checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
     }
   }
   if (foundOverflow) {
-    InFlightDiagnostic error = tile.emitOpError(
-        "allocated buffers exceeded available memory\n");
+    InFlightDiagnostic error =
+        tile.emitOpError("allocated buffers exceeded available memory\n");
     auto &note = error.attachNote() << "Error in bank(s) : ";
     for (auto bank : overflow_banks)
       note << bank << " ";
@@ -462,7 +462,8 @@ struct AIEAssignBufferAddressesPass
       }
     } else {
       for (auto tile : device.getOps<TileOp>()) {
-        tile.emitWarning("Memory allocation scheme is either not provided or unrecognized. Defaulting to bank-aware allocation.");
+        tile.emitWarning("Memory allocation scheme is either not provided or "
+                         "unrecognized. Defaulting to bank-aware allocation.");
         if (auto res = simpleBankAwareAllocation(tile); res.failed()) {
           if (auto res2 = basicAllocation(tile); res2.failed())
             return signalPassFailure();
