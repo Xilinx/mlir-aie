@@ -82,6 +82,9 @@ class TensorTiler2D:
         ) // tile_height
         steps_per_row = ceildiv(tensor_width, (tile_width * tile_group_width))
         steps_per_col = ceildiv(tensor_height, (tile_height * tile_group_height))
+        print(
+            f"Partial width: {partial_tile_group_width}, Partial height: {partial_tile_group_height}"
+        )
 
         num_steps = steps_per_row * steps_per_col
 
@@ -119,6 +122,12 @@ class TensorTiler2D:
                     tile_repeat,
                 )
             )
+            partial_both_sizes, partial_both_strides = (
+                partial_row_sizes,
+                partial_row_strides,
+            )
+        else:
+            partial_row_sizes, partial_row_strides = iter_sizes, iter_strides
 
         if partial_tile_group_height:
             partial_col_sizes, partial_col_strides = (
@@ -131,6 +140,12 @@ class TensorTiler2D:
                     tile_repeat,
                 )
             )
+            partial_both_sizes, partial_both_strides = (
+                partial_col_sizes,
+                partial_col_strides,
+            )
+        else:
+            partial_col_sizes, partial_col_strides = iter_sizes, iter_strides
 
         if partial_tile_group_width and partial_tile_group_height:
             partial_both_sizes, partial_both_strides = (
@@ -144,6 +159,8 @@ class TensorTiler2D:
                 )
             )
 
+        if partial_tile_group_height or partial_tile_group_width:
+
             def sizes_or_strides_fn(step_num, _prev_sizes, strides_or_sizes):
                 normal, partial_both, partial_col, partial_row = strides_or_sizes
                 if not iter_col_major:
@@ -153,16 +170,12 @@ class TensorTiler2D:
                     col_idx = step_num % steps_per_col
                     row_idx = step_num // steps_per_col
 
-                if (
-                    partial_tile_group_width
-                    and partial_tile_group_height
-                    and step_num == num_steps - 1
-                ):
+                if row_idx == steps_per_row - 1 and col_idx == steps_per_col - 1:
                     return partial_both
                 elif row_idx == steps_per_row - 1:
-                    return partial_col
-                elif col_idx == steps_per_col - 1:
                     return partial_row
+                elif col_idx == steps_per_col - 1:
+                    return partial_col
                 return normal
 
             sizes_fn = partial(
