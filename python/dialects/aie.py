@@ -21,6 +21,7 @@ from ..extras.dialects.ext.memref import (
     load as memref_load,
 )
 from .._mlir_libs import get_dialect_registry
+from array import array
 
 # noinspection PyUnresolvedReferences
 from .._mlir_libs._aie import (
@@ -65,6 +66,7 @@ from ..ir import (
     UnitAttr,
     Value,
     _i32ArrayAttr,
+    _arrayAttr,
 )
 
 # Comes from _aie
@@ -388,9 +390,17 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer = []
         if dimensionsToStream is None:
             dimensionsToStream = []
-        if initValues is None:
-            initValues = []
         of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
+        values = []
+        if initValues is not None:
+            for e in initValues:
+                init_val = e
+                if e is list:
+                    init_val = array("i", e)
+                values.append(
+                    DenseElementsAttr.get(init_val, type=self.datatype)
+                )
+            initValues = _arrayAttr(values, None)
         super().__init__(
             sym_name=name,
             producerTile=producerTile,

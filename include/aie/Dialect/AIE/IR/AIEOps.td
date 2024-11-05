@@ -1690,7 +1690,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         OptionalAttr<AIEI32Attr>:$via_shared_mem,
         // memtile_repeat==0 means "do it once" and don't repeat
         OptionalAttr<AIEI32Attr>:$memtile_repeat,
-        OptionalAttr<ArrayAttr>:$initValues
+        InitValuesArrayAttr:$initValues
   );
 
   let assemblyFormat = [{
