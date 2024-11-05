@@ -1,4 +1,4 @@
-//===- link_via_shared_mem.mlir --------------------------------------*- MLIR -*-===//
+//===- link_via_shared_mem2.mlir --------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -64,7 +64,7 @@ module @link_AIE2 {
         %tile22 = aie.tile(2, 2)
 
         aie.objectfifo @of1 (%tile20, {%tile12}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-        aie.objectfifo @of2 (%tile12, {%tile22}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+        aie.objectfifo @of2 (%tile12, {%tile22}, 2 : i32) {via_shared_mem = 0 : i32} : !aie.objectfifo<memref<16xi32>>
 
         aie.objectfifo.link [@of1] -> [@of2] ([] [])
 
