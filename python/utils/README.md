@@ -52,7 +52,32 @@ Test/ Host code utilities.
     * The trace buffer should be stored as one uint32_t per indices/line
 * `pack4bytes`
     * Pack 4 bytes into a 32-bit word
-* `configure_simple_tracing_aie2`
+* `configure_packet_tracing_aie2` (packet switched multi-tile tracing)
+    * This function abstracts a number of functions for configuring multiple core tiles and an associated shim tile. It does not define trace packet routing between them, which `configure_packet_tracing_flow` does. These two functions should be used together.
+        
+        Function arguments:
+        * `tiles to trace` - array of tiles to trace
+        * `shim tile` - Single shim tile to configure for writing trace packets to DDR
+        * `size` - trace buffer size (in bytes)
+        * `offset` - offest (in bytes) where trace buffer data should begin
+
+        An example use case would be:
+        ```python
+        trace_utils.configure_packet_tracing_aie2(tile_to_trace, ShimTile, opts.trace_size, 4096 * 4)
+        ```
+* `configure_packet_tracing_flow` (packet switched flows)
+    * This function automates the declaration of packet flows for an array of tiles to trace to the target shim tile. Note this function makes assumptions about packet routing IDs and this needs to match on shim config side which is done with `configure_packet_tracing_aie`.         
+        
+        Function arguments:
+        * `tiles to trace` - array of tiles to trace
+        * `shim tile` - Single shim tile to configure for writing trace packets to DDR
+
+        An example use case would be:
+        ```python
+        trace_utils.configure_packet_tracing_flows(tile_to_trace, ShimTile)
+        ```
+
+* `configure_simple_tracing_aie2` (cicuit switched single tile tracing)
     * This function abstracts a number of python functions for configuring a core tile and an associated shim tile. It does not define the trace packet routing between the two however. 
 
         Function arguments:
@@ -97,6 +122,7 @@ Test/ Host code utilities.
         This one allows us to control the size, offset, and inout buffer mapping.
 
         To better appreciate what this wrapper function does, we need to delve more deeply into the details on how trace units are configured.
+* Additional helper functions can be found in the `trace.py` and are documented in the source directly.
 
 ### Available Events for Tracing - `trace_events_enum.py`
 

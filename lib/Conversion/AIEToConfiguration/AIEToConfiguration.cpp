@@ -462,8 +462,9 @@ static LogicalResult convertAIEToConfiguration(AIE::DeviceOp device,
   // start collecting transations
   XAie_StartTransaction(&ctl.devInst, XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
 
-  if (failed(generateTransactions(ctl, clElfDir, device, aieSim, true, true,
-                                  true)))
+  bool generateElfs = clElfDir.size() > 0;
+  if (failed(generateTransactions(ctl, clElfDir, device, aieSim, generateElfs,
+                                  true, true)))
     return failure();
 
   // Export the transactions to a binary buffer
