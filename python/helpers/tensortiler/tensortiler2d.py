@@ -64,7 +64,7 @@ class TensorTiler2D:
             raise ValueError(
                 f"Tensor height ({tensor_height}) is not divisible by tile height ({tile_height})"
             )
-        if pattern_repeat < 1:
+        if not isinstance(pattern_repeat, int) or pattern_repeat < 1:
             raise ValueError(f"Pattern repeat must be >= 1 but is {pattern_repeat}")
         if not allow_partial:
             if tensor_width % (tile_width * tile_group_width) != 0:
@@ -243,6 +243,8 @@ class TensorTiler2D:
                 f"Tensor height ({tensor_height}) is not divisible by tile height ({tile_height})"
             )
 
+        if not isinstance(pattern_repeat, int) or pattern_repeat < 1:
+            raise ValueError(f"Pattern repeat must be >= 1 but is {pattern_repeat}")
         if not allow_partial:
             if tensor_width % (tile_width * tile_repeat_width * tile_step_width) != 0:
                 raise ValueError(
