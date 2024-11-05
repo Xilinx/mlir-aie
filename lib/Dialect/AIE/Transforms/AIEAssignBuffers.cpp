@@ -175,7 +175,7 @@ checkAndAddBufferWithAddress(BufferOp buffer, int numBanks,
   int addr = addrAttr.getInt();
   for (int i = 0; i < numBanks; i++) {
     // if the address is not within the bank, continue
-    if (addr < bankLimits[i].startAddr && addr >= bankLimits[i].endAddr)
+    if (addr < bankLimits[i].startAddr || addr >= bankLimits[i].endAddr)
       continue;
 
     // if the allocator already overwrote this address, fail
