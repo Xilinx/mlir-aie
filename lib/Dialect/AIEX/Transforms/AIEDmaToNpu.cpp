@@ -67,7 +67,6 @@ private:
     return std::nullopt;
   }
 };
-} // namespace
 
 struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
   using OpConversionPattern::OpConversionPattern;
@@ -229,36 +228,29 @@ public:
 
     auto column = rewriter.getI32IntegerAttr(op.getColumn());
     auto row = rewriter.getI32IntegerAttr(0);
+    bool isMM2S = op.getDirection() == AIE::DMAChannelDir::MM2S;
 
     // control packet for issuing token
     if (op.getIssueToken()) {
-      uint32_t ctrl_offset =
-          op.getDirection() == AIE::DMAChannelDir::MM2S ? 0x1D210 : 0x1D200;
-      if (op.getChannel() == 1)
-        ctrl_offset += 0x8;
-      uint32_t controller_id = 0;
-      auto builder = OpBuilder::atBlockBegin(
-          op->getParentOfType<AIE::DeviceOp>().getBody());
-      auto tOp = AIE::TileOp::getOrCreate(
-          builder, op->getParentOfType<AIE::DeviceOp>(), op.getColumn(), 0);
-      if (tOp && tOp->hasAttr("controller_id")) {
-        auto controllerIdAttr =
-            tOp->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
-        controller_id = controllerIdAttr.getPktId();
+      // set the task-complete-token controller ID field in the dma control
+      // register
+      AIE::TileOp shimTile = AIE::TileOp::getOrCreate(
+          rewriter, op->getParentOfType<AIE::DeviceOp>(), op.getColumn(), 0);
+      if (shimTile->hasAttr("controller_id")) {
+        uint32_t ctrl_offset = isMM2S ? 0x1D210 : 0x1D200;
+        if (op.getChannel() == 1)
+          ctrl_offset += 0x8;
+        AIE::PacketInfoAttr controller_id_attr =
+            shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
+        uint32_t data = controller_id_attr.getPktId() << 8;
+        uint32_t mask = 0x00000F00;
+        rewriter.create<NpuMaskWrite32Op>(op->getLoc(), ctrl_offset, data, mask,
+                                          nullptr, column, row);
       }
-      controller_id = controller_id << 8;
-      if (controller_id)
-        rewriter.create<NpuMaskWrite32Op>(op->getLoc(), ctrl_offset,
-                                          controller_id, 0x0F00, nullptr,
-                                          column, row);
     }
 
     // the offset of the task queue register in the tile
-    uint32_t queue_offset;
-    if (op.getDirection() == AIE::DMAChannelDir::MM2S)
-      queue_offset = 0x1D214;
-    else
-      queue_offset = 0x1D204;
+    uint32_t queue_offset = isMM2S ? 0x1D214 : 0x1D204;
     if (op.getChannel() == 1)
       queue_offset += 0x8;
 
@@ -390,8 +382,8 @@ public:
     }
     buffer_length = IntegerAttr::get(i32ty, buffer_length_val);
 
-    // buffer_offset
-    buffer_offset = IntegerAttr::get(i32ty, offset);
+    // buffer_offset - zero because the complete address is set by the patch op
+    buffer_offset = IntegerAttr::get(i32ty, 0);
 
     // enable_packet
     if (auto packetInfo = op.getPacket()) {
@@ -518,12 +510,12 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
   using OpConversionPattern::OpConversionPattern;
 
 private:
-  int &cachedId;
+  static int cachedId;
 
 public:
   WriteBdToBlockWritePattern(MLIRContext *context, int &cachedId,
                              PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), cachedId(cachedId) {}
+      : OpConversionPattern(context, benefit) {}
 
   LogicalResult
   matchAndRewrite(NpuWriteBdOp op, OpAdaptor adaptor,
@@ -533,7 +525,7 @@ public:
     const AIE::AIETargetModel &tm = dev.getTargetModel();
 
     std::vector<uint32_t> words(8, 0);
-    auto bd_id = op.getBdId();
+    uint32_t bd_id = op.getBdId();
     uint32_t bd_addr;
     if (tm.isShimNOCTile(op.getColumn(), op.getRow())) {
       bd_addr = (op.getColumn() << tm.getColumnShift()) |
@@ -630,22 +622,36 @@ public:
                     "ShimTiles and MemTiles currently.");
       return failure();
     }
+
     MemRefType memrefType = MemRefType::get({8}, rewriter.getI32Type());
     TensorType tensorType = RankedTensorType::get({8}, rewriter.getI32Type());
     memref::GlobalOp global = nullptr;
-    {
+    auto initVal = DenseElementsAttr::get<uint32_t>(tensorType, words);
+    auto otherGlobals = dev.getOps<memref::GlobalOp>();
+    for (auto g : otherGlobals) {
+      if (g == op)
+        continue;
+      if (g.getType() != memrefType)
+        continue;
+      auto otherValue = g.getInitialValue();
+      if (!otherValue)
+        continue;
+      if (*otherValue != initVal)
+        continue;
+      global = g;
+      break;
+    }
+    if (!global) {
       OpBuilder::InsertionGuard guard(rewriter);
-      std::string name = "blockwrite_data_";
       rewriter.setInsertionPoint(
           op->getParentOfType<AIEX::RuntimeSequenceOp>());
-      int id = cachedId;
-      while (dev.lookupSymbol(name + std::to_string(id)))
-        id++;
-      name += std::to_string(id);
-      cachedId = id;
+      std::string name = "blockwrite_data_";
+      while (dev.lookupSymbol(name + std::to_string(cachedId)))
+        cachedId++;
+      name += std::to_string(cachedId);
       global = rewriter.create<memref::GlobalOp>(
           op->getLoc(), name, rewriter.getStringAttr("private"), memrefType,
-          DenseElementsAttr::get<uint32_t>(tensorType, words), true, nullptr);
+          initVal, true, nullptr);
     }
     auto memref = rewriter.create<memref::GetGlobalOp>(op->getLoc(), memrefType,
                                                        global.getName());
@@ -655,6 +661,8 @@ public:
     return success();
   }
 };
+
+int WriteBdToBlockWritePattern::cachedId = 0;
 
 struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
@@ -673,6 +681,7 @@ struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
     target.addLegalDialect<memref::MemRefDialect>();
     target.addLegalOp<AIE::BufferOp>();
     target.addLegalOp<AIE::ShimDMAAllocationOp>();
+    target.addLegalOp<AIE::TileOp>();
 
     target.addIllegalOp<NpuDmaMemcpyNdOp>();
     target.addIllegalOp<NpuDmaWaitOp>();
@@ -694,13 +703,14 @@ struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
     patterns.insert<PushQueuetoWrite32Pattern>(&getContext());
     patterns.insert<RtpToWrite32Pattern>(&getContext());
     patterns.insert<Write32SymToAddr>(&getContext());
-    int cachedId = 0;
-    patterns.insert<WriteBdToBlockWritePattern>(&getContext(), cachedId);
+    patterns.insert<WriteBdToBlockWritePattern>(&getContext());
 
     if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();
   }
 };
+
+} // namespace
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>> AIEX::createAIEDmaToNpuPass() {
   return std::make_unique<AIEDmaToNpuPass>();

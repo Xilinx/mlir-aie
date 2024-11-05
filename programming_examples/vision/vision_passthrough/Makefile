@@ -49,7 +49,7 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: ${targetname}.exe build/final_${PASSTHROUGH_WIDTH}.xclbin build/insts.txt
+run: ${targetname}.exe build/final_${PASSTHROUGH_WIDTH}.xclbin
 	${powershell} ./$< -x build/final_${PASSTHROUGH_WIDTH}.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:
