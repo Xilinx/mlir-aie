@@ -247,7 +247,8 @@ struct AIEObjectFifoStatefulTransformPass
                 isLinkViaSharedMemory =
                     isSharedMemory(producerTile, consumerTileOp, &share_dir);
               else {
-                // TODO: Support for different memref types through shared memory without DMAs
+                // TODO: Support for different memref types through shared
+                // memory without DMAs
                 isLinkViaSharedMemory = false;
               }
             }
