@@ -210,25 +210,198 @@ def group_tiler_partial_row():
 # CHECK-LABEL: group_tiler_partial_col
 @construct_test
 def group_tiler_partial_col():
-    """
-    tensor_dims = (3 * 4 * 3, 2 * 6 * 2)
+
+    # All row major
+    tensor_dims = (3 * 4 * 3, 2 * 7 * 2)
+    tiles = TensorTiler2D.group_tiler(
+        tensor_dims, tile_dims=(3, 2), tile_group_dims=(5, 7), allow_partial=True
+    )
+    reference_tiles = TensorTileSequence.from_tiles(
+        [
+            TensorTile(
+                tensor_dims, offset=0, sizes=[5, 7, 3, 2], strides=[84, 2, 28, 1]
+            ),
+            TensorTile(
+                tensor_dims, offset=14, sizes=[5, 7, 3, 2], strides=[84, 2, 28, 1]
+            ),
+            TensorTile(
+                tensor_dims, offset=420, sizes=[5, 7, 3, 2], strides=[84, 2, 28, 1]
+            ),
+            TensorTile(
+                tensor_dims, offset=434, sizes=[5, 7, 3, 2], strides=[84, 2, 28, 1]
+            ),
+            TensorTile(
+                tensor_dims, offset=840, sizes=[2, 7, 3, 2], strides=[84, 2, 28, 1]
+            ),
+            TensorTile(
+                tensor_dims, offset=854, sizes=[2, 7, 3, 2], strides=[84, 2, 28, 1]
+            ),
+        ]
+    )
+    assert tiles == reference_tiles
+
+    # Tile col major
     tiles = TensorTiler2D.group_tiler(
         tensor_dims,
         tile_dims=(3, 2),
         tile_group_dims=(5, 7),
         tile_col_major=True,
-        allow_partial=True
+        allow_partial=True,
     )
-    reference_tiles = TensorTileSequence.from_tiles([
-        TensorTile(tensor_dims, offset=0, sizes=[1, 5, 14, 3], strides=[0, 84, 1, 28]),
-        TensorTile(tensor_dims, offset=14, sizes=[1, 5, 14, 3], strides=[0, 84, 1, 28]),
-        TensorTile(tensor_dims, offset=420, sizes=[1, 5, 14, 3], strides=[0, 84, 1, 28]),
-        TensorTile(tensor_dims, offset=434, sizes=[1, 5, 14, 3], strides=[0, 84, 1, 28]),
-        TensorTile(tensor_dims, offset=840, sizes=[1, 2, 14, 3], strides=[0, 84, 1, 28]),
-        TensorTile(tensor_dims, offset=854, sizes=[1, 2, 14, 3], strides=[0, 84, 1, 28]),
-    ])
+    reference_tiles = TensorTileSequence.from_tiles(
+        [
+            TensorTile(
+                tensor_dims, offset=0, sizes=[1, 5, 14, 3], strides=[0, 84, 1, 28]
+            ),
+            TensorTile(
+                tensor_dims, offset=14, sizes=[1, 5, 14, 3], strides=[0, 84, 1, 28]
+            ),
+            TensorTile(
+                tensor_dims, offset=420, sizes=[1, 5, 14, 3], strides=[0, 84, 1, 28]
+            ),
+            TensorTile(
+                tensor_dims, offset=434, sizes=[1, 5, 14, 3], strides=[0, 84, 1, 28]
+            ),
+            TensorTile(
+                tensor_dims, offset=840, sizes=[1, 2, 14, 3], strides=[0, 84, 1, 28]
+            ),
+            TensorTile(
+                tensor_dims, offset=854, sizes=[1, 2, 14, 3], strides=[0, 84, 1, 28]
+            ),
+        ]
+    )
     assert tiles == reference_tiles
-    """
+
+    # Tile group col major
+    tiles = TensorTiler2D.group_tiler(
+        tensor_dims,
+        tile_dims=(3, 2),
+        tile_group_dims=(5, 7),
+        tile_group_col_major=True,
+        allow_partial=True,
+    )
+    reference_tiles = TensorTileSequence.from_tiles(
+        [
+            TensorTile(
+                tensor_dims, offset=0, sizes=[1, 7, 15, 2], strides=[0, 2, 28, 1]
+            ),
+            TensorTile(
+                tensor_dims, offset=14, sizes=[1, 7, 15, 2], strides=[0, 2, 28, 1]
+            ),
+            TensorTile(
+                tensor_dims, offset=420, sizes=[1, 7, 15, 2], strides=[0, 2, 28, 1]
+            ),
+            TensorTile(
+                tensor_dims, offset=434, sizes=[1, 7, 15, 2], strides=[0, 2, 28, 1]
+            ),
+            TensorTile(
+                tensor_dims, offset=840, sizes=[1, 7, 6, 2], strides=[0, 2, 28, 1]
+            ),
+            TensorTile(
+                tensor_dims, offset=854, sizes=[1, 7, 6, 2], strides=[0, 2, 28, 1]
+            ),
+        ]
+    )
+    assert tiles == reference_tiles
+
+    # iter col major
+    tiles = TensorTiler2D.group_tiler(
+        tensor_dims,
+        tile_dims=(3, 2),
+        tile_group_dims=(5, 7),
+        iter_col_major=True,
+        allow_partial=True,
+    )
+    reference_tiles = TensorTileSequence.from_tiles(
+        [
+            TensorTile(
+                tensor_dims, offset=0, sizes=[5, 7, 3, 2], strides=[84, 2, 28, 1]
+            ),
+            TensorTile(
+                tensor_dims, offset=420, sizes=[5, 7, 3, 2], strides=[84, 2, 28, 1]
+            ),
+            TensorTile(
+                tensor_dims, offset=840, sizes=[2, 7, 3, 2], strides=[84, 2, 28, 1]
+            ),
+            TensorTile(
+                tensor_dims, offset=14, sizes=[5, 7, 3, 2], strides=[84, 2, 28, 1]
+            ),
+            TensorTile(
+                tensor_dims, offset=434, sizes=[5, 7, 3, 2], strides=[84, 2, 28, 1]
+            ),
+            TensorTile(
+                tensor_dims, offset=854, sizes=[2, 7, 3, 2], strides=[84, 2, 28, 1]
+            ),
+        ]
+    )
+    assert tiles == reference_tiles
+
+    # all col major
+    tiles = TensorTiler2D.group_tiler(
+        tensor_dims,
+        tile_dims=(3, 2),
+        tile_group_dims=(5, 7),
+        tile_col_major=True,
+        tile_group_col_major=True,
+        iter_col_major=True,
+        allow_partial=True,
+    )
+    reference_tiles = TensorTileSequence.from_tiles(
+        [
+            TensorTile(
+                tensor_dims, offset=0, sizes=[7, 5, 2, 3], strides=[2, 84, 1, 28]
+            ),
+            TensorTile(
+                tensor_dims, offset=420, sizes=[7, 5, 2, 3], strides=[2, 84, 1, 28]
+            ),
+            TensorTile(
+                tensor_dims, offset=840, sizes=[7, 2, 2, 3], strides=[2, 84, 1, 28]
+            ),
+            TensorTile(
+                tensor_dims, offset=14, sizes=[7, 5, 2, 3], strides=[2, 84, 1, 28]
+            ),
+            TensorTile(
+                tensor_dims, offset=434, sizes=[7, 5, 2, 3], strides=[2, 84, 1, 28]
+            ),
+            TensorTile(
+                tensor_dims, offset=854, sizes=[7, 2, 2, 3], strides=[2, 84, 1, 28]
+            ),
+        ]
+    )
+    assert tiles == reference_tiles
+
+    # pattern repeat
+    tiles = TensorTiler2D.group_tiler(
+        tensor_dims,
+        tile_dims=(3, 2),
+        tile_group_dims=(5, 7),
+        tile_col_major=True,
+        allow_partial=True,
+        pattern_repeat=3,
+    )
+    reference_tiles = TensorTileSequence.from_tiles(
+        [
+            TensorTile(
+                tensor_dims, offset=0, sizes=[3, 5, 14, 3], strides=[0, 84, 1, 28]
+            ),
+            TensorTile(
+                tensor_dims, offset=14, sizes=[3, 5, 14, 3], strides=[0, 84, 1, 28]
+            ),
+            TensorTile(
+                tensor_dims, offset=420, sizes=[3, 5, 14, 3], strides=[0, 84, 1, 28]
+            ),
+            TensorTile(
+                tensor_dims, offset=434, sizes=[3, 5, 14, 3], strides=[0, 84, 1, 28]
+            ),
+            TensorTile(
+                tensor_dims, offset=840, sizes=[3, 2, 14, 3], strides=[0, 84, 1, 28]
+            ),
+            TensorTile(
+                tensor_dims, offset=854, sizes=[3, 2, 14, 3], strides=[0, 84, 1, 28]
+            ),
+        ]
+    )
+    assert tiles == reference_tiles
 
     # CHECK: Pass!
     print("Pass!")
