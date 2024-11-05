@@ -204,4 +204,3 @@ def test_add_256_using_dma_op_no_double_buffering(ctx: MLIRContext, workdir: Pat
     B = np.random.randint(0, 10, LEN, dtype=np.int32)
     aie_output = execute_on_aie(app, A, B)
     assert np.allclose(A + RANDOM_NUMBER, aie_output)
-    print("SUCCESS")
