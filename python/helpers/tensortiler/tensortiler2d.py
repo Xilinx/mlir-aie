@@ -277,14 +277,20 @@ class TensorTiler2D:
                 (tensor_height // tile_height), tile_step_height * tile_repeat_height
             ),
         )
+        tile_group_repeats = (tile_repeat_height, tile_repeat_width)
 
-        steps_per_row = (tensor_width // (tile_width * tile_repeat_width)) + (
+        partial_width_steps = (
             tensor_width % (tile_width * tile_repeat_width)
         ) // tile_width
-        steps_per_col = (tensor_height // (tile_height * tile_repeat_height)) + (
+        partial_height_steps = (
             tensor_height % (tile_height * tile_repeat_height)
         ) // tile_height
-
+        steps_per_row = (
+            tensor_width // (tile_width * tile_repeat_width)
+        ) + partial_width_steps
+        steps_per_col = (
+            tensor_height // (tile_height * tile_repeat_height)
+        ) + partial_height_steps
         num_steps = steps_per_row * steps_per_col
 
         def calc_offset(iter_num, _prev_offset):
@@ -310,21 +316,54 @@ class TensorTiler2D:
             ) * tensor_width
             return offset
 
-        iter_sizes, iter_strides = cls.__sizes_strides_for_step_tile_group(
-            tensor_dims,
-            tile_dims,
-            tile_group_steps,
-            tile_group_repeats,
-            tile_col_major,
-            tile_group_col_major,
-            pattern_repeat=pattern_repeat,
-        )
+        def sizes_or_strides_fn(step_num, _prev_sizes, is_sizes):
+            if not iter_col_major:
+                row_idx = step_num % steps_per_row
+                col_idx = step_num // steps_per_row
+            else:
+                col_idx = step_num % steps_per_col
+                row_idx = step_num // steps_per_col
+
+            step_height, step_width = tile_group_steps
+            repeat_height, repeat_width = tile_group_repeats
+
+            if row_idx > steps_per_row - partial_width_steps:
+                steps_remaining_width = steps_per_row - row_idx
+                repeat_width = min(
+                    tile_repeat_width, ceildiv(steps_remaining_width, tile_step_width)
+                )
+                if repeat_width:
+                    step_width = min(tile_step_width, steps_remaining_width)
+            if col_idx > steps_per_col - partial_height_steps:
+                steps_remaining_height = steps_per_col - col_idx
+                repeat_height = min(
+                    tile_repeat_height,
+                    ceildiv(steps_remaining_height, tile_step_height),
+                )
+                if repeat_height == 1:
+                    step_height = min(tile_step_height, steps_remaining_height)
+            iter_sizes, iter_strides = cls.__sizes_strides_for_step_tile_group(
+                tensor_dims,
+                tile_dims,
+                (step_height, step_width),
+                (repeat_height, repeat_width),
+                tile_col_major,
+                tile_group_col_major,
+                pattern_repeat=pattern_repeat,
+            )
+            if is_sizes:
+                return iter_sizes
+            else:
+                return iter_strides
+
+        sizes_fn = partial(sizes_or_strides_fn, is_sizes=True)
+        strides_fn = partial(sizes_or_strides_fn, is_sizes=False)
 
         return TensorTileSequence(
             (tensor_height, tensor_width),
             num_steps,
-            sizes=iter_sizes,
-            strides=iter_strides,
+            sizes_fn=sizes_fn,
+            strides_fn=strides_fn,
             offset_fn=calc_offset,
         )
 
