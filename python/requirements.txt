@@ -12,3 +12,4 @@ rich
 setuptools
 wheel
 ml_dtypes
+notebook

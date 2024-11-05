@@ -6,12 +6,12 @@
 /cmakeModules*
 .vscode
 __pycache__
+.ipynb_checkpoints
 .DS_Store
 **/CMakeFiles
 **.cmake
 include/**/Makefile
 lib/**/Makefile
-
 
 /platforms/vck190_bare/petalinux/build
 /platforms/vck190_bare/petalinux/components
