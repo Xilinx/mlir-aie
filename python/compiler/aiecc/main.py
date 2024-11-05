@@ -339,7 +339,7 @@ def run_passes(pass_pipeline, mlir_module_str, outputfile=None, verbose=False):
             pm.run(module.operation)
         except Exception as e:
             print("Error running pass pipeline: ", pass_pipeline, e)
-            raise(e)
+            raise e
         mlir_module_str = str(module)
         if outputfile:
             with open(outputfile, "w") as g:
