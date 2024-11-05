@@ -26,7 +26,7 @@ using namespace xilinx::AIE;
 //===----------------------------------------------------------------------===//
 LogicalResult checkAndPrintOverflow(TileOp tile, int address,
                                     int maxDataMemorySize, int stacksize,
-                                    SmallVector<BufferOp, 4> buffers) {
+                                    SmallVector<BufferOp> &buffers) {
   if (address > maxDataMemorySize) {
     InFlightDiagnostic error =
         tile.emitOpError("allocated buffers exceeded available memory\n");
@@ -65,8 +65,8 @@ LogicalResult basicAllocation(TileOp tile) {
   else
     maxDataMemorySize = targetModel.getLocalMemorySize();
 
-  SmallVector<BufferOp, 4> buffers;
-  std::list<BufferOp> allocated_buffers;
+  SmallVector<BufferOp> buffers;
+  SmallVector<BufferOp> allocated_buffers;
   // Collect all the buffers for this tile. If the buffer has an address, add
   // it to allocated_buffers. Otherwise, add it to buffers.
   device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
@@ -84,9 +84,10 @@ LogicalResult basicAllocation(TileOp tile) {
   });
 
   // Sort allocated_buffers by address
-  allocated_buffers.sort([](BufferOp a, BufferOp b) {
-    return a.getAddress().value() < b.getAddress().value();
-  });
+  std::sort(allocated_buffers.begin(), allocated_buffers.end(),
+            [](BufferOp a, BufferOp b) {
+              return a.getAddress().value() < b.getAddress().value();
+            });
 
   // Address range owned by the MemTile is 0x80000.
   // Address range owned by the tile is 0x8000 in
@@ -294,7 +295,7 @@ int setBufferAddress(BufferOp buffer, int numBanks, int startBankIndex,
 }
 
 LogicalResult checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
-                                    SmallVector<BufferOp, 4> allBuffers,
+                                    SmallVector<BufferOp> &allBuffers,
                                     std::vector<int64_t> &nextAddrInBanks,
                                     std::vector<BankLimits> &bankLimits) {
   bool foundOverflow = false;
@@ -387,9 +388,9 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
   }
   fillBankLimits(numBanks, bankSize, bankLimits);
 
-  SmallVector<BufferOp, 4> buffersToAlloc;
   SmallVector<BufferOp, 4> preAllocatedBuffers;
-  SmallVector<BufferOp, 4> allBuffers;
+  SmallVector<BufferOp> buffersToAlloc;
+  SmallVector<BufferOp> allBuffers;
   // Collect all the buffers for this tile.
   device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
     if (buffer.getTileOp() == tile)
