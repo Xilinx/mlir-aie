@@ -100,7 +100,7 @@ LogicalResult basicAllocation(TileOp tile) {
     address += stacksize;
   }
 
-  // As the next address to allocate is assigned, skip over any buffers with the
+  // As the next address to allocate is assigned, skip over any buffers
   // from the allocated_buffers list.
   auto current_alloc = allocated_buffers.begin();
   for (auto buffer : buffers) {
