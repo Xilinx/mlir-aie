@@ -118,10 +118,7 @@ def objFifo():
             [bd_dim_layout(size=1, stride=2)],
             [[bd_dim_layout(size=1, stride=2)]],
             via_DMA=True,
-            initValues=[
-                np.arange(4, dtype=np.float16),
-                np.arange(4, dtype=np.float16)
-            ],
+            initValues=[np.arange(4, dtype=np.float16), np.arange(4, dtype=np.float16)],
         )
         end()
 
