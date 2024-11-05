@@ -337,9 +337,8 @@ struct AIEObjectFifoStatefulTransformPass
       int prodLockValue = numElem - initValues;
       if (op.getMemtileRepeat().has_value())
         prodLockValue *= op.getMemtileRepeat().value() + 1;
-      auto prodLock =
-          builder.create<LockOp>(builder.getUnknownLoc(), creation_tile,
-                                 prodLockID, prodLockValue);
+      auto prodLock = builder.create<LockOp>(
+          builder.getUnknownLoc(), creation_tile, prodLockID, prodLockValue);
       prodLock.getOperation()->setAttr(
           SymbolTable::getSymbolAttrName(),
           builder.getStringAttr(op.name().str() + "_prod_lock"));
