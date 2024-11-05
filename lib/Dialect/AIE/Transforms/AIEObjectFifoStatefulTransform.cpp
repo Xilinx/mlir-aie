@@ -217,13 +217,14 @@ struct AIEObjectFifoStatefulTransformPass
         }
     }
 
-    // Only test for this objfifo belonging to a LinkOp if we are in the shared
-    // memory case; otherwise, we will return `true` in any case.
-    // if (hasSharedMemory) {
-    //   if (auto linkOp = getOptionalLinkOp(createOp)) {
-    //     splitBecauseLink.push_back(createOp);
-    //     isUsedInLinkOp = true;
-    bool isLinkProvidingSharedMemory = false;
+    // Check if the operation uses shared memory for linking.
+    // If shared memory is available and the link operation is valid,
+    // mark the operation for splitting and determine if it is used in a link
+    // operation. If the link operation is a distribute or join operation, DMAs
+    // are required even if shared memory is available. If the link has
+    // different memref types, then shared memory cannot be used, and DMAs are
+    // needed.
+    bool isLinkViaSharedMemory = false;
     if (hasSharedMemory) {
       if (auto linkOp = getOptionalLinkOp(createOp)) {
         splitBecauseLink.push_back(createOp);
@@ -234,16 +235,27 @@ struct AIEObjectFifoStatefulTransformPass
           if (auto consumerTile =
                   createOp.getConsumerTiles().front().getDefiningOp()) {
             if (auto consumerTileOp = dyn_cast<TileOp>(consumerTile)) {
-              isLinkProvidingSharedMemory =
-                  isSharedMemory(producerTile, consumerTileOp, &share_dir);
+              auto fifoInType = llvm::cast<AIEObjectFifoType>(
+                  linkOp->getInputObjectFifos()[0].getElemType());
+              auto producerType =
+                  llvm::cast<MemRefType>(fifoInType.getElementType());
+              auto fifoOutType = llvm::cast<AIEObjectFifoType>(
+                  linkOp->getOutputObjectFifos()[0].getElemType());
+              auto consumerType =
+                  llvm::cast<MemRefType>(fifoOutType.getElementType());
+              if (consumerType == producerType)
+                isLinkViaSharedMemory =
+                    isSharedMemory(producerTile, consumerTileOp, &share_dir);
+              else {
+                isLinkViaSharedMemory = false;
+              }
             }
           }
-          if (createOp.getViaSharedMem().has_value() &&
-              isLinkProvidingSharedMemory) {
+          if (createOp.getViaSharedMem().has_value() && isLinkViaSharedMemory) {
             checkAndApplyViaSharedMemAttribute(createOp, share_dir);
             if (share_direction == share_dir)
               isUsedInLinkOp = false;
-          } else if (isLinkProvidingSharedMemory) {
+          } else if (isLinkViaSharedMemory) {
             isUsedInLinkOp = false;
           }
         }

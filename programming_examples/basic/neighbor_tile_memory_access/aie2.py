@@ -17,7 +17,6 @@ from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 
 PROBLEM_SIZE = 1024
-MEM_TILE_WIDTH = 64
 AIE_TILE_WIDTH = 32
 
 
