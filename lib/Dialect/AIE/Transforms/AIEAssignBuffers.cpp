@@ -53,7 +53,7 @@ LogicalResult checkAndPrintOverflow(TileOp tile, int address,
   return success();
 }
 
-LogicalResult basicAllocation(TileOp &tile) {
+LogicalResult basicAllocation(TileOp tile) {
   auto device = tile->getParentOfType<AIE::DeviceOp>();
   if (!device)
     return failure();
@@ -112,14 +112,6 @@ typedef struct BankLimits {
   int64_t startAddr;
   int64_t endAddr;
 } BankLimits;
-
-// TODO: add to target model
-int getNumBanks(TileOp tile) {
-  if (tile.isMemTile())
-    return 1;
-  else
-    return 4;
-}
 
 // Function that given a number of banks and their size, computes
 // the start and end addresses for each bank and fills in the entry
@@ -195,34 +187,86 @@ bool checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,
   return false;
 }
 
+// Prints the memory map across banks
+void printMemMap(TileOp tile, SmallVector<BufferOp, 4> allocatedBuffers,
+                 SmallVector<BufferOp, 4> preAllocatedBuffers, int numBanks,
+                 std::vector<BankLimits> &bankLimits, int stacksize) {
+  InFlightDiagnostic error = tile.emitOpError(
+      "Not all requested buffers fit in the available memory.\n");
+  auto &note = error.attachNote()
+               << "Current configuration of buffers in bank(s) : ";
+  note << "MemoryMap:\n";
+  auto printbuffer = [&](StringRef name, int address, int size) {
+    note << "\t"
+         << "\t" << name << " \t"
+         << ": 0x" << llvm::utohexstr(address) << "-0x"
+         << llvm::utohexstr(address + size - 1) << " \t(" << size
+         << " bytes)\n";
+  };
+  for (int i = 0; i < numBanks; i++) {
+    if (i == 0) {
+      if (stacksize > 0)
+        printbuffer("(stack)", 0, stacksize);
+      else
+        note << "(no stack allocated)\n";
+    }
+    note << "\t"
+         << "bank : " << i << "\t"
+         << "0x" << llvm::utohexstr(bankLimits[i].startAddr) << "-0x"
+         << llvm::utohexstr(bankLimits[i].endAddr - 1) << "\n";
+    for (auto buffer : preAllocatedBuffers) {
+      auto addr = buffer.getAddress().value();
+      auto mem_bank = buffer.getMemBank().value();
+      if (mem_bank == i)
+        printbuffer(buffer.name(), addr, buffer.getAllocationSize());
+    }
+    for (auto buffer : allocatedBuffers) {
+      auto addr = buffer.getAddress().value();
+      auto mem_bank = buffer.getMemBank().value();
+      if (mem_bank == i)
+        printbuffer(buffer.name(), addr, buffer.getAllocationSize());
+    }
+  }
+}
+
 // Function that given a buffer will iterate over all the memory banks
 // starting from the given index to try and find a bank with enough
 // space. If it does, it will set the buffer's address and mem_bank
 // attributes and update the nextAddrInBanks vector.
-// If it does not find one with enough space, it will allocate the
-// buffer in the last checked bank (this will be picked up during
-// overflow error checking). Finally, the function returns the index
-// of the next bank to search (which should be given to subsequent
-// calls of this function to ensure a round-robin allocation scheme
-// over the available banks).
+// If it does not find one with enough space, it will throw an error.
+// Returns true if the buffer was successfully allocated, false otherwise.
+// If no bank has enough space to accommodate the buffer, an error is emitted.
+
 int setBufferAddress(BufferOp buffer, int numBanks, int startBankIndex,
                      std::vector<int64_t> &nextAddrInBanks,
                      std::vector<BankLimits> &bankLimits) {
   assert(startBankIndex < numBanks &&
          "Unexpected input value for startBankIndex");
   int bankIndex = startBankIndex;
+  bool allocated = false;
   for (int i = 0; i < numBanks; i++) {
     int64_t startAddr = nextAddrInBanks[bankIndex];
     int64_t endAddr = startAddr + buffer.getAllocationSize();
-    if (endAddr <= bankLimits[bankIndex].endAddr || i == numBanks - 1) {
+    if (endAddr <= bankLimits[bankIndex].endAddr) {
       buffer.setMemBank(bankIndex);
       setAndUpdateAddressInBank(buffer, startAddr, endAddr, nextAddrInBanks);
-      bankIndex = (bankIndex + 1) % numBanks;
+      allocated = true;
+      bankIndex++;
+      bankIndex %= numBanks;
       break;
     }
-    bankIndex = (bankIndex + 1) % numBanks;
+    // Move to the next bank
+    bankIndex++;
+    bankIndex %= numBanks;
   }
-  return bankIndex;
+  // If no bank has enough space, throws error
+  if (!allocated) {
+    buffer.emitError("Failed to allocate buffer: ")
+        << buffer.name() << " with size: " << buffer.getAllocationSize()
+        << " bytes.";
+    return false;
+  }
+  return true;
 }
 
 LogicalResult checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
@@ -275,6 +319,14 @@ LogicalResult checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
   return success();
 }
 
+// Function to deallocate attributes of buffers in case of a failure
+void deAllocationBuffers(SmallVector<BufferOp, 4> &buffers) {
+  for (auto buffer : buffers) {
+    buffer->removeAttr("address");
+    buffer->removeAttr("mem_bank");
+  }
+}
+
 LogicalResult simpleBankAwareAllocation(TileOp tile) {
   auto device = tile->getParentOfType<AIE::DeviceOp>();
   if (!device)
@@ -295,7 +347,7 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
   else
     maxDataMemorySize = targetModel.getLocalMemorySize();
 
-  int numBanks = getNumBanks(tile);
+  int numBanks = targetModel.getNumBanks(tile.getCol(), tile.getRow());
   int bankSize = maxDataMemorySize / numBanks;
 
   // Address range owned by the MemTile is 0x80000.
@@ -312,6 +364,7 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
   fillBankLimits(numBanks, bankSize, bankLimits);
 
   SmallVector<BufferOp, 4> buffersToAlloc;
+  SmallVector<BufferOp, 4> preAllocatedBuffers;
   SmallVector<BufferOp, 4> allBuffers;
   // Collect all the buffers for this tile.
   device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
@@ -331,6 +384,8 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
                                                    nextAddrInBanks, bankLimits);
       if (!has_addr && !has_bank)
         buffersToAlloc.push_back(buffer);
+      else
+        preAllocatedBuffers.push_back(buffer);
     }
   }
 
@@ -341,10 +396,24 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
             });
 
   // Set addresses for remaining buffers.
+  SmallVector<BufferOp, 4> allocatedBuffers;
   int bankIndex = 0;
-  for (auto buffer : buffersToAlloc)
-    bankIndex = setBufferAddress(buffer, numBanks, bankIndex, nextAddrInBanks,
-                                 bankLimits);
+  for (auto buffer : buffersToAlloc) {
+    // If the buffer doesn't fit in any of the bank space then
+    // it prints the current memory map of the banks,
+    // deallocates all the buffers, and
+    // returns a failure.
+    if (!setBufferAddress(buffer, numBanks, bankIndex, nextAddrInBanks,
+                          bankLimits)) {
+
+      printMemMap(tile, allocatedBuffers, preAllocatedBuffers, numBanks,
+                  bankLimits, stacksize);
+      deAllocationBuffers(allocatedBuffers);
+      return failure();
+    } else {
+      allocatedBuffers.push_back(buffer);
+    }
+  }
 
   // Sort by smallest address before printing memory map.
   std::sort(allBuffers.begin(), allBuffers.end(), [](BufferOp a, BufferOp b) {
@@ -380,15 +449,24 @@ struct AIEAssignBufferAddressesPass
     });
 
     // Select allocation scheme
-    if (clBasicAlloc) {
+    if (clAllocScheme == "basic-sequential") {
       for (auto tile : device.getOps<TileOp>()) {
         if (auto res = basicAllocation(tile); res.failed())
           return signalPassFailure();
       }
-    } else {
+    } else if (clAllocScheme == "bank-aware") {
       for (auto tile : device.getOps<TileOp>()) {
         if (auto res = simpleBankAwareAllocation(tile); res.failed())
           return signalPassFailure();
+      }
+    } else {
+      for (auto tile : device.getOps<TileOp>()) {
+        tile.emitWarning("Memory allocation scheme is either not provided or "
+                         "unrecognized. Defaulting to bank-aware allocation.");
+        if (auto res = simpleBankAwareAllocation(tile); res.failed()) {
+          if (auto res2 = basicAllocation(tile); res2.failed())
+            return signalPassFailure();
+        }
       }
     }
   }
