@@ -234,10 +234,9 @@ void printMemMap(TileOp tile, SmallVector<BufferOp, 4> allocatedBuffers,
 // space. If it does, it will set the buffer's address and mem_bank
 // attributes and update the nextAddrInBanks vector.
 // If it does not find one with enough space, it will throw an error.
-// Finally, the function returns a pass or a fail.
-// The index of the next bank to search (which should be given to subsequent
-// calls of this function to ensure a round-robin allocation scheme
-// over the available banks).
+// Returns true if the buffer was successfully allocated, false otherwise.
+// If no bank has enough space to accommodate the buffer, an error is emitted.
+
 int setBufferAddress(BufferOp buffer, int numBanks, int startBankIndex,
                      std::vector<int64_t> &nextAddrInBanks,
                      std::vector<BankLimits> &bankLimits) {
