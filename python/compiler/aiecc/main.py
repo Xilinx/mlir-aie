@@ -35,7 +35,7 @@ from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
 INPUT_WITH_ADDRESSES_PIPELINE = (
-    lambda basic_alloc_scheme=False, dynamic_objFifos=False, ctrl_pkt_overlay=False: (
+    lambda scheme="", dynamic_objFifos=False, ctrl_pkt_overlay=False: (
         Pipeline()
         .lower_affine()
         .add_pass("aie-canonicalize-device")
@@ -56,7 +56,7 @@ INPUT_WITH_ADDRESSES_PIPELINE = (
                 "aie-generate-column-control-overlay",
                 route_shim_to_tile_ctrl=ctrl_pkt_overlay,
             )
-            .add_pass("aie-assign-buffer-addresses", basic_alloc=basic_alloc_scheme),
+            .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
         )
         .convert_scf_to_cf()
     )
@@ -1061,9 +1061,14 @@ class FlowRunner:
             )
 
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
-            pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
-                opts.basic_alloc_scheme, opts.dynamic_objFifos, opts.ctrl_pkt_overlay
-            ).materialize(module=True)
+
+            if opts.alloc_scheme:
+                pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
+                    opts.alloc_scheme, opts.dynamic_objFifos, opts.ctrl_pkt_overlay
+                ).materialize(module=True)
+            else:
+                pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE().materialize(module=True)
+
             run_passes(
                 pass_pipeline,
                 self.mlir_module_str,

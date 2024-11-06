@@ -1,4 +1,4 @@
-//===- simple.mlir ---------------------------------------------*- MLIR -*-===//
+//===- bank_aware_alloc_error.mlir ---------------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,18 +8,22 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
-// CHECK:   error: 'aie.tile' op allocated buffers exceeded available memory
-// CHECK:   Error in bank(s) : 3 
-// CHECK:   MemoryMap:
-// CHECK:   	bank : 0	  0x0-0x1FFF
-// CHECK:   		(stack) 	: 0x0-0x3FF 	(1024 bytes)
-// CHECK:   		      c 	: 0x400-0x41F 	(32 bytes)
-// CHECK:   	bank : 1	  0x2000-0x3FFF
-// CHECK:   		      a 	: 0x2000-0x200F 	(16 bytes)
-// CHECK:   	bank : 2	  0x4000-0x5FFF
-// CHECK:   	bank : 3	  0x6000-0x7FFF
-// CHECK:   		      b 	: 0x6000-0xDFFF 	(32768 bytes)
+// RUN: not aie-opt --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s 2>&1 | FileCheck %s
+// CHECK:   error: Failed to allocate buffer: "b" with size: 32768 bytes.
+// CHECK:   %1 = aie.buffer(%0) { sym_name = "b" } : memref<8192xi32>
+// CHECK:        ^
+// CHECK: note: see current operation: %2 = "aie.buffer"(%0) <{sym_name = "b"}> : (index) -> memref<8192xi32>
+// CHECK: error: 'aie.tile' op Not all requested buffers fit in the available memory.
+
+// CHECK:   %0 = aie.tile(3, 3)
+// CHECK:        ^
+// CHECK: note: see current operation: %0 = "aie.tile"() <{col = 3 : i32, row = 3 : i32}> : () -> index
+// CHECK: note: Current configuration of buffers in bank(s) : MemoryMap:
+// CHECK:                 (stack)         : 0x0-0x3FF     (1024 bytes)
+// CHECK:         bank : 0        0x0-0x1FFF
+// CHECK:         bank : 1        0x2000-0x3FFF
+// CHECK:         bank : 2        0x4000-0x5FFF
+// CHECK:         bank : 3        0x6000-0x7FFF
 
 module @test {
  aie.device(xcvc1902) {
