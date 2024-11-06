@@ -25,7 +25,7 @@
 #define KERNEL_NAME "MLIR_AIE"
 #endif
 
-#define INPUT_SIZE (100 * sizeof(int))   // in bytes
+#define INPUT_SIZE (100 * sizeof(int))  // in bytes
 #define OUTPUT_SIZE (100 * sizeof(int)) // in bytes
 #define WIDTH_SIZE (10 * sizeof(int))   // in bytes
 #define WIDTH 10
