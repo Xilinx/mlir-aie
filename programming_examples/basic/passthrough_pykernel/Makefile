@@ -53,9 +53,8 @@ clean:
 
 run_notebook: ${srcdir}/passthrough_pykernel.ipynb
 	mkdir -p notebook_build
-	cd notebook_build
-	jupyter nbconvert --to script ${srcdir}/passthrough_pykernel.ipynb
-	ipython passthrough_pykernel.py
+	cd notebook_build && jupyter nbconvert --to script ${srcdir}/passthrough_pykernel.ipynb --output-dir .
+	cd notebook_build && ipython passthrough_pykernel.py
 
 clean_notebook:
-	rm -rf notebook_build passthrough_pykernel.py notebook_aie.mlir
+	rm -rf notebook_build notebook_aie.mlir
