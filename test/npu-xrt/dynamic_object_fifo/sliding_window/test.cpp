@@ -14,11 +14,11 @@
 #include "xrt/xrt_kernel.h"
 
 #ifndef XCLBIN
-#define XCLBIN "final.xclbin"
+#define XCLBIN "build/final.xclbin"
 #endif
 
 #ifndef INSTS_TXT
-#define INSTS_TXT "insts.txt"
+#define INSTS_TXT "build/insts.txt"
 #endif
 
 #ifndef KERNEL_NAME
@@ -32,6 +32,21 @@
 #define OUTPUT_ROWS OUTPUT_SIZE / WIDTH_SIZE
 
 #include "test_utils.h"
+
+std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
+  std::ifstream instr_file(instr_path);
+  std::string line;
+  std::vector<uint32_t> instr_v;
+  while (std::getline(instr_file, line)) {
+    std::istringstream iss(line);
+    uint32_t a;
+    if (!(iss >> std::hex >> a)) {
+      throw std::runtime_error("Unable to parse instruction file\n");
+    }
+    instr_v.push_back(a);
+  }
+  return instr_v;
+}
 
 int main(int argc, const char *argv[]) {
 
