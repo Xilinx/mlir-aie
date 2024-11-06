@@ -34,32 +34,30 @@ from aie.dialects import aie as aiedialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
-INPUT_WITH_ADDRESSES_PIPELINE = (
-    lambda scheme, dynamic_objFifos, ctrl_pkt_overlay : (
+INPUT_WITH_ADDRESSES_PIPELINE = lambda scheme, dynamic_objFifos, ctrl_pkt_overlay: (
+    Pipeline()
+    .lower_affine()
+    .add_pass("aie-canonicalize-device")
+    .Nested(
+        "aie.device",
         Pipeline()
-        .lower_affine()
-        .add_pass("aie-canonicalize-device")
-        .Nested(
-            "aie.device",
-            Pipeline()
-            .add_pass("aie-assign-lock-ids")
-            .add_pass("aie-register-objectFifos")
-            .add_pass(
-                "aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos
-            )
-            .add_pass("aie-assign-bd-ids")
-            .add_pass("aie-lower-cascade-flows")
-            .add_pass("aie-lower-broadcast-packet")
-            .add_pass("aie-lower-multicast")
-            .add_pass("aie-assign-tile-controller-ids")
-            .add_pass(
-                "aie-generate-column-control-overlay",
-                route_shim_to_tile_ctrl=ctrl_pkt_overlay,
-            )
-            .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
+        .add_pass("aie-assign-lock-ids")
+        .add_pass("aie-register-objectFifos")
+        .add_pass(
+            "aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos
         )
-        .convert_scf_to_cf()
+        .add_pass("aie-assign-bd-ids")
+        .add_pass("aie-lower-cascade-flows")
+        .add_pass("aie-lower-broadcast-packet")
+        .add_pass("aie-lower-multicast")
+        .add_pass("aie-assign-tile-controller-ids")
+        .add_pass(
+            "aie-generate-column-control-overlay",
+            route_shim_to_tile_ctrl=ctrl_pkt_overlay,
+        )
+        .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
     )
+    .convert_scf_to_cf()
 )
 
 LOWER_TO_LLVM_PIPELINE = (
