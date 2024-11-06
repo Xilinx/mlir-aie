@@ -1,4 +1,4 @@
-//===- basic_alloc_error.mlir ---------------------------------------------*- MLIR -*-===//
+//===- basic_alloc_error.mlir ----------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -16,18 +16,18 @@
 // CHECK:   a       : 0x8420-0x842F         (16 bytes)
 
 module @test {
- aie.device(xcvc1902) {
-  %0 = aie.tile(3, 3)
-  %b1 = aie.buffer(%0) { sym_name = "a" } : memref<16xi8>
-  %1 = aie.buffer(%0) { sym_name = "b" } : memref<8192xi32>
-  %b2 = aie.buffer(%0) { sym_name = "c" } : memref<16xi16>
-  %3 = aie.tile(4, 4)
-  %4 = aie.buffer(%3) : memref<500xi32>
-  aie.core(%0) {
-    aie.end
+  aie.device(xcvc1902) {
+    %0 = aie.tile(3, 3)
+    %b1 = aie.buffer(%0) { sym_name = "a" } : memref<16xi8>
+    %1 = aie.buffer(%0) { sym_name = "b" } : memref<8192xi32>
+    %b2 = aie.buffer(%0) { sym_name = "c" } : memref<16xi16>
+    %3 = aie.tile(4, 4)
+    %4 = aie.buffer(%3) : memref<500xi32>
+    aie.core(%0) {
+      aie.end
+    }
+    aie.core(%3) {
+      aie.end
+    }
   }
-  aie.core(%3) {
-    aie.end
-  }
- }
 }
