@@ -24,7 +24,7 @@ from util import construct_and_print_module
 # CHECK:      %tile_1_2 = aie.tile(1, 2)
 # CHECK:      %tile_1_3 = aie.tile(1, 3)
 # CHECK:      aie.objectfifo @of0(%tile_0_0, {%tile_1_2}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
-# CHECK:      aie.objectfifo @of1(%tile_0_1, {%tile_1_2}, 2 : i32) {memtile_repeat = 4 : i32} : !aie.objectfifo<memref<256xi32>>
+# CHECK:      aie.objectfifo @of1(%tile_0_1, {%tile_1_2}, 2 : i32) {repeat_count = 4 : i32} : !aie.objectfifo<memref<256xi32>>
 # CHECK:      aie.objectfifo @of2(%tile_1_2, {%tile_1_3}, 2 : i32) {via_shared_mem = 1 : i32} : !aie.objectfifo<memref<256xi32>>
 # CHECK:      aie.objectfifo @of3(%tile_0_1, {%tile_1_3}, 2 : i32) : !aie.objectfifo<memref<2x2xi32>> = dense<[{{\[}}0, 1], [2, 3]]> : memref<2x2xi32>, dense<[{{\[}}4, 5], [6, 7]]> : memref<2x2xi32>
 # CHECK:      %core_1_2 = aie.core(%tile_1_2) {
@@ -52,7 +52,7 @@ def objFifo_example():
 
         of0 = object_fifo("of0", S, T_, 2, np.ndarray[(256,), np.dtype[np.int32]])
         of1 = object_fifo("of1", M, T_, 2, np.ndarray[(256,), np.dtype[np.int32]])
-        of1.set_memtile_repeat(4)
+        of1.set_repeat_count(4)
         of2 = object_fifo("of2", T_, C_, 2, np.ndarray[(256,), np.dtype[np.int32]])
         of2.set_via_shared_mem(ObjectFifoPort.Consume)
 

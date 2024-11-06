@@ -26,7 +26,7 @@ def mlir_aie_design():
     with mlir_mod_ctx() as ctx:
 
         # Device declaration - aie2 device xcvc1902
-        @device(AIEDevice.xcvc1902)
+        @device(AIEDevice.npu1_1col)
         def device_body():
             tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
             data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
