@@ -18,6 +18,7 @@ from .aiecc.main import (
     AIE_LOWER_TO_LLVM,
     CREATE_PATH_FINDER_FLOWS,
     INPUT_WITH_ADDRESSES_PIPELINE,
+    chesshack,
     emit_design_bif,
     emit_design_kernel_json,
     emit_partition,
@@ -111,6 +112,10 @@ def _run_command(cmd, workdir, *, debug=False):
         stdout = handle.stdout.decode("utf-8").strip()
         print(stdout)
         print(stderr)
+
+
+def aie_llvm_link_with_chess_intrinsic_wrapper(input_ll):
+    return chesshack(aie_llvm_link([input_ll, _CHESS_INTRINSIC_WRAPPER_LL]))
 
 
 def chess_compile(input_ll, workdir, output_filename="input", debug=False):
@@ -287,6 +292,99 @@ def _global_debug(debug):
     _GlobalDebug.flag = debug
     yield
     _GlobalDebug.flag = False
+
+
+def compile_with_vectorization(
+    mod_aie,
+    mod_aievec,
+    workdir,
+    *,
+    debug=False,
+    xaie_debug=False,
+    cdo_debug=False,
+    partition_start_col=1,
+    enable_cores=True,
+    basic_alloc=True,
+):
+    debug = debug or xaie_debug or cdo_debug
+    input_with_addresses = run_pipeline(
+        mod_aie,
+        Pipeline().convert_linalg_to_affine_loops()
+        + INPUT_WITH_ADDRESSES_PIPELINE(basic_alloc),
+        enable_ir_printing=debug,
+    )
+
+    aievec_cpp = translate_aie_vec_to_cpp(mod_aievec.operation, aie2=True)
+    aievec_cpp = aievec_cpp.replace("void", 'extern "C" void')
+    aievec_ll = chess_compile_cpp_to_ll(aievec_cpp, workdir, debug=debug)
+    # TODO(max) connect each core to its own kernel...
+    kernel = find_ops(mod_aievec, lambda o: "aie_kernel" in o.attributes, single=True)
+    if kernel:
+        print("compiling kernel")
+        chess_compile(
+            aievec_ll, workdir, output_filename=f"{kernel.sym_name.value}", debug=debug
+        )
+
+    for col, row, _ in generate_cores_list(str(mod_aie)):
+        print(f"compiling core {col} {row}")
+        with Context():
+            core_mod = Module.parse(str(input_with_addresses))
+            core_bcf = generate_bcf(core_mod.operation, col, row)
+            core_lowered_to_llvm_dialect = run_pipeline(
+                core_mod, AIE_LOWER_TO_LLVM(col, row), enable_ir_printing=debug
+            )
+            core_input_ll = translate_mlir_to_llvmir(
+                core_lowered_to_llvm_dialect.operation
+            )
+            # TODO(max) connect each core to its own kernel...
+            if kernel:
+                chess_compile(
+                    aie_llvm_link_with_chess_intrinsic_wrapper(core_input_ll),
+                    workdir,
+                    output_filename=f"core_{col}_{row}",
+                    debug=debug,
+                )
+            else:
+                fullylinked_ll = chess_llvm_link(
+                    [chesshack(core_input_ll), aievec_ll, _CHESS_INTRINSIC_WRAPPER_LL],
+                    workdir,
+                    prefix=f"core_{col}_{row}_chess_llvm_link_output",
+                    input_prefixes=[
+                        f"core_{col}_{row}_aie_input",
+                        f"core_{col}_{row}_aievec_input",
+                        f"core_{col}_{row}_chess_intrinsic_wrapper",
+                    ],
+                    debug=debug,
+                )
+
+                chess_compile(
+                    fullylinked_ll,
+                    workdir,
+                    output_filename=f"core_{col}_{row}",
+                    debug=debug,
+                )
+        make_core_elf(
+            core_bcf, workdir, object_filename=f"core_{col}_{row}", debug=debug
+        )
+
+    input_physical = run_pipeline(
+        mod_aie,
+        CREATE_PATH_FINDER_FLOWS
+        + Pipeline().convert_linalg_to_affine_loops()
+        + INPUT_WITH_ADDRESSES_PIPELINE(basic_alloc),
+        enable_ir_printing=debug,
+    )
+    with _global_debug(debug):
+        generate_cdo(
+            input_physical.operation,
+            str(workdir),
+            partition_start_col=partition_start_col,
+            cdo_debug=cdo_debug,
+            xaie_debug=xaie_debug,
+            enable_cores=enable_cores,
+        )
+
+    make_design_pdi(workdir, enable_cores=enable_cores)
 
 
 def compile_without_vectorization(
