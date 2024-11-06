@@ -52,6 +52,8 @@ clean:
 	rm -rf build _build ${targetname}*.exe
 
 run_notebook: ${srcdir}/passthrough_pykernel.ipynb
+	mkdir -p notebook_build
+	cd notebook_build
 	jupyter nbconvert --to script ${srcdir}/passthrough_pykernel.ipynb
 	ipython passthrough_pykernel.py
 
