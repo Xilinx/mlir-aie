@@ -3,4 +3,4 @@ repos:
   rev: 0.8.0
   hooks:
     - id: nbstripout 
-      args: [ --drop-empty-cells, --extra-keys=metadata.language_info.version metadata.kernelspec.name metadata.kernelspec.display_name]
+      args: [--drop-empty-cells]
