@@ -269,14 +269,13 @@ class TensorTiler2D:
         # prune repeat counts if not enough space in tensor for single pattern
         tile_repeat_width = min(
             tile_repeat_width,
-            ceildiv((tensor_width // tile_width), tile_step_width * tile_repeat_width),
+            ceildiv((tensor_width // tile_width), tile_step_width),
         )
         tile_repeat_height = min(
             tile_repeat_height,
-            ceildiv(
-                (tensor_height // tile_height), tile_step_height * tile_repeat_height
-            ),
+            ceildiv((tensor_height // tile_height), tile_step_height),
         )
+        print(f"{tile_repeat_height}, {tile_repeat_width}")
         tile_group_repeats = (tile_repeat_height, tile_repeat_width)
 
         partial_width_steps = (

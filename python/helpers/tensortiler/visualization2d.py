@@ -70,7 +70,7 @@ def animate_from_access_tensors(
         fig,
         animate_order,
         frames=len(access_order_tensors),
-        interval=max(400, 100 + 20 * len(access_order_tensors)),
+        interval=max(400, 100 + 5 * len(access_order_tensors)),
     )
 
     plt.tight_layout()
