@@ -178,7 +178,7 @@ checkAndAddBufferWithAddress(BufferOp buffer, int numBanks,
     if (addr < bankLimits[i].startAddr || addr >= bankLimits[i].endAddr)
       continue;
 
-    // if the allocator already overwrote this address, fail
+    // if the allocator already allocated this address, fail
     if (addr < nextAddrInBanks[i])
       return buffer->emitOpError("would override allocated address");
 
@@ -207,14 +207,14 @@ checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,
   int64_t startAddr = nextAddrInBanks[mem_bank];
   int64_t endAddr = startAddr + buffer.getAllocationSize();
   if (endAddr > bankLimits[mem_bank].endAddr)
-    return buffer->emitOpError("would override allocated address");
+    return buffer->emitOpError("would override existing mem_bank");
   setAndUpdateAddressInBank(buffer, startAddr, endAddr, nextAddrInBanks);
   return true;
 }
 
 // Prints the memory map across banks
-void printMemMap(TileOp tile, SmallVector<BufferOp, 4> allocatedBuffers,
-                 SmallVector<BufferOp, 4> preAllocatedBuffers, int numBanks,
+void printMemMap(TileOp tile, SmallVector<BufferOp> &allocatedBuffers,
+                 SmallVector<BufferOp> &preAllocatedBuffers, int numBanks,
                  std::vector<BankLimits> &bankLimits, int stacksize) {
   InFlightDiagnostic error = tile.emitOpError(
       "Not all requested buffers fit in the available memory.\n");
@@ -345,7 +345,7 @@ LogicalResult checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
 }
 
 // Function to deallocate attributes of buffers in case of a failure
-void deAllocationBuffers(SmallVector<BufferOp, 4> &buffers) {
+void deAllocationBuffers(SmallVector<BufferOp> &buffers) {
   for (auto buffer : buffers) {
     buffer->removeAttr("address");
     buffer->removeAttr("mem_bank");
@@ -388,7 +388,7 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
   }
   fillBankLimits(numBanks, bankSize, bankLimits);
 
-  SmallVector<BufferOp, 4> preAllocatedBuffers;
+  SmallVector<BufferOp> preAllocatedBuffers;
   SmallVector<BufferOp> buffersToAlloc;
   SmallVector<BufferOp> allBuffers;
   // Collect all the buffers for this tile.
@@ -423,7 +423,7 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
             });
 
   // Set addresses for remaining buffers.
-  SmallVector<BufferOp, 4> allocatedBuffers;
+  SmallVector<BufferOp> allocatedBuffers;
   int bankIndex = 0;
   for (auto buffer : buffersToAlloc) {
     // If the buffer doesn't fit in any of the bank space then
