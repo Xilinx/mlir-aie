@@ -17,7 +17,7 @@ consistent view of the memory map of a system.
 
 #### Options
 ```
--basic-alloc : Flag to enable the basic sequential allocation scheme (not bank-aware).
+-alloc-scheme : Select allocation scheme: basic-sequential or bank-aware. Default is bank-aware, falling back to basic-sequential if it fails.
 ```
 ### `-aie-assign-lock-ids`
 
