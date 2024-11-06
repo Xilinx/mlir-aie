@@ -11,7 +11,7 @@
 # RUN: %python %S/aie2.py > ./aie2.mlir
 # RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --no-compile-host --aie-generate-xclbin --xclbin-name=final.xclbin --dynamic-objFifos --aie-generate-npu --npu-insts-name=insts.txt ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-# RUN: %run_on_npu ./test.exe | FileCheck %s
+# RUN: %run_on_npu ./test.exe -x final.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
 # CHECK: PASS!
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
