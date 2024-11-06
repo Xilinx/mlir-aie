@@ -13,3 +13,4 @@ setuptools
 wheel
 ml_dtypes
 notebook
+pre-commit
