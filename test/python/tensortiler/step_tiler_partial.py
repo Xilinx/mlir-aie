@@ -9,13 +9,121 @@ from util import construct_test
 # CHECK-LABEL: step_tiler_partial_row
 @construct_test
 def step_tiler_partial_row():
+    tensor_dims = (3 * 5 * 3, 2 * 7 * 2)
 
-    # all row major
-    # tile col major
-    # tile group col major
-    # iter col major
-    # all col major
-    # pattern repeat
+    # TODO: all row major
+    tiles = TensorTiler2D.step_tiler(
+        tensor_dims,
+        tile_dims=(3, 2),
+        tile_group_repeats=(5, 7),
+        tile_group_steps=(3, 3),
+        allow_partial=True,
+    )
+    # assert len(tiles) == 8
+    # reference_tiles = reference_tiles = TensorTileSequence.from_tiles([])
+    # assert tiles == reference_tiles
+
+    # fmt: off
+    # ref_access_order_tensor = np.array([
+    # fmt: on
+    access_order, access_count = tiles.access_tensors()
+    # assert (access_order == ref_access_order_tensor).all()
+    assert (access_count == 1).all()
+
+    # TODO: tile col major
+    tiles = TensorTiler2D.step_tiler(
+        tensor_dims,
+        tile_dims=(3, 2),
+        tile_group_repeats=(5, 7),
+        tile_group_steps=(3, 3),
+        allow_partial=True,
+    )
+    # assert len(tiles) == 8
+    # reference_tiles = reference_tiles = TensorTileSequence.from_tiles([])
+    # assert tiles == reference_tiles
+
+    # fmt: off
+    # ref_access_order_tensor = np.array([
+    # fmt: on
+    access_order, access_count = tiles.access_tensors()
+    # assert (access_order == ref_access_order_tensor).all()
+    assert (access_count == 1).all()
+
+    # TODO: tile group col major
+    tiles = TensorTiler2D.step_tiler(
+        tensor_dims,
+        tile_dims=(3, 2),
+        tile_group_repeats=(5, 7),
+        tile_group_steps=(3, 3),
+        allow_partial=True,
+    )
+    # assert len(tiles) == 8
+    # reference_tiles = reference_tiles = TensorTileSequence.from_tiles([])
+    # assert tiles == reference_tiles
+
+    # fmt: off
+    # ref_access_order_tensor = np.array([
+    # fmt: on
+    access_order, access_count = tiles.access_tensors()
+    # assert (access_order == ref_access_order_tensor).all()
+    assert (access_count == 1).all()
+
+    # TODO: iter col major
+    tiles = TensorTiler2D.step_tiler(
+        tensor_dims,
+        tile_dims=(3, 2),
+        tile_group_repeats=(5, 7),
+        tile_group_steps=(3, 3),
+        allow_partial=True,
+    )
+    # assert len(tiles) == 8
+    # reference_tiles = reference_tiles = TensorTileSequence.from_tiles([])
+    # assert tiles == reference_tiles
+
+    # fmt: off
+    # ref_access_order_tensor = np.array([
+    # fmt: on
+    access_order, access_count = tiles.access_tensors()
+    # assert (access_order == ref_access_order_tensor).all()
+    assert (access_count == 1).all()
+
+    # TODO: all col major
+    tiles = TensorTiler2D.step_tiler(
+        tensor_dims,
+        tile_dims=(3, 2),
+        tile_group_repeats=(5, 7),
+        tile_group_steps=(3, 3),
+        allow_partial=True,
+    )
+    # assert len(tiles) == 8
+    # reference_tiles = reference_tiles = TensorTileSequence.from_tiles([])
+    # assert tiles == reference_tiles
+
+    # fmt: off
+    # ref_access_order_tensor = np.array([
+    # fmt: on
+    access_order, access_count = tiles.access_tensors()
+    # assert (access_order == ref_access_order_tensor).all()
+    assert (access_count == 1).all()
+
+    # TODO: pattern repeat
+    tiles = TensorTiler2D.step_tiler(
+        tensor_dims,
+        tile_dims=(3, 2),
+        tile_group_repeats=(5, 7),
+        tile_group_steps=(1, 3),
+        allow_partial=True,
+    )
+    # assert len(tiles) == 8
+    # reference_tiles = reference_tiles = TensorTileSequence.from_tiles([])
+    # assert tiles == reference_tiles
+
+    # fmt: off
+    # ref_access_order_tensor = np.array([
+    # fmt: on
+    access_order, access_count = tiles.access_tensors()
+    # assert (access_order == ref_access_order_tensor).all()
+    assert (access_count == 1).all()
 
     # CHECK: Pass!
     print("Pass!")
@@ -594,13 +702,121 @@ def step_tiler_partial_col():
 # CHECK-LABEL: step_tiler_partial_both
 @construct_test
 def step_tiler_partial_both():
+    tensor_dims = (3 * 5 * 3, 2 * 7 * 2)
 
-    # all row major
-    # tile col major
-    # tile group col major
-    # iter col major
-    # all col major
-    # pattern repeat
+    # TODO: all row major
+    tiles = TensorTiler2D.step_tiler(
+        tensor_dims,
+        tile_dims=(3, 2),
+        tile_group_repeats=(5, 7),
+        tile_group_steps=(2, 3),
+        allow_partial=True,
+    )
+    # assert len(tiles) == 8
+    # reference_tiles = reference_tiles = TensorTileSequence.from_tiles([])
+    # assert tiles == reference_tiles
+
+    # fmt: off
+    # ref_access_order_tensor = np.array([
+    # fmt: on
+    access_order, access_count = tiles.access_tensors()
+    # assert (access_order == ref_access_order_tensor).all()
+    assert (access_count == 1).all()
+
+    # TODO: tile col major
+    tiles = TensorTiler2D.step_tiler(
+        tensor_dims,
+        tile_dims=(3, 2),
+        tile_group_repeats=(5, 7),
+        tile_group_steps=(2, 3),
+        allow_partial=True,
+    )
+    # assert len(tiles) == 8
+    # reference_tiles = reference_tiles = TensorTileSequence.from_tiles([])
+    # assert tiles == reference_tiles
+
+    # fmt: off
+    # ref_access_order_tensor = np.array([
+    # fmt: on
+    access_order, access_count = tiles.access_tensors()
+    # assert (access_order == ref_access_order_tensor).all()
+    assert (access_count == 1).all()
+
+    # TODO: tile group col major
+    tiles = TensorTiler2D.step_tiler(
+        tensor_dims,
+        tile_dims=(3, 2),
+        tile_group_repeats=(5, 7),
+        tile_group_steps=(2, 3),
+        allow_partial=True,
+    )
+    # assert len(tiles) == 8
+    # reference_tiles = reference_tiles = TensorTileSequence.from_tiles([])
+    # assert tiles == reference_tiles
+
+    # fmt: off
+    # ref_access_order_tensor = np.array([
+    # fmt: on
+    access_order, access_count = tiles.access_tensors()
+    # assert (access_order == ref_access_order_tensor).all()
+    assert (access_count == 1).all()
+
+    # TODO: iter col major
+    tiles = TensorTiler2D.step_tiler(
+        tensor_dims,
+        tile_dims=(3, 2),
+        tile_group_repeats=(5, 7),
+        tile_group_steps=(2, 3),
+        allow_partial=True,
+    )
+    # assert len(tiles) == 8
+    # reference_tiles = reference_tiles = TensorTileSequence.from_tiles([])
+    # assert tiles == reference_tiles
+
+    # fmt: off
+    # ref_access_order_tensor = np.array([
+    # fmt: on
+    access_order, access_count = tiles.access_tensors()
+    # assert (access_order == ref_access_order_tensor).all()
+    assert (access_count == 1).all()
+
+    # TODO: all col major
+    tiles = TensorTiler2D.step_tiler(
+        tensor_dims,
+        tile_dims=(3, 2),
+        tile_group_repeats=(5, 7),
+        tile_group_steps=(2, 3),
+        allow_partial=True,
+    )
+    # assert len(tiles) == 8
+    # reference_tiles = reference_tiles = TensorTileSequence.from_tiles([])
+    # assert tiles == reference_tiles
+
+    # fmt: off
+    # ref_access_order_tensor = np.array([
+    # fmt: on
+    access_order, access_count = tiles.access_tensors()
+    # assert (access_order == ref_access_order_tensor).all()
+    assert (access_count == 1).all()
+
+    # TODO: pattern repeat
+    tiles = TensorTiler2D.step_tiler(
+        tensor_dims,
+        tile_dims=(3, 2),
+        tile_group_repeats=(5, 7),
+        tile_group_steps=(2, 3),
+        allow_partial=True,
+    )
+    # assert len(tiles) == 8
+    # reference_tiles = reference_tiles = TensorTileSequence.from_tiles([])
+    # assert tiles == reference_tiles
+
+    # fmt: off
+    # ref_access_order_tensor = np.array([
+    # fmt: on
+    access_order, access_count = tiles.access_tensors()
+    # assert (access_order == ref_access_order_tensor).all()
+    assert (access_count == 1).all()
 
     # CHECK: Pass!
     print("Pass!")
