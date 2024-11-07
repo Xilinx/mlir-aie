@@ -9,6 +9,11 @@ from util import construct_test
 # CHECK-LABEL: simple_tiler
 @construct_test
 def simple_tiler():
+    single_tile = TensorTiler2D.simple_tiler((3, 5))
+    assert len(single_tile) == 1
+    single_tile[0] == TensorTile(
+        (3, 5), offset=0, sizes=[1, 1, 3, 5], strides=[0, 0, 5, 1]
+    )
 
     tiles = TensorTiler2D.simple_tiler((9, 4), (3, 2))
     assert len(tiles) == 6

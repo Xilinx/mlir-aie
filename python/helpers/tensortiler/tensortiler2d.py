@@ -25,7 +25,7 @@ class TensorTiler2D:
     def simple_tiler(
         cls,
         tensor_dims: Sequence[int],
-        tile_dims: Sequence[int] | None,
+        tile_dims: Sequence[int] | None = None,
         tile_col_major: bool = False,
         iter_col_major: bool = False,
         pattern_repeat: int = 1,

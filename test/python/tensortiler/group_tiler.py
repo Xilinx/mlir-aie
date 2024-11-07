@@ -9,6 +9,8 @@ from util import construct_test
 # CHECK-LABEL: group_tiler
 @construct_test
 def group_tiler():
+    # TODO: group tiler without tile group dims
+
     tiles = TensorTiler2D.group_tiler(
         (3 * 5 * 3, 2 * 7 * 2), tile_dims=(3, 2), tile_group_dims=(5, 7)
     )
