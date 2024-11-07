@@ -15,7 +15,6 @@ def step_tiler():
         tile_dims=(2, 2),
         tile_group_repeats=(2, 2),
         tile_group_steps=(1, 1),
-        allow_partial=True,
     )
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorTile(
@@ -34,7 +33,6 @@ def step_tiler():
         tile_dims=(2, 2),
         tile_group_repeats=(2, 2),
         tile_group_steps=(2, 1),
-        allow_partial=True,
     )
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorTile(
@@ -56,7 +54,6 @@ def step_tiler():
         tile_dims=(2, 2),
         tile_group_repeats=(2, 2),
         tile_group_steps=(1, 2),
-        allow_partial=True,
     )
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorTile(
@@ -78,7 +75,6 @@ def step_tiler():
         tile_dims=(2, 2),
         tile_group_repeats=(2, 2),
         tile_group_steps=(2, 2),
-        allow_partial=True,
     )
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorTile(
@@ -100,7 +96,6 @@ def step_tiler():
         tile_dims=(2, 2),
         tile_group_repeats=(2, 2),
         tile_group_steps=(2, 2),
-        allow_partial=True,
     )
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorTile(
@@ -122,7 +117,6 @@ def step_tiler():
         tile_dims=(2, 2),
         tile_group_repeats=(32 // 4, 32 // 4),
         tile_group_steps=(2, 2),
-        allow_partial=True,
     )
     assert len(tiles) == 4  # (32//(2*(32//4))) * (32//(2*(32//4)))
     assert tiles[0] == TensorTile(
@@ -144,7 +138,6 @@ def step_tiler():
         tile_dims=(2, 2),
         tile_group_repeats=(1, 32 // 4),
         tile_group_steps=(2, 2),
-        allow_partial=True,
     )
     assert len(tiles) == (32 // (2 * 1)) * (32 // (2 * (32 // 4)))
     assert tiles[0] == TensorTile(
@@ -166,7 +159,6 @@ def step_tiler():
         tile_dims=(2, 2),
         tile_group_repeats=(32 // 4, 1),
         tile_group_steps=(2, 2),
-        allow_partial=True,
     )
     assert len(tiles) == (32 // (2 * 1)) * (32 // (2 * (32 // 4)))
     assert tiles[0] == TensorTile(
@@ -180,6 +172,96 @@ def step_tiler():
     )
     assert tiles[-1] == TensorTile(
         (32, 32), offset=94, sizes=[1, 8, 2, 2], strides=[0, 128, 32, 1]
+    )
+
+    # Different repeats and steps
+    tiles = TensorTiler2D.step_tiler(
+        (32, 32),
+        tile_dims=(2, 2),
+        tile_group_repeats=(8, 2),
+        tile_group_steps=(2, 4),
+    )
+    assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
+    assert tiles[0] == TensorTile(
+        (32, 32), offset=0, sizes=[8, 2, 2, 2], strides=[128, 8, 32, 1]
+    )
+    assert tiles[1] == TensorTile(
+        (32, 32), offset=2, sizes=[8, 2, 2, 2], strides=[128, 8, 32, 1]
+    )
+    assert tiles[12] == TensorTile(
+        (32, 32), offset=80, sizes=[8, 2, 2, 2], strides=[128, 8, 32, 1]
+    )
+    assert tiles[-1] == TensorTile(
+        (32, 32), offset=86, sizes=[8, 2, 2, 2], strides=[128, 8, 32, 1]
+    )
+
+    # Tile col major
+    tiles = TensorTiler2D.step_tiler(
+        (32, 32),
+        tile_dims=(2, 2),
+        tile_group_repeats=(8, 2),
+        tile_group_steps=(2, 4),
+        tile_col_major=True,
+    )
+    assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
+    assert tiles[0] == TensorTile(
+        (32, 32), offset=0, sizes=[8, 2, 2, 2], strides=[128, 8, 1, 32]
+    )
+    assert tiles[1] == TensorTile(
+        (32, 32), offset=2, sizes=[8, 2, 2, 2], strides=[128, 8, 1, 32]
+    )
+    assert tiles[12] == TensorTile(
+        (32, 32), offset=80, sizes=[8, 2, 2, 2], strides=[128, 8, 1, 32]
+    )
+    assert tiles[-1] == TensorTile(
+        (32, 32), offset=86, sizes=[8, 2, 2, 2], strides=[128, 8, 1, 32]
+    )
+
+    # Tile col major and tile group col major
+    tiles = TensorTiler2D.step_tiler(
+        (32, 32),
+        tile_dims=(2, 2),
+        tile_group_repeats=(8, 2),
+        tile_group_steps=(2, 4),
+        tile_col_major=True,
+        tile_group_col_major=True,
+    )
+    assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
+    assert tiles[0] == TensorTile(
+        (32, 32), offset=0, sizes=[2, 8, 2, 2], strides=[8, 128, 1, 32]
+    )
+    assert tiles[1] == TensorTile(
+        (32, 32), offset=2, sizes=[2, 8, 2, 2], strides=[8, 128, 1, 32]
+    )
+    assert tiles[12] == TensorTile(
+        (32, 32), offset=80, sizes=[2, 8, 2, 2], strides=[8, 128, 1, 32]
+    )
+    assert tiles[-1] == TensorTile(
+        (32, 32), offset=86, sizes=[2, 8, 2, 2], strides=[8, 128, 1, 32]
+    )
+
+    # Tile col major and tile group col major and iter col major
+    tiles = TensorTiler2D.step_tiler(
+        (32, 32),
+        tile_dims=(2, 2),
+        tile_group_repeats=(8, 2),
+        tile_group_steps=(2, 4),
+        tile_col_major=True,
+        tile_group_col_major=True,
+        iter_col_major=True,
+    )
+    assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
+    assert tiles[0] == TensorTile(
+        (32, 32), offset=0, sizes=[2, 8, 2, 2], strides=[8, 128, 1, 32]
+    )
+    assert tiles[1] == TensorTile(
+        (32, 32), offset=64, sizes=[2, 8, 2, 2], strides=[8, 128, 1, 32]
+    )
+    assert tiles[12] == TensorTile(
+        (32, 32), offset=20, sizes=[2, 8, 2, 2], strides=[8, 128, 1, 32]
+    )
+    assert tiles[-1] == TensorTile(
+        (32, 32), offset=86, sizes=[2, 8, 2, 2], strides=[8, 128, 1, 32]
     )
 
     # CHECK: Pass!
