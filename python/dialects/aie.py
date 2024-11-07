@@ -391,8 +391,8 @@ class object_fifo(ObjectFifoCreateOp):
         if dimensionsToStream is None:
             dimensionsToStream = []
         of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
-        values = []
         if initValues is not None:
+            values = []
             for e in initValues:
                 init_val = e
                 if e is list:

@@ -602,7 +602,7 @@ static void printObjectFifoInitValues(OpAsmPrinter &p, ObjectFifoCreateOp op,
                                       Attribute numElem, TypeAttr type,
                                       Attribute initValues) {
   if (op.getInitValues()) {
-    p << "= ";
+    p << "= [";
     int depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
     for (int i = 0; i < depth; i++) {
       p.printStrippedAttrOrType(llvm::dyn_cast<mlir::ArrayAttr>(initValues)[i]);
@@ -610,6 +610,7 @@ static void printObjectFifoInitValues(OpAsmPrinter &p, ObjectFifoCreateOp op,
         p << ", ";
       }
     }
+    p << "]";
   }
 }
 

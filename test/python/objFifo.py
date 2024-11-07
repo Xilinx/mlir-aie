@@ -26,7 +26,7 @@ from util import construct_and_print_module
 # CHECK:      aie.objectfifo @of0(%tile_0_0, {%tile_1_2}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
 # CHECK:      aie.objectfifo @of1(%tile_0_1, {%tile_1_2}, 2 : i32) {repeat_count = 4 : i32} : !aie.objectfifo<memref<256xi32>>
 # CHECK:      aie.objectfifo @of2(%tile_1_2, {%tile_1_3}, 2 : i32) {via_shared_mem = 1 : i32} : !aie.objectfifo<memref<256xi32>>
-# CHECK:      aie.objectfifo @of3(%tile_0_1, {%tile_1_3}, 2 : i32) : !aie.objectfifo<memref<2x2xi32>> = dense<[{{\[}}0, 1], [2, 3]]> : memref<2x2xi32>, dense<[{{\[}}4, 5], [6, 7]]> : memref<2x2xi32>
+# CHECK:      aie.objectfifo @of3(%tile_0_1, {%tile_1_3}, 2 : i32) : !aie.objectfifo<memref<2x2xi32>> = [dense<[{{\[}}0, 1], [2, 3]]> : memref<2x2xi32>, dense<[{{\[}}4, 5], [6, 7]]> : memref<2x2xi32>]
 # CHECK:      %core_1_2 = aie.core(%tile_1_2) {
 # CHECK:        %0 = aie.objectfifo.acquire @of0(Consume, 1) : !aie.objectfifosubview<memref<256xi32>>
 # CHECK:        %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<256xi32>> -> memref<256xi32>
