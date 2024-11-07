@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2023, Advanced Micro Devices, Inc.
+// Copyright (C) 2024, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -65,7 +65,7 @@ int main(int argc, const char *argv[]) {
       "path of file containing userspace instructions to be sent to the LX6")(
       "length,l", po::value<int>()->default_value(4096),
       "the length of the transfer in int32_t")(
-      "repeat,r", po::value<int>()->default_value(3),
+      "repeat,r", po::value<int>()->default_value(4),
       "the memtile repeat count");
   po::variables_map vm;
 
@@ -94,6 +94,10 @@ int main(int argc, const char *argv[]) {
     std::cout << "Sequence instr count: " << instr_v.size() << std::endl;
 
   int N = vm["length"].as<int>();
+  if ((N % 1024)) {
+    std::cerr << "Length must be a multiple of 1024." << std::endl;
+    return 1;
+  }
   int repeat_count = vm["repeat"].as<int>();
 
   // Start the XRT test code
@@ -144,17 +148,17 @@ int main(int argc, const char *argv[]) {
                         kernel.group_id(3));
   auto bo_inB = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(4));
-  auto bo_out = xrt::bo(device, N /** (repeat_count + 1)*/ * sizeof(int32_t),
+  auto bo_out = xrt::bo(device, N * repeat_count * sizeof(int32_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
 
-  // int32_t *bufInA = bo_inA.map<int32_t *>();
-  // std::vector<uint32_t> srcVecA;
-  // for (int i = 0; i < N; i++)
-  //   srcVecA.push_back(i + 1);
-  // memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
+  int32_t *bufInA = bo_inA.map<int32_t *>();
+  std::vector<uint32_t> srcVecA;
+  for (int i = 0; i < N; i++)
+    srcVecA.push_back(i + 2);
+  memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
@@ -173,8 +177,9 @@ int main(int argc, const char *argv[]) {
   uint32_t *bufOut = bo_out.map<uint32_t *>();
 
   int errors = 0;
-  for (uint32_t i = 0; i < N /** (repeat_count + 1)*/; i++) {
-    uint32_t ref = i + 1;
+
+  for (uint32_t i = 0; i < N * repeat_count; i++) {
+    uint32_t ref = (i % N) + 1;
     if (*(bufOut + i) != ref) {
       std::cout << "error at index[" << i << "]: expected " << ref << " got "
                 << *(bufOut + i) << std::endl;
