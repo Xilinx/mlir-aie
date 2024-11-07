@@ -61,11 +61,8 @@ def objFifo_example():
             M,
             C_,
             2,
-            np.ndarray[(2,2), np.dtype[np.int32]],
-            initValues=[
-                np.arange(4, dtype=np.int32),
-                np.arange(4, 8, dtype=np.int32)
-            ],
+            np.ndarray[(2, 2), np.dtype[np.int32]],
+            initValues=[np.arange(4, dtype=np.int32), np.arange(4, 8, dtype=np.int32)],
         )
 
         C = Core(T_)

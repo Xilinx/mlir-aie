@@ -397,9 +397,7 @@ class object_fifo(ObjectFifoCreateOp):
                 init_val = e
                 if e is list:
                     init_val = array("i", e)
-                values.append(
-                    DenseElementsAttr.get(init_val, type=self.datatype)
-                )
+                values.append(DenseElementsAttr.get(init_val, type=self.datatype))
             initValues = _arrayAttr(values, None)
         super().__init__(
             sym_name=name,
