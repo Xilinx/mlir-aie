@@ -116,6 +116,18 @@ class TensorTiler2D:
                         f"Tile pattern exceeds tensor size in dimension {i} ({tile_dim}x{repeat_dim}x{step_dim} > {tensor_dim})"
                     )
 
+        # Prune steps/repeat if steps/repeat larger than initial tensor
+        tile_group_steps = list(tile_group_steps)
+        tile_group_repeats = list(tile_group_repeats)
+        for i, (tensor_dim, tile_dim, tile_step) in enumerate(
+            zip(tensor_dims, tile_dims, tile_group_steps)
+        ):
+            tile_group_repeats[i] = min(
+                tile_group_repeats[i], ceildiv(tensor_dim // tile_dim, tile_step)
+            )
+            if tile_step > tensor_dim // tile_dim:
+                tile_group_steps[i] = 1
+
         steps_per_dim = cls.__get_num_steps(
             tensor_dims=tensor_dims,
             tile_dims=tile_dims,
@@ -189,14 +201,29 @@ class TensorTiler2D:
         for tensor_dim, tile_dim, step_dim, repeat_dim in zip(
             tensor_dims, tile_dims, step_dims, repeat_dims
         ):
-            num_steps_per_dim = tensor_dim // (tile_dim * repeat_dim)
-            tiles_in_tensor = (tensor_dim // tile_dim) - num_steps_per_dim * repeat_dim
-            partial_height_steps = 0
-            while tiles_in_tensor > 0:
-                tiles_in_tensor -= min(repeat_dim, ceildiv(tiles_in_tensor, step_dim))
-                partial_height_steps += 1
-            num_steps_per_dim += partial_height_steps
-            num_steps_dims.append(num_steps_per_dim)
+            # number of full tiles
+            tiles_per_dim = tensor_dim // tile_dim
+            tile_block_dim_in_tiles = step_dim * repeat_dim
+
+            # number of of full blocks
+            if tile_block_dim_in_tiles > 0:
+                num_full_blocks = tiles_per_dim // tile_block_dim_in_tiles
+                steps_from_blocks = num_full_blocks * step_dim
+            else:
+                num_full_blocks = 0
+                steps_from_blocks = 0
+
+            # number of partial tiles
+            leftover_tiles = tiles_per_dim - (tile_block_dim_in_tiles * num_full_blocks)
+            leftover_repeat_dim = leftover_tiles // step_dim
+            leftover_block_dim_in_tiles = step_dim * leftover_repeat_dim
+            if leftover_block_dim_in_tiles > 0:
+                num_leftover_blocks = leftover_tiles // leftover_block_dim_in_tiles
+                steps_from_leftover_blocks = num_leftover_blocks * step_dim
+            else:
+                steps_from_leftover_blocks = leftover_tiles
+
+            num_steps_dims.append(steps_from_blocks + steps_from_leftover_blocks)
         return num_steps_dims
 
     @classmethod
