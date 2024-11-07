@@ -301,7 +301,7 @@ struct AIEObjectFifoStatefulTransformPass
   std::vector<LockOp> createObjectFifoLocks(OpBuilder &builder,
                                             LockAnalysis &lockAnalysis,
                                             ObjectFifoCreateOp op, int numElem,
-                                            TileOp creation_tile, bool linked) {
+                                            TileOp creation_tile, int repeatCount) {
     std::vector<LockOp> locks;
     if (op.getDisableSynchronization())
       return locks;
@@ -337,9 +337,7 @@ struct AIEObjectFifoStatefulTransformPass
                             : 0;
       int prodLockID = lockAnalysis.getLockID(creation_tile);
       assert(prodLockID >= 0 && "No more locks to allocate!");
-      int prodLockValue = numElem - initValues;
-      if (!linked && op.getRepeatCount().has_value())
-        prodLockValue *= op.getRepeatCount().value() + 1;
+      int prodLockValue = (numElem - initValues) * repeatCount;
       auto prodLock = builder.create<LockOp>(
           builder.getUnknownLoc(), creation_tile, prodLockID, prodLockValue);
       prodLock.getOperation()->setAttr(
@@ -349,9 +347,7 @@ struct AIEObjectFifoStatefulTransformPass
 
       int consLockID = lockAnalysis.getLockID(creation_tile);
       assert(consLockID >= 0 && "No more locks to allocate!");
-      int consLockValue = initValues;
-      if (!linked && op.getRepeatCount().has_value())
-        consLockValue *= op.getRepeatCount().value() + 1;
+      int consLockValue = initValues * repeatCount;
       auto consLock = builder.create<LockOp>(
           builder.getUnknownLoc(), creation_tile, consLockID, consLockValue);
       consLock.getOperation()->setAttr(
@@ -376,8 +372,9 @@ struct AIEObjectFifoStatefulTransformPass
     int of_elem_index = 0; // used to give objectFifo elements a symbolic name
 
     // if this objectFifo is linked to another, check if the other's elements
-    // have already been created (the elements that are created are those of
-    // the objFifo with elements of bigger size)
+    // have already been created: if none of the output objectfifos of the link
+    // have initValues, then the elements that are created are those of the
+    // objFifo with elements of bigger size
     bool linked = false;
     auto linkOp = getOptionalLinkOp(op);
     if (linkOp) {
@@ -395,21 +392,26 @@ struct AIEObjectFifoStatefulTransformPass
         if (op.name() != fifoIn.name())
           return;
       } else {
-        auto fifoInType = llvm::cast<AIEObjectFifoType>(
-            linkOp->getInputObjectFifos()[0].getElemType());
-        auto elemInType = llvm::cast<MemRefType>(fifoInType.getElementType());
-        int inSize = elemInType.getNumElements();
-
-        auto fifoOutType = llvm::cast<AIEObjectFifoType>(
-            linkOp->getOutputObjectFifos()[0].getElemType());
-        auto elemOutType = llvm::cast<MemRefType>(fifoOutType.getElementType());
-
-        if (int outSize = elemOutType.getNumElements(); inSize >= outSize) {
-          if (op.name() != fifoIn.name())
+        // check if output objectfifo has initValues
+        if (fifoOut.getInitValues().has_value()) {
+          if (fifoOut.name() != op.name())
             return;
         } else {
-          if (linkOp->getOutputObjectFifos()[0] != op)
-            return;
+          // check which objectfifo of the link has bigger size
+          auto fifoInType = llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
+          auto elemInType = llvm::cast<MemRefType>(fifoInType.getElementType());
+          int inSize = elemInType.getNumElements();
+
+          auto fifoOutType = llvm::cast<AIEObjectFifoType>(fifoOut.getElemType());
+          auto elemOutType = llvm::cast<MemRefType>(fifoOutType.getElementType());
+
+          if (int outSize = elemOutType.getNumElements(); inSize >= outSize) {
+            if (op.name() != fifoIn.name())
+              return;
+          } else {
+            if (fifoOut.name() != op.name())
+              return;
+          }
         }
       }
     }
@@ -447,9 +449,12 @@ struct AIEObjectFifoStatefulTransformPass
       }
       of_elem_index++;
     }
+    int repeatCount = 1;
+    if (op.getRepeatCount().has_value())
+      repeatCount = op.getRepeatCount().value();
     if (linked) {
       if (linkOp->getRepeatCount().has_value())
-        numElem *= linkOp->getRepeatCount().value();
+        repeatCount = linkOp->getRepeatCount().value();
       if (linkOp->isDistribute())
         numElem *= linkOp->getFifoOuts().size();
       else if (linkOp->isJoin())
@@ -457,7 +462,7 @@ struct AIEObjectFifoStatefulTransformPass
       objFifoLinks[*linkOp] = op;
     }
     std::vector<LockOp> locks = createObjectFifoLocks(
-        builder, lockAnalysis, op, numElem, creation_tile, linked);
+        builder, lockAnalysis, op, numElem, creation_tile, repeatCount);
     buffersPerFifo[op] = buffers;
     locksPerFifo[op] = locks;
   }
@@ -748,8 +753,8 @@ struct AIEObjectFifoStatefulTransformPass
         auto srcOffsets = linkOp->getSrcOffsets();
         auto dstOffsets = linkOp->getDstOffsets();
 
-        if (target == op) {
-          if (linkOp->getRepeatCount().has_value()) {
+        if (linkOp->getRepeatCount().has_value()) {
+          if (linkOp->getInputObjectFifos()[0] == op) {
             acqNum *= linkOp->getRepeatCount().value();
             relNum *= linkOp->getRepeatCount().value();
           }
