@@ -122,24 +122,25 @@ class TensorTiler2D:
             step_dims=tile_group_steps,
             repeat_dims=tile_group_repeats,
         )
-        print(steps_per_dim)
         num_steps = np.prod(steps_per_dim)
-        print(num_steps)
 
         def offset_fn(step_num: int, _prev_offset: int) -> int:
-            tile_offset_in_col, tile_offset_in_row = cls.__tile_offset_by_step_num(
+            tile_offsets = cls.__tile_offset_by_step_num(
                 step_num,
                 tile_group_steps,
                 tile_group_repeats,
                 steps_per_dim,
                 iter_col_major,
             )
-            # TODO: this code is specific to 2-dimensions
-            offset = (
-                tile_offset_in_row * tile_dims[1]
-                + tile_offset_in_col * tile_dims[0] * tensor_dims[1]
-            )
-            return offset
+            total_offset = 0
+            num_dims = len(tile_offsets)
+            for dim, (offset, tile_dim) in enumerate(zip(tile_offsets, tile_dims)):
+                total_offset += (
+                    offset
+                    * tile_dim
+                    * (np.prod(tensor_dims[dim + 1 :]) if dim < num_dims - 1 else 1)
+                )
+            return total_offset
 
         def sizes_or_strides_fn(step_num, _prev_sizes, is_sizes):
             tile_offsets = cls.__tile_offset_by_step_num(
