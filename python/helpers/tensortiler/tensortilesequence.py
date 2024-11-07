@@ -119,6 +119,28 @@ class TensorTileSequence(abc.MutableSequence, abc.Iterable):
             tileseq.append(t)
         return tileseq
 
+    def access_tensors(self) -> tuple[np.ndarray, np.ndarray]:
+        total_elems = np.prod(self._tensor_dims)
+
+        combined_access_order_tensor = np.full(
+            total_elems, 0, TensorTile._DTYPE
+        ).reshape(self._tensor_dims)
+        combined_access_count_tensor = np.full(
+            total_elems, 0, TensorTile._DTYPE
+        ).reshape(self._tensor_dims)
+        highest_count = 0
+        for t in self._tiles:
+            t_access_order, t_access_count = t.access_tensors()
+            t_access_order[t_access_order != -1] += 1 + highest_count
+            t_access_order[t_access_order == -1] = 0
+            combined_access_order_tensor += t_access_order
+            highest_count = np.max(combined_access_order_tensor)
+
+            combined_access_count_tensor += t_access_count
+
+        combined_access_order_tensor -= 1
+        return (combined_access_order_tensor, combined_access_count_tensor)
+
     def animate(
         self, title: str = None, animate_access_count: bool = False
     ) -> animation.FuncAnimation:
@@ -163,44 +185,25 @@ class TensorTileSequence(abc.MutableSequence, abc.Iterable):
         show_plot: bool = True,
         plot_access_count: bool = False,
     ) -> None:
-        if title is None:
-            title = "TensorTileSequence"
-        if len(self._tensor_dims) == 2:
-            highest_count = 1
-            total_elems = np.prod(self._tensor_dims)
-            access_order = np.full(total_elems, 0, TensorTile._DTYPE).reshape(
-                self._tensor_dims
-            )
-            if plot_access_count:
-                access_count = np.full(total_elems, 0, TensorTile._DTYPE).reshape(
-                    self._tensor_dims
-                )
-            else:
-                access_count = None
-
-            for t in self._tiles:
-                t_access_order, t_access_count = t.access_tensors()
-                t_access_order[t_access_order != -1] += highest_count
-                t_access_order[t_access_order == -1] = 0
-                highest_count = np.max(t_access_order)
-
-                access_order += t_access_order
-                if plot_access_count:
-                    access_count += t_access_count
-
-            visualize_from_access_tensors(
-                access_order,
-                access_count,
-                title=title,
-                show_arrows=False,
-                file_path=file_path,
-                show_plot=show_plot,
-            )
-
-        else:
+        if len(self._tensor_dims) != 2:
             raise NotImplementedError(
                 "Visualization is only currently supported for 1- or 2-dimensional tensors"
             )
+
+        if title is None:
+            title = "TensorTileSequence"
+        access_order_tensor, access_count_tensor = self.access_tensors()
+        if not plot_access_count:
+            access_count_tensor = None
+
+        visualize_from_access_tensors(
+            access_order_tensor,
+            access_count_tensor,
+            title=title,
+            show_arrows=False,
+            file_path=file_path,
+            show_plot=show_plot,
+        )
 
     def __contains__(self, tile: TensorTile):
         return tile in self._tiles

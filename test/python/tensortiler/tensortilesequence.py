@@ -12,6 +12,11 @@ def tensor_tile_sequence():
 
     empty_tiles = TensorTileSequence((2, 2), 0)
     assert len(empty_tiles) == 0
+    ref_access_order = np.array([[-1, -1], [-1, -1]])
+    ref_access_count = np.array([[0, 0], [0, 0]])
+    access_order, access_count = empty_tiles.access_tensors()
+    assert (access_order == ref_access_order).all()
+    assert (access_count == ref_access_count).all()
 
     def offset_fn(step, _prev_offset):
         return step
@@ -20,6 +25,11 @@ def tensor_tile_sequence():
         (2, 2), 4, sizes=[1, 1], strides=[1, 1], offset_fn=offset_fn
     )
     assert len(tiles) == 4
+    ref_access_order = np.array([[0, 1], [2, 3]])
+    ref_access_count = np.array([[1, 1], [1, 1]])
+    access_order, access_count = tiles.access_tensors()
+    assert (access_order == ref_access_order).all()
+    assert (access_count == ref_access_count).all()
 
     tile = TensorTile((2, 2), offset=2, sizes=[1, 1], strides=[1, 1])
     assert tile in tiles
@@ -43,9 +53,17 @@ def tensor_tile_sequence():
         (2, 2), 3, sizes=[1, 1], strides=[1, 1], offset_fn=offset_fn
     )
     assert tiles != tiles4
+    ref_access_order = np.array([[0, 1], [2, -1]])
+    ref_access_count = np.array([[1, 1], [1, 0]])
+    access_order, access_count = tiles4.access_tensors()
+    assert (access_order == ref_access_order).all()
+    assert (access_count == ref_access_count).all()
 
     tiles4_copy = TensorTileSequence.from_tiles(tiles4)
     assert tiles4_copy == tiles4
+    access_order, access_count = tiles4_copy.access_tensors()
+    assert (access_order == ref_access_order).all()
+    assert (access_count == ref_access_count).all()
 
     # CHECK: Pass!
     print("Pass!")
