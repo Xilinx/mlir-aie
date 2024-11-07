@@ -48,7 +48,11 @@ using namespace std::string_literals;
 
 namespace xilinx::AIE::CIR {
 
-struct CIRToAIETypesAnalysis {
+// Analysis all the C++ types used in a module and for aie++ types deconstruct
+// them and keep track of the AIE dialect operations used to produce a value of
+// its type.
+class CIRToAIETypesAnalysis {
+public:
   // llvm::DenseMap<mlir::Type, std::optional<mlir::Type>> types;
   struct AIELikeTypesDeconstruction {
     // For example "aie::device<aie::npu1>"
@@ -59,18 +63,25 @@ struct CIRToAIETypesAnalysis {
     std::vector<std::string> subMatches;
     // To attach something, like the aie.tile operation for example
     std::any data;
+    // The new operation producing the result instead for replacement
+    std::optional<mlir::Operation *> newResult;
 
     std::string str() {
       return "Fullname = " + fullName + ", base = " + base +
              ", subMatches = " + llvm::join(subMatches, ", ");
     }
+
+    // Associate to this type the operation producing the value for this type
+    void setResult(mlir::Operation *op) { newResult = op; }
   };
 
-  // A map from a type do its aie:: deconstruction in the case it is a pointer
+private:
+  // A map from a type to its aie:: deconstruction in the case it is a pointer
   // type to a well known aie:: struct
   llvm::DenseMap<mlir::Type, std::optional<AIELikeTypesDeconstruction>>
       moduleTypes;
 
+public:
   void analyze() {
     // A struct with a name like "aie::device<aie::npu1>" (and the "npu1" is
     // used directly for the MLIR aie.device attribute) or aie::tile_t<8,50> for
@@ -102,7 +113,35 @@ struct CIRToAIETypesAnalysis {
     }
   }
 
-public:
+  // Get the deconstructed AIE type details behind the aie++ C++ type
+  std::optional<AIELikeTypesDeconstruction> &
+  getOptionalTypeDetail(mlir::Type t) {
+    assert(moduleTypes.contains(t) && "This type should have been seen");
+    return moduleTypes[t];
+  }
+
+  // Get the deconstructed AIE type details behind the aie++ C++ type
+  AIELikeTypesDeconstruction &getTypeDetail(mlir::Type t) {
+    auto &detail = getOptionalTypeDetail(t);
+    assert(detail && "This type should have an analysis");
+    return *detail;
+  }
+
+  // Associate to a given aie++ C++ type the operation producing the value for
+  // this type
+  void setResult(mlir::Type t, mlir::Operation *op) {
+    getTypeDetail(t).setResult(op);
+  }
+
+  // Associate to a given aie++ C++ type the operation producing the value for
+  // this type
+  mlir::Operation *getResult(mlir::Type t) {
+    auto &detail = getTypeDetail(t);
+    assert(detail.newResult && "This type should have an operation registered "
+                               "with a previous setResult()");
+    return *detail.newResult;
+  }
+
   CIRToAIETypesAnalysis(mlir::ModuleOp module) {
     module->walk([this](mlir::Operation *op) {
       for (auto result : op->getResults()) {
@@ -251,7 +290,7 @@ struct PrepareDeviceLowering
                   mlir::ConversionPatternRewriter &rewriter) const final {
     // The struct has a name like "aie::device<aie::npu1>" and the "npu1"
     // is used directly for the MLIR aie.device attribute
-    if (auto aieLike = cat->moduleTypes[op.getType()];
+    if (auto aieLike = cat->getOptionalTypeDetail(op.getType());
         aieLike && aieLike->base == "aie::device") {
       auto deviceName = aieLike->subMatches[0];
       auto deviceId =
@@ -304,24 +343,22 @@ struct PrepareTileBufferLowering
       auto store = mlir::dyn_cast<mlir::cir::StoreOp>(*user);
       auto alloca = mlir::dyn_cast<mlir::cir::AllocaOp>(
           store.getOperand(1).getDefiningOp());
-      if (auto aieLike = cat->moduleTypes[alloca.getResult().getType()];
-          aieLike) {
-        // Replace the alloca by a conversion to be replaced later in
-        // another pass.
-        // Keep analyzed type information as named attribute to make things
-        // clearer
-        llvm::SmallVector<mlir::Attribute, 4> attrs;
-        for (auto e : aieLike->subMatches)
-          attrs.emplace_back(rewriter.getAttr<mlir::StringAttr>(e));
-        rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
-            alloca, alloca.getResult().getType(), device,
-            std::array{rewriter.getNamedAttr(aieLike->base,
-                                             rewriter.getArrayAttr(attrs))});
-        // Remove the now useless original operations
-        rewriter.eraseOp(store);
-        rewriter.eraseOp(op);
-        return mlir::success();
-      }
+      auto aieLike = cat->getTypeDetail(alloca.getResult().getType());
+      // Replace the alloca by a conversion to be replaced later in
+      // another pass.
+      // Keep analyzed type information as named attribute to make things
+      // clearer
+      llvm::SmallVector<mlir::Attribute, 4> attrs;
+      for (auto e : aieLike.subMatches)
+        attrs.emplace_back(rewriter.getAttr<mlir::StringAttr>(e));
+      rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+          alloca, alloca.getResult().getType(), device,
+          std::array{rewriter.getNamedAttr(aieLike.base,
+                                           rewriter.getArrayAttr(attrs))});
+      // Remove the now useless original operations
+      rewriter.eraseOp(store);
+      rewriter.eraseOp(op);
+      return mlir::success();
     }
     return mlir::failure();
   }
@@ -402,7 +439,7 @@ struct CIRToAIEPrepare : CIRToAIEPrepareBase<CIRToAIEPrepare> {
         [&](mlir::cir::AllocaOp op) {
           // If the struct has a name like "aie::device<aie::npu1>", mark
           // the operation illegal so it has to be rewritten
-          auto aieLike = cat.moduleTypes[op.getType()];
+          auto aieLike = cat.getOptionalTypeDetail(op.getType());
           return !(aieLike && aieLike->base == "aie::device");
         });
     target.addDynamicallyLegalOp<mlir::cir::CallOp>([](mlir::cir::CallOp op) {
@@ -473,7 +510,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
       auto bufferOp = b.create<xilinx::AIE::BufferOp>(bufCast.getLoc(), mrt,
                                                       tileOp.getResult());
       // Keep track of the buffer op behind the C++ type
-      cat->moduleTypes[bufCast.getType(0)]->data = bufferOp;
+      cat->setResult(bufCast.getType(0), bufferOp);
       // The bufCast should be removed as a dependent of its tile cast later,
       // but be redundant here for symmetry and to exercise the final erasing
       // and its topological sort
@@ -558,21 +595,21 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
                        llvm::SmallVector<mlir::Operation *> &opsToErase) {
     if (auto tileCast = mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(op)) {
       tileCast.emitRemark("tryTileLowering: tileCast from device");
-      if (auto t = cat->moduleTypes[tileCast.getType(0)]) {
-        // llvm::errs() << t->str() << " value \n";
-        auto col = t->subMatches[0];
-        // llvm::errs() << "col" << col << " \n";
-        auto row = t->subMatches[1];
-        // llvm::errs() << " row " << row << " \n";
-        auto tileOp = b.create<xilinx::AIE::TileOp>(
-            tileCast.getLoc(), std::stoi(col), std::stoi(row));
-        for (mlir::Operation *user : tileCast.getResult(0).getUsers())
-          if (!(tryBufferLowering(user, tileOp, b, opsToErase) ||
-                tryTileProgramLowering(user, tileOp, b, opsToErase)))
-            user->emitError("User of tile cast not handled");
-        // Tile lowering is done
-        return true;
-      }
+      auto aieLike = cat->getTypeDetail(
+          tileCast.getType(0)); // llvm::errs() << aieLike.str() << " value \n";
+      auto col = aieLike.subMatches[0];
+      // llvm::errs() << "col" << col << " \n";
+      auto row = aieLike.subMatches[1];
+      // llvm::errs() << " row " << row << " \n";
+      auto tileOp = b.create<xilinx::AIE::TileOp>(
+          tileCast.getLoc(), std::stoi(col), std::stoi(row));
+      aieLike.setResult(tileOp);
+      for (mlir::Operation *user : tileCast.getResult(0).getUsers())
+        if (!(tryBufferLowering(user, tileOp, b, opsToErase) ||
+              tryTileProgramLowering(user, tileOp, b, opsToErase)))
+          user->emitError("User of tile cast not handled");
+      // Tile lowering is done
+      return true;
     }
     // Try some other lowering
     return false;
@@ -588,33 +625,32 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
           "DeviceLowering found UnrealizedConversionCastOp inside the module");
       if (!isUnrealizedConversionCastWithAnnotation(u, {"aie::device"}))
         return;
-      if (auto aieLike = cat->moduleTypes[u.getType(0)];
-          aieLike && aieLike->base == "aie::device") {
-        auto deviceName = aieLike->subMatches[0];
-        auto deviceId =
-            xilinx::AIE::symbolizeEnum<xilinx::AIE::AIEDevice>(deviceName);
-        if (!deviceId)
-          // Actually this test cannot happens since the API of
-          // xilinx::AIE::symbolizeEnum is strange: even if it returns a
-          // std::optional it errors without returning
-          u.emitError("aie::device incorrect for '") << deviceName << "'";
-        // Create an aie.device just before its equivalent
-        // UnrealizedConversionCast. Since we visit in pre-order mode, this
-        // should be fine.
-        mlir::OpBuilder b{u};
-        auto deviceOp = b.create<xilinx::AIE::DeviceOp>(u.getLoc(), *deviceId);
-        // The aie.device requires one block
-        deviceOp.getRegion().emplaceBlock();
-        // Create all the following code inside the device region
-        b.setInsertionPointToStart(deviceOp.getBody());
-        // Lazily move all the code depending on the device to the trash
-        opsToErase.push_back(u);
-        for (mlir::Operation *user : u.getResult(0).getUsers())
-          if (!tryTileLowering(user, b, opsToErase))
-            user->emitRemark("User of device cast not handled");
-        // Note: aie.device does not require a terminator
-        deviceOp.emitRemark("DeviceLowering: end");
-      }
+      auto aieLike = cat->getTypeDetail(u.getType(0));
+      auto deviceName = aieLike.subMatches[0];
+      auto deviceId =
+          xilinx::AIE::symbolizeEnum<xilinx::AIE::AIEDevice>(deviceName);
+      if (!deviceId)
+        // Actually this test cannot happens since the API of
+        // xilinx::AIE::symbolizeEnum is strange: even if it returns a
+        // std::optional it errors without returning
+        u.emitError("aie::device incorrect for '") << deviceName << "'";
+      // Create an aie.device just before its equivalent
+      // UnrealizedConversionCast. Since we visit in pre-order mode, this
+      // should be fine.
+      mlir::OpBuilder b{u};
+      auto deviceOp = b.create<xilinx::AIE::DeviceOp>(u.getLoc(), *deviceId);
+      // The aie.device requires one block
+      deviceOp.getRegion().emplaceBlock();
+      aieLike.setResult(deviceOp);
+      // Create all the following code inside the device region
+      b.setInsertionPointToStart(deviceOp.getBody());
+      // Lazily move all the code depending on the device to the trash
+      opsToErase.push_back(u);
+      for (mlir::Operation *user : u.getResult(0).getUsers())
+        if (!tryTileLowering(user, b, opsToErase))
+          user->emitRemark("User of device cast not handled");
+      // Note: aie.device does not require a terminator
+      deviceOp.emitRemark("DeviceLowering: end");
     });
     // Remove the useless operations
     eraseOpsAndUsers(opsToErase);
