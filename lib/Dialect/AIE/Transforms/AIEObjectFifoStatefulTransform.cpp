@@ -403,8 +403,10 @@ struct AIEObjectFifoStatefulTransformPass
           auto elemInType = llvm::cast<MemRefType>(fifoInType.getElementType());
           int inSize = elemInType.getNumElements();
 
-          auto fifoOutType = llvm::cast<AIEObjectFifoType>(fifoOut.getElemType());
-          auto elemOutType = llvm::cast<MemRefType>(fifoOutType.getElementType());
+          auto fifoOutType =
+              llvm::cast<AIEObjectFifoType>(fifoOut.getElemType());
+          auto elemOutType =
+              llvm::cast<MemRefType>(fifoOutType.getElementType());
 
           if (int outSize = elemOutType.getNumElements(); inSize >= outSize) {
             if (op.name() != fifoIn.name())
