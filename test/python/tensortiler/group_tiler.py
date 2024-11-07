@@ -130,7 +130,7 @@ def group_tiler():
 @construct_test
 def group_tiler_invalid():
     try:
-        tiles_repeat = TensorTiler2D.group_tiler(
+        tiles = TensorTiler2D.group_tiler(
             (), (3, 2), (1, 1), tile_col_major=True, pattern_repeat=5
         )
         raise ValueError("Bad tensor dims, should fail.")
@@ -138,7 +138,7 @@ def group_tiler_invalid():
         # good
         pass
     try:
-        tiles_repeat = TensorTiler2D.group_tiler(
+        tiles = TensorTiler2D.group_tiler(
             (10, 9, 4), (3, 2), (1, 1), tile_col_major=True, pattern_repeat=5
         )
         raise ValueError("Too many tensor dims, should fail.")
@@ -146,7 +146,7 @@ def group_tiler_invalid():
         # good
         pass
     try:
-        tiles_repeat = TensorTiler2D.group_tiler(
+        tiles = TensorTiler2D.group_tiler(
             (9, 4), (3, -1), (1, 1), tile_col_major=True, pattern_repeat=5
         )
         raise ValueError("Bad tile dims, should fail.")
@@ -154,7 +154,7 @@ def group_tiler_invalid():
         # good
         pass
     try:
-        tiles_repeat = TensorTiler2D.group_tiler(
+        tiles = TensorTiler2D.group_tiler(
             (9, 4), (3,), (1, 1), tile_col_major=True, pattern_repeat=5
         )
         raise ValueError("Too few tile dims, should fail.")
@@ -162,7 +162,7 @@ def group_tiler_invalid():
         # good
         pass
     try:
-        tiles_repeat = TensorTiler2D.group_tiler(
+        tiles = TensorTiler2D.group_tiler(
             (9, 4), (1, 1, 1), (1, 1), tile_col_major=True, pattern_repeat=5
         )
         raise ValueError("Too many tile dims, should fail.")
@@ -170,7 +170,7 @@ def group_tiler_invalid():
         # good
         pass
     try:
-        tiles_repeat = TensorTiler2D.group_tiler(
+        tiles = TensorTiler2D.group_tiler(
             (9, 4), (3, 2), (1, 1), tile_col_major=True, pattern_repeat=0
         )
         raise ValueError("Invalid repeat.")
@@ -178,7 +178,7 @@ def group_tiler_invalid():
         # good
         pass
     try:
-        tiles_repeat = TensorTiler2D.group_tiler(
+        tiles = TensorTiler2D.group_tiler(
             (9, 4), (4, 2), (1, 1), tile_col_major=True, pattern_repeat=5
         )
         raise ValueError("Indivisible tile (height)")
@@ -186,7 +186,7 @@ def group_tiler_invalid():
         # good
         pass
     try:
-        tiles_repeat = TensorTiler2D.group_tiler(
+        tiles = TensorTiler2D.group_tiler(
             (9, 4), (3, 3), (1, 1), tile_col_major=True, pattern_repeat=5
         )
         raise ValueError("Indivisible tile (width)")
@@ -195,7 +195,7 @@ def group_tiler_invalid():
         pass
 
     try:
-        tiles_repeat = TensorTiler2D.group_tiler(
+        tiles = TensorTiler2D.group_tiler(
             (9, 4), (3, 2), (1,), tile_col_major=True, pattern_repeat=5
         )
         raise ValueError("Too few tile group dims, should fail.")
@@ -203,7 +203,7 @@ def group_tiler_invalid():
         # good
         pass
     try:
-        tiles_repeat = TensorTiler2D.group_tiler(
+        tiles = TensorTiler2D.group_tiler(
             (9, 4), (3, 2), (1, -1), tile_col_major=True, pattern_repeat=5
         )
         raise ValueError("Bad tile group dims, should fail.")
@@ -211,7 +211,7 @@ def group_tiler_invalid():
         # good
         pass
     try:
-        tiles_repeat = TensorTiler2D.group_tiler(
+        tiles = TensorTiler2D.group_tiler(
             (9, 4), (3, 2), (1, 1, 1), tile_col_major=True
         )
         raise ValueError("Too many tile group dims, should fail.")
@@ -219,9 +219,7 @@ def group_tiler_invalid():
         # good
         pass
     try:
-        tiles_repeat = TensorTiler2D.group_tiler(
-            (18, 8), (3, 2), (2, 3), tile_col_major=True
-        )
+        tiles = TensorTiler2D.group_tiler((18, 8), (3, 2), (2, 3), tile_col_major=True)
         raise ValueError(
             "Indivisible by tile repeat width (but without allow_partial)."
         )
@@ -229,9 +227,7 @@ def group_tiler_invalid():
         # good
         pass
     try:
-        tiles_repeat = TensorTiler2D.group_tiler(
-            (18, 8), (3, 2), (4, 2), tile_col_major=True
-        )
+        tiles = TensorTiler2D.group_tiler((18, 8), (3, 2), (4, 2), tile_col_major=True)
         raise ValueError(
             "Indivisible by tile repeat height (but without allow_partial)."
         )

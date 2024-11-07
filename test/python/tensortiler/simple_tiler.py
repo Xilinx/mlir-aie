@@ -87,7 +87,7 @@ def simple_tiler():
 @construct_test
 def simple_tiler_invalid():
     try:
-        tiles_repeat = TensorTiler2D.simple_tiler(
+        tiles = TensorTiler2D.simple_tiler(
             (), (3, 2), tile_col_major=True, pattern_repeat=5
         )
         raise ValueError("Bad tensor dims, should fail.")
@@ -95,7 +95,7 @@ def simple_tiler_invalid():
         # good
         pass
     try:
-        tiles_repeat = TensorTiler2D.simple_tiler(
+        tiles = TensorTiler2D.simple_tiler(
             (10, 9, 4), (3, 2), tile_col_major=True, pattern_repeat=5
         )
         raise ValueError("Too many tensor dims, should fail.")
@@ -103,7 +103,7 @@ def simple_tiler_invalid():
         # good
         pass
     try:
-        tiles_repeat = TensorTiler2D.simple_tiler(
+        tiles = TensorTiler2D.simple_tiler(
             (9, 4), (3, -1), tile_col_major=True, pattern_repeat=5
         )
         raise ValueError("Bad tile dims, should fail.")
@@ -111,7 +111,7 @@ def simple_tiler_invalid():
         # good
         pass
     try:
-        tiles_repeat = TensorTiler2D.simple_tiler(
+        tiles = TensorTiler2D.simple_tiler(
             (9, 4), (3,), tile_col_major=True, pattern_repeat=5
         )
         raise ValueError("Too few tile dims, should fail.")
@@ -119,7 +119,7 @@ def simple_tiler_invalid():
         # good
         pass
     try:
-        tiles_repeat = TensorTiler2D.simple_tiler(
+        tiles = TensorTiler2D.simple_tiler(
             (9, 4), (1, 1, 1), tile_col_major=True, pattern_repeat=5
         )
         raise ValueError("Too many tile dims, should fail.")
@@ -127,7 +127,7 @@ def simple_tiler_invalid():
         # good
         pass
     try:
-        tiles_repeat = TensorTiler2D.simple_tiler(
+        tiles = TensorTiler2D.simple_tiler(
             (9, 4), (3, 2), tile_col_major=True, pattern_repeat=0
         )
         raise ValueError("Invalid repeat.")
@@ -135,7 +135,7 @@ def simple_tiler_invalid():
         # good
         pass
     try:
-        tiles_repeat = TensorTiler2D.simple_tiler(
+        tiles = TensorTiler2D.simple_tiler(
             (9, 4), (4, 2), tile_col_major=True, pattern_repeat=5
         )
         raise ValueError("Indivisible tile (height)")
@@ -143,7 +143,7 @@ def simple_tiler_invalid():
         # good
         pass
     try:
-        tiles_repeat = TensorTiler2D.simple_tiler(
+        tiles = TensorTiler2D.simple_tiler(
             (9, 4), (3, 3), tile_col_major=True, pattern_repeat=5
         )
         raise ValueError("Indivisible tile (width)")
