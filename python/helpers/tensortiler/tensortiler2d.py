@@ -258,12 +258,6 @@ class TensorTiler2D:
         tiles_remaining_height = tensor_height // tile_height - tile_offset_height
         tiles_remaining_width = tensor_width // tile_width - tile_offset_width
 
-        # use tile offsets to prune step
-        if tile_step_height > tiles_remaining_height:
-            tile_step_height = 1
-        if tile_step_width > tiles_remaining_width:
-            tile_step_width = 1
-
         # use tile offsets to prune repeat count
         tile_repeat_width = min(
             tile_repeat_width,
@@ -274,6 +268,12 @@ class TensorTiler2D:
             ceildiv(tiles_remaining_height, tile_step_height),
         )
         tile_group_repeats = (tile_repeat_height, tile_repeat_width)
+
+        # use tile offsets to prune step
+        if tile_step_height > tiles_remaining_height:
+            tile_step_height = 1
+        if tile_step_width > tiles_remaining_width:
+            tile_step_width = 1
 
         if (
             tile_group_col_major
