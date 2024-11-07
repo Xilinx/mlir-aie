@@ -1,4 +1,4 @@
-from enum import Enum
+from copy import deepcopy
 from functools import partial
 import numpy as np
 from typing import Sequence
@@ -14,6 +14,7 @@ class TensorTiler2D:
     """
 
     _DTYPE = np.int32
+    _NUM_DIMS = 2
 
     def __init__(self):
         raise Exception(
@@ -24,11 +25,13 @@ class TensorTiler2D:
     def simple_tiler(
         cls,
         tensor_dims: Sequence[int],
-        tile_dims: Sequence[int],
+        tile_dims: Sequence[int] | None,
         tile_col_major: bool = False,
         iter_col_major: bool = False,
         pattern_repeat: int = 1,
     ) -> TensorTileSequence:
+        if tile_dims is None:
+            tile_dims = deepcopy(tensor_dims)
         # Special case of group_tiler
         return cls.group_tiler(
             tensor_dims=tensor_dims,
@@ -43,18 +46,20 @@ class TensorTiler2D:
         cls,
         tensor_dims: Sequence[int],
         tile_dims: Sequence[int],
-        tile_group_dims: Sequence[int] = (1, 1),
+        tile_group_dims: Sequence[int] | None = None,
         tile_col_major: bool = False,
         tile_group_col_major: bool = False,
         iter_col_major: bool = False,
         pattern_repeat: int = 1,
         allow_partial: bool = False,
     ) -> TensorTileSequence:
+        if tile_group_dims is None:
+            tile_group_dims = (1,) * cls._NUM_DIMS
+        # Special case of step_tiler
         return cls.step_tiler(
             tensor_dims=tensor_dims,
             tile_dims=tile_dims,
             tile_group_repeats=tile_group_dims,
-            tile_group_steps=(1, 1),
             tile_col_major=tile_col_major,
             tile_group_col_major=tile_group_col_major,
             iter_col_major=iter_col_major,
@@ -67,85 +72,72 @@ class TensorTiler2D:
         cls,
         tensor_dims: Sequence[int],
         tile_dims: Sequence[int],
-        tile_group_steps: Sequence[int],
         tile_group_repeats: Sequence[int],
+        tile_group_steps: Sequence[int] | None = None,
         tile_col_major: bool = False,
         tile_group_col_major: bool = False,
         iter_col_major: bool = False,
         allow_partial: bool = False,
         pattern_repeat: int = 1,
     ) -> TensorTileSequence:
-        tensor_height, tensor_width = validate_tensor_dims(tensor_dims, expected_dims=2)
-        tile_height, tile_width = validate_tensor_dims(tile_dims, expected_dims=2)
-        tile_repeat_height, tile_repeat_width = validate_tensor_dims(
-            tile_group_repeats, expected_dims=2
+        if tile_group_steps is None:
+            tile_group_steps = (1,) * cls._NUM_DIMS
+        tensor_dims = validate_tensor_dims(tensor_dims, expected_dims=cls._NUM_DIMS)
+        tile_dims = validate_tensor_dims(tile_dims, expected_dims=cls._NUM_DIMS)
+        tile_group_repeats = validate_tensor_dims(
+            tile_group_repeats, expected_dims=cls._NUM_DIMS
         )
-        if len(tile_group_steps) != 2:
-            raise ValueError("Expcted two dimensions of tile group steps")
-        tile_step_height, tile_step_width = tile_group_steps
-        if tile_step_height < 0 or tile_step_width < 0:
-            raise ValueError(
-                f"Tile group steps must be >= 0, but got ({tile_group_steps})"
-            )
+        if len(tile_group_steps) != cls._NUM_DIMS:
+            raise ValueError(f"Expcted {cls._NUM_DIMS} dimensions of tile group steps")
+        for i, s in enumerate(tile_group_steps):
+            if s < 0:
+                raise ValueError(
+                    f"Tile group step dimension {i} must be >= 0, but got {s}"
+                )
 
-        if tensor_width % tile_width != 0:
-            raise ValueError(
-                f"Tensor width ({tensor_width}) is not divisible by tile width ({tile_width})"
-            )
-        if tensor_height % tile_height != 0:
-            raise ValueError(
-                f"Tensor height ({tensor_height}) is not divisible by tile height ({tile_height})"
-            )
+        for i, (tensor_dim, tile_dim) in enumerate(zip(tensor_dims, tile_dims)):
+            if tensor_dim % tile_dim != 0:
+                raise ValueError(
+                    f"Tensor dimension {i} ({tensor_dim}) is not divisible by tile dim ({tile_dim})"
+                )
 
         if not isinstance(pattern_repeat, int) or pattern_repeat < 1:
             raise ValueError(f"Pattern repeat must be >= 1 but is {pattern_repeat}")
         if not allow_partial:
-            if tensor_width % (tile_width * tile_repeat_width * tile_step_width) != 0:
-                raise ValueError(
-                    f"allow_partial={allow_partial} but tensor does not divide evenly into tile groups in width"
-                )
-            if (
-                tensor_height % (tile_height * tile_repeat_height * tile_step_height)
-                != 0
+            for i, (tensor_dim, tile_dim, repeat_dim, step_dim) in enumerate(
+                zip(tensor_dims, tile_dims, tile_group_repeats, tile_group_steps)
             ):
-                raise ValueError(
-                    f"allow_partial={allow_partial} but tensor does not divide evenly into tile groups in height"
-                )
-            if tile_width * tile_repeat_width * tile_step_width > tensor_width:
-                raise ValueError(
-                    f"Tile pattern exceeds tensor width ({tile_width}x{tile_repeat_width}x{tile_step_width} > {tensor_width})"
-                )
-            if tile_height * tile_repeat_height * tile_step_height > tensor_height:
-                raise ValueError(
-                    f"Tile pattern exceeds tensor height ({tile_height}x{tile_repeat_height}x{tile_step_height} > {tensor_height})"
-                )
+                if tensor_dim % (tile_dim * repeat_dim * step_dim) != 0:
+                    raise ValueError(
+                        f"allow_partial={allow_partial} but tensor does not divide evenly into tile groups in dimension {i}"
+                    )
+                if tile_dim * repeat_dim * step_dim > tensor_dim:
+                    raise ValueError(
+                        f"Tile pattern exceeds tensor size in dimension {i} ({tile_dim}x{repeat_dim}x{step_dim} > {tensor_dim})"
+                    )
 
-        steps_per_row = cls.__get_num_steps(
-            tensor_dim=tensor_width,
-            tile_dim=tile_width,
-            step_dim=tile_step_width,
-            repeat_dim=tile_repeat_width,
+        steps_per_dim = cls.__get_num_steps(
+            tensor_dims=tensor_dims,
+            tile_dims=tile_dims,
+            step_dims=tile_group_steps,
+            repeat_dims=tile_group_repeats,
         )
-        steps_per_col = cls.__get_num_steps(
-            tensor_dim=tensor_height,
-            tile_dim=tile_height,
-            step_dim=tile_step_height,
-            repeat_dim=tile_repeat_height,
-        )
-        num_steps = steps_per_row * steps_per_col
-        print(f"{steps_per_col}, {steps_per_row} = {num_steps}")
+        print(steps_per_dim)
+        num_steps = np.prod(steps_per_dim)
+        print(num_steps)
 
         def offset_fn(step_num: int, _prev_offset: int) -> int:
             tile_offset_in_col, tile_offset_in_row = cls.__tile_offset_by_step_num(
                 step_num,
                 tile_group_steps,
                 tile_group_repeats,
-                (steps_per_col, steps_per_row),
+                steps_per_dim,
                 iter_col_major,
             )
+            # TODO: this code is specific to 2-dimensions
             offset = (
-                tile_offset_in_row * tile_width
-                + tile_offset_in_col * tile_height * tensor_width
+                tile_offset_in_row * tile_dims[1]
+                + tile_offset_in_col * tile_dims[0] * tensor_dims[1]
             )
             return offset
 
@@ -154,7 +146,7 @@ class TensorTiler2D:
                 step_num,
                 tile_group_steps,
                 tile_group_repeats,
-                (steps_per_col, steps_per_row),
+                steps_per_dim,
                 iter_col_major,
             )
 
@@ -177,7 +169,7 @@ class TensorTiler2D:
         strides_fn = partial(sizes_or_strides_fn, is_sizes=False)
 
         return TensorTileSequence(
-            (tensor_height, tensor_width),
+            tensor_dims,
             num_steps,
             sizes_fn=sizes_fn,
             strides_fn=strides_fn,
@@ -186,16 +178,25 @@ class TensorTiler2D:
 
     @classmethod
     def __get_num_steps(
-        cls, tensor_dim: int, tile_dim: int, step_dim: int, repeat_dim: int
-    ) -> int:
-        num_steps = tensor_dim // (tile_dim * repeat_dim)
-        tiles_in_tensor = (tensor_dim // tile_dim) - num_steps * repeat_dim
-        partial_height_steps = 0
-        while tiles_in_tensor > 0:
-            tiles_in_tensor -= min(repeat_dim, ceildiv(tiles_in_tensor, step_dim))
-            partial_height_steps += 1
-        num_steps += partial_height_steps
-        return num_steps
+        cls,
+        tensor_dims: Sequence[int],
+        tile_dims: Sequence[int],
+        step_dims: Sequence[int],
+        repeat_dims: Sequence[int],
+    ) -> Sequence[int]:
+        num_steps_dims = []
+        for tensor_dim, tile_dim, step_dim, repeat_dim in zip(
+            tensor_dims, tile_dims, step_dims, repeat_dims
+        ):
+            num_steps_per_dim = tensor_dim // (tile_dim * repeat_dim)
+            tiles_in_tensor = (tensor_dim // tile_dim) - num_steps_per_dim * repeat_dim
+            partial_height_steps = 0
+            while tiles_in_tensor > 0:
+                tiles_in_tensor -= min(repeat_dim, ceildiv(tiles_in_tensor, step_dim))
+                partial_height_steps += 1
+            num_steps_per_dim += partial_height_steps
+            num_steps_dims.append(num_steps_per_dim)
+        return num_steps_dims
 
     @classmethod
     def __tile_offset_by_step_num(
@@ -206,6 +207,7 @@ class TensorTiler2D:
         num_steps: Sequence[int],
         iter_col_major: bool,
     ) -> Sequence[int]:
+        # TODO: this code is still specific to two dimensions
         steps_per_col, steps_per_row = num_steps
         tile_step_height, tile_step_width = tile_group_steps
         tile_repeat_height, tile_repeat_width = tile_group_repeats
@@ -242,6 +244,8 @@ class TensorTiler2D:
         tile_group_col_major: bool,
         pattern_repeat: int,
     ) -> tuple[Sequence[int], Sequence[int]]:
+        # TODO: this code is still specific to two dimensions
+        # TODO: this code assumes sizes/strides of len 4
 
         # Interior method, assumes all validation already done
         tensor_height, tensor_width = tensor_dims
