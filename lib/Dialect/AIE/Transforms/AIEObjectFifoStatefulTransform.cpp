@@ -301,7 +301,8 @@ struct AIEObjectFifoStatefulTransformPass
   std::vector<LockOp> createObjectFifoLocks(OpBuilder &builder,
                                             LockAnalysis &lockAnalysis,
                                             ObjectFifoCreateOp op, int numElem,
-                                            TileOp creation_tile, int repeatCount) {
+                                            TileOp creation_tile,
+                                            int repeatCount) {
     std::vector<LockOp> locks;
     if (op.getDisableSynchronization())
       return locks;
