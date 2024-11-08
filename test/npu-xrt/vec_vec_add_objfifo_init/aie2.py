@@ -70,7 +70,7 @@ def my_vector_add():
                     elem_in2 = of_in2.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     for i in range_(n):
-                        elem_out[i] = elem_in1[j*N_div_n+i] + elem_in2[i]
+                        elem_out[i] = elem_in1[j * N_div_n + i] + elem_in2[i]
                     of_in2.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
                 of_in1.release(ObjectFifoPort.Consume, 1)
