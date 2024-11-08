@@ -66,7 +66,8 @@ def validate_and_clean_sizes_strides(
 
     # Clean (set size=1, stride=0 for as many dims as possible)
     if sizes and strides:
-        for i in range(num_dims):
+        # Leave last dimension strides as whatever it happens to be
+        for i in range(num_dims - 1):
             if sizes[i] == 1:
                 if isinstance(strides, tuple):
                     # Tuple is immutable, so convert if necessary
