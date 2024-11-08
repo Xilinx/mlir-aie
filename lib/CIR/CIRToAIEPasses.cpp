@@ -37,6 +37,7 @@
 #include "clang/CIR/Dialect/IR/CIRTypes.h"
 #include "clang/CIR/LowerToMLIR.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -64,15 +65,12 @@ public:
     // To attach something, like the aie.tile operation for example
     std::any data;
     // The new operation producing the result instead for replacement
-    std::optional<mlir::Operation *> newResult;
+    std::optional<mlir::Operation *> newProducer;
 
     std::string str() {
       return "Fullname = " + fullName + ", base = " + base +
              ", subMatches = " + llvm::join(subMatches, ", ");
     }
-
-    // Associate to this type the operation producing the value for this type
-    void setResult(mlir::Operation *op) { newResult = op; }
   };
 
 private:
@@ -80,6 +78,10 @@ private:
   // type to a well known aie:: struct
   llvm::DenseMap<mlir::Type, std::optional<AIELikeTypesDeconstruction>>
       moduleTypes;
+
+  // Record whether an aie++ C++ type has been translated into some AIE
+  // operation producing a value related to that type
+  llvm::DenseSet<mlir::Type> isAIELoweredType;
 
 public:
   void analyze() {
@@ -129,18 +131,31 @@ public:
 
   // Associate to a given aie++ C++ type the operation producing the value for
   // this type
-  void setResult(mlir::Type t, mlir::Operation *op) {
-    getTypeDetail(t).setResult(op);
+  void setProducerOpWithUCCast(mlir::Type t, mlir::Operation *op,
+                               mlir::OpBuilder &b) {
+    auto cast = b.create<mlir::UnrealizedConversionCastOp>(
+        op->getLoc(), t, mlir::ValueRange{op->getResult(0)});
+    getTypeDetail(t).newProducer = cast;
+    isAIELoweredType.insert(t);
   }
 
   // Associate to a given aie++ C++ type the operation producing the value for
   // this type
-  mlir::Operation *getResult(mlir::Type t) {
+  mlir::Operation *getProducerOp(mlir::Type t) {
     auto &detail = getTypeDetail(t);
-    assert(detail.newResult && "This type should have an operation registered "
-                               "with a previous setResult()");
-    return *detail.newResult;
+    assert(detail.newProducer &&
+           "This type should have an operation registered "
+           "with a previous setProducerOp()");
+    return *detail.newProducer;
   }
+
+  // Get the set of aie++ C++ types which have been lowered to an AIE operation
+  // producing a value related to that type
+  auto &getAIELoweredTypes() { return isAIELoweredType; }
+
+  // Return true if the given type has a matching AIE operation to produce a
+  // value related to that type
+  bool isAIELowered(mlir::Type t) { return isAIELoweredType.contains(t); }
 
   CIRToAIETypesAnalysis(mlir::ModuleOp module) {
     module->walk([this](mlir::Operation *op) {
@@ -507,10 +522,13 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
     if (auto bufCast = mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(op)) {
       bufCast.emitRemark("Buffer cast from tile");
       auto mrt = bufferMemrefType(bufCast.getType(0));
+      // The direct connection to tileOp is a peephole optimization but it could
+      // be connected to the new tileOp UnrealizedConversionCastOp which could
+      // be removed later by a cleaning phase
       auto bufferOp = b.create<xilinx::AIE::BufferOp>(bufCast.getLoc(), mrt,
                                                       tileOp.getResult());
       // Keep track of the buffer op behind the C++ type
-      cat->setResult(bufCast.getType(0), bufferOp);
+      cat->setProducerOpWithUCCast(bufCast.getType(0), bufferOp, b);
       // The bufCast should be removed as a dependent of its tile cast later,
       // but be redundant here for symmetry and to exercise the final erasing
       // and its topological sort
@@ -566,9 +584,26 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
                 "tryTileProgramLowering: tileCastOp as callOp first argument");
             // Values can be replaced while cloning, not operations
             mlir::IRMapping irm;
-            // Connect the input of old cast inside the clone to the output of
-            // the new aie.tile op
-            irm.map(tileCastOp.getOperand(0), tileOp.getResult());
+            // Compute the remapping to be done while cloning from the old
+            // operands to the new one produced by the lowered AIE operations
+            scopeOp.walk([&](mlir::Operation *op) {
+              for (auto &operand : op->getOpOperands()) {
+                auto type = operand.get().getType();
+                if (cat->isAIELowered(type)) {
+                  op->emitRemark("Mapping ")
+                      << type << " to "
+                      << cat->getProducerOp(type)->getResult(0);
+                  if (cat->getTypeDetail(type).base == "aie::device")
+                    // Do not bring in any device-dependent code since it would
+                    // be C++ left-over which cannot use the aie.device from
+                    // inside the aie.device anyway
+                    continue;
+                  // Remap the current potential value use to its new producer
+                  irm.map(operand.get(),
+                          cat->getProducerOp(type)->getResult(0));
+                }
+              }
+            });
             b.setInsertionPointToStart(&coreOp.getRegion().front());
             auto *clone = b.clone(*scopeOp.getOperation(), irm);
             // Since aie.device has a SymbolTable, all the called function need
@@ -603,7 +638,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
       // llvm::errs() << " row " << row << " \n";
       auto tileOp = b.create<xilinx::AIE::TileOp>(
           tileCast.getLoc(), std::stoi(col), std::stoi(row));
-      aieLike.setResult(tileOp);
+      cat->setProducerOpWithUCCast(tileCast.getType(0), tileOp, b);
       for (mlir::Operation *user : tileCast.getResult(0).getUsers())
         if (!(tryBufferLowering(user, tileOp, b, opsToErase) ||
               tryTileProgramLowering(user, tileOp, b, opsToErase)))
@@ -641,7 +676,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
       auto deviceOp = b.create<xilinx::AIE::DeviceOp>(u.getLoc(), *deviceId);
       // The aie.device requires one block
       deviceOp.getRegion().emplaceBlock();
-      aieLike.setResult(deviceOp);
+      cat->setProducerOpWithUCCast(u.getType(0), deviceOp, b);
       // Create all the following code inside the device region
       b.setInsertionPointToStart(deviceOp.getBody());
       // Lazily move all the code depending on the device to the trash
