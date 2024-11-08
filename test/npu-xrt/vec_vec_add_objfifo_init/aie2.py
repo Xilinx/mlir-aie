@@ -46,7 +46,7 @@ def my_vector_add():
         # AIE-array data movement with object fifos
         of_in1 = object_fifo(
             "in1",
-            MemTile, 
+            MemTile,
             ComputeTile2,
             1,
             tensor_ty,
