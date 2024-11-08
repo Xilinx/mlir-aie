@@ -77,6 +77,9 @@ if test -f "$VPP"; then
   HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
   python3 -m pip install -r python/requirements_ml.txt
   source utils/env_setup.sh my_install/mlir_aie my_install/mlir
+  python3 -m ipykernel install --user --name ironenv
+  venv_site_packages=`python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])'`
+  echo ${MLIR_AIE_INSTALL_DIR}/python > $venv_site_packages/mlir-aie.pth
   pushd programming_examples
   echo "PATH              : $PATH"
   echo "LD_LIBRARY_PATH   : $LD_LIBRARY_PATH"

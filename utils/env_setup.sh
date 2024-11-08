@@ -43,15 +43,5 @@ if [[ $PEANO_INSTALL_DIR == "" ]]; then
 fi
 
 export PATH=${PEANO_INSTALL_DIR}/bin:${MLIR_AIE_INSTALL_DIR}/bin:${LLVM_INSTALL_DIR}/bin:${PATH} 
+export PYTHONPATH=${MLIR_AIE_INSTALL_DIR}/python:${PYTHONPATH}
 export LD_LIBRARY_PATH=${PEANO_INSTALL_DIR}/bin:${MLIR_AIE_INSTALL_DIR}/lib:${LLVM_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}
-
-source ${MLIR_AIE_INSTALL_DIR}/../ironenv/bin/activate
-
-# Create ipykernel for venv
-python3 -m ipykernel install --user --name ironenv 
-
-# Instead of adding the install python path to the $PYTHONPATH variable, add it into the
-# site packages of the venv. This ensure it is picked up by jupyter servers using the venv
-# as an ipykernel (and PYTHONPATH is not always percolated in these cases)
-venv_site_packages=`python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])'`
-echo ${MLIR_AIE_INSTALL_DIR}/python > $venv_site_packages/mlir-aie.pth
