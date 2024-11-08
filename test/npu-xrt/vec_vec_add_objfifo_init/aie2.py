@@ -51,7 +51,7 @@ def my_vector_add():
             1,
             tensor_ty,
             initValues=[
-                np.arange(1, N+1, dtype=np.int32),
+                np.arange(1, N + 1, dtype=np.int32),
             ],
         )
         of_in2 = object_fifo("in2", ShimTile, ComputeTile2, buffer_depth, tile_ty)
