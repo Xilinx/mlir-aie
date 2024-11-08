@@ -539,8 +539,7 @@ LogicalResult AIERTControl::configureSwitches(DeviceOp &targetOp) {
   }
 
   // Cascade configuration
-  if ((targetModel.getTargetArch() == AIEArch::AIE2) ||
-      (targetModel.getTargetArch() == AIEArch::AIE2p)) {
+  if (isa<AIE2TargetModel>(targetModel)) {
     for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {
       TileOp tile = cast<TileOp>(configOp.getTile().getDefiningOp());
       auto tileLoc = XAie_TileLoc(tile.getCol(), tile.getRow());
