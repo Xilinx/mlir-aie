@@ -513,8 +513,13 @@ void eraseOpsAndUsers(OpRange &&opsToErase) {
 }
 
 struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
-
+  // \todo Find a less ugly way to access the analysis. How is it possible for a
+  // pattern to access some contextual information?
+  // It should be OK since it is a module pass, so no parallelism here.
   static inline CIRToAIETypesAnalysis *cat;
+
+  // Keep track of some operations to erase at the end of the pass
+  llvm::SmallVector<mlir::Operation *> opsToErase;
 
   bool tryBufferLowering(mlir::Operation *op, xilinx::AIE::TileOp tileOp,
                          mlir::OpBuilder &b,
@@ -650,16 +655,13 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
     return false;
   }
 
-  void deviceLowering(mlir::Operation *op) {
-    llvm::SmallVector<mlir::Operation *> opsToErase;
-    // Use pre-order walk to enable rewriting the code before the visited
-    // operation
-    op->walk<mlir::WalkOrder::PreOrder>([&](mlir::UnrealizedConversionCastOp
-                                                u) {
+  // Try to lower the operation as an aie.device and return true on success
+  bool tryDeviceLowering(mlir::Operation *op, mlir::OpBuilder &b) {
+    if (auto u = mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(op)) {
       u.emitRemark(
           "DeviceLowering found UnrealizedConversionCastOp inside the module");
       if (!isUnrealizedConversionCastWithAnnotation(u, {"aie::device"}))
-        return;
+        return false;
       auto aieLike = cat->getTypeDetail(u.getType(0));
       auto deviceName = aieLike.subMatches[0];
       auto deviceId =
@@ -672,29 +674,39 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
       // Create an aie.device just before its equivalent
       // UnrealizedConversionCast. Since we visit in pre-order mode, this
       // should be fine.
-      mlir::OpBuilder b{u};
+      b.setInsertionPoint(u);
       auto deviceOp = b.create<xilinx::AIE::DeviceOp>(u.getLoc(), *deviceId);
       // The aie.device requires one block
       deviceOp.getRegion().emplaceBlock();
       cat->setProducerOpWithUCCast(u.getType(0), deviceOp, b);
+      u->replaceAllUsesWith(cat->getProducerOp(u.getType(0)));
       // Create all the following code inside the device region
       b.setInsertionPointToStart(deviceOp.getBody());
       // Lazily move all the code depending on the device to the trash
-      opsToErase.push_back(u);
-      for (mlir::Operation *user : u.getResult(0).getUsers())
-        if (!tryTileLowering(user, b, opsToErase))
-          user->emitRemark("User of device cast not handled");
+      // opsToErase.push_back(u);
+      // for (mlir::Operation *user : cat->getProducerOp(u.getType(0))->getUsers())
+      // if (!tryTileLowering(user, b, opsToErase))
+      //   user->emitRemark("User of device cast not handled");
       // Note: aie.device does not require a terminator
       deviceOp.emitRemark("DeviceLowering: end");
-    });
-    // Remove the useless operations
-    eraseOpsAndUsers(opsToErase);
+    }
+    return true;
   }
 
   void runOnOperation() override {
     // Compute the analysis for the module since it is a module pass.
     cat = &getAnalysis<CIRToAIETypesAnalysis>();
-    deviceLowering(getOperation());
+    // Just in case this pass is run multiple times
+    opsToErase.clear();
+    auto module = getOperation();
+    mlir::OpBuilder b {module};
+    // Use pre-order walk to keep the C++ ordered semantics while lowering the
+    // AIE constructs
+    module->walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *op) {
+      tryDeviceLowering(op,b);
+    });
+    // Remove the useless operations
+    eraseOpsAndUsers(opsToErase);
   }
 };
 
