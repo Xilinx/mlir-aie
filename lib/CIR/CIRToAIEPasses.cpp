@@ -42,8 +42,11 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
+
+#define DEBUG_TYPE "cir-to-aie"
 
 using namespace std::string_literals;
 
@@ -658,9 +661,10 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
   // Try to lower the operation as an aie.device and return true on success
   bool tryDeviceLowering(mlir::Operation *op, mlir::OpBuilder &b) {
     if (auto u = mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(op)) {
-      u.emitRemark(
-          "DeviceLowering found UnrealizedConversionCastOp inside the module");
+      LLVM_DEBUG(u.emitRemark(
+          "DeviceLowering found UnrealizedConversionCastOp inside the module"));
       if (!isUnrealizedConversionCastWithAnnotation(u, {"aie::device"}))
+        // Try some other lowering
         return false;
       auto aieLike = cat->getTypeDetail(u.getType(0));
       auto deviceName = aieLike.subMatches[0];
@@ -688,7 +692,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
       // if (!tryTileLowering(user, b, opsToErase))
       //   user->emitRemark("User of device cast not handled");
       // Note: aie.device does not require a terminator
-      deviceOp.emitRemark("DeviceLowering: end");
+      LLVM_DEBUG(deviceOp.emitRemark("DeviceLowering: end"));
     }
     return true;
   }
