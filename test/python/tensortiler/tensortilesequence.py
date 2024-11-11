@@ -61,6 +61,8 @@ def tensor_tile_sequence():
 
     tiles4_copy = TensorTileSequence.from_tiles(tiles4)
     assert tiles4_copy == tiles4
+    assert tiles4_copy.compare_tile_access_orders(tiles4)
+
     access_order, access_count = tiles4_copy.access_tensors()
     assert (access_order == ref_access_order).all()
     assert (access_count == ref_access_count).all()

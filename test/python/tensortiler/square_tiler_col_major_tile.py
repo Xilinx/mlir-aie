@@ -91,13 +91,9 @@ def square_tiler_col_major_tile():
         # fmt: on
     )
 
-    tile_count = 0
-    for t in tiler:
-        if tile_count == 5:
-            tile_access_order, _ = t.access_tensors()
-            assert (tile_access_order == tile1_reference_order).all()
-        tile_count += 1
-    assert tile_count == (32 // 4) * (32 // 4)
+    tile_access_order, _ = tiler[5].access_tensors()
+    assert (tile_access_order == tile1_reference_order).all()
+    assert len(tiler) == (32 // 4) * (32 // 4)
 
     # CHECK: Pass!
     print("Pass!")

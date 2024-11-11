@@ -1,5 +1,3 @@
-import numpy as np
-
 from aie.helpers.tensortiler import TensorTile, TensorTiler2D
 from util import construct_test
 
@@ -9,9 +7,10 @@ from util import construct_test
 # CHECK-LABEL: matrix_vector_tiling_sweep
 @construct_test
 def matrix_vector_tiling_sweep():
+    # Note: reduced number of tests to reduce time to run tests
     cores_sweep = [1, 2, 4]
-    M_sweep = range(512, 4096, 512)
-    K_sweep = range(512, 4096, 512)
+    M_sweep = [512, 1024, 1536]  # range(512, 4096, 512)
+    K_sweep = [512, 1024, 1536]  # range(512, 4096, 512)
     m = 32
     k = 32
 
@@ -39,18 +38,12 @@ def matrix_vector_tiling_sweep():
                 B_sizes = [M_div_m_div_n_cores, 1, 1, K]
                 B_strides = [0, 0, 0, 1]
                 if B_sizes != B_tile.sizes or B_strides != B_tile.strides:
-                    reference_access, reference_count = TensorTile(
+                    B_tile_ref = TensorTile(
                         (1, K), offset=0, sizes=B_sizes, strides=B_strides
-                    ).access_tensors()
-                    new_access, new_count = B_tile.access_tensors()
-                    assert (reference_access == new_access).all(), (
-                        f"B access orders do not match. "
-                        "Expected (sizes={B_sizes}, strides={B_strides}), got (sizes={B_tile.sizes}, strides={B_tile.strides})"
                     )
-                    assert (reference_count == new_count).all(), (
-                        f"B access counts do not match. "
-                        "Expected (sizes={B_sizes}, strides={B_strides}), got (sizes={B_tile.sizes}, strides={B_tile.strides})"
-                    )
+                    assert B_tile.compare_access_orders(
+                        B_tile_ref
+                    ), f"B tile {B_tile} and ref tile {B_tile_ref} are not functionally equivalent."
 
                 for i in range(n_cores):
                     # Current way of calculting sizes/strides/offsets
@@ -66,18 +59,12 @@ def matrix_vector_tiling_sweep():
                         or A_strides != A_tile.strides
                     ):
                         # There may be different but equivalent transformations
-                        reference_access, reference_count = TensorTile(
+                        A_tile_ref = TensorTile(
                             (M, K), offset=A_offset, sizes=A_sizes, strides=A_strides
-                        ).access_tensors()
-                        new_access, new_count = A_tile.access_tensors()
-                        assert (reference_access == new_access).all(), (
-                            f"A access orders do not match. "
-                            "Expected (sizes={A_sizes}, strides={A_strides}, offset={A_offset}), got (sizes={A_tile.sizes}, strides={A_tile.strides}, offset={A_tile.offset})"
                         )
-                        assert (reference_count == new_count).all(), (
-                            f"A access counts do not match. "
-                            "Expected (sizes={A_sizes}, strides={A_strides}, offset={A_offset}), got (sizes={A_tile.sizes}, strides={A_tile.strides}, offset={A_tile.offset})"
-                        )
+                        assert A_tile.compare_access_orders(
+                            A_tile_ref
+                        ), f"A tile {A_tile} and ref tile {A_tile_ref} are not functionally equivalent."
 
                     # Current way of calculting sizes/strides/offsets
                     C_offset = i * M_div_m_div_n_cores * m
@@ -92,18 +79,12 @@ def matrix_vector_tiling_sweep():
                         or C_strides != C_tile.strides
                     ):
                         # There may be different but equivalent transformations
-                        reference_access, reference_count = TensorTile(
+                        C_tile_ref = TensorTile(
                             (1, C_sz), offset=C_offset, sizes=C_sizes, strides=C_strides
-                        ).access_tensors()
-                        new_access, new_count = C_tile.access_tensors()
-                        assert (reference_access == new_access).all(), (
-                            f"C access orders do not match. "
-                            "Expected (sizes={C_sizes}, strides={C_strides}, offset={C_offset}), got (sizes={C_tile.sizes}, strides={C_tile.strides}, offset={C_tile.offset})"
                         )
-                        assert (reference_access == new_count).all(), (
-                            f"C access counts do not match. "
-                            "Expected (sizes={C_sizes}, strides={C_strides}, offset={C_offset}), got (sizes={C_tile.sizes}, strides={C_tile.strides}, offset={C_tile.offset})"
-                        )
+                        assert C_tile.compare_access_orders(
+                            C_tile_ref
+                        ), f"C tile {C_tile} and ref tile {C_tile_ref} are not functionally equivalent."
 
     # CHECK: Pass!
     print("Pass!")

@@ -91,13 +91,9 @@ def square_tiler2():
         # fmt: on
     )
 
-    tile_count = 0
-    for t in tiler:
-        if tile_count == 3:
-            tile_access_order, _ = t.access_tensors()
-            assert (tile_access_order == tile1_reference_order).all()
-        tile_count += 1
-    assert tile_count == (32 // 8) * (32 // 8)
+    tile_access_order, _ = tiler[3].access_tensors()
+    assert (tile_access_order == tile1_reference_order).all()
+    assert len(tiler) == (32 // 8) * (32 // 8)
 
     # CHECK: Pass!
     print("Pass!")

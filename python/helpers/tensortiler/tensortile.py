@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from copy import deepcopy
 import numpy as np
 import itertools
@@ -61,12 +63,9 @@ class TensorTile:
         access_order_tensor = np.full(total_elems, -1, dtype=self._DTYPE)
         access_count_tensor = np.full(total_elems, 0, dtype=self._DTYPE)
 
-        # Use itertools.product to collapse len(sizes) nested forloop into one forloop
+        access_idx_generator = self.access_generator()
         access_count = 0
-        for dims in itertools.product(*[range(0, n) for n in self._sizes]):
-            access_idx = (
-                self._offset + np.sum(np.multiply(dims, self._strides))
-            ) % total_elems
+        for access_idx in access_idx_generator:
             access_count_tensor[access_idx] += 1
             access_order_tensor[access_idx] = access_count
             access_count += 1
@@ -74,6 +73,27 @@ class TensorTile:
         access_order_tensor = access_order_tensor.reshape(self._tensor_dims)
         access_count_tensor = access_count_tensor.reshape(self._tensor_dims)
         return access_order_tensor, access_count_tensor
+
+    def access_generator(self):
+        total_elems = np.prod(self._tensor_dims)
+
+        # Use itertools.product to collapse len(sizes) nested forloop into one forloop
+        for dims in itertools.product(*[range(0, n) for n in self._sizes]):
+            yield (
+                self._offset + np.sum(np.multiply(dims, self._strides))
+            ) % total_elems
+
+    def compare_access_orders(self, other: TensorTile) -> bool:
+        if not isinstance(other, TensorTile):
+            raise ValueError("Can only compare access order against another TensorTile")
+        my_generator = self.access_generator()
+        other_generator = other.access_generator()
+        return all(
+            my_idx == other_idx
+            for my_idx, other_idx in itertools.zip_longest(
+                my_generator, other_generator
+            )
+        )
 
     def visualize(
         self,

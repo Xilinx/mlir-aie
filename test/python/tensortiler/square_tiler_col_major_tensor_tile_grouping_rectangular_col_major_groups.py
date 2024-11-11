@@ -61,13 +61,9 @@ def square_tiler_col_major_tensor_tile_grouping_rectangular_col_major_groups():
         # fmt: on
     )
 
-    tile_count = 0
-    for t in tiler:
-        if tile_count == 0:
-            tile_access_order, _ = t.access_tensors()
-            assert (tile_access_order == tile1_reference_order).all()
-        tile_count += 1
-    assert tile_count == (16 // (2 * 4)) * (16 // (1 * 4))
+    tile_access_order, _ = tiler[0].access_tensors()
+    assert (tile_access_order == tile1_reference_order).all()
+    assert len(tiler) == (16 // (2 * 4)) * (16 // (1 * 4))
 
     # CHECK: Pass!
     print("Pass!")

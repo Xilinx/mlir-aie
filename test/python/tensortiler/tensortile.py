@@ -32,9 +32,11 @@ def tensor_tile():
 
     tile2 = TensorTile((2, 3), 4, sizes=[1, 2], strides=[0, 1])
     assert tile2 == tile
+    assert tile.compare_access_orders(tile2)
 
     tile3 = TensorTile((2, 3), 2, sizes=[1, 2], strides=[0, 1])
     assert tile3 != tile
+    assert not tile.compare_access_orders(tile3)
 
     # CHECK: Pass!
     print("Pass!")

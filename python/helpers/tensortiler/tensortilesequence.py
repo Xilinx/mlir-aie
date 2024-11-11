@@ -205,6 +205,14 @@ class TensorTileSequence(abc.MutableSequence, abc.Iterable):
             show_plot=show_plot,
         )
 
+    def compare_tile_access_orders(self, other: TensorTileSequence) -> bool:
+        if len(self._tiles) != len(other._tiles):
+            return False
+        for my_tile, other_tile in zip(self._tiles, other._tiles):
+            if not my_tile.compare_access_orders(other_tile):
+                return False
+        return True
+
     def __contains__(self, tile: TensorTile):
         return tile in self._tiles
 

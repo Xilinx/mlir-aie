@@ -51,13 +51,9 @@ def tensor_tile_same_height():
         # fmt: on
     )
 
-    tile_count = 0
-    for t in tiles:
-        if tile_count == 2:
-            tile_access_order, tile_access_count = t.access_tensors()
-            assert (tile_access_order == tile1_reference_order).all()
-        tile_count += 1
-    assert tile_count == (12 // 12) * (8 // 2)
+    tile_access_order, tile_access_count = tiles[2].access_tensors()
+    assert (tile_access_order == tile1_reference_order).all()
+    assert len(tiles) == (12 // 12) * (8 // 2)
 
     # CHECK: Pass!
     print("Pass!")

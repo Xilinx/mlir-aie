@@ -11,15 +11,8 @@ from util import construct_test
 def simple_tiler():
     single_tile = TensorTiler2D.simple_tiler((3, 5))
     assert len(single_tile) == 1
-    single_tile[0] == TensorTile(
-        (3, 5), offset=0, sizes=[1, 1, 3, 5], strides=[0, 0, 5, 1]
-    )
-    ref_access_order_tensor = np.array(
-        [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9], [10, 11, 12, 13, 14]]
-    )
-    access_order, access_count = single_tile.access_tensors()
-    assert (access_order == ref_access_order_tensor).all()
-    assert (access_count == 1).all()
+    ref_tile = TensorTile((3, 5), offset=0, sizes=[1, 1, 3, 5], strides=[0, 0, 5, 1])
+    assert single_tile[0] == ref_tile
 
     tiles = TensorTiler2D.simple_tiler((9, 4), (3, 2))
     assert len(tiles) == 6

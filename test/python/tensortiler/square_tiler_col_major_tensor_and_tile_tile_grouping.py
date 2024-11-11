@@ -54,13 +54,9 @@ def square_tiler_col_major_tensor_and_tile_tile_grouping():
         # fmt: on
     )
 
-    tile_count = 0
-    for t in tiler:
-        if tile_count == 2:
-            tile_access_order, _ = t.access_tensors()
-            assert (tile_access_order == tile1_reference_order).all()
-        tile_count += 1
-    assert tile_count == (32 // (4 * 2)) * (32 // (4 * 2))
+    tile_access_order, _ = tiler[2].access_tensors()
+    assert (tile_access_order == tile1_reference_order).all()
+    assert len(tiler) == (32 // (4 * 2)) * (32 // (4 * 2))
 
     # CHECK: Pass!
     print("Pass!")
