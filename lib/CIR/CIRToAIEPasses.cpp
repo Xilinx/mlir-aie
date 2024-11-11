@@ -534,25 +534,40 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
   // Keep track of some operations to erase at the end of the pass
   llvm::SmallVector<mlir::Operation *> opsToErase;
 
-  bool tryBufferLowering(mlir::Operation *op, xilinx::AIE::TileOp tileOp,
-                         mlir::OpBuilder &b,
-                         llvm::SmallVector<mlir::Operation *> &opsToErase) {
+  // Try to lower the operation as an aie.buffer and return true on success
+  //
+  // clang-format off
+  // %3 = builtin.unrealized_conversion_cast %2 : !cir.ptr<!ty_aie3A3Atile3C12C_42C_aie3A3Adevice3C3E3E> to !cir.ptr<!ty_aie3A3Abuffer3Cint2C_8192UL3E> {"aie::buffer" = ["int", "8192UL"]}
+  // is lowered to
+  // %buffer_1_4 = aie.buffer(%tile_1_4) : memref<8192xi32>
+  // %8 = builtin.unrealized_conversion_cast %buffer_1_4 : memref<8192xi32> to !cir.ptr<!ty_aie3A3Abuffer3Cint2C_8192UL3E>
+  // clang-format on
+  bool tryBufferLowering(mlir::Operation *op, mlir::OpBuilder &b) {
     if (auto bufCast = mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(op)) {
-      bufCast.emitRemark("Buffer cast from tile");
-      auto mrt = bufferMemrefType(bufCast.getType(0));
-      // The direct connection to tileOp is a peephole optimization but it could
-      // be connected to the new tileOp UnrealizedConversionCastOp which could
-      // be removed later by a cleaning phase
-      auto bufferOp = b.create<xilinx::AIE::BufferOp>(bufCast.getLoc(), mrt,
-                                                      tileOp.getResult());
-      // Keep track of the buffer op behind the C++ type
-      cat->setProducerOpWithUCCast(bufCast.getType(0), bufferOp, b);
-      // The bufCast should be removed as a dependent of its tile cast later,
-      // but be redundant here for symmetry and to exercise the final erasing
-      // and its topological sort
-      opsToErase.push_back(bufCast);
-      // The lowering is a success, no need to look further.
-      return true;
+      if (auto bufferDetail = cat->getTypeDetail(bufCast.getType(0));
+          bufferDetail.base == "aie::buffer") {
+        LLVM_DEBUG(bufCast.emitRemark("Buffer cast from tile"));
+        auto mrt = bufferMemrefType(bufCast.getType(0));
+        auto tileDetail = cat->getTypeDetail(bufCast.getOperand(0).getType());
+        auto tileOp =
+            mlir::dyn_cast<xilinx::AIE::TileOp>(*tileDetail.newAIEOperation);
+        if (!tileOp)
+          bufCast->emitError("No aie.device operation found for this tile");
+        // The direct connection to tileOp is a peephole optimization but it
+        // could be connected to the new tileOp UnrealizedConversionCastOp which
+        // could be removed later by a cleaning phase
+        auto bufferOp = b.create<xilinx::AIE::BufferOp>(bufCast.getLoc(), mrt,
+                                                        tileOp.getResult());
+        // Keep track of the buffer op behind the C++ type
+        cat->setProducerOpWithUCCast(bufCast.getType(0), bufferOp, b);
+        // Do not remap the old buffer users to the new one for now because the
+        // new buffer is created inside the aie.device and the old users would
+        // not be able to access it. Rely on the tile::program lowering for this
+        // later.
+
+        // The lowering is a success, no need to look further.
+        return true;
+      }
     }
     // Notify to try something else
     return false;
@@ -665,6 +680,11 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
         auto tileOp = b.create<xilinx::AIE::TileOp>(
             tileCast.getLoc(), std::stoi(col), std::stoi(row));
         cat->setProducerOpWithUCCast(tileCastOutputType, tileOp, b);
+        // Do not remap the old tile users to the new one for now because the
+        // new tile is created inside the aie.device and the old users would not
+        // be able to access it. Rely on the tile::program lowering for this
+        // later.
+
         // Tile lowering is done
         return true;
       }
@@ -715,9 +735,10 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
     // Use pre-order walk to keep the C++ ordered semantics while lowering the
     // AIE constructs
     module->walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *op) {
-      tryDeviceLowering(op, b) || tryTileLowering(op, b);
+      tryBufferLowering(op, b) || tryDeviceLowering(op, b) ||
+          tryTileLowering(op, b);
     });
-    // Remove the useless operations
+    // Remove the operations marked as useless
     eraseOpsAndUsers(opsToErase);
   }
 };
