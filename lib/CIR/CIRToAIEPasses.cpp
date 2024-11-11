@@ -67,12 +67,21 @@ public:
     std::vector<std::string> subMatches;
     // To attach something, like the aie.tile operation for example
     std::any data;
-    // The new operation producing the result instead for replacement
+    // The AIE operation which is generated
+    std::optional<mlir::Operation *> newAIEOperation;
+    // The new operation producing the result instead for replacement, typically
+    // an UnrealizedConversionCastOp fed by the newAIEOperation
     std::optional<mlir::Operation *> newProducer;
 
-    std::string str() {
-      return "Fullname = " + fullName + ", base = " + base +
-             ", subMatches = " + llvm::join(subMatches, ", ");
+    // Display the content of AIELikeTypesDeconstruction
+    void dump() {
+      llvm::outs() << "Fullname = " + fullName + ", base = " + base +
+                          ", subMatches = " + llvm::join(subMatches, ", ")
+                   << '\n';
+      if (newAIEOperation)
+        (*newAIEOperation)->emitRemark("newAIEOperation = ");
+      if (newProducer)
+        (*newProducer)->emitRemark("newProducer = ");
     }
   };
 
@@ -136,9 +145,10 @@ public:
   // this type
   void setProducerOpWithUCCast(mlir::Type t, mlir::Operation *op,
                                mlir::OpBuilder &b) {
-    auto cast = b.create<mlir::UnrealizedConversionCastOp>(
+    auto &detail = getTypeDetail(t);
+    detail.newAIEOperation = op;
+    detail.newProducer = b.create<mlir::UnrealizedConversionCastOp>(
         op->getLoc(), t, mlir::ValueRange{op->getResult(0)});
-    getTypeDetail(t).newProducer = cast;
     isAIELoweredType.insert(t);
   }
 
@@ -147,8 +157,8 @@ public:
   mlir::Operation *getProducerOp(mlir::Type t) {
     auto &detail = getTypeDetail(t);
     assert(detail.newProducer &&
-           "This type should have an operation registered "
-           "with a previous setProducerOp()");
+           R"(This type should have an operation registered
+           with a previous setProducerOp())");
     return *detail.newProducer;
   }
 
@@ -173,9 +183,9 @@ public:
   void dump() {
     for (auto &[type, value] : moduleTypes) {
       llvm::outs() << "Type: " << type << " value: ";
-      if (value) {
-        llvm::outs() << value->str() << '\n';
-      } else
+      if (value)
+        value->dump();
+      else
         llvm::outs() << "None\n";
     }
   }
@@ -634,25 +644,30 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
     return false;
   }
 
-  bool tryTileLowering(mlir::Operation *op, mlir::OpBuilder &b,
-                       llvm::SmallVector<mlir::Operation *> &opsToErase) {
+  bool tryTileLowering(mlir::Operation *op, mlir::OpBuilder &b) {
     if (auto tileCast = mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(op)) {
-      tileCast.emitRemark("tryTileLowering: tileCast from device");
-      auto aieLike = cat->getTypeDetail(
-          tileCast.getType(0)); // llvm::errs() << aieLike.str() << " value \n";
-      auto col = aieLike.subMatches[0];
-      // llvm::errs() << "col" << col << " \n";
-      auto row = aieLike.subMatches[1];
-      // llvm::errs() << " row " << row << " \n";
-      auto tileOp = b.create<xilinx::AIE::TileOp>(
-          tileCast.getLoc(), std::stoi(col), std::stoi(row));
-      cat->setProducerOpWithUCCast(tileCast.getType(0), tileOp, b);
-      for (mlir::Operation *user : tileCast.getResult(0).getUsers())
-        if (!(tryBufferLowering(user, tileOp, b, opsToErase) ||
-              tryTileProgramLowering(user, tileOp, b, opsToErase)))
-          user->emitError("User of tile cast not handled");
-      // Tile lowering is done
-      return true;
+      auto tileCastOutputType = tileCast.getType(0);
+      if (auto detail = cat->getTypeDetail(tileCastOutputType);
+          detail.base == "aie::tile") {
+        auto col = detail.subMatches[0];
+        auto row = detail.subMatches[1];
+        LLVM_DEBUG(tileCast.emitRemark("tryTileLowering: tileCast from device")
+                   << " col = " << col << " row = " << row);
+        auto deviceDetail =
+            cat->getTypeDetail(tileCast.getOperand(0).getType());
+        auto deviceOp = mlir::dyn_cast<xilinx::AIE::DeviceOp>(
+            *deviceDetail.newAIEOperation);
+        if (!deviceOp)
+          tileCast->emitError("No aie.device operation found for this tile");
+        // Create all the following code inside the device region. Add the tile
+        // to the end to keep C++ program order.
+        b.setInsertionPointToEnd(deviceOp.getBody());
+        auto tileOp = b.create<xilinx::AIE::TileOp>(
+            tileCast.getLoc(), std::stoi(col), std::stoi(row));
+        cat->setProducerOpWithUCCast(tileCastOutputType, tileOp, b);
+        // Tile lowering is done
+        return true;
+      }
     }
     // Try some other lowering
     return false;
@@ -684,13 +699,6 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
       deviceOp.getRegion().emplaceBlock();
       cat->setProducerOpWithUCCast(u.getType(0), deviceOp, b);
       u->replaceAllUsesWith(cat->getProducerOp(u.getType(0)));
-      // Create all the following code inside the device region
-      b.setInsertionPointToStart(deviceOp.getBody());
-      // Lazily move all the code depending on the device to the trash
-      // opsToErase.push_back(u);
-      // for (mlir::Operation *user : cat->getProducerOp(u.getType(0))->getUsers())
-      // if (!tryTileLowering(user, b, opsToErase))
-      //   user->emitRemark("User of device cast not handled");
       // Note: aie.device does not require a terminator
       LLVM_DEBUG(deviceOp.emitRemark("DeviceLowering: end"));
     }
@@ -703,11 +711,11 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
     // Just in case this pass is run multiple times
     opsToErase.clear();
     auto module = getOperation();
-    mlir::OpBuilder b {module};
+    mlir::OpBuilder b{module};
     // Use pre-order walk to keep the C++ ordered semantics while lowering the
     // AIE constructs
     module->walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *op) {
-      tryDeviceLowering(op,b);
+      tryDeviceLowering(op, b) || tryTileLowering(op, b);
     });
     // Remove the useless operations
     eraseOpsAndUsers(opsToErase);
