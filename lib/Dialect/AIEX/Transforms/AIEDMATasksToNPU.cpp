@@ -277,6 +277,9 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
                    : 0;
       if (target_model.isMemTile(tile.getCol(), tile.getRow()) &&
           channelDir == AIE::DMAChannelDir::MM2S) {
+        if (padDims && padDims->size() > dims->size())
+          return bd_op->emitOpError()
+                 << "Mismatch in number of padding(s), stride(s) and warps(s)";
         if (padDims) {
           for (size_t i = 0; i < padDims->size(); i++) {
             int j = padDims->size() - i - 1;
