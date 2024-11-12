@@ -12,10 +12,10 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../../makefile-common
 
-tensor_height = 32
-tensor_width = 32
-tile_height = 4
-tile_width = 4
+tensor_height = 8
+tensor_width = 8
+tile_height = 2
+tile_width = 2
 data_str=${tensor_height}_${tensor_width}_${tile_height}_${tile_width}
 
 .PHONY: all template clean
