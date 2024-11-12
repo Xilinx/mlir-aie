@@ -35,5 +35,9 @@ build/final_${data_str}.xclbin: build/aie_${data_str}.mlir
 run: build/final_${data_str}.xclbin build/insts_${data_str}.txt
 	${powershell} python3 ${srcdir}/test.py -x build/final_${data_str}.xclbin -i build/insts_${data_str}.txt -k MLIR_AIE --tensor-height ${tensor_height} --tensor-width ${tensor_width} --tile-height ${tile_height} --tile-width ${tile_width}
 
+generate_access_map: ${srcdir}/aie2.py
+	mkdir -p ${@D}
+	python3 $< --tensor-height ${tensor_height} --tensor-width ${tensor_width} --tile-height ${tile_height} --tile-width ${tile_width} --generate-access-map ${M} ${K}
+
 clean:
 	rm -rf build

@@ -16,12 +16,12 @@ from aie.helpers.dialects.ext.scf import _for as range_
 from aie.helpers.tensortiler import TensorTile
 
 
-def my_passthrough(M, K, N, generate_acccess_map=False):
+def my_passthrough(M, K, N, generate_access_map=False):
     tensor_ty = np.ndarray[(M, K), np.dtype[np.int32]]
     data_transform = TensorTile(
         (M, K), offset=0, sizes=[1, 1, K, M], strides=[1, 1, 1, K]
     )
-    if generate_acccess_map:
+    if generate_access_map:
         data_transform.visualize(
             show_arrows=True, plot_access_count=False, file_path="transpose_data.png"
         )

@@ -46,8 +46,10 @@ def generate_module(tensor_height, tensor_width, tile_height, tile_width):
 
         @runtime_sequence(flattened_tensor)
         def sequence(access_count):
-            t = TensorTiler2D.simple_tiler(
-                (tensor_height, tensor_width), (tile_height, tile_width)
+            t = TensorTiler2D.group_tiler(
+                (tensor_height, tensor_width),
+                (tile_height, tile_width),
+                (tensor_height // tile_height, tensor_width // tile_width),
             )[0]
             npu_dma_memcpy_nd(
                 metadata=of_out,

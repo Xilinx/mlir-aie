@@ -21,7 +21,7 @@ def main(opts):
     reference_tiler = TensorTiler2D.simple_tiler(
         (opts.tensor_height, opts.tensor_width), (opts.tile_height, opts.tile_width)
     )
-    reference_access_order = reference_tiler.access_order()
+    reference_access_order, _access_count = reference_tiler.access_tensors()
 
     app = setup_aie(
         opts.xclbin,

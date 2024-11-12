@@ -50,7 +50,7 @@ def row_wise_bias_add(M, N, m, n):
                     bias_fifo.release(ObjectFifoPort.Consume, 1)
 
         tiler = TensorTiler2D.group_tiler(
-            (M, N), (m, n), (M // m, N // n), tensor_col_major=True
+            (M, N), (m, n), (M // m, N // n), tile_group_col_major=True
         )
         bias_tiler = TensorTiler2D.group_tiler((1, N), (1, n), (1, N // n))
 
