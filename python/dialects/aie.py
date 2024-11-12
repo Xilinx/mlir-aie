@@ -405,8 +405,6 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer = []
         if dimensionsToStream is None:
             dimensionsToStream = []
-        if padDimensions is None:
-            padDimensions = []
         of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
         super().__init__(
             sym_name=name,

@@ -1883,6 +1883,8 @@ LogicalResult DMABDOp::verify() {
     if (!dims.has_value())
       return emitOpError() << "Padding requires n-d data layouts expressed as"
                            << " wrap(s) and stride(s).";
+    if(!paddims.has_value())
+      return emitOpError() << "Padding requires n-d padding layouts.";
     if (dims->size() != paddims->size())
       return emitOpError() << "Mismatch number of dimensions between padding(s)"
                            << " and wrap(s) and stride(s).";
