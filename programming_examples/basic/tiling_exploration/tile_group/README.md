@@ -10,7 +10,7 @@
 
 # Tiling Exploration
 
-This IRON design flow example, called "Tiling Exploration: Per Tile", demonstrates how data may be `tiled` into smaller chunks and sent/received through the `runtime_sequence`. This is a common data transformation pattern, and this example is meant to be interactive.
+This IRON design flow example, called "Tiling Exploration: Single Transform", demonstrates how data may be `tiled` into smaller chunks and grouped into collections of tiles and sent/received through the `runtime_sequence`. This is a common data transformation pattern, and this example is meant to be interactive.
 
 ## Source Files Overview
 

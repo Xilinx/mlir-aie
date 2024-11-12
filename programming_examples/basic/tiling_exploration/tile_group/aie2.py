@@ -17,14 +17,26 @@ from aie.helpers.dialects.ext.scf import _for as range_
 from aie.helpers.tensortiler import TensorTiler2D
 
 
-def generate_module(tensor_height, tensor_width, tile_height, tile_width):
+def generate_module(
+    tensor_height, tensor_width, tile_height, tile_width, generate_access_map=False
+):
+    # define types
+    dtype = np.int32
+    tensor_size = tensor_height * tensor_width
+    flattened_tensor = np.ndarray[(tensor_size,), np.dtype[dtype]]
+
+    t = TensorTiler2D.group_tiler(
+        (tensor_height, tensor_width),
+        (tile_height, tile_width),
+        (tensor_height // tile_height, tensor_width // tile_width),
+    )[0]
+
+    if generate_access_map:
+        t.visualize(show_arrows=True, file_path="tile_group.png")
+        return
+
     @device(AIEDevice.npu1_1col)
     def device_body():
-        # define types
-        dtype = np.int32
-        tensor_size = tensor_height * tensor_width
-        flattened_tensor = np.ndarray[(tensor_size,), np.dtype[dtype]]
-
         # Tile declarations
         ShimTile = tile(0, 0)
         ComputeTile2 = tile(0, 2)
@@ -46,11 +58,6 @@ def generate_module(tensor_height, tensor_width, tile_height, tile_width):
 
         @runtime_sequence(flattened_tensor)
         def sequence(access_count):
-            t = TensorTiler2D.group_tiler(
-                (tensor_height, tensor_width),
-                (tile_height, tile_width),
-                (tensor_height // tile_height, tensor_width // tile_width),
-            )[0]
             npu_dma_memcpy_nd(
                 metadata=of_out,
                 bd_id=1,
@@ -63,9 +70,14 @@ def generate_module(tensor_height, tensor_width, tile_height, tile_width):
 def main(opts):
     with mlir_mod_ctx() as ctx:
         generate_module(
-            opts.tensor_height, opts.tensor_width, opts.tile_height, opts.tile_width
+            opts.tensor_height,
+            opts.tensor_width,
+            opts.tile_height,
+            opts.tile_width,
+            opts.generate_access_map,
         )
-        print(ctx.module)
+        if not opts.generate_access_map:
+            print(ctx.module)
 
 
 def get_arg_parser():
@@ -74,6 +86,11 @@ def get_arg_parser():
     p.add_argument("--tensor-width", required=True, help="Tensor width", type=int)
     p.add_argument("--tile-height", required=True, help="Tile height", type=int)
     p.add_argument("--tile-width", required=True, help="Tile width", type=int)
+    p.add_argument(
+        "--generate-access-map",
+        action="store_true",
+        help="Produce a file showing data access order",
+    )
     return p
 
 
