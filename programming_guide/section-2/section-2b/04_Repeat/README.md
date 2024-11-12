@@ -22,7 +22,7 @@ This repetition is achieved using the Data Movement Accelerator (DMA) of the Obj
 
 For more information into DMAs and their buffer descriptors you can refer to the [Advanced Topic of Section 2a](../../section-2a/README.md#advanced-topic-data-movement-accelerators) and [Section 2f](../../section-2f/).
 
-As the repeat pattern relies on synchronization logic, the Object FIFO lowering will use available information to modify the values of Object FIFO ```release``` operations to ensure that enough tokens are produced by the compute tile to allow the DMA to repeat. Doing this adjustement for Object FIFOs of depth larger than 1 is non-trivial and currently not supported.
+As the repeat pattern relies on synchronization logic, the Object FIFO lowering will use available information to modify the values of Object FIFO ```acquire``` and ```release``` operations to ensure that enough tokens are produced by the compute tile to allow the DMA to repeat and that these tokens are accounted for by the first ```acquire``` operation post DMA repetition. Doing this adjustement for Object FIFOs of depth larger than 1 is non-trivial and currently not supported.
 
 One particularity of this feature is the repeat pattern for Object FIFOs with a size greater than 1. The data movement generated for Object FIFOs follows a cyclic pattern of First In First Out and when this is paired with a repeat it results in the repetition of the entire cyclic pattern instead of the repetition of each individual object. This is shown in the figure below with the red arrow representing the repeat value:
 
