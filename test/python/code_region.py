@@ -24,8 +24,8 @@ from util import construct_and_print_module
 # CHECK:      %tile_0_2 = aie.tile(0, 2)
 # CHECK:      %tile_1_2 = aie.tile(1, 2)
 # CHECK:      %tile_3_3 = aie.tile(3, 3)
-# CHECK:      aie.objectfifo @of0(%tile_0_2, {%tile_1_2}, 2 : i32) {padDimensions = #aie<bd_pad_layout_array[]>} : !aie.objectfifo<memref<256xi32>>
-# CHECK:      aie.objectfifo @of1(%tile_1_2, {%tile_3_3}, 2 : i32) {padDimensions = #aie<bd_pad_layout_array[]>} : !aie.objectfifo<memref<8x8xi32>>
+# CHECK:      aie.objectfifo @of0(%tile_0_2, {%tile_1_2}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
+# CHECK:      aie.objectfifo @of1(%tile_1_2, {%tile_3_3}, 2 : i32) : !aie.objectfifo<memref<8x8xi32>>
 # CHECK:      aie.objectfifo.link [@of0] -> [@of1]([] [])
 # CHECK:      %core_3_3 = aie.core(%tile_3_3) {
 # CHECK:        %c0 = arith.constant 0 : index

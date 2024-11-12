@@ -101,7 +101,7 @@ def externalBufferOp():
 # CHECK-LABEL: objFifo
 # CHECK: %[[VAL0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL1:.*]] = aie.tile(2, 2)
-# CHECK: aie.objectfifo @of0(%[[VAL0]] dimensionsToStream [<size = 1, stride = 2>], {%[[VAL1]] dimensionsFromStream [<size = 1, stride = 2>]}, 2 : i32) {padDimensions = #aie<bd_pad_layout_array[]>, via_DMA = true} : !aie.objectfifo<memref<12xf16>>
+# CHECK: aie.objectfifo @of0(%[[VAL0]] dimensionsToStream [<size = 1, stride = 2>], {%[[VAL1]] dimensionsFromStream [<size = 1, stride = 2>]}, 2 : i32) {via_DMA = true} : !aie.objectfifo<memref<12xf16>>
 @construct_and_print_module
 def objFifo():
     dev = Device(AIEDevice.xcvc1902)
@@ -126,8 +126,8 @@ def objFifo():
 # CHECK: %[[VAL_0:.*]] = aie.tile(6, 3)
 # CHECK: %[[VAL_1:.*]] = aie.tile(6, 1)
 # CHECK: %[[VAL_2:.*]] = aie.tile(7, 3)
-# CHECK: aie.objectfifo @[[VAL_3:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) {padDimensions = #aie<bd_pad_layout_array[]>} : !aie.objectfifo<memref<12xf16>>
-# CHECK: aie.objectfifo @[[VAL_4:.*]](%[[VAL_1]], {%[[VAL_2]]}, 2 : i32) {padDimensions = #aie<bd_pad_layout_array[]>} : !aie.objectfifo<memref<12xf16>>
+# CHECK: aie.objectfifo @[[VAL_3:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
+# CHECK: aie.objectfifo @[[VAL_4:.*]](%[[VAL_1]], {%[[VAL_2]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
 # CHECK: aie.objectfifo.link [@[[VAL_3]]] -> [@[[VAL_4]]]([] [])
 @construct_and_print_module
 def objFifoLink():
@@ -146,7 +146,7 @@ def objFifoLink():
 # CHECK-LABEL: objFifoAcquire
 # CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
-# CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) {padDimensions = #aie<bd_pad_layout_array[]>} : !aie.objectfifo<memref<12xf16>>
+# CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
 # CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]](Consume, 1) : !aie.objectfifosubview<memref<12xf16>>
 @construct_and_print_module
 def objFifoAcquire():
@@ -166,7 +166,7 @@ def objFifoAcquire():
 # CHECK-LABEL: objFifoSubviewAccess
 # CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
-# CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) {padDimensions = #aie<bd_pad_layout_array[]>} : !aie.objectfifo<memref<12xf16>>
+# CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
 # CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]](Consume, 1) : !aie.objectfifosubview<memref<12xf16>>
 # CHECK: %[[VAL_4:.*]] = aie.objectfifo.subview.access %[[VAL_3]][0] : !aie.objectfifosubview<memref<12xf16>> -> memref<12xf16>
 @construct_and_print_module
@@ -189,7 +189,7 @@ def objFifoSubviewAccess():
 # CHECK-LABEL: objFifoRelease
 # CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
-# CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) {padDimensions = #aie<bd_pad_layout_array[]>} : !aie.objectfifo<memref<12xf16>>
+# CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
 # CHECK: aie.objectfifo.release @[[VAL_2]](Produce, 1)
 @construct_and_print_module
 def objFifoRelease():
