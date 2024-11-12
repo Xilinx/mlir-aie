@@ -281,15 +281,16 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
           return bd_op->emitOpError()
                  << "Mismatch number of dimensions between padding(s)"
                  << " and wrap(s) and stride(s).";
-        else if (padDims)
+        else if (padDims) {
           for (size_t i = 0; i < padDims->size(); i++) {
             int j = padDims->size() - i - 1;
             padBefore[i] = (*padDims)[j].getConstPadBefore();
             padAfter[i] = (*padDims)[j].getConstPadAfter();
           }
-        for (size_t i = padDims->size(); i < dims->size(); i++) {
-          padBefore[i] = 0;
-          padAfter[i] = 0;
+          for (size_t i = padDims->size(); i < dims->size(); i++) {
+            padBefore[i] = 0;
+            padAfter[i] = 0;
+          }
         }
       } else if (padDims) {
         return bd_op->emitOpError()
