@@ -1,4 +1,4 @@
-# test/npu-xrt/objectfifo_repeat/simple_repeat/aie2.py
+# test/npu-xrt/objectfifo_repeat/init_values_repeat/aie2.py
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -41,7 +41,7 @@ if len(sys.argv) > 3:
     col = int(sys.argv[3])
 
 
-def simple_repeat():
+def init_values_repeat():
     with mlir_mod_ctx() as ctx:
 
         @device(dev)
@@ -52,26 +52,37 @@ def simple_repeat():
             # Tile declarations
             ShimTile = tile(col, 0)
             MemTile = tile(col, 1)
+            ComputeTile = tile(col, 2)
 
             # AIE-array data movement with object fifos
-            #of_in = object_fifo("in", ShimTile, MemTile, 1, tensor_ty)
-            of_out = object_fifo(
-                "out",
+            of_in = object_fifo(
+                "in",
                 MemTile, 
-                ShimTile,
+                ComputeTile,
                 1,
                 tensor_ty,
                 initValues=[
                     np.arange(N, dtype=np.int32),
                 ],
             )
-            of_out.set_repeat_count(memtile_repeat_count + 1)
-            #object_fifo_link(of_in, of_out)
+            of_in.set_repeat_count(memtile_repeat_count)
+            of_out = object_fifo("out", ComputeTile, ShimTile 1, tensor_ty)
+
+            # Compute tile
+            @core(ComputeTile)
+            def core_body():
+                # Effective while(1)
+                for _ in range_(sys.maxsize):
+                    elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
+                    elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
+                    for i in range_(N):
+                        elem_out[i] = elem_in[i] + 1
+                    of_out.release(ObjectFifoPort.Produce, 1)
+                    of_in.release(ObjectFifoPort.Consume, 1)
 
             # To/from AIE-array data movement
             @runtime_sequence(tensor_ty, tensor_ty, tensor_out_ty)
             def sequence(A, B, C):
-                #npu_dma_memcpy_nd(metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N])
                 npu_dma_memcpy_nd(
                     metadata=of_out,
                     bd_id=0,
@@ -84,4 +95,4 @@ def simple_repeat():
     print(ctx.module)
 
 
-simple_repeat()
+init_values_repeat()

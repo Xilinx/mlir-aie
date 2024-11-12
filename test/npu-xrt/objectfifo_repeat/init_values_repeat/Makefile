@@ -14,7 +14,7 @@ include ${srcdir}/../../makefile-common
 all: build/final.xclbin build/insts.txt
 
 devicename ?= npu
-targetname = compute_repeat
+targetname = init_values_repeat
 LENGTH ?= 4096
 
 build/aie.mlir: ${srcdir}/aie2.py
