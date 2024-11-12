@@ -71,7 +71,9 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         if tensor_tile:
             sizes = tensor_tile.sizes.copy()
             strides = tensor_tile.strides.copy()
-            offsets = [0, 0, 0, tensor_tile.offset]
+            # For some reason, the type checking of offsets does not mesh well with offset being a property
+            # so here we make sure it is evaluated and properly is seen as an integer.
+            offsets = [0] * 3 + [int(tensor_tile.offset)]
         else:
             if offsets is None:
                 offsets = [0] * 4
