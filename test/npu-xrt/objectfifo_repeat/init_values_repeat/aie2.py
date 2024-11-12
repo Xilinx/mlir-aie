@@ -58,12 +58,12 @@ def init_values_repeat():
             # AIE-array data movement with object fifos
             of_in = object_fifo(
                 "in",
-                MemTile, 
+                MemTile,
                 ComputeTile,
                 1,
                 tensor_ty,
                 initValues=[
-                    np.arange(1, N+1, dtype=np.int32),
+                    np.arange(1, N + 1, dtype=np.int32),
                 ],
             )
             of_in.set_repeat_count(memtile_repeat_count)
