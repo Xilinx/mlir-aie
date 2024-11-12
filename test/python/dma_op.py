@@ -68,12 +68,16 @@ def objFifo_example():
             @dma(DMAChannelDir.MM2S, 0)
             def dma_in_A_to_compute():
                 use_lock(cons_lock_mem_A, LockAction.AcquireGreaterEqual)
-                dma_bd(buff_mem_A, len=2, dimensions=[
-                    (1, 1),
-                    (1, 1),
-                    (1, 1),
-                    (1, 1),
-                ])
+                dma_bd(
+                    buff_mem_A,
+                    len=2,
+                    dimensions=[
+                        (1, 1),
+                        (1, 1),
+                        (1, 1),
+                        (1, 1),
+                    ],
+                )
                 use_lock(prod_lock_mem_A, LockAction.Release)
 
             end()
