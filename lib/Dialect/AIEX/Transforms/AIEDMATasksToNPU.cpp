@@ -268,7 +268,6 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         // us to specify step sizes/wraps in the same order as we would
         // access a multi-dim C array, with the highest dimension first.
         int j = dims->size() - i - 1;
-        std::cout << "J: " << j << std::endl;
         input_sizes[i] = (*dims)[j].getSize();
         input_strides[i] = (*dims)[j].getStride();
       }
