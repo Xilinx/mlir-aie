@@ -57,7 +57,7 @@ def objFifo_example():
         prod_lock_mem_A = lock(mem_tile, lock_id=0, init=1)
         cons_lock_mem_A = lock(mem_tile, lock_id=1, init=0)
         tensor_ty_A = np.ndarray[(2, 1), np.dtype[np.int16]]
-        buff_mem_A = buffer(tile=mem_tile, datatype=tensor_ty_A, name="mem_A") 
+        buff_mem_A = buffer(tile=mem_tile, datatype=tensor_ty_A, name="mem_A")
 
         flow(mem_tile, WireBundle.DMA, 0, shim_tile, WireBundle.DMA, 0)
 
