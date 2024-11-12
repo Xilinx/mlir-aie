@@ -147,7 +147,7 @@ def parse_args(args=None):
     parser.add_argument(
         "--alloc-scheme",
         dest="alloc_scheme",
-        default=None,
+        default="bank-aware",
         help="Allocation scheme for AIE buffers: basic-sequential, bank-aware (default).",
     )
     parser.add_argument(
