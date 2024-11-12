@@ -58,7 +58,7 @@ def init_values_repeat():
             # AIE-array data movement with object fifos
             of_in = object_fifo(
                 "in",
-                MemTile, 
+                MemTile,
                 ComputeTile,
                 1,
                 tensor_ty,
