@@ -1562,11 +1562,6 @@ int MemOp::colIndex() { return getTileOp().colIndex(); }
 
 int MemOp::rowIndex() { return getTileOp().rowIndex(); }
 
-/// Returns the region on the current operation that is callable. This may
-/// return nullptr in the case of an external callable object, e.g. an external
-/// function.
-Region *MemOp::getCallableRegion() { return &getBody(); }
-
 //===----------------------------------------------------------------------===//
 // MemTileDMAOp
 //===----------------------------------------------------------------------===//
@@ -2000,11 +1995,6 @@ TileOp MemTileDMAOp::getTileOp() {
 int MemTileDMAOp::colIndex() { return getTileOp().colIndex(); }
 
 int MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
-
-/// Returns the region on the current operation that is callable. This may
-/// return nullptr in the case of an external callable object, e.g. an
-/// external function.
-Region *MemTileDMAOp::getCallableRegion() { return &getBody(); }
 
 //===----------------------------------------------------------------------===//
 // SwitchboxOp

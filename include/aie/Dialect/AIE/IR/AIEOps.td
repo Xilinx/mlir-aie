@@ -1046,10 +1046,8 @@ def AIE_DMAOp: AIE_Op<"dma", [
   }];
 }
 
-// MemOps are not actually Callable, but we want to inline code into them, so we have to
-// implement CallableOpInterface
 def AIE_MemOp: AIE_Op<"mem", [
-    TileElement, FlowEndPoint, CallableOpInterface,
+    TileElement, FlowEndPoint,
     IsCoreTile, HasValidBDs, HasValidDMAChannels,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
@@ -1084,19 +1082,12 @@ def AIE_MemOp: AIE_Op<"mem", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
-    int maxSizeInBytes() { return 32768; }
-    // CallableOpInterface
-    mlir::Region *getCallableRegion();
-    llvm::ArrayRef<mlir::Type> getArgumentTypes() { return getOperand().getType(); }
-    llvm::ArrayRef<mlir::Type> getResultTypes() { return getType(); }
     using ::xilinx::AIE::TileElement::Trait<MemOp>::getAsmResultNames;
   }];
 }
 
-// This op is not actually Callable, but we want to inline code into them, so we have to
-// implement CallableOpInterface
 def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
-    TileElement, FlowEndPoint, CallableOpInterface,
+    TileElement, FlowEndPoint,
     IsMemTile, HasValidBDs, HasValidDMAChannels,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
@@ -1135,10 +1126,6 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
-    // CallableOpInterface
-    mlir::Region *getCallableRegion();
-    llvm::ArrayRef<mlir::Type> getArgumentTypes() { return getOperand().getType(); }
-    llvm::ArrayRef<mlir::Type> getResultTypes() { return getType(); }
     using ::xilinx::AIE::TileElement::Trait<MemTileDMAOp>::getAsmResultNames;
   }];
 }
