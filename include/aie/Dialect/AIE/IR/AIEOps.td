@@ -1046,8 +1046,6 @@ def AIE_DMAOp: AIE_Op<"dma", [
   }];
 }
 
-// MemOps are not actually Callable, but we want to inline code into them, so we have to
-// implement CallableOpInterface
 def AIE_MemOp: AIE_Op<"mem", [
     TileElement, FlowEndPoint,
     IsCoreTile, HasValidBDs, HasValidDMAChannels,
@@ -1088,8 +1086,6 @@ def AIE_MemOp: AIE_Op<"mem", [
   }];
 }
 
-// This op is not actually Callable, but we want to inline code into them, so we have to
-// implement CallableOpInterface
 def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
     TileElement, FlowEndPoint,
     IsMemTile, HasValidBDs, HasValidDMAChannels,
