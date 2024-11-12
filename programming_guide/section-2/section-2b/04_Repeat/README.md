@@ -16,13 +16,13 @@ of0 = object_fifo("objfifo0", A, B, 2, np.ndarray[(256,), np.dtype[np.int32]])
 of0.set_repeat_count(2) # the data in each object is sent to the consumer C twice
 ```
 
-This repetition is achieved using the Data Movement Accelerator (DMA) of the shared tile in the link. In particular, the DMA buffer descriptors rely on synchronization logic to ensure data is handled at the correct time, to avoid data corruption. To program the repeat pattern the synchronization logic associated to the buffer descriptors of the shared tile is generated in such a way as to send additional copies of the data which was received through the input Object FIFO. These data copies do not lead to additional memory being allocated as they are made at the DMA level of the output Object FIFO, as is showcased by the red arrow in the figure below:
+This repetition is achieved using the Data Movement Accelerator (DMA) of the Object FIFO's producer tile. In particular, the DMA buffer descriptors rely on synchronization logic to ensure data is handled at the correct time, to avoid data corruption. To program the repeat pattern the synchronization logic associated to the buffer descriptors of the producer tile is generated in such a way as to send additional copies of the data. These data copies do not lead to additional memory being allocated as they are made at the DMA level, as is showcased by the red arrow in the figure below:
 
 <img src="./../../../assets/RepeatSharedTile.png" height="300">
 
 For more information into DMAs and their buffer descriptors you can refer to the [Advanced Topic of Section 2a](../../section-2a/README.md#advanced-topic-data-movement-accelerators) and [Section 2f](../../section-2f/).
 
-TODO: explain that it only works on objectfifos of size 1 and it adjusts values derived from the acquire release ops
+As the repeat pattern relies on synchronization logic, the Object FIFO lowering will use available information to modify the values of Object FIFO ```release``` operations to ensure that enough tokens are produced by the compute tile to allow the DMA to repeat. Doing this adjustement for Object FIFOs of depth larger than 1 is non-trivial and currently not supported.
 
 One particularity of this feature is the repeat pattern for Object FIFOs with a size greater than 1. The data movement generated for Object FIFOs follows a cyclic pattern of First In First Out and when this is paired with a repeat it results in the repetition of the entire cyclic pattern instead of the repetition of each individual object. This is shown in the figure below with the red arrow representing the repeat value:
 
@@ -41,6 +41,8 @@ of1.set_repeat_count(2) # the data in each object is sent to the consumer C twic
 ```
 
 <img src="./../../../assets/Repeat.png" height="150">
+
+In this case the repetition is achieved using the Data Movement Accelerator (DMA) of the Object FIFO link's shared tile.
 
 In particular, the repeat functionality can be used in conjunction with the distribute pattern introduced in the previous section. Currently, the repeat value specified for each distribute destination must be the same to ensure functional correctness. Additionally, the syntax currently doesn't support both output Object FIFOs with repeat and without at the same time, in the same distribute pattern. The code below shows how the two output Object FIFOs of a distribute pattern can be set to each repeat three times:
 ```python
