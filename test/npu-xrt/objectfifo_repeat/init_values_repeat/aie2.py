@@ -19,6 +19,7 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
+from aie.helpers.dialects.ext.scf import _for as range_
 
 N = 4096
 dev = AIEDevice.npu1_1col
@@ -62,11 +63,11 @@ def init_values_repeat():
                 1,
                 tensor_ty,
                 initValues=[
-                    np.arange(N, dtype=np.int32),
+                    np.arange(1, N+1, dtype=np.int32),
                 ],
             )
             of_in.set_repeat_count(memtile_repeat_count)
-            of_out = object_fifo("out", ComputeTile, ShimTile 1, tensor_ty)
+            of_out = object_fifo("out", ComputeTile, ShimTile, 1, tensor_ty)
 
             # Compute tile
             @core(ComputeTile)
@@ -76,7 +77,7 @@ def init_values_repeat():
                     elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     for i in range_(N):
-                        elem_out[i] = elem_in[i] + 1
+                        elem_out[i] = elem_in[i]
                     of_out.release(ObjectFifoPort.Produce, 1)
                     of_in.release(ObjectFifoPort.Consume, 1)
 
