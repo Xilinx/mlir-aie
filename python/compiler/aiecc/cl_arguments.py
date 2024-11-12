@@ -145,11 +145,10 @@ def parse_args(args=None):
         help="Disable linking of AIE code",
     )
     parser.add_argument(
-        "--basic-alloc-scheme",
-        dest="basic_alloc_scheme",
-        default=False,
-        action="store_true",
-        help="Use basic memory allocation scheme for AIE buffer address assignment",
+        "--alloc-scheme",
+        dest="alloc_scheme",
+        default="bank-aware",
+        help="Allocation scheme for AIE buffers: basic-sequential, bank-aware (default).",
     )
     parser.add_argument(
         "--generate-ctrl-pkt-overlay",
