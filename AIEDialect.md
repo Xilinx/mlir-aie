@@ -1036,7 +1036,7 @@ Create the memory module for tile %t73 and setup one DMA channel and one Buffer 
 
 Traits: `HasValidBDs`, `HasValidDMAChannels`
 
-Interfaces: `CallableOpInterface`, `FlowEndPoint`, `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
+Interfaces: `FlowEndPoint`, `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
 
 #### Operands:
 
@@ -1087,7 +1087,7 @@ Create a description for tile `%t73` and setup one DMA channel and one Buffer De
 
 Traits: `HasValidBDs`, `HasValidDMAChannels`
 
-Interfaces: `CallableOpInterface`, `FlowEndPoint`, `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
+Interfaces: `FlowEndPoint`, `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
 
 #### Operands:
 
