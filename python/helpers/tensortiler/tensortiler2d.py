@@ -87,7 +87,9 @@ class TensorTiler2D:
         tile_group_repeats = validate_tensor_dims(
             tile_group_repeats, expected_dims=cls._NUM_DIMS
         )
-        tile_group_steps = validate_tensor_dims(tile_group_steps, expected_dims=cls._NUM_DIMS)
+        tile_group_steps = validate_tensor_dims(
+            tile_group_steps, expected_dims=cls._NUM_DIMS
+        )
 
         for i, (tensor_dim, tile_dim) in enumerate(zip(tensor_dims, tile_dims)):
             if tensor_dim % tile_dim != 0:
