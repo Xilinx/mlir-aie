@@ -464,7 +464,7 @@ struct AIEObjectFifoStatefulTransformPass
       builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqLockAction,
                                 acqMode);
 
-    if (!dims.getValue().empty() && !padDimensions.getValue().empty()) {
+    if (!dims.getValue().empty() && padDimensions) {
       builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims,
                               padDimensions);
     } else if (!dims.getValue().empty()) {
