@@ -85,5 +85,5 @@ if __name__ == "__main__":
         M=args.dims[0],
         K=args.dims[1],
         N=args.dims[0] * args.dims[1],
-        generate_acccess_map=args.generate_access_map,
+        generate_access_map=args.generate_access_map,
     )
