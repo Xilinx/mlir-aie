@@ -58,7 +58,7 @@ module {
 module {
   aie.device(npu1_4col) {
     aiex.runtime_sequence(%in : memref<128x4x2x8xi32>, %buf : memref<32xi32>, %out : memref<8192xi32>) {
-      // expected-error@+1 {{ShimTile only supports 2 dimensions of sizes.}}
+      // expected-error@+1 {{ShimTile only supports 3 dimensions of sizes.}}
       aiex.npu.writebd {bd_id = 7 : i32, buffer_length = 32 : i32, buffer_offset = 128 : i32, column = 0 : i32, row = 0 : i32, d0_stride = 0 : i32, d0_size = 8 : i32, d0_zero_after = 0 : i32, d0_zero_before = 0 : i32, d1_stride = 7 : i32, d1_size = 512 : i32, d1_zero_after = 0 : i32, d1_zero_before = 0 : i32, d2_size = 100 : i32, d2_stride = 15 : i32, d2_zero_after = 0 : i32, d2_zero_before = 0 : i32, ddr_id = 0 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_stride = 0 : i32, iteration_size = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
     }
   }
