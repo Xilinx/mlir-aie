@@ -264,7 +264,6 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
                                   "dimensions may be provided.");
       }
       for (size_t i = 0; i < dims->size(); i++) {
-        std::cout<<"No problem in this loop"<<std::endl;
         // Pass down dimensions in reverse order; in the MLIR, this allows
         // us to specify step sizes/wraps in the same order as we would
         // access a multi-dim C array, with the highest dimension first.
