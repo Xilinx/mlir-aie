@@ -50,6 +50,50 @@
 
 using namespace std::string_literals;
 
+namespace {
+// Erase a range of Operation* and its users recursively.
+// Only consider the use-def chains and not the regions of blocks yet.
+template <typename OpRange>
+void eraseOpsAndUsers(OpRange &&opsToErase) {
+  llvm::SetVector<mlir::Operation *> allOpsAndUsers;
+  llvm::SmallVector<mlir::Operation *> newOps{
+      std::forward<OpRange>(opsToErase)};
+  //  While there are some operations to process
+  while (!newOps.empty()) {
+    auto *op = newOps.pop_back_val();
+    LLVM_DEBUG(op->emitRemark("eraseOpsAndUsers: newOps.pop_back_val()"));
+    // If the operation has not been visited yet, add it to the set and process
+    // its users
+    if (allOpsAndUsers.insert(op)) {
+      LLVM_DEBUG(op->emitRemark("eraseOpsAndUsers: inserted!"));
+      for (auto result : op->getResults())
+        for (auto *user : result.getUsers()) {
+          // Add each user to the visit queue
+          newOps.push_back(user);
+          LLVM_DEBUG(
+              user->emitRemark("eraseOpsAndUsers: append to visit queue"));
+        }
+    }
+  }
+  // To avoid erasing operations with remaining users, topologically sort the
+  // operations according to their use-def chains and erase them in reverse
+  // order
+  for (auto *op : allOpsAndUsers)
+    LLVM_DEBUG(op->emitRemark("eraseOpsAndUsers: allOpsAndUsers"));
+  // Does not work here
+  // auto sorted = mlir::topologicalSort(allOpsAndUsers);
+  llvm::SmallVector<mlir::Operation *> sorted{allOpsAndUsers.begin(),
+                                              allOpsAndUsers.end()};
+  mlir::computeTopologicalSorting(sorted);
+  LLVM_DEBUG(for (auto *op : sorted)
+                 op->emitRemark("eraseOpsAndUsers: topologicalSort"));
+  for (auto *op : llvm::reverse(sorted)) {
+    LLVM_DEBUG(op->emitRemark("eraseOpsAndUsers: reverse"));
+    op->erase();
+  }
+}
+} // namespace
+
 namespace xilinx::AIE::CIR {
 
 // Analysis all the C++ types used in a module and for aie++ types deconstruct
@@ -180,6 +224,24 @@ public:
     analyze();
   }
 
+  // Remove recursively any operation which uses a device output inside the
+  // given root operation
+  void removeDeviceUsers(mlir::Operation *root) {
+    llvm::SmallVector<mlir::Operation *> deviceUsers;
+    root->walk([&](mlir::Operation *op) {
+      for (auto &operand : op->getOpOperands()) {
+        auto type = operand.get().getType();
+        if (this->isAIELowered(type)) {
+          if (this->getTypeDetail(type).base == "aie::device")
+            deviceUsers.push_back(op);
+        }
+      }
+    });
+    // Erase recursively from the direct device users
+    eraseOpsAndUsers(deviceUsers);
+  }
+
+  // Display the analysis content
   void dump() {
     for (auto &[type, value] : moduleTypes) {
       llvm::outs() << "Type: " << type << " value: ";
@@ -225,24 +287,24 @@ bool isUnrealizedConversionCastWithAnnotation(
 // Generate the equivalent memref type of an aie::buffer
 mlir::MemRefType bufferMemrefType(mlir::Type buffer) {
   static mlir::TypeConverter typeConverter = cir::prepareTypeConverter();
-  buffer.dump();
+  LLVM_DEBUG(buffer.dump());
   if (auto p = mlir::dyn_cast<mlir::cir::PointerType>(buffer)) {
     if (auto bufferType =
             mlir::dyn_cast<mlir::cir::StructType>(p.getPointee())) {
-      bufferType.dump();
+      LLVM_DEBUG(bufferType.dump());
       // For now the aie::buffer is implemented as a std::array in the buffer
       // struct
       auto members = bufferType.getMembers();
       if (auto stdArrayType =
               mlir::dyn_cast<mlir::cir::StructType>(members.front())) {
-        stdArrayType.dump();
+        LLVM_DEBUG(stdArrayType.dump());
         // Access the array inside the std::array struct
         if (auto arrayType = mlir::dyn_cast<mlir::cir::ArrayType>(
                 stdArrayType.getMembers().front())) {
-          arrayType.dump();
+          LLVM_DEBUG(arrayType.dump());
           auto memref = mlir::dyn_cast<mlir::MemRefType>(
               typeConverter.convertType(arrayType));
-          memref.dump();
+          LLVM_DEBUG(memref.dump());
           return memref;
         }
       }
@@ -268,14 +330,15 @@ void cloneReferencedSymbolsIntoDevice(xilinx::AIE::DeviceOp device) {
     opToVisit->walk([&](mlir::Operation *op) {
       // Only look at the operations using some symbols
       if (auto user = mlir::dyn_cast<mlir::SymbolUserOpInterface>(op)) {
-        op->emitRemark(
-            "importCalledFunctionsInSymbolTable: SymbolUserOpInterface!");
+        LLVM_DEBUG(op->emitRemark(
+            "importCalledFunctionsInSymbolTable: SymbolUserOpInterface!"));
         // Look for all the symbol references used by this operation
         op->getAttrDictionary().walk([&](mlir::SymbolRefAttr symbolRef) {
-          op->emitRemark("importCalledFunctionsInSymbolTable: symbolRef = ")
-              << symbolRef;
+          LLVM_DEBUG(
+              op->emitRemark("importCalledFunctionsInSymbolTable: symbolRef = ")
+              << symbolRef);
           if (deviceSymbolTable.lookup(symbolRef.getRootReference())) {
-            llvm::errs() << "In Device!\n";
+            LLVM_DEBUG(llvm::outs() << "In Device!\n");
             // No need to visit it again if it is already in the device
             return;
           }
@@ -283,16 +346,16 @@ void cloneReferencedSymbolsIntoDevice(xilinx::AIE::DeviceOp device) {
           auto *moduleSymbol =
               moduleSymbolTable.lookup(symbolRef.getRootReference());
           assert(moduleSymbol && "The symbol should be found in the module");
-          llvm::errs() << "In Module!\n";
-          moduleSymbol->emitRemark(
-              "importCalledFunctionsInSymbolTable: cloning...");
+          LLVM_DEBUG(llvm::outs() << "In Module!\n"; moduleSymbol->emitRemark(
+              "importCalledFunctionsInSymbolTable: cloning..."));
           // Newly discovered function not already in the device is used by
           // existing code and do not refer // TODO: o internal code, so add
           // it at the beginning inside the aie.device
           builder.setInsertionPointToStart(device.getBody());
           auto *clone = builder.clone(*moduleSymbol);
           deviceSymbolTable.insert(clone);
-          clone->emitRemark("importCalledFunctionsInSymbolTable: clone");
+          LLVM_DEBUG(
+              clone->emitRemark("importCalledFunctionsInSymbolTable: clone"));
           // Need to handle any missing symbols from the newly created
           // operation
           toVisit.push(clone);
@@ -484,47 +547,6 @@ struct CIRToAIEPrepare : CIRToAIEPrepareBase<CIRToAIEPrepare> {
   }
 };
 
-// Erase a range of Operation* and its users recursively.
-// Only consider the use-def chains and not the regions of blocks yet.
-template <typename OpRange>
-void eraseOpsAndUsers(OpRange &&opsToErase) {
-  llvm::SetVector<mlir::Operation *> allOpsAndUsers;
-  llvm::SmallVector<mlir::Operation *> newOps{
-      std::forward<OpRange>(opsToErase)};
-  //  While there are some operations to process
-  while (!newOps.empty()) {
-    auto *op = newOps.pop_back_val();
-    op->emitRemark("eraseOpsAndUsers: newOps.pop_back_val()");
-    // If the operation has not been visited yet, add it to the set and process
-    // its users
-    if (allOpsAndUsers.insert(op)) {
-      op->emitRemark("eraseOpsAndUsers: inserted!");
-      for (auto result : op->getResults())
-        for (auto *user : result.getUsers()) {
-          // Add each user to the visit queue
-          newOps.push_back(user);
-          user->emitRemark("eraseOpsAndUsers: append to visit queue");
-        }
-    }
-  }
-  // To avoid erasing operations with remaining users, topologically sort the
-  // operations according to their use-def chains and erase them in reverse
-  // order
-  for (auto *op : allOpsAndUsers)
-    op->emitRemark("eraseOpsAndUsers: allOpsAndUsers");
-  // Does not work here
-  // auto sorted = mlir::topologicalSort(allOpsAndUsers);
-  llvm::SmallVector<mlir::Operation *> sorted{allOpsAndUsers.begin(),
-                                              allOpsAndUsers.end()};
-  mlir::computeTopologicalSorting(sorted);
-  for (auto *op : sorted)
-    op->emitRemark("eraseOpsAndUsers: topologicalSort");
-  for (auto *op : llvm::reverse(sorted)) {
-    op->emitRemark("eraseOpsAndUsers: reverse");
-    op->erase();
-  }
-}
-
 struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
   // \todo Find a less ugly way to access the analysis. How is it possible for a
   // pattern to access some contextual information?
@@ -548,6 +570,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
           bufferDetail.base == "aie::buffer") {
         LLVM_DEBUG(bufCast.emitRemark("Buffer cast from tile"));
         auto mrt = bufferMemrefType(bufCast.getType(0));
+        // \todo outline
         auto tileDetail = cat->getTypeDetail(bufCast.getOperand(0).getType());
         auto tileOp =
             mlir::dyn_cast<xilinx::AIE::TileOp>(*tileDetail.newAIEOperation);
@@ -574,91 +597,117 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
   }
 
   // Lower aie::tile::program(<tile code>) to aie.core
-  bool
-  tryTileProgramLowering(mlir::Operation *op, xilinx::AIE::TileOp tileOp,
-                         mlir::OpBuilder &b,
-                         llvm::SmallVector<mlir::Operation *> &opsToErase) {
+  bool tryTileProgramLowering(mlir::Operation *op, mlir::OpBuilder &b) {
     if (auto callOp = mlir::dyn_cast<mlir::cir::CallOp>(op)) {
-      callOp.emitRemark("tryTileProgramLowering: CallOp using a tile");
+      LLVM_DEBUG(
+          callOp.emitRemark("tryTileProgramLowering: CallOp using a tile"));
       if (isCallingFunctionWithAnnotation(callOp, {"aie.tile.program"})) {
+        LLVM_DEBUG(
+            callOp.emitRemark("tryTileProgramLowering: CallOp using a tile"));
         if (auto calledFunc =
                 mlir::SymbolTable::lookupNearestSymbolFrom<mlir::cir::FuncOp>(
                     callOp, callOp.getCalleeAttr())) {
           // The last function instruction is cir.return and the one before
           // is the call to the lambda
-          // calledFunc.getBlocks().front().back().dump();
-          auto lambdaCall = mlir::dyn_cast<mlir::cir::CallOp>(
-              *std::next(calledFunc.getBlocks().front().rbegin()));
-          lambdaCall.emitRemark("lambdaCall");
-          if (auto lambdaFunc =
-                  mlir::SymbolTable::lookupNearestSymbolFrom<mlir::cir::FuncOp>(
-                      lambdaCall, lambdaCall.getCalleeAttr())) {
-            lambdaFunc.emitRemark("tryTileProgramLowering: Tile core lambda");
-            assert(lambdaFunc.getLambda());
-            auto scopeOp = callOp->getParentOfType<mlir::cir::ScopeOp>();
-            scopeOp.emitRemark("tryTileProgramLowering: Scope");
-            auto coreOp =
-                b.create<xilinx::AIE::CoreOp>(callOp.getLoc(), tileOp);
-            // Create the empty block of the aie.core op region
-            coreOp.getRegion().emplaceBlock();
-            // Do not mess up with current insertion point inside aie.tile
-            mlir::OpBuilder::InsertionGuard _{b};
-            // The aie.core requires a terminator
-            b.setInsertionPointToEnd(&coreOp.getRegion().back());
-            // Add right away an aie.end to have the verifyers happy even if it
-            // makes the following more complicated
-            b.create<xilinx::AIE::EndOp>(callOp.getLoc());
-            coreOp.emitRemark("tryTileProgramLowering: Brand-new core");
-            // Get the cast connecting the aie.tile to the lambda call
-            auto tileCastOp =
-                callOp.getArgOperand(0)
-                    .getDefiningOp<mlir::UnrealizedConversionCastOp>();
-            tileCastOp.emitRemark(
-                "tryTileProgramLowering: tileCastOp as callOp first argument");
-            // Values can be replaced while cloning, not operations
-            mlir::IRMapping irm;
-            // Compute the remapping to be done while cloning from the old
-            // operands to the new one produced by the lowered AIE operations
-            scopeOp.walk([&](mlir::Operation *op) {
-              for (auto &operand : op->getOpOperands()) {
-                auto type = operand.get().getType();
-                if (cat->isAIELowered(type)) {
-                  op->emitRemark("Mapping ")
-                      << type << " to "
-                      << cat->getProducerOp(type)->getResult(0);
-                  if (cat->getTypeDetail(type).base == "aie::device")
-                    // Do not bring in any device-dependent code since it would
-                    // be C++ left-over which cannot use the aie.device from
-                    // inside the aie.device anyway
-                    continue;
-                  // Remap the current potential value use to its new producer
-                  irm.map(operand.get(),
-                          cat->getProducerOp(type)->getResult(0));
+          if (auto lambdaCall = mlir::dyn_cast<mlir::cir::CallOp>(
+                  *std::next(calledFunc.getBlocks().front().rbegin()))) {
+            LLVM_DEBUG(lambdaCall.emitRemark("lambdaCall"));
+            if (auto lambdaFunc = mlir::SymbolTable::lookupNearestSymbolFrom<
+                    mlir::cir::FuncOp>(lambdaCall,
+                                       lambdaCall.getCalleeAttr())) {
+              LLVM_DEBUG(lambdaFunc.emitRemark(
+                  "tryTileProgramLowering: Tile core lambda"));
+              assert(lambdaFunc.getLambda());
+              auto scopeOp = callOp->getParentOfType<mlir::cir::ScopeOp>();
+              LLVM_DEBUG(scopeOp.emitRemark("tryTileProgramLowering: Scope"));
+              // \todo outline
+              auto tileDetail =
+                  cat->getTypeDetail(callOp.getOperand(0).getType());
+              auto tileOp = mlir::dyn_cast<xilinx::AIE::TileOp>(
+                  *tileDetail.newAIEOperation);
+              if (!tileOp)
+                LLVM_DEBUG(callOp->emitError(
+                    "No aie.device operation found for this tile"));
+              auto deviceOp = tileOp->getParentOfType<xilinx::AIE::DeviceOp>();
+              // Create the aie.core at the end of the aie.device body to keep
+              // the C++ order
+              b.setInsertionPointToEnd(&deviceOp.getBodyRegion().back());
+              auto coreOp =
+                  b.create<xilinx::AIE::CoreOp>(callOp.getLoc(), tileOp);
+              // Create the empty block of the aie.core op region
+              coreOp.getRegion().emplaceBlock();
+              // The aie.core requires a terminator
+              b.setInsertionPointToEnd(&coreOp.getRegion().front());
+              // Add right away an aie.end to have the verifyers happy even if
+              // it makes the following more complicated
+              b.create<xilinx::AIE::EndOp>(callOp.getLoc());
+              LLVM_DEBUG(
+                  coreOp.emitRemark("tryTileProgramLowering: Brand-new core"));
+              // Get the cast connecting the aie.tile to the lambda call
+              auto tileCastOp =
+                  callOp.getArgOperand(0)
+                      .getDefiningOp<mlir::UnrealizedConversionCastOp>();
+              LLVM_DEBUG(
+                  tileCastOp.emitRemark("tryTileProgramLowering: tileCastOp as "
+                                        "callOp first argument"));
+              // Values can be replaced while cloning, not operations
+              mlir::IRMapping irm;
+              // Compute the remapping to be done while cloning from the old
+              // operands to the new one produced by the lowered AIE operations
+              scopeOp.walk([&](mlir::Operation *op) {
+                for (auto &operand : op->getOpOperands()) {
+                  auto type = operand.get().getType();
+                  if (cat->isAIELowered(type)) {
+                    LLVM_DEBUG(op->emitRemark("Mapping ")
+                               << type << " to "
+                               << cat->getProducerOp(type)->getResult(0));
+                    if (cat->getTypeDetail(type).base == "aie::device")
+                      // Do not bring in any device-dependent code since it
+                      // would be C++ left-over which cannot use the aie.device
+                      // from inside the aie.device anyway
+                      continue;
+                    // Remap the current potential value use to its new producer
+                    irm.map(operand.get(),
+                            cat->getProducerOp(type)->getResult(0));
+                  }
                 }
-              }
-            });
-            b.setInsertionPointToStart(&coreOp.getRegion().front());
-            auto *clone = b.clone(*scopeOp.getOperation(), irm);
-            // Since aie.device has a SymbolTable, all the called function need
-            // to be present in the aie.device
-            cloneReferencedSymbolsIntoDevice(
-                clone->getParentOfType<xilinx::AIE::DeviceOp>());
-            clone->emitRemark("tryTileProgramLowering: Clone");
-            coreOp.emitRemark("tryTileProgramLowering: Stuffed core");
-            scopeOp.emitRemark("tryTileProgramLowering: Scope after cloning");
-            coreOp->getParentOfType<mlir::cir::FuncOp>().emitRemark(
-                "tryTileProgramLowering: Top function");
+              });
+              b.setInsertionPointToStart(&coreOp.getRegion().front());
+              auto *clone = b.clone(*scopeOp.getOperation(), irm);
+              // Since aie.device has a SymbolTable, all the called functions
+              // need to be present in the aie.device
+              cloneReferencedSymbolsIntoDevice(
+                  clone->getParentOfType<xilinx::AIE::DeviceOp>());
+              LLVM_DEBUG(clone->emitRemark("tryTileProgramLowering: Clone"));
+              // There might be some device operation uses as left-over of the
+              // lowering. This is not a problem per se as this is dead code but
+              // it breaks the verifyers since it uses the device result inside
+              // the device itself. So, remove device device use right now
+              cat->removeDeviceUsers(clone);
+              LLVM_DEBUG(
+                  coreOp.emitRemark("tryTileProgramLowering: Stuffed core");
+                  coreOp->getParentOfType<mlir::cir::FuncOp>().emitRemark(
+                      "tryTileProgramLowering: Top function"));
+            }
           }
+          // The bufCast should be removed as a dependent of tile cast
+          // later. The lowering is a success, no need to look further.
+          return true;
         }
-        // The bufCast should be removed as a dependent of its tile cast later.
-        // The lowering is a success, no need to look further.
-        return true;
       }
     }
     // Notify to try something else
     return false;
   }
 
+  // Try to lower the operation as an aie.tile and return true on success
+  //
+  // clang-format off
+  // %2 = builtin.unrealized_conversion_cast %1 : !cir.ptr<!ty_aie3A3Adevice3Caie3A3Anpu12C_aie3A3A28lambda_at_2E2Faie2B2B2Ehpp3A1453A56293E> to !cir.ptr<!ty_aie3A3Atile3C12C_42C_aie3A3Adevice3C3E3E> {"aie::tile" = ["1", "4"]}
+  // is lowered to
+  // %tile_1_4 = aie.tile(1, 4)
+  // %7 = builtin.unrealized_conversion_cast %tile_1_4 : index to !cir.ptr<!ty_aie3A3Atile3C12C_42C_aie3A3Adevice3C3E3E>
+  // clang-format on
   bool tryTileLowering(mlir::Operation *op, mlir::OpBuilder &b) {
     if (auto tileCast = mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(op)) {
       auto tileCastOutputType = tileCast.getType(0);
@@ -667,7 +716,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
         auto col = detail.subMatches[0];
         auto row = detail.subMatches[1];
         LLVM_DEBUG(tileCast.emitRemark("tryTileLowering: tileCast from device")
-                   << " col = " << col << " row = " << row);
+                   << ", col = " << col << ", row = " << row);
         auto deviceDetail =
             cat->getTypeDetail(tileCast.getOperand(0).getType());
         auto deviceOp = mlir::dyn_cast<xilinx::AIE::DeviceOp>(
@@ -694,13 +743,21 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
   }
 
   // Try to lower the operation as an aie.device and return true on success
+  //
+  // clang-format off
+  // %1 = builtin.unrealized_conversion_cast to !cir.ptr<!ty_aie3A3Adevice3Caie3A3Anpu12C_aie3A3A28lambda_at_2E2Faie2B2B2Ehpp3A1453A56293E> {"aie::device" = "npu1"}
+  // is lowered to
+  // %1 = aie.device(npu1) {
+  // }
+  // %2 = builtin.unrealized_conversion_cast %1 : index to !cir.ptr<!ty_aie3A3Adevice3Caie3A3Anpu12C_aie3A3A28lambda_at_2E2Faie2B2B2Ehpp3A1453A56293E>
+  // clang-format on
   bool tryDeviceLowering(mlir::Operation *op, mlir::OpBuilder &b) {
     if (auto u = mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(op)) {
-      LLVM_DEBUG(u.emitRemark(
-          "DeviceLowering found UnrealizedConversionCastOp inside the module"));
       if (!isUnrealizedConversionCastWithAnnotation(u, {"aie::device"}))
         // Try some other lowering
         return false;
+      LLVM_DEBUG(u.emitRemark(
+          "DeviceLowering found UnrealizedConversionCastOp inside the module"));
       auto aieLike = cat->getTypeDetail(u.getType(0));
       auto deviceName = aieLike.subMatches[0];
       auto deviceId =
@@ -721,8 +778,9 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
       u->replaceAllUsesWith(cat->getProducerOp(u.getType(0)));
       // Note: aie.device does not require a terminator
       LLVM_DEBUG(deviceOp.emitRemark("DeviceLowering: end"));
+      return true;
     }
-    return true;
+    return false;
   }
 
   void runOnOperation() override {
@@ -736,7 +794,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
     // AIE constructs
     module->walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *op) {
       tryBufferLowering(op, b) || tryDeviceLowering(op, b) ||
-          tryTileLowering(op, b);
+          tryTileLowering(op, b) || tryTileProgramLowering(op, b);
     });
     // Remove the operations marked as useless
     eraseOpsAndUsers(opsToErase);
