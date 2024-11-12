@@ -5,6 +5,14 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+
+# REQUIRES: ryzen_ai, peano
+#
+# RUN: %python %S/aie2.py > ./aie2.mlir
+# RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --no-compile-host --no-xchesscc --xclbin-name=aie.xclbin --npu-insts-name=insts.txt %S/aie.mlir
+# RUN: clang %S/test.cpp -o test.exe -std=c++11 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
+# RUN: %run_on_npu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
+# CHECK: PASS!
 import numpy as np
 import sys
 
