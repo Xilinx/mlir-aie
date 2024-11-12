@@ -31,7 +31,7 @@ from util import construct_and_print_module
 #    %tile_0_1 = aie.tile(0, 1)
 #    %lock_0_1 = aie.lock(%tile_0_1, 0) {init = 1 : i32}
 #    %lock_0_1_0 = aie.lock(%tile_0_1, 1) {init = 0 : i32}
-#    %mem_A = aie.buffer(%tile_0_1) {sym_name = "mem_A"} : memref<2x1xi16> 
+#    %mem_A = aie.buffer(%tile_0_1) {sym_name = "mem_A"} : memref<2x1xi16>
 #    aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
 #    aie.shim_dma_allocation @mem_A(MM2S, 0, 0)
 #    %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
