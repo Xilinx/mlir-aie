@@ -23,7 +23,7 @@ def my_passthrough(M, K, N, generate_acccess_map=False):
     )
     if generate_acccess_map:
         data_transform.visualize(
-            plot_access_count=False, file_path="transpose_data.png"
+            show_arrows=True, plot_access_count=False, file_path="transpose_data.png"
         )
         return
 
