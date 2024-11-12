@@ -11,7 +11,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.tensortiler.tensortiler2d import TensorTiler2D
+from aie.helpers.tensortiler import TensorTiler2D
 
 
 def row_wise_bias_add(M, N, m, n):
@@ -49,12 +49,10 @@ def row_wise_bias_add(M, N, m, n):
                         in_fifo.release(ObjectFifoPort.Consume, 1)
                     bias_fifo.release(ObjectFifoPort.Consume, 1)
 
-        tiler = TensorTiler2D(M, N, m, n, tensor_col_major=True)
-        t = next(
-            tiler.tile_iter(tile_group_height=M // m, tile_group_width=N // n)
-        )  # Transfer all tiles at once
-        bias_tiler = TensorTiler2D(1, N, 1, n)
-        bias_t = next(bias_tiler.tile_iter(tile_group_width=N // n))
+        tiler = TensorTiler2D.group_tiler(
+            (M, N), (m, n), (M // m, N // n), tensor_col_major=True
+        )
+        bias_tiler = TensorTiler2D.group_tiler((1, N), (1, n), (1, N // n))
 
         @runtime_sequence(tensor_ty, bias_ty, tensor_ty)
         def sequence(inp, bias, out):
@@ -62,19 +60,19 @@ def row_wise_bias_add(M, N, m, n):
                 metadata=in_fifo,
                 bd_id=0,
                 mem=inp,
-                tensor_tile=t,
+                tensor_tile=tiler[0],
             )
             npu_dma_memcpy_nd(
                 metadata=bias_fifo,
                 bd_id=1,
                 mem=bias,
-                tensor_tile=bias_t,
+                tensor_tile=bias_tiler[0],
             )
             npu_dma_memcpy_nd(
                 metadata=out_fifo,
                 bd_id=2,
                 mem=out,
-                tensor_tile=t,
+                tensor_tile=tiler[0],
             )
             # of_out will only complete after of_in completes, so we just wait on of_out instead of both
             dma_wait(out_fifo)

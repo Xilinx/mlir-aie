@@ -34,7 +34,7 @@ def matmul_tiler_helper(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
 
     A_tiles = TensorTiler2D.group_tiler(
         (M, K),  # Size of A matrix
-        (m * n_A_tiles_per_shim, k),  # Size of A tile group
+        (m * n_A_tiles_per_shim, k),  # Size of A (smallest) tile
         (1, K // k),  # Size of "group" of tiles
         pattern_repeat=N
         // n

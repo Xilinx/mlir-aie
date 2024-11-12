@@ -23,12 +23,12 @@ from .aie import (
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint, MemRefType
+from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint
 
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
-from ..helpers.util import try_convert_np_type_to_mlir_type, np_ndarray_type_get_shape
-from ..helpers.tensortiler.tensortiler2d import TensorTile
+from ..helpers.util import try_convert_np_type_to_mlir_type
+from ..helpers.tensortiler import TensorTile
 
 # Comes from _aie
 register_dialect(get_dialect_registry())

@@ -13,17 +13,13 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.tensortiler.tensortiler2d import TensorTile
+from aie.helpers.tensortiler import TensorTile
 
 
 def my_passthrough(M, K, N, generate_acccess_map=False):
     tensor_ty = np.ndarray[(M, K), np.dtype[np.int32]]
     data_transform = TensorTile(
-        tensor_height=M,
-        tensor_width=K,
-        sizes=[1, 1, K, M],
-        strides=[1, 1, 1, K],
-        offset=0,
+        (M, K), offset=0, sizes=[1, 1, K, M], strides=[1, 1, 1, K]
     )
     if generate_acccess_map:
         data_transform.visualize(

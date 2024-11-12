@@ -8,7 +8,7 @@
 import argparse
 import numpy as np
 
-from aie.helpers.tensortiler.tensortiler2d import TensorTiler2D
+from aie.helpers.tensortiler import TensorTiler2D
 from aie.utils.xrt import setup_aie, execute as execute_on_aie
 
 
@@ -18,8 +18,8 @@ def main(opts):
     dtype = TensorTiler2D.DTYPE
     data_size = opts.tensor_height * opts.tensor_width
 
-    reference_tiler = TensorTiler2D(
-        opts.tensor_height, opts.tensor_width, opts.tile_height, opts.tile_width
+    reference_tiler = TensorTiler2D.simple_tiler(
+        (opts.tensor_height, opts.tensor_width), (opts.tile_height, opts.tile_width)
     )
     reference_access_order = reference_tiler.access_order()
 

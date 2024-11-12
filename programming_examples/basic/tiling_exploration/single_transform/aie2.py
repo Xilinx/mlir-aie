@@ -14,15 +14,16 @@ from aie.dialects.aiex import *
 from aie.dialects import arith
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.tensortiler.tensortiler2d import TensorTiler2D
+from aie.helpers.tensortiler import TensorTiler2D
 
 
 def generate_module(tensor_height, tensor_width, tile_height, tile_width):
     @device(AIEDevice.npu1_1col)
     def device_body():
         # define types
+        dtype = np.int32
         tensor_size = tensor_height * tensor_width
-        flattened_tensor = np.ndarray[(tensor_size,), np.dtype[TensorTiler2D.DTYPE]]
+        flattened_tensor = np.ndarray[(tensor_size,), np.dtype[dtype]]
 
         # Tile declarations
         ShimTile = tile(0, 0)
@@ -45,9 +46,9 @@ def generate_module(tensor_height, tensor_width, tile_height, tile_width):
 
         @runtime_sequence(flattened_tensor)
         def sequence(access_count):
-            t = TensorTiler2D(
-                tensor_height, tensor_width, tile_height, tile_width
-            ).as_tile()
+            t = TensorTiler2D.simple_tiler(
+                (tensor_height, tensor_width), (tile_height, tile_width)
+            )[0]
             npu_dma_memcpy_nd(
                 metadata=of_out,
                 bd_id=1,
