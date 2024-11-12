@@ -27,7 +27,7 @@ DenseMap<int, int> getRowToShimChanMap(const AIETargetModel &targetModel,
 
 // AIE arch-specific tile id to controller id mapping. Users can use those
 // packet ids for design but run into risk of deadlocking control packet flows.
-DenseMap<AIE::TileID, int>
+DenseMap<TileID, int>
 getTileToControllerIdMap(bool clColumnWiseUniqueIDs,
                          const AIETargetModel &targetModel);
 
