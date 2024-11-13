@@ -890,14 +890,12 @@ def resnet_conv_x():
                     with bd[0]:
                         shim_dma_bd(inputFromL3, sizes=[1, 1, 1, activationsIn])
                         EndOp()
-                dma_start_task(act1_0_task)
 
                 wts_0_task = dma_configure_task_for(wts_fifos[0])
                 with bds(wts_0_task) as bd:
                     with bd[0]:
                         shim_dma_bd(weightsFromL3, sizes=[1, 1, 1, totalWeights_init])
                         EndOp()
-                dma_start_task(wts_0_task)
 
                 wts_1_task = dma_configure_task_for(wts_fifos[1])
                 with bds(wts_1_task) as bd:
@@ -908,7 +906,6 @@ def resnet_conv_x():
                             sizes=[1, 1, 1, totalWeights_rest],
                         )
                         EndOp()
-                dma_start_task(wts_1_task)
 
                 wts_2_task = dma_configure_task_for(wts_fifos[2])
                 with bds(wts_2_task) as bd:
@@ -919,22 +916,16 @@ def resnet_conv_x():
                             sizes=[1, 1, 1, totalWeights_rest],
                         )
                         EndOp()
-                dma_start_task(wts_2_task)
 
-                npu_dma_memcpy_nd(
-                    metadata=outOFL2L3,
-                    bd_id=2,
-                    mem=outputToL3,
-                    sizes=[1, 1, 1, acitivationsOut],
-                )
-
-                out_task = dma_configure_task_for(outOFL2L3)
+                out_task = dma_configure_task_for(outOFL2L3, issue_token=True)
                 with bds(out_task) as bd:
                     with bd[0]:
                         shim_dma_bd(outputToL3, sizes=[1, 1, 1, acitivationsOut])
                         EndOp()
-                dma_start_task(out_task)
 
+                dma_start_task(
+                    act1_0_task, wts_0_task, wts_1_task, wts_2_task, out_task
+                )
                 # out_task will only complete after inputs complete, so we just wait on out_task instead of all
                 dma_await_task(out_task)
                 dma_free_task(act1_0_task, wts_0_task, wts_1_task, wts_2_task)

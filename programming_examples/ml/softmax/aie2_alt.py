@@ -120,19 +120,18 @@ def vector_softmax(trace_size):
                     offset=N_in_bytes,
                 )
 
-            in_task = dma_configure_task_for(inA)
+            in_task = dma_configure_task_for(inA, issue_token=True)
             with bds(in_task) as bd:
                 with bd[0]:
                     shim_dma_bd(A, sizes=[1, 1, 1, N])
                     EndOp()
-            dma_start_task(in_task)
 
-            out_task = dma_configure_task_for(outC)
+            out_task = dma_configure_task_for(outC, issue_token=True)
             with bds(out_task) as bd:
                 with bd[0]:
                     shim_dma_bd(C, sizes=[1, 1, 1, N])
                     EndOp()
-            dma_start_task(out_task)
+            dma_start_task(in_task, out_task)
             dma_await_task(in_task, out_task)
 
 

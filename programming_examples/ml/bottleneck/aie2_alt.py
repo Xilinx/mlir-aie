@@ -556,21 +556,19 @@ def bottleneck4AIEs():
                     with bd[0]:
                         shim_dma_bd(inputFromL3, sizes=[1, 1, 1, activationsIn])
                         EndOp()
-                dma_start_task(in_act_task)
 
                 in_wts_task = dma_configure_task_for(inOF_wts_0_L3L2)
                 with bds(in_wts_task) as bd:
                     with bd[0]:
                         shim_dma_bd(weightsFromL3, sizes=[1, 1, 1, totalWeights])
                         EndOp()
-                dma_start_task(in_wts_task)
 
-                out_task = dma_configure_task_for(outOFL2L3)
+                out_task = dma_configure_task_for(outOFL2L3, issue_token=True)
                 with bds(out_task) as bd:
                     with bd[0]:
                         shim_dma_bd(outputToL3, sizes=[1, 1, 1, acitivationsOut])
                         EndOp()
-                dma_start_task(out_task)
+                dma_start_task(in_act_task, in_wts_task, out_task)
 
                 dma_await_task(out_task)
                 dma_free_task(in_act_task, in_wts_task)

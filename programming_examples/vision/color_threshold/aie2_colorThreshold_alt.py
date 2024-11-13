@@ -257,9 +257,8 @@ def color_threshold():
                             sizes=[1, 1, 1, tensorSize],
                         )
                         EndOp()
-                dma_start_task(in_task)
 
-                out_task = dma_configure_task_for(outOOB_L2L3)
+                out_task = dma_configure_task_for(outOOB_L2L3, issue_token=True)
                 with bds(out_task) as bd:
                     with bd[0]:
                         shim_dma_bd(
@@ -267,8 +266,7 @@ def color_threshold():
                             sizes=[1, 1, 1, tensorSize],
                         )
                         EndOp()
-                dma_start_task(out_task)
-
+                dma_start_task(in_task, out_task)
                 dma_await_task(in_task, out_task)
 
     # print(ctx.module.operation.verify())

@@ -217,9 +217,8 @@ def color_detect():
                             sizes=[1, 1, 1, height * lineWidthInBytes],
                         )
                         EndOp()
-                dma_start_task(in_task)
 
-                out_task = dma_configure_task_for(outOF_L2L3)
+                out_task = dma_configure_task_for(outOF_L2L3, issue_token=True)
                 with bds(out_task) as bd:
                     with bd[0]:
                         shim_dma_bd(
@@ -227,8 +226,8 @@ def color_detect():
                             sizes=[1, 1, 1, height * lineWidthInBytes],
                         )
                         EndOp()
-                dma_start_task(out_task)
 
+                dma_start_task(in_task, out_task)
                 # outOF_L2L3 will only complete after inOF_L3L2 completes, so we just wait on outOF_L2L3 instead of all
                 dma_await_task(out_task)
                 dma_free_task(in_task)

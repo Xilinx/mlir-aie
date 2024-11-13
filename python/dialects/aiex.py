@@ -861,3 +861,39 @@ def shim_dma_bd(
             transfer_len = np.prod(sizes)
     dimensions = list(zip(sizes, strides))
     dma_bd(mem, offset=offset, len=transfer_len, dimensions=dimensions)
+
+
+_orig_dma_await_task = dma_await_task
+
+
+def dma_await_task(*args: DMAConfigureTaskForOp):
+    if len(args) == 0:
+        raise ValueError(
+            "dma_await_task must receive at least one DMAConfigureTaskForOp to wait for"
+        )
+    for dma_task in args:
+        _orig_dma_await_task(dma_task)
+
+
+_orig_dma_free_task = dma_free_task
+
+
+def dma_free_task(*args: DMAConfigureTaskForOp):
+    if len(args) == 0:
+        raise ValueError(
+            "dma_free_task must receive at least one DMAConfigureTaskForOp to free"
+        )
+    for dma_task in args:
+        _orig_dma_free_task(dma_task)
+
+
+_orig_dma_start_task = dma_start_task
+
+
+def dma_start_task(*args: DMAConfigureTaskForOp):
+    if len(args) == 0:
+        raise ValueError(
+            "dma_start_task must receive at least one DMAConfigureTaskForOp to free"
+        )
+    for dma_task in args:
+        _orig_dma_start_task(dma_task)

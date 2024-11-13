@@ -154,22 +154,20 @@ def my_eltwise_mul(trace_size):
                 with bd[0]:
                     shim_dma_bd(A, sizes=[1, 1, 1, N])
                     EndOp()
-            dma_start_task(in_a_task)
 
             in_b_task = dma_configure_task_for(inB)
             with bds(in_b_task) as bd:
                 with bd[0]:
                     shim_dma_bd(B, sizes=[1, 1, 1, N])
                     EndOp()
-            dma_start_task(in_b_task)
 
-            out_task = dma_configure_task_for(outC)
+            out_task = dma_configure_task_for(outC, issue_token=True)
             with bds(out_task) as bd:
                 with bd[0]:
                     shim_dma_bd(C, sizes=[1, 1, 1, N])
                     EndOp()
-            dma_start_task(out_task)
 
+            dma_start_task(in_a_task, in_b_task, out_task)
             # outC will only complete after in_a_task and in_b_task complete, so we just wait on outC instead of all
             dma_await_task(out_task)
             dma_free_task(in_a_task, in_b_task)
