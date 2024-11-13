@@ -640,6 +640,9 @@ static ParseResult parseObjectFifoInitValues(OpAsmParser &parser,
     return failure();
   for (int i = 0; i < depth; i++) {
     auto initialValues = llvm::dyn_cast<mlir::ArrayAttr>(initValues);
+    if ((int)initialValues.size() != depth)
+      return parser.emitError(parser.getNameLoc())
+             << "initial values should initialize all objects";
     if (!llvm::isa<ElementsAttr>(initialValues[i]))
       return parser.emitError(parser.getNameLoc())
              << "initial value should be an elements attribute";
