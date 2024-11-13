@@ -271,7 +271,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
           // us to specify step sizes/wraps in the same order as we would
           // access a multi-dim C array, with the highest dimension first.
           int j = dims->size() - i - 1;
-          if (j >= dims->size()) {
+          if (j >= static_cast<int>(dims->size())) {
             return bd_op->emitOpError("Invalid index for dims array.");
           }
           input_sizes[i] = (*dims)[j].getSize();
