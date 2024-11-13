@@ -265,28 +265,21 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       }
 
       // Make sure dims->size() is large enough
-      if (dims && dims->size() <= 4) {
-        for (size_t i = 0; i < dims->size(); i++) {
-          // Pass down dimensions in reverse order; in the MLIR, this allows
-          // us to specify step sizes/wraps in the same order as we would
-          // access a multi-dim C array, with the highest dimension first.
-          int j = dims->size() - i - 1;
-          if (j >= static_cast<int>(dims->size())) {
-            return bd_op->emitOpError("Invalid index for dims array.");
-          }
-          input_sizes[i] = (*dims)[j].getSize();
-          input_strides[i] = (*dims)[j].getStride();
-        }
+      for (size_t i = 0; i < dims->size(); i++) {
+        // Pass down dimensions in reverse order; in the MLIR, this allows
+        // us to specify step sizes/wraps in the same order as we would
+        // access a multi-dim C array, with the highest dimension first.
+        int j = dims->size() - i - 1;
+        input_sizes[i] = (*dims)[j].getSize();
+        input_strides[i] = (*dims)[j].getStride();
       }
-      input_sizes[2] = (target_model.isMemTile(tile.getCol(), tile.getRow()))
-                           ? (*dims)[2].getSize()
-                           : 0;
+      if (dims->size() > 2) {
+        input_sizes[2] = (target_model.isMemTile(tile.getCol(), tile.getRow()))
+                             ? (*dims)[2].getSize()
+                             : 0;
+      }
       if (target_model.isMemTile(tile.getCol(), tile.getRow()) &&
           channelDir == AIE::DMAChannelDir::MM2S) {
-        if (padDims && padDims->size() > dims->size())
-          return bd_op->emitOpError()
-                 << "Mismatch in number of padding(s), stride(s) and warps(s)";
-
         if (padDims) {
           for (size_t i = 0; i < padDims->size(); i++) {
             int j = padDims->size() - i - 1;
