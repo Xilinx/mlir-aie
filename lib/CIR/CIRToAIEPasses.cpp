@@ -182,7 +182,7 @@ public:
   AIELikeTypesDeconstruction &getTypeDetail(mlir::Type t) {
     auto &detail = getOptionalTypeDetail(t);
     assert(detail && "This type should have an analysis");
-    return *detail;
+    return detail.value();
   }
 
   // Associate to a given aie++ C++ type the operation producing the value for
@@ -203,7 +203,7 @@ public:
     assert(detail.newProducer &&
            R"(This type should have an operation registered
            with a previous setProducerOp())");
-    return *detail.newProducer;
+    return detail.newProducer.value();
   }
 
   // Get the set of aie++ C++ types which have been lowered to an AIE operation
@@ -224,21 +224,21 @@ public:
     analyze();
   }
 
-  // Remove recursively any operation which uses a device output inside the
-  // given root operation
-  void removeDeviceUsers(mlir::Operation *root) {
-    llvm::SmallVector<mlir::Operation *> deviceUsers;
+  // Visit recursively from a given root operation any operand with an
+  // AIE-like C++ datatype
+  template <typename FunctionRef>
+  void visitAIEOperands(mlir::Operation *root, FunctionRef &&callBack) {
     root->walk([&](mlir::Operation *op) {
       for (auto &operand : op->getOpOperands()) {
         auto type = operand.get().getType();
         if (this->isAIELowered(type)) {
-          if (this->getTypeDetail(type).base == "aie::device")
-            deviceUsers.push_back(op);
+          LLVM_DEBUG(op->emitRemark("visitAIEOperands")
+                     << type << " to "
+                     << this->getProducerOp(type)->getResult(0));
+          callBack(operand);
         }
       }
     });
-    // Erase recursively from the direct device users
-    eraseOpsAndUsers(deviceUsers);
   }
 
   // Display the analysis content
@@ -596,6 +596,36 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
     return false;
   }
 
+  // During operation cloning, mlir::IRMapping is used to remap some leaf input
+  // operands but cannot remap some internal ones. In some case, ClangIR lower
+  // some lambda captures with aie::tile or with aie::device (). Having the
+  // aie::device is problematic since it is remapped to the aie.device output
+  // which leads to 2 issues for the verifyer:
+  //
+  // - this use is inside the device operation itself
+  //
+  // - the aie.device region is isolated from above.
+  //
+  // Since this aie::device is used only by an aie::tile, just remove the
+  // aie::device part.
+  void resolveSomeDeviceToTileAfterCloning(mlir::Operation *clone) {
+    llvm::SmallVector<mlir::Operation *> oldCastsFromDevice;
+    cat->visitAIEOperands(clone, [&](mlir::OpOperand &operand) {
+      if (cat->getTypeDetail(operand.get().getType()).base == "aie::device") {
+        auto cast = mlir::dyn_cast<mlir::UnrealizedConversionCastOp>(
+            operand.getOwner());
+        assert(cast && "There should be only an UnrealizedConversionCastOp "
+                       "using the aie::device");
+        // Connect directly the aie::tile user to the one produced by the
+        // matching aie.tile
+        cast.replaceAllUsesWith(cat->getProducerOp(cast.getType(0)));
+        oldCastsFromDevice.push_back(cast);
+      }
+    });
+    // Remove the problematic operations
+    eraseOpsAndUsers(oldCastsFromDevice);
+  }
+
   // Lower aie::tile::program(<tile code>) to aie.core
   bool tryTileProgramLowering(mlir::Operation *op, mlir::OpBuilder &b) {
     if (auto callOp = mlir::dyn_cast<mlir::cir::CallOp>(op)) {
@@ -654,23 +684,10 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
               mlir::IRMapping irm;
               // Compute the remapping to be done while cloning from the old
               // operands to the new one produced by the lowered AIE operations
-              scopeOp.walk([&](mlir::Operation *op) {
-                for (auto &operand : op->getOpOperands()) {
-                  auto type = operand.get().getType();
-                  if (cat->isAIELowered(type)) {
-                    LLVM_DEBUG(op->emitRemark("Mapping ")
-                               << type << " to "
-                               << cat->getProducerOp(type)->getResult(0));
-                    if (cat->getTypeDetail(type).base == "aie::device")
-                      // Do not bring in any device-dependent code since it
-                      // would be C++ left-over which cannot use the aie.device
-                      // from inside the aie.device anyway
-                      continue;
-                    // Remap the current potential value use to its new producer
-                    irm.map(operand.get(),
-                            cat->getProducerOp(type)->getResult(0));
-                  }
-                }
+              cat->visitAIEOperands(scopeOp, [&](auto &operand) {
+                irm.map(
+                    operand.get(),
+                    cat->getProducerOp(operand.get().getType())->getResult(0));
               });
               b.setInsertionPointToStart(&coreOp.getRegion().front());
               auto *clone = b.clone(*scopeOp.getOperation(), irm);
@@ -679,11 +696,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
               cloneReferencedSymbolsIntoDevice(
                   clone->getParentOfType<xilinx::AIE::DeviceOp>());
               LLVM_DEBUG(clone->emitRemark("tryTileProgramLowering: Clone"));
-              // There might be some device operation uses as left-over of the
-              // lowering. This is not a problem per se as this is dead code but
-              // it breaks the verifyers since it uses the device result inside
-              // the device itself. So, remove device device use right now
-              cat->removeDeviceUsers(clone);
+              resolveSomeDeviceToTileAfterCloning(clone);
               LLVM_DEBUG(
                   coreOp.emitRemark("tryTileProgramLowering: Stuffed core");
                   coreOp->getParentOfType<mlir::cir::FuncOp>().emitRemark(
