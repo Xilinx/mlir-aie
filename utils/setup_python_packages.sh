@@ -18,5 +18,9 @@ source ironenv/bin/activate
 python3 -m pip install --upgrade pip
 python3 -m pip install -r python/requirements.txt
 HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
-python3 -m ipykernel install --user --name ironenv
+
+# This installs the pre-commit hooks defined in .pre-commit-config.yaml
 pre-commit install
+
+# This creates an ipykernel (for use in notebooks) using the ironenv venv
+python3 -m ipykernel install --user --name ironenv
