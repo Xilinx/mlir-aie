@@ -46,6 +46,7 @@ def main():
         choices=["bf16", "i8", "i16", "f32", "i32"],
         default="i16",
     )
+    argparser.add_argument("--trace_size", type=int, default=0)
     args = argparser.parse_args()
     with mlir_mod_ctx() as ctx:
         my_matmul(
@@ -59,6 +60,7 @@ def main():
             args.dtype_in,
             args.dtype_out,
             args.b_col_maj,
+            args.trace_size,
         )
         # print(ctx.module.operation.verify())
         print(ctx.module)
@@ -68,7 +70,9 @@ def ceildiv(a, b):
     return (a + b - 1) // b
 
 
-def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_maj):
+def my_matmul(
+    M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, b_col_maj, trace_size
+):
 
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols

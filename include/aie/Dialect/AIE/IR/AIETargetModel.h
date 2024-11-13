@@ -53,8 +53,31 @@ using TileID = struct TileID {
 };
 
 class AIETargetModel {
+
 public:
-  AIETargetModel() = default;
+  enum TargetModelKind {
+    TK_AIE1_VC1902,
+    TK_AIE1_Last,
+    TK_AIE2_VE2302,
+    TK_AIE2_VE2802,
+    TK_AIE2_NPU1,
+    TK_AIE2_NPU1_1Col,
+    TK_AIE2_NPU1_2Col,
+    TK_AIE2_NPU1_3Col,
+    TK_AIE2_NPU1_4Col,
+    TK_AIE2_NPU1_Last,
+    TK_AIE2_NPU2 = TK_AIE2_NPU1_Last,
+    TK_AIE2_NPU2_Last,
+    TK_AIE2_Last = TK_AIE2_NPU2_Last,
+  };
+
+private:
+  const TargetModelKind kind;
+
+public:
+  TargetModelKind getKind() const { return kind; }
+
+  AIETargetModel(TargetModelKind k) : kind(k) {}
 
   virtual ~AIETargetModel();
 
@@ -181,6 +204,8 @@ public:
   virtual uint32_t getNumMemTileRows() const = 0;
   /// Return the size (in bytes) of a MemTile.
   virtual uint32_t getMemTileSize() const = 0;
+  /// Return the number of memory banks of a given tile.
+  virtual uint32_t getNumBanks(int col, int row) const = 0;
   /// Return the number of destinations of connections inside a switchbox. These
   /// are the targets of connect operations in the switchbox.
   virtual uint32_t getNumDestSwitchboxConnections(int col, int row,
@@ -224,7 +249,7 @@ public:
 
 class AIE1TargetModel : public AIETargetModel {
 public:
-  AIE1TargetModel() = default;
+  AIE1TargetModel(TargetModelKind k) : AIETargetModel(k) {}
 
   bool isCoreTile(int col, int row) const override { return row > 0; }
   bool isMemTile(int col, int row) const override { return false; }
@@ -268,6 +293,7 @@ public:
   }
   uint32_t getNumMemTileRows() const override { return 0; }
   uint32_t getMemTileSize() const override { return 0; }
+  uint32_t getNumBanks(int col, int row) const override { return 4; }
 
   uint32_t getNumDestSwitchboxConnections(int col, int row,
                                           WireBundle bundle) const override;
@@ -283,11 +309,16 @@ public:
 
   uint32_t getColumnShift() const override { return 23; }
   uint32_t getRowShift() const override { return 18; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() >= TK_AIE1_VC1902 &&
+           model->getKind() < TK_AIE1_Last;
+  }
 };
 
 class AIE2TargetModel : public AIETargetModel {
 public:
-  AIE2TargetModel() = default;
+  AIE2TargetModel(TargetModelKind k) : AIETargetModel(k) {}
 
   AIEArch getTargetArch() const override;
 
@@ -342,6 +373,10 @@ public:
 
   uint32_t getMemTileSize() const override { return 0x00080000; }
 
+  uint32_t getNumBanks(int col, int row) const override {
+    return isMemTile(col, row) ? 8 : 4;
+  }
+
   uint32_t getNumDestSwitchboxConnections(int col, int row,
                                           WireBundle bundle) const override;
   uint32_t getNumSourceSwitchboxConnections(int col, int row,
@@ -356,6 +391,11 @@ public:
 
   uint32_t getColumnShift() const override { return 25; }
   uint32_t getRowShift() const override { return 20; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() >= TK_AIE2_VE2302 &&
+           model->getKind() < TK_AIE2_Last;
+  }
 };
 
 class VC1902TargetModel : public AIE1TargetModel {
@@ -363,7 +403,7 @@ class VC1902TargetModel : public AIE1TargetModel {
       2, 3, 6, 7, 10, 11, 18, 19, 26, 27, 34, 35, 42, 43, 46, 47};
 
 public:
-  VC1902TargetModel() = default;
+  VC1902TargetModel() : AIE1TargetModel(TK_AIE1_VC1902) {}
 
   uint32_t getAddressGenGranularity() const override { return 32; }
 
@@ -382,13 +422,17 @@ public:
   bool isShimNOCorPLTile(int col, int row) const override {
     return isShimNOCTile(col, row) || isShimPLTile(col, row);
   }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() == TK_AIE1_VC1902;
+  }
 };
 
 class VE2302TargetModel : public AIE2TargetModel {
   llvm::SmallDenseSet<unsigned, 8> nocColumns = {2, 3, 6, 7, 10, 11};
 
 public:
-  VE2302TargetModel() = default;
+  VE2302TargetModel() : AIE2TargetModel(TK_AIE2_VE2302) {}
 
   int columns() const override { return 17; }
 
@@ -412,6 +456,10 @@ public:
   }
 
   uint32_t getNumMemTileRows() const override { return 1; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() == TK_AIE2_VE2302;
+  }
 };
 
 class VE2802TargetModel : public AIE2TargetModel {
@@ -419,7 +467,7 @@ class VE2802TargetModel : public AIE2TargetModel {
                                                   22, 23, 30, 31, 34, 35};
 
 public:
-  VE2802TargetModel() = default;
+  VE2802TargetModel() : AIE2TargetModel(TK_AIE2_VE2802) {}
 
   int columns() const override { return 38; }
 
@@ -446,11 +494,15 @@ public:
   }
 
   uint32_t getNumMemTileRows() const override { return 2; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() == TK_AIE2_VE2802;
+  }
 };
 
 class BaseNPUTargetModel : public AIE2TargetModel {
 public:
-  BaseNPUTargetModel() = default;
+  BaseNPUTargetModel(TargetModelKind k) : AIE2TargetModel(k) {}
 
   int rows() const override {
     return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
@@ -474,12 +526,17 @@ public:
   virtual bool isVirtualized() const = 0;
 
   virtual bool isNPU() const override { return true; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() >= TK_AIE2_NPU1 &&
+           model->getKind() < TK_AIE2_NPU2_Last;
+  }
 };
 
 // The full Phoenix NPU
 class NPUTargetModel : public BaseNPUTargetModel {
 public:
-  NPUTargetModel() = default;
+  NPUTargetModel() : BaseNPUTargetModel(TK_AIE2_NPU1) {}
 
   int columns() const override { return 5; }
 
@@ -493,6 +550,10 @@ public:
   }
 
   bool isVirtualized() const override { return false; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() == TK_AIE2_NPU1;
+  }
 };
 
 // A sub-portion of the NPU
@@ -500,7 +561,11 @@ class VirtualizedNPUTargetModel : public BaseNPUTargetModel {
   int cols;
 
 public:
-  VirtualizedNPUTargetModel(int _cols) : cols(_cols) {}
+  VirtualizedNPUTargetModel(int _cols)
+      : BaseNPUTargetModel(static_cast<TargetModelKind>(
+            static_cast<std::underlying_type_t<TargetModelKind>>(TK_AIE2_NPU1) +
+            _cols)),
+        cols(_cols) {}
 
   uint32_t getAddressGenGranularity() const override { return 32; }
 
@@ -509,12 +574,17 @@ public:
   bool isShimNOCTile(int col, int row) const override { return row == 0; }
 
   bool isVirtualized() const override { return true; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() >= TK_AIE2_NPU1_1Col &&
+           model->getKind() < TK_AIE2_NPU1_Last;
+  }
 };
 
 // The full Strix. NPU
 class NPU2TargetModel : public BaseNPUTargetModel {
 public:
-  NPU2TargetModel() = default;
+  NPU2TargetModel() : BaseNPUTargetModel(TK_AIE2_NPU2) {}
 
   AIEArch getTargetArch() const override;
 
@@ -525,6 +595,10 @@ public:
   bool isShimPLTile(int col, int row) const override { return false; }
 
   bool isVirtualized() const override { return false; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() == TK_AIE2_NPU2;
+  }
 };
 
 } // namespace xilinx::AIE

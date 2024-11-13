@@ -34,32 +34,30 @@ from aie.dialects import aie as aiedialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
-INPUT_WITH_ADDRESSES_PIPELINE = (
-    lambda basic_alloc_scheme=False, dynamic_objFifos=False, ctrl_pkt_overlay=False: (
+INPUT_WITH_ADDRESSES_PIPELINE = lambda scheme, dynamic_objFifos, ctrl_pkt_overlay: (
+    Pipeline()
+    .lower_affine()
+    .add_pass("aie-canonicalize-device")
+    .Nested(
+        "aie.device",
         Pipeline()
-        .lower_affine()
-        .add_pass("aie-canonicalize-device")
-        .Nested(
-            "aie.device",
-            Pipeline()
-            .add_pass("aie-assign-lock-ids")
-            .add_pass("aie-register-objectFifos")
-            .add_pass(
-                "aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos
-            )
-            .add_pass("aie-assign-bd-ids")
-            .add_pass("aie-lower-cascade-flows")
-            .add_pass("aie-lower-broadcast-packet")
-            .add_pass("aie-lower-multicast")
-            .add_pass("aie-assign-tile-controller-ids")
-            .add_pass(
-                "aie-generate-column-control-overlay",
-                route_shim_to_tile_ctrl=ctrl_pkt_overlay,
-            )
-            .add_pass("aie-assign-buffer-addresses", basic_alloc=basic_alloc_scheme),
+        .add_pass("aie-assign-lock-ids")
+        .add_pass("aie-register-objectFifos")
+        .add_pass(
+            "aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos
         )
-        .convert_scf_to_cf()
+        .add_pass("aie-assign-bd-ids")
+        .add_pass("aie-lower-cascade-flows")
+        .add_pass("aie-lower-broadcast-packet")
+        .add_pass("aie-lower-multicast")
+        .add_pass("aie-assign-tile-controller-ids")
+        .add_pass(
+            "aie-generate-column-control-overlay",
+            route_shim_to_tile_ctrl=ctrl_pkt_overlay,
+        )
+        .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
     )
+    .convert_scf_to_cf()
 )
 
 LOWER_TO_LLVM_PIPELINE = (
@@ -334,7 +332,12 @@ def run_passes(pass_pipeline, mlir_module_str, outputfile=None, verbose=False):
         print("Running:", pass_pipeline)
     with Context() as ctx, Location.unknown():
         module = Module.parse(mlir_module_str)
-        PassManager.parse(pass_pipeline).run(module.operation)
+        pm = PassManager.parse(pass_pipeline)
+        try:
+            pm.run(module.operation)
+        except Exception as e:
+            print("Error running pass pipeline: ", pass_pipeline, e)
+            raise e
         mlir_module_str = str(module)
         if outputfile:
             with open(outputfile, "w") as g:
@@ -1061,9 +1064,11 @@ class FlowRunner:
             )
 
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
+
             pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
-                opts.basic_alloc_scheme, opts.dynamic_objFifos, opts.ctrl_pkt_overlay
+                opts.alloc_scheme, opts.dynamic_objFifos, opts.ctrl_pkt_overlay
             ).materialize(module=True)
+
             run_passes(
                 pass_pipeline,
                 self.mlir_module_str,
