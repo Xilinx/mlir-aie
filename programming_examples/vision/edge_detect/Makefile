@@ -23,6 +23,13 @@ EDGEDETECT_HEIGHT = 1080
 
 targetname = edgeDetect
 
+aie_py_src=aie2_edgeDetect.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=aie2_edgeDetect_alt.py
+endif
+
 all: build/final_${EDGEDETECT_WIDTH}.xclbin
 
 mlir: build/aie2_lineBased_8b_${EDGEDETECT_WIDTH}.mlir
@@ -35,7 +42,7 @@ build/combined_gray2rgba_addWeighted.a: build/gray2rgba.cc.o build/addWeighted.c
 	mkdir -p ${@D}
 	ar rvs $@ $< $(word 2,$^)
 
-build/aie2_lineBased_8b_${EDGEDETECT_WIDTH}.mlir: ${srcdir}/aie2_edgeDetect.py
+build/aie2_lineBased_8b_${EDGEDETECT_WIDTH}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${EDGEDETECT_WIDTH} ${EDGEDETECT_HEIGHT} > $@
 
