@@ -14,6 +14,13 @@ include ${srcdir}/../../makefile-common
 
 targetname = testExp
 
+aie_py_src=aie2.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=aie2_alt.py
+endif
+
 all: build/final.xclbin build/insts.txt
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
@@ -29,7 +36,7 @@ build/lut_based_ops.o: ${srcdir}/../../../aie_runtime_lib/AIE2/lut_based_ops.cpp
 build/kernels.a: build/exp.o build/lut_based_ops.o
 	ar rvs $@ $+
 
-build/aie.mlir: ${srcdir}/aie2.py
+build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< > $@
 
