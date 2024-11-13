@@ -1000,8 +1000,7 @@ LogicalResult ConfigureCascadeOp::verify() {
   if (t.isMemTile(tile.colIndex(), tile.rowIndex()))
     return emitOpError("memTile row has no cascade stream interface");
 
-  if ((t.getTargetArch() == AIEArch::AIE2) ||
-      (t.getTargetArch() == AIEArch::AIE2p)) {
+  if (isa<AIE2TargetModel>(t)) {
     if (inputDir == CascadeDir::South || inputDir == CascadeDir::East) {
       return emitOpError("input direction of cascade must be North or West on ")
              << stringifyAIEArch(t.getTargetArch());
@@ -1044,11 +1043,10 @@ LogicalResult GetCascadeOp::verify() {
   Type type = getCascadeValue().getType();
   DataLayout dataLayout = DataLayout::closest(*this);
   auto bits = dataLayout.getTypeSizeInBits(type);
-  if (targetModel.getTargetArch() == AIEArch::AIE1) {
+  if (isa<AIE1TargetModel>(targetModel)) {
     if (bits != 384)
       return emitOpError("must be a 384-bit type");
-  } else if ((targetModel.getTargetArch() == AIEArch::AIE2) ||
-             (targetModel.getTargetArch() == AIEArch::AIE2p)) {
+  } else if (isa<AIE2TargetModel>(targetModel)) {
     if (bits != 512)
       return emitOpError("must be a 512-bit type");
   } else
@@ -1833,7 +1831,7 @@ LogicalResult DMABDOp::verify() {
     return emitOpError("nextBdId attribute exceeds max: ") << maxBds - 1;
   if (auto dims = getDimensions(); dims.has_value()) {
     size_t maxNDims = 3;
-    if (isa_and_nonnull<MemTileDMAOp>(getOperation()->getParentOp()))
+    if (getOperation()->getParentOfType<MemTileDMAOp>())
       maxNDims = 4;
     if (dims->size() > maxNDims)
       return emitOpError() << "Cannot give more than "
