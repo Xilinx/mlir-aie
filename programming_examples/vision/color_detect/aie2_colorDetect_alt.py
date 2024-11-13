@@ -215,7 +215,6 @@ def color_detect():
                         shim_dma_bd(
                             I,
                             sizes=[1, 1, 1, height * lineWidthInBytes],
-                            strides=[0, 0, 0, 1],
                         )
                         EndOp()
                 dma_start_task(in_task)
@@ -226,7 +225,6 @@ def color_detect():
                         shim_dma_bd(
                             O,
                             sizes=[1, 1, 1, height * lineWidthInBytes],
-                            strides=[0, 0, 0, 1],
                         )
                         EndOp()
                 dma_start_task(out_task)
