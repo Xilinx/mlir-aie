@@ -50,5 +50,8 @@ def objFifo_example():
             C_,
             2,
             np.ndarray[(4,), np.dtype[np.int32]],
-            initValues=[np.arange(4, dtype=np.int32), np.arange(4, 8, dtype=np.int32).reshape(2, 2)],
+            initValues=[
+                np.arange(4, dtype=np.int32),
+                np.arange(4, 8, dtype=np.int32).reshape(2, 2),
+            ],
         )
