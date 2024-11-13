@@ -125,8 +125,7 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     }
 
     if (0 != ndims)
-      if ((AIEArch::AIE2 != targetModel.getTargetArch()) &&
-          (AIEArch::AIE2p != targetModel.getTargetArch()))
+      if (isa<AIE1TargetModel>(targetModel))
         return memOp.emitOpError("DMA contains at least one multi-dimensional "
                                  "buffer descriptor. This is currently only "
                                  "supported for AIE-ML and later devices.");
