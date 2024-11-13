@@ -263,22 +263,30 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         return bd_op->emitOpError("At most four data layout transformation "
                                   "dimensions may be provided.");
       }
-      for (size_t i = 0; i < dims->size(); i++) {
-        // Pass down dimensions in reverse order; in the MLIR, this allows
-        // us to specify step sizes/wraps in the same order as we would
-        // access a multi-dim C array, with the highest dimension first.
-        int j = dims->size() - i - 1;
-        input_sizes[i] = (*dims)[j].getSize();
-        input_strides[i] = (*dims)[j].getStride();
+
+      // Make sure dims->size() is large enough
+      if (dims && dims->size() <= 4) {
+        for (size_t i = 0; i < dims->size(); i++) {
+          // Pass down dimensions in reverse order; in the MLIR, this allows
+          // us to specify step sizes/wraps in the same order as we would
+          // access a multi-dim C array, with the highest dimension first.
+          int j = dims->size() - i - 1;
+          if (j >= dims->size()) {
+            return bd_op->emitOpError("Invalid index for dims array.");
+          }
+          input_sizes[i] = (*dims)[j].getSize();
+          input_strides[i] = (*dims)[j].getStride();
+        }
       }
       input_sizes[2] = (target_model.isMemTile(tile.getCol(), tile.getRow()))
                            ? (*dims)[2].getSize()
-                           : 1;
+                           : 0;
       if (target_model.isMemTile(tile.getCol(), tile.getRow()) &&
           channelDir == AIE::DMAChannelDir::MM2S) {
         if (padDims && padDims->size() > dims->size())
           return bd_op->emitOpError()
                  << "Mismatch in number of padding(s), stride(s) and warps(s)";
+
         if (padDims) {
           for (size_t i = 0; i < padDims->size(); i++) {
             int j = padDims->size() - i - 1;
@@ -323,15 +331,6 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         err.attachNote() << "Do not include the highest dimension size in "
                             "transfer length, as this is the BD repeat count.";
         return failure();
-      }
-    } else {
-      if (padDims && target_model.isMemTile(tile.getCol(), tile.getRow()) &&
-          channelDir == AIE::DMAChannelDir::MM2S) {
-        return bd_op->emitOpError()
-               << "Padding requires n-d data layouts expressed as "
-               << "wrap(s) and stride(s).";
-      } else if (padDims) {
-        return bd_op->emitOpError() << "Padding is supported only on MemTiles.";
       }
     }
     // find next BD ID, if any
