@@ -283,8 +283,7 @@ struct AIEPutCascadeToStdLowering : OpConversionPattern<PutCascadeOp> {
              << funcName;
     SmallVector<Value, 2> args;
     args.push_back(op.getCascadeValue());
-    if ((targetModel.getTargetArch() == AIEArch::AIE2) ||
-        (targetModel.getTargetArch() == AIEArch::AIE2p))
+    if (isa<AIE2TargetModel>(targetModel))
       args.push_back(rewriter.create<arith::ConstantOp>(
           op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           rewriter.getI32IntegerAttr(1))); // enable
@@ -318,8 +317,7 @@ struct AIEGetCascadeToStdLowering : OpConversionPattern<GetCascadeOp> {
       return op.emitOpError("Could not find the intrinsic function ")
              << funcName;
     SmallVector<Value, 2> args;
-    if ((targetModel.getTargetArch() == AIEArch::AIE2) ||
-        (targetModel.getTargetArch() == AIEArch::AIE2p))
+    if (isa<AIE2TargetModel>(targetModel))
       args.push_back(rewriter.create<arith::ConstantOp>(
           op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           rewriter.getI32IntegerAttr(1))); // enable
