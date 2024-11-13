@@ -31,7 +31,12 @@ void AIEXDialect::initialize() {
       >();
 }
 
-uint64_t getBufferDescriptorAddressRegisterAddress(
+} // namespace xilinx::AIEX
+
+#define GET_OP_CLASSES
+#include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
+
+uint64_t AIEX::getBufferDescriptorAddressRegisterAddress(
     const AIE::AIETargetModel &tm, unsigned bd_id, unsigned col, unsigned row) {
   assert(bd_id < tm.getNumBDs(col, row));
   return ((col & 0xff) << tm.getColumnShift()) |
@@ -71,12 +76,12 @@ uint64_t getBufferDescriptorAddressRegisterAddress(
   Note: strides are expressed offset by one from user input strides, because the
   hardware does not support a 0 stride (repeat).
   */
-void getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
-                             mlir::MemRefType referencedBufType,
-                             llvm::SmallVector<int64_t, 4> inputSizes,
-                             llvm::SmallVector<int64_t, 4> inputStrides,
-                             llvm::SmallVector<int64_t, 4> &sizes,
-                             llvm::SmallVector<int64_t, 4> &strides) {
+void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
+                                   mlir::MemRefType referencedBufType,
+                                   llvm::SmallVector<int64_t, 4> inputSizes,
+                                   llvm::SmallVector<int64_t, 4> inputStrides,
+                                   llvm::SmallVector<int64_t, 4> &sizes,
+                                   llvm::SmallVector<int64_t, 4> &strides) {
   assert(inputSizes.size() == inputStrides.size());
   assert(sizes.size() == 4);
   assert(strides.size() == 4);
@@ -140,13 +145,13 @@ void getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
 }
 
 mlir::LogicalResult
-verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
-                   int tileCol, int tileRow,
-                   llvm::SmallVector<int64_t, 4> inputSizes,
-                   llvm::SmallVector<int64_t, 4> inputStrides,
-                   llvm::SmallVector<int64_t, 4> hardwareSizes,
-                   llvm::SmallVector<int64_t, 4> hardwareStrides,
-                   bool skipTransformationChecks) {
+AIEX::verifyStridesWraps(mlir::Operation *forOp,
+                         mlir::MemRefType referencedBufType, int tileCol,
+                         int tileRow, llvm::SmallVector<int64_t, 4> inputSizes,
+                         llvm::SmallVector<int64_t, 4> inputStrides,
+                         llvm::SmallVector<int64_t, 4> hardwareSizes,
+                         llvm::SmallVector<int64_t, 4> hardwareStrides,
+                         bool skipTransformationChecks) {
   const auto &targetModel = AIE::getTargetModel(forOp);
   auto addressGranularity = targetModel.getAddressGenGranularity();
   auto elemWidth = referencedBufType.getElementTypeBitWidth();
@@ -243,11 +248,6 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
 
   return success();
 }
-
-} // namespace xilinx::AIEX
-
-#define GET_OP_CLASSES
-#include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
 
 //===----------------------------------------------------------------------===//
 // UseTokenOp

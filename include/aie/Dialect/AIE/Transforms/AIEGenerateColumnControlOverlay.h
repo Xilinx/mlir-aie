@@ -11,26 +11,9 @@
 #ifndef AIE_ASSIGN_BUFFER_DESCRIPTOR_IDS_H
 #define AIE_ASSIGN_BUFFER_DESCRIPTOR_IDS_H
 
-#include <optional>
-
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
-
-#include "mlir/Pass/Pass.h"
 
 using namespace mlir;
-using namespace xilinx;
-using namespace xilinx::AIE;
-
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
-
-#include "mlir/Pass/Pass.h"
-
-#define DEBUG_TYPE "aie-generate-column-control-overlay"
-
-using namespace mlir;
-using namespace xilinx;
 using namespace xilinx::AIE;
 
 // Populate column control streaming interconnect overlay
@@ -44,7 +27,7 @@ DenseMap<int, int> getRowToShimChanMap(const AIETargetModel &targetModel,
 
 // AIE arch-specific tile id to controller id mapping. Users can use those
 // packet ids for design but run into risk of deadlocking control packet flows.
-DenseMap<AIE::TileID, int>
+DenseMap<TileID, int>
 getTileToControllerIdMap(bool clColumnWiseUniqueIDs,
                          const AIETargetModel &targetModel);
 
