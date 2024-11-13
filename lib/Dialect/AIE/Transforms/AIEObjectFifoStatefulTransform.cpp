@@ -217,13 +217,12 @@ struct AIEObjectFifoStatefulTransformPass
         }
     }
 
-    // Check if the operation uses shared memory for linking.
-    // If shared memory is available and the link operation is valid,
-    // mark the operation for splitting and determine if it is used in a link
-    // operation. If the link operation is a distribute or join operation, DMAs
-    // are required even if shared memory is available. If the link has
-    // different memref types, then shared memory cannot be used, and DMAs are
-    // needed.
+    // Check if the objectfifo operation can use shared memory for linking. If
+    // the link operation is a distribute or a join operation, or if the link
+    // has different memref types, DMAs are required even if shared memory is
+    // available and the objectfifo should be split. Otherwise check if the
+    // via_shared_memory attribute of the objectfifo operation is set and apply
+    // it.
     bool isLinkViaSharedMemory = false;
     if (hasSharedMemory) {
       if (auto linkOp = getOptionalLinkOp(createOp)) {
@@ -246,11 +245,8 @@ struct AIEObjectFifoStatefulTransformPass
               if (consumerType == producerType)
                 isLinkViaSharedMemory =
                     isSharedMemory(producerTile, consumerTileOp, &share_dir);
-              else {
-                // TODO: Support for different memref types through shared
-                // memory without DMAs
-                isLinkViaSharedMemory = false;
-              }
+              // TODO: Support for different memref types through shared
+              // memory without DMAs
             }
           }
           if (createOp.getViaSharedMem().has_value() && isLinkViaSharedMemory) {
@@ -1728,9 +1724,8 @@ struct AIEObjectFifoStatefulTransformPass
       //===----------------------------------------------------------------===//
       coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
         auto acqOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-        if (ObjectFifoCreateOp op = acqOp.getObjectFifo();
-            getOptionalLinkOp(op)) {
-          if (auto linkOp = getOptionalLinkOp(op)) {
+        if (ObjectFifoCreateOp op = acqOp.getObjectFifo()) {
+          if (auto linkOp = getOptionalLinkOp(op); linkOp.has_value()) {
             if (!linkOp->isDistribute() && !linkOp->isJoin()) {
               for (auto consumerTile : op.getConsumerTiles()) {
                 if (auto consumerTileOp =
@@ -1749,19 +1744,13 @@ struct AIEObjectFifoStatefulTransformPass
                   }
                 }
               }
-            } else
-              accessOp->emitOpError(
-                  "currently cannot access objectFifo used in "
-                  "ObjectFifoLinkOp");
-          } else
-            accessOp->emitOpError("currently cannot access objectFifo used in "
-                                  "ObjectFifoLinkOp");
+            }
+          }
         }
         accessOp.getOutput().replaceAllUsesWith(
             subviews[acqOp][accessOp.getIndex()]->getBuffer());
       });
     }
-
     // make global symbols to replace the to be erased ObjectFifoCreateOps
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
       builder.setInsertionPointToStart(&device.getBodyRegion().front());
