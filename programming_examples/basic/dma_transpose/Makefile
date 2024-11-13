@@ -20,7 +20,14 @@ targetname = dmaTranspose
 M ?= 64
 K ?= 32
 
-build/aie.mlir: ${srcdir}/aie2.py
+aie_py_src=aie2.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=aie2_alt.py
+endif
+
+build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${M} ${K} > $@
 
