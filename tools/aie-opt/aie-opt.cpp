@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
   llvm::cl::AddExtraVersionPrinter(versionPrinter);
 
   // ClangIR dialect
-  registry.insert<mlir::cir::CIRDialect>();
+  registry.insert<cir::CIRDialect>();
 
   // ClangIR-specific passes
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {

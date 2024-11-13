@@ -24,7 +24,7 @@ def CIRToAIEPrepare : Pass<"cir-to-aie-prepare", "mlir::ModuleOp"> {
 
   let constructor = "xilinx::AIE::CIR::createCIRToAIEPreparePass()";
   let dependentDialects = [
-    "mlir::cir::CIRDialect",
+    "cir::CIRDialect",
     "xilinx::AIE::AIEDialect",
   ];
 }
@@ -40,7 +40,7 @@ def CIRToAIE : Pass<"cir-to-aie", "mlir::ModuleOp"> {
 
   let constructor = "xilinx::AIE::CIR::createCIRToAIEPass()";
   let dependentDialects = [
-    "mlir::cir::CIRDialect",
+    "cir::CIRDialect",
     "xilinx::AIE::AIEDialect",
   ];
 }
