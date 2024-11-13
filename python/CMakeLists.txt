@@ -92,7 +92,6 @@ declare_mlir_python_sources(AIEPythonSources.Compiler
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
     compiler/aiecc/*.py
-    compiler/util.py
 )
 
 if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
