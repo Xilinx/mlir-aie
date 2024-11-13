@@ -220,13 +220,13 @@ struct AIEObjectFifoStatefulTransformPass
     // Check if the objectfifo operation can use shared memory for linking. If
     // the link operation is a distribute or a join operation, or if the link
     // has different memref types, DMAs are required even if shared memory is
-    // available and the objectfifo should be split. Otherwise check if the
-    // via_shared_memory attribute of the objectfifo operation is set and apply
-    // it.
+    // available and the objectfifo should be split. Otherwise also check if the
+    // via_shared_memory attribute of the objectfifo operation is set and try to
+    // apply it.
     bool isLinkViaSharedMemory = false;
     if (hasSharedMemory) {
       if (auto linkOp = getOptionalLinkOp(createOp)) {
-        splitBecauseLink.push_back(createOp);
+        splitBecauseLink.push_back(createOp); // 4 cases : else conditions
         isUsedInLinkOp = true;
         int share_dir = 0;
         if (!linkOp->isDistribute() && !linkOp->isJoin()) {
@@ -1730,13 +1730,9 @@ struct AIEObjectFifoStatefulTransformPass
                 if (auto consumerTileOp =
                         dyn_cast<TileOp>(consumerTile.getDefiningOp())) {
                   int share_dir_value = 0;
-                  int *share_dir = &share_dir_value;
-                  bool sharing = isSharedMemory(op.getProducerTileOp(),
-                                                consumerTileOp, share_dir);
-                  if (sharing) {
-                    accessOp.getOutput().replaceAllUsesWith(
-                        subviews[acqOp][accessOp.getIndex()]->getBuffer());
-                  } else {
+                  bool sharing = isSharedMemory(
+                      op.getProducerTileOp(), consumerTileOp, &share_dir_value);
+                  if (!sharing) {
                     accessOp->emitOpError(
                         "currently cannot access objectFifo used in "
                         "ObjectFifoLinkOp");
