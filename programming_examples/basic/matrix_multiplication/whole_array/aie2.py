@@ -169,10 +169,11 @@ def my_matmul(
     elif n_aie_cols == 4:
         dev = AIEDevice.npu1_4col
 
-    # Only used if generate_tiles is True
-    A_tiles = []
-    B_tiles = []
-    C_tiles = []
+    # These will hold TensorTile objects that represent the runtime
+    # npu_dma_memcpy_nd operations of this design. They are only used if generate_tiles is true
+    A_tensor_tiles = []
+    B_tensor_tiles = []
+    C_tensor_tiles = []
 
     @device(dev)
     def device_body():
@@ -411,7 +412,10 @@ def my_matmul(
                             sizes=C_sizes,
                             strides=C_strides,
                         )
-                        C_tiles.append(
+                        # Use the calculated sizes/strides/offsets to record the data movement
+                        # caused by the above call to npu_dma_memcpy_nd.
+                        # This line does not change MLIR output at all.
+                        C_tensor_tiles.append(
                             TensorTile(
                                 (M, N),
                                 offset=C_offset,
@@ -462,7 +466,10 @@ def my_matmul(
                                 sizes=A_sizes,
                                 strides=A_strides,
                             )
-                            A_tiles.append(
+                            # Use the calculated sizes/strides/offsets to record the data movement
+                            # caused by the above call to npu_dma_memcpy_nd.
+                            # This line does not change MLIR output at all.
+                            A_tensor_tiles.append(
                                 TensorTile(
                                     (M, K),
                                     offset=A_offset,
@@ -505,7 +512,10 @@ def my_matmul(
                                 sizes=B_sizes,
                                 strides=B_strides,
                             )
-                            B_tiles.append(
+                            # Use the calculated sizes/strides/offsets to record the data movement
+                            # caused by the above call to npu_dma_memcpy_nd.
+                            # This line does not change MLIR output at all.
+                            B_tensor_tiles.append(
                                 TensorTile(
                                     (K, N),
                                     offset=B_col_offset,
@@ -518,10 +528,12 @@ def my_matmul(
             dma_wait(*C_l2l3_fifos)
 
     if generate_tiles:
+        # If generate tiles is true, return a representation of tensor tiles
+        # representing all the npu_dma_memcpy_nd runtime sequence operations per input/ouput tensor.
         return (
-            TensorTileSequence.from_tiles(A_tiles),
-            TensorTileSequence.from_tiles(B_tiles),
-            TensorTileSequence.from_tiles(C_tiles),
+            TensorTileSequence.from_tiles(A_tensor_tiles),
+            TensorTileSequence.from_tiles(B_tensor_tiles),
+            TensorTileSequence.from_tiles(C_tensor_tiles),
         )
 
 
