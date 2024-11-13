@@ -73,9 +73,25 @@ if test -f "$VPP"; then
   export PEANO_INSTALL_DIR=`realpath llvm-aie`
   popd
   python3 -m pip install -r python/requirements.txt
+
+  # This installs the pre-commit hooks defined in .pre-commit-config.yaml
+  pre-commit install
+
   HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
   python3 -m pip install -r python/requirements_ml.txt
   source utils/env_setup.sh my_install/mlir_aie my_install/mlir
+
+  # This creates an ipykernel (for use in notebooks) using the ironenv venv
+  python3 -m ipykernel install --user --name ironenv
+
+  # right now, mlir-aie install dire is generally captures in the $PYTHONPATH by the setup_env script.
+  # However, jupyter notebooks don't always get access to the PYTHONPATH (e.g. if they are run with
+  # vscode) so we save the ${MLIR_AIE_INSTALL_DIR}/python in a .pth file in the site packages dir of the
+  # ironenv venv; this allows the iron ipykernel to find the install dir regardless of if PYTHONPATH is
+  # available or not.
+  venv_site_packages=`python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])'`
+  echo ${MLIR_AIE_INSTALL_DIR}/python > $venv_site_packages/mlir-aie.pth
+
   pushd programming_examples
   echo "PATH              : $PATH"
   echo "LD_LIBRARY_PATH   : $LD_LIBRARY_PATH"
