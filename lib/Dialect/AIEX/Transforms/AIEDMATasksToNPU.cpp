@@ -253,6 +253,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         llvm::SmallVector<int64_t, 4>(4, 0);
     std::fill(padBefore.begin(), padBefore.end(), 0);
     std::fill(padAfter.begin(), padAfter.end(), 0);
+    int d2size = 0;
 
     if (dims && dims->size() > 0) {
       llvm::SmallVector<int64_t, 4> input_sizes =
@@ -264,7 +265,6 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
                                   "dimensions may be provided.");
       }
 
-      // Make sure dims->size() is large enough
       for (size_t i = 0; i < dims->size(); i++) {
         // Pass down dimensions in reverse order; in the MLIR, this allows
         // us to specify step sizes/wraps in the same order as we would
@@ -274,10 +274,22 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         input_strides[i] = (*dims)[j].getStride();
       }
       if (dims->size() > 2) {
-        input_sizes[2] = (target_model.isMemTile(tile.getCol(), tile.getRow()))
-                             ? (*dims)[2].getSize()
-                             : 0;
+        d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))
+                     ? (*dims)[2].getSize()
+                     : 0;
       }
+      // if(failed(verifyPaddingDims(target_model, tile.getCol(), tile.getRow(),
+      // dims, padDims))) return failure();
+      if (padDims.has_value()) {
+        if (!target_model.isMemTile(tile.getCol(), tile.getRow()))
+          return bd_op->emitOpError()
+                 << "Padding is only supported by memtile dma bds.";
+        if (padDims->size() > dims->size())
+          return bd_op->emitOpError()
+                 << "Mismatch number of dimensions between padding(s)"
+                 << " and wrap(s) and stride(s).";
+      }
+
       if (target_model.isMemTile(tile.getCol(), tile.getRow()) &&
           channelDir == AIE::DMAChannelDir::MM2S) {
         if (padDims) {
@@ -325,6 +337,15 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
                             "transfer length, as this is the BD repeat count.";
         return failure();
       }
+    } else {
+      if (padDims && target_model.isMemTile(tile.getCol(), tile.getRow()) &&
+          channelDir == AIE::DMAChannelDir::MM2S) {
+        return bd_op->emitOpError()
+               << "Padding requires n-d data layouts expressed as "
+               << "wrap(s) and stride(s).";
+      } else if (padDims) {
+        return bd_op->emitOpError() << "Padding is supported only on MemTiles.";
+      }
     }
     // find next BD ID, if any
     uint32_t use_next_bd = 0;
@@ -340,7 +361,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         /* TODO: Strides/Wraps */
         /*d0_size=*/sizes[0], /*d0_stride=*/strides[0],
         /*d1_size=*/sizes[1], /*d1_stride=*/strides[1],
-        /*d2_size=*/sizes[2], /*d2_stride=*/strides[2],
+        /*d2_size=*/d2size, /*d2_stride=*/strides[2],
         /*iteration_current=*/0, /*iteration_size=*/sizes[3],
         /*iteration_stride=*/strides[3],
         /* TODO: Next BD */
