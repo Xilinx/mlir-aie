@@ -58,3 +58,14 @@ def display_flows(module):
 
 def annot(op, annot):
     op.operation.attributes[annot] = UnitAttr.get()
+
+
+def aiecc_args(xclbin, insts):
+    return [
+        "--aie-generate-cdo",
+        f"--xclbin-name={xclbin}",
+        "--no-xchesscc",
+        "--no-xbridge",
+        "--aie-generate-npu",
+        f"--npu-insts-name={insts}",
+    ]
