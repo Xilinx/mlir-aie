@@ -286,16 +286,11 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
                         )
                         with bds(c_task) as bd:
                             with bd[0]:
-                                dma_bd(
+                                shim_dma_bd(
                                     C,
                                     offset=C_row_offset,
-                                    len=N * m,
-                                    dimensions=[
-                                        (num_tile_rows, m_x_N),
-                                        (N_div_n, n),
-                                        (m, N),
-                                        (n, 1),
-                                    ],
+                                    sizes=[num_tile_rows, N_div_n, m, n],
+                                    strides=[m_x_N, n, N, 1],
                                 )
                                 EndOp()
                         dma_start_task(c_task)
@@ -309,16 +304,11 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
                             )
                             with bds(a_task) as bd:
                                 with bd[0]:
-                                    dma_bd(
+                                    shim_dma_bd(
                                         A,
                                         offset=A_row_offset,
-                                        len=m * K,
-                                        dimensions=[
-                                            (1, 0),  # repeat/wrap w/o stride
-                                            (K_div_k, k),
-                                            (m, K),
-                                            (k, 1),
-                                        ],
+                                        sizes=[1, K_div_k, m, k],
+                                        strides=[0, k, K, 1],
                                     )
                                     EndOp()
                             dma_start_task(a_task)
@@ -330,16 +320,11 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
                             )
                             with bds(b_task) as bd:
                                 with bd[0]:
-                                    dma_bd(
+                                    shim_dma_bd(
                                         B,
                                         offset=0,
-                                        len=K * n,
-                                        dimensions=[
-                                            (N_div_n, n),
-                                            (K_div_k, k_x_N),
-                                            (k, N),
-                                            (n, 1),
-                                        ],
+                                        sizes=[N_div_n, K_div_k, k, n],
+                                        strides=[n, k_x_N, N, 1],
                                     )
                                     EndOp()
                             dma_start_task(b_task)

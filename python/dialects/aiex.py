@@ -8,7 +8,7 @@ from operator import itemgetter
 import numpy as np
 
 from ._aiex_ops_gen import *
-from ._aie_ops_gen import ObjectFifoCreateOp
+from ._aie_ops_gen import ObjectFifoCreateOp, dma_bd
 from . import aie
 from .aie import (
     DMAChannelDir,
@@ -836,3 +836,28 @@ def dma_start_bd_chain_for(symbol, args, alloc, *pyargs, **kwargs):
     return DMAStartBdChainForOp(
         T.index(), chain_sym, args, alloc_sym, *pyargs, **kwargs
     )
+
+
+def shim_dma_bd(
+    mem,
+    offset: int | None = None,
+    sizes: MixedValues | None = None,
+    strides: MixedValues | None = None,
+    transfer_len: int | None = None,
+):
+    if offset is None:
+        offset = 0
+    if sizes is None:
+        sizes = [0] * 4
+    if strides is None:
+        strides = [0] * 3 + [1]
+
+    if transfer_len is None:
+        if len(sizes) >= 4:
+            # For shim dma bd, highest dimension is repeat count which is not included in the length
+            transfer_len = np.prod(sizes[1:])
+        else:
+            # If does not have highest dimension, then we can take the product of all dimensions
+            transfer_len = np.prod(sizes)
+    dimensions = list(zip(sizes, strides))
+    dma_bd(mem, offset=offset, len=transfer_len, dimensions=dimensions)
