@@ -378,10 +378,10 @@ class object_fifo(ObjectFifoCreateOp):
         datatype: MemRefType | type[np.ndarray],
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
+        initValues=None,
         via_DMA=None,
         plio=None,
         disable_synchronization=None,
-        initValues=None,
     ):
         self.datatype = try_convert_np_type_to_mlir_type(datatype)
         if not isinstance(consumerTiles, List):
