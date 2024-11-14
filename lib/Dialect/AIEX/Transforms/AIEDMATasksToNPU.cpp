@@ -252,6 +252,8 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         return bd_op->emitOpError("At most four data layout transformation "
                                   "dimensions may be provided.");
       }
+      bool isLinearTransfer = (input_sizes[0] >= 1) && (input_sizes[1] == 1) &&
+                              (input_sizes[2] == 1) && (input_sizes[3] == 1);
       for (size_t i = 0; i < dims->size(); i++) {
         // Pass down dimensions in reverse order; in the MLIR, this allows
         // us to specify step sizes/wraps in the same order as we would
@@ -264,7 +266,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
                               input_strides, sizes, strides);
       if (failed(verifyStridesWraps(bd_op, buffer_type, tile.getCol(),
                                     tile.getRow(), input_sizes, input_strides,
-                                    sizes, strides))) {
+                                    sizes, strides, isLinearTransfer))) {
         return failure();
       }
       // Ensure the total transfer length and the length expressed in the lowest
