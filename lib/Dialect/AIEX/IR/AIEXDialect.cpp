@@ -443,9 +443,11 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
 LogicalResult AIEX::NpuWriteBdOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
+  bool isLinearTransfer = (getD0Size() >= 1) && (getD1Size() == 1) &&
+                          (getIterationSize() == 0);
   if (getBdId() > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
-  if (getD0Size() > 0x3FF)
+  if (!isLinearTransfer && getD0Size() > 0x3FF)
     return emitOpError("D0 Size exceeds the [0:1023] range.");
   if (getD0Stride() > 0xFFFFF)
     return emitOpError("D0 Stride exceeds the [0:1M-1] range.");
