@@ -217,8 +217,6 @@ The `plio` input is used to provide information about the data movement configur
 
 The Object FIFO is a synchronized data movement primitive that couples dedicated synchronization resources to its objects to ensure that only one actor at a time can access them, thus preventing data corruption. These synchronization resources cost additional cycles at runtime and it may be desirable to remove them when they aren't required. One example of such a situation is when using Object FIFOs with same producer / consumer as the accesses within a core will execute sequentially. The `disable_synchronization` input of the Object FIFO serves that exact purpose and when it is set to true there will be no synchronization resources coupled to the objects.
 
-> **NOTE:**  It may not always be the case that accesses to a same producer / consumer Object FIFO are sequential. For example, if multiple threads are running on that tile, the accesses could be concurrent and thus require synchronization.
-
 ### Advanced Topic: Data Movement Accelerators
 
 **The following topic is not required to understand the rest of this guide.**
