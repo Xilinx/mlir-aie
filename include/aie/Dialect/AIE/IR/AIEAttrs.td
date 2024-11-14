@@ -140,7 +140,7 @@ def BDDimLayoutAttr : AttrDef<AIE_Dialect, "BDDimLayout", []> {
   }];
 
   let parameters = (ins
-    "uint16_t" : $size,
+    "uint32_t" : $size,
     "uint32_t" : $stride
   );
 
