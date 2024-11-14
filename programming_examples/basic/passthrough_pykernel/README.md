@@ -20,6 +20,8 @@ This IRON design flow example, called "Passthrough Kernel", demonstrates a simpl
 
 1. `test.py`: This Python code is a testbench for the Passthrough Kernel design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data.
 
+1. `passthrough_pykernel.ipynb`: This notebook contains the design (which is duplicated from `aie2.py`) and test code (which is duplicated from `test.py`) for an alternate way of interacting with the example.
+
 ## Design Overview
 
 <img align="right" width="300" height="300" src="../../../programming_guide/assets/passthrough_simple.svg"> 
@@ -64,13 +66,13 @@ This design performs a memcpy operation on a vector of input data. The AIE desig
 
 To compile the design:
 
-```
+```bash
 make
 ```
 
 To complete compiling the C++ testbench and run the design:
 
-```
+```bash
 make run
 ```
 
@@ -78,12 +80,34 @@ make run
 
 To compile the design:
 
-```
+```bash
 make
 ```
 
 To run the design:
 
-```
+```bash
 make run_py
+```
+
+### Notebook
+
+#### Use the Notebook
+* Start a jupyter server at the root directory of your clone of `mlir-aie`.
+  Make sure you use a terminal that has run the `utils/setup_env.sh` script
+  so that the correct environment variables are percolated to jupyter.
+  Below is an example of how to start a jupyter server:
+  ```bash
+  python3 -m jupyter notebook --no-browser --port=8080
+  ```
+* In your browser, navigate to the URL (which includes a token) which is found
+  in the output of the above command.
+* Navigate to `programming_examples/basic/passthrough_pykernel`
+* Double click `passthrough_pykernel.ipynb` to start the notebook; choose the ipykernel called `ironenv`.
+* You should now be good to go!
+
+#### Run the Notebook as a Script
+```bash
+make clean_notebook
+make run_notebook
 ```
