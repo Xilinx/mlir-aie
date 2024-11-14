@@ -241,7 +241,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     // Process strides/wraps
     std::optional<llvm::ArrayRef<AIE::BDDimLayoutAttr>> dims =
         bd_op.getDimensions();
-    llvm::SmallVector<int64_t, 4> sizes = llvm::SmallVector<int64_t, 4>(4, 0);
+    llvm::SmallVector<int64_t, 4> sizes = llvm::SmallVector<int64_t, 4>(4, 1);
     llvm::SmallVector<int64_t, 4> strides = llvm::SmallVector<int64_t, 4>(4, 0);
     if (dims && dims->size() > 0) {
       llvm::SmallVector<int64_t, 4> input_sizes =

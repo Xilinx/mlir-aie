@@ -65,7 +65,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         if offsets is None:
             offsets = [0] * 4
         if sizes is None:
-            sizes = [0] * 4
+            sizes = [1] * 4
         if strides is None:
             strides = [0] * 3 + [1]
         dynamic_offsets, _packed_offsets, static_offsets = _dispatch_mixed_values(
@@ -848,7 +848,7 @@ def shim_dma_bd(
     if offset is None:
         offset = 0
     if sizes is None:
-        sizes = [0] * 4
+        sizes = [1] * 4
     if strides is None:
         strides = [0] * 3 + [1]
 
