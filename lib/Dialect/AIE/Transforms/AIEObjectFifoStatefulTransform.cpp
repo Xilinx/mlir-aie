@@ -176,13 +176,16 @@ struct AIEObjectFifoStatefulTransformPass
   // the objectFifo broadcasts to multiple tiles, if one of the consumers or
   // the producer wants to use the multi-dimensional address generation
   // features of the DMA, if the objectFifo is part of a LinkOp, or if the
-  // via_DMA attribute of the objectFifo is set.
+  // via_DMA or repeatCount attributes of the objectFifo are set.
   bool requiresDMAs(ObjectFifoCreateOp createOp, int &share_direction) {
     bool hasSharedMemory = false;
     bool atLeastOneConsumerWantsTransform = false;
     bool isUsedInLinkOp = false;
 
     if (createOp.getVia_DMA())
+      return true;
+
+    if (createOp.getRepeatCount().has_value())
       return true;
 
     if (createOp.getConsumerTiles().size() == 1 &&
@@ -298,7 +301,8 @@ struct AIEObjectFifoStatefulTransformPass
   std::vector<LockOp> createObjectFifoLocks(OpBuilder &builder,
                                             LockAnalysis &lockAnalysis,
                                             ObjectFifoCreateOp op, int numElem,
-                                            TileOp creation_tile) {
+                                            TileOp creation_tile,
+                                            int repeatCount) {
     std::vector<LockOp> locks;
     if (op.getDisableSynchronization())
       return locks;
@@ -328,8 +332,9 @@ struct AIEObjectFifoStatefulTransformPass
       // create corresponding aie2 locks
       int prodLockID = lockAnalysis.getLockID(creation_tile);
       assert(prodLockID >= 0 && "No more locks to allocate!");
+      int prodLockValue = numElem * repeatCount;
       auto prodLock = builder.create<LockOp>(
-          builder.getUnknownLoc(), creation_tile, prodLockID, numElem);
+          builder.getUnknownLoc(), creation_tile, prodLockID, prodLockValue);
       prodLock.getOperation()->setAttr(
           SymbolTable::getSymbolAttrName(),
           builder.getStringAttr(op.name().str() + "_prod_lock"));
@@ -337,8 +342,9 @@ struct AIEObjectFifoStatefulTransformPass
 
       int consLockID = lockAnalysis.getLockID(creation_tile);
       assert(consLockID >= 0 && "No more locks to allocate!");
-      auto consLock = builder.create<LockOp>(builder.getUnknownLoc(),
-                                             creation_tile, consLockID, 0);
+      int consLockValue = 0;
+      auto consLock = builder.create<LockOp>(
+          builder.getUnknownLoc(), creation_tile, consLockID, consLockValue);
       consLock.getOperation()->setAttr(
           SymbolTable::getSymbolAttrName(),
           builder.getStringAttr(op.name().str() + "_cons_lock"));
@@ -361,8 +367,9 @@ struct AIEObjectFifoStatefulTransformPass
     int of_elem_index = 0; // used to give objectFifo elements a symbolic name
 
     // if this objectFifo is linked to another, check if the other's elements
-    // have already been created (the elements that are created are those of
-    // the objFifo with elements of bigger size)
+    // have already been created: if none of the output objectfifos of the link
+    // have initValues, then the elements that are created are those of the
+    // objFifo with elements of bigger size
     bool linked = false;
     auto linkOp = getOptionalLinkOp(op);
     if (linkOp) {
@@ -429,17 +436,20 @@ struct AIEObjectFifoStatefulTransformPass
       }
       of_elem_index++;
     }
+    int repeatCount = 1;
+    if (op.getRepeatCount().has_value())
+      repeatCount = op.getRepeatCount().value();
     if (linked) {
       if (linkOp->getRepeatCount().has_value())
-        numElem *= linkOp->getRepeatCount().value() + 1;
+        repeatCount = linkOp->getRepeatCount().value();
       if (linkOp->isDistribute())
         numElem *= linkOp->getFifoOuts().size();
       else if (linkOp->isJoin())
         numElem *= linkOp->getFifoIns().size();
       objFifoLinks[*linkOp] = op;
     }
-    std::vector<LockOp> locks = createObjectFifoLocks(builder, lockAnalysis, op,
-                                                      numElem, creation_tile);
+    std::vector<LockOp> locks = createObjectFifoLocks(
+        builder, lockAnalysis, op, numElem, creation_tile, repeatCount);
     buffersPerFifo[op] = buffers;
     locksPerFifo[op] = locks;
   }
@@ -542,12 +552,25 @@ struct AIEObjectFifoStatefulTransformPass
     auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
     int len = elemType.getNumElements();
 
+    // check for repeat count
+    int repeatCount = 1;
+    if (op.getRepeatCount().has_value())
+      repeatCount = op.getRepeatCount().value();
+
     // search for the buffers/locks (based on if this objFifo has a link)
     ObjectFifoCreateOp target = op;
     if (std::optional<ObjectFifoLinkOp> linkOp = getOptionalLinkOp(op);
-        linkOp.has_value())
-      if (objFifoLinks.find(linkOp.value()) != objFifoLinks.end())
+        linkOp.has_value()) {
+      if (objFifoLinks.find(linkOp.value()) != objFifoLinks.end()) {
         target = objFifoLinks[linkOp.value()];
+        if (target == op) {
+          if (linkOp->getRepeatCount().has_value()) {
+            acqNum *= linkOp->getRepeatCount().value();
+            relNum *= linkOp->getRepeatCount().value();
+          }
+        }
+      }
+    }
 
     // search for MemOp
     Operation *producerMem = nullptr;
@@ -582,7 +605,7 @@ struct AIEObjectFifoStatefulTransformPass
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, /*repeatCount*/ 0, bdBlock,
+                               channelIndex, repeatCount - 1, bdBlock,
                                endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
@@ -701,17 +724,9 @@ struct AIEObjectFifoStatefulTransformPass
     int relNum = 1;
 
     // check for repeat count
-    int repeatCount = 0;
-    if (!dims.getValue().empty()) {
-      auto highestStride = dims.getValue().begin()->getStride() - 1;
-      if (highestStride == 0) {
-        repeatCount = dims.getValue().begin()->getSize();
-        dims = AIE::BDDimLayoutArrayAttr::get(op->getContext(),
-                                              dims.getValue().drop_front(1));
-      }
-    }
-    if (op.getMemtileRepeat().has_value())
-      repeatCount = op.getMemtileRepeat().value();
+    int repeatCount = 1;
+    if (op.getRepeatCount().has_value())
+      repeatCount = op.getRepeatCount().value();
 
     // search for the buffers/locks (based on if this objFifo has a link)
     // identify size difference between input and output memrefs
@@ -725,11 +740,10 @@ struct AIEObjectFifoStatefulTransformPass
         auto srcOffsets = linkOp->getSrcOffsets();
         auto dstOffsets = linkOp->getDstOffsets();
 
-        if (target == op) {
-          if (linkOp->getRepeatCount().has_value()) {
-            // +1 for original data movement
-            acqNum *= linkOp->getRepeatCount().value() + 1;
-            relNum *= linkOp->getRepeatCount().value() + 1;
+        if (linkOp->getRepeatCount().has_value()) {
+          if (linkOp->getInputObjectFifos()[0] == op) {
+            acqNum *= linkOp->getRepeatCount().value();
+            relNum *= linkOp->getRepeatCount().value();
           }
         }
 
@@ -817,7 +831,8 @@ struct AIEObjectFifoStatefulTransformPass
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, repeatCount, bdBlock, endBlock);
+                               channelIndex, repeatCount - 1, bdBlock,
+                               endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
@@ -1321,8 +1336,12 @@ struct AIEObjectFifoStatefulTransformPass
 
       // Only FIFOs using DMA are split into two ends;
       // skip in shared memory case
-      if (int share_direction = 0; !requiresDMAs(createOp, share_direction))
+      if (int share_direction = 0; !requiresDMAs(createOp, share_direction)) {
+        if (createOp.getRepeatCount().has_value())
+          createOp->emitWarning("Repeat unavailable for tiles sharing memory; "
+                                "ignoring `repeat_count`");
         continue;
+      }
 
       for (auto consumerTile : createOp.getConsumerTiles()) {
         auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
@@ -1568,6 +1587,9 @@ struct AIEObjectFifoStatefulTransformPass
 
         // release locks
         int numLocks = releaseOp.relNumber();
+        // account for repetition
+        if (op.getRepeatCount().has_value())
+          numLocks *= op.getRepeatCount().value();
         createUseLocks(builder, op, port, relPerFifo, numLocks,
                        LockAction::Release);
 
@@ -1653,6 +1675,10 @@ struct AIEObjectFifoStatefulTransformPass
           numCreate = numLocks - alreadyAcq;
         else
           numCreate = 0;
+
+        // account for repetition
+        if (op.getRepeatCount().has_value())
+          numCreate *= op.getRepeatCount().value();
 
         auto dev = op->getParentOfType<DeviceOp>();
         if (auto &targetArch = dev.getTargetModel();
