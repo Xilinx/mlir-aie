@@ -21,6 +21,7 @@ from ..extras.dialects.ext.memref import (
     load as memref_load,
 )
 from .._mlir_libs import get_dialect_registry
+from array import array
 
 # noinspection PyUnresolvedReferences
 from .._mlir_libs._aie import (
@@ -65,6 +66,7 @@ from ..ir import (
     UnitAttr,
     Value,
     _i32ArrayAttr,
+    _arrayAttr,
 )
 
 # Comes from _aie
@@ -376,6 +378,7 @@ class object_fifo(ObjectFifoCreateOp):
         datatype: MemRefType | type[np.ndarray],
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
+        initValues=None,
         via_DMA=None,
         plio=None,
         disable_synchronization=None,
@@ -388,6 +391,14 @@ class object_fifo(ObjectFifoCreateOp):
         if dimensionsToStream is None:
             dimensionsToStream = []
         of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
+        if initValues is not None:
+            values = []
+            for e in initValues:
+                init_val = e
+                if e is list:
+                    init_val = array("i", e)
+                values.append(DenseElementsAttr.get(init_val, type=self.datatype))
+            initValues = _arrayAttr(values, None)
         super().__init__(
             sym_name=name,
             producerTile=producerTile,
@@ -399,6 +410,7 @@ class object_fifo(ObjectFifoCreateOp):
             via_DMA=via_DMA,
             plio=plio,
             disable_synchronization=disable_synchronization,
+            initValues=initValues,
         )
 
     def acquire(self, port, num_elem):
