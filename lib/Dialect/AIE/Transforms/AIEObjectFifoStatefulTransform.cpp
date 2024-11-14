@@ -1752,14 +1752,17 @@ struct AIEObjectFifoStatefulTransformPass
                   int share_dir_value = 0;
                   bool sharing = isSharedMemory(
                       op.getProducerTileOp(), consumerTileOp, &share_dir_value);
-                  if (!sharing) {
+                  if (!sharing) 
                     accessOp->emitOpError(
-                        "currently cannot access objectFifo used in "
-                        "ObjectFifoLinkOp");
-                  }
+                      "currently cannot access objectFifo used in "
+                      "ObjectFifoLinkOp if the tiles don't share memory");
                 }
               }
             }
+            else
+                accessOp->emitOpError(
+                  "currently cannot access objectFifo used in "
+                  "ObjectFifoLinkOp if it is a distribute or join link");
           }
         }
         accessOp.getOutput().replaceAllUsesWith(
