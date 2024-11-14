@@ -1,3 +1,4 @@
+# test/npu-xrt/objectfifo_repeat/simple_repeat/aie2.py
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -5,10 +6,10 @@
 #
 # (c) Copyright 2024 AMD Inc.
 
-# REQUIRES: ryzen_ai, valid_xchess_license
+# REQUIRES: ryzen_ai, peano
 #
 # RUN: %python %S/aie2.py 4096 > ./aie2.mlir
-# RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
+# RUN: %python aiecc.py --no-aiesim --no-xchesscc --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
 # RUN: %run_on_npu ./test.exe -x final.xclbin -i insts.txt -k MLIR_AIE -l 4096 | FileCheck %s
 # CHECK: PASS!
@@ -22,11 +23,11 @@ from aie.extras.context import mlir_mod_ctx
 N = 4096
 dev = AIEDevice.npu1_1col
 col = 0
-memtile_repeat_count = 3
+memtile_repeat_count = 4
 
 if len(sys.argv) > 1:
     N = int(sys.argv[1])
-data_out_size = N * (memtile_repeat_count + 1)
+data_out_size = N * memtile_repeat_count
 
 if len(sys.argv) > 2:
     if sys.argv[2] == "npu":
@@ -55,7 +56,7 @@ def simple_repeat():
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile, MemTile, 1, tensor_ty)
             of_out = object_fifo("out", MemTile, ShimTile, 1, tensor_ty)
-            of_out.set_memtile_repeat(memtile_repeat_count)
+            of_out.set_repeat_count(memtile_repeat_count)
             object_fifo_link(of_in, of_out)
 
             # To/from AIE-array data movement

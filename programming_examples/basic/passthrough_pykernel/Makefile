@@ -58,3 +58,11 @@ run_py: build/final_${data_size}.xclbin build/insts_${data_size}.txt
 
 clean:
 	rm -rf build _build ${targetname}*.exe
+
+run_notebook: ${srcdir}/passthrough_pykernel.ipynb
+	mkdir -p notebook_build
+	cd notebook_build && jupyter nbconvert --to script ${srcdir}/passthrough_pykernel.ipynb --output-dir .
+	cd notebook_build && ipython passthrough_pykernel.py
+
+clean_notebook:
+	rm -rf notebook_build notebook_aie.mlir
