@@ -33,7 +33,7 @@ bufOut = actOut * 2  # double buffer
 
 tensorSize = width * height * in_channels
 
-N_in_bytes = 32*32*8*8  # Why this number? Why x2 in original vector example?
+N_in_bytes = tensorSize  # Number of bytes of output data (1 byte/elem)
 
 
 def conv2dk1(trace_size: int):
