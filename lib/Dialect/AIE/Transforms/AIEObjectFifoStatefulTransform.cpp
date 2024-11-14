@@ -308,6 +308,8 @@ struct AIEObjectFifoStatefulTransformPass
       return locks;
     auto dev = op->getParentOfType<DeviceOp>();
     auto &target = dev.getTargetModel();
+    // if shimTile external buffers are collected from input code
+    // create as many locks as there are external buffers
     if (creation_tile.isShimTile()) {
       numElem = 1;
       if (!externalBuffersPerFifo[op].empty())
@@ -317,10 +319,11 @@ struct AIEObjectFifoStatefulTransformPass
       int of_elem_index = 0; // used to give objectFifo elements a symbolic name
       for (int i = 0; i < numElem; i++) {
         // create corresponding aie1 locks
+        int initValue = op.getInitValues().has_value() ? 1 : 0;
         int lockID = lockAnalysis.getLockID(creation_tile);
         assert(lockID >= 0 && "No more locks to allocate!");
         auto lock = builder.create<LockOp>(builder.getUnknownLoc(),
-                                           creation_tile, lockID, 0);
+                                           creation_tile, lockID, initValue);
         lock.getOperation()->setAttr(
             SymbolTable::getSymbolAttrName(),
             builder.getStringAttr(op.name().str() + "_lock_" +
@@ -330,9 +333,12 @@ struct AIEObjectFifoStatefulTransformPass
       }
     } else {
       // create corresponding aie2 locks
+      auto initValues = op.getInitValues().has_value()
+                            ? op.getInitValues().value().size()
+                            : 0;
       int prodLockID = lockAnalysis.getLockID(creation_tile);
       assert(prodLockID >= 0 && "No more locks to allocate!");
-      int prodLockValue = numElem * repeatCount;
+      int prodLockValue = (numElem - initValues) * repeatCount;
       auto prodLock = builder.create<LockOp>(
           builder.getUnknownLoc(), creation_tile, prodLockID, prodLockValue);
       prodLock.getOperation()->setAttr(
@@ -342,7 +348,7 @@ struct AIEObjectFifoStatefulTransformPass
 
       int consLockID = lockAnalysis.getLockID(creation_tile);
       assert(consLockID >= 0 && "No more locks to allocate!");
-      int consLockValue = 0;
+      int consLockValue = initValues * repeatCount;
       auto consLock = builder.create<LockOp>(
           builder.getUnknownLoc(), creation_tile, consLockID, consLockValue);
       consLock.getOperation()->setAttr(
@@ -387,21 +393,28 @@ struct AIEObjectFifoStatefulTransformPass
         if (op.name() != fifoIn.name())
           return;
       } else {
-        auto fifoInType = llvm::cast<AIEObjectFifoType>(
-            linkOp->getInputObjectFifos()[0].getElemType());
-        auto elemInType = llvm::cast<MemRefType>(fifoInType.getElementType());
-        int inSize = elemInType.getNumElements();
-
-        auto fifoOutType = llvm::cast<AIEObjectFifoType>(
-            linkOp->getOutputObjectFifos()[0].getElemType());
-        auto elemOutType = llvm::cast<MemRefType>(fifoOutType.getElementType());
-
-        if (int outSize = elemOutType.getNumElements(); inSize >= outSize) {
-          if (op.name() != fifoIn.name())
+        // check if output objectfifo has initValues
+        if (fifoOut.getInitValues().has_value()) {
+          if (fifoOut.name() != op.name())
             return;
         } else {
-          if (linkOp->getOutputObjectFifos()[0] != op)
-            return;
+          // check which objectfifo of the link has bigger size
+          auto fifoInType = llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
+          auto elemInType = llvm::cast<MemRefType>(fifoInType.getElementType());
+          int inSize = elemInType.getNumElements();
+
+          auto fifoOutType =
+              llvm::cast<AIEObjectFifoType>(fifoOut.getElemType());
+          auto elemOutType =
+              llvm::cast<MemRefType>(fifoOutType.getElementType());
+
+          if (int outSize = elemOutType.getNumElements(); inSize >= outSize) {
+            if (op.name() != fifoIn.name())
+              return;
+          } else {
+            if (fifoOut.name() != op.name())
+              return;
+          }
         }
       }
     }
@@ -423,14 +436,17 @@ struct AIEObjectFifoStatefulTransformPass
     }
     builder.setInsertionPointAfter(t);
     for (int i = 0; i < numElem; i++) {
-      // if shimTile external buffers are collected from input code
-      // create as many locks as there are external buffers
+      mlir::ElementsAttr initValues = nullptr;
       if (!creation_tile.isShimTile()) {
+        if (op.getInitValues().has_value()) {
+          initValues =
+              llvm::cast<mlir::ElementsAttr>(op.getInitValues().value()[i]);
+        }
         auto buff = builder.create<BufferOp>(
             builder.getUnknownLoc(), elemType, creation_tile,
             builder.getStringAttr(op.name().str() + "_buff_" +
                                   std::to_string(of_elem_index)),
-            /*address*/ nullptr, /*initial_value*/ nullptr,
+            /*address*/ nullptr, initValues,
             /*mem_bank*/ nullptr);
         buffers.push_back(buff);
       }
@@ -1445,9 +1461,12 @@ struct AIEObjectFifoStatefulTransformPass
           createOp.setElemNumberAttr(
               builder.getI32IntegerAttr(createOp.size()));
         else {
-          int prodMaxAcquire = findObjectFifoSize(
-              device, createOp.getProducerTileOp(), createOp);
-          createOp.setElemNumberAttr(builder.getI32IntegerAttr(prodMaxAcquire));
+          if (!createOp.getInitValues().has_value()) {
+            int prodMaxAcquire = findObjectFifoSize(
+                device, createOp.getProducerTileOp(), createOp);
+            createOp.setElemNumberAttr(
+                builder.getI32IntegerAttr(prodMaxAcquire));
+          }
         }
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);

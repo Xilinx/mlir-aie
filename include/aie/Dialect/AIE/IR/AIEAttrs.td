@@ -197,4 +197,8 @@ def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
   let assemblyFormat = "`<` struct(params) `>`";
 }
 
+def InitValuesArrayAttr
+  : OptionalAttr<TypedArrayAttrBase<ElementsAttr, "array of ElementsAttr">>;
+
+
 #endif // AIE_ATTRS
