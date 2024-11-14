@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2023, Advanced Micro Devices, Inc.
+// Copyright (C) 2024, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -64,7 +64,9 @@ int main(int argc, const char *argv[]) {
       "instr,i", po::value<std::string>()->required(),
       "path of file containing userspace instructions to be sent to the LX6")(
       "length,l", po::value<int>()->default_value(4096),
-      "the length of the transfer in int32_t");
+      "the length of the transfer in int32_t")(
+      "repeat,r", po::value<int>()->default_value(7),
+      "the compute tile repeat count");
   po::variables_map vm;
 
   try {
@@ -96,8 +98,8 @@ int main(int argc, const char *argv[]) {
     std::cerr << "Length must be a multiple of 2." << std::endl;
     return 1;
   }
-  int repeat_count = 6;
-  int out_size = N * (repeat_count + 1);
+  int repeat_count = vm["repeat"].as<int>();
+  int out_size = N * repeat_count;
 
   // Start the XRT test code
   // Get a device handle
@@ -176,7 +178,6 @@ int main(int argc, const char *argv[]) {
   uint32_t *bufOut = bo_out.map<uint32_t *>();
 
   int errors = 0;
-
   for (uint32_t i = 0; i < out_size / 2; i++) {
     uint32_t ref = (i % (N / 2)) + 2;
     if (*(bufOut + i) != ref) {

@@ -1,3 +1,4 @@
+# test/npu-xrt/objectfifo_repeat/distribute_repeat/aie2.py
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -5,10 +6,10 @@
 #
 # (c) Copyright 2024 AMD Inc.
 
-# REQUIRES: ryzen_ai, valid_xchess_license
+# REQUIRES: ryzen_ai, peano
 #
 # RUN: %python %S/aie2.py 36 > ./aie2.mlir
-# RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
+# RUN: %python aiecc.py --no-aiesim --no-xchesscc --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
 # RUN: %run_on_npu ./test.exe -x final.xclbin -i insts.txt -k MLIR_AIE -l 36 | FileCheck %s
 # CHECK: PASS!
@@ -39,8 +40,8 @@ if len(sys.argv) > 3:
     col = int(sys.argv[3])
 
 assert N % 2 == 0, "N must be even"
-repeat_counter = 6
-out_size = N * (repeat_counter + 1)
+repeat_counter = 7
+out_size = N * repeat_counter
 
 
 def distribute_repeat():
@@ -63,8 +64,8 @@ def distribute_repeat():
             of_in = object_fifo("in", ShimTile, MemTile, 1, in_ty)
             of_in2 = object_fifo("in2", MemTile, ComputeTile2, 2, half_ty)
             of_in3 = object_fifo("in3", MemTile, ComputeTile3, 2, half_ty)
-            of_in2.set_memtile_repeat(repeat_counter)
-            of_in3.set_memtile_repeat(repeat_counter)
+            of_in2.set_repeat_count(repeat_counter)
+            of_in3.set_repeat_count(repeat_counter)
             object_fifo_link(of_in, [of_in2, of_in3], [], [0, N // 2])
 
             of_out2 = object_fifo("out2", ComputeTile2, MemTile, 2, half_ty)
