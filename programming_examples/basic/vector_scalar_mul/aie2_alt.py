@@ -91,7 +91,7 @@ def my_vector_scalar(vector_size, trace_size):
             in_factor_task = dma_configure_task_for(of_factor, issue_token=True)
             with bds(in_factor_task) as bd:
                 with bd[0]:
-                    shim_dma_bd(F)
+                    shim_dma_bd(F, sizes=[1, 1, 1, 1])
                     EndOp()
 
             out_task = dma_configure_task_for(of_out, issue_token=True)
