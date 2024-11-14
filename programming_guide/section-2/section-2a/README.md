@@ -205,7 +205,7 @@ of0 = object_fifo(
     ],
 )
 ```
-It is important to note that the initial values must match the `dataype` of the Object FIFO. To help with this process, the Object FIFO API will try to reshape the given initial values. In the example above the initial values will be reshaped as `[[0, 1], [2, 3]]` and `[[4, 5], [6, 7]]` to match the `<2x2xi32>` datatype.
+It is important to note that the initial values must match the `datatype` of the Object FIFO. To help with this process, the Object FIFO API will try to reshape the given initial values. In the example above the initial values will be reshaped as `[[0, 1], [2, 3]]` and `[[4, 5], [6, 7]]` to match the `<2x2xi32>` datatype.
 
 When an Object FIFO is initialized upon creation, the underlying synchronization mechanism is set in such a way that the producer of the Object FIFO cannot immediately acquire new objects to ensure that the initial values are not overwritten by new data before the consumers have had time to read it.
 
