@@ -96,9 +96,10 @@ void eraseOpsAndUsers(OpRange &&opsToErase) {
 
 namespace xilinx::AIE::CIR {
 
-// Analysis all the C++ types used in a module and for aie++ types deconstruct
+// Analyze all the C++ types used in a module and for aie++ types deconstruct
 // them and keep track of the AIE dialect operations used to produce a value of
-// its type.
+// its type. If some aie++ type values are produced by some AIE operations, keep
+// track of these operations.
 class CIRToAIETypesAnalysis {
 public:
   // llvm::DenseMap<mlir::Type, std::optional<mlir::Type>> types;
@@ -171,6 +172,48 @@ public:
     }
   }
 
+  // Analysis called from pass getAnalysis()
+  CIRToAIETypesAnalysis(mlir::ModuleOp module) {
+    // First register all the types used in the module
+    module->walk([this](mlir::Operation *op) {
+      for (auto result : op->getResults()) {
+        auto type = result.getType();
+        moduleTypes.try_emplace(type, std::nullopt);
+      }
+    });
+    // Deconstruct the aie++ C++ types found
+    analyze();
+    // If some AIE lowering has already be done in a previous pass, map an aie++
+    // C++ type to the AIE operation generating such a value
+    module->walk([this](mlir::UnrealizedConversionCastOp cast) {
+      LLVM_DEBUG(cast.emitRemark("CIRToAIETypesAnalysis cast"));
+      // Only a cast with 1 operand can have a potential AIE operation as
+      // operand
+      if (cast.getNumOperands() == 1) {
+        auto type = cast.getType(0);
+        // If this is an aie++ type
+        if (auto &detail = getOptionalTypeDetail(type)) {
+          auto *newOperation = cast.getOperand(0).getDefiningOp();
+          auto dialectNamespace = newOperation->getDialect()->getNamespace();
+          LLVM_DEBUG(cast.emitRemark("CIRToAIETypesAnalysis cast operand "
+                                     "with  dialect namespace ")
+                     << dialectNamespace);
+          // If the operation producing the value is in AIE dialect, the aie++
+          // type has already been translated, so record the translation for
+          // this aie++ type
+          if (dialectNamespace == "aie") {
+            LLVM_DEBUG(
+                newOperation->emitRemark(
+                    "CIRToAIETypesAnalysis adding newAIEOperation");
+                cast->emitRemark("CIRToAIETypesAnalysis adding newProducer"));
+            detail.value().newAIEOperation = newOperation;
+            detail.value().newProducer = cast;
+          }
+        }
+      }
+    });
+  }
+
   // Get the deconstructed AIE type details behind the aie++ C++ type
   std::optional<AIELikeTypesDeconstruction> &
   getOptionalTypeDetail(mlir::Type t) {
@@ -213,16 +256,6 @@ public:
   // Return true if the given type has a matching AIE operation to produce a
   // value related to that type
   bool isAIELowered(mlir::Type t) { return isAIELoweredType.contains(t); }
-
-  CIRToAIETypesAnalysis(mlir::ModuleOp module) {
-    module->walk([this](mlir::Operation *op) {
-      for (auto result : op->getResults()) {
-        auto type = result.getType();
-        moduleTypes.try_emplace(type, std::nullopt);
-      }
-    });
-    analyze();
-  }
 
   // Visit recursively from a given root operation any operand with an
   // AIE-like C++ datatype
