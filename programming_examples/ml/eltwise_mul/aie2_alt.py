@@ -143,11 +143,6 @@ def my_eltwise_mul(trace_size):
                     size=trace_size,
                     offset=N_in_bytes,
                 )
-            npu_dma_memcpy_nd(metadata=inA, bd_id=1, mem=A, sizes=[1, 1, 1, N])
-            npu_dma_memcpy_nd(metadata=inB, bd_id=2, mem=B, sizes=[1, 1, 1, N])
-            npu_dma_memcpy_nd(metadata=outC, bd_id=0, mem=C, sizes=[1, 1, 1, N])
-            # outC will only complete after inA and inB complete, so we just wait on outC instead of all
-            dma_wait(outC)
 
             in_a_task = dma_configure_task_for(inA)
             with bds(in_a_task) as bd:

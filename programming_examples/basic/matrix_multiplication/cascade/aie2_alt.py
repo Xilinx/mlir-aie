@@ -385,19 +385,6 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, trace_s
                         dma_start_task(a_task)
                         in_tasks.append(a_task)
 
-                        npu_dma_memcpy_nd(
-                            metadata=B_l3l2_fifos[col],
-                            bd_id=2 * tile_row + 2,
-                            mem=B,
-                            offsets=[0, 0, 0, B_col_offset],
-                            sizes=[
-                                N // n // n_aie_cols,
-                                K // k // n_aie_rows,
-                                k * n_aie_rows,
-                                n,
-                            ],
-                            strides=[n * n_aie_cols, k * n_aie_rows * N, N, 1],
-                        )
                         b_task = dma_configure_task_for(B_l3l2_fifos[col])
                         with bds(b_task) as bd:
                             with bd[0]:

@@ -170,15 +170,6 @@ def my_matmul():
                     dma_start_task(a_task)
                     a_tasks.append(a_task)
 
-                    npu_dma_memcpy_nd(
-                        metadata=outC_fifos[i],
-                        bd_id=0,
-                        mem=C,
-                        offsets=[0, 0, 0, C_offset],
-                        sizes=[1, 1, 1, C_sz_div_n_cores],
-                        strides=[0, 0, 0, 1],
-                    )
-
                     c_task = dma_configure_task_for(outC_fifos[i], issue_token=True)
                     with bds(c_task) as bd:
                         with bd[0]:
