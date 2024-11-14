@@ -443,8 +443,8 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
 LogicalResult AIEX::NpuWriteBdOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
-  bool isLinearTransfer = (getD0Size() >= 1) && (getD1Size() == 1) &&
-                          (getIterationSize() == 0);
+  bool isLinearTransfer =
+      (getD0Size() >= 1) && (getD1Size() == 1) && (getIterationSize() == 0);
   if (getBdId() > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
   if (!isLinearTransfer && getD0Size() > 0x3FF)
