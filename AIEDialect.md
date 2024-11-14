@@ -1158,6 +1158,7 @@ operation ::= `aie.objectfifo` $sym_name
               `,`
               $elemNumber
               `)` attr-dict `:` $elemType
+              custom<ObjectFifoInitValues>(ref($elemNumber), ref($elemType), $initValues)
 ```
 
 The `aie.objectFifo` operation creates a circular buffer established between a producer and one or
@@ -1252,6 +1253,7 @@ Interfaces: `Symbol`
 <tr><td><code>disable_synchronization</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>via_shared_mem</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 1</td></tr>
+<tr><td><code>initValues</code></td><td>::mlir::ArrayAttr</td><td>array of ElementsAttr</td></tr>
 </table>
 
 #### Operands:
