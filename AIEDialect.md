@@ -1251,7 +1251,7 @@ Interfaces: `Symbol`
 <tr><td><code>plio</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>disable_synchronization</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>via_shared_mem</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>memtile_repeat</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 1</td></tr>
 </table>
 
 #### Operands:
