@@ -42,8 +42,11 @@ of1.set_repeat_count(2) # the data in each object is sent to the consumer C twic
 
 <img src="./../../../assets/Repeat.png" height="150">
 
+<<<<<<< HEAD
+=======
 In this case the repetition is achieved using the Data Movement Accelerator (DMA) of the Object FIFO link's shared tile.
 
+>>>>>>> 6e065c01fc05b2edb3d6d93fe3e851aa7aeab7b3
 In particular, the repeat functionality can be used in conjunction with the distribute pattern introduced in the previous section. Currently, the repeat value specified for each distribute destination must be the same to ensure functional correctness. Additionally, the syntax currently doesn't support both output Object FIFOs with repeat and without at the same time, in the same distribute pattern. The code below shows how the two output Object FIFOs of a distribute pattern can be set to each repeat three times:
 ```python
 of0 = object_fifo("objfifo0", A, B, 2, np.ndarray[(256,), np.dtype[np.int32]])
