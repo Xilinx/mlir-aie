@@ -211,17 +211,12 @@ module {
       aie.use_lock(%in2_mem_cons_lock, AcquireGreaterEqual, 1)
       aie.dma_bd(%in2_mem_buff_0 : memref<256xi32>, 0, 256)
       aie.use_lock(%in2_mem_prod_lock, Release, 1)
-      aie.next_bd ^bb3
-    ^bb3:
-      aie.end
-    }
-    %memtile_dma_1_1 = aie.memtile_dma(%tile_1_1) {
-      %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
-    ^bb1:
+      aie.next_bd ^bb2
+    ^bb2:
       aie.use_lock(%in3_mem_cons_lock, AcquireGreaterEqual, 1)
       aie.dma_bd(%in2_mem_buff_1 : memref<256xi32>, 0, 256)
       aie.use_lock(%in3_mem_prod_lock, Release, 1)
-      aie.next_bd ^bb3
+      aie.next_bd ^bb1
     ^bb3:
       aie.end
     }
