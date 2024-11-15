@@ -10,52 +10,82 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+//RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 //CHECK: module @link_AIE2 {
 //CHECK:   aie.device(xcve2302) {
-//CHECK:     memref.global "public" @of2 : memref<16xi32>
-//CHECK:     memref.global "public" @of1_cons : memref<16xi32>
-//CHECK:     memref.global "public" @of1 : memref<16xi32>
-//CHECK:     %[[VAL_0:.*]] = aie.tile(2, 0)
-//CHECK:     %[[VAL_1:.*]] = aie.tile(1, 2)
-//CHECK:     %[[VAL_2:.*]] = aie.tile(2, 2)
-//CHECK:     %[[VAL_3:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1_cons_buff_0"} : memref<16xi32> 
-//CHECK:     %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1_cons_buff_1"} : memref<16xi32> 
-//CHECK:     %[[VAL_5:.*]] = aie.lock(%[[VAL_1]], 0) {init = 2 : i32, sym_name = "of1_cons_prod_lock"}
-//CHECK:     %[[VAL_6:.*]] = aie.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "of1_cons_cons_lock"}
-//CHECK:     %[[VAL_7:.*]] = aie.lock(%[[VAL_0:.*]], 0) {init = 1 : i32, sym_name = "of1_prod_lock"}
-//CHECK:     %[[VAL_8:.*]] = aie.lock(%[[VAL_0:.*]], 1) {init = 0 : i32, sym_name = "of1_cons_lock"}
-//CHECK:     aie.flow(%[[VAL_0:.*]], DMA : 0, %[[VAL_1]], DMA : 0)
-//CHECK:     %[[VAL_9:.*]] = aie.external_buffer {sym_name = "ext_buff_in"} : memref<16xi32>
-//CHECK:     aie.shim_dma_allocation @of1(MM2S, 0, 2)
-//CHECK:     %[[VAL_10:.*]] = aie.shim_dma(%[[VAL_0:.*]]) {
-//CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
-//CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
-//CHECK:       aie.use_lock(%[[VAL_7:.*]], AcquireGreaterEqual, 1)
-//CHECK:       aie.dma_bd(%[[VAL_9:.*]] : memref<16xi32>, 0, 16)
-//CHECK:       aie.use_lock(%[[VAL_8:.*]], Release, 1)
-//CHECK:       aie.next_bd ^bb1
-//CHECK:     ^bb2:  // pred: ^bb0
-//CHECK:       aie.end
-//CHECK:     }
-//CHECK:     %[[VAL_11:.*]] = aie.mem(%[[VAL_1]]) {
-//CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
-//CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
-//CHECK:       aie.use_lock(%[[VAL_5:.*]], AcquireGreaterEqual, 1)
-//CHECK:       aie.dma_bd(%[[VAL_3:.*]] : memref<16xi32>, 0, 16)
-//CHECK:       aie.use_lock(%[[VAL_6:.*]], Release, 1)
-//CHECK:       aie.next_bd ^bb2
-//CHECK:     ^bb2:  // pred: ^bb1
-//CHECK:       aie.use_lock(%[[VAL_5:.*]], AcquireGreaterEqual, 1)
-//CHECK:       aie.dma_bd(%[[VAL_4:.*]] : memref<16xi32>, 0, 16)
-//CHECK:       aie.use_lock(%[[VAL_6:.*]], Release, 1)
-//CHECK:       aie.next_bd ^bb1
-//CHECK:     ^bb3:  // pred: ^bb0
-//CHECK:       aie.end
-//CHECK:     }
-//CHECK:   }
-//CHECK: }
+//CHECK:    memref.global "public" @of2_cons : memref<16xi32>
+//CHECK:    memref.global "public" @of2 : memref<16xi32>
+//CHECK:    memref.global "public" @of1_cons : memref<16xi32>
+//CHECK:    memref.global "public" @of1 : memref<16xi32>
+//CHECK:    %tile_2_0 = aie.tile(2, 0)
+//CHECK:    %tile_1_2 = aie.tile(1, 2)
+//CHECK:    %tile_2_2 = aie.tile(2, 2)
+//CHECK:    %of2_cons_buff_0 = aie.buffer(%tile_2_2) {sym_name = "of2_cons_buff_0"} : memref<16xi32> 
+//CHECK:    %of2_cons_buff_1 = aie.buffer(%tile_2_2) {sym_name = "of2_cons_buff_1"} : memref<16xi32> 
+//CHECK:    %of2_cons_prod_lock = aie.lock(%tile_2_2, 0) {init = 2 : i32, sym_name = "of2_cons_prod_lock"}
+//CHECK:    %of2_cons_cons_lock = aie.lock(%tile_2_2, 1) {init = 0 : i32, sym_name = "of2_cons_cons_lock"}
+//CHECK:    %of1_cons_buff_0 = aie.buffer(%tile_1_2) {sym_name = "of1_cons_buff_0"} : memref<16xi32> 
+//CHECK:    %of1_cons_buff_1 = aie.buffer(%tile_1_2) {sym_name = "of1_cons_buff_1"} : memref<16xi32> 
+//CHECK:    %of1_cons_prod_lock = aie.lock(%tile_1_2, 0) {init = 2 : i32, sym_name = "of1_cons_prod_lock"}
+//CHECK:    %of1_cons_cons_lock = aie.lock(%tile_1_2, 1) {init = 0 : i32, sym_name = "of1_cons_cons_lock"}
+//CHECK:    %of1_prod_lock = aie.lock(%tile_2_0, 0) {init = 1 : i32, sym_name = "of1_prod_lock"}
+//CHECK:    %of1_cons_lock = aie.lock(%tile_2_0, 1) {init = 0 : i32, sym_name = "of1_cons_lock"}
+//CHECK:    aie.flow(%tile_2_0, DMA : 0, %tile_1_2, DMA : 0)
+//CHECK:    aie.flow(%tile_1_2, DMA : 0, %tile_2_2, DMA : 0)
+//CHECK:    func.func @some_work(%arg0: memref<16xi32>) {
+//CHECK:      return
+//CHECK:    }
+//CHECK:    aie.shim_dma_allocation @of1(MM2S, 0, 2)
+//CHECK:    %core_2_2 = aie.core(%tile_2_2) {
+//CHECK:      aie.use_lock(%of2_cons_cons_lock, AcquireGreaterEqual, 1)
+//CHECK:      func.call @some_work(%of2_cons_buff_0) : (memref<16xi32>) -> ()
+//CHECK:      aie.use_lock(%of2_cons_prod_lock, Release, 1)
+//CHECK:      aie.end
+//CHECK:    }
+//CHECK:    %mem_1_2 = aie.mem(%tile_1_2) {
+//CHECK:      %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
+//CHECK:    ^bb1:
+//CHECK:      aie.use_lock(%of1_cons_prod_lock, AcquireGreaterEqual, 1)
+//CHECK:      aie.dma_bd(%of1_cons_buff_0 : memref<16xi32>, 0, 16)
+//CHECK:      aie.use_lock(%of1_cons_cons_lock, Release, 1)
+//CHECK:      aie.next_bd ^bb2
+//CHECK:    ^bb2:
+//CHECK:      aie.use_lock(%of1_cons_prod_lock, AcquireGreaterEqual, 1)
+//CHECK:      aie.dma_bd(%of1_cons_buff_1 : memref<16xi32>, 0, 16)
+//CHECK:      aie.use_lock(%of1_cons_cons_lock, Release, 1)
+//CHECK:      aie.next_bd ^bb1
+//CHECK:    ^bb3:
+//CHECK:      %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
+//CHECK:    ^bb4:
+//CHECK:      aie.use_lock(%of1_cons_cons_lock, AcquireGreaterEqual, 1)
+//CHECK:      aie.dma_bd(%of1_cons_buff_0 : memref<16xi32>, 0, 16)
+//CHECK:      aie.use_lock(%of1_cons_prod_lock, Release, 1)
+//CHECK:      aie.next_bd ^bb5
+//CHECK:    ^bb5:
+//CHECK:      aie.use_lock(%of1_cons_cons_lock, AcquireGreaterEqual, 1)
+//CHECK:      aie.dma_bd(%of1_cons_buff_1 : memref<16xi32>, 0, 16)
+//CHECK:      aie.use_lock(%of1_cons_prod_lock, Release, 1)
+//CHECK:      aie.next_bd ^bb4
+//CHECK:    ^bb6:
+//CHECK:      aie.end
+//CHECK:    }
+//CHECK:    %mem_2_2 = aie.mem(%tile_2_2) {
+//CHECK:      %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
+//CHECK:    ^bb1:
+//CHECK:      aie.use_lock(%of2_cons_prod_lock, AcquireGreaterEqual, 1)
+//CHECK:      aie.dma_bd(%of2_cons_buff_0 : memref<16xi32>, 0, 16)
+//CHECK:      aie.use_lock(%of2_cons_cons_lock, Release, 1)
+//CHECK:      aie.next_bd ^bb2
+//CHECK:    ^bb2:
+//CHECK:      aie.use_lock(%of2_cons_prod_lock, AcquireGreaterEqual, 1)
+//CHECK:      aie.dma_bd(%of2_cons_buff_1 : memref<16xi32>, 0, 16)
+//CHECK:      aie.use_lock(%of2_cons_cons_lock, Release, 1)
+//CHECK:      aie.next_bd ^bb1
+//CHECK:    ^bb3:
+//CHECK:      aie.end
+//CHECK:    }
+//CHECK:  }
 
 module @link_AIE2 {
     aie.device(xcve2302) {
@@ -68,7 +98,16 @@ module @link_AIE2 {
 
         aie.objectfifo.link [@of1] -> [@of2] ([] [])
 
-        %ext_buff_in = aie.external_buffer {sym_name = "ext_buff_in"} : memref<16xi32>
-        aie.objectfifo.register_external_buffers @of1 (%tile20, {%ext_buff_in}) : (memref<16xi32>)
+        func.func @some_work(%lineOut : memref<16xi32>) -> () {
+            return
+        }
+        
+        %core22 = aie.core(%tile22) {
+            %subview = aie.objectfifo.acquire @of2 (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
+            %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            func.call @some_work(%elem0) : (memref<16xi32>) -> ()
+            aie.objectfifo.release @of2 (Consume, 1)
+            aie.end
+        }
     }
 }
