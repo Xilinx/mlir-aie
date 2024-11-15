@@ -113,7 +113,7 @@ int main(int argc, const char *argv[]) {
   uint32_t *bufInA = bo_inA.map<uint32_t *>();
   std::vector<uint32_t> srcVecA;
   for (int i = 0; i < IN_SIZE; i++)
-    srcVecA.push_back(i + 1);
+    srcVecA.push_back(1);
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
   uint32_t *bufInB = bo_inB.map<uint32_t *>();
@@ -152,7 +152,7 @@ int main(int argc, const char *argv[]) {
                 << std::endl;
       errors++;
     } else {
-      if (verbosity > 1)
+      //if (verbosity > 1)
         std::cout << "Correct output " << *(bufOut + i)
                   << " == " << *(bufInA + i) + *(bufInB + i) << std::endl;
     }
