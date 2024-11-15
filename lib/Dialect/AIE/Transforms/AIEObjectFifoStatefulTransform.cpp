@@ -220,12 +220,40 @@ struct AIEObjectFifoStatefulTransformPass
         }
     }
 
-    // Only test for this objfifo belonging to a LinkOp if we are in the shared
-    // memory case; otherwise, we will return `true` in any case.
+    // Check if the objectfifo operation can use shared memory for linking. If
+    // the link operation is a distribute or a join operation, or if the link
+    // has different memref types, DMAs are required even if shared memory is
+    // available and the objectfifo should be split. Otherwise also check if the
+    // via_shared_memory attribute of the objectfifo operation is set and try to
+    // apply it.
     if (hasSharedMemory) {
       if (auto linkOp = getOptionalLinkOp(createOp)) {
-        splitBecauseLink.push_back(createOp);
         isUsedInLinkOp = true;
+        int share_dir = 0;
+        if (!linkOp->isDistribute() && !linkOp->isJoin()) {
+          auto fifoInType = llvm::cast<AIEObjectFifoType>(
+              linkOp->getInputObjectFifos()[0].getElemType());
+          auto producerType =
+              llvm::cast<MemRefType>(fifoInType.getElementType());
+          auto fifoOutType = llvm::cast<AIEObjectFifoType>(
+              linkOp->getOutputObjectFifos()[0].getElemType());
+          auto consumerType =
+              llvm::cast<MemRefType>(fifoOutType.getElementType());
+          if (consumerType != producerType) {
+            // TODO: Support for different memref types through shared
+            // memory without DMAs
+            splitBecauseLink.push_back(createOp);
+          }
+          if (createOp.getViaSharedMem().has_value()) {
+            checkAndApplyViaSharedMemAttribute(createOp, share_dir);
+            if (share_direction == share_dir)
+              isUsedInLinkOp = false;
+            else
+              splitBecauseLink.push_back(createOp);
+          }
+        } else {
+          splitBecauseLink.push_back(createOp);
+        }
       }
     }
 
@@ -1734,17 +1762,31 @@ struct AIEObjectFifoStatefulTransformPass
       //===----------------------------------------------------------------===//
       coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
         auto acqOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-        if (ObjectFifoCreateOp op = acqOp.getObjectFifo();
-            getOptionalLinkOp(op)) {
-          accessOp->emitOpError("currently cannot access objectFifo used in "
-                                "ObjectFifoLinkOp");
-          return;
+        if (ObjectFifoCreateOp op = acqOp.getObjectFifo()) {
+          if (auto linkOp = getOptionalLinkOp(op); linkOp.has_value()) {
+            if (!linkOp->isDistribute() && !linkOp->isJoin()) {
+              for (auto consumerTile : op.getConsumerTiles()) {
+                if (auto consumerTileOp =
+                        dyn_cast<TileOp>(consumerTile.getDefiningOp())) {
+                  int share_dir_value = 0;
+                  bool sharing = isSharedMemory(
+                      op.getProducerTileOp(), consumerTileOp, &share_dir_value);
+                  if (!sharing)
+                    accessOp->emitOpError(
+                        "currently cannot access objectFifo used in "
+                        "ObjectFifoLinkOp if the tiles don't share memory");
+                }
+              }
+            } else
+              accessOp->emitOpError(
+                  "currently cannot access objectFifo used in "
+                  "ObjectFifoLinkOp if it is a distribute or join link");
+          }
         }
         accessOp.getOutput().replaceAllUsesWith(
             subviews[acqOp][accessOp.getIndex()]->getBuffer());
       });
     }
-
     // make global symbols to replace the to be erased ObjectFifoCreateOps
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
       builder.setInsertionPointToStart(&device.getBodyRegion().front());
