@@ -502,6 +502,11 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError("`repeat_count` unavailable for shim tiles");
   }
 
+  if (getInitValues().has_value()) {
+    if ((int)getInitValues().value().size() != size())
+      return emitError("`init_values` does not initialize all objects");
+  }
+
   return success();
 }
 
@@ -591,6 +596,59 @@ void printObjectFifoConsumerTiles(OpAsmPrinter &printer, Operation *op,
     }
     tileIdx++;
   }
+}
+
+static void printObjectFifoInitValues(OpAsmPrinter &p, ObjectFifoCreateOp op,
+                                      Attribute numElem, TypeAttr type,
+                                      Attribute initValues) {
+  if (op.getInitValues()) {
+    p << "= [";
+    int depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
+    for (int i = 0; i < depth; i++) {
+      p.printStrippedAttrOrType(llvm::dyn_cast<mlir::ArrayAttr>(initValues)[i]);
+      if (i < depth - 1) {
+        p << ", ";
+      }
+    }
+    p << "]";
+  }
+}
+
+static ParseResult parseObjectFifoInitValues(OpAsmParser &parser,
+                                             Attribute numElem, TypeAttr type,
+                                             Attribute &initValues) {
+  int depth;
+  if (isa<ArrayAttr>(numElem)) {
+    depth = llvm::dyn_cast<mlir::IntegerAttr>(
+                llvm::dyn_cast<mlir::ArrayAttr>(numElem)[0])
+                .getInt();
+  } else {
+    depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
+  }
+  auto objfifoType = llvm::cast<AIEObjectFifoType>(type.getValue());
+  auto memrefType = llvm::cast<MemRefType>(objfifoType.getElementType());
+
+  if (!memrefType.hasStaticShape())
+    return parser.emitError(parser.getNameLoc())
+           << "type should be static shaped memref, but got " << memrefType;
+
+  if (parser.parseOptionalEqual())
+    return success();
+
+  Type tensorType = mlir::memref::getTensorTypeFromMemRefType(memrefType);
+  if (parser.parseAttribute(initValues, tensorType))
+    return failure();
+  for (int i = 0; i < depth; i++) {
+    auto initialValues = llvm::dyn_cast<mlir::ArrayAttr>(initValues);
+    if ((int)initialValues.size() != depth)
+      return parser.emitError(parser.getNameLoc())
+             << "initial values should initialize all objects";
+    if (!llvm::isa<ElementsAttr>(initialValues[i]))
+      return parser.emitError(parser.getNameLoc())
+             << "initial value should be an elements attribute";
+  }
+
+  return success();
 }
 
 } // namespace xilinx::AIE

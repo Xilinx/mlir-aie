@@ -220,12 +220,40 @@ struct AIEObjectFifoStatefulTransformPass
         }
     }
 
-    // Only test for this objfifo belonging to a LinkOp if we are in the shared
-    // memory case; otherwise, we will return `true` in any case.
+    // Check if the objectfifo operation can use shared memory for linking. If
+    // the link operation is a distribute or a join operation, or if the link
+    // has different memref types, DMAs are required even if shared memory is
+    // available and the objectfifo should be split. Otherwise also check if the
+    // via_shared_memory attribute of the objectfifo operation is set and try to
+    // apply it.
     if (hasSharedMemory) {
       if (auto linkOp = getOptionalLinkOp(createOp)) {
-        splitBecauseLink.push_back(createOp);
         isUsedInLinkOp = true;
+        int share_dir = 0;
+        if (!linkOp->isDistribute() && !linkOp->isJoin()) {
+          auto fifoInType = llvm::cast<AIEObjectFifoType>(
+              linkOp->getInputObjectFifos()[0].getElemType());
+          auto producerType =
+              llvm::cast<MemRefType>(fifoInType.getElementType());
+          auto fifoOutType = llvm::cast<AIEObjectFifoType>(
+              linkOp->getOutputObjectFifos()[0].getElemType());
+          auto consumerType =
+              llvm::cast<MemRefType>(fifoOutType.getElementType());
+          if (consumerType != producerType) {
+            // TODO: Support for different memref types through shared
+            // memory without DMAs
+            splitBecauseLink.push_back(createOp);
+          }
+          if (createOp.getViaSharedMem().has_value()) {
+            checkAndApplyViaSharedMemAttribute(createOp, share_dir);
+            if (share_direction == share_dir)
+              isUsedInLinkOp = false;
+            else
+              splitBecauseLink.push_back(createOp);
+          }
+        } else {
+          splitBecauseLink.push_back(createOp);
+        }
       }
     }
 
@@ -308,6 +336,8 @@ struct AIEObjectFifoStatefulTransformPass
       return locks;
     auto dev = op->getParentOfType<DeviceOp>();
     auto &target = dev.getTargetModel();
+    // if shimTile external buffers are collected from input code
+    // create as many locks as there are external buffers
     if (creation_tile.isShimTile()) {
       numElem = 1;
       if (!externalBuffersPerFifo[op].empty())
@@ -317,10 +347,11 @@ struct AIEObjectFifoStatefulTransformPass
       int of_elem_index = 0; // used to give objectFifo elements a symbolic name
       for (int i = 0; i < numElem; i++) {
         // create corresponding aie1 locks
+        int initValue = op.getInitValues().has_value() ? 1 : 0;
         int lockID = lockAnalysis.getLockID(creation_tile);
         assert(lockID >= 0 && "No more locks to allocate!");
         auto lock = builder.create<LockOp>(builder.getUnknownLoc(),
-                                           creation_tile, lockID, 0);
+                                           creation_tile, lockID, initValue);
         lock.getOperation()->setAttr(
             SymbolTable::getSymbolAttrName(),
             builder.getStringAttr(op.name().str() + "_lock_" +
@@ -330,9 +361,12 @@ struct AIEObjectFifoStatefulTransformPass
       }
     } else {
       // create corresponding aie2 locks
+      auto initValues = op.getInitValues().has_value()
+                            ? op.getInitValues().value().size()
+                            : 0;
       int prodLockID = lockAnalysis.getLockID(creation_tile);
       assert(prodLockID >= 0 && "No more locks to allocate!");
-      int prodLockValue = numElem * repeatCount;
+      int prodLockValue = (numElem - initValues) * repeatCount;
       auto prodLock = builder.create<LockOp>(
           builder.getUnknownLoc(), creation_tile, prodLockID, prodLockValue);
       prodLock.getOperation()->setAttr(
@@ -342,7 +376,7 @@ struct AIEObjectFifoStatefulTransformPass
 
       int consLockID = lockAnalysis.getLockID(creation_tile);
       assert(consLockID >= 0 && "No more locks to allocate!");
-      int consLockValue = 0;
+      int consLockValue = initValues * repeatCount;
       auto consLock = builder.create<LockOp>(
           builder.getUnknownLoc(), creation_tile, consLockID, consLockValue);
       consLock.getOperation()->setAttr(
@@ -387,21 +421,28 @@ struct AIEObjectFifoStatefulTransformPass
         if (op.name() != fifoIn.name())
           return;
       } else {
-        auto fifoInType = llvm::cast<AIEObjectFifoType>(
-            linkOp->getInputObjectFifos()[0].getElemType());
-        auto elemInType = llvm::cast<MemRefType>(fifoInType.getElementType());
-        int inSize = elemInType.getNumElements();
-
-        auto fifoOutType = llvm::cast<AIEObjectFifoType>(
-            linkOp->getOutputObjectFifos()[0].getElemType());
-        auto elemOutType = llvm::cast<MemRefType>(fifoOutType.getElementType());
-
-        if (int outSize = elemOutType.getNumElements(); inSize >= outSize) {
-          if (op.name() != fifoIn.name())
+        // check if output objectfifo has initValues
+        if (fifoOut.getInitValues().has_value()) {
+          if (fifoOut.name() != op.name())
             return;
         } else {
-          if (linkOp->getOutputObjectFifos()[0] != op)
-            return;
+          // check which objectfifo of the link has bigger size
+          auto fifoInType = llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
+          auto elemInType = llvm::cast<MemRefType>(fifoInType.getElementType());
+          int inSize = elemInType.getNumElements();
+
+          auto fifoOutType =
+              llvm::cast<AIEObjectFifoType>(fifoOut.getElemType());
+          auto elemOutType =
+              llvm::cast<MemRefType>(fifoOutType.getElementType());
+
+          if (int outSize = elemOutType.getNumElements(); inSize >= outSize) {
+            if (op.name() != fifoIn.name())
+              return;
+          } else {
+            if (fifoOut.name() != op.name())
+              return;
+          }
         }
       }
     }
@@ -423,14 +464,17 @@ struct AIEObjectFifoStatefulTransformPass
     }
     builder.setInsertionPointAfter(t);
     for (int i = 0; i < numElem; i++) {
-      // if shimTile external buffers are collected from input code
-      // create as many locks as there are external buffers
+      mlir::ElementsAttr initValues = nullptr;
       if (!creation_tile.isShimTile()) {
+        if (op.getInitValues().has_value()) {
+          initValues =
+              llvm::cast<mlir::ElementsAttr>(op.getInitValues().value()[i]);
+        }
         auto buff = builder.create<BufferOp>(
             builder.getUnknownLoc(), elemType, creation_tile,
             builder.getStringAttr(op.name().str() + "_buff_" +
                                   std::to_string(of_elem_index)),
-            /*address*/ nullptr, /*initial_value*/ nullptr,
+            /*address*/ nullptr, initValues,
             /*mem_bank*/ nullptr);
         buffers.push_back(buff);
       }
@@ -1455,9 +1499,12 @@ struct AIEObjectFifoStatefulTransformPass
           createOp.setElemNumberAttr(
               builder.getI32IntegerAttr(createOp.size()));
         else {
-          int prodMaxAcquire = findObjectFifoSize(
-              device, createOp.getProducerTileOp(), createOp);
-          createOp.setElemNumberAttr(builder.getI32IntegerAttr(prodMaxAcquire));
+          if (!createOp.getInitValues().has_value()) {
+            int prodMaxAcquire = findObjectFifoSize(
+                device, createOp.getProducerTileOp(), createOp);
+            createOp.setElemNumberAttr(
+                builder.getI32IntegerAttr(prodMaxAcquire));
+          }
         }
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
@@ -1726,17 +1773,31 @@ struct AIEObjectFifoStatefulTransformPass
       //===----------------------------------------------------------------===//
       coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
         auto acqOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-        if (ObjectFifoCreateOp op = acqOp.getObjectFifo();
-            getOptionalLinkOp(op)) {
-          accessOp->emitOpError("currently cannot access objectFifo used in "
-                                "ObjectFifoLinkOp");
-          return;
+        if (ObjectFifoCreateOp op = acqOp.getObjectFifo()) {
+          if (auto linkOp = getOptionalLinkOp(op); linkOp.has_value()) {
+            if (!linkOp->isDistribute() && !linkOp->isJoin()) {
+              for (auto consumerTile : op.getConsumerTiles()) {
+                if (auto consumerTileOp =
+                        dyn_cast<TileOp>(consumerTile.getDefiningOp())) {
+                  int share_dir_value = 0;
+                  bool sharing = isSharedMemory(
+                      op.getProducerTileOp(), consumerTileOp, &share_dir_value);
+                  if (!sharing)
+                    accessOp->emitOpError(
+                        "currently cannot access objectFifo used in "
+                        "ObjectFifoLinkOp if the tiles don't share memory");
+                }
+              }
+            } else
+              accessOp->emitOpError(
+                  "currently cannot access objectFifo used in "
+                  "ObjectFifoLinkOp if it is a distribute or join link");
+          }
         }
         accessOp.getOutput().replaceAllUsesWith(
             subviews[acqOp][accessOp.getIndex()]->getBuffer());
       });
     }
-
     // make global symbols to replace the to be erased ObjectFifoCreateOps
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
       builder.setInsertionPointToStart(&device.getBodyRegion().front());

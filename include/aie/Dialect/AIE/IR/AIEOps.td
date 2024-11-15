@@ -1677,7 +1677,11 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         OptionalAttr<AIEI32Attr>:$via_shared_mem,
         // repeat_count==1 means "do it once"
         OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
+<<<<<<< HEA
+=======
+        InitValuesArrayAttr:$initValues,
         OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions
+>>>>>>> cd48769df0cf11391b573aa904a8e5ff33dab7c3
   );
 
   let assemblyFormat = [{
@@ -1690,6 +1694,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         `,`
         $elemNumber
     `)` attr-dict `:` $elemType
+    custom<ObjectFifoInitValues>(ref($elemNumber), ref($elemType), $initValues)
   }];
 
   let hasVerifier = 1;
