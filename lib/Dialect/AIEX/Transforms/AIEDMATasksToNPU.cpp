@@ -278,8 +278,6 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
                      ? (*dims)[2].getSize()
                      : 0;
       }
-      // if(failed(verifyPaddingDims(target_model, tile.getCol(), tile.getRow(),
-      // dims, padDims))) return failure();
       if (padDims.has_value()) {
         if (!target_model.isMemTile(tile.getCol(), tile.getRow()))
           return bd_op->emitOpError()
@@ -288,11 +286,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
           return bd_op->emitOpError()
                  << "Mismatch number of dimensions between padding(s)"
                  << " and wrap(s) and stride(s).";
-      }
-
-      if (target_model.isMemTile(tile.getCol(), tile.getRow()) &&
-          channelDir == AIE::DMAChannelDir::MM2S) {
-        if (padDims) {
+        if (channelDir == AIE::DMAChannelDir::MM2S) {
           for (size_t i = 0; i < padDims->size(); i++) {
             int j = padDims->size() - i - 1;
             padBefore[i] = (*padDims)[j].getConstPadBefore();
@@ -302,8 +296,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
             padBefore[i] = 0;
             padAfter[i] = 0;
           }
-        }
-      } else if (padDims) {
+        } else
         return bd_op->emitOpError()
                << "supports padding only for MM2S direction on MemTiles.";
       }
