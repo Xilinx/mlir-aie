@@ -471,7 +471,7 @@ def my_matmul(
                             #     |                |
                             #      ----------------
                             tile_offset = (
-                                (row_base + tile_row) * n_aie_rows + col
+                                (row_base + tile_row) * n_aie_cols + col
                             ) % len(A_tiles)
                             npu_dma_memcpy_nd(
                                 metadata=A_l3l2_fifos[col],

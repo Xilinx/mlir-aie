@@ -180,7 +180,7 @@ def matmul_reference(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
 # CHECK-LABEL: matrix_vector_tiling_sweep
 @construct_test
 def matrix_vector_tiling_sweep():
-    n_aie_cols_sweep = [4]  # Note: have not tested when != 4
+    n_aie_cols_sweep = [1, 2, 4]
     n_aie_rows_sweep = [4]
     M_sweep = range(512, 4096, 512)
     m_sweep = [
