@@ -369,9 +369,6 @@ def my_matmul(
             )
             tb_n_rows = tb_max_n_rows // 2
 
-            if b_col_maj:
-                raise NotImplementedError("Not implemented for tiler yet.")
-
             A_tiles = TensorTiler2D.group_tiler(
                 (M, K),  # Size of A matrix
                 (m * n_A_tiles_per_shim, k),  # Size of A (smallest) tile
@@ -380,19 +377,33 @@ def my_matmul(
                 // n
                 // n_aie_cols,  # Repeat data so can distribute across whole column
             )
-            B_tiles = TensorTiler2D.step_tiler(
-                (K, N),  # Size of B matrix
-                (k, n),  # Size of B tile
-                tile_group_repeats=(
-                    K // k,
-                    N // n // n_aie_cols,
-                ),  # Number of tiles per transfer in each dimension (whole col, partial row)
-                tile_group_steps=(
-                    1,
-                    n_aie_cols,
-                ),  # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
-                tile_group_col_major=True,  # Send all tiles in column before moving on to next column
-            )
+            if b_col_maj:
+                B_tiles = TensorTiler2D.step_tiler(
+                    (K, N),  # Size of B matrix
+                    (k, n),  # Size of B tile
+                    tile_group_repeats=(
+                        K // k // n_aie_cols,
+                        N // n,
+                    ),  # Number of tiles per transfer in each dimension (whole col, partial row)
+                    tile_group_steps=(
+                        n_aie_cols,
+                        1,
+                    ),  # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
+                )
+            else:
+                B_tiles = TensorTiler2D.step_tiler(
+                    (K, N),  # Size of B matrix
+                    (k, n),  # Size of B tile
+                    tile_group_repeats=(
+                        K // k,
+                        N // n // n_aie_cols,
+                    ),  # Number of tiles per transfer in each dimension (whole col, partial row)
+                    tile_group_steps=(
+                        1,
+                        n_aie_cols,
+                    ),  # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
+                    tile_group_col_major=True,  # Send all tiles in column before moving on to next column
+                )
             C_tiles = TensorTiler2D.step_tiler(
                 (M, N),  # Size of C matrix
                 (m * n_aie_rows, n),  # Size of C tile

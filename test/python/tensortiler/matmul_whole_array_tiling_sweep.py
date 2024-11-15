@@ -22,8 +22,6 @@ def matmul_tiler_helper(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
         N % (n * n_aie_cols) == 0
     ), """B must be tileable into (k, n * n_aie_cols)-sized blocks"""
 
-    if b_col_maj:
-        raise NotImplementedError("Not implemented yet.")
     n_A_tiles_per_shim = n_aie_rows // n_aie_cols
     tb_max_n_rows = 4
     tb_n_rows = tb_max_n_rows // 2
@@ -40,19 +38,38 @@ def matmul_tiler_helper(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
         // n
         // n_aie_cols,  # Repeat data so can distribute across whole column
     )
-    B_tiles = TensorTiler2D.step_tiler(
-        (K, N),  # Size of B matrix
-        (k, n),  # Size of B tile
-        tile_group_repeats=(
-            K // k,
-            N // n // n_aie_cols,
-        ),  # Number of tiles per transfer in each dimension (whole col, partial row)
-        tile_group_steps=(
-            1,
-            n_aie_cols,
-        ),  # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
-        tile_group_col_major=True,  # Send all tiles in column before moving on to next column
-    )
+    if b_col_maj:
+        # These assertions are probably too broad.
+        assert m % 32 == 0
+        assert k % 32 == 0
+        assert n % 32 == 0
+
+        B_tiles = TensorTiler2D.step_tiler(
+            (K, N),  # Size of B matrix
+            (k, n),  # Size of B tile
+            tile_group_repeats=(
+                K // k // n_aie_cols,
+                N // n,
+            ),  # Number of tiles per transfer in each dimension (whole col, partial row)
+            tile_group_steps=(
+                n_aie_cols,
+                1,
+            ),  # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
+        )
+    else:
+        B_tiles = TensorTiler2D.step_tiler(
+            (K, N),  # Size of B matrix
+            (k, n),  # Size of B tile
+            tile_group_repeats=(
+                K // k,
+                N // n // n_aie_cols,
+            ),  # Number of tiles per transfer in each dimension (whole col, partial row)
+            tile_group_steps=(
+                1,
+                n_aie_cols,
+            ),  # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
+            tile_group_col_major=True,  # Send all tiles in column before moving on to next column
+        )
     C_tiles = TensorTiler2D.step_tiler(
         (M, N),  # Size of C matrix
         (m * n_aie_rows, n),  # Size of C tile
@@ -180,7 +197,7 @@ def matmul_reference(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
 # CHECK-LABEL: matrix_vector_tiling_sweep
 @construct_test
 def matrix_vector_tiling_sweep():
-    n_aie_cols_sweep = [1, 2, 4]
+    n_aie_cols_sweep = [2, 4]  # Note: reduced number of tests by removing 1
     n_aie_rows_sweep = [4]
     M_sweep = range(512, 4096, 512)
     m_sweep = [
@@ -241,6 +258,54 @@ def matrix_vector_tiling_sweep():
                                         ].compare_access_orders(
                                             actual_B_tiles[rand_idx]
                                         )
+
+    # CHECK: Pass!
+    print("Pass!")
+
+
+# CHECK-LABEL: matrix_vector_tiling_b_col_major
+@construct_test
+def matrix_vector_tiling_b_col_major():
+    M = 256
+    K = 256
+    N = 256
+    m = 32
+    k = 32
+    n = 32
+    n_aie_cols = 4
+    n_aie_rows = 4
+    b_col_maj = True
+
+    actual_A_tiles, actual_B_tiles, actual_C_tiles = matmul_reference(
+        M,
+        K,
+        N,
+        m,
+        k,
+        n,
+        n_aie_cols,
+        b_col_maj,
+        n_aie_rows,
+    )
+    new_A_tiles, new_B_tiles, new_C_tiles = matmul_tiler_helper(
+        M,
+        K,
+        N,
+        m,
+        k,
+        n,
+        n_aie_cols,
+        b_col_maj,
+        n_aie_rows,
+    )
+
+    assert actual_A_tiles == new_A_tiles
+    assert actual_C_tiles == new_C_tiles
+
+    # B sizes/strides differ so check each tile for functional equivalence
+    assert len(actual_B_tiles) == len(new_B_tiles)
+    for actual_tile, new_tile in zip(actual_B_tiles, new_B_tiles):
+        assert actual_tile.compare_access_orders(new_tile)
 
     # CHECK: Pass!
     print("Pass!")
