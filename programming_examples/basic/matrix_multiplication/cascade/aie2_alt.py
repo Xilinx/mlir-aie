@@ -349,13 +349,16 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, trace_s
                 for col in range(n_aie_cols):
                     C_col_offset = col * n
                     C_offset = C_col_offset + C_row_offset
-                    c_task = dma_configure_task_for(C_l2l3_fifos[col], issue_token=True)
+
+                    c_task = dma_configure_task_for(
+                        C_l2l3_fifos[col], repeat_count=tb_n_rows, issue_token=True
+                    )
                     with bds(c_task) as bd:
                         with bd[0]:
                             shim_dma_bd(
                                 C,
                                 offset=C_offset,
-                                sizes=[tb_n_rows, N // n // n_aie_cols, m, n],
+                                sizes=[1, N // n // n_aie_cols, m, n],
                                 strides=[m * N, n * n_aie_cols, N, 1],
                             )
                             EndOp()
@@ -367,14 +370,16 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, trace_s
                         A_row_offset = col * n_A_tiles_per_shim * k
                         A_offset = A_block_offset + A_row_offset
                         B_col_offset = col * n
-                        a_task = dma_configure_task_for(A_l3l2_fifos[col])
+                        a_task = dma_configure_task_for(
+                            A_l3l2_fifos[col], repeat_count=N // n // n_aie_cols
+                        )
                         with bds(a_task) as bd:
                             with bd[0]:
                                 shim_dma_bd(
                                     A,
                                     offset=A_offset,
                                     sizes=[
-                                        N // n // n_aie_cols,
+                                        1,
                                         K // k // n_aie_rows,
                                         m * n_A_tiles_per_shim,
                                         k,
@@ -385,14 +390,16 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, trace_s
                         dma_start_task(a_task)
                         in_tasks.append(a_task)
 
-                        b_task = dma_configure_task_for(B_l3l2_fifos[col])
+                        b_task = dma_configure_task_for(
+                            B_l3l2_fifos[col], repeat_count=N // n // n_aie_cols
+                        )
                         with bds(b_task) as bd:
                             with bd[0]:
                                 shim_dma_bd(
                                     A,
                                     offset=A_offset,
                                     sizes=[
-                                        N // n // n_aie_cols,
+                                        1,
                                         K // k // n_aie_rows,
                                         k * n_aie_rows,
                                         n,
@@ -402,8 +409,8 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, trace_s
                                 EndOp()
                         dma_start_task(b_task)
                         in_tasks.append(b_task)
-                dma_await_task(*out_tasks)
-                dma_free_task(*in_tasks)
+                    dma_await_task(*out_tasks)
+                    dma_free_task(*in_tasks)
 
 
 if __name__ == "__main__":

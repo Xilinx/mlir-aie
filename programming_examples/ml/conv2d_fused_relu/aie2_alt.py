@@ -208,27 +208,6 @@ def conv2dk1():
 
                 rtp2[0] = 1
 
-                npu_dma_memcpy_nd(
-                    metadata=of_inOF_act_L3L2,
-                    bd_id=0,
-                    mem=I,
-                    sizes=[1, 1, 1, tensorSize],
-                )
-                npu_dma_memcpy_nd(
-                    metadata=of_outOFL2L3,
-                    bd_id=2,
-                    mem=O,
-                    sizes=[1, 1, 1, tensorSize],
-                )
-                npu_dma_memcpy_nd(
-                    metadata=of_inOF_wts_0_L3L2,
-                    bd_id=2,
-                    mem=W,
-                    sizes=[1, 1, 1, weights],
-                )
-                # of_outOFL2L3 will only complete after of_inOF_wts_0_L3L2 and of_inOF_act_L3L2 complete, so we just wait on of_outOFL2L3 instead of all
-                dma_wait(of_outOFL2L3)
-
                 in_act_task = dma_configure_task_for(of_inOF_act_L3L2)
                 with bds(in_act_task) as bd:
                     with bd[0]:

@@ -147,7 +147,7 @@ def my_matmul():
                 )
                 with bds(b_task) as bd:
                     with bd[0]:
-                        shim_dma_bd(B, sizes=[1, 1, 1, K])
+                        shim_dma_bd(B, sizes=[1, 1, 1, K], strides=[0, 0, 0, 1])
                         EndOp()
                 dma_start_task(b_task)
 
@@ -157,13 +157,15 @@ def my_matmul():
                     A_offset = i * M_div_m_div_n_cores * m * K
                     C_offset = i * M_div_m_div_n_cores * m
 
-                    a_task = dma_configure_task_for(memA_fifos[i])
+                    a_task = dma_configure_task_for(
+                        memA_fifos[i], repeat_count=M_div_m_div_n_cores
+                    )
                     with bds(a_task) as bd:
                         with bd[0]:
                             shim_dma_bd(
                                 A,
                                 offset=A_offset,
-                                sizes=[M_div_m_div_n_cores, K_div_k, m, k],
+                                sizes=[1, K_div_k, m, k],
                                 strides=[m_x_K, k, K, 1],
                             )
                             EndOp()
