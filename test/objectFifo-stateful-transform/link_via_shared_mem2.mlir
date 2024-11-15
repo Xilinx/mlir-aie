@@ -27,18 +27,6 @@
 //CHECK:     %[[VAL_7:.*]] = aie.lock(%[[VAL_0:.*]], 0) {init = 1 : i32, sym_name = "of1_prod_lock"}
 //CHECK:     %[[VAL_8:.*]] = aie.lock(%[[VAL_0:.*]], 1) {init = 0 : i32, sym_name = "of1_cons_lock"}
 //CHECK:     aie.flow(%[[VAL_0:.*]], DMA : 0, %[[VAL_1]], DMA : 0)
-//CHECK:     %[[VAL_9:.*]] = aie.external_buffer {sym_name = "ext_buff_in"} : memref<16xi32>
-//CHECK:     aie.shim_dma_allocation @of1(MM2S, 0, 2)
-//CHECK:     %[[VAL_10:.*]] = aie.shim_dma(%[[VAL_0:.*]]) {
-//CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
-//CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
-//CHECK:       aie.use_lock(%[[VAL_7:.*]], AcquireGreaterEqual, 1)
-//CHECK:       aie.dma_bd(%[[VAL_9:.*]] : memref<16xi32>, 0, 16)
-//CHECK:       aie.use_lock(%[[VAL_8:.*]], Release, 1)
-//CHECK:       aie.next_bd ^bb1
-//CHECK:     ^bb2:  // pred: ^bb0
-//CHECK:       aie.end
-//CHECK:     }
 //CHECK:     %[[VAL_11:.*]] = aie.mem(%[[VAL_1]]) {
 //CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 //CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
@@ -67,8 +55,5 @@ module @link_AIE2 {
         aie.objectfifo @of2 (%tile12, {%tile22}, 2 : i32) {via_shared_mem = 0 : i32} : !aie.objectfifo<memref<16xi32>>
 
         aie.objectfifo.link [@of1] -> [@of2] ([] [])
-
-        %ext_buff_in = aie.external_buffer {sym_name = "ext_buff_in"} : memref<16xi32>
-        aie.objectfifo.register_external_buffers @of1 (%tile20, {%ext_buff_in}) : (memref<16xi32>)
     }
 }

@@ -25,18 +25,6 @@
 // CHECK:    %of1_prod_lock = aie.lock(%tile_2_0, 0) {init = 1 : i32, sym_name = "of1_prod_lock"}
 // CHECK:    %of1_cons_lock = aie.lock(%tile_2_0, 1) {init = 0 : i32, sym_name = "of1_cons_lock"}
 // CHECK:    aie.flow(%tile_2_0, DMA : 0, %tile_1_2, DMA : 0)
-// CHECK:    %ext_buff_in = aie.external_buffer {sym_name = "ext_buff_in"} : memref<16xi32>
-// CHECK:    aie.shim_dma_allocation @of1(MM2S, 0, 2)
-// CHECK:    %shim_dma_2_0 = aie.shim_dma(%tile_2_0) {
-// CHECK:      %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
-// CHECK:    ^bb1:  
-// CHECK:      aie.use_lock(%of1_cons_lock, AcquireGreaterEqual, 1)
-// CHECK:      aie.dma_bd(%ext_buff_in : memref<16xi32>, 0, 16)
-// CHECK:      aie.use_lock(%of1_prod_lock, Release, 1)
-// CHECK:      aie.next_bd ^bb1
-// CHECK:    ^bb2:  
-// CHECK:      aie.end
-// CHECK:    }
 // CHECK:    %mem_1_2 = aie.mem(%tile_1_2) {
 // CHECK:      %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:    ^bb1:  
@@ -64,8 +52,5 @@ module @link_AIE2 {
         aie.objectfifo @of2 (%tile12, {%tile22}, 2 : i32) {via_shared_mem = 1 : i32} : !aie.objectfifo<memref<16xi32>>
 
         aie.objectfifo.link [@of1] -> [@of2] ([] [])
-
-        %ext_buff_in = aie.external_buffer {sym_name = "ext_buff_in"} : memref<16xi32>
-        aie.objectfifo.register_external_buffers @of1 (%tile20, {%ext_buff_in}) : (memref<16xi32>)
     }
 }
