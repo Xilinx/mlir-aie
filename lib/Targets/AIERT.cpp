@@ -158,11 +158,11 @@ LogicalResult AIERTControl::configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
     int increaseValue = 0;
     auto lockRow = lock.rowIndex();
     auto lockCol = lock.colIndex();
-    bool westLock = targetModel.isEast(lockCol, lockRow, tileLoc.Col, tileLoc.Row);
-    bool eastLock = targetModel.isWest(lockCol, lockRow, tileLoc.Col, tileLoc.Row);
-    if (westLock) {
+    bool isWestLock = targetModel.isWest(tileLoc.Col, tileLoc.Row, lockCol, lockRow);
+    bool isEastLock = targetModel.isEast(tileLoc.Col, tileLoc.Row, lockCol, lockRow);
+    if (isWestLock) {
       increaseValue = MEM_TILE_LOCK_ID_INCR_WEST;
-    } else if (eastLock) {
+    } else if (isEastLock) {
       increaseValue = MEM_TILE_LOCK_ID_INCR_EAST;
     } else {
       increaseValue = MEM_TILE_LOCK_ID_INCR;
@@ -225,11 +225,11 @@ LogicalResult AIERTControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
       // check if buffer is allocated on the same memtile, the west, or the east one
       auto bufferRow = bufferOp.getTileOp().getRow();
       auto bufferCol = bufferOp.getTileOp().getCol();
-      bool westBuff = targetModel.isEast(bufferCol, bufferRow, tileLoc.Col, tileLoc.Row);
-      bool eastBuff = targetModel.isWest(bufferCol, bufferRow, tileLoc.Col, tileLoc.Row);
-      if (westBuff) {
+      bool isWestBuff = targetModel.isWest(tileLoc.Col, tileLoc.Row, bufferCol, bufferRow);
+      bool isEastBuff = targetModel.isEast(tileLoc.Col, tileLoc.Row, bufferCol, bufferRow);
+      if (isWestBuff) {
         baseAddr += BASE_ADDR_A_INCR_WEST;
-      } else if (eastBuff) {
+      } else if (isEastBuff) {
         baseAddr += BASE_ADDR_A_INCR_EAST;
       } else {
         baseAddr += BASE_ADDR_A_INCR;
