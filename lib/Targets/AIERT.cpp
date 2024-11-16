@@ -229,8 +229,10 @@ LogicalResult AIERTControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
       // one
       auto bufferRow = bufferOp.getTileOp().getRow();
       auto bufferCol = bufferOp.getTileOp().getCol();
-      bool westBuff = targetModel.isEast(bufferCol, bufferRow, tileLoc.Col, tileLoc.Row);
-      bool eastBuff = targetModel.isWest(bufferCol, bufferRow, tileLoc.Col, tileLoc.Row);
+      bool westBuff =
+          targetModel.isEast(bufferCol, bufferRow, tileLoc.Col, tileLoc.Row);
+      bool eastBuff =
+          targetModel.isWest(bufferCol, bufferRow, tileLoc.Col, tileLoc.Row);
       if (westBuff) {
         baseAddr += BASE_ADDR_A_INCR_WEST;
       } else if (eastBuff) {
