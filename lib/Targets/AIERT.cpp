@@ -223,7 +223,8 @@ LogicalResult AIERTControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
       return bufferOp.emitError("buffer must have address assigned");
     baseAddr = bufferOp.getAddress().value();
     if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
-      // check if buffer is allocated on the same memtile, the west, or the east one
+      // check if buffer is allocated on the same memtile, the west, or the east
+      // one
       auto bufferRow = bufferOp.getTileOp().getRow();
       auto bufferCol = bufferOp.getTileOp().getCol();
       bool westBuff = targetModel.isEast(bufferCol, bufferRow, tileLoc.Col, tileLoc.Row);
