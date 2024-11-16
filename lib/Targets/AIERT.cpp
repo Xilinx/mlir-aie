@@ -159,8 +159,10 @@ LogicalResult AIERTControl::configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
     int increaseValue = 0;
     auto lockRow = lock.rowIndex();
     auto lockCol = lock.colIndex();
-    bool westLock = targetModel.isEast(lockCol, lockRow, tileLoc.Col, tileLoc.Row);
-    bool eastLock = targetModel.isWest(lockCol, lockRow, tileLoc.Col, tileLoc.Row);
+    bool westLock =
+        targetModel.isEast(lockCol, lockRow, tileLoc.Col, tileLoc.Row);
+    bool eastLock =
+        targetModel.isWest(lockCol, lockRow, tileLoc.Col, tileLoc.Row);
     if (westLock) {
       increaseValue = MEM_TILE_LOCK_ID_INCR_WEST;
     } else if (eastLock) {
