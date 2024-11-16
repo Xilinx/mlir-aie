@@ -32,6 +32,7 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/InliningUtils.h"
 #include "clang/CIR/Dialect/IR/CIRAttrs.h"
 #include "clang/CIR/Dialect/IR/CIRDialect.h"
 #include "clang/CIR/Dialect/IR/CIRTypes.h"
@@ -581,9 +582,6 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
   // It should be OK since it is a module pass, so no parallelism here.
   static inline CIRToAIETypesAnalysis *cat;
 
-  // Keep track of some operations to erase at the end of the pass
-  llvm::SmallVector<mlir::Operation *> opsToErase;
-
   // Try to lower the operation as an aie.buffer and return true on success
   //
   // clang-format off
@@ -827,8 +825,6 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
   void runOnOperation() override {
     // Compute the analysis for the module since it is a module pass.
     cat = &getAnalysis<CIRToAIETypesAnalysis>();
-    // Just in case this pass is run multiple times
-    opsToErase.clear();
     auto module = getOperation();
     mlir::OpBuilder b{module};
     // Use pre-order walk to keep the C++ ordered semantics while lowering the
@@ -837,8 +833,78 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
       tryBufferLowering(op, b) || tryDeviceLowering(op, b) ||
           tryTileLowering(op, b) || tryTileProgramLowering(op, b);
     });
-    // Remove the operations marked as useless
-    eraseOpsAndUsers(opsToErase);
+  }
+};
+
+// Inline the kernel lambda and its calling functions found in an aie.core
+// operation
+struct CIRToAIEInlineKernelLambda
+    : CIRToAIEInlineKernelLambdaBase<CIRToAIEInlineKernelLambda> {
+  // \todo Find a less ugly way to access the analysis. How is it possible for a
+  // pattern to access some contextual information?
+  // It should be OK since it is a module pass, so no parallelism here.
+  static inline CIRToAIETypesAnalysis *cat;
+
+  static void inlineAndEraseCall(cir::CallOp call, cir::FuncOp calledFunc) {
+    LLVM_DEBUG(auto *entryBlock = &calledFunc.getCallableRegion()->front();
+               calledFunc.emitRemark("CIRToAIEInlineKernelLambda calledFunc")
+               << "call.getNumOperands()" << call.getNumOperands()
+               << "entryBlock->getNumArguments()"
+               << entryBlock->getNumArguments() << "call.getNumResults()"
+               << call.getNumResults() << "calledFunc.getResultTypes().size()"
+               << calledFunc.getResultTypes().size()
+               << "calledFunc.getNumResults()" << calledFunc.getNumResults()
+               << "calledFunc.getCallableResults().size()"
+               << calledFunc.getCallableResults().size();
+               calledFunc.getResultTypes()[0].dump());
+    mlir::InlinerInterface interface{call.getContext()};
+    if (mlir::inlineCall(interface, call, calledFunc,
+                         calledFunc.getCallableRegion())
+            .failed())
+      call.emitError("CIRToAIEInlineKernelLambdaBase not able to "
+                     "inline the lambda call");
+    call.erase();
+  }
+
+  void runOnOperation() override {
+    // Compute the analysis for the module since it is a module pass.
+    cat = &getAnalysis<CIRToAIETypesAnalysis>();
+    auto module = getOperation();
+    mlir::OpBuilder b{module};
+    // Use pre-order walk to keep the C++ ordered semantics while lowering the
+    // AIE constructs
+    module->walk<mlir::WalkOrder::PreOrder>([&](xilinx::AIE::CoreOp core) {
+      LLVM_DEBUG(core.emitRemark("CIRToAIEInlineKernelLambda aie.core"));
+      if (auto scope =
+              mlir::dyn_cast<cir::ScopeOp>(core.getBody().front().front())) {
+        LLVM_DEBUG(scope.emitRemark("CIRToAIEInlineKernelLambda cir.scope"));
+        if (auto call = mlir::dyn_cast<cir::CallOp>(
+                *std::next(scope.getScopeRegion().front().rbegin()))) {
+          LLVM_DEBUG(call.emitRemark("CIRToAIEInlineKernelLambda call"));
+          if (auto calledFunc =
+                  mlir::SymbolTable::lookupNearestSymbolFrom<cir::FuncOp>(
+                      call, call.getCalleeAttr())) {
+            // The last function instruction is cir.return and the one before
+            // is the call to the lambda
+            if (auto lambdaCall = mlir::dyn_cast<cir::CallOp>(
+                    *std::next(calledFunc.getBlocks().front().rbegin()))) {
+              LLVM_DEBUG(lambdaCall.emitRemark("lambdaCall"));
+              if (auto lambdaFunc =
+                      mlir::SymbolTable::lookupNearestSymbolFrom<cir::FuncOp>(
+                          lambdaCall, lambdaCall.getCalleeAttr())) {
+                LLVM_DEBUG(lambdaFunc.emitRemark(
+                    "tryTileProgramLowering: Tile core lambda"));
+                if (lambdaFunc.getLambda())
+                  inlineAndEraseCall(call, calledFunc);
+              }
+            }
+          }
+        }
+      }
+      // No need to dive further this aie.core operation since they cannot be
+      // nested
+      return mlir::WalkResult::skip();
+    });
   }
 };
 
@@ -851,6 +917,11 @@ createCIRToAIEPreparePass() {
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createCIRToAIEPass() {
   return std::make_unique<CIRToAIE>();
+}
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createCIRToAIEInlineKernelLambdaPass() {
+  return std::make_unique<CIRToAIEInlineKernelLambda>();
 }
 
 } // namespace xilinx::AIE::CIR

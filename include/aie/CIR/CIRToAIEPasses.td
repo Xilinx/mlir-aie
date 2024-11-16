@@ -45,4 +45,26 @@ def CIRToAIE : Pass<"cir-to-aie", "mlir::ModuleOp"> {
   ];
 }
 
+def CIRToAIEInlineKernelLambda : Pass<"cir-to-aie-inline-kernel-lambda", "mlir::ModuleOp"> {
+
+  let summary = "Inline the call to the kernel lambda inside the aie.core operation";
+
+  let description = [{ In aie++ the tile kernel is represented by a lambda
+    called from "aie::tile::program" which end up to be lowered in a aie.core
+    operation.
+
+    This pass remove the call operations to the lambda by inlining the lambda
+    itself.
+
+    TODO: this might be possible to use the inliner in a restrictive way for
+    this, with some SROA, mem2reg...
+  }];
+
+  let constructor = "xilinx::AIE::CIR::createCIRToAIEInlineKernelLambdaPass()";
+  let dependentDialects = [
+    "cir::CIRDialect",
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
 #endif
