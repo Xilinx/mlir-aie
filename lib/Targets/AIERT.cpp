@@ -154,7 +154,8 @@ LogicalResult AIERTControl::configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
          "expected both use_lock(acquire) and use_lock(release) with bd");
 
   if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
-    // check if buffer is allocated on the same memtile, the west, or the east one
+    // check if buffer is allocated on the same memtile, the west, or the east
+    // one
     int increaseValue = 0;
     auto lockRow = lock.rowIndex();
     auto lockCol = lock.colIndex();
