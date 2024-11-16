@@ -162,6 +162,7 @@ def conv2dk1(trace_size: int):
     #    print(ctx.module.operation.verify())
     print(ctx.module)
 
+
 if __name__ == "__main__":
     trace_size = 0 if (len(sys.argv) != 2) else int(sys.argv[1])
     conv2dk1(trace_size=trace_size)
