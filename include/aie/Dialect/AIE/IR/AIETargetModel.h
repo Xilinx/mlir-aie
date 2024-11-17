@@ -236,6 +236,9 @@ public:
   // There are several special cases for handling the NPU at the moment.
   virtual bool isNPU() const { return false; }
 
+  // Return true if this device is using semaphore locks.
+  virtual bool isUsingSemaphoreLocks() const { return false; }
+
   // Return the bit offset of the column within a tile address.
   // This is used to compute the control address of a tile from it's column
   // location.
@@ -396,6 +399,8 @@ public:
     return model->getKind() >= TK_AIE2_VE2302 &&
            model->getKind() < TK_AIE2_Last;
   }
+
+  virtual bool isUsingSemaphoreLocks() const override { return true; }
 };
 
 class VC1902TargetModel : public AIE1TargetModel {
