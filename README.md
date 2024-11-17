@@ -190,8 +190,11 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 >   source yourVitisSetupScript.sh
 >   export LM_LICENSE_FILE=/opt/Xilinx.lic
 >   source /opt/xilinx/xrt/setup.sh
->   source ironenv/bin/activate
 >   source utils/env_setup.sh my_install/mlir_aie my_install/mlir my_install/llvm-aie
+> ```
+> You may also need to activate the IRON virtual environment (already done by the `quick_setup.sh`)
+> ```
+>   source ironenv/bin/activate
 > ```
 
 For your design of interest, for instance from [programming_examples](../programming_examples/), 2 steps are needed: (i) build the AIE design and then (ii) build the host code.
