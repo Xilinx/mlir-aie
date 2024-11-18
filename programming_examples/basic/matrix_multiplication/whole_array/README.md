@@ -141,6 +141,30 @@ Of note is the `object_fifo_link()` operation. This operation establishes a conn
 
 We assume our data are stored in **row-major format** in the host's memory. For processing on the AIE compute cores, we need to transform the data layouts, such the above listed *sub-matrix tiles* are laid out contiguously in AIE compute core memory. Thankfully, AIE hardware has extensive support for transforming data using the DMAs as it is received and sent with zero cost. In the following, we will explain how we make use of this hardware feature to transform our data.
 
+#### Runtime Sequence Tiling and Data Layout Transformations Notebook
+
+There is a notebook that includes visualization for the runtime sequence `npu_dma_memcpy_nd` operations use to transfer matrices A, B, and C.
+
+To run the notebook:
+* Start a jupyter server at the root directory of your clone of `mlir-aie`.
+  Make sure you use a terminal that has run the `utils/setup_env.sh` script
+  so that the correct environment variables are percolated to jupyter.
+  Below is an example of how to start a jupyter server:
+  ```bash
+  python3 -m jupyter notebook --no-browser --port=8080
+  ```
+* In your browser, navigate to the URL (which includes a token) which is found
+  in the output of the above command.
+* Navigate to `programming_examples/basic/matrix_multiplication/whole_array`
+* Double click `mat_mul_whole_array_visualization.ipynb` to start the notebook; choose the ipykernel called `ironenv`.
+* You should now be good to go! Note that generating the animations in the notebook can take several minutes.
+
+#### Run the Notebook as a Script
+```bash
+make clean
+make run
+```
+
 ##### Tiling to Vector Intrinsic Size
 
 The `memA_fifos` and `memB_fifos` receive sub-matrices of size `m`&times;`k` and `k`&times;`n`, respectively. The FIFOs translate those matrices from a row-major format (or, alternatively, column-major for `B` if `b_col_maj` is set) into the `r`&times;`s`-sized and `s`&times;`t`-sized blocks required by the hardware's vector instrinsics before sending them into the compute cores memory.
