@@ -513,14 +513,19 @@ struct AIEObjectFifoStatefulTransformPass
   void createBd(OpBuilder &builder, LockOp acqLock, int acqMode,
                 LockAction acqLockAction, LockOp relLock, int relMode,
                 MyOp buff, int offset, int len, Block *succ,
-                BDDimLayoutArrayAttr dims) {
+                BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDimensions) {
     if (acqLock)
       builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqLockAction,
                                 acqMode);
-    if (!dims.getValue().empty())
+
+    if (!dims.getValue().empty() && padDimensions) {
+      builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims,
+                              padDimensions);
+    } else if (!dims.getValue().empty()) {
       builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims);
-    else
+    } else {
       builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len);
+    }
     if (acqLock)
       builder.create<UseLockOp>(builder.getUnknownLoc(), relLock,
                                 LockAction::Release, relMode);
@@ -534,7 +539,8 @@ struct AIEObjectFifoStatefulTransformPass
   void createBdBlock(OpBuilder &builder, ObjectFifoCreateOp op, int lockMode,
                      int acqNum, int relNum, MyOp buff, int offset, int len,
                      DMAChannelDir channelDir, size_t blockIndex, Block *succ,
-                     BDDimLayoutArrayAttr dims) {
+                     BDDimLayoutArrayAttr dims,
+                     BDPadLayoutArrayAttr padDimensions) {
     LockOp acqLock;
     LockOp relLock;
     int acqMode = 1;
@@ -559,20 +565,23 @@ struct AIEObjectFifoStatefulTransformPass
       }
     }
     createBd(builder, acqLock, acqMode, acqLockAction, relLock, relMode, buff,
-             offset, len, succ, dims);
+             offset, len, succ, dims, padDimensions);
   }
 
   /// Function that either calls createAIETileDMA(), createShimDMA() or
   /// createMemTileDMA() based on op tile row value.
   void createDMA(DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
                  DMAChannelDir channelDir, int channelIndex, int lockMode,
-                 BDDimLayoutArrayAttr dims) {
+                 BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr pad_dims) {
     if (op.getProducerTileOp().isShimTile()) {
       createShimDMA(device, builder, op, channelDir, channelIndex, lockMode,
                     dims);
     } else if (op.getProducerTileOp().isMemTile()) {
+      BDPadLayoutArrayAttr padDims = nullptr;
+      if (channelDir == DMAChannelDir::MM2S && pad_dims)
+        padDims = pad_dims;
       createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
-                       dims);
+                       dims, padDims);
     } else {
       createAIETileDMA(device, builder, op, channelDir, channelIndex, lockMode,
                        dims);
@@ -669,7 +678,7 @@ struct AIEObjectFifoStatefulTransformPass
       builder.setInsertionPointToStart(curr);
       createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
                               buffersPerFifo[target][blockIndex], /*offset*/ 0,
-                              len, channelDir, blockIndex, succ, dims);
+                              len, channelDir, blockIndex, succ, dims, nullptr);
       curr = succ;
       blockIndex++;
     }
@@ -745,7 +754,7 @@ struct AIEObjectFifoStatefulTransformPass
       createBdBlock<ExternalBufferOp>(builder, op, lockMode, acqNum, relNum,
                                       externalBuffersPerFifo[op][blockIndex],
                                       /*offset*/ 0, len, channelDir, blockIndex,
-                                      succ, dims);
+                                      succ, dims, nullptr);
       curr = succ;
       blockIndex++;
     }
@@ -756,7 +765,8 @@ struct AIEObjectFifoStatefulTransformPass
   void createMemTileDMA(DeviceOp &device, OpBuilder &builder,
                         ObjectFifoCreateOp op, DMAChannelDir channelDir,
                         int channelIndex, int lockMode,
-                        BDDimLayoutArrayAttr dims) {
+                        BDDimLayoutArrayAttr dims,
+                        BDPadLayoutArrayAttr padDimensions) {
     size_t numBlocks = op.size();
     if (numBlocks == 0)
       return;
@@ -898,7 +908,8 @@ struct AIEObjectFifoStatefulTransformPass
         offset = extraOffset;
       createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
                               buffersPerFifo[target][blockIndex], offset,
-                              lenOut, channelDir, blockIndex, succ, dims);
+                              lenOut, channelDir, blockIndex, succ, dims,
+                              padDimensions);
       curr = succ;
       blockIndex++;
     }
@@ -1361,7 +1372,6 @@ struct AIEObjectFifoStatefulTransformPass
     auto consumerWireType = WireBundle::DMA;
     std::set<TileOp>
         objectFifoTiles; // track cores to check for loops during unrolling
-
     //===------------------------------------------------------------------===//
     // Split objectFifos into a consumer end and producer end if needed
     //===------------------------------------------------------------------===//
@@ -1511,7 +1521,8 @@ struct AIEObjectFifoStatefulTransformPass
       DMAChannel producerChan =
           dmaAnalysis.getMasterDMAChannel(producer.getProducerTile());
       createDMA(device, builder, producer, producerChan.direction,
-                producerChan.channel, 0, producer.getDimensionsToStreamAttr());
+                producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
+                producer.getPadDimensionsAttr());
       // generate objectFifo allocation info
       builder.setInsertionPoint(&device.getBody()->back());
 
@@ -1529,7 +1540,7 @@ struct AIEObjectFifoStatefulTransformPass
         BDDimLayoutArrayAttr consumerDims =
             consumer.getDimensionsFromStreamPerConsumer()[0];
         createDMA(device, builder, consumer, consumerChan.direction,
-                  consumerChan.channel, 1, consumerDims);
+                  consumerChan.channel, 1, consumerDims, nullptr);
         // generate objectFifo allocation info
         builder.setInsertionPoint(&device.getBody()->back());
 
