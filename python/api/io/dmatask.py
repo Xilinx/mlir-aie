@@ -44,22 +44,12 @@ class DMATask(Resolvable):
         self._task = dma_configure_task_for(
             self._object_fifo.op, issue_token=self._wait
         )
-
-        # TODO(erika) - fix issue w/ passthrough_kernel and remove this hack
-        if (
-            self._tensor_tile.transfer_len == self._tensor_tile.tensor_width
-            and self._tensor_tile.tensor_height == 1
-        ):
-            dimensions = None
-        else:
-            dimensions = self._tensor_tile.dimensions
-
         with bds(self._task) as bd:
             with bd[0]:
                 dma_bd(
                     self._inout_data.op,
-                    len=self._tensor_tile.transfer_len,
-                    dimensions=dimensions,
+                    offset=self._tensor_tile.offset,
+                    dimensions=self._tensor_tile.dimensions,
                 )
                 EndOp()
         dma_start_task(self._task)
