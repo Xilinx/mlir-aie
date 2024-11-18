@@ -1254,6 +1254,7 @@ Interfaces: `Symbol`
 <tr><td><code>via_shared_mem</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 1</td></tr>
 <tr><td><code>initValues</code></td><td>::mlir::ArrayAttr</td><td>array of ElementsAttr</td></tr>
+<tr><td><code>padDimensions</code></td><td>::xilinx::AIE::BDPadLayoutArrayAttr</td><td></td></tr>
 </table>
 
 #### Operands:
