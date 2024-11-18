@@ -11,21 +11,31 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects import arith
+
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D
+from aie.helpers.tensortiler import TensorTiler2D
 
 
-def generate_module(tensor_height, tensor_width, tile_height, tile_width):
+def generate_module(
+    tensor_height, tensor_width, tile_height, tile_width, generate_access_map=False
+):
+    # define types
+    dtype = np.int32
+    tensor_size = tensor_height * tensor_width
+    tile_size = tile_height * tile_width
+    flattened_tensor = np.ndarray[(tensor_size,), np.dtype[dtype]]
+    flattened_tile = np.ndarray[(tile_size,), np.dtype[dtype]]
+
+    tiler = TensorTiler2D.simple_tiler(
+        (tensor_height, tensor_width), (tile_height, tile_width)
+    )
+    if generate_access_map:
+        tiler.visualize(file_path="per_tile.png")
+        return
+
     @device(AIEDevice.npu1_1col)
     def device_body():
-        # define types
-        tensor_size = tensor_height * tensor_width
-        tile_size = tile_height * tile_width
-        flattened_tensor = np.ndarray[(tensor_size,), np.dtype[TensorTiler2D.DTYPE]]
-        flattened_tile = np.ndarray[(tile_size,), np.dtype[TensorTiler2D.DTYPE]]
-
         # Tile declarations
         ShimTile = tile(0, 0)
         ComputeTile2 = tile(0, 2)
@@ -41,9 +51,9 @@ def generate_module(tensor_height, tensor_width, tile_height, tile_width):
             # TODO: better way to get mutable constant than buffer??
             access_counter = buffer(
                 ComputeTile2,
-                np.ndarray[(1,), np.dtype[TensorTiler2D.DTYPE]],
+                np.ndarray[(1,), np.dtype[dtype]],
                 "access_counter",
-                initial_value=np.array([0], dtype=TensorTiler2D.DTYPE),
+                initial_value=np.array([0], dtype=dtype),
             )
             for _ in range_(sys.maxsize):
                 elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
@@ -54,15 +64,12 @@ def generate_module(tensor_height, tensor_width, tile_height, tile_width):
 
         @runtime_sequence(flattened_tensor)
         def sequence(access_count):
-            tiler = TensorTiler2D(tensor_height, tensor_width, tile_height, tile_width)
-            for t in tiler.tile_iter():
+            for t in tiler:
                 npu_dma_memcpy_nd(
                     metadata=of_out,
                     bd_id=1,
                     mem=access_count,
-                    sizes=t.sizes,
-                    strides=t.strides,
-                    offsets=[0, 0, 0, t.offset],
+                    tensor_tile=t,
                 )
                 dma_wait(of_out)
 
@@ -70,9 +77,14 @@ def generate_module(tensor_height, tensor_width, tile_height, tile_width):
 def main(opts):
     with mlir_mod_ctx() as ctx:
         generate_module(
-            opts.tensor_height, opts.tensor_width, opts.tile_height, opts.tile_width
+            opts.tensor_height,
+            opts.tensor_width,
+            opts.tile_height,
+            opts.tile_width,
+            opts.generate_access_map,
         )
-        print(ctx.module)
+        if not opts.generate_access_map:
+            print(ctx.module)
 
 
 def get_arg_parser():
@@ -81,6 +93,11 @@ def get_arg_parser():
     p.add_argument("--tensor-width", required=True, help="Tensor width", type=int)
     p.add_argument("--tile-height", required=True, help="Tile height", type=int)
     p.add_argument("--tile-width", required=True, help="Tile width", type=int)
+    p.add_argument(
+        "--generate-access-map",
+        action="store_true",
+        help="Produce a file showing data access order",
+    )
     return p
 
 

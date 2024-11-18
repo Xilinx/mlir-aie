@@ -13,16 +13,18 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D
+from aie.helpers.tensortiler import TensorTile
 
 
-def my_passthrough(M, K, N, generate_acccess_map=False):
+def my_passthrough(M, K, N, generate_access_map=False):
     tensor_ty = np.ndarray[(M, K), np.dtype[np.int32]]
-    tile_in = next(TensorTiler2D(M, K, tensor_col_major=True).tile_iter())
-    tile_out = next(TensorTiler2D(K, M).tile_iter())
-
-    if generate_acccess_map:
-        tile_in.visualize(file_path="transpose_data.png")
+    data_transform = TensorTile(
+        (M, K), offset=0, sizes=[1, 1, K, M], strides=[1, 1, 1, K]
+    )
+    if generate_access_map:
+        data_transform.visualize(
+            show_arrows=True, plot_access_count=False, file_path="transpose_data.png"
+        )
         return
 
     with mlir_mod_ctx() as ctx:
@@ -55,8 +57,7 @@ def my_passthrough(M, K, N, generate_acccess_map=False):
                     metadata=of_in,
                     bd_id=1,
                     mem=A,
-                    sizes=tile_in.sizes,
-                    strides=tile_in.strides,
+                    tensor_tile=data_transform,
                     issue_token=True,
                 )
                 npu_dma_memcpy_nd(
@@ -90,5 +91,5 @@ if __name__ == "__main__":
         M=args.dims[0],
         K=args.dims[1],
         N=args.dims[0] * args.dims[1],
-        generate_acccess_map=args.generate_access_map,
+        generate_access_map=args.generate_access_map,
     )
