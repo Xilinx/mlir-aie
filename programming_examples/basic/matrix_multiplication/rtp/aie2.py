@@ -15,6 +15,7 @@ from aie.dialects.aiex import *
 from aie.dialects.scf import *
 import aie.dialects.index as index_dialect
 import aie.dialects.arith as arith_dialect
+import aie.dialects.memref as memref_dialect
 
 from util import *
 
@@ -188,7 +189,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
             for row in range(n_aie_rows):
                 # RTP index 0: "ready" signal
                 # RTP index 1: K // k // 2
-                rtp_bufs[row][col] = buffer(core_tiles[row][col], (3,), T.i32(), f"rtp_{row}_{col}")
+                rtp_bufs[row][col] = buffer(core_tiles[row][col], datatype=T.memref(3, T.i32()), name=f"rtp_{row}_{col}")
 
         # AIE-array data movement with object fifos
         A_l3l2_fifos = [None] * n_aie_cols
@@ -206,16 +207,16 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
             A_l2l1_fifos[row] = {
                 "prod" : {
                     "endpoint": (mem_tile, WireBundle.DMA, 0),
-                    "ping_buf": buffer(mem_tile, A_l2_memref_ty.shape, dtype_in(), name=f"A_L3L2_{row}_cons_buff_0"),
-                    "pong_buf": buffer(mem_tile, A_l2_memref_ty.shape, dtype_in(), name=f"A_L3L2_{row}_cons_buff_1"),
+                    "ping_buf": buffer(mem_tile, datatype=A_l2_memref_ty, name=f"A_L3L2_{row}_cons_buff_0"),
+                    "pong_buf": buffer(mem_tile, datatype=A_l2_memref_ty, name=f"A_L3L2_{row}_cons_buff_1"),
                     "put_lock": lock(mem_tile, init=2, sym_name=f"A_L3L2_{row}_cons_prod_lock", lock_id=0),
                     "get_lock": lock(mem_tile, init=0, sym_name=f"A_L3L2_{row}_cons_cons_lock", lock_id=1)
                 },
                 "cons" : [
                     {  
                         "endpoint": (core_tiles[row][col], WireBundle.DMA, 0),
-                        "ping_buf": buffer(core_tiles[row][col], A_l1_memref_ty.shape, dtype_in(), name=f"A_L2L1_{row}_{col}_cons_buff_0"),
-                        "pong_buf": buffer(core_tiles[row][col], A_l1_memref_ty.shape, dtype_in(), name=f"A_L2L1_{row}_{col}_cons_buff_1"),
+                        "ping_buf": buffer(core_tiles[row][col], datatype=A_l1_memref_ty, name=f"A_L2L1_{row}_{col}_cons_buff_0"),
+                        "pong_buf": buffer(core_tiles[row][col], datatype=A_l1_memref_ty, name=f"A_L2L1_{row}_{col}_cons_buff_1"),
                         "put_lock": lock(core_tiles[row][col], init=2, sym_name=f"A_L2L1_{row}_{col}_cons_prod_lock", lock_id=0),
                         "get_lock": lock(core_tiles[row][col], init=0, sym_name=f"A_L2L1_{row}_{col}_cons_cons_lock", lock_id=1)
                     }
@@ -235,7 +236,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
             A_l3l2_fifos[col] = {
                 "prod" : {
                     "endpoint": (shim_tile, WireBundle.DMA, 0),
-                    "shim_memref": memref.global_(sym_name=f"A_L3L2_{col}", sym_visibility="public", type_=A_l3_memref_ty),
+                    "shim_memref": memref_dialect.global_(sym_name=f"A_L3L2_{col}", sym_visibility="public", type_=A_l3_memref_ty),
                     "shim_dma_alloc": ShimDMAAllocationOp(f"A_L3L2_{col}", DMAChannelDir.MM2S, 0, col=col)
                 },
                 "cons" : {
@@ -253,16 +254,16 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
             B_l2l1_fifos[col] = {
                 "prod" : {
                     "endpoint": (mem_tile, WireBundle.DMA, 1),
-                    "ping_buf": buffer(mem_tile, B_l2_memref_ty.shape, dtype_in(), name=f"B_L3L2_{col}_cons_buff_0"),
-                    "pong_buf": buffer(mem_tile, B_l2_memref_ty.shape, dtype_in(), name=f"B_L3L2_{col}_cons_buff_1"),
+                    "ping_buf": buffer(mem_tile, datatype=B_l2_memref_ty, name=f"B_L3L2_{col}_cons_buff_0"),
+                    "pong_buf": buffer(mem_tile, datatype=B_l2_memref_ty, name=f"B_L3L2_{col}_cons_buff_1"),
                     "put_lock": lock(mem_tile, init=2, sym_name=f"B_L3L2_{col}_cons_prod_lock", lock_id=2),
                     "get_lock": lock(mem_tile, init=0, sym_name=f"B_L3L2_{col}_cons_cons_lock", lock_id=3)
                 },
                 "cons" : [
                     {  
                         "endpoint": (core_tiles[row][col], WireBundle.DMA, 1),
-                        "ping_buf": buffer(core_tiles[row][col], B_l1_memref_ty.shape, dtype_in(), name=f"B_L2L1_{col}_{row}_cons_buff_0"),
-                        "pong_buf": buffer(core_tiles[row][col], B_l1_memref_ty.shape, dtype_in(), name=f"B_L2L1_{col}_{row}_cons_buff_1"),
+                        "ping_buf": buffer(core_tiles[row][col], datatype=B_l1_memref_ty, name=f"B_L2L1_{col}_{row}_cons_buff_0"),
+                        "pong_buf": buffer(core_tiles[row][col], datatype=B_l1_memref_ty, name=f"B_L2L1_{col}_{row}_cons_buff_1"),
                         "put_lock": lock(core_tiles[row][col], init=2, sym_name=f"B_L2L1_{col}_{row}_cons_prod_lock", lock_id=2),
                         "get_lock": lock(core_tiles[row][col], init=0, sym_name=f"B_L2L1_{col}_{row}_cons_cons_lock", lock_id=3)
                     }
@@ -282,7 +283,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
             B_l3l2_fifos[col] = {
                 "prod" : {
                     "endpoint": (shim_tile, WireBundle.DMA, 1),
-                    "shim_memref": memref.global_(sym_name=f"B_L3L2_{col}", sym_visibility="public", type_=B_l3_memref_ty),
+                    "shim_memref_dialect": memref_dialect.global_(sym_name=f"B_L3L2_{col}", sym_visibility="public", type_=B_l3_memref_ty),
                     "shim_dma_alloc": ShimDMAAllocationOp(f"B_L3L2_{col}", DMAChannelDir.MM2S, 1, col=col)
                 },
                 "cons" : {
@@ -300,8 +301,8 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                 C_l1l2_fifos[row][col] = {
                     "prod" : {
                         "endpoint": (core_tiles[row][col], WireBundle.DMA, 0),
-                        "ping_buf": buffer(core_tiles[row][col], C_l1_memref_ty.shape, dtype_out(), name=f"C_L1L2_{col}_{row}_buff_0"),
-                        "pong_buf": buffer(core_tiles[row][col], C_l1_memref_ty.shape, dtype_out(), name=f"C_L1L2_{col}_{row}_buff_1"),
+                        "ping_buf": buffer(core_tiles[row][col], datatype=C_l1_memref_ty, name=f"C_L1L2_{col}_{row}_buff_0"),
+                        "pong_buf": buffer(core_tiles[row][col], datatype=C_l1_memref_ty, name=f"C_L1L2_{col}_{row}_buff_1"),
                         "put_lock": lock(core_tiles[row][col], init=2, sym_name=f"C_L1L2_{col}_{row}_prod_lock", lock_id=4),
                         "get_lock": lock(core_tiles[row][col], init=0, sym_name=f"C_L1L2_{col}_{row}_cons_lock", lock_id=5)
                     },
@@ -321,14 +322,14 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
             C_l2l3_fifos[col] = {
                 "prod" : {
                     "endpoint": (mem_tiles[col], WireBundle.DMA, 2),
-                    "ping_buf": buffer(mem_tiles[col], C_l2_memref_ty.shape, dtype_out(), name=f"C_L2L3_{col}_buff_0"),
-                    "pong_buf": buffer(mem_tiles[col], C_l2_memref_ty.shape, dtype_out(), name=f"C_L2L3_{col}_buff_1"),
+                    "ping_buf": buffer(mem_tiles[col], datatype=C_l2_memref_ty, name=f"C_L2L3_{col}_buff_0"),
+                    "pong_buf": buffer(mem_tiles[col], datatype=C_l2_memref_ty, name=f"C_L2L3_{col}_buff_1"),
                     "put_lock": lock(mem_tiles[col], init=4*2, sym_name=f"C_L2L3_{col}_prod_lock", lock_id=4),
                     "get_lock": lock(mem_tiles[col], init=0, sym_name=f"C_L2L3_{col}_cons_lock", lock_id=5)
                 },
                 "cons" : {  
                     "endpoint": (shim_tiles[col], WireBundle.DMA, 0),
-                    "shim_memref": memref.global_(sym_name=f"C_L2L3_{col}", sym_visibility="public", type_=C_l3_memref_ty),
+                    "shim_memref": memref_dialect.global_(sym_name=f"C_L2L3_{col}", sym_visibility="public", type_=C_l3_memref_ty),
                     "shim_dma_alloc": ShimDMAAllocationOp(f"C_L2L3_{col}", DMAChannelDir.S2MM, 0, col=col)
                 }
             }
