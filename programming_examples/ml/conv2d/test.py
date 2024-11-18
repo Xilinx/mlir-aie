@@ -33,8 +33,8 @@ def main(opts):
     npu_time_total = 0
     npu_time_min = 9999999
     npu_time_max = 0
-    trace_size = 16384
-    enable_trace = False
+    trace_size = opts.trace_size
+    enable_trace = False if not trace_size else True
     trace_file = "log/trace_" + design + ".txt"
     # ------------------------------------------------------
     # Configure this to match your design's buffer size
@@ -118,14 +118,21 @@ def main(opts):
     # ------------------------------------------------------
     for i in range(num_iter):
         start = time.time_ns()
-        aie_output = execute(app, ifm_mem_fmt, total_wts) * int8_scale
+        entire_buffer = execute(app, ifm_mem_fmt, total_wts)
         stop = time.time_ns()
 
         if enable_trace:
-            aie_output, trace = extract_trace(
-                aie_output, shape_out, dtype_out, trace_size
+            # Separate data and trace
+            data_buffer, trace_buffer = extract_trace(
+                entire_buffer, shape_out, dtype_out, trace_size
             )
-            write_out_trace(trace, trace_file)
+            # Scale the data
+            data_buffer = data_buffer * int8_scale
+            # Write out the trace
+            write_out_trace(trace_buffer, trace_file)
+        else:
+            data_buffer = entire_buffer * int8_scale
+            trace_buffer = None
 
         npu_time = stop - start
         npu_time_total = npu_time_total + npu_time
@@ -133,9 +140,13 @@ def main(opts):
     # ------------------------------------------------------
     # Reorder output data-layout
     # ------------------------------------------------------
-    temp_out = aie_output.reshape(32, 8, 32, 8)
+    temp_out = data_buffer.reshape(32, 8, 32, 8)
     temp_out = ds.reorder_mat(temp_out, "CDYX", "YCXD")
     ofm_mem_fmt = temp_out.reshape(64, 32, 32)
+    if enable_trace:
+        ofm_log_filename = "/after_ofm_mem_fmt_final_trace.txt"
+    else:
+        ofm_log_filename = "/after_ofm_mem_fmt_final.txt"
     ofm_mem_fmt.tofile(
         log_folder + "/after_ofm_mem_fmt_final.txt", sep=",", format="%d"
     )
