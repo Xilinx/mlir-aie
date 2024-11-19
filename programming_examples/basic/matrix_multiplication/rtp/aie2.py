@@ -17,8 +17,6 @@ import aie.dialects.index as index_dialect
 import aie.dialects.arith as arith_dialect
 import aie.dialects.memref as memref_dialect
 
-from util import *
-
 
 def get_memref_len_elems(memref):
     out = 1
