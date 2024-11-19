@@ -8,13 +8,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: %PYTHON aiecc.py --unified --alloc-scheme basic-sequential %s
-// RUN: %PYTHON aiecc.py --no-unified --alloc-scheme basic-sequential %s
+// RUN: %PYTHON aiecc.py --unified %s
+// RUN: %PYTHON aiecc.py --no-unified %s
 
 module @test00_itsalive {
   %tile12 = aie.tile(1, 2)
 
-  %buf12_0 = aie.buffer(%tile12) { sym_name = "a", address = 0 : i32 } : memref<256xi32>
+  %buf12_0 = aie.buffer(%tile12) { sym_name = "a" } : memref<256xi32>
 
   %core12 = aie.core(%tile12) {
     %val1 = arith.constant 1 : i32
