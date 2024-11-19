@@ -22,8 +22,8 @@
 
 #include <aie_api/aie.hpp>
 
-#include "zero.cc"
 #include "await_rtp.cc"
+#include "zero.cc"
 
 template <typename T_in, typename T_out, int rowA, int colA, int colB>
 void matmul_scalar(T_in *a, T_in *b, T_out *c) {
@@ -75,9 +75,11 @@ void matmul_vectorized(const T_in *__restrict pA, const T_in *__restrict pB,
           pA1 += MMUL::size_A;
           aie::vector<T_in, MMUL::size_A> A1 = aie::load_v<MMUL::size_A>(pA2);
           pA2 += MMUL::size_A;
-          aie::vector<T_in, MMUL::size_B> B0 = aie::transpose(aie::load_v<MMUL::size_B>(pB1), t, s);
+          aie::vector<T_in, MMUL::size_B> B0 =
+              aie::transpose(aie::load_v<MMUL::size_B>(pB1), t, s);
           pB1 += MMUL::size_B;
-          aie::vector<T_in, MMUL::size_B> B1 = aie::transpose(aie::load_v<MMUL::size_B>(pB2), t, s);
+          aie::vector<T_in, MMUL::size_B> B1 =
+              aie::transpose(aie::load_v<MMUL::size_B>(pB2), t, s);
           pB2 += MMUL::size_B;
 
           // We modify the library documentation implementation to accumulate
@@ -155,8 +157,7 @@ extern "C" {
 // These dimensions must be divisible by the r, s, t dimensions used in
 // the kernels.
 
-#define combos(X)                                                              \
-  X(bfloat16, bf16, float, f32, 4, 8, 4)
+#define combos(X) X(bfloat16, bf16, float, f32, 4, 8, 4)
 
 #define matmul_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,            \
                                  mlir_type_out, r, s, t)                       \
