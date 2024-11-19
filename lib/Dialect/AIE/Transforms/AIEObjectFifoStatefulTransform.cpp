@@ -81,7 +81,8 @@ public:
       Region &r = memOp.getBody();
       for (auto &bl : r.getBlocks()) {
         for (auto op : bl.getOps<DMAStartOp>()) {
-          channelsPerTile[{memOp.getTile(), op.getChannelDir(), op.getChannelIndex()}] = 1;
+          channelsPerTile[{memOp.getTile(), op.getChannelDir(),
+                           op.getChannelIndex()}] = 1;
         }
       }
     }
@@ -89,7 +90,8 @@ public:
       Region &r = memOp.getBody();
       for (auto &bl : r.getBlocks()) {
         for (auto op : bl.getOps<DMAStartOp>()) {
-          channelsPerTile[{memOp.getTile(), op.getChannelDir(), op.getChannelIndex()}] = 1;
+          channelsPerTile[{memOp.getTile(), op.getChannelDir(),
+                           op.getChannelIndex()}] = 1;
         }
       }
     }
@@ -97,7 +99,8 @@ public:
       Region &r = memOp.getBody();
       for (auto &bl : r.getBlocks()) {
         for (auto op : bl.getOps<DMAStartOp>()) {
-          channelsPerTile[{memOp.getTile(), op.getChannelDir(), op.getChannelIndex()}] = 1;
+          channelsPerTile[{memOp.getTile(), op.getChannelDir(),
+                           op.getChannelIndex()}] = 1;
         }
       }
     }
@@ -109,11 +112,14 @@ public:
     const auto &targetModel = getTargetModel(tileOp);
     int maxChannelNum = 0;
     if (dir == DMAChannelDir::MM2S)
-      maxChannelNum = targetModel.getNumSourceSwitchboxConnections(tileOp.getCol(), tileOp.getRow(), WireBundle::DMA);
+      maxChannelNum = targetModel.getNumSourceSwitchboxConnections(
+          tileOp.getCol(), tileOp.getRow(), WireBundle::DMA);
     else
-      maxChannelNum = targetModel.getNumDestSwitchboxConnections(tileOp.getCol(), tileOp.getRow(), WireBundle::DMA);
+      maxChannelNum = targetModel.getNumDestSwitchboxConnections(
+          tileOp.getCol(), tileOp.getRow(), WireBundle::DMA);
     for (int i = 0; i < maxChannelNum; i++)
-      if (int usageCnt = channelsPerTile[{tileOp.getResult(), dir, i}]; usageCnt == 0) {
+      if (int usageCnt = channelsPerTile[{tileOp.getResult(), dir, i}];
+          usageCnt == 0) {
         channelsPerTile[{tileOp.getResult(), dir, i}] = 1;
         return i;
       }
@@ -1526,10 +1532,11 @@ struct AIEObjectFifoStatefulTransformPass
     // rely on shared memory and share the same buffers.
     for (auto &[producer, consumers] : splitFifos) {
       // create producer tile DMA
-      int producerChanIndex =
-          dmaAnalysis.getDMAChannelIndex(producer.getProducerTileOp(), DMAChannelDir::MM2S);
+      int producerChanIndex = dmaAnalysis.getDMAChannelIndex(
+          producer.getProducerTileOp(), DMAChannelDir::MM2S);
       if (producerChanIndex == -1)
-        producer.getProducerTileOp().emitOpError("number of output DMA channel exceeded!");
+        producer.getProducerTileOp().emitOpError(
+            "number of output DMA channel exceeded!");
       DMAChannel producerChan = {DMAChannelDir::MM2S, producerChanIndex};
       createDMA(device, builder, producer, producerChan.direction,
                 producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
@@ -1546,10 +1553,11 @@ struct AIEObjectFifoStatefulTransformPass
       for (auto consumer : consumers) {
 
         // create consumer tile DMA
-        int consumerChanIndex =
-            dmaAnalysis.getDMAChannelIndex(consumer.getProducerTileOp(), DMAChannelDir::S2MM);
+        int consumerChanIndex = dmaAnalysis.getDMAChannelIndex(
+            consumer.getProducerTileOp(), DMAChannelDir::S2MM);
         if (consumerChanIndex == -1)
-          consumer.getProducerTileOp().emitOpError("number of input DMA channel exceeded!");
+          consumer.getProducerTileOp().emitOpError(
+              "number of input DMA channel exceeded!");
         DMAChannel consumerChan = {DMAChannelDir::S2MM, consumerChanIndex};
         BDDimLayoutArrayAttr consumerDims =
             consumer.getDimensionsFromStreamPerConsumer()[0];
