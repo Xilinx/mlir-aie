@@ -155,7 +155,9 @@ def my_vector_add():
                     use_lock(in1_cons_cons_lock, LockAction.AcquireGreaterEqual)
                     use_lock(out_prod_lock, LockAction.AcquireGreaterEqual)
                     for i in range_(n):
-                        out_buff_0[i] = in2_mem_cons_buff_0[j * N_div_n + i] + in1_cons_buff_0[i]
+                        out_buff_0[i] = (
+                            in2_mem_cons_buff_0[j * N_div_n + i] + in1_cons_buff_0[i]
+                        )
                     use_lock(in1_cons_prod_lock, LockAction.Release)
                     use_lock(out_cons_lock, LockAction.Release)
                 use_lock(in2_mem_cons_prod_lock, LockAction.Release)
