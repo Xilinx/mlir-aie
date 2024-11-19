@@ -1128,8 +1128,6 @@ const AIETargetModel &DeviceOp::getTargetModel() {
   return xilinx::AIE::getTargetModel(getDevice());
 }
 
-LogicalResult DeviceOp::verify() { return success(); }
-
 //===----------------------------------------------------------------------===//
 // TileOp
 //===----------------------------------------------------------------------===//

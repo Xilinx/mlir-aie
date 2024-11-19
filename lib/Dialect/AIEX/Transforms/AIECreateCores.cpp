@@ -69,7 +69,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
   void runOnOperation() override {
 
     DeviceOp device = getOperation();
-    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
+    OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
 
     DenseMap<TileID, Operation *> tiles;
     DenseMap<Operation *, CoreOp> cores;
