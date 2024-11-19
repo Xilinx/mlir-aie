@@ -112,7 +112,8 @@ public:
     const auto &targetModel = getTargetModel(tileOp);
     int maxChannelNum = 0;
     if (dir == DMAChannelDir::MM2S)
-      maxChannelNum = targetModel.getNumSourceSwitchboxConnections(tileOp.getCol(), tileOp.getRow(), WireBundle::DMA);
+      maxChannelNum = targetModel.getNumSourceSwitchboxConnections(
+          tileOp.getCol(), tileOp.getRow(), WireBundle::DMA);
     else
       maxChannelNum = targetModel.getNumDestSwitchboxConnections(tileOp.getCol(), tileOp.getRow(), WireBundle::DMA);
     for (int i = 0; i < maxChannelNum; i++)
