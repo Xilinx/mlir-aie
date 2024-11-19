@@ -184,7 +184,7 @@ def my_matmul():
                     c_tasks.append(c_task)
 
                 dma_start_task(b_task)
-                dm_start_tasks(*a_tasks)
+                dma_start_task(*a_tasks)
                 dma_start_task(*c_tasks)
 
                 dma_await_task(*c_tasks)

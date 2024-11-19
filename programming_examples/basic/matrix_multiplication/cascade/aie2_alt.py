@@ -397,7 +397,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, trace_s
                             with bd[0]:
                                 shim_dma_bd(
                                     B,
-                                    offset=B_offset,
+                                    offset=B_col_offset,
                                     sizes=[
                                         N // n // n_aie_cols,
                                         K // k // n_aie_rows,
