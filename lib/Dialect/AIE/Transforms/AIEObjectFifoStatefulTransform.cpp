@@ -99,7 +99,8 @@ public:
       Region &r = memOp.getBody();
       for (auto &bl : r.getBlocks()) {
         for (auto op : bl.getOps<DMAStartOp>()) {
-          channelsPerTile[{memOp.getTile(), op.getChannelDir(), op.getChannelIndex()}] = 1;
+          channelsPerTile[{memOp.getTile(), op.getChannelDir(),
+                           op.getChannelIndex()}] = 1;
         }
       }
     }
