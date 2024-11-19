@@ -99,9 +99,7 @@ def matmul_tiler_helper(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
                 c_index += 1
 
                 for tile_row in range(current_tb_n_rows):
-                    tile_offset = (
-                        row_base + tile_row
-                    ) * n_aie_cols + col
+                    tile_offset = (row_base + tile_row) * n_aie_cols + col
                     A_ordered_tiles.append(A_tiles[tile_offset])
                     B_ordered_tiles.append(B_tiles[col])
 
