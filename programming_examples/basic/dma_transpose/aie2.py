@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+import argparse
 import numpy as np
 import sys
 
@@ -12,20 +13,20 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
-
-N = 4096
-M = 64
-K = 64
-
-if len(sys.argv) == 3:
-    M = int(sys.argv[1])
-    K = int(sys.argv[2])
-    N = M * K
-
-tensor_ty = np.ndarray[(M, K), np.dtype[np.int32]]
+from aie.helpers.tensortiler import TensorTile
 
 
-def my_passthrough():
+def my_passthrough(M, K, N, generate_access_map=False):
+    tensor_ty = np.ndarray[(M, K), np.dtype[np.int32]]
+    data_transform = TensorTile(
+        (M, K), offset=0, sizes=[1, 1, K, M], strides=[1, 1, 1, K]
+    )
+    if generate_access_map:
+        data_transform.visualize(
+            show_arrows=True, plot_access_count=False, file_path="transpose_data.png"
+        )
+        return
+
     with mlir_mod_ctx() as ctx:
 
         @device(AIEDevice.npu1_1col)
@@ -56,8 +57,7 @@ def my_passthrough():
                     metadata=of_in,
                     bd_id=1,
                     mem=A,
-                    sizes=[1, 1, K, M],
-                    strides=[1, 1, 1, K],
+                    tensor_tile=data_transform,
                     issue_token=True,
                 )
                 npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
@@ -66,4 +66,24 @@ def my_passthrough():
     print(ctx.module)
 
 
-my_passthrough()
+if __name__ == "__main__":
+    p = argparse.ArgumentParser()
+    p.add_argument("dims", help="M K", type=int, nargs="*", default=[64, 64])
+    p.add_argument(
+        "--generate-access-map",
+        action="store_true",
+        help="Produce a file showing data access order",
+    )
+    args = p.parse_args()
+
+    if len(args.dims) != 2:
+        print(
+            "ERROR: Must provide either no dimensions or both M and K", file=sys.stderr
+        )
+        exit(-1)
+    my_passthrough(
+        M=args.dims[0],
+        K=args.dims[1],
+        N=args.dims[0] * args.dims[1],
+        generate_access_map=args.generate_access_map,
+    )

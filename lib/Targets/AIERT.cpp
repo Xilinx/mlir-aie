@@ -127,12 +127,13 @@ LogicalResult AIERTControl::configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
   bool acqEn = false;
 
   // switch (lock->getAc)
+  LockOp lock;
   for (auto op : block.getOps<UseLockOp>()) {
     // Only dyn_cast if you are going to check if it was of the type
     // expected; if you aren't checking use cast instead as it will at
     // least assert in debug mode with an easier to understand error than
     // dereferencing.
-    LockOp lock = cast<LockOp>(op.getLock().getDefiningOp());
+    lock = cast<LockOp>(op.getLock().getDefiningOp());
     switch (op.getAction()) {
     case LockAction::Acquire:
     case LockAction::AcquireGreaterEqual:
@@ -153,10 +154,26 @@ LogicalResult AIERTControl::configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
          "expected both use_lock(acquire) and use_lock(release) with bd");
 
   if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
+    // check if buffer is allocated on the same memtile, the west, or the east
+    // one
+    int increaseValue = 0;
+    auto lockRow = lock.rowIndex();
+    auto lockCol = lock.colIndex();
+    bool isWestLock =
+        targetModel.isWest(tileLoc.Col, tileLoc.Row, lockCol, lockRow);
+    bool isEastLock =
+        targetModel.isEast(tileLoc.Col, tileLoc.Row, lockCol, lockRow);
+    if (isWestLock) {
+      increaseValue = MEM_TILE_LOCK_ID_INCR_WEST;
+    } else if (isEastLock) {
+      increaseValue = MEM_TILE_LOCK_ID_INCR_EAST;
+    } else {
+      increaseValue = MEM_TILE_LOCK_ID_INCR;
+    }
     if (acqLockId)
-      acqLockId.value() += MEM_TILE_LOCK_ID_INCR;
+      acqLockId.value() += increaseValue;
     if (relLockId)
-      relLockId.value() += MEM_TILE_LOCK_ID_INCR;
+      relLockId.value() += increaseValue;
   }
 
   // no RelEn in the arch spec even though the API requires you to set it?
@@ -207,8 +224,23 @@ LogicalResult AIERTControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
     if (!bufferOp.getAddress())
       return bufferOp.emitError("buffer must have address assigned");
     baseAddr = bufferOp.getAddress().value();
-    if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row))
-      baseAddr += BASE_ADDR_A_INCR;
+    if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
+      // check if buffer is allocated on the same memtile, the west, or the east
+      // one
+      auto bufferRow = bufferOp.getTileOp().getRow();
+      auto bufferCol = bufferOp.getTileOp().getCol();
+      bool isWestBuff =
+          targetModel.isWest(tileLoc.Col, tileLoc.Row, bufferCol, bufferRow);
+      bool isEastBuff =
+          targetModel.isEast(tileLoc.Col, tileLoc.Row, bufferCol, bufferRow);
+      if (isWestBuff) {
+        baseAddr += BASE_ADDR_A_INCR_WEST;
+      } else if (isEastBuff) {
+        baseAddr += BASE_ADDR_A_INCR_EAST;
+      } else {
+        baseAddr += BASE_ADDR_A_INCR;
+      }
+    }
   }
 
   std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDimensions();
