@@ -1556,7 +1556,8 @@ struct AIEObjectFifoStatefulTransformPass
         int consumerChanIndex = dmaAnalysis.getDMAChannelIndex(
             consumer.getProducerTileOp(), DMAChannelDir::S2MM);
         if (consumerChanIndex == -1)
-          consumer.getProducerTileOp().emitOpError("number of input DMA channel exceeded!");
+          consumer.getProducerTileOp().emitOpError(
+              "number of input DMA channel exceeded!");
         DMAChannel consumerChan = {DMAChannelDir::S2MM, consumerChanIndex};
         BDDimLayoutArrayAttr consumerDims =
             consumer.getDimensionsFromStreamPerConsumer()[0];
