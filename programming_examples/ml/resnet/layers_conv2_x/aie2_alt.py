@@ -902,7 +902,7 @@ def resnet_conv_x():
                     with bd[0]:
                         shim_dma_bd(
                             weightsFromL3,
-                            offsets=[0, 0, 0, totalWeights_init],
+                            offset=totalWeights_init,
                             sizes=[1, 1, 1, totalWeights_rest],
                         )
                         EndOp()
@@ -912,7 +912,7 @@ def resnet_conv_x():
                     with bd[0]:
                         shim_dma_bd(
                             weightsFromL3,
-                            offsets=[0, 0, 0, totalWeights_init + totalWeights_rest],
+                            offset=totalWeights_init + totalWeights_rest,
                             sizes=[1, 1, 1, totalWeights_rest],
                         )
                         EndOp()

@@ -222,7 +222,7 @@ def conv2dk1():
                         EndOp()
                 dma_start_task(in_wts_task)
 
-                out_task = dma_configure_task_for(of_inOF_wts_0_L3L2, issue_token=True)
+                out_task = dma_configure_task_for(of_outOFL2L3, issue_token=True)
                 with bds(out_task) as bd:
                     with bd[0]:
                         shim_dma_bd(O, sizes=[1, 1, 1, tensorSize])

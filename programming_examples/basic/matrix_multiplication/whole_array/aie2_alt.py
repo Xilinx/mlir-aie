@@ -376,21 +376,27 @@ def my_matmul(
                         C_row_offset = row_base * m * n_aie_rows * N
                         C_col_offset = col * n
                         C_offset = C_col_offset + C_row_offset
+                        C_sizes = (
+                            [
+                                tb_n_rows,
+                                N // n // n_aie_cols,
+                                m * n_aie_rows,
+                                n,
+                            ],
+                        )
+                        C_strides = ([m * n_aie_rows * N, n * n_aie_cols, N, 1],)
                         c_task = dma_configure_task_for(
-                            C_l2l3_fifos[col], issue_token=True
+                            C_l2l3_fifos[col],
+                            repeat_count=max(0, C_sizes[0] - 1),
+                            issue_token=True,
                         )
                         with bds(c_task) as bd:
                             with bd[0]:
                                 shim_dma_bd(
                                     C,
                                     offset=C_offset,
-                                    sizes=[
-                                        tb_n_rows,
-                                        N // n // n_aie_cols,
-                                        m * n_aie_rows,
-                                        n,
-                                    ],
-                                    strides=[m * n_aie_rows * N, n * n_aie_cols, N, 1],
+                                    sizes=C_sizes,
+                                    strides=C_strides,
                                 )
                                 EndOp()
                         dma_start_task(c_task)
@@ -423,19 +429,25 @@ def my_matmul(
                                 col * n_A_tiles_per_shim * m * K
                             )  # base address for the shim in this column
                             A_offset = A_block_offset + A_row_offset
-                            a_task = dma_configure_task_for(A_l3l2_fifos[col])
+                            A_sizes = (
+                                [
+                                    N // n // n_aie_cols,
+                                    K // k,
+                                    m * n_A_tiles_per_shim,
+                                    k,
+                                ],
+                            )
+                            A_strides = ([0, k, K, 1],)
+                            a_task = dma_configure_task_for(
+                                A_l3l2_fifos[col], repeat_count=max(0, A_sizes[0] - 1)
+                            )
                             with bds(a_task) as bd:
                                 with bd[0]:
                                     shim_dma_bd(
                                         A,
                                         offset=A_offset,
-                                        sizes=[
-                                            N // n // n_aie_cols,
-                                            K // k,
-                                            m * n_A_tiles_per_shim,
-                                            k,
-                                        ],
-                                        strides=[0, k, K, 1],
+                                        sizes=A_sizes,
+                                        strides=A_strides,
                                     )
                                     EndOp()
                             dma_start_task(a_task)
@@ -470,7 +482,9 @@ def my_matmul(
                                 if not b_col_maj
                                 else [n * n_aie_cols * K, k, K, 1]
                             )
-                            b_task = dma_configure_task_for(B_l3l2_fifos[col])
+                            b_task = dma_configure_task_for(
+                                B_l3l2_fifos[col], repeat_count=max(0, b_sizes[0] - 1)
+                            )
                             with bds(b_task) as bd:
                                 with bd[0]:
                                     shim_dma_bd(

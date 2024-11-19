@@ -149,12 +149,10 @@ def my_matmul():
                     with bd[0]:
                         shim_dma_bd(
                             B,
-                            offset=0,
                             sizes=[M_div_m_div_n_cores, 1, 1, K],
                             strides=[0, 0, 0, 1],
                         )
                         EndOp()
-                dma_start_task(b_task)
 
                 a_tasks = []
                 c_tasks = []
@@ -174,7 +172,6 @@ def my_matmul():
                                 strides=[m_x_K, k, K, 1],
                             )
                             EndOp()
-                    dma_start_task(a_task)
                     a_tasks.append(a_task)
 
                     c_task = dma_configure_task_for(outC_fifos[i], issue_token=True)
@@ -184,8 +181,11 @@ def my_matmul():
                                 C, offset=C_offset, sizes=[1, 1, 1, C_sz_div_n_cores]
                             )
                             EndOp()
-                    dma_start_task(c_task)
                     c_tasks.append(c_task)
+
+                dma_start_task(b_task)
+                dm_start_tasks(*a_tasks)
+                dma_start_task(*c_tasks)
 
                 dma_await_task(*c_tasks)
                 dma_free_task(b_task)
