@@ -16,7 +16,7 @@
 import numpy as np
 import sys
 
-from aie.dialects.aie import * # defines dma_wait (if I also import memref *, it also defines dma_wait -> the last one overwrittes other imports)
+from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
@@ -193,8 +193,6 @@ def my_vector_add():
             npu_dma_memcpy_nd(metadata="in1", bd_id=1, mem=A, sizes=[1, 1, 1, N])
             npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
             npu_dma_wait("out")
-            #npu_sync(column=0, row=0, direction=0, channel=0)
-      
 
 
 with mlir_mod_ctx() as ctx:
