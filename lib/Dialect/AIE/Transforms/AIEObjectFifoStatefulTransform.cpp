@@ -115,7 +115,8 @@ public:
       maxChannelNum = targetModel.getNumSourceSwitchboxConnections(
           tileOp.getCol(), tileOp.getRow(), WireBundle::DMA);
     else
-      maxChannelNum = targetModel.getNumDestSwitchboxConnections(tileOp.getCol(), tileOp.getRow(), WireBundle::DMA);
+      maxChannelNum = targetModel.getNumDestSwitchboxConnections(
+          tileOp.getCol(), tileOp.getRow(), WireBundle::DMA);
     for (int i = 0; i < maxChannelNum; i++)
       if (int usageCnt = channelsPerTile[{tileOp.getResult(), dir, i}]; usageCnt == 0) {
         channelsPerTile[{tileOp.getResult(), dir, i}] = 1;
