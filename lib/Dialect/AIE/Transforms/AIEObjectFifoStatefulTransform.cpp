@@ -1535,7 +1535,8 @@ struct AIEObjectFifoStatefulTransformPass
       int producerChanIndex = dmaAnalysis.getDMAChannelIndex(
           producer.getProducerTileOp(), DMAChannelDir::MM2S);
       if (producerChanIndex == -1)
-        producer.getProducerTileOp().emitOpError("number of output DMA channel exceeded!");
+        producer.getProducerTileOp().emitOpError(
+            "number of output DMA channel exceeded!");
       DMAChannel producerChan = {DMAChannelDir::MM2S, producerChanIndex};
       createDMA(device, builder, producer, producerChan.direction,
                 producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
