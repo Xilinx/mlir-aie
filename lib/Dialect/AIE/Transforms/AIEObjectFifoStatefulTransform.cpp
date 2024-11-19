@@ -1553,8 +1553,8 @@ struct AIEObjectFifoStatefulTransformPass
       for (auto consumer : consumers) {
 
         // create consumer tile DMA
-        int consumerChanIndex =
-            dmaAnalysis.getDMAChannelIndex(consumer.getProducerTileOp(), DMAChannelDir::S2MM);
+        int consumerChanIndex = dmaAnalysis.getDMAChannelIndex(
+            consumer.getProducerTileOp(), DMAChannelDir::S2MM);
         if (consumerChanIndex == -1)
           consumer.getProducerTileOp().emitOpError("number of input DMA channel exceeded!");
         DMAChannel consumerChan = {DMAChannelDir::S2MM, consumerChanIndex};
