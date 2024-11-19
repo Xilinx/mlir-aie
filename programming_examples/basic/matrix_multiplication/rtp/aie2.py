@@ -368,7 +368,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
             B_l3l2_fifos[col] = {
                 "prod": {
                     "endpoint": (shim_tile, WireBundle.DMA, 1),
-                    "shim_memref_dialect": memref_dialect.global_(
+                    "shim_memref": memref_dialect.global_(
                         sym_name=f"B_L3L2_{col}",
                         sym_visibility="public",
                         type_=B_l3_memref_ty,
