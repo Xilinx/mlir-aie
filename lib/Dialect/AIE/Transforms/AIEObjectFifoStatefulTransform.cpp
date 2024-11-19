@@ -1532,8 +1532,8 @@ struct AIEObjectFifoStatefulTransformPass
     // rely on shared memory and share the same buffers.
     for (auto &[producer, consumers] : splitFifos) {
       // create producer tile DMA
-      int producerChanIndex =
-          dmaAnalysis.getDMAChannelIndex(producer.getProducerTileOp(), DMAChannelDir::MM2S);
+      int producerChanIndex = dmaAnalysis.getDMAChannelIndex(
+          producer.getProducerTileOp(), DMAChannelDir::MM2S);
       if (producerChanIndex == -1)
         producer.getProducerTileOp().emitOpError("number of output DMA channel exceeded!");
       DMAChannel producerChan = {DMAChannelDir::MM2S, producerChanIndex};
