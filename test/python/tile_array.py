@@ -347,15 +347,15 @@ def nd_channels(module):
 
         shapes = np.array([(10, 10)], dtype="i,i").astype(object)
         c = tiles[2, 2].channel(shape=shapes, dtype=[np.int32])
-        # CHECK: <Channel: buffer=MemRef(%buffer_2_2, memref<10x10xi32>) producer_lock=Scalar(%buffer_2_2_producer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_producer_lock"}) consumer_lock=Scalar(%buffer_2_2_consumer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_consumer_lock"})>
+        # CHECK: <Channel: buffer=MemRef(%30, memref<10x10xi32>) producer_lock=Scalar(%31 = "aie.lock"(%14) <{sym_name = "_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%32 = "aie.lock"(%14) <{sym_name = "_consumer_lock"}> : (index) -> index)>
         print(c)
         cs = tiles[2:4, 2:4].channel(shape=shapes, dtype=[np.int32])
         assert cs.shape == (2, 2)
 
-        # CHECK: (0, 0) <Channel: buffer=MemRef(%buffer_2_2_0, memref<10x10xi32>) producer_lock=Scalar(%buffer_2_2_0_producer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_0_producer_lock"}) consumer_lock=Scalar(%buffer_2_2_0_consumer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_0_consumer_lock"})>
-        # CHECK: (0, 1) <Channel: buffer=MemRef(%buffer_2_3, memref<10x10xi32>) producer_lock=Scalar(%buffer_2_3_producer_lock = aie.lock(%tile_2_3) {sym_name = "buffer_2_3_producer_lock"}) consumer_lock=Scalar(%buffer_2_3_consumer_lock = aie.lock(%tile_2_3) {sym_name = "buffer_2_3_consumer_lock"})>
-        # CHECK: (1, 0) <Channel: buffer=MemRef(%buffer_3_2, memref<10x10xi32>) producer_lock=Scalar(%buffer_3_2_producer_lock = aie.lock(%tile_3_2) {sym_name = "buffer_3_2_producer_lock"}) consumer_lock=Scalar(%buffer_3_2_consumer_lock = aie.lock(%tile_3_2) {sym_name = "buffer_3_2_consumer_lock"})>
-        # CHECK: (1, 1) <Channel: buffer=MemRef(%buffer_3_3, memref<10x10xi32>) producer_lock=Scalar(%buffer_3_3_producer_lock = aie.lock(%tile_3_3) {sym_name = "buffer_3_3_producer_lock"}) consumer_lock=Scalar(%buffer_3_3_consumer_lock = aie.lock(%tile_3_3) {sym_name = "buffer_3_3_consumer_lock"})>
+        # CHECK: (0, 0) <Channel: buffer=MemRef(%33, memref<10x10xi32>) producer_lock=Scalar(%34 = "aie.lock"(%14) <{sym_name = "_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%35 = "aie.lock"(%14) <{sym_name = "_consumer_lock"}> : (index) -> index)>
+        # CHECK: (0, 1) <Channel: buffer=MemRef(%36, memref<10x10xi32>) producer_lock=Scalar(%37 = "aie.lock"(%15) <{sym_name = "_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%38 = "aie.lock"(%15) <{sym_name = "_consumer_lock"}> : (index) -> index)>
+        # CHECK: (1, 0) <Channel: buffer=MemRef(%39, memref<10x10xi32>) producer_lock=Scalar(%40 = "aie.lock"(%20) <{sym_name = "_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%41 = "aie.lock"(%20) <{sym_name = "_consumer_lock"}> : (index) -> index)>
+        # CHECK: (1, 1) <Channel: buffer=MemRef(%42, memref<10x10xi32>) producer_lock=Scalar(%43 = "aie.lock"(%21) <{sym_name = "_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%44 = "aie.lock"(%21) <{sym_name = "_consumer_lock"}> : (index) -> index)>
         for idx, c in np.ndenumerate(cs):
             print(idx, c)
 
@@ -365,10 +365,10 @@ def nd_channels(module):
         cs = tiles[2:4, 2:4].channel(shape=shapes, dtype=[np.int32])
         assert cs.shape == (2, 2)
 
-        # CHECK: (0, 0) <Channel: buffer=MemRef(%buffer_2_2_1, memref<1x2xi32>) producer_lock=Scalar(%buffer_2_2_1_producer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_1_producer_lock"}) consumer_lock=Scalar(%buffer_2_2_1_consumer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_1_consumer_lock"})>
-        # CHECK: (0, 1) <Channel: buffer=MemRef(%buffer_2_3_2, memref<3x4xi32>) producer_lock=Scalar(%buffer_2_3_2_producer_lock = aie.lock(%tile_2_3) {sym_name = "buffer_2_3_2_producer_lock"}) consumer_lock=Scalar(%buffer_2_3_2_consumer_lock = aie.lock(%tile_2_3) {sym_name = "buffer_2_3_2_consumer_lock"})>
-        # CHECK: (1, 0) <Channel: buffer=MemRef(%buffer_3_2_3, memref<5x6xi32>) producer_lock=Scalar(%buffer_3_2_3_producer_lock = aie.lock(%tile_3_2) {sym_name = "buffer_3_2_3_producer_lock"}) consumer_lock=Scalar(%buffer_3_2_3_consumer_lock = aie.lock(%tile_3_2) {sym_name = "buffer_3_2_3_consumer_lock"})>
-        # CHECK: (1, 1) <Channel: buffer=MemRef(%buffer_3_3_4, memref<7x8xi32>) producer_lock=Scalar(%buffer_3_3_4_producer_lock = aie.lock(%tile_3_3) {sym_name = "buffer_3_3_4_producer_lock"}) consumer_lock=Scalar(%buffer_3_3_4_consumer_lock = aie.lock(%tile_3_3) {sym_name = "buffer_3_3_4_consumer_lock"})>
+        # CHECK: (0, 0) <Channel: buffer=MemRef(%45, memref<1x2xi32>) producer_lock=Scalar(%46 = "aie.lock"(%14) <{sym_name = "_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%47 = "aie.lock"(%14) <{sym_name = "_consumer_lock"}> : (index) -> index)>
+        # CHECK: (0, 1) <Channel: buffer=MemRef(%48, memref<3x4xi32>) producer_lock=Scalar(%49 = "aie.lock"(%15) <{sym_name = "_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%50 = "aie.lock"(%15) <{sym_name = "_consumer_lock"}> : (index) -> index)>
+        # CHECK: (1, 0) <Channel: buffer=MemRef(%51, memref<5x6xi32>) producer_lock=Scalar(%52 = "aie.lock"(%20) <{sym_name = "_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%53 = "aie.lock"(%20) <{sym_name = "_consumer_lock"}> : (index) -> index)>
+        # CHECK: (1, 1) <Channel: buffer=MemRef(%54, memref<7x8xi32>) producer_lock=Scalar(%55 = "aie.lock"(%21) <{sym_name = "_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%56 = "aie.lock"(%21) <{sym_name = "_consumer_lock"}> : (index) -> index)>
         for idx, c in np.ndenumerate(cs):
             print(idx, c)
 
@@ -384,15 +384,15 @@ def buffer_test_this_needs_to_distinct_from_all_other_mentions_of_buffer_in_this
 
         shapes = [(10, 10)]
         c = tiles[2, 2].buffer(shape=shapes, dtype=[np.int32])
-        # CHECK: MemRef(%buffer_2_2, memref<10x10xi32>)
+        # CHECK: MemRef(%30, memref<10x10xi32>)
         print(c)
         cs = tiles[2:4, 2:4].buffer(shape=shapes, dtype=[np.int32])
         assert cs.shape == (2, 2)
 
-        # CHECK: (0, 0) MemRef(%buffer_2_2_0, memref<10x10xi32>)
-        # CHECK: (0, 1) MemRef(%buffer_2_3, memref<10x10xi32>)
-        # CHECK: (1, 0) MemRef(%buffer_3_2, memref<10x10xi32>)
-        # CHECK: (1, 1) MemRef(%buffer_3_3, memref<10x10xi32>)
+        # CHECK: (0, 0) MemRef(%31, memref<10x10xi32>)
+        # CHECK: (0, 1) MemRef(%32, memref<10x10xi32>)
+        # CHECK: (1, 0) MemRef(%33, memref<10x10xi32>)
+        # CHECK: (1, 1) MemRef(%34, memref<10x10xi32>)
         for idx, c in np.ndenumerate(cs):
             print(idx, c)
 
@@ -400,9 +400,9 @@ def buffer_test_this_needs_to_distinct_from_all_other_mentions_of_buffer_in_this
         cs = tiles[2:4, 2:4].buffer(shape=shapes, dtype=[np.int32])
         assert cs.shape == (2, 2)
 
-        # CHECK: (0, 0) MemRef(%buffer_2_2_1, memref<1x2xi32>)
-        # CHECK: (0, 1) MemRef(%buffer_2_3_2, memref<3x4xi32>)
-        # CHECK: (1, 0) MemRef(%buffer_3_2_3, memref<5x6xi32>)
-        # CHECK: (1, 1) MemRef(%buffer_3_3_4, memref<7x8xi32>)
+        # CHECK: (0, 0) MemRef(%35, memref<1x2xi32>)
+        # CHECK: (0, 1) MemRef(%36, memref<3x4xi32>)
+        # CHECK: (1, 0) MemRef(%37, memref<5x6xi32>)
+        # CHECK: (1, 1) MemRef(%38, memref<7x8xi32>)
         for idx, c in np.ndenumerate(cs):
             print(idx, c)
