@@ -264,8 +264,6 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         return bd_op->emitOpError("At most four data layout transformation "
                                   "dimensions may be provided.");
       }
-      bool isLinearTransfer = (input_sizes[0] >= 1) && (input_sizes[1] == 1) &&
-                              (input_sizes[2] == 1) && (input_sizes[3] == 1);
 
       for (size_t i = 0; i < dims->size(); i++) {
         // Pass down dimensions in reverse order; in the MLIR, this allows
@@ -275,6 +273,10 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         input_sizes[i] = (*dims)[j].getSize();
         input_strides[i] = (*dims)[j].getStride();
       }
+
+      bool isLinearTransfer = (input_sizes[0] >= 1) && (input_sizes[1] == 1) &&
+                              (input_sizes[2] == 1) && (input_sizes[3] == 1);
+
       if (dims->size() > 2) {
         d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))
                      ? (*dims)[2].getSize()
