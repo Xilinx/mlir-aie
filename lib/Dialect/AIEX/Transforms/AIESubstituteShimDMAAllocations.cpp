@@ -71,7 +71,7 @@ struct AIESubstituteShimDMAAllocationsPass
   }
 };
 
-}
+} // namespace
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
 AIEX::createAIESubstituteShimDMAAllocationsPass() {
