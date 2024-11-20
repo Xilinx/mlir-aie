@@ -25,9 +25,14 @@ aieargs+=-m $m -k $k -n $n --n-aie-cols ${n_aie_cols} --b-col-maj ${b_col_maj}
 runargs+=--b_col_maj ${b_col_maj}
 target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
 use_alt?=0
+use_tiler?=0
 
 ifeq (${use_alt}, 1)
 aie_py_src=aie2_alt.py
+endif
+
+ifeq (${use_tiler}, 1)
+aie_py_src=aie2_tiler.py
 endif
 
 include ${srcdir}/../makefile-common
