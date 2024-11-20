@@ -338,16 +338,14 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         // d2_stride
         d2stride = strides[2];
         // d2_size set elsewhere
-      } else {
-        // If it is a linear transfer, process accordingly
-        if (input_sizes[3] > 1 && input_strides[3] == 0) {
-          // We allow users to encode the repeat_count as a dimension 3 stride
-          // of 0. This must lower to a iteration wrap of 0, so no stride is
-          // ever added. We then repeat the BD using the repeat_count in
-          // NpuPushQueueOp.
-          iteration_size = 0;
-          iteration_stride = 0;
-        }
+      }
+      if (input_sizes[3] > 1 && input_strides[3] == 0) {
+        // We allow users to encode the repeat_count as a dimension 3 stride
+        // of 0. This must lower to a iteration wrap of 0, so no stride is
+        // ever added. We then repeat the BD using the repeat_count in
+        // NpuPushQueueOp.
+        iteration_size = 0;
+        iteration_stride = 0;
       }
 
       // Ensure the total transfer length and the length expressed in the lowest
