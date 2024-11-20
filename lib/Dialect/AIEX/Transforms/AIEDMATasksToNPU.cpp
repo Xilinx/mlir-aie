@@ -225,8 +225,8 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
 
     uint32_t bd_id = bd_op.getBdId().value();
     int64_t offset = bd_op.getOffsetInBytes();
-    uint32_t len = bd_op.getLenInBytes();
-    uint32_t len_addr_granularity = len * 8 / addr_granularity;
+    uint64_t len = bd_op.getLenInBytes();
+    uint64_t len_addr_granularity = len * 8 / addr_granularity;
 
     if (offset * 8 % addr_granularity != 0) {
       return bd_op->emitOpError("Offset must be aligned to ")
@@ -337,7 +337,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       // three dimensions of strides/wraps agree. (Fourth dimension is
       // iteration/repeat count and repeats the whole BD, so should not be
       // incorporated in length of a single BD invocation.)
-      uint32_t len_dims_addr_granularity = 1;
+      uint64_t len_dims_addr_granularity = 1;
       for (size_t i = 0; i < 3; i++) {
         len_dims_addr_granularity *= sizes[i];
       }
