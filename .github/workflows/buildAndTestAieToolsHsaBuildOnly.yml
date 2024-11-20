@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - hsa-lit-testing-build
 #  pull_request:
   workflow_dispatch:
     inputs:
