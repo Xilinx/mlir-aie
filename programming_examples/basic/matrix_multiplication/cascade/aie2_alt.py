@@ -409,8 +409,10 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, trace_s
                                 EndOp()
                         dma_start_task(b_task)
                         in_tasks.append(b_task)
-                    dma_await_task(*out_tasks)
-                    dma_free_task(*in_tasks)
+                dma_await_task(*out_tasks)
+                out_tasks = []
+                dma_free_task(*in_tasks)
+                in_tasks = []
 
 
 if __name__ == "__main__":
