@@ -260,6 +260,8 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     auto d1stride = 0;
     auto d2size = 0;
     auto d2stride = 0;
+    auto iteration_size = 0;
+    auto iteration_stride = 0;
 
     if (dims && dims->size() > 0) {
       llvm::SmallVector<int64_t, 4> input_sizes =
@@ -280,8 +282,10 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         input_strides[i] = (*dims)[j].getStride();
       }
 
+      // Do not check input_sizes[3] because a repeat can still be considered a
+      // linear transfer
       bool isLinearTransfer = (input_sizes[0] >= 1) && (input_sizes[1] == 1) &&
-                              (input_sizes[2] == 1) && (input_sizes[3] == 1);
+                              (input_sizes[2] == 1);
 
       if (dims->size() > 2) {
         d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))
@@ -319,6 +323,9 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         return failure();
       }
 
+      iteration_size = sizes[3];
+      iteration_stride = strides[3];
+
       if (!isLinearTransfer) {
         // d0_size, d0_stride
         d0size = sizes[0];
@@ -331,6 +338,16 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         // d2_stride
         d2stride = strides[2];
         // d2_size set elsewhere
+      } else {
+        // If it is a linear transfer, process accordingly
+        if (input_sizes[3] > 1 && input_strides[3] == 0) {
+          // We allow users to encode the repeat_count as a dimension 3 stride
+          // of 0. This must lower to a iteration wrap of 0, so no stride is
+          // ever added. We then repeat the BD using the repeat_count in
+          // NpuPushQueueOp.
+          iteration_size = 0;
+          iteration_stride = 0;
+        }
       }
 
       // Ensure the total transfer length and the length expressed in the lowest
@@ -381,8 +398,8 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         /*d0_size=*/d0size, /*d0_stride=*/d0stride,
         /*d1_size=*/d1size, /*d1_stride=*/d1stride,
         /*d2_size=*/d2size, /*d2_stride=*/d2stride,
-        /*iteration_current=*/0, /*iteration_size=*/sizes[3],
-        /*iteration_stride=*/strides[3],
+        /*iteration_current=*/0, /*iteration_size=*/iteration_size,
+        /*iteration_stride=*/iteration_stride,
         /* TODO: Next BD */
         /*next_bd=*/next_bd_id,
         /*row=*/tile.getRow(),
