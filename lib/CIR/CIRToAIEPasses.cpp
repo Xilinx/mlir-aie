@@ -893,9 +893,19 @@ struct CIRToAIEInlineKernelLambda
                       mlir::SymbolTable::lookupNearestSymbolFrom<cir::FuncOp>(
                           lambdaCall, lambdaCall.getCalleeAttr())) {
                 LLVM_DEBUG(lambdaFunc.emitRemark(
-                    "tryTileProgramLowering: Tile core lambda"));
-                if (lambdaFunc.getLambda())
+                    "CIRToAIEInlineKernelLambda: Tile core lambda"));
+                if (lambdaFunc.getLambda()) {
                   inlineAndEraseCall(call, calledFunc);
+                  LLVM_DEBUG(core.emitRemark(
+                      "CIRToAIEInlineKernelLambda: core after first inlining"));
+                  if (auto finalCall = mlir::dyn_cast<cir::CallOp>(*std::next(
+                          scope.getScopeRegion().front().rbegin()))) {
+                    inlineAndEraseCall(
+                        finalCall,
+                        mlir::SymbolTable::lookupNearestSymbolFrom<cir::FuncOp>(
+                            finalCall, finalCall.getCalleeAttr()));
+                  }
+                }
               }
             }
           }
