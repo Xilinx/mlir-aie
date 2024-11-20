@@ -253,7 +253,13 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         llvm::SmallVector<int64_t, 4>(4, 0);
     std::fill(padBefore.begin(), padBefore.end(), 0);
     std::fill(padAfter.begin(), padAfter.end(), 0);
-    int d2size = 0;
+
+    auto d0size = 0;
+    auto d0stride = 0;
+    auto d1size = 0;
+    auto d1stride = 0;
+    auto d2size = 0;
+    auto d2stride = 0;
 
     if (dims && dims->size() > 0) {
       llvm::SmallVector<int64_t, 4> input_sizes =
@@ -306,11 +312,27 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       }
       getHardwareStridesWraps(target_model, buffer_type, input_sizes,
                               input_strides, sizes, strides);
+
       if (failed(verifyStridesWraps(bd_op, buffer_type, tile.getCol(),
                                     tile.getRow(), input_sizes, input_strides,
                                     sizes, strides, isLinearTransfer))) {
         return failure();
       }
+
+      if (!isLinearTransfer) {
+        // d0_size, d0_stride
+        d0size = sizes[0];
+        d0stride = strides[0];
+
+        // d1_size, d1_stride
+        d1size = sizes[1];
+        d1stride = strides[1];
+
+        // d2_stride
+        d2stride = strides[2];
+        // d2_size set elsewhere
+      }
+
       // Ensure the total transfer length and the length expressed in the lowest
       // three dimensions of strides/wraps agree. (Fourth dimension is
       // iteration/repeat count and repeats the whole BD, so should not be
@@ -356,9 +378,9 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity, offset, 0,
         0, 0, 0,
         /* TODO: Strides/Wraps */
-        /*d0_size=*/sizes[0], /*d0_stride=*/strides[0],
-        /*d1_size=*/sizes[1], /*d1_stride=*/strides[1],
-        /*d2_size=*/d2size, /*d2_stride=*/strides[2],
+        /*d0_size=*/d0size, /*d0_stride=*/d0stride,
+        /*d1_size=*/d1size, /*d1_stride=*/d1stride,
+        /*d2_size=*/d2size, /*d2_stride=*/d2stride,
         /*iteration_current=*/0, /*iteration_size=*/sizes[3],
         /*iteration_stride=*/strides[3],
         /* TODO: Next BD */
@@ -372,7 +394,6 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         /*d1_zero_before=*/padBefore[1], /*d2_zero_before=*/padBefore[2],
         /*d0_zero_after=*/padAfter[0], /*d1_zero_after=*/padAfter[1],
         /*d2_zero_after=*/padAfter[2]);
-
     return setAddressForSingleBD(builder, bd_op, tile);
   }
 
