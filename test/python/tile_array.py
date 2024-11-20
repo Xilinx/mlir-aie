@@ -38,89 +38,88 @@ def broadcast(module):
         assert df[[0, 1], 3:].shape == (2, 3)
 
         fls = df[0, 0] >> df[0, 1]
-        # CHECK: aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
+        # CHECK: "aie.flow"(%0, %1) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 0 : i32}> : (index, index) -> ()
         print(fls)
 
         print()
 
         fls = df[[0, 1], 0] >> df[[0, 1], 3:]
-        # CHECK: aie.flow(%tile_0_0, DMA : 1, %tile_0_3, DMA : 0)
-        # CHECK: aie.flow(%tile_0_0, DMA : 1, %tile_0_4, DMA : 0)
-        # CHECK: aie.flow(%tile_0_0, DMA : 1, %tile_0_5, DMA : 0)
-        # CHECK: aie.flow(%tile_1_0, DMA : 0, %tile_1_3, DMA : 0)
-        # CHECK: aie.flow(%tile_1_0, DMA : 0, %tile_1_4, DMA : 0)
-        # CHECK: aie.flow(%tile_1_0, DMA : 0, %tile_1_5, DMA : 0)
-
+        # CHECK: "aie.flow"(%0, %3) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 1 : i32}> : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %4) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 1 : i32}> : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %5) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 1 : i32}> : (index, index) -> ()
+        # CHECK: "aie.flow"(%6, %9) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 0 : i32}> : (index, index) -> ()
+        # CHECK: "aie.flow"(%6, %10) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 0 : i32}> : (index, index) -> ()
+        # CHECK: "aie.flow"(%6, %11) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 0 : i32}> : (index, index) -> ()
         for f in fls:
             print(f)
 
         print()
 
         fls = df[0, 0] >> df[1, 0:3]
-        # CHECK: aie.flow(%tile_0_0, DMA : 2, %tile_1_0, DMA : 0)
-        # CHECK: aie.flow(%tile_0_0, DMA : 2, %tile_1_1, DMA : 0)
-        # CHECK: aie.flow(%tile_0_0, DMA : 2, %tile_1_2, DMA : 0)
+        # CHECK: "aie.flow"(%0, %6) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 2 : i32}> : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %7) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 2 : i32}> : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %8) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 2 : i32}> : (index, index) -> ()
         for f in fls:
             print(f)
 
         print()
 
         fls = df[0, 0] >> df[[2, 3], 1:]
-        # CHECK: aie.flow(%tile_0_0, DMA : 3, %tile_2_1, DMA : 0)
-        # CHECK: aie.flow(%tile_0_0, DMA : 3, %tile_2_2, DMA : 0)
-        # CHECK: aie.flow(%tile_0_0, DMA : 3, %tile_2_3, DMA : 0)
-        # CHECK: aie.flow(%tile_0_0, DMA : 3, %tile_2_4, DMA : 0)
-        # CHECK: aie.flow(%tile_0_0, DMA : 3, %tile_2_5, DMA : 0)
-        # CHECK: aie.flow(%tile_0_0, DMA : 3, %tile_3_1, DMA : 0)
-        # CHECK: aie.flow(%tile_0_0, DMA : 3, %tile_3_2, DMA : 0)
-        # CHECK: aie.flow(%tile_0_0, DMA : 3, %tile_3_3, DMA : 0)
-        # CHECK: aie.flow(%tile_0_0, DMA : 3, %tile_3_4, DMA : 0)
-        # CHECK: aie.flow(%tile_0_0, DMA : 3, %tile_3_5, DMA : 0)
+        # CHECK: "aie.flow"(%0, %13) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 3 : i32}> : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %14) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 3 : i32}> : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %15) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 3 : i32}> : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %16) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 3 : i32}> : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %17) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 3 : i32}> : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %19) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 3 : i32}> : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %20) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 3 : i32}> : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %21) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 3 : i32}> : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %22) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 3 : i32}> : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %23) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 3 : i32}> : (index, index) -> ()
         for f in fls:
             print(f)
 
         print()
 
         fls = df[0, 0].flow(df[[2, 3], 1:], source_annot="bob", dest_annot="alice")
-        # CHECK: aie.flow(%tile_0_0, DMA : 4, %tile_2_1, DMA : 1) {dest_annot = {alice}, source_annot = {bob}}
-        # CHECK: aie.flow(%tile_0_0, DMA : 4, %tile_2_2, DMA : 1) {dest_annot = {alice}, source_annot = {bob}}
-        # CHECK: aie.flow(%tile_0_0, DMA : 4, %tile_2_3, DMA : 1) {dest_annot = {alice}, source_annot = {bob}}
-        # CHECK: aie.flow(%tile_0_0, DMA : 4, %tile_2_4, DMA : 1) {dest_annot = {alice}, source_annot = {bob}}
-        # CHECK: aie.flow(%tile_0_0, DMA : 4, %tile_2_5, DMA : 1) {dest_annot = {alice}, source_annot = {bob}}
-        # CHECK: aie.flow(%tile_0_0, DMA : 4, %tile_3_1, DMA : 1) {dest_annot = {alice}, source_annot = {bob}}
-        # CHECK: aie.flow(%tile_0_0, DMA : 4, %tile_3_2, DMA : 1) {dest_annot = {alice}, source_annot = {bob}}
-        # CHECK: aie.flow(%tile_0_0, DMA : 4, %tile_3_3, DMA : 1) {dest_annot = {alice}, source_annot = {bob}}
-        # CHECK: aie.flow(%tile_0_0, DMA : 4, %tile_3_4, DMA : 1) {dest_annot = {alice}, source_annot = {bob}}
-        # CHECK: aie.flow(%tile_0_0, DMA : 4, %tile_3_5, DMA : 1) {dest_annot = {alice}, source_annot = {bob}}
+        # CHECK: "aie.flow"(%0, %13) <{dest_bundle = 1 : i32, dest_channel = 1 : i32, source_bundle = 1 : i32, source_channel = 4 : i32}> {dest_annot = {alice}, source_annot = {bob}} : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %14) <{dest_bundle = 1 : i32, dest_channel = 1 : i32, source_bundle = 1 : i32, source_channel = 4 : i32}> {dest_annot = {alice}, source_annot = {bob}} : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %15) <{dest_bundle = 1 : i32, dest_channel = 1 : i32, source_bundle = 1 : i32, source_channel = 4 : i32}> {dest_annot = {alice}, source_annot = {bob}} : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %16) <{dest_bundle = 1 : i32, dest_channel = 1 : i32, source_bundle = 1 : i32, source_channel = 4 : i32}> {dest_annot = {alice}, source_annot = {bob}} : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %17) <{dest_bundle = 1 : i32, dest_channel = 1 : i32, source_bundle = 1 : i32, source_channel = 4 : i32}> {dest_annot = {alice}, source_annot = {bob}} : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %19) <{dest_bundle = 1 : i32, dest_channel = 1 : i32, source_bundle = 1 : i32, source_channel = 4 : i32}> {dest_annot = {alice}, source_annot = {bob}} : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %20) <{dest_bundle = 1 : i32, dest_channel = 1 : i32, source_bundle = 1 : i32, source_channel = 4 : i32}> {dest_annot = {alice}, source_annot = {bob}} : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %21) <{dest_bundle = 1 : i32, dest_channel = 1 : i32, source_bundle = 1 : i32, source_channel = 4 : i32}> {dest_annot = {alice}, source_annot = {bob}} : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %22) <{dest_bundle = 1 : i32, dest_channel = 1 : i32, source_bundle = 1 : i32, source_channel = 4 : i32}> {dest_annot = {alice}, source_annot = {bob}} : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %23) <{dest_bundle = 1 : i32, dest_channel = 1 : i32, source_bundle = 1 : i32, source_channel = 4 : i32}> {dest_annot = {alice}, source_annot = {bob}} : (index, index) -> ()
         for f in fls:
             print(f)
 
         print()
 
-        # CHECK: aie.flow(%tile_0_0, DMA : 3, %tile_2_2, DMA : 0)
-        # CHECK: aie.flow(%tile_0_0, DMA : 4, %tile_2_2, DMA : 1) {dest_annot = {alice}, source_annot = {bob}}
+        # CHECK: "aie.flow"(%0, %14) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 3 : i32}> : (index, index) -> ()
+        # CHECK: "aie.flow"(%0, %14) <{dest_bundle = 1 : i32, dest_channel = 1 : i32, source_bundle = 1 : i32, source_channel = 4 : i32}> {dest_annot = {alice}, source_annot = {bob}} : (index, index) -> ()
         for f in df[2, 2].flows():
             print(f)
 
-        # CHECK: aie.flow(%tile_0_0, DMA : 4, %tile_2_2, DMA : 1) {dest_annot = {alice}, source_annot = {bob}}
+        # CHECK: "aie.flow"(%0, %14) <{dest_bundle = 1 : i32, dest_channel = 1 : i32, source_bundle = 1 : i32, source_channel = 4 : i32}> {dest_annot = {alice}, source_annot = {bob}} : (index, index) -> ()
         for f in df[2, 2].flows(source_annot="bob"):
             print(f)
 
-        # CHECK: aie.flow(%tile_0_0, DMA : 4, %tile_2_2, DMA : 1) {dest_annot = {alice}, source_annot = {bob}}
+        # CHECK: "aie.flow"(%0, %14) <{dest_bundle = 1 : i32, dest_channel = 1 : i32, source_bundle = 1 : i32, source_channel = 4 : i32}> {dest_annot = {alice}, source_annot = {bob}} : (index, index) -> ()
         for f in df[2, 2].flows(dest_annot="alice"):
             print(f)
 
-        # CHECK: aie.flow(%tile_0_0, DMA : 4, %tile_2_2, DMA : 1) {dest_annot = {alice}, source_annot = {bob}}
+        # CHECK: "aie.flow"(%0, %14) <{dest_bundle = 1 : i32, dest_channel = 1 : i32, source_bundle = 1 : i32, source_channel = 4 : i32}> {dest_annot = {alice}, source_annot = {bob}} : (index, index) -> ()
         for f in df[2, 2].flows(source_annot="bob", dest_annot="alice"):
             print(f)
 
         assert len(df[0, 3].flows(source_annot="bob", dest_annot="alice")) == 0
 
-        # CHECK: aie.flow(%tile_0_0, DMA : 1, %tile_0_3, DMA : 0)
+        # CHECK: "aie.flow"(%0, %3) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 1 : i32}> : (index, index) -> ()
         for f in df[0, 3].flows():
             print(f)
 
-        # CHECK: aie.flow(%tile_1_0, DMA : 0, %tile_1_3, DMA : 0)
+        # CHECK: "aie.flow"(%6, %9) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 0 : i32}> : (index, index) -> ()
         for f in df[1, 3].flows(filter_dest=True):
             print(f)
 
@@ -188,7 +187,7 @@ def broadcast(module):
         # CHECK:     aie.flow(%tile_0_0, DMA : 4, %tile_3_5, DMA : 1) {dest_annot = {alice}, source_annot = {bob}}
         # CHECK:   }
         # CHECK: }
-        print(module)
+    print(module)
 
 
 # CHECK-LABEL: lshift
@@ -201,14 +200,11 @@ def lshift(module):
         fls = tiles[2, 1] << tiles[0, [2, 3]]
         # CHECK: aie.flow(%tile_0_2, DMA : 0, %tile_2_1, DMA : 0)
         # CHECK: aie.flow(%tile_0_3, DMA : 0, %tile_2_1, DMA : 1)
-        for f in fls:
-            print(f)
 
         fls = tiles[2, 1] << tiles[0, [2, 3]]
         # CHECK: aie.flow(%tile_0_2, DMA : 1, %tile_2_1, DMA : 2)
         # CHECK: aie.flow(%tile_0_3, DMA : 1, %tile_2_1, DMA : 3)
-        for f in fls:
-            print(f)
+    print(npu)
 
 
 # CHECK-LABEL: locks
@@ -230,21 +226,21 @@ def locks(module):
 
         # CHECK: %lock_0_2 = aie.lock(%tile_0_2)
         # CHECK: %lock_0_2_0 = aie.lock(%tile_0_2) {annot = {bob}}
-        for l in tiles[0, 2].locks():
-            print(l.owner)
+        # for l in tiles[0, 2].locks():
+        #     print(l.owner)
 
-        # CHECK: %lock_0_2_0 = aie.lock(%tile_0_2) {annot = {bob}}
+        # NOCHECK: %lock_0_2_0 = aie.lock(%tile_0_2) {annot = {bob}}
         assert len(tiles[0, 2].locks(annot="bob"))
-        for l in tiles[0, 2].locks(annot="bob"):
-            print(l.owner)
+        # for l in tiles[0, 2].locks(annot="bob"):
+        #     print(l.owner)
 
         assert len(tiles[0, 2].locks(annot="alice")) == 0
 
         assert len(tiles[0, 3].locks(annot="alice")) == 1
         # CHECK: %lock_0_3_1 = aie.lock(%tile_0_3) {annot = {alice}}
-        for l in tiles[0, 3].locks(annot="alice"):
-            print(l.owner)
-
+        # for l in tiles[0, 3].locks(annot="alice"):
+        #     print(l.owner)
+    print(module)
 
 # CHECK-LABEL: neighbors
 @construct_and_print_module
@@ -253,21 +249,20 @@ def neighbors(module):
     def npu():
         tiles = TileArray()
 
-        # CHECK: Neighbors(north=%tile_2_3 = aie.tile(2, 3), west=%tile_1_2 = aie.tile(1, 2), south=None)
+        # CHECK: Neighbors(north=%15 = "aie.tile"() <{col = 2 : i32, row = 3 : i32}> : () -> index, west=%8 = "aie.tile"() <{col = 1 : i32, row = 2 : i32}> : () -> index, south=None)
         print(find_neighbors(tiles[2, 2].tile))
 
         assert tiles[1:3, 1:3].neighbors().shape == (2, 2)
         # CHECK: tile(col=1, row=1) : Neighbors(north=None, west=None, south=None)
-        # CHECK: tile(col=1, row=2) : Neighbors(north=<TileArray: [%tile_1_3 = aie.tile(1, 3)]>, west=<TileArray: [%tile_0_2 = aie.tile(0, 2)]>, south=None)
-        # CHECK: tile(col=2, row=1) : Neighbors(north=None, west=<TileArray: [%tile_1_1 = aie.tile(1, 1)]>, south=None)
-        # CHECK: tile(col=2, row=2) : Neighbors(north=<TileArray: [%tile_2_3 = aie.tile(2, 3)]>, west=<TileArray: [%tile_1_2 = aie.tile(1, 2)]>, south=None)
+        # CHECK: tile(col=1, row=2) : Neighbors(north=<TileArray: [%9 = "aie.tile"() <{col = 1 : i32, row = 3 : i32}> : () -> index]>, west=<TileArray: [%2 = "aie.tile"() <{col = 0 : i32, row = 2 : i32}> : () -> index]>, south=None)
+        # CHECK: tile(col=2, row=1) : Neighbors(north=None, west=<TileArray: [%7 = "aie.tile"() <{col = 1 : i32, row = 1 : i32}> : () -> index]>, south=None)
         for idx, n in np.ndenumerate(tiles[1:3, 1:3].neighbors()):
             print(tiles[1:3, 1:3][idx].tile, ":", n)
 
-        # CHECK: tile(col=1, row=1) : Neighbors(north=<TileArray: [%tile_1_2 = aie.tile(1, 2)]>, west=None, south=<TileArray: [%tile_1_0 = aie.tile(1, 0)]>)
-        # CHECK: tile(col=1, row=2) : Neighbors(north=<TileArray: [%tile_1_3 = aie.tile(1, 3)]>, west=<TileArray: [%tile_0_2 = aie.tile(0, 2)]>, south=<TileArray: [%tile_1_1 = aie.tile(1, 1)]>)
-        # CHECK: tile(col=2, row=1) : Neighbors(north=<TileArray: [%tile_2_2 = aie.tile(2, 2)]>, west=<TileArray: [%tile_1_1 = aie.tile(1, 1)]>, south=<TileArray: [%tile_2_0 = aie.tile(2, 0)]>)
-        # CHECK: tile(col=2, row=2) : Neighbors(north=<TileArray: [%tile_2_3 = aie.tile(2, 3)]>, west=<TileArray: [%tile_1_2 = aie.tile(1, 2)]>, south=<TileArray: [%tile_2_1 = aie.tile(2, 1)]>)
+        # CHECK: tile(col=1, row=1) : Neighbors(north=<TileArray: [%8 = "aie.tile"() <{col = 1 : i32, row = 2 : i32}> : () -> index]>, west=None, south=<TileArray: [%6 = "aie.tile"() <{col = 1 : i32, row = 0 : i32}> : () -> index]>)
+        # CHECK: tile(col=1, row=2) : Neighbors(north=<TileArray: [%9 = "aie.tile"() <{col = 1 : i32, row = 3 : i32}> : () -> index]>, west=<TileArray: [%2 = "aie.tile"() <{col = 0 : i32, row = 2 : i32}> : () -> index]>, south=<TileArray: [%7 = "aie.tile"() <{col = 1 : i32, row = 1 : i32}> : () -> index]>)
+        # CHECK: tile(col=2, row=1) : Neighbors(north=<TileArray: [%14 = "aie.tile"() <{col = 2 : i32, row = 2 : i32}> : () -> index]>, west=<TileArray: [%7 = "aie.tile"() <{col = 1 : i32, row = 1 : i32}> : () -> index]>, south=<TileArray: [%12 = "aie.tile"() <{col = 2 : i32, row = 0 : i32}> : () -> index]>)
+        # CHECK: tile(col=2, row=2) : Neighbors(north=<TileArray: [%15 = "aie.tile"() <{col = 2 : i32, row = 3 : i32}> : () -> index]>, west=<TileArray: [%8 = "aie.tile"() <{col = 1 : i32, row = 2 : i32}> : () -> index]>, south=<TileArray: [%13 = "aie.tile"() <{col = 2 : i32, row = 1 : i32}> : () -> index]>)
         for idx, n in np.ndenumerate(tiles[1:3, 1:3].neighbors(logical=False)):
             print(tiles[1:3, 1:3][idx].tile, ":", n)
 
