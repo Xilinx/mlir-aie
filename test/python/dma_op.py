@@ -81,4 +81,5 @@ def objFifo_example():
                 use_lock(prod_lock_mem_A, LockAction.Release)
 
             end()
+
         end()
