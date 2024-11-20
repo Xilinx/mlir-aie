@@ -8,7 +8,7 @@ from operator import itemgetter
 import numpy as np
 
 from ._aiex_ops_gen import *
-from ._aie_ops_gen import ObjectFifoCreateOp, dma_bd
+from ._aie_ops_gen import ObjectFifoCreateOp, dma_bd, EndOp
 from . import aie
 from .aie import (
     DMAChannelDir,
@@ -19,6 +19,7 @@ from .aie import (
     find_matching_flows,
     find_matching_locks,
     find_neighbors,
+    bds,
 )
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
@@ -870,6 +871,34 @@ def shim_dma_bd(
 
     dimensions = list(zip(sizes, strides))
     dma_bd(mem, offset=offset, len=transfer_len, dimensions=dimensions)
+
+
+def shim_dma_single_bd_task(
+    alloc,
+    mem,
+    offset: int | None = None,
+    sizes: MixedValues | None = None,
+    strides: MixedValues | None = None,
+    transfer_len: int | None = None,
+    issue_token: bool = False,
+):
+    repeat_count = 0
+    if sizes[0] > 1:
+        repeat_count = sizes[0] - 1
+    task = dma_configure_task_for(
+        alloc, repeat_count=repeat_count, issue_token=issue_token
+    )
+    with bds(task) as bd:
+        with bd[0]:
+            shim_dma_bd(
+                mem,
+                offset=offset,
+                sizes=sizes,
+                strides=strides,
+                transfer_len=transfer_len,
+            )
+            EndOp()
+    return task
 
 
 _orig_dma_await_task = dma_await_task

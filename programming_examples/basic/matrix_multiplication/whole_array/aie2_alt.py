@@ -405,20 +405,14 @@ def my_matmul(
                         C_offset = C_col_offset + C_row_offset
                         C_sizes = [tb_n_rows, N // n // n_aie_cols, m * n_aie_rows, n]
                         C_strides = [m * n_aie_rows * N, n * n_aie_cols, N, 1]
-                        c_task = dma_configure_task_for(
+                        c_task = shim_dma_single_bd_task(
                             C_l2l3_fifos[col],
-                            repeat_count=max(0, C_sizes[0] - 1),
+                            C,
+                            offset=C_offset,
+                            sizes=C_sizes,
+                            strides=C_strides,
                             issue_token=True,
                         )
-                        with bds(c_task) as bd:
-                            with bd[0]:
-                                shim_dma_bd(
-                                    C,
-                                    offset=C_offset,
-                                    sizes=C_sizes,
-                                    strides=C_strides,
-                                )
-                                EndOp()
                         dma_start_task(c_task)
                         out_tasks.append(c_task)
                         # Use the calculated sizes/strides/offsets to record the data movement
@@ -467,18 +461,13 @@ def my_matmul(
                                 k,
                             ]
                             A_strides = [0, k, K, 1]
-                            a_task = dma_configure_task_for(
-                                A_l3l2_fifos[col], repeat_count=max(0, A_sizes[0] - 1)
+                            a_task = shim_dma_single_bd_task(
+                                A_l3l2_fifos[col],
+                                A,
+                                offset=A_offset,
+                                sizes=A_sizes,
+                                strides=A_strides,
                             )
-                            with bds(a_task) as bd:
-                                with bd[0]:
-                                    shim_dma_bd(
-                                        A,
-                                        offset=A_offset,
-                                        sizes=A_sizes,
-                                        strides=A_strides,
-                                    )
-                                    EndOp()
                             dma_start_task(a_task)
                             in_tasks.append(a_task)
                             # Use the calculated sizes/strides/offsets to record the data movement
@@ -519,18 +508,13 @@ def my_matmul(
                                 B_sizes = [N // n // n_aie_cols, K // k, n, k]
                                 B_strides = [n * n_aie_cols * K, k, K, 1]
 
-                            b_task = dma_configure_task_for(
-                                B_l3l2_fifos[col], repeat_count=max(0, B_sizes[0] - 1)
+                            b_task = shim_dma_single_bd_task(
+                                B_l3l2_fifos[col],
+                                B,
+                                offset=B_col_offset,
+                                sizes=B_sizes,
+                                strides=B_strides,
                             )
-                            with bds(b_task) as bd:
-                                with bd[0]:
-                                    shim_dma_bd(
-                                        B,
-                                        offset=B_col_offset,
-                                        sizes=B_sizes,
-                                        strides=B_strides,
-                                    )
-                                    EndOp()
                             dma_start_task(b_task)
                             in_tasks.append(b_task)
                             # Use the calculated sizes/strides/offsets to record the data movement

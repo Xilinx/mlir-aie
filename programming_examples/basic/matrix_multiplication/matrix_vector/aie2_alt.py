@@ -142,17 +142,12 @@ def my_matmul():
                 np.ndarray[(C_sz,), dtype_out],
             )
             def sequence(A, B, C):
-                b_task = dma_configure_task_for(
-                    inB_fifo, repeat_count=M_div_m_div_n_cores - 1
+                b_task = shim_dma_single_bd_task(
+                    inB_fifo,
+                    B,
+                    sizes=[M_div_m_div_n_cores, 1, 1, K],
+                    strides=[0, 0, 0, 1],
                 )
-                with bds(b_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(
-                            B,
-                            sizes=[M_div_m_div_n_cores, 1, 1, K],
-                            strides=[0, 0, 0, 1],
-                        )
-                        EndOp()
 
                 a_tasks = []
                 c_tasks = []
@@ -160,27 +155,22 @@ def my_matmul():
                     A_offset = i * M_div_m_div_n_cores * m * K
                     C_offset = i * M_div_m_div_n_cores * m
 
-                    a_task = dma_configure_task_for(
-                        memA_fifos[i], repeat_count=M_div_m_div_n_cores - 1
+                    a_task = shim_dma_single_bd_task(
+                        memA_fifos[i],
+                        A,
+                        offset=A_offset,
+                        sizes=[M_div_m_div_n_cores, K_div_k, m, k],
+                        strides=[m_x_K, k, K, 1],
                     )
-                    with bds(a_task) as bd:
-                        with bd[0]:
-                            shim_dma_bd(
-                                A,
-                                offset=A_offset,
-                                sizes=[M_div_m_div_n_cores, K_div_k, m, k],
-                                strides=[m_x_K, k, K, 1],
-                            )
-                            EndOp()
                     a_tasks.append(a_task)
 
-                    c_task = dma_configure_task_for(outC_fifos[i], issue_token=True)
-                    with bds(c_task) as bd:
-                        with bd[0]:
-                            shim_dma_bd(
-                                C, offset=C_offset, sizes=[1, 1, 1, C_sz_div_n_cores]
-                            )
-                            EndOp()
+                    c_task = shim_dma_single_bd_task(
+                        outC_fifos[i],
+                        C,
+                        offset=C_offset,
+                        sizes=[1, 1, 1, C_sz_div_n_cores],
+                        issue_token=True,
+                    )
                     c_tasks.append(c_task)
 
                 dma_start_task(b_task)

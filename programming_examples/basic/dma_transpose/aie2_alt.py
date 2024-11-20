@@ -52,21 +52,12 @@ def my_passthrough():
             def sequence(A, B, C):
                 # The strides below are configured to read across all rows in the same column
                 # Stride of K in dim/wrap 2 skips an entire row to read a full column
-                in_task = dma_configure_task_for(of_in, issue_token=True)
-                with bds(in_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(
-                            A,
-                            sizes=[1, 1, K, M],
-                            strides=[1, 1, 1, K],
-                        )
-                        EndOp()
-
-                out_task = dma_configure_task_for(of_out, issue_token=True)
-                with bds(out_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(C, sizes=[1, 1, 1, N])
-                        EndOp()
+                in_task = shim_dma_single_bd_task(
+                    of_in, A, sizes=[1, 1, K, M], strides=[1, 1, 1, K], issue_token=True
+                )
+                out_task = shim_dma_single_bd_task(
+                    of_out, C, sizes=[1, 1, 1, N], issue_token=True
+                )
 
                 dma_start_task(in_task, out_task)
                 dma_await_task(in_task, out_task)
