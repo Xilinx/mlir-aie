@@ -187,6 +187,7 @@ def broadcast(module):
         # CHECK:     aie.flow(%tile_0_0, DMA : 4, %tile_3_5, DMA : 1) {dest_annot = {alice}, source_annot = {bob}}
         # CHECK:   }
         # CHECK: }
+
     print(module)
 
 
@@ -204,6 +205,7 @@ def lshift(module):
         fls = tiles[2, 1] << tiles[0, [2, 3]]
         # CHECK: aie.flow(%tile_0_2, DMA : 1, %tile_2_1, DMA : 2)
         # CHECK: aie.flow(%tile_0_3, DMA : 1, %tile_2_1, DMA : 3)
+
     print(npu)
 
 
@@ -240,7 +242,9 @@ def locks(module):
         # CHECK: %lock_0_3_1 = aie.lock(%tile_0_3) {annot = {alice}}
         # for l in tiles[0, 3].locks(annot="alice"):
         #     print(l.owner)
+
     print(module)
+
 
 # CHECK-LABEL: neighbors
 @construct_and_print_module
