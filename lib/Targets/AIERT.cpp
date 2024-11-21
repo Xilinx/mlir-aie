@@ -438,7 +438,8 @@ LogicalResult AIERTControl::configureSwitches(DeviceOp &targetOp) {
     int32_t col = switchboxOp.colIndex();
     int32_t row = switchboxOp.rowIndex();
     XAie_LocType tileLoc = XAie_TileLoc(col, row);
-    assert(targetModel.isNPU() && "Only NPU currently supported");
+    assert(targetModel.hasProperty(AIETargetModel::IsNPU) &&
+           "Only NPU currently supported");
 
     Block &b = switchboxOp.getConnections().front();
     for (auto connectOp : b.getOps<ConnectOp>())

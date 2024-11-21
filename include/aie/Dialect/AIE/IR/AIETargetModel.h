@@ -74,6 +74,7 @@ public:
   // One-hot encoded list of target model properties.
   enum ModelProperty {
     UsesSemaphoreLocks = 1U << 0,
+    IsNPU = 1U << 1,
   };
 
 private:
@@ -239,7 +240,7 @@ public:
 
   // Return true if this is an NPU-based device
   // There are several special cases for handling the NPU at the moment.
-  virtual bool isNPU() const { return false; }
+  // virtual bool isNPU() const { return false; }
 
   // Return true if this device has a given property.
   virtual bool hasProperty(ModelProperty Prop) const = 0;
@@ -536,7 +537,7 @@ public:
   // during CDO code generation to configure aie-rt properly.
   virtual bool isVirtualized() const = 0;
 
-  virtual bool isNPU() const override { return true; }
+  // virtual bool isNPU() const override { return true; }
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU1 &&

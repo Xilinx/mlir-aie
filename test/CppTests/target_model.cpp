@@ -18,13 +18,15 @@ using namespace xilinx;
 void test() {
 
   // AIEDevice::xcvc1902
-  if (AIE::getTargetModel(AIE::AIEDevice::xcvc1902).isNPU()) {
-    throw std::runtime_error("Failed xcvc1902 isNPU returns true");
-  }
   if (AIE::getTargetModel(AIE::AIEDevice::xcvc1902)
           .hasProperty(AIE::AIETargetModel::UsesSemaphoreLocks)) {
     throw std::runtime_error(
         "Failed xcvc1902 property check for 'UsesSemaphoreLocks' returns true");
+  }
+  if (AIE::getTargetModel(AIE::AIEDevice::xcvc1902)
+          .hasProperty(AIE::AIETargetModel::IsNPU)) {
+    throw std::runtime_error(
+        "Failed xcvc1902 property check for 'IsNPU' returns true");
   }
   if (AIE::getTargetModel(AIE::AIEDevice::xcvc1902).columns() != 50) {
     throw std::runtime_error("Failed xcvc1902 columns");
@@ -34,13 +36,15 @@ void test() {
   }
 
   // AIEDevice::xcve2302
-  if (AIE::getTargetModel(AIE::AIEDevice::xcve2302).isNPU()) {
-    throw std::runtime_error("Failed xcve2302 isNPU returns true");
-  }
   if (!AIE::getTargetModel(AIE::AIEDevice::xcve2302)
            .hasProperty(AIE::AIETargetModel::UsesSemaphoreLocks)) {
     throw std::runtime_error("Failed xcve2302 property check for "
                              "'UsesSemaphoreLocks' returns false");
+  }
+  if (!AIE::getTargetModel(AIE::AIEDevice::xcve2302)
+           .hasProperty(AIE::AIETargetModel::IsNPU)) {
+    throw std::runtime_error("Failed xcve2302 property check for "
+                             "'IsNPU' returns false");
   }
   if (AIE::getTargetModel(AIE::AIEDevice::xcve2302).columns() != 17) {
     throw std::runtime_error("Failed xcve2302 columns");
@@ -50,13 +54,15 @@ void test() {
   }
 
   // AIEDevice::xcve2802
-  if (AIE::getTargetModel(AIE::AIEDevice::xcve2802).isNPU()) {
-    throw std::runtime_error("Failed xcve2802 isNPU returns true");
-  }
   if (!AIE::getTargetModel(AIE::AIEDevice::xcve2802)
            .hasProperty(AIE::AIETargetModel::UsesSemaphoreLocks)) {
     throw std::runtime_error("Failed xcve2802 property check for "
                              "'UsesSemaphoreLocks' returns false");
+  }
+  if (!AIE::getTargetModel(AIE::AIEDevice::xcve2802)
+           .hasProperty(AIE::AIETargetModel::IsNPU)) {
+    throw std::runtime_error("Failed xcve2802 property check for "
+                             "'IsNPU' returns false");
   }
   if (AIE::getTargetModel(AIE::AIEDevice::xcve2802).columns() != 38) {
     throw std::runtime_error("Failed xcve2802 columns");
@@ -66,13 +72,15 @@ void test() {
   }
 
   // AIEDevice::npu1
-  if (!AIE::getTargetModel(AIE::AIEDevice::npu1).isNPU()) {
-    throw std::runtime_error("Failed npu1 isNPU");
-  }
   if (!AIE::getTargetModel(AIE::AIEDevice::npu1)
            .hasProperty(AIE::AIETargetModel::UsesSemaphoreLocks)) {
     throw std::runtime_error(
         "Failed npu1 property check for 'UsesSemaphoreLocks' returns false");
+  }
+  if (!AIE::getTargetModel(AIE::AIEDevice::npu1)
+           .hasProperty(AIE::AIETargetModel::IsNPU)) {
+    throw std::runtime_error(
+        "Failed npu1 property check for 'IsNPU' returns false");
   }
   if (AIE::getTargetModel(AIE::AIEDevice::npu1).columns() != 5) {
     throw std::runtime_error("Failed npu1 columns");
@@ -88,13 +96,14 @@ void test() {
   npu1_devs[AIE::AIEDevice::npu1_3col] = 3;
   npu1_devs[AIE::AIEDevice::npu1_4col] = 4;
   for (auto &[dev, cols] : npu1_devs) {
-    if (!AIE::getTargetModel(dev).isNPU()) {
-      throw std::runtime_error("Failed npu1_ncol isNPU");
-    }
     if (!AIE::getTargetModel(dev).hasProperty(
             AIE::AIETargetModel::UsesSemaphoreLocks)) {
       throw std::runtime_error("Failed npu1_ncol property check for "
                                "'UsesSemaphoreLocks' returns false");
+    }
+    if (!AIE::getTargetModel(dev).hasProperty(AIE::AIETargetModel::IsNPU)) {
+      throw std::runtime_error("Failed npu1_ncol property check for "
+                               "'IsNPU' returns false");
     }
     if (AIE::getTargetModel(dev).columns() != cols) {
       throw std::runtime_error("Failed npu1_ncol columns");
@@ -105,13 +114,15 @@ void test() {
   }
 
   // AIEDevice::npu2
-  if (!AIE::getTargetModel(AIE::AIEDevice::npu2).isNPU()) {
-    throw std::runtime_error("Failed npu2 isNPU");
-  }
   if (!AIE::getTargetModel(AIE::AIEDevice::npu2)
            .hasProperty(AIE::AIETargetModel::UsesSemaphoreLocks)) {
     throw std::runtime_error(
         "Failed npu2 property check for 'UsesSemaphoreLocks' returns false");
+  }
+  if (!AIE::getTargetModel(AIE::AIEDevice::npu2)
+           .hasProperty(AIE::AIETargetModel::IsNPU)) {
+    throw std::runtime_error(
+        "Failed npu2 property check for 'IsNPU' returns false");
   }
   if (AIE::getTargetModel(AIE::AIEDevice::npu2).columns() != 8) {
     throw std::runtime_error("Failed npu2 columns");

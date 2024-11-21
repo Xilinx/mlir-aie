@@ -655,6 +655,7 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
 bool AIE2TargetModel::hasProperty(ModelProperty prop) const {
   uint64_t properties = 0;
   properties |= AIETargetModel::UsesSemaphoreLocks;
+  properties |= AIETargetModel::IsNPU;
   return (properties & prop) == prop;
 }
 
