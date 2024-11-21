@@ -28,6 +28,11 @@ void test() {
     throw std::runtime_error(
         "Failed xcvc1902 property check for 'IsNPU' returns true");
   }
+  if (AIE::getTargetModel(AIE::AIEDevice::xcvc1902)
+          .hasProperty(AIE::AIETargetModel::IsVirtualized)) {
+    throw std::runtime_error(
+        "Failed xcvc1902 property check for 'IsVirtualized' returns true");
+  }
   if (AIE::getTargetModel(AIE::AIEDevice::xcvc1902).columns() != 50) {
     throw std::runtime_error("Failed xcvc1902 columns");
   }
@@ -45,6 +50,11 @@ void test() {
            .hasProperty(AIE::AIETargetModel::IsNPU)) {
     throw std::runtime_error("Failed xcve2302 property check for "
                              "'IsNPU' returns false");
+  }
+  if (AIE::getTargetModel(AIE::AIEDevice::xcve2302)
+          .hasProperty(AIE::AIETargetModel::IsVirtualized)) {
+    throw std::runtime_error(
+        "Failed xcve2302 property check for 'IsVirtualized' returns true");
   }
   if (AIE::getTargetModel(AIE::AIEDevice::xcve2302).columns() != 17) {
     throw std::runtime_error("Failed xcve2302 columns");
@@ -64,6 +74,11 @@ void test() {
     throw std::runtime_error("Failed xcve2802 property check for "
                              "'IsNPU' returns false");
   }
+  if (AIE::getTargetModel(AIE::AIEDevice::xcve2802)
+          .hasProperty(AIE::AIETargetModel::IsVirtualized)) {
+    throw std::runtime_error(
+        "Failed xcve2802 property check for 'IsVirtualized' returns true");
+  }
   if (AIE::getTargetModel(AIE::AIEDevice::xcve2802).columns() != 38) {
     throw std::runtime_error("Failed xcve2802 columns");
   }
@@ -81,6 +96,11 @@ void test() {
            .hasProperty(AIE::AIETargetModel::IsNPU)) {
     throw std::runtime_error(
         "Failed npu1 property check for 'IsNPU' returns false");
+  }
+  if (AIE::getTargetModel(AIE::AIEDevice::npu1)
+          .hasProperty(AIE::AIETargetModel::IsVirtualized)) {
+    throw std::runtime_error(
+        "Failed npu1 property check for 'IsVirtualized' returns true");
   }
   if (AIE::getTargetModel(AIE::AIEDevice::npu1).columns() != 5) {
     throw std::runtime_error("Failed npu1 columns");
@@ -105,6 +125,11 @@ void test() {
       throw std::runtime_error("Failed npu1_ncol property check for "
                                "'IsNPU' returns false");
     }
+    if (!AIE::getTargetModel(dev).hasProperty(
+            AIE::AIETargetModel::IsVirtualized)) {
+      throw std::runtime_error(
+          "Failed npu1_ncol property check for 'IsVirtualized' returns false");
+    }
     if (AIE::getTargetModel(dev).columns() != cols) {
       throw std::runtime_error("Failed npu1_ncol columns");
     }
@@ -123,6 +148,11 @@ void test() {
            .hasProperty(AIE::AIETargetModel::IsNPU)) {
     throw std::runtime_error(
         "Failed npu2 property check for 'IsNPU' returns false");
+  }
+  if (AIE::getTargetModel(AIE::AIEDevice::npu2)
+          .hasProperty(AIE::AIETargetModel::IsVirtualized)) {
+    throw std::runtime_error(
+        "Failed npu2 property check for 'IsVirtualized' returns true");
   }
   if (AIE::getTargetModel(AIE::AIEDevice::npu2).columns() != 8) {
     throw std::runtime_error("Failed npu2 columns");

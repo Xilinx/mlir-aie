@@ -57,7 +57,8 @@ AIERTControl::AIERTControl(const AIE::BaseNPUTargetModel &tm)
     : targetModel(tm) {
   // The first column in the NPU lacks a shim tile.  AIE-RT exposes some of
   // the internals about how this is modeled in a somewhat awkward way.
-  size_t partitionStartCol = tm.isVirtualized() ? 1 : 0;
+  size_t partitionStartCol =
+      tm.hasProperty(AIETargetModel::IsVirtualized) ? 1 : 0;
   size_t partitionNumCols = tm.columns();
   size_t deviceRows = tm.rows();
   size_t deviceCols = tm.columns() + partitionStartCol;

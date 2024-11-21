@@ -78,6 +78,9 @@ public:
     // Device is an NPU-based device.
     // There are several special cases for handling the NPU at the moment.
     IsNPU = 1U << 1,
+    // Device model is virtualized.
+    // This is used during CDO code generation to configure aie-rt properly.
+    IsVirtualized = 1U << 2,
   };
 
 private:
@@ -532,10 +535,6 @@ public:
 
   uint32_t getNumMemTileRows() const override { return 1; }
 
-  // Return true if the device model is virtualized.  This is used
-  // during CDO code generation to configure aie-rt properly.
-  virtual bool isVirtualized() const = 0;
-
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU1 &&
            model->getKind() < TK_AIE2_NPU2_Last;
@@ -557,8 +556,6 @@ public:
     // This isn't useful because it's not connected to anything.
     return row == 0 && col == 0;
   }
-
-  bool isVirtualized() const override { return false; }
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() == TK_AIE2_NPU1;
@@ -582,12 +579,12 @@ public:
 
   bool isShimNOCTile(int col, int row) const override { return row == 0; }
 
-  bool isVirtualized() const override { return true; }
-
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU1_1Col &&
            model->getKind() < TK_AIE2_NPU1_Last;
   }
+
+  bool hasProperty(ModelProperty Prop) const override;
 };
 
 // The full Strix. NPU
@@ -602,8 +599,6 @@ public:
   bool isShimNOCTile(int col, int row) const override { return row == 0; }
 
   bool isShimPLTile(int col, int row) const override { return false; }
-
-  bool isVirtualized() const override { return false; }
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() == TK_AIE2_NPU2;

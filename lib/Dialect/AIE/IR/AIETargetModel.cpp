@@ -659,6 +659,13 @@ bool AIE2TargetModel::hasProperty(ModelProperty prop) const {
   return (properties & prop) == prop;
 }
 
+bool VirtualizedNPUTargetModel::hasProperty(ModelProperty prop) const {
+  bool baseClassHasProperty = BaseNPUTargetModel::hasProperty(prop);
+  uint64_t properties = 0;
+  properties |= AIETargetModel::IsVirtualized;
+  return baseClassHasProperty || ((properties & prop) == prop);
+}
+
 void AIETargetModel::validate() const {
   // Every tile in a shimtile row must be a shimtile, and can only be one type
   // of shim tile.
