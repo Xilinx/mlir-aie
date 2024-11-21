@@ -24,6 +24,11 @@ void test() {
         "Failed xcvc1902 property check for 'UsesSemaphoreLocks' returns true");
   }
   if (AIE::getTargetModel(AIE::AIEDevice::xcvc1902)
+          .hasProperty(AIE::AIETargetModel::UsesMultiDimensionalBDs)) {
+    throw std::runtime_error("Failed xcvc1902 property check for "
+                             "'UsesMultiDimensionalBDs' returns true");
+  }
+  if (AIE::getTargetModel(AIE::AIEDevice::xcvc1902)
           .hasProperty(AIE::AIETargetModel::IsNPU)) {
     throw std::runtime_error(
         "Failed xcvc1902 property check for 'IsNPU' returns true");
@@ -45,6 +50,11 @@ void test() {
            .hasProperty(AIE::AIETargetModel::UsesSemaphoreLocks)) {
     throw std::runtime_error("Failed xcve2302 property check for "
                              "'UsesSemaphoreLocks' returns false");
+  }
+  if (!AIE::getTargetModel(AIE::AIEDevice::xcve2302)
+           .hasProperty(AIE::AIETargetModel::UsesMultiDimensionalBDs)) {
+    throw std::runtime_error("Failed xcve2302 property check for "
+                             "'UsesMultiDimensionalBDs' returns false");
   }
   if (!AIE::getTargetModel(AIE::AIEDevice::xcve2302)
            .hasProperty(AIE::AIETargetModel::IsNPU)) {
@@ -70,6 +80,11 @@ void test() {
                              "'UsesSemaphoreLocks' returns false");
   }
   if (!AIE::getTargetModel(AIE::AIEDevice::xcve2802)
+           .hasProperty(AIE::AIETargetModel::UsesMultiDimensionalBDs)) {
+    throw std::runtime_error("Failed xcve2802 property check for "
+                             "'UsesMultiDimensionalBDs' returns false");
+  }
+  if (!AIE::getTargetModel(AIE::AIEDevice::xcve2802)
            .hasProperty(AIE::AIETargetModel::IsNPU)) {
     throw std::runtime_error("Failed xcve2802 property check for "
                              "'IsNPU' returns false");
@@ -91,6 +106,11 @@ void test() {
            .hasProperty(AIE::AIETargetModel::UsesSemaphoreLocks)) {
     throw std::runtime_error(
         "Failed npu1 property check for 'UsesSemaphoreLocks' returns false");
+  }
+  if (!AIE::getTargetModel(AIE::AIEDevice::npu1)
+           .hasProperty(AIE::AIETargetModel::UsesMultiDimensionalBDs)) {
+    throw std::runtime_error("Failed npu1 property check for "
+                             "'UsesMultiDimensionalBDs' returns false");
   }
   if (!AIE::getTargetModel(AIE::AIEDevice::npu1)
            .hasProperty(AIE::AIETargetModel::IsNPU)) {
@@ -121,6 +141,11 @@ void test() {
       throw std::runtime_error("Failed npu1_ncol property check for "
                                "'UsesSemaphoreLocks' returns false");
     }
+    if (!AIE::getTargetModel(dev).hasProperty(
+            AIE::AIETargetModel::UsesMultiDimensionalBDs)) {
+      throw std::runtime_error("Failed npu1_ncol property check for "
+                               "'UsesMultiDimensionalBDs' returns false");
+    }
     if (!AIE::getTargetModel(dev).hasProperty(AIE::AIETargetModel::IsNPU)) {
       throw std::runtime_error("Failed npu1_ncol property check for "
                                "'IsNPU' returns false");
@@ -143,6 +168,11 @@ void test() {
            .hasProperty(AIE::AIETargetModel::UsesSemaphoreLocks)) {
     throw std::runtime_error(
         "Failed npu2 property check for 'UsesSemaphoreLocks' returns false");
+  }
+  if (!AIE::getTargetModel(AIE::AIEDevice::npu2)
+           .hasProperty(AIE::AIETargetModel::UsesMultiDimensionalBDs)) {
+    throw std::runtime_error("Failed npu2 property check for "
+                             "'UsesMultiDimensionalBDs' returns false");
   }
   if (!AIE::getTargetModel(AIE::AIEDevice::npu2)
            .hasProperty(AIE::AIETargetModel::IsNPU)) {

@@ -81,6 +81,8 @@ public:
     // Device model is virtualized.
     // This is used during CDO code generation to configure aie-rt properly.
     IsVirtualized = 1U << 2,
+    // Device uses multi-dimensional buffer descriptors.
+    UsesMultiDimensionalBDs = 1U << 3,
   };
 
 private:
