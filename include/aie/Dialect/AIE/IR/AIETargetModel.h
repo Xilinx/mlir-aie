@@ -71,6 +71,11 @@ public:
     TK_AIE2_Last = TK_AIE2_NPU2_Last,
   };
 
+  // One-hot encoded list of target model properties.
+  enum ModelProperty {
+    UsesSemaphoreLocks = 1U << 0,
+  };
+
 private:
   const TargetModelKind kind;
 
@@ -236,8 +241,8 @@ public:
   // There are several special cases for handling the NPU at the moment.
   virtual bool isNPU() const { return false; }
 
-  // Return true if this device is using semaphore locks.
-  virtual bool isUsingSemaphoreLocks() const { return false; }
+  // Return true if this device has a given property.
+  virtual bool hasProperty(ModelProperty Prop) const = 0;
 
   // Return the bit offset of the column within a tile address.
   // This is used to compute the control address of a tile from it's column
@@ -317,6 +322,7 @@ public:
     return model->getKind() >= TK_AIE1_VC1902 &&
            model->getKind() < TK_AIE1_Last;
   }
+  bool hasProperty(ModelProperty Prop) const override;
 };
 
 class AIE2TargetModel : public AIETargetModel {
@@ -400,7 +406,7 @@ public:
            model->getKind() < TK_AIE2_Last;
   }
 
-  virtual bool isUsingSemaphoreLocks() const override { return true; }
+  bool hasProperty(ModelProperty Prop) const override;
 };
 
 class VC1902TargetModel : public AIE1TargetModel {

@@ -289,6 +289,11 @@ bool AIE1TargetModel::isLegalTileConnection(int col, int row,
   return false;
 }
 
+bool AIE1TargetModel::hasProperty(ModelProperty prop) const {
+  uint64_t properties = 0;
+  return (properties & prop) == prop;
+}
+
 ///
 /// AIE2 TargetModel
 ///
@@ -645,6 +650,12 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
     }
   }
   return false;
+}
+
+bool AIE2TargetModel::hasProperty(ModelProperty prop) const {
+  uint64_t properties = 0;
+  properties |= AIETargetModel::UsesSemaphoreLocks;
+  return (properties & prop) == prop;
 }
 
 void AIETargetModel::validate() const {
