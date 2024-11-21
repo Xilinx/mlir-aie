@@ -82,23 +82,15 @@ def my_vector_scalar(vector_size, trace_size):
                     tiles_to_trace, ShimTile, trace_size, N_in_bytes
                 )
 
-            in_task = dma_configure_task_for(of_in, issue_token=True)
-            with bds(in_task) as bd:
-                with bd[0]:
-                    shim_dma_bd(A, sizes=[1, 1, 1, N])
-                    EndOp()
-
-            in_factor_task = dma_configure_task_for(of_factor, issue_token=True)
-            with bds(in_factor_task) as bd:
-                with bd[0]:
-                    shim_dma_bd(F, sizes=[1, 1, 1, 1])
-                    EndOp()
-
-            out_task = dma_configure_task_for(of_out, issue_token=True)
-            with bds(out_task) as bd:
-                with bd[0]:
-                    shim_dma_bd(C, sizes=[1, 1, 1, N])
-                    EndOp()
+            in_task = shim_dma_single_bd_task(
+                of_in, A, sizes=[1, 1, 1, N], issue_token=True
+            )
+            in_factor_task = shim_dma_single_bd_task(
+                of_factor, F, sizes=[1, 1, 1, 1], issue_token=True
+            )
+            out_task = shim_dma_single_bd_task(
+                of_out, C, sizes=[1, 1, 1, N], issue_token=True
+            )
 
             dma_start_task(in_task, in_factor_task, out_task)
             dma_await_task(in_task, in_factor_task, out_task)

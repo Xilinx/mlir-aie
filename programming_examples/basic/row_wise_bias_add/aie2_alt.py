@@ -50,24 +50,19 @@ def row_wise_bias_add(M, N, m, n):
 
         @runtime_sequence(tensor_ty, bias_ty, tensor_ty)
         def sequence(inp, bias, out):
-
-            in_task = dma_configure_task_for(in_fifo)
-            with bds(in_task) as bd:
-                with bd[0]:
-                    shim_dma_bd(inp, sizes=[1, N // n, M, n], strides=[0, n, N, 1])
-                    EndOp()
-
-            bias_task = dma_configure_task_for(bias_fifo)
-            with bds(bias_task) as bd:
-                with bd[0]:
-                    shim_dma_bd(bias, sizes=[1, 1, N // n, n], strides=[0, 0, n, 1])
-                    EndOp()
-
-            out_task = dma_configure_task_for(out_fifo, issue_token=True)
-            with bds(out_task) as bd:
-                with bd[0]:
-                    shim_dma_bd(out, sizes=[1, N // n, M, n], strides=[0, n, N, 1])
-                    EndOp()
+            in_task = shim_dma_single_bd_task(
+                in_fifo, inp, sizes=[1, N // n, M, n], strides=[0, n, N, 1]
+            )
+            bias_task = shim_dma_single_bd_task(
+                bias_fifo, bias, sizes=[1, 1, N // n, n], strides=[0, 0, n, 1]
+            )
+            out_task = shim_dma_single_bd_task(
+                out_fifo,
+                out,
+                sizes=[1, N // n, M, n],
+                strides=[0, n, N, 1],
+                issue_token=True,
+            )
 
             dma_start_task(in_task, bias_task, out_task)
             dma_await_task(out_task)

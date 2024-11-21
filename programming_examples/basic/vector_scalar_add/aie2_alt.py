@@ -58,17 +58,12 @@ def my_vector_bias_add():
         # To/from AIE-array data movement
         @runtime_sequence(all_data_ty, all_data_ty)
         def sequence(inTensor, outTensor):
-            in_task = dma_configure_task_for(of_in0, issue_token=True)
-            with bds(in_task) as bd:
-                with bd[0]:
-                    shim_dma_bd(inTensor, sizes=[1, 1, 1, PROBLEM_SIZE])
-                    EndOp()
-
-            out_task = dma_configure_task_for(of_out0, issue_token=True)
-            with bds(out_task) as bd:
-                with bd[0]:
-                    shim_dma_bd(outTensor, sizes=[1, 1, 1, PROBLEM_SIZE])
-                    EndOp()
+            in_task = shim_dma_single_bd_task(
+                of_in0, inTensor, sizes=[1, 1, 1, PROBLEM_SIZE], issue_token=True
+            )
+            out_task = shim_dma_single_bd_task(
+                of_out0, outTensor, sizes=[1, 1, 1, PROBLEM_SIZE], issue_token=True
+            )
 
             dma_start_task(in_task, out_task)
             dma_await_task(in_task, out_task)

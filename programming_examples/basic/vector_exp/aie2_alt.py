@@ -109,17 +109,12 @@ def my_eltwise_exp():
 
         @runtime_sequence(tensor_ty, tensor_ty)
         def sequence(A, C):
-            in_task = dma_configure_task_for(inA, issue_token=True)
-            with bds(in_task) as bd:
-                with bd[0]:
-                    shim_dma_bd(A, sizes=[1, 1, 1, N])
-                    EndOp()
-
-            out_task = dma_configure_task_for(outC, issue_token=True)
-            with bds(out_task) as bd:
-                with bd[0]:
-                    shim_dma_bd(C, sizes=[1, 1, 1, N])
-                    EndOp()
+            in_task = shim_dma_single_bd_task(
+                inA, A, sizes=[1, 1, 1, N], issue_token=True
+            )
+            out_task = shim_dma_single_bd_task(
+                outC, C, sizes=[1, 1, 1, N], issue_token=True
+            )
 
             dma_start_task(in_task, out_task)
             dma_await_task(in_task, out_task)

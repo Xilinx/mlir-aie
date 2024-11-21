@@ -62,17 +62,10 @@ def my_reduce_add():
         # To/from AIE-array data movement
         @runtime_sequence(in_ty, out_ty)
         def sequence(A, C):
-            in_task = dma_configure_task_for(of_in)
-            with bds(in_task) as bd:
-                with bd[0]:
-                    shim_dma_bd(A, sizes=[1, 1, 1, N])
-                    EndOp()
-
-            out_task = dma_configure_task_for(of_out, issue_token=True)
-            with bds(out_task) as bd:
-                with bd[0]:
-                    shim_dma_bd(C, sizes=[1, 1, 1, 1])
-                    EndOp()
+            in_task = shim_dma_single_bd_task(of_in, A, sizes=[1, 1, 1, N])
+            out_task = shim_dma_single_bd_task(
+                of_out, C, sizes=[1, 1, 1, 1], issue_token=True
+            )
 
             dma_start_task(in_task, out_task)
             dma_await_task(out_task)
