@@ -388,29 +388,18 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
 struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
   using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
-  int tileCol = 0;
-  int tileRow = 0;
   AIEBufferToStandard(MLIRContext *context, ModuleOp &m,
-                      PatternBenefit benefit = 1, int tileCol = -1,
-                      int tileRow = -1)
-      : OpConversionPattern(context, benefit), module(m), tileCol(tileCol),
-        tileRow(tileRow) {}
+                      PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit), module(m) {}
   LogicalResult
   matchAndRewrite(BufferOp buffer, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     rewriter.setInsertionPointToStart(module.getBody());
     auto t = llvm::cast<MemRefType>(buffer.getType());
-    int col = llvm::cast<TileOp>(buffer.getTile().getDefiningOp()).getCol();
-    int row = llvm::cast<TileOp>(buffer.getTile().getDefiningOp()).getRow();
     auto symName = buffer.name().getValue();
-    mlir::ElementsAttr initValue = buffer.getInitialValueAttr();
-    // Don't emit initialization for cores that don't "own" the buffer (to
-    // prevent duplication in the data section of the elf/object file)
-    if ((tileRow != row && tileRow != -1) || (tileCol != col && tileCol != -1))
-      initValue = nullptr;
     rewriter.create<memref::GlobalOp>(
         rewriter.getUnknownLoc(), symName, rewriter.getStringAttr("public"),
-        buffer.getType(), initValue, /*constant*/ false,
+        buffer.getType(), nullptr, /*constant*/ false,
         /*alignment*/ nullptr);
 
     for (auto &use : make_early_inc_range(buffer.getResult().getUses())) {
@@ -567,8 +556,7 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
                  AIEDebugOpToStdLowering, AIEUseLockToStdLowering,
                  AIEEventOpToStdLowering>(m.getContext(), m);
 
-    patterns.add<AIEBufferToStandard>(m.getContext(), m, /*benefit*/ 1, tileCol,
-                                      tileRow);
+    patterns.add<AIEBufferToStandard>(m.getContext(), m, /*benefit*/ 1);
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       return signalPassFailure();
 
