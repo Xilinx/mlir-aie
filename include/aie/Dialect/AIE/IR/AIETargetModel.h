@@ -541,6 +541,8 @@ public:
     return model->getKind() >= TK_AIE2_NPU1 &&
            model->getKind() < TK_AIE2_NPU2_Last;
   }
+
+  bool hasProperty(ModelProperty Prop) const override;
 };
 
 // The full Phoenix NPU

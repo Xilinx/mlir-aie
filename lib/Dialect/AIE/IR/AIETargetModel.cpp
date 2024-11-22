@@ -656,8 +656,14 @@ bool AIE2TargetModel::hasProperty(ModelProperty prop) const {
   uint64_t properties = 0;
   properties |= AIETargetModel::UsesSemaphoreLocks;
   properties |= AIETargetModel::UsesMultiDimensionalBDs;
-  properties |= AIETargetModel::IsNPU;
   return (properties & prop) == prop;
+}
+
+bool BaseNPUTargetModel::hasProperty(ModelProperty prop) const {
+  bool baseClassHasProperty = AIE2TargetModel::hasProperty(prop);
+  uint64_t properties = 0;
+  properties |= AIETargetModel::IsNPU;
+  return baseClassHasProperty || ((properties & prop) == prop);
 }
 
 bool VirtualizedNPUTargetModel::hasProperty(ModelProperty prop) const {

@@ -56,10 +56,10 @@ void test() {
     throw std::runtime_error("Failed xcve2302 property check for "
                              "'UsesMultiDimensionalBDs' returns false");
   }
-  if (!AIE::getTargetModel(AIE::AIEDevice::xcve2302)
-           .hasProperty(AIE::AIETargetModel::IsNPU)) {
+  if (AIE::getTargetModel(AIE::AIEDevice::xcve2302)
+          .hasProperty(AIE::AIETargetModel::IsNPU)) {
     throw std::runtime_error("Failed xcve2302 property check for "
-                             "'IsNPU' returns false");
+                             "'IsNPU' returns true");
   }
   if (AIE::getTargetModel(AIE::AIEDevice::xcve2302)
           .hasProperty(AIE::AIETargetModel::IsVirtualized)) {
@@ -84,10 +84,10 @@ void test() {
     throw std::runtime_error("Failed xcve2802 property check for "
                              "'UsesMultiDimensionalBDs' returns false");
   }
-  if (!AIE::getTargetModel(AIE::AIEDevice::xcve2802)
-           .hasProperty(AIE::AIETargetModel::IsNPU)) {
+  if (AIE::getTargetModel(AIE::AIEDevice::xcve2802)
+          .hasProperty(AIE::AIETargetModel::IsNPU)) {
     throw std::runtime_error("Failed xcve2802 property check for "
-                             "'IsNPU' returns false");
+                             "'IsNPU' returns true");
   }
   if (AIE::getTargetModel(AIE::AIEDevice::xcve2802)
           .hasProperty(AIE::AIETargetModel::IsVirtualized)) {
