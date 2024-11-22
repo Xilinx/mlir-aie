@@ -13,7 +13,7 @@ from .utils import (
 from .visualization2d import visualize_from_access_tensors
 
 
-class TensorTile:
+class TensorAccessPattern:
     _DTYPE = np.int32
 
     def __init__(
@@ -83,9 +83,11 @@ class TensorTile:
                 self._offset + np.sum(np.multiply(dims, self._strides))
             ) % total_elems
 
-    def compare_access_orders(self, other: TensorTile) -> bool:
-        if not isinstance(other, TensorTile):
-            raise ValueError("Can only compare access order against another TensorTile")
+    def compare_access_orders(self, other: TensorAccessPattern) -> bool:
+        if not isinstance(other, TensorAccessPattern):
+            raise ValueError(
+                "Can only compare access order against another TensorAccessPattern"
+            )
         my_generator = self.access_generator()
         other_generator = other.access_generator()
         return all(
@@ -123,7 +125,7 @@ class TensorTile:
             )
 
     def __str__(self) -> str:
-        return f"TensorTile(offset={self._offset}, sizes={self._sizes}, strides={self._strides})"
+        return f"TensorAccessPattern(offset={self._offset}, sizes={self._sizes}, strides={self._strides})"
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):

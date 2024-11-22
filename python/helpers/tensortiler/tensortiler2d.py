@@ -3,13 +3,13 @@ from functools import partial
 import numpy as np
 from typing import Sequence
 
-from .tensortilesequence import TensorTileSequence
+from .tensoraccesssequence import TensorAccessSequence
 from .utils import ceildiv, validate_and_clean_sizes_strides, validate_tensor_dims
 
 
 class TensorTiler2D:
     """
-    This is a generator (similar to factory pattern) class which produces TensorTileSequence
+    This is a generator (similar to factory pattern) class which produces TensorAccessSequence
     objects for common 2-dimensional tiling patterns.
     """
 
@@ -18,7 +18,7 @@ class TensorTiler2D:
 
     def __init__(self):
         raise Exception(
-            f"{self.__class__} cannot be instantiated. Use it as a factory/generator of TensorTileSequences."
+            f"{self.__class__} cannot be instantiated. Use it as a factory/generator of TensorAccessSequences."
         )
 
     @classmethod
@@ -29,7 +29,7 @@ class TensorTiler2D:
         tile_col_major: bool = False,
         iter_col_major: bool = False,
         pattern_repeat: int = 1,
-    ) -> TensorTileSequence:
+    ) -> TensorAccessSequence:
         if tile_dims is None:
             tile_dims = deepcopy(tensor_dims)
         # Special case of group_tiler
@@ -52,7 +52,7 @@ class TensorTiler2D:
         iter_col_major: bool = False,
         pattern_repeat: int = 1,
         allow_partial: bool = False,
-    ) -> TensorTileSequence:
+    ) -> TensorAccessSequence:
         if tile_group_dims is None:
             tile_group_dims = (1,) * cls._NUM_DIMS
         # Special case of step_tiler
@@ -79,7 +79,7 @@ class TensorTiler2D:
         iter_col_major: bool = False,
         allow_partial: bool = False,
         pattern_repeat: int = 1,
-    ) -> TensorTileSequence:
+    ) -> TensorAccessSequence:
         if tile_group_steps is None:
             tile_group_steps = (1,) * cls._NUM_DIMS
         tensor_dims = validate_tensor_dims(tensor_dims, expected_dims=cls._NUM_DIMS)
@@ -177,7 +177,7 @@ class TensorTiler2D:
         sizes_fn = partial(sizes_or_strides_fn, is_sizes=True)
         strides_fn = partial(sizes_or_strides_fn, is_sizes=False)
 
-        return TensorTileSequence(
+        return TensorAccessSequence(
             tensor_dims,
             num_steps,
             sizes_fn=sizes_fn,
