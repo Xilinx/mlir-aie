@@ -12,7 +12,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.tensortiler import TensorTiler2D
+from aie.helpers.taplib import TensorTiler2D
 
 # Size of the entire image
 IMAGE_HEIGHT = 16
@@ -76,10 +76,10 @@ def my_matrix_add_one():
         @runtime_sequence(tile_ty, tile_ty, tile_ty)
         def sequence(inTensor, notUsed, outTensor):
             in_task = shim_dma_single_bd_task(
-                of_in1, inTensor, tensor_tile=tiler[0], issue_token=True
+                of_in1, inTensor, tap=tiler[0], issue_token=True
             )
             out_task = shim_dma_single_bd_task(
-                of_out1, outTensor, tensor_tile=tiler[0], issue_token=True
+                of_out1, outTensor, tap=tiler[0], issue_token=True
             )
 
             dma_start_task(in_task, out_task)

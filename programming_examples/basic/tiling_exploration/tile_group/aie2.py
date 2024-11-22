@@ -14,7 +14,7 @@ from aie.dialects.aiex import *
 from aie.dialects import arith
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.tensortiler import TensorTiler2D
+from aie.helpers.taplib import TensorTiler2D
 
 
 def generate_module(
@@ -59,7 +59,7 @@ def generate_module(
         @runtime_sequence(flattened_tensor)
         def sequence(access_count):
             out_task = shim_dma_single_bd_task(
-                of_out, access_count, tensor_tile=t, issue_token=True
+                of_out, access_count, tap=t, issue_token=True
             )
             dma_start_task(out_task)
             dma_await_task(out_task)

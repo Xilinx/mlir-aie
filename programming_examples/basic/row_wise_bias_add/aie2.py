@@ -11,7 +11,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.tensortiler import TensorTiler2D
+from aie.helpers.taplib import TensorTiler2D
 
 
 def row_wise_bias_add(M, N, m, n):
@@ -60,19 +60,19 @@ def row_wise_bias_add(M, N, m, n):
                 metadata=in_fifo,
                 bd_id=0,
                 mem=inp,
-                tensor_tile=tiler[0],
+                tap=tiler[0],
             )
             npu_dma_memcpy_nd(
                 metadata=bias_fifo,
                 bd_id=1,
                 mem=bias,
-                tensor_tile=bias_tiler[0],
+                tap=bias_tiler[0],
             )
             npu_dma_memcpy_nd(
                 metadata=out_fifo,
                 bd_id=2,
                 mem=out,
-                tensor_tile=tiler[0],
+                tap=tiler[0],
             )
             # of_out will only complete after of_in completes, so we just wait on of_out instead of both
             dma_wait(out_fifo)
