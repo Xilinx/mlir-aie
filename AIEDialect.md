@@ -2246,7 +2246,7 @@ Syntax:
 
 ```
 #aie.bd_dim_layout<
-  uint16_t,   # size
+  uint32_t,   # size
   uint32_t   # stride
 >
 ```
@@ -2257,7 +2257,7 @@ Syntax:
 
 | Parameter | C++ type | Description |
 | :-------: | :-------: | ----------- |
-| size | `uint16_t` |  |
+| size | `uint32_t` |  |
 | stride | `uint32_t` |  |
 
 ### BDPadLayoutArrayAttr
