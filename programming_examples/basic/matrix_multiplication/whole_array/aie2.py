@@ -531,9 +531,9 @@ def my_matmul(
         # If generate_taps is true, return a representation of tensor tiles
         # representing all the npu_dma_memcpy_nd runtime sequence operations per input/ouput tensor.
         return (
-            TensorAccessSequence.from_tiles(A_taps),
-            TensorAccessSequence.from_tiles(B_taps),
-            TensorAccessSequence.from_tiles(C_taps),
+            TensorAccessSequence.from_taps(A_taps),
+            TensorAccessSequence.from_taps(B_taps),
+            TensorAccessSequence.from_taps(C_taps),
         )
 
 
