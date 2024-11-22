@@ -8,7 +8,9 @@ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 message(dialect_libs = ${dialect_libs})
 set(AIE_LSP_LIBS
   ${dialect_libs}
-  MLIRCIR
+  $<IF:$<BOOL:${CLANGIR_MLIR_FRONTEND}>,
+    MLIRCIR
+  ,>
   MLIRLspServerLib
 )
 
@@ -22,3 +24,6 @@ RUNTIME DESTINATION ${LLVM_TOOLS_INSTALL_DIR}
 COMPONENT aie-lsp-server)
 
 target_link_libraries(aie-lsp-server PRIVATE ${AIE_LSP_LIBS})
+if (CLANGIR_MLIR_FRONTEND)
+  target_compile_definitions(aie-lsp-server PRIVATE CLANGIR_MLIR_FRONTEND)
+endif()

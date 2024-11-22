@@ -24,14 +24,16 @@ target_link_libraries(aie-translate
   PRIVATE
   ${dialect_libs}
   ${translation_libs}
+  $<IF:$<BOOL:${CLANGIR_MLIR_FRONTEND}>,
+    clangCIR
+    clangCIRLoweringDirectToLLVM
+  ,>
   AIE
   AIETransforms
   AIEX
   AIEXTransforms
   AIEXUtils
   AIETargets
-  clangCIR
-  clangCIRLoweringDirectToLLVM
   MLIRAIEVecDialect
   MLIRAIEVecAIE1Dialect
   MLIRIR
@@ -42,3 +44,6 @@ target_link_libraries(aie-translate
   MLIRTargetLLVMIRImport
   MLIRXLLVMToLLVMIRTranslation
 )
+if (CLANGIR_MLIR_FRONTEND)
+  target_compile_definitions(aie-translate PRIVATE CLANGIR_MLIR_FRONTEND)
+endif()

@@ -7,7 +7,9 @@
 
 
 add_subdirectory(CAPI)
-add_subdirectory(CIR)
+if (CLANGIR_MLIR_FRONTEND)
+  add_subdirectory(CIR)
+endif()
 add_subdirectory(Dialect)
 add_subdirectory(Conversion)
 add_subdirectory(Target)

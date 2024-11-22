@@ -13,7 +13,9 @@
 #include "mlir/InitAllPasses.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
+#ifdef CLANGIR_MLIR_FRONTEND
 #include "aie/CIR/CIRToAIEPasses.h"
+#endif
 #include "aie/Conversion/Passes.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/Analysis/Passes.h"
@@ -23,9 +25,11 @@
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/InitialAllDialect.h"
 #include "aie/version.h"
+#ifdef CLANGIR_MLIR_FRONTEND
 #include "clang/CIR/Dialect/IR/CIRDialect.h"
 #include "clang/CIR/Dialect/Passes.h"
 #include "clang/CIR/Passes.h"
+#endif
 
 static void versionPrinter(llvm::raw_ostream &os) {
   os << "aie-opt " << AIE_GIT_COMMIT << "\n";
@@ -40,7 +44,9 @@ int main(int argc, char **argv) {
   xilinx::aievec::registerAIEVecAnalysisPasses();
   xilinx::aievec::registerAIEVecPasses();
   xilinx::aievec::registerAIEVecPipelines();
+#ifdef CLANGIR_MLIR_FRONTEND
   xilinx::AIE::CIR::registerCIRToAIEPasses();
+#endif
 
   mlir::DialectRegistry registry;
   registerAllDialects(registry);
@@ -52,6 +58,7 @@ int main(int argc, char **argv) {
 
   llvm::cl::AddExtraVersionPrinter(versionPrinter);
 
+#ifdef CLANGIR_MLIR_FRONTEND
   // ClangIR dialect
   registry.insert<cir::CIRDialect>();
 
@@ -84,6 +91,7 @@ int main(int argc, char **argv) {
   });
 
   mlir::registerTransformsPasses();
+#endif
 
   return failed(
       MlirOptMain(argc, argv, "MLIR modular optimizer driver\n", registry));

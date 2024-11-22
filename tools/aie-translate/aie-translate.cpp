@@ -19,13 +19,16 @@
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
+#ifdef CLANGIR_MLIR_FRONTEND
 #include "clang/CIR/LowerToLLVM.h"
 
 namespace cir::direct {
 extern void registerCIRDialectTranslation(mlir::DialectRegistry &registry);
 } // namespace cir::direct
+#endif
 
 namespace {
+#ifdef CLANGIR_MLIR_FRONTEND
 // TODO refactor clang/tools/cir-translate/cir-translate.cpp to avoid the
 // following copy-paste
 void registerToLLVMTranslation() {
@@ -46,6 +49,7 @@ void registerToLLVMTranslation() {
         cir::direct::registerCIRDialectTranslation(registry);
       });
 }
+#endif
 
 // We redefine the MLIR -> LLVM IR translation to include CIR & AIE intrinsics
 // translations.
@@ -66,15 +70,17 @@ void registerToLLVMIRTranslation() {
       },
       [](mlir::DialectRegistry &registry) {
         registry.insert<mlir::DLTIDialect, mlir::func::FuncDialect>();
+#ifdef CLANGIR_MLIR_FRONTEND
         mlir::registerAllToLLVMIRTranslations(registry);
         cir::direct::registerCIRDialectTranslation(registry);
+#endif
         xilinx::registerAllAIEToLLVMIRTranslations(registry);
         registerAllToLLVMIRTranslations(registry);
       });
 }
 
-// Mainly copy-paste registerAllTranslations() to handle "mlir-to-llvmir" option
-// duplicated by aie-translate
+// Mainly copy-paste of registerAllTranslations() to handle "mlir-to-llvmir"
+// option duplicated by aie-translate
 void registerAllTranslationsWithoutToLLVMIR() {
   static bool initOnce = [] {
     mlir::registerFromLLVMIRTranslation();
@@ -85,7 +91,7 @@ void registerAllTranslationsWithoutToLLVMIR() {
     mlir::registerToSPIRVTranslation();
     return true;
   }();
-  (void)initOnce;
+  static_cast<void>(initOnce);
 }
 
 void versionPrinter(llvm::raw_ostream &os) {
@@ -95,7 +101,9 @@ void versionPrinter(llvm::raw_ostream &os) {
 
 int main(int argc, char **argv) {
   registerAllTranslationsWithoutToLLVMIR();
+#ifdef CLANGIR_MLIR_FRONTEND
   registerToLLVMTranslation();
+#endif
   registerToLLVMIRTranslation();
   xilinx::AIE::registerAIETranslations();
   xilinx::aievec::registerAIEVecToCppTranslation();

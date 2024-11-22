@@ -6,6 +6,8 @@
 # (c) Copyright 2021 Xilinx Inc.
 
 configure_file(version.h.in version.h)
-add_subdirectory(CIR)
+if (CLANGIR_MLIR_FRONTEND)
+  add_subdirectory(CIR)
+endif()
 add_subdirectory(Conversion)
 add_subdirectory(Dialect)

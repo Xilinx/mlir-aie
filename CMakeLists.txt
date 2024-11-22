@@ -77,6 +77,9 @@ set(PEANO_INSTALL_DIR
 option(LLVM_INCLUDE_TOOLS "Generate build targets for the LLVM tools." ON)
 option(LLVM_BUILD_TOOLS
        "Build the LLVM tools. If OFF, just generate build targets." ON)
+option(CLANGIR_MLIR_FRONTEND
+       "Use ClangIR version of Clang/LLVM to provide aie++ C++ support." OFF)
+
 option(AIE_INCLUDE_INTEGRATION_TESTS
        "Generate build targets for the mlir-aie integration tests." OFF)
 
@@ -145,13 +148,15 @@ include(HandleLLVMOptions)
 include(ExternalProject)
 include(CMakeDependentOption)
 
-# To understand how to influence the find_package config, see
-# https://cmake.org/cmake/help/latest/command/find_package.html#config-mode-search-procedure
-find_package(Clang REQUIRED CONFIG)
-message(STATUS "Using ClangConfig.cmake in: ${Clang_DIR}")
-# Use Clang infrastructure like CIR in this project
-list(APPEND CMAKE_MODULE_PATH "${CLANG_CMAKE_DIR}")
-include(AddClang)
+if (CLANGIR_MLIR_FRONTEND)
+  # To understand how to influence the find_package config, see
+  # https://cmake.org/cmake/help/latest/command/find_package.html#config-mode-search-procedure
+  find_package(Clang REQUIRED CONFIG)
+  message(STATUS "Using ClangConfig.cmake in: ${Clang_DIR}")
+  # Use Clang infrastructure like CIR in this project
+  list(APPEND CMAKE_MODULE_PATH "${CLANG_CMAKE_DIR}")
+  include(AddClang)
+endif()
 
 include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})
