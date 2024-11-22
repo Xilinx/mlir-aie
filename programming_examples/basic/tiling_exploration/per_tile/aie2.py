@@ -13,7 +13,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.tensortiler import TensorTiler2D
+from aie.helpers.taplib import TensorTiler2D
 
 
 def generate_module(
@@ -68,7 +68,7 @@ def generate_module(
                     metadata=of_out,
                     bd_id=1,
                     mem=access_count,
-                    tensor_tile=t,
+                    tap=t,
                 )
                 dma_wait(of_out)
 

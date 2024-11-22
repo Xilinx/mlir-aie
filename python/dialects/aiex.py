@@ -28,7 +28,7 @@ from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
 from ..helpers.util import try_convert_np_type_to_mlir_type
-from ..helpers.tensortiler import TensorTile
+from ..helpers.taplib import TensorAccessPattern
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
@@ -56,7 +56,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         metadata: str | ObjectFifoCreateOp,
         bd_id,
         mem,
-        tensor_tile: TensorTile | None = None,
+        tap: TensorAccessPattern | None = None,
         offsets: MixedValues | None = None,
         sizes: MixedValues | None = None,
         strides: MixedValues | None = None,
@@ -64,16 +64,16 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
     ):
         x = 0
         y = 0
-        if tensor_tile and not (offsets is None and sizes is None and strides is None):
+        if tap and not (offsets is None and sizes is None and strides is None):
             raise ValueError(
-                "NpuDmaMemcpyNd can take either a tensor_tile OR (sizes and/or strides and/or offsets), but not both."
+                "NpuDmaMemcpyNd can take either a TileAccessPattern OR (sizes and/or strides and/or offsets), but not both."
             )
-        if tensor_tile:
-            sizes = tensor_tile.sizes.copy()
-            strides = tensor_tile.strides.copy()
+        if tap:
+            sizes = tap.sizes.copy()
+            strides = tap.strides.copy()
             # For some reason, the type checking of offsets does not mesh well with offset being a property
             # so here we make sure it is evaluated and properly is seen as an integer.
-            offsets = [0] * 3 + [int(tensor_tile.offset)]
+            offsets = [0] * 3 + [int(tap.offset)]
         else:
             if offsets is None:
                 offsets = [0] * 4

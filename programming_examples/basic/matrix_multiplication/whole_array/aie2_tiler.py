@@ -14,7 +14,7 @@ from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.tensortiler import TensorTiler2D, TensorTileSequence
+from aie.helpers.taplib import TensorTiler2D, TensorAccessSequence
 
 dtype_map = {
     "bf16": bfloat16,
@@ -49,14 +49,14 @@ def main():
     )
     argparser.add_argument("--trace_size", type=int, default=0)
     argparser.add_argument(
-        "--generate-tiles",
+        "--generate-taps",
         action="store_true",
-        help="Generate TensorTiles, a Python object to represent each data transfer"
+        help="Generate TensorAccessPatterns, a Python object to represent each data transfer"
         "of the input/output matrices. These objects can be used for visualization.",
     )
     args = argparser.parse_args()
     with mlir_mod_ctx() as ctx:
-        maybe_tiles = my_matmul(
+        maybe_taps = my_matmul(
             args.M,
             args.K,
             args.N,
@@ -68,13 +68,13 @@ def main():
             args.dtype_out,
             args.b_col_maj,
             args.trace_size,
-            args.generate_tiles,
+            args.generate_taps,
         )
         # print(ctx.module.operation.verify())
         print(ctx.module)
 
-    if args.generate_tiles:
-        return maybe_tiles
+    if args.generate_taps:
+        return maybe_taps
 
 
 def ceildiv(a, b):
@@ -169,11 +169,11 @@ def my_matmul(
     elif n_aie_cols == 4:
         dev = AIEDevice.npu1_4col
 
-    # These will hold TensorTile objects that represent the runtime
-    # npu_dma_memcpy_nd operations of this design. They are only used if generate_tiles is true
-    A_tensor_tiles = []
-    B_tensor_tiles = []
-    C_tensor_tiles = []
+    # These will hold TensorAccessPattern objects that represent the runtime
+    # npu_dma_memcpy_nd operations of this design. They are only used if generate_taps is true
+    A_taps = []
+    B_taps = []
+    C_taps = []
 
     @device(dev)
     def device_body():
@@ -432,7 +432,7 @@ def my_matmul(
                     for col in range(n_aie_cols):
 
                         # This line does not change MLIR output at all - it's just for recording data movement
-                        C_tensor_tiles.append(C_tiles[c_index])
+                        C_taps.append(C_tiles[c_index])
 
                         # C Output Transfer:
                         # The smallest transfer unit is a (m*n_aie_rows)-x-(n)-sized sub-tile of the matrix.
@@ -457,7 +457,7 @@ def my_matmul(
                             metadata=C_l2l3_fifos[col],
                             bd_id=bd_id_base,
                             mem=C,
-                            tensor_tile=C_tiles[c_index],
+                            tap=C_tiles[c_index],
                         )
                         c_index += 1
 
@@ -488,7 +488,7 @@ def my_matmul(
                                 metadata=A_l3l2_fifos[col],
                                 bd_id=bd_id_base + 2 * tile_row + 1,
                                 mem=A,
-                                tensor_tile=A_tiles[tile_offset],
+                                tap=A_tiles[tile_offset],
                             )
 
                             # B input transfer:
@@ -513,24 +513,24 @@ def my_matmul(
                                 metadata=B_l3l2_fifos[col],
                                 bd_id=bd_id_base + 2 * tile_row + 2,
                                 mem=B,
-                                tensor_tile=B_tiles[col],
+                                tap=B_tiles[col],
                             )
 
                             # These lines do not change MLIR output at all - they are just for recording data movement
-                            A_tensor_tiles.append(A_tiles[tile_offset])
-                            B_tensor_tiles.append(B_tiles[col])
+                            A_taps.append(A_tiles[tile_offset])
+                            B_taps.append(B_tiles[col])
 
                     if tb > 0 or (tb == 0 and pingpong > 0):
                         dma_wait(*C_l2l3_fifos)
             dma_wait(*C_l2l3_fifos)
 
-    if generate_tiles:
-        # If generate tiles is true, return a representation of tensor tiles
+    if generate_taps:
+        # If generate taps is true, return a representation of tensor access patterns
         # representing all the npu_dma_memcpy_nd runtime sequence operations per input/ouput tensor.
         return (
-            TensorTileSequence.from_tiles(A_tensor_tiles),
-            TensorTileSequence.from_tiles(B_tensor_tiles),
-            TensorTileSequence.from_tiles(C_tensor_tiles),
+            TensorAccessSequence.from_tiles(A_taps),
+            TensorAccessSequence.from_tiles(B_taps),
+            TensorAccessSequence.from_tiles(C_taps),
         )
 
 

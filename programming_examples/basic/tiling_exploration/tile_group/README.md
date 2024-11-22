@@ -14,13 +14,13 @@ This IRON design flow example, called "Tiling Exploration: Tile Group", demonstr
 
 ## Source Files Overview
 
-1. `aie2.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations and the `TensorTiler` to specify 'tiles' of data to be transferred out of the design. The file generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `aie2.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations and the `TensorTiler2D` to specify `TensorAccessPattern`s (*taps*) of data to be transferred out of the design. The file generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
 
 1. `test.py`: This Python code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the results against expected output.
 
 ## Design Overview
 
-This design has no inputs; it produces a single output tensor. The single core used in this design touches each element in the output tensor seemingly sequentially. However, due to the data transformation (via `TensorTile`s) in the `runtime_sequence`, the output data is in 'tiled' order, as seen in the picture below. Rather than being collected one tile at a time, a group of tiles (all the tiles that make up the tensor) are collected all at once.
+This design has no inputs; it produces a single output tensor. The single core used in this design touches each element in the output tensor seemingly sequentially. However, due to the data transformation (via `TensorAccessPattern`s) in the `runtime_sequence`, the output data is in 'tiled' order, as seen in the picture below. Rather than being collected one tile at a time, a group of tiles (all the tiles that make up the tensor) are collected all at once.
 
 <p align="center">
   <img
