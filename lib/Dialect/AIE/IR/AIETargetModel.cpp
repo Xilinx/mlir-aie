@@ -289,11 +289,6 @@ bool AIE1TargetModel::isLegalTileConnection(int col, int row,
   return false;
 }
 
-bool AIE1TargetModel::hasProperty(ModelProperty prop) const {
-  uint64_t properties = 0;
-  return (properties & prop) == prop;
-}
-
 ///
 /// AIE2 TargetModel
 ///
@@ -650,27 +645,6 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
     }
   }
   return false;
-}
-
-bool AIE2TargetModel::hasProperty(ModelProperty prop) const {
-  uint64_t properties = 0;
-  properties |= AIETargetModel::UsesSemaphoreLocks;
-  properties |= AIETargetModel::UsesMultiDimensionalBDs;
-  return (properties & prop) == prop;
-}
-
-bool BaseNPUTargetModel::hasProperty(ModelProperty prop) const {
-  bool baseClassHasProperty = AIE2TargetModel::hasProperty(prop);
-  uint64_t properties = 0;
-  properties |= AIETargetModel::IsNPU;
-  return baseClassHasProperty || ((properties & prop) == prop);
-}
-
-bool VirtualizedNPUTargetModel::hasProperty(ModelProperty prop) const {
-  bool baseClassHasProperty = BaseNPUTargetModel::hasProperty(prop);
-  uint64_t properties = 0;
-  properties |= AIETargetModel::IsVirtualized;
-  return baseClassHasProperty || ((properties & prop) == prop);
 }
 
 void AIETargetModel::validate() const {

@@ -247,7 +247,10 @@ public:
   void validate() const;
 
   // Return true if this device has a given property.
-  virtual bool hasProperty(ModelProperty Prop) const = 0;
+  uint32_t ModelProperties = 0;
+  bool hasProperty(ModelProperty Prop) const {
+    return (ModelProperties & Prop) == Prop;
+  }
 
   // Return the bit offset of the column within a tile address.
   // This is used to compute the control address of a tile from it's column
@@ -327,12 +330,15 @@ public:
     return model->getKind() >= TK_AIE1_VC1902 &&
            model->getKind() < TK_AIE1_Last;
   }
-  bool hasProperty(ModelProperty Prop) const override;
 };
 
 class AIE2TargetModel : public AIETargetModel {
 public:
-  AIE2TargetModel(TargetModelKind k) : AIETargetModel(k) {}
+  AIE2TargetModel(TargetModelKind k) : AIETargetModel(k) {
+    // Device properties initialization
+    ModelProperties |= AIETargetModel::UsesSemaphoreLocks;
+    ModelProperties |= AIETargetModel::UsesMultiDimensionalBDs;
+  }
 
   AIEArch getTargetArch() const override;
 
@@ -410,8 +416,6 @@ public:
     return model->getKind() >= TK_AIE2_VE2302 &&
            model->getKind() < TK_AIE2_Last;
   }
-
-  bool hasProperty(ModelProperty Prop) const override;
 };
 
 class VC1902TargetModel : public AIE1TargetModel {
@@ -518,7 +522,10 @@ public:
 
 class BaseNPUTargetModel : public AIE2TargetModel {
 public:
-  BaseNPUTargetModel(TargetModelKind k) : AIE2TargetModel(k) {}
+  BaseNPUTargetModel(TargetModelKind k) : AIE2TargetModel(k) {
+    // Device properties initialization
+    ModelProperties |= AIETargetModel::IsNPU;
+  }
 
   int rows() const override {
     return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
@@ -541,8 +548,6 @@ public:
     return model->getKind() >= TK_AIE2_NPU1 &&
            model->getKind() < TK_AIE2_NPU2_Last;
   }
-
-  bool hasProperty(ModelProperty Prop) const override;
 };
 
 // The full Phoenix NPU
@@ -575,7 +580,10 @@ public:
       : BaseNPUTargetModel(static_cast<TargetModelKind>(
             static_cast<std::underlying_type_t<TargetModelKind>>(TK_AIE2_NPU1) +
             _cols)),
-        cols(_cols) {}
+        cols(_cols) {
+    // Device properties initialization
+    ModelProperties |= AIETargetModel::IsVirtualized;
+  }
 
   uint32_t getAddressGenGranularity() const override { return 32; }
 
@@ -587,8 +595,6 @@ public:
     return model->getKind() >= TK_AIE2_NPU1_1Col &&
            model->getKind() < TK_AIE2_NPU1_Last;
   }
-
-  bool hasProperty(ModelProperty Prop) const override;
 };
 
 // The full Strix. NPU
