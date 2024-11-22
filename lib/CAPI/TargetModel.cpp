@@ -155,7 +155,7 @@ uint32_t aieTargetModelGetNumBanks(AieTargetModel targetModel, int col,
 }
 
 bool aieTargetModelIsNPU(AieTargetModel targetModel) {
-  return unwrap(targetModel).isNPU();
+  return unwrap(targetModel).hasProperty(xilinx::AIE::AIETargetModel::IsNPU);
 }
 
 uint32_t aieTargetModelGetColumnShift(AieTargetModel targetModel) {

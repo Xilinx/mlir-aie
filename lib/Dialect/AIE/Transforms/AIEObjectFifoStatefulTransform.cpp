@@ -1222,7 +1222,7 @@ struct AIEObjectFifoStatefulTransformPass
         target = objFifoLinks[*linkOp];
 
     auto dev = op->getParentOfType<DeviceOp>();
-    if (isa<AIE1TargetModel>(dev.getTargetModel())) {
+    if (!dev.getTargetModel().hasProperty(AIETargetModel::UsesSemaphoreLocks)) {
 
       if (locksPerFifo[target].size() == 0) {
         for (int i = 0; i < numLocks; i++) {

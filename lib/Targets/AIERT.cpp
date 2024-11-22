@@ -57,7 +57,8 @@ AIERTControl::AIERTControl(const AIE::BaseNPUTargetModel &tm)
     : targetModel(tm) {
   // The first column in the NPU lacks a shim tile.  AIE-RT exposes some of
   // the internals about how this is modeled in a somewhat awkward way.
-  size_t partitionStartCol = tm.isVirtualized() ? 1 : 0;
+  size_t partitionStartCol =
+      tm.hasProperty(AIETargetModel::IsVirtualized) ? 1 : 0;
   size_t partitionNumCols = tm.columns();
   size_t deviceRows = tm.rows();
   size_t deviceCols = tm.columns() + partitionStartCol;
@@ -470,7 +471,8 @@ LogicalResult AIERTControl::configureSwitches(DeviceOp &targetOp) {
     int32_t col = switchboxOp.colIndex();
     int32_t row = switchboxOp.rowIndex();
     XAie_LocType tileLoc = XAie_TileLoc(col, row);
-    assert(targetModel.isNPU() && "Only NPU currently supported");
+    assert(targetModel.hasProperty(AIETargetModel::IsNPU) &&
+           "Only NPU currently supported");
 
     Block &b = switchboxOp.getConnections().front();
     for (auto connectOp : b.getOps<ConnectOp>())
