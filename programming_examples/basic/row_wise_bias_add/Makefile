@@ -42,6 +42,13 @@ N=2304
 m=96
 n=32
 
+aie_py_src=aie2.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=aie2_alt.py
+endif
+
 .PHONY: all
 all: ${xclbin_target} ${host_target}
 
@@ -49,7 +56,7 @@ build/kernel.o: ${srcdir}/kernel.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DDIM_m=$m -DDIM_n=$n -c $< -o ${@F}
 
-${mlir_target}: ${srcdir}/aie2.py
+${mlir_target}: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< $M $N $m $n > $@
 

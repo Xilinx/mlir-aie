@@ -14,7 +14,7 @@ from aie.dialects.aiex import *
 
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.tensortiler import TensorTiler2D
+from aie.helpers.taplib import TensorTiler2D
 
 
 def generate_module(
@@ -65,13 +65,11 @@ def generate_module(
         @runtime_sequence(flattened_tensor)
         def sequence(access_count):
             for t in tiler:
-                npu_dma_memcpy_nd(
-                    metadata=of_out,
-                    bd_id=1,
-                    mem=access_count,
-                    tensor_tile=t,
+                out_task = shim_dma_single_bd_task(
+                    of_out, access_count, tap=t, issue_token=True
                 )
-                dma_wait(of_out)
+                dma_start_task(out_task)
+                dma_await_task(out_task)
 
 
 def main(opts):

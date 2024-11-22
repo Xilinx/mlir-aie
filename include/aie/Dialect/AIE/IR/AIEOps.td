@@ -898,8 +898,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     int32_t getBufferElementTypeWidthInBytes() {
       return getBuffer().getType().getElementTypeBitWidth() / 8;
     }
-    int32_t getLenInBytes() {
-      if (std::optional<int32_t> len = getLen(); len.has_value())
+    uint32_t getLenInBytes() {
+      if (std::optional<uint32_t> len = getLen(); len.has_value())
         return len.value() * getBufferElementTypeWidthInBytes();
       else
         return getBuffer().getType().getNumElements() * getBufferElementTypeWidthInBytes();

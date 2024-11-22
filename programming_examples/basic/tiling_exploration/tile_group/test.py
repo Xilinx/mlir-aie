@@ -8,7 +8,7 @@
 import argparse
 import numpy as np
 
-from aie.helpers.tensortiler import TensorTiler2D
+from aie.helpers.taplib import TensorTiler2D
 from aie.utils.xrt import setup_aie, execute as execute_on_aie
 
 
@@ -21,7 +21,7 @@ def main(opts):
     reference_tiler = TensorTiler2D.simple_tiler(
         (opts.tensor_height, opts.tensor_width), (opts.tile_height, opts.tile_width)
     )
-    reference_access_order, _access_count = reference_tiler.access_tensors()
+    reference_access_order = reference_tiler.access_order()
 
     app = setup_aie(
         opts.xclbin,

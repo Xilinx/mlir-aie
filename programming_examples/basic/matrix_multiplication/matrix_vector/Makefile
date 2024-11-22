@@ -21,9 +21,14 @@ k=32
 
 kernels=mv_${m}x${k}
 use_experimental?=0
+use_alt?=0
 
 ifeq (${use_experimental}, 1)
 aie_py_src=experimental_aie2.py
+endif
+
+ifeq (${use_alt}, 1)
+aie_py_src=aie2_alt.py
 endif
 
 SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))

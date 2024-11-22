@@ -13,12 +13,12 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.tensortiler import TensorTile
+from aie.helpers.taplib import TensorAccessPattern
 
 
 def my_passthrough(M, K, N, generate_access_map=False):
     tensor_ty = np.ndarray[(M, K), np.dtype[np.int32]]
-    data_transform = TensorTile(
+    data_transform = TensorAccessPattern(
         (M, K), offset=0, sizes=[1, 1, K, M], strides=[1, 1, 1, K]
     )
     if generate_access_map:
@@ -57,7 +57,7 @@ def my_passthrough(M, K, N, generate_access_map=False):
                     metadata=of_in,
                     bd_id=1,
                     mem=A,
-                    tensor_tile=data_transform,
+                    tap=data_transform,
                     issue_token=True,
                 )
                 npu_dma_memcpy_nd(

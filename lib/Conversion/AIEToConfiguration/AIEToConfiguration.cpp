@@ -449,7 +449,7 @@ static LogicalResult convertAIEToConfiguration(AIE::DeviceOp device,
   const BaseNPUTargetModel &targetModel =
       (const BaseNPUTargetModel &)device.getTargetModel();
 
-  if (!targetModel.isNPU())
+  if (!targetModel.hasProperty(AIETargetModel::IsNPU))
     return failure();
 
   bool aieSim = false;
