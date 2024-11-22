@@ -37,6 +37,10 @@ The Object FIFO primitive supports several data movement patterns. We will now d
 * Distribute different pieces of the input data to multiple consumers 
 * Join outputs from different consumers into a bigger data tensor
 </details>
+<details><summary><a href="./04_Repeat/">Object FIFO Repeat Pattern</a></summary>
+
+* Leverage Object FIFO Link to repeat data from the producer
+</details>
 
 -----
 [[Prev - Section 2a](../section-2a/)] [[Up](..)] [[Next - Section 2c](../section-2c/)]

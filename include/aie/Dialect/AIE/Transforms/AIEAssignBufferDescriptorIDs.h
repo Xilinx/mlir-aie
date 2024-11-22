@@ -11,27 +11,8 @@
 #ifndef AIE_ASSIGN_BUFFER_DESCRIPTOR_IDS_H
 #define AIE_ASSIGN_BUFFER_DESCRIPTOR_IDS_H
 
-#include <optional>
+#include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.h"
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
-
-#include "mlir/Pass/Pass.h"
-
-using namespace mlir;
-using namespace xilinx;
-using namespace xilinx::AIE;
-
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
-
-#include "mlir/Pass/Pass.h"
-
-#define DEBUG_TYPE "aie-assign-bd-ids"
-
-using namespace mlir;
-using namespace xilinx;
 using namespace xilinx::AIE;
 
 struct BdIdGenerator {

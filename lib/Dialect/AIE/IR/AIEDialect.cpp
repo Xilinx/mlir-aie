@@ -497,10 +497,14 @@ LogicalResult ObjectFifoCreateOp::verify() {
           "`via_shared_mem` can only be used in 1-to-1 object FIFOs");
   }
 
-  if (getMemtileRepeat().has_value()) {
-    if (!getProducerTileOp().isMemTile())
-      return emitError("`memtile_repeat` can only be used with a mem tile "
-                       "producer");
+  if (getRepeatCount().has_value()) {
+    if (getProducerTileOp().isShimTile())
+      return emitError("`repeat_count` unavailable for shim tiles");
+  }
+
+  if (getInitValues().has_value()) {
+    if ((int)getInitValues().value().size() != size())
+      return emitError("`init_values` does not initialize all objects");
   }
 
   return success();
@@ -594,6 +598,59 @@ void printObjectFifoConsumerTiles(OpAsmPrinter &printer, Operation *op,
   }
 }
 
+static void printObjectFifoInitValues(OpAsmPrinter &p, ObjectFifoCreateOp op,
+                                      Attribute numElem, TypeAttr type,
+                                      Attribute initValues) {
+  if (op.getInitValues()) {
+    p << "= [";
+    int depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
+    for (int i = 0; i < depth; i++) {
+      p.printStrippedAttrOrType(llvm::dyn_cast<mlir::ArrayAttr>(initValues)[i]);
+      if (i < depth - 1) {
+        p << ", ";
+      }
+    }
+    p << "]";
+  }
+}
+
+static ParseResult parseObjectFifoInitValues(OpAsmParser &parser,
+                                             Attribute numElem, TypeAttr type,
+                                             Attribute &initValues) {
+  int depth;
+  if (isa<ArrayAttr>(numElem)) {
+    depth = llvm::dyn_cast<mlir::IntegerAttr>(
+                llvm::dyn_cast<mlir::ArrayAttr>(numElem)[0])
+                .getInt();
+  } else {
+    depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
+  }
+  auto objfifoType = llvm::cast<AIEObjectFifoType>(type.getValue());
+  auto memrefType = llvm::cast<MemRefType>(objfifoType.getElementType());
+
+  if (!memrefType.hasStaticShape())
+    return parser.emitError(parser.getNameLoc())
+           << "type should be static shaped memref, but got " << memrefType;
+
+  if (parser.parseOptionalEqual())
+    return success();
+
+  Type tensorType = mlir::memref::getTensorTypeFromMemRefType(memrefType);
+  if (parser.parseAttribute(initValues, tensorType))
+    return failure();
+  for (int i = 0; i < depth; i++) {
+    auto initialValues = llvm::dyn_cast<mlir::ArrayAttr>(initValues);
+    if ((int)initialValues.size() != depth)
+      return parser.emitError(parser.getNameLoc())
+             << "initial values should initialize all objects";
+    if (!llvm::isa<ElementsAttr>(initialValues[i]))
+      return parser.emitError(parser.getNameLoc())
+             << "initial value should be an elements attribute";
+  }
+
+  return success();
+}
+
 } // namespace xilinx::AIE
 
 //===----------------------------------------------------------------------===//
@@ -605,9 +662,17 @@ LogicalResult ObjectFifoLinkOp::verify() {
     return emitError("ObjectFifoLinkOp does not support 'join' and "
                      "'distribute' at the same time");
 
-  if (auto sharedTile = getOptionalSharedTile(); !sharedTile)
+  auto sharedTile = getOptionalSharedTile();
+  if (!sharedTile)
     return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
                      "shared tile between objectFifos");
+
+  TileOp tile = cast<TileOp>(sharedTile.value().getDefiningOp());
+  if (!tile.isMemTile()) {
+    if (isJoin() || isDistribute())
+      return emitError("ObjectFifoLinkOp join and distribute are "
+                       "unavailable on compute or shim tiles");
+  }
 
   if (isJoin()) {
     if (getFifoIns().size() != getSrcOffsets().size())
@@ -646,8 +711,8 @@ LogicalResult ObjectFifoLinkOp::verify() {
 
     std::vector<int> repeat_counts;
     for (auto fifoOut : getOutputObjectFifos()) {
-      if (fifoOut.getMemtileRepeat().has_value())
-        repeat_counts.push_back(fifoOut.getMemtileRepeat().value());
+      if (fifoOut.getRepeatCount().has_value())
+        repeat_counts.push_back(fifoOut.getRepeatCount().value());
       else
         repeat_counts.push_back(0);
     }
@@ -764,8 +829,8 @@ std::vector<int> ObjectFifoLinkOp::getDistributeTransferLengths() {
 
 std::optional<int> ObjectFifoLinkOp::getRepeatCount() {
   for (auto fifoOut : getOutputObjectFifos())
-    if (fifoOut.getMemtileRepeat().has_value())
-      return {fifoOut.getMemtileRepeat().value()};
+    if (fifoOut.getRepeatCount().has_value())
+      return {fifoOut.getRepeatCount().value()};
   return {};
 }
 
@@ -1000,8 +1065,7 @@ LogicalResult ConfigureCascadeOp::verify() {
   if (t.isMemTile(tile.colIndex(), tile.rowIndex()))
     return emitOpError("memTile row has no cascade stream interface");
 
-  if ((t.getTargetArch() == AIEArch::AIE2) ||
-      (t.getTargetArch() == AIEArch::AIE2p)) {
+  if (isa<AIE2TargetModel>(t)) {
     if (inputDir == CascadeDir::South || inputDir == CascadeDir::East) {
       return emitOpError("input direction of cascade must be North or West on ")
              << stringifyAIEArch(t.getTargetArch());
@@ -1044,11 +1108,10 @@ LogicalResult GetCascadeOp::verify() {
   Type type = getCascadeValue().getType();
   DataLayout dataLayout = DataLayout::closest(*this);
   auto bits = dataLayout.getTypeSizeInBits(type);
-  if (targetModel.getTargetArch() == AIEArch::AIE1) {
+  if (isa<AIE1TargetModel>(targetModel)) {
     if (bits != 384)
       return emitOpError("must be a 384-bit type");
-  } else if ((targetModel.getTargetArch() == AIEArch::AIE2) ||
-             (targetModel.getTargetArch() == AIEArch::AIE2p)) {
+  } else if (isa<AIE2TargetModel>(targetModel)) {
     if (bits != 512)
       return emitOpError("must be a 512-bit type");
   } else
@@ -1500,11 +1563,6 @@ int MemOp::colIndex() { return getTileOp().colIndex(); }
 
 int MemOp::rowIndex() { return getTileOp().rowIndex(); }
 
-/// Returns the region on the current operation that is callable. This may
-/// return nullptr in the case of an external callable object, e.g. an external
-/// function.
-Region *MemOp::getCallableRegion() { return &getBody(); }
-
 //===----------------------------------------------------------------------===//
 // MemTileDMAOp
 //===----------------------------------------------------------------------===//
@@ -1838,7 +1896,7 @@ LogicalResult DMABDOp::verify() {
     return emitOpError("nextBdId attribute exceeds max: ") << maxBds - 1;
   if (auto dims = getDimensions(); dims.has_value()) {
     size_t maxNDims = 3;
-    if (isa_and_nonnull<MemTileDMAOp>(getOperation()->getParentOp()))
+    if (getOperation()->getParentOfType<MemTileDMAOp>())
       maxNDims = 4;
     if (dims->size() > maxNDims)
       return emitOpError() << "Cannot give more than "
@@ -1883,11 +1941,11 @@ LogicalResult DMABDOp::verify() {
     if (!dims.has_value())
       return emitOpError() << "Padding requires n-d data layouts expressed as"
                            << " wrap(s) and stride(s).";
+    if (!targetModel.isMemTile(parentTileId.col, parentTileId.row))
+      return emitOpError() << "Padding is only supported by memtile dma bds.";
     if (dims->size() != paddims->size())
       return emitOpError() << "Mismatch number of dimensions between padding(s)"
                            << " and wrap(s) and stride(s).";
-    if (!targetModel.isMemTile(parentTileId.col, parentTileId.row))
-      return emitOpError() << "Padding is only supported by memtile dma bds.";
     int actuallen = 1;
     for (unsigned i = 0; i < paddims->size(); i++) {
       auto dim = (*dims)[i];
@@ -1938,11 +1996,6 @@ TileOp MemTileDMAOp::getTileOp() {
 int MemTileDMAOp::colIndex() { return getTileOp().colIndex(); }
 
 int MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
-
-/// Returns the region on the current operation that is callable. This may
-/// return nullptr in the case of an external callable object, e.g. an
-/// external function.
-Region *MemTileDMAOp::getCallableRegion() { return &getBody(); }
 
 //===----------------------------------------------------------------------===//
 // SwitchboxOp

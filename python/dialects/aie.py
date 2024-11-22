@@ -21,6 +21,7 @@ from ..extras.dialects.ext.memref import (
     load as memref_load,
 )
 from .._mlir_libs import get_dialect_registry
+from array import array
 
 # noinspection PyUnresolvedReferences
 from .._mlir_libs._aie import (
@@ -65,6 +66,7 @@ from ..ir import (
     UnitAttr,
     Value,
     _i32ArrayAttr,
+    _arrayAttr,
 )
 
 # Comes from _aie
@@ -107,6 +109,12 @@ def bd_dim_layout(size, stride):
     return Attribute.parse(f"#aie.bd_dim_layout<{size=}, {stride=}>")
 
 
+def bd_pad_layout(const_pad_before, const_pad_after):
+    return Attribute.parse(
+        f"#aie.bd_pad_layout<{const_pad_before=}, {const_pad_after=}>"
+    )
+
+
 @register_attribute_builder("BDDimLayoutArrayAttr")
 def bd_dim_layout_array_attr_builder(tups: List[Attribute | Tuple[int]], context=None):
     if isinstance(tups, list) and all(isinstance(t, tuple) for t in tups):
@@ -122,6 +130,17 @@ def bd_dim_layout_array_array_attr_builder(tup_arrs: List[List[tuple]], context=
     return Attribute.parse(
         f'#aie<bd_dim_layout_array_array[{", ".join(map(str, tup_arrs))}]>',
         context=context,
+    )
+
+
+@register_attribute_builder("BDPadLayoutArrayAttr")
+def bd_pad_layout_array_attr_builder(
+    tups: List[Union[Attribute, Tuple[int]]], context=None
+):
+    if isinstance(tups, list) and all(isinstance(t, tuple) for t in tups):
+        tups = list(map(lambda t: bd_pad_layout(*t), tups))
+    return Attribute.parse(
+        f'#aie<bd_pad_layout_array[{", ".join(map(str, tups))}]>', context=context
     )
 
 
@@ -376,8 +395,10 @@ class object_fifo(ObjectFifoCreateOp):
         datatype: MemRefType | type[np.ndarray],
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
+        initValues=None,
         via_DMA=None,
         plio=None,
+        padDimensions=None,
         disable_synchronization=None,
     ):
         self.datatype = try_convert_np_type_to_mlir_type(datatype)
@@ -388,6 +409,14 @@ class object_fifo(ObjectFifoCreateOp):
         if dimensionsToStream is None:
             dimensionsToStream = []
         of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
+        if initValues is not None:
+            values = []
+            for e in initValues:
+                init_val = e
+                if e is list:
+                    init_val = array("i", e)
+                values.append(DenseElementsAttr.get(init_val, type=self.datatype))
+            initValues = _arrayAttr(values, None)
         super().__init__(
             sym_name=name,
             producerTile=producerTile,
@@ -398,7 +427,9 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
             via_DMA=via_DMA,
             plio=plio,
+            padDimensions=padDimensions,
             disable_synchronization=disable_synchronization,
+            initValues=initValues,
         )
 
     def acquire(self, port, num_elem):
@@ -428,9 +459,9 @@ class object_fifo(ObjectFifoCreateOp):
         int_num = IntegerAttr.get(T.i32(), num)
         self.attributes["via_shared_mem"] = int_num
 
-    def set_memtile_repeat(self, num):
+    def set_repeat_count(self, num):
         int_num = IntegerAttr.get(T.i32(), num)
-        self.attributes["memtile_repeat"] = int_num
+        self.attributes["repeat_count"] = int_num
 
 
 # Create an aie objectFifo_link between input and output objectFifos.
