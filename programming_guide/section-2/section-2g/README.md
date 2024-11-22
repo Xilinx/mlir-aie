@@ -165,7 +165,7 @@ def shim_dma_single_bd_task(
 - **`offset`** (optional): Starting point for the data transfer. Default values is `0`.
 - **`sizes`**: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
 - **`strides`** (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
-- **`issue_token`** (optional): If a token is issued, one may call `dma_await_task` on the returned task. Default is `false`.
+- **`issue_token`** (optional): If a token is issued, one may call `dma_await_task` on the returned task. Default is `False`.
 
 The strides and strides express data transformations analogously to those described in [Section 2C](../section-2c).
 
@@ -184,30 +184,31 @@ Synchronization between DMA channels and the host is facilitated by the `dma_awa
 ```python
 def dma_await_task(*args: DMAConfigureTaskForOp)
 ```
-- **`args`: One or more `dma_task` objects, where `dma_task` objects are the value returned by `shim_dma_single_bd_task`.
+- `args`: One or more `dma_task` objects, where `dma_task` objects are the value returned by `shim_dma_single_bd_task`.
 
 **Example Usage**:
 
 Waiting on task completion of one DMA task:
 ```python
-# Waits for the output data to transfer from the output ObjectFIFO to the host
+# Waits for the output task to complete
 dma_await_task(out_task)  
 ```
 
 Waiting on task completion of more than one DMA task:
 ```python
+# Waits for the input task and then the output task to complete
 dma_await_task(in_task, out_task)  
 ```
 
 #### **Free BDs without Waiting with `dma_free_task`**
 
-`dma_await_task` can only be called on a task created with `issue_token=True`. If `issue_token=False` (which is default), then `dma_free_task` should be called when the programmer knows that task if complete. `dma_free_task` allows the compiler to reuse the BDs of a task without synchronization. Using `dma_free_task(X)` before task `X` has completed will lead to a race condition and unpredictable behavior. Only use `dma_free_task(X)` in conjunction with some other means of synchronization. For example, you may issue `dma_free_task(X)` after a call to` dma_await_task(Y)` if you can reason that task `Y` can only complete after task `X` has completed.
+`dma_await_task` can only be called on a task created with `issue_token=True`. If `issue_token=False` (which is default), then `dma_free_task` should be called when the programmer knows that task if complete. `dma_free_task` allows the compiler to reuse the BDs of a task without synchronization. Using `dma_free_task(X)` before task `X` has completed will lead to a race condition and unpredictable behavior. Only use `dma_free_task(X)` in conjunction with some other means of synchronization. For example, you may issue `dma_free_task(X)` after a call to `dma_await_task(Y)` if you can reason that task `Y` can only complete after task `X` has completed.
 
 **Function Signature**:
 ```python
 def dma_free_task(*args: DMAConfigureTaskForOp)
 ```
-- **`args`: One or more `dma_task` objects, where `dma_task` objects are the value returned by `shim_dma_single_bd_task`.
+- `args`: One or more `dma_task` objects, where `dma_task` objects are the value returned by `shim_dma_single_bd_task`.
 
 **Example Usage**:
 
