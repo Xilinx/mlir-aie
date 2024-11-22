@@ -11,6 +11,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
+from aie.helpers.tensortiler import TensorTiler2D
 
 
 def row_wise_bias_add(M, N, m, n):
@@ -48,20 +49,19 @@ def row_wise_bias_add(M, N, m, n):
                         in_fifo.release(ObjectFifoPort.Consume, 1)
                     bias_fifo.release(ObjectFifoPort.Consume, 1)
 
+        tiler = TensorTiler2D.group_tiler(
+            (M, N), (m, n), (M // m, N // n), tile_group_col_major=True
+        )
+        bias_tiler = TensorTiler2D.group_tiler((1, N), (1, n), (1, N // n))
+
         @runtime_sequence(tensor_ty, bias_ty, tensor_ty)
         def sequence(inp, bias, out):
-            in_task = shim_dma_single_bd_task(
-                in_fifo, inp, sizes=[1, N // n, M, n], strides=[0, n, N, 1]
-            )
+            in_task = shim_dma_single_bd_task(in_fifo, inp, tensor_tile=tiler[0])
             bias_task = shim_dma_single_bd_task(
-                bias_fifo, bias, sizes=[1, 1, N // n, n], strides=[0, 0, n, 1]
+                bias_fifo, bias, tensor_tile=bias_tiler[0]
             )
             out_task = shim_dma_single_bd_task(
-                out_fifo,
-                out,
-                sizes=[1, N // n, M, n],
-                strides=[0, n, N, 1],
-                issue_token=True,
+                out_fifo, out, tensor_tile=tiler[0], issue_token=True
             )
 
             dma_start_task(in_task, bias_task, out_task)

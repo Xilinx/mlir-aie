@@ -12,6 +12,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
+from aie.helpers.tensortiler import TensorTiler2D
 
 # Size of the entire image
 IMAGE_HEIGHT = 16
@@ -68,27 +69,18 @@ def my_matrix_add_one():
                 of_out1.release(ObjectFifoPort.Produce, 1)
 
         # To/from AIE-array data movement
+        tiler = TensorTiler2D.simple_tiler(
+            (IMAGE_HEIGHT, IMAGE_WIDTH), (TILE_HEIGHT, TILE_WIDTH)
+        )
+
         @runtime_sequence(tile_ty, tile_ty, tile_ty)
         def sequence(inTensor, notUsed, outTensor):
-            in_task = dma_configure_task_for(of_in1, issue_token=True)
-            with bds(in_task) as bd:
-                with bd[0]:
-                    shim_dma_bd(
-                        inTensor,
-                        sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
-                        strides=[1, 1, IMAGE_WIDTH, 1],
-                    )
-                    EndOp()
-
-            out_task = dma_configure_task_for(of_out1, issue_token=True)
-            with bds(out_task) as bd:
-                with bd[0]:
-                    shim_dma_bd(
-                        outTensor,
-                        sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
-                        strides=[1, 1, IMAGE_WIDTH, 1],
-                    )
-                    EndOp()
+            in_task = shim_dma_single_bd_task(
+                of_in1, inTensor, tensor_tile=tiler[0], issue_token=True
+            )
+            out_task = shim_dma_single_bd_task(
+                of_out1, outTensor, tensor_tile=tiler[0], issue_token=True
+            )
 
             dma_start_task(in_task, out_task)
             dma_await_task(in_task, out_task)

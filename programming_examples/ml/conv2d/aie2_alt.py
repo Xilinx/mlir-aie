@@ -11,6 +11,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
+import aie.utils.trace as trace_utils
 
 width = 32
 height = 32
@@ -135,25 +136,24 @@ def conv2dk1(trace_size: int):
 
                 rtp2[0] = 10
 
-                in_act_task = dma_configure_task_for(of_inOF_act_L3L2, issue_token=True)
-                with bds(in_act_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(I, sizes=[1, 1, 1, tensorSize])
-                        EndOp()
-
-                in_wts_task = dma_configure_task_for(
-                    of_inOF_wts_0_L3L2, issue_token=True
+                in_act_task = shim_dma_single_bd_task(
+                    of_inOF_act_L3L2,
+                    I,
+                    sizes=[1, 1, 1, tensorSize],
+                    issue_token=True,
                 )
-                with bds(in_wts_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(W, sizes=[1, 1, 1, weights])
-                        EndOp()
-
-                out_task = dma_configure_task_for(of_outOFL2L3, issue_token=True)
-                with bds(out_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(O, sizes=[1, 1, 1, tensorSize])
-                        EndOp()
+                in_wts_task = shim_dma_single_bd_task(
+                    of_inOF_wts_0_L3L2,
+                    W,
+                    sizes=[1, 1, 1, weights],
+                    issue_token=True,
+                )
+                out_task = shim_dma_single_bd_task(
+                    of_outOFL2L3,
+                    O,
+                    sizes=[1, 1, 1, tensorSize],
+                    issue_token=True,
+                )
 
                 dma_start_task(in_act_task, in_wts_task, out_task)
                 dma_await_task(in_act_task, in_wts_task, out_task)

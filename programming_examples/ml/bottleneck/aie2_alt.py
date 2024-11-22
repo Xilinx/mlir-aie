@@ -551,23 +551,19 @@ def bottleneck4AIEs():
                 rtpComputeTile4[0] = 1
                 rtpComputeTile4[1] = 0  # skip_scale
 
-                in_act_task = dma_configure_task_for(of_inOF_act_L3L2)
-                with bds(in_act_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(inputFromL3, sizes=[1, 1, 1, activationsIn])
-                        EndOp()
+                in_act_task = shim_dma_single_bd_task(
+                    of_inOF_act_L3L2, inputFromL3, sizes=[1, 1, 1, activationsIn]
+                )
+                in_wts_task = shim_dma_single_bd_task(
+                    inOF_wts_0_L3L2, weightsFromL3, sizes=[1, 1, 1, totalWeights]
+                )
+                out_task = shim_dma_single_bd_task(
+                    outOFL2L3,
+                    outputToL3,
+                    sizes=[1, 1, 1, acitivationsOut],
+                    issue_token=True,
+                )
 
-                in_wts_task = dma_configure_task_for(inOF_wts_0_L3L2)
-                with bds(in_wts_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(weightsFromL3, sizes=[1, 1, 1, totalWeights])
-                        EndOp()
-
-                out_task = dma_configure_task_for(outOFL2L3, issue_token=True)
-                with bds(out_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(outputToL3, sizes=[1, 1, 1, acitivationsOut])
-                        EndOp()
                 dma_start_task(in_act_task, in_wts_task, out_task)
 
                 dma_await_task(out_task)

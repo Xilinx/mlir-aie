@@ -208,25 +208,18 @@ def conv2dk1():
 
                 rtp2[0] = 1
 
-                in_act_task = dma_configure_task_for(of_inOF_act_L3L2)
-                with bds(in_act_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(I, sizes=[1, 1, 1, tensorSize])
-                        EndOp()
-                dma_start_task(in_act_task)
-
-                in_wts_task = dma_configure_task_for(of_inOF_wts_0_L3L2)
-                with bds(in_wts_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(W, sizes=[1, 1, 1, weights])
-                        EndOp()
-                dma_start_task(in_wts_task)
-
-                out_task = dma_configure_task_for(of_outOFL2L3, issue_token=True)
-                with bds(out_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(O, sizes=[1, 1, 1, tensorSize])
-                        EndOp()
+                in_act_task = shim_dma_single_bd_task(
+                    of_inOF_act_L3L2, I, sizes=[1, 1, 1, tensorSize]
+                )
+                in_wts_task = shim_dma_single_bd_task(
+                    of_inOF_wts_0_L3L2, W, sizes=[1, 1, 1, weights]
+                )
+                out_task = shim_dma_single_bd_task(
+                    of_outOFL2L3,
+                    O,
+                    sizes=[1, 1, 1, tensorSize],
+                    issue_token=True,
+                )
 
                 dma_start_task(in_act_task, in_wts_task, out_task)
                 # out_task will only complete after in_act_task and in_wts_task complete, so we just wait on out_task instead of all

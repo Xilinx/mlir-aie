@@ -885,43 +885,38 @@ def resnet_conv_x():
                 rtpComputeTile24[0] = 1
                 rtpComputeTile24[1] = 0
 
-                act1_0_task = dma_configure_task_for(act1_fifos[0])
-                with bds(act1_0_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(inputFromL3, sizes=[1, 1, 1, activationsIn])
-                        EndOp()
+                act1_0_task = shim_dma_single_bd_task(
+                    act1_fifos[0],
+                    inputFromL3,
+                    sizes=[1, 1, 1, activationsIn],
+                )
 
-                wts_0_task = dma_configure_task_for(wts_fifos[0])
-                with bds(wts_0_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(weightsFromL3, sizes=[1, 1, 1, totalWeights_init])
-                        EndOp()
+                wts_0_task = shim_dma_single_bd_task(
+                    wts_fifos[0],
+                    weightsFromL3,
+                    sizes=[1, 1, 1, totalWeights_init],
+                )
 
-                wts_1_task = dma_configure_task_for(wts_fifos[1])
-                with bds(wts_1_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(
-                            weightsFromL3,
-                            offset=totalWeights_init,
-                            sizes=[1, 1, 1, totalWeights_rest],
-                        )
-                        EndOp()
+                wts_1_task = shim_dma_single_bd_task(
+                    wts_fifos[1],
+                    weightsFromL3,
+                    offset=totalWeights_init,
+                    sizes=[1, 1, 1, totalWeights_rest],
+                )
 
-                wts_2_task = dma_configure_task_for(wts_fifos[2])
-                with bds(wts_2_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(
-                            weightsFromL3,
-                            offset=totalWeights_init + totalWeights_rest,
-                            sizes=[1, 1, 1, totalWeights_rest],
-                        )
-                        EndOp()
+                wts_2_task = shim_dma_single_bd_task(
+                    wts_fifos[2],
+                    weightsFromL3,
+                    offset=totalWeights_init + totalWeights_rest,
+                    sizes=[1, 1, 1, totalWeights_rest],
+                )
 
-                out_task = dma_configure_task_for(outOFL2L3, issue_token=True)
-                with bds(out_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(outputToL3, sizes=[1, 1, 1, acitivationsOut])
-                        EndOp()
+                out_task = shim_dma_single_bd_task(
+                    outOFL2L3,
+                    outputToL3,
+                    sizes=[1, 1, 1, acitivationsOut],
+                    issue_token=True,
+                )
 
                 dma_start_task(
                     act1_0_task, wts_0_task, wts_1_task, wts_2_task, out_task
