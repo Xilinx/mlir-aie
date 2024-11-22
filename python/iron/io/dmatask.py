@@ -1,13 +1,11 @@
 from ... import ir  # type: ignore
 
-from ...dialects._aie_ops_gen import EndOp
 from ...dialects._aiex_ops_gen import dma_start_task, dma_await_task
-from ...dialects.aiex import dma_configure_task_for
-from ...dialects.aie import bds, dma_bd
+from ...dialects.aiex import shim_dma_single_bd_task
 from ..dataflow.objectfifo import ObjectFifoHandle
 from ..resolvable import Resolvable
 from .inoutdata import InOutData
-from ...helpers.tensortiler.tensortiler2D import TensorTile
+from ...helpers.taplib import TensorAccessPattern
 
 
 class DMATask(Resolvable):
@@ -15,12 +13,12 @@ class DMATask(Resolvable):
         self,
         object_fifo: ObjectFifoHandle,
         inout_data: InOutData,
-        data_tile: TensorTile,
+        tap: TensorAccessPattern,
         wait=False,
     ):
         self._object_fifo = object_fifo
         self._inout_data = inout_data
-        self._tensor_tile = data_tile
+        self._tap = tap
         self._wait = wait
         self._task = None
 
@@ -41,17 +39,13 @@ class DMATask(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        self._task = dma_configure_task_for(
-            self._object_fifo.op, issue_token=self._wait
+        self._task = shim_dma_single_bd_task(
+            self._object_fifo.op,
+            self._inout_data.op,
+            tap=self._tap,
+            issue_token=self._wait,
         )
-        with bds(self._task) as bd:
-            with bd[0]:
-                dma_bd(
-                    self._inout_data.op,
-                    offset=self._tensor_tile.offset,
-                    dimensions=self._tensor_tile.dimensions,
-                )
-                EndOp()
+
         dma_start_task(self._task)
         if self._wait:
             dma_await_task(self._task)

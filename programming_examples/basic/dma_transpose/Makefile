@@ -22,16 +22,20 @@ K ?= 32
 
 aie_py_src=aie2.py
 use_alt?=0
+use_iron?=0
 
 ifeq (${use_alt}, 1)
 aie_py_src=aie2_alt.py
+ifeq (${use_iron}, 1)
+$(error Cannot specify both alternative design and IRON)
+endif
+endif
+
+ifeq (${use_iron}, 1)
+aie_py_src=aie2_iron.py
 endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${M} ${K} > $@
-
-build/experimental_aie.mlir: ${srcdir}/experimental_aie2.py
 	mkdir -p ${@D}
 	python3 $< ${M} ${K} > $@
 
@@ -40,12 +44,6 @@ build/final.xclbin: build/aie.mlir
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--no-xchesscc --no-xbridge \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
-
-build/experimental_final.xclbin: build/experimental_aie.mlir
-	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--no-xchesscc --no-xbridge \
-				--aie-generate-npu --npu-insts-name=experimental_insts.txt $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -61,15 +59,7 @@ endif
 run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --M ${M} --K ${K}
 
-run_experimental: ${targetname}.exe build/experimental_final.xclbin build/experimental_insts.txt
-	${powershell} ./$< -x build/experimental_final.xclbin -i build/experimental_insts.txt -k MLIR_AIE --M ${M} --K ${K}
-
-
-generate_access_map: ${srcdir}/aie2.py
-	mkdir -p ${@D}
-	python3 $< --generate-access-map ${M} ${K}
-
-generate_experimental_access_map: ${srcdir}/experimental_aie2.py
+generate_access_map: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< --generate-access-map ${M} ${K}
 

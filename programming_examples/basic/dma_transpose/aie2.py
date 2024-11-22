@@ -60,13 +60,7 @@ def my_passthrough(M, K, N, generate_access_map=False):
                     tap=data_transform,
                     issue_token=True,
                 )
-                npu_dma_memcpy_nd(
-                    metadata=of_out,
-                    bd_id=0,
-                    mem=C,
-                    sizes=tile_out.sizes,
-                    strides=tile_out.strides,
-                )
+                npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
                 dma_wait(of_in, of_out)
 
     print(ctx.module)

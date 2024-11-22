@@ -9,7 +9,7 @@ from ... import ir  # type: ignore
 
 from ...dialects.aiex import runtime_sequence
 from ...dialects._aiex_ops_gen import dma_free_task
-from ...helpers.tensortiler.tensortiler2D import TensorTile2DIter, TensorTile
+from ...helpers.taplib import TensorAccessPattern, TensorAccessSequence
 from ..dataflow.objectfifo import ObjectFifoHandle
 from ..phys.tile import PlacementTile, AnyShimTile, Tile
 from ..resolvable import Resolvable
@@ -32,17 +32,17 @@ class IOIterator:
     def __init__(
         self,
         io_coord: IOCoordinator,
-        data_tile_iterator: TensorTile2DIter,
+        tas: TensorAccessSequence,
     ) -> IOIterator:
         self.io_coord = io_coord
-        self.data_tile_iterator = data_tile_iterator
+        self.tas = tas
 
     def __iter__(self):
         return self
 
     def __next__(self):
         try:
-            tile_next = next(self.data_tile_iterator)
+            tile_next = next(self.tas)
             return tile_next
         except StopIteration:
             # self.io_coord._insert_sync("HI")
@@ -69,7 +69,7 @@ class IOCoordinator(Resolvable):
     def fill(
         self,
         in_fifo: ObjectFifoHandle,
-        data_tile: TensorTile,
+        tap: TensorAccessPattern,
         source: InOutData,
         wait: bool = False,
         placement: PlacementTile = AnyShimTile,
@@ -78,12 +78,12 @@ class IOCoordinator(Resolvable):
         io_endpoint = IOEndpoint(placement)
         in_fifo.set_endpoint(io_endpoint)
         self._fifos.add(in_fifo)
-        self._ops.append(DMATask(in_fifo, source, data_tile, wait))
+        self._ops.append(DMATask(in_fifo, source, tap, wait))
 
     def drain(
         self,
         out_fifo: ObjectFifoHandle,
-        data_tile: TensorTile,
+        tap: TensorAccessPattern,
         dest: InOutData,
         wait: bool = False,
         placement: PlacementTile = AnyShimTile,
@@ -92,12 +92,12 @@ class IOCoordinator(Resolvable):
         io_endpoint = IOEndpoint(placement)
         out_fifo.set_endpoint(io_endpoint)
         self._fifos.add(out_fifo)
-        self._ops.append(DMATask(out_fifo, dest, data_tile, wait))
+        self._ops.append(DMATask(out_fifo, dest, tap, wait))
 
     def get_fifos(self) -> list[ObjectFifoHandle]:
         return self._fifos.copy()
 
-    def tile_loop(self, *args: TensorTile) -> IOIterator:
+    def tap_loop(self, *args: TensorAccessPattern) -> IOIterator:
         if len(args) == 1:
             return IOIterator(self, *args)
         return IOIterator(self, zip(*args))

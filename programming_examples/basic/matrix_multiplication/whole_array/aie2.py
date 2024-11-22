@@ -369,6 +369,7 @@ def my_matmul(
             )
             for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
                 for pingpong in [0, 1]:
+                    M // m // n_aie_rows // tb_max_n_rows
                     row_base = tb * tb_max_n_rows + pingpong * tb_max_n_rows // 2
                     bd_id_base = 8 * pingpong
                     tb_n_rows = min(

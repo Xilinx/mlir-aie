@@ -9,23 +9,23 @@ import argparse
 import numpy as np
 import sys
 
-from aie.api.io.iocoordinator import IOCoordinator
-from aie.api.dataflow.objectfifo import ObjectFifo
-from aie.api.placers import SequentialPlacer
-from aie.api.program import Program
-from aie.api.phys.device import NPU1Col1
-from aie.api.phys.tile import AnyComputeTile
-from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D
+from aie.iron.io.iocoordinator import IOCoordinator
+from aie.iron.dataflow.objectfifo import ObjectFifo
+from aie.iron.placers import SequentialPlacer
+from aie.iron.program import Program
+from aie.iron.phys.device import NPU1Col1
+from aie.iron.phys.tile import AnyComputeTile
+from aie.helpers.taplib import TensorTiler2D
 
 
-def my_passthrough(M, K, N, generate_acccess_map=False):
+def my_passthrough(M, K, generate_acccess_map=False):
     tensor_ty = np.ndarray[(M, K), np.dtype[np.int32]]
 
-    tiler_in = TensorTiler2D(M, K, tensor_col_major=True)
-    tiler_out = TensorTiler2D(K, M)
+    tap_in = TensorTiler2D.simple_tiler((M, K), tile_col_major=True)[0]
+    tap_out = TensorTiler2D.simple_tiler((K, M))[0]
 
     if generate_acccess_map:
-        tiler_in.visualize(file_path="experimental_transpose_data.png", show_tile=False)
+        tap_in.visualize(file_path="experimental_transpose_data.png", show_tile=False)
         return
 
     of_in = ObjectFifo(2, tensor_ty)
@@ -33,9 +33,8 @@ def my_passthrough(M, K, N, generate_acccess_map=False):
 
     io = IOCoordinator()
     with io.runtime_sequence(tensor_ty, tensor_ty, tensor_ty) as (a_in, _, c_out):
-        for t_in, t_out in io.tile_loop(tiler_in.tile_iter(), tiler_out.tile_iter()):
-            io.fill(of_in.prod, t_in, a_in)
-            io.drain(of_out.cons, t_out, c_out, wait=True)
+        io.fill(of_in.prod, tap_in, a_in)
+        io.drain(of_out.cons, tap_out, c_out, wait=True)
 
     my_program = Program(NPU1Col1(), io)
     my_program.resolve_program(SequentialPlacer())
@@ -59,6 +58,5 @@ if __name__ == "__main__":
     my_passthrough(
         M=args.dims[0],
         K=args.dims[1],
-        N=args.dims[0] * args.dims[1],
         generate_acccess_map=args.generate_access_map,
     )

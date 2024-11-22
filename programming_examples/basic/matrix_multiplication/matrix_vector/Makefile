@@ -20,16 +20,20 @@ m=32
 k=32
 
 kernels=mv_${m}x${k}
-use_experimental?=0
 use_alt?=0
-
-ifeq (${use_experimental}, 1)
-aie_py_src=experimental_aie2.py
-endif
+use_iron?=0
 
 ifeq (${use_alt}, 1)
 aie_py_src=aie2_alt.py
+ifeq (${use_iron}, 1)
+$(error Cannot specify both alternative design and IRON)
 endif
+endif
+
+ifeq (${use_iron}, 1)
+aie_py_src=aie2_iron.py
+endif
+
 
 SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 include ${SELF_DIR}../makefile-common

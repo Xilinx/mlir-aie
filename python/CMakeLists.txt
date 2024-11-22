@@ -45,14 +45,14 @@ declare_mlir_python_sources(AIEPythonSources.Helpers
     helpers/taplib/*.py
 )
 
-declare_mlir_python_sources(AIEPythonSources.Api
+declare_mlir_python_sources(AIEPythonSources.Iron
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
-    api/*.py
-    api/dataflow/*.py
-    api/io/*py
-    api/kernels/*.py
-    api/phys/*.py
+    iron/*.py
+    iron/dataflow/*.py
+    iron/io/*py
+    iron/kernels/*.py
+    iron/phys/*.py
 )
 
 
