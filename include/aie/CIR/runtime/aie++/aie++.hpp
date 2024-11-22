@@ -93,9 +93,12 @@ template <typename Channel> struct accessor {
   // implemented"' failed.
   //
   // accessor(access_t& a) : storage {a} { aquire<Channel>(); }
-  accessor(access_t& a) { storage = &a; aquire<Channel>(); }
+  accessor(access_t& a) {
+    storage = &a;
+    aquire<Channel>();
+  }
   auto& operator[](std::size_t index) { return (*storage)[index]; }
-  operator typename Channel::access_t&() { return *storage; }
+  operator typename Channel::access_t &() { return *storage; }
   ~accessor() { release<Channel>(); }
 };
 
@@ -142,7 +145,8 @@ enum : std::int8_t { npu1 = 42 };
 // "Unique" with the lambda is used to generate a different type for multiple
 // instantiation, so we can have a design with several accelerators of the same
 // type
-template <auto DeviceModel = npu1, typename Unique = decltype([] {})> struct device {
+template <auto DeviceModel = npu1, typename Unique = decltype([] {})>
+struct device {
   template <int X, int Y>
   tile<X, Y, device> tile()
       __attribute__((annotate("aie.device.tile", X, Y, DeviceModel,

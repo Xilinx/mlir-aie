@@ -1,4 +1,4 @@
-//===- CIRToAIEpasses.h ----------------------------------------------*- C++ -*-===//
+//===- CIRToAIEpasses.h -----------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -23,8 +23,7 @@ namespace xilinx::AIE::CIR {
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createCIRToAIEPreparePass();
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createCIRToAIEPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createCIRToAIEPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createCIRToAIEInlineKernelLambdaPass();
@@ -36,6 +35,6 @@ createCIRToAIEDecaptureKernelPass();
 #define GEN_PASS_REGISTRATION
 #include "aie/CIR/CIRToAIEPasses.h.inc"
 
-}
+} // namespace xilinx::AIE::CIR
 
 #endif

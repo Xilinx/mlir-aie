@@ -28,6 +28,6 @@ int main() {
   auto t = d.tile<1, 4>();
   auto b = t.buffer<int, 8192>();
   t.program([&] { b[3] = 14; });
-  d.tile<2, 3>().program([]{});
+  d.tile<2, 3>().program([] {});
   d.run();
 }

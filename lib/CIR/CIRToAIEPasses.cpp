@@ -89,7 +89,8 @@ void eraseOpsAndUsers(OpRange &&opsToErase) {
   llvm::SmallVector<mlir::Operation *> sorted{allOpsAndUsers.begin(),
                                               allOpsAndUsers.end()};
   mlir::computeTopologicalSorting(sorted);
-  LLVM_DEBUG(for (auto *op : sorted)
+  LLVM_DEBUG(for (auto *op
+                  : sorted)
                  op->emitRemark("eraseOpsAndUsers: topologicalSort"));
   for (auto *op : llvm::reverse(sorted)) {
     LLVM_DEBUG(op->emitRemark("eraseOpsAndUsers: reverse"));
