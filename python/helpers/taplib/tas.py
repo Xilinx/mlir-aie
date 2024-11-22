@@ -186,23 +186,22 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
                 self._tensor_dims
             )
         ]
+
+        animate_count_frames = None
         if animate_access_count:
             animate_count_frames = [
                 np.full(total_elems, 0, TensorAccessPattern._DTYPE).reshape(
                     self._tensor_dims
                 )
             ]
-        else:
-            animate_count_frames = None
 
         for t in self._taps:
             if animate_access_count:
                 t_access_order, t_access_count = t.accesses()
-            else:
-                t_access_order = t.accesses()
-            animate_order_frames.append(t_access_order)
-            if animate_access_count:
                 animate_count_frames.append(t_access_count)
+            else:
+                t_access_order = t.access_order()
+            animate_order_frames.append(t_access_order)
 
         return animate_from_accesses(
             animate_order_frames,
