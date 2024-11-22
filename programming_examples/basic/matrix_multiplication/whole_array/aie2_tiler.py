@@ -93,7 +93,7 @@ def my_matmul(
     dtype_out_str,
     b_col_maj,
     trace_size,
-    generate_tiles=False,
+    generate_taps=False,
 ):
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
