@@ -67,4 +67,26 @@ def CIRToAIEInlineKernelLambda : Pass<"cir-to-aie-inline-kernel-lambda", "mlir::
   ];
 }
 
+def CIRToAIEDecaptureKernel : Pass<"cir-to-aie-decapture-kernel", "mlir::ModuleOp"> {
+
+  let summary = "Remove the useless capture storage of a kernel in an aie.core operation";
+
+  let description = [{ After kernel lambda call inlining into an aie.core
+    operation, there is a left-over of capture allocation with write+read for
+    each kernel argument.
+
+    This pass connect directly the kernel argument to their producers without
+    going through the capture storage and then remove the storage itself.
+
+    TODO: this should be handled by a clever mem2reg or after standard dialect
+    lowering with mem2reg.
+  }];
+
+  let constructor = "xilinx::AIE::CIR::createCIRToAIEDecaptureKernelPass()";
+  let dependentDialects = [
+    "cir::CIRDialect",
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
 #endif

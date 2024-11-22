@@ -29,6 +29,9 @@ createCIRToAIEPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createCIRToAIEInlineKernelLambdaPass();
 
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createCIRToAIEDecaptureKernelPass();
+
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
 #include "aie/CIR/CIRToAIEPasses.h.inc"

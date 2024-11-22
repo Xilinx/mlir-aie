@@ -28,6 +28,7 @@
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -38,11 +39,13 @@
 #include "clang/CIR/Dialect/IR/CIRTypes.h"
 #include "clang/CIR/LowerToMLIR.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
@@ -92,6 +95,19 @@ void eraseOpsAndUsers(OpRange &&opsToErase) {
     LLVM_DEBUG(op->emitRemark("eraseOpsAndUsers: reverse"));
     op->erase();
   }
+}
+
+// Find in program order the first useful non cir.scope operation inside the
+// root operation
+mlir::Operation *findFirstNonCIRScopeOpInside(mlir::Operation *root) {
+  mlir::Operation *firsttNonCIRScopeOp = nullptr;
+  root->walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *op) {
+    if (op == root || mlir::isa<cir::ScopeOp>(op))
+      return mlir::WalkResult::advance();
+    firsttNonCIRScopeOp = op;
+    return mlir::WalkResult::interrupt();
+  });
+  return firsttNonCIRScopeOp;
 }
 } // namespace
 
@@ -918,6 +934,48 @@ struct CIRToAIEInlineKernelLambda
   }
 };
 
+struct CIRToAIEDecaptureKernel
+    : CIRToAIEDecaptureKernelBase<CIRToAIEDecaptureKernel> {
+  void runOnOperation() override {
+    auto module = getOperation();
+    mlir::OpBuilder b{module};
+    // Use pre-order walk for early exit
+    module->walk<mlir::WalkOrder::PreOrder>([&](xilinx::AIE::CoreOp core) {
+      LLVM_DEBUG(core.emitRemark("CIRToAIEDecaptureKernel aie.core"));
+      if (auto alloca = mlir::dyn_cast_if_present<cir::AllocaOp>(
+              findFirstNonCIRScopeOpInside(core))) {
+        LLVM_DEBUG(alloca.emitRemark("CIRToAIEInlineKernelLambda: alloca"));
+        // Track the value loaded from or stored into each capture member
+        llvm::DenseMap<llvm::StringRef, mlir::Value> loads, stores;
+        for (auto *u : alloca.getResult().getUsers())
+          if (auto gm = mlir::dyn_cast<cir::GetMemberOp>(u)) {
+            auto memberName = gm.getName();
+            llvm::TypeSwitch<mlir::Operation *>(
+                *gm.getResult().getUsers().begin())
+                .Case(
+                    [&](cir::StoreOp s) { stores[memberName] = s.getValue(); })
+                .Case([&](cir::LoadOp l) { loads[memberName] = l.getResult(); })
+                .Default([&](auto op) {
+                  op->emitError(
+                      "CIRToAIEInlineKernelLambda unknown user for member ")
+                      << memberName;
+                });
+          } else
+            u->emitError("CIRToAIEInlineKernelLambda unknown use for alloca");
+        // Connect directly all the capture read users to the capture stored
+        // values
+        for (auto &&[memberName, value] : loads)
+          value.replaceAllUsesWith(stores[memberName]);
+        // Remove all the lambda capture leftover
+        eraseOpsAndUsers(alloca);
+      }
+      // No need to dive further this aie.core operation since they cannot be
+      // nested
+      return mlir::WalkResult::skip();
+    });
+  }
+};
+
 } // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
@@ -932,6 +990,11 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createCIRToAIEPass() {
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createCIRToAIEInlineKernelLambdaPass() {
   return std::make_unique<CIRToAIEInlineKernelLambda>();
+}
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createCIRToAIEDecaptureKernelPass() {
+  return std::make_unique<CIRToAIEDecaptureKernel>();
 }
 
 } // namespace xilinx::AIE::CIR
