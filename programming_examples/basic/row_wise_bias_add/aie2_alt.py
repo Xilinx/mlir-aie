@@ -11,7 +11,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.tensortiler import TensorTiler2D
+from aie.helpers.taplib import TensorTiler2D
 
 
 def row_wise_bias_add(M, N, m, n):
@@ -56,12 +56,10 @@ def row_wise_bias_add(M, N, m, n):
 
         @runtime_sequence(tensor_ty, bias_ty, tensor_ty)
         def sequence(inp, bias, out):
-            in_task = shim_dma_single_bd_task(in_fifo, inp, tensor_tile=tiler[0])
-            bias_task = shim_dma_single_bd_task(
-                bias_fifo, bias, tensor_tile=bias_tiler[0]
-            )
+            in_task = shim_dma_single_bd_task(in_fifo, inp, tap=tiler[0])
+            bias_task = shim_dma_single_bd_task(bias_fifo, bias, tap=bias_tiler[0])
             out_task = shim_dma_single_bd_task(
-                out_fifo, out, tensor_tile=tiler[0], issue_token=True
+                out_fifo, out, tap=tiler[0], issue_token=True
             )
 
             dma_start_task(in_task, bias_task, out_task)

@@ -40,6 +40,7 @@ npu_dma_memcpy_nd(metadata, bd_id, mem, offsets=None, sizes=None, strides=None)
 - **`metadata`**: This is a reference to the object FIFO or the string name of an object FIFO that records a Shim Tile and one of its DMA channels allocated for the host-side memory transfer. In order to associate the memcpy operation with an object FIFO, this metadata string needs to match the object FIFO name string.
 - **`bd_id`**: Identifier integer for the particular Buffer Descriptor control registers used for this memcpy. A buffer descriptor contains all information needed for a DMA transfer described in the parameters below. 
 - **`mem`**: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to. 
+- **`tap`** (optional): A `TensorAccessPattern` is an alternative method of specifying `offset`/`sizes`/`strides` for determining an access pattern over the `mem` buffer.
 - **`offsets`** (optional): Start points for data transfer in each dimension. There is a maximum of four offset dimensions.
 - **`sizes`**: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
 - **`strides`** (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
@@ -151,7 +152,7 @@ All programming examples have an `*_alt.py` version that is written using DMA ta
 def shim_dma_single_bd_task(
     alloc,
     mem,
-    tensor_tile: TensorTile | None = None,
+    tap: TensorAccessPatter | None = None,
     offset: int | None = None,
     sizes: MixedValues | None = None,
     strides: MixedValues | None = None,
@@ -161,7 +162,7 @@ def shim_dma_single_bd_task(
 ```
 - **`alloc`**: The `alloc` argument associates the DMA task with an ObjectFIFO. This argument is called `alloc` becuase the shim-side end of a data transfer (specifically a channel on a shim tile) is referenced through a so-called "shim DMA allocation". When an ObjectFIFO is created with a Shim Tile endpoint, an allocation with the same name as the ObjectFIFO is automatically generated.
 - **`mem`**: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to. 
-- **`tensor_tile`** (optional): An alternative method to `offset`/`sizes`/`strides` for determining an access pattern over the `mem` buffer.
+- **`tap`** (optional): A `TensorAccessPattern` is an alternative method of specifying `offset`/`sizes`/`strides` for determining an access pattern over the `mem` buffer.
 - **`offset`** (optional): Starting point for the data transfer. Default values is `0`.
 - **`sizes`**: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
 - **`strides`** (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.

@@ -854,23 +854,23 @@ def dma_start_bd_chain_for(symbol, args, alloc, *pyargs, **kwargs):
 
 def shim_dma_bd(
     mem,
-    tensor_tile: TensorTile | None = None,
+    tap: TensorAccessPattern | None = None,
     offset: int | None = None,
     sizes: MixedValues | None = None,
     strides: MixedValues | None = None,
     transfer_len: int | None = None,
 ):
-    if tensor_tile and not (offset is None and sizes is None and strides is None):
+    if tap and not (offset is None and sizes is None and strides is None):
         raise ValueError(
-            "shim_dma_bd can take either a tensor_tile OR (sizes and/or strides and/or offsets), but not both."
+            "shim_dma_bd can take either a TensorAccessPattern OR (sizes and/or strides and/or offsets), but not both."
         )
 
-    if tensor_tile:
-        sizes = tensor_tile.sizes.copy()
-        strides = tensor_tile.strides.copy()
+    if tap:
+        sizes = tap.sizes.copy()
+        strides = tap.strides.copy()
         # For some reason, the type checking of offsets does not mesh well with offset being a property
         # so here we make sure it is evaluated and properly is seen as an integer.
-        offset = int(tensor_tile.offset)
+        offset = int(tap.offset)
 
     if offset is None:
         offset = 0
@@ -889,24 +889,24 @@ def shim_dma_bd(
 def shim_dma_single_bd_task(
     alloc,
     mem,
-    tensor_tile: TensorTile | None = None,
+    tap: TensorAccessPattern | None = None,
     offset: int | None = None,
     sizes: MixedValues | None = None,
     strides: MixedValues | None = None,
     transfer_len: int | None = None,
     issue_token: bool = False,
 ):
-    if tensor_tile and not (offset is None and sizes is None and strides is None):
+    if tap and not (offset is None and sizes is None and strides is None):
         raise ValueError(
-            "shim_dma_single_bd_task can take either a tensor_tile OR (sizes and/or strides and/or offsets), but not both."
+            "shim_dma_single_bd_task can take either a TensorAccessPattern OR (sizes and/or strides and/or offsets), but not both."
         )
 
-    if tensor_tile:
-        sizes = tensor_tile.sizes.copy()
-        strides = tensor_tile.strides.copy()
+    if tap:
+        sizes = tap.sizes.copy()
+        strides = tap.strides.copy()
         # For some reason, the type checking of offsets does not mesh well with offset being a property
         # so here we make sure it is evaluated and properly is seen as an integer.
-        offset = int(tensor_tile.offset)
+        offset = int(tap.offset)
 
     repeat_count = 0
     if sizes[0] > 1:
