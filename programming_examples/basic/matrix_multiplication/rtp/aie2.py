@@ -892,7 +892,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
             rtp_K_div_k_div_2 = K // k // 2
             for row in range(n_aie_rows):
                 for col in range(n_aie_cols):
-                    sym_ref = FlatSymbolRefAttr.get(rtp_bufs[row][col].get_name()[1:])
+                    sym_ref = FlatSymbolRefAttr.get(rtp_bufs[row][col].get_name())
                     npu_rtp_write(sym_ref, 1, rtp_K_div_k_div_2)
                     npu_rtp_write(sym_ref, 2, n_tiles_per_core)
                     npu_rtp_write(sym_ref, 0, 1)  # indicate "ready"
