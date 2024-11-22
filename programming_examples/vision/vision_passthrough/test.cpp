@@ -23,9 +23,9 @@
 #include "test_utils.h"
 
 constexpr int channels = 4;
-constexpr int testImageWidth = PASSTHROUGH_WIDTH;
-constexpr int testImageHeight = PASSTHROUGH_HEIGHT;
-constexpr int testImageSize = testImageWidth * testImageHeight;
+constexpr uint64_t testImageWidth = PASSTHROUGH_WIDTH;
+constexpr uint64_t testImageHeight = PASSTHROUGH_HEIGHT;
+constexpr uint64_t testImageSize = testImageWidth * testImageHeight;
 
 namespace po = boost::program_options;
 

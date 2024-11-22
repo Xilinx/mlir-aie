@@ -64,13 +64,11 @@ def generate_module(
         @runtime_sequence(flattened_tensor)
         def sequence(access_count):
             for t in tiler:
-                npu_dma_memcpy_nd(
-                    metadata=of_out,
-                    bd_id=1,
-                    mem=access_count,
-                    tap=t,
+                out_task = shim_dma_single_bd_task(
+                    of_out, access_count, tap=t, issue_token=True
                 )
-                dma_wait(of_out)
+                dma_start_task(out_task)
+                dma_await_task(out_task)
 
 
 def main(opts):

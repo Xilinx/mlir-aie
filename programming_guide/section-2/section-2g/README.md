@@ -42,9 +42,9 @@ npu_dma_memcpy_nd(metadata, bd_id, mem, offsets=None, sizes=None, strides=None)
 - **`mem`**: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to. 
 - **`offsets`** (optional): Start points for data transfer in each dimension. There is a maximum of four offset dimensions.
 - **`sizes`**: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
-- **`strides`** (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data. There is a maximum of three stride dimensions that can be expressed because dimension 0 is an implicit stride of 1 4B element. 
+- **`strides`** (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
 
-It is important to note that dimension 0 of the **`sizes`** and all **`strides`** are expressed in a 4B granularity. Higher dimensions of the **`sizes`** are integers to repeat the lower dimensions. The **`offsets`** are expressed in multiples of the **`sizes`**, however the dimension 0 offset is in a 4B granularity. The strides and wraps express data transformations analogously to those described in [Section 2C](../section-2c).
+The strides and sizes express data transformations analogously to those described in [Section 2C](../section-2c).
 
 **Example Usage**:
 ```python
@@ -107,7 +107,7 @@ offsets = [0, 0, 0, 0]
 npu_dma_memcpy_nd(metadata, bd_id, mem, offsets, sizes, strides)
 ```
 
-#### **Host Synchronization with `dma_wait`**
+#### **Host Synchronization with `dma_wait` after one or more `npu_dma_memcpy_nd` operations**
 
 Synchronization between DMA channels and the host is facilitated by the `dma_wait` operation, ensuring data consistency and proper execution order. The `dma_wait` operation waits until the BD associated with the ObjectFifo is complete, issuing a task complete token.
 
@@ -130,10 +130,104 @@ Waiting on DMAs associated with more than one object fifo:
 dma_wait(of_in, of_out)  
 ```
 
-#### **Best Practices for Data Movement and Synchronization**
+#### **Best Practices for Data Movement and Synchronization with `npu_dma_memcpy_nd`**
 
 - **Sync to Reuse Buffer Descriptors**: Each `npu_dma_memcpy_nd` is assigned a `bd_id`. There are a maximum of `16` BDs available to use in each Shim Tile. It is "safe" to reuse BDs once all transfers are complete, this can be managed by properly synchronizing taking into account the BDs that must have completed to transfer data into the array to complete a compute operation. And then sync on the BD that receives the data produced by the compute operation to write it back to host memory. 
 - **Note Non-blocking Transfers**: Overlap data transfers with computation by leveraging the non-blocking nature of `npu_dma_memcpy_nd`.
+- **Minimize Synchronization Overhead**: Synchronize/wait judiciously to avoid excessive overhead that might degrade performance.
+
+#### **Efficient Data Movement with `dma_task` Operations**
+
+As an alternative to `npu_dma_memcpy_nd` and `dma_wait`, there is a series of operations around **DMA tasks** that can serve a similar purpose.
+
+There are two advantages of using the DMA task operations over using `npu_dma_memcpy_nd`:
+* The user does not have to specify a BD number
+* DMA task operations are capable of *chaining* BD operations; however, this is an advance use-case beyond the scope of this guide. 
+
+All programming examples have an `*_alt.py` version that is written using DMA task operations.
+
+**Function Signature and Parameters**:
+```python
+def shim_dma_single_bd_task(
+    alloc,
+    mem,
+    tensor_tile: TensorTile | None = None,
+    offset: int | None = None,
+    sizes: MixedValues | None = None,
+    strides: MixedValues | None = None,
+    transfer_len: int | None = None,
+    issue_token: bool = False,
+)
+```
+- **`alloc`**: The `alloc` argument associates the DMA task with an ObjectFIFO. This argument is called `alloc` becuase the shim-side end of a data transfer (specifically a channel on a shim tile) is referenced through a so-called "shim DMA allocation". When an ObjectFIFO is created with a Shim Tile endpoint, an allocation with the same name as the ObjectFIFO is automatically generated.
+- **`mem`**: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to. 
+- **`tensor_tile`** (optional): An alternative method to `offset`/`sizes`/`strides` for determining an access pattern over the `mem` buffer.
+- **`offset`** (optional): Starting point for the data transfer. Default values is `0`.
+- **`sizes`**: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
+- **`strides`** (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
+- **`issue_token`** (optional): If a token is issued, one may call `dma_await_task` on the returned task. Default is `False`.
+
+The strides and strides express data transformations analogously to those described in [Section 2C](../section-2c).
+
+**Example Usage**:
+```python
+out_task = shim_dma_single_bd_task(of_out, C, sizes=[1, 1, 1, N], issue_token=True)
+```
+
+The example above describes a linear transfer of `N` data elements from the `C` buffer in host memory into an object FIFO with matching metadata labeled "of_out". The `sizes` dimensions are expressed right to left where the right is dimension 0 and the left dimension 3. Higher dimensions not used should be set to `1`.
+
+#### **Host Synchronization with `dma_await_task`**
+
+Synchronization between DMA channels and the host is facilitated by the `dma_await_task` operations, ensuring data consistency and proper execution order. The `dma_await_task` operation waits until all the BDs associated with a task have completed.
+
+**Function Signature**:
+```python
+def dma_await_task(*args: DMAConfigureTaskForOp)
+```
+- `args`: One or more `dma_task` objects, where `dma_task` objects are the value returned by `shim_dma_single_bd_task`.
+
+**Example Usage**:
+
+Waiting on task completion of one DMA task:
+```python
+# Waits for the output task to complete
+dma_await_task(out_task)  
+```
+
+Waiting on task completion of more than one DMA task:
+```python
+# Waits for the input task and then the output task to complete
+dma_await_task(in_task, out_task)  
+```
+
+#### **Free BDs without Waiting with `dma_free_task`**
+
+`dma_await_task` can only be called on a task created with `issue_token=True`. If `issue_token=False` (which is default), then `dma_free_task` should be called when the programmer knows that task if complete. `dma_free_task` allows the compiler to reuse the BDs of a task without synchronization. Using `dma_free_task(X)` before task `X` has completed will lead to a race condition and unpredictable behavior. Only use `dma_free_task(X)` in conjunction with some other means of synchronization. For example, you may issue `dma_free_task(X)` after a call to `dma_await_task(Y)` if you can reason that task `Y` can only complete after task `X` has completed.
+
+**Function Signature**:
+```python
+def dma_free_task(*args: DMAConfigureTaskForOp)
+```
+- `args`: One or more `dma_task` objects, where `dma_task` objects are the value returned by `shim_dma_single_bd_task`.
+
+**Example Usage**:
+
+Release BDs belonging to DMAs associated with one task:
+```python
+# Allow compiler to reuse BDs of a a task. Should only be called if the programmer is sure the task is completed.
+dma_free_task(out_task)  
+```
+
+Release BDs belonging to DMAs associated with more than one task:
+```python
+# Allow compiler to reuse BDs of more than one task. Should only be called if the programmer is sure all tasks are completed.
+dma_free_task(in_task, out_task)  
+```
+
+#### **Best Practices for Data Movement and Synchronization with `dma_task` Operations**
+
+- **Await or Free to Reuse Buffer Descriptors**: While the exact buffer descriptor (BD) used for each operation is not visible to the user with the `dma_task` operations, there are still a finite number (maximum of `16` on a Shim Tile). Thus, it is important to use `dma_await_task` or `dma_free_task` before the number of BDs are exhausted so that they may be reused. 
+- **Note Non-blocking Transfers**: Overlap data transfers with computation by leveraging the non-blocking nature of `dma_start_task`.
 - **Minimize Synchronization Overhead**: Synchronize/wait judiciously to avoid excessive overhead that might degrade performance.
 
 #### **Conclusion**

@@ -418,6 +418,8 @@ def my_matmul(
             )
             c_index = 0
 
+            in_tasks = []
+            out_tasks = []
             for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
                 for pingpong in [0, 1]:
                     if c_index >= len(C_tiles):
@@ -427,7 +429,6 @@ def my_matmul(
                     current_tb_n_rows = min(
                         [tb_max_n_rows // 2, M // m // n_aie_rows - row_base]
                     )
-                    bd_id_base = 8 * pingpong
 
                     for col in range(n_aie_cols):
 
@@ -453,12 +454,14 @@ def my_matmul(
                         #     |                |
                         #     |                |
                         #      ----------------
-                        npu_dma_memcpy_nd(
-                            metadata=C_l2l3_fifos[col],
-                            bd_id=bd_id_base,
-                            mem=C,
+                        c_task = shim_dma_single_bd_task(
+                            C_l2l3_fifos[col],
+                            C,
                             tap=C_tiles[c_index],
+                            issue_token=True,
                         )
+                        dma_start_task(c_task)
+                        out_tasks.append(c_task)
                         c_index += 1
 
                         for tile_row in range(current_tb_n_rows):
@@ -484,12 +487,16 @@ def my_matmul(
                             tile_offset = (
                                 (row_base + tile_row) * n_aie_cols + col
                             ) % len(A_tiles)
-                            npu_dma_memcpy_nd(
-                                metadata=A_l3l2_fifos[col],
-                                bd_id=bd_id_base + 2 * tile_row + 1,
-                                mem=A,
+                            a_task = shim_dma_single_bd_task(
+                                A_l3l2_fifos[col],
+                                A,
                                 tap=A_tiles[tile_offset],
                             )
+                            dma_start_task(a_task)
+                            in_tasks.append(a_task)
+                            # Use the calculated sizes/strides/offsets to record the data movement
+                            # caused by the above call to npu_dma_memcpy_nd.
+                            # This line does not change MLIR output at all.
 
                             # B input transfer:
                             # Transfer the first a (n)-wide block of columns of B,
@@ -509,20 +516,26 @@ def my_matmul(
                             #     |0011    0011    |
                             #     |0011    0011    |
                             #      ----------------
-                            npu_dma_memcpy_nd(
-                                metadata=B_l3l2_fifos[col],
-                                bd_id=bd_id_base + 2 * tile_row + 2,
-                                mem=B,
+                            b_task = shim_dma_single_bd_task(
+                                B_l3l2_fifos[col],
+                                B,
                                 tap=B_tiles[col],
                             )
+                            dma_start_task(b_task)
+                            in_tasks.append(b_task)
 
                             # These lines do not change MLIR output at all - they are just for recording data movement
                             A_taps.append(A_tiles[tile_offset])
                             B_taps.append(B_tiles[col])
-
                     if tb > 0 or (tb == 0 and pingpong > 0):
-                        dma_wait(*C_l2l3_fifos)
-            dma_wait(*C_l2l3_fifos)
+                        dma_await_task(*out_tasks)
+                        out_tasks = []
+                        dma_free_task(*in_tasks)
+                        in_tasks = []
+            if len(out_tasks) > 0:
+                dma_await_task(*out_tasks)
+            if len(in_tasks) > 0:
+                dma_free_task(*in_tasks)
 
     if generate_taps:
         # If generate taps is true, return a representation of tensor access patterns
