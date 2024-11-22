@@ -113,7 +113,6 @@ def validate_tensor_dims(
 def validate_offset(offset: int, tensor_dims: Sequence[int] | None):
     if offset < 0:
         raise ValueError(f"Offset must be >= 0 (offset={offset})")
-    
     if tensor_dims:
         if offset >= np.prod(tensor_dims):
             raise ValueError(f"Offset too large: {offset}. Max value allowed for tensor: {np.prod(tensor_dims)}")
