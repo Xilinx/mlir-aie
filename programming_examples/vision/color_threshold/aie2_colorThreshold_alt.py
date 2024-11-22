@@ -249,23 +249,16 @@ def color_threshold():
                 rtpComputeTile5[1] = 255
                 rtpComputeTile5[2] = 0
 
-                in_task = dma_configure_task_for(inOOB_L3L2, issue_token=True)
-                with bds(in_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(
-                            inTensor,
-                            sizes=[1, 1, 1, tensorSize],
-                        )
-                        EndOp()
+                in_task = shim_dma_single_bd_task(
+                    inOOB_L3L2, inTensor, sizes=[1, 1, 1, tensorSize], issue_token=True
+                )
+                out_task = shim_dma_single_bd_task(
+                    outOOB_L2L3,
+                    outTensor,
+                    sizes=[1, 1, 1, tensorSize],
+                    issue_token=True,
+                )
 
-                out_task = dma_configure_task_for(outOOB_L2L3, issue_token=True)
-                with bds(out_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(
-                            outTensor,
-                            sizes=[1, 1, 1, tensorSize],
-                        )
-                        EndOp()
                 dma_start_task(in_task, out_task)
                 dma_await_task(in_task, out_task)
 

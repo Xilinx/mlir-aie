@@ -147,23 +147,15 @@ def passThroughAIE2():
                     )
                     NpuWrite32(0, 0, 0x1D20C, 0x3)
 
-                in_task = dma_configure_task_for(of_in, issue_token=True)
-                with bds(in_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(
-                            inTensor,
-                            sizes=[1, 1, 1, tensorSize],
-                        )
-                        EndOp()
-
-                out_task = dma_configure_task_for(of_out, issue_token=True)
-                with bds(out_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(
-                            outTensor,
-                            sizes=[1, 1, 1, tensorSize],
-                        )
-                        EndOp()
+                in_task = shim_dma_single_bd_task(
+                    of_in, inTensor, sizes=[1, 1, 1, tensorSize], issue_token=True
+                )
+                out_task = shim_dma_single_bd_task(
+                    of_out,
+                    outTensor,
+                    sizes=[1, 1, 1, tensorSize],
+                    issue_token=True,
+                )
 
                 dma_start_task(in_task, out_task)
                 dma_await_task(in_task, out_task)

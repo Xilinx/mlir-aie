@@ -267,24 +267,15 @@ def edge_detect():
             # To/from AIE-array data movement
             @runtime_sequence(tensor_ty, tensor_16x16_ty, tensor_ty)
             def sequence(I, B, O):
-                in_task = dma_configure_task_for(inOF_L3L2)
-                with bds(in_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(
-                            I,
-                            sizes=[1, 1, 1, tensorSize],
-                        )
-                        EndOp()
-                dma_start_task(in_task)
-
-                out_task = dma_configure_task_for(outOF_L2L3, issue_token=True)
-                with bds(out_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(
-                            O,
-                            sizes=[1, 1, 1, tensorSize],
-                        )
-                        EndOp()
+                in_task = shim_dma_single_bd_task(
+                    inOF_L3L2, I, sizes=[1, 1, 1, tensorSize]
+                )
+                out_task = shim_dma_single_bd_task(
+                    outOF_L2L3,
+                    O,
+                    sizes=[1, 1, 1, tensorSize],
+                    issue_token=True,
+                )
 
                 dma_start_task(in_task, out_task)
                 dma_await_task(out_task)
