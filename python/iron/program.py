@@ -71,7 +71,7 @@ class Program:
                 self._rt.resolve()
 
             self._print_verify(ctx)
-            print(ctx.module)
+            return ctx.module
 
     def _print_verify(self, ctx):
         verify = ctx.module.operation.verify()
