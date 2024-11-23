@@ -28,7 +28,7 @@ class AIE_Op<string mnemonic, list<Trait> traits = []> :
 
 def AIE_DeviceOp: AIE_Op<"device", [
     AIETarget,
-    SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove
+    SymbolTable, SingleBlockImplicitTerminator<"EndOp">, IsolatedFromAbove
   ]> {
   let summary = "Define an AIE design targetting a complete device";
   let description = [{
@@ -63,7 +63,6 @@ def AIE_DeviceOp: AIE_Op<"device", [
   let extraClassDeclaration = [{
     const xilinx::AIE::AIETargetModel &getTargetModel();
   }];
-  let hasVerifier = 1;
 }
 
 def AIE_TileOp: AIE_Op<"tile", [
@@ -898,8 +897,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     int32_t getBufferElementTypeWidthInBytes() {
       return getBuffer().getType().getElementTypeBitWidth() / 8;
     }
-    int32_t getLenInBytes() {
-      if (std::optional<int32_t> len = getLen(); len.has_value())
+    uint32_t getLenInBytes() {
+      if (std::optional<uint32_t> len = getLen(); len.has_value())
         return len.value() * getBufferElementTypeWidthInBytes();
       else
         return getBuffer().getType().getNumElements() * getBufferElementTypeWidthInBytes();
@@ -1675,8 +1674,10 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         // via_shared_mem==0 means use producer tile's memory module
         // via_shared_mem==1 means use consumer tile's memory module
         OptionalAttr<AIEI32Attr>:$via_shared_mem,
-        // memtile_repeat==0 means "do it once" and don't repeat
-        OptionalAttr<AIEI32Attr>:$memtile_repeat
+        // repeat_count==1 means "do it once"
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
+        InitValuesArrayAttr:$initValues,
+        OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions
   );
 
   let assemblyFormat = [{
@@ -1689,6 +1690,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         `,`
         $elemNumber
     `)` attr-dict `:` $elemType
+    custom<ObjectFifoInitValues>(ref($elemNumber), ref($elemType), $initValues)
   }];
 
   let hasVerifier = 1;
@@ -1715,7 +1717,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     OpBuilder<(ins "mlir::StringAttr":$sym_name, "mlir::Value":$producerTile,
                    "mlir::ValueRange":$consumerTiles, "mlir::Attribute":$elemNumber, "mlir::Type":$elem_type,
                    CArg<"llvm::ArrayRef<AIE::BDDimLayoutAttr>", "{}">:$dimensionsToStream,
-                   CArg<"llvm::ArrayRef<AIE::BDDimLayoutArrayAttr>", "{}">:$dimensionsFromStreamPerConsumer), [{
+                   CArg<"llvm::ArrayRef<AIE::BDDimLayoutArrayAttr>", "{}">:$dimensionsFromStreamPerConsumer,
+                   CArg<"llvm::ArrayRef<AIE::BDPadLayoutArrayAttr>", "{}">:$padDimensions), [{
       odsState.addOperands(producerTile);
       odsState.addOperands(consumerTiles);
       odsState.addAttribute(getSymNameAttrName(odsState.name), sym_name);

@@ -174,7 +174,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
 
 namespace xilinx::AIE {
 
-void AIEPathfinderPass::runOnFlow(DeviceOp d, OpBuilder &builder) {
+void AIEPathfinderPass::runOnFlow(DeviceOp d) {
   // Apply rewrite rule to switchboxes to add assignments to every 'connect'
   // operation inside
   ConversionTarget target(getContext());
@@ -928,15 +928,15 @@ void AIEPathfinderPass::runOnOperation() {
   DeviceOp d = getOperation();
   if (failed(analyzer.runAnalysis(d)))
     return signalPassFailure();
-  OpBuilder builder = OpBuilder::atBlockEnd(d.getBody());
+  OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
 
   if (clRouteCircuit)
-    runOnFlow(d, builder);
+    runOnFlow(d);
   if (clRoutePacket)
     runOnPacketFlow(d, builder);
 
   // Populate wires between switchboxes and tiles.
-  builder.setInsertionPointToEnd(d.getBody());
+  builder.setInsertionPoint(d.getBody()->getTerminator());
   for (int col = 0; col <= analyzer.getMaxCol(); col++) {
     for (int row = 0; row <= analyzer.getMaxRow(); row++) {
       TileOp tile;

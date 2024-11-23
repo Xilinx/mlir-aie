@@ -133,7 +133,7 @@ module @ndDMAObjFifoAIE2 {
     // this case between two adjacent tiles, we need to use DMAs if a data
     // layout transformation with dimensionsToStream and dimensionsFromStream was specified.
     aie.objectfifo @of0 (%tile12 dimensionsToStream [<size = 16, stride = 1>, <size = 16, stride = 16>, <size = 1, stride = 1>], // transpose
-                         {%tile13 dimensionsFromStream [<size = 1, stride = 1>]},
+                         {%tile13 dimensionsFromStream [<size = 1, stride = 1>]}, 
                          4 : i32) : !aie.objectfifo<memref<256xi32>>
 
     aie.objectfifo @of1 (%tile12 dimensionsToStream [<size = 128, stride = 2>], {%tile33},

@@ -33,7 +33,7 @@ The arguments for the tile declaration are the tile coordinates (column, row). W
 
 ```python
     # Device declaration - here using aie2 device NPU
-    @device(AIEDevice.npu1_1col)
+    @device(AIEDevice.npu1)
     def device_body():
 
         # Tile declarations

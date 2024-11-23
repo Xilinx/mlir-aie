@@ -281,67 +281,37 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
                         # the BD. We need to set issue_token=True to be able to
                         # await completion of the task later on using
                         # dma_await_task.
-                        c_task = dma_configure_task_for(
-                            outC, repeat_count=num_tile_rows - 1, issue_token=True
+                        c_task = shim_dma_single_bd_task(
+                            outC,
+                            C,
+                            offset=C_row_offset,
+                            sizes=[num_tile_rows, N_div_n, m, n],
+                            strides=[m_x_N, n, N, 1],
+                            issue_token=True,
                         )
-                        with bds(c_task) as bd:
-                            with bd[0]:
-                                dma_bd(
-                                    C,
-                                    offset=C_row_offset,
-                                    len=N * m,
-                                    dimensions=[
-                                        (num_tile_rows, m_x_N),
-                                        (N_div_n, n),
-                                        (m, N),
-                                        (n, 1),
-                                    ],
-                                )
-                                EndOp()
                         dma_start_task(c_task)
                         c_tasks.append(c_task)
 
                         for tile_row in range(num_tile_rows):
                             # -- A --
                             A_row_offset = (row_base + tile_row) * m * K
-                            a_task = dma_configure_task_for(
-                                inA, repeat_count=N_div_n - 1, issue_token=False
+                            a_task = shim_dma_single_bd_task(
+                                inA,
+                                A,
+                                offset=A_row_offset,
+                                sizes=[N_div_n, K_div_k, m, k],
+                                strides=[0, k, K, 1],
                             )
-                            with bds(a_task) as bd:
-                                with bd[0]:
-                                    dma_bd(
-                                        A,
-                                        offset=A_row_offset,
-                                        len=m * K,
-                                        dimensions=[
-                                            (1, 0),  # repeat/wrap w/o stride
-                                            (K_div_k, k),
-                                            (m, K),
-                                            (k, 1),
-                                        ],
-                                    )
-                                    EndOp()
                             dma_start_task(a_task)
                             a_tasks.append(a_task)
 
                             # -- B --
-                            b_task = dma_configure_task_for(
-                                inB, repeat_count=N_div_n - 1, issue_token=False
+                            b_task = shim_dma_single_bd_task(
+                                inB,
+                                B,
+                                sizes=[N_div_n, K_div_k, k, n],
+                                strides=[n, k_x_N, N, 1],
                             )
-                            with bds(b_task) as bd:
-                                with bd[0]:
-                                    dma_bd(
-                                        B,
-                                        offset=0,
-                                        len=K * n,
-                                        dimensions=[
-                                            (N_div_n, n),
-                                            (K_div_k, k_x_N),
-                                            (k, N),
-                                            (n, 1),
-                                        ],
-                                    )
-                                    EndOp()
                             dma_start_task(b_task)
                             b_tasks.append(b_task)
 

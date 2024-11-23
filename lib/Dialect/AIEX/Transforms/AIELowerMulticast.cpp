@@ -49,7 +49,7 @@ struct AIELowerMulticastPass : public AIEMulticastBase<AIELowerMulticastPass> {
   void runOnOperation() override {
 
     DeviceOp device = getOperation();
-    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
+    OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
 
     for (auto multicast : device.getOps<MulticastOp>()) {
       Region &r = multicast.getPorts();

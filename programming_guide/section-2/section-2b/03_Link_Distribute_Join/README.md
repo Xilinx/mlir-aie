@@ -87,4 +87,4 @@ object_fifo_link([of1, of2], of0, [0, 128], [])
 A full design example that uses these features is available in Section 2e: [05_join_L2](../../section-2e/05_join_L2/).
 
 -----
-[[Prev](../02_Broadcast/)] [[Up](..)] [[Next - Section 2c](../../section-2c/)]
+[[Prev](../02_Broadcast/)] [[Up](..)] [[Next](../04_Repeat/)]

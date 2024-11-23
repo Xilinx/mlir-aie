@@ -17,11 +17,19 @@ VPATH := ${srcdir}/../../../aie_kernels/generic
 data_size = 4096
 PASSTHROUGH_SIZE = ${data_size}
 
+aie_py_src=aie2.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=aie2_alt.py
+endif
+
+
 .PHONY: all template clean
 
 all: build/final_${data_size}.xclbin
 
-build/aie.mlir: ${srcdir}/aie2.py
+build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${PASSTHROUGH_SIZE} > $@
 
@@ -50,3 +58,11 @@ run_py: build/final_${data_size}.xclbin build/insts_${data_size}.txt
 
 clean:
 	rm -rf build _build ${targetname}*.exe
+
+run_notebook: ${srcdir}/passthrough_pykernel.ipynb
+	mkdir -p notebook_build
+	cd notebook_build && jupyter nbconvert --to script ${srcdir}/passthrough_pykernel.ipynb --output-dir .
+	cd notebook_build && ipython passthrough_pykernel.py
+
+clean_notebook:
+	rm -rf notebook_build notebook_aie.mlir

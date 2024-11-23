@@ -71,6 +71,20 @@ public:
     TK_AIE2_Last = TK_AIE2_NPU2_Last,
   };
 
+  // One-hot encoded list of target model properties.
+  enum ModelProperty {
+    // Device uses semaphore locks.
+    UsesSemaphoreLocks = 1U << 0,
+    // Device is an NPU-based device.
+    // There are several special cases for handling the NPU at the moment.
+    IsNPU = 1U << 1,
+    // Device model is virtualized.
+    // This is used during CDO code generation to configure aie-rt properly.
+    IsVirtualized = 1U << 2,
+    // Device uses multi-dimensional buffer descriptors.
+    UsesMultiDimensionalBDs = 1U << 3,
+  };
+
 private:
   const TargetModelKind kind;
 
@@ -232,9 +246,11 @@ public:
   // Run consistency checks on the target model.
   void validate() const;
 
-  // Return true if this is an NPU-based device
-  // There are several special cases for handling the NPU at the moment.
-  virtual bool isNPU() const { return false; }
+  // Return true if this device has a given property.
+  uint32_t ModelProperties = 0;
+  bool hasProperty(ModelProperty Prop) const {
+    return (ModelProperties & Prop) == Prop;
+  }
 
   // Return the bit offset of the column within a tile address.
   // This is used to compute the control address of a tile from it's column
@@ -318,7 +334,11 @@ public:
 
 class AIE2TargetModel : public AIETargetModel {
 public:
-  AIE2TargetModel(TargetModelKind k) : AIETargetModel(k) {}
+  AIE2TargetModel(TargetModelKind k) : AIETargetModel(k) {
+    // Device properties initialization
+    ModelProperties |= AIETargetModel::UsesSemaphoreLocks;
+    ModelProperties |= AIETargetModel::UsesMultiDimensionalBDs;
+  }
 
   AIEArch getTargetArch() const override;
 
@@ -502,7 +522,10 @@ public:
 
 class BaseNPUTargetModel : public AIE2TargetModel {
 public:
-  BaseNPUTargetModel(TargetModelKind k) : AIE2TargetModel(k) {}
+  BaseNPUTargetModel(TargetModelKind k) : AIE2TargetModel(k) {
+    // Device properties initialization
+    ModelProperties |= AIETargetModel::IsNPU;
+  }
 
   int rows() const override {
     return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
@@ -520,12 +543,6 @@ public:
   }
 
   uint32_t getNumMemTileRows() const override { return 1; }
-
-  // Return true if the device model is virtualized.  This is used
-  // during CDO code generation to configure aie-rt properly.
-  virtual bool isVirtualized() const = 0;
-
-  virtual bool isNPU() const override { return true; }
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU1 &&
@@ -549,8 +566,6 @@ public:
     return row == 0 && col == 0;
   }
 
-  bool isVirtualized() const override { return false; }
-
   static bool classof(const AIETargetModel *model) {
     return model->getKind() == TK_AIE2_NPU1;
   }
@@ -565,15 +580,16 @@ public:
       : BaseNPUTargetModel(static_cast<TargetModelKind>(
             static_cast<std::underlying_type_t<TargetModelKind>>(TK_AIE2_NPU1) +
             _cols)),
-        cols(_cols) {}
+        cols(_cols) {
+    // Device properties initialization
+    ModelProperties |= AIETargetModel::IsVirtualized;
+  }
 
   uint32_t getAddressGenGranularity() const override { return 32; }
 
   int columns() const override { return cols; }
 
   bool isShimNOCTile(int col, int row) const override { return row == 0; }
-
-  bool isVirtualized() const override { return true; }
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU1_1Col &&
@@ -593,8 +609,6 @@ public:
   bool isShimNOCTile(int col, int row) const override { return row == 0; }
 
   bool isShimPLTile(int col, int row) const override { return false; }
-
-  bool isVirtualized() const override { return false; }
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() == TK_AIE2_NPU2;
