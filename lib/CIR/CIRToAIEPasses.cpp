@@ -10,6 +10,7 @@
 #include <any>
 #include <array>
 #include <cassert>
+#include <mlir/IR/BuiltinAttributeInterfaces.h>
 #include <queue>
 
 #include "aie/CIR/CIRToAIEPasses.h"
@@ -246,8 +247,13 @@ public:
     return detail.value();
   }
 
-  // Associate to a given aie++ C++ type the lowered AIE operation operation
+  // Associate to a given aie++ C++ type the lowered AIE operation operation and
+  // add the type to the operation as a "cir.type" type attribute for any later
+  // introspection
   void setProducerOp(mlir::Type t, mlir::Operation *op, mlir::OpBuilder &b) {
+    // Keep the original aie++ type for this AIE operation with a "cir.type"
+    // attribute
+    op->setAttr("cir.type", mlir::TypeAttr::get(t));
     auto &detail = getTypeDetail(t);
     detail.newAIEOperation = op;
     isAIELoweredType.insert(t);
