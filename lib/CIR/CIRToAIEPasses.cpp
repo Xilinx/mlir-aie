@@ -132,8 +132,8 @@ public:
     std::any data;
     // The AIE operation which is generated
     std::optional<mlir::Operation *> newAIEOperation;
-    // The new operation producing the result instead for replacement, typically
-    // an UnrealizedConversionCastOp fed by the newAIEOperation
+    // The new operation producing the result (if any) instead for replacement,
+    // typically an UnrealizedConversionCastOp fed by the newAIEOperation
     std::optional<mlir::Operation *> newProducer;
 
     // Display the content of AIELikeTypesDeconstruction
@@ -246,26 +246,26 @@ public:
     return detail.value();
   }
 
-  // Associate to a given aie++ C++ type the operation producing the value for
-  // this type
-  void setProducerOpWithUCCast(mlir::Type t, mlir::Operation *op,
-                               mlir::OpBuilder &b) {
+  // Associate to a given aie++ C++ type the lowered AIE operation operation
+  void setProducerOp(mlir::Type t, mlir::Operation *op, mlir::OpBuilder &b) {
     auto &detail = getTypeDetail(t);
     detail.newAIEOperation = op;
-    detail.newProducer = b.create<mlir::UnrealizedConversionCastOp>(
-        op->getLoc(), t, mlir::ValueRange{op->getResult(0)});
     isAIELoweredType.insert(t);
   }
 
   // Associate to a given aie++ C++ type the operation producing the value for
   // this type
-  mlir::Operation *getProducerOp(mlir::Type t) {
+  void setProducerOpWithUCCast(mlir::Type t, mlir::Operation *op,
+                               mlir::OpBuilder &b) {
+    setProducerOp(t, op, b);
     auto &detail = getTypeDetail(t);
-    assert(detail.newProducer &&
-           R"(This type should have an operation registered
-           with a previous setProducerOp())");
-    return detail.newProducer.value();
+    detail.newAIEOperation = op;
+    detail.newProducer = b.create<mlir::UnrealizedConversionCastOp>(
+        op->getLoc(), t, mlir::ValueRange{op->getResult(0)});
   }
+
+  // Get the optional operation producing the value for the given aie++ C++ type
+  auto &getProducerOp(mlir::Type t) { return getTypeDetail(t).newProducer; }
 
   // Get the set of aie++ C++ types which have been lowered to an AIE operation
   // producing a value related to that type
@@ -283,9 +283,7 @@ public:
       for (auto &operand : op->getOpOperands()) {
         auto type = operand.get().getType();
         if (this->isAIELowered(type)) {
-          LLVM_DEBUG(op->emitRemark("visitAIEOperands")
-                     << type << " to "
-                     << this->getProducerOp(type)->getResult(0));
+          LLVM_DEBUG(op->emitRemark("visitAIEOperands") << type);
           callBack(operand);
         }
       }
@@ -661,7 +659,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
                        "using the aie::device");
         // Connect directly the aie::tile user to the one produced by the
         // matching aie.tile
-        cast.replaceAllUsesWith(cat->getProducerOp(cast.getType(0)));
+        cast.replaceAllUsesWith(cat->getProducerOp(cast.getType(0)).value());
         oldCastsFromDevice.push_back(cast);
       }
     });
@@ -728,9 +726,9 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
               // Compute the remapping to be done while cloning from the old
               // operands to the new one produced by the lowered AIE operations
               cat->visitAIEOperands(scopeOp, [&](auto &operand) {
-                irm.map(
-                    operand.get(),
-                    cat->getProducerOp(operand.get().getType())->getResult(0));
+                // Do not remap
+                if (auto producer = cat->getProducerOp(operand.get().getType()))
+                  irm.map(operand.get(), producer.value()->getResult(0));
               });
               b.setInsertionPointToStart(&coreOp.getRegion().front());
               auto *clone = b.clone(*scopeOp.getOperation(), irm);
@@ -830,8 +828,9 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
       auto deviceOp = b.create<xilinx::AIE::DeviceOp>(u.getLoc(), *deviceId);
       // The aie.device requires one block
       deviceOp.getRegion().emplaceBlock();
-      cat->setProducerOpWithUCCast(u.getType(0), deviceOp, b);
-      u->replaceAllUsesWith(cat->getProducerOp(u.getType(0)));
+      // Keep for now the UnrealizedConversionCastOp for the aie.device since
+      // aie.device do not returns value
+      cat->setProducerOp(u.getType(0), deviceOp, b);
       // Note: aie.device does not require a terminator
       LLVM_DEBUG(deviceOp.emitRemark("DeviceLowering: end"));
       return true;
