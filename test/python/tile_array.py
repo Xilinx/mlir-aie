@@ -347,15 +347,15 @@ def nd_channels(module):
 
         shapes = np.array([(10, 10)], dtype="i,i").astype(object)
         c = tiles[2, 2].channel(shape=shapes, dtype=[np.int32])
-        # CHECK: <Channel: buffer=MemRef(%30, memref<10x10xi32>) producer_lock=Scalar(%31 = "aie.lock"(%14) <{sym_name = "_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%32 = "aie.lock"(%14) <{sym_name = "_consumer_lock"}> : (index) -> index)>
+        # CHECK: <Channel: buffer=MemRef(%30, memref<10x10xi32>) producer_lock=Scalar(%31 = "aie.lock"(%14) <{sym_name = "30_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%32 = "aie.lock"(%14) <{sym_name = "30_consumer_lock"}> : (index) -> index)>
         print(c)
         cs = tiles[2:4, 2:4].channel(shape=shapes, dtype=[np.int32])
         assert cs.shape == (2, 2)
 
-        # CHECK: (0, 0) <Channel: buffer=MemRef(%33, memref<10x10xi32>) producer_lock=Scalar(%34 = "aie.lock"(%14) <{sym_name = "_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%35 = "aie.lock"(%14) <{sym_name = "_consumer_lock"}> : (index) -> index)>
-        # CHECK: (0, 1) <Channel: buffer=MemRef(%36, memref<10x10xi32>) producer_lock=Scalar(%37 = "aie.lock"(%15) <{sym_name = "_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%38 = "aie.lock"(%15) <{sym_name = "_consumer_lock"}> : (index) -> index)>
-        # CHECK: (1, 0) <Channel: buffer=MemRef(%39, memref<10x10xi32>) producer_lock=Scalar(%40 = "aie.lock"(%20) <{sym_name = "_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%41 = "aie.lock"(%20) <{sym_name = "_consumer_lock"}> : (index) -> index)>
-        # CHECK: (1, 1) <Channel: buffer=MemRef(%42, memref<10x10xi32>) producer_lock=Scalar(%43 = "aie.lock"(%21) <{sym_name = "_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%44 = "aie.lock"(%21) <{sym_name = "_consumer_lock"}> : (index) -> index)>
+        # CHECK: (0, 0) <Channel: buffer=MemRef(%33, memref<10x10xi32>) producer_lock=Scalar(%34 = "aie.lock"(%14) <{sym_name = "33_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%35 = "aie.lock"(%14) <{sym_name = "33_consumer_lock"}> : (index) -> index)>
+        # CHECK: (0, 1) <Channel: buffer=MemRef(%36, memref<10x10xi32>) producer_lock=Scalar(%37 = "aie.lock"(%15) <{sym_name = "36_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%38 = "aie.lock"(%15) <{sym_name = "36_consumer_lock"}> : (index) -> index)>
+        # CHECK: (1, 0) <Channel: buffer=MemRef(%39, memref<10x10xi32>) producer_lock=Scalar(%40 = "aie.lock"(%20) <{sym_name = "39_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%41 = "aie.lock"(%20) <{sym_name = "39_consumer_lock"}> : (index) -> index)>
+        # CHECK: (1, 1) <Channel: buffer=MemRef(%42, memref<10x10xi32>) producer_lock=Scalar(%43 = "aie.lock"(%21) <{sym_name = "42_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%44 = "aie.lock"(%21) <{sym_name = "42_consumer_lock"}> : (index) -> index)>
         for idx, c in np.ndenumerate(cs):
             print(idx, c)
 
@@ -365,10 +365,10 @@ def nd_channels(module):
         cs = tiles[2:4, 2:4].channel(shape=shapes, dtype=[np.int32])
         assert cs.shape == (2, 2)
 
-        # CHECK: (0, 0) <Channel: buffer=MemRef(%45, memref<1x2xi32>) producer_lock=Scalar(%46 = "aie.lock"(%14) <{sym_name = "_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%47 = "aie.lock"(%14) <{sym_name = "_consumer_lock"}> : (index) -> index)>
-        # CHECK: (0, 1) <Channel: buffer=MemRef(%48, memref<3x4xi32>) producer_lock=Scalar(%49 = "aie.lock"(%15) <{sym_name = "_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%50 = "aie.lock"(%15) <{sym_name = "_consumer_lock"}> : (index) -> index)>
-        # CHECK: (1, 0) <Channel: buffer=MemRef(%51, memref<5x6xi32>) producer_lock=Scalar(%52 = "aie.lock"(%20) <{sym_name = "_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%53 = "aie.lock"(%20) <{sym_name = "_consumer_lock"}> : (index) -> index)>
-        # CHECK: (1, 1) <Channel: buffer=MemRef(%54, memref<7x8xi32>) producer_lock=Scalar(%55 = "aie.lock"(%21) <{sym_name = "_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%56 = "aie.lock"(%21) <{sym_name = "_consumer_lock"}> : (index) -> index)>
+        # CHECK: (0, 0) <Channel: buffer=MemRef(%45, memref<1x2xi32>) producer_lock=Scalar(%46 = "aie.lock"(%14) <{sym_name = "45_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%47 = "aie.lock"(%14) <{sym_name = "45_consumer_lock"}> : (index) -> index)>
+        # CHECK: (0, 1) <Channel: buffer=MemRef(%48, memref<3x4xi32>) producer_lock=Scalar(%49 = "aie.lock"(%15) <{sym_name = "48_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%50 = "aie.lock"(%15) <{sym_name = "48_consumer_lock"}> : (index) -> index)>
+        # CHECK: (1, 0) <Channel: buffer=MemRef(%51, memref<5x6xi32>) producer_lock=Scalar(%52 = "aie.lock"(%20) <{sym_name = "51_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%53 = "aie.lock"(%20) <{sym_name = "51_consumer_lock"}> : (index) -> index)>
+        # CHECK: (1, 1) <Channel: buffer=MemRef(%54, memref<7x8xi32>) producer_lock=Scalar(%55 = "aie.lock"(%21) <{sym_name = "54_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%56 = "aie.lock"(%21) <{sym_name = "54_consumer_lock"}> : (index) -> index)>
         for idx, c in np.ndenumerate(cs):
             print(idx, c)
 
