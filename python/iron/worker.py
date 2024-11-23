@@ -24,7 +24,7 @@ class Worker(ObjectFifoEndpoint):
         core_fn: Callable[[ObjectFifoHandle | Kernel], None] | None,
         fn_args: list[ObjectFifoHandle | Kernel] = [],
         placement: PlacementTile | None = AnyComputeTile,
-        while_true: bool = False,
+        while_true: bool = True,
     ):
         self._tile = placement
         self._while_true = while_true

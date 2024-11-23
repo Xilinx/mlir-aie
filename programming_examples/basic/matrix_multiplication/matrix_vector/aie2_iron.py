@@ -7,9 +7,9 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 
-from aie.iron.io.iocoordinator import IOCoordinator
-from aie.iron.dataflow.objectfifo import ObjectFifo
-from aie.iron.kernels.binkernel import BinKernel
+from aie.iron.runtime import Runtime
+from aie.iron.dataflow import ObjectFifo
+from aie.iron.kernels import BinKernel
 from aie.iron.placers import SequentialPlacer
 from aie.iron.program import Program
 from aie.iron.worker import Worker
@@ -79,7 +79,6 @@ def my_matmul():
         w = Worker(
             core_fn,
             [coreA_fifos[i].cons, B_fifo.cons, outC_fifos[i].prod, zero, matvec],
-            while_true=True,
         )
         workers.append(w)
 
@@ -87,16 +86,18 @@ def my_matmul():
     C_taps = TensorTiler2D.simple_tiler((1, M), (1, M_div_n_cores))
     B_taps = TensorTiler2D.simple_tiler((1, K), pattern_repeat=M_div_m_div_n_cores)
 
-    io = IOCoordinator()
-    with io.runtime_sequence(A_ty, B_ty, C_ty) as (a_in, b_in, c_out):
+    rt = Runtime()
+    with rt.sequence(A_ty, B_ty, C_ty) as (a_in, b_in, c_out):
+        rt.start(*workers)
+
         # there is only one b tile
-        io.fill(B_fifo.prod, B_taps[0], b_in)
+        rt.fill(B_fifo.prod, B_taps[0], b_in)
 
         for i, (a_tap, c_tap) in enumerate(zip(A_taps, C_taps)):
-            io.fill(memA_fifos[i].prod, a_tap, a_in)
-            io.drain(outC_fifos[i].cons, c_tap, c_out, wait=True)
+            rt.fill(memA_fifos[i].prod, a_tap, a_in)
+            rt.drain(outC_fifos[i].cons, c_tap, c_out, wait=True)
 
-    my_program = Program(NPU1Col4(), io, workers)
+    my_program = Program(NPU1Col4(), rt)
     my_program.resolve_program(SequentialPlacer())
 
 

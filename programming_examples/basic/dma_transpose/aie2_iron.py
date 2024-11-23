@@ -9,8 +9,8 @@ import argparse
 import numpy as np
 import sys
 
-from aie.iron.io.iocoordinator import IOCoordinator
-from aie.iron.dataflow.objectfifo import ObjectFifo
+from aie.iron.runtime import Runtime
+from aie.iron.dataflow import ObjectFifo
 from aie.iron.placers import SequentialPlacer
 from aie.iron.program import Program
 from aie.iron.phys.device import NPU1Col1
@@ -31,12 +31,12 @@ def my_passthrough(M, K, generate_acccess_map=False):
     of_in = ObjectFifo(2, tensor_ty)
     of_out = of_in.cons.forward(AnyComputeTile)
 
-    io = IOCoordinator()
-    with io.runtime_sequence(tensor_ty, tensor_ty, tensor_ty) as (a_in, _, c_out):
-        io.fill(of_in.prod, tap_in, a_in)
-        io.drain(of_out.cons, tap_out, c_out, wait=True)
+    rt = Runtime()
+    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (a_in, _, c_out):
+        rt.fill(of_in.prod, tap_in, a_in)
+        rt.drain(of_out.cons, tap_out, c_out, wait=True)
 
-    my_program = Program(NPU1Col1(), io)
+    my_program = Program(NPU1Col1(), rt)
     my_program.resolve_program(SequentialPlacer())
 
 

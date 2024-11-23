@@ -1,7 +1,6 @@
 """
 TODO: 
 * docs
-* types for inout_types
 """
 
 from abc import abstractmethod

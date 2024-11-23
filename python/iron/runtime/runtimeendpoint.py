@@ -4,8 +4,8 @@ from ..dataflow.endpoint import ObjectFifoEndpoint
 from ..phys.tile import Tile, PlacementTile
 
 
-class IOEndpoint(ObjectFifoEndpoint):
-    def __init__(self, placement: PlacementTile) -> IOEndpoint:
+class RuntimeEndpoint(ObjectFifoEndpoint):
+    def __init__(self, placement: PlacementTile) -> RuntimeEndpoint:
         self._tile = placement
 
     @property
@@ -19,9 +19,9 @@ class IOEndpoint(ObjectFifoEndpoint):
         self._tile = tile
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, IOEndpoint):
+        if not isinstance(other, RuntimeEndpoint):
             return NotImplemented
         return self.tile == other.tile
 
     def __str__(self) -> str:
-        return f"IOEndpoint({self.tile})"
+        return f"RuntimeEndpoint({self.tile})"

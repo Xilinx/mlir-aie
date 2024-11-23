@@ -1,8 +1,8 @@
 from abc import ABCMeta, abstractmethod
 
 from .phys.device import Device
-from .io.iocoordinator import IOCoordinator
-from .io.ioendpoint import IOEndpoint
+from .runtime import Runtime
+from .runtime.runtimeendpoint import RuntimeEndpoint
 from .worker import Worker
 from .phys.tile import AnyComputeTile, AnyMemTile
 from .dataflow.objectfifo import ObjectFifoHandle
@@ -14,7 +14,7 @@ class Placer(metaclass=ABCMeta):
     def make_placement(
         self,
         device: Device,
-        io: IOCoordinator,
+        rt: Runtime,
         workers: list[Worker],
         object_fifos: list[ObjectFifoHandle],
     ): ...
@@ -28,7 +28,7 @@ class SequentialPlacer(Placer):
     def make_placement(
         self,
         device: Device,
-        io: IOCoordinator,
+        rt: Runtime,
         workers: list[Worker],
         object_fifos: list[ObjectFifoHandle],
     ):
@@ -50,8 +50,10 @@ class SequentialPlacer(Placer):
 
         for of in object_fifos:
             of_endpoints = of.get_all_endpoints()
-            # IOEndpoints are placed by the IOCoordinator
-            of_endpoints = [of for of in of_endpoints if not isinstance(of, IOEndpoint)]
+            # RuntimeEndpoints are placed by the Runtime
+            of_endpoints = [
+                of for of in of_endpoints if not isinstance(of, RuntimeEndpoint)
+            ]
             for ofe in of_endpoints:
                 if ofe.tile == AnyMemTile:
                     ofe.place(mems[mem_idx])
@@ -63,4 +65,4 @@ class SequentialPlacer(Placer):
                     ofe.place(computes[compute_idx])
                     compute_idx += 1
 
-        io.place_tasks(shims)
+        rt.place_tasks(shims)

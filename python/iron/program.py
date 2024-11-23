@@ -9,9 +9,8 @@ from ..extras.context import mlir_mod_ctx
 from ..extras.dialects.ext.func import FuncBase
 from ..dialects.aie import device
 
-from .worker import Worker
 from .phys.device import Device
-from .io.iocoordinator import IOCoordinator
+from .runtime import Runtime
 from .placers import Placer
 
 
@@ -19,12 +18,10 @@ class Program:
     def __init__(
         self,
         device: Device,
-        io_coordinator: IOCoordinator,
-        workers: list[Worker] = [],
+        rt: Runtime,
     ):
         self._device = device
-        self._workers = workers
-        self._io_coordinator = io_coordinator
+        self._rt = rt
 
     def resolve_program(self, placer: Placer | None = None):
         with mlir_mod_ctx() as ctx:
@@ -33,18 +30,18 @@ class Program:
             def device_body():
                 # Collect all fifos
                 all_fifos = set()
-                all_fifos.update(self._io_coordinator.get_fifos())
-                for w in self._workers:
+                all_fifos.update(self._rt.get_fifos())
+                for w in self._rt.get_workers():
                     all_fifos.update(w.get_fifos())
 
+                workers = self._rt.get_workers()
                 if placer:
-                    placer.make_placement(
-                        self._device, self._io_coordinator, self._workers, all_fifos
-                    )
+                    # TODO: should maybe just take runtime?
+                    placer.make_placement(self._device, self._rt, workers, all_fifos)
 
                 # Collect all tiles
                 all_tiles = []
-                for w in self._workers:
+                for w in workers:
                     all_tiles.append(w.tile)
                 for f in all_fifos:
                     all_tiles.append(f.end_prod_tile())
@@ -61,7 +58,7 @@ class Program:
                     self._print_verify(ctx)
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
-                for w in self._workers:
+                for w in workers:
                     for arg in w.fn_args:
                         if isinstance(arg, FuncBase):
                             arg.emit()
@@ -70,12 +67,12 @@ class Program:
                         self._print_verify(ctx)
 
                 # Generate core programs
-                for w in self._workers:
+                for w in workers:
                     w.resolve()
                     self._print_verify(ctx)
 
                 # In/Out Sequence
-                self._io_coordinator.resolve()
+                self._rt.resolve()
                 self._print_verify(ctx)
 
             print(ctx.module)

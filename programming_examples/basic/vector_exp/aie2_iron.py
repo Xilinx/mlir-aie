@@ -8,12 +8,12 @@
 import numpy as np
 from ml_dtypes import bfloat16
 
-from aie.iron.io.iocoordinator import IOCoordinator
-from aie.iron.dataflow.objectfifo import ObjectFifo
+from aie.iron.runtime import Runtime
+from aie.iron.dataflow import ObjectFifo
 from aie.iron.placers import SequentialPlacer
 from aie.iron.program import Program
 from aie.iron.worker import Worker
-from aie.iron.kernels.binkernel import BinKernel
+from aie.iron.kernels import BinKernel
 from aie.iron.phys.device import NPU1Col1
 from aie.helpers.taplib import TensorTiler2D
 from aie.helpers.dialects.ext.scf import _for as range_
@@ -46,13 +46,6 @@ def my_eltwise_exp():
         offsets=[n * i for i in range(n_cores)], types=[tile_ty] * n_cores
     )
 
-    tap = TensorTiler2D.simple_tiler((1, N))[0]
-
-    io = IOCoordinator()
-    with io.runtime_sequence(tensor_ty, tensor_ty) as (a_in, c_out):
-        io.fill(A_fifo.prod, tap, a_in)
-        io.drain(C_fifo.cons, tap, c_out, wait=True)
-
     def core_fn(a_in, c_out, exp_bf16_1024):
         for _ in range_(0xFFFFFFFF):
             for _ in range_(tiles):
@@ -68,7 +61,15 @@ def my_eltwise_exp():
             Worker(core_fn, fn_args=[a_fifos[i].cons, c_fifos[i].prod, exp_bf16_1024])
         )
 
-    return Program(NPU1Col1(), io, workers=workers)
+    tap = TensorTiler2D.simple_tiler((1, N))[0]
+
+    rt = Runtime()
+    with rt.sequence(tensor_ty, tensor_ty) as (a_in, c_out):
+        rt.start(*workers)
+        rt.fill(A_fifo.prod, tap, a_in)
+        rt.drain(C_fifo.cons, tap, c_out, wait=True)
+
+    return Program(NPU1Col1(), rt)
 
 
 my_eltwise_exp().resolve_program(SequentialPlacer())

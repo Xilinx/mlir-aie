@@ -8,8 +8,8 @@
 import numpy as np
 import sys
 
-from aie.iron.io.iocoordinator import IOCoordinator
-from aie.iron.dataflow.objectfifo import ObjectFifo
+from aie.iron.runtime import Runtime
+from aie.iron.dataflow import ObjectFifo
 from aie.iron.placers import SequentialPlacer
 from aie.iron.program import Program
 from aie.iron.phys.device import NPU1Col1
@@ -41,11 +41,11 @@ line_ty = np.ndarray[(line_size,), np.dtype[np.int32]]
 of_in = ObjectFifo(2, line_ty, "in")
 of_out = of_in.cons.forward()
 
-io = IOCoordinator()
-with io.runtime_sequence(vector_ty, vector_ty, vector_ty) as (a_in, _, c_out):
+rt = Runtime()
+with rt.sequence(vector_ty, vector_ty, vector_ty) as (a_in, _, c_out):
     tap = TensorAccessPattern((1, N), 0, sizes=[1, 1, 1, N], strides=[0, 0, 0, 1])
-    io.fill(of_in.prod, tap, a_in)
-    io.drain(of_out.cons, tap, c_out, wait=True)
+    rt.fill(of_in.prod, tap, a_in)
+    rt.drain(of_out.cons, tap, c_out, wait=True)
 
-my_program = Program(dev, io)
+my_program = Program(dev, rt)
 my_program.resolve_program(SequentialPlacer())

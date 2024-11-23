@@ -4,7 +4,7 @@ from ...dialects._aiex_ops_gen import dma_start_task, dma_await_task
 from ...dialects.aiex import shim_dma_single_bd_task
 from ..dataflow.objectfifo import ObjectFifoHandle
 from ..resolvable import Resolvable
-from .inoutdata import InOutData
+from .runtimedata import RuntimeData
 from ...helpers.taplib import TensorAccessPattern
 
 
@@ -12,12 +12,12 @@ class DMATask(Resolvable):
     def __init__(
         self,
         object_fifo: ObjectFifoHandle,
-        inout_data: InOutData,
+        rt_data: RuntimeData,
         tap: TensorAccessPattern,
         wait=False,
     ):
         self._object_fifo = object_fifo
-        self._inout_data = inout_data
+        self._rt_data = rt_data
         self._tap = tap
         self._wait = wait
         self._task = None
@@ -41,7 +41,7 @@ class DMATask(Resolvable):
     ) -> None:
         self._task = shim_dma_single_bd_task(
             self._object_fifo.op,
-            self._inout_data.op,
+            self._rt_data.op,
             tap=self._tap,
             issue_token=self._wait,
         )

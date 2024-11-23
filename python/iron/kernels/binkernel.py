@@ -1,7 +1,7 @@
 """
 TODO: 
 * docs
-* types for inout_types
+* types for arg_types
 """
 
 import numpy as np
@@ -18,11 +18,11 @@ class BinKernel(Kernel):
         self,
         name: str,
         bin_name: str,
-        inout_types: list[type[np.ndarray] | np.dtype] = [],
+        arg_types: list[type[np.ndarray] | np.dtype] = [],
     ) -> None:
         self._name = name
         self._bin_name = bin_name
-        self._inout_types = inout_types
+        self._arg_types = arg_types
         self._op: FuncOp | None = None
 
     @property
@@ -35,7 +35,7 @@ class BinKernel(Kernel):
         ip: ir.InsertionPoint | None = None,
     ) -> None:
         if self._op == None:
-            self._op = external_func(self._name, inputs=self._inout_types)
+            self._op = external_func(self._name, inputs=self._arg_types)
 
     def __call__(self, *args, **kwargs):
         assert self._op, "Need to resolve BinKernel before it can be called"

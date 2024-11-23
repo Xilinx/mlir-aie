@@ -8,8 +8,8 @@
 import numpy as np
 import sys
 
-from aie.iron.io.iocoordinator import IOCoordinator
-from aie.iron.dataflow.objectfifo import ObjectFifo
+from aie.iron.runtime import Runtime
+from aie.iron.dataflow import ObjectFifo
 from aie.iron.placers import SequentialPlacer
 from aie.iron.program import Program
 from aie.iron.kernels.binkernel import BinKernel
@@ -46,23 +46,24 @@ def row_wise_bias_add(M, N, m, n):
                 in_fifo.release(1)
             bias_fifo.release(1)
 
+    my_worker = Worker(
+        core_fn,
+        fn_args=[in_fifo.cons, bias_fifo.cons, out_fifo.prod, kernel_func],
+    )
+
     tiler = TensorTiler2D.group_tiler(
         (M, N), (m, n), (M // m, N // n), tile_group_col_major=True
     )
     bias_tiler = TensorTiler2D.group_tiler((1, N), (1, n), (1, N // n))
 
-    io = IOCoordinator()
-    with io.runtime_sequence(tensor_ty, bias_ty, tensor_ty) as (inp, bias, out):
-        io.fill(in_fifo.prod, tiler[0], inp)
-        io.fill(bias_fifo.prod, bias_tiler[0], bias)
-        io.drain(out_fifo.cons, tiler[0], out, wait=True)
+    rt = Runtime()
+    with rt.sequence(tensor_ty, bias_ty, tensor_ty) as (inp, bias, out):
+        rt.start(my_worker)
+        rt.fill(in_fifo.prod, tiler[0], inp)
+        rt.fill(bias_fifo.prod, bias_tiler[0], bias)
+        rt.drain(out_fifo.cons, tiler[0], out, wait=True)
 
-    my_worker = Worker(
-        core_fn,
-        fn_args=[in_fifo.cons, bias_fifo.cons, out_fifo.prod, kernel_func],
-        while_true=True,
-    )
-    return Program(NPU1Col1(), io, workers=[my_worker])
+    return Program(NPU1Col1(), rt)
 
 
 program = row_wise_bias_add(

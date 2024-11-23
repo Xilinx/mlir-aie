@@ -2,9 +2,9 @@ import numpy as np
 from ...extras.dialects.ext.memref import MemRef
 
 
-class InOutData:
-    def __init__(self, inout_type: type[np.ndarray]):
-        self.inout_type = inout_type
+class RuntimeData:
+    def __init__(self, dtype: type[np.ndarray]):
+        self.dtype = dtype
         self._op = None
 
     @property

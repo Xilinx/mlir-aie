@@ -5,12 +5,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-import itertools
 import numpy as np
 import sys
 
-from aie.iron.io.iocoordinator import IOCoordinator
-from aie.iron.dataflow.objectfifo import ObjectFifo
+from aie.iron.runtime import Runtime
+from aie.iron.dataflow import ObjectFifo
 from aie.iron.program import Program
 from aie.iron.placers import SequentialPlacer
 from aie.iron.worker import Worker
@@ -18,20 +17,15 @@ from aie.iron.phys.device import NPU1Col1
 from aie.helpers.taplib import TensorTiler2D
 from aie.helpers.dialects.ext.scf import _for as range_
 
-# Size of the entire image
-IMAGE_HEIGHT = 16
-IMAGE_WIDTH = 128
-IMAGE_SIZE = IMAGE_WIDTH * IMAGE_HEIGHT
+# Size of the entire matrix
+MATRIX_HEIGHT = 16
+MATRIX_WIDTH = 128
+MATRIX_SHAPE = (MATRIX_HEIGHT, MATRIX_WIDTH)
 
 # Size of the tile we are processing
 TILE_HEIGHT = 8
 TILE_WIDTH = 16
-TILE_SIZE = TILE_WIDTH * TILE_HEIGHT
-
-NUM_3D = IMAGE_WIDTH / TILE_WIDTH
-NUM_4D = IMAGE_HEIGHT / TILE_HEIGHT
-
-objfifo_capacity = 4
+TILE_SHAPE = (TILE_HEIGHT, TILE_WIDTH)
 
 
 def my_matrix_add_one():
@@ -45,33 +39,34 @@ def my_matrix_add_one():
     else:
         raise ValueError(f"[ERROR] Device name {sys.argv[1]} is unknown")
 
-    tile_ty = np.ndarray[(TILE_SIZE,), np.dtype[np.int32]]
+    matrix_ty = np.ndarray[MATRIX_SHAPE, np.dtype[np.int32]]
+    tile_ty = np.ndarray[TILE_SHAPE, np.dtype[np.int32]]
 
     # AIE-array data movement with object fifos
-    of_in = ObjectFifo(objfifo_capacity, tile_ty, "in0")
-    of_out = ObjectFifo(objfifo_capacity, tile_ty, "out0")
+    of_in = ObjectFifo(2, tile_ty, "in0")
+    of_out = ObjectFifo(2, tile_ty, "out0")
 
     # Set up compute tile 2
     def core_fn(of_in1, of_out1):
         elem_in = of_in1.acquire(1)
         elem_out = of_out1.acquire(1)
-        for i in range_(TILE_SIZE):
-            elem_out[i] = elem_in[i] + 1
+        for i in range_(TILE_HEIGHT):
+            for j in range_(TILE_WIDTH):
+                elem_out[i, j] = elem_in[i, j] + 1
         of_in1.release(1)
         of_out1.release(1)
 
-    my_worker = Worker(core_fn, fn_args=[of_in.cons, of_out.prod], while_true=True)
+    my_worker = Worker(core_fn, fn_args=[of_in.cons, of_out.prod])
 
-    taps = TensorTiler2D.simple_tiler(
-        (IMAGE_HEIGHT, IMAGE_WIDTH), (TILE_HEIGHT, TILE_WIDTH)
-    )
+    tap0 = TensorTiler2D.simple_tiler(MATRIX_SHAPE, TILE_SHAPE)[0]
 
-    io = IOCoordinator()
-    with io.runtime_sequence(tile_ty, tile_ty, tile_ty) as (in_tensor, _, out_tensor):
-        io.fill(of_in.prod, taps[0], in_tensor)
-        io.drain(of_out.cons, taps[0], out_tensor, wait=True)
+    rt = Runtime()
+    with rt.sequence(matrix_ty, matrix_ty, matrix_ty) as (in_tensor, _, out_tensor):
+        rt.start(my_worker)
+        rt.fill(of_in.prod, tap0, in_tensor)
+        rt.drain(of_out.cons, tap0, out_tensor, wait=True)
 
-    return Program(dev, io, workers=[my_worker])
+    return Program(dev, rt)
 
 
 my_matrix_add_one().resolve_program(SequentialPlacer())
