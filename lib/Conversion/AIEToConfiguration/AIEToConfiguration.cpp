@@ -432,6 +432,7 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
                                  AIEDevice::npu1};
   auto device = builder.create<DeviceOp>(loc, devices[columns - 1]);
   device.getRegion().emplaceBlock();
+  DeviceOp::ensureTerminator(device.getBodyRegion(), builder, loc);
   builder.setInsertionPointToStart(device.getBody());
 
   // convert the parsed ops to MLIR

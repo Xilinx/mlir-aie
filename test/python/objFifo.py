@@ -62,3 +62,4 @@ def objFifo_example():
             elem0[0] = 10
             of0.release(ObjectFifoPort.Consume, 1)
             end()
+        end()
