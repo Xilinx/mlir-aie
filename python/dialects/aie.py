@@ -290,7 +290,7 @@ class buffer(BufferOp, ShapedValue):
         )
 
     def get_name(self):
-        return self.result.get_name()
+        return self.sym_name.value if self.sym_name else self.result.get_name()
 
     def __str__(self):
         return str(self.result)
@@ -519,7 +519,7 @@ class packetflow(PacketFlowOp):
 
 
 core = region_op(Core, terminator=lambda *_: EndOp())
-device = region_op(Device)
+device = region_op(Device, terminator=lambda *_: EndOp())
 switchbox = region_op(
     lambda tile, *, loc=None, ip=None: SwitchboxOp(T.index(), tile, loc=loc, ip=ip)
 )

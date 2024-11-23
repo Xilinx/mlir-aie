@@ -50,7 +50,7 @@ struct AIEBroadcastPacketPass
   void runOnOperation() override {
 
     DeviceOp device = getOperation();
-    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
+    OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
 
     for (auto broadcastpacket : device.getOps<BroadcastPacketOp>()) {
       Region &r = broadcastpacket.getPorts();

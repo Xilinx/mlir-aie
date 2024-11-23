@@ -55,3 +55,4 @@ def objFifo_example():
                 np.arange(4, 8, dtype=np.int32).reshape(2, 2),
             ],
         )
+        end()
