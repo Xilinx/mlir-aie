@@ -41,12 +41,6 @@ build/final.xclbin: build/aie.mlir
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
-build/experimental_final.xclbin: build/experimental_aie.mlir
-	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
-		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=experimental_insts.txt ${<F}
-
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
@@ -59,10 +53,6 @@ else
 endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${devicename} ${col} > $@
-
-build/experimental_aie.mlir: ${srcdir}/experimental_aie2.py
 	mkdir -p ${@D}
 	python3 $< ${devicename} ${col} > $@
 
@@ -83,9 +73,6 @@ vck5000: build/aie.mlir
 
 run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
-
-run_experimental: ${targetname}.exe build/experimental_final.xclbin build/experimental_insts.txt 
-	${powershell} ./$< -x build/experimental_final.xclbin -i build/experimental_insts.txt -k MLIR_AIE
 
 clean:
 	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe

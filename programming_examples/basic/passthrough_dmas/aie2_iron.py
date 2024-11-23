@@ -8,12 +8,12 @@
 import numpy as np
 import sys
 
-from aie.api.io.iocoordinator import IOCoordinator
-from aie.api.dataflow.objectfifo import ObjectFifo
-from aie.api.placers import SequentialPlacer
-from aie.api.program import Program
-from aie.api.phys.device import NPU1Col1
-from aie.helpers.tensortiler.tensortiler2D import TensorTile
+from aie.iron.io.iocoordinator import IOCoordinator
+from aie.iron.dataflow.objectfifo import ObjectFifo
+from aie.iron.placers import SequentialPlacer
+from aie.iron.program import Program
+from aie.iron.phys.device import NPU1Col1
+from aie.helpers.taplib import TensorAccessPattern
 
 N = 4096
 dev = None
@@ -43,10 +43,9 @@ of_out = of_in.cons.forward()
 
 io = IOCoordinator()
 with io.runtime_sequence(vector_ty, vector_ty, vector_ty) as (a_in, _, c_out):
-    tile = TensorTile(1, N, 0, sizes=[1, 1, 1, N], strides=[0, 0, 0, 1], transfer_len=N)
-    for t in io.tile_loop(iter([tile])):
-        io.fill(of_in.prod, t, a_in)
-        io.drain(of_out.cons, t, c_out, wait=True)
+    tap = TensorAccessPattern((1, N), 0, sizes=[1, 1, 1, N], strides=[0, 0, 0, 1])
+    io.fill(of_in.prod, tap, a_in)
+    io.drain(of_out.cons, tap, c_out, wait=True)
 
 my_program = Program(dev, io)
 my_program.resolve_program(SequentialPlacer())

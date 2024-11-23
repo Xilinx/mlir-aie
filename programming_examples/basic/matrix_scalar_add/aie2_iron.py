@@ -9,13 +9,13 @@ import itertools
 import numpy as np
 import sys
 
-from aie.api.io.iocoordinator import IOCoordinator
-from aie.api.dataflow.objectfifo import ObjectFifo
-from aie.api.program import Program
-from aie.api.placers import SequentialPlacer
-from aie.api.worker import Worker
-from aie.api.phys.device import NPU1Col1
-from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D
+from aie.iron.io.iocoordinator import IOCoordinator
+from aie.iron.dataflow.objectfifo import ObjectFifo
+from aie.iron.program import Program
+from aie.iron.placers import SequentialPlacer
+from aie.iron.worker import Worker
+from aie.iron.phys.device import NPU1Col1
+from aie.helpers.taplib import TensorTiler2D
 from aie.helpers.dialects.ext.scf import _for as range_
 
 # Size of the entire image
@@ -45,7 +45,6 @@ def my_matrix_add_one():
     else:
         raise ValueError(f"[ERROR] Device name {sys.argv[1]} is unknown")
 
-    col = int(sys.argv[2])
     tile_ty = np.ndarray[(TILE_SIZE,), np.dtype[np.int32]]
 
     # AIE-array data movement with object fifos
@@ -63,12 +62,14 @@ def my_matrix_add_one():
 
     my_worker = Worker(core_fn, fn_args=[of_in.cons, of_out.prod], while_true=True)
 
+    taps = TensorTiler2D.simple_tiler(
+        (IMAGE_HEIGHT, IMAGE_WIDTH), (TILE_HEIGHT, TILE_WIDTH)
+    )
+
     io = IOCoordinator()
     with io.runtime_sequence(tile_ty, tile_ty, tile_ty) as (in_tensor, _, out_tensor):
-        tiler = TensorTiler2D(IMAGE_HEIGHT, IMAGE_WIDTH, TILE_HEIGHT, TILE_WIDTH)
-        for t in io.tile_loop(itertools.islice(tiler.tile_iter(), 0, 1)):
-            io.fill(of_in.prod, t, in_tensor)
-            io.drain(of_out.cons, t, out_tensor, wait=True)
+        io.fill(of_in.prod, taps[0], in_tensor)
+        io.drain(of_out.cons, taps[0], out_tensor, wait=True)
 
     return Program(dev, io, workers=[my_worker])
 
