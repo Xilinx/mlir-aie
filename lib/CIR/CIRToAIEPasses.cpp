@@ -623,6 +623,9 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
             mlir::dyn_cast<xilinx::AIE::TileOp>(*tileDetail.newAIEOperation);
         if (!tileOp)
           bufCast->emitError("No aie.device operation found for this tile");
+        // Insert at the end of the aie.device to keep C++ program order
+        auto deviceOp = tileOp->getParentOfType<xilinx::AIE::DeviceOp>();
+        b.setInsertionPoint(deviceOp.getBody()->getTerminator());
         // The direct connection to tileOp is a peephole optimization but it
         // could be connected to the new tileOp UnrealizedConversionCastOp which
         // could be removed later by a cleaning phase
@@ -705,10 +708,11 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
               if (!tileOp)
                 LLVM_DEBUG(callOp->emitError(
                     "No aie.device operation found for this tile"));
+              // Create the aie.core before the aie.end of the aie.device body
+              // to keep the C++ order
               auto deviceOp = tileOp->getParentOfType<xilinx::AIE::DeviceOp>();
-              // Create the aie.core at the end of the aie.device body to keep
-              // the C++ order
-              b.setInsertionPointToEnd(&deviceOp.getBodyRegion().back());
+              b.setInsertionPoint(deviceOp.getBody()->getTerminator());
+
               auto coreOp =
                   b.create<xilinx::AIE::CoreOp>(callOp.getLoc(), tileOp);
               // Create the empty block of the aie.core op region
@@ -732,7 +736,8 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
               // Compute the remapping to be done while cloning from the old
               // operands to the new one produced by the lowered AIE operations
               cat->visitAIEOperands(scopeOp, [&](auto &operand) {
-                // Do not remap
+                // Remap only if there is interesting result. Skip aie.device
+                // for example
                 if (auto producer = cat->getProducerOp(operand.get().getType()))
                   irm.map(operand.get(), producer.value()->getResult(0));
               });
@@ -785,7 +790,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
           tileCast->emitError("No aie.device operation found for this tile");
         // Create all the following code inside the device region. Add the tile
         // to the end to keep C++ program order.
-        b.setInsertionPointToEnd(deviceOp.getBody());
+        b.setInsertionPoint(deviceOp.getBody()->getTerminator());
         auto tileOp = b.create<xilinx::AIE::TileOp>(
             tileCast.getLoc(), std::stoi(col), std::stoi(row));
         cat->setProducerOpWithUCCast(tileCastOutputType, tileOp, b);
@@ -832,8 +837,9 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
       // should be fine.
       b.setInsertionPoint(u);
       auto deviceOp = b.create<xilinx::AIE::DeviceOp>(u.getLoc(), *deviceId);
-      // The aie.device requires one block
-      deviceOp.getRegion().emplaceBlock();
+      // The aie.device requires one block and a terminator
+      b.setInsertionPointToEnd(&deviceOp.getRegion().emplaceBlock());
+      b.create<xilinx::AIE::EndOp>(u.getLoc());
       // Keep for now the UnrealizedConversionCastOp for the aie.device since
       // aie.device do not returns value
       cat->setProducerOp(u.getType(0), deviceOp, b);
