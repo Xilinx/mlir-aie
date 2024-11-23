@@ -348,13 +348,17 @@ class TensorTiler2D:
         )
 
         if pattern_repeat != 1:
-            if iter_sizes[1] == 1 and iter_strides[0] == 0:
-                iter_sizes[1] = pattern_repeat
-            else:
-                if iter_sizes[0] != 1 or iter_strides[0] != 0:
-                    raise ValueError(
-                        f"Ran out of dimensions for repeat (sizes={iter_sizes}, strides={iter_strides})"
-                    )
-                iter_sizes[0] = pattern_repeat
+            # While it would be nice to "conserve" dimensions (and use a lower dimension if possible)
+            # dim0 is "special" for AIEs and it can handle sizes!=1 with strides==0,
+            # so we always use dim0 for pattern_repeat.
+            if iter_sizes[0] != 1 or iter_strides[0] != 0:
+                raise ValueError(
+                    f"Ran out of dimensions for repeat (sizes={iter_sizes}, strides={iter_strides})"
+                )
+            iter_sizes[0] = pattern_repeat
+
+        iter_sizes, iter_strides = validate_and_clean_sizes_strides(
+            iter_sizes, iter_strides
+        )
 
         return iter_sizes, iter_strides

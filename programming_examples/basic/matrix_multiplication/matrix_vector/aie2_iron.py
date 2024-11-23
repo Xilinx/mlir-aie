@@ -7,14 +7,14 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 
-from aie.api.io.iocoordinator import IOCoordinator
-from aie.api.dataflow.objectfifo import ObjectFifo
-from aie.api.kernels.binkernel import BinKernel
-from aie.api.placers import SequentialPlacer
-from aie.api.program import Program
-from aie.api.worker import Worker
-from aie.api.phys.device import NPU1Col4
-from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D, TensorTile
+from aie.iron.io.iocoordinator import IOCoordinator
+from aie.iron.dataflow.objectfifo import ObjectFifo
+from aie.iron.kernels.binkernel import BinKernel
+from aie.iron.placers import SequentialPlacer
+from aie.iron.program import Program
+from aie.iron.worker import Worker
+from aie.iron.phys.device import NPU1Col4
+from aie.helpers.taplib import TensorTiler2D
 from aie.helpers.dialects.ext.scf import _for as range_
 
 
@@ -26,12 +26,7 @@ def my_matmul():
 
     # TODO: increase this
     n_cores = 1
-
-    A_sz = M * K
-    B_sz = K
-    C_sz = M
-    C_sz_div_n_cores = C_sz // n_cores
-
+    M_div_n_cores = M // n_cores
     M_div_m_div_n_cores = M // (m * n_cores)
     K_div_k = K // k
 
@@ -43,10 +38,10 @@ def my_matmul():
     dtype_out = np.dtype[np.int32]
     dtype_out_str = "i32"
 
-    allA_ty = np.ndarray[(A_sz,), dtype_in]
-    allB_ty = np.ndarray[(B_sz,), dtype_in]
-    allC_ty = np.ndarray[(C_sz,), dtype_out]
-    inA_ty = np.ndarray[(m * k,), dtype_in]
+    A_ty = np.ndarray[(M, K), dtype_in]
+    B_ty = np.ndarray[(1, K), dtype_in]
+    C_ty = np.ndarray[(1, M), dtype_out]
+    inA_ty = np.ndarray[(m, k), dtype_in]
     inB_ty = np.ndarray[(k,), dtype_in]
     outC_ty = np.ndarray[(m,), dtype_out]
     A_ty = np.ndarray[(m, k), dtype_in]
@@ -88,25 +83,18 @@ def my_matmul():
         )
         workers.append(w)
 
+    A_taps = TensorTiler2D.group_tiler((M, K), (m, k), (M_div_m_div_n_cores, K_div_k))
+    C_taps = TensorTiler2D.simple_tiler((1, M), (1, M_div_n_cores))
+    B_taps = TensorTiler2D.simple_tiler((1, K), pattern_repeat=M_div_m_div_n_cores)
+
     io = IOCoordinator()
-    with io.runtime_sequence(allA_ty, allB_ty, allC_ty) as (a_in, b_in, c_out):
-        A_tiler = TensorTiler2D(M, K, m, k)
-        A_tile_iter = A_tiler.tile_iter(
-            chunk_height=M_div_m_div_n_cores, chunk_width=K_div_k
-        )
+    with io.runtime_sequence(A_ty, B_ty, C_ty) as (a_in, b_in, c_out):
+        # there is only one b tile
+        io.fill(B_fifo.prod, B_taps[0], b_in)
 
-        C_tiler = TensorTiler2D(1, C_sz, 1, C_sz_div_n_cores)
-        C_tile_iter = C_tiler.tile_iter()
-
-        # TODO: don't support repeat yet so just make one tile
-        b_tile = TensorTile(
-            1, K, offset=0, sizes=[M_div_m_div_n_cores, 1, 1, K], strides=[0, 0, 0, 1]
-        )
-        io.fill(B_fifo.prod, b_tile, b_in)
-
-        for i, (a_tile, c_tile) in enumerate(io.tile_loop(A_tile_iter, C_tile_iter)):
-            io.fill(memA_fifos[i].prod, a_tile, a_in)
-            io.drain(outC_fifos[i].cons, c_tile, c_out, wait=True)
+        for i, (a_tap, c_tap) in enumerate(zip(A_taps, C_taps)):
+            io.fill(memA_fifos[i].prod, a_tap, a_in)
+            io.drain(outC_fifos[i].cons, c_tap, c_out, wait=True)
 
     my_program = Program(NPU1Col4(), io, workers)
     my_program.resolve_program(SequentialPlacer())
