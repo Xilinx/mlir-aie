@@ -8,14 +8,14 @@
 import numpy as np
 import sys
 
-from aie.api.io.iocoordinator import IOCoordinator
-from aie.api.dataflow.objectfifo import ObjectFifo
-from aie.api.kernels.binkernel import BinKernel
-from aie.api.placers import SequentialPlacer
-from aie.api.program import Program
-from aie.api.worker import Worker
-from aie.api.phys.device import NPU1Col1
-from aie.helpers.tensortiler.tensortiler2D import TensorTile
+from aie.iron.io.iocoordinator import IOCoordinator
+from aie.iron.dataflow.objectfifo import ObjectFifo
+from aie.iron.kernels.binkernel import BinKernel
+from aie.iron.placers import SequentialPlacer
+from aie.iron.program import Program
+from aie.iron.worker import Worker
+from aie.iron.phys.device import NPU1Col1
+from aie.helpers.taplib import TensorTiler2D
 
 try:
     vector_size = int(sys.argv[1])
@@ -32,19 +32,12 @@ vector_type = np.ndarray[(vector_size,), np.dtype[np.uint8]]
 of_in = ObjectFifo(2, line_type, "in")
 of_out = ObjectFifo(2, line_type, "out")
 
+tap = TensorTiler2D.simple_tiler((1, vector_size))[0]
+
 io = IOCoordinator()
 with io.runtime_sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
-    tile = TensorTile(
-        1,
-        vector_size,
-        0,
-        sizes=[1, 1, 1, vector_size],
-        strides=[0, 0, 0, 1],
-        transfer_len=vector_size,
-    )
-    for t in io.tile_loop(iter([tile])):
-        io.fill(of_in.prod, t, a_in)
-        io.drain(of_out.cons, t, b_out, wait=True)
+    io.fill(of_in.prod, tap, a_in)
+    io.drain(of_out.cons, tap, b_out, wait=True)
 
 passthrough_fn = BinKernel(
     "passThroughLine",

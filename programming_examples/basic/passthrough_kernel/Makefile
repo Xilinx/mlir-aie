@@ -20,9 +20,17 @@ PASSTHROUGH_SIZE = ${data_size}
 
 aie_py_src=aie2.py
 use_alt?=0
+use_iron?=0
 
 ifeq (${use_alt}, 1)
 aie_py_src=aie2_alt.py
+ifeq (${use_iron}, 1)
+$(error Cannot specify both alternative design and IRON)
+endif
+endif
+
+ifeq (${use_iron}, 1)
+aie_py_src=aie2_iron.py
 endif
 
 .PHONY: all template clean
@@ -37,13 +45,6 @@ build/aie_trace__lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${data_size} ${trace_size} > $@
 
-build/experimental_aie2_lineBased_8b_${data_size}.mlir: ${srcdir}/experimental_aie2.py
-	mkdir -p ${@D}
-	python3 $< ${data_size} 0 > $@
-
-mlir_diff: build/aie2_lineBased_8b_${data_size}.mlir build/experimental_aie2_lineBased_8b_${data_size}.mlir
-	diff build/aie2_lineBased_8b_${data_size}.mlir build/experimental_aie2_lineBased_8b_${data_size}.mlir
-
 build/passThrough.cc.o: passThrough.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
@@ -53,12 +54,6 @@ build/final_${data_size}.xclbin: build/aie2_lineBased_8b_${data_size}.mlir build
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
-
-build/experimental_final_${data_size}.xclbin: build/experimental_aie2_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
-	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
-		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=experimental_insts_${data_size}.txt $(<:%=../%)
 
 build/final_trace_${data_size}.xclbin: build/aie2_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
@@ -85,9 +80,6 @@ run: ${targetname}_${data_size}.exe build/final_${data_size}.xclbin build/insts_
 
 run_py: build/final_${data_size}.xclbin build/insts_${data_size}.txt
 	${powershell} python3 ${srcdir}/test.py -s ${data_size} -x build/final_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE
-
-run_experimental_py: build/experimental_final_${data_size}.xclbin build/experimental_insts_${data_size}.txt
-	${powershell} python3 ${srcdir}/test.py -s ${data_size} -x build/experimental_final_${data_size}.xclbin -i build/experimental_insts_${data_size}.txt -k MLIR_AIE
 
 trace: ${targetname}_${data_size}.exe build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt 
 	${powershell} ./$< -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size}
