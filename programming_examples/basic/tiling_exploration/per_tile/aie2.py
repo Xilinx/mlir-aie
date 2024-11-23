@@ -11,7 +11,6 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.helpers.taplib import TensorTiler2D

@@ -8,14 +8,14 @@
 import numpy as np
 from ml_dtypes import bfloat16
 
-from aie.api.io.iocoordinator import IOCoordinator
-from aie.api.dataflow.objectfifo import ObjectFifo
-from aie.api.placers import SequentialPlacer
-from aie.api.program import Program
-from aie.api.worker import Worker
-from aie.api.kernels.binkernel import BinKernel
-from aie.api.phys.device import NPU1Col1
-from aie.helpers.tensortiler.tensortiler2D import TensorTile
+from aie.iron.io.iocoordinator import IOCoordinator
+from aie.iron.dataflow.objectfifo import ObjectFifo
+from aie.iron.placers import SequentialPlacer
+from aie.iron.program import Program
+from aie.iron.worker import Worker
+from aie.iron.kernels.binkernel import BinKernel
+from aie.iron.phys.device import NPU1Col1
+from aie.helpers.taplib import TensorTiler2D
 from aie.helpers.dialects.ext.scf import _for as range_
 
 
@@ -43,22 +43,15 @@ def my_eltwise_exp():
         offsets=[n * i for i in range(n_cores)], types=[tile_ty] * n_cores
     )
     c_fifos = C_fifo.prod.join(
-        offset=[n * i for i in range(n_cores)], types=[tile_ty] * n_cores
+        offsets=[n * i for i in range(n_cores)], types=[tile_ty] * n_cores
     )
+
+    tap = TensorTiler2D.simple_tiler((1, N))[0]
 
     io = IOCoordinator()
     with io.runtime_sequence(tensor_ty, tensor_ty) as (a_in, c_out):
-        tile = TensorTile(
-            1,
-            N,
-            0,
-            sizes=[1, 1, 1, N],
-            strides=[0, 0, 0, 1],
-            transfer_len=N,
-        )
-        for t in io.tile_loop(iter([tile])):
-            io.fill(A_fifo.prod, t, a_in)
-            io.drain(C_fifo.cons, t, c_out, wait=True)
+        io.fill(A_fifo.prod, tap, a_in)
+        io.drain(C_fifo.cons, tap, c_out, wait=True)
 
     def core_fn(a_in, c_out, exp_bf16_1024):
         for _ in range_(0xFFFFFFFF):

@@ -8,14 +8,14 @@
 import numpy as np
 import sys
 
-from aie.api.io.iocoordinator import IOCoordinator
-from aie.api.dataflow.objectfifo import ObjectFifo
-from aie.api.placers import SequentialPlacer
-from aie.api.program import Program
-from aie.api.kernels.binkernel import BinKernel
-from aie.api.worker import Worker
-from aie.api.phys.device import NPU1Col1
-from aie.helpers.tensortiler.tensortiler2D import TensorTiler2D
+from aie.iron.io.iocoordinator import IOCoordinator
+from aie.iron.dataflow.objectfifo import ObjectFifo
+from aie.iron.placers import SequentialPlacer
+from aie.iron.program import Program
+from aie.iron.kernels.binkernel import BinKernel
+from aie.iron.worker import Worker
+from aie.iron.phys.device import NPU1Col1
+from aie.helpers.taplib import TensorTiler2D
 from aie.helpers.dialects.ext.scf import _for as range_
 
 
@@ -46,17 +46,16 @@ def row_wise_bias_add(M, N, m, n):
                 in_fifo.release(1)
             bias_fifo.release(1)
 
+    tiler = TensorTiler2D.group_tiler(
+        (M, N), (m, n), (M // m, N // n), tile_group_col_major=True
+    )
+    bias_tiler = TensorTiler2D.group_tiler((1, N), (1, n), (1, N // n))
+
     io = IOCoordinator()
     with io.runtime_sequence(tensor_ty, bias_ty, tensor_ty) as (inp, bias, out):
-        tiler = TensorTiler2D(M, N, m, n, tensor_col_major=True)
-        bias_tiler = TensorTiler2D(1, N, 1, n)
-        for t, bias_t in io.tile_loop(
-            tiler.tile_iter(chunk_height=M // m, chunk_width=N // n),
-            bias_tiler.tile_iter(chunk_width=N // n),
-        ):
-            io.fill(in_fifo.prod, t, inp)
-            io.fill(bias_fifo.prod, bias_t, bias)
-            io.drain(out_fifo.cons, t, out, wait=True)
+        io.fill(in_fifo.prod, tiler[0], inp)
+        io.fill(bias_fifo.prod, bias_tiler[0], bias)
+        io.drain(out_fifo.cons, tiler[0], out, wait=True)
 
     my_worker = Worker(
         core_fn,
