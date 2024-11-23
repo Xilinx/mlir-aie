@@ -50,12 +50,10 @@ class Program:
                 # Resolve tiles
                 for t in all_tiles:
                     self._device.resolve_tile(t)
-                    self._print_verify(ctx)
 
                 # Generate fifos
                 for f in all_fifos:
                     f.resolve()
-                    self._print_verify(ctx)
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
                 for w in workers:
@@ -64,17 +62,15 @@ class Program:
                             arg.emit()
                         else:
                             arg.resolve()
-                        self._print_verify(ctx)
 
                 # Generate core programs
                 for w in workers:
                     w.resolve()
-                    self._print_verify(ctx)
 
                 # In/Out Sequence
                 self._rt.resolve()
-                self._print_verify(ctx)
 
+            self._print_verify(ctx)
             print(ctx.module)
 
     def _print_verify(self, ctx):
