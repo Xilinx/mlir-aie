@@ -389,7 +389,7 @@ aie.device(xcvc1902) {
 }
 ```
 
-Traits: `HasParent<mlir::ModuleOp>`, `IsolatedFromAbove`, `NoTerminator`, `SingleBlock`, `SymbolTable`
+Traits: `HasParent<mlir::ModuleOp>`, `IsolatedFromAbove`, `SingleBlockImplicitTerminator<EndOp>`, `SingleBlock`, `SymbolTable`
 
 Interfaces: `AIETarget`
 
