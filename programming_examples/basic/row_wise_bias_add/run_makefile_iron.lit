@@ -3,9 +3,9 @@
 //
 // REQUIRES: ryzen_ai, peano
 //
-// RUN: mkdir -p test_experimental
-// RUN: cd test_experimental
+// RUN: mkdir -p test_iron
+// RUN: cd test_iron
 // RUN: make -f %S/Makefile clean
-// RUN: make -f %S/Makefile 
-// RUN: %run_on_npu make -f %S/Makefile run_experimental | FileCheck %s
+// RUN: env use_iron=1 make -f %S/Makefile 
+// RUN: %run_on_npu make -f %S/Makefile run | FileCheck %s
 // CHECK: PASS!

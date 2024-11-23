@@ -28,7 +28,7 @@ if len(sys.argv) > 2:
     if sys.argv[2] == "npu":
         dev = NPU1Col1()
     elif sys.argv[2] == "xcvc1902":
-        raise ValueError("[ERROR] Experimental only supports npu")
+        raise ValueError("[ERROR] _iron designs only supports npu")
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
 

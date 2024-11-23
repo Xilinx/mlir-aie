@@ -41,7 +41,7 @@ def my_matrix_add_one():
     if sys.argv[1] == "npu":
         dev = NPU1Col1()
     elif sys.argv[1] == "xcvc1902":
-        raise ValueError(f"[ERROR] {sys.argv[1]} is not supported for experimental")
+        raise ValueError(f"[ERROR] {sys.argv[1]} is not supported for _iron design")
     else:
         raise ValueError(f"[ERROR] Device name {sys.argv[1]} is unknown")
 

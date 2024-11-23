@@ -25,7 +25,7 @@ def my_passthrough(M, K, generate_acccess_map=False):
     tap_out = TensorTiler2D.simple_tiler((K, M))[0]
 
     if generate_acccess_map:
-        tap_in.visualize(file_path="experimental_transpose_data.png", show_tile=False)
+        tap_in.visualize(file_path="iron_transpose_data.png", show_tile=False)
         return
 
     of_in = ObjectFifo(2, tensor_ty)
