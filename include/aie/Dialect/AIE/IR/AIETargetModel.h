@@ -248,9 +248,9 @@ public:
   // Run consistency checks on the target model.
   void validate() const;
 
-  // Return true if this device has a given property.
   uint32_t getModelProperties() const { return ModelProperties; }
-  void updateModelProperties(uint32_t prop) { ModelProperties |= prop; }
+  void addModelProperty(uint32_t prop) { ModelProperties |= prop; }
+  // Return true if this device has a given property.
   bool hasProperty(ModelProperty Prop) const {
     return (getModelProperties() & Prop) == Prop;
   }
@@ -339,8 +339,8 @@ class AIE2TargetModel : public AIETargetModel {
 public:
   AIE2TargetModel(TargetModelKind k) : AIETargetModel(k) {
     // Device properties initialization
-    updateModelProperties(AIETargetModel::UsesSemaphoreLocks);
-    updateModelProperties(AIETargetModel::UsesMultiDimensionalBDs);
+    addModelProperty(AIETargetModel::UsesSemaphoreLocks);
+    addModelProperty(AIETargetModel::UsesMultiDimensionalBDs);
   }
 
   AIEArch getTargetArch() const override;
@@ -527,7 +527,7 @@ class BaseNPUTargetModel : public AIE2TargetModel {
 public:
   BaseNPUTargetModel(TargetModelKind k) : AIE2TargetModel(k) {
     // Device properties initialization
-    updateModelProperties(AIETargetModel::IsNPU);
+    addModelProperty(AIETargetModel::IsNPU);
   }
 
   int rows() const override {
@@ -585,7 +585,7 @@ public:
             _cols)),
         cols(_cols) {
     // Device properties initialization
-    updateModelProperties(AIETargetModel::IsVirtualized);
+    addModelProperty(AIETargetModel::IsVirtualized);
   }
 
   uint32_t getAddressGenGranularity() const override { return 32; }
