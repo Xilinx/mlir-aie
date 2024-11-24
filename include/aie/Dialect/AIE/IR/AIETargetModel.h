@@ -88,6 +88,8 @@ public:
 private:
   const TargetModelKind kind;
 
+  uint32_t ModelProperties = 0;
+
 public:
   TargetModelKind getKind() const { return kind; }
 
@@ -247,9 +249,10 @@ public:
   void validate() const;
 
   // Return true if this device has a given property.
-  uint32_t ModelProperties = 0;
+  uint32_t getModelProperties() const { return ModelProperties; }
+  void updateModelProperties(uint32_t prop) { ModelProperties |= prop; }
   bool hasProperty(ModelProperty Prop) const {
-    return (ModelProperties & Prop) == Prop;
+    return (getModelProperties() & Prop) == Prop;
   }
 
   // Return the bit offset of the column within a tile address.
@@ -336,8 +339,8 @@ class AIE2TargetModel : public AIETargetModel {
 public:
   AIE2TargetModel(TargetModelKind k) : AIETargetModel(k) {
     // Device properties initialization
-    ModelProperties |= AIETargetModel::UsesSemaphoreLocks;
-    ModelProperties |= AIETargetModel::UsesMultiDimensionalBDs;
+    updateModelProperties(AIETargetModel::UsesSemaphoreLocks);
+    updateModelProperties(AIETargetModel::UsesMultiDimensionalBDs);
   }
 
   AIEArch getTargetArch() const override;
@@ -524,7 +527,7 @@ class BaseNPUTargetModel : public AIE2TargetModel {
 public:
   BaseNPUTargetModel(TargetModelKind k) : AIE2TargetModel(k) {
     // Device properties initialization
-    ModelProperties |= AIETargetModel::IsNPU;
+    updateModelProperties(AIETargetModel::IsNPU);
   }
 
   int rows() const override {
@@ -582,7 +585,7 @@ public:
             _cols)),
         cols(_cols) {
     // Device properties initialization
-    ModelProperties |= AIETargetModel::IsVirtualized;
+    updateModelProperties(AIETargetModel::IsVirtualized);
   }
 
   uint32_t getAddressGenGranularity() const override { return 32; }
