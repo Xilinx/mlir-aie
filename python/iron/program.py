@@ -28,6 +28,9 @@ class Program:
 
             @device(self._device.resolve())
             def device_body():
+                # In/Out Sequence
+                self._rt.resolve()
+
                 # Collect all fifos
                 all_fifos = set()
                 all_fifos.update(self._rt.get_fifos())
@@ -66,9 +69,6 @@ class Program:
                 # Generate core programs
                 for w in workers:
                     w.resolve()
-
-                # In/Out Sequence
-                self._rt.resolve()
 
             self._print_verify(ctx)
             return ctx.module
