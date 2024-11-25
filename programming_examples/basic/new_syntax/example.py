@@ -5,7 +5,7 @@ from aie.helpers.dialects.ext.scf import _for as range_
 MATRIX_DIMS = (8, 16)
 TILE_DIMS = (2, 4)
 MATRIX_DTYPE = np.int32
-NUM_WORKERS = 4
+NUM_WORKERS = 2
 
 A = aie.asarray(np.full(fill_value=1, shape=MATRIX_DIMS, dtype=MATRIX_DTYPE))
 B = aie.array(MATRIX_DIMS, MATRIX_DTYPE)
@@ -24,3 +24,4 @@ task_runner.run()
 npB = B.asnumpy()
 npA = A.asnumpy()
 assert (npB == npA + 1).all()
+print(npB)

@@ -37,21 +37,40 @@ class TaskRunner:
         ]
 
     def run(self):
+        # Compile
         aiecc_run(self._module, self._aiecc_args(self._XCLBIN, self._INSTS))
 
-        args = []
-        for arr in self._input_arrs:
-            args.append(np.prod(arr._shape))
-            args.append(arr._dtype)
-        for arr in self._output_arrs:
-            args.append(np.prod(arr._shape))
-            args.append(arr._dtype)
+        MAX_INPUTS = 2
+        MAX_OUTPUTS = 1
+
+        if len(self._input_arrs) > MAX_INPUTS:
+            raise NotImplementedError(
+                f"setup_aie XRT wrapper can only handle {MAX_INPUTS} inputs as present, but got {len(self._input_arrs)}"
+            )
+        if len(self._output_arrs) > MAX_OUTPUTS:
+            raise NotImplementedError(
+                f"setup_aie XRT wrapper can only handle {MAX_OUTPUTS} outputs as present, but got {len(self._output_arrs)}"
+            )
+
+        # Setup input/output
+        kwargs = {}
+        for i, arr in enumerate(self._input_arrs):
+            kwargs[f"in_{i}_shape"] = arr._shape
+            kwargs[f"in_{i}_dtype"] = arr._dtype
+        for i in range(len(self._input_arrs), MAX_INPUTS):
+            kwargs[f"in_{i}_shape"] = None
+            kwargs[f"in_{i}_dtype"] = None
+
+        kwargs[f"out_buf_shape"] = self._output_arrs[0]._shape
+        kwargs[f"out_buf_dtype"] = self._output_arrs[0]._dtype
 
         app = setup_aie(
             self._XCLBIN,
             self._INSTS,
-            *args,
+            **kwargs,
         )
+
+        # Execute program and collect output
         aie_output = execute_on_aie(app, *[arr.asnumpy() for arr in self._input_arrs])
         self._output_arrs[0]._array = aie_output
 
@@ -88,11 +107,19 @@ def task_runner(
         for w in range(num_workers):
             of_outs[w].append(ObjectFifo(arr._num_buffs, tile_type, f"out{i}_{w}"))
 
+    def worker_wrapper(*args):
+        datas = []
+        for of in args:
+            datas.append(of.acquire(1))
+        task_fn(*datas)
+        for of in args:
+            of.release(1)
+
     workers = []
     for w in range(num_workers):
         args = [of_in.cons for of_in in of_ins[w]]
         args += [of_out.prod for of_out in of_outs[w]]
-        workers.append(Worker(task_fn, args))
+        workers.append(Worker(worker_wrapper, args))
 
     rt = Runtime()
     with rt.sequence(*rt_types) as rt_buffers:
