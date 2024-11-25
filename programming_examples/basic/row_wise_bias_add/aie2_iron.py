@@ -63,10 +63,10 @@ def row_wise_bias_add(M, N, m, n):
         rt.fill(bias_fifo.prod, bias_tiler[0], bias)
         rt.drain(out_fifo.cons, tiler[0], out, wait=True)
 
-    return Program(NPU1Col1(), rt)
+    return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 
 
-program = row_wise_bias_add(
+module = row_wise_bias_add(
     int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
 )
-program.resolve_program(SequentialPlacer())
+print(module)

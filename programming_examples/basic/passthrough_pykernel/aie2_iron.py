@@ -10,12 +10,13 @@ import sys
 
 from aie.iron.runtime import Runtime
 from aie.iron.dataflow import ObjectFifo
-from aie.iron.kernels import BinKernel
 from aie.iron.placers import SequentialPlacer
 from aie.iron.program import Program
 from aie.iron.worker import Worker
 from aie.iron.phys.device import NPU1Col1
 from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.dialects.ext.func import func
+from aie.helpers.dialects.ext.scf import _for as range_
 
 try:
     vector_size = int(sys.argv[1])
@@ -34,17 +35,17 @@ of_out = ObjectFifo(2, line_type, "out")
 
 tap = TensorTiler2D.simple_tiler((1, vector_size))[0]
 
-passthrough_fn = BinKernel(
-    "passThroughLine",
-    "passThrough.cc.o",
-    [line_type, line_type, np.int32],
-)
+
+@func
+def passthrough_fn(input: line_type, output: line_type, lineWidth: np.int32):
+    for i in range_(lineWidth):
+        output[i] = input[i]
 
 
-def core_fn(of_in, of_out, passThroughLine):
+def core_fn(of_in, of_out, passthrough_fn):
     elemOut = of_out.acquire(1)
     elemIn = of_in.acquire(1)
-    passThroughLine(elemIn, elemOut, line_size)
+    passthrough_fn(elemIn, elemOut, line_size)
     of_in.release(1)
     of_out.release(1)
 

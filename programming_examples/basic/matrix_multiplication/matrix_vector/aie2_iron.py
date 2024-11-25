@@ -98,7 +98,8 @@ def my_matmul():
             rt.drain(outC_fifos[i].cons, c_tap, c_out, wait=True)
 
     my_program = Program(NPU1Col4(), rt)
-    my_program.resolve_program(SequentialPlacer())
+    module = my_program.resolve_program(SequentialPlacer())
+    print(module)
 
 
 my_matmul()

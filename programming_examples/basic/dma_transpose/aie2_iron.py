@@ -37,7 +37,8 @@ def my_passthrough(M, K, generate_acccess_map=False):
         rt.drain(of_out.cons, tap_out, c_out, wait=True)
 
     my_program = Program(NPU1Col1(), rt)
-    my_program.resolve_program(SequentialPlacer())
+    module = my_program.resolve_program(SequentialPlacer())
+    print(module)
 
 
 if __name__ == "__main__":

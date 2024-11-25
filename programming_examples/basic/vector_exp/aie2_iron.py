@@ -69,7 +69,7 @@ def my_eltwise_exp():
         rt.fill(A_fifo.prod, tap, a_in)
         rt.drain(C_fifo.cons, tap, c_out, wait=True)
 
-    return Program(NPU1Col1(), rt)
+    return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 
 
-my_eltwise_exp().resolve_program(SequentialPlacer())
+print(my_eltwise_exp())

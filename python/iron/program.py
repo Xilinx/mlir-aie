@@ -7,7 +7,7 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
 from ..extras.context import mlir_mod_ctx
-from ..extras.dialects.ext.func import FuncBase
+from ..helpers.dialects.ext.func import FuncBase
 from ..dialects.aie import device
 
 from .phys.device import Device

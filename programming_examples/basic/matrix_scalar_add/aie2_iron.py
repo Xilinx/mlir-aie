@@ -66,7 +66,7 @@ def my_matrix_add_one():
         rt.fill(of_in.prod, tap0, in_tensor)
         rt.drain(of_out.cons, tap0, out_tensor, wait=True)
 
-    return Program(dev, rt)
+    return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
-my_matrix_add_one().resolve_program(SequentialPlacer())
+print(my_matrix_add_one())

@@ -48,4 +48,5 @@ with rt.sequence(vector_ty, vector_ty, vector_ty) as (a_in, _, c_out):
     rt.drain(of_out.cons, tap, c_out, wait=True)
 
 my_program = Program(dev, rt)
-my_program.resolve_program(SequentialPlacer())
+module = my_program.resolve_program(SequentialPlacer())
+print(module)
