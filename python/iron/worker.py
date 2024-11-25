@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
-
+import contextvars
 import sys
 from typing import Callable
 
@@ -20,6 +20,10 @@ from .kernels.kernel import Kernel
 
 
 class Worker(ObjectFifoEndpoint):
+    current_core_placement = contextvars.ContextVar(
+        "current_core_placement", default=None
+    )
+
     def __init__(
         self,
         core_fn: Callable[[ObjectFifoHandle | Kernel], None] | None,
@@ -74,9 +78,12 @@ class Worker(ObjectFifoEndpoint):
     ) -> None:
         assert self._tile != None
         my_tile = self._tile.op
+        self.current_core_placement.set(my_tile)
         my_link = self.link_with
 
         @core(my_tile, my_link)
         def core_body():
             for _ in range_(sys.maxsize) if self._while_true else range(1):
                 self.core_fn(*self.fn_args)
+
+        self.current_core_placement.set(None)

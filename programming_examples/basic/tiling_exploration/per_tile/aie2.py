@@ -9,11 +9,15 @@ import argparse
 import numpy as np
 import sys
 
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
-from aie.extras.context import mlir_mod_ctx
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.runtime import Runtime
+from aie.iron.dataflow import ObjectFifo
+from aie.iron.localbuffer import LocalBuffer
+from aie.iron.placers import SequentialPlacer
+from aie.iron.program import Program
+from aie.iron.worker import Worker
+from aie.iron.phys.device import NPU1Col1
 from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.dialects.ext.scf import _for as range_
 
 
 def generate_module(
@@ -33,55 +37,41 @@ def generate_module(
         tiler.visualize(file_path="per_tile.png")
         return
 
-    @device(AIEDevice.npu1_1col)
-    def device_body():
-        # Tile declarations
-        ShimTile = tile(0, 0)
-        ComputeTile2 = tile(0, 2)
+    of_out = ObjectFifo(2, flattened_tile)
 
-        # AIE-array data movement with object fifos
-        of_out = object_fifo("out", ComputeTile2, ShimTile, 2, flattened_tile)
+    def access_order(of_out):
+        access_counter = LocalBuffer(initial_value=np.array([0], dtype=dtype))
 
-        # Set up compute tiles
+        for _ in range_(sys.maxsize):
+            elemOut = of_out.acquire(1)
+            for i in range_(tile_size):
+                elemOut[i] = access_counter[0]
+                access_counter[0] += 1
+            of_out.release(1)
+        pass
 
-        # Compute tile 2
-        @core(ComputeTile2)
-        def core_body():
-            # TODO: better way to get mutable constant than buffer??
-            access_counter = buffer(
-                ComputeTile2,
-                np.ndarray[(1,), np.dtype[dtype]],
-                "access_counter",
-                initial_value=np.array([0], dtype=dtype),
-            )
-            for _ in range_(sys.maxsize):
-                elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
-                for i in range_(tile_size):
-                    elemOut[i] = access_counter[0]
-                    access_counter[0] += 1
-                of_out.release(ObjectFifoPort.Produce, 1)
+    worker = Worker(access_order, [of_out.prod], while_true=False)
 
-        @runtime_sequence(flattened_tensor)
-        def sequence(access_count):
-            for t in tiler:
-                out_task = shim_dma_single_bd_task(
-                    of_out, access_count, tap=t, issue_token=True
-                )
-                dma_start_task(out_task)
-                dma_await_task(out_task)
+    rt = Runtime()
+    with rt.sequence(flattened_tensor) as tensor_out:
+        rt.start(worker)
+        for t in tiler:
+            rt.drain(of_out.cons, t, tensor_out, wait=True)
+
+    my_program = Program(NPU1Col1(), rt)
+    return my_program.resolve_program(SequentialPlacer())
 
 
 def main(opts):
-    with mlir_mod_ctx() as ctx:
-        generate_module(
-            opts.tensor_height,
-            opts.tensor_width,
-            opts.tile_height,
-            opts.tile_width,
-            opts.generate_access_map,
-        )
-        if not opts.generate_access_map:
-            print(ctx.module)
+    module = generate_module(
+        opts.tensor_height,
+        opts.tensor_width,
+        opts.tile_height,
+        opts.tile_width,
+        opts.generate_access_map,
+    )
+    if not opts.generate_access_map:
+        print(module)
 
 
 def get_arg_parser():
