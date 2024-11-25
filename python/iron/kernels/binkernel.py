@@ -1,8 +1,10 @@
-"""
-TODO: 
-* docs
-* types for arg_types
-"""
+# binkernel.py -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2024 Advanced Micro Devices, Inc.
 
 import numpy as np
 

@@ -53,12 +53,7 @@ declare_mlir_python_sources(AIEPythonSources.Iron
     iron/io/*py
     iron/kernels/*.py
     iron/phys/*.py
-)
-
-declare_mlir_python_sources(AIEPythonSources.NextLevel
-  ADD_TO_PARENT AIEPythonSources
-  SOURCES_GLOB
-    nextlevel/*.py
+    iron/experimental/*.py
 )
 
 declare_mlir_dialect_python_bindings(

@@ -1,15 +1,23 @@
+# task_runner.py -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2024 Advanced Micro Devices, Inc.
+
 import numpy as np
 from typing import Sequence
 
-from ..compiler.aiecc.main import run as aiecc_run
-from ..utils.xrt import setup_aie, execute as execute_on_aie
-from ..helpers.taplib import TensorTiler2D
-from ..iron.dataflow import ObjectFifo
-from ..iron.phys.device import NPU1Col4
-from ..iron.placers import SequentialPlacer
-from ..iron.program import Program
-from ..iron.runtime import Runtime
-from ..iron.worker import Worker
+from ...compiler.aiecc.main import run as aiecc_run
+from ...utils.xrt import setup_aie, execute as execute_on_aie
+from ...helpers.taplib import TensorTiler2D
+from ..dataflow import ObjectFifo
+from ..phys.device import NPU1Col4
+from ..placers import SequentialPlacer
+from ..program import Program
+from ..runtime import Runtime
+from ..worker import Worker
 
 from .array import array
 

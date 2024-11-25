@@ -1,5 +1,5 @@
 import numpy as np
-import aie.nextlevel as aie
+import aie.iron.experimental as aie
 from aie.helpers.dialects.ext.scf import _for as range_
 
 MATRIX_DIMS = (8, 16)
@@ -23,5 +23,7 @@ task_runner.run()
 
 npB = B.asnumpy()
 npA = A.asnumpy()
-assert (npB == npA + 1).all()
-print(npB)
+if (npB == npA + 1).all():
+    print("PASS!")
+else:
+    print(f"Failed: {np.B}")
