@@ -42,8 +42,22 @@ class Runtime(Resolvable):
     ) -> None:
         assert source in self._rt_data
         rt_endpoint = RuntimeEndpoint(placement)
-        in_fifo.set_endpoint(rt_endpoint)
-        self._fifos.add(in_fifo)
+
+        # There can only be one runtime endpoint in an ObjectFIFO
+        if in_fifo in self._fifos:
+            existing_endpoints = in_fifo.get_endpoint()
+            for ep in existing_endpoints:
+                if isinstance(ep, RuntimeEndpoint):
+                    if ep.tile != placement:
+                        if ep.tile == AnyShimTile:
+                            in_fifo.replace_endpoint(ep, rt_endpoint)
+                        else:
+                            raise ValueError(
+                                f"ObjectFIFO can only have one RuntimeEndpoint: has {ep}, trying to set: {rt_endpoint}"
+                            )
+        else:
+            in_fifo.set_endpoint(rt_endpoint)
+            self._fifos.add(in_fifo)
         self._ops.append(DMATask(in_fifo, source, tap, wait))
 
     def drain(
@@ -56,8 +70,22 @@ class Runtime(Resolvable):
     ) -> None:
         assert dest in self._rt_data
         rt_endpoint = RuntimeEndpoint(placement)
-        out_fifo.set_endpoint(rt_endpoint)
-        self._fifos.add(out_fifo)
+
+        if out_fifo in self._fifos:
+            existing_endpoints = out_fifo.get_endpoint()
+            for ep in existing_endpoints:
+                if isinstance(ep, RuntimeEndpoint):
+                    if ep.tile != placement:
+                        ep.place(placement)
+                        if ep.tile == AnyShimTile:
+                            ep.place(placement)
+                        else:
+                            raise ValueError(
+                                f"ObjectFIFO can only have one RuntimeEndpoint: has {ep}, trying to set: {rt_endpoint}"
+                            )
+        else:
+            out_fifo.set_endpoint(rt_endpoint)
+            self._fifos.add(out_fifo)
         self._ops.append(DMATask(out_fifo, dest, tap, wait))
 
     def start(self, *args: Worker):

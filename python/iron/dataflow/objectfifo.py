@@ -8,12 +8,18 @@ TODO:
 # Address circular dependency between ObjectFifo and ObjectFifoHandle
 from __future__ import annotations
 import numpy as np
+from typing import Sequence
 
 from ... import ir  # type: ignore
 from ...dialects._aie_enum_gen import ObjectFifoPort  # type: ignore
 from ...dialects._aie_ops_gen import ObjectFifoCreateOp  # type: ignore
 from ...dialects.aie import object_fifo, object_fifo_link
-from ...helpers.util import np_ndarray_type_to_memref_type, single_elem_or_list_to_list
+from ...helpers.util import (
+    np_ndarray_type_to_memref_type,
+    single_elem_or_list_to_list,
+    np_ndarray_type_get_dtype,
+    np_ndarray_type_get_shape,
+)
 
 from ..resolvable import Resolvable
 from .endpoint import ObjectFifoEndpoint
@@ -60,6 +66,14 @@ class ObjectFifo(Resolvable):
     def op(self) -> ObjectFifoCreateOp:
         assert self._op != None
         return self._op
+
+    @property
+    def shape(self) -> Sequence[int]:
+        return np_ndarray_type_get_shape(self._obj_type)
+
+    @property
+    def dtype(self) -> np.dtype:
+        return np_ndarray_type_get_dtype(self._obj_type)
 
     @property
     def prod(self) -> ObjectFifoHandle:
@@ -192,6 +206,14 @@ class ObjectFifoHandle(Resolvable):
     @property
     def obj_type(self) -> type[np.ndarray]:
         return self._object_fifo.obj_type
+
+    @property
+    def shape(self) -> Sequence[int]:
+        return self._object_fifo.shape
+
+    @property
+    def dtype(self) -> np.dtype:
+        return self._oject_fifo.dtype
 
     def end_prod_tile(self) -> Tile | None:
         return self._object_fifo.end_prod_tile()

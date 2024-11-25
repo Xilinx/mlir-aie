@@ -49,7 +49,7 @@ class SequentialPlacer(Placer):
                 compute_idx += 1
 
         for of in object_fifos:
-            of_endpoints = of.get_all_endpoints()
+            of_endpoints = of.get_endpoint()
             # RuntimeEndpoints are placed by the Runtime
             of_endpoints = [
                 of for of in of_endpoints if not isinstance(of, RuntimeEndpoint)
