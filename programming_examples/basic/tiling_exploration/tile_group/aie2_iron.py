@@ -1,4 +1,4 @@
-# tiling_exploration/aie2.py -*- Python -*-
+# tiling_exploration/tile_group/aie2_iron.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -7,14 +7,17 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import argparse
 import numpy as np
-import sys
 
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
-from aie.dialects import arith
-from aie.extras.context import mlir_mod_ctx
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.runtime import Runtime
+from aie.iron.dataflow import ObjectFifo
+from aie.iron.placers import SequentialPlacer
+from aie.iron.program import Program
+from aie.iron.worker import Worker
+from aie.iron.phys.device import NPU1Col1
 from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.dialects.ext.scf import _for as range_
+import aie.extras.dialects.ext.arith as arith
+from aie.helpers.util import np_dtype_to_mlir_type
 
 
 def generate_module(
@@ -35,47 +38,36 @@ def generate_module(
         t.visualize(show_arrows=True, file_path="tile_group.png")
         return
 
-    @device(AIEDevice.npu1_1col)
-    def device_body():
-        # Tile declarations
-        ShimTile = tile(0, 0)
-        ComputeTile2 = tile(0, 2)
+    of_out = ObjectFifo(2, flattened_tensor)
 
-        # AIE-array data movement with object fifos
-        of_out = object_fifo("out", ComputeTile2, ShimTile, 2, flattened_tensor)
+    def access_order(of_out):
+        elemOut = of_out.acquire(1)
+        for i in range_(tensor_size):
+            # TODO: this could be cleaned up
+            elemOut[i] = arith.index_cast(i, to=np_dtype_to_mlir_type(dtype))
+        of_out.release(1)
 
-        # Set up compute tiles
+    worker = Worker(access_order, [of_out.prod])
 
-        # Compute tile 2
-        @core(ComputeTile2)
-        def core_body():
-            for _ in range_(sys.maxsize):
-                elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
-                for i in range_(tensor_size):
-                    # TODO: fix need for cast here.
-                    elemOut[i] = arith.index_cast(T.i32(), i)
-                of_out.release(ObjectFifoPort.Produce, 1)
+    rt = Runtime()
+    with rt.sequence(flattened_tensor) as tensor_out:
+        rt.start(worker)
+        rt.drain(of_out.cons, t, tensor_out, wait=True)
 
-        @runtime_sequence(flattened_tensor)
-        def sequence(access_count):
-            out_task = shim_dma_single_bd_task(
-                of_out, access_count, tap=t, issue_token=True
-            )
-            dma_start_task(out_task)
-            dma_await_task(out_task)
+    my_program = Program(NPU1Col1(), rt)
+    return my_program.resolve_program(SequentialPlacer())
 
 
 def main(opts):
-    with mlir_mod_ctx() as ctx:
-        generate_module(
-            opts.tensor_height,
-            opts.tensor_width,
-            opts.tile_height,
-            opts.tile_width,
-            opts.generate_access_map,
-        )
-        if not opts.generate_access_map:
-            print(ctx.module)
+    module = generate_module(
+        opts.tensor_height,
+        opts.tensor_width,
+        opts.tile_height,
+        opts.tile_width,
+        opts.generate_access_map,
+    )
+    if not opts.generate_access_map:
+        print(module)
 
 
 def get_arg_parser():
