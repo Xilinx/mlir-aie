@@ -15,6 +15,7 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.worker import Worker
 from aie.iron.phys.device import NPU1Col1
 from aie.helpers.dialects.ext.scf import _for as range_
+from aie.helpers.taplib import TensorTiler2D
 
 # Size of the entire matrix
 MATRIX_HEIGHT = 16
@@ -57,11 +58,12 @@ def my_matrix_add_one():
 
     my_worker = Worker(core_fn, fn_args=[of_in.cons, of_out.prod])
 
+    tap = TensorTiler2D.simple_tiler(MATRIX_SHAPE, TILE_SHAPE)[0]
     rt = Runtime()
     with rt.sequence(matrix_ty, matrix_ty, matrix_ty) as (in_tensor, _, out_tensor):
         rt.start(my_worker)
-        rt.fill(of_in.prod, in_tensor)
-        rt.drain(of_out.cons, out_tensor, wait=True)
+        rt.fill(of_in.prod, in_tensor, tap)
+        rt.drain(of_out.cons, out_tensor, tap, wait=True)
 
     return Program(dev, rt).resolve_program(SequentialPlacer())
 
