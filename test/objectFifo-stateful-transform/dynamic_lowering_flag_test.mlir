@@ -62,7 +62,6 @@
 // CHECK:       }
 // CHECK:       aie.end
 // CHECK:     } {dynamic_objfifo_lowering = true}
-// CHECK:     aie.shim_dma_allocation @input_fifo(MM2S, 0, 0)
 // CHECK:     %core_0_4 = aie.core(%tile_0_4) {
 // CHECK:       %c0 = arith.constant 0 : index
 // CHECK:       %c1 = arith.constant 1 : index
@@ -80,8 +79,9 @@
 // CHECK:         aie.use_lock(%input_fifo2_cons_prod_lock, Release, 1)
 // CHECK:         aie.use_lock(%output_fifo2_cons_lock, Release, 1)
 // CHECK:       }        
-// CHECK:        aie.end
-// CHECK:      }
+// CHECK:       aie.end
+// CHECK:     }
+// CHECK:     aie.shim_dma_allocation @input_fifo(MM2S, 0, 0)
 
 module {
   aie.device(npu1_1col) {

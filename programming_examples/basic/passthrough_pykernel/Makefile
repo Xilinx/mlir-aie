@@ -17,11 +17,19 @@ VPATH := ${srcdir}/../../../aie_kernels/generic
 data_size = 4096
 PASSTHROUGH_SIZE = ${data_size}
 
+aie_py_src=aie2.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=aie2_alt.py
+endif
+
+
 .PHONY: all template clean
 
 all: build/final_${data_size}.xclbin
 
-build/aie.mlir: ${srcdir}/aie2.py
+build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${PASSTHROUGH_SIZE} > $@
 

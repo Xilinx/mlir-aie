@@ -14,7 +14,7 @@ from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.helpers.tensortiler import TensorTile, TensorTileSequence
+from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
 
 dtype_map = {
     "bf16": bfloat16,
@@ -49,14 +49,14 @@ def main():
     )
     argparser.add_argument("--trace_size", type=int, default=0)
     argparser.add_argument(
-        "--generate-tiles",
+        "--generate-taps",
         action="store_true",
-        help="Generate TensorTiles, a Python object to represent each data transfer"
+        help="Generate TensorAccessPatterns, a Python object to represent each data transfer"
         "of the input/output matrices. These objects can be used for visualization.",
     )
     args = argparser.parse_args()
     with mlir_mod_ctx() as ctx:
-        maybe_tiles = my_matmul(
+        maybe_taps = my_matmul(
             args.M,
             args.K,
             args.N,
@@ -68,13 +68,13 @@ def main():
             args.dtype_out,
             args.b_col_maj,
             args.trace_size,
-            args.generate_tiles,
+            args.generate_taps,
         )
         # print(ctx.module.operation.verify())
         print(ctx.module)
 
-    if args.generate_tiles:
-        return maybe_tiles
+    if args.generate_taps:
+        return maybe_taps
 
 
 def ceildiv(a, b):
@@ -93,7 +93,7 @@ def my_matmul(
     dtype_out_str,
     b_col_maj,
     trace_size,
-    generate_tiles=False,
+    generate_taps=False,
 ):
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
@@ -169,11 +169,11 @@ def my_matmul(
     elif n_aie_cols == 4:
         dev = AIEDevice.npu1_4col
 
-    # These will hold TensorTile objects that represent the runtime
-    # npu_dma_memcpy_nd operations of this design. They are only used if generate_tiles is true
-    A_tensor_tiles = []
-    B_tensor_tiles = []
-    C_tensor_tiles = []
+    # These will hold TensorAccessPattern objects that represent the runtime
+    # npu_dma_memcpy_nd operations of this design. They are only used if generate_taps is true
+    A_taps = []
+    B_taps = []
+    C_taps = []
 
     @device(dev)
     def device_body():
@@ -415,8 +415,8 @@ def my_matmul(
                         # Use the calculated sizes/strides/offsets to record the data movement
                         # caused by the above call to npu_dma_memcpy_nd.
                         # This line does not change MLIR output at all.
-                        C_tensor_tiles.append(
-                            TensorTile(
+                        C_taps.append(
+                            TensorAccessPattern(
                                 (M, N),
                                 offset=C_offset,
                                 sizes=C_sizes,
@@ -469,8 +469,8 @@ def my_matmul(
                             # Use the calculated sizes/strides/offsets to record the data movement
                             # caused by the above call to npu_dma_memcpy_nd.
                             # This line does not change MLIR output at all.
-                            A_tensor_tiles.append(
-                                TensorTile(
+                            A_taps.append(
+                                TensorAccessPattern(
                                     (M, K),
                                     offset=A_offset,
                                     sizes=A_sizes,
@@ -515,8 +515,8 @@ def my_matmul(
                             # Use the calculated sizes/strides/offsets to record the data movement
                             # caused by the above call to npu_dma_memcpy_nd.
                             # This line does not change MLIR output at all.
-                            B_tensor_tiles.append(
-                                TensorTile(
+                            B_taps.append(
+                                TensorAccessPattern(
                                     (K, N),
                                     offset=B_col_offset,
                                     sizes=B_sizes,
@@ -527,13 +527,13 @@ def my_matmul(
                         dma_wait(*C_l2l3_fifos)
             dma_wait(*C_l2l3_fifos)
 
-    if generate_tiles:
-        # If generate tiles is true, return a representation of tensor tiles
+    if generate_taps:
+        # If generate_taps is true, return a representation of tensor tiles
         # representing all the npu_dma_memcpy_nd runtime sequence operations per input/ouput tensor.
         return (
-            TensorTileSequence.from_tiles(A_tensor_tiles),
-            TensorTileSequence.from_tiles(B_tensor_tiles),
-            TensorTileSequence.from_tiles(C_tensor_tiles),
+            TensorAccessSequence.from_taps(A_taps),
+            TensorAccessSequence.from_taps(B_taps),
+            TensorAccessSequence.from_taps(C_taps),
         )
 
 

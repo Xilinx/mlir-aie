@@ -9,10 +9,10 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 all: run
 
-run: ${srcdir}/tilerhelper.ipynb
+run: ${srcdir}/taplib.ipynb
 	mkdir -p build
-	cd build && jupyter nbconvert --to script ${srcdir}/tilerhelper.ipynb --output-dir .
-	cd build && ipython tilerhelper.py
+	cd build && jupyter nbconvert --to script ${srcdir}/taplib.ipynb --output-dir .
+	cd build && ipython taplib.py
 
 clean:
 	rm -rf build

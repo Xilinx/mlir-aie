@@ -72,3 +72,4 @@ def core_ext_kernel():
                 res = test_func(elem0, 4)
                 of1.release(ObjectFifoPort.Consume, 1)
             end()
+        end()

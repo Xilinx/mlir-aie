@@ -20,6 +20,11 @@ m=32
 k=32
 
 kernels=mv_${m}x${k}
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=aie2_alt.py
+endif
 
 SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 include ${SELF_DIR}../makefile-common

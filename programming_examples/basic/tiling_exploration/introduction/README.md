@@ -11,7 +11,7 @@
 * In your browser, navigate to the URL (which includes a token) which is found
   in the output of the above command.
 * Navigate to `programming_examples/basic/tiling_exploration/introduction`
-* Double click `tilerhelper.ipynb` to start the notebook; choose the ipykernel called `ironenv`.
+* Double click `taplib.ipynb` to start the notebook; choose the ipykernel called `ironenv`.
 * You should now be good to go!
 
 #### Run the Notebook as a Script

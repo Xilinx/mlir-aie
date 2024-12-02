@@ -13,9 +13,17 @@ mlirFileName = aieWithTrace_1core
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
+aie_py_src=aie2.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=aie2_alt.py
+endif
+
+
 all: build/conv2dk1.o build/final.xclbin
 
-build/${mlirFileName}.mlir: ${srcdir}/aie2.py
+build/${mlirFileName}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< > $@
 

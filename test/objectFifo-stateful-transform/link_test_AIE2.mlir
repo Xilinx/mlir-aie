@@ -51,7 +51,6 @@
 // CHECK:             memref.store %[[VAL_26]], %[[VAL_10]]{{\[}}%[[VAL_27]]] : memref<3000xi32>
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @mem_in(MM2S, 0, 0)
 // CHECK:           %[[VAL_28:.*]] = aie.core(%[[VAL_3]]) {
 // CHECK:             %[[VAL_29:.*]] = arith.constant 11 : i32
 // CHECK:             %[[VAL_30:.*]] = arith.constant 0 : index
@@ -59,6 +58,7 @@
 // CHECK:             memref.store %[[VAL_29]], %[[VAL_4]]{{\[}}%[[VAL_30]]] : memref<3000xi32>
 // CHECK:             aie.end
 // CHECK:           }
+// CHECK:           aie.shim_dma_allocation @mem_in(MM2S, 0, 0)
 // CHECK:           %[[VAL_31:.*]] = aie.mem(%[[VAL_2]]) {
 // CHECK:             %[[VAL_32:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2

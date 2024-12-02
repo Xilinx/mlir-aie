@@ -130,7 +130,6 @@
 // CHECK:     ^bb3:  // pred: ^bb0
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @link4(S2MM, 0, 2)
 // CHECK:     %mem_3_3 = aie.mem(%tile_3_3) {
 // CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
@@ -146,6 +145,7 @@
 // CHECK:     ^bb3:  // pred: ^bb0
 // CHECK:       aie.end
 // CHECK:     }
+// CHECK:     aie.shim_dma_allocation @link4(S2MM, 0, 2)
 // CHECK:   }
 // CHECK: }
 

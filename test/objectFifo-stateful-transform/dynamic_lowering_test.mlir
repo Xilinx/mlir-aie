@@ -35,7 +35,6 @@
 // CHECK:       %input_fifo_cons_lock = aie.lock(%tile_0_0, 1) {init = 0 : i32, sym_name = "input_fifo_cons_lock"}
 // CHECK:       aie.flow(%tile_0_0, DMA : 0, %tile_0_2, DMA : 0)
 // CHECK:       aie.flow(%tile_0_2, DMA : 0, %tile_0_0, DMA : 0)
-// CHECK:       aie.shim_dma_allocation @input_fifo(MM2S, 0, 0)
 // CHECK:       %buffer_0_2 = aie.buffer(%tile_0_2) : memref<2xindex> 
 // CHECK:       %core_0_2 = aie.core(%tile_0_2) {
 // CHECK:         %c0 = arith.constant 0 : index
@@ -194,6 +193,8 @@
 // CHECK:         memref.store %18, %buffer_0_2[%c0_0] : memref<2xindex>
 // CHECK:         aie.end
 // CHECK:       }
+// CHECK:       aie.shim_dma_allocation @input_fifo(MM2S, 0, 0)
+
 
 module {
   aie.device(npu1_1col) {

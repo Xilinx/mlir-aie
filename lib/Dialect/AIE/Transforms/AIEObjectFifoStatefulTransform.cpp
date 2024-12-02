@@ -655,10 +655,8 @@ struct AIEObjectFifoStatefulTransformPass
     // if none exists, create one
     TileOp objFifoTileOp = target.getProducerTileOp();
     if (producerMem == nullptr) {
-      if (device->getNumRegions() != 1)
-        assert(false && "expected num regions for device op");
       OpBuilder::InsertionGuard g(builder);
-      builder.setInsertionPointToEnd(device.getBody());
+      builder.setInsertionPoint(device.getBody()->getTerminator());
       auto newMemOp =
           builder.create<MemOp>(builder.getUnknownLoc(), objFifoTileOp);
       {
@@ -727,10 +725,8 @@ struct AIEObjectFifoStatefulTransformPass
     // if none exists, create one
     TileOp objFifoTileOp = op.getProducerTileOp();
     if (producerDMA == nullptr) {
-      if (device->getNumRegions() != 1)
-        assert(false && "expected num regions for device op");
       OpBuilder::InsertionGuard g(builder);
-      builder.setInsertionPointToEnd(device.getBody());
+      builder.setInsertionPoint(device.getBody()->getTerminator());
       auto newDMAOp = builder.create<ShimDMAOp>(
           builder.getUnknownLoc(), builder.getIndexType(), objFifoTileOp);
       {
@@ -881,10 +877,8 @@ struct AIEObjectFifoStatefulTransformPass
     // if none exists, create one
     TileOp objFifoTileOp = target.getProducerTileOp();
     if (producerDMA == nullptr) {
-      if (device->getNumRegions() != 1)
-        assert(false && "expected num regions for device op");
       OpBuilder::InsertionGuard g(builder);
-      builder.setInsertionPointToEnd(device.getBody());
+      builder.setInsertionPoint(device.getBody()->getTerminator());
       auto newDMAOp =
           builder.create<MemTileDMAOp>(builder.getUnknownLoc(), objFifoTileOp);
       {
@@ -1384,7 +1378,7 @@ struct AIEObjectFifoStatefulTransformPass
     DeviceOp device = getOperation();
     LockAnalysis lockAnalysis(device);
     DMAChannelAnalysis dmaAnalysis(device);
-    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
+    OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
     auto ctx = device->getContext();
     auto producerWireType = WireBundle::DMA;
     auto consumerWireType = WireBundle::DMA;
@@ -1546,7 +1540,7 @@ struct AIEObjectFifoStatefulTransformPass
                 producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
                 producer.getPadDimensionsAttr());
       // generate objectFifo allocation info
-      builder.setInsertionPoint(&device.getBody()->back());
+      builder.setInsertionPoint(device.getBody()->getTerminator());
 
       if (producer.getProducerTileOp().isShimTile())
         createObjectFifoAllocationInfo(
@@ -1568,7 +1562,7 @@ struct AIEObjectFifoStatefulTransformPass
         createDMA(device, builder, consumer, consumerChan.direction,
                   consumerChan.channel, 1, consumerDims, nullptr);
         // generate objectFifo allocation info
-        builder.setInsertionPoint(&device.getBody()->back());
+        builder.setInsertionPoint(device.getBody()->getTerminator());
 
         // If we have PLIO then figure out the direction and make that a PLIO
         if (producer.getPlio()) {
@@ -1826,7 +1820,7 @@ struct AIEObjectFifoStatefulTransformPass
     }
     // make global symbols to replace the to be erased ObjectFifoCreateOps
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
-      builder.setInsertionPointToStart(&device.getBodyRegion().front());
+      builder.setInsertionPointToStart(device.getBody());
       auto sym_name = createOp.getName();
       createOp->setAttr(SymbolTable::getSymbolAttrName(),
                         builder.getStringAttr("__erase_" + sym_name));

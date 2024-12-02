@@ -45,6 +45,8 @@ struct AIECanonicalizeDevicePass
     deviceOp.getRegion().takeBody(moduleOp.getBodyRegion());
     new (&moduleOp->getRegion(0)) Region(moduleOp);
     moduleOp->getRegion(0).emplaceBlock();
+
+    DeviceOp::ensureTerminator(deviceOp.getBodyRegion(), builder, location);
     OpBuilder builder2 = OpBuilder::atBlockBegin(moduleOp.getBody());
     builder2.insert(deviceOp);
   }

@@ -28,7 +28,7 @@ class AIE_Op<string mnemonic, list<Trait> traits = []> :
 
 def AIE_DeviceOp: AIE_Op<"device", [
     AIETarget, HasParent<"mlir::ModuleOp">,
-    SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove
+    SymbolTable, SingleBlockImplicitTerminator<"EndOp">, IsolatedFromAbove
   ]> {
   let summary = "Define an AIE design targetting a complete device";
   let description = [{
@@ -63,7 +63,6 @@ def AIE_DeviceOp: AIE_Op<"device", [
   let extraClassDeclaration = [{
     const xilinx::AIE::AIETargetModel &getTargetModel();
   }];
-  let hasVerifier = 1;
 }
 
 def AIE_TileOp: AIE_Op<"tile", [
@@ -898,8 +897,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     int32_t getBufferElementTypeWidthInBytes() {
       return getBuffer().getType().getElementTypeBitWidth() / 8;
     }
-    int32_t getLenInBytes() {
-      if (std::optional<int32_t> len = getLen(); len.has_value())
+    uint32_t getLenInBytes() {
+      if (std::optional<uint32_t> len = getLen(); len.has_value())
         return len.value() * getBufferElementTypeWidthInBytes();
       else
         return getBuffer().getType().getNumElements() * getBufferElementTypeWidthInBytes();

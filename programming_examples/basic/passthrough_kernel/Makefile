@@ -19,15 +19,22 @@ data_size = 4096
 trace_size = 8192
 PASSTHROUGH_SIZE = ${data_size}
 
+aie_py_src=aie2.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=aie2_alt.py
+endif
+
 .PHONY: all template clean
 
 all: build/final_${data_size}.xclbin
 
-build/aie2_lineBased_8b_${data_size}.mlir: ${srcdir}/aie2.py
+build/aie2_lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${device} ${data_size} 0 > $@
 
-build/aie_trace__lineBased_8b_${data_size}.mlir: ${srcdir}/aie2.py
+build/aie_trace__lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${device} ${data_size} ${trace_size} > $@
 

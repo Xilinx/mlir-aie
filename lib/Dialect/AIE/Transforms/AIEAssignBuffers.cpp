@@ -463,7 +463,7 @@ struct AIEAssignBufferAddressesPass
 
   void runOnOperation() override {
     DeviceOp device = getOperation();
-    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
+    OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
     // Make sure all the buffers have a name
     int counter = 0;
     device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
