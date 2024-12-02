@@ -17,6 +17,7 @@ from .dataflow.objectfifo import ObjectFifoHandle
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .kernels.binkernel import BinKernel
 from .kernels.kernel import Kernel
+from .globalbuffer import GlobalBuffer
 
 
 class Worker(ObjectFifoEndpoint):
@@ -46,6 +47,7 @@ class Worker(ObjectFifoEndpoint):
         self.fn_args = fn_args
         bin_names = set()
         self._fifos = []
+        self._buffers = []
 
         for arg in self.fn_args:
             if isinstance(arg, BinKernel):
@@ -53,6 +55,8 @@ class Worker(ObjectFifoEndpoint):
             elif isinstance(arg, ObjectFifoHandle):
                 arg.set_endpoint(self)
                 self._fifos.append(arg)
+            elif isinstance(arg, GlobalBuffer):
+                self._buffers.append(arg)
 
         assert len(bin_names) <= 1, "Right now only link with one bin"
         if len(bin_names) == 1:
@@ -67,6 +71,8 @@ class Worker(ObjectFifoEndpoint):
             self._tile, Tile
         ), f"Worker already placed at {self.tile}, cannot place {tile}"
         self._tile = tile
+        for buffer in self._buffers:
+            buffer.place(tile)
 
     def get_fifos(self) -> list[ObjectFifoHandle]:
         return self._fifos.copy()

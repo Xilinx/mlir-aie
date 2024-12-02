@@ -13,6 +13,7 @@ from ..dialects.aie import device
 from .phys.device import Device
 from .runtime import Runtime
 from .placers import Placer
+from .resolvable import Resolvable
 
 
 class Program:
@@ -61,7 +62,7 @@ class Program:
                     for arg in w.fn_args:
                         if isinstance(arg, FuncBase):
                             arg.emit()
-                        else:
+                        elif isinstance(arg, Resolvable):
                             arg.resolve()
 
                 # Generate core programs
