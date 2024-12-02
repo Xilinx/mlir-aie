@@ -14,6 +14,7 @@ include ${srcdir}/../../makefile-common
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
+device = npu
 targetname = vectorScalar
 data_size = 4096
 trace_size = 8192
@@ -25,19 +26,25 @@ kristof: build/insts_${data_size}.txt
 
 build/%.o: %.cc
 	mkdir -p ${@D}
+ifeq ($(device),npu)
 ifeq ($(CHESS), true)
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}; 
 else 
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}; 
 endif
+else ifeq ($(device),npu2)
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+else
+	echo "Device type not supported"
+endif
 
 build/aie_${data_size}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
-	python3 $< ${data_size} 0 > $@
+	python3 $< ${device} ${data_size} 0 > $@
 
 build/aie_trace_${data_size}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
-	python3 $< ${data_size} ${trace_size} > $@
+	python3 $< ${device} ${data_size} ${trace_size} > $@
 
 #build/insts_${data_size}.txt: build/final_${data_size}.xclbin
 build/final_${data_size}.xclbin: build/aie_${data_size}.mlir build/scale.o
