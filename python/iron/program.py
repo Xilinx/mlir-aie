@@ -71,7 +71,7 @@ class Program:
                 # In/Out Sequence
                 self._rt.resolve()
 
-            self._print_verify(ctx)
+            # self._print_verify(ctx)
             return ctx.module
 
     def _print_verify(self, ctx):

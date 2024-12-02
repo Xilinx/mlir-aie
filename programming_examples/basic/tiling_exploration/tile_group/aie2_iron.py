@@ -52,7 +52,7 @@ def generate_module(
     rt = Runtime()
     with rt.sequence(flattened_tensor) as tensor_out:
         rt.start(worker)
-        rt.drain(of_out.cons, t, tensor_out, wait=True)
+        rt.drain(of_out.cons, tensor_out, t, wait=True)
 
     my_program = Program(NPU1Col1(), rt)
     return my_program.resolve_program(SequentialPlacer())

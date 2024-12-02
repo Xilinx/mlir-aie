@@ -22,7 +22,6 @@ def my_passthrough(M, K, generate_acccess_map=False):
     tensor_ty = np.ndarray[(M, K), np.dtype[np.int32]]
 
     tap_in = TensorTiler2D.simple_tiler((M, K), tile_col_major=True)[0]
-    tap_out = TensorTiler2D.simple_tiler((K, M))[0]
 
     if generate_acccess_map:
         tap_in.visualize(file_path="iron_transpose_data.png", show_tile=False)
@@ -33,8 +32,8 @@ def my_passthrough(M, K, generate_acccess_map=False):
 
     rt = Runtime()
     with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (a_in, _, c_out):
-        rt.fill(of_in.prod, tap_in, a_in)
-        rt.drain(of_out.cons, tap_out, c_out, wait=True)
+        rt.fill(of_in.prod, a_in, tap_in)
+        rt.drain(of_out.cons, c_out, wait=True)
 
     my_program = Program(NPU1Col1(), rt)
     module = my_program.resolve_program(SequentialPlacer())

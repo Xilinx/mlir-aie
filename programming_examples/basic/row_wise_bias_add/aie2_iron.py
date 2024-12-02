@@ -50,17 +50,17 @@ def row_wise_bias_add(M, N, m, n):
         fn_args=[in_fifo.cons, bias_fifo.cons, out_fifo.prod, kernel_func],
     )
 
-    tiler = TensorTiler2D.group_tiler(
+    tap = TensorTiler2D.group_tiler(
         (M, N), (m, n), (M // m, N // n), tile_group_col_major=True
-    )
-    bias_tiler = TensorTiler2D.group_tiler((1, N), (1, n), (1, N // n))
+    )[0]
+    bias_tap = TensorTiler2D.group_tiler((1, N), (1, n), (1, N // n))[0]
 
     rt = Runtime()
     with rt.sequence(tensor_ty, bias_ty, tensor_ty) as (inp, bias, out):
         rt.start(my_worker)
-        rt.fill(in_fifo.prod, tiler[0], inp)
-        rt.fill(bias_fifo.prod, bias_tiler[0], bias)
-        rt.drain(out_fifo.cons, tiler[0], out, wait=True)
+        rt.fill(in_fifo.prod, inp, tap)
+        rt.fill(bias_fifo.prod, bias, bias_tap)
+        rt.drain(out_fifo.cons, out, tap, wait=True)
 
     return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 

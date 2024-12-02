@@ -15,7 +15,6 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.program import Program
 from aie.iron.worker import Worker
 from aie.iron.phys.device import NPU1Col1
-from aie.helpers.taplib import TensorTiler2D
 
 try:
     vector_size = int(sys.argv[1])
@@ -31,8 +30,6 @@ vector_type = np.ndarray[(vector_size,), np.dtype[np.uint8]]
 
 of_in = ObjectFifo(2, line_type, "in")
 of_out = ObjectFifo(2, line_type, "out")
-
-tap = TensorTiler2D.simple_tiler((1, vector_size))[0]
 
 passthrough_fn = BinKernel(
     "passThroughLine",
@@ -54,8 +51,8 @@ my_worker = Worker(core_fn, [of_in.cons, of_out.prod, passthrough_fn])
 rt = Runtime()
 with rt.sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
     rt.start(my_worker)
-    rt.fill(of_in.prod, tap, a_in)
-    rt.drain(of_out.cons, tap, b_out, wait=True)
+    rt.fill(of_in.prod, a_in)
+    rt.drain(of_out.cons, b_out, wait=True)
 
 my_program = Program(NPU1Col1(), rt)
 module = my_program.resolve_program(SequentialPlacer())

@@ -14,7 +14,6 @@ from aie.iron.program import Program
 from aie.iron.worker import Worker
 from aie.iron.kernels import BinKernel
 from aie.iron.phys.device import NPU1Col1
-from aie.helpers.taplib import TensorTiler2D
 
 
 def my_reduce_add():
@@ -46,8 +45,8 @@ def my_reduce_add():
     rt = Runtime()
     with rt.sequence(in_ty, out_ty) as (a_in, c_out):
         rt.start(worker)
-        rt.fill(of_in.prod, TensorTiler2D.simple_tiler((N,))[0], a_in)
-        rt.drain(of_out.cons, TensorTiler2D.simple_tiler((1,))[0], c_out, wait=True)
+        rt.fill(of_in.prod, a_in)
+        rt.drain(of_out.cons, c_out, wait=True)
 
     return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 

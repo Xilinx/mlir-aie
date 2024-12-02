@@ -137,12 +137,12 @@ def task_runner(
         worker_idx = 0
         while taps_idx < len(tas_ins[0]):
             for i, tas in enumerate(tas_ins):
-                rt.fill(of_ins[worker_idx][i].prod, tas[taps_idx], rt_buffers[i])
+                rt.fill(of_ins[worker_idx][i].prod, rt_buffers[i], tas[taps_idx])
             for i, tas in enumerate(tas_outs):
                 rt.drain(
                     of_outs[worker_idx][i].cons,
-                    tas[taps_idx],
                     rt_buffers[i + len(tas_ins)],
+                    tas[taps_idx],
                     wait=(i == len(tas_outs) - 1),
                 )
             taps_idx += 1

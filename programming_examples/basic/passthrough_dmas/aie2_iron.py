@@ -41,11 +41,12 @@ line_ty = np.ndarray[(line_size,), np.dtype[np.int32]]
 of_in = ObjectFifo(2, line_ty, "in")
 of_out = of_in.cons.forward()
 
+tap = TensorAccessPattern((1, N), 0, sizes=[1, 1, 1, N], strides=[0, 0, 0, 1])
+
 rt = Runtime()
 with rt.sequence(vector_ty, vector_ty, vector_ty) as (a_in, _, c_out):
-    tap = TensorAccessPattern((1, N), 0, sizes=[1, 1, 1, N], strides=[0, 0, 0, 1])
-    rt.fill(of_in.prod, tap, a_in)
-    rt.drain(of_out.cons, tap, c_out, wait=True)
+    rt.fill(of_in.prod, a_in, tap)
+    rt.drain(of_out.cons, c_out, tap, wait=True)
 
 my_program = Program(dev, rt)
 module = my_program.resolve_program(SequentialPlacer())

@@ -306,13 +306,18 @@ class ObjectFifoHandle(Resolvable):
         return subfifos
 
     def forward(
-        self, placement: PlacementTile = AnyMemTile, depth: int | None = None
+        self,
+        placement: PlacementTile = AnyMemTile,
+        obj_type: type[np.ndarray] | None = None,
+        depth: int | None = None,
     ) -> ObjectFifo:
         assert not self._is_first
+        if obj_type is None:
+            obj_type = self._object_fifo.obj_type
         if depth is None:
             depth = self._object_fifo.depth
         forward_fifo = ObjectFifo(
-            depth, self._object_fifo.obj_type, name=self._object_fifo.name + f"_fwd"
+            depth, obj_type, name=self._object_fifo.name + f"_fwd"
         )
         link = ObjectFifoLink(self._object_fifo, forward_fifo, placement, [], [])
         self.set_endpoint(link)

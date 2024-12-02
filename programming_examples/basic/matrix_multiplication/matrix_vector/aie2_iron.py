@@ -94,8 +94,8 @@ def my_matmul():
         rt.fill(B_fifo.prod, B_taps[0], b_in)
 
         for i, (a_tap, c_tap) in enumerate(zip(A_taps, C_taps)):
-            rt.fill(memA_fifos[i].prod, a_tap, a_in)
-            rt.drain(outC_fifos[i].cons, c_tap, c_out, wait=True)
+            rt.fill(memA_fifos[i].prod, a_in, a_tap)
+            rt.drain(outC_fifos[i].cons, c_out, c_tap, wait=True)
 
     my_program = Program(NPU1Col4(), rt)
     module = my_program.resolve_program(SequentialPlacer())
