@@ -1,6 +1,5 @@
 import numpy as np
 import aie.iron.experimental as aie
-from aie.helpers.dialects.ext.scf import _for as range_
 
 MATRIX_DIMS = (8, 16)
 TILE_DIMS = (2, 4)
@@ -13,8 +12,8 @@ B = aie.array(MATRIX_DIMS, MATRIX_DTYPE)
 
 def task_fn(a, b):
     dim0, dim1 = a.shape
-    for i in range_(dim0):
-        for j in range_(dim1):
+    for i in aie.range(dim0):
+        for j in aie.range(dim1):
             b[i, j] = a[i, j] + 1
 
 
