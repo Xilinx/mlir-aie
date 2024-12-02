@@ -20,7 +20,9 @@ from aie.helpers.dialects.ext.scf import _for as range_
 vectorized = True
 
 
-def my_vector_scalar(vector_size):
+def my_vector_scalar(vector_size, trace_size):
+    if trace_size != 0:
+        raise NotImplementedError("Trace not supported yet.")
     N = vector_size
     N_div_n = 4  # chop input vector into 4 sub-vectors
     n = N // N_div_n
