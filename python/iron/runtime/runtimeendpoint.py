@@ -9,22 +9,12 @@
 from __future__ import annotations
 
 from ..dataflow.endpoint import ObjectFifoEndpoint
-from ..phys.tile import Tile, PlacementTile
+from ..phys.tile import PlacementTile
 
 
 class RuntimeEndpoint(ObjectFifoEndpoint):
     def __init__(self, placement: PlacementTile) -> RuntimeEndpoint:
-        self._tile = placement
-
-    @property
-    def tile(self) -> PlacementTile:
-        return self._tile
-
-    def place(self, tile: Tile) -> None:
-        assert not isinstance(
-            self._tile, Tile
-        ), f"Worker already placed at {self._tile}, cannot place {tile}"
-        self._tile = tile
+        super().__init__(placement)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, RuntimeEndpoint):

@@ -26,11 +26,11 @@ def my_vector_bias_add():
     all_data_ty = np.ndarray[(PROBLEM_SIZE,), np.dtype[np.int32]]
 
     # AIE-array data movement with object fifos
-    of_in0 = ObjectFifo(2, mem_tile_ty, "in")
-    of_in1 = of_in0.cons.forward(obj_type=aie_tile_ty)
+    of_in0 = ObjectFifo(mem_tile_ty, name="in")
+    of_in1 = of_in0.cons().forward(obj_type=aie_tile_ty)
 
-    of_out0 = ObjectFifo(2, aie_tile_ty, "out")
-    of_out1 = of_out0.cons.forward(obj_type=mem_tile_ty)
+    of_out0 = ObjectFifo(aie_tile_ty, name="out")
+    of_out1 = of_out0.cons().forward(obj_type=mem_tile_ty)
 
     def core_body(of_in1, of_out0):
         elem_in = of_in1.acquire(1)
@@ -40,13 +40,13 @@ def my_vector_bias_add():
         of_in1.release(1)
         of_out0.release(1)
 
-    worker = Worker(core_body, fn_args=[of_in1.cons, of_out0.prod])
+    worker = Worker(core_body, fn_args=[of_in1.cons(), of_out0.prod()])
 
     rt = Runtime()
     with rt.sequence(all_data_ty, all_data_ty) as (inTensor, outTensor):
         rt.start(worker)
-        rt.fill(of_in0.prod, inTensor)
-        rt.drain(of_out1.cons, outTensor, wait=True)
+        rt.fill(of_in0.prod(), inTensor)
+        rt.drain(of_out1.cons(), outTensor, wait=True)
 
     return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 

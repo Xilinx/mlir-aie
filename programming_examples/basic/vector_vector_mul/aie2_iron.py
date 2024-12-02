@@ -38,9 +38,9 @@ def my_vector_mul():
     tile_ty = np.ndarray[(n,), np.dtype[np.int32]]
 
     # AIE-array data movement with object fifos
-    of_in1 = ObjectFifo(2, tile_ty, "in1")
-    of_in2 = ObjectFifo(2, tile_ty, "in2")
-    of_out = ObjectFifo(2, tile_ty, "out")
+    of_in1 = ObjectFifo(tile_ty, "in1")
+    of_in2 = ObjectFifo(tile_ty, "in2")
+    of_out = ObjectFifo(tile_ty, "out")
 
     def core_body(of_in1, of_in2, of_out):
         # Number of sub-vector "tile" iterations
@@ -54,14 +54,14 @@ def my_vector_mul():
             of_in2.release(1)
             of_out.release(1)
 
-    worker = Worker(core_body, fn_args=[of_in1.cons, of_in2.cons, of_out.prod])
+    worker = Worker(core_body, fn_args=[of_in1.cons(), of_in2.cons(), of_out.prod()])
 
     rt = Runtime()
     with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (A, B, C):
         rt.start(worker)
-        rt.fill(of_in1.prod, A)
-        rt.fill(of_in2.prod, B)
-        rt.drain(of_out.cons, C, wait=True)
+        rt.fill(of_in1.prod(), A)
+        rt.fill(of_in2.prod(), B)
+        rt.drain(of_out.cons(), C, wait=True)
 
     return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 

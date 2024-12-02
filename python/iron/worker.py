@@ -18,6 +18,7 @@ from .dataflow.endpoint import ObjectFifoEndpoint
 from .kernels.binkernel import BinKernel
 from .kernels.kernel import Kernel
 from .globalbuffer import GlobalBuffer
+from .placeable import Placeable
 
 
 class Worker(ObjectFifoEndpoint):
@@ -62,15 +63,8 @@ class Worker(ObjectFifoEndpoint):
         if len(bin_names) == 1:
             self.link_with = list(bin_names)[0]
 
-    @property
-    def tile(self) -> PlacementTile:
-        return self._tile
-
     def place(self, tile: Tile) -> None:
-        assert not isinstance(
-            self._tile, Tile
-        ), f"Worker already placed at {self.tile}, cannot place {tile}"
-        self._tile = tile
+        super(Placeable, self).place(tile)
         for buffer in self._buffers:
             buffer.place(tile)
 

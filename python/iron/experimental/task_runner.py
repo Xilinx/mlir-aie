@@ -126,7 +126,7 @@ def task_runner(
     workers = []
     for w in range(num_workers):
         args = [of_in.cons for of_in in of_ins[w]]
-        args += [of_out.prod for of_out in of_outs[w]]
+        args += [of_out.prod() for of_out in of_outs[w]]
         workers.append(Worker(worker_wrapper, args))
 
     rt = Runtime()
@@ -137,7 +137,7 @@ def task_runner(
         worker_idx = 0
         while taps_idx < len(tas_ins[0]):
             for i, tas in enumerate(tas_ins):
-                rt.fill(of_ins[worker_idx][i].prod, rt_buffers[i], tas[taps_idx])
+                rt.fill(of_ins[worker_idx][i].prod(), rt_buffers[i], tas[taps_idx])
             for i, tas in enumerate(tas_outs):
                 rt.drain(
                     of_outs[worker_idx][i].cons,

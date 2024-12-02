@@ -14,11 +14,12 @@ from ..helpers.util import (
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
 )
-from .phys.tile import PlacementTile, Tile
+from .phys.tile import PlacementTile
 from .resolvable import Resolvable
+from .placeable import Placeable
 
 
-class GlobalBuffer(Resolvable):
+class GlobalBuffer(Resolvable, Placeable):
     __gbuf_index = 0
 
     def __init__(
@@ -39,8 +40,8 @@ class GlobalBuffer(Resolvable):
         self._arr_type = type
         if not self._name:
             self._name = f"buf_{self.__get_index()}"
-        self._tile = placement
         self._use_write_rtp = use_write_rtp
+        super(Placeable, self).__ini__(placement)
 
     @classmethod
     def __get_index(cls) -> int:
@@ -49,22 +50,12 @@ class GlobalBuffer(Resolvable):
         return idx
 
     @property
-    def tile(self) -> PlacementTile:
-        return self._tile
-
-    @property
     def shape(self) -> Sequence[int]:
         return np_ndarray_type_get_shape(self._obj_type)
 
     @property
     def dtype(self) -> np.dtype:
         return np_ndarray_type_get_dtype(self._obj_type)
-
-    def place(self, tile: Tile) -> None:
-        assert not isinstance(
-            self._tile, Tile
-        ), f"GlobalBuffer already placed at {self.tile}, cannot place at {tile}"
-        self._tile = tile
 
     def __getitem__(self, idx):
         if self._op is None:

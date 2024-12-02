@@ -37,7 +37,7 @@ def generate_module(
         tiler.visualize(file_path="per_tile.png")
         return
 
-    of_out = ObjectFifo(2, flattened_tile)
+    of_out = ObjectFifo(flattened_tile)
 
     def access_order(of_out):
         access_counter = LocalBuffer(initial_value=np.array([0], dtype=dtype))
@@ -50,13 +50,13 @@ def generate_module(
             of_out.release(1)
         pass
 
-    worker = Worker(access_order, [of_out.prod], while_true=False)
+    worker = Worker(access_order, [of_out.prod()], while_true=False)
 
     rt = Runtime()
     with rt.sequence(flattened_tensor) as tensor_out:
         rt.start(worker)
         for t in tiler:
-            rt.drain(of_out.cons, tensor_out, t, wait=True)
+            rt.drain(of_out.cons(), tensor_out, t, wait=True)
 
     my_program = Program(NPU1Col1(), rt)
     return my_program.resolve_program(SequentialPlacer())

@@ -15,7 +15,7 @@ import numpy as np
 from ... import ir  # type: ignore
 
 from ...dialects.aiex import runtime_sequence
-from ...dialects._aiex_ops_gen import dma_free_task
+from ...dialects._aiex_ops_gen import dma_free_task  # type: ignore
 from ...helpers.taplib import TensorAccessPattern
 from ..dataflow.objectfifo import ObjectFifoHandle
 from ..phys.tile import PlacementTile, AnyShimTile, Tile
@@ -126,7 +126,6 @@ class Runtime(Resolvable):
         # TODO: move to placer?
         for op in self._ops:
             ofe = op.fifo.get_endpoint()
-            ofe = ofe[0]  # un-listify
             assert isinstance(
                 ofe, RuntimeEndpoint
             ), f"Expected RuntimeEndpoint, but found {type(ofe)}"

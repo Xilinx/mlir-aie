@@ -13,7 +13,6 @@ from aie.iron.dataflow import ObjectFifo
 from aie.iron.placers import SequentialPlacer
 from aie.iron.program import Program
 from aie.iron.phys.device import NPU1Col1
-from aie.helpers.taplib import TensorAccessPattern
 
 N = 4096
 dev = None
@@ -38,15 +37,13 @@ if len(sys.argv) > 3:
 vector_ty = np.ndarray[(N,), np.dtype[np.int32]]
 line_ty = np.ndarray[(line_size,), np.dtype[np.int32]]
 
-of_in = ObjectFifo(2, line_ty, "in")
-of_out = of_in.cons.forward()
-
-tap = TensorAccessPattern((1, N), 0, sizes=[1, 1, 1, N], strides=[0, 0, 0, 1])
+of_in = ObjectFifo(line_ty, "in")
+of_out = of_in.cons().forward()
 
 rt = Runtime()
 with rt.sequence(vector_ty, vector_ty, vector_ty) as (a_in, _, c_out):
-    rt.fill(of_in.prod, a_in, tap)
-    rt.drain(of_out.cons, c_out, tap, wait=True)
+    rt.fill(of_in.prod(), a_in)
+    rt.drain(of_out.cons(), c_out, wait=True)
 
 my_program = Program(dev, rt)
 module = my_program.resolve_program(SequentialPlacer())

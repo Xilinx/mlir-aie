@@ -19,14 +19,12 @@ from aie.iron.phys.device import NPU1Col1
 def my_reduce_max():
     N = 1024
 
-    buffer_depth = 2
-
     in_ty = np.ndarray[(N,), np.dtype[np.int32]]
     out_ty = np.ndarray[(1,), np.dtype[np.int32]]
 
     # AIE-array data movement with object fifos
-    of_in = ObjectFifo(buffer_depth, in_ty, "in")
-    of_out = ObjectFifo(buffer_depth, out_ty, "out")
+    of_in = ObjectFifo(in_ty, "in")
+    of_out = ObjectFifo(out_ty, "out")
 
     # AIE Core Function declarations
     reduce_add_vector = BinKernel(
@@ -40,13 +38,13 @@ def my_reduce_max():
         of_in.release(1)
         of_out.release(1)
 
-    worker = Worker(core_body, fn_args=[of_in.cons, of_out.prod, reduce_add_vector])
+    worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod(), reduce_add_vector])
 
     rt = Runtime()
     with rt.sequence(in_ty, out_ty) as (a_in, c_out):
         rt.start(worker)
-        rt.fill(of_in.prod, a_in)
-        rt.drain(of_out.cons, c_out, wait=True)
+        rt.fill(of_in.prod(), a_in)
+        rt.drain(of_out.cons(), c_out, wait=True)
 
     return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 

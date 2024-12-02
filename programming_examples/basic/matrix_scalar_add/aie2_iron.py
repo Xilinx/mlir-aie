@@ -43,8 +43,8 @@ def my_matrix_add_one():
     tile_ty = np.ndarray[TILE_SHAPE, np.dtype[np.int32]]
 
     # AIE-array data movement with object fifos
-    of_in = ObjectFifo(2, tile_ty, "in0")
-    of_out = ObjectFifo(2, tile_ty, "out0")
+    of_in = ObjectFifo(tile_ty, "in0")
+    of_out = ObjectFifo(tile_ty, "out0")
 
     # Set up compute tile 2
     def core_fn(of_in1, of_out1):
@@ -56,14 +56,14 @@ def my_matrix_add_one():
         of_in1.release(1)
         of_out1.release(1)
 
-    my_worker = Worker(core_fn, fn_args=[of_in.cons, of_out.prod])
+    my_worker = Worker(core_fn, fn_args=[of_in.cons(), of_out.prod()])
 
     tap = TensorTiler2D.simple_tiler(MATRIX_SHAPE, TILE_SHAPE)[0]
     rt = Runtime()
     with rt.sequence(matrix_ty, matrix_ty, matrix_ty) as (in_tensor, _, out_tensor):
         rt.start(my_worker)
-        rt.fill(of_in.prod, in_tensor, tap)
-        rt.drain(of_out.cons, out_tensor, tap, wait=True)
+        rt.fill(of_in.prod(), in_tensor, tap)
+        rt.drain(of_out.cons(), out_tensor, tap, wait=True)
 
     return Program(dev, rt).resolve_program(SequentialPlacer())
 

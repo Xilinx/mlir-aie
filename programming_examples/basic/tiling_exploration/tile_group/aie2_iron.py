@@ -38,7 +38,7 @@ def generate_module(
         t.visualize(show_arrows=True, file_path="tile_group.png")
         return
 
-    of_out = ObjectFifo(2, flattened_tensor)
+    of_out = ObjectFifo(flattened_tensor)
 
     def access_order(of_out):
         elemOut = of_out.acquire(1)
@@ -47,12 +47,12 @@ def generate_module(
             elemOut[i] = arith.index_cast(i, to=np_dtype_to_mlir_type(dtype))
         of_out.release(1)
 
-    worker = Worker(access_order, [of_out.prod])
+    worker = Worker(access_order, [of_out.prod()])
 
     rt = Runtime()
     with rt.sequence(flattened_tensor) as tensor_out:
         rt.start(worker)
-        rt.drain(of_out.cons, tensor_out, t, wait=True)
+        rt.drain(of_out.cons(), tensor_out, t, wait=True)
 
     my_program = Program(NPU1Col1(), rt)
     return my_program.resolve_program(SequentialPlacer())

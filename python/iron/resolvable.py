@@ -19,3 +19,9 @@ class Resolvable(ABC):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None: ...
+
+
+class NotResolvedError(Exception):
+    def __init__(self, message="Cannot get operation; class not resolved."):
+        self.message = message
+        super().__init__(self.message)

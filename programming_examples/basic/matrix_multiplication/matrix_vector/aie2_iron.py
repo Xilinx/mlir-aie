@@ -69,32 +69,32 @@ def my_matmul():
     coreA_fifos = []
     outC_fifos = []
     workers = []
-    B_fifo = ObjectFifo(2, inB_ty)
+    B_fifo = ObjectFifo(inB_ty)
     for i in range(n_cores):
-        a_fifo = ObjectFifo(2, inA_ty, f"memA{i}")
+        a_fifo = ObjectFifo(inA_ty, f"memA{i}")
         memA_fifos.append(a_fifo)
-        coreA_fifos.append(a_fifo.cons.forward())  # TODO: transform if vectorized
-        outC_fifos.append(ObjectFifo(2, outC_ty, f"outC{i}"))
+        coreA_fifos.append(a_fifo.cons().forward())  # TODO: transform if vectorized
+        outC_fifos.append(ObjectFifo(outC_ty, f"outC{i}"))
         w = Worker(
             core_fn,
-            [coreA_fifos[i].cons, B_fifo.cons, outC_fifos[i].prod, zero, matvec],
+            [coreA_fifos[i].cons(), B_fifo.cons(), outC_fifos[i].prod(), zero, matvec],
         )
         workers.append(w)
 
     A_taps = TensorTiler2D.group_tiler((M, K), (m, k), (M_div_m_div_n_cores, K_div_k))
     C_taps = TensorTiler2D.simple_tiler((1, M), (1, M_div_n_cores))
-    B_taps = TensorTiler2D.simple_tiler((1, K), pattern_repeat=M_div_m_div_n_cores)
+    b_tap = TensorTiler2D.simple_tiler((1, K), pattern_repeat=M_div_m_div_n_cores)[0]
 
     rt = Runtime()
     with rt.sequence(A_ty, B_ty, C_ty) as (a_in, b_in, c_out):
         rt.start(*workers)
 
         # there is only one b tile
-        rt.fill(B_fifo.prod, b_in, B_taps[0])
+        rt.fill(B_fifo.prod(), b_in, b_tap[0])
 
         for i, (a_tap, c_tap) in enumerate(zip(A_taps, C_taps)):
-            rt.fill(memA_fifos[i].prod, a_in, a_tap)
-            rt.drain(outC_fifos[i].cons, c_out, c_tap, wait=True)
+            rt.fill(memA_fifos[i].prod(), a_in, a_tap)
+            rt.drain(outC_fifos[i].cons(), c_out, c_tap, wait=True)
 
     my_program = Program(NPU1Col4(), rt)
     module = my_program.resolve_program(SequentialPlacer())

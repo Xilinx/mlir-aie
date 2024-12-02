@@ -38,9 +38,9 @@ def my_vector_scalar(vector_size):
     )
 
     # AIE-array data movement with object fifos
-    of_in = ObjectFifo(2, tile_ty, "in")
-    of_factor = ObjectFifo(2, scalar_ty, "infactor")
-    of_out = ObjectFifo(2, tile_ty, "out")
+    of_in = ObjectFifo(tile_ty, "in")
+    of_factor = ObjectFifo(scalar_ty, name="infactor")
+    of_out = ObjectFifo(tile_ty, "out")
 
     def core_body(of_in, of_factor, of_out, scale_fn):
         elem_factor = of_factor.acquire(1)
@@ -53,14 +53,16 @@ def my_vector_scalar(vector_size):
             of_in.release(1)
             of_out.release(1)
 
-    worker = Worker(core_body, fn_args=[of_in.cons, of_factor.cons, of_out.prod, scale])
+    worker = Worker(
+        core_body, fn_args=[of_in.cons(), of_factor.cons(), of_out.prod(), scale]
+    )
 
     rt = Runtime()
     with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (A, F, C):
         rt.start(worker)
-        rt.fill(of_in.prod, A)
-        rt.fill(of_factor.prod, F)
-        rt.drain(of_out.cons, C, wait=True)
+        rt.fill(of_in.prod(), A)
+        rt.fill(of_factor.prod(), F)
+        rt.drain(of_out.cons(), C, wait=True)
 
     return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 

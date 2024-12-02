@@ -28,7 +28,6 @@ def my_eltwise_exp():
 
     n_cores = 4
     tiles = N_div_n // n_cores
-    buffer_depth = 2
 
     tensor_ty = np.ndarray[(N,), np.dtype[bfloat16]]
     memtile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
@@ -36,12 +35,12 @@ def my_eltwise_exp():
 
     exp_bf16_1024 = BinKernel("exp_bf16_1024", "kernels.a", [tile_ty, tile_ty])
 
-    A_fifo = ObjectFifo(buffer_depth, memtile_ty, "inA")
-    C_fifo = ObjectFifo(buffer_depth, memtile_ty, "outC")
-    a_fifos = A_fifo.cons.split(
+    A_fifo = ObjectFifo(memtile_ty, name="inA")
+    C_fifo = ObjectFifo(memtile_ty, name="outC")
+    a_fifos = A_fifo.cons().split(
         offsets=[n * i for i in range(n_cores)], types=[tile_ty] * n_cores
     )
-    c_fifos = C_fifo.prod.join(
+    c_fifos = C_fifo.prod().join(
         offsets=[n * i for i in range(n_cores)], types=[tile_ty] * n_cores
     )
 
@@ -57,14 +56,16 @@ def my_eltwise_exp():
     workers = []
     for i in range(n_cores):
         workers.append(
-            Worker(core_fn, fn_args=[a_fifos[i].cons, c_fifos[i].prod, exp_bf16_1024])
+            Worker(
+                core_fn, fn_args=[a_fifos[i].cons(), c_fifos[i].prod(), exp_bf16_1024]
+            )
         )
 
     rt = Runtime()
     with rt.sequence(tensor_ty, tensor_ty) as (a_in, c_out):
         rt.start(*workers)
-        rt.fill(A_fifo.prod, a_in)
-        rt.drain(C_fifo.cons, c_out, wait=True)
+        rt.fill(A_fifo.prod(), a_in)
+        rt.drain(C_fifo.cons(), c_out, wait=True)
 
     return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 

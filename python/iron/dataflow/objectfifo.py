@@ -20,7 +20,7 @@ from ...helpers.util import (
     np_ndarray_type_get_shape,
 )
 
-from ..resolvable import Resolvable
+from ..resolvable import Resolvable, NotResolvedError
 from .endpoint import ObjectFifoEndpoint
 from ..phys.tile import PlacementTile, AnyMemTile, Tile
 
@@ -30,26 +30,28 @@ class ObjectFifo(Resolvable):
 
     def __init__(
         self,
-        depth: int,
         obj_type: type[np.ndarray],
+        default_depth: int | None = 2,
         name: str | None = None,
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
     ):
-        self._depth = depth
+        self._default_depth = default_depth
+        if isinstance(self._default_depth, int) and self._default_depth < 1:
+            raise ValueError(
+                f"Default ObjectFifo depth must be > 0, but got {self._default_depth}"
+            )
         self._obj_type = obj_type
-        self.end_prod = None
-        self.end_cons = []
-        self.dimensionToStream = dimensionsToStream
-        self.dimensionsFromStreamPerConsumer = dimensionsFromStreamPerConsumer
+        self._dimensionToStream = dimensionsToStream
+        self._dimensionsFromStreamPerConsumer = dimensionsFromStreamPerConsumer
 
         if name is None:
             self.name = f"of{ObjectFifo.__get_index()}"
         else:
             self.name = name
         self._op: ObjectFifoCreateOp | None = None
-        self._prod: ObjectFifoHandle = ObjectFifoHandle(self, True)
-        self._cons: ObjectFifoHandle = ObjectFifoHandle(self, False)
+        self._prod: ObjectFifoHandle | None = None
+        self._cons: list[ObjectFifoHandle] = []
 
     @classmethod
     def __get_index(cls) -> int:
@@ -58,12 +60,13 @@ class ObjectFifo(Resolvable):
         return idx
 
     @property
-    def depth(self) -> int:
-        return self._depth
+    def default_depth(self) -> int:
+        return self._default_depth
 
     @property
     def op(self) -> ObjectFifoCreateOp:
-        assert self._op != None
+        if self._op is None:
+            raise NotResolvedError()
         return self._op
 
     @property
@@ -74,29 +77,64 @@ class ObjectFifo(Resolvable):
     def dtype(self) -> np.dtype:
         return np_ndarray_type_get_dtype(self._obj_type)
 
-    @property
-    def prod(self) -> ObjectFifoHandle:
+    def prod(self, depth: int | None = None) -> ObjectFifoHandle:
+        if self._prod:
+            if depth is None:
+                if self._default_depth is None:
+                    raise ValueError(
+                        f"If default_depth is None, then depth must be specified."
+                    )
+                else:
+                    depth = self._default_depth
+            elif depth < 1:
+                raise ValueError(f"Depth must be > 1, but got {depth}")
+        else:
+            self._prod = ObjectFifoHandle(self, True, depth)
         return self._prod
 
-    @property
-    def cons(self) -> ObjectFifoHandle:
-        return self._cons
+    def cons(self, depth: int | None = None) -> ObjectFifoHandle:
+        if depth is None:
+            if self._default_depth is None:
+                raise ValueError(
+                    f"If default_depth is None, then depth must be specified."
+                )
+            else:
+                depth = self._default_depth
+        self._cons.append(ObjectFifoHandle(self, False, depth))
+        return self._cons[-1]
 
-    def end_prod_tile(self) -> PlacementTile | None:
-        if self.end_prod == None:
-            return None
-        return self.end_prod.tile
+    def tiles(self) -> list[PlacementTile]:
+        if self._prod == None:
+            raise ValueError("Cannot return prod.tile.op because prod was not created.")
+        if self._cons == []:
+            raise ValueError("Cannot return cons.tile.op because prod was not created.")
+        return [self._prod.tile] + [cons.tile for cons in self._cons]
 
-    def end_cons_tiles(self) -> list[PlacementTile | None] | None:
-        if self.end_cons == []:
-            return None
-        return [e.tile for e in self.end_cons]
+    def _prod_tile_op(self) -> Tile:
+        if self._prod == None:
+            raise ValueError("Cannot return prod.tile.op because prod was not created.")
+        return self._prod.get_endpoint().tile.op
 
-    def _get_endpoint(self, is_first: bool) -> list[ObjectFifoEndpoint]:
-        if is_first:
-            return [self.end_prod]
+    def _cons_tiles_ops(self) -> list[Tile]:
+        if self._cons == []:
+            raise ValueError("Cannot return cons.tile.op because prod was not created.")
+        return [cons.get_endpoint().tile.op for cons in self._cons]
+
+    def _get_depths(self) -> int | list[int]:
+        if not self._prod:
+            raise ValueError("Cannot return depths is producer is not created.")
+        if len(self._cons) == 0:
+            raise ValueError("Cannot return depths if no consumers are created.")
+        depths = [self._prod.depth] + [con.depth for con in self._cons]
+        if len(set(depths)) == 1:
+            return depths[0]
+        return depths
+
+    def _get_endpoint(self, is_prod: bool) -> list[ObjectFifoEndpoint]:
+        if is_prod:
+            return [self._prod.get_endpoint()]
         else:
-            return self.end_cons.copy()
+            return [con.get_endpoint() for con in self._cons]
 
     @property
     def obj_type(self) -> type[np.ndarray]:
@@ -108,40 +146,25 @@ class ObjectFifo(Resolvable):
         ip: ir.InsertionPoint | None = None,
     ) -> None:
         if self._op == None:
-            tile1 = self.end_prod_tile()
-            tiles2 = self.end_cons_tiles()
-            assert tile1 != None
-            assert tiles2 != None and len(tiles2) >= 1
-            for t in tiles2:
-                assert t != None
-
             self._op = object_fifo(
                 self.name,
-                tile1.op,
-                [t.op for t in tiles2],
-                self._depth,
+                self._prod_tile_op(),
+                self._cons_tiles_ops(),
+                self._get_depths(),
                 np_ndarray_type_to_memref_type(self._obj_type),
-                dimensionsToStream=self.dimensionToStream,
-                dimensionsFromStreamPerConsumer=self.dimensionsFromStreamPerConsumer,
+                dimensionsToStream=self._dimensionToStream,
+                dimensionsFromStreamPerConsumer=self._dimensionsFromStreamPerConsumer,
                 loc=loc,
                 ip=ip,
             )
 
-            if isinstance(self.end_prod, ObjectFifoLink):
-                self.end_prod.resolve()
-            for e in self.end_cons:
-                if isinstance(self.end_cons, ObjectFifoLink):
-                    e.resolve()
-
-    def _set_endpoint(self, endpoint: ObjectFifoEndpoint, first: bool = True) -> None:
-        if first:
-            assert (
-                self.end_prod == None or self.end_prod == endpoint
-            ), f"ObjectFifo already assigned endpoint 1 ({self.end_prod})"
-            self.end_prod = endpoint
-        else:
-            # TODO: need rules about shim tiles here
-            self.end_cons.append(endpoint)
+            prod_endpoint = self._prod.get_endpoint()
+            if isinstance(prod_endpoint, ObjectFifoLink):
+                prod_endpoint.resolve()
+            for con in self._cons:
+                con_endpoint = con.get_endpoint()
+                if isinstance(con_endpoint, ObjectFifoLink):
+                    con_endpoint.resolve()
 
     def _acquire(
         self,
@@ -150,10 +173,8 @@ class ObjectFifo(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ):
-        assert num_elem > 0, "Must consume at least one element"
-        assert (
-            num_elem <= self._depth
-        ), "Cannot consume elements to exceed ObjectFifo depth"
+        if num_elem > 0:
+            raise ValueError("Must consume at least one element")
         return self.op.acquire(port, num_elem)
 
     def _release(
@@ -163,20 +184,28 @@ class ObjectFifo(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ):
-        assert num_elem > 0, "Must consume at least one element"
-        assert (
-            num_elem <= self._depth
-        ), "Cannot consume elements to exceed ObjectFifo depth"
+        if num_elem > 0:
+            raise ValueError("Must produce at least one element")
         self.op.release(port, num_elem)
 
 
 class ObjectFifoHandle(Resolvable):
-    def __init__(self, of: ObjectFifo, is_first: bool):
+    def __init__(self, of: ObjectFifo, is_prod: bool, depth: int | None = None):
+        if depth is None:
+            depth = int(of.default_depth)
+        if depth is None:
+            raise ValueError(
+                "Must specify either ObjectFifoHandle depth or ObjectFifo default depth; both are None."
+            )
+        if depth < 1:
+            raise ValueError("Depth must be > 0")
         self._port: ObjectFifoPort = (
-            ObjectFifoPort.Produce if is_first else ObjectFifoPort.Consume
+            ObjectFifoPort.Produce if is_prod else ObjectFifoPort.Consume
         )
-        self._is_first = is_first
+        self._is_prod = is_prod
         self._object_fifo = of
+        self._depth = depth
+        self._endpoint = None
 
     def acquire(
         self,
@@ -184,6 +213,10 @@ class ObjectFifoHandle(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ):
+        if self._depth < num_elem:
+            raise ValueError(
+                f"Number of elements to acquire {num_elem} must be smaller than depth {self._depth}"
+            )
         return self._object_fifo._acquire(self._port, num_elem, loc=loc, ip=ip)
 
     def release(
@@ -192,6 +225,10 @@ class ObjectFifoHandle(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ):
+        if self._depth < num_elem:
+            raise ValueError(
+                f"Number of elements to release {num_elem} must be smaller than depth {self._depth}"
+            )
         return self._object_fifo._release(self._port, num_elem, loc=loc, ip=ip)
 
     @property
@@ -214,22 +251,22 @@ class ObjectFifoHandle(Resolvable):
     def dtype(self) -> np.dtype:
         return self._oject_fifo.dtype
 
-    def end_prod_tile(self) -> Tile | None:
-        return self._object_fifo.end_prod_tile()
-
-    def end_cons_tiles(self) -> list[Tile | None] | None:
-        return self._object_fifo.end_cons_tiles()
+    @property
+    def depth(self) -> int:
+        return self._depth
 
     def set_endpoint(self, endpoint: ObjectFifoEndpoint) -> None:
-        self._object_fifo._set_endpoint(endpoint, first=self._is_first)
+        if self._endpoint and self._endpoint != endpoint:
+            raise ValueError("Endpoint already set for ObjectFifoEndpoint")
+        self._endpoint = endpoint
 
-    def get_endpoint(self) -> list[ObjectFifoEndpoint]:
-        return self._object_fifo._get_endpoint(is_first=self._is_first)
+    def get_endpoint(self) -> ObjectFifoEndpoint | None:
+        return self._endpoint
 
     def get_all_endpoints(self) -> list[ObjectFifoEndpoint]:
         return self._object_fifo._get_endpoint(
-            is_first=True
-        ) + self._object_fifo._get_endpoint(is_first=False)
+            is_prod=True
+        ) + self._object_fifo._get_endpoint(is_prod=False)
 
     def join(
         self,
@@ -237,18 +274,17 @@ class ObjectFifoHandle(Resolvable):
         placement: PlacementTile = AnyMemTile,
         depths: list[int] | None = None,
         types: list[type[np.ndarray]] = None,
-        dimensions=None,
     ) -> list[ObjectFifo]:
         num_subfifos = len(offsets)
         if depths is None:
             depths = [self._object_fifo.depth] * num_subfifos
-        if isinstance(depths, list):
-            assert len(depths) == len(offsets)
+        elif len(depths) != num_subfifos:
+            raise ValueError("Number of depths does not match number of offsets")
 
         if types is None:
             types = [self._object_fifo.obj_type] * num_subfifos
-        if isinstance(types, list):
-            assert len(types) == len(offsets)
+        elif len(types) != num_subfifos:
+            raise ValueError("Number of types does not match number of offsets")
 
         # Create subfifos
         subfifos = []
@@ -274,18 +310,17 @@ class ObjectFifoHandle(Resolvable):
         placement: PlacementTile = AnyMemTile,
         depths: list[int] | None = None,
         types: list[type[np.ndarray]] = None,
-        dimensions=None,
     ) -> list[ObjectFifo]:
         num_subfifos = len(offsets)
         if depths is None:
             depths = [self._object_fifo.depth] * num_subfifos
-        if isinstance(depths, list):
-            assert len(depths) == len(offsets)
+        elif len(depths) != num_subfifos:
+            raise ValueError("Number of depths does not match number of offsets")
 
         if types is None:
             types = [self._object_fifo.obj_type] * num_subfifos
-        if isinstance(types, list):
-            assert len(types) == len(offsets)
+        elif len(types) != num_subfifos:
+            raise ValueError("Number of types does not match number of offsets")
 
         # Create subfifos
         subfifos = []
@@ -302,7 +337,7 @@ class ObjectFifoHandle(Resolvable):
         link = ObjectFifoLink(self._object_fifo, subfifos, placement, [], offsets)
         self.set_endpoint(link)
         for i in range(num_subfifos):
-            subfifos[i].prod.set_endpoint(link)
+            subfifos[i].prod().set_endpoint(link)
         return subfifos
 
     def forward(
@@ -311,17 +346,22 @@ class ObjectFifoHandle(Resolvable):
         obj_type: type[np.ndarray] | None = None,
         depth: int | None = None,
     ) -> ObjectFifo:
-        assert not self._is_first
+        if self._is_prod:
+            raise ValueError("Cannot forward a producer ObjectFifoHandle")
         if obj_type is None:
             obj_type = self._object_fifo.obj_type
         if depth is None:
-            depth = self._object_fifo.depth
+            if self._object_fifo.default_depth is None:
+                raise ValueError(
+                    f"Must provide depth since ObjectFifo default_depth={self._object_fifo.default_depth}"
+                )
+            depth = self._object_fifo.default_depth
         forward_fifo = ObjectFifo(
-            depth, obj_type, name=self._object_fifo.name + f"_fwd"
+            obj_type, default_depth=depth, name=self._object_fifo.name + f"_fwd"
         )
         link = ObjectFifoLink(self._object_fifo, forward_fifo, placement, [], [])
         self.set_endpoint(link)
-        forward_fifo.prod.set_endpoint(link)
+        forward_fifo.prod().set_endpoint(link)
         return forward_fifo
 
     def resolve(
@@ -346,25 +386,24 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
         self._src_offsets = src_offsets
         self._dst_offsets = dst_offsets
 
-        assert len(self._srcs) > 0 and len(self._dsts) > 0
-        assert len(self._srcs) == 1 or len(self._dsts) == 1
-        if len(self._src_offsets) > 0:
-            assert len(self._src_offsets) == len(self._srcs)
-        if len(self._dst_offsets) > 0:
-            assert len(self._dst_offsets) == len(self._dsts)
-
-        self._tile = placement
+        if len(self._srcs) < 1:
+            raise ValueError("An ObjectFifoLink must have at least one source")
+        if len(self._dsts) < 1:
+            raise ValueError("An ObjectFifoLink must have at least one destination")
+        if len(self._srcs) != 1 or len(self._dsts) != 1:
+            raise ValueError(
+                "An ObjectFifoLink may only have > 1 of either sources or destinations, but not both"
+            )
+        if len(self._src_offsets) > 0 and len(self._src_offsets) != len(self._srcs):
+            raise ValueError(
+                "Then number of source offsets does not match the number of sources"
+            )
+        if len(self._dst_offsets) > 0 and len(self._dst_offsets) != len(self._dsts):
+            raise ValueError(
+                "Then number of destination offsets does not match the number of destinations"
+            )
         self._op = None
-
-    @property
-    def tile(self) -> PlacementTile:
-        return self._tile
-
-    def place(self, tile: Tile) -> None:
-        assert not isinstance(
-            self._tile, Tile
-        ), f"Worker already placed at {self._tile}, cannot place {tile}"
-        self._tile = tile
+        super(ObjectFifoEndpoint, self).__init__(placement)
 
     def resolve(
         self,

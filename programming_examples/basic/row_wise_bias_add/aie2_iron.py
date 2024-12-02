@@ -30,9 +30,9 @@ def row_wise_bias_add(M, N, m, n):
         f"row_wise_bias_add_f32_f32", "kernel.o", [tensor_ty, bias_ty, tensor_ty]
     )
 
-    in_fifo = ObjectFifo(2, tensor_ty, "in_fifo")
-    bias_fifo = ObjectFifo(2, bias_ty, "bias_fifo")
-    out_fifo = ObjectFifo(2, tensor_ty, "out_fifo")
+    in_fifo = ObjectFifo(tensor_ty, "in_fifo")
+    bias_fifo = ObjectFifo(bias_ty, "bias_fifo")
+    out_fifo = ObjectFifo(tensor_ty, "out_fifo")
 
     def core_fn(in_fifo, bias_fifo, out_fifo, kernel_func):
         for _ in range_(N // n):
@@ -47,7 +47,7 @@ def row_wise_bias_add(M, N, m, n):
 
     my_worker = Worker(
         core_fn,
-        fn_args=[in_fifo.cons, bias_fifo.cons, out_fifo.prod, kernel_func],
+        fn_args=[in_fifo.cons(), bias_fifo.cons(), out_fifo.prod(), kernel_func],
     )
 
     tap = TensorTiler2D.group_tiler(
@@ -58,9 +58,9 @@ def row_wise_bias_add(M, N, m, n):
     rt = Runtime()
     with rt.sequence(tensor_ty, bias_ty, tensor_ty) as (inp, bias, out):
         rt.start(my_worker)
-        rt.fill(in_fifo.prod, inp, tap)
-        rt.fill(bias_fifo.prod, bias, bias_tap)
-        rt.drain(out_fifo.cons, out, tap, wait=True)
+        rt.fill(in_fifo.prod(), inp, tap)
+        rt.fill(bias_fifo.prod(), bias, bias_tap)
+        rt.drain(out_fifo.cons(), out, tap, wait=True)
 
     return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 

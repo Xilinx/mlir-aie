@@ -28,8 +28,8 @@ line_size = vector_size // 4
 line_type = np.ndarray[(line_size,), np.dtype[np.uint8]]
 vector_type = np.ndarray[(vector_size,), np.dtype[np.uint8]]
 
-of_in = ObjectFifo(2, line_type, "in")
-of_out = ObjectFifo(2, line_type, "out")
+of_in = ObjectFifo(line_type, "in")
+of_out = ObjectFifo(line_type, "out")
 
 passthrough_fn = BinKernel(
     "passThroughLine",
@@ -46,13 +46,13 @@ def core_fn(of_in, of_out, passThroughLine):
     of_out.release(1)
 
 
-my_worker = Worker(core_fn, [of_in.cons, of_out.prod, passthrough_fn])
+my_worker = Worker(core_fn, [of_in.cons(), of_out.prod(), passthrough_fn])
 
 rt = Runtime()
 with rt.sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
     rt.start(my_worker)
-    rt.fill(of_in.prod, a_in)
-    rt.drain(of_out.cons, b_out, wait=True)
+    rt.fill(of_in.prod(), a_in)
+    rt.drain(of_out.cons(), b_out, wait=True)
 
 my_program = Program(NPU1Col1(), rt)
 module = my_program.resolve_program(SequentialPlacer())

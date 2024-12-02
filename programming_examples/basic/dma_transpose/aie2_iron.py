@@ -27,13 +27,13 @@ def my_passthrough(M, K, generate_acccess_map=False):
         tap_in.visualize(file_path="iron_transpose_data.png", show_tile=False)
         return
 
-    of_in = ObjectFifo(2, tensor_ty)
-    of_out = of_in.cons.forward(AnyComputeTile)
+    of_in = ObjectFifo(tensor_ty)
+    of_out = of_in.cons().forward(AnyComputeTile)
 
     rt = Runtime()
     with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (a_in, _, c_out):
-        rt.fill(of_in.prod, a_in, tap_in)
-        rt.drain(of_out.cons, c_out, wait=True)
+        rt.fill(of_in.prod(), a_in, tap_in)
+        rt.drain(of_out.cons(), c_out, wait=True)
 
     my_program = Program(NPU1Col1(), rt)
     module = my_program.resolve_program(SequentialPlacer())
