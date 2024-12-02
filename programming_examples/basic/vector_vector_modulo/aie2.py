@@ -1,4 +1,4 @@
-# vector_vector_add/aie2.py -*- Python -*-
+# vector_vector_modulo/aie2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -14,7 +14,7 @@ from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 
 
-def my_vector_add():
+def my_vector_mod():
     N = 256
     n = 16
     N_div_n = N // n
@@ -79,7 +79,7 @@ def my_vector_add():
 
 
 with mlir_mod_ctx() as ctx:
-    my_vector_add()
+    my_vector_mod()
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)
