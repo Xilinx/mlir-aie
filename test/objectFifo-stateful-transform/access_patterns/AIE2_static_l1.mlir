@@ -17,6 +17,7 @@
 // In the end, %dstbuf23 should hold [0, 1, 2, 3, 4, 5, ... 15]
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+
 // CHECK:     %[[t0:.*]] = aie.tile(2, 2)
 // CHECK:     %[[t1:.*]] = aie.tile(2, 3)
 // CHECK:     %[[PL:.*]] = aie.lock(%[[t0]], 0) {init = 4 : i32, sym_name = "fifo_prod_lock"}
