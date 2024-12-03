@@ -1008,6 +1008,8 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
     bool isSend() { return getChannelDir() == DMAChannelDir::MM2S; }
     bool isRecv() { return getChannelDir() == DMAChannelDir::S2MM; }
   }];
+  
+  let hasCanonicalizer = 1;
 }
 
 def AIE_DMAOp: AIE_Op<"dma", [
