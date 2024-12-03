@@ -385,6 +385,7 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
         self._dsts = single_elem_or_list_to_list(dsts)
         self._src_offsets = src_offsets
         self._dst_offsets = dst_offsets
+        self._resolving = False
 
         if len(self._srcs) < 1:
             raise ValueError("An ObjectFifoLink must have at least one source")
@@ -410,7 +411,15 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        if self._op == None:
+        if not self._resolving:
+            self._resolving = True
+
+            # This function may be re-entrant as resolving sources/destinations
+            # may call resolve on the object fifo endpoints, e.g., this function
+
+            # We solve this be marking as _resolving BEFORE calling resolve on
+            # sources or destinations.
+
             for s in self._srcs:
                 s.resolve()
             for d in self._dsts:

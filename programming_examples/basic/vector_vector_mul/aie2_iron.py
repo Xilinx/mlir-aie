@@ -38,9 +38,9 @@ def my_vector_mul():
     tile_ty = np.ndarray[(n,), np.dtype[np.int32]]
 
     # AIE-array data movement with object fifos
-    of_in1 = ObjectFifo(tile_ty, "in1")
-    of_in2 = ObjectFifo(tile_ty, "in2")
-    of_out = ObjectFifo(tile_ty, "out")
+    of_in1 = ObjectFifo(tile_ty, name="in1")
+    of_in2 = ObjectFifo(tile_ty, name="in2")
+    of_out = ObjectFifo(tile_ty, name="out")
 
     def core_body(of_in1, of_in2, of_out):
         # Number of sub-vector "tile" iterations

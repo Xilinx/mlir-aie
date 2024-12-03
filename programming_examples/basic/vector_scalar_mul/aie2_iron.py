@@ -40,9 +40,9 @@ def my_vector_scalar(vector_size, trace_size):
     )
 
     # AIE-array data movement with object fifos
-    of_in = ObjectFifo(tile_ty, "in")
+    of_in = ObjectFifo(tile_ty, name="in")
     of_factor = ObjectFifo(scalar_ty, name="infactor")
-    of_out = ObjectFifo(tile_ty, "out")
+    of_out = ObjectFifo(tile_ty, name="out")
 
     def core_body(of_in, of_factor, of_out, scale_fn):
         elem_factor = of_factor.acquire(1)
