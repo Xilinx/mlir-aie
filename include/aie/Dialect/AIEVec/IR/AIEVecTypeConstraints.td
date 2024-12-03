@@ -47,7 +47,7 @@ class ShapedTypeBitWidth<string name> :
           # !subst(".getType()", "", ElementCount<name>.result) # ")">;
 
 class VectorOfBitWidthAndElementTypes<int bitwidth, list<Type> allowedTypes> :
-  Type<And<[VectorOf<allowedTypes>.predicate,
+  Type<And<[VectorOfNonZeroRankOf<allowedTypes>.predicate,
             CPred<ShapedTypeBitWidth<"_self">.result # " == " # bitwidth>]>,
        bitwidth # "-bit wide vector, of " # AnyTypeOf<allowedTypes>.summary>;
 

@@ -40,8 +40,8 @@ def AIEVec_AddElemOp:
     Pure,
     AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE vector add elem";
   let description = [{
     AMD-specific AIE2 intrinsic that allows you to perform addition operation
@@ -57,8 +57,8 @@ def AIEVec_SubElemOp:
     Pure,
     AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE vector sub elem";
   let description = [{
     AMD-specific AIE2 intrinsic that allows you to perform substraction operation
@@ -73,9 +73,10 @@ def AIEVec_FMAElemOp :
   AIEVec_Op<"mac_elem", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyVector:$acc,
+  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
+               AnyVectorOfNonZeroRank:$acc,
                DefaultValuedAttr<BoolAttr, "false">:$fmsub)>,
-  Results<(outs AnyVector:$result)> {
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 element-wise vector fused multiply-add";
   let description = [{
     AMD-specific multiply-add operation. It multiplies two 1-D vectors in the same channel,
@@ -130,9 +131,9 @@ def AIEVec_BroadcastOp:
   AIEVec_Op<"broadcast", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$source,
+  Arguments<(ins AnyVectorOfNonZeroRank:$source,
           DefaultValuedAttr<ConfinedAttr<AIEI8Attr, [IntNonNegative]>, "0">:$idx)>,
-  Results<(outs AnyVector:$result)> {
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 broadcast";
   let description = [{
     AMD-specific broadcast intrinsic. Extract element index from vector and broadcasts its
@@ -150,7 +151,7 @@ def AIEVec_BroadcastScalarOp:
     Pure
   ]>,
   Arguments<(ins AnyTypeOf<[BF16, F32, I32, I16, I8]>:$source)>,
-  Results<(outs AnyVector:$result)> {
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 broadcast scalar";
   let description = [{
     AMD-specific broadcast scalar intrinsic. Broadcasts input value to all vector lanes.
@@ -166,9 +167,9 @@ def AIEVec_UPSOp:
   AIEVec_Op<"ups", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$source,
+  Arguments<(ins AnyVectorOfNonZeroRank:$source,
           DefaultValuedAttr<ConfinedAttr<AIEI8Attr, [IntNonNegative]>, "0">:$shift)>,
-  Results<(outs AnyVector:$result)> {
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE ups";
   let description = [{
     AMD-specific upshift intrinsic. Moves data from AIE vector data type
@@ -187,8 +188,9 @@ def AIEVec_CastOp:
   AIEVec_Op<"cast", [
     Pure
   ]>, 
-  Arguments<(ins AnyVector:$source, DefaultValuedAttr<BoolAttr, "false">:$isResAcc)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins AnyVectorOfNonZeroRank:$source,
+             DefaultValuedAttr<BoolAttr, "false">:$isResAcc)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE cast";
   let description = [{
     AIE2 cast intrinsic. Cast values from source data type to result data types.
@@ -205,8 +207,8 @@ def AIEVec_SRSOp:
   AIEVec_Op<"srs", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$source, AnyInteger:$shift)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins AnyVectorOfNonZeroRank:$source, AnyInteger:$shift)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE srs";
   let description = [{
     AMD-specific shift-round-saturate intrinsic. Moves values from
@@ -227,8 +229,8 @@ def AIEVec_UPDOp:
                  DefaultValuedAttr<AIEI32Attr, "0">:$offset,
                  DefaultValuedAttr<ConfinedAttr<AIEI8Attr,
                         [IntMinValue<0>, IntMaxValue<1>]>, "0">:$index,
-                 Optional<AnyVector>:$vector)>, 
-  Results<(outs AnyVector:$result)> {
+                 Optional<AnyVectorOfNonZeroRank>:$vector)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE upd";
   let description = [{
     AMD-specific update intrinsic. General upd intrinsic updates contiguous
@@ -250,8 +252,8 @@ def AIEVec_ConcatOp:
   AIEVec_Op<"concat", [
     Pure, InferTypeOpAdaptor,
   ]>, 
-  Arguments<(ins Variadic<AnyVector>:$sources)>, 
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins Variadic<AnyVectorOfNonZeroRank>:$sources)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE concat";
   let description = [{
     AMD-specific concat intrinsic. Concatenates two or more smaller
@@ -265,9 +267,9 @@ def AIEVec_ExtOp:
   AIEVec_Op<"ext", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$source,
+  Arguments<(ins AnyVectorOfNonZeroRank:$source,
              ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<8>]>:$index)>,
-  Results<(outs AnyVector:$result)> {
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE ext";
   let description = [{
     AMD-specific vector extract intrinsic. Selects contiguous lanes from 
@@ -285,8 +287,8 @@ def AIEVec_PackOp:
   AIEVec_Op<"pack", [
     Pure
   ]>, 
-  Arguments<(ins AnyVector:$source)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE pack";
   let description = [{
     AMD-specific pack intrinsic. Pack a vector of 16-bit values into
@@ -299,8 +301,8 @@ def AIEVec_UnpackOp:
   AIEVec_Op<"unpack", [
     Pure
   ]>, 
-  Arguments<(ins AnyVector:$source)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE unpack";
   let description = [{
     AMD-specific unpack intrinsic. Unpack a vector of 8-bit values into
@@ -313,8 +315,9 @@ def AIEVec_ShiftOp:
   AIEVec_Op<"shift", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, I32:$shift, DefaultValuedAttr<BoolAttr, "false">:$isAcc)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
+             I32:$shift, DefaultValuedAttr<BoolAttr, "false">:$isAcc)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 concat and shift";
   let description = [{
     AMD-specific shift intrinsic. Concatenates two
@@ -330,9 +333,9 @@ def AIEVec_LegacyShuffleOp:
   AIEVec_Op<"legacyshuffle", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$source,
+  Arguments<(ins AnyVectorOfNonZeroRank:$source,
              DefaultValuedAttr<AIEI32Attr, "0">:$mode)>,
-  Results<(outs AnyVector:$result)> {
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 shuffle";
   let description = [{
     AMD-specific vector shuffle intrinsic by a specific shuffle mode.
@@ -344,10 +347,10 @@ def AIEVec_MulConvOp:
   AIEVec_Op<"mul_conv", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs,
+  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
              DefaultValuedAttr<AIEI32Attr, "0">:$M,
              DefaultValuedAttr<AIEI32Attr, "0">:$N)>,
-  Results<(outs AnyVector:$result)> {
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 multiply convolution";
   let description = [{
     AMD-specific multiply convolution intrinsic. Multiply convolution operation
@@ -365,11 +368,12 @@ def AIEVec_FMAConvOp:
   AIEVec_Op<"fma_conv", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyVector:$acc,
+  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
+             AnyVectorOfNonZeroRank:$acc,
              DefaultValuedAttr<AIEI32Attr, "0">:$M,
              DefaultValuedAttr<AIEI32Attr, "0">:$N,
              DefaultValuedAttr<BoolAttr, "false">:$fmsub)>,
-  Results<(outs AnyVector:$result)> {
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 multiply accumulate convolution";
   let description = [{
     AMD-specific multiply accumulate convolution intrinsic. Multiply accumulate convolution
@@ -388,8 +392,8 @@ def AIEVec_MinOp:
     Pure,
     AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE vector minimum";
   let description = [{
     AMD-specific intrinsic that calculates the minimum between two input vectors.
@@ -404,8 +408,8 @@ def AIEVec_MaxOp:
     Pure,
     AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE vector maximum";
   let description = [{
     AMD-specific intrinsic that calculates the maximum between two input vectors.
@@ -420,7 +424,8 @@ def AIEVec_CmpOp:
     Pure,
     AllTypesMatch<["lhs", "rhs"]>
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, DefaultValuedStrAttr<StrAttr, "">:$pred)>,
+  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
+             DefaultValuedStrAttr<StrAttr, "">:$pred)>,
   Results<(outs AnyUnsignedInteger:$result)> {
   let summary = "AIE vector comparison";
   let description = [{
@@ -449,8 +454,9 @@ def AIEVec_SelOp:
     Pure,
     AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyUnsignedInteger:$sel)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
+             AnyUnsignedInteger:$sel)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE vector lane wise selection";
   let description = [{
     AMD-specific intrinsic that performs lane wise selection between two input vectors, if a bit of sel is zero, the lane of vector lhs is selected, else the lane of vector rhs is selected.
@@ -465,7 +471,7 @@ def AIEVec_ExtElemOp:
     Pure,
     AllElementTypesMatch<["source", "result"]>
   ]>,
-  Arguments<(ins AnyVector:$source, I32:$index)>,
+  Arguments<(ins AnyVectorOfNonZeroRank:$source, I32:$index)>,
   Results<(outs AnyTypeOf<[BF16, F32, I32, I16, I8]>:$result)> {
   let summary = "AIE extract element";
   let description =
@@ -481,8 +487,8 @@ def AIEVec_NegOp:
     Pure,
     AllTypesMatch<["source", "result"]>
   ]>,
-  Arguments<(ins AnyVector:$source)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE vector negative";
   let description = [{
     AMD-specific intrinsic that negates the vector and returns the result.
@@ -622,7 +628,7 @@ def AIEVec_ShuffleOp : AIEVec_Op<"shuffle",
                       512, [I8, I16, I32, I64, I128, I256,
                             I512, BF16, F32]>>:$rhs,
                  AIEVec_ShuffleModeAttr:$mode)>,
-  Results<(outs AnyVector:$result)> {
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 shuffle";
   let description = [{
     AMD AIEv2-specific vector shuffle. It performs a shuffle of the elements of
