@@ -48,6 +48,16 @@ def nested_loops():
                 "passthrough_10_i32", inputs=[tensor_ty, tensor_ty]
             )
 
+            # Set up compute tiles
+            @core(ComputeTile, "kernel.o")
+            def core_body():
+                for _ in range_(5):
+                    elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
+                    # for _ in range_(5):
+                    #     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
+                    #     passthrough_10_i32(elemIn, elemOut)
+                    #     of_out.release(ObjectFifoPort.Produce, 1)
+                    of_in.release(ObjectFifoPort.Consume, 1)
 
             # To/from AIE-array data movement
             @runtime_sequence(tensor_ty, tensor_ty)
