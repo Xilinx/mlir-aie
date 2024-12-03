@@ -14,7 +14,7 @@ A simple binary operator, which uses a single AIE core to get the addition of tw
 
 The kernel executes on AIE tile (`col`, 2). One input vector is brought into the tile from Shim tile (`col`, 0). The other input vector is initialized on the AIE tile directly with the full vector size. The value of `col` is dependent on whether the application is targeting NPU or VCK5000. The AIE tile performs the summation operations and the Shim tile brings the data back out to external memory.
 
-The data movement in this design is decribed at BD-level in the DMA code regions of the Shim tile and the AIE tile.
+The data movement in this design is decribed at BD-level in the DMA code regions of the AIE tile.
 
 ## Source Files Overview
 
