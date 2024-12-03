@@ -40,8 +40,8 @@ def nested_loops():
             ComputeTile = tile(col, 2)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, ComputeTile, 2, tensor_ty)
-            of_out = object_fifo("out", ComputeTile, ShimTile, 2, tensor_ty)
+            of_in = object_fifo("in", ShimTile, ComputeTile, 1, tensor_ty)
+            of_out = object_fifo("out", ComputeTile, ShimTile, 1, tensor_ty)
 
             # AIE Core Function declarations
             passthrough_10_i32 = external_func(
@@ -52,12 +52,12 @@ def nested_loops():
             @core(ComputeTile, "kernel.o")
             def core_body():
                 for _ in range_(5):
-                    # elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
+                    elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
                     # for _ in range_(5):
                     #     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
                     #     passthrough_10_i32(elemIn, elemOut)
                     #     of_out.release(ObjectFifoPort.Produce, 1)
-                    # of_in.release(ObjectFifoPort.Consume, 1)
+                    of_in.release(ObjectFifoPort.Consume, 1)
 
             # To/from AIE-array data movement
             @runtime_sequence(tensor_ty, tensor_ty)
