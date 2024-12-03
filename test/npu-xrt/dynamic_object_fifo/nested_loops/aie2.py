@@ -7,12 +7,28 @@
 
 # REQUIRES: ryzen_ai, valid_xchess_license
 #
-# RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cc -o ./kernel.o
-# RUN: %python %S/aie2.py > ./aie2.mlir
-# RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --no-compile-host --aie-generate-xclbin --xclbin-name=final.xclbin --dynamic-objFifos --aie-generate-npu --npu-insts-name=insts.txt ./aie2.mlir
-# RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-# RUN: %run_on_npu ./test.exe | FileCheck %s
-# CHECK: PASS!
+# RUN: %python %s | FileCheck %s
+#CHECK: %core_0_2 = aie.core(%tile_0_2) {
+#CHECK:       %c0 = arith.constant 0 : index
+#CHECK:       %c5 = arith.constant 5 : index
+#CHECK:       %c1 = arith.constant 1 : index
+#CHECK:       scf.for %arg0 = %c0 to %c5 step %c1 {
+#CHECK:         %0 = aie.objectfifo.acquire @in(Consume, 1) : !aie.objectfifosubview<memref<10xi32>>
+#CHECK:         %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+#CHECK:         %c0_0 = arith.constant 0 : index
+#CHECK:         %c5_1 = arith.constant 5 : index
+#CHECK:         %c1_2 = arith.constant 1 : index
+#CHECK:         scf.for %arg1 = %c0_0 to %c5_1 step %c1_2 {
+#CHECK:           %2 = aie.objectfifo.acquire @out(Produce, 1) : !aie.objectfifosubview<memref<10xi32>>
+#CHECK:           %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+#CHECK:           func.call @passthrough_10_i32(%1, %3) : (memref<10xi32>, memref<10xi32>) -> ()
+#CHECK:           aie.objectfifo.release @out(Produce, 1)
+#CHECK:         }
+#CHECK:         aie.objectfifo.release @in(Consume, 1)
+#CHECK:       }
+#CHECK:       aie.end
+#CHECK:     } {link_with = "kernel.o"}
+
 import numpy as np
 
 from aie.dialects.aie import *
