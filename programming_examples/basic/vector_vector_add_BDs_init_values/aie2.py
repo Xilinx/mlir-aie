@@ -85,20 +85,28 @@ def my_vector_add():
             # BD chains are assigned to a channel as well, where the last BD is
             # either another channel allocation or the end BD
             with block[1]:
-                use_lock(in1_cons_prod_lock, LockAction.AcquireGreaterEqual) # wait on lock acquire
-                dma_bd(in1_cons_buff_0) # receive incoming data in in1_cons_buff_0 buffer
-                use_lock(in1_cons_cons_lock, LockAction.Release) # release lock
-                next_bd(block[1]) # BD loops forever
+                # wait on lock acquire
+                use_lock(in1_cons_prod_lock, LockAction.AcquireGreaterEqual)
+                # receive incoming data in in1_cons_buff_0 buffer
+                dma_bd(in1_cons_buff_0)
+                # release lock
+                use_lock(in1_cons_cons_lock, LockAction.Release)
+                # BD loops forever on itself
+                next_bd(block[1])
             with block[2]:
                 # channel allocation in MM2S direction, channel index 0
                 s1 = dma_start(DMAChannelDir.MM2S, 0, dest=block[3], chain=block[4])
                 # BD chains are assigned to a channel as well, where the last BD is
                 # either another channel allocation or the end BD
             with block[3]:
-                use_lock(out_cons_lock, LockAction.AcquireGreaterEqual) # wait on lock acquire
-                dma_bd(out_buff_0)  # output data from out_buff_0 buffer
-                use_lock(out_prod_lock, LockAction.Release) # release lock
-                next_bd(block[3]) # BD loops forever
+                # wait on lock acquire
+                use_lock(out_cons_lock, LockAction.AcquireGreaterEqual)
+                # output data from out_buff_0 buffer
+                dma_bd(out_buff_0)
+                # release lock
+                use_lock(out_prod_lock, LockAction.Release)
+                # BD loops forever on itself
+                next_bd(block[3])
             with block[4]:
                 EndOp()
 
