@@ -497,10 +497,14 @@ LogicalResult ObjectFifoCreateOp::verify() {
           "`via_shared_mem` can only be used in 1-to-1 object FIFOs");
   }
 
-  if (getMemtileRepeat().has_value()) {
-    if (!getProducerTileOp().isMemTile())
-      return emitError("`memtile_repeat` can only be used with a mem tile "
-                       "producer");
+  if (getRepeatCount().has_value()) {
+    if (getProducerTileOp().isShimTile())
+      return emitError("`repeat_count` unavailable for shim tiles");
+  }
+
+  if (getInitValues().has_value()) {
+    if ((int)getInitValues().value().size() != size())
+      return emitError("`init_values` does not initialize all objects");
   }
 
   return success();
@@ -594,6 +598,59 @@ void printObjectFifoConsumerTiles(OpAsmPrinter &printer, Operation *op,
   }
 }
 
+static void printObjectFifoInitValues(OpAsmPrinter &p, ObjectFifoCreateOp op,
+                                      Attribute numElem, TypeAttr type,
+                                      Attribute initValues) {
+  if (op.getInitValues()) {
+    p << "= [";
+    int depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
+    for (int i = 0; i < depth; i++) {
+      p.printStrippedAttrOrType(llvm::dyn_cast<mlir::ArrayAttr>(initValues)[i]);
+      if (i < depth - 1) {
+        p << ", ";
+      }
+    }
+    p << "]";
+  }
+}
+
+static ParseResult parseObjectFifoInitValues(OpAsmParser &parser,
+                                             Attribute numElem, TypeAttr type,
+                                             Attribute &initValues) {
+  int depth;
+  if (isa<ArrayAttr>(numElem)) {
+    depth = llvm::dyn_cast<mlir::IntegerAttr>(
+                llvm::dyn_cast<mlir::ArrayAttr>(numElem)[0])
+                .getInt();
+  } else {
+    depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
+  }
+  auto objfifoType = llvm::cast<AIEObjectFifoType>(type.getValue());
+  auto memrefType = llvm::cast<MemRefType>(objfifoType.getElementType());
+
+  if (!memrefType.hasStaticShape())
+    return parser.emitError(parser.getNameLoc())
+           << "type should be static shaped memref, but got " << memrefType;
+
+  if (parser.parseOptionalEqual())
+    return success();
+
+  Type tensorType = mlir::memref::getTensorTypeFromMemRefType(memrefType);
+  if (parser.parseAttribute(initValues, tensorType))
+    return failure();
+  for (int i = 0; i < depth; i++) {
+    auto initialValues = llvm::dyn_cast<mlir::ArrayAttr>(initValues);
+    if ((int)initialValues.size() != depth)
+      return parser.emitError(parser.getNameLoc())
+             << "initial values should initialize all objects";
+    if (!llvm::isa<ElementsAttr>(initialValues[i]))
+      return parser.emitError(parser.getNameLoc())
+             << "initial value should be an elements attribute";
+  }
+
+  return success();
+}
+
 } // namespace xilinx::AIE
 
 //===----------------------------------------------------------------------===//
@@ -605,9 +662,17 @@ LogicalResult ObjectFifoLinkOp::verify() {
     return emitError("ObjectFifoLinkOp does not support 'join' and "
                      "'distribute' at the same time");
 
-  if (auto sharedTile = getOptionalSharedTile(); !sharedTile)
+  auto sharedTile = getOptionalSharedTile();
+  if (!sharedTile)
     return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
                      "shared tile between objectFifos");
+
+  TileOp tile = cast<TileOp>(sharedTile.value().getDefiningOp());
+  if (!tile.isMemTile()) {
+    if (isJoin() || isDistribute())
+      return emitError("ObjectFifoLinkOp join and distribute are "
+                       "unavailable on compute or shim tiles");
+  }
 
   if (isJoin()) {
     if (getFifoIns().size() != getSrcOffsets().size())
@@ -646,8 +711,8 @@ LogicalResult ObjectFifoLinkOp::verify() {
 
     std::vector<int> repeat_counts;
     for (auto fifoOut : getOutputObjectFifos()) {
-      if (fifoOut.getMemtileRepeat().has_value())
-        repeat_counts.push_back(fifoOut.getMemtileRepeat().value());
+      if (fifoOut.getRepeatCount().has_value())
+        repeat_counts.push_back(fifoOut.getRepeatCount().value());
       else
         repeat_counts.push_back(0);
     }
@@ -764,8 +829,8 @@ std::vector<int> ObjectFifoLinkOp::getDistributeTransferLengths() {
 
 std::optional<int> ObjectFifoLinkOp::getRepeatCount() {
   for (auto fifoOut : getOutputObjectFifos())
-    if (fifoOut.getMemtileRepeat().has_value())
-      return {fifoOut.getMemtileRepeat().value()};
+    if (fifoOut.getRepeatCount().has_value())
+      return {fifoOut.getRepeatCount().value()};
   return {};
 }
 
@@ -1062,8 +1127,6 @@ LogicalResult GetCascadeOp::verify() {
 const AIETargetModel &DeviceOp::getTargetModel() {
   return xilinx::AIE::getTargetModel(getDevice());
 }
-
-LogicalResult DeviceOp::verify() { return success(); }
 
 //===----------------------------------------------------------------------===//
 // TileOp
@@ -1876,11 +1939,11 @@ LogicalResult DMABDOp::verify() {
     if (!dims.has_value())
       return emitOpError() << "Padding requires n-d data layouts expressed as"
                            << " wrap(s) and stride(s).";
+    if (!targetModel.isMemTile(parentTileId.col, parentTileId.row))
+      return emitOpError() << "Padding is only supported by memtile dma bds.";
     if (dims->size() != paddims->size())
       return emitOpError() << "Mismatch number of dimensions between padding(s)"
                            << " and wrap(s) and stride(s).";
-    if (!targetModel.isMemTile(parentTileId.col, parentTileId.row))
-      return emitOpError() << "Padding is only supported by memtile dma bds.";
     int actuallen = 1;
     for (unsigned i = 0; i < paddims->size(); i++) {
       auto dim = (*dims)[i];
@@ -1931,6 +1994,128 @@ TileOp MemTileDMAOp::getTileOp() {
 int MemTileDMAOp::colIndex() { return getTileOp().colIndex(); }
 
 int MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
+
+//===----------------------------------------------------------------------===//
+// DMAStartOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
+
+  llvm::SetVector<Block *> reachable;
+  SmallVector<Block *, 16> worklist;
+  Block *firstBD = op.getSuccessor(0);
+  reachable.insert(firstBD);
+  worklist.push_back(firstBD);
+  while (!worklist.empty()) {
+    Block *block = worklist.pop_back_val();
+    if (block->empty())
+      continue;
+    auto successors = block->getTerminator()->getSuccessors();
+    for (auto *i : successors) {
+      if (!reachable.contains(i)) {
+        reachable.insert(i);
+        worklist.push_back(i);
+      }
+    }
+  }
+
+  // BD chain ends with an EndOp, indicating non-repeating pattern: BD chain
+  // folding not applicable.
+  if (isa<EndOp>((reachable.back())->getTerminator()))
+    return failure();
+
+  // Check for identical bds.
+  auto areIdenticalUseLocks = [](UseLockOp op1, UseLockOp op2) {
+    if (!op1 || !op2)
+      return false;
+    if (op1.getLock() != op2.getLock())
+      return false;
+    if (op1.getAction() != op2.getAction())
+      return false;
+    if (op1.getValue() != op2.getValue())
+      return false;
+    return true;
+  };
+  auto areIdenticalDmaBDOps = [](DMABDOp op1, DMABDOp op2) {
+    if (!op1 || !op2)
+      return false;
+    if (op1.getBuffer() != op2.getBuffer())
+      return false;
+    if (op1.getOffset() != op2.getOffset())
+      return false;
+    if (op1.getLen() != op2.getLen())
+      return false;
+    if (op1.getDimensions() != op2.getDimensions())
+      return false;
+    if (op1.getPadDimensions() != op2.getPadDimensions())
+      return false;
+    if (op1.getPadValue() != op2.getPadValue())
+      return false;
+    if (op1.getPacket() != op2.getPacket())
+      return false;
+    return true;
+  };
+  auto areIdenticalBDs = [areIdenticalUseLocks,
+                          areIdenticalDmaBDOps](Block *b1, Block *b2) {
+    auto b1OpRange = b1->without_terminator();
+    auto b2OpRange = b2->without_terminator();
+    if (llvm::range_size(b1OpRange) != llvm::range_size(b2OpRange))
+      return false;
+    auto b1It = b1OpRange.begin();
+    auto b2It = b2OpRange.begin();
+    while (b1It != b1OpRange.end()) {
+      if ((*b1It).getName().getStringRef() != (*b2It).getName().getStringRef())
+        return false;
+
+      if (auto b1UseLockOp = dyn_cast<UseLockOp>(*b1It)) {
+        auto b2UseLockOp = dyn_cast<UseLockOp>(*b2It);
+        if (!areIdenticalUseLocks(b1UseLockOp, b2UseLockOp))
+          return false;
+      } else if (auto b1DMABDOp = dyn_cast<DMABDOp>(*b1It)) {
+        auto b2DMABDOp = dyn_cast<DMABDOp>(*b2It);
+        if (!areIdenticalDmaBDOps(b1DMABDOp, b2DMABDOp))
+          return false;
+      }
+
+      b1It++;
+      b2It++;
+    }
+    return true;
+  };
+
+  // Get a vector of unique BDs.
+  SmallVector<Block *> uniquePattern;
+  auto patternIt = reachable.begin();
+  while (patternIt != reachable.end() &&
+         llvm::none_of(uniquePattern, [patternIt, areIdenticalBDs](Block *b1) {
+           return areIdenticalBDs(*patternIt, b1);
+         })) {
+    uniquePattern.push_back(*patternIt);
+    patternIt++;
+  }
+
+  unsigned idx = 0;
+  while (patternIt != reachable.end()) {
+    // BD repetition found. Check if repeating pattern.
+    if (!areIdenticalBDs(*patternIt, uniquePattern[idx]))
+      return failure();
+    patternIt++;
+    idx = (++idx) % uniquePattern.size();
+  }
+
+  // Repeating BD chains detected. Erasing repetitions.
+  auto lastBDTerm = dyn_cast<NextBDOp>(reachable.back()->getTerminator());
+  auto lastUniqueBDTerm =
+      dyn_cast<NextBDOp>(uniquePattern.back()->getTerminator());
+  lastUniqueBDTerm.setSuccessor(lastBDTerm.getSuccessor());
+
+  return success();
+}
+
+void DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
+                                             MLIRContext *context) {
+  patterns.add(FoldDMAStartOp);
+}
 
 //===----------------------------------------------------------------------===//
 // SwitchboxOp

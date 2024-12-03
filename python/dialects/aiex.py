@@ -8,7 +8,7 @@ from operator import itemgetter
 import numpy as np
 
 from ._aiex_ops_gen import *
-from ._aie_ops_gen import ObjectFifoCreateOp
+from ._aie_ops_gen import ObjectFifoCreateOp, dma_bd, EndOp
 from . import aie
 from .aie import (
     DMAChannelDir,
@@ -19,15 +19,17 @@ from .aie import (
     find_matching_flows,
     find_matching_locks,
     find_neighbors,
+    bds,
 )
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint, MemRefType
+from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint
 
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
-from ..helpers.util import try_convert_np_type_to_mlir_type, np_ndarray_type_get_shape
+from ..helpers.util import try_convert_np_type_to_mlir_type
+from ..helpers.taplib import TensorAccessPattern
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
@@ -55,19 +57,31 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         metadata: str | ObjectFifoCreateOp,
         bd_id,
         mem,
-        offsets: MixedValues = None,
-        sizes: MixedValues = None,
-        strides: MixedValues = None,
+        tap: TensorAccessPattern | None = None,
+        offsets: MixedValues | None = None,
+        sizes: MixedValues | None = None,
+        strides: MixedValues | None = None,
         issue_token: bool | None = None,
     ):
         x = 0
         y = 0
-        if offsets is None:
-            offsets = [0] * 4
-        if sizes is None:
-            sizes = [0] * 4
-        if strides is None:
-            strides = [0] * 3 + [1]
+        if tap and not (offsets is None and sizes is None and strides is None):
+            raise ValueError(
+                "NpuDmaMemcpyNd can take either a TileAccessPattern OR (sizes and/or strides and/or offsets), but not both."
+            )
+        if tap:
+            sizes = tap.sizes.copy()
+            strides = tap.strides.copy()
+            # For some reason, the type checking of offsets does not mesh well with offset being a property
+            # so here we make sure it is evaluated and properly is seen as an integer.
+            offsets = [0] * 3 + [int(tap.offset)]
+        else:
+            if offsets is None:
+                offsets = [0] * 4
+            if sizes is None:
+                sizes = [0] * 4
+            if strides is None:
+                strides = [0] * 3 + [1]
         dynamic_offsets, _packed_offsets, static_offsets = _dispatch_mixed_values(
             offsets
         )
@@ -836,3 +850,114 @@ def dma_start_bd_chain_for(symbol, args, alloc, *pyargs, **kwargs):
     return DMAStartBdChainForOp(
         T.index(), chain_sym, args, alloc_sym, *pyargs, **kwargs
     )
+
+
+def shim_dma_bd(
+    mem,
+    tap: TensorAccessPattern | None = None,
+    offset: int | None = None,
+    sizes: MixedValues | None = None,
+    strides: MixedValues | None = None,
+    transfer_len: int | None = None,
+):
+    if tap and not (offset is None and sizes is None and strides is None):
+        raise ValueError(
+            "shim_dma_bd can take either a TensorAccessPattern OR (sizes and/or strides and/or offsets), but not both."
+        )
+
+    if tap:
+        sizes = tap.sizes.copy()
+        strides = tap.strides.copy()
+        # For some reason, the type checking of offsets does not mesh well with offset being a property
+        # so here we make sure it is evaluated and properly is seen as an integer.
+        offset = int(tap.offset)
+
+    if offset is None:
+        offset = 0
+    if sizes is None:
+        sizes = [0] * 4
+    if strides is None:
+        strides = [0] * 3 + [1]
+
+    if transfer_len is None:
+        transfer_len = np.prod(sizes[-3:])
+
+    dimensions = list(zip(sizes, strides))
+    dma_bd(mem, offset=offset, len=transfer_len, dimensions=dimensions)
+
+
+def shim_dma_single_bd_task(
+    alloc,
+    mem,
+    tap: TensorAccessPattern | None = None,
+    offset: int | None = None,
+    sizes: MixedValues | None = None,
+    strides: MixedValues | None = None,
+    transfer_len: int | None = None,
+    issue_token: bool = False,
+):
+    if tap and not (offset is None and sizes is None and strides is None):
+        raise ValueError(
+            "shim_dma_single_bd_task can take either a TensorAccessPattern OR (sizes and/or strides and/or offsets), but not both."
+        )
+
+    if tap:
+        sizes = tap.sizes.copy()
+        strides = tap.strides.copy()
+        # For some reason, the type checking of offsets does not mesh well with offset being a property
+        # so here we make sure it is evaluated and properly is seen as an integer.
+        offset = int(tap.offset)
+
+    repeat_count = 0
+    if sizes[0] > 1:
+        repeat_count = sizes[0] - 1
+    task = dma_configure_task_for(
+        alloc, repeat_count=repeat_count, issue_token=issue_token
+    )
+    with bds(task) as bd:
+        with bd[0]:
+            shim_dma_bd(
+                mem,
+                offset=offset,
+                sizes=sizes,
+                strides=strides,
+                transfer_len=transfer_len,
+            )
+            EndOp()
+    return task
+
+
+_orig_dma_await_task = dma_await_task
+
+
+def dma_await_task(*args: DMAConfigureTaskForOp):
+    if len(args) == 0:
+        raise ValueError(
+            "dma_await_task must receive at least one DMAConfigureTaskForOp to wait for"
+        )
+    for dma_task in args:
+        _orig_dma_await_task(dma_task)
+
+
+_orig_dma_free_task = dma_free_task
+
+
+def dma_free_task(*args: DMAConfigureTaskForOp):
+    if len(args) == 0:
+        raise ValueError(
+            "dma_free_task must receive at least one DMAConfigureTaskForOp to free"
+        )
+    for dma_task in args:
+        _orig_dma_free_task(dma_task)
+
+
+_orig_dma_start_task = dma_start_task
+
+
+def dma_start_task(*args: DMAConfigureTaskForOp):
+    if len(args) == 0:
+        raise ValueError(
+            "dma_start_task must receive at least one DMAConfigureTaskForOp to free"
+        )
+    for dma_task in args:
+        _orig_dma_start_task(dma_task)

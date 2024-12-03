@@ -140,7 +140,7 @@ def BDDimLayoutAttr : AttrDef<AIE_Dialect, "BDDimLayout", []> {
   }];
 
   let parameters = (ins
-    "uint16_t" : $size,
+    "uint32_t" : $size,
     "uint32_t" : $stride
   );
 
@@ -196,5 +196,9 @@ def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
 
   let assemblyFormat = "`<` struct(params) `>`";
 }
+
+def InitValuesArrayAttr
+  : OptionalAttr<TypedArrayAttrBase<ElementsAttr, "array of ElementsAttr">>;
+
 
 #endif // AIE_ATTRS

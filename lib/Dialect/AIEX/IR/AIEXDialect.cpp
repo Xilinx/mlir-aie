@@ -443,9 +443,11 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
 LogicalResult AIEX::NpuWriteBdOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
+  bool isLinearTransfer =
+      (getD0Size() >= 1) && (getD1Size() == 1) && (getIterationSize() == 0);
   if (getBdId() > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
-  if (getD0Size() > 0x3FF)
+  if (!isLinearTransfer && getD0Size() > 0x3FF)
     return emitOpError("D0 Size exceeds the [0:1023] range.");
   if (getD0Stride() > 0xFFFFF)
     return emitOpError("D0 Stride exceeds the [0:1M-1] range.");
@@ -459,6 +461,13 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
     return emitOpError("Iteration Size exceeds the [0:63] range.");
   if (getIterationStride() > 0xFFFFF)
     return emitOpError("Iteration Stride exceeds the [0:1M-1] range.");
+  if (targetModel.isShimNOCTile(getColumn(), getRow()) && getD2Size() != 0)
+    return emitOpError("ShimTile only supports 3 dimensions of sizes.");
+  if (targetModel.isShimNOCTile(getColumn(), getRow()) &&
+      (getD0ZeroBefore() != 0 || getD0ZeroAfter() != 0 ||
+       getD1ZeroBefore() != 0 || getD1ZeroAfter() != 0 ||
+       getD2ZeroBefore() != 0 || getD2ZeroAfter() != 0))
+    return emitOpError("ShimTile doesn't support zero padding.");
   return success();
 }
 

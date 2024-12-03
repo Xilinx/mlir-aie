@@ -1,4 +1,4 @@
-//===- tileDMA_test.mlir --------------------------*- MLIR -*-===//
+//===- tileDMA_test.mlir ---------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -30,7 +30,7 @@
 // CHECK:           %[[VAL_13:.*]] = aie.lock(%[[VAL_0]], 1)
 // CHECK:           %[[VAL_14:.*]] = aie.buffer(%[[VAL_0]]) : memref<16xi32>
 // CHECK:           %[[VAL_15:.*]] = aie.lock(%[[VAL_0]], 2)
-// CHECK:           aie.flow(%[[VAL_0]], DMA : 1, %[[VAL_1]], DMA : 0)
+// CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
 // CHECK:           func.func @some_work(%[[VAL_16:.*]]: memref<16xi32>) {
 // CHECK:             return
 // CHECK:           }
@@ -50,7 +50,7 @@
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[VAL_23:.*]] = aie.mem(%[[VAL_0]]) {
-// CHECK:             %[[VAL_24:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
+// CHECK:             %[[VAL_24:.*]] = aie.dma_start(MM2S, 1, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:             aie.use_lock(%[[VAL_11]], Acquire, 1)
 // CHECK:             aie.dma_bd(%[[VAL_10]] : memref<16xi32>, 0, 16)
@@ -69,7 +69,7 @@
 // CHECK:             aie.use_lock(%[[VAL_15]], Release, 1)
 // CHECK:             aie.next_bd ^bb4
 // CHECK:           ^bb5:  // pred: ^bb3
-// CHECK:             %[[VAL_26:.*]] = aie.dma_start(MM2S, 1, ^bb6, ^bb8)
+// CHECK:             %[[VAL_26:.*]] = aie.dma_start(MM2S, 0, ^bb6, ^bb8)
 // CHECK:           ^bb6:  // 2 preds: ^bb5, ^bb7
 // CHECK:             aie.use_lock(%[[VAL_8]], Acquire, 1)
 // CHECK:             aie.dma_bd(%[[VAL_6]] : memref<16xi32>, 0, 16)
@@ -134,7 +134,7 @@ module @tileDMA_channels {
         }
 
         %mem12 = aie.mem(%tile12) {
-            %dma1 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
+            %dma1 = aie.dma_start(MM2S, 1, ^bb1, ^bb3)
         ^bb1:
             aie.use_lock(%lock0, Acquire, 1)
             aie.dma_bd(%buff0 : memref<16xi32>, 0, 16)

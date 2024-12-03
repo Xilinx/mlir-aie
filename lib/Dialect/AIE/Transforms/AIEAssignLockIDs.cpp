@@ -35,7 +35,7 @@ struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
 
   void runOnOperation() override {
     DeviceOp device = getOperation();
-    OpBuilder rewriter = OpBuilder::atBlockEnd(device.getBody());
+    OpBuilder rewriter = OpBuilder::atBlockTerminator(device.getBody());
 
     // All of the lock ops on a tile, separated into ops which have been
     // assigned to a lock, and ops which have not.

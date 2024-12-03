@@ -12,5 +12,6 @@ rich
 setuptools
 wheel
 ml_dtypes
+matplotlib
 notebook
 pre-commit
