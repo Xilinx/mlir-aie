@@ -135,7 +135,7 @@ def my_vector_add():
         shim_dma_allocation("of_out", DMAChannelDir.S2MM, 0, 0)
 
         # To/from AIE-array data movement
-        
+
         @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
         def sequence(A, B, C):
             npu_dma_memcpy_nd(metadata="of_in1", bd_id=1, mem=A, sizes=[1, 1, 1, N])
