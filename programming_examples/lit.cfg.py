@@ -46,7 +46,7 @@ llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
 llvm_config.with_environment("PYTHONPATH", os.path.join(config.aie_obj_root, "python"))
 
 run_on_npu = "echo"
-run_on_npu2 = "echo"
+run_on_npu_two = "echo"
 xrt_flags = ""
 
 # Not using run_on_board anymore, need more specific per-platform commands
@@ -146,7 +146,7 @@ if config.xrt_lib_dir:
                     f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )
             if str(m.group(3)) == "npu4":
-                run_on_npu2 = (
+                run_on_npu_two = (
                     f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )
             break
@@ -157,7 +157,7 @@ else:
     print("xrt not found")
 
 config.substitutions.append(("%run_on_npu", run_on_npu))
-config.substitutions.append(("%run_on_npu2", run_on_npu2))
+config.substitutions.append(("%run_on_npu_two", run_on_npu_two))
 config.substitutions.append(("%xrt_flags", xrt_flags))
 config.substitutions.append(("%XRT_DIR", config.xrt_dir))
 config.environment["XRT_HACK_UNSECURE_LOADING_XCLBIN"] = "1"
