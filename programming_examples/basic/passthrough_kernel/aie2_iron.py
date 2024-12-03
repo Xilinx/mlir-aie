@@ -28,8 +28,8 @@ line_size = vector_size // 4
 line_type = np.ndarray[(line_size,), np.dtype[np.uint8]]
 vector_type = np.ndarray[(vector_size,), np.dtype[np.uint8]]
 
-of_in = ObjectFifo(line_type, "in")
-of_out = ObjectFifo(line_type, "out")
+of_in = ObjectFifo(line_type, name="in")
+of_out = ObjectFifo(line_type, name="out")
 
 passthrough_fn = BinKernel(
     "passThroughLine",

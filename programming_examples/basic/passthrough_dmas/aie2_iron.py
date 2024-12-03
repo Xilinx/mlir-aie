@@ -37,7 +37,7 @@ if len(sys.argv) > 3:
 vector_ty = np.ndarray[(N,), np.dtype[np.int32]]
 line_ty = np.ndarray[(line_size,), np.dtype[np.int32]]
 
-of_in = ObjectFifo(line_ty, "in")
+of_in = ObjectFifo(line_ty, name="in")
 of_out = of_in.cons().forward()
 
 rt = Runtime()

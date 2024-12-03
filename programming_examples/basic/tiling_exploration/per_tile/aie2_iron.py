@@ -53,10 +53,11 @@ def generate_module(
     worker = Worker(access_order, [of_out.prod()], while_true=False)
 
     rt = Runtime()
+    of_out_cons = of_out.cons()
     with rt.sequence(flattened_tensor) as tensor_out:
         rt.start(worker)
         for t in tiler:
-            rt.drain(of_out.cons(), tensor_out, t, wait=True)
+            rt.drain(of_out_cons, tensor_out, t, wait=True)
 
     my_program = Program(NPU1Col1(), rt)
     return my_program.resolve_program(SequentialPlacer())

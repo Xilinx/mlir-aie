@@ -94,7 +94,7 @@ class Runtime(Resolvable):
             tap = dest.default_tap()
 
         if out_fifo in self._fifos:
-            existing_endpoints = out_fifo.get_endpoint()
+            existing_endpoints = out_fifo.get_all_endpoints()
             for ep in existing_endpoints:
                 if isinstance(ep, RuntimeEndpoint):
                     if ep.tile != placement:

@@ -173,7 +173,7 @@ class ObjectFifo(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ):
-        if num_elem > 0:
+        if num_elem < 1:
             raise ValueError("Must consume at least one element")
         return self.op.acquire(port, num_elem)
 
@@ -184,7 +184,7 @@ class ObjectFifo(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ):
-        if num_elem > 0:
+        if num_elem < 1:
             raise ValueError("Must produce at least one element")
         self.op.release(port, num_elem)
 
@@ -192,7 +192,7 @@ class ObjectFifo(Resolvable):
 class ObjectFifoHandle(Resolvable):
     def __init__(self, of: ObjectFifo, is_prod: bool, depth: int | None = None):
         if depth is None:
-            depth = int(of.default_depth)
+            depth = of.default_depth
         if depth is None:
             raise ValueError(
                 "Must specify either ObjectFifoHandle depth or ObjectFifo default depth; both are None."
@@ -277,7 +277,7 @@ class ObjectFifoHandle(Resolvable):
     ) -> list[ObjectFifo]:
         num_subfifos = len(offsets)
         if depths is None:
-            depths = [self._object_fifo.depth] * num_subfifos
+            depths = [self.depth] * num_subfifos
         elif len(depths) != num_subfifos:
             raise ValueError("Number of depths does not match number of offsets")
 
@@ -291,9 +291,9 @@ class ObjectFifoHandle(Resolvable):
         for i in range(num_subfifos):
             subfifos.append(
                 ObjectFifo(
-                    depths[i],
                     types[i],
                     name=self._object_fifo.name + f"_join{i}",
+                    default_depth=depths[i],
                 )
             )
 
@@ -301,7 +301,7 @@ class ObjectFifoHandle(Resolvable):
         link = ObjectFifoLink(subfifos, self._object_fifo, placement, offsets, [])
         self.set_endpoint(link)
         for i in range(num_subfifos):
-            subfifos[i].cons.set_endpoint(link)
+            subfifos[i].cons().set_endpoint(link)
         return subfifos
 
     def split(
@@ -313,7 +313,7 @@ class ObjectFifoHandle(Resolvable):
     ) -> list[ObjectFifo]:
         num_subfifos = len(offsets)
         if depths is None:
-            depths = [self._object_fifo.depth] * num_subfifos
+            depths = [self.depth] * num_subfifos
         elif len(depths) != num_subfifos:
             raise ValueError("Number of depths does not match number of offsets")
 
@@ -327,9 +327,9 @@ class ObjectFifoHandle(Resolvable):
         for i in range(num_subfifos):
             subfifos.append(
                 ObjectFifo(
-                    depths[i],
                     types[i],
                     name=self._object_fifo.name + f"_split{i}",
+                    default_depth=depths[i],
                 )
             )
 
@@ -357,7 +357,7 @@ class ObjectFifoHandle(Resolvable):
                 )
             depth = self._object_fifo.default_depth
         forward_fifo = ObjectFifo(
-            obj_type, default_depth=depth, name=self._object_fifo.name + f"_fwd"
+            obj_type, name=self._object_fifo.name + f"_fwd", default_depth=depth
         )
         link = ObjectFifoLink(self._object_fifo, forward_fifo, placement, [], [])
         self.set_endpoint(link)
@@ -390,7 +390,7 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
             raise ValueError("An ObjectFifoLink must have at least one source")
         if len(self._dsts) < 1:
             raise ValueError("An ObjectFifoLink must have at least one destination")
-        if len(self._srcs) != 1 or len(self._dsts) != 1:
+        if len(self._srcs) != 1 and len(self._dsts) != 1:
             raise ValueError(
                 "An ObjectFifoLink may only have > 1 of either sources or destinations, but not both"
             )

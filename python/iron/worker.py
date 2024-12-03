@@ -64,7 +64,7 @@ class Worker(ObjectFifoEndpoint):
             self.link_with = list(bin_names)[0]
 
     def place(self, tile: Tile) -> None:
-        super(Placeable, self).place(tile)
+        ObjectFifoEndpoint.place(self, tile)
         for buffer in self._buffers:
             buffer.place(tile)
 

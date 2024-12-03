@@ -30,9 +30,9 @@ def row_wise_bias_add(M, N, m, n):
         f"row_wise_bias_add_f32_f32", "kernel.o", [tensor_ty, bias_ty, tensor_ty]
     )
 
-    in_fifo = ObjectFifo(tensor_ty, "in_fifo")
-    bias_fifo = ObjectFifo(bias_ty, "bias_fifo")
-    out_fifo = ObjectFifo(tensor_ty, "out_fifo")
+    in_fifo = ObjectFifo(tensor_ty, name="in_fifo")
+    bias_fifo = ObjectFifo(bias_ty, name="bias_fifo")
+    out_fifo = ObjectFifo(tensor_ty, name="out_fifo")
 
     def core_fn(in_fifo, bias_fifo, out_fifo, kernel_func):
         for _ in range_(N // n):
