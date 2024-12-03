@@ -71,10 +71,10 @@ def my_matmul():
     workers = []
     B_fifo = ObjectFifo(inB_ty)
     for i in range(n_cores):
-        a_fifo = ObjectFifo(inA_ty, f"memA{i}")
+        a_fifo = ObjectFifo(inA_ty, name=f"memA{i}")
         memA_fifos.append(a_fifo)
         coreA_fifos.append(a_fifo.cons().forward())  # TODO: transform if vectorized
-        outC_fifos.append(ObjectFifo(outC_ty, f"outC{i}"))
+        outC_fifos.append(ObjectFifo(outC_ty, name=f"outC{i}"))
         w = Worker(
             core_fn,
             [coreA_fifos[i].cons(), B_fifo.cons(), outC_fifos[i].prod(), zero, matvec],

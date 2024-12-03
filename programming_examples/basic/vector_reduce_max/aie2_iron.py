@@ -23,8 +23,8 @@ def my_reduce_max():
     out_ty = np.ndarray[(1,), np.dtype[np.int32]]
 
     # AIE-array data movement with object fifos
-    of_in = ObjectFifo(in_ty, "in")
-    of_out = ObjectFifo(out_ty, "out")
+    of_in = ObjectFifo(in_ty, name="in")
+    of_out = ObjectFifo(out_ty, name="out")
 
     # AIE Core Function declarations
     reduce_add_vector = BinKernel(
