@@ -63,7 +63,7 @@ def color_detect():
     # AIE-array data movement with object fifos
     # Input
     inOF_L3L2 = ObjectFifo(line_bytes_ty, name="inOF_L3L2")
-    inOF_L2L1 = inOF_L3L2.cons(6).forward()
+    inOF_L2L1 = inOF_L3L2.cons(6).forward(depth=6, name="inOF_L2L1")
 
     # Output
     outOF_L1L2 = ObjectFifo(line_bytes_ty, name="outOF_L1L2")
