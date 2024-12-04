@@ -1130,13 +1130,13 @@ struct AIEObjectFifoStatefulTransformPass
         //    - globalNextIndex: load index and use it to index_switch (one
         //    IndexSwithOp per AccessOp)
         WalkResult res = coreOp.walk([&](Operation *op) {
-          if (auto relOp = dyn_cast<ObjectFifoReleaseOp>(op)) {
-            ObjectFifoCreateOp createOp = relOp.getObjectFifo();
-            ObjectFifoPort port = relOp.getPort();
-            updateGlobalNextIndex(builder, relOp, globalNextIndex,
-                                  globalIndices[{createOp, port}],
-                                  constantSizes[{createOp, port}]);
-          }
+          // if (auto relOp = dyn_cast<ObjectFifoReleaseOp>(op)) {
+          //   ObjectFifoCreateOp createOp = relOp.getObjectFifo();
+          //   ObjectFifoPort port = relOp.getPort();
+          //   updateGlobalNextIndex(builder, relOp, globalNextIndex,
+          //                         globalIndices[{createOp, port}],
+          //                         constantSizes[{createOp, port}]);
+          // }
           if (auto acqOp = dyn_cast<ObjectFifoAcquireOp>(op)) {
             std::vector<ObjectFifoSubviewAccessOp> accessOps;
             for (auto u : acqOp->getUsers())
