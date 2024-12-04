@@ -38,6 +38,7 @@ def main(opts):
         e = np.equal(input, aie_output)
         errors = np.size(e) - np.count_nonzero(e)
 
+    errors = 1
     if not errors:
         print("\nPASS!\n")
         sys.exit(0)
