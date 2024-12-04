@@ -41,7 +41,7 @@ class GlobalBuffer(Resolvable, Placeable):
         if not self._name:
             self._name = f"buf_{self.__get_index()}"
         self._use_write_rtp = use_write_rtp
-        super(Placeable, self).__ini__(placement)
+        Placeable.__init__(self, placement)
 
     @classmethod
     def __get_index(cls) -> int:

@@ -132,13 +132,19 @@ class ObjectFifo(Resolvable):
 
     def _get_endpoint(self, is_prod: bool) -> list[ObjectFifoEndpoint]:
         if is_prod:
-            return [self._prod.get_endpoint()]
+            if self._prod:
+                return [self._prod.get_endpoint()]
+            else:
+                raise ValueError(f"Prod endpoint not set for {self}")
         else:
             return [con.get_endpoint() for con in self._cons]
 
     @property
     def obj_type(self) -> type[np.ndarray]:
         return self._obj_type
+
+    def __str__(self) -> str:
+        return f"{self.__class__.__name__}({self._obj_type}, default_depth={self.default_depth}, name='{self.name}')"
 
     def resolve(
         self,
@@ -192,13 +198,14 @@ class ObjectFifo(Resolvable):
 class ObjectFifoHandle(Resolvable):
     def __init__(self, of: ObjectFifo, is_prod: bool, depth: int | None = None):
         if depth is None:
-            depth = of.default_depth
-        if depth is None:
-            raise ValueError(
-                "Must specify either ObjectFifoHandle depth or ObjectFifo default depth; both are None."
-            )
+            if of.default_depth:
+                depth = of.default_depth
+            else:
+                raise ValueError(
+                    "Must specify either ObjectFifoHandle depth or ObjectFifo default depth; both are None."
+                )
         if depth < 1:
-            raise ValueError("Depth must be > 0")
+            raise ValueError(f"Depth must be > 0 but is {depth}")
         self._port: ObjectFifoPort = (
             ObjectFifoPort.Produce if is_prod else ObjectFifoPort.Consume
         )
@@ -274,6 +281,7 @@ class ObjectFifoHandle(Resolvable):
         placement: PlacementTile = AnyMemTile,
         depths: list[int] | None = None,
         types: list[type[np.ndarray]] = None,
+        names: list[str] | None = None,
     ) -> list[ObjectFifo]:
         num_subfifos = len(offsets)
         if depths is None:
@@ -286,13 +294,18 @@ class ObjectFifoHandle(Resolvable):
         elif len(types) != num_subfifos:
             raise ValueError("Number of types does not match number of offsets")
 
+        if names is None:
+            names = [self._object_fifo.name + f"_join{i}" for i in range(num_subfifos)]
+        elif len(names) != num_subfifos:
+            raise ValueError("Number of names does not match number of offsets")
+
         # Create subfifos
         subfifos = []
         for i in range(num_subfifos):
             subfifos.append(
                 ObjectFifo(
                     types[i],
-                    name=self._object_fifo.name + f"_join{i}",
+                    name=names[i],
                     default_depth=depths[i],
                 )
             )
@@ -310,6 +323,7 @@ class ObjectFifoHandle(Resolvable):
         placement: PlacementTile = AnyMemTile,
         depths: list[int] | None = None,
         types: list[type[np.ndarray]] = None,
+        names: list[str] | None = None,
     ) -> list[ObjectFifo]:
         num_subfifos = len(offsets)
         if depths is None:
@@ -322,13 +336,18 @@ class ObjectFifoHandle(Resolvable):
         elif len(types) != num_subfifos:
             raise ValueError("Number of types does not match number of offsets")
 
+        if names is None:
+            names = [self._object_fifo.name + f"_split{i}" for i in range(num_subfifos)]
+        elif len(names) != num_subfifos:
+            raise ValueError("Number of names does not match number of offsets")
+
         # Create subfifos
         subfifos = []
         for i in range(num_subfifos):
             subfifos.append(
                 ObjectFifo(
                     types[i],
-                    name=self._object_fifo.name + f"_split{i}",
+                    name=names[i],
                     default_depth=depths[i],
                 )
             )
@@ -345,6 +364,7 @@ class ObjectFifoHandle(Resolvable):
         placement: PlacementTile = AnyMemTile,
         obj_type: type[np.ndarray] | None = None,
         depth: int | None = None,
+        name: str | None = None,
     ) -> ObjectFifo:
         if self._is_prod:
             raise ValueError("Cannot forward a producer ObjectFifoHandle")
@@ -356,9 +376,9 @@ class ObjectFifoHandle(Resolvable):
                     f"Must provide depth since ObjectFifo default_depth={self._object_fifo.default_depth}"
                 )
             depth = self._object_fifo.default_depth
-        forward_fifo = ObjectFifo(
-            obj_type, name=self._object_fifo.name + f"_fwd", default_depth=depth
-        )
+        if not name:
+            name = self._object_fifo.name + "_fwd"
+        forward_fifo = ObjectFifo(obj_type, name=name, default_depth=depth)
         link = ObjectFifoLink(self._object_fifo, forward_fifo, placement, [], [])
         self.set_endpoint(link)
         forward_fifo.prod().set_endpoint(link)
