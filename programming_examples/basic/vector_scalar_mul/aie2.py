@@ -16,7 +16,7 @@ from aie.helpers.dialects.ext.scf import _for as range_
 import aie.utils.trace as trace_utils
 
 
-def my_vector_scalar(vector_size, trace_size):
+def my_vector_scalar(dev, vector_size, trace_size):
     N = vector_size
     N_in_bytes = N * 2
     N_div_n = 4  # chop input vector into 4 sub-vectors
@@ -26,7 +26,7 @@ def my_vector_scalar(vector_size, trace_size):
 
     vectorized = True
 
-    @device(AIEDevice.npu1_1col)
+    @device(dev)
     def device_body():
         tensor_ty = np.ndarray[(N,), np.dtype[np.int16]]
         tile_ty = np.ndarray[(n,), np.dtype[np.int16]]
@@ -93,13 +93,20 @@ def my_vector_scalar(vector_size, trace_size):
 
 
 try:
-    vector_size = int(sys.argv[1])
+    device_name = str(sys.argv[1])
+    if device_name == "npu":
+        dev = AIEDevice.npu1_1col
+    elif device_name == "npu2":
+        dev = AIEDevice.npu2
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+    vector_size = int(sys.argv[2])
     if vector_size % 64 != 0 or vector_size < 512:
         print("Vector size must be a multiple of 64 and greater than or equal to 512")
         raise ValueError
-    trace_size = 0 if (len(sys.argv) != 3) else int(sys.argv[2])
+    trace_size = 0 if (len(sys.argv) != 4) else int(sys.argv[3])
 except ValueError:
     print("Argument has inappropriate value")
 with mlir_mod_ctx() as ctx:
-    my_vector_scalar(vector_size, trace_size)
-    print(ctx.module)
+    my_vector_scalar(dev, vector_size, trace_size)
+print(ctx.module)

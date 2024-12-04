@@ -46,6 +46,7 @@ llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
 llvm_config.with_environment("PYTHONPATH", os.path.join(config.aie_obj_root, "python"))
 
 run_on_npu = "echo"
+run_on_2npu = "echo"
 xrt_flags = ""
 
 # Not using run_on_board anymore, need more specific per-platform commands
@@ -140,9 +141,14 @@ if config.xrt_lib_dir:
             if len(m.groups()) == 3:
                 print("\tmodel:", m.group(3))
             config.available_features.add("ryzen_ai")
-            run_on_npu = (
-                f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
-            )
+            if str(m.group(3)) == "npu1":
+                run_on_npu = (
+                    f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
+                )
+            if str(m.group(3)) == "npu4":
+                run_on_2npu = (
+                    f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
+                )
             break
     except:
         print("Failed to run xrt-smi")
@@ -151,6 +157,7 @@ else:
     print("xrt not found")
 
 config.substitutions.append(("%run_on_npu", run_on_npu))
+config.substitutions.append(("%run_on_2npu", run_on_2npu))
 config.substitutions.append(("%xrt_flags", xrt_flags))
 config.substitutions.append(("%XRT_DIR", config.xrt_dir))
 config.environment["XRT_HACK_UNSECURE_LOADING_XCLBIN"] = "1"
