@@ -883,8 +883,7 @@ struct CIRToAIEInlineKernelLambda
                << calledFunc.getResultTypes().size()
                << "calledFunc.getNumResults()" << calledFunc.getNumResults()
                << "calledFunc.getCallableResults().size()"
-               << calledFunc.getCallableResults().size();
-               calledFunc.getResultTypes()[0].dump());
+               << calledFunc.getCallableResults().size());
     mlir::InlinerInterface interface{call.getContext()};
     if (mlir::inlineCall(interface, call, calledFunc,
                          calledFunc.getCallableRegion())
