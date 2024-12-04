@@ -24,6 +24,7 @@ from .dmatask import DMATask
 from .runtimedata import RuntimeData
 from .runtimeendpoint import RuntimeEndpoint
 from ..worker import Worker
+from .runtimetask import RuntimeTask, RuntimeStartTask, InlineOpRuntimeTask
 
 
 class Runtime(Resolvable):
@@ -31,7 +32,7 @@ class Runtime(Resolvable):
         self,
     ) -> Runtime:
         self._rt_data = []
-        self._ops = []
+        self._tasks: list[RuntimeTask] = []
         self._fifos = set()
         self._workers = []
 
@@ -75,7 +76,7 @@ class Runtime(Resolvable):
         else:
             in_fifo.set_endpoint(rt_endpoint)
             self._fifos.add(in_fifo)
-        self._ops.append(DMATask(in_fifo, source, tap, wait))
+        self._tasks.append(DMATask(in_fifo, source, tap, wait))
 
     def drain(
         self,
@@ -108,13 +109,18 @@ class Runtime(Resolvable):
         else:
             out_fifo.set_endpoint(rt_endpoint)
             self._fifos.add(out_fifo)
-        self._ops.append(DMATask(out_fifo, dest, tap, wait))
+        self._tasks.append(DMATask(out_fifo, dest, tap, wait))
 
     def start(self, *args: Worker):
         for worker in args:
             if not isinstance(worker, Worker):
                 raise ValueError("Runtime can only start Worker objects")
             self._workers.append(worker)
+            self._tasks.append(RuntimeStartTask(worker))
+
+    def inline_ops(self, inline_func, inline_args):
+        # TODO: should filter args based on some criteria??
+        self._tasks.append(InlineOpRuntimeTask(inline_func, inline_args))
 
     def get_workers(self) -> list[Worker]:
         return self._workers.copy()
@@ -124,13 +130,14 @@ class Runtime(Resolvable):
 
     def place_tasks(self, shim_tiles: list[Tile]) -> None:
         # TODO: move to placer?
-        for op in self._ops:
-            ofe = op.fifo.get_endpoint()
-            assert isinstance(
-                ofe, RuntimeEndpoint
-            ), f"Expected RuntimeEndpoint, but found {type(ofe)}"
-            if ofe.tile == AnyShimTile:
-                ofe.place(shim_tiles[0])
+        for task in self._tasks:
+            if isinstance(task, DMATask):
+                ofe = task.fifo.get_endpoint()
+                assert isinstance(
+                    ofe, RuntimeEndpoint
+                ), f"Expected RuntimeEndpoint, but found {type(ofe)}"
+                if ofe.tile == AnyShimTile:
+                    ofe.place(shim_tiles[0])
 
     def resolve(
         self,
@@ -146,11 +153,12 @@ class Runtime(Resolvable):
                 rt_data.op = rt_data_val
 
             no_waits = []
-            for dma_task in self._ops:
-                dma_task.resolve()
-                if dma_task.will_wait():
-                    for t in no_waits:
-                        dma_free_task(t.task)
-                    no_waits = []
-                else:
-                    no_waits.append(dma_task)
+            for task in self._tasks:
+                task.resolve()
+                if isinstance(task, DMATask):
+                    if task.will_wait():
+                        for t in no_waits:
+                            dma_free_task(t.task)
+                        no_waits = []
+                    else:
+                        no_waits.append(task)

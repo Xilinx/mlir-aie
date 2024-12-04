@@ -11,12 +11,12 @@ from ... import ir  # type: ignore
 from ...dialects._aiex_ops_gen import dma_start_task, dma_await_task
 from ...dialects.aiex import shim_dma_single_bd_task
 from ..dataflow.objectfifo import ObjectFifoHandle
-from ..resolvable import Resolvable
 from .runtimedata import RuntimeData
 from ...helpers.taplib import TensorAccessPattern
+from .runtimetask import RuntimeTask
 
 
-class DMATask(Resolvable):
+class DMATask(RuntimeTask):
     def __init__(
         self,
         object_fifo: ObjectFifoHandle,

@@ -20,11 +20,19 @@ COLORTHRESHOLD_HEIGHT = 1080
 
 targetname = colorThreshold
 
-aie_py_src=aie2_colorThreshold.py
+aie_py_src=aie2_colorTheshold.py
 use_alt?=0
+use_iron?=0
 
 ifeq (${use_alt}, 1)
 aie_py_src=aie2_colorThreshold_alt.py
+ifeq (${use_iron}, 1)
+$(error Cannot specify both alternative design and IRON)
+endif
+endif
+
+ifeq (${use_iron}, 1)
+aie_py_src=aie2_colorThreshold_iron.py
 endif
 
 all: build/final_${COLORTHRESHOLD_WIDTH}.xclbin

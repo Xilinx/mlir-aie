@@ -112,12 +112,16 @@ class ObjectFifo(Resolvable):
 
     def _prod_tile_op(self) -> Tile:
         if self._prod == None:
-            raise ValueError("Cannot return prod.tile.op because prod was not created.")
+            raise ValueError(
+                f"Cannot return prod.tile.op for ObjectFifo {self.name} because prod was not created."
+            )
         return self._prod.get_endpoint().tile.op
 
     def _cons_tiles_ops(self) -> list[Tile]:
-        if self._cons == []:
-            raise ValueError("Cannot return cons.tile.op because prod was not created.")
+        if len(self._cons) < 1:
+            raise ValueError(
+                f"Cannot return cons.tile.op for ObjectFifo {self.name} because no consumers were not created."
+            )
         return [cons.get_endpoint().tile.op for cons in self._cons]
 
     def _get_depths(self) -> int | list[int]:
@@ -144,7 +148,7 @@ class ObjectFifo(Resolvable):
         return self._obj_type
 
     def __str__(self) -> str:
-        return f"{self.__class__.__name__}({self._obj_type}, default_depth={self.default_depth}, name='{self.name}')"
+        return f"{self.__class__.__name__}({self._obj_type}, default_depth={self.default_depth}, name='{self.name}', prod={self._prod}, cons={self._cons})"
 
     def resolve(
         self,

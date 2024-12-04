@@ -13,7 +13,7 @@ from .. import ir  # type: ignore
 from ..dialects.aie import core
 from ..helpers.dialects.ext.scf import _for as range_
 from .phys.tile import PlacementTile, AnyComputeTile, Tile
-from .dataflow.objectfifo import ObjectFifoHandle
+from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .kernels.binkernel import BinKernel
 from .kernels.kernel import Kernel
@@ -58,6 +58,17 @@ class Worker(ObjectFifoEndpoint):
                 self._fifos.append(arg)
             elif isinstance(arg, GlobalBuffer):
                 self._buffers.append(arg)
+            elif isinstance(arg, ObjectFifo):
+                # This is an easy error to make, so we catch it early
+                raise ValueError(
+                    "Cannot give an ObjectFifo directly to a worker; "
+                    "must give an ObjectFifoHandle obtained through "
+                    "ObjectFifo.prod() or ObjectFifo.cons()"
+                )
+            # We assume other arguments are metaprogramming (e.g, Python args)
+            # This could allow some errors to sink through, but we allow it for now.
+            # TODO: this could be cleaned up through creation of a MetaArgs struct, so you
+            # could access values through meta.my_var within the function.
 
         assert len(bin_names) <= 1, "Right now only link with one bin"
         if len(bin_names) == 1:

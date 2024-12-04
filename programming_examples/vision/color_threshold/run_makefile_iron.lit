@@ -3,10 +3,10 @@
 //
 // REQUIRES: ryzen_ai, peano, opencv
 //
-// RUN: mkdir -p test_alt
-// RUN: cd test_alt
+// RUN: mkdir -p test_iron
+// RUN: cd test_iron
 // RUN: make -f %S/Makefile clean
-// RUN: env use_alt=1 make -f %S/Makefile 
+// RUN: env use_iron=1 make -f %S/Makefile 
 // RUN: %run_on_npu env use_iron=1 make -f %S/Makefile run | FileCheck %s
 // CHECK: PASS!
   
