@@ -46,24 +46,12 @@ def color_threshold(dev, width, height):
         # AIE-array data movement with object fifos
 
         # Input RGBA broadcast + memtile for skip
-        inOOB_L3L2 = object_fifo(
-            "inOOB_L3L2", ShimTile, MemTile, 2, line_channels_ty
-        )
-        inOOB_L2L1_0 = object_fifo(
-            "inOOB_L2L1_0", MemTile, ComputeTile2, 2, line_ty
-        )
-        inOOB_L2L1_1 = object_fifo(
-            "inOOB_L2L1_1", MemTile, ComputeTile3, 2, line_ty
-        )
-        inOOB_L2L1_2 = object_fifo(
-            "inOOB_L2L1_2", MemTile, ComputeTile4, 2, line_ty
-        )
-        inOOB_L2L1_3 = object_fifo(
-            "inOOB_L2L1_3", MemTile, ComputeTile5, 2, line_ty
-        )
-        of_offsets = [
-            np.prod(np_ndarray_type_get_shape(line_ty)) * i for i in range(4)
-        ]
+        inOOB_L3L2 = object_fifo("inOOB_L3L2", ShimTile, MemTile, 2, line_channels_ty)
+        inOOB_L2L1_0 = object_fifo("inOOB_L2L1_0", MemTile, ComputeTile2, 2, line_ty)
+        inOOB_L2L1_1 = object_fifo("inOOB_L2L1_1", MemTile, ComputeTile3, 2, line_ty)
+        inOOB_L2L1_2 = object_fifo("inOOB_L2L1_2", MemTile, ComputeTile4, 2, line_ty)
+        inOOB_L2L1_3 = object_fifo("inOOB_L2L1_3", MemTile, ComputeTile5, 2, line_ty)
+        of_offsets = [np.prod(np_ndarray_type_get_shape(line_ty)) * i for i in range(4)]
         object_fifo_link(
             inOOB_L3L2,
             [inOOB_L2L1_0, inOOB_L2L1_1, inOOB_L2L1_2, inOOB_L2L1_3],
@@ -72,21 +60,11 @@ def color_threshold(dev, width, height):
         )
 
         # Output RGBA
-        outOOB_L2L3 = object_fifo(
-            "outOOB_L2L3", MemTile, ShimTile, 2, line_channels_ty
-        )
-        outOOB_L1L2_0 = object_fifo(
-            "outOOB_L1L2_0", ComputeTile2, MemTile, 2, line_ty
-        )
-        outOOB_L1L2_1 = object_fifo(
-            "outOOB_L1L2_1", ComputeTile3, MemTile, 2, line_ty
-        )
-        outOOB_L1L2_2 = object_fifo(
-            "outOOB_L1L2_2", ComputeTile4, MemTile, 2, line_ty
-        )
-        outOOB_L1L2_3 = object_fifo(
-            "outOOB_L1L2_3", ComputeTile5, MemTile, 2, line_ty
-        )
+        outOOB_L2L3 = object_fifo("outOOB_L2L3", MemTile, ShimTile, 2, line_channels_ty)
+        outOOB_L1L2_0 = object_fifo("outOOB_L1L2_0", ComputeTile2, MemTile, 2, line_ty)
+        outOOB_L1L2_1 = object_fifo("outOOB_L1L2_1", ComputeTile3, MemTile, 2, line_ty)
+        outOOB_L1L2_2 = object_fifo("outOOB_L1L2_2", ComputeTile4, MemTile, 2, line_ty)
+        outOOB_L1L2_3 = object_fifo("outOOB_L1L2_3", ComputeTile5, MemTile, 2, line_ty)
         object_fifo_link(
             [outOOB_L1L2_0, outOOB_L1L2_1, outOOB_L1L2_2, outOOB_L1L2_3],
             outOOB_L2L3,
@@ -256,6 +234,7 @@ def color_threshold(dev, width, height):
             )
             dma_wait(inOOB_L3L2, outOOB_L2L3)
 
+
 try:
     device_name = str(sys.argv[1])
     if device_name == "npu":
@@ -269,7 +248,7 @@ try:
 except ValueError:
     print("Argument has inappropriate value")
 with mlir_mod_ctx() as ctx:
-    #print(ctx.module.operation.verify())
+    # print(ctx.module.operation.verify())
     color_threshold(dev, width, height)
     print(ctx.module)
 

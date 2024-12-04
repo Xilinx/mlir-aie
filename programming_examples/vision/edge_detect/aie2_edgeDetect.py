@@ -274,6 +274,7 @@ def edge_detect(dev, width, height):
             # outOF_L2L3 will only complete after inOF_L3L2 completes, so we just wait on outOF_L2L3 instead of all
             dma_wait(outOF_L2L3)
 
+
 try:
     device_name = str(sys.argv[1])
     if device_name == "npu":
@@ -287,6 +288,6 @@ try:
 except ValueError:
     print("Argument has inappropriate value")
 with mlir_mod_ctx() as ctx:
-    #print(ctx.module.operation.verify())
+    # print(ctx.module.operation.verify())
     edge_detect(dev, width, height)
     print(ctx.module)

@@ -259,9 +259,7 @@ def edge_detect(dev, width, height):
         # To/from AIE-array data movement
         @runtime_sequence(tensor_ty, tensor_16x16_ty, tensor_ty)
         def sequence(I, B, O):
-            in_task = shim_dma_single_bd_task(
-                inOF_L3L2, I, sizes=[1, 1, 1, tensorSize]
-            )
+            in_task = shim_dma_single_bd_task(inOF_L3L2, I, sizes=[1, 1, 1, tensorSize])
             out_task = shim_dma_single_bd_task(
                 outOF_L2L3,
                 O,
@@ -272,6 +270,7 @@ def edge_detect(dev, width, height):
             dma_start_task(in_task, out_task)
             dma_await_task(out_task)
             dma_free_task(in_task)
+
 
 try:
     device_name = str(sys.argv[1])
@@ -286,6 +285,6 @@ try:
 except ValueError:
     print("Argument has inappropriate value")
 with mlir_mod_ctx() as ctx:
-    #print(ctx.module.operation.verify())
+    # print(ctx.module.operation.verify())
     edge_detect(dev, width, height)
     print(ctx.module)
