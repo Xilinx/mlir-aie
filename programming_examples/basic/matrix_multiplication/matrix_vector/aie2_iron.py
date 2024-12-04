@@ -90,7 +90,7 @@ def my_matmul():
         rt.start(*workers)
 
         # there is only one b tile
-        rt.fill(B_fifo.prod(), b_in, b_tap[0])
+        rt.fill(B_fifo.prod(), b_in, b_tap)
 
         for i, (a_tap, c_tap) in enumerate(zip(A_taps, C_taps)):
             rt.fill(memA_fifos[i].prod(), a_in, a_tap)
