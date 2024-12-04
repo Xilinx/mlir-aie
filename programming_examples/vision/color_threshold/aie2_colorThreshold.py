@@ -251,4 +251,3 @@ with mlir_mod_ctx() as ctx:
     # print(ctx.module.operation.verify())
     color_threshold(dev, width, height)
     print(ctx.module)
-
