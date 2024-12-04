@@ -20,7 +20,10 @@
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
 #ifdef CLANGIR_MLIR_FRONTEND
+#include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Dialect.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "clang/CIR/LowerToLLVM.h"
+#include "clang/CIR/LowerToMLIR.h"
 
 namespace cir::direct {
 extern void registerCIRDialectTranslation(mlir::DialectRegistry &registry);
@@ -103,6 +106,11 @@ int main(int argc, char **argv) {
   registerAllTranslationsWithoutToLLVMIR();
 #ifdef CLANGIR_MLIR_FRONTEND
   registerToLLVMTranslation();
+  cir::runAtStartOfConvertCIRToMLIRPass([](mlir::ConversionTarget ct) {
+    ct.addLegalDialect<xilinx::AIE::AIEDialect, xilinx::AIEX::AIEXDialect,
+                       xilinx::aievec::aie1::AIEVecAIE1Dialect,
+                       xilinx::aievec::AIEVecDialect>();
+  });
 #endif
   registerToLLVMIRTranslation();
   xilinx::AIE::registerAIETranslations();

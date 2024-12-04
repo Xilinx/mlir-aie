@@ -27,6 +27,7 @@ target_link_libraries(aie-translate
   $<IF:$<BOOL:${CLANGIR_MLIR_FRONTEND}>,
     clangCIR
     clangCIRLoweringDirectToLLVM
+    clangCIRLoweringThroughMLIR
   ,>
   AIE
   AIETransforms
