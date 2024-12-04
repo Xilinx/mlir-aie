@@ -57,7 +57,6 @@ def passthroughKernel(dev, vector_size, trace_size):
 
         #    print(ctx.module.operation.verify())
 
-        N2 = N // 2
         @runtime_sequence(vector_ty, vector_ty, vector_ty)
         def sequence(inTensor, outTensor, notUsed):
             if trace_size > 0:
@@ -69,10 +68,10 @@ def passthroughKernel(dev, vector_size, trace_size):
                     offset=N,
                 )
             in_task = shim_dma_single_bd_task(
-                of_in, inTensor, sizes=[1, 1, 1, N2], issue_token=True
+                of_in, inTensor, sizes=[1, 1, 1, N], issue_token=True
             )
             out_task = shim_dma_single_bd_task(
-                of_out, outTensor, sizes=[1, 1, 1, N2], issue_token=True
+                of_out, outTensor, sizes=[1, 1, 1, N], issue_token=True
             )
 
             dma_start_task(in_task, out_task)

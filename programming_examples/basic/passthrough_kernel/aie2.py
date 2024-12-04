@@ -55,8 +55,6 @@ def passthroughKernel(dev, vector_size, trace_size):
                 of_in.release(ObjectFifoPort.Consume, 1)
                 of_out.release(ObjectFifoPort.Produce, 1)
 
-        #    print(ctx.module.operation.verify())
-        N2 = N // 2
         @runtime_sequence(vector_ty, vector_ty, vector_ty)
         def sequence(inTensor, outTensor, notUsed):
             if trace_size > 0:
@@ -72,14 +70,14 @@ def passthroughKernel(dev, vector_size, trace_size):
                 metadata=of_in,
                 bd_id=0,
                 mem=inTensor,
-                sizes=[1, 1, 1, N2],
+                sizes=[1, 1, 1, N],
                 issue_token=True,
             )
             npu_dma_memcpy_nd(
                 metadata=of_out,
                 bd_id=1,
                 mem=outTensor,
-                sizes=[1, 1, 1, N2],
+                sizes=[1, 1, 1, N],
             )
             dma_wait(of_in, of_out)
 
