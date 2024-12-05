@@ -12,6 +12,7 @@ include ${srcdir}/../../makefile-common
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
+device = npu
 COLORTHRESHOLD_WIDTH  = 1920
 COLORTHRESHOLD_HEIGHT = 1080
 
@@ -41,17 +42,28 @@ mlir: build/aie2_${COLORTHRESHOLD_WIDTH}.mlir
 
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
+ifeq ($(device),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+else ifeq ($(device),npu2)
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+else
+	echo "Device type not supported"
+endif
 	
 build/aie2_${COLORTHRESHOLD_WIDTH}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${COLORTHRESHOLD_WIDTH} ${COLORTHRESHOLD_HEIGHT} > $@
+	python3 $< ${device} ${COLORTHRESHOLD_WIDTH} ${COLORTHRESHOLD_HEIGHT} > $@
 
 build/final_${COLORTHRESHOLD_WIDTH}.xclbin: build/aie2_${COLORTHRESHOLD_WIDTH}.mlir build/threshold.cc.o
 	mkdir -p ${@D}
+ifeq ($(device),npu)
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host --alloc-scheme=basic-sequential \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
+else
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host --alloc-scheme=basic-sequential \
+		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
+endif
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
