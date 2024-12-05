@@ -262,7 +262,7 @@ void printMemMap(TileOp tile, SmallVector<BufferOp> &allocatedBuffers,
 // Returns true if the buffer was successfully allocated, false otherwise.
 // If no bank has enough space to accommodate the buffer, an error is emitted.
 
-int setBufferAddress(BufferOp buffer, int numBanks, int startBankIndex,
+int setBufferAddress(BufferOp buffer, int numBanks, int &startBankIndex,
                      std::vector<int64_t> &nextAddrInBanks,
                      std::vector<BankLimits> &bankLimits) {
   assert(startBankIndex < numBanks &&
@@ -276,13 +276,12 @@ int setBufferAddress(BufferOp buffer, int numBanks, int startBankIndex,
       buffer.setMemBank(bankIndex);
       setAndUpdateAddressInBank(buffer, startAddr, endAddr, nextAddrInBanks);
       allocated = true;
-      bankIndex++;
-      bankIndex %= numBanks;
+      bankIndex = (bankIndex + 1) % numBanks;
+      startBankIndex = bankIndex;
       break;
     }
     // Move to the next bank
-    bankIndex++;
-    bankIndex %= numBanks;
+    bankIndex = (bankIndex + 1) % numBanks;
   }
   // If no bank has enough space, throws error
   if (!allocated) {
@@ -293,6 +292,7 @@ int setBufferAddress(BufferOp buffer, int numBanks, int startBankIndex,
   }
   return true;
 }
+
 
 LogicalResult checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
                                     SmallVector<BufferOp> &allBuffers,
