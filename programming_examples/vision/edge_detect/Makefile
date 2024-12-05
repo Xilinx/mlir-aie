@@ -25,9 +25,17 @@ targetname = edgeDetect
 
 aie_py_src=aie2_edgeDetect.py
 use_alt?=0
+use_iron?=0
 
 ifeq (${use_alt}, 1)
 aie_py_src=aie2_edgeDetect_alt.py
+ifeq (${use_iron}, 1)
+$(error Cannot specify both alternative design and IRON)
+endif
+endif
+
+ifeq (${use_iron}, 1)
+aie_py_src=aie2_edgeDetect_iron.py
 endif
 
 all: build/final_${EDGEDETECT_WIDTH}.xclbin

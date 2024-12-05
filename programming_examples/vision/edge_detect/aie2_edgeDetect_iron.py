@@ -1,0 +1,268 @@
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2024 AMD Inc.
+import numpy as np
+import sys
+
+from aie.iron.runtime import Runtime
+from aie.iron.dataflow import ObjectFifo
+from aie.iron.placers import SequentialPlacer
+from aie.iron.program import Program
+from aie.iron.worker import Worker
+from aie.iron.kernels import BinKernel
+from aie.iron.phys.device import NPU1Col1
+from aie.iron.localbuffer import LocalBuffer
+
+from aie.helpers.dialects.ext.scf import _for as range_
+
+width = 64
+height = 36
+if len(sys.argv) == 3:
+    width = int(sys.argv[1])
+    height = int(sys.argv[2])
+
+heightMinus1 = height - 1
+lineWidth = width
+lineWidthInBytes = width * 4
+tensorSize = width * height * 4  # 4 channels
+
+enableTrace = False
+traceSizeInBytes = 8192
+traceSizeInInt32s = traceSizeInBytes // 4
+
+
+def edge_detect():
+    line_bytes_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
+    line_ty = np.ndarray[(lineWidth,), np.dtype[np.uint8]]
+    tensor_3x3_ty = np.ndarray[(3, 3), np.dtype[np.int16]]
+
+    tensor_ty = np.ndarray[(tensorSize,), np.dtype[np.int8]]
+    tensor_16x16_ty = np.ndarray[(16, 16), np.dtype[np.int32]]
+
+    # AIE Core Function declarations
+    rgba2gray_line_kernel = BinKernel(
+        "rgba2grayLine", "rgba2gray.cc.o", [line_bytes_ty, line_ty, np.int32]
+    )
+    filter2d_line_kernel = BinKernel(
+        "filter2dLine",
+        "filter2d.cc.o",
+        [line_ty, line_ty, line_ty, line_ty, np.int32, tensor_3x3_ty],
+    )
+    threshold_line_kernel = BinKernel(
+        "thresholdLine",
+        "threshold.cc.o",
+        [line_ty, line_ty, np.int32, np.int16, np.int16, np.int8],
+    )
+    gray2rgba_line_kernel = BinKernel(
+        "gray2rgbaLine",
+        "combined_gray2rgba_addWeighted.a",
+        [line_ty, line_bytes_ty, np.int32],
+    )
+    add_weighted_line_kernel = BinKernel(
+        "addWeightedLine",
+        "combined_gray2rgba_addWeighted.a",
+        [
+            line_bytes_ty,
+            line_bytes_ty,
+            line_bytes_ty,
+            np.int32,
+            np.int16,
+            np.int16,
+            np.int8,
+        ],
+    )
+
+    # AIE-array data movement with object fifos
+    # Input
+    inOF_L3L2 = ObjectFifo(line_bytes_ty, name="inOF_L3L2")
+    inOF_L2L1 = inOF_L3L2.cons(7).forward(depth=7, name="inOF_L2L1")
+
+    # Output
+    outOF_L1L2 = ObjectFifo(line_bytes_ty, name="outOF_L1L2")
+    outOF_L2L3 = outOF_L1L2.cons().forward(name="outOF_L2L3")
+
+    # Intermediate
+    depths = [4, 2, 2]
+    of_intermediates = [
+        ObjectFifo(line_ty, default_depth=depths[i], name=f"OF_{i + 2}to{i + 3}")
+        for i in range(3)
+    ]
+    of_local = ObjectFifo(line_bytes_ty, default_depth=1, name="OF_local")
+
+    workers = []
+
+    def rgba2gray_fn(of_in, of_out, rgba2gray_line):
+        # inOF_L3L2
+        # OF_2to3 -> of_intermediates[0]
+        elem_in = of_in.acquire(1)
+        elem_out = of_out.acquire(1)
+        rgba2gray_line(elem_in, elem_out, lineWidth)
+        of_in.release(1)
+        of_out.release(1)
+
+    workers.append(
+        Worker(
+            rgba2gray_fn,
+            [inOF_L3L2.cons(), of_intermediates[0].prod(), rgba2gray_line_kernel],
+        )
+    )
+
+    def filter_fn(of_in, of_out, filter2d_line):
+        # OF_2to3 -> intermediates[0]
+        # OF_3to4 -> intermediates[1]
+        v0 = 0
+        v1 = 4096
+        v_minus4 = -16384
+        kernel = LocalBuffer(
+            np.ndarray[(3, 3), np.dtype[np.int16]],
+            name="kernel",
+            initial_value=np.array(
+                [[v0, v1, v0], [v1, v_minus4, v1], [v0, v1, v0]], dtype=np.int16
+            ),
+        )
+
+        for _ in range_(sys.maxsize):
+            # Preamble : Top Border
+            elems_in_pre = of_in.acquire(2)
+            elem_pre_out = of_out.acquire(1)
+            filter2d_line(
+                elems_in_pre[0],
+                elems_in_pre[0],
+                elems_in_pre[1],
+                elem_pre_out,
+                lineWidth,
+                kernel,
+            )
+            of_out.release(1)
+
+            # Steady State : Middle
+            for _ in range_(1, heightMinus1):
+                elems_in = of_in.acquire(3)
+                elem_out = of_out.acquire(1)
+                filter2d_line(
+                    elems_in[0],
+                    elems_in[1],
+                    elems_in[2],
+                    elem_out,
+                    lineWidth,
+                    kernel,
+                )
+                of_in.release(1)
+                of_out.release(1)
+
+            # Postamble : Bottom Border
+            elems_in_post = of_in.acquire(2)
+            elem_post_out = of_out.acquire(1)
+            filter2d_line(
+                elems_in_post[0],
+                elems_in_post[1],
+                elems_in_post[1],
+                elem_post_out,
+                lineWidth,
+                kernel,
+            )
+            of_in.release(2)
+            of_out.release(1)
+
+    workers.append(
+        Worker(
+            filter_fn,
+            [
+                of_intermediates[0].cons(),
+                of_intermediates[1].prod(),
+                filter2d_line_kernel,
+            ],
+            while_true=False,
+        )
+    )
+
+    def threshold_fn(of_in, of_out, threshold_line):
+        v_thr = 10
+        v_max = 255
+        v_typ = 0
+
+        elem_in = of_in.acquire(1)
+        elem_out = of_out.acquire(1)
+        threshold_line(elem_in, elem_out, lineWidth, v_thr, v_max, v_typ)
+        of_in.release(1)
+        of_out.release(1)
+
+    workers.append(
+        Worker(
+            threshold_fn,
+            [
+                of_intermediates[1].cons(),
+                of_intermediates[2].prod(),
+                threshold_line_kernel,
+            ],
+        )
+    )
+
+    def gray2rgba_addWeight_fn(
+        of_in,
+        of_in2,
+        if_out_self,
+        of_in_self,
+        of_out,
+        gray2rgba_line,
+        add_weighted_line,
+    ):
+        elem_in = of_in.acquire(1)
+        elem_out = if_out_self.acquire(1)
+
+        gray2rgba_line(elem_in, elem_out, lineWidth)
+
+        of_in.release(1)
+        if_out_self.release(1)
+
+        elem_in1 = of_in_self.acquire(1)
+        elem_in2 = of_in2.acquire(1)
+        elem_out2 = of_out.acquire(1)
+
+        alpha = 16384
+        beta = 16384
+        gamma = 0
+
+        add_weighted_line(
+            elem_in1,
+            elem_in2,
+            elem_out2,
+            lineWidthInBytes,
+            alpha,
+            beta,
+            gamma,
+        )
+
+        of_in_self.release(1)
+        of_in2.release(1)
+        of_out.release(1)
+
+    workers.append(
+        Worker(
+            gray2rgba_addWeight_fn,
+            [
+                of_intermediates[2].cons(),
+                inOF_L2L1.cons(),
+                of_local.prod(),
+                of_local.cons(),
+                outOF_L1L2.prod(),
+                gray2rgba_line_kernel,
+                add_weighted_line_kernel,
+            ],
+        )
+    )
+
+    rt = Runtime()
+    with rt.sequence(tensor_ty, tensor_16x16_ty, tensor_ty) as (I, _B, O):
+        rt.start(*workers)
+        rt.fill(inOF_L3L2.prod(), I)
+        rt.drain(outOF_L2L3.cons(), O, wait=True)
+
+    return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
+
+
+module = edge_detect()
+print(module)

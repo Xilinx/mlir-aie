@@ -20,7 +20,7 @@ COLORTHRESHOLD_HEIGHT = 1080
 
 targetname = colorThreshold
 
-aie_py_src=aie2_colorTheshold.py
+aie_py_src=aie2_colorThreshold.py
 use_alt?=0
 use_iron?=0
 
