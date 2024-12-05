@@ -12,7 +12,7 @@ from .phys.device import Device
 from .runtime import Runtime
 from .runtime.runtimeendpoint import RuntimeEndpoint
 from .worker import Worker
-from .phys.tile import AnyComputeTile, AnyMemTile
+from .phys.tile import AnyComputeTile, AnyMemTile, Tile
 from .dataflow.objectfifo import ObjectFifoHandle
 
 
@@ -48,6 +48,18 @@ class SequentialPlacer(Placer):
         computes = device.get_compute_tiles()
         compute_idx = 0  # Will not loop over core tiles
 
+        # If some workers are already taken, remove them from the available set
+        for worker in workers:
+            # This worker has already been placed
+            if isinstance(worker.tile, Tile):
+                if not worker.tile in computes:
+                    raise ValueError(
+                        f"Partial Placement Error: "
+                        "Tile {worker.tile} not available on "
+                        "device {device} or has already been used."
+                    )
+                computes.remove(worker.tile)
+
         for worker in workers:
             if worker.tile == AnyComputeTile:
                 assert compute_idx < len(
@@ -55,6 +67,9 @@ class SequentialPlacer(Placer):
                 ), "Ran out of compute tiles for placement!"
                 worker.place(computes[compute_idx])
                 compute_idx += 1
+
+            for buffer in worker.get_buffers():
+                buffer.place(worker.tile)
 
         for of in object_fifos:
             of_endpoints = of.get_all_endpoints()

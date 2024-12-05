@@ -76,11 +76,12 @@ class Worker(ObjectFifoEndpoint):
 
     def place(self, tile: Tile) -> None:
         ObjectFifoEndpoint.place(self, tile)
-        for buffer in self._buffers:
-            buffer.place(tile)
 
     def get_fifos(self) -> list[ObjectFifoHandle]:
         return self._fifos.copy()
+
+    def get_buffers(self) -> list[GlobalBuffer]:
+        return self._buffers.copy()
 
     def resolve(
         self,
