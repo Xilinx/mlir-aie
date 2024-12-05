@@ -11,13 +11,11 @@
 import argparse
 from ml_dtypes import bfloat16
 import numpy as np
-import sys
 
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 import aie.utils.trace as trace_utils
-from aie.utils.trace import PortEvent
 from aie.helpers.dialects.ext.scf import _for as range_
 
 dtype_map = {
@@ -51,17 +49,19 @@ def main():
     )
     argparser.add_argument("--trace_size", type=int, default=0)
     args = argparser.parse_args()
-    my_matmul(
-        args.M,
-        args.K,
-        args.N,
-        args.m,
-        args.k,
-        args.n,
-        args.dtype_in,
-        args.dtype_out,
-        args.trace_size,
-    )
+    with mlir_mod_ctx() as ctx:
+        my_matmul(
+            args.M,
+            args.K,
+            args.N,
+            args.m,
+            args.k,
+            args.n,
+            args.dtype_in,
+            args.dtype_out,
+            args.trace_size,
+        )
+        print(ctx.module)
 
 
 def ceildiv(a, b):
@@ -119,216 +119,208 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
     # Output Matrix C: MxN
     m_x_N = m * N
 
-    with mlir_mod_ctx() as ctx:
+    C_sz_in_bytes = C_sz * np.dtype(dtype_out).itemsize
 
-        C_sz_in_bytes = C_sz * np.dtype(dtype_out).itemsize
+    @device(AIEDevice.npu1_1col)
+    def device_body():
+        a_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
+        b_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
+        c_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
-        @device(AIEDevice.npu1_1col)
-        def device_body():
-            a_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
-            b_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
-            c_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
+        # AIE Core Function declarations
+        func_type = "" if vectorized else "scalar_"
+        zero = external_func(f"zero_{func_type}{dtype_out_str}", inputs=[c_ty])
+        matmul = external_func(
+            f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}",
+            inputs=[a_ty, b_ty, c_ty],
+        )
 
-            # AIE Core Function declarations
-            func_type = "" if vectorized else "scalar_"
-            zero = external_func(f"zero_{func_type}{dtype_out_str}", inputs=[c_ty])
-            matmul = external_func(
-                f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}",
-                inputs=[a_ty, b_ty, c_ty],
-            )
+        # Tile declarations
+        shim_tile = tile(0, 0)
+        mem_tile = tile(0, 1)
+        compute_tile2_col, compute_tile2_row = 0, 2
+        compute_tile2 = tile(compute_tile2_col, compute_tile2_row)
 
-            # Tile declarations
-            shim_tile = tile(0, 0)
-            mem_tile = tile(0, 1)
-            compute_tile2_col, compute_tile2_row = 0, 2
-            compute_tile2 = tile(compute_tile2_col, compute_tile2_row)
+        # AIE-array data movement with object fifos
+        # Input A
+        inA = object_fifo("inA", shim_tile, mem_tile, 2, a_ty)
+        memA = object_fifo(
+            "memA",
+            mem_tile,
+            compute_tile2,
+            2,
+            a_ty,
+            (
+                [
+                    (m // r, r * k),
+                    (k // s, s),
+                    (r, k),
+                    (s, 1),
+                ]
+                if vectorized
+                else []
+            ),
+        )
+        object_fifo_link(inA, memA)
 
-            # AIE-array data movement with object fifos
-            # Input A
-            inA = object_fifo("inA", shim_tile, mem_tile, 2, a_ty)
-            memA = object_fifo(
-                "memA",
-                mem_tile,
-                compute_tile2,
-                2,
-                a_ty,
-                (
-                    [
-                        (m // r, r * k),
-                        (k // s, s),
-                        (r, k),
-                        (s, 1),
-                    ]
-                    if vectorized
-                    else []
-                ),
-            )
-            object_fifo_link(inA, memA)
+        # Input B
+        inB = object_fifo("inB", shim_tile, mem_tile, 2, b_ty)
+        memB = object_fifo(
+            "memB",
+            mem_tile,
+            compute_tile2,
+            2,
+            b_ty,
+            (
+                [
+                    (k // s, s * n),
+                    (n // t, t),
+                    (s, n),
+                    (t, 1),
+                ]
+                if vectorized
+                else []
+            ),
+        )
+        object_fifo_link(inB, memB)
 
-            # Input B
-            inB = object_fifo("inB", shim_tile, mem_tile, 2, b_ty)
-            memB = object_fifo(
-                "memB",
-                mem_tile,
-                compute_tile2,
-                2,
-                b_ty,
-                (
-                    [
-                        (k // s, s * n),
-                        (n // t, t),
-                        (s, n),
-                        (t, 1),
-                    ]
-                    if vectorized
-                    else []
-                ),
-            )
-            object_fifo_link(inB, memB)
+        # Output C
+        memC = object_fifo("memC", compute_tile2, mem_tile, 2, c_ty)
+        outC = object_fifo(
+            "outC",
+            mem_tile,
+            shim_tile,
+            2,
+            c_ty,
+            (
+                [
+                    (m // r, r * n),
+                    (r, t),
+                    (n // t, r * t),
+                    (t, 1),
+                ]
+                if vectorized
+                else []
+            ),
+        )
+        object_fifo_link(memC, outC)
 
-            # Output C
-            memC = object_fifo("memC", compute_tile2, mem_tile, 2, c_ty)
-            outC = object_fifo(
-                "outC",
-                mem_tile,
-                shim_tile,
-                2,
-                c_ty,
-                (
-                    [
-                        (m // r, r * n),
-                        (r, t),
-                        (n // t, r * t),
-                        (t, 1),
-                    ]
-                    if vectorized
-                    else []
-                ),
-            )
-            object_fifo_link(memC, outC)
+        # Set up a packet-switched flow from core to shim for tracing information
+        tiles_to_trace = [compute_tile2]
+        if trace_size > 0:
+            trace_utils.configure_packet_tracing_flow(tiles_to_trace, shim_tile)
 
-            # Set up a packet-switched flow from core to shim for tracing information
-            tiles_to_trace = [compute_tile2]
-            if trace_size > 0:
-                trace_utils.configure_packet_tracing_flow(tiles_to_trace, shim_tile)
+        # Set up compute tiles
 
-            # Set up compute tiles
+        # Compute tile 2
+        @core(compute_tile2, f"mm_{m}x{k}x{n}.o")
+        def core_body():
+            for _ in range_(0xFFFFFFFF):
+                for _ in range_(tiles) if tiles > 1 else range(1):  # issue #1547
+                    elem_out = memC.acquire(ObjectFifoPort.Produce, 1)
+                    zero(elem_out)
 
-            # Compute tile 2
-            @core(compute_tile2, f"mm_{m}x{k}x{n}.o")
-            def core_body():
-                for _ in range_(0xFFFFFFFF):
-                    for _ in range_(tiles) if tiles > 1 else range(1):  # issue #1547
-                        elem_out = memC.acquire(ObjectFifoPort.Produce, 1)
-                        zero(elem_out)
+                    for _ in (
+                        range_(K_div_k) if K_div_k > 1 else range(1)
+                    ):  # issue #1547
+                        elem_in_a = memA.acquire(ObjectFifoPort.Consume, 1)
+                        elem_in_b = memB.acquire(ObjectFifoPort.Consume, 1)
+                        matmul(elem_in_a, elem_in_b, elem_out)
+                        memA.release(ObjectFifoPort.Consume, 1)
+                        memB.release(ObjectFifoPort.Consume, 1)
+                    memC.release(ObjectFifoPort.Produce, 1)
 
-                        for _ in (
-                            range_(K_div_k) if K_div_k > 1 else range(1)
-                        ):  # issue #1547
-                            elem_in_a = memA.acquire(ObjectFifoPort.Consume, 1)
-                            elem_in_b = memB.acquire(ObjectFifoPort.Consume, 1)
-                            matmul(elem_in_a, elem_in_b, elem_out)
-                            memA.release(ObjectFifoPort.Consume, 1)
-                            memB.release(ObjectFifoPort.Consume, 1)
-                        memC.release(ObjectFifoPort.Produce, 1)
+        # To/from AIE-array data movement
 
-            # To/from AIE-array data movement
+        @runtime_sequence(
+            np.ndarray[(A_sz,), np.dtype[dtype_in]],
+            np.ndarray[(B_sz,), np.dtype[dtype_in]],
+            np.ndarray[(C_sz,), np.dtype[dtype_out]],
+        )
+        def sequence(A, B, C):
 
-            @runtime_sequence(
-                np.ndarray[(A_sz,), np.dtype[dtype_in]],
-                np.ndarray[(B_sz,), np.dtype[dtype_in]],
-                np.ndarray[(C_sz,), np.dtype[dtype_out]],
-            )
-            def sequence(A, B, C):
+            if enable_tracing:
+                trace_utils.configure_packet_tracing_aie2(
+                    tiles_to_trace, shim_tile, trace_size, C_sz_in_bytes
+                )
 
-                if enable_tracing:
-                    trace_utils.configure_packet_tracing_aie2(
-                        tiles_to_trace, shim_tile, trace_size, C_sz_in_bytes
+            # These lists will hold handles to the DMA tasks we configure
+            # on the shim. We can later use these handles to start those
+            # tasks and wait for their completion.
+            a_tasks = []
+            b_tasks = []
+            c_tasks = []
+
+            # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
+            rows_per_block = 4
+            for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
+                # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
+                # that's what this loop is for
+                for pingpong in [0, 1]:
+                    C_row_offset = (
+                        tile_row_block * rows_per_block * m * N
+                        + pingpong * rows_per_block // 2 * m * N
                     )
+                    row_base = (
+                        tile_row_block * rows_per_block + pingpong * rows_per_block // 2
+                    )
+                    num_tile_rows = min([rows_per_block // 2, M_div_m - row_base])
+                    if num_tile_rows <= 0:
+                        # At the very last iteration, we may not need a 'pong' iteration
+                        break
 
-                # These lists will hold handles to the DMA tasks we configure
-                # on the shim. We can later use these handles to start those
-                # tasks and wait for their completion.
-                a_tasks = []
-                b_tasks = []
-                c_tasks = []
+                    # -- C --
+                    # Configure a task on the same channel wehere the
+                    # objectFifo "outC" expects its data to be streamed in
+                    # from. Repeat count is how often to repeat this task,
+                    # hence for 1 iteration, repeat count is 0. The highest
+                    # dimension stride/wrap is applied at every repeat of
+                    # the BD. We need to set issue_token=True to be able to
+                    # await completion of the task later on using
+                    # dma_await_task.
+                    c_task = shim_dma_single_bd_task(
+                        outC,
+                        C,
+                        offset=C_row_offset,
+                        sizes=[num_tile_rows, N_div_n, m, n],
+                        strides=[m_x_N, n, N, 1],
+                        issue_token=True,
+                    )
+                    dma_start_task(c_task)
+                    c_tasks.append(c_task)
 
-                # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
-                rows_per_block = 4
-                for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
-                    # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
-                    # that's what this loop is for
-                    for pingpong in [0, 1]:
-                        C_row_offset = (
-                            tile_row_block * rows_per_block * m * N
-                            + pingpong * rows_per_block // 2 * m * N
+                    for tile_row in range(num_tile_rows):
+                        # -- A --
+                        A_row_offset = (row_base + tile_row) * m * K
+                        a_task = shim_dma_single_bd_task(
+                            inA,
+                            A,
+                            offset=A_row_offset,
+                            sizes=[N_div_n, K_div_k, m, k],
+                            strides=[0, k, K, 1],
                         )
-                        row_base = (
-                            tile_row_block * rows_per_block
-                            + pingpong * rows_per_block // 2
+                        dma_start_task(a_task)
+                        a_tasks.append(a_task)
+
+                        # -- B --
+                        b_task = shim_dma_single_bd_task(
+                            inB,
+                            B,
+                            sizes=[N_div_n, K_div_k, k, n],
+                            strides=[n, k_x_N, N, 1],
                         )
-                        num_tile_rows = min([rows_per_block // 2, M_div_m - row_base])
-                        if num_tile_rows <= 0:
-                            # At the very last iteration, we may not need a 'pong' iteration
-                            break
+                        dma_start_task(b_task)
+                        b_tasks.append(b_task)
 
-                        # -- C --
-                        # Configure a task on the same channel wehere the
-                        # objectFifo "outC" expects its data to be streamed in
-                        # from. Repeat count is how often to repeat this task,
-                        # hence for 1 iteration, repeat count is 0. The highest
-                        # dimension stride/wrap is applied at every repeat of
-                        # the BD. We need to set issue_token=True to be able to
-                        # await completion of the task later on using
-                        # dma_await_task.
-                        c_task = shim_dma_single_bd_task(
-                            outC,
-                            C,
-                            offset=C_row_offset,
-                            sizes=[num_tile_rows, N_div_n, m, n],
-                            strides=[m_x_N, n, N, 1],
-                            issue_token=True,
-                        )
-                        dma_start_task(c_task)
-                        c_tasks.append(c_task)
+                    if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
+                        dma_await_task(c_tasks[-2])
+                        # Once the task for C has completed, we know that A
+                        # and B must have completed as well; free their BDs.
+                        dma_free_task(a_tasks[-2])
+                        dma_free_task(b_tasks[-2])
 
-                        for tile_row in range(num_tile_rows):
-                            # -- A --
-                            A_row_offset = (row_base + tile_row) * m * K
-                            a_task = shim_dma_single_bd_task(
-                                inA,
-                                A,
-                                offset=A_row_offset,
-                                sizes=[N_div_n, K_div_k, m, k],
-                                strides=[0, k, K, 1],
-                            )
-                            dma_start_task(a_task)
-                            a_tasks.append(a_task)
-
-                            # -- B --
-                            b_task = shim_dma_single_bd_task(
-                                inB,
-                                B,
-                                sizes=[N_div_n, K_div_k, k, n],
-                                strides=[n, k_x_N, N, 1],
-                            )
-                            dma_start_task(b_task)
-                            b_tasks.append(b_task)
-
-                        if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
-                            dma_await_task(c_tasks[-2])
-                            # Once the task for C has completed, we know that A
-                            # and B must have completed as well; free their BDs.
-                            dma_free_task(a_tasks[-2])
-                            dma_free_task(b_tasks[-2])
-
-                dma_await_task(c_tasks[-1])
-
-    print(ctx.module)
+            dma_await_task(c_tasks[-1])
 
 
 if __name__ == "__main__":
     main()
-else:
-    print("Not meant to be imported")
-    sys.exit(1)
