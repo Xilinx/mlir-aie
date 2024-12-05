@@ -263,6 +263,9 @@ def my_matmul(
                     tiles_to_trace, shim_tile, trace_size, C_sz_in_bytes
                 )
 
+            # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
+            rows_per_block = 4
+
             # These lists will hold handles to the DMA tasks we configure
             # on the shim. We can later use these handles to start those
             # tasks and wait for their completion.
@@ -274,17 +277,15 @@ def my_matmul(
             b_tap = TensorTiler2D.group_tiler(
                 (K, N), (k, n), (K // k, N // n), tile_group_col_major=True
             )[0]
+            C_taps = TensorTiler2D.group_tiler(
+                (M, N), (m, n), (rows_per_block // 2, N // n)
+            )
+            c_index = 0
 
-            # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
-            rows_per_block = 4
             for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
                 # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
                 # that's what this loop is for
                 for pingpong in [0, 1]:
-                    C_row_offset = (
-                        tile_row_block * rows_per_block * m * N
-                        + pingpong * rows_per_block // 2 * m * N
-                    )
                     row_base = (
                         tile_row_block * rows_per_block + pingpong * rows_per_block // 2
                     )
@@ -302,16 +303,12 @@ def my_matmul(
                     # the BD. We need to set issue_token=True to be able to
                     # await completion of the task later on using
                     # dma_await_task.
-                    c_tap = TensorAccessPattern(
-                        (M, N),
-                        C_row_offset,
-                        sizes=[num_tile_rows, N_div_n, m, n],
-                        strides=[m_x_N, n, N, 1],
-                    )
+
                     c_task = shim_dma_single_bd_task(
-                        outC, C, tap=c_tap, issue_token=True
+                        outC, C, tap=C_taps[c_index], issue_token=True
                     )
-                    C_taps.append(c_tap)
+                    C_taps.append(C_taps[c_index])
+                    c_index += 1
                     dma_start_task(c_task)
                     c_tasks.append(c_task)
 
