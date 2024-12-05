@@ -16,7 +16,7 @@ from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 import aie.utils.trace as trace_utils
-from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
+from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence, TensorTiler2D
 from aie.helpers.dialects.ext.scf import _for as range_
 
 dtype_map = {
@@ -270,6 +270,11 @@ def my_matmul(
             b_tasks = []
             c_tasks = []
 
+            # There is only one access pattern for B - it tiles the entire matrix in (k x n) tiles.
+            b_tap = TensorTiler2D.group_tiler(
+                (K, N), (k, n), (K // k, N // n), tile_group_col_major=True
+            )[0]
+
             # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
             rows_per_block = 4
             for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
@@ -325,12 +330,6 @@ def my_matmul(
                         a_tasks.append(a_task)
 
                         # -- B --
-                        b_tap = TensorAccessPattern(
-                            (K, N),
-                            0,
-                            sizes=[N_div_n, K_div_k, k, n],
-                            strides=[n, k_x_N, N, 1],
-                        )
                         b_task = shim_dma_single_bd_task(inB, B, tap=b_tap)
                         B_taps.append(b_tap)
                         dma_start_task(b_task)
