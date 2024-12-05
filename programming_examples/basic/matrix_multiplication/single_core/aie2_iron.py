@@ -206,7 +206,6 @@ def my_matmul(
         tgs = []
         c_cons = outC.cons()
 
-        tgs.append(rt.task_group())
         for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
             # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
             # that's what this loop is for. We can track of this in the task groups for syncing.
@@ -219,7 +218,7 @@ def my_matmul(
                 if num_tile_rows <= 0:
                     # At the very last iteration, we may not need a 'pong' iteration
                     break
-
+                tgs.append(rt.task_group())
                 for tile_row in range(num_tile_rows):
                     # -- A --
                     tile_offset = (row_base + tile_row) % len(A_taps)
@@ -238,10 +237,9 @@ def my_matmul(
                 if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
                     rt.finish_task_group(tgs[-2])
                     del tgs[-2]
-                tgs.append(rt.task_group())
 
-        rt.finish_task_group(tgs[-2])
-        del tgs[-2]
+        rt.finish_task_group(tgs[-1])
+        del tgs[-1]
 
     if generate_taps:
         # If generate taps is true, return a representation of tensor access patterns

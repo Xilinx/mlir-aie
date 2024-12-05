@@ -54,12 +54,9 @@ class Runtime(Resolvable):
             else:
                 yield tuple(self._rt_data.copy())
         finally:
-            """
-            print('Exiting Runtime Context, Open Task Groups are:')
-            for tg in self._open_task_groups:
-                print(tg)
-            """
-            pass
+            if len(self._open_task_groups) != 0:
+                tgs_str = [str(t) for t in self._open_task_groups].join(", ")
+                raise ValueError(f"Failed to close task groups: {tgs_str}")
 
     def task_group(self) -> RuntimeTaskGroup:
         tg = RuntimeTaskGroup(self.__task_group_index)
@@ -176,9 +173,24 @@ class Runtime(Resolvable):
                 task.resolve()
                 if isinstance(task, DMATask):
                     if task.will_wait():
-                        dma_await_task(task.task)
-                        for t in no_waits:
-                            dma_free_task(t.task)
-                        no_waits = []
+                        if task.task_group:
+                            task_group_actions[task.task_group].append(
+                                (dma_await_task, [task.task])
+                            )
+                        else:
+                            dma_await_task(task.task)
+                            for t in no_waits:
+                                dma_free_task(t.task)
+                            no_waits = []
                     else:
-                        no_waits.append(task)
+                        if task.task_group:
+                            task_group_actions[task.task_group].append(
+                                (dma_free_task, [task.task])
+                            )
+                        else:
+                            no_waits.append(task)
+                if isinstance(task, FinishTaskGroupTask):
+                    actions = task_group_actions[task.task_group]
+                    for fn, args in actions:
+                        fn(*args)
+                    task_group_actions[task.task_group] = None
