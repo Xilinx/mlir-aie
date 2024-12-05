@@ -18,7 +18,7 @@ from ...dialects.aiex import runtime_sequence
 from ...dialects._aiex_ops_gen import dma_free_task  # type: ignore
 from ...helpers.taplib import TensorAccessPattern
 from ..dataflow.objectfifo import ObjectFifoHandle
-from ..phys.tile import PlacementTile, AnyShimTile, Tile
+from ..phys.tile import PlacementTile, AnyShimTile
 from ..resolvable import Resolvable
 from .dmatask import DMATask
 from .runtimedata import RuntimeData
@@ -126,17 +126,6 @@ class Runtime(Resolvable):
 
     def get_fifos(self) -> list[ObjectFifoHandle]:
         return self._fifos.copy()
-
-    def place_tasks(self, shim_tiles: list[Tile]) -> None:
-        # TODO: move to placer?
-        for task in self._tasks:
-            if isinstance(task, DMATask):
-                ofe = task.fifo.get_endpoint()
-                assert isinstance(
-                    ofe, RuntimeEndpoint
-                ), f"Expected RuntimeEndpoint, but found {type(ofe)}"
-                if ofe.tile == AnyShimTile:
-                    ofe.place(shim_tiles[0])
 
     def resolve(
         self,

@@ -7,12 +7,12 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
 from abc import ABCMeta, abstractmethod
+import statistics
 
 from .phys.device import Device
 from .runtime import Runtime
-from .runtime.runtimeendpoint import RuntimeEndpoint
 from .worker import Worker
-from .phys.tile import AnyComputeTile, AnyMemTile, Tile
+from .phys.tile import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
 from .dataflow.objectfifo import ObjectFifoHandle
 
 
@@ -43,10 +43,9 @@ class SequentialPlacer(Placer):
         shims = device.get_shim_tiles()
 
         mems = device.get_mem_tiles()
-        mem_idx = 0  # Loop over memtiles
 
         computes = device.get_compute_tiles()
-        compute_idx = 0  # Will not loop over core tiles
+        compute_idx = 0
 
         # If some workers are already taken, remove them from the available set
         for worker in workers:
@@ -71,21 +70,40 @@ class SequentialPlacer(Placer):
             for buffer in worker.get_buffers():
                 buffer.place(worker.tile)
 
+        # Prepare to loop
+        compute_idx = compute_idx % len(computes)
+
         for of in object_fifos:
             of_endpoints = of.get_all_endpoints()
-            # RuntimeEndpoints are placed by the Runtime
-            of_endpoints = [
-                of for of in of_endpoints if not isinstance(of, RuntimeEndpoint)
+            of_compute_endpoints = [
+                of.tile for of in of_endpoints if of.tile in computes
             ]
+            common_col = self._get_common_col(of_compute_endpoints)
             for ofe in of_endpoints:
+                # Place "closest" to the compute endpoints
                 if ofe.tile == AnyMemTile:
-                    ofe.place(mems[mem_idx])
-                    mem_idx = (mem_idx + 1) % len(mems)
+                    memtile = self._find_col_match(common_col, mems)
+                    ofe.place(memtile)
                 elif ofe.tile == AnyComputeTile:
-                    assert compute_idx < len(
-                        computes
-                    ), "Ran out of compute tiles for placement!"
-                    ofe.place(computes[compute_idx])
-                    compute_idx += 1
+                    computetile = self._find_col_match(common_col, computes)
+                    ofe.place(computetile)
+                elif ofe.tile == AnyShimTile:
+                    shimtile = self._find_col_match(common_col, shims)
+                    ofe.place(shimtile)
 
-        rt.place_tasks(shims)
+    def _get_common_col(self, tiles: list[Tile]) -> int:
+        """
+        This is a simplistic utility function that calculates a column that is "close" or "common"
+        to a set of tiles. It is a simple heuristic using the average to represent "distance"
+        """
+        cols = [t.col for t in tiles if isinstance(t, Tile)]
+        if len(cols) == 0:
+            return 0
+        avg_col = round(statistics.mean(cols))
+        return avg_col
+
+    def _find_col_match(self, col: int, tiles: list[Tile]) -> Tile:
+        for t in tiles:
+            if t.col == col:
+                return t
+        raise ValueError(f"Failed to find a tile matching column {col}")
