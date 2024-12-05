@@ -101,7 +101,9 @@ def task_runner(
         tas_ins.append(TensorTiler2D.simple_tiler(arr._shape, tile_shape))
         rt_types.append(np.ndarray[arr._shape, np.dtype[arr._dtype]])
         for w in range(num_workers):
-            of_ins[w].append(ObjectFifo(arr._num_buffs, tile_type, f"in{i}_{w}"))
+            of_ins[w].append(
+                ObjectFifo(tile_type, default_depth=arr._num_buffs, name=f"in{i}_{w}")
+            )
 
     tas_outs = []
     of_outs = [[] for _ in range(num_workers)]
@@ -113,7 +115,9 @@ def task_runner(
         tas_outs.append(TensorTiler2D.simple_tiler(arr._shape, tile_shape))
         rt_types.append(np.ndarray[arr._shape, np.dtype[arr._dtype]])
         for w in range(num_workers):
-            of_outs[w].append(ObjectFifo(arr._num_buffs, tile_type, f"out{i}_{w}"))
+            of_outs[w].append(
+                ObjectFifo(tile_type, default_depth=arr._num_buffs, name=f"out{i}_{w}")
+            )
 
     def worker_wrapper(*args):
         datas = []
@@ -125,9 +129,12 @@ def task_runner(
 
     workers = []
     for w in range(num_workers):
-        args = [of_in.cons for of_in in of_ins[w]]
+        args = [of_in.cons() for of_in in of_ins[w]]
         args += [of_out.prod() for of_out in of_outs[w]]
         workers.append(Worker(worker_wrapper, args))
+
+    for i in range(num_workers):
+        of_outs[i] = [of.cons() for of in of_outs[i]]
 
     rt = Runtime()
     with rt.sequence(*rt_types) as rt_buffers:
@@ -140,7 +147,7 @@ def task_runner(
                 rt.fill(of_ins[worker_idx][i].prod(), rt_buffers[i], tas[taps_idx])
             for i, tas in enumerate(tas_outs):
                 rt.drain(
-                    of_outs[worker_idx][i].cons,
+                    of_outs[worker_idx][i],
                     rt_buffers[i + len(tas_ins)],
                     tas[taps_idx],
                     wait=(i == len(tas_outs) - 1),

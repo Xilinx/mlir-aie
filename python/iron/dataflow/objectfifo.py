@@ -15,10 +15,10 @@ from ...dialects._aie_ops_gen import ObjectFifoCreateOp  # type: ignore
 from ...dialects.aie import object_fifo, object_fifo_link
 from ...helpers.util import (
     np_ndarray_type_to_memref_type,
-    single_elem_or_list_to_list,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
 )
+from ...util import single_elem_or_list_to_list
 
 from ..resolvable import Resolvable, NotResolvedError
 from .endpoint import ObjectFifoEndpoint
