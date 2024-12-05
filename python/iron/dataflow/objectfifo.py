@@ -34,7 +34,7 @@ class ObjectFifo(Resolvable):
         default_depth: int | None = 2,
         name: str | None = None,
         dimensionsToStream=None,
-        dimensionsFromStreamPerConsumer=None,
+        dimensionsFromStream=None,
     ):
         self._default_depth = default_depth
         if isinstance(self._default_depth, int) and self._default_depth < 1:
@@ -42,8 +42,8 @@ class ObjectFifo(Resolvable):
                 f"Default ObjectFifo depth must be > 0, but got {self._default_depth}"
             )
         self._obj_type = obj_type
-        self._dimensionToStream = dimensionsToStream
-        self._dimensionsFromStreamPerConsumer = dimensionsFromStreamPerConsumer
+        self._dimensionsToStream = dimensionsToStream
+        self._dimensionsFromStream = dimensionsFromStream
 
         if name is None:
             self.name = f"of{ObjectFifo.__get_index()}"
@@ -162,8 +162,8 @@ class ObjectFifo(Resolvable):
                 self._cons_tiles_ops(),
                 self._get_depths(),
                 np_ndarray_type_to_memref_type(self._obj_type),
-                dimensionsToStream=self._dimensionToStream,
-                dimensionsFromStreamPerConsumer=self._dimensionsFromStreamPerConsumer,
+                dimensionsToStream=self._dimensionsToStream,
+                dimensionsFromStreamPerConsumer=self._dimensionsFromStream,
                 loc=loc,
                 ip=ip,
             )
@@ -369,6 +369,8 @@ class ObjectFifoHandle(Resolvable):
         obj_type: type[np.ndarray] | None = None,
         depth: int | None = None,
         name: str | None = None,
+        dimensionsToStream: list[tuple[int, int]] = None,
+        dimensionsFromStream: list[tuple[int, int]] = None,
     ) -> ObjectFifo:
         if self._is_prod:
             raise ValueError("Cannot forward a producer ObjectFifoHandle")
@@ -382,7 +384,13 @@ class ObjectFifoHandle(Resolvable):
             depth = self._object_fifo.default_depth
         if not name:
             name = self._object_fifo.name + "_fwd"
-        forward_fifo = ObjectFifo(obj_type, name=name, default_depth=depth)
+        forward_fifo = ObjectFifo(
+            obj_type,
+            name=name,
+            default_depth=depth,
+            dimensionsToStream=dimensionsToStream,
+            dimensionsFromStream=dimensionsFromStream,
+        )
         link = ObjectFifoLink(self._object_fifo, forward_fifo, placement, [], [])
         self.set_endpoint(link)
         forward_fifo.prod().set_endpoint(link)
