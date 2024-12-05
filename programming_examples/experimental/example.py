@@ -12,6 +12,7 @@ B = aie.array(MATRIX_DIMS, MATRIX_DTYPE)
 print("THIS SHOULD FAIL")
 exit(-1)
 
+
 def task_fn(a, b):
     dim0, dim1 = a.shape
     for i in aie.range(dim0):
