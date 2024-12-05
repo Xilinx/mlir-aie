@@ -7,7 +7,7 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
 from __future__ import annotations
-
+from collections import defaultdict
 from contextlib import contextmanager
 import numpy as np
 
@@ -15,7 +15,7 @@ import numpy as np
 from ... import ir  # type: ignore
 
 from ...dialects.aiex import runtime_sequence
-from ...dialects._aiex_ops_gen import dma_free_task  # type: ignore
+from ...dialects._aiex_ops_gen import dma_await_task, dma_free_task  # type: ignore
 from ...helpers.taplib import TensorAccessPattern
 from ..dataflow.objectfifo import ObjectFifoHandle
 from ..phys.tile import PlacementTile, AnyShimTile
@@ -24,10 +24,18 @@ from .dmatask import DMATask
 from .runtimedata import RuntimeData
 from .runtimeendpoint import RuntimeEndpoint
 from ..worker import Worker
-from .runtimetask import RuntimeTask, RuntimeStartTask, InlineOpRuntimeTask
+from .runtimetaskgroup import RuntimeTaskGroup
+from .runtimetask import (
+    RuntimeTask,
+    RuntimeStartTask,
+    InlineOpRuntimeTask,
+    FinishTaskGroupTask,
+)
 
 
 class Runtime(Resolvable):
+    __task_group_index = 0
+
     def __init__(
         self,
     ) -> Runtime:
@@ -35,20 +43,40 @@ class Runtime(Resolvable):
         self._tasks: list[RuntimeTask] = []
         self._fifos = set()
         self._workers = []
+        self._open_task_groups = []
 
     @contextmanager
     def sequence(self, *input_types: type[np.ndarray]):
-        self._rt_data = list(map(RuntimeData, input_types))
-        if len(self._rt_data) == 1:
-            yield self._rt_data[0]
-        else:
-            yield tuple(self._rt_data.copy())
+        try:
+            self._rt_data = list(map(RuntimeData, input_types))
+            if len(self._rt_data) == 1:
+                yield self._rt_data[0]
+            else:
+                yield tuple(self._rt_data.copy())
+        finally:
+            """
+            print('Exiting Runtime Context, Open Task Groups are:')
+            for tg in self._open_task_groups:
+                print(tg)
+            """
+            pass
+
+    def task_group(self) -> RuntimeTaskGroup:
+        tg = RuntimeTaskGroup(self.__task_group_index)
+        self._open_task_groups.append(tg)
+        self.__task_group_index += 1
+        return tg
+
+    def finish_task_group(self, task_group: RuntimeTaskGroup):
+        self._open_task_groups.remove(task_group)
+        self._tasks.append(FinishTaskGroupTask(task_group))
 
     def fill(
         self,
         in_fifo: ObjectFifoHandle,
         source: RuntimeData,
         tap: TensorAccessPattern | None = None,
+        task_group: RuntimeTaskGroup | None = None,
         wait: bool = False,
         placement: PlacementTile = AnyShimTile,
     ) -> None:
@@ -75,13 +103,14 @@ class Runtime(Resolvable):
         else:
             in_fifo.set_endpoint(rt_endpoint)
             self._fifos.add(in_fifo)
-        self._tasks.append(DMATask(in_fifo, source, tap, wait))
+        self._tasks.append(DMATask(in_fifo, source, tap, task_group, wait))
 
     def drain(
         self,
         out_fifo: ObjectFifoHandle,
         dest: RuntimeData,
         tap: TensorAccessPattern | None = None,
+        task_group: RuntimeTaskGroup | None = None,
         wait: bool = False,
         placement: PlacementTile = AnyShimTile,
     ) -> None:
@@ -108,7 +137,7 @@ class Runtime(Resolvable):
         else:
             out_fifo.set_endpoint(rt_endpoint)
             self._fifos.add(out_fifo)
-        self._tasks.append(DMATask(out_fifo, dest, tap, wait))
+        self._tasks.append(DMATask(out_fifo, dest, tap, task_group, wait))
 
     def start(self, *args: Worker):
         for worker in args:
@@ -134,6 +163,8 @@ class Runtime(Resolvable):
     ) -> None:
         rt_dtypes = [rt_data.arr_type for rt_data in self._rt_data]
 
+        task_group_actions = defaultdict(list)
+
         @runtime_sequence(*rt_dtypes)
         def sequence(*args):
 
@@ -145,6 +176,7 @@ class Runtime(Resolvable):
                 task.resolve()
                 if isinstance(task, DMATask):
                     if task.will_wait():
+                        dma_await_task(task.task)
                         for t in no_waits:
                             dma_free_task(t.task)
                         no_waits = []

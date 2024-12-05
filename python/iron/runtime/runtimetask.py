@@ -10,19 +10,16 @@ from ... import ir  # type: ignore
 
 from ..resolvable import Resolvable
 from ..worker import Worker
+from .runtimetaskgroup import RuntimeTaskGroup
 
 
 class RuntimeTask(Resolvable):
-    pass
-
-
-class RuntimeStartTask(RuntimeTask):
-    def __init__(self, worker: Worker):
-        self._worker = worker
+    def __init__(self, task_group: RuntimeTaskGroup | None = None):
+        self._task_group = task_group
 
     @property
-    def worker(self) -> Worker:
-        return self._worker
+    def task_group(self) -> RuntimeTaskGroup | None:
+        return self._task_group
 
     def resolve(
         self,
@@ -32,11 +29,27 @@ class RuntimeStartTask(RuntimeTask):
         pass
 
 
+class FinishTaskGroupTask(RuntimeTask):
+    def __init__(self, task_group: RuntimeTaskGroup):
+        RuntimeTask.__init__(self, task_group)
+
+
+class RuntimeStartTask(RuntimeTask):
+    def __init__(self, worker: Worker, task_group: RuntimeTaskGroup | None = None):
+        self._worker = worker
+        RuntimeTask.__init__(self, task_group)
+
+    @property
+    def worker(self) -> Worker:
+        return self._worker
+
+
 class InlineOpRuntimeTask(RuntimeTask):
-    def __init__(self, fn, args):
+    def __init__(self, fn, args, task_group: RuntimeTaskGroup | None = None):
         # TODO: should validate somehow?
         self._fn = fn
         self._args = args
+        RuntimeTask.__init__(self, task_group)
 
     def resolve(
         self,

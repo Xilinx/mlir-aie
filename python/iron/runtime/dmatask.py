@@ -14,6 +14,7 @@ from ..dataflow.objectfifo import ObjectFifoHandle
 from .runtimedata import RuntimeData
 from ...helpers.taplib import TensorAccessPattern
 from .runtimetask import RuntimeTask
+from .runtimetaskgroup import RuntimeTaskGroup
 
 
 class DMATask(RuntimeTask):
@@ -22,15 +23,17 @@ class DMATask(RuntimeTask):
         object_fifo: ObjectFifoHandle,
         rt_data: RuntimeData,
         tap: TensorAccessPattern,
-        wait=False,
+        task_group: RuntimeTaskGroup | None = None,
+        wait: bool = False,
     ):
         self._object_fifo = object_fifo
         self._rt_data = rt_data
         self._tap = tap
         self._wait = wait
         self._task = None
+        RuntimeTask.__init__(self, task_group)
 
-    def will_wait(self):
+    def will_wait(self) -> bool:
         return self._wait
 
     @property
@@ -53,7 +56,4 @@ class DMATask(RuntimeTask):
             tap=self._tap,
             issue_token=self._wait,
         )
-
         dma_start_task(self._task)
-        if self._wait:
-            dma_await_task(self._task)

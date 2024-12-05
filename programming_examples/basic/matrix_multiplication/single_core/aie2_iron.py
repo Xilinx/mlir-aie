@@ -128,9 +128,9 @@ def my_matmul(
     B_taps = []
     C_taps = []
 
-    A_ty = np.ndarray[(M, K), np.dtype[dtype_in]]
-    B_ty = np.ndarray[(K, N), np.dtype[dtype_in]]
-    C_ty = np.ndarray[(M, N), np.dtype[dtype_out]]
+    A_ty = np.ndarray[(M * K,), np.dtype[dtype_in]]
+    B_ty = np.ndarray[(K * N,), np.dtype[dtype_in]]
+    C_ty = np.ndarray[(M * N,), np.dtype[dtype_out]]
     a_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
     b_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
     c_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
@@ -204,8 +204,7 @@ def my_matmul(
         rt.start(worker)
 
         tgs = []
-        a_cons = inA.cons()
-        b_cons = inB.cons()
+        c_cons = outC.cons()
 
         tgs.append(rt.task_group())
         for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
@@ -221,31 +220,28 @@ def my_matmul(
                     # At the very last iteration, we may not need a 'pong' iteration
                     break
 
-                # -- C --
-                rt.drain(
-                    outC.prod(), C, tap=C_taps[c_index], task_group=tgs[-1], wait=True
-                )
-                C_taps.append(C_taps[c_index])
-                c_index += 1
-
                 for tile_row in range(num_tile_rows):
                     # -- A --
                     tile_offset = (row_base + tile_row) % len(A_taps)
-                    rt.fill(a_cons, A, tap=A_taps[tile_offset], task_group=tgs[-1])
+                    rt.fill(inA.prod(), A, tap=A_taps[tile_offset], task_group=tgs[-1])
                     A_taps.append(A_taps[tile_offset])
 
                     # -- B --
-                    rt.fill(b_cons, B, tap=b_tap, task_group=tgs[-1])
+                    rt.fill(inB.prod(), B, tap=b_tap, task_group=tgs[-1])
                     B_taps.append(b_tap)
 
+                # -- C --
+                rt.drain(c_cons, C, tap=C_taps[c_index], task_group=tgs[-1], wait=True)
+                C_taps.append(C_taps[c_index])
+                c_index += 1
+
                 if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
-                    tgs[-2].finish()
+                    rt.finish_task_group(tgs[-2])
                     del tgs[-2]
                 tgs.append(rt.task_group())
 
-        tgs[-1].finish()
-        del tgs[-1]
-        assert len(tgs) == 0
+        rt.finish_task_group(tgs[-2])
+        del tgs[-2]
 
     if generate_taps:
         # If generate taps is true, return a representation of tensor access patterns
