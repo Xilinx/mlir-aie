@@ -17,10 +17,8 @@ from aie.iron.kernels import BinKernel
 from aie.iron.phys.device import NPU1Col1
 from aie.helpers.dialects.ext.scf import _for as range_
 
-vectorized = True
 
-
-def my_vector_scalar(vector_size, trace_size):
+def my_vector_scalar(dev, vector_size, trace_size):
     if trace_size != 0:
         raise NotImplementedError("Trace not supported yet.")
     N = vector_size
@@ -66,16 +64,23 @@ def my_vector_scalar(vector_size, trace_size):
         rt.fill(of_factor.prod(), F)
         rt.drain(of_out.cons(), C, wait=True)
 
-    return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
 try:
-    vector_size = int(sys.argv[1])
+    device_name = str(sys.argv[1])
+    if device_name == "npu":
+        dev = NPU1Col1()
+    elif device_name == "npu2":
+        raise ValueError("Not supported yet.")
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+    vector_size = int(sys.argv[2])
     if vector_size % 64 != 0 or vector_size < 512:
         print("Vector size must be a multiple of 64 and greater than or equal to 512")
         raise ValueError
-    trace_size = 0 if (len(sys.argv) != 3) else int(sys.argv[2])
+    trace_size = 0 if (len(sys.argv) != 4) else int(sys.argv[3])
 except ValueError:
     print("Argument has inappropriate value")
-module = my_vector_scalar(vector_size, trace_size)
+module = my_vector_scalar(dev, vector_size, trace_size)
 print(module)

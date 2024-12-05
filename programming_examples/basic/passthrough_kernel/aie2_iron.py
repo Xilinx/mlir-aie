@@ -17,10 +17,18 @@ from aie.iron.worker import Worker
 from aie.iron.phys.device import NPU1Col1
 
 try:
-    vector_size = int(sys.argv[1])
+    device_name = str(sys.argv[1])
+    if device_name == "npu":
+        dev = NPU1Col1()
+    elif device_name == "npu2":
+        raise ValueError("Not yet supported for new IRON syntex".format(sys.argv[1]))
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+    vector_size = int(sys.argv[2])
     if vector_size % 64 != 0 or vector_size < 512:
         print("Vector size must be a multiple of 64 and greater than or equal to 512")
         raise ValueError
+    trace_size = 0 if (len(sys.argv) != 4) else int(sys.argv[3])
 except ValueError:
     print("Argument has inappropriate value")
 
@@ -54,6 +62,6 @@ with rt.sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
     rt.fill(of_in.prod(), a_in)
     rt.drain(of_out.cons(), b_out, wait=True)
 
-my_program = Program(NPU1Col1(), rt)
+my_program = Program(dev, rt)
 module = my_program.resolve_program(SequentialPlacer())
 print(module)

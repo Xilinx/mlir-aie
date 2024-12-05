@@ -20,22 +20,12 @@ from aie.extras.dialects.ext import arith
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.dialects.aie import T
 
-width = 512
-height = 9
-if len(sys.argv) == 3:
-    width = int(sys.argv[1])
-    height = int(sys.argv[2])
 
-lineWidth = width
-lineWidthChannels = width * 4  # 4 channels
-tensorSize = width * height
+def color_threshold(dev, width, height):
+    lineWidth = width
+    lineWidthChannels = width * 4  # 4 channels
+    tensorSize = width * height
 
-enableTrace = False
-traceSizeInBytes = 8192
-traceSizeInInt32s = traceSizeInBytes // 4
-
-
-def color_threshold():
     tensor_ty = np.ndarray[(tensorSize,), np.dtype[np.int8]]
     line_channels_ty = np.ndarray[(lineWidthChannels,), np.dtype[np.uint8]]
     line_ty = np.ndarray[(lineWidth,), np.dtype[np.uint8]]
@@ -117,8 +107,20 @@ def color_threshold():
         rt.fill(inOOB_L3L2.prod(), inTensor)
         rt.drain(outOOB_L2L3.cons(), outTensor, wait=True)
 
-    return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
-module = color_threshold()
+try:
+    device_name = str(sys.argv[1])
+    if device_name == "npu":
+        dev = NPU1Col1()
+    elif device_name == "npu2":
+        raise NotImplemented("Not implemented yet")
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+    width = 512 if (len(sys.argv) != 4) else int(sys.argv[2])
+    height = 9 if (len(sys.argv) != 4) else int(sys.argv[3])
+except ValueError:
+    print("Argument has inappropriate value")
+module = color_threshold(dev, width, height)
 print(module)

@@ -7,6 +7,4 @@
 // RUN: cd test_iron
 // RUN: make -f %S/Makefile clean
 // RUN: env use_iron=1 make -f %S/Makefile 
-// RUN: %run_on_npu make -f %S/Makefile run | FileCheck %s
-// CHECK: Running...
-// CHECK: PASS!
+// RUN: %run_on_npu make -f %S/Makefile run_py

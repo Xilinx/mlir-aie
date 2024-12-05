@@ -18,23 +18,13 @@ from aie.iron.localbuffer import LocalBuffer
 
 from aie.helpers.dialects.ext.scf import _for as range_
 
-width = 64
-height = 36
-if len(sys.argv) == 3:
-    width = int(sys.argv[1])
-    height = int(sys.argv[2])
 
-heightMinus1 = height - 1
-lineWidth = width
-lineWidthInBytes = width * 4
-tensorSize = width * height * 4  # 4 channels
+def edge_detect(dev, width, height):
+    heightMinus1 = height - 1
+    lineWidth = width
+    lineWidthInBytes = width * 4
+    tensorSize = width * height * 4  # 4 channels
 
-enableTrace = False
-traceSizeInBytes = 8192
-traceSizeInInt32s = traceSizeInBytes // 4
-
-
-def edge_detect():
     line_bytes_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
     line_ty = np.ndarray[(lineWidth,), np.dtype[np.uint8]]
     tensor_3x3_ty = np.ndarray[(3, 3), np.dtype[np.int16]]
@@ -261,8 +251,20 @@ def edge_detect():
         rt.fill(inOF_L3L2.prod(), I)
         rt.drain(outOF_L2L3.cons(), O, wait=True)
 
-    return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
-module = edge_detect()
+try:
+    device_name = str(sys.argv[1])
+    if device_name == "npu":
+        dev = NPU1Col1()
+    elif device_name == "npu2":
+        raise NotImplemented("Not implemented yet.")
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+    width = 36 if (len(sys.argv) != 4) else int(sys.argv[2])
+    height = 64 if (len(sys.argv) != 4) else int(sys.argv[3])
+except ValueError:
+    print("Argument has inappropriate value")
+module = edge_detect(dev, width, height)
 print(module)
