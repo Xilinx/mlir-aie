@@ -69,6 +69,8 @@ if lit.util.pythonize_bool("@AIETools_AIE_FOUND@"):
     config.vitis_components.append("AIE")
 if lit.util.pythonize_bool("@AIETools_AIE2_FOUND@"):
     config.vitis_components.append("AIE2")
+if lit.util.pythonize_bool("@AIETools_AIE2P_FOUND@"):
+    config.vitis_components.append("AIE2P")
 
 # Support substitution of the tools_dir with user parameters. This is
 # used when we can't determine the tool dir at configuration time.

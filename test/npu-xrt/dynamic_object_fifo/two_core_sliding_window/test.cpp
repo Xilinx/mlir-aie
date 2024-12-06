@@ -122,5 +122,5 @@ int main(int argc, const char *argv[]) {
   std::cout << std::endl << std::endl;
   std::cout << (pass ? "PASS!" : "FAIL.") << std::endl;
 
-  return 0;
+  return !pass;
 }
