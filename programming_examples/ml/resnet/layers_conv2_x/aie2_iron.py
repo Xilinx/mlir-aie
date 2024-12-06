@@ -214,17 +214,31 @@ for i in range(3):
             )
         )
 
+cores = [
+    [Tile(0, 2), Tile(0, 3), Tile(0, 4), Tile(0, 5)],
+    [Tile(1, 5), Tile(1, 4), Tile(1, 3), Tile(1, 2)],
+    [Tile(2, 2), Tile(2, 3), Tile(2, 4), Tile(2, 5)],
+]
+
 # input tensor (with broadcast for skip connection)
 act1_fifo_names = ["act1_00_02_01", "act1_04_15_11", "act1_13_22_21"]
 act1_fifos = []
 skip_fifos = []
 
 act1_fifos.append(ObjectFifo(laye1_act_sizes[0], name=act1_fifo_names[0]))
-skip_fifos.append(act1_fifos[0].cons(4).forward(depth=2, name="skip_0"))
+skip_fifos.append(
+    act1_fifos[0].cons(4).forward(placement=Tile(0, 1), depth=2, name="skip_0")
+)
 
 for i in range(1, repeat + 1):
     act1_fifos.append(ObjectFifo(laye1_act_sizes[i], name=act1_fifo_names[i]))
-    skip_fifos.append(act1_fifos[-1].cons(4).forward(depth=2, name=f"skip_{i}"))
+    if i == 1:
+        placement = Tile(0, 1)
+    else:
+        placement = Tile(i, 1)
+    skip_fifos.append(
+        act1_fifos[-1].cons(4).forward(placement=placement, depth=2, name=f"skip_{i}")
+    )
 
 act2_fifo_names = ["act2_02_03_05", "act2_15_12_14", "act2_22_23_25"]
 act2_fifos = []
@@ -263,6 +277,7 @@ for i in range(n_cols):
             depths=[1, 1, 1],
             types=[layer1_wts_sizes[i], weightsLayer2_ty, layer3_wts_sizes[i]],
             names=[f"wts_buf_{i}{j}" for j in range(3)],
+            placement=Tile(i, 1),
         )
     )
 
@@ -276,12 +291,6 @@ conv3_out_fifos = [
 
 
 def conv1_fn(of_wts, of_act1, of_act2, conv1_kernel, rtp, idx):
-    # wts_sub_fifos[i][0]
-    # act1_fifos[i]
-    # act2_fifos[i]
-    # conv1_kernels_call[i]
-    # rtp[i][0]
-
     # acquire weights once
     element0Weights = of_wts.acquire(1)
     scale = rtp[0]
@@ -316,9 +325,6 @@ def conv1_fn(of_wts, of_act1, of_act2, conv1_kernel, rtp, idx):
 
 # 3x3 conv2d
 def conv2_fn(of_wts, of_act2, of_act3, conv2dk3_kernel, last_arg_zero=False):
-    # wts_sub_fifos[i][1]
-    # act2_fifos[i]
-    # act3_fifos_1[i]
     last_arg = 0
     if not last_arg_zero:
         lasts_arg = tensorInCInit // 2
@@ -399,13 +405,6 @@ def conv2_fn(of_wts, of_act2, of_act3, conv2dk3_kernel, last_arg_zero=False):
 def conv1_skip_fn(
     of_wts, of_act3_1, of_act3_2, of_conv3, of_skip, conv3_kernel, my_rtp, idx
 ):
-    #  wts_sub_fifos[i][2]
-    #  act3_fifos_1[i]
-    #  act3_fifos_2[i]
-    #  conv3_out_fifos[i]
-    # skip_fifos[i]
-    # conv3_kernels_call[0]
-
     # acquire weights and rtps once
     element0Weights = of_wts.acquire(1)
     if idx == 0:
@@ -472,6 +471,7 @@ for i in range(n_cols):
             rtp[i][0],
             i,
         ],
+        placement=cores[i][0],
     )
     workers.append(w)
     w = Worker(
@@ -483,6 +483,7 @@ for i in range(n_cols):
             conv2dk3,
             False,
         ],
+        placement=cores[i][1],
     )
     workers.append(w)
     if i == 0:
@@ -501,6 +502,7 @@ for i in range(n_cols):
             skip_rtp,
             i,
         ],
+        placement=cores[i][2],
     )
     workers.append(w)
     w = Worker(
@@ -512,6 +514,7 @@ for i in range(n_cols):
             conv2dk3,
             True,
         ],
+        placement=cores[i][3],
     )
     workers.append(w)
 
@@ -530,12 +533,6 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
         rtp[0][3][1] = 0
         rtp[0][3][2] = 1
 
-        # rtp[1][3][0] = 1
-        # rtp[1][2][0] = 1
-        # rtp[1][0][0] = 1
-        # rtp[1][1][0] = 1
-        # rtp[1][1][1] = 0
-
         rtp[2][0][0] = 1
         rtp[2][1][0] = 1
         rtp[2][3][0] = 1
@@ -544,7 +541,7 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
 
     rt.inline_ops(set_rtps, [rtp])
     rt.start(*workers)
-    rt.fill(act1_fifos[0].prod(), inputFromL3)
+    rt.fill(act1_fifos[0].prod(), inputFromL3, placement=Tile(0, 0))
 
     tap = TensorAccessPattern(
         (totalWeights_complete,),
@@ -569,7 +566,7 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
         strides=[0, 0, 0, 1],
     )
     rt.fill(wts_fifos[2].prod(), weightsFromL3, tap, placement=Tile(2, 0))
-    rt.drain(outOFL2L3.cons(), outputToL3, wait=True)
+    rt.drain(outOFL2L3.cons(), outputToL3, placement=Tile(1, 0), wait=True)
 
 # TODO: design actually calls for 3 columns, but only 1 and 4 are supported now.
 module = Program(NPU1Col4(), rt).resolve_program(SequentialPlacer())
