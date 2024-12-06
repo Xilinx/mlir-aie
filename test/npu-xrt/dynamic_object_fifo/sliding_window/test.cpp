@@ -28,6 +28,7 @@
 #define INPUT_SIZE (100 * sizeof(int))  // in bytes
 #define OUTPUT_SIZE (100 * sizeof(int)) // in bytes
 #define WIDTH_SIZE (10 * sizeof(int))   // in bytes
+
 #define INPUT_ROWS INPUT_SIZE / WIDTH_SIZE
 #define OUTPUT_ROWS OUTPUT_SIZE / WIDTH_SIZE
 

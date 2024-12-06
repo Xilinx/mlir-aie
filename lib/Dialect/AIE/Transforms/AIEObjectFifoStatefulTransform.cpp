@@ -1095,7 +1095,7 @@ struct AIEObjectFifoStatefulTransformPass
         builder.setInsertionPoint(coreOp);
         auto memrefTy =
             MemRefType::get(SmallVector<int64_t>{(int64_t)fifoSizes.size()},
-                            builder.getIndexType());
+                            builder.getI32Type());
         auto globalNextIndex = builder.create<BufferOp>(
             builder.getUnknownLoc(), memrefTy, coreOp.getTile(),
             /*sym_name*/ nullptr, /*address*/ nullptr,
@@ -1113,14 +1113,14 @@ struct AIEObjectFifoStatefulTransformPass
         int index = 0;
         builder.setInsertionPointToStart(&(coreOp.getBody().front()));
         Value initVal = builder.create<arith::ConstantOp>(
-            builder.getUnknownLoc(), builder.getIndexAttr(0));
+            builder.getUnknownLoc(), builder.getI32IntegerAttr(0));
         for (auto i : fifoSizes) {
           auto indexOp = builder.create<arith::ConstantOp>(
               initVal.getLoc(), builder.getIndexAttr(index));
           globalIndices[i.first] = indexOp;
           index++;
           auto size = builder.create<arith::ConstantOp>(
-              indexOp.getLoc(), builder.getIndexAttr(i.second));
+              indexOp.getLoc(), builder.getI32IntegerAttr(i.second));
           constantSizes[i.first] = size;
           builder.create<memref::StoreOp>(
               size.getLoc(), initVal, globalNextIndex,
@@ -1157,10 +1157,13 @@ struct AIEObjectFifoStatefulTransformPass
 
               // Create a switch for each subview access
               builder.setInsertionPointAfter(accessOp);
-              auto switchIndex = builder.create<memref::LoadOp>(
+              auto switchIndexAsInteger = builder.create<memref::LoadOp>(
                   builder.getUnknownLoc(), globalNextIndex,
                   ValueRange(
                       ArrayRef({globalIndices[{createOp, port}].getResult()})));
+              auto switchIndex = builder.create<arith::IndexCastOp>(
+                  builder.getUnknownLoc(), builder.getIndexType(),
+                  switchIndexAsInteger);
               unsigned caseRegionCounts = fifoSizes[{createOp, port}];
               SmallVector<int64_t, 4> caseValues;
               for (int i = 0; i < fifoSizes[{createOp, port}]; ++i) {
