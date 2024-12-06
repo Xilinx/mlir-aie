@@ -25,9 +25,17 @@ aieargs+=-m $m -k $k -n $n --n-aie-cols ${n_aie_cols} --b-col-maj ${b_col_maj}
 runargs+=--b_col_maj ${b_col_maj}
 target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
 use_tiler?=0
+use_iron?=0
 
 ifeq (${use_tiler}, 1)
 aie_py_src=aie2_tiler.py
+ifeq (${use_iron}, 1)
+$(error Cannot specify both alt/tiler design and IRON)
+endif
+endif
+
+ifeq (${use_iron}, 1)
+aie_py_src=aie2_iron.py
 endif
 
 include ${srcdir}/../makefile-common
