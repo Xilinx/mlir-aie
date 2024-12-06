@@ -1,5 +1,5 @@
 /*
-  Iron MICRO24 slide 34..
+  Iron MICRO24 slide 34.
   https://github.com/Xilinx/mlir-aie/blob/main/mlir_tutorials
 */
 
@@ -18,15 +18,15 @@ int main() {
   aie::device<aie::npu1> d;
   auto a = d.tile<1, 3>();
   auto b = d.tile<2, 3>();
-  auto of0 = d.channel<std::int32_t, 256>(a, b, 3);
+  auto of = a.channel_to<std::int32_t, 256>(b, 3);
   a.program([&] {
     for (int i = 0; i < 3; ++i) {
-      auto acc = of0.out_acquire_release(1);
+      auto acc = of.out_acquire_release(1);
       produce(acc);
     }
   });
   b.program([&] {
-    auto acc = of0.in_acquire_release(3);
+    auto acc = of.in_acquire_release(3);
     consume(acc[0]);
     consume(acc[1]);
     consume(acc[2]);
