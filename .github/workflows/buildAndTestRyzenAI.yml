@@ -104,6 +104,14 @@ jobs:
           mkdir build
           pushd build
 
+          # -j here to reduce the number of parallel chess jobs.
+          # -j6 for 32GB RAM, -j12 for 64GB RAM
+          if [ x"${{ matrix.runner_type }}" == x"amdhx370" ]; then
+            LIT_OPTS="-j6 $LIT_OPTS"
+          else
+            LIT_OPTS="-j12 $LIT_OPTS"
+          fi
+
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
           cmake .. -G Ninja \
             -DPython3_EXECUTABLE=$(which python) \
@@ -155,6 +163,14 @@ jobs:
 
           # build is created by the build-mlir-aie-from-wheels.sh script
           pushd build
+
+          # -j here to reduce the number of parallel chess jobs.
+          # -j6 for 32GB RAM, -j12 for 64GB RAM
+          if [ x"${{ matrix.runner_type }}" == x"amdhx370" ]; then
+            LIT_OPTS="-j6 $LIT_OPTS"
+          else
+            LIT_OPTS="-j12 $LIT_OPTS"
+          fi
 
           ninja install
           ninja check-reference-designs
