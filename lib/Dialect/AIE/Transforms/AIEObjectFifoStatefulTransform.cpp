@@ -1061,9 +1061,13 @@ struct AIEObjectFifoStatefulTransformPass
         builder.getUnknownLoc(), globalNextIndex,
         ValueRange(ArrayRef({index.getResult()})));
     Value val = builder.create<arith::ConstantOp>(
-        oldCounter.getLoc(), builder.getIndexAttr(relOp.getSize()));
+        oldCounter.getLoc(), builder.getI32IntegerAttr(relOp.getSize()));
     Value sum = builder.create<arith::AddIOp>(val.getLoc(), oldCounter, val);
-    Value newCounter = builder.create<arith::RemSIOp>(sum.getLoc(), sum, size);
+    Value isGreaterEqual = builder.create<arith::CmpIOp>(
+        sum.getLoc(), arith::CmpIPredicate::sge, sum, size);
+    Value newCounter = builder.create<arith::SelectOp>(
+        sum.getLoc(), isGreaterEqual,
+        builder.create<arith::SubIOp>(sum.getLoc(), sum, size), sum);
     builder.create<memref::StoreOp>(size.getLoc(), newCounter, globalNextIndex,
                                     ValueRange(ArrayRef({index.getResult()})));
   }
