@@ -35,21 +35,22 @@
 // CHECK:       %input_fifo_cons_lock = aie.lock(%tile_0_0, 1) {init = 0 : i32, sym_name = "input_fifo_cons_lock"}
 // CHECK:       aie.flow(%tile_0_0, DMA : 0, %tile_0_2, DMA : 0)
 // CHECK:       aie.flow(%tile_0_2, DMA : 0, %tile_0_0, DMA : 0)
-// CHECK:       %buffer_0_2 = aie.buffer(%tile_0_2) : memref<2xindex> 
+// CHECK:       %buffer_0_2 = aie.buffer(%tile_0_2) : memref<2xi32> 
 // CHECK:       %core_0_2 = aie.core(%tile_0_2) {
+// CHECK:         %c0_i32 = arith.constant 0 : i32
 // CHECK:         %c0 = arith.constant 0 : index
-// CHECK:         %c0_0 = arith.constant 0 : index
-// CHECK:         %c2 = arith.constant 2 : index
-// CHECK:         memref.store %c0, %buffer_0_2[%c0_0] : memref<2xindex>
+// CHECK:         %c2_i32 = arith.constant 2 : i32
+// CHECK:         memref.store %c0_i32, %buffer_0_2[%c0] : memref<2xi32>
 // CHECK:         %c1 = arith.constant 1 : index
-// CHECK:         %c3 = arith.constant 3 : index
-// CHECK:         memref.store %c0, %buffer_0_2[%c1] : memref<2xindex>
-// CHECK:         %c0_1 = arith.constant 0 : index
-// CHECK:         %c1_2 = arith.constant 1 : index
+// CHECK:         %c3_i32 = arith.constant 3 : i32
+// CHECK:         memref.store %c0_i32, %buffer_0_2[%c1] : memref<2xi32>
+// CHECK:         %c0_0 = arith.constant 0 : index
+// CHECK:         %c1_1 = arith.constant 1 : index
 // CHECK:         %c9 = arith.constant 9 : index
 // CHECK:         aie.use_lock(%output_fifo_prod_lock, AcquireGreaterEqual, 1)
-// CHECK:         %0 = memref.load %buffer_0_2[%c0_0] : memref<2xindex>
-// CHECK:         %1 = scf.index_switch %0 -> memref<10xi32> 
+// CHECK:         %0 = memref.load %buffer_0_2[%c0] : memref<2xi32>
+// CHECK:         %1 = arith.index_cast %0 : i32 to index
+// CHECK:         %2 = scf.index_switch %1 -> memref<10xi32> 
 // CHECK:         case 0 {
 // CHECK:           scf.yield %output_fifo_buff_0 : memref<10xi32>
 // CHECK:         }
@@ -60,8 +61,9 @@
 // CHECK:           scf.yield %output_fifo_buff_0 : memref<10xi32>
 // CHECK:         }
 // CHECK:         aie.use_lock(%input_fifo_cons_cons_lock, AcquireGreaterEqual, 1)
-// CHECK:         %2 = memref.load %buffer_0_2[%c1] : memref<2xindex>
-// CHECK:         %3 = scf.index_switch %2 -> memref<10xi32> 
+// CHECK:         %3 = memref.load %buffer_0_2[%c1] : memref<2xi32>
+// CHECK:         %4 = arith.index_cast %3 : i32 to index
+// CHECK:         %5 = scf.index_switch %4 -> memref<10xi32> 
 // CHECK:         case 0 {
 // CHECK:           scf.yield %input_fifo_cons_buff_0 : memref<10xi32>
 // CHECK:         }
@@ -74,17 +76,18 @@
 // CHECK:         default {
 // CHECK:           scf.yield %input_fifo_cons_buff_0 : memref<10xi32>
 // CHECK:         }
-// CHECK:         func.call @add_10_i32(%3, %3, %1) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+// CHECK:         func.call @add_10_i32(%5, %5, %2) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
 // CHECK:         aie.use_lock(%output_fifo_cons_lock, Release, 1)
-// CHECK:         %4 = memref.load %buffer_0_2[%c0_0] : memref<2xindex>
-// CHECK:         %c1_3 = arith.constant 1 : index
-// CHECK:         %5 = arith.addi %4, %c1_3 : index
-// CHECK:         %6 = arith.remsi %5, %c2 : index
-// CHECK:         memref.store %6, %buffer_0_2[%c0_0] : memref<2xindex>
-// CHECK:         scf.for %arg0 = %c0_1 to %c9 step %c1_2 {
+// CHECK:         %6 = memref.load %buffer_0_2[%c0] : memref<2xi32>
+// CHECK:         %c1_i32 = arith.constant 1 : i32
+// CHECK:         %7 = arith.addi %6, %c1_i32 : i32
+// CHECK:         %8 = arith.remsi %7, %c2_i32 : i32
+// CHECK:         memref.store %8, %buffer_0_2[%c0] : memref<2xi32>
+// CHECK:         scf.for %arg0 = %c0_0 to %c9 step %c1_1 {
 // CHECK:           aie.use_lock(%output_fifo_prod_lock, AcquireGreaterEqual, 1)
-// CHECK:           %19 = memref.load %buffer_0_2[%c0_0] : memref<2xindex>
-// CHECK:           %20 = scf.index_switch %19 -> memref<10xi32> 
+// CHECK:           %24 = memref.load %buffer_0_2[%c0] : memref<2xi32>
+// CHECK:           %25 = arith.index_cast %24 : i32 to index
+// CHECK:           %26 = scf.index_switch %25 -> memref<10xi32> 
 // CHECK:           case 0 {
 // CHECK:             scf.yield %output_fifo_buff_0 : memref<10xi32>
 // CHECK:           }
@@ -95,8 +98,9 @@
 // CHECK:             scf.yield %output_fifo_buff_0 : memref<10xi32>
 // CHECK:           }
 // CHECK:           aie.use_lock(%input_fifo_cons_cons_lock, AcquireGreaterEqual, 1)
-// CHECK:           %21 = memref.load %buffer_0_2[%c1] : memref<2xindex>
-// CHECK:           %22 = scf.index_switch %21 -> memref<10xi32> 
+// CHECK:           %27 = memref.load %buffer_0_2[%c1] : memref<2xi32>
+// CHECK:           %28 = arith.index_cast %27 : i32 to index
+// CHECK:           %29 = scf.index_switch %28 -> memref<10xi32> 
 // CHECK:           case 0 {
 // CHECK:             scf.yield %input_fifo_cons_buff_0 : memref<10xi32>
 // CHECK:           }
@@ -109,8 +113,9 @@
 // CHECK:           default {
 // CHECK:             scf.yield %input_fifo_cons_buff_0 : memref<10xi32>
 // CHECK:           }
-// CHECK:           %23 = memref.load %buffer_0_2[%c1] : memref<2xindex>
-// CHECK:           %24 = scf.index_switch %23 -> memref<10xi32> 
+// CHECK:           %30 = memref.load %buffer_0_2[%c1] : memref<2xi32>
+// CHECK:           %31 = arith.index_cast %30 : i32 to index
+// CHECK:           %32 = scf.index_switch %31 -> memref<10xi32> 
 // CHECK:           case 0 {
 // CHECK:             scf.yield %input_fifo_cons_buff_1 : memref<10xi32>
 // CHECK:           }
@@ -123,23 +128,24 @@
 // CHECK:           default {
 // CHECK:             scf.yield %input_fifo_cons_buff_1 : memref<10xi32>
 // CHECK:           }
-// CHECK:           func.call @add_10_i32(%22, %24, %20) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+// CHECK:           func.call @add_10_i32(%29, %32, %26) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
 // CHECK:           aie.use_lock(%input_fifo_cons_prod_lock, Release, 1)
-// CHECK:           %25 = memref.load %buffer_0_2[%c1] : memref<2xindex>
-// CHECK:           %c1_6 = arith.constant 1 : index
-// CHECK:           %26 = arith.addi %25, %c1_6 : index
-// CHECK:           %27 = arith.remsi %26, %c3 : index
-// CHECK:           memref.store %27, %buffer_0_2[%c1] : memref<2xindex>
+// CHECK:           %33 = memref.load %buffer_0_2[%c1] : memref<2xi32>
+// CHECK:           %c1_i32_4 = arith.constant 1 : i32
+// CHECK:           %34 = arith.addi %33, %c1_i32_4 : i32
+// CHECK:           %35 = arith.remsi %34, %c3_i32 : i32
+// CHECK:           memref.store %35, %buffer_0_2[%c1] : memref<2xi32>
 // CHECK:           aie.use_lock(%output_fifo_cons_lock, Release, 1)
-// CHECK:           %28 = memref.load %buffer_0_2[%c0_0] : memref<2xindex>
-// CHECK:           %c1_7 = arith.constant 1 : index
-// CHECK:           %29 = arith.addi %28, %c1_7 : index
-// CHECK:           %30 = arith.remsi %29, %c2 : index
-// CHECK:           memref.store %30, %buffer_0_2[%c0_0] : memref<2xindex>
+// CHECK:           %36 = memref.load %buffer_0_2[%c0] : memref<2xi32>
+// CHECK:           %c1_i32_5 = arith.constant 1 : i32
+// CHECK:           %37 = arith.addi %36, %c1_i32_5 : i32
+// CHECK:           %38 = arith.remsi %37, %c2_i32 : i32
+// CHECK:           memref.store %38, %buffer_0_2[%c0] : memref<2xi32>
 // CHECK:         }
 // CHECK:         aie.use_lock(%output_fifo_prod_lock, AcquireGreaterEqual, 1)
-// CHECK:         %7 = memref.load %buffer_0_2[%c0_0] : memref<2xindex>
-// CHECK:         %8 = scf.index_switch %7 -> memref<10xi32> 
+// CHECK:         %9 = memref.load %buffer_0_2[%c0] : memref<2xi32>
+// CHECK:         %10 = arith.index_cast %9 : i32 to index
+// CHECK:         %11 = scf.index_switch %10 -> memref<10xi32> 
 // CHECK:         case 0 {
 // CHECK:           scf.yield %output_fifo_buff_0 : memref<10xi32>
 // CHECK:         }
@@ -150,8 +156,9 @@
 // CHECK:           scf.yield %output_fifo_buff_0 : memref<10xi32>
 // CHECK:         }
 // CHECK:         aie.use_lock(%input_fifo_cons_cons_lock, AcquireGreaterEqual, 1)
-// CHECK:         %9 = memref.load %buffer_0_2[%c1] : memref<2xindex>
-// CHECK:         %10 = scf.index_switch %9 -> memref<10xi32> 
+// CHECK:         %12 = memref.load %buffer_0_2[%c1] : memref<2xi32>
+// CHECK:         %13 = arith.index_cast %12 : i32 to index
+// CHECK:         %14 = scf.index_switch %13 -> memref<10xi32> 
 // CHECK:         case 0 {
 // CHECK:           scf.yield %input_fifo_cons_buff_0 : memref<10xi32>
 // CHECK:         }
@@ -164,8 +171,9 @@
 // CHECK:         default {
 // CHECK:           scf.yield %input_fifo_cons_buff_0 : memref<10xi32>
 // CHECK:         }
-// CHECK:         %11 = memref.load %buffer_0_2[%c1] : memref<2xindex>
-// CHECK:         %12 = scf.index_switch %11 -> memref<10xi32> 
+// CHECK:         %15 = memref.load %buffer_0_2[%c1] : memref<2xi32>
+// CHECK:         %16 = arith.index_cast %15 : i32 to index
+// CHECK:         %17 = scf.index_switch %16 -> memref<10xi32> 
 // CHECK:         case 0 {
 // CHECK:           scf.yield %input_fifo_cons_buff_1 : memref<10xi32>
 // CHECK:         }
@@ -178,19 +186,19 @@
 // CHECK:         default {
 // CHECK:           scf.yield %input_fifo_cons_buff_1 : memref<10xi32>
 // CHECK:         }
-// CHECK:         func.call @add_10_i32(%10, %12, %8) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+// CHECK:         func.call @add_10_i32(%14, %17, %11) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
 // CHECK:         aie.use_lock(%input_fifo_cons_prod_lock, Release, 2)
-// CHECK:         %13 = memref.load %buffer_0_2[%c1] : memref<2xindex>
-// CHECK:         %c2_4 = arith.constant 2 : index
-// CHECK:         %14 = arith.addi %13, %c2_4 : index
-// CHECK:         %15 = arith.remsi %14, %c3 : index
-// CHECK:         memref.store %15, %buffer_0_2[%c1] : memref<2xindex>
+// CHECK:         %18 = memref.load %buffer_0_2[%c1] : memref<2xi32>
+// CHECK:         %c2_i32_2 = arith.constant 2 : i32
+// CHECK:         %19 = arith.addi %18, %c2_i32_2 : i32
+// CHECK:         %20 = arith.remsi %19, %c3_i32 : i32
+// CHECK:         memref.store %20, %buffer_0_2[%c1] : memref<2xi32>
 // CHECK:         aie.use_lock(%output_fifo_cons_lock, Release, 1)
-// CHECK:         %16 = memref.load %buffer_0_2[%c0_0] : memref<2xindex>
-// CHECK:         %c1_5 = arith.constant 1 : index
-// CHECK:         %17 = arith.addi %16, %c1_5 : index
-// CHECK:         %18 = arith.remsi %17, %c2 : index
-// CHECK:         memref.store %18, %buffer_0_2[%c0_0] : memref<2xindex>
+// CHECK:         %21 = memref.load %buffer_0_2[%c0] : memref<2xi32>
+// CHECK:         %c1_i32_3 = arith.constant 1 : i32
+// CHECK:         %22 = arith.addi %21, %c1_i32_3 : i32
+// CHECK:         %23 = arith.remsi %22, %c2_i32 : i32
+// CHECK:         memref.store %23, %buffer_0_2[%c0] : memref<2xi32>
 // CHECK:         aie.end
 // CHECK:       }
 // CHECK:       aie.shim_dma_allocation @input_fifo(MM2S, 0, 0)
