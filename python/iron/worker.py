@@ -54,7 +54,7 @@ class Worker(ObjectFifoEndpoint):
             if isinstance(arg, BinKernel):
                 bin_names.add(arg.bin_name)
             elif isinstance(arg, ObjectFifoHandle):
-                arg.set_endpoint(self)
+                arg.endpoint = self
                 self._fifos.append(arg)
             elif isinstance(arg, GlobalBuffer):
                 self._buffers.append(arg)
