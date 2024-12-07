@@ -7,15 +7,9 @@
 import numpy as np
 import sys
 
-from aie.iron.runtime import Runtime
-from aie.iron.dataflow import ObjectFifo
+from aie.iron import LocalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.program import Program
-from aie.iron.worker import Worker
-from aie.iron.kernels import BinKernel
-from aie.iron.phys.device import NPU1Col1
-from aie.iron.localbuffer import LocalBuffer
-
+from aie.iron.device import NPU1Col1
 from aie.helpers.dialects.ext.scf import _for as range_
 
 
@@ -33,25 +27,25 @@ def edge_detect(dev, width, height):
     tensor_16x16_ty = np.ndarray[(16, 16), np.dtype[np.int32]]
 
     # AIE Core Function declarations
-    rgba2gray_line_kernel = BinKernel(
+    rgba2gray_line_kernel = Kernel(
         "rgba2grayLine", "rgba2gray.cc.o", [line_bytes_ty, line_ty, np.int32]
     )
-    filter2d_line_kernel = BinKernel(
+    filter2d_line_kernel = Kernel(
         "filter2dLine",
         "filter2d.cc.o",
         [line_ty, line_ty, line_ty, line_ty, np.int32, tensor_3x3_ty],
     )
-    threshold_line_kernel = BinKernel(
+    threshold_line_kernel = Kernel(
         "thresholdLine",
         "threshold.cc.o",
         [line_ty, line_ty, np.int32, np.int16, np.int16, np.int8],
     )
-    gray2rgba_line_kernel = BinKernel(
+    gray2rgba_line_kernel = Kernel(
         "gray2rgbaLine",
         "combined_gray2rgba_addWeighted.a",
         [line_ty, line_bytes_ty, np.int32],
     )
-    add_weighted_line_kernel = BinKernel(
+    add_weighted_line_kernel = Kernel(
         "addWeightedLine",
         "combined_gray2rgba_addWeighted.a",
         [

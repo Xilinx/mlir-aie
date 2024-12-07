@@ -7,13 +7,9 @@
 import numpy as np
 import sys
 
-from aie.iron.runtime import Runtime
-from aie.iron.dataflow import ObjectFifo
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.program import Program
-from aie.iron.worker import Worker
-from aie.iron.kernels import BinKernel
-from aie.iron.phys.device import NPU1Col1
+from aie.iron.device import NPU1Col1
 
 width = 64
 height = 36
@@ -36,25 +32,25 @@ def color_detect():
     tensor_16x16_ty = np.ndarray[(16, 16), np.dtype[np.int32]]
 
     # AIE Core Function declarations
-    rgba2hueLine = BinKernel(
+    rgba2hueLine = Kernel(
         "rgba2hueLine", "rgba2hue.cc.o", [line_bytes_ty, line_ty, np.int32]
     )
-    thresholdLine = BinKernel(
+    thresholdLine = Kernel(
         "thresholdLine",
         "threshold.cc.o",
         [line_ty, line_ty, np.int32, np.int16, np.int16, np.int8],
     )
-    bitwiseORLine = BinKernel(
+    bitwiseORLine = Kernel(
         "bitwiseORLine",
         "combined_bitwiseOR_gray2rgba_bitwiseAND.a",
         [line_ty, line_ty, line_ty, np.int32],
     )
-    gray2rgbaLine = BinKernel(
+    gray2rgbaLine = Kernel(
         "gray2rgbaLine",
         "combined_bitwiseOR_gray2rgba_bitwiseAND.a",
         [line_ty, line_bytes_ty, np.int32],
     )
-    bitwiseANDLine = BinKernel(
+    bitwiseANDLine = Kernel(
         "bitwiseANDLine",
         "combined_bitwiseOR_gray2rgba_bitwiseAND.a",
         [line_bytes_ty, line_bytes_ty, line_bytes_ty, np.int32],

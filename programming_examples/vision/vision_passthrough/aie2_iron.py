@@ -7,13 +7,9 @@
 import numpy as np
 import sys
 
-from aie.iron.runtime import Runtime
-from aie.iron.dataflow import ObjectFifo
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.program import Program
-from aie.iron.worker import Worker
-from aie.iron.kernels import BinKernel
-from aie.iron.phys.device import NPU1Col1
+from aie.iron.device import NPU1Col1
 
 width = 512  # 1920 // 8
 height = 9  # 1080 // 8
@@ -35,7 +31,7 @@ def passThroughAIE2():
     line_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
 
     # AIE Core Function declarations
-    passThroughLineKernel = BinKernel(
+    passThroughLineKernel = Kernel(
         "passThroughLine", "passThrough.cc.o", [line_ty, line_ty, np.int32]
     )
 
