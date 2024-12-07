@@ -8,9 +8,8 @@
 import numpy as np
 from ml_dtypes import bfloat16
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.kernels import BinKernel
 from aie.iron.device import NPU1Col1
 from aie.helpers.dialects.ext.scf import _for as range_
 
@@ -30,7 +29,7 @@ def my_eltwise_exp():
     memtile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
     tile_ty = np.ndarray[(n,), np.dtype[bfloat16]]
 
-    exp_bf16_1024 = BinKernel("exp_bf16_1024", "kernels.a", [tile_ty, tile_ty])
+    exp_bf16_1024 = Kernel("exp_bf16_1024", "kernels.a", [tile_ty, tile_ty])
 
     A_fifo = ObjectFifo(memtile_ty, name="inA")
     C_fifo = ObjectFifo(memtile_ty, name="outC")
