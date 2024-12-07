@@ -74,7 +74,7 @@ class SequentialPlacer(Placer):
         compute_idx = compute_idx % len(computes)
 
         for of in object_fifos:
-            of_endpoints = of.get_all_endpoints()
+            of_endpoints = of.all_of_endpoints()
             of_compute_endpoints = [
                 of.tile for of in of_endpoints if of.tile in computes
             ]

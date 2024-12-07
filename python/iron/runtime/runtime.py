@@ -98,7 +98,7 @@ class Runtime(Resolvable):
                             f"ObjectFIFO can only have one RuntimeEndpoint: has {ep}, trying to set: {rt_endpoint}"
                         )
         else:
-            in_fifo.set_endpoint(rt_endpoint)
+            in_fifo.endpoint = rt_endpoint
             self._fifos.add(in_fifo)
         self._tasks.append(DMATask(in_fifo, source, tap, task_group, wait))
 
@@ -120,7 +120,7 @@ class Runtime(Resolvable):
             tap = dest.default_tap()
 
         if out_fifo in self._fifos:
-            existing_endpoints = out_fifo.get_all_endpoints()
+            existing_endpoints = out_fifo.all_of_endpoints()
             for ep in existing_endpoints:
                 if isinstance(ep, RuntimeEndpoint):
                     if ep.tile != placement:
@@ -132,7 +132,7 @@ class Runtime(Resolvable):
                                 f"ObjectFIFO can only have one RuntimeEndpoint: has {ep}, trying to set: {rt_endpoint}"
                             )
         else:
-            out_fifo.set_endpoint(rt_endpoint)
+            out_fifo.endpoint = rt_endpoint
             self._fifos.add(out_fifo)
         self._tasks.append(DMATask(out_fifo, dest, tap, task_group, wait))
 
