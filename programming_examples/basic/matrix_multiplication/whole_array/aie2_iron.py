@@ -226,10 +226,7 @@ def my_matmul(
         # tiles; distribute it along rows of AIE cores.
         start_row = col * n_A_tiles_per_shim
         stop_row = start_row + n_A_tiles_per_shim
-        if stop_row - start_row > 1:
-            of_offsets = [m * k * i for i in range(stop_row - start_row)]
-        else:
-            of_offsets = []
+        of_offsets = [m * k * i for i in range(stop_row - start_row)]
         dims_to_stream = [
             [
                 (m // r, r * k),
@@ -279,10 +276,7 @@ def my_matmul(
             default_depth=fifo_depth,
             dims_to_stream=[(m // r, r * n), (r, t), (n // t, r * t), (t, 1)],
         )
-        if n_aie_rows > 1:
-            of_offsets = [m * n * i for i in range(n_aie_rows)]
-        else:
-            of_offsets = []
+        of_offsets = [m * n * i for i in range(n_aie_rows)]
 
         # join along one column
         c_tmp_fifos = (
