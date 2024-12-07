@@ -260,26 +260,22 @@ class ObjectFifoHandle(Resolvable):
     def acquire(
         self,
         num_elem: int,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
     ):
         if self._depth < num_elem:
             raise ValueError(
                 f"Number of elements to acquire {num_elem} must be smaller than depth {self._depth}"
             )
-        return self._object_fifo._acquire(self._port, num_elem, loc=loc, ip=ip)
+        return self._object_fifo._acquire(self._port, num_elem)
 
     def release(
         self,
         num_elem: int,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
     ):
         if self._depth < num_elem:
             raise ValueError(
                 f"Number of elements to release {num_elem} must be smaller than depth {self._depth}"
             )
-        return self._object_fifo._release(self._port, num_elem, loc=loc, ip=ip)
+        return self._object_fifo._release(self._port, num_elem)
 
     @property
     def name(self) -> str:
@@ -462,8 +458,8 @@ class ObjectFifoHandle(Resolvable):
         obj_type: type[np.ndarray] | None = None,
         depth: int | None = None,
         name: str | None = None,
-        dims_to_stream: list[list[Sequence[int]]] | None = None,
-        dims_from_stream: list[list[Sequence[int]]] | None = None,
+        dims_to_stream: list[Sequence[int]] | None = None,
+        dims_from_stream: list[Sequence[int]] | None = None,
     ) -> ObjectFifo:
         if self._is_prod:
             raise ValueError(f"Cannot forward a {self.handle_type} ObjectFifoHandle")
