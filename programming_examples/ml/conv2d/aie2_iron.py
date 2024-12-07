@@ -7,14 +7,9 @@
 import numpy as np
 import sys
 
-from aie.iron.runtime import Runtime
-from aie.iron.dataflow import ObjectFifo
+from aie.iron.runtime import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.program import Program
-from aie.iron.worker import Worker
-from aie.iron.kernels import BinKernel
-from aie.iron.phys.device import NPU1Col1
-from aie.iron.globalbuffer import GlobalBuffer
+from aie.iron.device import NPU1Col1
 from aie.helpers.dialects.ext.scf import _for as range_
 
 width = 32
@@ -62,7 +57,7 @@ def conv2dk1(trace_size: int):
     tensor_ty = np.ndarray[(tensorSize,), np.dtype[np.int8]]
 
     # AIE Core Function declarations
-    conv2dk1_i8_kernel = BinKernel(
+    conv2dk1_i8_kernel = Kernel(
         "conv2dk1_i8",
         "conv2dk1_i8.o",
         [

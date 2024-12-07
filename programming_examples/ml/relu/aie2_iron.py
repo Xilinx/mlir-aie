@@ -8,13 +8,9 @@ from ml_dtypes import bfloat16
 import numpy as np
 import sys
 
-from aie.iron.runtime import Runtime
-from aie.iron.dataflow import ObjectFifo
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.program import Program
-from aie.iron.worker import Worker
-from aie.iron.kernels import BinKernel
-from aie.iron.phys.device import NPU1Col1
+from aie.iron.device import NPU1Col1
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.helpers.util import np_ndarray_type_get_shape
 
@@ -41,7 +37,7 @@ def my_relu(trace_size):
     C_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
 
     # AIE Core Function declarations
-    relu = BinKernel("bf16_relu", "relu.o", [tile_ty, tile_ty])
+    relu = Kernel("bf16_relu", "relu.o", [tile_ty, tile_ty])
 
     # AIE-array data movement with object fifos
     # Input A

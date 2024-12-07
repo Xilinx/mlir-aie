@@ -6,16 +6,10 @@
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 import numpy as np
 
-from aie.iron.runtime import Runtime
-from aie.iron.dataflow import ObjectFifo
+from aie.iron.runtime import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.program import Program
-from aie.iron.worker import Worker
-from aie.iron.kernels import BinKernel
-from aie.iron.phys.device import NPU1Col1
-from aie.iron.phys.tile import AnyMemTile, Tile
+from aie.iron.device import AnyMemTile, NPU1Col1, Tile
 from aie.helpers.dialects.ext.scf import _for as range_
-from aie.iron.globalbuffer import GlobalBuffer
 
 # Define bottleneck layer sizes
 
@@ -61,7 +55,7 @@ def bottleneck4AIEs():
     tensorLayer3Out_ty = np.ndarray[(tensorInW, 1, tensorL3OutC), np.dtype[np.uint8]]
 
     # kernel definitions
-    conv2dk1 = BinKernel(
+    conv2dk1 = Kernel(
         "conv2dk1_i8",
         "conv2dk1.o",
         [
@@ -74,7 +68,7 @@ def bottleneck4AIEs():
             np.int32,
         ],
     )
-    conv2dk3 = BinKernel(
+    conv2dk3 = Kernel(
         "conv2dk3_ui8",
         "conv2dk3.o",
         [
@@ -93,7 +87,7 @@ def bottleneck4AIEs():
             np.int32,
         ],
     )
-    conv2dk1_skip = BinKernel(
+    conv2dk1_skip = Kernel(
         "conv2dk1_skip_i8",
         "conv2dk1_skip.o",
         [
@@ -186,7 +180,6 @@ def bottleneck4AIEs():
     workers.append(worker)
 
     # 3x3 conv2d OFM 0-31
-    # TODO: separate out meta-args
     def worker_conv2dk3_fn(of_wts, of_act_in, of_act_out, conv2dk3_fn, conv_last_arg):
         scale = 11
 

@@ -6,15 +6,9 @@
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 import numpy as np
 
-from aie.iron.runtime import Runtime
-from aie.iron.dataflow import ObjectFifo
+from aie.iron.runtime import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.program import Program
-from aie.iron.worker import Worker
-from aie.iron.kernels import BinKernel
-from aie.iron.phys.device import NPU1Col4
-from aie.iron.phys.tile import Tile
-from aie.iron.globalbuffer import GlobalBuffer
+from aie.iron.device import NPU1Col3, Tile
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.helpers.taplib import TensorAccessPattern
@@ -114,7 +108,7 @@ layer3_wts_sizes = [
 ]
 
 # kernel definitions
-conv2dk1_i8 = BinKernel(
+conv2dk1_i8 = Kernel(
     "conv2dk1_i8",
     "conv2dk1_i8.o",
     [
@@ -127,7 +121,7 @@ conv2dk1_i8 = BinKernel(
         np.int32,
     ],
 )
-conv2dk3 = BinKernel(
+conv2dk3 = Kernel(
     "conv2dk3_ui8",
     "conv2dk3.o",
     [
@@ -146,7 +140,7 @@ conv2dk3 = BinKernel(
         np.int32,
     ],
 )
-conv2dk1_skip_init_i8 = BinKernel(
+conv2dk1_skip_init_i8 = Kernel(
     "conv2dk1_skip_init_i8",
     "conv2dk1_skip_init.o",
     [
@@ -164,7 +158,7 @@ conv2dk1_skip_init_i8 = BinKernel(
         np.int32,
     ],
 )
-conv2dk1_ui8 = BinKernel(
+conv2dk1_ui8 = Kernel(
     "conv2dk1_ui8",
     "conv2dk1_ui8.o",
     [
@@ -178,7 +172,7 @@ conv2dk1_ui8 = BinKernel(
     ],
 )
 
-conv2dk1_skip_ui8 = BinKernel(
+conv2dk1_skip_ui8 = Kernel(
     "conv2dk1_skip_ui8",
     "conv2dk1_skip.o",
     [
@@ -568,6 +562,5 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
     rt.fill(wts_fifos[2].prod(), weightsFromL3, tap, placement=Tile(2, 0))
     rt.drain(outOFL2L3.cons(), outputToL3, placement=Tile(1, 0), wait=True)
 
-# TODO: design actually calls for 3 columns, but only 1 and 4 are supported now.
-module = Program(NPU1Col4(), rt).resolve_program(SequentialPlacer())
+module = Program(NPU1Col3(), rt).resolve_program(SequentialPlacer())
 print(module)
