@@ -57,6 +57,30 @@ class Runtime(Resolvable):
             if len(self._open_task_groups) != 0:
                 tgs_str = ", ".join([str(t) for t in self._open_task_groups])
                 raise ValueError(f"Failed to close task groups: {tgs_str}")
+            for of_handle in self._fifos:
+                # It's very easy to accidentally generate multiple (identical)
+                # consumers in the runtime. This bit of code prunes out duplicates.
+                if not of_handle._is_prod:
+                    fifo_obj = of_handle._object_fifo
+                    runtime_cons = None
+                    to_remove = []
+                    for c in fifo_obj._cons:
+                        if isinstance(c.endpoint, RuntimeEndpoint):
+                            if not runtime_cons:
+                                runtime_cons = c
+                            else:
+                                if (
+                                    c.depth == runtime_cons.depth
+                                    and c.dims_from_stream
+                                    == runtime_cons.dims_from_stream
+                                ):
+                                    to_remove.append(c)
+                                else:
+                                    raise ValueError(
+                                        f"Found two different RuntimeEndpoints for consumers of the same ObjectFifo: {fifo_obj}"
+                                    )
+                    for r in to_remove:
+                        fifo_obj._cons.remove(r)
 
     def task_group(self) -> RuntimeTaskGroup:
         tg = RuntimeTaskGroup(self.__task_group_index)
@@ -167,5 +191,9 @@ class Runtime(Resolvable):
                 if isinstance(task, FinishTaskGroupTask):
                     actions = task_group_actions[task.task_group]
                     for fn, args in actions:
-                        fn(*args)
+                        if fn == dma_await_task:
+                            fn(*args)
+                    for fn, args in actions:
+                        if fn != dma_await_task:
+                            fn(*args)
                     task_group_actions[task.task_group] = None
