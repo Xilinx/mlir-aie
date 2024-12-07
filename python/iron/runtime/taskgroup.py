@@ -1,4 +1,4 @@
-# runtimetask.py -*- Python -*-
+# taskgroup.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -8,7 +8,6 @@
 
 
 class RuntimeTaskGroup:
-    # TODO: move to different file
     def __init__(self, id: int):
         self._group_id = id
 

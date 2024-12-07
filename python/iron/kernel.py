@@ -1,4 +1,4 @@
-# binkernel.py -*- Python -*-
+# kernel.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -8,14 +8,14 @@
 
 import numpy as np
 
-from ... import ir  # type: ignore
-from ...extras.dialects.ext.func import FuncOp
-from ...helpers.dialects.ext.func import call
-from ...dialects.aie import external_func
-from .kernel import Kernel
+from .. import ir  # type: ignore
+from ..extras.dialects.ext.func import FuncOp  # type: ignore
+from ..helpers.dialects.ext.func import call
+from ..dialects.aie import external_func
+from .resolvable import Resolvable
 
 
-class BinKernel(Kernel):
+class Kernel(Resolvable):
     def __init__(
         self,
         name: str,
@@ -40,5 +40,6 @@ class BinKernel(Kernel):
             self._op = external_func(self._name, inputs=self._arg_types)
 
     def __call__(self, *args, **kwargs):
-        assert self._op, "Need to resolve BinKernel before it can be called"
+        if not self._op:
+            raise ValueError("Need to resolve Kernel before it can be called")
         call(self._op, args, **kwargs)

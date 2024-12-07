@@ -8,13 +8,13 @@
 
 from ... import ir  # type: ignore
 
-from ...dialects._aiex_ops_gen import dma_start_task, dma_await_task
+from ...dialects._aiex_ops_gen import dma_start_task  # type: ignore
 from ...dialects.aiex import shim_dma_single_bd_task
-from ..dataflow.objectfifo import ObjectFifoHandle
-from .runtimedata import RuntimeData
+from ..dataflow import ObjectFifoHandle
+from .data import RuntimeData
 from ...helpers.taplib import TensorAccessPattern
-from .runtimetask import RuntimeTask
-from .runtimetaskgroup import RuntimeTaskGroup
+from .task import RuntimeTask
+from .taskgroup import RuntimeTaskGroup
 
 
 class DMATask(RuntimeTask):
@@ -42,7 +42,8 @@ class DMATask(RuntimeTask):
 
     @property
     def task(self):
-        assert self._task != None
+        if not self._task:
+            raise ValueError("Cannot get task before it is created (during resolve())")
         return self._task
 
     def resolve(

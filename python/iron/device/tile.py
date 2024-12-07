@@ -10,7 +10,7 @@
 TODOs:
 * docs
 * error handling
-* tile types"
+* tile types
 """
 
 from ...dialects.aie import TileOp
@@ -24,12 +24,14 @@ class Tile:
 
     @property
     def op(self) -> TileOp:
-        assert self._op != None
+        if not self._op:
+            raise ValueError("Cannot get op before it is set.")
         return self._op
 
     @op.setter
     def op(self, op: TileOp):
-        assert self._op == None or self._op == op
+        if self._op and self._op != op:
+            raise ValueError("Cannot change operation once it is set.")
         self._op = op
 
     def __eq__(self, other: object) -> bool:

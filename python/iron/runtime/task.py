@@ -1,16 +1,17 @@
-# runtimetask.py -*- Python -*-
+# task.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
+from typing import Callable
 
 from ... import ir  # type: ignore
 
 from ..resolvable import Resolvable
 from ..worker import Worker
-from .runtimetaskgroup import RuntimeTaskGroup
+from .taskgroup import RuntimeTaskGroup
 
 
 class RuntimeTask(Resolvable):
@@ -45,7 +46,9 @@ class RuntimeStartTask(RuntimeTask):
 
 
 class InlineOpRuntimeTask(RuntimeTask):
-    def __init__(self, fn, args, task_group: RuntimeTaskGroup | None = None):
+    def __init__(
+        self, fn: Callable, args: list, task_group: RuntimeTaskGroup | None = None
+    ):
         # TODO: should validate somehow?
         self._fn = fn
         self._args = args

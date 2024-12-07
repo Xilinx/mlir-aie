@@ -12,13 +12,11 @@ from typing import Callable
 from .. import ir  # type: ignore
 from ..dialects.aie import core
 from ..helpers.dialects.ext.scf import _for as range_
-from .phys.tile import PlacementTile, AnyComputeTile, Tile
+from .device import PlacementTile, AnyComputeTile, Tile
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
-from .kernels.binkernel import BinKernel
-from .kernels.kernel import Kernel
+from .kernel import Kernel
 from .globalbuffer import GlobalBuffer
-from .placeable import Placeable
 
 
 class Worker(ObjectFifoEndpoint):
@@ -28,8 +26,8 @@ class Worker(ObjectFifoEndpoint):
 
     def __init__(
         self,
-        core_fn: Callable[[ObjectFifoHandle | Kernel], None] | None,
-        fn_args: list[ObjectFifoHandle | Kernel] = [],
+        core_fn: Callable | None,
+        fn_args: list = [],
         placement: PlacementTile | None = AnyComputeTile,
         while_true: bool = True,
     ):
@@ -51,7 +49,7 @@ class Worker(ObjectFifoEndpoint):
         self._buffers = []
 
         for arg in self.fn_args:
-            if isinstance(arg, BinKernel):
+            if isinstance(arg, Kernel):
                 bin_names.add(arg.bin_name)
             elif isinstance(arg, ObjectFifoHandle):
                 arg.endpoint = self
@@ -70,17 +68,22 @@ class Worker(ObjectFifoEndpoint):
             # TODO: this could be cleaned up through creation of a MetaArgs struct, so you
             # could access values through meta.my_var within the function.
 
-        assert len(bin_names) <= 1, "Right now only link with one bin"
+        if len(bin_names) > 1:
+            raise ValueError(
+                f"Currently, only one binary per works is supported. Found: {bin_names}"
+            )
         if len(bin_names) == 1:
             self.link_with = list(bin_names)[0]
 
     def place(self, tile: Tile) -> None:
         ObjectFifoEndpoint.place(self, tile)
 
-    def get_fifos(self) -> list[ObjectFifoHandle]:
+    @property
+    def fifos(self) -> list[ObjectFifoHandle]:
         return self._fifos.copy()
 
-    def get_buffers(self) -> list[GlobalBuffer]:
+    @property
+    def buffers(self) -> list[GlobalBuffer]:
         return self._buffers.copy()
 
     def resolve(
@@ -88,7 +91,8 @@ class Worker(ObjectFifoEndpoint):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        assert self._tile != None
+        if not self._tile:
+            raise ValueError("Must place Worker before it can be resolved.")
         my_tile = self._tile.op
         self.current_core_placement.set(my_tile)
         my_link = self.link_with

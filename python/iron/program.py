@@ -6,11 +6,11 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
-from ..extras.context import mlir_mod_ctx
+from ..extras.context import mlir_mod_ctx  # type: ignore
 from ..helpers.dialects.ext.func import FuncBase
 from ..dialects.aie import device
 
-from .phys.device import Device
+from .device import Device
 from .runtime import Runtime
 from .placers import Placer
 from .resolvable import Resolvable
@@ -32,18 +32,19 @@ class Program:
             def device_body():
                 # Collect all fifos
                 all_fifos = set()
-                all_fifos.update(self._rt.get_fifos())
-                for w in self._rt.get_workers():
-                    all_fifos.update(w.get_fifos())
+                all_fifos.update(self._rt.fifos)
+                for w in self._rt.workers:
+                    all_fifos.update(w.fifos)
 
-                workers = self._rt.get_workers()
                 if placer:
                     # TODO: should maybe just take runtime?
-                    placer.make_placement(self._device, self._rt, workers, all_fifos)
+                    placer.make_placement(
+                        self._device, self._rt, self._rt.workers, all_fifos
+                    )
 
                 # Collect all tiles
                 all_tiles = []
-                for w in workers:
+                for w in self._rt.workers:
                     all_tiles.append(w.tile)
                 for f in all_fifos:
                     all_tiles.extend([e.tile for e in f.all_of_endpoints()])
@@ -57,7 +58,7 @@ class Program:
                     f.resolve()
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
-                for w in workers:
+                for w in self._rt.workers:
                     for arg in w.fn_args:
                         if isinstance(arg, FuncBase):
                             arg.emit()
@@ -65,7 +66,7 @@ class Program:
                             arg.resolve()
 
                 # Generate core programs
-                for w in workers:
+                for w in self._rt.workers:
                     w.resolve()
 
                 # In/Out Sequence

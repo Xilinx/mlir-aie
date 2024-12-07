@@ -13,7 +13,7 @@ from ...compiler.aiecc.main import run as aiecc_run
 from ...utils.xrt import setup_aie, execute as execute_on_aie
 from ...helpers.taplib import TensorTiler2D
 from ..dataflow import ObjectFifo
-from ..phys.device import NPU1Col4
+from ..device import NPU1Col4
 from ..placers import SequentialPlacer
 from ..program import Program
 from ..runtime import Runtime

@@ -14,7 +14,7 @@ from ..helpers.util import (
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
 )
-from .phys.tile import PlacementTile
+from .device import PlacementTile
 from .resolvable import Resolvable
 from .placeable import Placeable
 

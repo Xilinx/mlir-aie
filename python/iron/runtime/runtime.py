@@ -17,15 +17,15 @@ from ... import ir  # type: ignore
 from ...dialects.aiex import runtime_sequence
 from ...dialects._aiex_ops_gen import dma_await_task, dma_free_task  # type: ignore
 from ...helpers.taplib import TensorAccessPattern
-from ..dataflow.objectfifo import ObjectFifoHandle
-from ..phys.tile import PlacementTile, AnyShimTile
+from ..dataflow import ObjectFifoHandle
+from ..device import PlacementTile, AnyShimTile
 from ..resolvable import Resolvable
 from .dmatask import DMATask
-from .runtimedata import RuntimeData
-from .runtimeendpoint import RuntimeEndpoint
+from .data import RuntimeData
+from .endpoint import RuntimeEndpoint
 from ..worker import Worker
-from .runtimetaskgroup import RuntimeTaskGroup
-from .runtimetask import (
+from .taskgroup import RuntimeTaskGroup
+from .task import (
     RuntimeTask,
     RuntimeStartTask,
     InlineOpRuntimeTask,
@@ -146,10 +146,12 @@ class Runtime(Resolvable):
         # TODO: should filter args based on some criteria??
         self._tasks.append(InlineOpRuntimeTask(inline_func, inline_args))
 
-    def get_workers(self) -> list[Worker]:
+    @property
+    def workers(self) -> list[Worker]:
         return self._workers.copy()
 
-    def get_fifos(self) -> list[ObjectFifoHandle]:
+    @property
+    def fifos(self) -> list[ObjectFifoHandle]:
         return self._fifos.copy()
 
     def resolve(

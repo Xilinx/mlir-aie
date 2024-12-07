@@ -10,7 +10,7 @@ import numpy as np
 
 from ..dialects.aie import buffer
 from .worker import Worker
-from .phys.tile import Tile
+from .device import Tile
 
 
 class LocalBuffer(buffer):

@@ -9,11 +9,11 @@
 from abc import ABCMeta, abstractmethod
 import statistics
 
-from .phys.device import Device
+from .device import Device
 from .runtime import Runtime
 from .worker import Worker
-from .phys.tile import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
-from .dataflow.objectfifo import ObjectFifoHandle
+from .device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
+from .dataflow import ObjectFifoHandle
 
 
 class Placer(metaclass=ABCMeta):
@@ -61,13 +61,12 @@ class SequentialPlacer(Placer):
 
         for worker in workers:
             if worker.tile == AnyComputeTile:
-                assert compute_idx < len(
-                    computes
-                ), "Ran out of compute tiles for placement!"
+                if compute_idx >= len(computes):
+                    raise ValueError("Ran out of compute tiles for placement!")
                 worker.place(computes[compute_idx])
                 compute_idx += 1
 
-            for buffer in worker.get_buffers():
+            for buffer in worker.buffers:
                 buffer.place(worker.tile)
 
         # Prepare to loop

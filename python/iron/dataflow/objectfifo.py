@@ -22,7 +22,7 @@ from ...util import single_elem_or_list_to_list
 
 from ..resolvable import Resolvable, NotResolvedError
 from .endpoint import ObjectFifoEndpoint
-from ..phys.tile import PlacementTile, AnyMemTile, Tile
+from ..device import PlacementTile, AnyMemTile, Tile
 
 
 class ObjectFifo(Resolvable):

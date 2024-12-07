@@ -1,1 +1,1 @@
-from .objectfifo import ObjectFifo
+from .objectfifo import ObjectFifo, ObjectFifoHandle
