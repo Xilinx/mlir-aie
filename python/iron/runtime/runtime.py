@@ -55,7 +55,7 @@ class Runtime(Resolvable):
                 yield tuple(self._rt_data.copy())
         finally:
             if len(self._open_task_groups) != 0:
-                tgs_str = [str(t) for t in self._open_task_groups].join(", ")
+                tgs_str = ", ".join([str(t) for t in self._open_task_groups])
                 raise ValueError(f"Failed to close task groups: {tgs_str}")
 
     def task_group(self) -> RuntimeTaskGroup:
