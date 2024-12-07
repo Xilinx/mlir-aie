@@ -152,21 +152,21 @@ def my_matmul(
     a_dims = None
     if vectorized:
         a_dims = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
-    memA = inA.cons().forward(name="memA", dimensionsToStream=a_dims)
+    memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
 
     # Input B
     inB = ObjectFifo(b_ty, name="inB")
     b_dims = None
     if vectorized:
         b_dims = [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
-    memB = inB.cons().forward(name="memB", dimensionsToStream=b_dims)
+    memB = inB.cons().forward(name="memB", dims_to_stream=b_dims)
 
     # Output C
     memC = ObjectFifo(c_ty, name="memC")
     c_dims = None
     if vectorized:
         c_dims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
-    outC = memC.cons().forward(name="outC", dimensionsToStream=c_dims)
+    outC = memC.cons().forward(name="outC", dims_to_stream=c_dims)
 
     def core_fn(of_a, of_b, of_c, zero, matmul):
         for _ in range_(tiles) if tiles > 1 else range(1):  # issue #1547

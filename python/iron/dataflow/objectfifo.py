@@ -52,6 +52,7 @@ class ObjectFifo(Resolvable):
         self._op: ObjectFifoCreateOp | None = None
         self._prod: ObjectFifoHandle | None = None
         self._cons: list[ObjectFifoHandle] = []
+        self._resolving = False
 
     @classmethod
     def __get_index(cls) -> int:
@@ -90,10 +91,13 @@ class ObjectFifo(Resolvable):
         return self._obj_type
 
     def __str__(self) -> str:
+        prod_endpoint = None
+        if self._prod:
+            prod_endpoint = self._prod.endpoint
         return (
             f"{self.__class__.__name__}({self._obj_type}, "
             f"default_depth={self.default_depth}, name='{self.name}', "
-            f"prod={self._prod}, cons={self._cons})"
+            f"prod={prod_endpoint}, cons={[c.endpoint for c in self._cons]})"
         )
 
     def prod(self, depth: int | None = None) -> ObjectFifoHandle:
@@ -184,7 +188,8 @@ class ObjectFifo(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        if self._op == None:
+        if not self._resolving:
+            self._resolving = True
             dims_from_stream_per_cons = [
                 con.dims_from_stream if con.dims_from_stream else []
                 for con in self._cons
@@ -316,6 +321,13 @@ class ObjectFifoHandle(Resolvable):
     @property
     def endpoint(self) -> ObjectFifoEndpoint | None:
         return self._endpoint
+
+    def __str__(self) -> str:
+        my_str = f"ObjectFifoHandle({self.handle_type}, {self.depth}, "
+        if not self._is_prod:
+            my_str += f"{self.dims_from_stream}, "
+        my_str += f"{self._object_fifo})"
+        return my_str
 
     @endpoint.setter
     def endpoint(self, endpoint: ObjectFifoEndpoint) -> None:
