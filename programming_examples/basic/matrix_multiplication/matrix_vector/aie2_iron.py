@@ -6,13 +6,9 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 
-from aie.iron.runtime import Runtime
-from aie.iron.dataflow import ObjectFifo
-from aie.iron.kernels import BinKernel
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.program import Program
-from aie.iron.worker import Worker
-from aie.iron.phys.device import NPU1Col4
+from aie.iron.device import NPU1Col4
 from aie.helpers.taplib import TensorTiler2D
 from aie.helpers.dialects.ext.scf import _for as range_
 
@@ -47,8 +43,8 @@ def my_matmul():
 
     # AIE Core Function declarations
     func_type = "vectorized" if vectorized else "scalar"
-    zero = BinKernel(f"zero_{func_type}_{dtype_out_str}", f"mv_{m}x{k}.o", [outC_ty])
-    matvec = BinKernel(
+    zero = Kernel(f"zero_{func_type}_{dtype_out_str}", f"mv_{m}x{k}.o", [outC_ty])
+    matvec = Kernel(
         f"matvec_{func_type}_{dtype_in_str}_{dtype_out_str}",
         f"mv_{m}x{k}.o",
         [A_ty, inB_ty, outC_ty],

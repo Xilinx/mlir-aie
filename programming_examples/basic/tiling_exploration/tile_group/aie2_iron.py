@@ -8,12 +8,9 @@
 import argparse
 import numpy as np
 
-from aie.iron.runtime import Runtime
-from aie.iron.dataflow import ObjectFifo
+from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.program import Program
-from aie.iron.worker import Worker
-from aie.iron.phys.device import NPU1Col1
+from aie.iron.device import NPU1Col1
 from aie.helpers.taplib import TensorTiler2D
 from aie.helpers.dialects.ext.scf import _for as range_
 import aie.extras.dialects.ext.arith as arith

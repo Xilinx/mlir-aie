@@ -8,14 +8,9 @@ import argparse
 from ml_dtypes import bfloat16
 import numpy as np
 
-from aie.iron.runtime import Runtime
-from aie.iron.dataflow import ObjectFifo
-from aie.iron.kernels import BinKernel
+from aie.iron.runtime import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.program import Program
-from aie.iron.worker import Worker
-from aie.iron.phys.device import NPU1Col1, NPU1Col4
-from aie.iron.phys.tile import Tile
+from aie.iron.device import NPU1Col1, NPU1Col2, NPU1Col4, Tile
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 from aie.helpers.dialects.ext.scf import _for as range_
 
@@ -166,8 +161,7 @@ def my_matmul(
     if n_aie_cols == 1:
         dev = NPU1Col1()
     elif n_aie_cols == 2:
-        # TODO: npud1col2 and npu1col4 are only ones supported, so use npu1col4
-        dev = NPU1Col4()
+        dev = NPU1Col2()
     elif n_aie_cols == 4:
         dev = NPU1Col4()
 
@@ -188,13 +182,13 @@ def my_matmul(
     C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
     # AIE Core Function declarations
-    zero_kernel = BinKernel(f"zero_{dtype_out_str}", f"mm_{m}x{k}x{n}.o", [C_l1_ty])
+    zero_kernel = Kernel(f"zero_{dtype_out_str}", f"mm_{m}x{k}x{n}.o", [C_l1_ty])
     matmul_vectorized_func_name = (
         f"matmul_{dtype_in_str}_{dtype_out_str}"
         if not b_col_maj
         else f"matmul_{dtype_in_str}_{dtype_out_str}_b_col_maj"
     )
-    matmul_kernel = BinKernel(
+    matmul_kernel = Kernel(
         matmul_vectorized_func_name,
         f"mm_{m}x{k}x{n}.o",
         [A_l1_ty, B_l1_ty, C_l1_ty],
@@ -375,8 +369,6 @@ def my_matmul(
         rt.start(*workers)
 
         tg = rt.task_group()
-        c_cons = [c.cons() for c in C_l2l3_fifos]
-
         for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
             for pingpong in [0, 1]:
                 if c_index >= len(C_tiles):
@@ -413,7 +405,7 @@ def my_matmul(
                     #     |                |
                     #      ----------------
                     rt.drain(
-                        c_cons[col],
+                        C_l2l3_fifos[col],
                         C,
                         tap=C_tiles[c_index],
                         wait=True,

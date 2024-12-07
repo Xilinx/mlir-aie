@@ -8,11 +8,9 @@
 import numpy as np
 import sys
 
-from aie.iron.runtime import Runtime
-from aie.iron.dataflow import ObjectFifo
+from aie.iron import ObjectFifo, Program, Runtime
 from aie.iron.placers import SequentialPlacer
-from aie.iron.program import Program
-from aie.iron.phys.device import NPU1Col1
+from aie.iron.device import NPU1Col1, XCVC1902
 
 N = 4096
 dev = None
@@ -27,7 +25,7 @@ if len(sys.argv) > 2:
     if sys.argv[2] == "npu":
         dev = NPU1Col1()
     elif sys.argv[2] == "xcvc1902":
-        raise ValueError("[ERROR] _iron designs only supports npu")
+        dev = XCVC1902()
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
 

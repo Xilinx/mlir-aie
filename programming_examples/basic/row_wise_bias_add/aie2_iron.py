@@ -7,13 +7,9 @@
 import numpy as np
 import sys
 
-from aie.iron.runtime import Runtime
-from aie.iron.dataflow import ObjectFifo
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.program import Program
-from aie.iron.kernels.binkernel import BinKernel
-from aie.iron.worker import Worker
-from aie.iron.phys.device import NPU1Col1
+from aie.iron.device import NPU1Col1
 from aie.helpers.taplib import TensorTiler2D
 from aie.helpers.dialects.ext.scf import _for as range_
 
@@ -26,7 +22,7 @@ def row_wise_bias_add(M, N, m, n):
     tensor_ty = np.ndarray[(m * n,), np.dtype[np.float32]]
     bias_ty = np.ndarray[(n,), np.dtype[np.float32]]
 
-    kernel_func = BinKernel(
+    kernel_func = Kernel(
         f"row_wise_bias_add_f32_f32", "kernel.o", [tensor_ty, bias_ty, tensor_ty]
     )
 

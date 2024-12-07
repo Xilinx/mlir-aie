@@ -8,13 +8,9 @@ import argparse
 from ml_dtypes import bfloat16
 import numpy as np
 
-from aie.iron.runtime import Runtime
-from aie.iron.dataflow import ObjectFifo
-from aie.iron.kernels import BinKernel
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.program import Program
-from aie.iron.worker import Worker
-from aie.iron.phys.device import NPU1Col4
+from aie.iron.device import NPU1Col4
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 from aie.helpers.dialects.ext.scf import _for as range_
 
@@ -137,10 +133,10 @@ def my_matmul(
 
     # AIE Core Function declarations
     func_type = "" if vectorized else "scalar_"
-    zero_kernel = BinKernel(
+    zero_kernel = Kernel(
         f"zero_{func_type}{dtype_out_str}", f"mm_{m}x{k}x{n}.o", [c_ty]
     )
-    matmul_kernel = BinKernel(
+    matmul_kernel = Kernel(
         f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}",
         f"mm_{m}x{k}x{n}.o",
         [a_ty, b_ty, c_ty],
@@ -204,8 +200,6 @@ def my_matmul(
         rt.start(worker)
 
         tgs = []
-        c_cons = outC.cons()
-
         for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
             # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
             # that's what this loop is for. We can track of this in the task groups for syncing.
@@ -230,7 +224,9 @@ def my_matmul(
                     B_taps.append(b_tap)
 
                 # -- C --
-                rt.drain(c_cons, C, tap=C_taps[c_index], task_group=tgs[-1], wait=True)
+                rt.drain(
+                    outC.cons(), C, tap=C_taps[c_index], task_group=tgs[-1], wait=True
+                )
                 C_taps.append(C_taps[c_index])
                 c_index += 1
 

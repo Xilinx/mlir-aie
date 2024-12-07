@@ -8,12 +8,9 @@
 import numpy as np
 import sys
 
-from aie.iron.runtime import Runtime
-from aie.iron.dataflow import ObjectFifo
+from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.program import Program
-from aie.iron.worker import Worker
-from aie.iron.phys.device import NPU1Col1
+from aie.iron.device import NPU1Col1, XCVC1902
 from aie.helpers.dialects.ext.scf import _for as range_
 
 
@@ -28,9 +25,7 @@ def my_vector_mul():
     if sys.argv[1] == "npu":
         dev = NPU1Col1()
     elif sys.argv[1] == "xcvc1902":
-        raise NotImplementedError(
-            f"{sys.argv[1]} device not yet supported for experimental IRON"
-        )
+        dev = XCVC1902()
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 

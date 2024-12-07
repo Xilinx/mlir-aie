@@ -7,13 +7,9 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 
-from aie.iron.runtime import Runtime
-from aie.iron.dataflow import ObjectFifo
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.program import Program
-from aie.iron.worker import Worker
-from aie.iron.kernels import BinKernel
-from aie.iron.phys.device import NPU1Col1
+from aie.iron.device import NPU1Col1
 
 
 def my_reduce_min():
@@ -27,7 +23,7 @@ def my_reduce_min():
     of_out = ObjectFifo(out_ty, name="out")
 
     # AIE Core Function declarations
-    reduce_add_vector = BinKernel(
+    reduce_add_vector = Kernel(
         "reduce_min_vector", "reduce_min.cc.o", [in_ty, out_ty, np.int32]
     )
 

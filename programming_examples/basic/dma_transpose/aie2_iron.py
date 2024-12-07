@@ -9,8 +9,7 @@ import argparse
 import numpy as np
 import sys
 
-from aie.iron import Program, Runtime
-from aie.iron.dataflow import ObjectFifo
+from aie.iron import ObjectFifo, Program, Runtime
 from aie.iron.device import NPU1Col1, AnyComputeTile
 from aie.iron.placers import SequentialPlacer
 from aie.helpers.taplib import TensorTiler2D
