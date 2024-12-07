@@ -53,14 +53,18 @@
 // CHECK:         %6 = memref.load %buffer_0_2[%c1] : memref<2xi32>
 // CHECK:         %c1_i32 = arith.constant 1 : i32
 // CHECK:         %7 = arith.addi %6, %c1_i32 : i32
-// CHECK:         %8 = arith.remsi %7, %c2_i32_0 : i32
-// CHECK:         memref.store %8, %buffer_0_2[%c1] : memref<2xi32>
+// CHECK:         %8 = arith.cmpi sge, %7, %c2_i32_0 : i32 
+// CHECK:         %9 = arith.subi %7, %c2_i32_0 : i32 
+// CHECK:         %10 = arith.select %8, %9, %7 : i32
+// CHECK:         memref.store %10, %buffer_0_2[%c1] : memref<2xi32>
 // CHECK:         aie.use_lock(%output_fifo_cons_lock, Release, 1)
-// CHECK:         %9 = memref.load %buffer_0_2[%c0] : memref<2xi32>
+// CHECK:         %11 = memref.load %buffer_0_2[%c0] : memref<2xi32>
 // CHECK:         %c1_i32_3 = arith.constant 1 : i32
-// CHECK:         %10 = arith.addi %9, %c1_i32_3 : i32
-// CHECK:         %11 = arith.remsi %10, %c2_i32 : i32
-// CHECK:         memref.store %11, %buffer_0_2[%c0] : memref<2xi32>
+// CHECK:         %12 = arith.addi %11, %c1_i32_3 : i32
+// CHECK:         %13 = arith.cmpi sge, %12, %c2_i32 : i32
+// CHECK:         %14 = arith.subi %12, %c2_i32 : i32 
+// CHECK:         %15 = arith.select %13, %14, %12 : i32
+// CHECK:         memref.store %15, %buffer_0_2[%c0] : memref<2xi32>
 // CHECK:       }
 // CHECK:       aie.end
 // CHECK:     } {dynamic_objfifo_lowering = true}
