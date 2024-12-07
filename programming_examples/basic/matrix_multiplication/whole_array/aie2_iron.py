@@ -237,13 +237,13 @@ def my_matmul(
                 (r, k),
                 (s, 1),
             ]
-        ] * len(of_offsets)
+        ] * (stop_row - start_row)
         a_tmp_fifos = (
             A_l3l2_fifos[col]
             .cons()
             .split(
                 of_offsets,
-                obj_types=[A_l1_ty] * len(of_offsets),
+                obj_types=[A_l1_ty] * (stop_row - start_row),
                 names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
                 dims_to_stream=dims_to_stream,
                 placement=Tile(col, 1),
