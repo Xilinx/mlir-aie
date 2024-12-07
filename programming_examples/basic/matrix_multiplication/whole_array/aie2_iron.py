@@ -15,6 +15,7 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.program import Program
 from aie.iron.worker import Worker
 from aie.iron.phys.device import NPU1Col1, NPU1Col4
+from aie.iron.phys.tile import Tile
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 from aie.helpers.dialects.ext.scf import _for as range_
 
@@ -199,6 +200,10 @@ def my_matmul(
         [A_l1_ty, B_l1_ty, C_l1_ty],
     )
 
+    # Tile declarations as tile[row][col]
+    tiles = [[(col, row) for col in range(0, n_aie_cols)] for row in range(0, 6)]
+    core_tiles = tiles[2:]
+
     # AIE-array data movement with object fifos
     A_l3l2_fifos = [None] * n_aie_cols
     A_l2l1_fifos = [None] * n_aie_rows
@@ -241,14 +246,14 @@ def my_matmul(
                 obj_types=[A_l1_ty] * len(of_offsets),
                 names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
                 dims_to_stream=dims_to_stream,
+                placement=Tile(col, 1),
             )
         )
 
         for i in range(stop_row - start_row):
             A_l2l1_fifos[i + start_row] = a_tmp_fifos[i]
 
-    # Input B
-    for col in range(n_aie_cols):
+        # Input B
         B_l3l2_fifos[col] = ObjectFifo(
             B_l2_ty, name=f"B_L3L2_{col}", default_depth=fifo_depth
         )
@@ -260,12 +265,14 @@ def my_matmul(
             B_l3l2_fifos[col]
             .cons()
             .forward(
-                obj_type=B_l1_ty, name=f"B_L2L1_{col}", dims_to_stream=dims_to_stream
+                obj_type=B_l1_ty,
+                name=f"B_L2L1_{col}",
+                dims_to_stream=dims_to_stream,
+                placement=Tile(col, 1),
             )
         )
 
-    # Output C
-    for col in range(n_aie_cols):
+        # Output C
         C_l2l3_fifos[col] = ObjectFifo(
             C_l2_ty,
             name=f"C_L2L3_{col}",
@@ -286,6 +293,7 @@ def my_matmul(
                 obj_types=[C_l1_ty] * n_aie_rows,
                 names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
                 depths=[fifo_depth] * n_aie_rows,
+                placement=Tile(col, 1),
             )
         )
         for j in range(n_aie_rows):
@@ -311,6 +319,7 @@ def my_matmul(
     workers = []
     for row in range(n_aie_rows):
         for col in range(n_aie_cols):
+            tile_col, tile_row = core_tiles[row][col]
             workers.append(
                 Worker(
                     core_fn,
@@ -321,6 +330,7 @@ def my_matmul(
                         zero_kernel,
                         matmul_kernel,
                     ],
+                    placement=Tile(tile_col, tile_row),
                 )
             )
 
@@ -370,7 +380,7 @@ def my_matmul(
     with rt.sequence(A_ty, B_ty, C_ty) as (A, B, C):
         rt.start(*workers)
 
-        tgs = []
+        tg = rt.task_group()
         c_cons = [c.cons() for c in C_l2l3_fifos]
 
         for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
@@ -378,7 +388,6 @@ def my_matmul(
                 if c_index >= len(C_tiles):
                     # May not have pong iteration in some cases
                     break
-                tgs.append(rt.task_group())
 
                 row_base = tb * tb_max_n_rows + pingpong * tb_max_n_rows // 2
                 current_tb_n_rows = min(
@@ -414,7 +423,8 @@ def my_matmul(
                         C,
                         tap=C_tiles[c_index],
                         wait=True,
-                        task_group=tgs[-1],
+                        task_group=tg,
+                        placement=Tile(col, 0),
                     )
                     c_index += 1
 
@@ -446,7 +456,8 @@ def my_matmul(
                             A_l3l2_fifos[col].prod(),
                             A,
                             tap=A_tiles[tile_offset],
-                            task_group=tgs[-1],
+                            task_group=tg,
+                            placement=Tile(col, 0),
                         )
                         # Use the calculated sizes/strides/offsets to record the data movement
                         # caused by the above call to npu_dma_memcpy_nd.
@@ -474,17 +485,17 @@ def my_matmul(
                             B_l3l2_fifos[col].prod(),
                             B,
                             tap=B_tiles[col],
-                            task_group=tgs[-1],
+                            task_group=tg,
+                            placement=Tile(col, 0),
                         )
 
                         # These lines do not change MLIR output at all - they are just for recording data movement
                         A_taps.append(A_tiles[tile_offset])
                         B_taps.append(B_tiles[col])
                 if tb > 0 or (tb == 0 and pingpong > 0):
-                    rt.finish_task_group(tgs[-2])
-                    del tgs[-2]
-        rt.finish_task_group(tgs[-1])
-        del tgs[-1]
+                    rt.finish_task_group(tg)
+                    tg = rt.task_group()
+        rt.finish_task_group(tg)
 
     if generate_taps:
         # If generate taps is true, return a representation of tensor access patterns
