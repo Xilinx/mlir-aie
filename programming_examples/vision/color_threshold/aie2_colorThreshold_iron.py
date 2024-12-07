@@ -43,13 +43,15 @@ def color_threshold(dev, width, height):
     inOOB_L3L2 = ObjectFifo(line_channels_ty, name="inOOB_L3L2")
     of_offsets = [np.prod(np_ndarray_type_get_shape(line_ty)) * i for i in range(4)]
     in00B_L2L1s = inOOB_L3L2.cons().split(
-        of_offsets, types=[line_ty] * 4, names=[f"inOOB_L2L1_{i}" for i in range(4)]
+        of_offsets, obj_types=[line_ty] * 4, names=[f"inOOB_L2L1_{i}" for i in range(4)]
     )
 
     # Output RGBA
     outOOB_L2L3 = ObjectFifo(line_channels_ty, name="outOOB_L2L3")
     outOOB_L1L2s = outOOB_L2L3.prod().join(
-        of_offsets, types=[line_ty] * 4, names=[f"outOOB_L1L2_{i}" for i in range(4)]
+        of_offsets,
+        obj_types=[line_ty] * 4,
+        names=[f"outOOB_L1L2_{i}" for i in range(4)],
     )
 
     # Runtime parameters

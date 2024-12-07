@@ -55,7 +55,9 @@ def my_eltwise_mul(trace_size):
         for i in range(n_cores)
     ]
     inA_fifos = inA.cons().split(
-        of_offsets, types=[A_ty] * n_cores, names=[f"memA{i}" for i in range(n_cores)]
+        of_offsets,
+        obj_types=[A_ty] * n_cores,
+        names=[f"memA{i}" for i in range(n_cores)],
     )
 
     # Input B
@@ -65,7 +67,9 @@ def my_eltwise_mul(trace_size):
         for i in range(n_cores)
     ]
     inB_fifos = inB.cons().split(
-        of_offsets, types=[B_ty] * n_cores, names=[f"memB{i}" for i in range(n_cores)]
+        of_offsets,
+        obj_types=[B_ty] * n_cores,
+        names=[f"memB{i}" for i in range(n_cores)],
     )
 
     # Output C
@@ -75,7 +79,9 @@ def my_eltwise_mul(trace_size):
         for i in range(n_cores)
     ]
     outC_fifos = outC.prod().join(
-        of_offsets, types=[C_ty] * n_cores, names=[f"memC{i}" for i in range(n_cores)]
+        of_offsets,
+        obj_types=[C_ty] * n_cores,
+        names=[f"memC{i}" for i in range(n_cores)],
     )
 
     def core_fn(of_a, of_b, of_c, eltwise_mul):

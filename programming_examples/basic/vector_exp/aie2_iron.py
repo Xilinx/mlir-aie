@@ -38,10 +38,10 @@ def my_eltwise_exp():
     A_fifo = ObjectFifo(memtile_ty, name="inA")
     C_fifo = ObjectFifo(memtile_ty, name="outC")
     a_fifos = A_fifo.cons().split(
-        offsets=[n * i for i in range(n_cores)], types=[tile_ty] * n_cores
+        offsets=[n * i for i in range(n_cores)], obj_types=[tile_ty] * n_cores
     )
     c_fifos = C_fifo.prod().join(
-        offsets=[n * i for i in range(n_cores)], types=[tile_ty] * n_cores
+        offsets=[n * i for i in range(n_cores)], obj_types=[tile_ty] * n_cores
     )
 
     def core_fn(a_in, c_out, exp_bf16_1024):

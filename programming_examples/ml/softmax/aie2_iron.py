@@ -58,12 +58,12 @@ def vector_softmax(trace_size):
         of_c_offsets = [n * i for i in range(n_cores)]
     inA_fifos = inA.cons().split(
         of_a_offsets,
-        types=[tile_ty] * n_cores,
+        obj_types=[tile_ty] * n_cores,
         names=[f"memA{i}" for i in range(n_cores)],
     )
     outC_fifos = outC.prod().join(
         of_c_offsets,
-        types=[tile_ty] * n_cores,
+        obj_types=[tile_ty] * n_cores,
         names=[f"memC{i}" for i in range(n_cores)],
     )
 

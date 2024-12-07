@@ -51,7 +51,9 @@ def my_relu(trace_size):
         for i in range(n_cores)
     ]
     inA_fifos = inA.cons().split(
-        of_offsets, types=[A_ty] * n_cores, names=[f"memA{i}" for i in range(n_cores)]
+        of_offsets,
+        obj_types=[A_ty] * n_cores,
+        names=[f"memA{i}" for i in range(n_cores)],
     )
 
     # Output C
@@ -61,7 +63,9 @@ def my_relu(trace_size):
         for i in range(n_cores)
     ]
     outC_fifos = outC.prod().join(
-        of_offsets, types=[C_ty] * n_cores, names=[f"memC{i}" for i in range(n_cores)]
+        of_offsets,
+        obj_types=[C_ty] * n_cores,
+        names=[f"memC{i}" for i in range(n_cores)],
     )
 
     def core_fn(of_a, of_c, relu_fn):

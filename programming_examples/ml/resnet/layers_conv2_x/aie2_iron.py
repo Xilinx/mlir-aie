@@ -275,7 +275,7 @@ for i in range(n_cols):
         .split(
             wts_offsets,
             depths=[1, 1, 1],
-            types=[layer1_wts_sizes[i], weightsLayer2_ty, layer3_wts_sizes[i]],
+            obj_types=[layer1_wts_sizes[i], weightsLayer2_ty, layer3_wts_sizes[i]],
             names=[f"wts_buf_{i}{j}" for j in range(3)],
             placement=Tile(i, 1),
         )

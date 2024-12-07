@@ -132,7 +132,7 @@ def bottleneck4AIEs():
     of_offsets = [0, weightsL1_sz, weightsL1_sz + weightsL2_sz]
     of_wts_buf_00, wts_buf_01, wts_buf_02 = inOF_wts_0_L3L2.cons().split(
         of_offsets,
-        types=[weightsLayer1_ty, weightsLayer2_ty, weightsLayer3_ty],
+        obj_types=[weightsLayer1_ty, weightsLayer2_ty, weightsLayer3_ty],
         names=[f"wts_buf_0{i}" for i in range(3)],
     )
 
