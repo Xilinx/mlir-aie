@@ -8,7 +8,7 @@ import argparse
 from ml_dtypes import bfloat16
 import numpy as np
 
-from aie.iron.runtime import Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU1Col2, NPU1Col4, Tile
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
@@ -405,7 +405,7 @@ def my_matmul(
                     #     |                |
                     #      ----------------
                     rt.drain(
-                        C_l2l3_fifos[col],
+                        C_l2l3_fifos[col].cons(),
                         C,
                         tap=C_tiles[c_index],
                         wait=True,

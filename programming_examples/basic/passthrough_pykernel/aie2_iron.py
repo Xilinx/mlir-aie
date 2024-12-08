@@ -8,7 +8,7 @@
 import numpy as np
 import sys
 
-from aie.iron.runtime import ObjectFifo, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1
 from aie.helpers.dialects.ext.func import func

@@ -6,7 +6,7 @@
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 import numpy as np
 
-from aie.iron.runtime import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col3, Tile
 from aie.helpers.dialects.ext.scf import _for as range_

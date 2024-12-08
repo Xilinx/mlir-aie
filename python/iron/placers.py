@@ -70,7 +70,8 @@ class SequentialPlacer(Placer):
                 buffer.place(worker.tile)
 
         # Prepare to loop
-        compute_idx = compute_idx % len(computes)
+        if len(computes) > 0:
+            compute_idx = compute_idx % len(computes)
 
         for of in object_fifos:
             of_endpoints = of.all_of_endpoints()

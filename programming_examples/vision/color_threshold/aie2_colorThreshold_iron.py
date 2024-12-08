@@ -7,7 +7,7 @@
 import numpy as np
 import sys
 
-from aie.iron.runtime import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1
 
