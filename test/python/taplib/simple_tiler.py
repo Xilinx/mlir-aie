@@ -156,7 +156,7 @@ def simple_tiler():
 
     tiles_repeat = TensorTiler2D.simple_tiler((9, 4), (3, 2), pattern_repeat=5)
     tile_repeat0_0 = TensorAccessPattern(
-        (9, 4), offset=0, sizes=[1, 5, 3, 2], strides=[0, 0, 4, 1]
+        (9, 4), offset=0, sizes=[5, 1, 3, 2], strides=[0, 0, 4, 1]
     )
     assert tiles_repeat[0] == tile_repeat0_0
 
@@ -180,7 +180,7 @@ def simple_tiler():
         (9, 4), (3, 2), tile_col_major=True, pattern_repeat=5
     )
     tile_repeat0_0 = TensorAccessPattern(
-        (9, 4), offset=0, sizes=[1, 5, 2, 3], strides=[0, 0, 1, 4]
+        (9, 4), offset=0, sizes=[5, 1, 2, 3], strides=[0, 0, 1, 4]
     )
     assert tiles_repeat[0] == tile_repeat0_0
 

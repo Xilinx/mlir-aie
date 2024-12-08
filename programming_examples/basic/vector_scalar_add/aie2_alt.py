@@ -1,4 +1,4 @@
-# vector_scalar_add/aie2.py -*- Python -*-
+# vector_scalar_add/aie2_alt.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -21,7 +21,7 @@ AIE_TILE_WIDTH = 32
 def my_vector_bias_add():
     @device(AIEDevice.npu1_1col)
     def device_body():
-        mem_tile_ty = np.ndarray[(AIE_TILE_WIDTH,), np.dtype[np.int32]]
+        mem_tile_ty = np.ndarray[(MEM_TILE_WIDTH,), np.dtype[np.int32]]
         aie_tile_ty = np.ndarray[(AIE_TILE_WIDTH,), np.dtype[np.int32]]
         all_data_ty = np.ndarray[(PROBLEM_SIZE,), np.dtype[np.int32]]
 
