@@ -49,11 +49,6 @@ declare_mlir_python_sources(AIEPythonSources.Iron
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
     iron/*.py
-    iron/dataflow/*.py
-    iron/io/*py
-    iron/kernels/*.py
-    iron/phys/*.py
-    iron/experimental/*.py
 )
 
 declare_mlir_dialect_python_bindings(
