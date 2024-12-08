@@ -35,6 +35,7 @@ class ObjectFifo(Resolvable):
         name: str | None = None,
         dims_to_stream: list[Sequence[int]] | None = None,
         default_dims_from_stream_per_cons: list[Sequence[int]] | None = None,
+        plio: bool = False,
     ):
         self._default_depth = default_depth
         if isinstance(self._default_depth, int) and self._default_depth < 1:
@@ -44,7 +45,7 @@ class ObjectFifo(Resolvable):
         self._obj_type = obj_type
         self._dims_to_stream = dims_to_stream
         self._default_dims_from_stream_per_cons = default_dims_from_stream_per_cons
-
+        self._plio = plio
         if name is None:
             self.name = f"of{ObjectFifo.__get_index()}"
         else:
@@ -202,6 +203,7 @@ class ObjectFifo(Resolvable):
                 np_ndarray_type_to_memref_type(self._obj_type),
                 dimensionsToStream=self._dims_to_stream,
                 dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
+                plio=self._plio,
                 loc=loc,
                 ip=ip,
             )
@@ -352,6 +354,7 @@ class ObjectFifoHandle(Resolvable):
         names: list[str] | None = None,
         dims_to_stream: list[list[Sequence[int] | None]] | None = None,
         dims_from_stream: list[list[Sequence[int] | None]] | None = None,
+        plio: bool = False,
     ) -> list[ObjectFifo]:
         if not self._is_prod:
             raise ValueError(f"Cannot join() a {self.handle_type} ObjectFifoHandle")
@@ -394,6 +397,7 @@ class ObjectFifoHandle(Resolvable):
                     name=names[i],
                     default_depth=depths[i],
                     dims_to_stream=dims_to_stream[i],
+                    plio=plio,
                 )
             )
 
@@ -413,6 +417,7 @@ class ObjectFifoHandle(Resolvable):
         names: list[str] | None = None,
         dims_to_stream: list[list[Sequence[int]]] | None = None,
         dims_from_stream: list[list[Sequence[int]]] | None = None,
+        plio: bool = False,
     ) -> list[ObjectFifo]:
         if self._is_prod:
             raise ValueError(f"Cannot split() a {self.handle_type} ObjectFifoHandle")
@@ -456,6 +461,7 @@ class ObjectFifoHandle(Resolvable):
                     default_depth=depths[i],
                     dims_to_stream=dims_to_stream[i],
                     default_dims_from_stream_per_cons=dims_from_stream[i],
+                    plio=plio,
                 )
             )
 
@@ -472,6 +478,7 @@ class ObjectFifoHandle(Resolvable):
         name: str | None = None,
         dims_to_stream: list[Sequence[int]] | None = None,
         dims_from_stream: list[Sequence[int]] | None = None,
+        plio: bool = False,
     ) -> ObjectFifo:
         if self._is_prod:
             raise ValueError(f"Cannot forward a {self.handle_type} ObjectFifoHandle")
@@ -496,6 +503,7 @@ class ObjectFifoHandle(Resolvable):
             names=name,
             dims_to_stream=dims_to_stream,
             dims_from_stream=dims_from_stream,
+            plio=plio,
         )
         return forward_fifo[0]
 

@@ -13,8 +13,6 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, XCVC1902
 
 N = 4096
-dev = None
-col = 0
 line_size = 1024
 
 if len(sys.argv) > 1:
@@ -28,9 +26,6 @@ if len(sys.argv) > 2:
         dev = XCVC1902()
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
-
-if len(sys.argv) > 3:
-    col = int(sys.argv[3])
 
 vector_ty = np.ndarray[(N,), np.dtype[np.int32]]
 line_ty = np.ndarray[(line_size,), np.dtype[np.int32]]
