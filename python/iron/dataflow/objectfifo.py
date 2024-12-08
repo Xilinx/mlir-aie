@@ -204,8 +204,6 @@ class ObjectFifo(Resolvable):
                 dimensionsToStream=self._dims_to_stream,
                 dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
                 plio=self._plio,
-                loc=loc,
-                ip=ip,
             )
 
             if isinstance(self._prod.endpoint, ObjectFifoLink):

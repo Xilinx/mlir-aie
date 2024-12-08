@@ -400,8 +400,6 @@ class object_fifo(ObjectFifoCreateOp):
         plio=None,
         padDimensions=None,
         disable_synchronization=None,
-        ip=None,
-        loc=None,
     ):
         self.datatype = try_convert_np_type_to_mlir_type(datatype)
         if not isinstance(consumerTiles, List):
@@ -432,8 +430,6 @@ class object_fifo(ObjectFifoCreateOp):
             padDimensions=padDimensions,
             disable_synchronization=disable_synchronization,
             initValues=initValues,
-            ip=ip,
-            loc=loc,
         )
 
     def acquire(self, port, num_elem):
@@ -472,9 +468,7 @@ class object_fifo(ObjectFifoCreateOp):
 class object_fifo_link(ObjectFifoLinkOp):
     """Specialize ObjectFifoLinkOp class constructor to take python variables"""
 
-    def __init__(
-        self, fifoIns, fifoOuts, srcOffsets=[], dstOffsets=[], ip=None, loc=None
-    ):
+    def __init__(self, fifoIns, fifoOuts, srcOffsets=[], dstOffsets=[]):
         if not isinstance(fifoIns, List):
             fifoIns = [fifoIns]
         if not isinstance(fifoOuts, List):
@@ -490,8 +484,6 @@ class object_fifo_link(ObjectFifoLinkOp):
             fifoOuts=fifoOutRefs,
             src_offsets=srcOffsets,
             dst_offsets=dstOffsets,
-            ip=ip,
-            loc=loc,
         )
 
 
@@ -894,7 +886,7 @@ class TileOp(TileOp):
         )
 
     def __eq__(self, other):
-        if other == None:
+        if not isinstance(other, TileOp):
             return False
         return tuple(map(int, (self.col, self.row))) == tuple(
             map(int, (other.col, other.row))
