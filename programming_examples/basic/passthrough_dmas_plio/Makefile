@@ -15,22 +15,13 @@ include ${srcdir}/../../makefile-common
 targetname = passThroughDMAs
 LENGTH ?= 1024
 
-aie_input_py_src=aie2-input-plio.py
-aie_output_py_src=aie2-output-plio.py
-use_iron?=0
-
-ifeq (${use_iron}, 1)
-aie_input_py_src=aie2-input-plio-iron.py
-aie_output_py_src=aie2-output-plio-iron.py
-endif
-
 all: input output
 
-build/aie-input-plio.mlir: ${srcdir}/${aie_input_py_src}
+build/aie-input-plio.mlir: ${srcdir}/aie2-input-plio.py
 	mkdir -p ${@D}
 	python3 $< ${LENGTH} > $@
 
-build/aie-output-plio.mlir: ${srcdir}/${aie_output_py_src}
+build/aie-output-plio.mlir: ${srcdir}/aie2-output-plio.py
 	mkdir -p ${@D}
 	python3 $< ${LENGTH} > $@
 
