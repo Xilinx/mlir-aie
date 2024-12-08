@@ -17,10 +17,6 @@ def task_fn(a, b):
             b[i, j] = a[i, j] + 1
 
 
-import sys
-
-sys.exit(-1)
-
 task_runner = aie.task_runner(task_fn, [(A, TILE_DIMS)], [(B, TILE_DIMS)], NUM_WORKERS)
 task_runner.run()
 
