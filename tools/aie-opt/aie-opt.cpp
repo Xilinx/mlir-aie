@@ -66,12 +66,40 @@ int main(int argc, char **argv) {
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
     return cir::createConvertMLIRToLLVMPass();
   });
+  mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
+    return mlir::createCIRCanonicalizePass();
+  });
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
     return mlir::createCIRSimplifyPass();
   });
-
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return mlir::createLifetimeCheckPass();
+  });
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return mlir::createDropASTPass();
+  });
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return mlir::createLoweringPreparePass();
+  });
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
     return mlir::createSCFPreparePass();
+  });
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return mlir::createHoistAllocasPass();
+  });
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return mlir::createGotoSolverPass();
+  });
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return mlir::createIdiomRecognizerPass();
+  });
+  mlir::registerPass(
+      []() -> std::unique_ptr<mlir::Pass> { return mlir::createLibOptPass(); });
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return mlir::createCallConvLoweringPass();
+  });
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return cir::createConvertCIRToMLIRPass();
   });
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
     return cir::createConvertCIRToMLIRPass();
