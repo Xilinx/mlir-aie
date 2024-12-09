@@ -27,15 +27,15 @@ class AIE_Op<string mnemonic, list<Trait> traits = []> :
 
 
 def AIE_DeviceOp: AIE_Op<"device", [
-    AIETarget, HasParent<"mlir::ModuleOp">,
+    AIETarget,
     SymbolTable, SingleBlockImplicitTerminator<"EndOp">, IsolatedFromAbove
   ]> {
   let summary = "Define an AIE design targetting a complete device";
   let description = [{
     This operation describes a design that executes on a particular AIEngine device.
-    It exists at the toplevel of a design; although currently it does not replace the
-    default toplevel module in MLIR, the intention is that this could be the case
-    in the future.
+
+    It does not replace the default toplevel module in MLIR since it can be
+    possible to have several devices in the same module.
 
     When using this operation, all resources in a physical device are available and
     the design does not need to be concerned with other potential users of a physical
@@ -642,13 +642,13 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
   let description = [{
     A logical packet-switched flow between tiles.  During place and
     route, this is replaced by MasterSets and PacketRules inside
-    switchboxes. 
-    
-    The optional attribute keep_pkt_header indicates whether each 
-    data packet's packet header gets preserved at the flow's 
+    switchboxes.
+
+    The optional attribute keep_pkt_header indicates whether each
+    data packet's packet header gets preserved at the flow's
     destination. The optional attribute priority_route indicates
-    whether the packet flow is routed in priority over other flows, 
-    so that they always get allocated with the same master, slave 
+    whether the packet flow is routed in priority over other flows,
+    so that they always get allocated with the same master, slave
     ports, arbiters and master selects (msel).
 
     Example:
@@ -868,9 +868,9 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     ## DMA constant padding on AIE-ML Devices
 
     AIE-ML devices can apply constant padding at the buffer descriptor level, described with pairs of padding
-    counts before and after a dimension, to all dimensions in the data layout transformations. The padding 
-    counts can be supplied to the `dma_bd` through an optional argument, an array of "tuple-like" attributes 
-    `bd_pad_layout<const_pad_before, const_pad_after>`, followed by an optional argument `const_val` (default 
+    counts before and after a dimension, to all dimensions in the data layout transformations. The padding
+    counts can be supplied to the `dma_bd` through an optional argument, an array of "tuple-like" attributes
+    `bd_pad_layout<const_pad_before, const_pad_after>`, followed by an optional argument `const_val` (default
     is 0). All counts are expressed in multiples of the element width.
   }];
 
@@ -1471,8 +1471,8 @@ def AIE_CascadeFlowOp: AIE_Op<"cascade_flow", []> {
   );
   let summary = "A cascade connection between tiles";
   let description = [{
-    The `aie.cascade_flow` operation represents a cascade connection between two `aie.tile` operations.  
-    During lowering, this is replaced by `aie.configure_cascade` operations for each `aie.tile` based on 
+    The `aie.cascade_flow` operation represents a cascade connection between two `aie.tile` operations.
+    During lowering, this is replaced by `aie.configure_cascade` operations for each `aie.tile` based on
     their relative placement to one another.
 
     Example:
@@ -1495,7 +1495,7 @@ def AIE_CascadeFlowOp: AIE_Op<"cascade_flow", []> {
 def AIE_ConfigureCascadeOp: AIE_Op<"configure_cascade", [HasParent<"DeviceOp">]> {
   let summary = "An op to configure the input and output directions of the cascade for a single AIE tile";
   let description = [{
-    An operation to configure the cascade on a single tile in both the input and the output 
+    An operation to configure the cascade on a single tile in both the input and the output
     directions.
 
     Example:
@@ -1670,7 +1670,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
         DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
         DefaultValuedAttr<BoolAttr, "false">:$plio,
-        // disable_synchronization==true will skip lock generation for 
+        // disable_synchronization==true will skip lock generation for
         // objectfifo synchronous accesses
         DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
         // via_shared_mem==0 means use producer tile's memory module
@@ -1919,7 +1919,7 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
   }];
 
   let arguments = (
-    ins AIE_ObjectFifoSubviewType:$subview, 
+    ins AIE_ObjectFifoSubviewType:$subview,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$index
   );
 
@@ -2011,11 +2011,11 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
 def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol, SkipAccessibilityCheckTrait]> {
   let summary = "Definition of a Parametrizable Chain of Buffer Descriptors";
   let description = [{
-    This operation allows you to define buffer descriptor chains with parametrizable inputs. 
+    This operation allows you to define buffer descriptor chains with parametrizable inputs.
     This is useful for common patterns such as double buffering (ping-pong) that may look identical but use different input/output buffers and locks.
     Currently, only buffers and locks are parametrizable.
 
-    Once defined, an abstract BD chain can be used elsewhere using AIEX ops in the runtime sequence. 
+    Once defined, an abstract BD chain can be used elsewhere using AIEX ops in the runtime sequence.
     In the future, abstract BD chains will also be usable elsewhere, inside the static configuration.
     At its usage sites, the abstract BD chain will be concretized with the given input arguments.
   }];

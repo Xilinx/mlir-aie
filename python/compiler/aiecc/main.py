@@ -211,7 +211,8 @@ mem_topology = {
 
 
 def emit_partition(mlir_module_str, kernel_id="0x901", start_columns=None):
-    with Context(), Location.unknown():
+    with Context() as ctx, Location.unknown():
+        ctx.allow_unregistered_dialects = True
         module = Module.parse(mlir_module_str)
         tiles = find_ops(
             module.operation,
@@ -271,7 +272,8 @@ def emit_partition(mlir_module_str, kernel_id="0x901", start_columns=None):
 
 
 def generate_cores_list(mlir_module_str):
-    with Context(), Location.unknown():
+    with Context() as ctx, Location.unknown():
+        ctx.allow_unregistered_dialects = True
         module = Module.parse(mlir_module_str)
         return [
             (
@@ -331,6 +333,7 @@ def run_passes(pass_pipeline, mlir_module_str, outputfile=None, verbose=False):
     if verbose:
         print("Running:", pass_pipeline)
     with Context() as ctx, Location.unknown():
+        ctx.allow_unregistered_dialects = True
         module = Module.parse(mlir_module_str)
         pm = PassManager.parse(pass_pipeline)
         try:
@@ -563,7 +566,7 @@ class FlowRunner:
     async def process_cdo(self):
         from aie.dialects.aie import generate_cdo
 
-        with Context(), Location.unknown():
+        with Context() as ctx, Location.unknown():
             for elf in glob.glob("*.elf"):
                 try:
                     shutil.copy(elf, self.tmpdirname)
@@ -574,6 +577,7 @@ class FlowRunner:
                     shutil.copy(elf_map, self.tmpdirname)
                 except shutil.SameFileError:
                     pass
+            ctx.allow_unregistered_dialects = True
             input_physical = Module.parse(
                 await read_file_async(self.prepend_tmp("input_physical.mlir"))
             )
@@ -1271,6 +1275,10 @@ def main():
 
     try:
         with Context() as ctx, Location.unknown():
+            # To avoid
+            # Unable to parse module assembly:
+            # error: "-":1:101: #"cir"<"lang<cxx>"> : 'none' attribute created with unregistered dialect. If this is intended, please call allowUnregisteredDialects() on the MLIRContext, or use -allow-unregistered-dialect with the MLIR opt tool used
+            ctx.allow_unregistered_dialects = True
             with open(opts.filename, "r") as f:
                 module = Module.parse(f.read())
             module_str = str(module)
