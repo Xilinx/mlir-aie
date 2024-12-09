@@ -7,7 +7,6 @@
 import argparse
 from ml_dtypes import bfloat16
 import numpy as np
-import sys
 
 from aie.extras.context import mlir_mod_ctx
 

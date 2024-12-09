@@ -7,12 +7,12 @@
 import argparse
 from ml_dtypes import bfloat16
 import numpy as np
-import sys
 
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.helpers.dialects.ext.scf import _for as range_
+from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
 
 dtype_map = {
     "bf16": bfloat16,
@@ -42,9 +42,15 @@ def main():
         "--dtype_out", type=str, choices=["bf16", "i16", "f32", "i32"], default="i32"
     )
     argparser.add_argument("--trace_size", type=int, default=0)
+    argparser.add_argument(
+        "--generate-taps",
+        action="store_true",
+        help="Generate TensorAccessPatterns, a Python object to represent each data transfer"
+        "of the input/output matrices. These objects can be used for visualization.",
+    )
     args = argparser.parse_args()
     with mlir_mod_ctx() as ctx:
-        my_matmul(
+        maybe_taps = my_matmul(
             args.M,
             args.K,
             args.N,
@@ -55,16 +61,32 @@ def main():
             args.dtype_in,
             args.dtype_out,
             args.trace_size,
+            args.generate_taps,
         )
         # print(ctx.module.operation.verify())
         print(ctx.module)
+
+    if args.generate_taps:
+        return maybe_taps
 
 
 def ceildiv(a, b):
     return (a + b - 1) // b
 
 
-def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, trace_size):
+def my_matmul(
+    M,
+    K,
+    N,
+    m,
+    k,
+    n,
+    n_aie_cols,
+    dtype_in_str,
+    dtype_out_str,
+    trace_size,
+    generate_taps=False,
+):
 
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
@@ -127,6 +149,12 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, trace_s
         dev = AIEDevice.npu1_2col
     elif n_aie_cols == 4:
         dev = AIEDevice.npu1_4col
+
+    # These will hold TensorAccessPattern objects that represent the runtime
+    # npu_dma_memcpy_nd operations of this design. They are only used if generate_taps is true
+    A_taps = []
+    B_taps = []
+    C_taps = []
 
     @device(dev)
     def device_body():
@@ -349,60 +377,75 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, trace_s
                 for col in range(n_aie_cols):
                     C_col_offset = col * n
                     C_offset = C_col_offset + C_row_offset
-
+                    C_sizes = [tb_n_rows, N // n // n_aie_cols, m, n]
+                    C_strides = [m * N, n * n_aie_cols, N, 1]
+                    C_tap = TensorAccessPattern(
+                        (M, N), C_offset, sizes=C_sizes, strides=C_strides
+                    )
                     c_task = shim_dma_single_bd_task(
                         C_l2l3_fifos[col],
                         C,
-                        offset=C_offset,
-                        sizes=[tb_n_rows, N // n // n_aie_cols, m, n],
-                        strides=[m * N, n * n_aie_cols, N, 1],
+                        tap=C_tap,
                         issue_token=True,
                     )
                     dma_start_task(c_task)
                     out_tasks.append(c_task)
+                    C_taps.append(C_tap)
 
                     for tile_row in range(tb_n_rows):
                         A_block_offset = ((tb * tb_max_n_rows) + tile_row) * m * K
                         A_row_offset = col * n_A_tiles_per_shim * k
                         A_offset = A_block_offset + A_row_offset
+                        A_sizes = [
+                            N // n // n_aie_cols,
+                            K // k // n_aie_rows,
+                            m * n_A_tiles_per_shim,
+                            k,
+                        ]
+                        A_strides = [0, k * n_aie_rows, K, 1]
+                        A_tap = TensorAccessPattern(
+                            (M, K), A_offset, sizes=A_sizes, strides=A_strides
+                        )
                         B_col_offset = col * n
                         a_task = shim_dma_single_bd_task(
                             A_l3l2_fifos[col],
                             A,
-                            offset=A_offset,
-                            sizes=[
-                                N // n // n_aie_cols,
-                                K // k // n_aie_rows,
-                                m * n_A_tiles_per_shim,
-                                k,
-                            ],
-                            strides=[0, k * n_aie_rows, K, 1],
+                            tap=A_tap,
                         )
                         dma_start_task(a_task)
                         in_tasks.append(a_task)
+                        A_taps.append(A_tap)
 
+                        B_sizes = [
+                            N // n // n_aie_cols,
+                            K // k // n_aie_rows,
+                            k * n_aie_rows,
+                            n,
+                        ]
+                        B_strides = [n * n_aie_cols, k * n_aie_rows * N, N, 1]
+                        B_tap = TensorAccessPattern(
+                            (K, N), B_col_offset, sizes=B_sizes, strides=B_strides
+                        )
                         b_task = shim_dma_single_bd_task(
-                            B_l3l2_fifos[col],
-                            B,
-                            offset=B_col_offset,
-                            sizes=[
-                                N // n // n_aie_cols,
-                                K // k // n_aie_rows,
-                                k * n_aie_rows,
-                                n,
-                            ],
-                            strides=[n * n_aie_cols, k * n_aie_rows * N, N, 1],
+                            B_l3l2_fifos[col], B, tap=B_tap
                         )
                         dma_start_task(b_task)
                         in_tasks.append(b_task)
+                        B_taps.append(B_tap)
                 dma_await_task(*out_tasks)
                 out_tasks = []
                 dma_free_task(*in_tasks)
                 in_tasks = []
 
+    if generate_taps:
+        # If generate taps is true, return a representation of tensor access patterns
+        # representing all the npu_dma_memcpy_nd runtime sequence operations per input/ouput tensor.
+        return (
+            TensorAccessSequence.from_taps(A_taps),
+            TensorAccessSequence.from_taps(B_taps),
+            TensorAccessSequence.from_taps(C_taps),
+        )
+
 
 if __name__ == "__main__":
     main()
-else:
-    print("Not meant to be imported")
-    sys.exit(1)

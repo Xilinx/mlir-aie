@@ -24,11 +24,18 @@ kernels=mm_${m}x${k}x${n}
 aieargs+=-m $m -k $k -n $n
 target_suffix=${M}x${K}x${N}_${m}x${k}x${n}
 use_alt?=0
+use_iron?=0
 
 ifeq (${use_alt}, 1)
 aie_py_src=aie2_alt.py
+ifeq (${use_iron}, 1)
+$(error Cannot specify both alternative design and IRON)
+endif
 endif
 
+ifeq (${use_iron}, 1)
+aie_py_src=aie2_iron.py
+endif
 include ${srcdir}/../makefile-common
 
 build/mm_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
