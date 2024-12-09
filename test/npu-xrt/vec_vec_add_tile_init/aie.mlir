@@ -16,6 +16,7 @@ module {
     memref.global "public" @in1 : memref<16xi32>
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
+    %tile_0_3 = aie.tile(0, 3)
     %out_buff_0 = aie.buffer(%tile_0_2) {sym_name = "out_buff_0"} : memref<16xi32> 
     %out_buff_1 = aie.buffer(%tile_0_2) {sym_name = "out_buff_1"} : memref<16xi32> 
     %out_prod_lock = aie.lock(%tile_0_2, 4) {init = 2 : i32, sym_name = "out_prod_lock"}
@@ -27,6 +28,9 @@ module {
     %in1_cons_cons_lock = aie.lock(%tile_0_2, 1) {init = 0 : i32, sym_name = "in1_cons_cons_lock"}
     aie.flow(%tile_0_0, DMA : 0, %tile_0_2, DMA : 0)
     aie.flow(%tile_0_2, DMA : 0, %tile_0_0, DMA : 0)
+    %core_0_3 = aie.core(%tile_0_3) {
+      aie.end
+    }
     %core_0_2 = aie.core(%tile_0_2) {
       %c16 = arith.constant 16 : index
       %c0 = arith.constant 0 : index
