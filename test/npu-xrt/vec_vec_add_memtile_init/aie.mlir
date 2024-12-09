@@ -18,6 +18,7 @@ module {
     memref.global "public" @in1 : memref<16xi32>
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
+    %tile_1_1 = aie.tile(1, 1)
     %tile_0_2 = aie.tile(0, 2)
     %out_buff_0 = aie.buffer(%tile_0_2) {sym_name = "out_buff_0"} : memref<16xi32> 
     %out_buff_1 = aie.buffer(%tile_0_2) {sym_name = "out_buff_1"} : memref<16xi32> 
@@ -215,6 +216,10 @@ module {
       aie.use_lock(%in2_mem_prod_lock, Release, 1)
       aie.next_bd ^bb1
     ^bb3:
+      aie.end
+    }
+
+    %memtile_dma_1_1 = aie.memtile_dma(%tile_1_1) {
       aie.end
     }
   }
