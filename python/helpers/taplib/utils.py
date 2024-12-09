@@ -4,6 +4,16 @@ from typing import Sequence
 
 
 def ceildiv(a, b):
+    """
+    A helper function to calculate ceiling division without
+
+    Args:
+        a (_type_): The dividend
+        b (_type_): The devisor
+
+    Returns:
+        _type_: The result
+    """
     return -(a // -b)
 
 
@@ -13,6 +23,22 @@ def validate_and_clean_sizes_strides(
     allow_none: bool = False,
     expected_dims: int | None = None,
 ) -> tuple[Sequence[int] | None, Sequence[int] | None]:
+    """
+    This is a helper function to validate sizes, strides and remove any
+    unused values from upper dimensions if possible.
+
+    Args:
+        sizes (Sequence[int] | None): The transformation strides, or None
+        strides (Sequence[int] | None): The transformation sizes, or None
+        allow_none (bool, optional): Allow sizes and/or strides to be None. Defaults to False.
+        expected_dims (int | None, optional): Number of dimensions expected for both sizes and strides. Defaults to None.
+
+    Raises:
+        ValueError: Validate sizes and strides
+
+    Returns:
+        tuple[Sequence[int] | None, Sequence[int] | None]: The 'cleaned' sizes and strides.
+    """
     if not allow_none:
         if sizes is None:
             raise ValueError("Sizes is None, but expected Sequence[int]")
@@ -82,6 +108,20 @@ def validate_and_clean_sizes_strides(
 def validate_tensor_dims(
     tensor_dims: Sequence[int], expected_dims: int | None = None
 ) -> Sequence[int]:
+    """
+    This is a helper function used to validate dimensions of tensors, namely
+    be ensuring each dimension is > 0 and the dimensionality is as expected.
+
+    Args:
+        tensor_dims (Sequence[int]): Tensor dimensions to check
+        expected_dims (int | None, optional): Expected number of dimensions. Defaults to None.
+
+    Raises:
+        ValueError: Validate the tensor dimensions
+
+    Returns:
+        Sequence[int]: The validated tensor dimensions.
+    """
     if not (expected_dims is None):
         if expected_dims < 1:
             raise ValueError(f"Expected dimensions ({expected_dims}) should be >= 1")
@@ -110,7 +150,21 @@ def validate_tensor_dims(
     return tensor_dims
 
 
-def validate_offset(offset: int, tensor_dims: Sequence[int] | None):
+def validate_offset(offset: int, tensor_dims: Sequence[int] | None) -> int:
+    """
+    This is a helper function to validate an offset into the tensor.
+    It primarily checks to see if the offset is a valid index to the tensor.
+
+    Args:
+        offset (int): The offset to check.
+        tensor_dims (Sequence[int] | None): The dimensions of the tensor the offset corresponds to.
+
+    Raises:
+        ValueError: Validate the offset.
+
+    Returns:
+        int: The validated offset.
+    """
     if offset < 0:
         raise ValueError(f"Offset must be >= 0 (offset={offset})")
     if tensor_dims:
