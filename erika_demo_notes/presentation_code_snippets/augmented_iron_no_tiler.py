@@ -24,7 +24,7 @@ MATRIX_WIDTH = 128
 TILE_HEIGHT = 8
 TILE_WIDTH = 16
 
-# Types, tile declarations, and AIE data movement with object fifos
+# Types, tile declarations, and data movement with object fifos
 matrix_ty = np.ndarray[(MATRIX_HEIGHT, MATRIX_WIDTH), np.dtype[np.int32]]
 tile_ty = np.ndarray[(TILE_HEIGHT, TILE_WIDTH), np.dtype[np.int32]]
 of_in = ObjectFifo(tile_ty)

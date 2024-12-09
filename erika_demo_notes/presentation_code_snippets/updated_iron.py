@@ -25,7 +25,7 @@ TILE_WIDTH = 16
 with mlir_mod_ctx() as ctx:
   @device(AIEDevice.npu1_1col)
   def device_body():
-    # Types, tile declarations, and AIE data movement with object fifos
+    # Types, tile declarations, and data movement with object fifos
     matrix_ty = np.ndarray[(MATRIX_HEIGHT, MATRIX_WIDTH), np.dtype[np.int32]]
     tile_ty = np.ndarray[(TILE_HEIGHT, TILE_WIDTH), np.dtype[np.int32]]
     ShimTile = tile(0, 0)
