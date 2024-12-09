@@ -88,6 +88,7 @@ def my_vector_add():
         @core(ComputeTile3)
         def core_body():
             pass
+
         # To/from AIE-array data movement
         @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
         def sequence(A, B, C):
