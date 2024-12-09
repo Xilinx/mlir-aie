@@ -16,7 +16,10 @@ from .visualization2d import animate_from_accesses, visualize_from_accesses
 
 class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
     """
-    TensorAccessSequence is a MutableSequence and an Iterable which is a thin wrapper around a list[TensorAccessPattern].
+    TensorAccessSequence is a MutableSequence and an Iterable. Generally, it is a thin wrapper around a list[TensorAccessPattern].
+
+    The TensorAccessSequence is useful as a container of TensorAccessPatterns so that a grouping of patterns may be
+    accessed in a particular order, or visualized or animated in sequence.
     """
 
     def __init__(
@@ -30,6 +33,28 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
         sizes_fn: Callable[[int, Sequence[int]], Sequence[int]] | None = None,
         strides_fn: Callable[[int, Sequence[int]], Sequence[int]] | None = None,
     ):
+        """A TensorAccessSequence is a sequence of TensorAccessPatterns modelled after a list.
+
+        The constructor can used given functions to generate a sequence of n steps. Allowed functions are the:
+        * offset_fn(step: int, current_offset: int) -> new_offset: int
+        * sizes_fn(step: int, current_sizes: Sequence[int]) -> new_sizes: Sequence[int]
+        * strides_fn(step: int, currrent_strides: Sequence[int]) -> new_strides: Sequence[int]
+
+        In lieu or in addition to a function, a default value for sizes/strides/offsets may also be set.
+
+        Args:
+            tensor_dims (Sequence[int]): Dimensions of the tensor. All TensorAccessPatterns in the sequence must share the tensor dimension.
+            num_steps (int): Number of steps (elements) in the sequence.
+            offset (int | None, optional): Offset into the sequence. Defaults to None.
+            sizes (Sequence[int] | None, optional): Sizes for the TensorAccessPatterns Defaults to None.
+            strides (Sequence[int] | None, optional): Strides for the TensorAccessPatterns in the sequence. Defaults to None.
+            offset_fn (Callable[[int, int], int] | None, optional): A function to calculate the offset at each step. Defaults to None.
+            sizes_fn (Callable[[int, Sequence[int]], Sequence[int]] | None, optional): A function to calculate the sizes at each step. Defaults to None.
+            strides_fn (Callable[[int, Sequence[int]], Sequence[int]] | None, optional): A function to calculate the strides at teach step. Defaults to None.
+
+        Raises:
+            ValueError: Parameters are validated
+        """
         self._current_step = 0
 
         # Check tensor dims, offset, sizes, strides
@@ -98,6 +123,21 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
 
     @classmethod
     def from_taps(cls, taps: Sequence[TensorAccessPattern]) -> TensorAccessSequence:
+        """
+        This alternative constructor creates a TensorAccessSequence from a sequence of TensorAccessPatterns.
+        This is an alternative to the traditional constructor, and is useful for patterns that are difficult
+        to express using the sizes/strides/offset functions.
+
+        Args:
+            taps (Sequence[TensorAccessPattern]): The sequence of tensor access patterns
+
+        Raises:
+            ValueError: At least one TensorAccessPattern must be specified
+            ValueError: All TensorAccessPatterns in a sequence must share tensor dimensions
+
+        Returns:
+            TensorAccessSequence: A newly constructor TensorAccessSequence object
+        """
         if len(taps) < 1:
             raise ValueError(
                 "Received no TensorAccessPatterns; must have at least one TensorAccessPatterns to create a TensorAccessSequence."
@@ -120,19 +160,55 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
         return tas
 
     def accesses(self) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Returns the access_order and access_count arrays of the TensorAccessPatterns in
+        the sequence applied sequentially to the tensor.
+
+        The access_order ndarray sequentially counts access to elements in the
+        tensor. If an element is accessed more than once, only the last count is reflected.
+
+        The access_count ndarray contains the number of times each element is
+        accessed by the tensor access pattern.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray]: access_order, access_count
+        """
         return self._calc_accesses(True, True)
 
     def access_order(self) -> np.ndarray:
+        """
+        The access_order ndarray sequentially counts access to elements in the
+        tensor. If an element is accessed more than once, only the last count is reflected.
+
+        The TensorAccessPatterns in the sequence are applied sequentially.
+
+        Returns:
+            np.ndarray: access_order
+        """
         access_order, _ = self._calc_accesses(calc_order=True, calc_count=False)
         return access_order
 
     def access_count(self) -> np.ndarray:
+        """
+        The access_count ndarray contains the number of times each element is
+        accessed by the tensor access pattern.
+
+        The TensorAccessPatterns in the sequence are applied sequentially.
+
+        Returns:
+            np.ndarray: access_count
+        """
         _, access_count = self._calc_accesses(calc_order=False, calc_count=True)
         return access_count
 
     def _calc_accesses(
         self, calc_order: bool, calc_count: bool
     ) -> tuple[np.ndarray, np.ndarray]:
+        # This is an internal method for calculating both the access_order and access_count
+        # arrays. If needed, it will create both at once to avoid looping through the tensor
+        # more than necessary.
+
+        # TODO: this function is not particularly efficient, and could be improved.
         if not calc_order and not calc_count:
             raise ValueError("Must select calc_order, calc_count, or both")
 
@@ -172,6 +248,20 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
     def animate(
         self, title: str | None = None, animate_access_count: bool = False
     ) -> animation.FuncAnimation:
+        """
+        Creates and returns a handle to a TensorAccessSequence animation. Each frame
+        in the animation represents one TensorAccessPattern in the sequence.
+
+        Args:
+            title (str | None, optional): The title of the animation. Defaults to None.
+            animate_access_count (bool, optional): Create an animation for the tensor access count, in addition to the tensor access order. Defaults to False.
+
+        Raises:
+            NotImplementedError: Not all dimensions of tensor may be visualized by animation at this time.
+
+        Returns:
+            animation.FuncAnimation: A handle to the animation, produced by the matplotlib.animation module.
+        """
         if len(self._tensor_dims) != 2:
             raise NotImplementedError(
                 "Visualization is only currently supported for 1- or 2-dimensional tensors"
@@ -216,6 +306,17 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
         show_plot: bool = True,
         plot_access_count: bool = False,
     ) -> None:
+        """Provides a visual of the TensorAccessSequence using a graph.
+
+        Args:
+            title (str | None, optional): The title of the graph. Defaults to None.
+            file_path (str | None, optional): The path to save the graph at. If None, it is not saved. Defaults to None.
+            show_plot (bool, optional): Show the plot; this is useful when running in a Jupyter notebook. Defaults to True.
+            plot_access_count (bool, optional): Plot the access count in addition to the access order. Defaults to False.
+
+        Raises:
+            NotImplementedError: Not all dimensions of tensor may be visualized.
+        """
         if len(self._tensor_dims) != 2:
             raise NotImplementedError(
                 "Visualization is only currently supported for 1- or 2-dimensional tensors"
@@ -239,6 +340,20 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
         )
 
     def compare_access_orders(self, other: TensorAccessSequence) -> bool:
+        """
+        This function creates an alternative way to compare access pattern sequences.
+        Sometimes access patterns with different sizes/strides are functionally equivalent;
+        to detect functional equivalency, this function uses iterators produced by
+        access_generator() to compare the access patterns. This is more performant than
+        comparing the numpy array access_order or access_count tensors, particularly
+        when comparing sequences containing multiple tensor access patterns.
+
+        Args:
+            other (TensorAccessSequence): The TensorAccessSequence to compare to
+
+        Returns:
+            bool: True is functionally equivalent; False otherwise.
+        """
         if len(self._taps) != len(other._taps):
             return False
         for my_tap, other_tap in zip(self._taps, other._taps):
