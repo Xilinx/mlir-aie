@@ -173,28 +173,32 @@ int main(int argc, const char *argv[]) {
 
   int errors = 0;
 
-  for (int i = 0; i < IMAGE_SIZE; i++) {
-    uint32_t row = i / IMAGE_WIDTH;
-    uint32_t col = i % IMAGE_WIDTH;
-    uint32_t s = bufInA[i];
-    uint32_t d = bufOut[i];
+  for (int row = 0; row < IMAGE_HEIGHT; row++) {
+    for (int col = 0; col < IMAGE_WIDTH; col++) {
+      uint32_t i = row * IMAGE_WIDTH + col;
+      uint32_t s = bufInA[i];
+      uint32_t d = bufOut[i];
 
-    if (row < TILE_HEIGHT && col < TILE_WIDTH) {
-      if (d != s + 1) {
-        errors++;
-        printf("[ERROR] row %d and col %d, %d != %d\n", row, col, s, d);
+      printf("%03d ", bufOut[i]);
+      if (row < TILE_HEIGHT && col < TILE_WIDTH) {
+        if (d != s + 1) {
+          errors++;
+          printf("[ERROR] row %d and col %d, %d != %d\n", row, col, s, d);
+        }
       }
-    } else {
-      if (d == s + 1) {
-        errors++;
-        printf("[ERROR] row %d and col %d, %d == %d -- this was not supposed "
-               "to be changed\n",
-               row, col, s, d);
+      /*else {
+        if (d == s + 1) {
+          errors++;
+          printf("[ERROR] row %d and col %d, %d == %d -- this was not supposed "
+                "to be changed\n",
+                row, col, s, d);
+        }
       }
+      printf("s[%d, %d] = 0x%x\n", row, col, s);
+      printf("d[%d, %d] = 0x%x\n", row, col, d);
+      */
     }
-
-    printf("s[%d, %d] = 0x%x\n", row, col, s);
-    printf("d[%d, %d] = 0x%x\n", row, col, d);
+    printf("\n");
   }
 
   if (!errors) {
