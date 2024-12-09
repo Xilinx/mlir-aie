@@ -138,14 +138,16 @@ if config.xrt_lib_dir:
             if not m:
                 continue
             print("Found Ryzen AI device:", m.group(1))
+            model = "unknown"
             if len(m.groups()) == 3:
-                print("\tmodel:", m.group(3))
+                model = str(m.group(3))
+            print("\tmodel:", model)
             config.available_features.add("ryzen_ai")
-            if str(m.group(3)) == "npu1":
+            if model == "npu1":
                 run_on_npu = (
                     f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )
-            if str(m.group(3)) == "npu4":
+            if model == "npu4":
                 run_on_2npu = (
                     f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )
