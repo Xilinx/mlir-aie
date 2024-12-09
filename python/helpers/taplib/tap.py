@@ -125,7 +125,7 @@ class TensorAccessPattern:
     def visualize(
         self,
         show_arrows: bool | None = None,
-        title: str = None,
+        title: str | None = None,
         file_path: str | None = None,
         show_plot: bool = True,
         plot_access_count: bool = False,

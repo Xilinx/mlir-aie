@@ -170,7 +170,7 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
         return (combined_access_order_tensor, combined_access_count_tensor)
 
     def animate(
-        self, title: str = None, animate_access_count: bool = False
+        self, title: str | None = None, animate_access_count: bool = False
     ) -> animation.FuncAnimation:
         if len(self._tensor_dims) != 2:
             raise NotImplementedError(
@@ -211,7 +211,7 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
 
     def visualize(
         self,
-        title: str = None,
+        title: str | None = None,
         file_path: str | None = None,
         show_plot: bool = True,
         plot_access_count: bool = False,
@@ -268,12 +268,12 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
     def __delitem__(self, idx: int):
         del self._taps[idx]
 
-    def insert(self, idx: int, tap: TensorAccessPattern):
-        if self._tensor_dims != tap.tensor_dims:
+    def insert(self, index: int, value: TensorAccessPattern):
+        if self._tensor_dims != value.tensor_dims:
             raise ValueError(
-                f"Cannot add TensorAccessPattern with tensor dims {tap.tensor_dims} to TensorAccessSequence with tensor dims {self._tensor_dims}"
+                f"Cannot add TensorAccessPattern with tensor dims {value.tensor_dims} to TensorAccessSequence with tensor dims {self._tensor_dims}"
             )
-        self._taps.insert(idx, tap)
+        self._taps.insert(index, value)
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
