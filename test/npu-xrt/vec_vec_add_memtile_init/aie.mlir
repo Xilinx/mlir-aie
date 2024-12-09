@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(npu1_1col) {
+  aie.device(npu1_2col) {
     memref.global "public" @out_cons : memref<16xi32>
     memref.global "public" @out : memref<16xi32>
     memref.global "public" @in2_mem_cons : memref<256xi32>
