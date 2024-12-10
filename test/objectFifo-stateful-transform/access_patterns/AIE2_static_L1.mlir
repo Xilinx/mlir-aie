@@ -1,4 +1,4 @@
-//===- AIE2_static_l1.mlir -------------------------------------*- MLIR -*-===//
+//===- AIE2_static_L1.mlir -------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -46,7 +46,7 @@
 // CHECK:       aie.end
 // CHECK:     }
 
-module @aie2_static_l1 {
+module @aie2_static_L1 {
     aie.device(xcve2302) {
         %i_c0 = arith.constant 0 : index
         %i_c1 = arith.constant 1 : index
