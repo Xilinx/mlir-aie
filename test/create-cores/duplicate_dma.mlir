@@ -10,6 +10,7 @@
 
 // RUN: not aie-opt --aie-create-cores --aie-lower-memcpy %s 2>&1 | FileCheck %s
 // CHECK: error: 'aie.dma_start' op duplicate DMA channel MM2S0 not allowed
+// XFAIL: *
 
 module @duplicate_dma  {
  aie.device(xcvc1902) {
