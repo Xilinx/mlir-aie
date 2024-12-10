@@ -1,4 +1,4 @@
-# matrix_scalar_add/aie2.py -*- Python -*-
+# matrix_scalar_add/matrix_scalar_add_alt.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -75,21 +75,15 @@ def my_matrix_add_one():
 
         @runtime_sequence(tile_ty, tile_ty, tile_ty)
         def sequence(inTensor, notUsed, outTensor):
-            npu_dma_memcpy_nd(
-                metadata=of_in1,
-                bd_id=1,
-                mem=inTensor,
-                tap=tiler[0],
-                issue_token=True,
+            in_task = shim_dma_single_bd_task(
+                of_in1, inTensor, tap=tiler[0], issue_token=True
+            )
+            out_task = shim_dma_single_bd_task(
+                of_out1, outTensor, tap=tiler[0], issue_token=True
             )
 
-            npu_dma_memcpy_nd(
-                metadata=of_out1,
-                bd_id=0,
-                mem=outTensor,
-                tap=tiler[0],
-            )
-            dma_wait(of_in1, of_out1)
+            dma_start_task(in_task, out_task)
+            dma_await_task(in_task, out_task)
 
 
 with mlir_mod_ctx() as ctx:

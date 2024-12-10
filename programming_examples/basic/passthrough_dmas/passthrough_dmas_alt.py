@@ -1,4 +1,4 @@
-# passthrough_dmas/aie2.py -*- Python -*-
+# passthrough_dmas/passthrough_dmas_alt.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -62,11 +62,14 @@ def my_passthrough():
             # To/from AIE-array data movement
             @runtime_sequence(vector_ty, vector_ty, vector_ty)
             def sequence(A, B, C):
-                npu_dma_memcpy_nd(
-                    metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N], issue_token=True
+                in_task = shim_dma_single_bd_task(
+                    of_in, A, sizes=[1, 1, 1, N], issue_token=True
                 )
-                npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
-                dma_wait(of_in, of_out)
+                out_task = shim_dma_single_bd_task(
+                    of_out, C, sizes=[1, 1, 1, N], issue_token=True
+                )
+                dma_start_task(in_task, out_task)
+                dma_await_task(in_task, out_task)
 
     print(ctx.module)
 

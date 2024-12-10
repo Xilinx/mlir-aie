@@ -20,11 +20,15 @@ Secondly, the design shows how the bodies of work done by each AIE core is a com
 
 Finally, the overall structural design shows how complete designs are a combination of a static design, consisting of cores, connections and some part of the data movement, together with a run time sequence for controlling the design.
 
+There are two versions of this design:
+* [matrix_scalar_add.py](./matrix_scalar_add.py)
+* [matrix_scalar_add_alt.py](./matrix_scalar_add_alt.py): This version of the design supports VCK500 and is written in a lower-level version of IRON.
+
 ## Functionality
 
 A single AIE core performs a very simple `+` operation where the kernel loads data from its local memory, increments the value by `1` and stores it back to the local memory. The DMA in the Shim tile is programmed to bring the bottom left `8x16` portion of a larger `16x128` matrix into the tile to perform the operation. This reference design can be run on either a RyzenAI NPU or a VCK5000.
 
-The kernel executes on AIE tile (`col`, 2) - this is actually the first core in a column, as the shim tile is on row 0, and the mem tile is on row 1. Input data is brought to the local memory of the tile from Shim tile (`col`, 0). The value of `col` is dependent on whether the application is targeting NPU or VCK5000. 
+In the [alternative design](./matrix_scalar_add_alt.py), where placement is explicit, the kernel executes on AIE tile (`col`, 2) - this is actually the first core in a column, as the shim tile is on row 0, and the mem tile is on row 1. Input data is brought to the local memory of the tile from Shim tile (`col`, 0). The value of `col` is dependent on whether the application is targeting NPU or VCK5000. 
 
 
 ## Usage
@@ -32,10 +36,14 @@ The kernel executes on AIE tile (`col`, 2) - this is actually the first core in 
 ### NPU
 
 To compile the design and C++ testbench:
-
-
 ```
 make
+make matrixAddOne
+```
+
+To build with the alternate design for NPU:
+```
+make env use_alt=1
 make matrixAddOne
 ```
 
@@ -49,7 +57,7 @@ make run
 
 To compile the design and C++ testbench:
 ```
-make vck5000
+make env use_alt=1 vck5000
 ```
 
 To run the design 
