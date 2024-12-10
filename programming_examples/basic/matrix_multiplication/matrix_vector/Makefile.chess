@@ -9,7 +9,7 @@
 ##===----------------------------------------------------------------------===##
 
 subdir=matrix_vector
-targetname=matrixVectorMultiplication
+targetname=matrix_vector
 
 # Currently does not accept reconfiguring size via these variables; must change
 # in source at matmul.py as well as here

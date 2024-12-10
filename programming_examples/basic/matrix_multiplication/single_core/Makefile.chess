@@ -10,7 +10,7 @@
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=single_core
-targetname=matrixMultiplication
+targetname=single_core
 kernels=mm
 
 M?=256
