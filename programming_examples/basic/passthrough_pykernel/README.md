@@ -10,17 +10,19 @@
 
 # Passthrough Kernel:
 
-This IRON design flow example, called "Passthrough Kernel", demonstrates a simple AIE implementation for a non-vectorized (scalar) memcpy on a vector of integers. In this design, a single AIE core performs the memcpy operation on a vector with a default length `4096`. The kernel, defined in Python code as a function, is configured to work on `1024` element-sized subvectors and is invoked multiple times to complete the full copy. The example consists of two primary design files: `aie2.py` and `passThrough.cc`, and a testbench `test.cpp` or `test.py`.
+This IRON design flow example, called "Passthrough Kernel", demonstrates a simple AIE implementation for a non-vectorized (scalar) memcpy on a vector of integers. In this design, a single AIE core performs the memcpy operation on a vector with a default length `4096`. The kernel, defined in Python code as a function, is configured to work on `1024` element-sized subvectors and is invoked multiple times to complete the full copy. The example consists of two primary design files: `passthrough_pykernel.py` and `passThrough.cc`, and a testbench `test.cpp` or `test.py`.
 
 ## Source Files Overview
 
-1. `aie2.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. The file generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `passthrough_pykernel.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. The file generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+
+1. `passthrough_pykernel_alt.py`: A Python script that defines an alternative AIE array structural design using MLIR-AIE operations defined with a lower-level version of IRON than that used in `passthrough_pykernel.py`. The file generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
 
 1. `test.cpp`: This C++ code is a testbench for the Passthrough Kernel design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data.
 
 1. `test.py`: This Python code is a testbench for the Passthrough Kernel design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data.
 
-1. `passthrough_pykernel.ipynb`: This notebook contains the design (which is duplicated from `aie2.py`) and test code (which is duplicated from `test.py`) for an alternate way of interacting with the example.
+1. `passthrough_pykernel.ipynb`: This notebook contains the design (which is duplicated from `passthrough_pykernel_alt.py`) and test code (which is duplicated from `test.py`) for an alternate way of interacting with the example.
 
 ## Design Overview
 
@@ -32,11 +34,11 @@ This simple example effectively passes data through a single compute tile in the
 1. The compute tile acquires this input data in "object" sized (`1024`) blocks from "of_in" and copies them to another output "object" it has acquired from "of_out". A scalar kernel defined via a Python fucntion is invoked on the Compute Tile's AIE core to copy the data from the input "object" to the output "object".
 1. After the copy is performed, the Compute Tile releases the "objects", allowing the DMAs (abstracted by the object FIFO) to transfer the data back to host memory and copy additional blocks into the Compute Tile,  "of_out" and "of_in" respectively.
 
-It is important to note that the Shim Tile and Compute Tile DMAs move data concurrently, and the Compute Tile's AIE Core also processes data concurrently with the data movement. This is made possible by expressing depth `2` in declaring, for example, `object_fifo("in", ShimTile, ComputeTile2, 2, line_ty)` to denote ping-pong buffers.
+It is important to note that the Shim Tile and Compute Tile DMAs move data concurrently, and the Compute Tile's AIE Core also processes data concurrently with the data movement. This is made possible by expressing `default_depth` is `2` when constructing the `ObjectFifo`, for example, `ObjectFifo(line_ty, default_depth=2)` to denote ping-pong buffers. By default, the depth is `2` in recognition of this common pattern.
 
 ## Design Component Details
 
-### AIE Array Structural Design
+### AIE Array Structural Alternative Design
 
 This design performs a memcpy operation on a vector of input data. The AIE design is described in a Python module as follows:
 
@@ -62,31 +64,32 @@ This design performs a memcpy operation on a vector of input data. The AIE desig
 
 ## Usage
 
-### C++ Testbench
+### Compile the desing:
 
 To compile the design:
 
-```bash
+```shell
 make
 ```
 
+To compile the alternative design:
+```shell
+make env use_alt=1
+```
+
+### C++ Testbench
+
 To complete compiling the C++ testbench and run the design:
 
-```bash
+```shell
 make run
 ```
 
 ### Python Testbench
 
-To compile the design:
-
-```bash
-make
-```
-
 To run the design:
 
-```bash
+```shell
 make run_py
 ```
 
@@ -97,7 +100,7 @@ make run_py
   Make sure you use a terminal that has run the `utils/setup_env.sh` script
   so that the correct environment variables are percolated to jupyter.
   Below is an example of how to start a jupyter server:
-  ```bash
+  ```shell
   python3 -m jupyter notebook --no-browser --port=8080
   ```
 * In your browser, navigate to the URL (which includes a token) which is found
@@ -107,7 +110,7 @@ make run_py
 * You should now be good to go!
 
 #### Run the Notebook as a Script
-```bash
+```shell
 make clean_notebook
 make run_notebook
 ```

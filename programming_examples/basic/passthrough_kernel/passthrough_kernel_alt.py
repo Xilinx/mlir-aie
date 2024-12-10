@@ -1,4 +1,4 @@
-# passthrough_pykernel/aie2_alt.py -*- Python -*-
+# passthrough_kernel/passthrough_kernel_alt.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -11,28 +11,33 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.helpers.dialects.ext.func import func
 from aie.helpers.dialects.ext.scf import _for as range_
 
+import aie.utils.trace as trace_utils
 
-def passthroughKernel(vector_size):
+
+def passthroughKernel(dev, vector_size, trace_size):
     N = vector_size
     lineWidthInBytes = N // 4  # chop input in 4 sub-tensors
 
-    @device(AIEDevice.npu1_1col)
+    @device(dev)
     def device_body():
         # define types
+        vector_ty = np.ndarray[(N,), np.dtype[np.uint8]]
         line_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
 
-        # AIE Core Python Function declarations
-        @func(emit=True)
-        def passThroughLine(input: line_ty, output: line_ty, lineWidth: np.int32):
-            for i in range_(lineWidth):
-                output[i] = input[i]
+        # AIE Core Function declarations
+        passThroughLine = external_func(
+            "passThroughLine", inputs=[line_ty, line_ty, np.int32]
+        )
 
         # Tile declarations
         ShimTile = tile(0, 0)
         ComputeTile2 = tile(0, 2)
+
+        # Set up a circuit-switched flow from core to shim for tracing information
+        if trace_size > 0:
+            flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
 
         # AIE-array data movement with object fifos
         of_in = object_fifo("in", ShimTile, ComputeTile2, 2, line_ty)
@@ -41,7 +46,7 @@ def passthroughKernel(vector_size):
         # Set up compute tiles
 
         # Compute tile 2
-        @core(ComputeTile2)
+        @core(ComputeTile2, "passThrough.cc.o")
         def core_body():
             for _ in range_(sys.maxsize):
                 elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
@@ -52,10 +57,16 @@ def passthroughKernel(vector_size):
 
         #    print(ctx.module.operation.verify())
 
-        vector_ty = np.ndarray[(N,), np.dtype[np.uint8]]
-
         @runtime_sequence(vector_ty, vector_ty, vector_ty)
         def sequence(inTensor, outTensor, notUsed):
+            if trace_size > 0:
+                trace_utils.configure_simple_tracing_aie2(
+                    ComputeTile2,
+                    ShimTile,
+                    ddr_id=1,
+                    size=trace_size,
+                    offset=N,
+                )
             in_task = shim_dma_single_bd_task(
                 of_in, inTensor, sizes=[1, 1, 1, N], issue_token=True
             )
@@ -68,12 +79,20 @@ def passthroughKernel(vector_size):
 
 
 try:
-    vector_size = int(sys.argv[1])
+    device_name = str(sys.argv[1])
+    if device_name == "npu":
+        dev = AIEDevice.npu1_1col
+    elif device_name == "npu2":
+        dev = AIEDevice.npu2
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+    vector_size = int(sys.argv[2])
     if vector_size % 64 != 0 or vector_size < 512:
         print("Vector size must be a multiple of 64 and greater than or equal to 512")
         raise ValueError
+    trace_size = 0 if (len(sys.argv) != 4) else int(sys.argv[3])
 except ValueError:
     print("Argument has inappropriate value")
 with mlir_mod_ctx() as ctx:
-    passthroughKernel(vector_size)
+    passthroughKernel(dev, vector_size, trace_size)
     print(ctx.module)

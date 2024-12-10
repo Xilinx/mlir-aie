@@ -19,35 +19,35 @@ In this design, a single AI Engine compute core performs a matrix-matrix-multipl
 * This design supports tracing; See [below](#tracing).
 * Only a single core performs computations. As such, we only need a single ObjectFIFO for each of the transfers between the levels (shim &rightarrow; memory, memory &rightarrow; compute, and back). These ObjectFIFOs are named `inA`, `inB`, `outC` and `memA`, `memB` and `memC`, respectively. 
 
-## Notes on the `matmul_alt.py` Implementation
+## Notes on the `single_core_alt.py` Implementation
 
-As in the whole-array design, the [`matmul.py`](./matmul.py) file describes the data movement of the design. This single core example also comes with an alternative implementation, which can be found in [`matmul_alt.py`](./matmul_alt.py). If you specify `use_alt=1` as an environment variable at compile time, this alternative implementation will be used in place of `matmul.py`.
+As in the whole-array design, the [`single_core.py`](./single_core.py) file describes the data movement of the design. This single core example also comes with an alternative implementation, which can be found in [`single_core_alt.py`](./single_core_alt.py). If you specify `use_alt=1` as an environment variable at compile time, this alternative implementation will be used in place of `single_core.py`.
 
-Functionally, `matmul.py` and `matmul_alt.py` are intended to be identical. However, `matmul_alt.py` is implemented using a new syntax for runtime buffer descriptor configuration on the shim. Specifically, `matmul_alt.py` uses the `aiex.dma_configure_task_for`, `aiex.dma_start_task` and `aiex.dma_await_task` operations instead of `aiex.dma_memcpy_nd`.
+Functionally, `single_core.py` and `single_core_alt.py` are intended to be identical. However, `single_core_alt.py` is implemented using a new syntax for runtime buffer descriptor configuration on the shim. Specifically, `single_core_alt.py` uses the `aiex.dma_configure_task_for`, `aiex.dma_start_task` and `aiex.dma_await_task` operations instead of `aiex.dma_memcpy_nd`.
 
-## Notes on the `matmul_iron.py` Implementation
+## Notes on the `single_core_iron.py` Implementation
 
-There is an implementation of this design found in [`matmul_iron.py`](./matmul_iron.py) using a higher-level version of IRON. If you specify `use_iron=1` as an environment variable at compile time, this alternative implementation will be used in place of `matmul.py`.
+There is an implementation of this design found in [`single_core_iron.py`](./single_core_iron.py) using a higher-level version of IRON. If you specify `use_iron=1` as an environment variable at compile time, this alternative implementation will be used in place of `single_core.py`.
 
-Functionally, this design is intended to be identical to the other two. However, `matmul_iron.py` currently does not support tracing.
+Functionally, this design is intended to be identical to the other two. However, `single_core_iron.py` currently does not support tracing.
 
 ## Building and Running the Design
 
 You need C++23 for bfloat16_t support. It can be found in g++-13: https://lindevs.com/install-g-on-ubuntu
 
 To compile design:
-```
+```shell
 make
-make matrixMultiplication.exe
+make single_core.exe
 ```
 
 To run the design:
-```
+```shell
 make run
 ```
 
 ## Tracing
 
-To get tracing output, set `enable_tracing=True` in `matmul.py` and `ENABLE_TRACING=true` in `test.cpp`.
+To get tracing output, set `enable_tracing=True` in `single_core.py` and `ENABLE_TRACING=true` in `test.cpp`. Tracing is also supported in `single_core_alt.py`.
 
 By default, traces will be written out to `trace.txt`; another output file can be specified using the `--trace` (or `-t`) flag to the host code.

@@ -33,24 +33,24 @@ The implicit copy is performed using the `ObjectFifo.forward()` function that sp
 The `object_fifo_link` operation used explicitly by`dma_transpose.py` and `dma_transpose._alt.py` is described in more depth in [Section-2b](../../../programming_guide/section-2/section-2b/README.md/#object-fifo-link) of the programming guide.
 
 To compile and run the design `dma_transpose_iron.py` for NPU:
-```bash
+```shell
 make env use_iron=1
 make run
 ```
 
 To compile and run the design `dma_transpose.py` for NPU:
-```bash
+```shell
 make
 make run
 ```
 
 To compile and run the design `dma_transpose_alt.py` for NPU:
-```bash
+```shell
 make env use_alt=1
 make run
 ```
 
 To generate a data visualization of the transpose (like that above), run:
-```bash
+```shell
 make generate_access_map
 ```

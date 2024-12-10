@@ -1,4 +1,4 @@
-# passthrough_pykernel/aie2.py -*- Python -*-
+# passthrough_pykernel/passthrough_pykernel_alt.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -56,20 +56,15 @@ def passthroughKernel(vector_size):
 
         @runtime_sequence(vector_ty, vector_ty, vector_ty)
         def sequence(inTensor, outTensor, notUsed):
-            npu_dma_memcpy_nd(
-                metadata=of_in,
-                bd_id=0,
-                mem=inTensor,
-                sizes=[1, 1, 1, N],
-                issue_token=True,
+            in_task = shim_dma_single_bd_task(
+                of_in, inTensor, sizes=[1, 1, 1, N], issue_token=True
             )
-            npu_dma_memcpy_nd(
-                metadata=of_out,
-                bd_id=1,
-                mem=outTensor,
-                sizes=[1, 1, 1, N],
+            out_task = shim_dma_single_bd_task(
+                of_out, outTensor, sizes=[1, 1, 1, N], issue_token=True
             )
-            dma_wait(of_in, of_out)
+
+            dma_start_task(in_task, out_task)
+            dma_await_task(in_task, out_task)
 
 
 try:

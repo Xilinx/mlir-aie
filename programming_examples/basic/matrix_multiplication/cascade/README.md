@@ -20,5 +20,5 @@ The current design only works for scalar `int16`.
 
 The performance sweep results against `whole_array` can be found at [here](https://gist.github.com/Yu-Zhewen/da3fed9feb278b973f35fb78c2d3a484), no gain observed. 
 
-The orignal implementation of the design is found at [matmul.py](./matmul.py). An alternative version of the design, featuring different runtime operations,
-is found at [matmul_alt.py](./matmul_alt.py).
+The orignal implementation of the design is found at [cascade.py](./cascade.py). An alternative version of the design, featuring different runtime operations,
+is found at [cascade_alt.py](./cascade_alt.py).

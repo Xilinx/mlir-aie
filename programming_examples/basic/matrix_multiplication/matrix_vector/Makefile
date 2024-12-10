@@ -12,7 +12,7 @@ subdir=matrix_vector
 targetname=matrix_vector
 
 # Currently does not accept reconfiguring size via these variables; must change
-# in source at matmul.py as well as here
+# in source at <targetname>.py as well as here
 M=288
 K=288
 N=1

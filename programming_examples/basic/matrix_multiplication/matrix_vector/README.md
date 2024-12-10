@@ -14,8 +14,8 @@ In this design, one or multiple AI Engine compute cores (spread across hardware 
 
 > This design relies on the same basic concepts as the [whole-array matrix-matrix multiplication design](../whole_array/README.md), and it is structured very similarly to that design. Please refer to the in-depth explanation of that design along with the below outlined differences for a better understanding of this design.
 
-The orignal implementation of the design is found at [matmul.py](./matmul.py). An alternative version of the design, featuring different runtime operations,
-is found at [matmul_alt.py](./matmul_alt.py). A version written in a higher-level form of IRON is found at [matmul_iron.py](./matmul_iron.py).
+The orignal implementation of the design is found at [matrix_vector.py](./matrix_vector.py). An alternative version of the design, featuring different runtime operations,
+is found at [matrix_vector_alt.py](./matrix_vector_alt.py). A version written in a higher-level form of IRON is found at [matrix_vector_iron.py](./matrix_vector_iron.py).
 
 ## Differences from the [Whole-Array Matrix-Matrix Multiplication Design](../whole_array/README.md)
 
@@ -28,22 +28,22 @@ is found at [matmul_alt.py](./matmul_alt.py). A version written in a higher-leve
 You need C++23 for `bfloat16_t` support. It can be found in g++-13: https://lindevs.com/install-g-on-ubuntu
 
 To compile and run the original design:
-```
+```shell
 make env use_alt=1
-make env use_alt=1 matrixVectorMultiplication.exe
+make env use_alt=1 matrix_vector.exe
 make env use_alt=1 run
 ```
 
 To compile and run the alternative design:
-```
+```shell
 make env use_alt=1
-make env use_alt=1 matrixVectorMultiplication.exe
+make env use_alt=1 matrix_vector.exe
 make env use_alt=1 run
 ```
 
 To compile and run the higher-level IRON design:
-```
+```shell
 make env use_iron=1
-make env use_iron=1 matrixVectorMultiplication.exe
+make env use_iron=1 matrix_vector.exe
 make env use_iron=1 run
 ```
