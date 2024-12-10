@@ -45,9 +45,9 @@ make run
 To compile and run the alternative design with tiling:
 
 ```
-make env use_tiler=1
-make env use_tiler=1 matrixMultiplication.exe
-make env use_tiler=1 run
+make env use_alt=1
+make env use_alt=1 matrixMultiplication.exe
+make env use_alt=1 run
 ```
 
 To compile and run the alternative design with higher-level IRON:
@@ -60,9 +60,9 @@ make env use_iron=1 run
 
 ## Detailed Design Explanation
 
-The configuration of the AI Engine array is described in the [`matmul.py`](./matmul.py) file. There are two alternative versions of this design:
-* [`matmul_tiler.py`](./matmul_tiler.py): This design integrates some data visualization tools for runtime data movement, which can be viewed using the accompanying [notebook](./mat_mul_whole_array_visualization.ipynb). It also features the use of alternative instructions in the runtime sequence but is intended to be functionally equivalent to the orginal design.
-* [`matmul_iron.py`](./matmul_iron.py): This design uses a higher-level version of IRON but is also intended to be functionally equivalent. Note that this design does not support tracing at this time.
+The configuration of the AI Engine array is described in the [`whole_array.py`](./whole_array.py) file. There are two alternative versions of this design:
+* [`whole_array_alt.py`](./whole_array_alt.py): This design integrates some data visualization tools for runtime data movement, which can be viewed using the accompanying [notebook](./mat_mul_whole_array_visualization.ipynb). It also features the use of alternative instructions in the runtime sequence but is intended to be functionally equivalent to the orginal design.
+* [`whole_array_iron.py`](./whole_array_iron.py): This design uses a higher-level version of IRON but is also intended to be functionally equivalent. Note that this design does not support tracing at this time.
 
 It is linked against a compute microkernel which is implemented in C++.
 The following sections elaborate on each of the steps outlined in the high-level summary above.
@@ -73,7 +73,7 @@ The following sections elaborate on each of the steps outlined in the high-level
 
 ### 1. Defining Matrix Dimensions and Data Types
 
-In the first section of the code in `matmul.py`, we define the following constants:
+In the first section of the code in `whole_array.py`, we define the following constants:
 
 | Matrix        | Size      | Submatrix Size (1.) | Vector Intrinsic Size (2.) |
 |---------------|-----------|---------------------|-----------------------|

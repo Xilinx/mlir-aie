@@ -9,7 +9,7 @@
 ##===----------------------------------------------------------------------===##
 
 subdir=matrix_vector
-targetname=matrixVectorMultiplication
+targetname=matrix_vector
 
 # Currently does not accept reconfiguring size via these variables; must change
 # in source at matmul.py as well as here
@@ -24,14 +24,14 @@ use_alt?=0
 use_iron?=0
 
 ifeq (${use_alt}, 1)
-aie_py_src=matmul_alt.py
+aie_py_src=${targetname}_alt.py
 ifeq (${use_iron}, 1)
 $(error Cannot specify both alternative design and IRON)
 endif
 endif
 
 ifeq (${use_iron}, 1)
-aie_py_src=matmul_iron.py
+aie_py_src=${targetname}_iron.py
 endif
 
 

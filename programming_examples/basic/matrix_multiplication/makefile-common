@@ -78,7 +78,7 @@ trace_mlir_target?=build/aie_trace_${target_suffix}.mlir
 xclbin_target?=build/final_${target_suffix}.xclbin
 trace_xclbin_target?=build/trace_${target_suffix}.xclbin
 insts_target?=build/insts_${target_suffix}.txt
-aie_py_src?=matmul.py
+aie_py_src?=${targetname}.py
 
 runargs?=-v 2 --warmup 1 --iters 1
 aieargs+=-M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
