@@ -115,6 +115,7 @@ int main(int argc, const char *argv[]) {
     std::cout << "PASS!" << std::endl;
   } else {
     std::cout << "FAIL." << std::endl;
+    return 1;
   }
 
   return 0;
