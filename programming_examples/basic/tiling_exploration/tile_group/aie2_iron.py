@@ -25,18 +25,23 @@ def generate_module(
     tensor_size = tensor_height * tensor_width
     flattened_tensor = np.ndarray[(tensor_size,), np.dtype[dtype]]
 
+    # Define tensor access pattern. In this case, we access all elements in the tensor
+    # in a tile-wise fashion.
     t = TensorTiler2D.group_tiler(
         (tensor_height, tensor_width),
         (tile_height, tile_width),
         (tensor_height // tile_height, tensor_width // tile_width),
     )[0]
 
+    # Generate a graph of the tensor access pattern
     if generate_access_map:
         t.visualize(show_arrows=True, file_path="tile_group.png")
         return
 
+    # Use an ObjectFifo for data flow
     of_out = ObjectFifo(flattened_tensor)
 
+    # The task that will run on a core. Note that it produces but does not consume data.
     def access_order(of_out):
         elemOut = of_out.acquire(1)
         for i in range_(tensor_size):
@@ -44,14 +49,18 @@ def generate_module(
             elemOut[i] = arith.index_cast(i, to=np_dtype_to_mlir_type(dtype))
         of_out.release(1)
 
+    # A worker to run the test
     worker = Worker(access_order, [of_out.prod()])
 
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(flattened_tensor) as tensor_out:
         rt.start(worker)
         rt.drain(of_out.cons(), tensor_out, t, wait=True)
 
     my_program = Program(NPU1Col1(), rt)
+
+    # Place components (assign them resources on the device) and generate an MLIR module
     return my_program.resolve_program(SequentialPlacer())
 
 

@@ -22,10 +22,12 @@ def my_vector_scalar(dev, vector_size, trace_size):
     n = N // N_div_n
     vectorized = True
 
+    # Define tensor types
     tensor_ty = np.ndarray[(N,), np.dtype[np.int16]]
     tile_ty = np.ndarray[(n,), np.dtype[np.int16]]
     scalar_ty = np.ndarray[(1,), np.dtype[np.int32]]
 
+    # Create a handle to an externally-defined kernel
     func_type = "vector" if vectorized else "scalar"
     scale = Kernel(
         f"vector_scalar_mul_int16_{func_type}",
@@ -38,6 +40,7 @@ def my_vector_scalar(dev, vector_size, trace_size):
     of_factor = ObjectFifo(scalar_ty, name="infactor")
     of_out = ObjectFifo(tile_ty, name="out")
 
+    # Define a task for a compute tile to run
     def core_body(of_in, of_factor, of_out, scale_fn):
         elem_factor = of_factor.acquire(1)
 
@@ -49,10 +52,12 @@ def my_vector_scalar(dev, vector_size, trace_size):
             of_in.release(1)
             of_out.release(1)
 
+    # Create a worker to run the task on a compute tile
     worker = Worker(
         core_body, fn_args=[of_in.cons(), of_factor.cons(), of_out.prod(), scale]
     )
 
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (A, F, C):
         rt.start(worker)
@@ -60,6 +65,7 @@ def my_vector_scalar(dev, vector_size, trace_size):
         rt.fill(of_factor.prod(), F)
         rt.drain(of_out.cons(), C, wait=True)
 
+    # Place program components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())
 
 

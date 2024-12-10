@@ -16,24 +16,35 @@ from aie.helpers.taplib import TensorTiler2D
 
 
 def my_passthrough(M, K, generate_acccess_map=False):
+
+    # Define types
     tensor_ty = np.ndarray[(M, K), np.dtype[np.int32]]
 
+    # Define tensor access pattern
     tap_in = TensorTiler2D.simple_tiler((M, K), tile_col_major=True)[0]
 
+    # Use tensor access pattern to create a graph
     if generate_acccess_map:
         tap_in.visualize(file_path="iron_transpose_data.png", show_tile=False)
         return
 
+    # Dataflow with ObjectFifos
     of_in = ObjectFifo(tensor_ty)
     of_out = of_in.cons().forward(AnyComputeTile)
 
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (a_in, _, c_out):
         rt.fill(of_in.prod(), a_in, tap_in)
         rt.drain(of_out.cons(), c_out, wait=True)
 
+    # Create the program from the device type and runtime
     my_program = Program(NPU1Col1(), rt)
+
+    # Place program components (assign them resources on the device) and generate an MLIR module
     module = my_program.resolve_program(SequentialPlacer())
+
+    # Print the generated MLIR
     print(module)
 
 

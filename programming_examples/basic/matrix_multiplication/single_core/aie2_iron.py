@@ -71,6 +71,7 @@ def main():
         print(maybe_module)
 
 
+# Need ceildiv to capture partial tiling patterns
 def ceildiv(a, b):
     return (a + b - 1) // b
 
@@ -124,6 +125,7 @@ def my_matmul(
     B_taps = []
     C_taps = []
 
+    # Define tensor types
     A_ty = np.ndarray[(M * K,), np.dtype[dtype_in]]
     B_ty = np.ndarray[(K * N,), np.dtype[dtype_in]]
     C_ty = np.ndarray[(M * N,), np.dtype[dtype_out]]
@@ -164,6 +166,7 @@ def my_matmul(
         c_dims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
     outC = memC.cons().forward(name="outC", dims_to_stream=c_dims)
 
+    # Task each core will run
     def core_fn(of_a, of_b, of_c, zero, matmul):
         for _ in range_(tiles) if tiles > 1 else range(1):  # issue #1547
             elem_out = of_c.acquire(1)
@@ -178,6 +181,7 @@ def my_matmul(
                 of_b.release(1)
             of_c.release(1)
 
+    # Create worker from task
     worker = Worker(
         core_fn, [memA.cons(), memB.cons(), memC.prod(), zero_kernel, matmul_kernel]
     )
@@ -185,6 +189,7 @@ def my_matmul(
     # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
     rows_per_block = 4
 
+    # Define tensor access patterns for inputs/outputs
     A_taps = TensorTiler2D.group_tiler(
         (M, K), (m, k), (1, K_div_k), pattern_repeat=N_div_n
     )
@@ -195,6 +200,7 @@ def my_matmul(
     C_taps = TensorTiler2D.group_tiler((M, N), (m, n), (rows_per_block // 2, N_div_n))
     c_index = 0
 
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(A_ty, B_ty, C_ty) as (A, B, C):
         rt.start(worker)
@@ -246,7 +252,10 @@ def my_matmul(
             TensorAccessSequence.from_taps(C_taps),
         )
 
+    # Create the program from the device type and runtime
     my_program = Program(NPU1Col4(), rt)
+
+    # Place components (assign them resources on the device) and generate an MLIR module
     module = my_program.resolve_program(SequentialPlacer())
     return module
 

@@ -27,6 +27,7 @@ def my_reduce_add():
         "reduce_add_vector", "reduce_add.cc.o", [in_ty, out_ty, np.int32]
     )
 
+    # A task for a core to perform
     def core_body(of_in, of_out, reduce_add_vector):
         elem_out = of_out.acquire(1)
         elem_in = of_in.acquire(1)
@@ -34,14 +35,17 @@ def my_reduce_add():
         of_in.release(1)
         of_out.release(1)
 
+    # Create a worker to run a task on a core
     worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod(), reduce_add_vector])
 
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(in_ty, out_ty) as (a_in, c_out):
         rt.start(worker)
         rt.fill(of_in.prod(), a_in)
         rt.drain(of_out.cons(), c_out, wait=True)
 
+    # Place program components (assign them resources on the device) and generate an MLIR module
     return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 
 

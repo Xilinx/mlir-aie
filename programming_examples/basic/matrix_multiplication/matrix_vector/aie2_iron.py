@@ -28,11 +28,11 @@ def my_matmul():
     # FIXME vectorized kernel is currently erroneous
     vectorized = False
 
+    # Define types
     dtype_in = np.dtype[np.int16]
     dtype_in_str = "i16"
     dtype_out = np.dtype[np.int32]
     dtype_out_str = "i32"
-
     A_ty = np.ndarray[(M, K), dtype_in]
     B_ty = np.ndarray[(1, K), dtype_in]
     C_ty = np.ndarray[(1, M), dtype_out]
@@ -50,6 +50,7 @@ def my_matmul():
         [A_ty, inB_ty, outC_ty],
     )
 
+    # Define the work each core will do
     def core_fn(of_a, of_b, of_c, zero, matvec):
         elem_out = of_c.acquire(1)
         zero(elem_out)
@@ -61,6 +62,7 @@ def my_matmul():
             of_b.release(1)
         of_c.release(1)
 
+    # Create object fifos and workers for each core
     memA_fifos = []
     coreA_fifos = []
     outC_fifos = []
@@ -77,10 +79,12 @@ def my_matmul():
         )
         workers.append(w)
 
+    # Define the tiling access patterns for input and output tensors
     A_taps = TensorTiler2D.group_tiler((M, K), (m, k), (M_div_m_div_n_cores, K_div_k))
     C_taps = TensorTiler2D.simple_tiler((1, M), (1, M_div_n_cores))
     b_tap = TensorTiler2D.simple_tiler((1, K), pattern_repeat=M_div_m_div_n_cores)[0]
 
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(A_ty, B_ty, C_ty) as (a_in, b_in, c_out):
         rt.start(*workers)
@@ -92,8 +96,13 @@ def my_matmul():
             rt.fill(memA_fifos[i].prod(), a_in, a_tap)
             rt.drain(outC_fifos[i].cons(), c_out, c_tap, wait=True)
 
+    # Create the program from the device type and runtime
     my_program = Program(NPU1Col4(), rt)
+
+    # Place components (assign them resources on the device) and generate an MLIR module
     module = my_program.resolve_program(SequentialPlacer())
+
+    # Print the generated MLIR
     print(module)
 
 

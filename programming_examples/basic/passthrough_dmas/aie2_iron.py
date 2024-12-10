@@ -27,17 +27,25 @@ if len(sys.argv) > 2:
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
 
+# Define tensor types
 vector_ty = np.ndarray[(N,), np.dtype[np.int32]]
 line_ty = np.ndarray[(line_size,), np.dtype[np.int32]]
 
+# Data movement with ObjectFifos
 of_in = ObjectFifo(line_ty, name="in")
 of_out = of_in.cons().forward()
 
+# Runtime operations to move data to/from the AIE-array
 rt = Runtime()
 with rt.sequence(vector_ty, vector_ty, vector_ty) as (a_in, _, c_out):
     rt.fill(of_in.prod(), a_in)
     rt.drain(of_out.cons(), c_out, wait=True)
 
+# Create the program from the device type and runtime
 my_program = Program(dev, rt)
+
+# Place components (assign them resources on the device) and generate an MLIR module
 module = my_program.resolve_program(SequentialPlacer())
+
+# Print the generated MLIR
 print(module)

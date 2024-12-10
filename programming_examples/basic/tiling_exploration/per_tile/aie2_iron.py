@@ -19,22 +19,28 @@ from aie.helpers.dialects.ext.scf import _for as range_
 def generate_module(
     tensor_height, tensor_width, tile_height, tile_width, generate_access_map=False
 ):
-    # define types
-    dtype = np.int32
     tensor_size = tensor_height * tensor_width
     tile_size = tile_height * tile_width
+
+    # define data types and tensor types
+    dtype = np.int32
     flattened_tensor = np.ndarray[(tensor_size,), np.dtype[dtype]]
     flattened_tile = np.ndarray[(tile_size,), np.dtype[dtype]]
 
+    # Define tensor access pattern on the input/output tensor (tiling)
     tiler = TensorTiler2D.simple_tiler(
         (tensor_height, tensor_width), (tile_height, tile_width)
     )
+
+    # Generate a graph from the tensor access pattern
     if generate_access_map:
         tiler.visualize(file_path="per_tile.png")
         return
 
+    # Use an ObjectFifo for dataflow
     of_out = ObjectFifo(flattened_tile)
 
+    # The task a core will run
     def access_order(of_out):
         access_counter = LocalBuffer(initial_value=np.array([0], dtype=dtype))
 
@@ -46,15 +52,20 @@ def generate_module(
             of_out.release(1)
         pass
 
+    # Create a worker (which will be placed on a core) to run the task
     worker = Worker(access_order, [of_out.prod()], while_true=False)
 
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(flattened_tensor) as tensor_out:
         rt.start(worker)
         for t in tiler:
             rt.drain(of_out.cons(), tensor_out, t, wait=True)
 
+    # Create the program from the device type and runtime
     my_program = Program(NPU1Col1(), rt)
+
+    # Place components (assign them resources on the device) and generate an MLIR module
     return my_program.resolve_program(SequentialPlacer())
 
 

@@ -171,6 +171,7 @@ def my_matmul(
     B_taps = []
     C_taps = []
 
+    # Define tensor types
     A_ty = np.ndarray[(M * K,), np.dtype[dtype_in]]
     B_ty = np.ndarray[(K * N,), np.dtype[dtype_in]]
     C_ty = np.ndarray[(M * N,), np.dtype[dtype_out]]
@@ -287,6 +288,7 @@ def my_matmul(
         for j in range(n_aie_rows):
             C_l1l2_fifos[j][col] = c_tmp_fifos[j]
 
+    # Tasks for each worker to perform
     def core_fn(in_a, in_b, out_c, zero, matmul):
         loop = range(1)  # Workaround for issue #1547
         if n_tiles_per_core > 1:
@@ -328,6 +330,7 @@ def my_matmul(
     tb_max_n_rows = 4
     tb_n_rows = tb_max_n_rows // 2
 
+    # Define tensor access patterns (tiling) for A, B, and C
     A_tiles = TensorTiler2D.group_tiler(
         (M, K),  # Size of A matrix
         (m * n_A_tiles_per_shim, k),  # Size of A (smallest) tile
@@ -364,10 +367,12 @@ def my_matmul(
     )
     c_index = 0
 
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(A_ty, B_ty, C_ty) as (A, B, C):
         rt.start(*workers)
 
+        # Task groups will be used to determine when to sync/await/free DMA runtime ops
         tg = rt.task_group()
         for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
             for pingpong in [0, 1]:
@@ -492,7 +497,10 @@ def my_matmul(
             TensorAccessSequence.from_taps(C_taps),
         )
 
+    # Create the program from the device type and runtime
     my_program = Program(dev, rt)
+
+    # Place components (assign them resources on the device) and generate an MLIR module
     module = my_program.resolve_program(SequentialPlacer())
     return module
 

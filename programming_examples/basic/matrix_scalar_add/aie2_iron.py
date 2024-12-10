@@ -36,6 +36,7 @@ def my_matrix_add_one():
     else:
         raise ValueError(f"[ERROR] Device name {sys.argv[1]} is unknown")
 
+    # Define tensor types
     matrix_ty = np.ndarray[MATRIX_SHAPE, np.dtype[np.int32]]
     tile_ty = np.ndarray[TILE_SHAPE, np.dtype[np.int32]]
 
@@ -53,15 +54,20 @@ def my_matrix_add_one():
         of_in1.release(1)
         of_out1.release(1)
 
+    # Create a worker to perform the task
     my_worker = Worker(core_fn, fn_args=[of_in.cons(), of_out.prod()])
 
+    # Define the data access pattern for input/output
     tap = TensorTiler2D.simple_tiler(MATRIX_SHAPE, TILE_SHAPE)[0]
+
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(matrix_ty, matrix_ty, matrix_ty) as (in_tensor, _, out_tensor):
         rt.start(my_worker)
         rt.fill(of_in.prod(), in_tensor, tap)
         rt.drain(of_out.cons(), out_tensor, tap, wait=True)
 
+    # Place components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())
 
 

@@ -18,6 +18,7 @@ AIE_TILE_WIDTH = 32
 
 
 def my_vector_bias_add():
+    # Define tensor types
     mem_tile_ty = np.ndarray[(MEM_TILE_WIDTH,), np.dtype[np.int32]]
     aie_tile_ty = np.ndarray[(AIE_TILE_WIDTH,), np.dtype[np.int32]]
     all_data_ty = np.ndarray[(PROBLEM_SIZE,), np.dtype[np.int32]]
@@ -29,6 +30,7 @@ def my_vector_bias_add():
     of_out0 = ObjectFifo(aie_tile_ty, name="out")
     of_out1 = of_out0.cons().forward(obj_type=mem_tile_ty)
 
+    # Define some work for a compute core to perform
     def core_body(of_in1, of_out0):
         elem_in = of_in1.acquire(1)
         elem_out = of_out0.acquire(1)
@@ -37,14 +39,17 @@ def my_vector_bias_add():
         of_in1.release(1)
         of_out0.release(1)
 
+    # Create a worker to run the task on a compute tile
     worker = Worker(core_body, fn_args=[of_in1.cons(), of_out0.prod()])
 
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(all_data_ty, all_data_ty) as (inTensor, outTensor):
         rt.start(worker)
         rt.fill(of_in0.prod(), inTensor)
         rt.drain(of_out1.cons(), outTensor, wait=True)
 
+    # Place program components (assign them resources on the device) and generate an MLIR module
     return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 
 
