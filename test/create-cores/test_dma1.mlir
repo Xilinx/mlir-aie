@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-create-cores --aie-lower-memcpy %s | FileCheck %s
-// XFAIL: *
 
 // FIXCore : DMA ops have issues here: reuse of DMAs is bad, also should chain from one DMA op to the next.
 
