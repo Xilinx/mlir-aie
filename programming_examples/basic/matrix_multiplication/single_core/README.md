@@ -19,11 +19,17 @@ In this design, a single AI Engine compute core performs a matrix-matrix-multipl
 * This design supports tracing; See [below](#tracing).
 * Only a single core performs computations. As such, we only need a single ObjectFIFO for each of the transfers between the levels (shim &rightarrow; memory, memory &rightarrow; compute, and back). These ObjectFIFOs are named `inA`, `inB`, `outC` and `memA`, `memB` and `memC`, respectively. 
 
-## Notes on the `aie2_alt.py` Implementation
+## Notes on the `matmul_alt.py` Implementation
 
-As in the whole-array design, the `aie2.py` file describes the data movement of the design. This single core example also comes with an alternative implementation, which can be found in `aie2_alt.py`. If you specify `use_alt=1` as an environment variable at compile time, this alternative implementation will be used in place of `aie2.py`.
+As in the whole-array design, the [`matmul.py`](./matmul.py) file describes the data movement of the design. This single core example also comes with an alternative implementation, which can be found in [`matmul_alt.py`](./matmul_alt.py). If you specify `use_alt=1` as an environment variable at compile time, this alternative implementation will be used in place of `matmul.py`.
 
-Functionally, `aie2.py` and `aie2_alt.py` are intended to be identical. However, `aie2_alt.py` is implemented using a new syntax for runtime buffer descriptor configuration on the shim. Specifically, `aie2_alt.py` uses the `aiex.dma_configure_task_for`, `aiex.dma_start_task` and `aiex.dma_await_task` operations instead of `aiex.dma_memcpy_nd`.
+Functionally, `matmul.py` and `matmul_alt.py` are intended to be identical. However, `matmul_alt.py` is implemented using a new syntax for runtime buffer descriptor configuration on the shim. Specifically, `matmul_alt.py` uses the `aiex.dma_configure_task_for`, `aiex.dma_start_task` and `aiex.dma_await_task` operations instead of `aiex.dma_memcpy_nd`.
+
+## Notes on the `matmul_iron.py` Implementation
+
+There is an implementation of this design found in [`matmul_iron.py`](./matmul_iron.py) using a higher-level version of IRON. If you specify `use_iron=1` as an environment variable at compile time, this alternative implementation will be used in place of `matmul.py`.
+
+Functionally, this design is intended to be identical to the other two. However, `matmul_iron.py` currently does not support tracing.
 
 ## Building and Running the Design
 
@@ -42,6 +48,6 @@ make run
 
 ## Tracing
 
-To get tracing output, set `enable_tracing=True` in `aie2.py` and `ENABLE_TRACING=true` in `test.cpp`.
+To get tracing output, set `enable_tracing=True` in `matmul.py` and `ENABLE_TRACING=true` in `test.cpp`.
 
 By default, traces will be written out to `trace.txt`; another output file can be specified using the `--trace` (or `-t`) flag to the host code.

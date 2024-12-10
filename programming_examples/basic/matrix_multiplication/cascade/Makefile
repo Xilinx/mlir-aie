@@ -25,7 +25,7 @@ target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
 use_alt?=0
 
 ifeq (${use_alt}, 1)
-aie_py_src=aie2_alt.py
+aie_py_src=matmul_alt.py
 endif
 
 include ${srcdir}/../makefile-common
