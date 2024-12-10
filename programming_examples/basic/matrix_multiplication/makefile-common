@@ -85,7 +85,7 @@ aieargs+=-M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
 
 CHESS?=false
 
-kernels_dir=${srcdir}/../../../../aie_kernels/matmul
+kernels_dir=${srcdir}/../../../../aie_kernels/aie2
 
 .PHONY: all
 all: ${xclbin_target} ${targetname}.exe
