@@ -22,9 +22,17 @@ K ?= 32
 
 aie_py_src=aie2.py
 use_alt?=0
+use_iron?=0
 
 ifeq (${use_alt}, 1)
 aie_py_src=aie2_alt.py
+ifeq (${use_iron}, 1)
+$(error Cannot specify both alternative design and IRON)
+endif
+endif
+
+ifeq (${use_iron}, 1)
+aie_py_src=aie2_iron.py
 endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
@@ -51,7 +59,7 @@ endif
 run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --M ${M} --K ${K}
 
-generate_access_map: ${srcdir}/aie2.py
+generate_access_map: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< --generate-access-map ${M} ${K}
 
