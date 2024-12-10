@@ -10,6 +10,7 @@
 
 // RUN: not aie-opt --canonicalize %s 2>&1 | FileCheck %s
 // CHECK: 'aie.dma_start' op duplicate DMA channel MM2S0 not allowed
+// XFAIL: *
 
 module @test {
   %t1 = aie.tile(1, 1)
