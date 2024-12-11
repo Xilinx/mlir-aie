@@ -34,7 +34,7 @@ The `object_fifo_link` operation used explicitly by`dma_transpose.py` and `dma_t
 
 To compile and run the design `dma_transpose_iron.py` for NPU:
 ```shell
-make env use_iron=1
+env use_iron=1 make
 make run
 ```
 
@@ -46,7 +46,7 @@ make run
 
 To compile and run the design `dma_transpose_alt.py` for NPU:
 ```shell
-make env use_alt=1
+env use_alt=1 make
 make run
 ```
 

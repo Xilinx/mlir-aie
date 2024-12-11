@@ -35,7 +35,7 @@ make
 
 To compile the alternative design:
 ```shell
-make env use_alt=1
+env use_alt=1 make
 ```
 
 To compile the C++ testbench:
@@ -46,7 +46,6 @@ make vector_reduce_add.exe
 ### C++ Testbench
 
 To run the design:
-
 ```shell
 make run
 ```

@@ -36,26 +36,26 @@ You will need C++23 for `bfloat16_t` support in the `test.cpp`, which can be fou
 
 To compile and run the design:
 
-```
+```shell
 make
-make matrixMultiplication.exe
+make whole_array.exe
 make run
 ```
 
 To compile and run the alternative design with tiling:
 
-```
-make env use_alt=1
-make env use_alt=1 matrixMultiplication.exe
-make env use_alt=1 run
+```shell
+env use_alt=1 make
+env use_alt=1 make whole_array.exe
+env use_alt=1 make run
 ```
 
 To compile and run the alternative design with higher-level IRON:
 
-```
-make env use_iron=1
-make env use_iron=1 matrixMultiplication.exe
-make env use_iron=1 run
+```shell
+env use_iron=1 make
+env use_iron=1 make whole_array.exe
+env use_iron=1 make run
 ```
 
 ## Detailed Design Explanation

@@ -36,32 +36,31 @@ In the [alternative design](./matrix_scalar_add_alt.py), where placement is expl
 ### NPU
 
 To compile the design and C++ testbench:
-```
+```shell
 make
-make matrixAddOne
+make matrix_scalar_add
 ```
 
 To build with the alternate design for NPU:
-```
-make env use_alt=1
-make matrixAddOne
+```shell
+env use_alt=1 make
+env use_alt=1 make matrix_scalar_add
 ```
 
 To run the design:
 
-```
+```shell
 make run
 ```
 
 ### VCK5000
 
 To compile the design and C++ testbench:
-```
-make env use_alt=1 vck5000
+```shell
+env use_alt=1 make vck5000
 ```
 
-To run the design 
-
-```
+To run the design:
+```shell
 ./test.elf
 ```

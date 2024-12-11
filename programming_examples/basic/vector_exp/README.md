@@ -39,19 +39,18 @@ make
 
 To compile the alternative design:
 ```shell
-make env use_alt=1
+env use_alt=1 make
 ```
 
 ### C++ Testbench
 
 To compile the C++ testbench:
-
-```
+```shell
 make text_exp.exe
 ```
 
 To run the design:
-```
+```shell
 make run
 ```
 

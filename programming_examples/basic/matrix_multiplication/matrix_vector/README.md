@@ -29,21 +29,21 @@ You need C++23 for `bfloat16_t` support. It can be found in g++-13: https://lind
 
 To compile and run the original design:
 ```shell
-make env use_alt=1
-make env use_alt=1 matrix_vector.exe
-make env use_alt=1 run
+make
+make matrix_vector.exe
+make run
 ```
 
 To compile and run the alternative design:
 ```shell
-make env use_alt=1
-make env use_alt=1 matrix_vector.exe
-make env use_alt=1 run
+env use_alt=1 make
+env use_alt=1 make matrix_vector.exe
+env use_alt=1 make run
 ```
 
 To compile and run the higher-level IRON design:
 ```shell
-make env use_iron=1
-make env use_iron=1 matrix_vector.exe
-make env use_iron=1 run
+env use_iron=1 make
+env use_iron=1 make matrix_vector.exe
+env use_iron=1 make run
 ```

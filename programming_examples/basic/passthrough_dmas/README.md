@@ -22,13 +22,13 @@ There are two versions of this design:
 
 
 To compile and run the design for NPU:
-```
+```shell
 make
 make run
 ```
 
 To compile and run the alternative design for NPU:
-```
-make env use_alt=1
+```shell
+env use_alt=1 make
 make run
 ```

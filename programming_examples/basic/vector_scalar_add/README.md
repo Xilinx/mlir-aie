@@ -46,7 +46,7 @@ make
 
 To compile the alternative design:
 ```shell
-make env use_alt=1
+env use_alt=1 make
 ```
 
 To compile the C++ testbench:

@@ -35,16 +35,26 @@ Functionally, this design is intended to be identical to the other two. However,
 
 You need C++23 for bfloat16_t support. It can be found in g++-13: https://lindevs.com/install-g-on-ubuntu
 
-To compile design:
+To compile and run design:
 ```shell
 make
 make single_core.exe
-```
-
-To run the design:
-```shell
 make run
 ```
+To compile and run the alternative design:
+```shell
+env use_alt=1 make
+env use_alt=1 make single_core.exe
+env use_alt=1 make run
+```
+
+To compile and run the higher-level IRON design:
+```shell
+env use_iron=1 make
+env use_iron=1 make single_core.exe
+env use_iron=1 make run
+```
+
 
 ## Tracing
 
