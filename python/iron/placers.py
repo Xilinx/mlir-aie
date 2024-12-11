@@ -74,8 +74,8 @@ class SequentialPlacer(Placer):
                 if not worker.tile in computes:
                     raise ValueError(
                         f"Partial Placement Error: "
-                        "Tile {worker.tile} not available on "
-                        "device {device} or has already been used."
+                        f"Tile {worker.tile} not available on "
+                        f"device {device} or has already been used."
                     )
                 computes.remove(worker.tile)
 
