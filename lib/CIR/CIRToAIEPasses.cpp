@@ -987,6 +987,34 @@ struct CIRToAIEDecaptureKernel
   }
 };
 
+struct CIRKeepAIEDevice : CIRKeepAIEDeviceBase<CIRKeepAIEDevice> {
+  void runOnOperation() override {
+    auto module = getOperation();
+    mlir::OpBuilder b{module};
+    llvm::SmallVector<mlir::Operation *> opToDelete;
+    xilinx::AIE::DeviceOp d;
+    // Use pre-order walk for early exit to pick the first aie.device for now
+    module->walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *op) {
+      if (!mlir::isa<xilinx::AIE::DeviceOp>(op))
+        return mlir::WalkResult::advance();
+      d = mlir::cast<xilinx::AIE::DeviceOp>(op);
+      return mlir::WalkResult::interrupt();
+    });
+    // Extract the aie.device from its function up to the top first
+    // operation of the module
+    if (d)
+      d->moveBefore(&module.front());
+    // Erase all the top-module operations but the aie.device
+    for (auto &op : module) {
+      if (auto dev = mlir::dyn_cast<xilinx::AIE::DeviceOp>(op))
+        if (dev == d)
+          continue;
+      opToDelete.push_back(&op);
+    }
+    eraseOpsAndUsers(opToDelete);
+  }
+};
+
 } // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
@@ -1006,6 +1034,10 @@ createCIRToAIEInlineKernelLambdaPass() {
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createCIRToAIEDecaptureKernelPass() {
   return std::make_unique<CIRToAIEDecaptureKernel>();
+}
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createCIRKeepAIEDevice() {
+  return std::make_unique<CIRKeepAIEDevice>();
 }
 
 } // namespace xilinx::AIE::CIR
