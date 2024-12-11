@@ -20,10 +20,6 @@ def color_threshold(dev, width, height):
     lineWidthChannels = width * 4  # 4 channels
     tensorSize = width * height
 
-    enableTrace = False
-    traceSizeInBytes = 8192
-    traceSizeInInt32s = traceSizeInBytes // 4
-
     @device(dev)
     def device_body():
         line_channels_ty = np.ndarray[(lineWidthChannels,), np.dtype[np.uint8]]
@@ -219,20 +215,18 @@ def color_threshold(dev, width, height):
             rtpComputeTile5[1] = 255
             rtpComputeTile5[2] = 0
 
-            npu_dma_memcpy_nd(
-                metadata=inOOB_L3L2,
-                bd_id=1,
-                mem=inTensor,
+            in_task = shim_dma_single_bd_task(
+                inOOB_L3L2, inTensor, sizes=[1, 1, 1, tensorSize], issue_token=True
+            )
+            out_task = shim_dma_single_bd_task(
+                outOOB_L2L3,
+                outTensor,
                 sizes=[1, 1, 1, tensorSize],
                 issue_token=True,
             )
-            npu_dma_memcpy_nd(
-                metadata=outOOB_L2L3,
-                bd_id=0,
-                mem=outTensor,
-                sizes=[1, 1, 1, tensorSize],
-            )
-            dma_wait(inOOB_L3L2, outOOB_L2L3)
+
+            dma_start_task(in_task, out_task)
+            dma_await_task(in_task, out_task)
 
 
 try:

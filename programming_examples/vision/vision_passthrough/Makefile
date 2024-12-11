@@ -18,21 +18,13 @@ PASSTHROUGH_HEIGHT = 1080
 #PASSTHROUGH_WIDTH = 512
 #PASSTHROUGH_HEIGHT = 9
 
-targetname = passThrough
+targetname = vision_passthrough
 
-aie_py_src=aie2.py
+aie_py_src=${targetname}.py
 use_alt?=0
-use_iron?=0
 
 ifeq (${use_alt}, 1)
-aie_py_src=aie2_alt.py
-ifeq (${use_iron}, 1)
-$(error Cannot specify both alternative design and IRON)
-endif
-endif
-
-ifeq (${use_iron}, 1)
-aie_py_src=aie2_iron.py
+aie_py_src=${targetname}_alt.py
 endif
 
 .PHONY: all template clean
