@@ -1,4 +1,4 @@
-# vector_vector_modulo/aie2_iron.py -*- Python -*-
+# vector_vector_modulo/vector_vector_modulo.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.

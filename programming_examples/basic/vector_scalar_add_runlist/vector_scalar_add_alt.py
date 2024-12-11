@@ -1,4 +1,4 @@
-# vector_scalar_add/aie2.py -*- Python -*-
+# vector_scalar_add_runlist/vector_scalar_add_alt.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -58,17 +58,16 @@ def my_vector_bias_add():
         # To/from AIE-array data movement
         @runtime_sequence(all_data_ty, all_data_ty)
         def sequence(inTensor, outTensor):
-            npu_dma_memcpy_nd(
-                metadata=of_in0,
-                bd_id=1,
-                mem=inTensor,
-                sizes=[1, 1, 1, PROBLEM_SIZE],
-                issue_token=True,
+            in_task = shim_dma_single_bd_task(
+                of_in0, inTensor, sizes=[1, 1, 1, PROBLEM_SIZE]
             )
-            npu_dma_memcpy_nd(
-                metadata=of_out0, bd_id=0, mem=outTensor, sizes=[1, 1, 1, PROBLEM_SIZE]
+            out_task = shim_dma_single_bd_task(
+                of_out0, outTensor, sizes=[1, 1, 1, PROBLEM_SIZE], issue_token=True
             )
-            dma_wait(of_in0, of_out0)
+
+            dma_start_task(in_task, out_task)
+            dma_await_task(out_task)
+            dma_free_task(in_task)
 
 
 # Declares that subsequent code is in mlir-aie context

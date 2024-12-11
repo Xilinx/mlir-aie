@@ -1,4 +1,4 @@
-# vector_scalar_mul/aie2.py -*- Python -*-
+# vector_scalar_mul/vector_scalar_mul_alt.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -82,14 +82,18 @@ def my_vector_scalar(dev, vector_size, trace_size):
                     tiles_to_trace, ShimTile, trace_size, N_in_bytes
                 )
 
-            npu_dma_memcpy_nd(
-                metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N], issue_token=True
+            in_task = shim_dma_single_bd_task(
+                of_in, A, sizes=[1, 1, 1, N], issue_token=True
             )
-            npu_dma_memcpy_nd(
-                metadata=of_factor, bd_id=2, mem=F, sizes=[1, 1, 1, 1], issue_token=True
+            in_factor_task = shim_dma_single_bd_task(
+                of_factor, F, sizes=[1, 1, 1, 1], issue_token=True
             )
-            npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
-            dma_wait(of_in, of_factor, of_out)
+            out_task = shim_dma_single_bd_task(
+                of_out, C, sizes=[1, 1, 1, N], issue_token=True
+            )
+
+            dma_start_task(in_task, in_factor_task, out_task)
+            dma_await_task(in_task, in_factor_task, out_task)
 
 
 try:

@@ -1,4 +1,4 @@
-# vector_scalar_add_runlist/aie2_iron.py -*- Python -*-
+# vector_scalar_add/vector_scalar_add.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -30,7 +30,7 @@ def my_vector_bias_add():
     of_out0 = ObjectFifo(aie_tile_ty, name="out")
     of_out1 = of_out0.cons().forward(obj_type=mem_tile_ty)
 
-    # Define some work for a compute core to perform
+    # Define a compute task to perform
     def core_body(of_in1, of_out0):
         elem_in = of_in1.acquire(1)
         elem_out = of_out0.acquire(1)
@@ -39,7 +39,7 @@ def my_vector_bias_add():
         of_in1.release(1)
         of_out0.release(1)
 
-    # Create a worker to run the task on a compute tile
+    # Create a worker to run the task
     worker = Worker(core_body, fn_args=[of_in1.cons(), of_out0.prod()])
 
     # Runtime operations to move data to/from the AIE-array

@@ -23,29 +23,41 @@ Thirdly, the design shows how the bodies of work done by each AIE core is a comb
 Finally, the overall structural design shows how complete designs are a combination of a static design, consisting of cores, connections and some part of the data movement, together with a run time sequence for controlling the design.
 A single tile performs a very simple `+` operation where the kernel loads data from local memory, increments the value by `1` and stores it back.
 
-The kernel executes on AIE tile (0, 2). Input data is first brought to the Me tile in (0, 1) using the Shim tile (0, 0). The size of the input data from the Shim tile is `64xi32`. The data is stored in the Mem tile and sent to the AIE tile in smaller pieces of size `32xi32`. Output data from the AIE tile to the Shim tile follows the same process, in reverse.
+Input data is first brought to a Mem tile in using a Shim tile. The size of the input data from the Shim tile is `64xi32`. The data is stored in the Mem tile and sent to the AIE tile in smaller pieces of size `32xi32`. Output data from the AIE tile to the Shim tile follows the same process, in reverse.
 
 This example does not contain a C++ kernel file. The kernel is expressed in Python bindings that is then compiled with the AIE compiler to generate the AIE core binary.
 
 ## Source Files Overview
 
-1. `aie2.py`: defines the AIE array structural design using IRON AIE language bindings. This generates mlir-aie that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `vector_scalar_add.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+
+1. `vector_scalar_add_alt.py`: An alternate version of the design in `vector_scalar_add.py`, that is expressed in a lower-level version of IRON.
 
 1. `test.cpp`: This C++ code is a testbench for the design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the program verifies the results.
 
 ## Usage
 
-### C++ Testbench
+### Compilation
 
-To compile the design and C++ testbench:
-
-```
+To compile the design:
+```shell
 make
-make vectorScalarAdd.exe
 ```
+
+To compile the alternative design:
+```shell
+make env use_alt=1
+```
+
+To compile the C++ testbench:
+```shell
+make vector_scalar_add.exe
+```
+
+### C++ Testbench
 
 To run the design:
 
-```
+```shell
 make run
 ```
