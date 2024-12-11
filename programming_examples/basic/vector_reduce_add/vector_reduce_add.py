@@ -1,4 +1,4 @@
-# vector_reduce_add/aie2_iron.py -*- Python -*-
+# vector_reduce_add/vector_reduce_add.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.

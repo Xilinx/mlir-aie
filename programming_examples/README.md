@@ -13,9 +13,8 @@
 These programming examples are provided so that application programmers can learn how to leverage the IRON design flow with mlir-aie python bindings, and the mlir-aie intermediate representation directly to build applications targeting AI Engines. 
 
 Each IRON example has one or more implementations:
-* `aie2.py` - These are written using the original IRON syntax
-* `aie2_alt.py` - These are written using an alternate form of `runtime_sequence`, but the design is likely otherwise unchanged.
-* `aie2_iron.py` - These are written using an alternative IRON syntax
+* `<example_name>.py` - These designs are generally written using a higher-level version of IRON
+* `<example_name>_alt.py` - These designs are generally written using a lower-level verion of IRON
 
 They are organized into the following directories:
 
