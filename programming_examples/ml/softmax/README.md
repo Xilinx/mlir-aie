@@ -53,19 +53,21 @@ This is a slightly more complex process than the rest of the examples, which typ
 ### C++ Testbench
 
 To compile the design and C++ testbench:
-
-```
+```shell
 make
 ```
 
-To run the design:
-
+To compile the alternative design:
+```shell
+env use_alt=1 make
 ```
+
+To run the design:
+```shell
 make run
 ```
 
 To generate a [trace file](../../../programming_guide/section-4/section-4b/README.md):
-
-```
-make trace
+```shell
+env use_alt=1 make trace
 ```
