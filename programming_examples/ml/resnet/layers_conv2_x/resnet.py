@@ -455,6 +455,7 @@ def conv1_skip_fn(
 # loop will be placed in a column together.
 workers = []
 for i in range(n_cols):
+    placement = cores[i][0]
     w = Worker(
         conv1_fn,
         [
@@ -462,10 +463,10 @@ for i in range(n_cols):
             act1_fifos[i].cons(),
             act2_fifos[i].prod(),
             conv1_kernels_call[i],
-            rtp[i][0],
+            rtp[placement.col][placement.row - 2],
             i,
         ],
-        placement=cores[i][0],
+        placement=placement,
     )
     workers.append(w)
     w = Worker(
@@ -480,10 +481,11 @@ for i in range(n_cols):
         placement=cores[i][1],
     )
     workers.append(w)
+    placement = cores[i][2]
     if i == 0:
         skip_rtp = rtp[0][3]
     else:
-        skip_rtp = rtp[i][2]
+        skip_rtp = rtp[placement.col][placement.row - 2]
     w = Worker(
         conv1_skip_fn,
         [
@@ -496,7 +498,7 @@ for i in range(n_cols):
             skip_rtp,
             i,
         ],
-        placement=cores[i][2],
+        placement=placement,
     )
     workers.append(w)
     w = Worker(
@@ -520,12 +522,19 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
 ):
 
     def set_rtps(rtp):
+
         rtp[0][0][0] = 1
         rtp[0][1][0] = 1
         rtp[0][2][0] = 1
         rtp[0][3][0] = 1
         rtp[0][3][1] = 0
         rtp[0][3][2] = 1
+
+        rtp[1][3][0] = 1
+        rtp[1][2][0] = 1
+        rtp[1][0][0] = 1
+        rtp[1][1][0] = 1
+        rtp[1][1][1] = 0
 
         rtp[2][0][0] = 1
         rtp[2][1][0] = 1

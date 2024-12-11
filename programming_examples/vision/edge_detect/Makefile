@@ -28,7 +28,7 @@ aie_py_src=${targetname}.py
 use_alt?=0
 
 ifeq (${use_alt}, 1)
-aie_py_src=edge_detect.py
+aie_py_src=${targetname}_alt.py
 endif
 
 all: build/final_${EDGEDETECT_WIDTH}.xclbin
