@@ -38,6 +38,8 @@ void generateXAieDmaSetMultiDimAddr(llvm::raw_ostream &output, int ndims,
                                     int elementWidthInBytes,
                                     const char *errorRet);
 
+llvm::SetVector<mlir::Block *> getOrderedChainOfBlocks(mlir::Region *region);
+
 } // namespace AIE
 } // namespace xilinx
 
