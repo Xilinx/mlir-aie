@@ -89,4 +89,20 @@ def CIRToAIEDecaptureKernel : Pass<"cir-to-aie-decapture-kernel", "mlir::ModuleO
   ];
 }
 
+def CIRKeepAIEDevice : Pass<"cir-keep-aie-device", "mlir::ModuleOp"> {
+
+  let summary = "Remove everything but the first aie.device";
+
+  let description = [{ Extract the aie.device from a CIR module by removing everything but the first aie.device.
+
+  TODO: handle multiple devices.
+  }];
+
+  let constructor = "xilinx::AIE::CIR::createCIRKeepAIEDevice()";
+  let dependentDialects = [
+    "cir::CIRDialect",
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
 #endif
