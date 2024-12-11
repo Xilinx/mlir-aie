@@ -13,6 +13,10 @@ from ..device import PlacementTile
 
 
 class RuntimeEndpoint(ObjectFifoEndpoint):
+    """The Endpoint of an ObjectFifo that is produced or consumed by the Runtime.
+    The placement of this Endpoint should be a Shim Tile.
+    """
+
     def __init__(self, placement: PlacementTile) -> RuntimeEndpoint:
         super().__init__(placement)
 

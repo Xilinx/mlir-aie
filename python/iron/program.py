@@ -22,10 +22,28 @@ class Program:
         device: Device,
         rt: Runtime,
     ):
+        """A Program represents all design information needed to run the design on a device.
+
+        ctx.module.operation.verify() is called within this function to verify the correctness
+        of the MLIR module.
+
+        Args:
+            device (Device): The device used to generate the final MLIR for the design.
+            rt (Runtime): The runtime object for the design.
+        """
         self._device = device
         self._rt = rt
 
     def resolve_program(self, placer: Placer | None = None):
+        """This method resolves the program components in order to generate MLIR.
+
+        Args:
+            placer (Placer | None, optional): The placer that will assign placement to unplaced components.
+                If a placer is not given, all components must be fully placed. Defaults to None.
+
+        Returns:
+            module (Module): The module containing the MLIR context information.
+        """
         with mlir_mod_ctx() as ctx:
 
             @device(self._device.resolve())
