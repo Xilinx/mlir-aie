@@ -44,7 +44,7 @@ The compilation process is different from the other design examples, and is show
 1. This generated C++ is compiled into a first object file
 1. A file called `lut_based_ops.cpp` from the AIE2 runtime library is compiled into a second object file.  This file contains the look up table contents to approximate the $e^x$ function.
 1. A wrapper file is also compiled into an object file, which prevents C++ name mangling, and allows the wrapped C function to be called from the strucural Python
-1. These 3 object files are combined into a single .a file, which is then referenced inside the aie2.py structural Python.
+1. These 3 object files are combined into a single .a file, which is then referenced inside the `softmax.py` structural Python.
 
 This is a slightly more complex process than the rest of the examples, which typically only use a single object file containing the wrapped C++ function call, but is provided to show how a library-based flow can also be used.
 
