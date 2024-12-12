@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Targets/AIERT.h"
+#include "aie/Targets/AIETargetShared.h"
 
 #include "mlir/Support/LogicalResult.h"
 
@@ -607,6 +608,11 @@ LogicalResult AIERTControl::addInitConfig(DeviceOp &targetOp) {
     int row = memOp.getTileID().row;
     XAie_LocType tileLoc = XAie_TileLoc(col, row);
 
+    // Get the region's entry block, then start traversing through the chain of
+    // blocks.
+    llvm::SetVector<Block *> blockVector =
+        getOrderedChainOfBlocks(&memOp.getOperation()->getRegion(0));
+
     // handle DMA ops separately
     auto dmaOps = llvm::to_vector_of<DMAOp>(
         memOp.getOperation()->getRegion(0).getOps<DMAOp>());
@@ -618,10 +624,10 @@ LogicalResult AIERTControl::addInitConfig(DeviceOp &targetOp) {
             return failure();
         }
     } else {
-      for (Block &block : memOp.getOperation()->getRegion(0)) {
-        if (block.getOps<DMABDOp>().empty())
+      for (Block *block : blockVector) {
+        if (block->getOps<DMABDOp>().empty())
           continue;
-        if (failed(configureLocksAndBd(block, tileLoc)))
+        if (failed(configureLocksAndBd(*block, tileLoc)))
           return failure();
       }
     }
@@ -637,8 +643,8 @@ LogicalResult AIERTControl::addInitConfig(DeviceOp &targetOp) {
           return failure();
       }
     else
-      for (Block &block : memOp.getOperation()->getRegion(0)) {
-        for (auto op : block.getOps<DMAStartOp>()) {
+      for (Block *block : blockVector) {
+        for (auto op : block->getOps<DMAStartOp>()) {
           DMABDOp bd = *op.getDest()->getOps<DMABDOp>().begin();
           int chNum = op.getChannelIndex();
           auto channelDir = op.getChannelDir();
