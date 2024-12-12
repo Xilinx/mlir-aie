@@ -9,4 +9,6 @@ from ..placeable import Placeable
 
 
 class ObjectFifoEndpoint(Placeable):
+    """The endpoint of an ObjectFifo. Each ObjectFifoHandle has one ObjectFifoEndpoint"""
+
     pass

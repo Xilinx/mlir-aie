@@ -20,6 +20,11 @@ from .placeable import Placeable
 
 
 class GlobalBuffer(Resolvable, Placeable):
+    """A buffer that is available both to Workers and to the Runtime for operations.
+    This is often used for Runtime Parameters.
+    """
+
+    """This is used to generate unique names if none is given during construction"""
     __gbuf_index = 0
 
     def __init__(
@@ -30,6 +35,19 @@ class GlobalBuffer(Resolvable, Placeable):
         placement: PlacementTile | None = None,
         use_write_rtp: bool = False,
     ):
+        """A GlobalBuffer is a memory region declared at the top-level of the design, allowing it to
+        be accessed by both Workers and the Runtime.
+
+        Args:
+            type (type[np.ndarray] | None, optional): The type of the buffer. Defaults to None.
+            initial_value (np.ndarray | None, optional): An initial value to set the buffer to. Should be of same datatype and shape as the buffer. Defaults to None.
+            name (str | None, optional): The name of the buffer. If none is given, a unique name will be generated. Defaults to None.
+            placement (PlacementTile | None, optional): A placement location for the buffer. Defaults to None.
+            use_write_rtp (bool, optional): If use_write_rtp, write_rtp/read_rtp operations will be generated. Otherwise, traditional write/read operations will be used. Defaults to False.
+
+        Raises:
+            ValueError: Arguments are validated.
+        """
         if type is None and initial_value is None:
             raise ValueError("Must provide either type, initial value, or both.")
         if type is None:
@@ -51,10 +69,12 @@ class GlobalBuffer(Resolvable, Placeable):
 
     @property
     def shape(self) -> Sequence[int]:
+        """The shape of the buffer"""
         return np_ndarray_type_get_shape(self._obj_type)
 
     @property
     def dtype(self) -> np.dtype:
+        """The per-element datatype of the buffer."""
         return np_ndarray_type_get_dtype(self._obj_type)
 
     def __getitem__(self, idx):

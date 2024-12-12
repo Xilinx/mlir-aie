@@ -15,19 +15,13 @@ trace_size = 16384
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
-aie_py_src=aie2.py
+aie_py_src=conv2d.py
+aie_py_trace_src=conv2d_alt.py
 use_alt?=0
 use_iron?=0
 
 ifeq (${use_alt}, 1)
-aie_py_src=aie2_alt.py
-ifeq (${use_iron}, 1)
-$(error Cannot specify both alternative design and IRON)
-endif
-endif
-
-ifeq (${use_iron}, 1)
-aie_py_src=aie2_iron.py
+aie_py_src=conv2d_alt.py
 endif
 
 all: build/conv2dk1_i8.o build/final.xclbin
@@ -40,7 +34,7 @@ build/${mlirFileName}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< > $@
 
-build/${mlirFileName}_trace.mlir: ${srcdir}/aie2.py
+build/${mlirFileName}_trace.mlir: ${srcdir}/${aie_py_trace_src}
 	mkdir -p ${@D}
 	python3 $< ${trace_size} > $@
 

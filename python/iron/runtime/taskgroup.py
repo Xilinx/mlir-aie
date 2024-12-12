@@ -8,11 +8,19 @@
 
 
 class RuntimeTaskGroup:
+    """A RuntimeTaskGroup is a structured tag to indicated groupings of RuntimeTasks."""
+
     def __init__(self, id: int):
+        """Construct a RuntimeTaskGroup
+
+        Args:
+            id (int): The id of the task group. The id should be unique to tasks groups within a Runtime.
+        """
         self._group_id = id
 
     @property
     def group_id(self) -> int:
+        """The id of the task group."""
         return self._group_id
 
     def __str__(self):

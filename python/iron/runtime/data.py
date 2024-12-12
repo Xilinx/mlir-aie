@@ -18,23 +18,34 @@ from ...helpers.taplib import TensorAccessPattern, TensorTiler2D
 
 
 class RuntimeData:
+    """A handle to I/O data in the Runtime"""
+
     def __init__(self, arr_type: type[np.ndarray]):
+        """Construct a handle to a Runtime buffer.
+
+        Args:
+            arr_type (type[np.ndarray]): The type of the I/O data.
+        """
         self._arr_type = arr_type
         self._op = None
 
     @property
     def shape(self) -> Sequence[int]:
+        """The shape of the buffer"""
         return np_ndarray_type_get_shape(self._arr_type)
 
     @property
     def dtype(self) -> np.dtype:
+        """The per-element datatype of the buffer"""
         return np_ndarray_type_get_dtype(self._arr_type)
 
     @property
     def arr_type(self) -> np.ndarray:
+        """The tensor type of the buffer."""
         return self._arr_type
 
     def default_tap(self) -> TensorAccessPattern:
+        """A default access pattern for a linear transfer of the buffer."""
         # TODO: what if not two dimensional?
         return TensorTiler2D.simple_tiler(self.shape)[0]
 

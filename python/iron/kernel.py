@@ -22,6 +22,14 @@ class Kernel(Resolvable):
         bin_name: str,
         arg_types: list[type[np.ndarray] | np.dtype] = [],
     ) -> None:
+        """A Kernel is an externally defined function that eventually resolves to a FuncOp. If it is called,
+        a CallOp will be generated.
+
+        Args:
+            name (str): The name of the function
+            bin_name (str): The name of the binary (used for linking to a compute core)
+            arg_types (list[type[np.ndarray]  |  np.dtype], optional): The type signature of the function. Defaults to [].
+        """
         self._name = name
         self._bin_name = bin_name
         self._arg_types = arg_types

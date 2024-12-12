@@ -13,25 +13,18 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 include ${srcdir}/../../makefile-common
 
 device = npu
-targetname = passThroughKernel
+targetname = passthrough_kernel
 VPATH := ${srcdir}/../../../aie_kernels/generic
 data_size = 4096
 trace_size = 8192
 PASSTHROUGH_SIZE = ${data_size}
 
-aie_py_src=aie2.py
+aie_py_src=${targetname}.py
 use_alt?=0
 use_iron?=0
 
 ifeq (${use_alt}, 1)
-aie_py_src=aie2_alt.py
-ifeq (${use_iron}, 1)
-$(error Cannot specify both alternative design and IRON)
-endif
-endif
-
-ifeq (${use_iron}, 1)
-aie_py_src=aie2_iron.py
+aie_py_src=${targetname}_alt.py
 endif
 
 .PHONY: all template clean

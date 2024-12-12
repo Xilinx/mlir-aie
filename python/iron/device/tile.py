@@ -6,21 +6,17 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
-"""
-TODOs:
-* docs
-* error handling
-* tile types
-"""
-
 from ...dialects.aie import TileOp
 
 
 class Tile:
+    """An object representing a single component denoted by coordinates on a device."""
+
     def __init__(self, col: int, row: int) -> None:
         self.col: int = col
         self.row: int = row
         self._op: TileOp | None = None
+        # TODO: each tile should probably have a type, e.g., Shim or Mem or Compute
 
     @property
     def op(self) -> TileOp:
@@ -47,14 +43,20 @@ class Tile:
 
 
 class AnyShimTile:
+    """A placeholder that should be replaced with a concrete Tile() representing a Shim tile on a device."""
+
     pass
 
 
 class AnyMemTile:
+    """A placeholder that should be replaced with a concrete Tile() representing a Mem tile on a device."""
+
     pass
 
 
 class AnyComputeTile:
+    """A placeholder that should be replaced with a concrete Tile() representing a Compute tile on a device."""
+
     pass
 
 

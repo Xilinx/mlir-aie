@@ -12,23 +12,16 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-targetname = reduce_add
+targetname = vector_reduce_add
 devicename = npu
 col = 0
 
-aie_py_src=aie2.py
+aie_py_src=${targetname}.py
 use_alt?=0
 use_iron?=0
 
 ifeq (${use_alt}, 1)
-aie_py_src=aie2_alt.py
-ifeq (${use_iron}, 1)
-$(error Cannot specify both alternative design and IRON)
-endif
-endif
-
-ifeq (${use_iron}, 1)
-aie_py_src=aie2_iron.py
+aie_py_src=${targetname}_alt.py
 endif
 
 all: build/final.xclbin build/insts.txt

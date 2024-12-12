@@ -17,6 +17,9 @@ from .dataflow import ObjectFifoHandle
 
 
 class Placer(metaclass=ABCMeta):
+    """Placer is an abstract class to define the interface between the Program
+    and the Placer.
+    """
 
     @abstractmethod
     def make_placement(
@@ -25,10 +28,27 @@ class Placer(metaclass=ABCMeta):
         rt: Runtime,
         workers: list[Worker],
         object_fifos: list[ObjectFifoHandle],
-    ): ...
+    ):
+        """Assign placement informatio to a program.
+
+        Args:
+            device (Device): The device to use for placement.
+            rt (Runtime): The runtime information for the program.
+            workers (list[Worker]): The workers included in the program.
+            object_fifos (list[ObjectFifoHandle]): The object fifos used by the program.
+        """
+        ...
 
 
 class SequentialPlacer(Placer):
+    """SequentialPlacer is a simple implementation of a placer. The SequentialPlacer is to named
+    because it will sequentially place workers to Compute Tiles. After workers are placed, Memory Tiles and
+    Shim Tiles are placed so as to match the column of the given compute tile.
+
+    The SequentialPlacer does not do any validation of placement and can often yield invalid placements
+    that exceed resource limits for channels, memory, etc. For complex or resource sensitive designs,
+    a more complex placer or manual placement is required.
+    """
 
     def __init__(self):
         super().__init__()
@@ -54,8 +74,8 @@ class SequentialPlacer(Placer):
                 if not worker.tile in computes:
                     raise ValueError(
                         f"Partial Placement Error: "
-                        "Tile {worker.tile} not available on "
-                        "device {device} or has already been used."
+                        f"Tile {worker.tile} not available on "
+                        f"device {device} or has already been used."
                     )
                 computes.remove(worker.tile)
 
@@ -93,7 +113,7 @@ class SequentialPlacer(Placer):
 
     def _get_common_col(self, tiles: list[Tile]) -> int:
         """
-        This is a simplistic utility function that calculates a column that is "close" or "common"
+        A utility function that calculates a column that is "close" or "common"
         to a set of tiles. It is a simple heuristic using the average to represent "distance"
         """
         cols = [t.col for t in tiles if isinstance(t, Tile)]
@@ -103,6 +123,9 @@ class SequentialPlacer(Placer):
         return avg_col
 
     def _find_col_match(self, col: int, tiles: list[Tile]) -> Tile:
+        """
+        A utility function that sequentially searches a list of tiles to find one with a matching column.
+        """
         for t in tiles:
             if t.col == col:
                 return t
