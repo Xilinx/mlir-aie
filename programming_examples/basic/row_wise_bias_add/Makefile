@@ -39,7 +39,6 @@ n=32
 
 aie_py_src=row_wise_bias_add.py
 use_alt?=0
-use_iron?=0
 
 ifeq (${use_alt}, 1)
 aie_py_src=row_wise_bias_add_alt.py

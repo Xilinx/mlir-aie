@@ -25,7 +25,6 @@ targetname = color_detect
 
 aie_py_src=${targetname}.py
 use_alt?=0
-use_iron?=0
 
 ifeq (${use_alt}, 1)
 aie_py_src=${targetname}_alt.py

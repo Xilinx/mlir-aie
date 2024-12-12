@@ -15,7 +15,6 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 aie_py_src=conv2d_fused_relu.py
 use_alt?=0
-use_iron?=0
 
 ifeq (${use_alt}, 1)
 aie_py_src=conv2d_fused_relu_alt.py
