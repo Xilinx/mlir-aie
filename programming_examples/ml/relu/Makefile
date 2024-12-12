@@ -14,14 +14,14 @@ include ${srcdir}/../../makefile-common
 
 all: build/final.xclbin
 
-targetname = myReLU
+targetname = relu
 trace_size = 8192
 
-aie_py_src=aie2.py
+aie_py_src=relu.py
 use_alt?=0
 
 ifeq (${use_alt}, 1)
-aie_py_src=aie2_alt.py
+aie_py_src=relu_alt.py
 endif
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2

@@ -12,16 +12,11 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-targetname = vectorAdd
+targetname = vector_vector_add
 devicename = npu
 col = 0
 
-aie_py_src=aie2.py
-use_alt?=0
-
-ifeq (${use_alt}, 1)
-aie_py_src=aie2_alt.py
-endif
+aie_py_src=${targetname}.py
 
 all: build/final.xclbin
 
