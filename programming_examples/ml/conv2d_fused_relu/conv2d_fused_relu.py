@@ -38,7 +38,7 @@ traceSizeInInt32s = trace_size // 4
 
 
 def conv2dk1():
-
+    # Define types
     actIn_ty = np.ndarray[(actIn,), np.dtype[np.int8]]
     bufIn_ty = np.ndarray[(bufIn,), np.dtype[np.int8]]
 
@@ -76,12 +76,12 @@ def conv2dk1():
     of_out_02_L2 = ObjectFifo(out_ty, name="out_02_L2")
     of_outOFL2L3 = of_out_02_L2.cons().forward(name="outOFL2L3", obj_type=bufOut_ty)
 
-    # Set up compute tiles
-
+    # Create a buffer to hold runtime parameters
     rtp = GlobalBuffer(
         np.ndarray[(16,), np.dtype[np.int32]], name="rtp", use_write_rtp=True
     )
 
+    # Task for a core to perform
     def conv2d_fn(of_wts, of_act, of_out, my_rtp, conv2dk1_i8):
         y_dim = 32
         x_dim = 32
@@ -101,6 +101,7 @@ def conv2dk1():
             of_out.release(1)
         of_wts.release(1)
 
+    # Create a worker to perform the task
     worker_conv2d = Worker(
         conv2d_fn,
         [
@@ -112,18 +113,25 @@ def conv2dk1():
         ],
     )
 
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, weights_ty, tensor_ty) as (I, W, O):
 
+        # Initialize the runtime parameter
         def set_rtps(my_rtp):
             my_rtp[0] = 1
 
         rt.inline_ops(set_rtps, [rtp])
+
+        # Start workers
         rt.start(worker_conv2d)
+
+        # Fill/drain input/output ObjectFifos
         rt.fill(of_inOF_act_L3L2.prod(), I)
         rt.fill(of_inOF_wts_0_L3L2.prod(), W)
         rt.drain(of_outOFL2L3.cons(), O, wait=True)
 
+    # Place components (assign them resources on the device) and generate an MLIR module
     return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 
 

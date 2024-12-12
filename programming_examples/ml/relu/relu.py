@@ -18,7 +18,7 @@ from aie.helpers.util import np_ndarray_type_get_shape
 def my_relu(trace_size):
     N = 65536
 
-    # Tile sizes
+    # Tile sizes and types
     n = 1024
     N_div_n = N // n
 
@@ -64,6 +64,7 @@ def my_relu(trace_size):
         names=[f"memC{i}" for i in range(n_cores)],
     )
 
+    # Task for cores to perform
     def core_fn(of_a, of_c, relu_fn):
         for _ in range_(tiles):
             elem_out = of_c.acquire(1)
@@ -72,7 +73,7 @@ def my_relu(trace_size):
             of_a.release(1)
             of_c.release(1)
 
-    # Set up workers
+    # Create workers to perform the task
     workers = []
     for i in range(n_cores):
         workers.append(
@@ -86,12 +87,14 @@ def my_relu(trace_size):
             )
         )
 
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, tensor_ty) as (A, C):
         rt.start(*workers)
         rt.fill(inA.prod(), A)
         rt.drain(outC.cons(), C, wait=True)
 
+    # Place components (assign them resources on the device) and generate an MLIR module
     return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 
 

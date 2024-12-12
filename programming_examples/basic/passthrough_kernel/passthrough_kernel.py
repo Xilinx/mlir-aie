@@ -57,6 +57,7 @@ def core_fn(of_in, of_out, passThroughLine):
 # Create a worker to perform the task
 my_worker = Worker(core_fn, [of_in.cons(), of_out.prod(), passthrough_fn])
 
+# Runtime operations to move data to/from the AIE-array
 rt = Runtime()
 with rt.sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
     rt.start(my_worker)

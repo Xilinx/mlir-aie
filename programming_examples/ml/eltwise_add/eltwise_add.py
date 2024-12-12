@@ -80,6 +80,7 @@ def my_eltwise_add(trace_size):
         names=[f"memC{i}" for i in range(n_cores)],
     )
 
+    # Task for the cores to perform
     def core_fn(of_a, of_b, of_c, eltwise_add):
         for _ in range_(tiles):
             elem_out = of_c.acquire(1)
@@ -90,7 +91,7 @@ def my_eltwise_add(trace_size):
             of_b.release(1)
             of_c.release(1)
 
-    # Set up workers
+    # Set up workers to perform the tasks
     workers = []
     for i in range(n_cores):
         workers.append(
@@ -105,6 +106,7 @@ def my_eltwise_add(trace_size):
             )
         )
 
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (A, B, C):
         rt.start(*workers)
@@ -112,6 +114,7 @@ def my_eltwise_add(trace_size):
         rt.fill(inB.prod(), B)
         rt.drain(outC.cons(), C, wait=True)
 
+    # Place components (assign them resources on the device) and generate an MLIR module
     return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 
 

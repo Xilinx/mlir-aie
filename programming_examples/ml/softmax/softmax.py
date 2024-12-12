@@ -15,8 +15,6 @@ from aie.helpers.dialects.ext.scf import _for as range_
 
 
 def vector_softmax(trace_size):
-
-    word_size_in = 2
     N = 262144  # *1024
 
     # Tile sizes
@@ -28,10 +26,6 @@ def vector_softmax(trace_size):
 
     tensor_ty = np.ndarray[(N,), np.dtype[bfloat16]]
     tile_ty = np.ndarray[(n,), np.dtype[bfloat16]]
-
-    # Type used in the tile memory
-    A_ty = np.ndarray[(n,), np.dtype[bfloat16]]
-    C_ty = np.ndarray[(n,), np.dtype[bfloat16]]
 
     # Type used in the memory tile which aggregates across the 4 cores
     A_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
@@ -61,6 +55,7 @@ def vector_softmax(trace_size):
         names=[f"memC{i}" for i in range(n_cores)],
     )
 
+    # Task for the cores to perform
     def core_fn(of_in, of_out, softmax_kernel):
         for _ in range_(tiles):
             elem_out = of_out.acquire(1)
@@ -69,7 +64,7 @@ def vector_softmax(trace_size):
             of_in.release(1)
             of_out.release(1)
 
-    # Set up workers
+    # Set up workers to perform the task
     workers = []
     for i in range(n_cores):
         workers.append(
@@ -83,12 +78,14 @@ def vector_softmax(trace_size):
             )
         )
 
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, tensor_ty) as (A, C):
         rt.start(*workers)
         rt.fill(inA.prod(), A)
         rt.drain(outC.cons(), C, wait=True)
 
+    # Place components (assign them resources on the device) and generate an MLIR module
     return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 
 

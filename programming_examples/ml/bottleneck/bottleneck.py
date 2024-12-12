@@ -104,6 +104,7 @@ def bottleneck4AIEs():
         ],
     )
 
+    # Buffers used to hold runtime parameters
     rtp2 = GlobalBuffer(
         np.ndarray[(16,), np.dtype[np.int32]],
         name="rtp2",
@@ -319,6 +320,7 @@ def bottleneck4AIEs():
     )
     workers.append(worker)
 
+    # Runtime operations to move data to/from the device and set the runtime parameters
     rt = Runtime()
     with rt.sequence(activationsInL3_ty, weightsInL3_ty, activationsInL3_ty) as (
         inputFromL3,
@@ -342,6 +344,7 @@ def bottleneck4AIEs():
         rt.fill(inOF_wts_0_L3L2.prod(), weightsFromL3)
         rt.drain(outOFL2L3.cons(), outputToL3, wait=True)
 
+    # Place program components (assign them resources on the device) and generate an MLIR module
     return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 
 

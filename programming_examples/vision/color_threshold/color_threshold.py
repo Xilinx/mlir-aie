@@ -21,6 +21,7 @@ def color_threshold(dev, width, height):
     lineWidthChannels = width * 4  # 4 channels
     tensorSize = width * height
 
+    # Type definitions
     tensor_ty = np.ndarray[(tensorSize,), np.dtype[np.int8]]
     line_channels_ty = np.ndarray[(lineWidthChannels,), np.dtype[np.uint8]]
     line_ty = np.ndarray[(lineWidth,), np.dtype[np.uint8]]
@@ -60,7 +61,7 @@ def color_threshold(dev, width, height):
             )
         )
 
-    # Compute tile 2
+    # Task for the core to perform
     def core_fn(of_in, of_out, my_rtp, threshold_fn):
         elemIn = of_in.acquire(1)
         elemOut = of_out.acquire(1)
@@ -81,6 +82,7 @@ def color_threshold(dev, width, height):
         of_in.release(1)
         of_out.release(1)
 
+    # Create a worker to perform the task
     workers = []
     for i in range(4):
         workers.append(
@@ -90,9 +92,11 @@ def color_threshold(dev, width, height):
             )
         )
 
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, unused_ty, tensor_ty) as (inTensor, _, outTensor):
 
+        # Set runtime parameters
         def set_rtps(*args):
             for rtp in args:
                 rtp[0] = 50
@@ -100,10 +104,15 @@ def color_threshold(dev, width, height):
                 rtp[2] = 0
 
         rt.inline_ops(set_rtps, rtps)
+
+        # Start workers
         rt.start(*workers)
+
+        # Fill/Drain input/output ObjectFifos
         rt.fill(inOOB_L3L2.prod(), inTensor)
         rt.drain(outOOB_L2L3.cons(), outTensor, wait=True)
 
+    # Place components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())
 
 

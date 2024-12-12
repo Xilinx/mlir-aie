@@ -25,9 +25,10 @@ traceSize = 1024
 
 
 def color_detect():
+
+    # Define types
     line_bytes_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
     line_ty = np.ndarray[(lineWidth,), np.dtype[np.uint8]]
-
     tensor_ty = np.ndarray[(tensorSize,), np.dtype[np.int8]]
     tensor_16x16_ty = np.ndarray[(16, 16), np.dtype[np.int32]]
 
@@ -74,6 +75,7 @@ def color_detect():
     OF_5to5a = ObjectFifo(line_ty, name="OF_5to5a", default_depth=1)
     OF_5to5b = ObjectFifo(line_bytes_ty, name="OF_5to5b", default_depth=1)
 
+    # Compute task for cores to perform
     def rgba2hue_fn(of_in, of_out, rgba2hueLine_kernel):
         elemIn = of_in.acquire(1)
         elemOut = of_out.acquire(1)
@@ -81,8 +83,10 @@ def color_detect():
         of_in.release(1)
         of_out.release(1)
 
+    # worker to perform the task
     worker2 = Worker(rgba2hue_fn, [inOF_L3L2.cons(), OF_2to34.prod(), rgba2hueLine])
 
+    # Compute task for cores to perform
     def threshold_fn(of_in, of_in3, of_out3, of_out5, threshold_kernel, is_first=True):
         if is_first:
             thresholdValueUpper1 = 40
@@ -119,6 +123,7 @@ def color_detect():
         of_out3.release(1)
         of_out5.release(1)
 
+    # worker to perform the task
     worker3 = Worker(
         threshold_fn,
         [
@@ -130,6 +135,8 @@ def color_detect():
             True,
         ],
     )
+
+    # worker to perform the task
     worker4 = Worker(
         threshold_fn,
         [
@@ -142,7 +149,7 @@ def color_detect():
         ],
     )
 
-    # Compute tile 5
+    # Compute task for cores to perform
     def or_gray2rgba_and_fn(
         of_in,
         of_in2,
@@ -179,6 +186,7 @@ def color_detect():
         of_in3.release(1)
         of_out.release(1)
 
+    # worker to perform the task
     worker5 = Worker(
         or_gray2rgba_and_fn,
         [
@@ -196,12 +204,14 @@ def color_detect():
         ],
     )
 
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, tensor_16x16_ty, tensor_ty) as (I, B, O):
         rt.start(worker2, worker3, worker4, worker5)
         rt.fill(inOF_L3L2.prod(), I)
         rt.drain(outOF_L2L3.cons(), O, wait=True)
 
+    # Place components (assign them resources on the device) and generate an MLIR module
     return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 
 

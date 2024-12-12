@@ -39,6 +39,7 @@ def passThroughAIE2():
     of_in = ObjectFifo(line_ty, name="in")
     of_out = ObjectFifo(line_ty, name="out")
 
+    # Task for the core to perform
     def passthrough_fn(of_in, of_out, passThroughLine):
         elemOut = of_out.acquire(1)
         elemIn = of_in.acquire(1)
@@ -46,16 +47,19 @@ def passThroughAIE2():
         of_in.release(1)
         of_out.release(1)
 
+    # Create a worker to perform the task
     worker = Worker(
         passthrough_fn, [of_in.cons(), of_out.prod(), passThroughLineKernel]
     )
 
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (inTensor, _, outTensor):
         rt.start(worker)
         rt.fill(of_in.prod(), inTensor)
         rt.drain(of_out.cons(), outTensor, wait=True)
 
+    # Place components (assign them resources on the device) and generate an MLIR module
     return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
 
 

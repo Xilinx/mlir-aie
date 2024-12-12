@@ -19,10 +19,10 @@ def edge_detect(dev, width, height):
     lineWidthInBytes = width * 4
     tensorSize = width * height * 4  # 4 channels
 
+    # Type definitions
     line_bytes_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
     line_ty = np.ndarray[(lineWidth,), np.dtype[np.uint8]]
     tensor_3x3_ty = np.ndarray[(3, 3), np.dtype[np.int16]]
-
     tensor_ty = np.ndarray[(tensorSize,), np.dtype[np.int8]]
     tensor_16x16_ty = np.ndarray[(16, 16), np.dtype[np.int32]]
 
@@ -78,6 +78,7 @@ def edge_detect(dev, width, height):
 
     workers = []
 
+    # Task for the core to perform
     def rgba2gray_fn(of_in, of_out, rgba2gray_line):
         # inOF_L3L2
         # OF_2to3 -> of_intermediates[0]
@@ -87,6 +88,7 @@ def edge_detect(dev, width, height):
         of_in.release(1)
         of_out.release(1)
 
+    # Worker to run the task
     workers.append(
         Worker(
             rgba2gray_fn,
@@ -94,6 +96,7 @@ def edge_detect(dev, width, height):
         )
     )
 
+    # Task for the core to perform
     def filter_fn(of_in, of_out, filter2d_line):
         # OF_2to3 -> intermediates[0]
         # OF_3to4 -> intermediates[1]
@@ -151,6 +154,7 @@ def edge_detect(dev, width, height):
             of_in.release(2)
             of_out.release(1)
 
+    # Worker to run the task
     workers.append(
         Worker(
             filter_fn,
@@ -163,6 +167,7 @@ def edge_detect(dev, width, height):
         )
     )
 
+    # Task for the core to perform
     def threshold_fn(of_in, of_out, threshold_line):
         v_thr = 10
         v_max = 255
@@ -174,6 +179,7 @@ def edge_detect(dev, width, height):
         of_in.release(1)
         of_out.release(1)
 
+    # Worker to run the task
     workers.append(
         Worker(
             threshold_fn,
@@ -185,6 +191,7 @@ def edge_detect(dev, width, height):
         )
     )
 
+    # Task for the core to perform
     def gray2rgba_addWeight_fn(
         of_in,
         of_in2,
@@ -224,6 +231,7 @@ def edge_detect(dev, width, height):
         of_in2.release(1)
         of_out.release(1)
 
+    # Worker to run the task
     workers.append(
         Worker(
             gray2rgba_addWeight_fn,
@@ -239,12 +247,14 @@ def edge_detect(dev, width, height):
         )
     )
 
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, tensor_16x16_ty, tensor_ty) as (I, _B, O):
         rt.start(*workers)
         rt.fill(inOF_L3L2.prod(), I)
         rt.drain(outOF_L2L3.cons(), O, wait=True)
 
+    # Place components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())
 
 

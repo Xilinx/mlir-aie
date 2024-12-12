@@ -208,6 +208,8 @@ for i in range(3):
             )
         )
 
+# Cores - we move in a snake-like pattern, that depends on
+# shared memory between neighbors, so we'll explicitly place all cores
 cores = [
     [Tile(0, 2), Tile(0, 3), Tile(0, 4), Tile(0, 5)],
     [Tile(1, 5), Tile(1, 4), Tile(1, 3), Tile(1, 2)],
@@ -284,6 +286,8 @@ conv3_out_fifos = [
 ]
 
 
+# Task for a worker to perform. Note that idx is a metaprogramming value,
+# e.g., it is a Python variable but will compile to a scalar constant.
 def conv1_fn(of_wts, of_act1, of_act2, conv1_kernel, rtp, idx):
     # acquire weights once
     element0Weights = of_wts.acquire(1)
@@ -318,11 +322,12 @@ def conv1_fn(of_wts, of_act1, of_act2, conv1_kernel, rtp, idx):
 
 
 # 3x3 conv2d
+# Task for a worker to perform. Note that last_arg_zero is a metaprogramming value,
+# e.g., it is a Python variable that will not be present in compiled code.
 def conv2_fn(of_wts, of_act2, of_act3, conv2dk3_kernel, last_arg_zero=False):
     last_arg = 0
     if not last_arg_zero:
-        lasts_arg = tensorInCInit // 2
-
+        last_arg = tensorInCInit // 2
     scale = 1
 
     # acquire weights and rtps once
@@ -396,6 +401,8 @@ def conv2_fn(of_wts, of_act2, of_act3, conv2dk3_kernel, last_arg_zero=False):
 
 
 # # 1x1 conv2d and add skip
+# Task for a worker to perform. Note that idx is a metaprogramming value,
+# e.g., it is a Python variable that will not be present in compiled code.
 def conv1_skip_fn(
     of_wts, of_act3_1, of_act3_2, of_conv3, of_skip, conv3_kernel, my_rtp, idx
 ):
@@ -450,9 +457,7 @@ def conv1_skip_fn(
     of_wts.release(1)
 
 
-# Note that the order of workers matters becaues the placer
-# places them sequentially. So the four workers created in each
-# loop will be placed in a column together.
+# Create workers and place each one on a particular compute core
 workers = []
 for i in range(n_cols):
     placement = cores[i][0]
@@ -514,6 +519,7 @@ for i in range(n_cols):
     )
     workers.append(w)
 
+# Runtime operations to move data to/from the AIE-array
 rt = Runtime()
 with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_ty) as (
     inputFromL3,
@@ -521,6 +527,7 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
     outputToL3,
 ):
 
+    # Set runtime parameters
     def set_rtps(rtp):
 
         rtp[0][0][0] = 1
@@ -543,7 +550,11 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
         rtp[2][2][1] = 0
 
     rt.inline_ops(set_rtps, [rtp])
+
+    # Start workers
     rt.start(*workers)
+
+    # Fill/drain input/output object FIFOs
     rt.fill(act1_fifos[0].prod(), inputFromL3, placement=Tile(0, 0))
 
     tap = TensorAccessPattern(
@@ -571,5 +582,8 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
     rt.fill(wts_fifos[2].prod(), weightsFromL3, tap, placement=Tile(2, 0))
     rt.drain(outOFL2L3.cons(), outputToL3, placement=Tile(1, 0), wait=True)
 
+# Place components (assign them resources on the device) and generate an MLIR module
 module = Program(NPU1Col3(), rt).resolve_program(SequentialPlacer())
+
+# Print the generated MLIR
 print(module)
