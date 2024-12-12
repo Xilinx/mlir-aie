@@ -97,6 +97,10 @@ jobs:
           echo "llvm-version: \"${{ steps.mlir-wheels.outputs.MLIR_WHEEL_VERSION }}\"," >> build_release/docs/build_info.json
           echo "}" > build_release/docs/build_info.json
 
+      - name: test
+        run: |
+          find ./build_release/docs
+
       - name: Publish to GitHub-Pages
         if: github.event_name != 'pull_request'
         # https://github.com/peaceiris/actions-gh-pages/releases/tag/v3.9.3
