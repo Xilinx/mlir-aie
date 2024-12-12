@@ -6,8 +6,8 @@ TILE_DIMS = (2, 4)
 MATRIX_DTYPE = np.int32
 NUM_WORKERS = 2
 
-A = aie.asarray(np.full(fill_value=1, shape=MATRIX_DIMS, dtype=MATRIX_DTYPE))
-B = aie.array(MATRIX_DIMS, MATRIX_DTYPE)
+A = iron.asarray(np.full(fill_value=1, shape=MATRIX_DIMS, dtype=MATRIX_DTYPE))
+B = iron.array(MATRIX_DIMS, MATRIX_DTYPE)
 
 
 def task_fn(a, b):
