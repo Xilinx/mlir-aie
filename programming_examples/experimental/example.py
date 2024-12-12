@@ -1,5 +1,5 @@
 import numpy as np
-import aie.iron.experimental as aie
+import aie.iron.experimental as iron
 
 MATRIX_DIMS = (8, 16)
 TILE_DIMS = (2, 4)
