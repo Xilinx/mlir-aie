@@ -8,7 +8,7 @@
 // (c) Copyright 2021-2023, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
-#include "AIETargetShared.h"
+#include "aie/Targets/AIETargetShared.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
@@ -83,7 +83,12 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
   int col = memOp.colIndex();
   int row = memOp.rowIndex();
 
-  for (auto &block : memOp.getBody()) {
+  // Get the region's entry block, then start traversing through the chain of
+  // blocks.
+  llvm::SetVector<Block *> blockVector =
+      getOrderedChainOfBlocks(&memOp.getBody());
+
+  for (auto block : blockVector) {
     bool foundBdPacket = false;
     int packetType = 0;
     int packetID = 0;
@@ -95,7 +100,7 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     int ndims = 0;
     ArrayRef<BDDimLayoutAttr> dims;
     //      StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
-    for (auto op : block.template getOps<DMABDOp>()) {
+    for (auto op : block->getOps<DMABDOp>()) {
       foundBd = true;
       if (!targetModel.isShimNOCTile(col, row)) {
         assert(op.getBufferOp().getAddress() &&
@@ -133,7 +138,7 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     int acqValue = 0, relValue = 0;
     bool hasAcq = false, hasRel = false;
     int acqLockID = 0, relLockID = 0;
-    for (auto op : block.template getOps<UseLockOp>()) {
+    for (auto op : block->getOps<UseLockOp>()) {
       LockOp lock = cast<LockOp>(op.getLock().getDefiningOp());
       int lockCol = lock.colIndex();
       int lockRow = lock.rowIndex();
@@ -164,13 +169,13 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       }
     }
 
-    for (auto op : block.template getOps<DMABDPACKETOp>()) {
+    for (auto op : block->getOps<DMABDPACKETOp>()) {
       foundBdPacket = true;
       packetType = op.getPacketType();
       packetID = op.getPacketID();
     }
 
-    int bdNum = blockMap[&block];
+    int bdNum = blockMap[block];
     if (foundBd) {
       // TODO For now, we are going to name each dma desc with loc and bd
       // which we assume is unique. This is strictly not enforced but in
@@ -219,9 +224,9 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                                        BaseAddrA, offsetA, lenA,
                                        elementWidthInBytes, "1");
 
-      if (block.getNumSuccessors() > 0) {
-        Block *nextBlock = block.getSuccessors()[0]; // should have only one
-                                                     // successor block
+      if (block->getNumSuccessors() > 0) {
+        Block *nextBlock = block->getSuccessors()[0]; // should have only one
+                                                      // successor block
 
         int enableNextBd = 1;
         if (!nextBlock->getOps<EndOp>().empty())
@@ -248,8 +253,8 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     }
   }
 
-  for (auto &block : memOp.getBody()) {
-    for (auto op : block.template getOps<DMAStartOp>()) {
+  for (auto block : blockVector) {
+    for (auto op : block->getOps<DMAStartOp>()) {
       int bdNum = blockMap[op.getDest()];
       StringRef dmaDir = stringifyDMAChannelDir(op.getChannelDir());
       int chNum = op.getChannelIndex();
