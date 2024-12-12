@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from dataclasses import dataclass
 import inspect
-from typing import List, Tuple, Dict, Any, Optional, Union
+from typing import List, Tuple, Dict, Any, Union
 import contextlib
 
 import numpy as np
@@ -635,8 +635,8 @@ def dma_start(
     channel_dir,
     channel_index,
     *,
-    dest: Optional[Union[Successor, Block, ContextManagedBlock]] = None,
-    chain: Optional[Union[Successor, Block, ContextManagedBlock]] = None,
+    dest: Successor | Block | ContextManagedBlock | None = None,
+    chain: Successor | Block | ContextManagedBlock | None = None,
     loc=None,
     ip=None,
 ):
@@ -886,6 +886,8 @@ class TileOp(TileOp):
         )
 
     def __eq__(self, other):
+        if not isinstance(other, TileOp):
+            return False
         return tuple(map(int, (self.col, self.row))) == tuple(
             map(int, (other.col, other.row))
         )
