@@ -23,7 +23,8 @@ Thirdly, the design shows how the bodies of work done by each AIE core is a comb
 Finally, the overall structural design shows how complete designs are a combination of a static design, consisting of cores, connections and some part of the data movement, together with a run time sequence for controlling the design.
 A single tile performs a very simple `+` operation where the kernel loads data from local memory, increments the value by `1` and stores it back.
 
-Input data is first brought to a Mem tile in using a Shim tile. The size of the input data from the Shim tile is `64xi32`. The data is stored in the Mem tile and sent to the AIE tile in smaller pieces of size `32xi32`. Output data from the AIE tile to the Shim tile follows the same process, in reverse.
+Input data is first brought in to a MemTile using a Shim tile. The size of the input data from the Shim tile is `64xi32`. The data is stored in the MemTile and sent to the AIE tile in smaller pieces of size `32xi32`. Output data from the AIE compute tile to the Shim tile follows the same process, in reverse.
+
 
 This example does not contain a C++ kernel file. The kernel is expressed in Python bindings that is then compiled with the AIE compiler to generate the AIE core binary.
 
