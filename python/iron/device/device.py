@@ -120,20 +120,50 @@ class Device(Resolvable):
         tile.op = self._tiles[tile.col][tile.row].op
 
 
-class NPU1Col1(Device):
+class NPUBase(Device):
+    """A base class which can be used to create other device specific classes.
+    This class is abstract because it does not implement resolve()
+
+    This class makes some assumptions:
+    * The 0th tile in each column is a shim tile
+    * The 1st tile in each column is a mem tile
+    * The 2nd+ tiles in each column are compute tiles
+    """
+
+    def __init__(self, cols: int, rows: int) -> None:
+        """Initialize a device based on numbers of rows and columns.
+
+        Args:
+            cols (int): Number of columns
+            rows (int): Number of rows
+        """
+        super().__init__(cols=cols, rows=rows)
+
+    def get_shim_tiles(self) -> list[Tile]:
+        shim_tiles = []
+        for col in range(self._cols):
+            shim_tiles.append(Tile(col, 0))
+        return shim_tiles
+
+    def get_mem_tiles(self) -> list[Tile]:
+        mem_tiles = []
+        for col in range(self._cols):
+            mem_tiles.append(Tile(col, 1))
+        return mem_tiles
+
+    def get_compute_tiles(self) -> list[Tile]:
+        compute_tiles = []
+        for col in range(self._cols):
+            for row in range(2, self._rows):
+                compute_tiles.append(Tile(col, row))
+        return compute_tiles
+
+
+class NPU1Col1(NPUBase):
     """A representation of a device that resolves to AIEDevice.npu1_1col"""
 
     def __init__(self) -> None:
         super().__init__(cols=1, rows=6)
-
-    def get_shim_tiles(self) -> list[Tile]:
-        return [Tile(0, 0)]
-
-    def get_mem_tiles(self) -> list[Tile]:
-        return [Tile(0, 1)]
-
-    def get_compute_tiles(self) -> list[Tile]:
-        return [Tile(0, row) for row in range(2, self._rows)]
 
     def resolve(
         self,
@@ -143,30 +173,11 @@ class NPU1Col1(Device):
         return AIEDevice.npu1_1col
 
 
-class NPU1Col2(Device):
+class NPU1Col2(NPUBase):
     """A representation of a device that resolves to AIEDevice.npu1_2col"""
 
     def __init__(self) -> None:
         super().__init__(cols=2, rows=6)
-
-    def get_shim_tiles(self) -> list[Tile]:
-        shim_tiles = []
-        for col in range(self._cols):
-            shim_tiles.append(Tile(col, 0))
-        return shim_tiles
-
-    def get_mem_tiles(self) -> list[Tile]:
-        mem_tiles = []
-        for col in range(self._cols):
-            mem_tiles.append(Tile(col, 1))
-        return mem_tiles
-
-    def get_compute_tiles(self) -> list[Tile]:
-        compute_tiles = []
-        for col in range(self._cols):
-            for row in range(2, self._rows):
-                compute_tiles.append(Tile(col, row))
-        return compute_tiles
 
     def resolve(
         self,
@@ -176,30 +187,11 @@ class NPU1Col2(Device):
         return AIEDevice.npu1_2col
 
 
-class NPU1Col3(Device):
+class NPU1Col3(NPUBase):
     """A representation of a device that resolves to AIEDevice.npu1_3col"""
 
     def __init__(self) -> None:
         super().__init__(cols=3, rows=6)
-
-    def get_shim_tiles(self) -> list[Tile]:
-        shim_tiles = []
-        for col in range(self._cols):
-            shim_tiles.append(Tile(col, 0))
-        return shim_tiles
-
-    def get_mem_tiles(self) -> list[Tile]:
-        mem_tiles = []
-        for col in range(self._cols):
-            mem_tiles.append(Tile(col, 1))
-        return mem_tiles
-
-    def get_compute_tiles(self) -> list[Tile]:
-        compute_tiles = []
-        for col in range(self._cols):
-            for row in range(2, self._rows):
-                compute_tiles.append(Tile(col, row))
-        return compute_tiles
 
     def resolve(
         self,
@@ -209,30 +201,11 @@ class NPU1Col3(Device):
         return AIEDevice.npu1_3col
 
 
-class NPU1Col4(Device):
+class NPU1Col4(NPUBase):
     """A representation of a device that resolves to AIEDevice.npu1_4col"""
 
     def __init__(self) -> None:
         super().__init__(cols=4, rows=6)
-
-    def get_shim_tiles(self) -> list[Tile]:
-        shim_tiles = []
-        for col in range(self._cols):
-            shim_tiles.append(Tile(col, 0))
-        return shim_tiles
-
-    def get_mem_tiles(self) -> list[Tile]:
-        mem_tiles = []
-        for col in range(self._cols):
-            mem_tiles.append(Tile(col, 1))
-        return mem_tiles
-
-    def get_compute_tiles(self) -> list[Tile]:
-        compute_tiles = []
-        for col in range(self._cols):
-            for row in range(2, self._rows):
-                compute_tiles.append(Tile(col, row))
-        return compute_tiles
 
     def resolve(
         self,
@@ -240,6 +213,20 @@ class NPU1Col4(Device):
         ip: ir.InsertionPoint | None = None,
     ) -> None:
         return AIEDevice.npu1_4col
+
+
+class NPU2(NPUBase):
+    """A representation of a device that resolves to AIEDevice.npu2"""
+
+    def __init__(self) -> None:
+        super().__init__(cols=8, rows=6)
+
+    def resolve(
+        self,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
+    ) -> None:
+        return AIEDevice.npu2
 
 
 class XCVC1902(Device):

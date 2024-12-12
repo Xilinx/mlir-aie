@@ -10,7 +10,7 @@ import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1
+from aie.iron.device import NPU1Col1, NPU2
 from aie.helpers.dialects.ext.scf import _for as range_
 
 
@@ -74,7 +74,7 @@ try:
     if device_name == "npu":
         dev = NPU1Col1()
     elif device_name == "npu2":
-        raise ValueError("Not supported yet.")
+        dev = NPU2()
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
     vector_size = int(sys.argv[2])
