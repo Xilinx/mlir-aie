@@ -18,15 +18,14 @@ PASSTHROUGH_HEIGHT = 1080
 #PASSTHROUGH_WIDTH = 512
 #PASSTHROUGH_HEIGHT = 9
 
-targetname = passThrough
+targetname = vision_passthrough
 
-aie_py_src=aie2.py
+aie_py_src=${targetname}.py
 use_alt?=0
 
 ifeq (${use_alt}, 1)
-aie_py_src=aie2_alt.py
+aie_py_src=${targetname}_alt.py
 endif
-
 
 .PHONY: all template clean
 

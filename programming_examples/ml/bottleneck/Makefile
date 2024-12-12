@@ -11,11 +11,11 @@ include ${srcdir}/../../makefile-common
 
 mlirFileName = aie
 
-aie_py_src=aie2.py
+aie_py_src=bottleneck.py
 use_alt?=0
 
 ifeq (${use_alt}, 1)
-aie_py_src=aie2_alt.py
+aie_py_src=bottleneck_alt.py
 endif
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2

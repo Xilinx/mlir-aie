@@ -12,13 +12,13 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-targetname = testExp
+targetname = vector_exp
 
-aie_py_src=aie2.py
+aie_py_src=${targetname}.py
 use_alt?=0
 
 ifeq (${use_alt}, 1)
-aie_py_src=aie2_alt.py
+aie_py_src=${targetname}_alt.py
 endif
 
 all: build/final.xclbin build/insts.txt

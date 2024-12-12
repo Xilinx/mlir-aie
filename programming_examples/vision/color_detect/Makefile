@@ -15,7 +15,7 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 COLORDETECT_WIDTH = 1920
 COLORDETECT_HEIGHT = 1080
 
-targetname = colorDetect
+targetname = color_detect
 
 #COLORDETECT_WIDTH = 64
 #COLORDETECT_HEIGHT = 36
@@ -23,11 +23,11 @@ targetname = colorDetect
 #COLORDETECT_WIDTH = 640
 #COLORDETECT_HEIGHT = 480
 
-aie_py_src=aie2_colorDetect.py
+aie_py_src=${targetname}.py
 use_alt?=0
 
 ifeq (${use_alt}, 1)
-aie_py_src=aie2_colorDetect_alt.py
+aie_py_src=${targetname}_alt.py
 endif
 
 all: build/final_${COLORDETECT_WIDTH}.xclbin

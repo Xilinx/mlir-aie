@@ -19,11 +19,13 @@ In [conv2d](../conv2d), we describe how to implement a two-dimensional convoluti
 
 ```
 .
-+-- aie2.py             # A Python script that defines the AIE array structural design using MLIR-AIE operations.
-+-- Makefile            # Contains instructions for building and compiling software projects.
-+-- README.md           # This file.
-+-- run.lit             # For LLVM Integrated Tester (LIT) of the design.
-+-- test.py             # Python code testbench for the design example.
++-- conv2d_fused_relu.py     # A Python script that defines the AIE array structural design using MLIR-AIE operations.
++-- conv2d_fused_relu_alt.py # A Python script that defines the AIE array structural design using MLIR-AIE operations.
++-- Makefile                 # Contains instructions for building and compiling software projects.
++-- README.md                # This file.
++-- run_makefile.lit         # For LLVM Integrated Tester (LIT) of the design.
++-- run_makefile_alt.lit     # For LLVM Integrated Tester (LIT) of the alternative design.
++-- test.py                  # Python code testbench for the design example.
 ```
 
 ## Fusing ReLU
@@ -55,11 +57,16 @@ Combining convolution and ReLU operations allows computational resources to be u
 
 ## Compilation
 To compile the design:
-```
+```shell
 make
 ```
 
-To run the design:
+To compile the alternate design:
+```shell
+env use_alt=1 make
 ```
+
+To run the design:
+```shell
 make run_py
 ```

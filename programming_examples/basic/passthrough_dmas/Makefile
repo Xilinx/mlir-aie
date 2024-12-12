@@ -15,14 +15,14 @@ include ${srcdir}/../../makefile-common
 all: build/final.xclbin build/insts.txt
 
 devicename ?= npu
-targetname = passThroughDMAs
+targetname = passthrough_dmas
 LENGTH ?= 4096
 
-aie_py_src=aie2.py
+aie_py_src=${targetname}.py
 use_alt?=0
 
 ifeq (${use_alt}, 1)
-aie_py_src=aie2_alt.py
+aie_py_src=${targetname}_alt.py
 endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}

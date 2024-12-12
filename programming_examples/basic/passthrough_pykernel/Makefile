@@ -12,18 +12,17 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-targetname = passThroughPyKernel
+targetname = passthrough_pykernel
 VPATH := ${srcdir}/../../../aie_kernels/generic
 data_size = 4096
 PASSTHROUGH_SIZE = ${data_size}
 
-aie_py_src=aie2.py
+aie_py_src=${targetname}.py
 use_alt?=0
 
 ifeq (${use_alt}, 1)
-aie_py_src=aie2_alt.py
+aie_py_src=${targetname}_alt.py
 endif
-
 
 .PHONY: all template clean
 
