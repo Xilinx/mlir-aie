@@ -455,21 +455,35 @@ LogicalResult HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
 // has valid DMA channels.
 template <typename ConcreteType>
 LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
+  DenseSet<DMAChannel> inputChannels;
+  DenseSet<DMAChannel> outputChannels;
   auto element = cast<ConcreteType>(op);
-  DenseSet<DMAChannel> usedChannels;
-  for (auto &bodyOp : element.getBody().getOps()) {
-    // check for duplicate DMA channels within the same MemTileDMAOp
+  Region &body = element.getBody();
+  if (body.empty())
+    return op->emitOpError("should have non-empty body");
+  for (auto &bodyOp : body.getOps()) {
+    // check for duplicate DMA channels within the same ShimDMAOp
     if (auto dmaStart = dyn_cast<DMAStartOp>(bodyOp)) {
       DMAChannel dmaChan = {dmaStart.getChannelDir(),
                             dmaStart.getChannelIndex()};
-      if (usedChannels.count(dmaChan))
-        return dmaStart.emitOpError()
-               << "duplicate DMA channel "
-               << stringifyDMAChannelDir(dmaChan.direction) << dmaChan.channel
-               << " not allowed";
-      usedChannels.insert(dmaChan);
+      // check if number of input and output channels is more than available
+      // hardware
+      if (dmaChan.direction == DMAChannelDir::S2MM)
+        inputChannels.insert(dmaChan);
+      else
+        outputChannels.insert(dmaChan);
     }
   }
+
+  if (inputChannels.size() >
+      element.getTileOp().getNumSourceConnections(WireBundle::DMA))
+    return op->emitOpError(
+        "uses more input channels than available on this tile");
+
+  if (outputChannels.size() >
+      element.getTileOp().getNumDestConnections(WireBundle::DMA))
+    return op->emitOpError(
+        "uses more output channels than available on this tile");
   return success();
 }
 
@@ -1335,49 +1349,12 @@ int ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
 //===----------------------------------------------------------------------===//
 
 LogicalResult ShimDMAOp::verify() {
-  Region &body = getBody();
-  DenseSet<DMAChannel> usedChannels;
-  std::vector<DMAChannel> inputChannels;
-  std::vector<DMAChannel> outputChannels;
-
-  if (getBody().empty())
-    return emitOpError("should have non-empty body");
-
   if (!getTileOp().isShimNOCTile())
     return emitOpError("must be in a ShimTile with a NOC connection");
 
   if (HasSomeTerminator<DMAStartOp, NextBDOp, EndOp>::verifyTrait(*this)
           .failed())
     return failure();
-
-  for (auto &bodyOp : body.getOps()) {
-    // check for duplicate DMA channels within the same ShimDMAOp
-    if (auto dmaStart = dyn_cast<DMAStartOp>(bodyOp)) {
-      DMAChannel dmaChan = {dmaStart.getChannelDir(),
-                            dmaStart.getChannelIndex()};
-      if (usedChannels.count(dmaChan))
-        return dmaStart.emitOpError()
-               << "duplicate DMA channel "
-               << stringifyDMAChannelDir(dmaChan.direction) << dmaChan.channel
-               << " in MemOp";
-      usedChannels.insert(dmaChan);
-      // check if number of input and output channels is more than available
-      // hardware
-      if (dmaChan.direction == DMAChannelDir::S2MM)
-        inputChannels.push_back(dmaChan);
-      else
-        outputChannels.push_back(dmaChan);
-    }
-  }
-
-  if (inputChannels.size() >
-      getTileOp().getNumSourceConnections(WireBundle::DMA))
-    return emitOpError("uses more input channels than available on this tile");
-
-  if (outputChannels.size() >
-      getTileOp().getNumDestConnections(WireBundle::DMA))
-    return emitOpError("uses more output channels than available on this tile");
-
   return success();
 }
 
@@ -1509,49 +1486,16 @@ static ParseResult parseBufferInitialValue(OpAsmParser &parser, Type &type,
 
 LogicalResult MemOp::verify() {
   Region &body = getBody();
-  DenseSet<DMAChannel> usedChannels;
-  std::vector<DMAChannel> inputChannels;
-  std::vector<DMAChannel> outputChannels;
-  if (body.empty())
-    return emitOpError("should have non-empty body");
-
   if (HasSomeTerminator<DMAStartOp, NextBDOp, EndOp>::verifyTrait(*this)
           .failed())
     return failure();
 
   for (auto &bodyOp : body.getOps()) {
-    // check for duplicate DMA channels within the same MemOp
-    if (auto dmaStart = dyn_cast<DMAStartOp>(bodyOp)) {
-      DMAChannel dmaChan = {dmaStart.getChannelDir(),
-                            dmaStart.getChannelIndex()};
-      if (usedChannels.count(dmaChan))
-        return dmaStart.emitOpError()
-               << "duplicate DMA channel "
-               << stringifyDMAChannelDir(dmaChan.direction) << dmaChan.channel
-               << " in MemOp";
-      usedChannels.insert(dmaChan);
-      // check if number of input and output channels is more than available
-      // hardware
-      if (dmaChan.direction == DMAChannelDir::S2MM)
-        inputChannels.push_back(dmaChan);
-      else
-        outputChannels.push_back(dmaChan);
-    }
-
     if (auto allocOp = dyn_cast<memref::AllocOp>(bodyOp))
       if (!allocOp->getAttr("id"))
         return allocOp.emitOpError()
                << "allocOp in MemOp region should have an id attribute";
   }
-
-  if (inputChannels.size() >
-      getTileOp().getNumSourceConnections(WireBundle::DMA))
-    return emitOpError("uses more input channels than available on this tile");
-
-  if (outputChannels.size() >
-      getTileOp().getNumDestConnections(WireBundle::DMA))
-    return emitOpError("uses more output channels than available on this tile");
-
   return success();
 }
 
@@ -1566,12 +1510,8 @@ int MemOp::rowIndex() { return getTileOp().rowIndex(); }
 //===----------------------------------------------------------------------===//
 
 LogicalResult MemTileDMAOp::verify() {
-  std::vector<DMAChannel> inputChannels;
-  std::vector<DMAChannel> outputChannels;
-
   assert(getOperation()->getNumRegions() == 1 &&
          "MemTileDMAOp has zero region!");
-  assert(!getBody().empty() && "MemTileDMAOp should have non-empty body");
 
   if (HasSomeTerminator<DMAStartOp, NextBDOp, EndOp>::verifyTrait(*this)
           .failed())
@@ -1584,14 +1524,6 @@ LogicalResult MemTileDMAOp::verify() {
                << "allocOp in MemTileDMAOp region should have an id attribute";
     }
     if (auto startOp = dyn_cast<DMAStartOp>(bodyOp)) {
-      // check if number of input and output channels is more than available
-      // hardware
-      DMAChannel dmaChan = {startOp.getChannelDir(), startOp.getChannelIndex()};
-      if (dmaChan.direction == DMAChannelDir::S2MM)
-        inputChannels.push_back(dmaChan);
-      else
-        outputChannels.push_back(dmaChan);
-
       if (startOp.getChannelIndex() > 3) {
         // Channels 4 and 5 in a memtile are restricted to only access local
         // buffers and locks.
@@ -1648,14 +1580,6 @@ LogicalResult MemTileDMAOp::verify() {
       }
     }
   }
-
-  if (inputChannels.size() >
-      getTileOp().getNumSourceConnections(WireBundle::DMA))
-    return emitOpError("uses more input channels than available on this tile");
-
-  if (outputChannels.size() >
-      getTileOp().getNumDestConnections(WireBundle::DMA))
-    return emitOpError("uses more output channels than available on this tile");
 
   return success();
 }
