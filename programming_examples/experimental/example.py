@@ -12,8 +12,8 @@ B = iron.array(MATRIX_DIMS, MATRIX_DTYPE)
 
 def task_fn(a, b):
     dim0, dim1 = a.shape
-    for i in aie.range(dim0):
-        for j in aie.range(dim1):
+    for i in iron.range(dim0):
+        for j in iron.range(dim1):
             b[i, j] = a[i, j] + 1
 
 
