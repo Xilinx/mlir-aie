@@ -11,7 +11,7 @@ import sys
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, XCVC1902
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorTiler2D
 
 # Size of the entire matrix
