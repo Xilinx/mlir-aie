@@ -1,0 +1,4 @@
+<map id="xilinx::AIE::AIEPathfinderPass" name="xilinx::AIE::AIEPathfinderPass">
+<area shape="rect" id="node1" title="Overall Flow: rewrite switchboxes to assign unassigned connections, ensure this can be done concurren..." alt="" coords="8,95,219,121"/>
+<area shape="rect" id="node2" href="$classAIERoutePathfinderFlowsBase.html" title=" " alt="" coords="5,5,221,47"/>
+</map>

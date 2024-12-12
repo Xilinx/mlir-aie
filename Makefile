@@ -161,6 +161,20 @@ depend:
 	cd /home/runner/work/mlir-aie/mlir-aie/build_release && $(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 1
 .PHONY : depend
 
+# Convenience name for target.
+docs/CMakeFiles/doxygen-aie.dir/rule:
+	cd /home/runner/work/mlir-aie/mlir-aie/build_release && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 docs/CMakeFiles/doxygen-aie.dir/rule
+.PHONY : docs/CMakeFiles/doxygen-aie.dir/rule
+
+# Convenience name for target.
+doxygen-aie: docs/CMakeFiles/doxygen-aie.dir/rule
+.PHONY : doxygen-aie
+
+# fast build rule for target.
+doxygen-aie/fast:
+	cd /home/runner/work/mlir-aie/mlir-aie/build_release && $(MAKE) $(MAKESILENT) -f docs/CMakeFiles/doxygen-aie.dir/build.make docs/CMakeFiles/doxygen-aie.dir/build
+.PHONY : doxygen-aie/fast
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -173,6 +187,7 @@ help:
 	@echo "... install/strip"
 	@echo "... list_install_components"
 	@echo "... rebuild_cache"
+	@echo "... doxygen-aie"
 .PHONY : help
 
 

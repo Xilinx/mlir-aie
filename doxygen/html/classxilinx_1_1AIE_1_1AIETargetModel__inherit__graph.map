@@ -1,0 +1,12 @@
+<map id="xilinx::AIE::AIETargetModel" name="xilinx::AIE::AIETargetModel">
+<area shape="rect" id="node1" title=" " alt="" coords="5,86,201,113"/>
+<area shape="rect" id="node2" href="$classxilinx_1_1AIE_1_1AIE1TargetModel.html" title=" " alt="" coords="249,37,453,63"/>
+<area shape="rect" id="node4" href="$classxilinx_1_1AIE_1_1AIE2TargetModel.html" title=" " alt="" coords="249,111,453,138"/>
+<area shape="rect" id="node3" href="$classxilinx_1_1AIE_1_1VC1902TargetModel.html" title=" " alt="" coords="506,5,691,47"/>
+<area shape="rect" id="node5" href="$classxilinx_1_1AIE_1_1BaseNPUTargetModel.html" title=" " alt="" coords="501,71,696,112"/>
+<area shape="rect" id="node9" href="$classxilinx_1_1AIE_1_1VE2302TargetModel.html" title=" " alt="" coords="507,136,691,177"/>
+<area shape="rect" id="node10" href="$classxilinx_1_1AIE_1_1VE2802TargetModel.html" title=" " alt="" coords="507,201,691,243"/>
+<area shape="rect" id="node6" href="$classxilinx_1_1AIE_1_1NPU2TargetModel.html" title=" " alt="" coords="744,27,955,54"/>
+<area shape="rect" id="node7" href="$classxilinx_1_1AIE_1_1NPUTargetModel.html" title=" " alt="" coords="748,78,951,105"/>
+<area shape="rect" id="node8" href="$classxilinx_1_1AIE_1_1VirtualizedNPUTargetModel.html" title=" " alt="" coords="767,129,932,171"/>
+</map>

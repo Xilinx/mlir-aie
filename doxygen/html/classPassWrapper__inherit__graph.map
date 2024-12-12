@@ -1,0 +1,14 @@
+<map id="PassWrapper" name="PassWrapper">
+<area shape="rect" id="node1" title=" " alt="" coords="5,407,112,433"/>
+<area shape="rect" id="node2" href="$structAIEVecConvOpTransformationPass.html" title=" " alt="" coords="173,5,432,61"/>
+<area shape="rect" id="node3" href="$structAIEVecTransformationPass.html" title=" " alt="" coords="197,85,409,141"/>
+<area shape="rect" id="node4" href="$structCanonicalizeVectorForAIEVecPass.html" title=" " alt="" coords="175,165,430,221"/>
+<area shape="rect" id="node5" href="$structDynamicSizeNoImplicitBroadcastPass.html" title=" " alt="" coords="161,245,444,301"/>
+<area shape="rect" id="node6" href="$structExtendUPDOpsPass.html" title=" " alt="" coords="181,326,424,367"/>
+<area shape="rect" id="node7" href="$structHoistCastOpToDataSourcePass.html" title=" " alt="" coords="183,392,423,448"/>
+<area shape="rect" id="node8" href="$structLowerVectorToAIEVec.html" title="Lower incoming vector operations into their corresponding AIE vector intrinsics." alt="" coords="213,472,392,528"/>
+<area shape="rect" id="node9" href="$structRedundantLoadStoreOptimizationPass.html" title=" " alt="" coords="160,552,445,608"/>
+<area shape="rect" id="node10" href="$structReorderOperationsPass.html" title=" " alt="" coords="207,632,399,688"/>
+<area shape="rect" id="node11" href="$structSimplifyUPDOpsPass.html" title=" " alt="" coords="215,712,391,768"/>
+<area shape="rect" id="node12" href="$structVectorBroadcastLoweringPass.html" title=" " alt="" coords="185,792,420,848"/>
+</map>

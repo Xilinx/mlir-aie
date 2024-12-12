@@ -1,0 +1,8 @@
+<map id="RewritePattern" name="RewritePattern">
+<area shape="rect" id="node1" title=" " alt="" coords="5,115,124,141"/>
+<area shape="rect" id="node2" href="$structDMAInlineBDChainPattern.html" title=" " alt="" coords="196,5,387,32"/>
+<area shape="rect" id="node3" href="$structDMAStartBdChainForOpPattern.html" title=" " alt="" coords="180,56,403,83"/>
+<area shape="rect" id="node4" href="$structDynamicSizeNoImplicitBroadcastPattern.html" title=" " alt="" coords="172,107,411,149"/>
+<area shape="rect" id="node5" href="$structHoistCastOpToDataSourcePattern.html" title=" " alt="" coords="172,173,411,200"/>
+<area shape="rect" id="node6" href="$structSetInboundsToReadStoreOpPattern.html" title=" " alt="" coords="191,225,392,266"/>
+</map>
