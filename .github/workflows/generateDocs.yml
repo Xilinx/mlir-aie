@@ -87,6 +87,9 @@ jobs:
             -DLLVM_EXTERNAL_LIT=$(which lit)
           make docs
           popd
+          pushd python
+          doxygen
+          popd
           cp -r docs/* build_release/docs
           dot -Tpng docs/dialects.dot > build_release/docs/dialects.png
           dot -Tsvg docs/dialects.dot > build_release/docs/dialects.svg
