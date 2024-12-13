@@ -49,7 +49,6 @@ def my_vector_add():
         ShimTile = tile(int(sys.argv[2]), 0)
         MemTile = tile(int(sys.argv[2]), 1)
         ComputeTile2 = tile(int(sys.argv[2]), 2)
-        ComputeTile3 = tile(int(sys.argv[2]), 3)
 
         # AIE-array data movement with object fifos
         of_in1 = object_fifo(
@@ -82,11 +81,6 @@ def my_vector_add():
                     of_in2.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
                 of_in1.release(ObjectFifoPort.Consume, 1)
-
-        # Compute tile 3
-        @core(ComputeTile3)
-        def core_body():
-            pass
 
         # To/from AIE-array data movement
         @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
