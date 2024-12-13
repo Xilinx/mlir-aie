@@ -15,16 +15,16 @@ include ${srcdir}/../../makefile-common
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 device = npu
-targetname = vectorScalar
+targetname = vector_scalar_mul
 data_size = 4096
 trace_size = 8192
 CHESS ?= true
 
-aie_py_src=aie2.py
+aie_py_src=${targetname}.py
 use_alt?=0
 
 ifeq (${use_alt}, 1)
-aie_py_src=aie2_alt.py
+aie_py_src=${targetname}_alt.py
 endif
 
 all: build/final_${data_size}.xclbin build/insts_${data_size}.txt

@@ -29,7 +29,7 @@ jobs:
           submodules: "true"
 
       - name: Install packages
-        run: sudo apt-get install -y graphviz lld
+        run: sudo apt-get install -y graphviz lld doxygen
 
       - name: Install Python packages
         run: sudo pip install psutil rich numpy pybind11
@@ -87,6 +87,9 @@ jobs:
             -DLLVM_EXTERNAL_LIT=$(which lit)
           make docs
           popd
+          pushd python
+          doxygen
+          popd
           cp -r docs/* build_release/docs
           dot -Tpng docs/dialects.dot > build_release/docs/dialects.png
           dot -Tsvg docs/dialects.dot > build_release/docs/dialects.svg
@@ -96,6 +99,10 @@ jobs:
           echo "{" > build_release/docs/build_info.json
           echo "llvm-version: \"${{ steps.mlir-wheels.outputs.MLIR_WHEEL_VERSION }}\"," >> build_release/docs/build_info.json
           echo "}" > build_release/docs/build_info.json
+
+      - name: test
+        run: |
+          find ./build_release/docs
 
       - name: Publish to GitHub-Pages
         if: github.event_name != 'pull_request'
