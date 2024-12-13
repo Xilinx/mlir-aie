@@ -1,0 +1,7 @@
+<map id="iron.dataflow.endpoint.ObjectFifoEndpoint" name="iron.dataflow.endpoint.ObjectFifoEndpoint">
+<area shape="rect" id="node1" title=" " alt="" coords="235,71,448,112"/>
+<area shape="rect" id="node3" href="$classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoLink.html" title=" " alt="" coords="520,5,695,47"/>
+<area shape="rect" id="node4" href="$classiron_1_1runtime_1_1endpoint_1_1RuntimeEndpoint.html" title=" " alt="" coords="496,71,719,112"/>
+<area shape="rect" id="node5" href="$classiron_1_1worker_1_1Worker.html" title=" " alt="" coords="536,137,679,163"/>
+<area shape="rect" id="node2" href="$classiron_1_1placeable_1_1Placeable.html" title=" " alt="" coords="5,78,187,105"/>
+</map>

@@ -1,0 +1,12 @@
+<map id="iron.device.device.Device" name="iron.device.device.Device">
+<area shape="rect" id="node1" title=" " alt="" coords="345,132,536,159"/>
+<area shape="rect" id="node4" href="$classiron_1_1device_1_1device_1_1NPUBase.html" title=" " alt="" coords="587,107,793,133"/>
+<area shape="rect" id="node10" href="$classiron_1_1device_1_1device_1_1XCVC1902.html" title=" " alt="" coords="584,157,796,184"/>
+<area shape="rect" id="node2" href="$classiron_1_1resolvable_1_1Resolvable.html" title=" " alt="" coords="103,132,297,159"/>
+<area shape="rect" id="node3" title=" " alt="" coords="5,132,55,159"/>
+<area shape="rect" id="node5" href="$classiron_1_1device_1_1device_1_1NPU1Col1.html" title=" " alt="" coords="844,5,1055,32"/>
+<area shape="rect" id="node6" href="$classiron_1_1device_1_1device_1_1NPU1Col2.html" title=" " alt="" coords="844,56,1055,83"/>
+<area shape="rect" id="node7" href="$classiron_1_1device_1_1device_1_1NPU1Col3.html" title=" " alt="" coords="844,107,1055,133"/>
+<area shape="rect" id="node8" href="$classiron_1_1device_1_1device_1_1NPU1Col4.html" title=" " alt="" coords="844,157,1055,184"/>
+<area shape="rect" id="node9" href="$classiron_1_1device_1_1device_1_1NPU2.html" title=" " alt="" coords="859,208,1040,235"/>
+</map>

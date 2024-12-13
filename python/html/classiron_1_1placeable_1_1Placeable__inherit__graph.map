@@ -1,0 +1,8 @@
+<map id="iron.placeable.Placeable" name="iron.placeable.Placeable">
+<area shape="rect" id="node1" title=" " alt="" coords="5,111,187,138"/>
+<area shape="rect" id="node2" href="$classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint.html" title=" " alt="" coords="235,71,448,112"/>
+<area shape="rect" id="node6" href="$classiron_1_1globalbuffer_1_1GlobalBuffer.html" title=" " alt="" coords="254,136,429,177"/>
+<area shape="rect" id="node3" href="$classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoLink.html" title=" " alt="" coords="520,5,695,47"/>
+<area shape="rect" id="node4" href="$classiron_1_1runtime_1_1endpoint_1_1RuntimeEndpoint.html" title=" " alt="" coords="496,71,719,112"/>
+<area shape="rect" id="node5" href="$classiron_1_1worker_1_1Worker.html" title=" " alt="" coords="536,137,679,163"/>
+</map>
