@@ -19,7 +19,7 @@ MATRIX_HEIGHT = 16
 MATRIX_WIDTH = 128
 MATRIX_SHAPE = (MATRIX_HEIGHT, MATRIX_WIDTH)
 
-# Size of the tile we are processing
+# Size of the tile to process
 TILE_HEIGHT = 8
 TILE_WIDTH = 16
 TILE_SHAPE = (TILE_HEIGHT, TILE_WIDTH)
@@ -44,7 +44,7 @@ def my_matrix_add_one():
     of_in = ObjectFifo(tile_ty, name="in0")
     of_out = ObjectFifo(tile_ty, name="out0")
 
-    # Set up compute tile 2
+    # Define a task to perform
     def core_fn(of_in1, of_out1):
         elem_in = of_in1.acquire(1)
         elem_out = of_out1.acquire(1)

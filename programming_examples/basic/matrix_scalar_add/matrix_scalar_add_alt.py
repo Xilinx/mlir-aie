@@ -14,24 +14,18 @@ from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.helpers.taplib import TensorTiler2D
 
-# Size of the entire image
-IMAGE_HEIGHT = 16
-IMAGE_WIDTH = 128
-IMAGE_SIZE = IMAGE_WIDTH * IMAGE_HEIGHT
+# Size of the entire matrix
+MATRIX_HEIGHT = 16
+MATRIX_WIDTH = 128
+MATRIX_SHAPE = (MATRIX_HEIGHT, MATRIX_WIDTH)
 
-# Size of the tile we are processing
+# Size of the tile to process
 TILE_HEIGHT = 8
 TILE_WIDTH = 16
-TILE_SIZE = TILE_WIDTH * TILE_HEIGHT
-
-NUM_3D = IMAGE_WIDTH / TILE_WIDTH
-NUM_4D = IMAGE_HEIGHT / TILE_HEIGHT
-
-objfifo_capacity = 4
+TILE_SHAPE = (TILE_HEIGHT, TILE_WIDTH)
 
 
 def my_matrix_add_one():
-
     if len(sys.argv) != 3:
         raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
     if sys.argv[1] == "npu":
@@ -43,45 +37,42 @@ def my_matrix_add_one():
 
     @device(dev)
     def device_body():
-        tile_ty = np.ndarray[(TILE_SIZE,), np.dtype[np.int32]]
+        # Define tensor types
+        matrix_ty = np.ndarray[MATRIX_SHAPE, np.dtype[np.int32]]
+        tile_ty = np.ndarray[TILE_SHAPE, np.dtype[np.int32]]
 
         # Tile declarations
         ShimTile = tile(int(sys.argv[2]), 0)
         ComputeTile2 = tile(int(sys.argv[2]), 2)
 
         # AIE-array data movement with object fifos
-        # Input
-        of_in1 = object_fifo("in0", ShimTile, ComputeTile2, objfifo_capacity, tile_ty)
-
-        # Output
-        of_out1 = object_fifo("out0", ComputeTile2, ShimTile, objfifo_capacity, tile_ty)
+        of_in = object_fifo("in", ShimTile, ComputeTile2, 2, tile_ty)
+        of_out = object_fifo("out", ComputeTile2, ShimTile, 2, tile_ty)
 
         # Set up compute tile 2
         @core(ComputeTile2)
         def core_body():
             # Effective while(1)
             for _ in range_(sys.maxsize):
-                elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
-                elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
-                for i in range_(TILE_SIZE):
-                    elem_out[i] = elem_in[i] + 1
-                of_in1.release(ObjectFifoPort.Consume, 1)
-                of_out1.release(ObjectFifoPort.Produce, 1)
+                elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
+                elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
+                for i in range_(TILE_HEIGHT):
+                    for j in range_(TILE_WIDTH):
+                        elem_out[i, j] = elem_in[i, j] + 1
+                of_in.release(ObjectFifoPort.Consume, 1)
+                of_out.release(ObjectFifoPort.Produce, 1)
 
         # To/from AIE-array data movement
-        tiler = TensorTiler2D.simple_tiler(
-            (IMAGE_HEIGHT, IMAGE_WIDTH), (TILE_HEIGHT, TILE_WIDTH)
-        )
+        tap = TensorTiler2D.simple_tiler(MATRIX_SHAPE, TILE_SHAPE)[0]
 
-        @runtime_sequence(tile_ty, tile_ty, tile_ty)
-        def sequence(inTensor, notUsed, outTensor):
+        @runtime_sequence(matrix_ty, matrix_ty, matrix_ty)
+        def sequence(inTensor, _, outTensor):
             in_task = shim_dma_single_bd_task(
-                of_in1, inTensor, tap=tiler[0], issue_token=True
+                of_in, inTensor, tap=tap, issue_token=True
             )
             out_task = shim_dma_single_bd_task(
-                of_out1, outTensor, tap=tiler[0], issue_token=True
+                of_out, outTensor, tap=tap, issue_token=True
             )
-
             dma_start_task(in_task, out_task)
             dma_await_task(in_task, out_task)
 
