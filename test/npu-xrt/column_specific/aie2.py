@@ -22,8 +22,8 @@ from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 
 N = 4096
-dev = AIEDevice.npu1
-col = 0
+dev = AIEDevice.npu1_3col
+col = 2
 line_size = 1024
 
 if len(sys.argv) > 1:
@@ -32,7 +32,7 @@ if len(sys.argv) > 1:
 
 if len(sys.argv) > 2:
     if sys.argv[2] == "npu":
-        dev = AIEDevice.npu1
+        dev = AIEDevice.npu1_3col
     elif sys.argv[2] == "xcvc1902":
         dev = AIEDevice.xcvc1902
     else:
