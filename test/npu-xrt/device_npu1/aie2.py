@@ -5,6 +5,14 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+#
+# REQUIRES: ryzen_ai, valid_xchess_license
+#
+# RUN: %python %S/aie2.py > ./aie2.mlir
+# RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
+# RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
+# RUN: %run_on_npu ./test.exe -x final.xclbin -k MLIR_AIE -i insts.txt
+
 import numpy as np
 import sys
 
@@ -14,7 +22,7 @@ from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 
 N = 4096
-dev = AIEDevice.npu1_1col
+dev = AIEDevice.npu1
 col = 0
 line_size = 1024
 
@@ -24,7 +32,7 @@ if len(sys.argv) > 1:
 
 if len(sys.argv) > 2:
     if sys.argv[2] == "npu":
-        dev = AIEDevice.npu1_1col
+        dev = AIEDevice.npu1
     elif sys.argv[2] == "xcvc1902":
         dev = AIEDevice.xcvc1902
     else:
