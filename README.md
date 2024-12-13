@@ -218,7 +218,7 @@ For your design of interest, for instance from [programming_examples](../program
 
 1. Continue to the [IRON AIE Application Programming Guide](programming_guide)
 
-2. Some MLIR-AIE documentation is available on the [website](https://xilinx.github.io/mlir-aie/)
+1. Some MLIR-AIE documentation is available on the [website](https://xilinx.github.io/mlir-aie/)
 
 # Detailed Getting Started Guides and Documentation: 
 
