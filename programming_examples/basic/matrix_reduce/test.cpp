@@ -164,7 +164,7 @@ int main(int argc, const char *argv[]) {
         INOUT1_DATATYPE maxVal = *std::max_element(block.begin(), block.end());
         if (bufInOut1[i] != maxVal) {
           errors++;
-          std::cout << "max is " << maxVal << " calc " << bufInOut1[i] << std::endl;
+          std::cout << "max[" << i << "] is " << maxVal << " calc " << bufInOut1[i] << std::endl;
         }
       }
       auto vstop = std::chrono::system_clock::now();
