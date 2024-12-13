@@ -13,11 +13,12 @@ subdir=single_core
 targetname=matrixMultiplication
 kernels=mm
 
-M?=256
-K?=256
-N?=256
-m?=64
-k?=64
+M?=128
+K?=464
+N?=128
+
+m?=32
+k?=232
 n?=32
 
 kernels=mm_${m}x${k}x${n}
@@ -25,13 +26,23 @@ aieargs+=-m $m -k $k -n $n
 target_suffix=${M}x${K}x${N}_${m}x${k}x${n}
 use_alt?=0
 
+# set this flag to 1 for linear buffer allocation
+# else, 0 for bank-aware
+use_linear_buf_alloc?=1
+
+ifeq (${use_linear_buf_alloc}, 1)
+buffer_aloc_flag=basic-sequential
+else
+buffer_aloc_flag=bank-aware
+endif
+
 ifeq (${use_alt}, 1)
 aie_py_src=aie2_alt.py
 endif
 
 include ${srcdir}/../makefile-common
 
-build/mm_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
+build/mm_${m}x${k}x${n}.o: ${kernels_dir}/matmul_opt.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
 

@@ -776,6 +776,16 @@ def configure_packet_tracing_aie2(
     trace_size,
     trace_offset,
     enable_token=0,
+    events=[
+        CoreEvent.INSTR_EVENT_0,
+        CoreEvent.INSTR_EVENT_1,
+        CoreEvent.INSTR_VECTOR,
+        PortEvent(CoreEvent.PORT_RUNNING_0, 1, True),  # master(1)
+        PortEvent(CoreEvent.PORT_RUNNING_1, 1, False),  # slave(1)
+        CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
+        CoreEvent.INSTR_LOCK_RELEASE_REQ,
+        CoreEvent.LOCK_STALL,
+    ],
 ):
     for i in range(len(tiles_to_trace)):
         configure_core_packet_tracing_aie2(
@@ -786,5 +796,6 @@ def configure_packet_tracing_aie2(
             trace_size,
             trace_offset,
             enable_token,
+            events = events
         )
     configure_shim_packet_tracing_aie2(shim)
