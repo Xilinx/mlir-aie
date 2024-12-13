@@ -234,6 +234,8 @@ For your design of interest, for instance from [programming_examples](../program
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
 
+Interested in contributing MLIR-AIE? [Information for developers](./CONTRIBUTING.md)
+
 -----
 
 <p align="center">Copyright&copy; 2019-2024 Advanced Micro Devices, Inc</p>
