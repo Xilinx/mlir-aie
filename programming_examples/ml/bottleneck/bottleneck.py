@@ -9,7 +9,7 @@ import numpy as np
 from aie.iron import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import AnyMemTile, NPU1Col1, Tile
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 
 # Define bottleneck layer sizes
 

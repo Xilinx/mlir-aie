@@ -10,8 +10,8 @@ import sys
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1
+from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorTiler2D
-from aie.helpers.dialects.ext.scf import _for as range_
 
 
 def row_wise_bias_add(M, N, m, n):
