@@ -12,8 +12,6 @@ from ...dialects.aie import AIEDevice, tile, TileOp  # type: ignore
 from ..resolvable import Resolvable
 from .tile import Tile
 
-# TODO: we need an NPU2 implementation.
-
 
 class Device(Resolvable):
     """
