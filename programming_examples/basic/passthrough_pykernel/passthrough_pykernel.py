@@ -11,8 +11,8 @@ import sys
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1
+from aie.iron.controlflow import range_
 from aie.helpers.dialects.ext.func import func
-from aie.helpers.dialects.ext.scf import _for as range_
 
 try:
     vector_size = int(sys.argv[1])

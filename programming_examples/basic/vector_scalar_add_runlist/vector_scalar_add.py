@@ -10,7 +10,7 @@ import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 
 PROBLEM_SIZE = 1024
 MEM_TILE_WIDTH = 64

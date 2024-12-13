@@ -12,7 +12,7 @@ from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1
 from aie.helpers.taplib import TensorTiler2D
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 import aie.extras.dialects.ext.arith as arith
 from aie.helpers.util import np_dtype_to_mlir_type
 
