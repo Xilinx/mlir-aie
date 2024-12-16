@@ -119,7 +119,7 @@ and llvm.
 
 Note that when coming back to this install with a fresh environment, it is necessary to rerun the `utils/env_setup.sh` script to setup your environment as well as activate the Python virtual environment using the following command.
 ```
-source sandbox/bin/activate
+source ironenv/bin/activate
 ```
 
 ## Building on X86 targetting the VCK5000 with seperate builds of ROCm runtime and aie-rt
