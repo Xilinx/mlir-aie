@@ -33,27 +33,75 @@ def passthroughKernel(dev, vector_size, trace_size):
 
         # Tile declarations
         ShimTile = tile(0, 0)
+        MemTile = tile(0, 1)
         ComputeTile2 = tile(0, 2)
 
         # Set up a circuit-switched flow from core to shim for tracing information
         if trace_size > 0:
             flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
-
+        
         # AIE-array data movement with object fifos
-        of_in = object_fifo("in", ShimTile, ComputeTile2, 2, line_ty)
-        of_out = object_fifo("out", ComputeTile2, ShimTile, 2, line_ty)
+        # Input
+        # Origianal code
+        # of_in = object    _fifo("in", ShimTile, ComputeTile2, 2, line_ty)
+        # of_out = object_fifo("out", ComputeTile2, ShimTile, 2, line_ty)
+        
+################################################################################################      
+        
+        # Passes if Object FIFO size is the same
+        # of_in0 = object_fifo("in0", ShimTile, MemTile, 2, line_ty)
+        # of_in1 = object_fifo("in1", MemTile, ComputeTile2, 2, line_ty,
+        #                         (
+        #                             [
+        #                                 (2, 512),
+        #                                 (512, 1),
+        #                             ]
+        #                         ),
+        # )
+        # object_fifo_link(of_in0, of_in1)
+        
+################################################################################################
+
+        # Does not complete and times out if Object FIFO size is different and there is transforms
+        of_in0 = object_fifo("in0", ShimTile, MemTile, 2, vector_ty)
+        of_in1 = object_fifo("in1", MemTile, ComputeTile2, 2, line_ty,
+                                (
+                                    [
+                                        # comment to make it work
+                                        (8, 512), # 8 to account for different fifo sizes
+                                        (512, 1),
+                                    ]
+                                ),
+        )
+        object_fifo_link(of_in0, of_in1)
+        
+        # After Stateful Transform
+        # ^bb4:  // 2 preds: ^bb3, ^bb5
+        # aie.use_lock(%in0_cons_cons_lock, AcquireGreaterEqual, 1)
+        # aie.dma_bd(%in0_cons_buff_0 : memref<4096xui8>, 0, 1024, [<size = 8, stride = 512>, <size = 512, stride = 1>])
+        # aie.use_lock(%in0_cons_prod_lock, Release, 1)
+        # aie.next_bd ^bb5
+        
+        # As can be seen with streaming transformation memref and 1024 do not align. Commenting out the transformation alings this 
+        # so that "aie.dma_bd(%in0_cons_buff_0 : memref<4096xui8>, 0, 4096)" and functions correctly just for the passthough kernel
+        
+################################################################################################
+
+        # Output
+        of_out0 = object_fifo("out0", MemTile, ShimTile, 2, line_ty)
+        of_out1 = object_fifo("out1", ComputeTile2, MemTile, 2, line_ty)
+        object_fifo_link(of_out1, of_out0)
 
         # Set up compute tiles
-
         # Compute tile 2
         @core(ComputeTile2, "passThrough.cc.o")
         def core_body():
             for _ in range_(sys.maxsize):
-                elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
-                elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
+                elemOut = of_out1.acquire(ObjectFifoPort.Produce, 1)
+                elemIn = of_in1.acquire(ObjectFifoPort.Consume, 1)
                 passThroughLine(elemIn, elemOut, lineWidthInBytes)
-                of_in.release(ObjectFifoPort.Consume, 1)
-                of_out.release(ObjectFifoPort.Produce, 1)
+                of_in1.release(ObjectFifoPort.Consume, 1)
+                of_out1.release(ObjectFifoPort.Produce, 1)
 
         #    print(ctx.module.operation.verify())
 
@@ -68,10 +116,10 @@ def passthroughKernel(dev, vector_size, trace_size):
                     offset=N,
                 )
             in_task = shim_dma_single_bd_task(
-                of_in, inTensor, sizes=[1, 1, 1, N], issue_token=True
+                of_in0, inTensor, sizes=[1, 1, 1, N], issue_token=True
             )
             out_task = shim_dma_single_bd_task(
-                of_out, outTensor, sizes=[1, 1, 1, N], issue_token=True
+                of_out0, outTensor, sizes=[1, 1, 1, N], issue_token=True
             )
 
             dma_start_task(in_task, out_task)
