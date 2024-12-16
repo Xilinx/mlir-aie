@@ -655,10 +655,8 @@ struct AIEObjectFifoStatefulTransformPass
     // if none exists, create one
     TileOp objFifoTileOp = target.getProducerTileOp();
     if (producerMem == nullptr) {
-      if (device->getNumRegions() != 1)
-        assert(false && "expected num regions for device op");
       OpBuilder::InsertionGuard g(builder);
-      builder.setInsertionPointToEnd(device.getBody());
+      builder.setInsertionPoint(device.getBody()->getTerminator());
       auto newMemOp =
           builder.create<MemOp>(builder.getUnknownLoc(), objFifoTileOp);
       {
@@ -727,10 +725,8 @@ struct AIEObjectFifoStatefulTransformPass
     // if none exists, create one
     TileOp objFifoTileOp = op.getProducerTileOp();
     if (producerDMA == nullptr) {
-      if (device->getNumRegions() != 1)
-        assert(false && "expected num regions for device op");
       OpBuilder::InsertionGuard g(builder);
-      builder.setInsertionPointToEnd(device.getBody());
+      builder.setInsertionPoint(device.getBody()->getTerminator());
       auto newDMAOp = builder.create<ShimDMAOp>(
           builder.getUnknownLoc(), builder.getIndexType(), objFifoTileOp);
       {
@@ -881,10 +877,8 @@ struct AIEObjectFifoStatefulTransformPass
     // if none exists, create one
     TileOp objFifoTileOp = target.getProducerTileOp();
     if (producerDMA == nullptr) {
-      if (device->getNumRegions() != 1)
-        assert(false && "expected num regions for device op");
       OpBuilder::InsertionGuard g(builder);
-      builder.setInsertionPointToEnd(device.getBody());
+      builder.setInsertionPoint(device.getBody()->getTerminator());
       auto newDMAOp =
           builder.create<MemTileDMAOp>(builder.getUnknownLoc(), objFifoTileOp);
       {
@@ -1067,9 +1061,13 @@ struct AIEObjectFifoStatefulTransformPass
         builder.getUnknownLoc(), globalNextIndex,
         ValueRange(ArrayRef({index.getResult()})));
     Value val = builder.create<arith::ConstantOp>(
-        oldCounter.getLoc(), builder.getIndexAttr(relOp.getSize()));
+        oldCounter.getLoc(), builder.getI32IntegerAttr(relOp.getSize()));
     Value sum = builder.create<arith::AddIOp>(val.getLoc(), oldCounter, val);
-    Value newCounter = builder.create<arith::RemSIOp>(sum.getLoc(), sum, size);
+    Value isGreaterEqual = builder.create<arith::CmpIOp>(
+        sum.getLoc(), arith::CmpIPredicate::sge, sum, size);
+    Value newCounter = builder.create<arith::SelectOp>(
+        sum.getLoc(), isGreaterEqual,
+        builder.create<arith::SubIOp>(sum.getLoc(), sum, size), sum);
     builder.create<memref::StoreOp>(size.getLoc(), newCounter, globalNextIndex,
                                     ValueRange(ArrayRef({index.getResult()})));
   }
@@ -1097,7 +1095,7 @@ struct AIEObjectFifoStatefulTransformPass
         builder.setInsertionPoint(coreOp);
         auto memrefTy =
             MemRefType::get(SmallVector<int64_t>{(int64_t)fifoSizes.size()},
-                            builder.getIndexType());
+                            builder.getI32Type());
         auto globalNextIndex = builder.create<BufferOp>(
             builder.getUnknownLoc(), memrefTy, coreOp.getTile(),
             /*sym_name*/ nullptr, /*address*/ nullptr,
@@ -1115,14 +1113,14 @@ struct AIEObjectFifoStatefulTransformPass
         int index = 0;
         builder.setInsertionPointToStart(&(coreOp.getBody().front()));
         Value initVal = builder.create<arith::ConstantOp>(
-            builder.getUnknownLoc(), builder.getIndexAttr(0));
+            builder.getUnknownLoc(), builder.getI32IntegerAttr(0));
         for (auto i : fifoSizes) {
           auto indexOp = builder.create<arith::ConstantOp>(
               initVal.getLoc(), builder.getIndexAttr(index));
           globalIndices[i.first] = indexOp;
           index++;
           auto size = builder.create<arith::ConstantOp>(
-              indexOp.getLoc(), builder.getIndexAttr(i.second));
+              indexOp.getLoc(), builder.getI32IntegerAttr(i.second));
           constantSizes[i.first] = size;
           builder.create<memref::StoreOp>(
               size.getLoc(), initVal, globalNextIndex,
@@ -1159,10 +1157,13 @@ struct AIEObjectFifoStatefulTransformPass
 
               // Create a switch for each subview access
               builder.setInsertionPointAfter(accessOp);
-              auto switchIndex = builder.create<memref::LoadOp>(
+              auto switchIndexAsInteger = builder.create<memref::LoadOp>(
                   builder.getUnknownLoc(), globalNextIndex,
                   ValueRange(
                       ArrayRef({globalIndices[{createOp, port}].getResult()})));
+              auto switchIndex = builder.create<arith::IndexCastOp>(
+                  builder.getUnknownLoc(), builder.getIndexType(),
+                  switchIndexAsInteger);
               unsigned caseRegionCounts = fifoSizes[{createOp, port}];
               SmallVector<int64_t, 4> caseValues;
               for (int i = 0; i < fifoSizes[{createOp, port}]; ++i) {
@@ -1222,7 +1223,7 @@ struct AIEObjectFifoStatefulTransformPass
         target = objFifoLinks[*linkOp];
 
     auto dev = op->getParentOfType<DeviceOp>();
-    if (isa<AIE1TargetModel>(dev.getTargetModel())) {
+    if (!dev.getTargetModel().hasProperty(AIETargetModel::UsesSemaphoreLocks)) {
 
       if (locksPerFifo[target].size() == 0) {
         for (int i = 0; i < numLocks; i++) {
@@ -1384,7 +1385,7 @@ struct AIEObjectFifoStatefulTransformPass
     DeviceOp device = getOperation();
     LockAnalysis lockAnalysis(device);
     DMAChannelAnalysis dmaAnalysis(device);
-    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
+    OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
     auto ctx = device->getContext();
     auto producerWireType = WireBundle::DMA;
     auto consumerWireType = WireBundle::DMA;
@@ -1546,7 +1547,7 @@ struct AIEObjectFifoStatefulTransformPass
                 producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
                 producer.getPadDimensionsAttr());
       // generate objectFifo allocation info
-      builder.setInsertionPoint(&device.getBody()->back());
+      builder.setInsertionPoint(device.getBody()->getTerminator());
 
       if (producer.getProducerTileOp().isShimTile())
         createObjectFifoAllocationInfo(
@@ -1568,7 +1569,7 @@ struct AIEObjectFifoStatefulTransformPass
         createDMA(device, builder, consumer, consumerChan.direction,
                   consumerChan.channel, 1, consumerDims, nullptr);
         // generate objectFifo allocation info
-        builder.setInsertionPoint(&device.getBody()->back());
+        builder.setInsertionPoint(device.getBody()->getTerminator());
 
         // If we have PLIO then figure out the direction and make that a PLIO
         if (producer.getPlio()) {
@@ -1826,7 +1827,7 @@ struct AIEObjectFifoStatefulTransformPass
     }
     // make global symbols to replace the to be erased ObjectFifoCreateOps
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
-      builder.setInsertionPointToStart(&device.getBodyRegion().front());
+      builder.setInsertionPointToStart(device.getBody());
       auto sym_name = createOp.getName();
       createOp->setAttr(SymbolTable::getSymbolAttrName(),
                         builder.getStringAttr("__erase_" + sym_name));

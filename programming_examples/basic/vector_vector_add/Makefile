@@ -12,13 +12,20 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-targetname = vectorAdd
+targetname = vector_vector_add
 devicename = npu
 col = 0
 
+aie_py_src=${targetname}.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=${targetname}_alt.py
+endif
+
 all: build/final.xclbin
 
-build/aie.mlir: ${srcdir}/aie2.py
+build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${devicename} ${col} > $@
 

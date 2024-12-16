@@ -11,11 +11,18 @@ include ${srcdir}/../../makefile-common
 
 mlirFileName = aie
 
+aie_py_src=bottleneck.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=bottleneck_alt.py
+endif
+
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 all: build/conv2dk1.o build/conv2dk3.o build/conv2dk1_skip.o build/final.xclbin
 
-build/${mlirFileName}.mlir: ${srcdir}/aie2.py
+build/${mlirFileName}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< > $@
 

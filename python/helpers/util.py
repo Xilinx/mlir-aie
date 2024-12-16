@@ -1,7 +1,7 @@
 from collections import defaultdict
 import numpy as np
 import sys
-from typing import Sequence, get_args, get_origin
+from typing import Sequence, get_args, get_origin, TypeVar
 
 from ..extras import types as T
 from ..ir import (
@@ -73,8 +73,17 @@ def np_dtype_to_mlir_type(np_dtype):
     if mlir_type:
         return mlir_type()
     else:
+        # There is something weird going on with np types in the sense that:
+        #       np.int32 == np.dtype('int32') # this is true
+        #       my_dict = { np.int32: "test" }
+        #       my_dict[np.dtype('int32')]    # Error: key not found
+        # I suspect this is a difference between __hash__ and __eq__ (which generally should not happen)
+        # To get around this, I do a manual check for equality against all keys below.
+        for k, v in _np_dtype_to_mlir_type_ctor.items():
+            if k == np_dtype:
+                return v()
         raise AttributeError(
-            "Failed to map np dtype to mlir python type: " + str(np_dtype)
+            f"Failed to map np dtype to mlir python type: {str(np_dtype)} {type(np.dtype)}"
         )
 
 

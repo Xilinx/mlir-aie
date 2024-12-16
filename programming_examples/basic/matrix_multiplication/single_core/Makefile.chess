@@ -10,7 +10,7 @@
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=single_core
-targetname=matrixMultiplication
+targetname=single_core
 kernels=mm
 
 M?=128
@@ -49,7 +49,7 @@ opt_flag_arg=-DOPT_PERF_ENABLED
 endif
 
 ifeq (${use_alt}, 1)
-aie_py_src=aie2_alt.py
+aie_py_src=${targetname}_alt.py
 endif
 
 include ${srcdir}/../makefile-common

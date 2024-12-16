@@ -211,7 +211,7 @@ When an Object FIFO is initialized upon creation, the underlying synchronization
 
 **The remaining inputs of the Object FIFO are considered an advanced topic and are not required to understand the rest of this guide.**
 
-The `via_DMA` input of the Object FIFO is used mostly for debug or benchmarking purposes. It can be set to true to enforce that the lowered data movement configuration use the Data Movement Accelerators (or "DMAs") of the tiles. The DMAs are described further in the Advanced Topic section below. For further information about the Object FIFO lowering and how the `via_DMA` attribute influences it please see the sections of the MLIR-AIE [tutorials](../mlir_tutorials) on communication using local memory or DMAs.
+The `via_DMA` input of the Object FIFO is used mostly for debug or benchmarking purposes. It can be set to true to enforce that the lowered data movement configuration use the Data Movement Accelerators (or "DMAs") of the tiles. The DMAs are described further in the Advanced Topic section below. For further information about the Object FIFO lowering and how the `via_DMA` attribute influences it please see the sections of the MLIR-AIE [tutorials](../../../mlir_tutorials/) on communication using local memory or DMAs.
 
 The `plio` input is used to provide information about the data movement configuration to the Object FIFO lowering. When the Object FIFO is lowered the communication flows which are established between its tiles will be wired through a dedicated `plio` port.
 

@@ -18,13 +18,20 @@ PASSTHROUGH_HEIGHT = 1080
 #PASSTHROUGH_WIDTH = 512
 #PASSTHROUGH_HEIGHT = 9
 
-targetname = passThrough
+targetname = vision_passthrough
+
+aie_py_src=${targetname}.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=${targetname}_alt.py
+endif
 
 .PHONY: all template clean
 
 all: build/final_${PASSTHROUGH_WIDTH}.xclbin
 
-build/aie2_lineBased_8b_${PASSTHROUGH_WIDTH}.mlir: ${srcdir}/aie2.py
+build/aie2_lineBased_8b_${PASSTHROUGH_WIDTH}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${PASSTHROUGH_WIDTH} ${PASSTHROUGH_HEIGHT} > $@
 

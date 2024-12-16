@@ -15,17 +15,25 @@ trace_size = 16384
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
+aie_py_src=conv2d.py
+aie_py_trace_src=conv2d_alt.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=conv2d_alt.py
+endif
+
 all: build/conv2dk1_i8.o build/final.xclbin
 
 build/conv2dk1_i8.o: conv2dk1_i8.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DINT8_ACT -c $< -o ${@F}
 
-build/${mlirFileName}.mlir: ${srcdir}/aie2.py
+build/${mlirFileName}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< > $@
 
-build/${mlirFileName}_trace.mlir: ${srcdir}/aie2.py
+build/${mlirFileName}_trace.mlir: ${srcdir}/${aie_py_trace_src}
 	mkdir -p ${@D}
 	python3 $< ${trace_size} > $@
 

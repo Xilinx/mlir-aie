@@ -9,10 +9,10 @@
 ##===----------------------------------------------------------------------===##
 
 subdir=matrix_vector
-targetname=matrixVectorMultiplication
+targetname=matrix_vector
 
 # Currently does not accept reconfiguring size via these variables; must change
-# in source at aie2.py as well as here
+# in source at <targetname>.py as well as here
 M=288
 K=288
 N=1
@@ -20,6 +20,20 @@ m=32
 k=32
 
 kernels=mv_${m}x${k}
+use_alt?=0
+use_iron?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=${targetname}_alt.py
+ifeq (${use_iron}, 1)
+$(error Cannot specify both alternative design and IRON)
+endif
+endif
+
+ifeq (${use_iron}, 1)
+aie_py_src=${targetname}_iron.py
+endif
+
 
 SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 include ${SELF_DIR}../makefile-common

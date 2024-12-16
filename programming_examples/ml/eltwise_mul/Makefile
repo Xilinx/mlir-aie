@@ -14,8 +14,15 @@ include ${srcdir}/../../makefile-common
 
 all: build/final.xclbin
 
-targetname = myEltwiseMul
+targetname = eltwise_mul
 trace_size = 8192
+
+aie_py_src=${targetname}.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=${targetname}_alt.py
+endif
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
@@ -23,11 +30,11 @@ build/%.o: %.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
 
-build/aie.mlir: ${srcdir}/aie2.py
+build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< > $@
 
-build/aie_trace.mlir: ${srcdir}/aie2.py
+build/aie_trace.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${trace_size} > $@
 

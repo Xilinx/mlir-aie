@@ -15,13 +15,20 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 COLORDETECT_WIDTH = 1920
 COLORDETECT_HEIGHT = 1080
 
-targetname = colorDetect
+targetname = color_detect
 
 #COLORDETECT_WIDTH = 64
 #COLORDETECT_HEIGHT = 36
 
 #COLORDETECT_WIDTH = 640
 #COLORDETECT_HEIGHT = 480
+
+aie_py_src=${targetname}.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=${targetname}_alt.py
+endif
 
 all: build/final_${COLORDETECT_WIDTH}.xclbin
 
@@ -35,7 +42,7 @@ build/combined_bitwiseOR_gray2rgba_bitwiseAND.a: build/bitwiseOR.cc.o build/gray
 	mkdir -p ${@D}
 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
-build/aie2_lineBased_8b_${COLORDETECT_WIDTH}.mlir: ${srcdir}/aie2_colorDetect.py
+build/aie2_lineBased_8b_${COLORDETECT_WIDTH}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${COLORDETECT_WIDTH} ${COLORDETECT_HEIGHT} > $@
 

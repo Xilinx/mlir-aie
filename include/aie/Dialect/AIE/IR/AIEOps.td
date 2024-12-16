@@ -28,7 +28,7 @@ class AIE_Op<string mnemonic, list<Trait> traits = []> :
 
 def AIE_DeviceOp: AIE_Op<"device", [
     AIETarget, HasParent<"mlir::ModuleOp">,
-    SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove
+    SymbolTable, SingleBlockImplicitTerminator<"EndOp">, IsolatedFromAbove
   ]> {
   let summary = "Define an AIE design targetting a complete device";
   let description = [{
@@ -63,7 +63,6 @@ def AIE_DeviceOp: AIE_Op<"device", [
   let extraClassDeclaration = [{
     const xilinx::AIE::AIETargetModel &getTargetModel();
   }];
-  let hasVerifier = 1;
 }
 
 def AIE_TileOp: AIE_Op<"tile", [
@@ -857,10 +856,6 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
           // access/store element at/to index (i * 16 /*stride_2*/ + j * 1 /*stride_1*/ + k * 2 /*stride_0*/)
     ```
 
-    Note that an additional dimension of sizes/strides is accepted (5th dimension for memtiles, 4th otherwise);
-    the additional size value is interpreted as a repeat count whereas the additional stride value is
-    interpreted as an iteration stride.
-
     #### Important gotcha regarding strides
 
     All strides are expressed in multiples of the element width (just like `len` and `offset`)
@@ -898,8 +893,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     int32_t getBufferElementTypeWidthInBytes() {
       return getBuffer().getType().getElementTypeBitWidth() / 8;
     }
-    int32_t getLenInBytes() {
-      if (std::optional<int32_t> len = getLen(); len.has_value())
+    uint32_t getLenInBytes() {
+      if (std::optional<uint32_t> len = getLen(); len.has_value())
         return len.value() * getBufferElementTypeWidthInBytes();
       else
         return getBuffer().getType().getNumElements() * getBufferElementTypeWidthInBytes();
@@ -1009,6 +1004,8 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
     bool isSend() { return getChannelDir() == DMAChannelDir::MM2S; }
     bool isRecv() { return getChannelDir() == DMAChannelDir::S2MM; }
   }];
+  
+  let hasCanonicalizer = 1;
 }
 
 def AIE_DMAOp: AIE_Op<"dma", [

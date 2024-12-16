@@ -12,8 +12,15 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-targetname = testSoftmax
+targetname = softmax
 trace_size = 8192
+
+aie_py_src=${targetname}.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=${targetname}_alt.py
+endif
 
 all: build/final.xclbin build/insts.txt
 
@@ -35,11 +42,11 @@ build/softmax.o: ${srcdir}/softmax.cc
 build/kernels.a: build/softmax.o build/lut_based_ops.o build/dut.o
 	ar rvs $@ $+
 
-build/aie.mlir: ${srcdir}/aie2.py
+build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< > $@
 
-build/aie_trace.mlir: ${srcdir}/aie2.py
+build/aie_trace.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${trace_size} > $@
 

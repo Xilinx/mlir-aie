@@ -12,13 +12,20 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-targetname = vectorMult
+targetname = vector_vector_mul
 devicename = npu
 col = 0
 
+aie_py_src=${targetname}.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=${targetname}_alt.py
+endif
+
 all: build/final.xclbin
 
-build/aie.mlir: ${srcdir}/aie2.py
+build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${devicename} ${col} > $@
 
@@ -38,7 +45,6 @@ ifeq "${powershell}" "powershell.exe"
 else
 	cp _build/${targetname} $@ 
 endif
-
 
 
 # Changing variables when we target VCK5000

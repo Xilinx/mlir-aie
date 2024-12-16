@@ -12,16 +12,23 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-targetname = passThroughPyKernel
+targetname = passthrough_pykernel
 VPATH := ${srcdir}/../../../aie_kernels/generic
 data_size = 4096
 PASSTHROUGH_SIZE = ${data_size}
+
+aie_py_src=${targetname}.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=${targetname}_alt.py
+endif
 
 .PHONY: all template clean
 
 all: build/final_${data_size}.xclbin
 
-build/aie.mlir: ${srcdir}/aie2.py
+build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${PASSTHROUGH_SIZE} > $@
 

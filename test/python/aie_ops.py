@@ -162,6 +162,7 @@ def objFifoAcquire():
         with InsertionPoint(bb):
             acq = of0.acquire(port=ObjectFifoPort.Consume, num_elem=1)
             end()
+        end()
 
 
 # CHECK-LABEL: objFifoSubviewAccess
@@ -185,6 +186,7 @@ def objFifoSubviewAccess():
         with InsertionPoint(bb):
             acq = of0.acquire(ObjectFifoPort.Consume, 1)
             end()
+        end()
 
 
 # CHECK-LABEL: objFifoRelease
@@ -205,6 +207,7 @@ def objFifoRelease():
         with InsertionPoint(bb):
             acq = of0.release(ObjectFifoPort.Produce, 1)
             end()
+        end()
 
 
 # CHECK-LABEL: cascadeFlowOp

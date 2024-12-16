@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Targets/AIERT.h"
+#include "aie/Targets/AIETargetShared.h"
 
 #include "mlir/Support/LogicalResult.h"
 
@@ -57,7 +58,8 @@ AIERTControl::AIERTControl(const AIE::BaseNPUTargetModel &tm)
     : targetModel(tm) {
   // The first column in the NPU lacks a shim tile.  AIE-RT exposes some of
   // the internals about how this is modeled in a somewhat awkward way.
-  size_t partitionStartCol = tm.isVirtualized() ? 1 : 0;
+  size_t partitionStartCol =
+      tm.hasProperty(AIETargetModel::IsVirtualized) ? 1 : 0;
   size_t partitionNumCols = tm.columns();
   size_t deviceRows = tm.rows();
   size_t deviceCols = tm.columns() + partitionStartCol;
@@ -470,7 +472,8 @@ LogicalResult AIERTControl::configureSwitches(DeviceOp &targetOp) {
     int32_t col = switchboxOp.colIndex();
     int32_t row = switchboxOp.rowIndex();
     XAie_LocType tileLoc = XAie_TileLoc(col, row);
-    assert(targetModel.isNPU() && "Only NPU currently supported");
+    assert(targetModel.hasProperty(AIETargetModel::IsNPU) &&
+           "Only NPU currently supported");
 
     Block &b = switchboxOp.getConnections().front();
     for (auto connectOp : b.getOps<ConnectOp>())
@@ -605,6 +608,11 @@ LogicalResult AIERTControl::addInitConfig(DeviceOp &targetOp) {
     int row = memOp.getTileID().row;
     XAie_LocType tileLoc = XAie_TileLoc(col, row);
 
+    // Get the region's entry block, then start traversing through the chain of
+    // blocks.
+    llvm::SetVector<Block *> blockVector =
+        getOrderedChainOfBlocks(&memOp.getOperation()->getRegion(0));
+
     // handle DMA ops separately
     auto dmaOps = llvm::to_vector_of<DMAOp>(
         memOp.getOperation()->getRegion(0).getOps<DMAOp>());
@@ -616,10 +624,10 @@ LogicalResult AIERTControl::addInitConfig(DeviceOp &targetOp) {
             return failure();
         }
     } else {
-      for (Block &block : memOp.getOperation()->getRegion(0)) {
-        if (block.getOps<DMABDOp>().empty())
+      for (Block *block : blockVector) {
+        if (block->getOps<DMABDOp>().empty())
           continue;
-        if (failed(configureLocksAndBd(block, tileLoc)))
+        if (failed(configureLocksAndBd(*block, tileLoc)))
           return failure();
       }
     }
@@ -635,8 +643,8 @@ LogicalResult AIERTControl::addInitConfig(DeviceOp &targetOp) {
           return failure();
       }
     else
-      for (Block &block : memOp.getOperation()->getRegion(0)) {
-        for (auto op : block.getOps<DMAStartOp>()) {
+      for (Block *block : blockVector) {
+        for (auto op : block->getOps<DMAStartOp>()) {
           DMABDOp bd = *op.getDest()->getOps<DMABDOp>().begin();
           int chNum = op.getChannelIndex();
           auto channelDir = op.getChannelDir();

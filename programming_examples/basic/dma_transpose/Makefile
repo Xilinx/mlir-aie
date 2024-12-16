@@ -16,11 +16,26 @@ SHELL := /bin/bash
 
 all: build/final.xclbin build/insts.txt
 
-targetname = dmaTranspose
+targetname = dma_transpose
 M ?= 64
 K ?= 32
 
-build/aie.mlir: ${srcdir}/aie2.py
+aie_py_src=${targetname}.py
+use_alt?=0
+use_iron?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=${targetname}_alt.py
+ifeq (${use_iron}, 1)
+$(error Cannot specify both alternative design and IRON)
+endif
+endif
+
+ifeq (${use_iron}, 1)
+aie_py_src=${targetname}_iron.py
+endif
+
+build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${M} ${K} > $@
 
@@ -44,7 +59,7 @@ endif
 run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --M ${M} --K ${K}
 
-generate_access_map: ${srcdir}/aie2.py
+generate_access_map: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< --generate-access-map ${M} ${K}
 
