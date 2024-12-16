@@ -34,12 +34,16 @@ fi
 
 if [[ $PEANO_INSTALL_DIR == "" ]]; then
   mkdir -p my_install
-  pushd my_install
-  pip -q download llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
-  unzip -q llvm_aie*.whl
-  rm -rf llvm_aie*.whl
-  export PEANO_INSTALL_DIR=`realpath llvm-aie`
-  popd
+  if [ ! -d "my_install/llvm-aie" ]; then
+    pushd my_install
+    pip -q download llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+    unzip -q llvm_aie*.whl
+    rm -rf llvm_aie*.whl
+    export PEANO_INSTALL_DIR=`realpath llvm-aie`
+    popd
+  else
+    export PEANO_INSTALL_DIR=`realpath my_install/llvm-aie`
+  fi
 fi
 
 export PATH=${PEANO_INSTALL_DIR}/bin:${MLIR_AIE_INSTALL_DIR}/bin:${LLVM_INSTALL_DIR}/bin:${PATH} 
