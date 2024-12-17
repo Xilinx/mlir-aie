@@ -1949,33 +1949,18 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
     return failure();
 
   // Check for identical bds.
-  auto areIdenticalBDs = [](Block *b1, Block *b2) {
+  auto areEquivalentBDs = [](Block *b1, Block *b2) {
     auto b1OpRange = b1->without_terminator();
     auto b2OpRange = b2->without_terminator();
     if (llvm::range_size(b1OpRange) != llvm::range_size(b2OpRange))
       return false;
-    auto b1It = b1OpRange.begin();
-    auto b2It = b2OpRange.begin();
-    while (b1It != b1OpRange.end()) {
-      if ((*b1It).getName().getStringRef() != (*b2It).getName().getStringRef())
-        return false;
-
-      if (auto b1UseLockOp = dyn_cast<UseLockOp>(*b1It)) {
-        auto b2UseLockOp = dyn_cast<UseLockOp>(*b2It);
-        if (!OperationEquivalence::isEquivalentTo(
-                b1UseLockOp, b2UseLockOp,
-                OperationEquivalence::IgnoreLocations))
-          return false;
-      } else if (auto b1DMABDOp = dyn_cast<DMABDOp>(*b1It)) {
-        auto b2DMABDOp = dyn_cast<DMABDOp>(*b2It);
-        if (!OperationEquivalence::isEquivalentTo(
-                b1DMABDOp, b2DMABDOp, OperationEquivalence::IgnoreLocations))
-          return false;
-      }
-
-      b1It++;
-      b2It++;
-    }
+    if (!llvm::all_of(llvm::zip_equal(b1OpRange, b2OpRange),
+                      [](std::tuple<Operation &, Operation &> pair) {
+                        return OperationEquivalence::isEquivalentTo(
+                            &std::get<0>(pair), &std::get<1>(pair),
+                            OperationEquivalence::IgnoreLocations);
+                      }))
+      return false;
     return true;
   };
 
@@ -1983,8 +1968,8 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
   SmallVector<Block *> uniquePattern;
   auto patternIt = reachable.begin();
   while (patternIt != reachable.end() &&
-         llvm::none_of(uniquePattern, [patternIt, areIdenticalBDs](Block *b1) {
-           return areIdenticalBDs(*patternIt, b1);
+         llvm::none_of(uniquePattern, [patternIt, areEquivalentBDs](Block *b1) {
+           return areEquivalentBDs(*patternIt, b1);
          })) {
     uniquePattern.push_back(*patternIt);
     patternIt++;
