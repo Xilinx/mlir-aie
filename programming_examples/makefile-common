@@ -22,5 +22,5 @@ ifeq ($(TEST_POWERSHELL),yes)
 	getwslpath = wslpath -w
 else
 	powershell = 
-	getwslpath = pwd
+	getwslpath = echo
 endif
