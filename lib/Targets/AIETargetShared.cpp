@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AIETargetShared.h"
+#include "aie/Targets/AIETargetShared.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
@@ -130,6 +130,30 @@ void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
          << "&" << tensor << ", "
          << "0x" << llvm::utohexstr(baseAddrA + offsetA) << ", "
          << " /* len */ " << lenA << "));\n";
+}
+
+// Traverse through a chain of blocks.
+llvm::SetVector<Block *> getOrderedChainOfBlocks(Region *region) {
+  // Get the region's entry block, then start traversing through the chain of
+  // blocks.
+  llvm::SetVector<Block *> blockVector;
+  SmallVector<Block *, 16> worklist;
+  Block *firstBD = &region->front();
+  blockVector.insert(firstBD);
+  worklist.push_back(firstBD);
+  while (!worklist.empty()) {
+    Block *block = worklist.pop_back_val();
+    if (block->empty())
+      continue;
+    auto successors = block->getTerminator()->getSuccessors();
+    for (auto *i : successors) {
+      if (!blockVector.contains(i)) {
+        blockVector.insert(i);
+        worklist.push_back(i);
+      }
+    }
+  }
+  return blockVector;
 }
 
 } // namespace xilinx::AIE

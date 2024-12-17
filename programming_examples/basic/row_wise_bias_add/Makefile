@@ -37,11 +37,11 @@ N=2304
 m=96
 n=32
 
-aie_py_src=aie2.py
+aie_py_src=row_wise_bias_add.py
 use_alt?=0
 
 ifeq (${use_alt}, 1)
-aie_py_src=aie2_alt.py
+aie_py_src=row_wise_bias_add_alt.py
 endif
 
 .PHONY: all

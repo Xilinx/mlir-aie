@@ -12,6 +12,7 @@ set(BOOTGEN_SOURCE_DIR ${PROJECT_SOURCE_DIR}/third_party/bootgen)
 
 add_mlir_library(AIERT
   AIERT.cpp
+  AIETargetShared.cpp
 
   PARTIAL_SOURCES_INTENDED
   ENABLE_AGGREGATION

@@ -218,6 +218,8 @@ For your design of interest, for instance from [programming_examples](../program
 
 1. Continue to the [IRON AIE Application Programming Guide](programming_guide)
 
+1. Some MLIR-AIE documentation is available on the [website](https://xilinx.github.io/mlir-aie/)
+
 # Detailed Getting Started Guides and Documentation: 
 
 [Getting Started on a Versal™ board](docs/Building.md)
@@ -231,6 +233,8 @@ For your design of interest, for instance from [programming_examples](../program
 [IRON AIE Application Programming Guide](programming_guide)
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
+
+Interested in contributing MLIR-AIE? [Information for developers](./CONTRIBUTING.md)
 
 -----
 

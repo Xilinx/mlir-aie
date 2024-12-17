@@ -422,7 +422,7 @@ module {
         aie.use_lock(%lock_2_1_0, Release, 1)
         aie.next_bd ^bb6
       ^bb7: // pred: ^bb9
-        %3 = aie.dma_start(S2MM, 3, ^bb8, ^bb6, repeat_count = 1)
+        %3 = aie.dma_start(S2MM, 3, ^bb8, ^bb5, repeat_count = 1)
       ^bb8: // 2 preds: ^bb7, ^bb8
         aie.use_lock(%lock_2_1, AcquireGreaterEqual, 1)
         aie.dma_bd(%buf12 : memref<16x16xi32, 1 : i32>, 136, 64, [<size = 8, stride = 16>, <size = 8, stride = 1>])

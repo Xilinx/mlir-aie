@@ -28,6 +28,7 @@
 #define INPUT_SIZE (100 * sizeof(int))  // in bytes
 #define OUTPUT_SIZE (100 * sizeof(int)) // in bytes
 #define WIDTH_SIZE (10 * sizeof(int))   // in bytes
+
 #define INPUT_ROWS INPUT_SIZE / WIDTH_SIZE
 #define OUTPUT_ROWS OUTPUT_SIZE / WIDTH_SIZE
 
@@ -121,5 +122,5 @@ int main(int argc, const char *argv[]) {
   std::cout << std::endl << std::endl;
   std::cout << (pass ? "PASS!" : "FAIL.") << std::endl;
 
-  return 0;
+  return !pass;
 }
