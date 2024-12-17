@@ -54,7 +54,7 @@ def my_passthrough():
             ShimTile = tile(col, 0)
             ComputeTile2 = tile(col, 2)
 
-            ComputeTile_debug = tile(0, 2) # debug tile to showcase workaround
+            ComputeTile_debug = tile(0, 2)  # debug tile to showcase workaround
 
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile, ComputeTile2, 2, line_ty)
