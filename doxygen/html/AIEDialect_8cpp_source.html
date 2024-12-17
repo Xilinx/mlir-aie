@@ -2004,452 +2004,437 @@ $(function() {
 <div class="line"><a name="l01949"></a><span class="lineno"> 1949</span>&#160;    <span class="keywordflow">return</span> failure();</div>
 <div class="line"><a name="l01950"></a><span class="lineno"> 1950</span>&#160; </div>
 <div class="line"><a name="l01951"></a><span class="lineno"> 1951</span>&#160;  <span class="comment">// Check for identical bds.</span></div>
-<div class="line"><a name="l01952"></a><span class="lineno"> 1952</span>&#160;  <span class="keyword">auto</span> areIdenticalBDs = [](Block *b1, Block *b2) {</div>
+<div class="line"><a name="l01952"></a><span class="lineno"> 1952</span>&#160;  <span class="keyword">auto</span> areEquivalentBDs = [](Block *b1, Block *b2) {</div>
 <div class="line"><a name="l01953"></a><span class="lineno"> 1953</span>&#160;    <span class="keyword">auto</span> b1OpRange = b1-&gt;without_terminator();</div>
 <div class="line"><a name="l01954"></a><span class="lineno"> 1954</span>&#160;    <span class="keyword">auto</span> b2OpRange = b2-&gt;without_terminator();</div>
 <div class="line"><a name="l01955"></a><span class="lineno"> 1955</span>&#160;    <span class="keywordflow">if</span> (llvm::range_size(b1OpRange) != llvm::range_size(b2OpRange))</div>
 <div class="line"><a name="l01956"></a><span class="lineno"> 1956</span>&#160;      <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
-<div class="line"><a name="l01957"></a><span class="lineno"> 1957</span>&#160;    <span class="keyword">auto</span> b1It = b1OpRange.begin();</div>
-<div class="line"><a name="l01958"></a><span class="lineno"> 1958</span>&#160;    <span class="keyword">auto</span> b2It = b2OpRange.begin();</div>
-<div class="line"><a name="l01959"></a><span class="lineno"> 1959</span>&#160;    <span class="keywordflow">while</span> (b1It != b1OpRange.end()) {</div>
-<div class="line"><a name="l01960"></a><span class="lineno"> 1960</span>&#160;      <span class="keywordflow">if</span> ((*b1It).getName().getStringRef() != (*b2It).getName().getStringRef())</div>
-<div class="line"><a name="l01961"></a><span class="lineno"> 1961</span>&#160;        <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
-<div class="line"><a name="l01962"></a><span class="lineno"> 1962</span>&#160; </div>
-<div class="line"><a name="l01963"></a><span class="lineno"> 1963</span>&#160;      <span class="keywordflow">if</span> (<span class="keyword">auto</span> b1UseLockOp = dyn_cast&lt;UseLockOp&gt;(*b1It)) {</div>
-<div class="line"><a name="l01964"></a><span class="lineno"> 1964</span>&#160;        <span class="keyword">auto</span> b2UseLockOp = dyn_cast&lt;UseLockOp&gt;(*b2It);</div>
-<div class="line"><a name="l01965"></a><span class="lineno"> 1965</span>&#160;        <span class="keywordflow">if</span> (!OperationEquivalence::isEquivalentTo(</div>
-<div class="line"><a name="l01966"></a><span class="lineno"> 1966</span>&#160;                b1UseLockOp, b2UseLockOp,</div>
-<div class="line"><a name="l01967"></a><span class="lineno"> 1967</span>&#160;                OperationEquivalence::IgnoreLocations))</div>
-<div class="line"><a name="l01968"></a><span class="lineno"> 1968</span>&#160;          <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
-<div class="line"><a name="l01969"></a><span class="lineno"> 1969</span>&#160;      } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> b1DMABDOp = dyn_cast&lt;DMABDOp&gt;(*b1It)) {</div>
-<div class="line"><a name="l01970"></a><span class="lineno"> 1970</span>&#160;        <span class="keyword">auto</span> b2DMABDOp = dyn_cast&lt;DMABDOp&gt;(*b2It);</div>
-<div class="line"><a name="l01971"></a><span class="lineno"> 1971</span>&#160;        <span class="keywordflow">if</span> (!OperationEquivalence::isEquivalentTo(</div>
-<div class="line"><a name="l01972"></a><span class="lineno"> 1972</span>&#160;                b1DMABDOp, b2DMABDOp, OperationEquivalence::IgnoreLocations))</div>
-<div class="line"><a name="l01973"></a><span class="lineno"> 1973</span>&#160;          <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
-<div class="line"><a name="l01974"></a><span class="lineno"> 1974</span>&#160;      }</div>
-<div class="line"><a name="l01975"></a><span class="lineno"> 1975</span>&#160; </div>
-<div class="line"><a name="l01976"></a><span class="lineno"> 1976</span>&#160;      b1It++;</div>
-<div class="line"><a name="l01977"></a><span class="lineno"> 1977</span>&#160;      b2It++;</div>
-<div class="line"><a name="l01978"></a><span class="lineno"> 1978</span>&#160;    }</div>
-<div class="line"><a name="l01979"></a><span class="lineno"> 1979</span>&#160;    <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a name="l01980"></a><span class="lineno"> 1980</span>&#160;  };</div>
-<div class="line"><a name="l01981"></a><span class="lineno"> 1981</span>&#160; </div>
-<div class="line"><a name="l01982"></a><span class="lineno"> 1982</span>&#160;  <span class="comment">// Get a vector of unique BDs.</span></div>
-<div class="line"><a name="l01983"></a><span class="lineno"> 1983</span>&#160;  SmallVector&lt;Block *&gt; uniquePattern;</div>
-<div class="line"><a name="l01984"></a><span class="lineno"> 1984</span>&#160;  <span class="keyword">auto</span> patternIt = reachable.begin();</div>
-<div class="line"><a name="l01985"></a><span class="lineno"> 1985</span>&#160;  <span class="keywordflow">while</span> (patternIt != reachable.end() &amp;&amp;</div>
-<div class="line"><a name="l01986"></a><span class="lineno"> 1986</span>&#160;         llvm::none_of(uniquePattern, [patternIt, areIdenticalBDs](Block *b1) {</div>
-<div class="line"><a name="l01987"></a><span class="lineno"> 1987</span>&#160;           return areIdenticalBDs(*patternIt, b1);</div>
-<div class="line"><a name="l01988"></a><span class="lineno"> 1988</span>&#160;         })) {</div>
-<div class="line"><a name="l01989"></a><span class="lineno"> 1989</span>&#160;    uniquePattern.push_back(*patternIt);</div>
-<div class="line"><a name="l01990"></a><span class="lineno"> 1990</span>&#160;    patternIt++;</div>
-<div class="line"><a name="l01991"></a><span class="lineno"> 1991</span>&#160;  }</div>
+<div class="line"><a name="l01957"></a><span class="lineno"> 1957</span>&#160;    <span class="keywordflow">if</span> (!llvm::all_of(llvm::zip_equal(b1OpRange, b2OpRange),</div>
+<div class="line"><a name="l01958"></a><span class="lineno"> 1958</span>&#160;                      [](std::tuple&lt;Operation &amp;, Operation &amp;&gt; pair) {</div>
+<div class="line"><a name="l01959"></a><span class="lineno"> 1959</span>&#160;                        <span class="keywordflow">return</span> OperationEquivalence::isEquivalentTo(</div>
+<div class="line"><a name="l01960"></a><span class="lineno"> 1960</span>&#160;                            &amp;std::get&lt;0&gt;(pair), &amp;std::get&lt;1&gt;(pair),</div>
+<div class="line"><a name="l01961"></a><span class="lineno"> 1961</span>&#160;                            OperationEquivalence::IgnoreLocations);</div>
+<div class="line"><a name="l01962"></a><span class="lineno"> 1962</span>&#160;                      }))</div>
+<div class="line"><a name="l01963"></a><span class="lineno"> 1963</span>&#160;      <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
+<div class="line"><a name="l01964"></a><span class="lineno"> 1964</span>&#160;    <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a name="l01965"></a><span class="lineno"> 1965</span>&#160;  };</div>
+<div class="line"><a name="l01966"></a><span class="lineno"> 1966</span>&#160; </div>
+<div class="line"><a name="l01967"></a><span class="lineno"> 1967</span>&#160;  <span class="comment">// Get a vector of unique BDs.</span></div>
+<div class="line"><a name="l01968"></a><span class="lineno"> 1968</span>&#160;  SmallVector&lt;Block *&gt; uniquePattern;</div>
+<div class="line"><a name="l01969"></a><span class="lineno"> 1969</span>&#160;  <span class="keyword">auto</span> patternIt = reachable.begin();</div>
+<div class="line"><a name="l01970"></a><span class="lineno"> 1970</span>&#160;  <span class="keywordflow">while</span> (patternIt != reachable.end() &amp;&amp;</div>
+<div class="line"><a name="l01971"></a><span class="lineno"> 1971</span>&#160;         llvm::none_of(uniquePattern, [patternIt, areEquivalentBDs](Block *b1) {</div>
+<div class="line"><a name="l01972"></a><span class="lineno"> 1972</span>&#160;           <span class="keywordflow">return</span> areEquivalentBDs(*patternIt, b1);</div>
+<div class="line"><a name="l01973"></a><span class="lineno"> 1973</span>&#160;         })) {</div>
+<div class="line"><a name="l01974"></a><span class="lineno"> 1974</span>&#160;    uniquePattern.push_back(*patternIt);</div>
+<div class="line"><a name="l01975"></a><span class="lineno"> 1975</span>&#160;    patternIt++;</div>
+<div class="line"><a name="l01976"></a><span class="lineno"> 1976</span>&#160;  }</div>
+<div class="line"><a name="l01977"></a><span class="lineno"> 1977</span>&#160; </div>
+<div class="line"><a name="l01978"></a><span class="lineno"> 1978</span>&#160;  <span class="keywordtype">unsigned</span> idx = 0;</div>
+<div class="line"><a name="l01979"></a><span class="lineno"> 1979</span>&#160;  <span class="keywordflow">while</span> (patternIt != reachable.end()) {</div>
+<div class="line"><a name="l01980"></a><span class="lineno"> 1980</span>&#160;    <span class="comment">// BD repetition found. Check if repeating pattern.</span></div>
+<div class="line"><a name="l01981"></a><span class="lineno"> 1981</span>&#160;    <span class="keywordflow">if</span> (!areEquivalentBDs(*patternIt, uniquePattern[idx]))</div>
+<div class="line"><a name="l01982"></a><span class="lineno"> 1982</span>&#160;      <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a name="l01983"></a><span class="lineno"> 1983</span>&#160;    patternIt++;</div>
+<div class="line"><a name="l01984"></a><span class="lineno"> 1984</span>&#160;    idx = (++idx) % uniquePattern.size();</div>
+<div class="line"><a name="l01985"></a><span class="lineno"> 1985</span>&#160;  }</div>
+<div class="line"><a name="l01986"></a><span class="lineno"> 1986</span>&#160; </div>
+<div class="line"><a name="l01987"></a><span class="lineno"> 1987</span>&#160;  <span class="comment">// Repeating BD chains detected. Erasing repetitions.</span></div>
+<div class="line"><a name="l01988"></a><span class="lineno"> 1988</span>&#160;  <span class="keyword">auto</span> lastBDTerm = dyn_cast&lt;NextBDOp&gt;(reachable.back()-&gt;getTerminator());</div>
+<div class="line"><a name="l01989"></a><span class="lineno"> 1989</span>&#160;  <span class="keyword">auto</span> lastUniqueBDTerm =</div>
+<div class="line"><a name="l01990"></a><span class="lineno"> 1990</span>&#160;      dyn_cast&lt;NextBDOp&gt;(uniquePattern.back()-&gt;getTerminator());</div>
+<div class="line"><a name="l01991"></a><span class="lineno"> 1991</span>&#160;  lastUniqueBDTerm.setSuccessor(lastBDTerm.getSuccessor());</div>
 <div class="line"><a name="l01992"></a><span class="lineno"> 1992</span>&#160; </div>
-<div class="line"><a name="l01993"></a><span class="lineno"> 1993</span>&#160;  <span class="keywordtype">unsigned</span> idx = 0;</div>
-<div class="line"><a name="l01994"></a><span class="lineno"> 1994</span>&#160;  <span class="keywordflow">while</span> (patternIt != reachable.end()) {</div>
-<div class="line"><a name="l01995"></a><span class="lineno"> 1995</span>&#160;    <span class="comment">// BD repetition found. Check if repeating pattern.</span></div>
-<div class="line"><a name="l01996"></a><span class="lineno"> 1996</span>&#160;    <span class="keywordflow">if</span> (!areIdenticalBDs(*patternIt, uniquePattern[idx]))</div>
-<div class="line"><a name="l01997"></a><span class="lineno"> 1997</span>&#160;      <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a name="l01998"></a><span class="lineno"> 1998</span>&#160;    patternIt++;</div>
-<div class="line"><a name="l01999"></a><span class="lineno"> 1999</span>&#160;    idx = (++idx) % uniquePattern.size();</div>
-<div class="line"><a name="l02000"></a><span class="lineno"> 2000</span>&#160;  }</div>
-<div class="line"><a name="l02001"></a><span class="lineno"> 2001</span>&#160; </div>
-<div class="line"><a name="l02002"></a><span class="lineno"> 2002</span>&#160;  <span class="comment">// Repeating BD chains detected. Erasing repetitions.</span></div>
-<div class="line"><a name="l02003"></a><span class="lineno"> 2003</span>&#160;  <span class="keyword">auto</span> lastBDTerm = dyn_cast&lt;NextBDOp&gt;(reachable.back()-&gt;getTerminator());</div>
-<div class="line"><a name="l02004"></a><span class="lineno"> 2004</span>&#160;  <span class="keyword">auto</span> lastUniqueBDTerm =</div>
-<div class="line"><a name="l02005"></a><span class="lineno"> 2005</span>&#160;      dyn_cast&lt;NextBDOp&gt;(uniquePattern.back()-&gt;getTerminator());</div>
-<div class="line"><a name="l02006"></a><span class="lineno"> 2006</span>&#160;  lastUniqueBDTerm.setSuccessor(lastBDTerm.getSuccessor());</div>
-<div class="line"><a name="l02007"></a><span class="lineno"> 2007</span>&#160; </div>
-<div class="line"><a name="l02008"></a><span class="lineno"> 2008</span>&#160;  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a name="l02009"></a><span class="lineno"> 2009</span>&#160;}</div>
-<div class="line"><a name="l02010"></a><span class="lineno"> 2010</span>&#160; </div>
-<div class="line"><a name="l02011"></a><span class="lineno"> 2011</span>&#160;<span class="keywordtype">void</span> DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &amp;patterns,</div>
-<div class="line"><a name="l02012"></a><span class="lineno"> 2012</span>&#160;                                             MLIRContext *context) {</div>
-<div class="line"><a name="l02013"></a><span class="lineno"> 2013</span>&#160;  patterns.add(FoldDMAStartOp);</div>
-<div class="line"><a name="l02014"></a><span class="lineno"> 2014</span>&#160;}</div>
-<div class="line"><a name="l02015"></a><span class="lineno"> 2015</span>&#160; </div>
-<div class="line"><a name="l02016"></a><span class="lineno"> 2016</span>&#160;<span class="comment">//===----------------------------------------------------------------------===//</span></div>
-<div class="line"><a name="l02017"></a><span class="lineno"> 2017</span>&#160;<span class="comment">// SwitchboxOp</span></div>
-<div class="line"><a name="l02018"></a><span class="lineno"> 2018</span>&#160;<span class="comment">//===----------------------------------------------------------------------===//</span></div>
-<div class="line"><a name="l02019"></a><span class="lineno"> 2019</span>&#160; </div>
-<div class="line"><a name="l02020"></a><span class="lineno"> 2020</span>&#160;LogicalResult SwitchboxOp::verify() {</div>
-<div class="line"><a name="l02021"></a><span class="lineno"> 2021</span>&#160;  Region &amp;body = getConnections();</div>
-<div class="line"><a name="l02022"></a><span class="lineno"> 2022</span>&#160;  DenseSet&lt;Port&gt; sourceset;</div>
-<div class="line"><a name="l02023"></a><span class="lineno"> 2023</span>&#160;  DenseSet&lt;Port&gt; destset;</div>
-<div class="line"><a name="l02024"></a><span class="lineno"> 2024</span>&#160;  <span class="keyword">auto</span> tile = getTileOp();</div>
-<div class="line"><a name="l02025"></a><span class="lineno"> 2025</span>&#160;  <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = <a class="code" href="namespacexilinx_1_1AIE.html#a5c42f22e2b5c6f4cd0f0f3bcc773169f">getTargetModel</a>(tile);</div>
-<div class="line"><a name="l02026"></a><span class="lineno"> 2026</span>&#160;  <span class="keywordflow">if</span> (body.empty())</div>
-<div class="line"><a name="l02027"></a><span class="lineno"> 2027</span>&#160;    <span class="keywordflow">return</span> emitOpError(<span class="stringliteral">&quot;should have non-empty body&quot;</span>);</div>
-<div class="line"><a name="l02028"></a><span class="lineno"> 2028</span>&#160;  <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;ops : body.front()) {</div>
-<div class="line"><a name="l02029"></a><span class="lineno"> 2029</span>&#160;    <span class="comment">// Would be simpler if this could be templatized.</span></div>
-<div class="line"><a name="l02030"></a><span class="lineno"> 2030</span>&#160;    <span class="keyword">auto</span> checkBound = [&amp;ops](StringRef dir, WireBundle bundle, <span class="keywordtype">int</span> index,</div>
-<div class="line"><a name="l02031"></a><span class="lineno"> 2031</span>&#160;                             <span class="keywordtype">int</span> bound) -&gt; LogicalResult {</div>
-<div class="line"><a name="l02032"></a><span class="lineno"> 2032</span>&#160;      <span class="keywordflow">if</span> (index &gt;= bound) {</div>
-<div class="line"><a name="l02033"></a><span class="lineno"> 2033</span>&#160;        <span class="keywordflow">if</span> (bound &gt; 0)</div>
-<div class="line"><a name="l02034"></a><span class="lineno"> 2034</span>&#160;          <span class="keywordflow">return</span> ops.emitOpError(<span class="stringliteral">&quot;index &quot;</span>)</div>
-<div class="line"><a name="l02035"></a><span class="lineno"> 2035</span>&#160;                 &lt;&lt; index &lt;&lt; <span class="stringliteral">&quot; for &quot;</span> &lt;&lt; dir &lt;&lt; <span class="stringliteral">&quot; bundle &quot;</span></div>
-<div class="line"><a name="l02036"></a><span class="lineno"> 2036</span>&#160;                 &lt;&lt; stringifyWireBundle(bundle) &lt;&lt; <span class="stringliteral">&quot; must be less than &quot;</span></div>
-<div class="line"><a name="l02037"></a><span class="lineno"> 2037</span>&#160;                 &lt;&lt; bound;</div>
-<div class="line"><a name="l02038"></a><span class="lineno"> 2038</span>&#160;        <span class="keywordflow">return</span> ops.emitOpError()</div>
-<div class="line"><a name="l02039"></a><span class="lineno"> 2039</span>&#160;               &lt;&lt; dir &lt;&lt; <span class="stringliteral">&quot; bundle &quot;</span> &lt;&lt; stringifyWireBundle(bundle)</div>
-<div class="line"><a name="l02040"></a><span class="lineno"> 2040</span>&#160;               &lt;&lt; <span class="stringliteral">&quot; not supported; index: &quot;</span> &lt;&lt; index &lt;&lt; <span class="stringliteral">&quot;, bound: &quot;</span> &lt;&lt; bound;</div>
-<div class="line"><a name="l02041"></a><span class="lineno"> 2041</span>&#160;      }</div>
-<div class="line"><a name="l02042"></a><span class="lineno"> 2042</span>&#160;      <span class="keywordflow">return</span> success();</div>
-<div class="line"><a name="l02043"></a><span class="lineno"> 2043</span>&#160;    };</div>
-<div class="line"><a name="l02044"></a><span class="lineno"> 2044</span>&#160; </div>
-<div class="line"><a name="l02045"></a><span class="lineno"> 2045</span>&#160;    <span class="keywordflow">if</span> (<span class="keyword">auto</span> connectOp = dyn_cast&lt;ConnectOp&gt;(ops)) {</div>
-<div class="line"><a name="l02046"></a><span class="lineno"> 2046</span>&#160;      <a class="code" href="structxilinx_1_1AIE_1_1Port.html">Port</a> source = {connectOp.getSourceBundle(), connectOp.sourceIndex()};</div>
-<div class="line"><a name="l02047"></a><span class="lineno"> 2047</span>&#160;      sourceset.insert(source);</div>
-<div class="line"><a name="l02048"></a><span class="lineno"> 2048</span>&#160; </div>
-<div class="line"><a name="l02049"></a><span class="lineno"> 2049</span>&#160;      <a class="code" href="structxilinx_1_1AIE_1_1Port.html">Port</a> dest = {connectOp.getDestBundle(), connectOp.destIndex()};</div>
-<div class="line"><a name="l02050"></a><span class="lineno"> 2050</span>&#160;      <span class="keywordflow">if</span> (destset.count(dest)) {</div>
-<div class="line"><a name="l02051"></a><span class="lineno"> 2051</span>&#160;        <span class="keywordflow">return</span> connectOp.emitOpError()</div>
-<div class="line"><a name="l02052"></a><span class="lineno"> 2052</span>&#160;               &lt;&lt; <span class="stringliteral">&quot;; connecting &quot;</span> &lt;&lt; <a class="code" href="namespacexilinx_1_1AIE.html#a54d967313bd67b6127e14f84b63ad3c6">to_string</a>(source) &lt;&lt; <span class="stringliteral">&quot; to &quot;</span></div>
-<div class="line"><a name="l02053"></a><span class="lineno"> 2053</span>&#160;               &lt;&lt; <a class="code" href="namespacexilinx_1_1AIE.html#a54d967313bd67b6127e14f84b63ad3c6">to_string</a>(dest) &lt;&lt; <span class="stringliteral">&quot; on &quot;</span></div>
-<div class="line"><a name="l02054"></a><span class="lineno"> 2054</span>&#160;               &lt;&lt; <a class="code" href="namespacexilinx_1_1AIE.html#a54d967313bd67b6127e14f84b63ad3c6">to_string</a>(this-&gt;getTileOp().getTileID())</div>
-<div class="line"><a name="l02055"></a><span class="lineno"> 2055</span>&#160;               &lt;&lt; <span class="stringliteral">&quot; targets same dst as another connect op; existing &quot;</span></div>
-<div class="line"><a name="l02056"></a><span class="lineno"> 2056</span>&#160;                  <span class="stringliteral">&quot;destinations: &quot;</span></div>
-<div class="line"><a name="l02057"></a><span class="lineno"> 2057</span>&#160;               &lt;&lt; llvm::join(llvm::map_range(</div>
-<div class="line"><a name="l02058"></a><span class="lineno"> 2058</span>&#160;                                 destset, [](<span class="keyword">auto</span> &amp;p) { <span class="keywordflow">return</span> <a class="code" href="namespacexilinx_1_1AIE.html#a54d967313bd67b6127e14f84b63ad3c6">to_string</a>(p); }),</div>
-<div class="line"><a name="l02059"></a><span class="lineno"> 2059</span>&#160;                             <span class="stringliteral">&quot;, &quot;</span>);</div>
-<div class="line"><a name="l02060"></a><span class="lineno"> 2060</span>&#160;      }</div>
-<div class="line"><a name="l02061"></a><span class="lineno"> 2061</span>&#160;      destset.insert(dest);</div>
-<div class="line"><a name="l02062"></a><span class="lineno"> 2062</span>&#160; </div>
-<div class="line"><a name="l02063"></a><span class="lineno"> 2063</span>&#160;      <span class="keywordflow">if</span> (connectOp.sourceIndex() &lt; 0)</div>
-<div class="line"><a name="l02064"></a><span class="lineno"> 2064</span>&#160;        <span class="keywordflow">return</span> connectOp.emitOpError(<span class="stringliteral">&quot;source index cannot be less than zero&quot;</span>);</div>
-<div class="line"><a name="l02065"></a><span class="lineno"> 2065</span>&#160; </div>
-<div class="line"><a name="l02066"></a><span class="lineno"> 2066</span>&#160;      <span class="keywordflow">if</span> (checkBound(<span class="stringliteral">&quot;source&quot;</span>, connectOp.getSourceBundle(),</div>
-<div class="line"><a name="l02067"></a><span class="lineno"> 2067</span>&#160;                     connectOp.sourceIndex(),</div>
-<div class="line"><a name="l02068"></a><span class="lineno"> 2068</span>&#160;                     getNumSourceConnections(connectOp.getSourceBundle()))</div>
-<div class="line"><a name="l02069"></a><span class="lineno"> 2069</span>&#160;              .failed())</div>
-<div class="line"><a name="l02070"></a><span class="lineno"> 2070</span>&#160;        <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a name="l02071"></a><span class="lineno"> 2071</span>&#160; </div>
-<div class="line"><a name="l02072"></a><span class="lineno"> 2072</span>&#160;      <span class="keywordflow">if</span> (connectOp.destIndex() &lt; 0)</div>
-<div class="line"><a name="l02073"></a><span class="lineno"> 2073</span>&#160;        <span class="keywordflow">return</span> connectOp.emitOpError(<span class="stringliteral">&quot;dest index cannot be less than zero&quot;</span>);</div>
-<div class="line"><a name="l02074"></a><span class="lineno"> 2074</span>&#160; </div>
-<div class="line"><a name="l02075"></a><span class="lineno"> 2075</span>&#160;      <span class="keywordflow">if</span> (checkBound(<span class="stringliteral">&quot;dest&quot;</span>, connectOp.getDestBundle(), connectOp.destIndex(),</div>
-<div class="line"><a name="l02076"></a><span class="lineno"> 2076</span>&#160;                     getNumDestConnections(connectOp.getDestBundle()))</div>
-<div class="line"><a name="l02077"></a><span class="lineno"> 2077</span>&#160;              .failed())</div>
-<div class="line"><a name="l02078"></a><span class="lineno"> 2078</span>&#160;        <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a name="l01993"></a><span class="lineno"> 1993</span>&#160;  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a name="l01994"></a><span class="lineno"> 1994</span>&#160;}</div>
+<div class="line"><a name="l01995"></a><span class="lineno"> 1995</span>&#160; </div>
+<div class="line"><a name="l01996"></a><span class="lineno"> 1996</span>&#160;<span class="keywordtype">void</span> DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &amp;patterns,</div>
+<div class="line"><a name="l01997"></a><span class="lineno"> 1997</span>&#160;                                             MLIRContext *context) {</div>
+<div class="line"><a name="l01998"></a><span class="lineno"> 1998</span>&#160;  patterns.add(FoldDMAStartOp);</div>
+<div class="line"><a name="l01999"></a><span class="lineno"> 1999</span>&#160;}</div>
+<div class="line"><a name="l02000"></a><span class="lineno"> 2000</span>&#160; </div>
+<div class="line"><a name="l02001"></a><span class="lineno"> 2001</span>&#160;<span class="comment">//===----------------------------------------------------------------------===//</span></div>
+<div class="line"><a name="l02002"></a><span class="lineno"> 2002</span>&#160;<span class="comment">// SwitchboxOp</span></div>
+<div class="line"><a name="l02003"></a><span class="lineno"> 2003</span>&#160;<span class="comment">//===----------------------------------------------------------------------===//</span></div>
+<div class="line"><a name="l02004"></a><span class="lineno"> 2004</span>&#160; </div>
+<div class="line"><a name="l02005"></a><span class="lineno"> 2005</span>&#160;LogicalResult SwitchboxOp::verify() {</div>
+<div class="line"><a name="l02006"></a><span class="lineno"> 2006</span>&#160;  Region &amp;body = getConnections();</div>
+<div class="line"><a name="l02007"></a><span class="lineno"> 2007</span>&#160;  DenseSet&lt;Port&gt; sourceset;</div>
+<div class="line"><a name="l02008"></a><span class="lineno"> 2008</span>&#160;  DenseSet&lt;Port&gt; destset;</div>
+<div class="line"><a name="l02009"></a><span class="lineno"> 2009</span>&#160;  <span class="keyword">auto</span> tile = getTileOp();</div>
+<div class="line"><a name="l02010"></a><span class="lineno"> 2010</span>&#160;  <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = <a class="code" href="namespacexilinx_1_1AIE.html#a5c42f22e2b5c6f4cd0f0f3bcc773169f">getTargetModel</a>(tile);</div>
+<div class="line"><a name="l02011"></a><span class="lineno"> 2011</span>&#160;  <span class="keywordflow">if</span> (body.empty())</div>
+<div class="line"><a name="l02012"></a><span class="lineno"> 2012</span>&#160;    <span class="keywordflow">return</span> emitOpError(<span class="stringliteral">&quot;should have non-empty body&quot;</span>);</div>
+<div class="line"><a name="l02013"></a><span class="lineno"> 2013</span>&#160;  <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;ops : body.front()) {</div>
+<div class="line"><a name="l02014"></a><span class="lineno"> 2014</span>&#160;    <span class="comment">// Would be simpler if this could be templatized.</span></div>
+<div class="line"><a name="l02015"></a><span class="lineno"> 2015</span>&#160;    <span class="keyword">auto</span> checkBound = [&amp;ops](StringRef dir, WireBundle bundle, <span class="keywordtype">int</span> index,</div>
+<div class="line"><a name="l02016"></a><span class="lineno"> 2016</span>&#160;                             <span class="keywordtype">int</span> bound) -&gt; LogicalResult {</div>
+<div class="line"><a name="l02017"></a><span class="lineno"> 2017</span>&#160;      <span class="keywordflow">if</span> (index &gt;= bound) {</div>
+<div class="line"><a name="l02018"></a><span class="lineno"> 2018</span>&#160;        <span class="keywordflow">if</span> (bound &gt; 0)</div>
+<div class="line"><a name="l02019"></a><span class="lineno"> 2019</span>&#160;          <span class="keywordflow">return</span> ops.emitOpError(<span class="stringliteral">&quot;index &quot;</span>)</div>
+<div class="line"><a name="l02020"></a><span class="lineno"> 2020</span>&#160;                 &lt;&lt; index &lt;&lt; <span class="stringliteral">&quot; for &quot;</span> &lt;&lt; dir &lt;&lt; <span class="stringliteral">&quot; bundle &quot;</span></div>
+<div class="line"><a name="l02021"></a><span class="lineno"> 2021</span>&#160;                 &lt;&lt; stringifyWireBundle(bundle) &lt;&lt; <span class="stringliteral">&quot; must be less than &quot;</span></div>
+<div class="line"><a name="l02022"></a><span class="lineno"> 2022</span>&#160;                 &lt;&lt; bound;</div>
+<div class="line"><a name="l02023"></a><span class="lineno"> 2023</span>&#160;        <span class="keywordflow">return</span> ops.emitOpError()</div>
+<div class="line"><a name="l02024"></a><span class="lineno"> 2024</span>&#160;               &lt;&lt; dir &lt;&lt; <span class="stringliteral">&quot; bundle &quot;</span> &lt;&lt; stringifyWireBundle(bundle)</div>
+<div class="line"><a name="l02025"></a><span class="lineno"> 2025</span>&#160;               &lt;&lt; <span class="stringliteral">&quot; not supported; index: &quot;</span> &lt;&lt; index &lt;&lt; <span class="stringliteral">&quot;, bound: &quot;</span> &lt;&lt; bound;</div>
+<div class="line"><a name="l02026"></a><span class="lineno"> 2026</span>&#160;      }</div>
+<div class="line"><a name="l02027"></a><span class="lineno"> 2027</span>&#160;      <span class="keywordflow">return</span> success();</div>
+<div class="line"><a name="l02028"></a><span class="lineno"> 2028</span>&#160;    };</div>
+<div class="line"><a name="l02029"></a><span class="lineno"> 2029</span>&#160; </div>
+<div class="line"><a name="l02030"></a><span class="lineno"> 2030</span>&#160;    <span class="keywordflow">if</span> (<span class="keyword">auto</span> connectOp = dyn_cast&lt;ConnectOp&gt;(ops)) {</div>
+<div class="line"><a name="l02031"></a><span class="lineno"> 2031</span>&#160;      <a class="code" href="structxilinx_1_1AIE_1_1Port.html">Port</a> source = {connectOp.getSourceBundle(), connectOp.sourceIndex()};</div>
+<div class="line"><a name="l02032"></a><span class="lineno"> 2032</span>&#160;      sourceset.insert(source);</div>
+<div class="line"><a name="l02033"></a><span class="lineno"> 2033</span>&#160; </div>
+<div class="line"><a name="l02034"></a><span class="lineno"> 2034</span>&#160;      <a class="code" href="structxilinx_1_1AIE_1_1Port.html">Port</a> dest = {connectOp.getDestBundle(), connectOp.destIndex()};</div>
+<div class="line"><a name="l02035"></a><span class="lineno"> 2035</span>&#160;      <span class="keywordflow">if</span> (destset.count(dest)) {</div>
+<div class="line"><a name="l02036"></a><span class="lineno"> 2036</span>&#160;        <span class="keywordflow">return</span> connectOp.emitOpError()</div>
+<div class="line"><a name="l02037"></a><span class="lineno"> 2037</span>&#160;               &lt;&lt; <span class="stringliteral">&quot;; connecting &quot;</span> &lt;&lt; <a class="code" href="namespacexilinx_1_1AIE.html#a54d967313bd67b6127e14f84b63ad3c6">to_string</a>(source) &lt;&lt; <span class="stringliteral">&quot; to &quot;</span></div>
+<div class="line"><a name="l02038"></a><span class="lineno"> 2038</span>&#160;               &lt;&lt; <a class="code" href="namespacexilinx_1_1AIE.html#a54d967313bd67b6127e14f84b63ad3c6">to_string</a>(dest) &lt;&lt; <span class="stringliteral">&quot; on &quot;</span></div>
+<div class="line"><a name="l02039"></a><span class="lineno"> 2039</span>&#160;               &lt;&lt; <a class="code" href="namespacexilinx_1_1AIE.html#a54d967313bd67b6127e14f84b63ad3c6">to_string</a>(this-&gt;getTileOp().getTileID())</div>
+<div class="line"><a name="l02040"></a><span class="lineno"> 2040</span>&#160;               &lt;&lt; <span class="stringliteral">&quot; targets same dst as another connect op; existing &quot;</span></div>
+<div class="line"><a name="l02041"></a><span class="lineno"> 2041</span>&#160;                  <span class="stringliteral">&quot;destinations: &quot;</span></div>
+<div class="line"><a name="l02042"></a><span class="lineno"> 2042</span>&#160;               &lt;&lt; llvm::join(llvm::map_range(</div>
+<div class="line"><a name="l02043"></a><span class="lineno"> 2043</span>&#160;                                 destset, [](<span class="keyword">auto</span> &amp;p) { <span class="keywordflow">return</span> <a class="code" href="namespacexilinx_1_1AIE.html#a54d967313bd67b6127e14f84b63ad3c6">to_string</a>(p); }),</div>
+<div class="line"><a name="l02044"></a><span class="lineno"> 2044</span>&#160;                             <span class="stringliteral">&quot;, &quot;</span>);</div>
+<div class="line"><a name="l02045"></a><span class="lineno"> 2045</span>&#160;      }</div>
+<div class="line"><a name="l02046"></a><span class="lineno"> 2046</span>&#160;      destset.insert(dest);</div>
+<div class="line"><a name="l02047"></a><span class="lineno"> 2047</span>&#160; </div>
+<div class="line"><a name="l02048"></a><span class="lineno"> 2048</span>&#160;      <span class="keywordflow">if</span> (connectOp.sourceIndex() &lt; 0)</div>
+<div class="line"><a name="l02049"></a><span class="lineno"> 2049</span>&#160;        <span class="keywordflow">return</span> connectOp.emitOpError(<span class="stringliteral">&quot;source index cannot be less than zero&quot;</span>);</div>
+<div class="line"><a name="l02050"></a><span class="lineno"> 2050</span>&#160; </div>
+<div class="line"><a name="l02051"></a><span class="lineno"> 2051</span>&#160;      <span class="keywordflow">if</span> (checkBound(<span class="stringliteral">&quot;source&quot;</span>, connectOp.getSourceBundle(),</div>
+<div class="line"><a name="l02052"></a><span class="lineno"> 2052</span>&#160;                     connectOp.sourceIndex(),</div>
+<div class="line"><a name="l02053"></a><span class="lineno"> 2053</span>&#160;                     getNumSourceConnections(connectOp.getSourceBundle()))</div>
+<div class="line"><a name="l02054"></a><span class="lineno"> 2054</span>&#160;              .failed())</div>
+<div class="line"><a name="l02055"></a><span class="lineno"> 2055</span>&#160;        <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a name="l02056"></a><span class="lineno"> 2056</span>&#160; </div>
+<div class="line"><a name="l02057"></a><span class="lineno"> 2057</span>&#160;      <span class="keywordflow">if</span> (connectOp.destIndex() &lt; 0)</div>
+<div class="line"><a name="l02058"></a><span class="lineno"> 2058</span>&#160;        <span class="keywordflow">return</span> connectOp.emitOpError(<span class="stringliteral">&quot;dest index cannot be less than zero&quot;</span>);</div>
+<div class="line"><a name="l02059"></a><span class="lineno"> 2059</span>&#160; </div>
+<div class="line"><a name="l02060"></a><span class="lineno"> 2060</span>&#160;      <span class="keywordflow">if</span> (checkBound(<span class="stringliteral">&quot;dest&quot;</span>, connectOp.getDestBundle(), connectOp.destIndex(),</div>
+<div class="line"><a name="l02061"></a><span class="lineno"> 2061</span>&#160;                     getNumDestConnections(connectOp.getDestBundle()))</div>
+<div class="line"><a name="l02062"></a><span class="lineno"> 2062</span>&#160;              .failed())</div>
+<div class="line"><a name="l02063"></a><span class="lineno"> 2063</span>&#160;        <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a name="l02064"></a><span class="lineno"> 2064</span>&#160; </div>
+<div class="line"><a name="l02065"></a><span class="lineno"> 2065</span>&#160;      <span class="comment">// Stream switch connection constraints</span></div>
+<div class="line"><a name="l02066"></a><span class="lineno"> 2066</span>&#160;      <span class="keywordflow">if</span> (!<a class="code" href="AIEDialect_8cpp.html#a7585c08f47b5f720ae1e3d2e8ee5f9b6">isLegalTileConnection</a>(tile, targetModel, connectOp))</div>
+<div class="line"><a name="l02067"></a><span class="lineno"> 2067</span>&#160;        <span class="keywordflow">return</span> connectOp.emitOpError(<span class="stringliteral">&quot;illegal stream switch connection&quot;</span>);</div>
+<div class="line"><a name="l02068"></a><span class="lineno"> 2068</span>&#160; </div>
+<div class="line"><a name="l02069"></a><span class="lineno"> 2069</span>&#160;    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> connectOp = dyn_cast&lt;MasterSetOp&gt;(ops)) {</div>
+<div class="line"><a name="l02070"></a><span class="lineno"> 2070</span>&#160;      <a class="code" href="structxilinx_1_1AIE_1_1Port.html">Port</a> dest = {connectOp.getDestBundle(), connectOp.destIndex()};</div>
+<div class="line"><a name="l02071"></a><span class="lineno"> 2071</span>&#160;      <span class="keywordflow">if</span> (destset.count(dest))</div>
+<div class="line"><a name="l02072"></a><span class="lineno"> 2072</span>&#160;        <span class="keywordflow">return</span> connectOp.emitOpError(<span class="stringliteral">&quot;targets same destination &quot;</span>)</div>
+<div class="line"><a name="l02073"></a><span class="lineno"> 2073</span>&#160;               &lt;&lt; stringifyWireBundle(dest.<a class="code" href="structxilinx_1_1AIE_1_1Port.html#a29e6e09c5cfede576fb81612dc3f7b30">bundle</a>) &lt;&lt; <span class="stringliteral">&quot;: &quot;</span> &lt;&lt; dest.<a class="code" href="structxilinx_1_1AIE_1_1Port.html#a4d590c5adeb9cab0394c2d98468b7c3f">channel</a></div>
+<div class="line"><a name="l02074"></a><span class="lineno"> 2074</span>&#160;               &lt;&lt; <span class="stringliteral">&quot; as another connect or masterset operation&quot;</span>;</div>
+<div class="line"><a name="l02075"></a><span class="lineno"> 2075</span>&#160;      destset.insert(dest);</div>
+<div class="line"><a name="l02076"></a><span class="lineno"> 2076</span>&#160; </div>
+<div class="line"><a name="l02077"></a><span class="lineno"> 2077</span>&#160;      <span class="keywordflow">if</span> (connectOp.destIndex() &lt; 0)</div>
+<div class="line"><a name="l02078"></a><span class="lineno"> 2078</span>&#160;        <span class="keywordflow">return</span> connectOp.emitOpError(<span class="stringliteral">&quot;dest index cannot be less than zero&quot;</span>);</div>
 <div class="line"><a name="l02079"></a><span class="lineno"> 2079</span>&#160; </div>
-<div class="line"><a name="l02080"></a><span class="lineno"> 2080</span>&#160;      <span class="comment">// Stream switch connection constraints</span></div>
-<div class="line"><a name="l02081"></a><span class="lineno"> 2081</span>&#160;      <span class="keywordflow">if</span> (!<a class="code" href="AIEDialect_8cpp.html#a7585c08f47b5f720ae1e3d2e8ee5f9b6">isLegalTileConnection</a>(tile, targetModel, connectOp))</div>
-<div class="line"><a name="l02082"></a><span class="lineno"> 2082</span>&#160;        <span class="keywordflow">return</span> connectOp.emitOpError(<span class="stringliteral">&quot;illegal stream switch connection&quot;</span>);</div>
-<div class="line"><a name="l02083"></a><span class="lineno"> 2083</span>&#160; </div>
-<div class="line"><a name="l02084"></a><span class="lineno"> 2084</span>&#160;    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> connectOp = dyn_cast&lt;MasterSetOp&gt;(ops)) {</div>
-<div class="line"><a name="l02085"></a><span class="lineno"> 2085</span>&#160;      <a class="code" href="structxilinx_1_1AIE_1_1Port.html">Port</a> dest = {connectOp.getDestBundle(), connectOp.destIndex()};</div>
-<div class="line"><a name="l02086"></a><span class="lineno"> 2086</span>&#160;      <span class="keywordflow">if</span> (destset.count(dest))</div>
-<div class="line"><a name="l02087"></a><span class="lineno"> 2087</span>&#160;        <span class="keywordflow">return</span> connectOp.emitOpError(<span class="stringliteral">&quot;targets same destination &quot;</span>)</div>
-<div class="line"><a name="l02088"></a><span class="lineno"> 2088</span>&#160;               &lt;&lt; stringifyWireBundle(dest.<a class="code" href="structxilinx_1_1AIE_1_1Port.html#a29e6e09c5cfede576fb81612dc3f7b30">bundle</a>) &lt;&lt; <span class="stringliteral">&quot;: &quot;</span> &lt;&lt; dest.<a class="code" href="structxilinx_1_1AIE_1_1Port.html#a4d590c5adeb9cab0394c2d98468b7c3f">channel</a></div>
-<div class="line"><a name="l02089"></a><span class="lineno"> 2089</span>&#160;               &lt;&lt; <span class="stringliteral">&quot; as another connect or masterset operation&quot;</span>;</div>
-<div class="line"><a name="l02090"></a><span class="lineno"> 2090</span>&#160;      destset.insert(dest);</div>
-<div class="line"><a name="l02091"></a><span class="lineno"> 2091</span>&#160; </div>
-<div class="line"><a name="l02092"></a><span class="lineno"> 2092</span>&#160;      <span class="keywordflow">if</span> (connectOp.destIndex() &lt; 0)</div>
-<div class="line"><a name="l02093"></a><span class="lineno"> 2093</span>&#160;        <span class="keywordflow">return</span> connectOp.emitOpError(<span class="stringliteral">&quot;dest index cannot be less than zero&quot;</span>);</div>
-<div class="line"><a name="l02094"></a><span class="lineno"> 2094</span>&#160; </div>
-<div class="line"><a name="l02095"></a><span class="lineno"> 2095</span>&#160;      <span class="keywordflow">if</span> (checkBound(<span class="stringliteral">&quot;dest&quot;</span>, connectOp.getDestBundle(), connectOp.destIndex(),</div>
-<div class="line"><a name="l02096"></a><span class="lineno"> 2096</span>&#160;                     getNumDestConnections(connectOp.getDestBundle()))</div>
-<div class="line"><a name="l02097"></a><span class="lineno"> 2097</span>&#160;              .failed())</div>
-<div class="line"><a name="l02098"></a><span class="lineno"> 2098</span>&#160;        <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a name="l02099"></a><span class="lineno"> 2099</span>&#160; </div>
-<div class="line"><a name="l02100"></a><span class="lineno"> 2100</span>&#160;      <span class="keywordtype">int</span> arbiter = -1;</div>
-<div class="line"><a name="l02101"></a><span class="lineno"> 2101</span>&#160;      <span class="keywordflow">for</span> (<span class="keyword">auto</span> val : connectOp.getAmsels()) {</div>
-<div class="line"><a name="l02102"></a><span class="lineno"> 2102</span>&#160;        <span class="keyword">auto</span> amsel = dyn_cast&lt;AMSelOp&gt;(val.getDefiningOp());</div>
-<div class="line"><a name="l02103"></a><span class="lineno"> 2103</span>&#160;        <span class="keywordflow">if</span> (arbiter != -1 &amp;&amp; arbiter != amsel.arbiterIndex())</div>
-<div class="line"><a name="l02104"></a><span class="lineno"> 2104</span>&#160;          <span class="keywordflow">return</span> connectOp.emitOpError(</div>
-<div class="line"><a name="l02105"></a><span class="lineno"> 2105</span>&#160;              <span class="stringliteral">&quot;a master port can only be tied to one arbiter&quot;</span>);</div>
-<div class="line"><a name="l02106"></a><span class="lineno"> 2106</span>&#160;        arbiter = amsel.arbiterIndex();</div>
-<div class="line"><a name="l02107"></a><span class="lineno"> 2107</span>&#160;      }</div>
-<div class="line"><a name="l02108"></a><span class="lineno"> 2108</span>&#160;    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> connectOp = dyn_cast&lt;PacketRulesOp&gt;(ops)) {</div>
-<div class="line"><a name="l02109"></a><span class="lineno"> 2109</span>&#160;      <a class="code" href="structxilinx_1_1AIE_1_1Port.html">Port</a> source = {connectOp.getSourceBundle(), connectOp.sourceIndex()};</div>
-<div class="line"><a name="l02110"></a><span class="lineno"> 2110</span>&#160;      <span class="keywordflow">if</span> (sourceset.count(source))</div>
-<div class="line"><a name="l02111"></a><span class="lineno"> 2111</span>&#160;        <span class="keywordflow">return</span> connectOp.emitOpError(<span class="stringliteral">&quot;packet switched source &quot;</span>)</div>
-<div class="line"><a name="l02112"></a><span class="lineno"> 2112</span>&#160;               &lt;&lt; stringifyWireBundle(source.<a class="code" href="structxilinx_1_1AIE_1_1Port.html#a29e6e09c5cfede576fb81612dc3f7b30">bundle</a>) &lt;&lt; source.<a class="code" href="structxilinx_1_1AIE_1_1Port.html#a4d590c5adeb9cab0394c2d98468b7c3f">channel</a></div>
-<div class="line"><a name="l02113"></a><span class="lineno"> 2113</span>&#160;               &lt;&lt; <span class="stringliteral">&quot; cannot match another connect or masterset operation&quot;</span>;</div>
-<div class="line"><a name="l02114"></a><span class="lineno"> 2114</span>&#160;      sourceset.insert(source);</div>
-<div class="line"><a name="l02115"></a><span class="lineno"> 2115</span>&#160; </div>
-<div class="line"><a name="l02116"></a><span class="lineno"> 2116</span>&#160;    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> amselOp = dyn_cast&lt;AMSelOp&gt;(ops)) {</div>
-<div class="line"><a name="l02117"></a><span class="lineno"> 2117</span>&#160;      std::vector&lt;MasterSetOp&gt; mstrs;</div>
-<div class="line"><a name="l02118"></a><span class="lineno"> 2118</span>&#160;      std::vector&lt;PacketRulesOp&gt; slvs;</div>
-<div class="line"><a name="l02119"></a><span class="lineno"> 2119</span>&#160;      <span class="keywordflow">for</span> (<span class="keyword">auto</span> *user : amselOp.getResult().getUsers()) {</div>
-<div class="line"><a name="l02120"></a><span class="lineno"> 2120</span>&#160;        <span class="keywordflow">if</span> (<span class="keyword">auto</span> s = dyn_cast&lt;PacketRuleOp&gt;(user)) {</div>
-<div class="line"><a name="l02121"></a><span class="lineno"> 2121</span>&#160;          <span class="keyword">auto</span> pktRules = dyn_cast&lt;PacketRulesOp&gt;(s-&gt;getParentOp());</div>
-<div class="line"><a name="l02122"></a><span class="lineno"> 2122</span>&#160;          slvs.push_back(pktRules);</div>
-<div class="line"><a name="l02123"></a><span class="lineno"> 2123</span>&#160;        } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> m = dyn_cast&lt;MasterSetOp&gt;(user))</div>
-<div class="line"><a name="l02124"></a><span class="lineno"> 2124</span>&#160;          mstrs.push_back(m);</div>
-<div class="line"><a name="l02125"></a><span class="lineno"> 2125</span>&#160;      }</div>
-<div class="line"><a name="l02126"></a><span class="lineno"> 2126</span>&#160;      <span class="keywordflow">for</span> (<span class="keyword">auto</span> m : mstrs) {</div>
-<div class="line"><a name="l02127"></a><span class="lineno"> 2127</span>&#160;        <span class="keywordflow">for</span> (<span class="keyword">auto</span> s : slvs) {</div>
-<div class="line"><a name="l02128"></a><span class="lineno"> 2128</span>&#160;          <span class="comment">// Stream switch connection constraints</span></div>
-<div class="line"><a name="l02129"></a><span class="lineno"> 2129</span>&#160;          <span class="keywordflow">if</span> (!<a class="code" href="AIEDialect_8cpp.html#a7585c08f47b5f720ae1e3d2e8ee5f9b6">isLegalTileConnection</a>(tile, targetModel, m, s)) {</div>
-<div class="line"><a name="l02130"></a><span class="lineno"> 2130</span>&#160;            <span class="keywordflow">return</span> amselOp-&gt;emitOpError(<span class="stringliteral">&quot;illegal stream switch connection&quot;</span>);</div>
-<div class="line"><a name="l02131"></a><span class="lineno"> 2131</span>&#160;          }</div>
-<div class="line"><a name="l02132"></a><span class="lineno"> 2132</span>&#160;        }</div>
-<div class="line"><a name="l02133"></a><span class="lineno"> 2133</span>&#160;      }</div>
-<div class="line"><a name="l02134"></a><span class="lineno"> 2134</span>&#160;    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (isa&lt;EndOp&gt;(ops)) {</div>
-<div class="line"><a name="l02135"></a><span class="lineno"> 2135</span>&#160;      <span class="comment">// continue;</span></div>
-<div class="line"><a name="l02136"></a><span class="lineno"> 2136</span>&#160;    } <span class="keywordflow">else</span> {</div>
-<div class="line"><a name="l02137"></a><span class="lineno"> 2137</span>&#160;      <span class="keywordflow">return</span> ops.emitOpError(<span class="stringliteral">&quot;cannot be contained in a Switchbox op&quot;</span>);</div>
-<div class="line"><a name="l02138"></a><span class="lineno"> 2138</span>&#160;    }</div>
-<div class="line"><a name="l02139"></a><span class="lineno"> 2139</span>&#160;  }</div>
-<div class="line"><a name="l02140"></a><span class="lineno"> 2140</span>&#160; </div>
-<div class="line"><a name="l02141"></a><span class="lineno"> 2141</span>&#160;  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a name="l02142"></a><span class="lineno"> 2142</span>&#160;}</div>
-<div class="line"><a name="l02143"></a><span class="lineno"> 2143</span>&#160; </div>
-<div class="line"><a name="l02144"></a><span class="lineno"> 2144</span>&#160;TileOp SwitchboxOp::getTileOp() {</div>
-<div class="line"><a name="l02145"></a><span class="lineno"> 2145</span>&#160;  <span class="keywordflow">return</span> cast&lt;TileOp&gt;(getTile().getDefiningOp());</div>
-<div class="line"><a name="l02146"></a><span class="lineno"> 2146</span>&#160;}</div>
-<div class="line"><a name="l02147"></a><span class="lineno"> 2147</span>&#160; </div>
-<div class="line"><a name="l02148"></a><span class="lineno"> 2148</span>&#160;<span class="keywordtype">int</span> SwitchboxOp::colIndex() { <span class="keywordflow">return</span> getTileOp().colIndex(); }</div>
+<div class="line"><a name="l02080"></a><span class="lineno"> 2080</span>&#160;      <span class="keywordflow">if</span> (checkBound(<span class="stringliteral">&quot;dest&quot;</span>, connectOp.getDestBundle(), connectOp.destIndex(),</div>
+<div class="line"><a name="l02081"></a><span class="lineno"> 2081</span>&#160;                     getNumDestConnections(connectOp.getDestBundle()))</div>
+<div class="line"><a name="l02082"></a><span class="lineno"> 2082</span>&#160;              .failed())</div>
+<div class="line"><a name="l02083"></a><span class="lineno"> 2083</span>&#160;        <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a name="l02084"></a><span class="lineno"> 2084</span>&#160; </div>
+<div class="line"><a name="l02085"></a><span class="lineno"> 2085</span>&#160;      <span class="keywordtype">int</span> arbiter = -1;</div>
+<div class="line"><a name="l02086"></a><span class="lineno"> 2086</span>&#160;      <span class="keywordflow">for</span> (<span class="keyword">auto</span> val : connectOp.getAmsels()) {</div>
+<div class="line"><a name="l02087"></a><span class="lineno"> 2087</span>&#160;        <span class="keyword">auto</span> amsel = dyn_cast&lt;AMSelOp&gt;(val.getDefiningOp());</div>
+<div class="line"><a name="l02088"></a><span class="lineno"> 2088</span>&#160;        <span class="keywordflow">if</span> (arbiter != -1 &amp;&amp; arbiter != amsel.arbiterIndex())</div>
+<div class="line"><a name="l02089"></a><span class="lineno"> 2089</span>&#160;          <span class="keywordflow">return</span> connectOp.emitOpError(</div>
+<div class="line"><a name="l02090"></a><span class="lineno"> 2090</span>&#160;              <span class="stringliteral">&quot;a master port can only be tied to one arbiter&quot;</span>);</div>
+<div class="line"><a name="l02091"></a><span class="lineno"> 2091</span>&#160;        arbiter = amsel.arbiterIndex();</div>
+<div class="line"><a name="l02092"></a><span class="lineno"> 2092</span>&#160;      }</div>
+<div class="line"><a name="l02093"></a><span class="lineno"> 2093</span>&#160;    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> connectOp = dyn_cast&lt;PacketRulesOp&gt;(ops)) {</div>
+<div class="line"><a name="l02094"></a><span class="lineno"> 2094</span>&#160;      <a class="code" href="structxilinx_1_1AIE_1_1Port.html">Port</a> source = {connectOp.getSourceBundle(), connectOp.sourceIndex()};</div>
+<div class="line"><a name="l02095"></a><span class="lineno"> 2095</span>&#160;      <span class="keywordflow">if</span> (sourceset.count(source))</div>
+<div class="line"><a name="l02096"></a><span class="lineno"> 2096</span>&#160;        <span class="keywordflow">return</span> connectOp.emitOpError(<span class="stringliteral">&quot;packet switched source &quot;</span>)</div>
+<div class="line"><a name="l02097"></a><span class="lineno"> 2097</span>&#160;               &lt;&lt; stringifyWireBundle(source.<a class="code" href="structxilinx_1_1AIE_1_1Port.html#a29e6e09c5cfede576fb81612dc3f7b30">bundle</a>) &lt;&lt; source.<a class="code" href="structxilinx_1_1AIE_1_1Port.html#a4d590c5adeb9cab0394c2d98468b7c3f">channel</a></div>
+<div class="line"><a name="l02098"></a><span class="lineno"> 2098</span>&#160;               &lt;&lt; <span class="stringliteral">&quot; cannot match another connect or masterset operation&quot;</span>;</div>
+<div class="line"><a name="l02099"></a><span class="lineno"> 2099</span>&#160;      sourceset.insert(source);</div>
+<div class="line"><a name="l02100"></a><span class="lineno"> 2100</span>&#160; </div>
+<div class="line"><a name="l02101"></a><span class="lineno"> 2101</span>&#160;    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> amselOp = dyn_cast&lt;AMSelOp&gt;(ops)) {</div>
+<div class="line"><a name="l02102"></a><span class="lineno"> 2102</span>&#160;      std::vector&lt;MasterSetOp&gt; mstrs;</div>
+<div class="line"><a name="l02103"></a><span class="lineno"> 2103</span>&#160;      std::vector&lt;PacketRulesOp&gt; slvs;</div>
+<div class="line"><a name="l02104"></a><span class="lineno"> 2104</span>&#160;      <span class="keywordflow">for</span> (<span class="keyword">auto</span> *user : amselOp.getResult().getUsers()) {</div>
+<div class="line"><a name="l02105"></a><span class="lineno"> 2105</span>&#160;        <span class="keywordflow">if</span> (<span class="keyword">auto</span> s = dyn_cast&lt;PacketRuleOp&gt;(user)) {</div>
+<div class="line"><a name="l02106"></a><span class="lineno"> 2106</span>&#160;          <span class="keyword">auto</span> pktRules = dyn_cast&lt;PacketRulesOp&gt;(s-&gt;getParentOp());</div>
+<div class="line"><a name="l02107"></a><span class="lineno"> 2107</span>&#160;          slvs.push_back(pktRules);</div>
+<div class="line"><a name="l02108"></a><span class="lineno"> 2108</span>&#160;        } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> m = dyn_cast&lt;MasterSetOp&gt;(user))</div>
+<div class="line"><a name="l02109"></a><span class="lineno"> 2109</span>&#160;          mstrs.push_back(m);</div>
+<div class="line"><a name="l02110"></a><span class="lineno"> 2110</span>&#160;      }</div>
+<div class="line"><a name="l02111"></a><span class="lineno"> 2111</span>&#160;      <span class="keywordflow">for</span> (<span class="keyword">auto</span> m : mstrs) {</div>
+<div class="line"><a name="l02112"></a><span class="lineno"> 2112</span>&#160;        <span class="keywordflow">for</span> (<span class="keyword">auto</span> s : slvs) {</div>
+<div class="line"><a name="l02113"></a><span class="lineno"> 2113</span>&#160;          <span class="comment">// Stream switch connection constraints</span></div>
+<div class="line"><a name="l02114"></a><span class="lineno"> 2114</span>&#160;          <span class="keywordflow">if</span> (!<a class="code" href="AIEDialect_8cpp.html#a7585c08f47b5f720ae1e3d2e8ee5f9b6">isLegalTileConnection</a>(tile, targetModel, m, s)) {</div>
+<div class="line"><a name="l02115"></a><span class="lineno"> 2115</span>&#160;            <span class="keywordflow">return</span> amselOp-&gt;emitOpError(<span class="stringliteral">&quot;illegal stream switch connection&quot;</span>);</div>
+<div class="line"><a name="l02116"></a><span class="lineno"> 2116</span>&#160;          }</div>
+<div class="line"><a name="l02117"></a><span class="lineno"> 2117</span>&#160;        }</div>
+<div class="line"><a name="l02118"></a><span class="lineno"> 2118</span>&#160;      }</div>
+<div class="line"><a name="l02119"></a><span class="lineno"> 2119</span>&#160;    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (isa&lt;EndOp&gt;(ops)) {</div>
+<div class="line"><a name="l02120"></a><span class="lineno"> 2120</span>&#160;      <span class="comment">// continue;</span></div>
+<div class="line"><a name="l02121"></a><span class="lineno"> 2121</span>&#160;    } <span class="keywordflow">else</span> {</div>
+<div class="line"><a name="l02122"></a><span class="lineno"> 2122</span>&#160;      <span class="keywordflow">return</span> ops.emitOpError(<span class="stringliteral">&quot;cannot be contained in a Switchbox op&quot;</span>);</div>
+<div class="line"><a name="l02123"></a><span class="lineno"> 2123</span>&#160;    }</div>
+<div class="line"><a name="l02124"></a><span class="lineno"> 2124</span>&#160;  }</div>
+<div class="line"><a name="l02125"></a><span class="lineno"> 2125</span>&#160; </div>
+<div class="line"><a name="l02126"></a><span class="lineno"> 2126</span>&#160;  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a name="l02127"></a><span class="lineno"> 2127</span>&#160;}</div>
+<div class="line"><a name="l02128"></a><span class="lineno"> 2128</span>&#160; </div>
+<div class="line"><a name="l02129"></a><span class="lineno"> 2129</span>&#160;TileOp SwitchboxOp::getTileOp() {</div>
+<div class="line"><a name="l02130"></a><span class="lineno"> 2130</span>&#160;  <span class="keywordflow">return</span> cast&lt;TileOp&gt;(getTile().getDefiningOp());</div>
+<div class="line"><a name="l02131"></a><span class="lineno"> 2131</span>&#160;}</div>
+<div class="line"><a name="l02132"></a><span class="lineno"> 2132</span>&#160; </div>
+<div class="line"><a name="l02133"></a><span class="lineno"> 2133</span>&#160;<span class="keywordtype">int</span> SwitchboxOp::colIndex() { <span class="keywordflow">return</span> getTileOp().colIndex(); }</div>
+<div class="line"><a name="l02134"></a><span class="lineno"> 2134</span>&#160; </div>
+<div class="line"><a name="l02135"></a><span class="lineno"> 2135</span>&#160;<span class="keywordtype">int</span> SwitchboxOp::rowIndex() { <span class="keywordflow">return</span> getTileOp().rowIndex(); }</div>
+<div class="line"><a name="l02136"></a><span class="lineno"> 2136</span>&#160; </div>
+<div class="line"><a name="l02137"></a><span class="lineno"> 2137</span>&#160;<span class="keyword">template</span> &lt;<span class="keyword">typename</span>... ParentOpTypes&gt;</div>
+<div class="line"><a name="l02138"></a><span class="lineno"><a class="line" href="structHasSomeParent.html"> 2138</a></span>&#160;<span class="keyword">struct </span><a class="code" href="structHasSomeParent.html">HasSomeParent</a> {</div>
+<div class="line"><a name="l02139"></a><span class="lineno"><a class="line" href="structHasSomeParent.html#a77664a054f102d51952adcda78fcdee0"> 2139</a></span>&#160;  <span class="keyword">static</span> LogicalResult <a class="code" href="structHasSomeParent.html#a77664a054f102d51952adcda78fcdee0">verifyTrait</a>(Operation *op) {</div>
+<div class="line"><a name="l02140"></a><span class="lineno"> 2140</span>&#160;    Operation *operation = op-&gt;getParentOp();</div>
+<div class="line"><a name="l02141"></a><span class="lineno"> 2141</span>&#160;    <span class="keywordflow">while</span> (operation) {</div>
+<div class="line"><a name="l02142"></a><span class="lineno"> 2142</span>&#160;      <span class="keywordflow">if</span> (llvm::isa_and_nonnull&lt;ParentOpTypes...&gt;(operation))</div>
+<div class="line"><a name="l02143"></a><span class="lineno"> 2143</span>&#160;        <span class="keywordflow">return</span> success();</div>
+<div class="line"><a name="l02144"></a><span class="lineno"> 2144</span>&#160;      operation = operation-&gt;getParentOp();</div>
+<div class="line"><a name="l02145"></a><span class="lineno"> 2145</span>&#160;    }</div>
+<div class="line"><a name="l02146"></a><span class="lineno"> 2146</span>&#160;    <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a name="l02147"></a><span class="lineno"> 2147</span>&#160;  }</div>
+<div class="line"><a name="l02148"></a><span class="lineno"> 2148</span>&#160;};</div>
 <div class="line"><a name="l02149"></a><span class="lineno"> 2149</span>&#160; </div>
-<div class="line"><a name="l02150"></a><span class="lineno"> 2150</span>&#160;<span class="keywordtype">int</span> SwitchboxOp::rowIndex() { <span class="keywordflow">return</span> getTileOp().rowIndex(); }</div>
+<div class="line"><a name="l02150"></a><span class="lineno"> 2150</span>&#160;TileOp LockOp::getTileOp() { <span class="keywordflow">return</span> cast&lt;TileOp&gt;(getTile().getDefiningOp()); }</div>
 <div class="line"><a name="l02151"></a><span class="lineno"> 2151</span>&#160; </div>
-<div class="line"><a name="l02152"></a><span class="lineno"> 2152</span>&#160;<span class="keyword">template</span> &lt;<span class="keyword">typename</span>... ParentOpTypes&gt;</div>
-<div class="line"><a name="l02153"></a><span class="lineno"><a class="line" href="structHasSomeParent.html"> 2153</a></span>&#160;<span class="keyword">struct </span><a class="code" href="structHasSomeParent.html">HasSomeParent</a> {</div>
-<div class="line"><a name="l02154"></a><span class="lineno"><a class="line" href="structHasSomeParent.html#a77664a054f102d51952adcda78fcdee0"> 2154</a></span>&#160;  <span class="keyword">static</span> LogicalResult <a class="code" href="structHasSomeParent.html#a77664a054f102d51952adcda78fcdee0">verifyTrait</a>(Operation *op) {</div>
-<div class="line"><a name="l02155"></a><span class="lineno"> 2155</span>&#160;    Operation *operation = op-&gt;getParentOp();</div>
-<div class="line"><a name="l02156"></a><span class="lineno"> 2156</span>&#160;    <span class="keywordflow">while</span> (operation) {</div>
-<div class="line"><a name="l02157"></a><span class="lineno"> 2157</span>&#160;      <span class="keywordflow">if</span> (llvm::isa_and_nonnull&lt;ParentOpTypes...&gt;(operation))</div>
-<div class="line"><a name="l02158"></a><span class="lineno"> 2158</span>&#160;        <span class="keywordflow">return</span> success();</div>
-<div class="line"><a name="l02159"></a><span class="lineno"> 2159</span>&#160;      operation = operation-&gt;getParentOp();</div>
-<div class="line"><a name="l02160"></a><span class="lineno"> 2160</span>&#160;    }</div>
-<div class="line"><a name="l02161"></a><span class="lineno"> 2161</span>&#160;    <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a name="l02162"></a><span class="lineno"> 2162</span>&#160;  }</div>
-<div class="line"><a name="l02163"></a><span class="lineno"> 2163</span>&#160;};</div>
-<div class="line"><a name="l02164"></a><span class="lineno"> 2164</span>&#160; </div>
-<div class="line"><a name="l02165"></a><span class="lineno"> 2165</span>&#160;TileOp LockOp::getTileOp() { <span class="keywordflow">return</span> cast&lt;TileOp&gt;(getTile().getDefiningOp()); }</div>
-<div class="line"><a name="l02166"></a><span class="lineno"> 2166</span>&#160; </div>
-<div class="line"><a name="l02167"></a><span class="lineno"> 2167</span>&#160;<span class="keywordtype">int</span> LockOp::colIndex() { <span class="keywordflow">return</span> getTileOp().colIndex(); }</div>
-<div class="line"><a name="l02168"></a><span class="lineno"> 2168</span>&#160; </div>
-<div class="line"><a name="l02169"></a><span class="lineno"> 2169</span>&#160;<span class="keywordtype">int</span> LockOp::rowIndex() { <span class="keywordflow">return</span> getTileOp().rowIndex(); }</div>
-<div class="line"><a name="l02170"></a><span class="lineno"> 2170</span>&#160; </div>
-<div class="line"><a name="l02171"></a><span class="lineno"> 2171</span>&#160;LogicalResult LockOp::verify() {</div>
-<div class="line"><a name="l02172"></a><span class="lineno"> 2172</span>&#160;  <span class="keywordflow">if</span> (<span class="keyword">auto</span> result = UsesAreAccessible::verifyTrait(*<span class="keyword">this</span>); result.failed())</div>
-<div class="line"><a name="l02173"></a><span class="lineno"> 2173</span>&#160;    <span class="keywordflow">return</span> result;</div>
-<div class="line"><a name="l02174"></a><span class="lineno"> 2174</span>&#160; </div>
-<div class="line"><a name="l02175"></a><span class="lineno"> 2175</span>&#160;  <span class="keywordflow">if</span> (getLockID().has_value()) {</div>
-<div class="line"><a name="l02176"></a><span class="lineno"> 2176</span>&#160;    <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = <a class="code" href="namespacexilinx_1_1AIE.html#a5c42f22e2b5c6f4cd0f0f3bcc773169f">getTargetModel</a>(getTileOp());</div>
-<div class="line"><a name="l02177"></a><span class="lineno"> 2177</span>&#160;    <span class="keyword">auto</span> tileOp = getTileOp();</div>
-<div class="line"><a name="l02178"></a><span class="lineno"> 2178</span>&#160;    <span class="keywordflow">if</span> (<span class="keywordtype">int</span> numLocks =</div>
-<div class="line"><a name="l02179"></a><span class="lineno"> 2179</span>&#160;            targetModel.<a class="code" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a8c4ec93f7c39f76e6dbc79a9d952ee41">getNumLocks</a>(tileOp.getCol(), tileOp.getRow());</div>
-<div class="line"><a name="l02180"></a><span class="lineno"> 2180</span>&#160;        getLockID().value() &gt;= numLocks)</div>
-<div class="line"><a name="l02181"></a><span class="lineno"> 2181</span>&#160;      <span class="keywordflow">return</span> emitOpError(<span class="stringliteral">&quot;lock assigned invalid id (maximum is &quot;</span>)</div>
-<div class="line"><a name="l02182"></a><span class="lineno"> 2182</span>&#160;             &lt;&lt; numLocks - 1 &lt;&lt; <span class="stringliteral">&quot;)&quot;</span>;</div>
-<div class="line"><a name="l02183"></a><span class="lineno"> 2183</span>&#160;  }</div>
-<div class="line"><a name="l02184"></a><span class="lineno"> 2184</span>&#160; </div>
-<div class="line"><a name="l02185"></a><span class="lineno"> 2185</span>&#160;  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a name="l02186"></a><span class="lineno"> 2186</span>&#160;}</div>
-<div class="line"><a name="l02187"></a><span class="lineno"> 2187</span>&#160; </div>
-<div class="line"><a name="l02188"></a><span class="lineno"><a class="line" href="structUsesOneLockInDMABlock.html"> 2188</a></span>&#160;<span class="keyword">struct </span><a class="code" href="structUsesOneLockInDMABlock.html">UsesOneLockInDMABlock</a> {</div>
-<div class="line"><a name="l02189"></a><span class="lineno"><a class="line" href="structUsesOneLockInDMABlock.html#a8208d34bd65a6aad252dabd52310dde6"> 2189</a></span>&#160;  <span class="keyword">static</span> LogicalResult <a class="code" href="structUsesOneLockInDMABlock.html#a8208d34bd65a6aad252dabd52310dde6">verifyTrait</a>(Operation *op) {</div>
-<div class="line"><a name="l02190"></a><span class="lineno"> 2190</span>&#160;    <span class="keyword">auto</span> *block = op-&gt;getBlock();</div>
-<div class="line"><a name="l02191"></a><span class="lineno"> 2191</span>&#160;    <span class="keywordtype">int</span> lockID = -1;</div>
-<div class="line"><a name="l02192"></a><span class="lineno"> 2192</span>&#160;    <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : block-&gt;getOps&lt;UseLockOp&gt;()) {</div>
-<div class="line"><a name="l02193"></a><span class="lineno"> 2193</span>&#160;      <span class="keywordflow">if</span> (<span class="keyword">auto</span> lock = dyn_cast&lt;LockOp&gt;(op.getLock().getDefiningOp());</div>
-<div class="line"><a name="l02194"></a><span class="lineno"> 2194</span>&#160;          lock.getLockID().has_value()) {</div>
-<div class="line"><a name="l02195"></a><span class="lineno"> 2195</span>&#160;        <span class="keywordflow">if</span> (lockID != -1 &amp;&amp; lockID != lock.getLockIDValue())</div>
+<div class="line"><a name="l02152"></a><span class="lineno"> 2152</span>&#160;<span class="keywordtype">int</span> LockOp::colIndex() { <span class="keywordflow">return</span> getTileOp().colIndex(); }</div>
+<div class="line"><a name="l02153"></a><span class="lineno"> 2153</span>&#160; </div>
+<div class="line"><a name="l02154"></a><span class="lineno"> 2154</span>&#160;<span class="keywordtype">int</span> LockOp::rowIndex() { <span class="keywordflow">return</span> getTileOp().rowIndex(); }</div>
+<div class="line"><a name="l02155"></a><span class="lineno"> 2155</span>&#160; </div>
+<div class="line"><a name="l02156"></a><span class="lineno"> 2156</span>&#160;LogicalResult LockOp::verify() {</div>
+<div class="line"><a name="l02157"></a><span class="lineno"> 2157</span>&#160;  <span class="keywordflow">if</span> (<span class="keyword">auto</span> result = UsesAreAccessible::verifyTrait(*<span class="keyword">this</span>); result.failed())</div>
+<div class="line"><a name="l02158"></a><span class="lineno"> 2158</span>&#160;    <span class="keywordflow">return</span> result;</div>
+<div class="line"><a name="l02159"></a><span class="lineno"> 2159</span>&#160; </div>
+<div class="line"><a name="l02160"></a><span class="lineno"> 2160</span>&#160;  <span class="keywordflow">if</span> (getLockID().has_value()) {</div>
+<div class="line"><a name="l02161"></a><span class="lineno"> 2161</span>&#160;    <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = <a class="code" href="namespacexilinx_1_1AIE.html#a5c42f22e2b5c6f4cd0f0f3bcc773169f">getTargetModel</a>(getTileOp());</div>
+<div class="line"><a name="l02162"></a><span class="lineno"> 2162</span>&#160;    <span class="keyword">auto</span> tileOp = getTileOp();</div>
+<div class="line"><a name="l02163"></a><span class="lineno"> 2163</span>&#160;    <span class="keywordflow">if</span> (<span class="keywordtype">int</span> numLocks =</div>
+<div class="line"><a name="l02164"></a><span class="lineno"> 2164</span>&#160;            targetModel.<a class="code" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a8c4ec93f7c39f76e6dbc79a9d952ee41">getNumLocks</a>(tileOp.getCol(), tileOp.getRow());</div>
+<div class="line"><a name="l02165"></a><span class="lineno"> 2165</span>&#160;        getLockID().value() &gt;= numLocks)</div>
+<div class="line"><a name="l02166"></a><span class="lineno"> 2166</span>&#160;      <span class="keywordflow">return</span> emitOpError(<span class="stringliteral">&quot;lock assigned invalid id (maximum is &quot;</span>)</div>
+<div class="line"><a name="l02167"></a><span class="lineno"> 2167</span>&#160;             &lt;&lt; numLocks - 1 &lt;&lt; <span class="stringliteral">&quot;)&quot;</span>;</div>
+<div class="line"><a name="l02168"></a><span class="lineno"> 2168</span>&#160;  }</div>
+<div class="line"><a name="l02169"></a><span class="lineno"> 2169</span>&#160; </div>
+<div class="line"><a name="l02170"></a><span class="lineno"> 2170</span>&#160;  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a name="l02171"></a><span class="lineno"> 2171</span>&#160;}</div>
+<div class="line"><a name="l02172"></a><span class="lineno"> 2172</span>&#160; </div>
+<div class="line"><a name="l02173"></a><span class="lineno"><a class="line" href="structUsesOneLockInDMABlock.html"> 2173</a></span>&#160;<span class="keyword">struct </span><a class="code" href="structUsesOneLockInDMABlock.html">UsesOneLockInDMABlock</a> {</div>
+<div class="line"><a name="l02174"></a><span class="lineno"><a class="line" href="structUsesOneLockInDMABlock.html#a8208d34bd65a6aad252dabd52310dde6"> 2174</a></span>&#160;  <span class="keyword">static</span> LogicalResult <a class="code" href="structUsesOneLockInDMABlock.html#a8208d34bd65a6aad252dabd52310dde6">verifyTrait</a>(Operation *op) {</div>
+<div class="line"><a name="l02175"></a><span class="lineno"> 2175</span>&#160;    <span class="keyword">auto</span> *block = op-&gt;getBlock();</div>
+<div class="line"><a name="l02176"></a><span class="lineno"> 2176</span>&#160;    <span class="keywordtype">int</span> lockID = -1;</div>
+<div class="line"><a name="l02177"></a><span class="lineno"> 2177</span>&#160;    <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : block-&gt;getOps&lt;UseLockOp&gt;()) {</div>
+<div class="line"><a name="l02178"></a><span class="lineno"> 2178</span>&#160;      <span class="keywordflow">if</span> (<span class="keyword">auto</span> lock = dyn_cast&lt;LockOp&gt;(op.getLock().getDefiningOp());</div>
+<div class="line"><a name="l02179"></a><span class="lineno"> 2179</span>&#160;          lock.getLockID().has_value()) {</div>
+<div class="line"><a name="l02180"></a><span class="lineno"> 2180</span>&#160;        <span class="keywordflow">if</span> (lockID != -1 &amp;&amp; lockID != lock.getLockIDValue())</div>
+<div class="line"><a name="l02181"></a><span class="lineno"> 2181</span>&#160;          <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a name="l02182"></a><span class="lineno"> 2182</span>&#160;        lockID = lock.getLockIDValue();</div>
+<div class="line"><a name="l02183"></a><span class="lineno"> 2183</span>&#160;      }</div>
+<div class="line"><a name="l02184"></a><span class="lineno"> 2184</span>&#160;    }</div>
+<div class="line"><a name="l02185"></a><span class="lineno"> 2185</span>&#160;    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a name="l02186"></a><span class="lineno"> 2186</span>&#160;  }</div>
+<div class="line"><a name="l02187"></a><span class="lineno"> 2187</span>&#160;};</div>
+<div class="line"><a name="l02188"></a><span class="lineno"> 2188</span>&#160; </div>
+<div class="line"><a name="l02189"></a><span class="lineno"><a class="line" href="structAcquireReleaseOneStateInDMABlock.html"> 2189</a></span>&#160;<span class="keyword">struct </span><a class="code" href="structAcquireReleaseOneStateInDMABlock.html">AcquireReleaseOneStateInDMABlock</a> {</div>
+<div class="line"><a name="l02190"></a><span class="lineno"><a class="line" href="structAcquireReleaseOneStateInDMABlock.html#aa6b184a012f122c78ffc3983d63d068d"> 2190</a></span>&#160;  <span class="keyword">static</span> LogicalResult <a class="code" href="structAcquireReleaseOneStateInDMABlock.html#aa6b184a012f122c78ffc3983d63d068d">verifyTrait</a>(Operation *op) {</div>
+<div class="line"><a name="l02191"></a><span class="lineno"> 2191</span>&#160;    <span class="keyword">auto</span> *block = op-&gt;getBlock();</div>
+<div class="line"><a name="l02192"></a><span class="lineno"> 2192</span>&#160;    <span class="keywordtype">int</span> acqValue = -1, relValue = -1;</div>
+<div class="line"><a name="l02193"></a><span class="lineno"> 2193</span>&#160;    <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : block-&gt;getOps&lt;UseLockOp&gt;()) {</div>
+<div class="line"><a name="l02194"></a><span class="lineno"> 2194</span>&#160;      <span class="keywordflow">if</span> (op.acquire() || op.acquireGE()) {</div>
+<div class="line"><a name="l02195"></a><span class="lineno"> 2195</span>&#160;        <span class="keywordflow">if</span> (acqValue != -1 &amp;&amp; acqValue != op.getLockValue()) {</div>
 <div class="line"><a name="l02196"></a><span class="lineno"> 2196</span>&#160;          <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a name="l02197"></a><span class="lineno"> 2197</span>&#160;        lockID = lock.getLockIDValue();</div>
-<div class="line"><a name="l02198"></a><span class="lineno"> 2198</span>&#160;      }</div>
-<div class="line"><a name="l02199"></a><span class="lineno"> 2199</span>&#160;    }</div>
-<div class="line"><a name="l02200"></a><span class="lineno"> 2200</span>&#160;    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a name="l02201"></a><span class="lineno"> 2201</span>&#160;  }</div>
-<div class="line"><a name="l02202"></a><span class="lineno"> 2202</span>&#160;};</div>
-<div class="line"><a name="l02203"></a><span class="lineno"> 2203</span>&#160; </div>
-<div class="line"><a name="l02204"></a><span class="lineno"><a class="line" href="structAcquireReleaseOneStateInDMABlock.html"> 2204</a></span>&#160;<span class="keyword">struct </span><a class="code" href="structAcquireReleaseOneStateInDMABlock.html">AcquireReleaseOneStateInDMABlock</a> {</div>
-<div class="line"><a name="l02205"></a><span class="lineno"><a class="line" href="structAcquireReleaseOneStateInDMABlock.html#aa6b184a012f122c78ffc3983d63d068d"> 2205</a></span>&#160;  <span class="keyword">static</span> LogicalResult <a class="code" href="structAcquireReleaseOneStateInDMABlock.html#aa6b184a012f122c78ffc3983d63d068d">verifyTrait</a>(Operation *op) {</div>
-<div class="line"><a name="l02206"></a><span class="lineno"> 2206</span>&#160;    <span class="keyword">auto</span> *block = op-&gt;getBlock();</div>
-<div class="line"><a name="l02207"></a><span class="lineno"> 2207</span>&#160;    <span class="keywordtype">int</span> acqValue = -1, relValue = -1;</div>
-<div class="line"><a name="l02208"></a><span class="lineno"> 2208</span>&#160;    <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : block-&gt;getOps&lt;UseLockOp&gt;()) {</div>
-<div class="line"><a name="l02209"></a><span class="lineno"> 2209</span>&#160;      <span class="keywordflow">if</span> (op.acquire() || op.acquireGE()) {</div>
-<div class="line"><a name="l02210"></a><span class="lineno"> 2210</span>&#160;        <span class="keywordflow">if</span> (acqValue != -1 &amp;&amp; acqValue != op.getLockValue()) {</div>
-<div class="line"><a name="l02211"></a><span class="lineno"> 2211</span>&#160;          <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a name="l02212"></a><span class="lineno"> 2212</span>&#160;        }</div>
-<div class="line"><a name="l02213"></a><span class="lineno"> 2213</span>&#160;        acqValue = op.getLockValue();</div>
-<div class="line"><a name="l02214"></a><span class="lineno"> 2214</span>&#160;      } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (op.release()) {</div>
-<div class="line"><a name="l02215"></a><span class="lineno"> 2215</span>&#160;        <span class="keywordflow">if</span> (relValue != -1 &amp;&amp; relValue != op.getLockValue()) {</div>
-<div class="line"><a name="l02216"></a><span class="lineno"> 2216</span>&#160;          <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a name="l02217"></a><span class="lineno"> 2217</span>&#160;        }</div>
-<div class="line"><a name="l02218"></a><span class="lineno"> 2218</span>&#160;        relValue = op.getLockValue();</div>
-<div class="line"><a name="l02219"></a><span class="lineno"> 2219</span>&#160;      }</div>
-<div class="line"><a name="l02220"></a><span class="lineno"> 2220</span>&#160;    }</div>
-<div class="line"><a name="l02221"></a><span class="lineno"> 2221</span>&#160;    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a name="l02222"></a><span class="lineno"> 2222</span>&#160;  }</div>
-<div class="line"><a name="l02223"></a><span class="lineno"> 2223</span>&#160;};</div>
-<div class="line"><a name="l02224"></a><span class="lineno"> 2224</span>&#160; </div>
-<div class="line"><a name="l02225"></a><span class="lineno"><a class="line" href="structAccessesLocalLocks.html"> 2225</a></span>&#160;<span class="keyword">struct </span><a class="code" href="structAccessesLocalLocks.html">AccessesLocalLocks</a> {</div>
-<div class="line"><a name="l02226"></a><span class="lineno"><a class="line" href="structAccessesLocalLocks.html#afd806eb0ffbd22cc3e3198141179a0bc"> 2226</a></span>&#160;  <span class="keyword">static</span> LogicalResult <a class="code" href="structAccessesLocalLocks.html#afd806eb0ffbd22cc3e3198141179a0bc">verifyTrait</a>(Operation *op) {</div>
-<div class="line"><a name="l02227"></a><span class="lineno"> 2227</span>&#160;    <span class="keywordflow">if</span> (<span class="keyword">auto</span> memOp = op-&gt;getParentOfType&lt;MemOp&gt;()) {</div>
-<div class="line"><a name="l02228"></a><span class="lineno"> 2228</span>&#160;      <span class="keyword">auto</span> useLock = dyn_cast&lt;UseLockOp&gt;(op);</div>
-<div class="line"><a name="l02229"></a><span class="lineno"> 2229</span>&#160;      <span class="keywordflow">if</span> (<span class="keyword">auto</span> lock = useLock.getLockOp();</div>
-<div class="line"><a name="l02230"></a><span class="lineno"> 2230</span>&#160;          lock.getTileOp().colIndex() != memOp.colIndex() ||</div>
-<div class="line"><a name="l02231"></a><span class="lineno"> 2231</span>&#160;          lock.getTileOp().rowIndex() != memOp.rowIndex())</div>
-<div class="line"><a name="l02232"></a><span class="lineno"> 2232</span>&#160;        <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a name="l02233"></a><span class="lineno"> 2233</span>&#160;    }</div>
-<div class="line"><a name="l02234"></a><span class="lineno"> 2234</span>&#160;    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a name="l02235"></a><span class="lineno"> 2235</span>&#160;  }</div>
-<div class="line"><a name="l02236"></a><span class="lineno"> 2236</span>&#160;};</div>
-<div class="line"><a name="l02237"></a><span class="lineno"> 2237</span>&#160; </div>
-<div class="line"><a name="l02238"></a><span class="lineno"> 2238</span>&#160;LogicalResult UseLockOp::verify() {</div>
-<div class="line"><a name="l02239"></a><span class="lineno"> 2239</span>&#160;  <span class="comment">// AIE.useLock cannot be used at the top level</span></div>
-<div class="line"><a name="l02240"></a><span class="lineno"> 2240</span>&#160;  <span class="keywordflow">if</span> (llvm::isa_and_nonnull&lt;DeviceOp, ModuleOp&gt;((*this)-&gt;getParentOp()))</div>
-<div class="line"><a name="l02241"></a><span class="lineno"> 2241</span>&#160;    <span class="keywordflow">return</span> (*this)-&gt;emitOpError(<span class="stringliteral">&quot;must be used in a core or memory operation.&quot;</span>);</div>
-<div class="line"><a name="l02242"></a><span class="lineno"> 2242</span>&#160; </div>
-<div class="line"><a name="l02243"></a><span class="lineno"> 2243</span>&#160;  <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = <a class="code" href="namespacexilinx_1_1AIE.html#a5c42f22e2b5c6f4cd0f0f3bcc773169f">getTargetModel</a>(*<span class="keyword">this</span>);</div>
-<div class="line"><a name="l02244"></a><span class="lineno"> 2244</span>&#160;  <span class="keywordflow">if</span> (targetModel.<a class="code" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a23aafee7ea4a623e8df922cdc3d4e8a7">getTargetArch</a>() == AIEArch::AIE1 &amp;&amp; acquireGE())</div>
-<div class="line"><a name="l02245"></a><span class="lineno"> 2245</span>&#160;    <span class="keywordflow">return</span> (*this)-&gt;emitOpError(</div>
-<div class="line"><a name="l02246"></a><span class="lineno"> 2246</span>&#160;        <span class="stringliteral">&quot;AcquireGreaterEqual is not supported in AIE1.&quot;</span>);</div>
-<div class="line"><a name="l02247"></a><span class="lineno"> 2247</span>&#160; </div>
-<div class="line"><a name="l02248"></a><span class="lineno"> 2248</span>&#160;  <span class="comment">// Otherwise, AIE.useLock should be inside MemOp, MemTileDMAOp, or</span></div>
-<div class="line"><a name="l02249"></a><span class="lineno"> 2249</span>&#160;  <span class="comment">// ShimDMAOp,</span></div>
-<div class="line"><a name="l02250"></a><span class="lineno"> 2250</span>&#160;  <span class="keywordflow">if</span> (<a class="code" href="structHasSomeParent.html">HasSomeParent&lt;MemOp, MemTileDMAOp, ShimDMAOp&gt;::verifyTrait</a>(*<span class="keyword">this</span>)</div>
-<div class="line"><a name="l02251"></a><span class="lineno"> 2251</span>&#160;          .succeeded()) {</div>
-<div class="line"><a name="l02252"></a><span class="lineno"> 2252</span>&#160;    <span class="keywordflow">if</span> (!(*this)-&gt;getBlock())</div>
-<div class="line"><a name="l02253"></a><span class="lineno"> 2253</span>&#160;      <span class="keywordflow">return</span> (*this)-&gt;emitOpError(<span class="stringliteral">&quot;is not in a block.&quot;</span>);</div>
-<div class="line"><a name="l02254"></a><span class="lineno"> 2254</span>&#160; </div>
-<div class="line"><a name="l02255"></a><span class="lineno"> 2255</span>&#160;    <span class="keywordflow">if</span> (targetModel.<a class="code" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a23aafee7ea4a623e8df922cdc3d4e8a7">getTargetArch</a>() == AIEArch::AIE1 &amp;&amp;</div>
-<div class="line"><a name="l02256"></a><span class="lineno"> 2256</span>&#160;        <a class="code" href="structUsesOneLockInDMABlock.html#a8208d34bd65a6aad252dabd52310dde6">UsesOneLockInDMABlock::verifyTrait</a>(*this).failed())</div>
-<div class="line"><a name="l02257"></a><span class="lineno"> 2257</span>&#160;      <span class="keywordflow">return</span> (*this)-&gt;emitOpError(</div>
-<div class="line"><a name="l02258"></a><span class="lineno"> 2258</span>&#160;          <span class="stringliteral">&quot;used in a DMA block that have multiple locks.&quot;</span>);</div>
-<div class="line"><a name="l02259"></a><span class="lineno"> 2259</span>&#160; </div>
-<div class="line"><a name="l02260"></a><span class="lineno"> 2260</span>&#160;    <span class="keywordflow">if</span> (<a class="code" href="structAcquireReleaseOneStateInDMABlock.html#aa6b184a012f122c78ffc3983d63d068d">AcquireReleaseOneStateInDMABlock::verifyTrait</a>(*this).failed())</div>
-<div class="line"><a name="l02261"></a><span class="lineno"> 2261</span>&#160;      <span class="keywordflow">return</span> (*this)-&gt;emitOpError(<span class="stringliteral">&quot;acquires/releases the lock in a DMA block &quot;</span></div>
-<div class="line"><a name="l02262"></a><span class="lineno"> 2262</span>&#160;                                  <span class="stringliteral">&quot;from/to multiple states.&quot;</span>);</div>
+<div class="line"><a name="l02197"></a><span class="lineno"> 2197</span>&#160;        }</div>
+<div class="line"><a name="l02198"></a><span class="lineno"> 2198</span>&#160;        acqValue = op.getLockValue();</div>
+<div class="line"><a name="l02199"></a><span class="lineno"> 2199</span>&#160;      } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (op.release()) {</div>
+<div class="line"><a name="l02200"></a><span class="lineno"> 2200</span>&#160;        <span class="keywordflow">if</span> (relValue != -1 &amp;&amp; relValue != op.getLockValue()) {</div>
+<div class="line"><a name="l02201"></a><span class="lineno"> 2201</span>&#160;          <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a name="l02202"></a><span class="lineno"> 2202</span>&#160;        }</div>
+<div class="line"><a name="l02203"></a><span class="lineno"> 2203</span>&#160;        relValue = op.getLockValue();</div>
+<div class="line"><a name="l02204"></a><span class="lineno"> 2204</span>&#160;      }</div>
+<div class="line"><a name="l02205"></a><span class="lineno"> 2205</span>&#160;    }</div>
+<div class="line"><a name="l02206"></a><span class="lineno"> 2206</span>&#160;    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a name="l02207"></a><span class="lineno"> 2207</span>&#160;  }</div>
+<div class="line"><a name="l02208"></a><span class="lineno"> 2208</span>&#160;};</div>
+<div class="line"><a name="l02209"></a><span class="lineno"> 2209</span>&#160; </div>
+<div class="line"><a name="l02210"></a><span class="lineno"><a class="line" href="structAccessesLocalLocks.html"> 2210</a></span>&#160;<span class="keyword">struct </span><a class="code" href="structAccessesLocalLocks.html">AccessesLocalLocks</a> {</div>
+<div class="line"><a name="l02211"></a><span class="lineno"><a class="line" href="structAccessesLocalLocks.html#afd806eb0ffbd22cc3e3198141179a0bc"> 2211</a></span>&#160;  <span class="keyword">static</span> LogicalResult <a class="code" href="structAccessesLocalLocks.html#afd806eb0ffbd22cc3e3198141179a0bc">verifyTrait</a>(Operation *op) {</div>
+<div class="line"><a name="l02212"></a><span class="lineno"> 2212</span>&#160;    <span class="keywordflow">if</span> (<span class="keyword">auto</span> memOp = op-&gt;getParentOfType&lt;MemOp&gt;()) {</div>
+<div class="line"><a name="l02213"></a><span class="lineno"> 2213</span>&#160;      <span class="keyword">auto</span> useLock = dyn_cast&lt;UseLockOp&gt;(op);</div>
+<div class="line"><a name="l02214"></a><span class="lineno"> 2214</span>&#160;      <span class="keywordflow">if</span> (<span class="keyword">auto</span> lock = useLock.getLockOp();</div>
+<div class="line"><a name="l02215"></a><span class="lineno"> 2215</span>&#160;          lock.getTileOp().colIndex() != memOp.colIndex() ||</div>
+<div class="line"><a name="l02216"></a><span class="lineno"> 2216</span>&#160;          lock.getTileOp().rowIndex() != memOp.rowIndex())</div>
+<div class="line"><a name="l02217"></a><span class="lineno"> 2217</span>&#160;        <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a name="l02218"></a><span class="lineno"> 2218</span>&#160;    }</div>
+<div class="line"><a name="l02219"></a><span class="lineno"> 2219</span>&#160;    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a name="l02220"></a><span class="lineno"> 2220</span>&#160;  }</div>
+<div class="line"><a name="l02221"></a><span class="lineno"> 2221</span>&#160;};</div>
+<div class="line"><a name="l02222"></a><span class="lineno"> 2222</span>&#160; </div>
+<div class="line"><a name="l02223"></a><span class="lineno"> 2223</span>&#160;LogicalResult UseLockOp::verify() {</div>
+<div class="line"><a name="l02224"></a><span class="lineno"> 2224</span>&#160;  <span class="comment">// AIE.useLock cannot be used at the top level</span></div>
+<div class="line"><a name="l02225"></a><span class="lineno"> 2225</span>&#160;  <span class="keywordflow">if</span> (llvm::isa_and_nonnull&lt;DeviceOp, ModuleOp&gt;((*this)-&gt;getParentOp()))</div>
+<div class="line"><a name="l02226"></a><span class="lineno"> 2226</span>&#160;    <span class="keywordflow">return</span> (*this)-&gt;emitOpError(<span class="stringliteral">&quot;must be used in a core or memory operation.&quot;</span>);</div>
+<div class="line"><a name="l02227"></a><span class="lineno"> 2227</span>&#160; </div>
+<div class="line"><a name="l02228"></a><span class="lineno"> 2228</span>&#160;  <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = <a class="code" href="namespacexilinx_1_1AIE.html#a5c42f22e2b5c6f4cd0f0f3bcc773169f">getTargetModel</a>(*<span class="keyword">this</span>);</div>
+<div class="line"><a name="l02229"></a><span class="lineno"> 2229</span>&#160;  <span class="keywordflow">if</span> (targetModel.<a class="code" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a23aafee7ea4a623e8df922cdc3d4e8a7">getTargetArch</a>() == AIEArch::AIE1 &amp;&amp; acquireGE())</div>
+<div class="line"><a name="l02230"></a><span class="lineno"> 2230</span>&#160;    <span class="keywordflow">return</span> (*this)-&gt;emitOpError(</div>
+<div class="line"><a name="l02231"></a><span class="lineno"> 2231</span>&#160;        <span class="stringliteral">&quot;AcquireGreaterEqual is not supported in AIE1.&quot;</span>);</div>
+<div class="line"><a name="l02232"></a><span class="lineno"> 2232</span>&#160; </div>
+<div class="line"><a name="l02233"></a><span class="lineno"> 2233</span>&#160;  <span class="comment">// Otherwise, AIE.useLock should be inside MemOp, MemTileDMAOp, or</span></div>
+<div class="line"><a name="l02234"></a><span class="lineno"> 2234</span>&#160;  <span class="comment">// ShimDMAOp,</span></div>
+<div class="line"><a name="l02235"></a><span class="lineno"> 2235</span>&#160;  <span class="keywordflow">if</span> (<a class="code" href="structHasSomeParent.html">HasSomeParent&lt;MemOp, MemTileDMAOp, ShimDMAOp&gt;::verifyTrait</a>(*<span class="keyword">this</span>)</div>
+<div class="line"><a name="l02236"></a><span class="lineno"> 2236</span>&#160;          .succeeded()) {</div>
+<div class="line"><a name="l02237"></a><span class="lineno"> 2237</span>&#160;    <span class="keywordflow">if</span> (!(*this)-&gt;getBlock())</div>
+<div class="line"><a name="l02238"></a><span class="lineno"> 2238</span>&#160;      <span class="keywordflow">return</span> (*this)-&gt;emitOpError(<span class="stringliteral">&quot;is not in a block.&quot;</span>);</div>
+<div class="line"><a name="l02239"></a><span class="lineno"> 2239</span>&#160; </div>
+<div class="line"><a name="l02240"></a><span class="lineno"> 2240</span>&#160;    <span class="keywordflow">if</span> (targetModel.<a class="code" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a23aafee7ea4a623e8df922cdc3d4e8a7">getTargetArch</a>() == AIEArch::AIE1 &amp;&amp;</div>
+<div class="line"><a name="l02241"></a><span class="lineno"> 2241</span>&#160;        <a class="code" href="structUsesOneLockInDMABlock.html#a8208d34bd65a6aad252dabd52310dde6">UsesOneLockInDMABlock::verifyTrait</a>(*this).failed())</div>
+<div class="line"><a name="l02242"></a><span class="lineno"> 2242</span>&#160;      <span class="keywordflow">return</span> (*this)-&gt;emitOpError(</div>
+<div class="line"><a name="l02243"></a><span class="lineno"> 2243</span>&#160;          <span class="stringliteral">&quot;used in a DMA block that have multiple locks.&quot;</span>);</div>
+<div class="line"><a name="l02244"></a><span class="lineno"> 2244</span>&#160; </div>
+<div class="line"><a name="l02245"></a><span class="lineno"> 2245</span>&#160;    <span class="keywordflow">if</span> (<a class="code" href="structAcquireReleaseOneStateInDMABlock.html#aa6b184a012f122c78ffc3983d63d068d">AcquireReleaseOneStateInDMABlock::verifyTrait</a>(*this).failed())</div>
+<div class="line"><a name="l02246"></a><span class="lineno"> 2246</span>&#160;      <span class="keywordflow">return</span> (*this)-&gt;emitOpError(<span class="stringliteral">&quot;acquires/releases the lock in a DMA block &quot;</span></div>
+<div class="line"><a name="l02247"></a><span class="lineno"> 2247</span>&#160;                                  <span class="stringliteral">&quot;from/to multiple states.&quot;</span>);</div>
+<div class="line"><a name="l02248"></a><span class="lineno"> 2248</span>&#160; </div>
+<div class="line"><a name="l02249"></a><span class="lineno"> 2249</span>&#160;    <span class="keywordflow">if</span> (<a class="code" href="structHasSomeParent.html">HasSomeParent&lt;MemOp&gt;::verifyTrait</a>(*this).succeeded() &amp;&amp;</div>
+<div class="line"><a name="l02250"></a><span class="lineno"> 2250</span>&#160;        <a class="code" href="structAccessesLocalLocks.html#afd806eb0ffbd22cc3e3198141179a0bc">AccessesLocalLocks::verifyTrait</a>(*this).failed())</div>
+<div class="line"><a name="l02251"></a><span class="lineno"> 2251</span>&#160;      <span class="keywordflow">return</span> (*this)-&gt;emitOpError(<span class="stringliteral">&quot;can only access a lock in the same tile&quot;</span>);</div>
+<div class="line"><a name="l02252"></a><span class="lineno"> 2252</span>&#160;    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a name="l02253"></a><span class="lineno"> 2253</span>&#160; </div>
+<div class="line"><a name="l02254"></a><span class="lineno"> 2254</span>&#160;    <span class="comment">// Or it can be in a CoreOp, or some FuncOp called from a CoreOp</span></div>
+<div class="line"><a name="l02255"></a><span class="lineno"> 2255</span>&#160;  }</div>
+<div class="line"><a name="l02256"></a><span class="lineno"> 2256</span>&#160;  <span class="keywordflow">if</span> (<a class="code" href="structHasSomeParent.html">HasSomeParent&lt;CoreOp, func::FuncOp&gt;::verifyTrait</a>(*this).succeeded()) {</div>
+<div class="line"><a name="l02257"></a><span class="lineno"> 2257</span>&#160;    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a name="l02258"></a><span class="lineno"> 2258</span>&#160;  }</div>
+<div class="line"><a name="l02259"></a><span class="lineno"> 2259</span>&#160;  <span class="keywordflow">return</span> (*this)-&gt;emitOpError()</div>
+<div class="line"><a name="l02260"></a><span class="lineno"> 2260</span>&#160;         &lt;&lt; <span class="stringliteral">&quot;expects some parent op to be one of &quot;</span></div>
+<div class="line"><a name="l02261"></a><span class="lineno"> 2261</span>&#160;         &lt;&lt; <span class="stringliteral">&quot;AIE::device, AIE::core, func::func, AIE::mem, or AIE::shimDMA&quot;</span>;</div>
+<div class="line"><a name="l02262"></a><span class="lineno"> 2262</span>&#160;}</div>
 <div class="line"><a name="l02263"></a><span class="lineno"> 2263</span>&#160; </div>
-<div class="line"><a name="l02264"></a><span class="lineno"> 2264</span>&#160;    <span class="keywordflow">if</span> (<a class="code" href="structHasSomeParent.html">HasSomeParent&lt;MemOp&gt;::verifyTrait</a>(*this).succeeded() &amp;&amp;</div>
-<div class="line"><a name="l02265"></a><span class="lineno"> 2265</span>&#160;        <a class="code" href="structAccessesLocalLocks.html#afd806eb0ffbd22cc3e3198141179a0bc">AccessesLocalLocks::verifyTrait</a>(*this).failed())</div>
-<div class="line"><a name="l02266"></a><span class="lineno"> 2266</span>&#160;      <span class="keywordflow">return</span> (*this)-&gt;emitOpError(<span class="stringliteral">&quot;can only access a lock in the same tile&quot;</span>);</div>
-<div class="line"><a name="l02267"></a><span class="lineno"> 2267</span>&#160;    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a name="l02268"></a><span class="lineno"> 2268</span>&#160; </div>
-<div class="line"><a name="l02269"></a><span class="lineno"> 2269</span>&#160;    <span class="comment">// Or it can be in a CoreOp, or some FuncOp called from a CoreOp</span></div>
-<div class="line"><a name="l02270"></a><span class="lineno"> 2270</span>&#160;  }</div>
-<div class="line"><a name="l02271"></a><span class="lineno"> 2271</span>&#160;  <span class="keywordflow">if</span> (<a class="code" href="structHasSomeParent.html">HasSomeParent&lt;CoreOp, func::FuncOp&gt;::verifyTrait</a>(*this).succeeded()) {</div>
-<div class="line"><a name="l02272"></a><span class="lineno"> 2272</span>&#160;    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a name="l02273"></a><span class="lineno"> 2273</span>&#160;  }</div>
-<div class="line"><a name="l02274"></a><span class="lineno"> 2274</span>&#160;  <span class="keywordflow">return</span> (*this)-&gt;emitOpError()</div>
-<div class="line"><a name="l02275"></a><span class="lineno"> 2275</span>&#160;         &lt;&lt; <span class="stringliteral">&quot;expects some parent op to be one of &quot;</span></div>
-<div class="line"><a name="l02276"></a><span class="lineno"> 2276</span>&#160;         &lt;&lt; <span class="stringliteral">&quot;AIE::device, AIE::core, func::func, AIE::mem, or AIE::shimDMA&quot;</span>;</div>
+<div class="line"><a name="l02264"></a><span class="lineno"> 2264</span>&#160;<span class="preprocessor">#include &quot;aie/Dialect/AIE/IR/AIEEnums.cpp.inc&quot;</span></div>
+<div class="line"><a name="l02265"></a><span class="lineno"> 2265</span>&#160;<span class="preprocessor">#include &quot;aie/Dialect/AIE/IR/AIEInterfaces.cpp.inc&quot;</span></div>
+<div class="line"><a name="l02266"></a><span class="lineno"> 2266</span>&#160; </div>
+<div class="line"><a name="l02267"></a><span class="lineno"><a class="line" href="AIEDialect_8cpp.html#a52c883a38e577b8b12282ff70c95a16d"> 2267</a></span>&#160;<span class="preprocessor">#define GET_OP_CLASSES</span></div>
+<div class="line"><a name="l02268"></a><span class="lineno"> 2268</span>&#160;<span class="preprocessor">#include &quot;aie/Dialect/AIE/IR/AIEOps.cpp.inc&quot;</span></div>
+<div class="line"><a name="l02269"></a><span class="lineno"> 2269</span>&#160; </div>
+<div class="line"><a name="l02270"></a><span class="lineno"> 2270</span>&#160;<span class="keyword">namespace </span><a class="code" href="namespacexilinx_1_1AIE.html">xilinx::AIE</a> {</div>
+<div class="line"><a name="l02271"></a><span class="lineno"> 2271</span>&#160; </div>
+<div class="line"><a name="l02272"></a><span class="lineno"> 2272</span>&#160;<span class="keywordtype">size_t</span> SwitchboxOp::getNumSourceConnections(WireBundle bundle) {</div>
+<div class="line"><a name="l02273"></a><span class="lineno"> 2273</span>&#160;  <span class="keyword">auto</span> tile = getTileOp();</div>
+<div class="line"><a name="l02274"></a><span class="lineno"> 2274</span>&#160;  <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = <a class="code" href="namespacexilinx_1_1AIE.html#a5c42f22e2b5c6f4cd0f0f3bcc773169f">getTargetModel</a>(*<span class="keyword">this</span>);</div>
+<div class="line"><a name="l02275"></a><span class="lineno"> 2275</span>&#160;  <span class="keywordflow">return</span> targetModel.<a class="code" href="classxilinx_1_1AIE_1_1AIETargetModel.html#affc6f2185d3b1f39ddaaf4149f2a7780">getNumSourceSwitchboxConnections</a>(tile.getCol(),</div>
+<div class="line"><a name="l02276"></a><span class="lineno"> 2276</span>&#160;                                                      tile.getRow(), bundle);</div>
 <div class="line"><a name="l02277"></a><span class="lineno"> 2277</span>&#160;}</div>
 <div class="line"><a name="l02278"></a><span class="lineno"> 2278</span>&#160; </div>
-<div class="line"><a name="l02279"></a><span class="lineno"> 2279</span>&#160;<span class="preprocessor">#include &quot;aie/Dialect/AIE/IR/AIEEnums.cpp.inc&quot;</span></div>
-<div class="line"><a name="l02280"></a><span class="lineno"> 2280</span>&#160;<span class="preprocessor">#include &quot;aie/Dialect/AIE/IR/AIEInterfaces.cpp.inc&quot;</span></div>
-<div class="line"><a name="l02281"></a><span class="lineno"> 2281</span>&#160; </div>
-<div class="line"><a name="l02282"></a><span class="lineno"><a class="line" href="AIEDialect_8cpp.html#a52c883a38e577b8b12282ff70c95a16d"> 2282</a></span>&#160;<span class="preprocessor">#define GET_OP_CLASSES</span></div>
-<div class="line"><a name="l02283"></a><span class="lineno"> 2283</span>&#160;<span class="preprocessor">#include &quot;aie/Dialect/AIE/IR/AIEOps.cpp.inc&quot;</span></div>
-<div class="line"><a name="l02284"></a><span class="lineno"> 2284</span>&#160; </div>
-<div class="line"><a name="l02285"></a><span class="lineno"> 2285</span>&#160;<span class="keyword">namespace </span><a class="code" href="namespacexilinx_1_1AIE.html">xilinx::AIE</a> {</div>
-<div class="line"><a name="l02286"></a><span class="lineno"> 2286</span>&#160; </div>
-<div class="line"><a name="l02287"></a><span class="lineno"> 2287</span>&#160;<span class="keywordtype">size_t</span> SwitchboxOp::getNumSourceConnections(WireBundle bundle) {</div>
-<div class="line"><a name="l02288"></a><span class="lineno"> 2288</span>&#160;  <span class="keyword">auto</span> tile = getTileOp();</div>
-<div class="line"><a name="l02289"></a><span class="lineno"> 2289</span>&#160;  <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = <a class="code" href="namespacexilinx_1_1AIE.html#a5c42f22e2b5c6f4cd0f0f3bcc773169f">getTargetModel</a>(*<span class="keyword">this</span>);</div>
-<div class="line"><a name="l02290"></a><span class="lineno"> 2290</span>&#160;  <span class="keywordflow">return</span> targetModel.<a class="code" href="classxilinx_1_1AIE_1_1AIETargetModel.html#affc6f2185d3b1f39ddaaf4149f2a7780">getNumSourceSwitchboxConnections</a>(tile.getCol(),</div>
-<div class="line"><a name="l02291"></a><span class="lineno"> 2291</span>&#160;                                                      tile.getRow(), bundle);</div>
-<div class="line"><a name="l02292"></a><span class="lineno"> 2292</span>&#160;}</div>
-<div class="line"><a name="l02293"></a><span class="lineno"> 2293</span>&#160; </div>
-<div class="line"><a name="l02294"></a><span class="lineno"> 2294</span>&#160;<span class="keywordtype">size_t</span> SwitchboxOp::getNumDestConnections(WireBundle bundle) {</div>
-<div class="line"><a name="l02295"></a><span class="lineno"> 2295</span>&#160;  <span class="keyword">auto</span> tile = getTileOp();</div>
-<div class="line"><a name="l02296"></a><span class="lineno"> 2296</span>&#160;  <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = <a class="code" href="namespacexilinx_1_1AIE.html#a5c42f22e2b5c6f4cd0f0f3bcc773169f">getTargetModel</a>(*<span class="keyword">this</span>);</div>
-<div class="line"><a name="l02297"></a><span class="lineno"> 2297</span>&#160;  <span class="keywordflow">return</span> targetModel.<a class="code" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae9b5e251a1594ae9781bd10d6625b79a">getNumDestSwitchboxConnections</a>(tile.getCol(),</div>
-<div class="line"><a name="l02298"></a><span class="lineno"> 2298</span>&#160;                                                    tile.getRow(), bundle);</div>
+<div class="line"><a name="l02279"></a><span class="lineno"> 2279</span>&#160;<span class="keywordtype">size_t</span> SwitchboxOp::getNumDestConnections(WireBundle bundle) {</div>
+<div class="line"><a name="l02280"></a><span class="lineno"> 2280</span>&#160;  <span class="keyword">auto</span> tile = getTileOp();</div>
+<div class="line"><a name="l02281"></a><span class="lineno"> 2281</span>&#160;  <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = <a class="code" href="namespacexilinx_1_1AIE.html#a5c42f22e2b5c6f4cd0f0f3bcc773169f">getTargetModel</a>(*<span class="keyword">this</span>);</div>
+<div class="line"><a name="l02282"></a><span class="lineno"> 2282</span>&#160;  <span class="keywordflow">return</span> targetModel.<a class="code" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae9b5e251a1594ae9781bd10d6625b79a">getNumDestSwitchboxConnections</a>(tile.getCol(),</div>
+<div class="line"><a name="l02283"></a><span class="lineno"> 2283</span>&#160;                                                    tile.getRow(), bundle);</div>
+<div class="line"><a name="l02284"></a><span class="lineno"> 2284</span>&#160;}</div>
+<div class="line"><a name="l02285"></a><span class="lineno"> 2285</span>&#160; </div>
+<div class="line"><a name="l02286"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#afbf8b37a87138e2f447abf920fb36937"> 2286</a></span>&#160;WireBundle <a class="code" href="namespacexilinx_1_1AIE.html#afbf8b37a87138e2f447abf920fb36937">getConnectingBundle</a>(WireBundle dir) {</div>
+<div class="line"><a name="l02287"></a><span class="lineno"> 2287</span>&#160;  <span class="keywordflow">switch</span> (dir) {</div>
+<div class="line"><a name="l02288"></a><span class="lineno"> 2288</span>&#160;  <span class="keywordflow">case</span> WireBundle::North:</div>
+<div class="line"><a name="l02289"></a><span class="lineno"> 2289</span>&#160;    <span class="keywordflow">return</span> WireBundle::South;</div>
+<div class="line"><a name="l02290"></a><span class="lineno"> 2290</span>&#160;  <span class="keywordflow">case</span> WireBundle::South:</div>
+<div class="line"><a name="l02291"></a><span class="lineno"> 2291</span>&#160;    <span class="keywordflow">return</span> WireBundle::North;</div>
+<div class="line"><a name="l02292"></a><span class="lineno"> 2292</span>&#160;  <span class="keywordflow">case</span> WireBundle::East:</div>
+<div class="line"><a name="l02293"></a><span class="lineno"> 2293</span>&#160;    <span class="keywordflow">return</span> WireBundle::West;</div>
+<div class="line"><a name="l02294"></a><span class="lineno"> 2294</span>&#160;  <span class="keywordflow">case</span> WireBundle::West:</div>
+<div class="line"><a name="l02295"></a><span class="lineno"> 2295</span>&#160;    <span class="keywordflow">return</span> WireBundle::East;</div>
+<div class="line"><a name="l02296"></a><span class="lineno"> 2296</span>&#160;  <span class="keywordflow">default</span>:</div>
+<div class="line"><a name="l02297"></a><span class="lineno"> 2297</span>&#160;    <span class="keywordflow">return</span> dir;</div>
+<div class="line"><a name="l02298"></a><span class="lineno"> 2298</span>&#160;  }</div>
 <div class="line"><a name="l02299"></a><span class="lineno"> 2299</span>&#160;}</div>
 <div class="line"><a name="l02300"></a><span class="lineno"> 2300</span>&#160; </div>
-<div class="line"><a name="l02301"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#afbf8b37a87138e2f447abf920fb36937"> 2301</a></span>&#160;WireBundle <a class="code" href="namespacexilinx_1_1AIE.html#afbf8b37a87138e2f447abf920fb36937">getConnectingBundle</a>(WireBundle dir) {</div>
-<div class="line"><a name="l02302"></a><span class="lineno"> 2302</span>&#160;  <span class="keywordflow">switch</span> (dir) {</div>
-<div class="line"><a name="l02303"></a><span class="lineno"> 2303</span>&#160;  <span class="keywordflow">case</span> WireBundle::North:</div>
-<div class="line"><a name="l02304"></a><span class="lineno"> 2304</span>&#160;    <span class="keywordflow">return</span> WireBundle::South;</div>
-<div class="line"><a name="l02305"></a><span class="lineno"> 2305</span>&#160;  <span class="keywordflow">case</span> WireBundle::South:</div>
-<div class="line"><a name="l02306"></a><span class="lineno"> 2306</span>&#160;    <span class="keywordflow">return</span> WireBundle::North;</div>
-<div class="line"><a name="l02307"></a><span class="lineno"> 2307</span>&#160;  <span class="keywordflow">case</span> WireBundle::East:</div>
-<div class="line"><a name="l02308"></a><span class="lineno"> 2308</span>&#160;    <span class="keywordflow">return</span> WireBundle::West;</div>
-<div class="line"><a name="l02309"></a><span class="lineno"> 2309</span>&#160;  <span class="keywordflow">case</span> WireBundle::West:</div>
-<div class="line"><a name="l02310"></a><span class="lineno"> 2310</span>&#160;    <span class="keywordflow">return</span> WireBundle::East;</div>
-<div class="line"><a name="l02311"></a><span class="lineno"> 2311</span>&#160;  <span class="keywordflow">default</span>:</div>
-<div class="line"><a name="l02312"></a><span class="lineno"> 2312</span>&#160;    <span class="keywordflow">return</span> dir;</div>
-<div class="line"><a name="l02313"></a><span class="lineno"> 2313</span>&#160;  }</div>
-<div class="line"><a name="l02314"></a><span class="lineno"> 2314</span>&#160;}</div>
-<div class="line"><a name="l02315"></a><span class="lineno"> 2315</span>&#160; </div>
-<div class="line"><a name="l02316"></a><span class="lineno"> 2316</span>&#160;} <span class="comment">// namespace xilinx::AIE</span></div>
-<div class="line"><a name="l02317"></a><span class="lineno"> 2317</span>&#160; </div>
-<div class="line"><a name="l02318"></a><span class="lineno"> 2318</span>&#160;<span class="comment">//===----------------------------------------------------------------------===//</span></div>
-<div class="line"><a name="l02319"></a><span class="lineno"> 2319</span>&#160;<span class="comment">// BDChainOp</span></div>
-<div class="line"><a name="l02320"></a><span class="lineno"> 2320</span>&#160;<span class="comment">//===----------------------------------------------------------------------===//</span></div>
-<div class="line"><a name="l02321"></a><span class="lineno"> 2321</span>&#160; </div>
-<div class="line"><a name="l02322"></a><span class="lineno"> 2322</span>&#160;ParseResult BDChainOp::parse(OpAsmParser &amp;parser, OperationState &amp;result) {</div>
-<div class="line"><a name="l02323"></a><span class="lineno"> 2323</span>&#160;  SmallVector&lt;OpAsmParser::Argument&gt; entryArgs;</div>
-<div class="line"><a name="l02324"></a><span class="lineno"> 2324</span>&#160; </div>
-<div class="line"><a name="l02325"></a><span class="lineno"> 2325</span>&#160;  <span class="comment">// Symbol name, e.g. @my_chain</span></div>
-<div class="line"><a name="l02326"></a><span class="lineno"> 2326</span>&#160;  StringAttr symNameAttr;</div>
-<div class="line"><a name="l02327"></a><span class="lineno"> 2327</span>&#160;  <span class="keywordflow">if</span> (parser.parseSymbolName(symNameAttr, SymbolTable::getSymbolAttrName(),</div>
-<div class="line"><a name="l02328"></a><span class="lineno"> 2328</span>&#160;                             result.attributes)) {</div>
-<div class="line"><a name="l02329"></a><span class="lineno"> 2329</span>&#160;    <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a name="l02330"></a><span class="lineno"> 2330</span>&#160;  }</div>
-<div class="line"><a name="l02331"></a><span class="lineno"> 2331</span>&#160; </div>
-<div class="line"><a name="l02332"></a><span class="lineno"> 2332</span>&#160;  <span class="comment">// Entry arguments (placeholders), e.g. (%addr: memref&lt;1xi32&gt;)</span></div>
-<div class="line"><a name="l02333"></a><span class="lineno"> 2333</span>&#160;  ParseResult argParseResult = parser.parseCommaSeparatedList(</div>
-<div class="line"><a name="l02334"></a><span class="lineno"> 2334</span>&#160;      OpAsmParser::Delimiter::Paren, [&amp;]() -&gt; ParseResult {</div>
-<div class="line"><a name="l02335"></a><span class="lineno"> 2335</span>&#160;        OpAsmParser::Argument argument;</div>
-<div class="line"><a name="l02336"></a><span class="lineno"> 2336</span>&#160;        <span class="keywordflow">if</span> (parser.parseArgument(argument, <span class="keyword">true</span>, <span class="keyword">true</span>)) {</div>
-<div class="line"><a name="l02337"></a><span class="lineno"> 2337</span>&#160;          return failure();</div>
-<div class="line"><a name="l02338"></a><span class="lineno"> 2338</span>&#160;        }</div>
-<div class="line"><a name="l02339"></a><span class="lineno"> 2339</span>&#160;        entryArgs.push_back(argument);</div>
-<div class="line"><a name="l02340"></a><span class="lineno"> 2340</span>&#160;        <span class="keywordflow">return</span> success();</div>
-<div class="line"><a name="l02341"></a><span class="lineno"> 2341</span>&#160;      });</div>
-<div class="line"><a name="l02342"></a><span class="lineno"> 2342</span>&#160;  <span class="keywordflow">if</span> (argParseResult) {</div>
-<div class="line"><a name="l02343"></a><span class="lineno"> 2343</span>&#160;    <span class="keywordflow">return</span> argParseResult;</div>
-<div class="line"><a name="l02344"></a><span class="lineno"> 2344</span>&#160;  }</div>
-<div class="line"><a name="l02345"></a><span class="lineno"> 2345</span>&#160; </div>
-<div class="line"><a name="l02346"></a><span class="lineno"> 2346</span>&#160;  <span class="comment">// BD Chain Body</span></div>
-<div class="line"><a name="l02347"></a><span class="lineno"> 2347</span>&#160;  <span class="keyword">auto</span> *body = result.addRegion();</div>
-<div class="line"><a name="l02348"></a><span class="lineno"> 2348</span>&#160;  ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, <span class="keyword">false</span>);</div>
-<div class="line"><a name="l02349"></a><span class="lineno"> 2349</span>&#160;  <span class="keywordflow">if</span> (bodyParseResult) {</div>
-<div class="line"><a name="l02350"></a><span class="lineno"> 2350</span>&#160;    <span class="keywordflow">return</span> bodyParseResult;</div>
-<div class="line"><a name="l02351"></a><span class="lineno"> 2351</span>&#160;  }</div>
-<div class="line"><a name="l02352"></a><span class="lineno"> 2352</span>&#160; </div>
-<div class="line"><a name="l02353"></a><span class="lineno"> 2353</span>&#160;  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a name="l02354"></a><span class="lineno"> 2354</span>&#160;}</div>
-<div class="line"><a name="l02355"></a><span class="lineno"> 2355</span>&#160; </div>
-<div class="line"><a name="l02356"></a><span class="lineno"> 2356</span>&#160;<span class="keywordtype">void</span> BDChainOp::print(OpAsmPrinter &amp;printer) {</div>
-<div class="line"><a name="l02357"></a><span class="lineno"> 2357</span>&#160;  <span class="keyword">auto</span> taskName =</div>
-<div class="line"><a name="l02358"></a><span class="lineno"> 2358</span>&#160;      (*this)</div>
-<div class="line"><a name="l02359"></a><span class="lineno"> 2359</span>&#160;          -&gt;getAttrOfType&lt;StringAttr&gt;(SymbolTable::getSymbolAttrName())</div>
-<div class="line"><a name="l02360"></a><span class="lineno"> 2360</span>&#160;          .getValue();</div>
-<div class="line"><a name="l02361"></a><span class="lineno"> 2361</span>&#160;  printer &lt;&lt; <span class="charliteral">&#39; &#39;</span>;</div>
-<div class="line"><a name="l02362"></a><span class="lineno"> 2362</span>&#160;  printer.printSymbolName(taskName);</div>
+<div class="line"><a name="l02301"></a><span class="lineno"> 2301</span>&#160;} <span class="comment">// namespace xilinx::AIE</span></div>
+<div class="line"><a name="l02302"></a><span class="lineno"> 2302</span>&#160; </div>
+<div class="line"><a name="l02303"></a><span class="lineno"> 2303</span>&#160;<span class="comment">//===----------------------------------------------------------------------===//</span></div>
+<div class="line"><a name="l02304"></a><span class="lineno"> 2304</span>&#160;<span class="comment">// BDChainOp</span></div>
+<div class="line"><a name="l02305"></a><span class="lineno"> 2305</span>&#160;<span class="comment">//===----------------------------------------------------------------------===//</span></div>
+<div class="line"><a name="l02306"></a><span class="lineno"> 2306</span>&#160; </div>
+<div class="line"><a name="l02307"></a><span class="lineno"> 2307</span>&#160;ParseResult BDChainOp::parse(OpAsmParser &amp;parser, OperationState &amp;result) {</div>
+<div class="line"><a name="l02308"></a><span class="lineno"> 2308</span>&#160;  SmallVector&lt;OpAsmParser::Argument&gt; entryArgs;</div>
+<div class="line"><a name="l02309"></a><span class="lineno"> 2309</span>&#160; </div>
+<div class="line"><a name="l02310"></a><span class="lineno"> 2310</span>&#160;  <span class="comment">// Symbol name, e.g. @my_chain</span></div>
+<div class="line"><a name="l02311"></a><span class="lineno"> 2311</span>&#160;  StringAttr symNameAttr;</div>
+<div class="line"><a name="l02312"></a><span class="lineno"> 2312</span>&#160;  <span class="keywordflow">if</span> (parser.parseSymbolName(symNameAttr, SymbolTable::getSymbolAttrName(),</div>
+<div class="line"><a name="l02313"></a><span class="lineno"> 2313</span>&#160;                             result.attributes)) {</div>
+<div class="line"><a name="l02314"></a><span class="lineno"> 2314</span>&#160;    <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a name="l02315"></a><span class="lineno"> 2315</span>&#160;  }</div>
+<div class="line"><a name="l02316"></a><span class="lineno"> 2316</span>&#160; </div>
+<div class="line"><a name="l02317"></a><span class="lineno"> 2317</span>&#160;  <span class="comment">// Entry arguments (placeholders), e.g. (%addr: memref&lt;1xi32&gt;)</span></div>
+<div class="line"><a name="l02318"></a><span class="lineno"> 2318</span>&#160;  ParseResult argParseResult = parser.parseCommaSeparatedList(</div>
+<div class="line"><a name="l02319"></a><span class="lineno"> 2319</span>&#160;      OpAsmParser::Delimiter::Paren, [&amp;]() -&gt; ParseResult {</div>
+<div class="line"><a name="l02320"></a><span class="lineno"> 2320</span>&#160;        OpAsmParser::Argument argument;</div>
+<div class="line"><a name="l02321"></a><span class="lineno"> 2321</span>&#160;        <span class="keywordflow">if</span> (parser.parseArgument(argument, <span class="keyword">true</span>, <span class="keyword">true</span>)) {</div>
+<div class="line"><a name="l02322"></a><span class="lineno"> 2322</span>&#160;          return failure();</div>
+<div class="line"><a name="l02323"></a><span class="lineno"> 2323</span>&#160;        }</div>
+<div class="line"><a name="l02324"></a><span class="lineno"> 2324</span>&#160;        entryArgs.push_back(argument);</div>
+<div class="line"><a name="l02325"></a><span class="lineno"> 2325</span>&#160;        <span class="keywordflow">return</span> success();</div>
+<div class="line"><a name="l02326"></a><span class="lineno"> 2326</span>&#160;      });</div>
+<div class="line"><a name="l02327"></a><span class="lineno"> 2327</span>&#160;  <span class="keywordflow">if</span> (argParseResult) {</div>
+<div class="line"><a name="l02328"></a><span class="lineno"> 2328</span>&#160;    <span class="keywordflow">return</span> argParseResult;</div>
+<div class="line"><a name="l02329"></a><span class="lineno"> 2329</span>&#160;  }</div>
+<div class="line"><a name="l02330"></a><span class="lineno"> 2330</span>&#160; </div>
+<div class="line"><a name="l02331"></a><span class="lineno"> 2331</span>&#160;  <span class="comment">// BD Chain Body</span></div>
+<div class="line"><a name="l02332"></a><span class="lineno"> 2332</span>&#160;  <span class="keyword">auto</span> *body = result.addRegion();</div>
+<div class="line"><a name="l02333"></a><span class="lineno"> 2333</span>&#160;  ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, <span class="keyword">false</span>);</div>
+<div class="line"><a name="l02334"></a><span class="lineno"> 2334</span>&#160;  <span class="keywordflow">if</span> (bodyParseResult) {</div>
+<div class="line"><a name="l02335"></a><span class="lineno"> 2335</span>&#160;    <span class="keywordflow">return</span> bodyParseResult;</div>
+<div class="line"><a name="l02336"></a><span class="lineno"> 2336</span>&#160;  }</div>
+<div class="line"><a name="l02337"></a><span class="lineno"> 2337</span>&#160; </div>
+<div class="line"><a name="l02338"></a><span class="lineno"> 2338</span>&#160;  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a name="l02339"></a><span class="lineno"> 2339</span>&#160;}</div>
+<div class="line"><a name="l02340"></a><span class="lineno"> 2340</span>&#160; </div>
+<div class="line"><a name="l02341"></a><span class="lineno"> 2341</span>&#160;<span class="keywordtype">void</span> BDChainOp::print(OpAsmPrinter &amp;printer) {</div>
+<div class="line"><a name="l02342"></a><span class="lineno"> 2342</span>&#160;  <span class="keyword">auto</span> taskName =</div>
+<div class="line"><a name="l02343"></a><span class="lineno"> 2343</span>&#160;      (*this)</div>
+<div class="line"><a name="l02344"></a><span class="lineno"> 2344</span>&#160;          -&gt;getAttrOfType&lt;StringAttr&gt;(SymbolTable::getSymbolAttrName())</div>
+<div class="line"><a name="l02345"></a><span class="lineno"> 2345</span>&#160;          .getValue();</div>
+<div class="line"><a name="l02346"></a><span class="lineno"> 2346</span>&#160;  printer &lt;&lt; <span class="charliteral">&#39; &#39;</span>;</div>
+<div class="line"><a name="l02347"></a><span class="lineno"> 2347</span>&#160;  printer.printSymbolName(taskName);</div>
+<div class="line"><a name="l02348"></a><span class="lineno"> 2348</span>&#160; </div>
+<div class="line"><a name="l02349"></a><span class="lineno"> 2349</span>&#160;  Region &amp;body = getRegion();</div>
+<div class="line"><a name="l02350"></a><span class="lineno"> 2350</span>&#160;  <span class="keyword">auto</span> argsIter = body.getArguments();</div>
+<div class="line"><a name="l02351"></a><span class="lineno"> 2351</span>&#160;  printer &lt;&lt; <span class="charliteral">&#39;(&#39;</span>;</div>
+<div class="line"><a name="l02352"></a><span class="lineno"> 2352</span>&#160;  <span class="keywordflow">for</span> (<span class="keyword">auto</span> it = argsIter.begin(); it != argsIter.end(); ++it) {</div>
+<div class="line"><a name="l02353"></a><span class="lineno"> 2353</span>&#160;    <span class="keywordflow">if</span> (it != argsIter.begin()) {</div>
+<div class="line"><a name="l02354"></a><span class="lineno"> 2354</span>&#160;      printer &lt;&lt; <span class="stringliteral">&quot;, &quot;</span>;</div>
+<div class="line"><a name="l02355"></a><span class="lineno"> 2355</span>&#160;    }</div>
+<div class="line"><a name="l02356"></a><span class="lineno"> 2356</span>&#160;    printer.printRegionArgument(*it);</div>
+<div class="line"><a name="l02357"></a><span class="lineno"> 2357</span>&#160;  }</div>
+<div class="line"><a name="l02358"></a><span class="lineno"> 2358</span>&#160;  printer &lt;&lt; <span class="charliteral">&#39;)&#39;</span>;</div>
+<div class="line"><a name="l02359"></a><span class="lineno"> 2359</span>&#160; </div>
+<div class="line"><a name="l02360"></a><span class="lineno"> 2360</span>&#160;  printer &lt;&lt; <span class="charliteral">&#39; &#39;</span>;</div>
+<div class="line"><a name="l02361"></a><span class="lineno"> 2361</span>&#160;  printer.printRegion(body, <span class="keyword">false</span>, <span class="keyword">true</span>);</div>
+<div class="line"><a name="l02362"></a><span class="lineno"> 2362</span>&#160;}</div>
 <div class="line"><a name="l02363"></a><span class="lineno"> 2363</span>&#160; </div>
-<div class="line"><a name="l02364"></a><span class="lineno"> 2364</span>&#160;  Region &amp;body = getRegion();</div>
-<div class="line"><a name="l02365"></a><span class="lineno"> 2365</span>&#160;  <span class="keyword">auto</span> argsIter = body.getArguments();</div>
-<div class="line"><a name="l02366"></a><span class="lineno"> 2366</span>&#160;  printer &lt;&lt; <span class="charliteral">&#39;(&#39;</span>;</div>
-<div class="line"><a name="l02367"></a><span class="lineno"> 2367</span>&#160;  <span class="keywordflow">for</span> (<span class="keyword">auto</span> it = argsIter.begin(); it != argsIter.end(); ++it) {</div>
-<div class="line"><a name="l02368"></a><span class="lineno"> 2368</span>&#160;    <span class="keywordflow">if</span> (it != argsIter.begin()) {</div>
-<div class="line"><a name="l02369"></a><span class="lineno"> 2369</span>&#160;      printer &lt;&lt; <span class="stringliteral">&quot;, &quot;</span>;</div>
-<div class="line"><a name="l02370"></a><span class="lineno"> 2370</span>&#160;    }</div>
-<div class="line"><a name="l02371"></a><span class="lineno"> 2371</span>&#160;    printer.printRegionArgument(*it);</div>
-<div class="line"><a name="l02372"></a><span class="lineno"> 2372</span>&#160;  }</div>
-<div class="line"><a name="l02373"></a><span class="lineno"> 2373</span>&#160;  printer &lt;&lt; <span class="charliteral">&#39;)&#39;</span>;</div>
-<div class="line"><a name="l02374"></a><span class="lineno"> 2374</span>&#160; </div>
-<div class="line"><a name="l02375"></a><span class="lineno"> 2375</span>&#160;  printer &lt;&lt; <span class="charliteral">&#39; &#39;</span>;</div>
-<div class="line"><a name="l02376"></a><span class="lineno"> 2376</span>&#160;  printer.printRegion(body, <span class="keyword">false</span>, <span class="keyword">true</span>);</div>
-<div class="line"><a name="l02377"></a><span class="lineno"> 2377</span>&#160;}</div>
-<div class="line"><a name="l02378"></a><span class="lineno"> 2378</span>&#160; </div>
-<div class="line"><a name="l02379"></a><span class="lineno"> 2379</span>&#160;<span class="comment">//===----------------------------------------------------------------------===//</span></div>
-<div class="line"><a name="l02380"></a><span class="lineno"> 2380</span>&#160;<span class="comment">// ShimDMAAllocationOp</span></div>
-<div class="line"><a name="l02381"></a><span class="lineno"> 2381</span>&#160;<span class="comment">//===----------------------------------------------------------------------===//</span></div>
-<div class="line"><a name="l02382"></a><span class="lineno"> 2382</span>&#160; </div>
-<div class="line"><a name="l02383"></a><span class="lineno"> 2383</span>&#160;ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,</div>
-<div class="line"><a name="l02384"></a><span class="lineno"> 2384</span>&#160;                                                      llvm::StringRef symbol) {</div>
-<div class="line"><a name="l02385"></a><span class="lineno"> 2385</span>&#160;  <span class="keyword">auto</span> alloc_ops = device.getOps&lt;ShimDMAAllocationOp&gt;();</div>
-<div class="line"><a name="l02386"></a><span class="lineno"> 2386</span>&#160;  <span class="keywordflow">for</span> (<span class="keyword">auto</span> it = alloc_ops.begin(); it != alloc_ops.end(); ++it) {</div>
-<div class="line"><a name="l02387"></a><span class="lineno"> 2387</span>&#160;    AIE::ShimDMAAllocationOp a = *it;</div>
-<div class="line"><a name="l02388"></a><span class="lineno"> 2388</span>&#160;    <span class="keywordflow">if</span> (a.getSymName() == symbol) {</div>
-<div class="line"><a name="l02389"></a><span class="lineno"> 2389</span>&#160;      <span class="keywordflow">return</span> a;</div>
-<div class="line"><a name="l02390"></a><span class="lineno"> 2390</span>&#160;    }</div>
-<div class="line"><a name="l02391"></a><span class="lineno"> 2391</span>&#160;  }</div>
-<div class="line"><a name="l02392"></a><span class="lineno"> 2392</span>&#160;  <span class="keywordflow">return</span> <span class="keyword">nullptr</span>;</div>
-<div class="line"><a name="l02393"></a><span class="lineno"> 2393</span>&#160;}</div>
-<div class="line"><a name="l02394"></a><span class="lineno"> 2394</span>&#160; </div>
-<div class="line"><a name="l02395"></a><span class="lineno"> 2395</span>&#160;<span class="comment">// Include implementations for custom attributes</span></div>
-<div class="line"><a name="l02396"></a><span class="lineno"><a class="line" href="AIEDialect_8cpp.html#a2491ed70a2ad4f52db3cda183c0f649c"> 2396</a></span>&#160;<span class="preprocessor">#define GET_ATTRDEF_CLASSES</span></div>
-<div class="line"><a name="l02397"></a><span class="lineno"> 2397</span>&#160;<span class="preprocessor">#include &quot;aie/Dialect/AIE/IR/AIEAttrs.cpp.inc&quot;</span></div>
+<div class="line"><a name="l02364"></a><span class="lineno"> 2364</span>&#160;<span class="comment">//===----------------------------------------------------------------------===//</span></div>
+<div class="line"><a name="l02365"></a><span class="lineno"> 2365</span>&#160;<span class="comment">// ShimDMAAllocationOp</span></div>
+<div class="line"><a name="l02366"></a><span class="lineno"> 2366</span>&#160;<span class="comment">//===----------------------------------------------------------------------===//</span></div>
+<div class="line"><a name="l02367"></a><span class="lineno"> 2367</span>&#160; </div>
+<div class="line"><a name="l02368"></a><span class="lineno"> 2368</span>&#160;ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,</div>
+<div class="line"><a name="l02369"></a><span class="lineno"> 2369</span>&#160;                                                      llvm::StringRef symbol) {</div>
+<div class="line"><a name="l02370"></a><span class="lineno"> 2370</span>&#160;  <span class="keyword">auto</span> alloc_ops = device.getOps&lt;ShimDMAAllocationOp&gt;();</div>
+<div class="line"><a name="l02371"></a><span class="lineno"> 2371</span>&#160;  <span class="keywordflow">for</span> (<span class="keyword">auto</span> it = alloc_ops.begin(); it != alloc_ops.end(); ++it) {</div>
+<div class="line"><a name="l02372"></a><span class="lineno"> 2372</span>&#160;    AIE::ShimDMAAllocationOp a = *it;</div>
+<div class="line"><a name="l02373"></a><span class="lineno"> 2373</span>&#160;    <span class="keywordflow">if</span> (a.getSymName() == symbol) {</div>
+<div class="line"><a name="l02374"></a><span class="lineno"> 2374</span>&#160;      <span class="keywordflow">return</span> a;</div>
+<div class="line"><a name="l02375"></a><span class="lineno"> 2375</span>&#160;    }</div>
+<div class="line"><a name="l02376"></a><span class="lineno"> 2376</span>&#160;  }</div>
+<div class="line"><a name="l02377"></a><span class="lineno"> 2377</span>&#160;  <span class="keywordflow">return</span> <span class="keyword">nullptr</span>;</div>
+<div class="line"><a name="l02378"></a><span class="lineno"> 2378</span>&#160;}</div>
+<div class="line"><a name="l02379"></a><span class="lineno"> 2379</span>&#160; </div>
+<div class="line"><a name="l02380"></a><span class="lineno"> 2380</span>&#160;<span class="comment">// Include implementations for custom attributes</span></div>
+<div class="line"><a name="l02381"></a><span class="lineno"><a class="line" href="AIEDialect_8cpp.html#a2491ed70a2ad4f52db3cda183c0f649c"> 2381</a></span>&#160;<span class="preprocessor">#define GET_ATTRDEF_CLASSES</span></div>
+<div class="line"><a name="l02382"></a><span class="lineno"> 2382</span>&#160;<span class="preprocessor">#include &quot;aie/Dialect/AIE/IR/AIEAttrs.cpp.inc&quot;</span></div>
 <div class="ttc" id="aAIEDialect_8cpp_html_a7585c08f47b5f720ae1e3d2e8ee5f9b6"><div class="ttname"><a href="AIEDialect_8cpp.html#a7585c08f47b5f720ae1e3d2e8ee5f9b6">isLegalTileConnection</a></div><div class="ttdeci">bool isLegalTileConnection(TileOp tile, const AIETargetModel &amp;targetModel, MasterSetOp masterOp, PacketRulesOp slaveOp)</div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l01229">AIEDialect.cpp:1229</a></div></div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aclassTypeStorage_html"><div class="ttname"><a href="classTypeStorage.html">TypeStorage</a></div></div>
@@ -2485,16 +2470,16 @@ $(function() {
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a87e62b7a9f62e5e038fca6cc27443714"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a87e62b7a9f62e5e038fca6cc27443714">xilinx::AIE::printObjectFifoConsumerTiles</a></div><div class="ttdeci">void printObjectFifoConsumerTiles(OpAsmPrinter &amp;printer, Operation *op, OperandRange tiles, BDDimLayoutArrayArrayAttr dimsPerTileAttr)</div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l00597">AIEDialect.cpp:597</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a8b4a31c788eb8ca9a68d3547818861b7"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a8b4a31c788eb8ca9a68d3547818861b7">xilinx::AIE::collectBuffers</a></div><div class="ttdeci">void collectBuffers(DeviceOp &amp;device, llvm::DenseMap&lt; mlir::Operation *, llvm::SmallVector&lt; BufferOp, 4 &gt;&gt; &amp;buffers)</div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a99b99b2f5e14ab0ccf4cd9c2ca6180da"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a99b99b2f5e14ab0ccf4cd9c2ca6180da">xilinx::AIE::src</a></div><div class="ttdeci">PathEndPoint src</div><div class="ttdef"><b>Definition:</b> <a href="AIEPathFinder_8h_source.html#l00128">AIEPathFinder.h:128</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_afbf8b37a87138e2f447abf920fb36937"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#afbf8b37a87138e2f447abf920fb36937">xilinx::AIE::getConnectingBundle</a></div><div class="ttdeci">WireBundle getConnectingBundle(WireBundle dir)</div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l02301">AIEDialect.cpp:2301</a></div></div>
-<div class="ttc" id="astructAccessesLocalLocks_html"><div class="ttname"><a href="structAccessesLocalLocks.html">AccessesLocalLocks</a></div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l02225">AIEDialect.cpp:2225</a></div></div>
-<div class="ttc" id="astructAccessesLocalLocks_html_afd806eb0ffbd22cc3e3198141179a0bc"><div class="ttname"><a href="structAccessesLocalLocks.html#afd806eb0ffbd22cc3e3198141179a0bc">AccessesLocalLocks::verifyTrait</a></div><div class="ttdeci">static LogicalResult verifyTrait(Operation *op)</div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l02226">AIEDialect.cpp:2226</a></div></div>
-<div class="ttc" id="astructAcquireReleaseOneStateInDMABlock_html"><div class="ttname"><a href="structAcquireReleaseOneStateInDMABlock.html">AcquireReleaseOneStateInDMABlock</a></div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l02204">AIEDialect.cpp:2204</a></div></div>
-<div class="ttc" id="astructAcquireReleaseOneStateInDMABlock_html_aa6b184a012f122c78ffc3983d63d068d"><div class="ttname"><a href="structAcquireReleaseOneStateInDMABlock.html#aa6b184a012f122c78ffc3983d63d068d">AcquireReleaseOneStateInDMABlock::verifyTrait</a></div><div class="ttdeci">static LogicalResult verifyTrait(Operation *op)</div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l02205">AIEDialect.cpp:2205</a></div></div>
-<div class="ttc" id="astructHasSomeParent_html"><div class="ttname"><a href="structHasSomeParent.html">HasSomeParent</a></div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l02153">AIEDialect.cpp:2153</a></div></div>
-<div class="ttc" id="astructHasSomeParent_html_a77664a054f102d51952adcda78fcdee0"><div class="ttname"><a href="structHasSomeParent.html#a77664a054f102d51952adcda78fcdee0">HasSomeParent::verifyTrait</a></div><div class="ttdeci">static LogicalResult verifyTrait(Operation *op)</div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l02154">AIEDialect.cpp:2154</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_afbf8b37a87138e2f447abf920fb36937"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#afbf8b37a87138e2f447abf920fb36937">xilinx::AIE::getConnectingBundle</a></div><div class="ttdeci">WireBundle getConnectingBundle(WireBundle dir)</div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l02286">AIEDialect.cpp:2286</a></div></div>
+<div class="ttc" id="astructAccessesLocalLocks_html"><div class="ttname"><a href="structAccessesLocalLocks.html">AccessesLocalLocks</a></div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l02210">AIEDialect.cpp:2210</a></div></div>
+<div class="ttc" id="astructAccessesLocalLocks_html_afd806eb0ffbd22cc3e3198141179a0bc"><div class="ttname"><a href="structAccessesLocalLocks.html#afd806eb0ffbd22cc3e3198141179a0bc">AccessesLocalLocks::verifyTrait</a></div><div class="ttdeci">static LogicalResult verifyTrait(Operation *op)</div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l02211">AIEDialect.cpp:2211</a></div></div>
+<div class="ttc" id="astructAcquireReleaseOneStateInDMABlock_html"><div class="ttname"><a href="structAcquireReleaseOneStateInDMABlock.html">AcquireReleaseOneStateInDMABlock</a></div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l02189">AIEDialect.cpp:2189</a></div></div>
+<div class="ttc" id="astructAcquireReleaseOneStateInDMABlock_html_aa6b184a012f122c78ffc3983d63d068d"><div class="ttname"><a href="structAcquireReleaseOneStateInDMABlock.html#aa6b184a012f122c78ffc3983d63d068d">AcquireReleaseOneStateInDMABlock::verifyTrait</a></div><div class="ttdeci">static LogicalResult verifyTrait(Operation *op)</div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l02190">AIEDialect.cpp:2190</a></div></div>
+<div class="ttc" id="astructHasSomeParent_html"><div class="ttname"><a href="structHasSomeParent.html">HasSomeParent</a></div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l02138">AIEDialect.cpp:2138</a></div></div>
+<div class="ttc" id="astructHasSomeParent_html_a77664a054f102d51952adcda78fcdee0"><div class="ttname"><a href="structHasSomeParent.html#a77664a054f102d51952adcda78fcdee0">HasSomeParent::verifyTrait</a></div><div class="ttdeci">static LogicalResult verifyTrait(Operation *op)</div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l02139">AIEDialect.cpp:2139</a></div></div>
 <div class="ttc" id="astructHasSomeTerminator_html"><div class="ttname"><a href="structHasSomeTerminator.html">HasSomeTerminator</a></div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l00413">AIEDialect.cpp:413</a></div></div>
-<div class="ttc" id="astructUsesOneLockInDMABlock_html"><div class="ttname"><a href="structUsesOneLockInDMABlock.html">UsesOneLockInDMABlock</a></div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l02188">AIEDialect.cpp:2188</a></div></div>
-<div class="ttc" id="astructUsesOneLockInDMABlock_html_a8208d34bd65a6aad252dabd52310dde6"><div class="ttname"><a href="structUsesOneLockInDMABlock.html#a8208d34bd65a6aad252dabd52310dde6">UsesOneLockInDMABlock::verifyTrait</a></div><div class="ttdeci">static LogicalResult verifyTrait(Operation *op)</div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l02189">AIEDialect.cpp:2189</a></div></div>
+<div class="ttc" id="astructUsesOneLockInDMABlock_html"><div class="ttname"><a href="structUsesOneLockInDMABlock.html">UsesOneLockInDMABlock</a></div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l02173">AIEDialect.cpp:2173</a></div></div>
+<div class="ttc" id="astructUsesOneLockInDMABlock_html_a8208d34bd65a6aad252dabd52310dde6"><div class="ttname"><a href="structUsesOneLockInDMABlock.html#a8208d34bd65a6aad252dabd52310dde6">UsesOneLockInDMABlock::verifyTrait</a></div><div class="ttdeci">static LogicalResult verifyTrait(Operation *op)</div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l02174">AIEDialect.cpp:2174</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1Port_html"><div class="ttname"><a href="structxilinx_1_1AIE_1_1Port.html">xilinx::AIE::Port</a></div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8h_source.html#l00169">AIEDialect.h:169</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1Port_html_a29e6e09c5cfede576fb81612dc3f7b30"><div class="ttname"><a href="structxilinx_1_1AIE_1_1Port.html#a29e6e09c5cfede576fb81612dc3f7b30">xilinx::AIE::Port::bundle</a></div><div class="ttdeci">WireBundle bundle</div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8h_source.html#l00170">AIEDialect.h:170</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1Port_html_a4d590c5adeb9cab0394c2d98468b7c3f"><div class="ttname"><a href="structxilinx_1_1AIE_1_1Port.html#a4d590c5adeb9cab0394c2d98468b7c3f">xilinx::AIE::Port::channel</a></div><div class="ttdeci">int channel</div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8h_source.html#l00171">AIEDialect.h:171</a></div></div>
@@ -2516,7 +2501,7 @@ $(function() {
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Mon Dec 16 2024 23:57:15 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.1
+Generated on Tue Dec 17 2024 05:10:48 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.1
 </small></address>
 </body>
 </html>
