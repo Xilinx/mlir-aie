@@ -23,7 +23,7 @@ from aie.helpers.dialects.ext.scf import _for as range_
 
 N = 4096
 dev = AIEDevice.npu1
-col = 0
+col = 1
 line_size = 1024
 
 if len(sys.argv) > 1:
@@ -53,6 +53,8 @@ def my_passthrough():
             # Tile declarations
             ShimTile = tile(col, 0)
             ComputeTile2 = tile(col, 2)
+
+            ComputeTile_debug = tile(0, 2) # debug tile to showcase workaround
 
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile, ComputeTile2, 2, line_ty)

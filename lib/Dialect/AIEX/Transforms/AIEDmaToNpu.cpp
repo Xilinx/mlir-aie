@@ -359,6 +359,19 @@ public:
     // row
     row = IntegerAttr::get(i32ty, 0);
 
+    // dma_memcpy_nd transfers of the form [1, 1, 1, len][0, 0, 0, 1] do not
+    // specify any data layout transformation, but simply express a contiguous
+    // transfer of `len`. For backwards compatibility, we allow this to proceed
+    // even if it exceeds the maximum stride/wrap size of any one dimension,
+    // and simply do not lower any data layout transformations, since there is
+    // no other way to express this at the dma_memcpy_nd interface otherwise.
+    bool skipTransformationChecks = op.isLinearTransferWithoutTransformation();
+    if (failed(verifyStridesWraps(op, bufferType, col, 0, inputSizes,
+                                  inputStrides, sizes, strides,
+                                  skipTransformationChecks))) {
+      return failure();
+    }
+
     // arg_idx
     AIEX::RuntimeSequenceOp seq_op =
         op->getParentOfType<AIEX::RuntimeSequenceOp>();
