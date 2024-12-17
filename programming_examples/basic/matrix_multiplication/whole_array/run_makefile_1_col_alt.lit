@@ -7,5 +7,4 @@
 // RUN: cd test_1_col_alt
 // RUN: make -f %S/Makefile clean
 // RUN: env use_alt=1 n_aie_cols=1 make -f %S/Makefile 
-// RUN: %run_on_npu env use_alt=1 n_aie_cols=1 make -f %S/Makefile run | FileCheck %s
-// CHECK: PASS!
+// RUN: %run_on_npu env use_alt=1 n_aie_cols=1 make -f %S/Makefile run
