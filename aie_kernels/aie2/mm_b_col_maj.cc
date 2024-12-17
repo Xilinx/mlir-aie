@@ -12,9 +12,7 @@
 // transposed B matrix (or, equivalently, a B matrix that is stored in column-
 // major format). A remains row-major.
 
-#define __AIENGINE__ 2
 #define NOCPP
-#define __AIEARCH__ 20
 
 #include <stdint.h>
 #include <stdio.h>
