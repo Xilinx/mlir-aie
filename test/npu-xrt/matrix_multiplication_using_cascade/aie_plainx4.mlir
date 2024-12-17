@@ -522,9 +522,9 @@ module {
       memref.assume_alignment %arg0, 64 : memref<16x16xi32>
       memref.assume_alignment %arg1, 64 : memref<16x16xi32>
       memref.assume_alignment %arg2, 64 : memref<16x16xi32>
-      aiex.npu.dma_memcpy_nd (0, 0, %arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 16, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<16x16xi32>
-      aiex.npu.dma_memcpy_nd (0, 0, %arg1[0, 0, 0, 0][1, 1, 16, 16][0, 0, 16, 1]) {id = 1 : i64, metadata = @airMemcpyId5} : memref<16x16xi32>
-      aiex.npu.dma_memcpy_nd (0, 0, %arg2[0, 0, 0, 0][1, 1, 16, 16][0, 0, 16, 1]) {id = 2 : i64, metadata = @airMemcpyId12, issue_token = true} : memref<16x16xi32>
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 16, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<16x16xi32>
+      aiex.npu.dma_memcpy_nd (%arg1[0, 0, 0, 0][1, 1, 16, 16][0, 0, 16, 1]) {id = 1 : i64, metadata = @airMemcpyId5} : memref<16x16xi32>
+      aiex.npu.dma_memcpy_nd (%arg2[0, 0, 0, 0][1, 1, 16, 16][0, 0, 16, 1]) {id = 2 : i64, metadata = @airMemcpyId12, issue_token = true} : memref<16x16xi32>
       aiex.npu.dma_wait {symbol = @airMemcpyId12}
     }
   } {sym_name = "segment_0"}
