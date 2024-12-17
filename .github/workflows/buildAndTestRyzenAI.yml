@@ -129,7 +129,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner_type: [ amd7940hs ]
+        runner_type: [ amd7940hs, amdhx370 ]
     steps:
       - uses: actions/checkout@v4
         with:
