@@ -19,7 +19,6 @@ if len(sys.argv) == 3:
     height = int(sys.argv[2])
 
 
-
 def color_detect(dev, width, height):
     lineWidth = width
     lineWidthInBytes = width * 4
@@ -27,7 +26,7 @@ def color_detect(dev, width, height):
 
     enableTrace = False
     traceSize = 1024
-        
+
     @device(dev)
     def deviceBody():
         line_bytes_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
@@ -73,16 +72,12 @@ def color_detect(dev, width, height):
             [2, 2, 6],
             line_bytes_ty,
         )
-        inOF_L2L1 = object_fifo(
-            "inOF_L2L1", MemTile, ComputeTile5, 6, line_bytes_ty
-        )
+        inOF_L2L1 = object_fifo("inOF_L2L1", MemTile, ComputeTile5, 6, line_bytes_ty)
         object_fifo_link(inOF_L3L2, inOF_L2L1)
 
         # Output
         outOF_L2L3 = object_fifo("outOF_L2L3", MemTile, ShimTile, 2, line_bytes_ty)
-        outOF_L1L2 = object_fifo(
-            "outOF_L1L2", ComputeTile5, MemTile, 2, line_bytes_ty
-        )
+        outOF_L1L2 = object_fifo("outOF_L1L2", ComputeTile5, MemTile, 2, line_bytes_ty)
         object_fifo_link(outOF_L1L2, outOF_L2L3)
 
         # Intermediate
@@ -94,9 +89,7 @@ def color_detect(dev, width, height):
         OF_4to4 = object_fifo("OF_4to4", ComputeTile4, ComputeTile4, 1, line_ty)
         OF_4to5 = object_fifo("OF_4to5", ComputeTile4, ComputeTile5, 2, line_ty)
         OF_5to5a = object_fifo("OF_5to5a", ComputeTile5, ComputeTile5, 1, line_ty)
-        OF_5to5b = object_fifo(
-            "OF_5to5b", ComputeTile5, ComputeTile5, 1, line_bytes_ty
-        )
+        OF_5to5b = object_fifo("OF_5to5b", ComputeTile5, ComputeTile5, 1, line_bytes_ty)
 
         # Set up compute tiles
 
