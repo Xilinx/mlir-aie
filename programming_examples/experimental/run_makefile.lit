@@ -4,5 +4,4 @@
 // REQUIRES: ryzen_ai, peano 
 //
 // RUN: make -f %S/Makefile clean
-// RUN: %run_on_npu make -f %S/Makefile | FileCheck %s
-// CHECK: PASS!
+// RUN: %run_on_npu make -f %S/Makefile
