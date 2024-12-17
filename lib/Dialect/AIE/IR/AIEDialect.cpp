@@ -1978,7 +1978,7 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
   unsigned idx = 0;
   while (patternIt != reachable.end()) {
     // BD repetition found. Check if repeating pattern.
-    if (!areIdenticalBDs(*patternIt, uniquePattern[idx]))
+    if (!areEquivalentBDs(*patternIt, uniquePattern[idx]))
       return failure();
     patternIt++;
     idx = (++idx) % uniquePattern.size();
