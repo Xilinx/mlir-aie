@@ -43,7 +43,7 @@ use_linear_buf_alloc?=1
 # via the usage of chess pragmas (see mm.cc).
 # Instruction memory and compilation time increases in this case.
 # Set to 0 otherwise.
-opt_perf?=1
+opt_perf?=0
 
 
 ifeq (${use_linear_buf_alloc}, 1)
