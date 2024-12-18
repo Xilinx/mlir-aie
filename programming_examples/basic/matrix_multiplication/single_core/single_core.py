@@ -222,7 +222,6 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
                         for _ in (
                             range_(K_div_k) if K_div_k > 1 else range(1)
                         ):  # issue #1547
-                                                        
                             elem_in_a = memA.acquire(ObjectFifoPort.Consume, 1)
                             elem_in_b = memB.acquire(ObjectFifoPort.Consume, 1)
                             matmul(elem_in_a, elem_in_b, elem_out)
@@ -242,17 +241,29 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
 
                 if enable_tracing:
                     trace_utils.configure_packet_tracing_aie2(
-                        tiles_to_trace, shim_tile, trace_size, C_sz_in_bytes,
+                        tiles_to_trace,
+                        shim_tile,
+                        trace_size,
+                        C_sz_in_bytes,
                         events=[
                             # captures input A (PORT_RUNNING_0, at port number 1, master for inputs)
-                            trace_utils.PortEvent(trace_utils.CoreEvent.PORT_RUNNING_0, port_number=1, master=True,),
-
+                            trace_utils.PortEvent(
+                                trace_utils.CoreEvent.PORT_RUNNING_0,
+                                port_number=1,
+                                master=True,
+                            ),
                             # captures input B (PORT_RUNNING_1, at port number 2, master for inputs)
-                            trace_utils.PortEvent(trace_utils.CoreEvent.PORT_RUNNING_1, port_number=2, master=True,),
-
+                            trace_utils.PortEvent(
+                                trace_utils.CoreEvent.PORT_RUNNING_1,
+                                port_number=2,
+                                master=True,
+                            ),
                             # captures output C (PORT_RUNNING_2, at port number 1, slave for outputs)
-                            trace_utils.PortEvent(trace_utils.CoreEvent.PORT_RUNNING_2, port_number=1, master=False,),
-                            
+                            trace_utils.PortEvent(
+                                trace_utils.CoreEvent.PORT_RUNNING_2,
+                                port_number=1,
+                                master=False,
+                            ),
                             trace_utils.CoreEvent.INSTR_EVENT_0,
                             trace_utils.CoreEvent.INSTR_EVENT_1,
                             trace_utils.CoreEvent.MEMORY_STALL,
@@ -260,7 +271,6 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
                             trace_utils.CoreEvent.INSTR_VECTOR,
                         ],
                     )
-
 
                 # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
                 rows_per_block = 4
