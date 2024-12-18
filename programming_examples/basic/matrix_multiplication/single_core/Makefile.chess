@@ -14,11 +14,11 @@ targetname=single_core
 kernels=mm
 
 M?=512
-K?=528
+K?=512
 N?=512
 
 m?=64
-k?=88
+k?=64
 n?=64
 
 kernels=mm_${m}x${k}x${n}

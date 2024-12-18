@@ -13,11 +13,11 @@ targetname=whole_array
 
 
 M?=512
-K?=528
+K?=512
 N?=512
 
 m?=64
-k?=88
+k?=64
 n?=64
 
 n_aie_cols?=4
