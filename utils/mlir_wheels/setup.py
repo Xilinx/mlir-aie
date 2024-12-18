@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 from pprint import pprint
+from sysconfig import get_paths
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
@@ -120,7 +121,6 @@ class CMakeBuild(build_ext):
             f"-DCMAKE_INSTALL_PREFIX={install_dir}",
             f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}{os.sep}",
             f"-DPython3_EXECUTABLE={sys.executable}",
-            f"-DPython_EXECUTABLE={sys.executable}",
             f"-DCMAKE_BUILD_TYPE={cfg}",  # not used on MSVC, but no harm
             # prevent symbol collision that leads to multiple pass registration and such
             "-DCMAKE_VISIBILITY_INLINES_HIDDEN=ON",
@@ -137,6 +137,10 @@ class CMakeBuild(build_ext):
                 "-DLLVM_USE_CRT_MINSIZEREL=MT",
                 "-DLLVM_USE_CRT_RELEASE=MT",
             ]
+
+        # workaround for Could NOT find Python (missing: Python_INCLUDE_DIRS Development on aarch64
+        if platform.system() == "Linux":
+            cmake_args += [f"-DPython_INCLUDE_DIR={get_paths()['include']}",]
 
         cmake_args_dict = get_cross_cmake_args()
         cmake_args += [f"-D{k}={v}" for k, v in cmake_args_dict.items()]
