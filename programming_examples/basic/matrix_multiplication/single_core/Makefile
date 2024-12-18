@@ -13,10 +13,12 @@ subdir=single_core
 targetname=single_core
 kernels=mm
 
+# M, K, N: final GEMM dimensions
 M?=512
 K?=512
 N?=512
 
+# m, k, n: single AIE core GEMM dimensions
 m?=64
 k?=64
 n?=64

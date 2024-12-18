@@ -11,11 +11,12 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=whole_array
 targetname=whole_array
 
-
+# M, K, N: final GEMM dimensions
 M?=512
 K?=512
 N?=512
 
+# m, k, n: single AIE core GEMM dimensions
 m?=64
 k?=64
 n?=64
