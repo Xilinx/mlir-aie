@@ -110,6 +110,14 @@ int main(int argc, char **argv) {
     ct.addLegalDialect<xilinx::AIE::AIEDialect, xilinx::AIEX::AIEXDialect,
                        xilinx::aievec::aie1::AIEVecAIE1Dialect,
                        xilinx::aievec::AIEVecDialect>();
+    ct.addLegalOp<mlir::UnrealizedConversionCastOp>();
+  });
+
+  cir::direct::runAtStartOfConvertCIRToLLVMPass([](mlir::ConversionTarget ct) {
+    ct.addLegalDialect<xilinx::AIE::AIEDialect, xilinx::AIEX::AIEXDialect,
+                       xilinx::aievec::aie1::AIEVecAIE1Dialect,
+                       xilinx::aievec::AIEVecDialect>();
+    ct.addLegalOp<mlir::UnrealizedConversionCastOp>();
   });
 #endif
   registerToLLVMIRTranslation();

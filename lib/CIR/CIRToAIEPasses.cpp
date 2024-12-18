@@ -890,6 +890,8 @@ struct CIRToAIEInlineKernelLambda
             .failed())
       call.emitError("CIRToAIEInlineKernelLambdaBase not able to "
                      "inline the lambda call");
+    // Only erase the call since the callee could be used in another
+    // context. Rely later on --symbol-dce pass.
     call.erase();
   }
 

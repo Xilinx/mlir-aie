@@ -28,6 +28,8 @@
 #ifdef CLANGIR_MLIR_FRONTEND
 #include "clang/CIR/Dialect/IR/CIRDialect.h"
 #include "clang/CIR/Dialect/Passes.h"
+#include "clang/CIR/LowerToLLVM.h"
+#include "clang/CIR/LowerToMLIR.h"
 #include "clang/CIR/Passes.h"
 #endif
 
@@ -104,9 +106,13 @@ int main(int argc, char **argv) {
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
     return cir::createConvertCIRToMLIRPass();
   });
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return cir::direct::createConvertCIRToLLVMPass();
+  });
 
   mlir::PassPipelineRegistration<mlir::EmptyPipelineOptions> pipeline(
-      "cir-to-llvm", "", [](mlir::OpPassManager &pm) {
+      "cir-to-llvm", "Full pass pipeline from CIR to LLVM MLIR dialect",
+      [](mlir::OpPassManager &pm) {
         cir::direct::populateCIRToLLVMPasses(pm, /* useCCLowering */ true);
       });
 
@@ -119,6 +125,20 @@ int main(int argc, char **argv) {
   });
 
   mlir::registerTransformsPasses();
+
+  cir::runAtStartOfConvertCIRToMLIRPass([](mlir::ConversionTarget ct) {
+    ct.addLegalDialect<xilinx::AIE::AIEDialect, xilinx::AIEX::AIEXDialect,
+                       xilinx::aievec::aie1::AIEVecAIE1Dialect,
+                       xilinx::aievec::AIEVecDialect>();
+    ct.addLegalOp<mlir::UnrealizedConversionCastOp>();
+  });
+
+  cir::direct::runAtStartOfConvertCIRToLLVMPass([](mlir::ConversionTarget ct) {
+    ct.addLegalDialect<xilinx::AIE::AIEDialect, xilinx::AIEX::AIEXDialect,
+                       xilinx::aievec::aie1::AIEVecAIE1Dialect,
+                       xilinx::aievec::AIEVecDialect>();
+    ct.addLegalOp<mlir::UnrealizedConversionCastOp>();
+  });
 #endif
 
   return failed(
