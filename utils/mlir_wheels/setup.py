@@ -120,6 +120,7 @@ class CMakeBuild(build_ext):
             f"-DCMAKE_INSTALL_PREFIX={install_dir}",
             f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}{os.sep}",
             f"-DPython3_EXECUTABLE={sys.executable}",
+            f"-DPython_EXECUTABLE={sys.executable}",
             f"-DCMAKE_BUILD_TYPE={cfg}",  # not used on MSVC, but no harm
             # prevent symbol collision that leads to multiple pass registration and such
             "-DCMAKE_VISIBILITY_INLINES_HIDDEN=ON",
