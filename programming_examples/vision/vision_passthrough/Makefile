@@ -12,7 +12,7 @@ include ${srcdir}/../../makefile-common
 
 VPATH := ${srcdir}/../../../aie_kernels/generic
 
-device = npu
+device ?= npu
 PASSTHROUGH_WIDTH = 1920
 PASSTHROUGH_HEIGHT = 1080
 
