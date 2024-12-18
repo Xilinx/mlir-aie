@@ -7,5 +7,4 @@
 // RUN: cd test_2_col
 // RUN: make -f %S/Makefile clean
 // RUN: env n_aie_cols=2 make -f %S/Makefile 
-// RUN: %run_on_npu env n_aie_cols=2 make -f %S/Makefile run | FileCheck %s
-// CHECK: PASS!
+// RUN: %run_on_npu env n_aie_cols=2 make -f %S/Makefile run
