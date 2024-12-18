@@ -14,12 +14,12 @@ targetname=single_core
 kernels=mm
 
 M?=128
-K?=464
+K?=176
 N?=128
 
-m?=32
-k?=232
-n?=32
+m?=64
+k?=88
+n?=64
 
 kernels=mm_${m}x${k}x${n}
 aieargs+=-m $m -k $k -n $n
@@ -49,7 +49,7 @@ aie_py_src=${targetname}_iron.py
 endif
 include ${srcdir}/../makefile-common
 
-build/mm_${m}x${k}x${n}.o: ${kernels_dir}/matmul_opt.cc
+build/mm_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
 
