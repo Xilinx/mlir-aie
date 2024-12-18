@@ -13,9 +13,9 @@ subdir=single_core
 targetname=single_core
 kernels=mm
 
-M?=128
-K?=176
-N?=128
+M?=512
+K?=528
+N?=512
 
 m?=64
 k?=88
