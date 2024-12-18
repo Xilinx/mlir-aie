@@ -140,7 +140,9 @@ class CMakeBuild(build_ext):
 
         # workaround for Could NOT find Python (missing: Python_INCLUDE_DIRS Development on aarch64
         if platform.system() == "Linux":
-            cmake_args += [f"-DPython_INCLUDE_DIR={get_paths()['include']}",]
+            cmake_args += [
+                f"-DPython_INCLUDE_DIR={get_paths()['include']}",
+            ]
 
         cmake_args_dict = get_cross_cmake_args()
         cmake_args += [f"-D{k}={v}" for k, v in cmake_args_dict.items()]
