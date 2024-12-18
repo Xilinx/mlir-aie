@@ -15,16 +15,11 @@
 
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Iterators.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 #include <numeric>
@@ -1848,10 +1843,10 @@ struct AIEObjectFifoStatefulTransformPass
               ObjectFifoSubviewAccessOp, ObjectFifoReleaseOp>(op))
         opsToErase.insert(op);
     });
-    topologicalSort(opsToErase);
-    IRRewriter rewriter(&getContext());
-    for (auto it = opsToErase.rbegin(); it != opsToErase.rend(); ++it)
-      (*it)->erase();
+    SmallVector<Operation *> sorted{opsToErase.begin(), opsToErase.end()};
+    computeTopologicalSorting(sorted);
+    for (auto *op : llvm::reverse(sorted))
+      op->erase();
   }
 };
 
