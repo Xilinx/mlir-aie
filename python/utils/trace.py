@@ -796,6 +796,6 @@ def configure_packet_tracing_aie2(
             trace_size,
             trace_offset,
             enable_token,
-            events = events
+            events=events,
         )
     configure_shim_packet_tracing_aie2(shim)
