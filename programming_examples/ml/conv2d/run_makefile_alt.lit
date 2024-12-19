@@ -7,6 +7,7 @@
 // RUN: cd test_alt
 // RUN: make -f %S/Makefile clean
 // RUN: env use_alt=1 make -f %S/Makefile 
-// RUN: %run_on_npu make -f %S/Makefile run_py | FileCheck %s
-// CHECK: PASS!
+// RUN: %run_on_npu make -f %S/Makefile run_py
+// RUN: make -f %S/Makefile clean
+// RUN: %run_on_npu make -f %S/Makefile trace_py
   

@@ -17,12 +17,13 @@ tensor_width = 8
 tile_height = 2
 tile_width = 2
 data_str=${tensor_height}_${tensor_width}_${tile_height}_${tile_width}
+aie_py_src=tile_group.py
 
 .PHONY: all template clean
 
 all: build/final_${data_str}.xclbin
 
-build/aie_${data_str}.mlir: ${srcdir}/aie2.py
+build/aie_${data_str}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< --tensor-height ${tensor_height} --tensor-width ${tensor_width} --tile-height ${tile_height} --tile-width ${tile_width} > $@
 
@@ -35,7 +36,7 @@ build/final_${data_str}.xclbin: build/aie_${data_str}.mlir
 run: build/final_${data_str}.xclbin build/insts_${data_str}.txt
 	${powershell} python3 ${srcdir}/test.py -x build/final_${data_str}.xclbin -i build/insts_${data_str}.txt -k MLIR_AIE --tensor-height ${tensor_height} --tensor-width ${tensor_width} --tile-height ${tile_height} --tile-width ${tile_width}
 
-generate_access_map: ${srcdir}/aie2.py
+generate_access_map: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< --tensor-height ${tensor_height} --tensor-width ${tensor_width} --tile-height ${tile_height} --tile-width ${tile_width} --generate-access-map ${M} ${K}
 

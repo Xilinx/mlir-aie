@@ -9,6 +9,7 @@ requires = [
     "numpy",
     "dataclasses",
     "mlir-native-tools",
+    "nanobind",
 ]
 build-backend = "setuptools.build_meta"
 

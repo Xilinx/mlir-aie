@@ -1949,61 +1949,18 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
     return failure();
 
   // Check for identical bds.
-  auto areIdenticalUseLocks = [](UseLockOp op1, UseLockOp op2) {
-    if (!op1 || !op2)
-      return false;
-    if (op1.getLock() != op2.getLock())
-      return false;
-    if (op1.getAction() != op2.getAction())
-      return false;
-    if (op1.getValue() != op2.getValue())
-      return false;
-    return true;
-  };
-  auto areIdenticalDmaBDOps = [](DMABDOp op1, DMABDOp op2) {
-    if (!op1 || !op2)
-      return false;
-    if (op1.getBuffer() != op2.getBuffer())
-      return false;
-    if (op1.getOffset() != op2.getOffset())
-      return false;
-    if (op1.getLen() != op2.getLen())
-      return false;
-    if (op1.getDimensions() != op2.getDimensions())
-      return false;
-    if (op1.getPadDimensions() != op2.getPadDimensions())
-      return false;
-    if (op1.getPadValue() != op2.getPadValue())
-      return false;
-    if (op1.getPacket() != op2.getPacket())
-      return false;
-    return true;
-  };
-  auto areIdenticalBDs = [areIdenticalUseLocks,
-                          areIdenticalDmaBDOps](Block *b1, Block *b2) {
+  auto areEquivalentBDs = [](Block *b1, Block *b2) {
     auto b1OpRange = b1->without_terminator();
     auto b2OpRange = b2->without_terminator();
     if (llvm::range_size(b1OpRange) != llvm::range_size(b2OpRange))
       return false;
-    auto b1It = b1OpRange.begin();
-    auto b2It = b2OpRange.begin();
-    while (b1It != b1OpRange.end()) {
-      if ((*b1It).getName().getStringRef() != (*b2It).getName().getStringRef())
-        return false;
-
-      if (auto b1UseLockOp = dyn_cast<UseLockOp>(*b1It)) {
-        auto b2UseLockOp = dyn_cast<UseLockOp>(*b2It);
-        if (!areIdenticalUseLocks(b1UseLockOp, b2UseLockOp))
-          return false;
-      } else if (auto b1DMABDOp = dyn_cast<DMABDOp>(*b1It)) {
-        auto b2DMABDOp = dyn_cast<DMABDOp>(*b2It);
-        if (!areIdenticalDmaBDOps(b1DMABDOp, b2DMABDOp))
-          return false;
-      }
-
-      b1It++;
-      b2It++;
-    }
+    if (!llvm::all_of(llvm::zip_equal(b1OpRange, b2OpRange),
+                      [](std::tuple<Operation &, Operation &> pair) {
+                        return OperationEquivalence::isEquivalentTo(
+                            &std::get<0>(pair), &std::get<1>(pair),
+                            OperationEquivalence::IgnoreLocations);
+                      }))
+      return false;
     return true;
   };
 
@@ -2011,8 +1968,8 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
   SmallVector<Block *> uniquePattern;
   auto patternIt = reachable.begin();
   while (patternIt != reachable.end() &&
-         llvm::none_of(uniquePattern, [patternIt, areIdenticalBDs](Block *b1) {
-           return areIdenticalBDs(*patternIt, b1);
+         llvm::none_of(uniquePattern, [patternIt, areEquivalentBDs](Block *b1) {
+           return areEquivalentBDs(*patternIt, b1);
          })) {
     uniquePattern.push_back(*patternIt);
     patternIt++;
@@ -2021,7 +1978,7 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
   unsigned idx = 0;
   while (patternIt != reachable.end()) {
     // BD repetition found. Check if repeating pattern.
-    if (!areIdenticalBDs(*patternIt, uniquePattern[idx]))
+    if (!areEquivalentBDs(*patternIt, uniquePattern[idx]))
       return failure();
     patternIt++;
     idx = (++idx) % uniquePattern.size();

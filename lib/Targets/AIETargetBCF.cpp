@@ -90,7 +90,13 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
               std::string bufName(buf.name().getValue());
               int bufferBaseAddr = getBufferBaseAddress(buf);
               int numBytes = buf.getAllocationSize();
-              if (buf.getInitialValue() && tile == srcCoord) {
+              if (buf.getInitialValue() && tile != srcCoord) {
+                output << "// skip initialization of " << buf.name()
+                       << " which is initialized "
+                          "in the neighboring tile\n";
+                output << "\n";
+                continue;
+              } else if (buf.getInitialValue() && tile == srcCoord) {
                 output << "_overlay " << bufName << " "
                        << utohexstr(offset + bufferBaseAddr) << " // "
                        << numBytes << " bytes\n";

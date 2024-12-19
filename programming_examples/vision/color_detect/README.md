@@ -26,13 +26,21 @@ Starting from tile (0, 2) data is processed by each compute tile and the result 
 
 Finally, the output is sent from tile (0, 5) to the Mem tile and then back to the output through the Shim tile.
 
-To compile design in Windows:
-```
+The alternative design, found in (`color_detect_alt.py`)[./color_detect_alt.py] uses the placement described above. The primary design found in (`color_detect.py`)(./color_detect.py), which uses a higher-level form of IRON, does not explicitly set the placement values but otherwise describes an idential design.
+
+To compile the design:
+```shell
 make
-make colorDetect.exe
+make color_detect.exe
+```
+
+To compile the alternative design:
+```shell
+env use_alt=1 make
+make color_detect.exe
 ```
 
 To run the design:
-```
+```shell
 make run
 ```
