@@ -32,7 +32,9 @@ def vector_softmax(trace_size):
     C_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
 
     # AIE Core Function declarations
-    softmax_bf16_vector = Kernel("softmax_bf16", "kernels.a", [tile_ty, tile_ty, np.int32])
+    softmax_bf16_vector = Kernel(
+        "softmax_bf16", "kernels.a", [tile_ty, tile_ty, np.int32]
+    )
 
     # AIE-array data movement with object fifos
     # Input A and Output C
