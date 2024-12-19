@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 AMD Inc.
+# (c) Copyright 2024 AMD Inc.
 import argparse
 from ml_dtypes import bfloat16
 import numpy as np
@@ -215,6 +215,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
             def core_body():
                 for _ in range_(0xFFFFFFFF):
                     for _ in range_(tiles) if tiles > 1 else range(1):  # issue #1547
+
                         elem_out = memC.acquire(ObjectFifoPort.Produce, 1)
                         zero(elem_out)
 
@@ -240,7 +241,35 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
 
                 if enable_tracing:
                     trace_utils.configure_packet_tracing_aie2(
-                        tiles_to_trace, shim_tile, trace_size, C_sz_in_bytes
+                        tiles_to_trace,
+                        shim_tile,
+                        trace_size,
+                        C_sz_in_bytes,
+                        events=[
+                            # captures input A (PORT_RUNNING_0, at port number 1, master for inputs)
+                            trace_utils.PortEvent(
+                                trace_utils.CoreEvent.PORT_RUNNING_0,
+                                port_number=1,
+                                master=True,
+                            ),
+                            # captures input B (PORT_RUNNING_1, at port number 2, master for inputs)
+                            trace_utils.PortEvent(
+                                trace_utils.CoreEvent.PORT_RUNNING_1,
+                                port_number=2,
+                                master=True,
+                            ),
+                            # captures output C (PORT_RUNNING_2, at port number 1, slave for outputs)
+                            trace_utils.PortEvent(
+                                trace_utils.CoreEvent.PORT_RUNNING_2,
+                                port_number=1,
+                                master=False,
+                            ),
+                            trace_utils.CoreEvent.INSTR_EVENT_0,
+                            trace_utils.CoreEvent.INSTR_EVENT_1,
+                            trace_utils.CoreEvent.MEMORY_STALL,
+                            trace_utils.CoreEvent.LOCK_STALL,
+                            trace_utils.CoreEvent.INSTR_VECTOR,
+                        ],
                     )
 
                 # only do 4 tile rows at a time before synchronizing, so we can reuse BDs

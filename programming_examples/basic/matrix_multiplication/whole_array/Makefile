@@ -11,13 +11,17 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=whole_array
 targetname=whole_array
 
-M?=640
-K?=896
-N?=768
-m?=16
-k?=32
-n?=48
-n_aie_cols?=2
+# M, K, N: final GEMM dimensions
+M?=512
+K?=512
+N?=512
+
+# m, k, n: single AIE core GEMM dimensions
+m?=64
+k?=64
+n?=64
+
+n_aie_cols?=4
 b_col_maj?=0
 
 kernels=mm_${m}x${k}x${n}
@@ -26,6 +30,16 @@ runargs+=--b_col_maj ${b_col_maj}
 target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
 use_alt?=0
 use_iron?=0
+
+# set this flag to 1 for linear buffer allocation
+# else, 0 for bank-aware
+use_linear_buf_alloc?=1
+
+ifeq (${use_linear_buf_alloc}, 1)
+buffer_aloc_flag=basic-sequential
+else
+buffer_aloc_flag=bank-aware
+endif
 
 ifeq (${use_alt}, 1)
 aie_py_src=${targetname}_alt.py
