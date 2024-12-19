@@ -29,9 +29,11 @@ void zero_vectorized(T *__restrict c) {
   static_assert((M * N) % r == 0);
   const aie::vector<T, r> zeros = aie::zeros<T, r>();
   const T *__restrict c_end = c + M * N;
+  event0();
   for (; c < c_end; c += r) {
     aie::store_v(c, zeros);
   }
+  event1();
 }
 
 #endif
