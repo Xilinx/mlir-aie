@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // REQUIRES: ryzen_ai, chess
-// XFAIL: *
 //
 // RUN: make -f %S/Makefile clean
 // RUN: make -f %S/Makefile 
