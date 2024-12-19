@@ -56,7 +56,7 @@ int verify(int size, int tile_size, std::vector<T> A, std::vector<T> B,
 
   for (uint32_t i = 0; i < size; i++) {
 
-    if (!test_utils::nearly_equal(RefVec[i], B[i], 0.0625)) {
+    if (!test_utils::nearly_equal(RefVec[i], B[i], 0.04)) {
       std::cout << "Error in output " << B[i] << " != " << RefVec[i]
                 << std::endl;
       errors++;
