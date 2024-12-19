@@ -25,6 +25,7 @@ dev = AIEDevice.npu1_3col
 col = 2
 line_size = 1024
 
+
 def my_passthrough():
     with mlir_mod_ctx() as ctx:
 
