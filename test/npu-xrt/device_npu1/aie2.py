@@ -23,7 +23,7 @@ from aie.helpers.dialects.ext.scf import _for as range_
 
 N = 4096
 dev = AIEDevice.npu1
-col = 1
+col = 2
 line_size = 1024
 
 if len(sys.argv) > 1:
