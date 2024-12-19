@@ -1,4 +1,4 @@
-# passthrough_dmas/aie2.py -*- Python -*-
+# column_specific/aie2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -19,28 +19,11 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.helpers.dialects.ext.scf import _for as range_
 
 N = 4096
 dev = AIEDevice.npu1_3col
 col = 2
 line_size = 1024
-
-if len(sys.argv) > 1:
-    N = int(sys.argv[1])
-    assert N % line_size == 0
-
-if len(sys.argv) > 2:
-    if sys.argv[2] == "npu":
-        dev = AIEDevice.npu1_3col
-    elif sys.argv[2] == "xcvc1902":
-        dev = AIEDevice.xcvc1902
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
-
-if len(sys.argv) > 3:
-    col = int(sys.argv[3])
-
 
 def my_passthrough():
     with mlir_mod_ctx() as ctx:
@@ -54,20 +37,10 @@ def my_passthrough():
             ShimTile = tile(col, 0)
             ComputeTile2 = tile(col, 2)
 
-            ComputeTile_debug = tile(0, 2)  # debug tile to showcase workaround
-
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile, ComputeTile2, 2, line_ty)
             of_out = object_fifo("out", ComputeTile2, ShimTile, 2, line_ty)
             object_fifo_link(of_in, of_out)
-
-            # Set up compute tiles
-
-            # Compute tile 2
-            @core(ComputeTile2)
-            def core_body():
-                for _ in range_(sys.maxsize):
-                    pass
 
             # To/from AIE-array data movement
             @runtime_sequence(vector_ty, vector_ty, vector_ty)
