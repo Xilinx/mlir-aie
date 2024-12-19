@@ -12,7 +12,7 @@ include ${srcdir}/../../makefile-common
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
-device = npu
+device ?= npu
 EDGEDETECT_WIDTH = 1920
 EDGEDETECT_HEIGHT = 1080
 
