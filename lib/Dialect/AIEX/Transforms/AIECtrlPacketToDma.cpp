@@ -125,7 +125,7 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
 
               StringRef metadata = builder.getStringAttr(shimDmaAllocName);
               builder.create<NpuDmaMemcpyNdOp>(
-                  builder.getUnknownLoc(), newBlockArg, SmallVector<Value>{},
+                  builder.getUnknownLoc(), newBlockArg,
                   SmallVector<Value>{}, SmallVector<Value>{},
                   SmallVector<Value>{}, ArrayRef(staticOffsets),
                   ArrayRef(staticSizes), ArrayRef(staticStrides),
