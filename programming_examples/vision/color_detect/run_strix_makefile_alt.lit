@@ -7,6 +7,4 @@
 // RUN: cd test_stx_alt
 // RUN: make -f %S/Makefile clean
 // RUN: env use_alt=1 device=npu2 make -f %S/Makefile
-// RUN: %run_on_2npu make -f %S/Makefile run
-
-// XFAIL: *
+// %run_on_2npu make -f %S/Makefile run
