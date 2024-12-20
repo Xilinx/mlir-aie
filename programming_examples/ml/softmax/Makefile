@@ -12,6 +12,8 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
+VPATH := ${srcdir}/../../../aie_kernels/aie2
+
 targetname = softmax
 trace_size = 8192
 
@@ -35,11 +37,11 @@ build/lut_based_ops.o: ../../../aie_runtime_lib/AIE2/lut_based_ops.cpp
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -c $(<:%=../%) -o ${@F}
 
-build/softmax.o: ${srcdir}/softmax.cc
+build/softmax.o: bf16_softmax.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -I../../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
 
-build/kernels.a: build/softmax.o build/lut_based_ops.o build/dut.o
+build/kernels.a: build/softmax.o 
 	ar rvs $@ $+
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
