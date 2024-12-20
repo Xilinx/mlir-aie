@@ -1,0 +1,43 @@
+FROM ubuntu:24.04
+
+USER root
+ENV DEBIAN_FRONTEND=noninteractive
+
+WORKDIR /workspace
+
+RUN apt-get update && \
+    apt upgrade --assume-yes && \
+    apt install software-properties-common --assume-yes && \
+    add-apt-repository ppa:ubuntu-toolchain-r/test && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt install --assume-yes \
+        python3.10 python3.10-venv python3.10-dev python3-pip python-is-python3 \
+        python3.12 python3.12-venv python3.12-dev \
+        zip ocl-icd-libopencl1 ocl-icd-opencl-dev uuid-dev dkms udev \
+        libboost-filesystem-dev libboost-program-options-dev \
+        gcc-11 g++-11 gcc-13 g++-13 lld make cmake git ninja-build \
+        ccache libssl-dev locales clang ccrypt libprotobuf32t64 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+RUN locale-gen en_US.UTF-8
+
+# install all xrt deb files found in the build directory
+COPY linux_6.11_py10/xrt*.deb /workspace
+RUN dpkg -i /workspace/*.deb && rm /workspace/*.deb
+
+# add a 'github' user with the same UID and GID used by github actions
+RUN groupadd -r github -g 127 && \
+   useradd -r -g github -u 1001 -m -d /home/github -s /sbin/nologin github
+
+# github mounts /home/runner/work as /__w, map it back to /home/runner/work
+# in the container so that ${{ github.workspace }} is correct.
+RUN mkdir -p /__w && mkdir -p /home/runner && ln -sf /__w /home/runner/work
+
+COPY Xilinx.lic /opt/xilinx
+
+# copy vitis aie essentials into the container
+# COPY ryzen_ai-1.3.0ea1.tgz /workspace
+
+# copy vitis aie essentials into the container
+COPY vaie.tgz /workspace
