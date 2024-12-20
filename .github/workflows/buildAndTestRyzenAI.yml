@@ -102,9 +102,9 @@ jobs:
           pushd build
 
           # -j here to reduce the number of parallel chess jobs.
-          # -j6 for 32GB RAM, -j12 for 64GB RAM
+          # -j4 for 32GB RAM, -j12 for 64GB RAM
           if [ x"${{ matrix.runner_type }}" == x"amdhx370" ]; then
-            LIT_OPTS="-j6 $LIT_OPTS"
+            LIT_OPTS="-j4 $LIT_OPTS"
           else
             LIT_OPTS="-j12 $LIT_OPTS"
           fi
@@ -166,9 +166,9 @@ jobs:
           pushd build
 
           # -j here to reduce the number of parallel chess jobs.
-          # -j6 for 32GB RAM, -j12 for 64GB RAM
+          # -j4 for 32GB RAM, -j12 for 64GB RAM
           if [ x"${{ matrix.runner_type }}" == x"amdhx370" ]; then
-            LIT_OPTS="-j6 $LIT_OPTS"
+            LIT_OPTS="-j4 $LIT_OPTS"
           else
             LIT_OPTS="-j12 $LIT_OPTS"
           fi
