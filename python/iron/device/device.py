@@ -65,7 +65,7 @@ class Device(Resolvable):
         self._tiles: list[list[Device.__DeviceTile]] = []
 
         # Create all "physical" tiles belonging to the device at initialization to
-        # ensure only one "physical" tile object is every created corresponding to the same
+        # ensure only one "physical" tile object is ever created corresponding to the same
         # coordinates.
         tm = get_target_model(device)
         for c in range(tm.columns()):
@@ -130,7 +130,7 @@ class NPUBase(Device):
     """
 
     def __init__(self, device: AIEDevice) -> None:
-        """Initialize a device based on numbers of rows and columns.
+        """Initialize a device based on the AIEDevice.
 
         Args:
             device (AIEDevice): aie device
