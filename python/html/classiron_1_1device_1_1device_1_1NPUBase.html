@@ -78,15 +78,10 @@ Inheritance diagram for iron.device.device.NPUBase:</div>
 <div class="dyncontent">
 <div class="center"><img src="classiron_1_1device_1_1device_1_1NPUBase__inherit__graph.png" border="0" usemap="#airon_8device_8device_8NPUBase_inherit__map" alt="Inheritance graph"/></div>
 <map name="airon_8device_8device_8NPUBase_inherit__map" id="airon_8device_8device_8NPUBase_inherit__map">
-<area shape="rect" title=" " alt="" coords="584,107,789,133"/>
-<area shape="rect" href="classiron_1_1device_1_1device_1_1NPU1Col1.html" title=" " alt="" coords="837,5,1048,32"/>
-<area shape="rect" href="classiron_1_1device_1_1device_1_1NPU1Col2.html" title=" " alt="" coords="837,56,1048,83"/>
-<area shape="rect" href="classiron_1_1device_1_1device_1_1NPU1Col3.html" title=" " alt="" coords="837,107,1048,133"/>
-<area shape="rect" href="classiron_1_1device_1_1device_1_1NPU1Col4.html" title=" " alt="" coords="837,157,1048,184"/>
-<area shape="rect" href="classiron_1_1device_1_1device_1_1NPU2.html" title=" " alt="" coords="852,208,1033,235"/>
-<area shape="rect" href="classiron_1_1device_1_1device_1_1Device.html" title=" " alt="" coords="345,107,536,133"/>
-<area shape="rect" href="classiron_1_1resolvable_1_1Resolvable.html" title=" " alt="" coords="103,107,297,133"/>
-<area shape="rect" title=" " alt="" coords="5,107,55,133"/>
+<area shape="rect" title=" " alt="" coords="5,229,211,256"/>
+<area shape="rect" href="classiron_1_1device_1_1device_1_1Device.html" title=" " alt="" coords="13,155,203,181"/>
+<area shape="rect" href="classiron_1_1resolvable_1_1Resolvable.html" title=" " alt="" coords="11,80,205,107"/>
+<area shape="rect" title=" " alt="" coords="83,5,133,32"/>
 </map>
 <center><span class="legend">[<a href="graph_legend.html">legend</a>]</span></center></div>
 <div class="dynheader">
@@ -103,8 +98,8 @@ Collaboration diagram for iron.device.device.NPUBase:</div>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:af18e5b8fb6e22e127dda431f43c66c39"><td class="memItemLeft" align="right" valign="top">None&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1device_1_1device_1_1NPUBase.html#af18e5b8fb6e22e127dda431f43c66c39">__init__</a> (self, int <a class="el" href="classiron_1_1device_1_1device_1_1Device.html#a901d88d67355cd2e6dcf452da3a1e538">cols</a>, int <a class="el" href="classiron_1_1device_1_1device_1_1Device.html#a6ece8ff799a7aee85a14e26ec7cba975">rows</a>)</td></tr>
-<tr class="separator:af18e5b8fb6e22e127dda431f43c66c39"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a70c605672abf18b48bc6d902b15a3449"><td class="memItemLeft" align="right" valign="top">None&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1device_1_1device_1_1NPUBase.html#a70c605672abf18b48bc6d902b15a3449">__init__</a> (self, AIEDevice device)</td></tr>
+<tr class="separator:a70c605672abf18b48bc6d902b15a3449"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5081c02d454036edcf47f895da3a3ea1"><td class="memItemLeft" align="right" valign="top">list[<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1device_1_1device_1_1NPUBase.html#a5081c02d454036edcf47f895da3a3ea1">get_shim_tiles</a> (self)</td></tr>
 <tr class="separator:a5081c02d454036edcf47f895da3a3ea1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1609ae1db71624ec27284cf6fe6b9514"><td class="memItemLeft" align="right" valign="top">list[<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1device_1_1device_1_1NPUBase.html#a1609ae1db71624ec27284cf6fe6b9514">get_mem_tiles</a> (self)</td></tr>
@@ -131,8 +126,8 @@ This class makes some assumptions:
 * The 1st tile in each column is a mem tile
 * The 2nd+ tiles in each column are compute tiles
 </pre> </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
-<a id="af18e5b8fb6e22e127dda431f43c66c39"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#af18e5b8fb6e22e127dda431f43c66c39">&#9670;&nbsp;</a></span>__init__()</h2>
+<a id="a70c605672abf18b48bc6d902b15a3449"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a70c605672abf18b48bc6d902b15a3449">&#9670;&nbsp;</a></span>__init__()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -146,14 +141,8 @@ This class makes some assumptions:
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">int&#160;</td>
-          <td class="paramname"><em>cols</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int&#160;</td>
-          <td class="paramname"><em>rows</em>&#160;</td>
+          <td class="paramtype">AIEDevice&#160;</td>
+          <td class="paramname"><em>device</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -162,13 +151,12 @@ This class makes some assumptions:
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">Initialize a device based on numbers of rows and columns.
+<pre class="fragment">Initialize a device based on the AIEDevice.
 
 Args:
-    cols (int): Number of columns
-    rows (int): Number of rows
+    device (AIEDevice): aie device
 </pre> 
-<p>Reimplemented from <a class="el" href="classiron_1_1device_1_1device_1_1Device.html#aa02213d318aead13647ef6a9c9d7726b">iron.device.device.Device</a>.</p>
+<p>Reimplemented from <a class="el" href="classiron_1_1device_1_1device_1_1Device.html#a66bde88e51070d16745c3c238be062d1">iron.device.device.Device</a>.</p>
 
 </div>
 </div>
