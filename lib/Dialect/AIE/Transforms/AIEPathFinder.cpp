@@ -195,9 +195,9 @@ void Pathfinder::initialize(int maxCol, int maxRow,
     SwitchboxConnect sb = {coords};
 
     const std::vector<WireBundle> bundles = {
-        WireBundle::Core,  WireBundle::DMA,  WireBundle::FIFO,
-        WireBundle::South, WireBundle::West, WireBundle::North,
-        WireBundle::East,  WireBundle::PLIO, WireBundle::NOC,
+        WireBundle::Core,  WireBundle::DMA,    WireBundle::FIFO,
+        WireBundle::South, WireBundle::West,   WireBundle::North,
+        WireBundle::East,  WireBundle::PLIO,   WireBundle::NOC,
         WireBundle::Trace, WireBundle::Control};
     for (WireBundle bundle : bundles) {
       // get all ports into current switchbox

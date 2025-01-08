@@ -628,10 +628,10 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
     if (isBundleInList(srcBundle,
                        {WireBundle::DMA, WireBundle::FIFO, WireBundle::South,
                         WireBundle::West, WireBundle::North, WireBundle::East}))
-      if (isBundleInList(dstBundle,
-                         {WireBundle::Core, WireBundle::DMA, WireBundle::Control,
-                          WireBundle::FIFO, WireBundle::South, WireBundle::West,
-                          WireBundle::North, WireBundle::East}))
+      if (isBundleInList(dstBundle, {WireBundle::Core, WireBundle::DMA,
+                                     WireBundle::Control, WireBundle::FIFO,
+                                     WireBundle::South, WireBundle::West,
+                                     WireBundle::North, WireBundle::East}))
         return (srcBundle == dstBundle) ? (srcChan == dstChan) : true;
     if (srcBundle == WireBundle::Core)
       return dstBundle != WireBundle::Core;

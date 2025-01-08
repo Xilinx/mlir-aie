@@ -84,8 +84,8 @@ static std::string wireBundleToPortType(WireBundle bundle) {
 // blockMap: A map that gives a unique bd ID assignment for every block.
 template <typename OpType>
 static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
-                                      const AIETargetModel &targetModel,
-                                      DenseMap<Block *, int> blockMap) {
+                                             const AIETargetModel &targetModel,
+                                             DenseMap<Block *, int> blockMap) {
   StringRef enable = "XAIE_ENABLE";
   StringRef disable = "XAIE_DISABLE";
   StringRef deviceInstRef = "&(ctx->DevInst)"; // TODO
@@ -304,7 +304,8 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
   return success();
 }
 
-mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
+mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
+                                                      raw_ostream &output) {
   //  StringRef ctx   = "ctx";                     // TODO
   StringRef ctx_p = "aie_libxaie_ctx_t* ctx"; // TODO
   //  StringRef deviceInst = "ctx->DevInst";       // TODO
@@ -653,13 +654,10 @@ mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostre
       output << "__mlir_aie_try(XAie_StrmPktSwMstrPortEnable(" << deviceInstRef
              << ", " << tileLocStr("x", "y") << ", "
              << wireBundleToPortType(connectOp.getDestBundle()) << ", "
-             << connectOp.destIndex() << ", "
-             << "/* drop_header */ "
+             << connectOp.destIndex() << ", " << "/* drop_header */ "
              << (isdma ? "XAIE_SS_PKT_DROP_HEADER"
                        : "XAIE_SS_PKT_DONOT_DROP_HEADER")
-             << ", "
-             << "/* arbiter */ " << arbiter << ", "
-             << "/* MSelEn */ "
+             << ", " << "/* arbiter */ " << arbiter << ", " << "/* MSelEn */ "
              << "0x" << llvm::utohexstr(mask) << "));\n";
     }
 
@@ -672,21 +670,19 @@ mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostre
         int msel = amselOp.getMselValue();
         output << "__mlir_aie_try(XAie_StrmPktSwSlavePortEnable("
                << deviceInstRef << ", " << tileLocStr("x", "y") << ", "
-               << wireBundleToPortType(connectOp.getSourceBundle())
-               << ", " << connectOp.sourceIndex() << "));\n";
+               << wireBundleToPortType(connectOp.getSourceBundle()) << ", "
+               << connectOp.sourceIndex() << "));\n";
 
         // TODO Need to better define packet id,type used here
         output << "__mlir_aie_try(XAie_StrmPktSwSlaveSlotEnable("
                << deviceInstRef << ", " << tileLocStr("x", "y") << ", "
-               << wireBundleToPortType(connectOp.getSourceBundle())
-               << ", " << connectOp.sourceIndex() << ", "
-               << "/* slot */ " << slot << ", "
-               << "/* packet */ " << packetStr(slotOp.valueInt(), /*type*/ 0)
-               << ", "
-               << "/* mask */ "
-               << "0x" << llvm::utohexstr(slotOp.maskInt()) << ", "
-               << "/* msel */ " << msel << ", "
-               << "/* arbiter */ " << arbiter << "));\n";
+               << wireBundleToPortType(connectOp.getSourceBundle()) << ", "
+               << connectOp.sourceIndex() << ", " << "/* slot */ " << slot
+               << ", " << "/* packet */ "
+               << packetStr(slotOp.valueInt(), /*type*/ 0) << ", "
+               << "/* mask */ " << "0x" << llvm::utohexstr(slotOp.maskInt())
+               << ", " << "/* msel */ " << msel << ", " << "/* arbiter */ "
+               << arbiter << "));\n";
         slot++;
       }
     }
@@ -720,18 +716,14 @@ mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostre
           connectOp.getDestBundle() == WireBundle::DMA) {
         if (connectOp.getSourceBundle() == WireBundle::North)
           // demux!
-          output
-              << "__mlir_aie_try(XAie_EnableAieToShimDmaStrmPort("
-              << deviceInstRef << ", " << tileLocStr("x", "y")
-              << ", "
-              << connectOp.sourceIndex() << "));\n";
+          output << "__mlir_aie_try(XAie_EnableAieToShimDmaStrmPort("
+                 << deviceInstRef << ", " << tileLocStr("x", "y") << ", "
+                 << connectOp.sourceIndex() << "));\n";
         else if (connectOp.getDestBundle() == WireBundle::North)
           // mux
-          output
-              << "__mlir_aie_try(XAie_EnableShimDmaToAieStrmPort("
-              << deviceInstRef << ", " << tileLocStr("x", "y")
-              << ", "
-              << connectOp.destIndex() << "));\n";
+          output << "__mlir_aie_try(XAie_EnableShimDmaToAieStrmPort("
+                 << deviceInstRef << ", " << tileLocStr("x", "y") << ", "
+                 << connectOp.destIndex() << "));\n";
       }
 
       else if (connectOp.getSourceBundle() == WireBundle::PLIO ||
