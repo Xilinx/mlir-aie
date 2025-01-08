@@ -605,9 +605,10 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
     if (srcBundle == WireBundle::TileControl)
       return dstBundle != WireBundle::TileControl;
     if (isBundleInList(srcBundle, {WireBundle::FIFO, WireBundle::South}))
-      return isBundleInList(dstBundle, {WireBundle::TileControl, WireBundle::FIFO,
-                                        WireBundle::South, WireBundle::West,
-                                        WireBundle::North, WireBundle::East});
+      return isBundleInList(dstBundle,
+                            {WireBundle::TileControl, WireBundle::FIFO,
+                             WireBundle::South, WireBundle::West,
+                             WireBundle::North, WireBundle::East});
     if (isBundleInList(srcBundle,
                        {WireBundle::West, WireBundle::North, WireBundle::East}))
       return (srcBundle == dstBundle)
@@ -636,7 +637,8 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
     if (srcBundle == WireBundle::Core)
       return dstBundle != WireBundle::Core;
     if (srcBundle == WireBundle::TileControl)
-      return dstBundle != WireBundle::TileControl && dstBundle != WireBundle::DMA;
+      return dstBundle != WireBundle::TileControl &&
+             dstBundle != WireBundle::DMA;
     if (srcBundle == WireBundle::Trace) {
       if (dstBundle == WireBundle::DMA)
         return dstChan == 0;
