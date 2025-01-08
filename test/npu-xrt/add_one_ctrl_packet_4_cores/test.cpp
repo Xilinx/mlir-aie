@@ -144,22 +144,22 @@ int main(int argc, const char *argv[]) {
   // set lock values to 2
   uint32_t data = 2;
   std::vector<uint32_t> ctrlPackets = {
-      // Ctrl pkt for tile (0, 2)
+      // Control pkt for tile (0, 2)
       header0,
       data,
       header1,
       data,
-      // Ctrl pkt for tile (0, 3)
+      // Control pkt for tile (0, 3)
       header0,
       data,
       header1,
       data,
-      // Ctrl pkt for tile (0, 4)
+      // Control pkt for tile (0, 4)
       header0,
       data,
       header1,
       data,
-      // Ctrl pkt for tile (0, 5)
+      // Control pkt for tile (0, 5)
       header0,
       data,
       header1,

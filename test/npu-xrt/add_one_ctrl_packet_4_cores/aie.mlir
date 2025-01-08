@@ -60,19 +60,19 @@ module {
 
     aie.packet_flow(0x5) {
       aie.packet_source<%tile_0_0, DMA : 0>
-      aie.packet_dest<%tile_0_2, Ctrl : 0>
+      aie.packet_dest<%tile_0_2, Control : 0>
     }
     aie.packet_flow(0x6) {
       aie.packet_source<%tile_0_0, DMA : 0>
-      aie.packet_dest<%tile_0_3, Ctrl : 0>
+      aie.packet_dest<%tile_0_3, Control : 0>
     }
     aie.packet_flow(0x7) {
       aie.packet_source<%tile_0_0, DMA : 0>
-      aie.packet_dest<%tile_0_4, Ctrl : 0>
+      aie.packet_dest<%tile_0_4, Control : 0>
     }
     aie.packet_flow(0x8) {
       aie.packet_source<%tile_0_0, DMA : 1>
-      aie.packet_dest<%tile_0_5, Ctrl : 0>
+      aie.packet_dest<%tile_0_5, Control : 0>
     }
 
     aie.flow(%tile_0_2, DMA : 0, %tile_0_0, DMA : 1)
