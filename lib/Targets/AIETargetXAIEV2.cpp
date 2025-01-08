@@ -72,7 +72,7 @@ static std::string wireBundleToPortType(WireBundle bundle) {
   switch (bundle) {
   case WireBundle::PLIO:
     return "PL";
-  case WireBundle::Control:
+  case WireBundle::TileControl:
     return "CTRL";
   default:
     return stringifyWireBundle(bundle).upper();

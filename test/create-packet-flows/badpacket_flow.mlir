@@ -18,11 +18,11 @@ aie.device(npu1_1col) {
   %00 = aie.tile(0, 0)
   aie.packet_flow(28) {
     aie.packet_source<%00, DMA : 0>
-    aie.packet_dest<%02, Control : 0>
+    aie.packet_dest<%02, TileControl : 0>
   }
   aie.packet_flow(29) {
     aie.packet_source<%00, DMA : 0>
-    aie.packet_dest<%03, Control : 0>
+    aie.packet_dest<%03, TileControl : 0>
   }
   aie.packet_flow(26) {
     aie.packet_source<%00, DMA : 0>

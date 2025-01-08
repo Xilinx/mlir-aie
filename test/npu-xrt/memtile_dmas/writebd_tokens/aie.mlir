@@ -15,11 +15,11 @@ module {
     aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
     
     aie.packet_flow(0x1) {
-      aie.packet_source<%tile_0_1, "Control" : 0>
+      aie.packet_source<%tile_0_1, "TileControl" : 0>
       aie.packet_dest<%tile_0_0, "South" : 0>
     }
     aie.packet_flow(0x2) {
-      aie.packet_source<%tile_0_0, "Control" : 0>
+      aie.packet_source<%tile_0_0, "TileControl" : 0>
       aie.packet_dest<%tile_0_0, "South" : 0>
     }
 

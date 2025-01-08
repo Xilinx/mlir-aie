@@ -198,7 +198,7 @@ void Pathfinder::initialize(int maxCol, int maxRow,
         WireBundle::Core,  WireBundle::DMA,    WireBundle::FIFO,
         WireBundle::South, WireBundle::West,   WireBundle::North,
         WireBundle::East,  WireBundle::PLIO,   WireBundle::NOC,
-        WireBundle::Trace, WireBundle::Control};
+        WireBundle::Trace, WireBundle::TileControl};
     for (WireBundle bundle : bundles) {
       // get all ports into current switchbox
       int channels =

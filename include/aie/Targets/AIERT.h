@@ -77,7 +77,7 @@ static const std::map<xilinx::AIE::WireBundle, StrmSwPortType>
     WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE = {
         {xilinx::AIE::WireBundle::Core, StrmSwPortType::CORE},
         {xilinx::AIE::WireBundle::DMA, StrmSwPortType::DMA},
-        {xilinx::AIE::WireBundle::Control, StrmSwPortType::CTRL},
+        {xilinx::AIE::WireBundle::TileControl, StrmSwPortType::CTRL},
         {xilinx::AIE::WireBundle::FIFO, StrmSwPortType::FIFO},
         {xilinx::AIE::WireBundle::South, StrmSwPortType::SOUTH},
         {xilinx::AIE::WireBundle::West, StrmSwPortType::WEST},

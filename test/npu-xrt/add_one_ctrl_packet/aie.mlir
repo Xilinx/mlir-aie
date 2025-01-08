@@ -27,10 +27,10 @@ module {
 
     aie.packet_flow(0x1) {
       aie.packet_source<%tile_0_0, DMA : 0>
-      aie.packet_dest<%tile_0_2, Control : 0>
+      aie.packet_dest<%tile_0_2, TileControl : 0>
     }
     aie.packet_flow(0x2) {
-      aie.packet_source<%tile_0_2, Control : 0>
+      aie.packet_source<%tile_0_2, TileControl : 0>
       aie.packet_dest<%tile_0_0, DMA : 0>
     }
     aie.packet_flow(0x3) {
@@ -117,7 +117,7 @@ module {
       %c2_i64 = arith.constant 2 : i64
       %c8_i64 = arith.constant 8 : i64
 
-      // set Control_Pkt_Tlast_Error_Enable=0 in Module_Clock_Control register
+      // set TileControl_Pkt_Tlast_Error_Enable=0 in Module_Clock_TileControl register
       // aiex.npu.maskwrite32 {address = 0x00060000 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32, mask = 0x8 : ui32}
 
       // start reading output

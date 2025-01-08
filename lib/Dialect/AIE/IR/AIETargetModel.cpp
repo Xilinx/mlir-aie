@@ -127,7 +127,7 @@ AIE1TargetModel::getNumDestSwitchboxConnections(int col, int row,
         return 0;
       return 4;
     }
-    case WireBundle::Control:
+    case WireBundle::TileControl:
       return isShimNOCTile(col, row) ? 1 : 0;
     default:
       return 0;
@@ -155,7 +155,7 @@ AIE1TargetModel::getNumDestSwitchboxConnections(int col, int row,
       return 0;
     return 4;
   }
-  case WireBundle::Control:
+  case WireBundle::TileControl:
     return 1;
   default:
     return 0;
@@ -185,7 +185,7 @@ AIE1TargetModel::getNumSourceSwitchboxConnections(int col, int row,
     }
     case WireBundle::Trace:
       return 1;
-    case WireBundle::Control:
+    case WireBundle::TileControl:
       return isShimNOCTile(col, row) ? 1 : 0;
     default:
       return 0;
@@ -215,7 +215,7 @@ AIE1TargetModel::getNumSourceSwitchboxConnections(int col, int row,
   }
   case WireBundle::Trace:
     return 2;
-  case WireBundle::Control:
+  case WireBundle::TileControl:
     return 1;
   default:
     return 0;
@@ -376,7 +376,7 @@ AIE2TargetModel::getNumDestSwitchboxConnections(int col, int row,
       return 6;
     case WireBundle::South:
       return 4;
-    case WireBundle::Control:
+    case WireBundle::TileControl:
       return 1;
     default:
       return 0;
@@ -400,7 +400,7 @@ AIE2TargetModel::getNumDestSwitchboxConnections(int col, int row,
         return 0;
       return 4;
     }
-    case WireBundle::Control:
+    case WireBundle::TileControl:
       return isShimNOCTile(col, row) ? 1 : 0;
     default:
       return 0;
@@ -430,7 +430,7 @@ AIE2TargetModel::getNumDestSwitchboxConnections(int col, int row,
       return 0;
     return 4;
   }
-  case WireBundle::Control:
+  case WireBundle::TileControl:
     return 1;
   default:
     return 0;
@@ -449,7 +449,7 @@ AIE2TargetModel::getNumSourceSwitchboxConnections(int col, int row,
     case WireBundle::South:
       return 6;
     case WireBundle::Trace:
-    case WireBundle::Control:
+    case WireBundle::TileControl:
       return 1;
     default:
       return 0;
@@ -475,7 +475,7 @@ AIE2TargetModel::getNumSourceSwitchboxConnections(int col, int row,
     }
     case WireBundle::Trace:
       return 1;
-    case WireBundle::Control:
+    case WireBundle::TileControl:
       return isShimNOCTile(col, row) ? 1 : 0;
     default:
       return 0;
@@ -509,7 +509,7 @@ AIE2TargetModel::getNumSourceSwitchboxConnections(int col, int row,
   case WireBundle::Trace:
     // Port 0: core trace. Port 1: memory trace.
     return 2;
-  case WireBundle::Control:
+  case WireBundle::TileControl:
     return 1;
   default:
     return 0;
@@ -577,18 +577,18 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
     if (srcBundle == WireBundle::DMA) {
       if (dstBundle == WireBundle::DMA)
         return srcChan == dstChan;
-      if (isBundleInList(dstBundle, {WireBundle::Control, WireBundle::South,
+      if (isBundleInList(dstBundle, {WireBundle::TileControl, WireBundle::South,
                                      WireBundle::North}))
         return true;
     }
-    if (srcBundle == WireBundle::Control) {
+    if (srcBundle == WireBundle::TileControl) {
       if (dstBundle == WireBundle::DMA)
         return dstChan == 5;
       if (isBundleInList(dstBundle, {WireBundle::South, WireBundle::North}))
         return true;
     }
     if (isBundleInList(srcBundle, {WireBundle::South, WireBundle::North})) {
-      if (isBundleInList(dstBundle, {WireBundle::DMA, WireBundle::Control}))
+      if (isBundleInList(dstBundle, {WireBundle::DMA, WireBundle::TileControl}))
         return true;
       if (isBundleInList(dstBundle, {WireBundle::South, WireBundle::North}))
         return srcChan == dstChan;
@@ -602,10 +602,10 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
   }
   // Shimtile
   else if (isShimNOCorPLTile(col, row)) {
-    if (srcBundle == WireBundle::Control)
-      return dstBundle != WireBundle::Control;
+    if (srcBundle == WireBundle::TileControl)
+      return dstBundle != WireBundle::TileControl;
     if (isBundleInList(srcBundle, {WireBundle::FIFO, WireBundle::South}))
-      return isBundleInList(dstBundle, {WireBundle::Control, WireBundle::FIFO,
+      return isBundleInList(dstBundle, {WireBundle::TileControl, WireBundle::FIFO,
                                         WireBundle::South, WireBundle::West,
                                         WireBundle::North, WireBundle::East});
     if (isBundleInList(srcBundle,
@@ -613,7 +613,7 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
       return (srcBundle == dstBundle)
                  ? (srcChan == dstChan)
                  : isBundleInList(dstBundle,
-                                  {WireBundle::Control, WireBundle::FIFO,
+                                  {WireBundle::TileControl, WireBundle::FIFO,
                                    WireBundle::South, WireBundle::West,
                                    WireBundle::North, WireBundle::East});
     if (srcBundle == WireBundle::Trace) {
@@ -629,14 +629,14 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
                        {WireBundle::DMA, WireBundle::FIFO, WireBundle::South,
                         WireBundle::West, WireBundle::North, WireBundle::East}))
       if (isBundleInList(dstBundle, {WireBundle::Core, WireBundle::DMA,
-                                     WireBundle::Control, WireBundle::FIFO,
+                                     WireBundle::TileControl, WireBundle::FIFO,
                                      WireBundle::South, WireBundle::West,
                                      WireBundle::North, WireBundle::East}))
         return (srcBundle == dstBundle) ? (srcChan == dstChan) : true;
     if (srcBundle == WireBundle::Core)
       return dstBundle != WireBundle::Core;
-    if (srcBundle == WireBundle::Control)
-      return dstBundle != WireBundle::Control && dstBundle != WireBundle::DMA;
+    if (srcBundle == WireBundle::TileControl)
+      return dstBundle != WireBundle::TileControl && dstBundle != WireBundle::DMA;
     if (srcBundle == WireBundle::Trace) {
       if (dstBundle == WireBundle::DMA)
         return dstChan == 0;
