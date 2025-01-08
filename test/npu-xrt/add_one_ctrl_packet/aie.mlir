@@ -117,7 +117,7 @@ module {
       %c2_i64 = arith.constant 2 : i64
       %c8_i64 = arith.constant 8 : i64
 
-      // set Ctrl_Pkt_Tlast_Error_Enable=0 in Module_Clock_TileControl register
+      // set Ctrl_Pkt_Tlast_Error_Enable=0 in Module_Clock_Control register
       // aiex.npu.maskwrite32 {address = 0x00060000 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32, mask = 0x8 : ui32}
 
       // start reading output
