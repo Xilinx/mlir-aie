@@ -251,7 +251,7 @@ Traits: `HasParent<SwitchboxOp, ShimMuxOp>`
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`)
-* Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
+* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
 <tr><td><code>source_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>dest_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
 * Core (`Core`)
@@ -264,7 +264,7 @@ Traits: `HasParent<SwitchboxOp, ShimMuxOp>`
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`)
-* Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
+* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
 <tr><td><code>dest_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 </table>
 
@@ -797,7 +797,7 @@ Example:
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`)
-* Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
+* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
 <tr><td><code>source_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>dest_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
 * Core (`Core`)
@@ -810,7 +810,7 @@ Example:
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`)
-* Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
+* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
 <tr><td><code>dest_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 </table>
 
@@ -982,7 +982,7 @@ Interfaces: `InferTypeOpInterface`
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`)
-* Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
+* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
 <tr><td><code>dest_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>keep_pkt_header</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
@@ -1568,7 +1568,7 @@ Traits: `HasParent<PacketFlowOp>`
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`)
-* Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
+* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
 <tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 </table>
 
@@ -1657,7 +1657,7 @@ Traits: `SingleBlockImplicitTerminator<EndOp>`, `SingleBlock`
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`)
-* Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
+* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
 <tr><td><code>source_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 </table>
 
@@ -1695,7 +1695,7 @@ Traits: `HasParent<PacketFlowOp>`
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`)
-* Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
+* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
 <tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 </table>
 
@@ -2166,7 +2166,7 @@ represented by an [aie.tile](#aietile-aietileop) operation.
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`)
-* Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
+* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
 <tr><td><code>dest_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
 * Core (`Core`)
 * DMA (`DMA`)
@@ -2178,7 +2178,7 @@ represented by an [aie.tile](#aietile-aietileop) operation.
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`)
-* Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
+* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
 </table>
 
 #### Operands:
@@ -2445,5 +2445,5 @@ Bundle of wires
 | PLIO | `7` | PLIO |
 | NOC | `8` | NOC |
 | Trace | `9` | Trace |
-| Ctrl | `10` | Ctrl |
+| TileControl | `10` | TileControl |
 

@@ -380,5 +380,5 @@ Bundle of wires
 | PLIO | `7` | PLIO |
 | NOC | `8` | NOC |
 | Trace | `9` | Trace |
-| Ctrl | `10` | Ctrl |
+| TileControl | `10` | TileControl |
 

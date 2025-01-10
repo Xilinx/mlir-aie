@@ -182,7 +182,7 @@ $(function() {
 <div class="line"><a name="l00127"></a><span class="lineno">  127</span>&#160;        <span class="keywordflow">return</span> 0;</div>
 <div class="line"><a name="l00128"></a><span class="lineno">  128</span>&#160;      <span class="keywordflow">return</span> 4;</div>
 <div class="line"><a name="l00129"></a><span class="lineno">  129</span>&#160;    }</div>
-<div class="line"><a name="l00130"></a><span class="lineno">  130</span>&#160;    <span class="keywordflow">case</span> WireBundle::Ctrl:</div>
+<div class="line"><a name="l00130"></a><span class="lineno">  130</span>&#160;    <span class="keywordflow">case</span> WireBundle::TileControl:</div>
 <div class="line"><a name="l00131"></a><span class="lineno">  131</span>&#160;      <span class="keywordflow">return</span> isShimNOCTile(<a class="code" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) ? 1 : 0;</div>
 <div class="line"><a name="l00132"></a><span class="lineno">  132</span>&#160;    <span class="keywordflow">default</span>:</div>
 <div class="line"><a name="l00133"></a><span class="lineno">  133</span>&#160;      <span class="keywordflow">return</span> 0;</div>
@@ -210,7 +210,7 @@ $(function() {
 <div class="line"><a name="l00155"></a><span class="lineno">  155</span>&#160;      <span class="keywordflow">return</span> 0;</div>
 <div class="line"><a name="l00156"></a><span class="lineno">  156</span>&#160;    <span class="keywordflow">return</span> 4;</div>
 <div class="line"><a name="l00157"></a><span class="lineno">  157</span>&#160;  }</div>
-<div class="line"><a name="l00158"></a><span class="lineno">  158</span>&#160;  <span class="keywordflow">case</span> WireBundle::Ctrl:</div>
+<div class="line"><a name="l00158"></a><span class="lineno">  158</span>&#160;  <span class="keywordflow">case</span> WireBundle::TileControl:</div>
 <div class="line"><a name="l00159"></a><span class="lineno">  159</span>&#160;    <span class="keywordflow">return</span> 1;</div>
 <div class="line"><a name="l00160"></a><span class="lineno">  160</span>&#160;  <span class="keywordflow">default</span>:</div>
 <div class="line"><a name="l00161"></a><span class="lineno">  161</span>&#160;    <span class="keywordflow">return</span> 0;</div>
@@ -240,7 +240,7 @@ $(function() {
 <div class="line"><a name="l00185"></a><span class="lineno">  185</span>&#160;    }</div>
 <div class="line"><a name="l00186"></a><span class="lineno">  186</span>&#160;    <span class="keywordflow">case</span> WireBundle::Trace:</div>
 <div class="line"><a name="l00187"></a><span class="lineno">  187</span>&#160;      <span class="keywordflow">return</span> 1;</div>
-<div class="line"><a name="l00188"></a><span class="lineno">  188</span>&#160;    <span class="keywordflow">case</span> WireBundle::Ctrl:</div>
+<div class="line"><a name="l00188"></a><span class="lineno">  188</span>&#160;    <span class="keywordflow">case</span> WireBundle::TileControl:</div>
 <div class="line"><a name="l00189"></a><span class="lineno">  189</span>&#160;      <span class="keywordflow">return</span> isShimNOCTile(<a class="code" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) ? 1 : 0;</div>
 <div class="line"><a name="l00190"></a><span class="lineno">  190</span>&#160;    <span class="keywordflow">default</span>:</div>
 <div class="line"><a name="l00191"></a><span class="lineno">  191</span>&#160;      <span class="keywordflow">return</span> 0;</div>
@@ -270,7 +270,7 @@ $(function() {
 <div class="line"><a name="l00215"></a><span class="lineno">  215</span>&#160;  }</div>
 <div class="line"><a name="l00216"></a><span class="lineno">  216</span>&#160;  <span class="keywordflow">case</span> WireBundle::Trace:</div>
 <div class="line"><a name="l00217"></a><span class="lineno">  217</span>&#160;    <span class="keywordflow">return</span> 2;</div>
-<div class="line"><a name="l00218"></a><span class="lineno">  218</span>&#160;  <span class="keywordflow">case</span> WireBundle::Ctrl:</div>
+<div class="line"><a name="l00218"></a><span class="lineno">  218</span>&#160;  <span class="keywordflow">case</span> WireBundle::TileControl:</div>
 <div class="line"><a name="l00219"></a><span class="lineno">  219</span>&#160;    <span class="keywordflow">return</span> 1;</div>
 <div class="line"><a name="l00220"></a><span class="lineno">  220</span>&#160;  <span class="keywordflow">default</span>:</div>
 <div class="line"><a name="l00221"></a><span class="lineno">  221</span>&#160;    <span class="keywordflow">return</span> 0;</div>
@@ -431,7 +431,7 @@ $(function() {
 <div class="line"><a name="l00376"></a><span class="lineno">  376</span>&#160;      <span class="keywordflow">return</span> 6;</div>
 <div class="line"><a name="l00377"></a><span class="lineno">  377</span>&#160;    <span class="keywordflow">case</span> WireBundle::South:</div>
 <div class="line"><a name="l00378"></a><span class="lineno">  378</span>&#160;      <span class="keywordflow">return</span> 4;</div>
-<div class="line"><a name="l00379"></a><span class="lineno">  379</span>&#160;    <span class="keywordflow">case</span> WireBundle::Ctrl:</div>
+<div class="line"><a name="l00379"></a><span class="lineno">  379</span>&#160;    <span class="keywordflow">case</span> WireBundle::TileControl:</div>
 <div class="line"><a name="l00380"></a><span class="lineno">  380</span>&#160;      <span class="keywordflow">return</span> 1;</div>
 <div class="line"><a name="l00381"></a><span class="lineno">  381</span>&#160;    <span class="keywordflow">default</span>:</div>
 <div class="line"><a name="l00382"></a><span class="lineno">  382</span>&#160;      <span class="keywordflow">return</span> 0;</div>
@@ -455,7 +455,7 @@ $(function() {
 <div class="line"><a name="l00400"></a><span class="lineno">  400</span>&#160;        <span class="keywordflow">return</span> 0;</div>
 <div class="line"><a name="l00401"></a><span class="lineno">  401</span>&#160;      <span class="keywordflow">return</span> 4;</div>
 <div class="line"><a name="l00402"></a><span class="lineno">  402</span>&#160;    }</div>
-<div class="line"><a name="l00403"></a><span class="lineno">  403</span>&#160;    <span class="keywordflow">case</span> WireBundle::Ctrl:</div>
+<div class="line"><a name="l00403"></a><span class="lineno">  403</span>&#160;    <span class="keywordflow">case</span> WireBundle::TileControl:</div>
 <div class="line"><a name="l00404"></a><span class="lineno">  404</span>&#160;      <span class="keywordflow">return</span> isShimNOCTile(<a class="code" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) ? 1 : 0;</div>
 <div class="line"><a name="l00405"></a><span class="lineno">  405</span>&#160;    <span class="keywordflow">default</span>:</div>
 <div class="line"><a name="l00406"></a><span class="lineno">  406</span>&#160;      <span class="keywordflow">return</span> 0;</div>
@@ -485,7 +485,7 @@ $(function() {
 <div class="line"><a name="l00430"></a><span class="lineno">  430</span>&#160;      <span class="keywordflow">return</span> 0;</div>
 <div class="line"><a name="l00431"></a><span class="lineno">  431</span>&#160;    <span class="keywordflow">return</span> 4;</div>
 <div class="line"><a name="l00432"></a><span class="lineno">  432</span>&#160;  }</div>
-<div class="line"><a name="l00433"></a><span class="lineno">  433</span>&#160;  <span class="keywordflow">case</span> WireBundle::Ctrl:</div>
+<div class="line"><a name="l00433"></a><span class="lineno">  433</span>&#160;  <span class="keywordflow">case</span> WireBundle::TileControl:</div>
 <div class="line"><a name="l00434"></a><span class="lineno">  434</span>&#160;    <span class="keywordflow">return</span> 1;</div>
 <div class="line"><a name="l00435"></a><span class="lineno">  435</span>&#160;  <span class="keywordflow">default</span>:</div>
 <div class="line"><a name="l00436"></a><span class="lineno">  436</span>&#160;    <span class="keywordflow">return</span> 0;</div>
@@ -504,7 +504,7 @@ $(function() {
 <div class="line"><a name="l00449"></a><span class="lineno">  449</span>&#160;    <span class="keywordflow">case</span> WireBundle::South:</div>
 <div class="line"><a name="l00450"></a><span class="lineno">  450</span>&#160;      <span class="keywordflow">return</span> 6;</div>
 <div class="line"><a name="l00451"></a><span class="lineno">  451</span>&#160;    <span class="keywordflow">case</span> WireBundle::Trace:</div>
-<div class="line"><a name="l00452"></a><span class="lineno">  452</span>&#160;    <span class="keywordflow">case</span> WireBundle::Ctrl:</div>
+<div class="line"><a name="l00452"></a><span class="lineno">  452</span>&#160;    <span class="keywordflow">case</span> WireBundle::TileControl:</div>
 <div class="line"><a name="l00453"></a><span class="lineno">  453</span>&#160;      <span class="keywordflow">return</span> 1;</div>
 <div class="line"><a name="l00454"></a><span class="lineno">  454</span>&#160;    <span class="keywordflow">default</span>:</div>
 <div class="line"><a name="l00455"></a><span class="lineno">  455</span>&#160;      <span class="keywordflow">return</span> 0;</div>
@@ -530,7 +530,7 @@ $(function() {
 <div class="line"><a name="l00475"></a><span class="lineno">  475</span>&#160;    }</div>
 <div class="line"><a name="l00476"></a><span class="lineno">  476</span>&#160;    <span class="keywordflow">case</span> WireBundle::Trace:</div>
 <div class="line"><a name="l00477"></a><span class="lineno">  477</span>&#160;      <span class="keywordflow">return</span> 1;</div>
-<div class="line"><a name="l00478"></a><span class="lineno">  478</span>&#160;    <span class="keywordflow">case</span> WireBundle::Ctrl:</div>
+<div class="line"><a name="l00478"></a><span class="lineno">  478</span>&#160;    <span class="keywordflow">case</span> WireBundle::TileControl:</div>
 <div class="line"><a name="l00479"></a><span class="lineno">  479</span>&#160;      <span class="keywordflow">return</span> isShimNOCTile(<a class="code" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) ? 1 : 0;</div>
 <div class="line"><a name="l00480"></a><span class="lineno">  480</span>&#160;    <span class="keywordflow">default</span>:</div>
 <div class="line"><a name="l00481"></a><span class="lineno">  481</span>&#160;      <span class="keywordflow">return</span> 0;</div>
@@ -564,7 +564,7 @@ $(function() {
 <div class="line"><a name="l00509"></a><span class="lineno">  509</span>&#160;  <span class="keywordflow">case</span> WireBundle::Trace:</div>
 <div class="line"><a name="l00510"></a><span class="lineno">  510</span>&#160;    <span class="comment">// Port 0: core trace. Port 1: memory trace.</span></div>
 <div class="line"><a name="l00511"></a><span class="lineno">  511</span>&#160;    <span class="keywordflow">return</span> 2;</div>
-<div class="line"><a name="l00512"></a><span class="lineno">  512</span>&#160;  <span class="keywordflow">case</span> WireBundle::Ctrl:</div>
+<div class="line"><a name="l00512"></a><span class="lineno">  512</span>&#160;  <span class="keywordflow">case</span> WireBundle::TileControl:</div>
 <div class="line"><a name="l00513"></a><span class="lineno">  513</span>&#160;    <span class="keywordflow">return</span> 1;</div>
 <div class="line"><a name="l00514"></a><span class="lineno">  514</span>&#160;  <span class="keywordflow">default</span>:</div>
 <div class="line"><a name="l00515"></a><span class="lineno">  515</span>&#160;    <span class="keywordflow">return</span> 0;</div>
@@ -632,18 +632,18 @@ $(function() {
 <div class="line"><a name="l00577"></a><span class="lineno">  577</span>&#160;    <span class="keywordflow">if</span> (srcBundle == WireBundle::DMA) {</div>
 <div class="line"><a name="l00578"></a><span class="lineno">  578</span>&#160;      <span class="keywordflow">if</span> (dstBundle == WireBundle::DMA)</div>
 <div class="line"><a name="l00579"></a><span class="lineno">  579</span>&#160;        <span class="keywordflow">return</span> srcChan == dstChan;</div>
-<div class="line"><a name="l00580"></a><span class="lineno">  580</span>&#160;      <span class="keywordflow">if</span> (isBundleInList(dstBundle, {WireBundle::Ctrl, WireBundle::South,</div>
+<div class="line"><a name="l00580"></a><span class="lineno">  580</span>&#160;      <span class="keywordflow">if</span> (isBundleInList(dstBundle, {WireBundle::TileControl, WireBundle::South,</div>
 <div class="line"><a name="l00581"></a><span class="lineno">  581</span>&#160;                                     WireBundle::North}))</div>
 <div class="line"><a name="l00582"></a><span class="lineno">  582</span>&#160;        <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
 <div class="line"><a name="l00583"></a><span class="lineno">  583</span>&#160;    }</div>
-<div class="line"><a name="l00584"></a><span class="lineno">  584</span>&#160;    <span class="keywordflow">if</span> (srcBundle == WireBundle::Ctrl) {</div>
+<div class="line"><a name="l00584"></a><span class="lineno">  584</span>&#160;    <span class="keywordflow">if</span> (srcBundle == WireBundle::TileControl) {</div>
 <div class="line"><a name="l00585"></a><span class="lineno">  585</span>&#160;      <span class="keywordflow">if</span> (dstBundle == WireBundle::DMA)</div>
 <div class="line"><a name="l00586"></a><span class="lineno">  586</span>&#160;        <span class="keywordflow">return</span> dstChan == 5;</div>
 <div class="line"><a name="l00587"></a><span class="lineno">  587</span>&#160;      <span class="keywordflow">if</span> (isBundleInList(dstBundle, {WireBundle::South, WireBundle::North}))</div>
 <div class="line"><a name="l00588"></a><span class="lineno">  588</span>&#160;        <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
 <div class="line"><a name="l00589"></a><span class="lineno">  589</span>&#160;    }</div>
 <div class="line"><a name="l00590"></a><span class="lineno">  590</span>&#160;    <span class="keywordflow">if</span> (isBundleInList(srcBundle, {WireBundle::South, WireBundle::North})) {</div>
-<div class="line"><a name="l00591"></a><span class="lineno">  591</span>&#160;      <span class="keywordflow">if</span> (isBundleInList(dstBundle, {WireBundle::DMA, WireBundle::Ctrl}))</div>
+<div class="line"><a name="l00591"></a><span class="lineno">  591</span>&#160;      <span class="keywordflow">if</span> (isBundleInList(dstBundle, {WireBundle::DMA, WireBundle::TileControl}))</div>
 <div class="line"><a name="l00592"></a><span class="lineno">  592</span>&#160;        <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
 <div class="line"><a name="l00593"></a><span class="lineno">  593</span>&#160;      <span class="keywordflow">if</span> (isBundleInList(dstBundle, {WireBundle::South, WireBundle::North}))</div>
 <div class="line"><a name="l00594"></a><span class="lineno">  594</span>&#160;        <span class="keywordflow">return</span> srcChan == dstChan;</div>
@@ -657,113 +657,115 @@ $(function() {
 <div class="line"><a name="l00602"></a><span class="lineno">  602</span>&#160;  }</div>
 <div class="line"><a name="l00603"></a><span class="lineno">  603</span>&#160;  <span class="comment">// Shimtile</span></div>
 <div class="line"><a name="l00604"></a><span class="lineno">  604</span>&#160;  <span class="keywordflow">else</span> <span class="keywordflow">if</span> (isShimNOCorPLTile(<a class="code" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>)) {</div>
-<div class="line"><a name="l00605"></a><span class="lineno">  605</span>&#160;    <span class="keywordflow">if</span> (srcBundle == WireBundle::Ctrl)</div>
-<div class="line"><a name="l00606"></a><span class="lineno">  606</span>&#160;      <span class="keywordflow">return</span> dstBundle != WireBundle::Ctrl;</div>
+<div class="line"><a name="l00605"></a><span class="lineno">  605</span>&#160;    <span class="keywordflow">if</span> (srcBundle == WireBundle::TileControl)</div>
+<div class="line"><a name="l00606"></a><span class="lineno">  606</span>&#160;      <span class="keywordflow">return</span> dstBundle != WireBundle::TileControl;</div>
 <div class="line"><a name="l00607"></a><span class="lineno">  607</span>&#160;    <span class="keywordflow">if</span> (isBundleInList(srcBundle, {WireBundle::FIFO, WireBundle::South}))</div>
-<div class="line"><a name="l00608"></a><span class="lineno">  608</span>&#160;      <span class="keywordflow">return</span> isBundleInList(dstBundle, {WireBundle::Ctrl, WireBundle::FIFO,</div>
-<div class="line"><a name="l00609"></a><span class="lineno">  609</span>&#160;                                        WireBundle::South, WireBundle::West,</div>
-<div class="line"><a name="l00610"></a><span class="lineno">  610</span>&#160;                                        WireBundle::North, WireBundle::East});</div>
-<div class="line"><a name="l00611"></a><span class="lineno">  611</span>&#160;    <span class="keywordflow">if</span> (isBundleInList(srcBundle,</div>
-<div class="line"><a name="l00612"></a><span class="lineno">  612</span>&#160;                       {WireBundle::West, WireBundle::North, WireBundle::East}))</div>
-<div class="line"><a name="l00613"></a><span class="lineno">  613</span>&#160;      <span class="keywordflow">return</span> (srcBundle == dstBundle)</div>
-<div class="line"><a name="l00614"></a><span class="lineno">  614</span>&#160;                 ? (srcChan == dstChan)</div>
-<div class="line"><a name="l00615"></a><span class="lineno">  615</span>&#160;                 : isBundleInList(dstBundle,</div>
-<div class="line"><a name="l00616"></a><span class="lineno">  616</span>&#160;                                  {WireBundle::Ctrl, WireBundle::FIFO,</div>
-<div class="line"><a name="l00617"></a><span class="lineno">  617</span>&#160;                                   WireBundle::South, WireBundle::West,</div>
-<div class="line"><a name="l00618"></a><span class="lineno">  618</span>&#160;                                   WireBundle::North, WireBundle::East});</div>
-<div class="line"><a name="l00619"></a><span class="lineno">  619</span>&#160;    <span class="keywordflow">if</span> (srcBundle == WireBundle::Trace) {</div>
-<div class="line"><a name="l00620"></a><span class="lineno">  620</span>&#160;      <span class="keywordflow">if</span> (isBundleInList(dstBundle, {WireBundle::FIFO, WireBundle::South}))</div>
-<div class="line"><a name="l00621"></a><span class="lineno">  621</span>&#160;        <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a name="l00622"></a><span class="lineno">  622</span>&#160;      <span class="keywordflow">if</span> (isBundleInList(dstBundle, {WireBundle::West, WireBundle::East}))</div>
-<div class="line"><a name="l00623"></a><span class="lineno">  623</span>&#160;        <span class="keywordflow">return</span> dstChan == 0;</div>
-<div class="line"><a name="l00624"></a><span class="lineno">  624</span>&#160;    }</div>
-<div class="line"><a name="l00625"></a><span class="lineno">  625</span>&#160;  }</div>
-<div class="line"><a name="l00626"></a><span class="lineno">  626</span>&#160;  <span class="comment">// Coretile</span></div>
-<div class="line"><a name="l00627"></a><span class="lineno">  627</span>&#160;  <span class="keywordflow">else</span> <span class="keywordflow">if</span> (isCoreTile(<a class="code" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>)) {</div>
-<div class="line"><a name="l00628"></a><span class="lineno">  628</span>&#160;    <span class="keywordflow">if</span> (isBundleInList(srcBundle,</div>
-<div class="line"><a name="l00629"></a><span class="lineno">  629</span>&#160;                       {WireBundle::DMA, WireBundle::FIFO, WireBundle::South,</div>
-<div class="line"><a name="l00630"></a><span class="lineno">  630</span>&#160;                        WireBundle::West, WireBundle::North, WireBundle::East}))</div>
-<div class="line"><a name="l00631"></a><span class="lineno">  631</span>&#160;      <span class="keywordflow">if</span> (isBundleInList(dstBundle,</div>
-<div class="line"><a name="l00632"></a><span class="lineno">  632</span>&#160;                         {WireBundle::Core, WireBundle::DMA, WireBundle::Ctrl,</div>
-<div class="line"><a name="l00633"></a><span class="lineno">  633</span>&#160;                          WireBundle::FIFO, WireBundle::South, WireBundle::West,</div>
-<div class="line"><a name="l00634"></a><span class="lineno">  634</span>&#160;                          WireBundle::North, WireBundle::East}))</div>
-<div class="line"><a name="l00635"></a><span class="lineno">  635</span>&#160;        <span class="keywordflow">return</span> (srcBundle == dstBundle) ? (srcChan == dstChan) : <span class="keyword">true</span>;</div>
-<div class="line"><a name="l00636"></a><span class="lineno">  636</span>&#160;    <span class="keywordflow">if</span> (srcBundle == WireBundle::Core)</div>
-<div class="line"><a name="l00637"></a><span class="lineno">  637</span>&#160;      <span class="keywordflow">return</span> dstBundle != WireBundle::Core;</div>
-<div class="line"><a name="l00638"></a><span class="lineno">  638</span>&#160;    <span class="keywordflow">if</span> (srcBundle == WireBundle::Ctrl)</div>
-<div class="line"><a name="l00639"></a><span class="lineno">  639</span>&#160;      <span class="keywordflow">return</span> dstBundle != WireBundle::Ctrl &amp;&amp; dstBundle != WireBundle::DMA;</div>
-<div class="line"><a name="l00640"></a><span class="lineno">  640</span>&#160;    <span class="keywordflow">if</span> (srcBundle == WireBundle::Trace) {</div>
-<div class="line"><a name="l00641"></a><span class="lineno">  641</span>&#160;      <span class="keywordflow">if</span> (dstBundle == WireBundle::DMA)</div>
-<div class="line"><a name="l00642"></a><span class="lineno">  642</span>&#160;        <span class="keywordflow">return</span> dstChan == 0;</div>
-<div class="line"><a name="l00643"></a><span class="lineno">  643</span>&#160;      <span class="keywordflow">if</span> (isBundleInList(dstBundle, {WireBundle::FIFO, WireBundle::South}))</div>
-<div class="line"><a name="l00644"></a><span class="lineno">  644</span>&#160;        <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a name="l00645"></a><span class="lineno">  645</span>&#160;    }</div>
-<div class="line"><a name="l00646"></a><span class="lineno">  646</span>&#160;  }</div>
-<div class="line"><a name="l00647"></a><span class="lineno">  647</span>&#160;  <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
-<div class="line"><a name="l00648"></a><span class="lineno">  648</span>&#160;}</div>
-<div class="line"><a name="l00649"></a><span class="lineno">  649</span>&#160; </div>
-<div class="line"><a name="l00650"></a><span class="lineno"><a class="line" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a5f612df323310b3b638edf2e93d0731a">  650</a></span>&#160;<span class="keywordtype">void</span> AIETargetModel::validate()<span class="keyword"> const </span>{</div>
-<div class="line"><a name="l00651"></a><span class="lineno">  651</span>&#160;  <span class="comment">// Every tile in a shimtile row must be a shimtile, and can only be one type</span></div>
-<div class="line"><a name="l00652"></a><span class="lineno">  652</span>&#160;  <span class="comment">// of shim tile.</span></div>
-<div class="line"><a name="l00653"></a><span class="lineno">  653</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; columns(); j++) {</div>
-<div class="line"><a name="l00654"></a><span class="lineno">  654</span>&#160;    assert(!isMemTile(j, 0) &amp;&amp; (isShimPLTile(j, 0) || isShimNOCTile(j, 0)) &amp;&amp;</div>
-<div class="line"><a name="l00655"></a><span class="lineno">  655</span>&#160;           !isCoreTile(j, 0));</div>
-<div class="line"><a name="l00656"></a><span class="lineno">  656</span>&#160;    assert(isShimPLTile(j, 0) ^ isShimNOCTile(j, 0));</div>
-<div class="line"><a name="l00657"></a><span class="lineno">  657</span>&#160;  }</div>
-<div class="line"><a name="l00658"></a><span class="lineno">  658</span>&#160; </div>
-<div class="line"><a name="l00659"></a><span class="lineno">  659</span>&#160;  <span class="comment">// Every tile in a memtile row must be a memtile.</span></div>
-<div class="line"><a name="l00660"></a><span class="lineno">  660</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 1; i &lt; 1 + static_cast&lt;int&gt;(getNumMemTileRows()); i++)</div>
-<div class="line"><a name="l00661"></a><span class="lineno">  661</span>&#160;    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; columns(); j++)</div>
-<div class="line"><a name="l00662"></a><span class="lineno">  662</span>&#160;      assert(isMemTile(j, i) &amp;&amp; !isShimPLTile(j, i) &amp;&amp; !isShimNOCTile(j, i) &amp;&amp;</div>
-<div class="line"><a name="l00663"></a><span class="lineno">  663</span>&#160;             !isCoreTile(j, i));</div>
-<div class="line"><a name="l00664"></a><span class="lineno">  664</span>&#160; </div>
-<div class="line"><a name="l00665"></a><span class="lineno">  665</span>&#160;  <span class="comment">// Every other tile is a coretile.</span></div>
-<div class="line"><a name="l00666"></a><span class="lineno">  666</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 1 + getNumMemTileRows(); i &lt; rows(); i++)</div>
-<div class="line"><a name="l00667"></a><span class="lineno">  667</span>&#160;    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; columns(); j++)</div>
-<div class="line"><a name="l00668"></a><span class="lineno">  668</span>&#160;      assert(!isMemTile(j, i) &amp;&amp; !isShimPLTile(j, i) &amp;&amp; !isShimNOCTile(j, i) &amp;&amp;</div>
-<div class="line"><a name="l00669"></a><span class="lineno">  669</span>&#160;             isCoreTile(j, i));</div>
-<div class="line"><a name="l00670"></a><span class="lineno">  670</span>&#160; </div>
-<div class="line"><a name="l00671"></a><span class="lineno">  671</span>&#160;  <span class="comment">// Looking North, buses must match</span></div>
-<div class="line"><a name="l00672"></a><span class="lineno">  672</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; rows() - 1; i++)</div>
-<div class="line"><a name="l00673"></a><span class="lineno">  673</span>&#160;    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; columns(); j++)</div>
-<div class="line"><a name="l00674"></a><span class="lineno">  674</span>&#160;      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::North) ==</div>
-<div class="line"><a name="l00675"></a><span class="lineno">  675</span>&#160;             getNumDestSwitchboxConnections(j, i + 1, WireBundle::South));</div>
-<div class="line"><a name="l00676"></a><span class="lineno">  676</span>&#160;  <span class="comment">// Looking South, buses must match</span></div>
-<div class="line"><a name="l00677"></a><span class="lineno">  677</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 1; i &lt; rows(); i++)</div>
-<div class="line"><a name="l00678"></a><span class="lineno">  678</span>&#160;    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; columns(); j++)</div>
-<div class="line"><a name="l00679"></a><span class="lineno">  679</span>&#160;      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::South) ==</div>
-<div class="line"><a name="l00680"></a><span class="lineno">  680</span>&#160;             getNumDestSwitchboxConnections(j, i - 1, WireBundle::North));</div>
-<div class="line"><a name="l00681"></a><span class="lineno">  681</span>&#160;  <span class="comment">// Looking East, buses must match</span></div>
-<div class="line"><a name="l00682"></a><span class="lineno">  682</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; rows(); i++)</div>
-<div class="line"><a name="l00683"></a><span class="lineno">  683</span>&#160;    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; columns() - 1; j++)</div>
-<div class="line"><a name="l00684"></a><span class="lineno">  684</span>&#160;      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::East) ==</div>
-<div class="line"><a name="l00685"></a><span class="lineno">  685</span>&#160;             getNumDestSwitchboxConnections(j + 1, i, WireBundle::West));</div>
-<div class="line"><a name="l00686"></a><span class="lineno">  686</span>&#160;  <span class="comment">// Looking West, buses must match</span></div>
-<div class="line"><a name="l00687"></a><span class="lineno">  687</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; rows(); i++)</div>
-<div class="line"><a name="l00688"></a><span class="lineno">  688</span>&#160;    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 1; j &lt; columns(); j++)</div>
-<div class="line"><a name="l00689"></a><span class="lineno">  689</span>&#160;      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::West) ==</div>
-<div class="line"><a name="l00690"></a><span class="lineno">  690</span>&#160;             getNumDestSwitchboxConnections(j - 1, i, WireBundle::East));</div>
-<div class="line"><a name="l00691"></a><span class="lineno">  691</span>&#160;  <span class="comment">// Edges have no connections</span></div>
-<div class="line"><a name="l00692"></a><span class="lineno">  692</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; columns(); j++)</div>
-<div class="line"><a name="l00693"></a><span class="lineno">  693</span>&#160;    assert(getNumSourceSwitchboxConnections(j, rows() - 1, WireBundle::North) ==</div>
-<div class="line"><a name="l00694"></a><span class="lineno">  694</span>&#160;           0);</div>
-<div class="line"><a name="l00695"></a><span class="lineno">  695</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; rows(); i++)</div>
-<div class="line"><a name="l00696"></a><span class="lineno">  696</span>&#160;    assert(getNumSourceSwitchboxConnections(columns() - 1, i,</div>
-<div class="line"><a name="l00697"></a><span class="lineno">  697</span>&#160;                                            WireBundle::East) == 0);</div>
-<div class="line"><a name="l00698"></a><span class="lineno">  698</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; rows(); i++)</div>
-<div class="line"><a name="l00699"></a><span class="lineno">  699</span>&#160;    assert(getNumSourceSwitchboxConnections(0, i, WireBundle::West) == 0);</div>
-<div class="line"><a name="l00700"></a><span class="lineno">  700</span>&#160; </div>
-<div class="line"><a name="l00701"></a><span class="lineno">  701</span>&#160;  <span class="comment">// FIFOS are consistent</span></div>
-<div class="line"><a name="l00702"></a><span class="lineno">  702</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; rows(); i++)</div>
-<div class="line"><a name="l00703"></a><span class="lineno">  703</span>&#160;    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; columns(); j++)</div>
-<div class="line"><a name="l00704"></a><span class="lineno">  704</span>&#160;      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::FIFO) ==</div>
-<div class="line"><a name="l00705"></a><span class="lineno">  705</span>&#160;             getNumDestSwitchboxConnections(j, i, WireBundle::FIFO));</div>
-<div class="line"><a name="l00706"></a><span class="lineno">  706</span>&#160;}</div>
-<div class="line"><a name="l00707"></a><span class="lineno">  707</span>&#160; </div>
-<div class="line"><a name="l00708"></a><span class="lineno"><a class="line" href="classxilinx_1_1AIE_1_1NPU2TargetModel.html#a3c3c6a21f7fba170b398e846f640e4c2">  708</a></span>&#160;<a class="code" href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3">AIEArch</a> NPU2TargetModel::getTargetArch()<span class="keyword"> const </span>{ <span class="keywordflow">return</span> AIEArch::AIE2p; }</div>
+<div class="line"><a name="l00608"></a><span class="lineno">  608</span>&#160;      <span class="keywordflow">return</span> isBundleInList(dstBundle,</div>
+<div class="line"><a name="l00609"></a><span class="lineno">  609</span>&#160;                            {WireBundle::TileControl, WireBundle::FIFO,</div>
+<div class="line"><a name="l00610"></a><span class="lineno">  610</span>&#160;                             WireBundle::South, WireBundle::West,</div>
+<div class="line"><a name="l00611"></a><span class="lineno">  611</span>&#160;                             WireBundle::North, WireBundle::East});</div>
+<div class="line"><a name="l00612"></a><span class="lineno">  612</span>&#160;    <span class="keywordflow">if</span> (isBundleInList(srcBundle,</div>
+<div class="line"><a name="l00613"></a><span class="lineno">  613</span>&#160;                       {WireBundle::West, WireBundle::North, WireBundle::East}))</div>
+<div class="line"><a name="l00614"></a><span class="lineno">  614</span>&#160;      <span class="keywordflow">return</span> (srcBundle == dstBundle)</div>
+<div class="line"><a name="l00615"></a><span class="lineno">  615</span>&#160;                 ? (srcChan == dstChan)</div>
+<div class="line"><a name="l00616"></a><span class="lineno">  616</span>&#160;                 : isBundleInList(dstBundle,</div>
+<div class="line"><a name="l00617"></a><span class="lineno">  617</span>&#160;                                  {WireBundle::TileControl, WireBundle::FIFO,</div>
+<div class="line"><a name="l00618"></a><span class="lineno">  618</span>&#160;                                   WireBundle::South, WireBundle::West,</div>
+<div class="line"><a name="l00619"></a><span class="lineno">  619</span>&#160;                                   WireBundle::North, WireBundle::East});</div>
+<div class="line"><a name="l00620"></a><span class="lineno">  620</span>&#160;    <span class="keywordflow">if</span> (srcBundle == WireBundle::Trace) {</div>
+<div class="line"><a name="l00621"></a><span class="lineno">  621</span>&#160;      <span class="keywordflow">if</span> (isBundleInList(dstBundle, {WireBundle::FIFO, WireBundle::South}))</div>
+<div class="line"><a name="l00622"></a><span class="lineno">  622</span>&#160;        <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a name="l00623"></a><span class="lineno">  623</span>&#160;      <span class="keywordflow">if</span> (isBundleInList(dstBundle, {WireBundle::West, WireBundle::East}))</div>
+<div class="line"><a name="l00624"></a><span class="lineno">  624</span>&#160;        <span class="keywordflow">return</span> dstChan == 0;</div>
+<div class="line"><a name="l00625"></a><span class="lineno">  625</span>&#160;    }</div>
+<div class="line"><a name="l00626"></a><span class="lineno">  626</span>&#160;  }</div>
+<div class="line"><a name="l00627"></a><span class="lineno">  627</span>&#160;  <span class="comment">// Coretile</span></div>
+<div class="line"><a name="l00628"></a><span class="lineno">  628</span>&#160;  <span class="keywordflow">else</span> <span class="keywordflow">if</span> (isCoreTile(<a class="code" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>)) {</div>
+<div class="line"><a name="l00629"></a><span class="lineno">  629</span>&#160;    <span class="keywordflow">if</span> (isBundleInList(srcBundle,</div>
+<div class="line"><a name="l00630"></a><span class="lineno">  630</span>&#160;                       {WireBundle::DMA, WireBundle::FIFO, WireBundle::South,</div>
+<div class="line"><a name="l00631"></a><span class="lineno">  631</span>&#160;                        WireBundle::West, WireBundle::North, WireBundle::East}))</div>
+<div class="line"><a name="l00632"></a><span class="lineno">  632</span>&#160;      <span class="keywordflow">if</span> (isBundleInList(dstBundle, {WireBundle::Core, WireBundle::DMA,</div>
+<div class="line"><a name="l00633"></a><span class="lineno">  633</span>&#160;                                     WireBundle::TileControl, WireBundle::FIFO,</div>
+<div class="line"><a name="l00634"></a><span class="lineno">  634</span>&#160;                                     WireBundle::South, WireBundle::West,</div>
+<div class="line"><a name="l00635"></a><span class="lineno">  635</span>&#160;                                     WireBundle::North, WireBundle::East}))</div>
+<div class="line"><a name="l00636"></a><span class="lineno">  636</span>&#160;        <span class="keywordflow">return</span> (srcBundle == dstBundle) ? (srcChan == dstChan) : <span class="keyword">true</span>;</div>
+<div class="line"><a name="l00637"></a><span class="lineno">  637</span>&#160;    <span class="keywordflow">if</span> (srcBundle == WireBundle::Core)</div>
+<div class="line"><a name="l00638"></a><span class="lineno">  638</span>&#160;      <span class="keywordflow">return</span> dstBundle != WireBundle::Core;</div>
+<div class="line"><a name="l00639"></a><span class="lineno">  639</span>&#160;    <span class="keywordflow">if</span> (srcBundle == WireBundle::TileControl)</div>
+<div class="line"><a name="l00640"></a><span class="lineno">  640</span>&#160;      <span class="keywordflow">return</span> dstBundle != WireBundle::TileControl &amp;&amp;</div>
+<div class="line"><a name="l00641"></a><span class="lineno">  641</span>&#160;             dstBundle != WireBundle::DMA;</div>
+<div class="line"><a name="l00642"></a><span class="lineno">  642</span>&#160;    <span class="keywordflow">if</span> (srcBundle == WireBundle::Trace) {</div>
+<div class="line"><a name="l00643"></a><span class="lineno">  643</span>&#160;      <span class="keywordflow">if</span> (dstBundle == WireBundle::DMA)</div>
+<div class="line"><a name="l00644"></a><span class="lineno">  644</span>&#160;        <span class="keywordflow">return</span> dstChan == 0;</div>
+<div class="line"><a name="l00645"></a><span class="lineno">  645</span>&#160;      <span class="keywordflow">if</span> (isBundleInList(dstBundle, {WireBundle::FIFO, WireBundle::South}))</div>
+<div class="line"><a name="l00646"></a><span class="lineno">  646</span>&#160;        <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a name="l00647"></a><span class="lineno">  647</span>&#160;    }</div>
+<div class="line"><a name="l00648"></a><span class="lineno">  648</span>&#160;  }</div>
+<div class="line"><a name="l00649"></a><span class="lineno">  649</span>&#160;  <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
+<div class="line"><a name="l00650"></a><span class="lineno">  650</span>&#160;}</div>
+<div class="line"><a name="l00651"></a><span class="lineno">  651</span>&#160; </div>
+<div class="line"><a name="l00652"></a><span class="lineno"><a class="line" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a5f612df323310b3b638edf2e93d0731a">  652</a></span>&#160;<span class="keywordtype">void</span> AIETargetModel::validate()<span class="keyword"> const </span>{</div>
+<div class="line"><a name="l00653"></a><span class="lineno">  653</span>&#160;  <span class="comment">// Every tile in a shimtile row must be a shimtile, and can only be one type</span></div>
+<div class="line"><a name="l00654"></a><span class="lineno">  654</span>&#160;  <span class="comment">// of shim tile.</span></div>
+<div class="line"><a name="l00655"></a><span class="lineno">  655</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; columns(); j++) {</div>
+<div class="line"><a name="l00656"></a><span class="lineno">  656</span>&#160;    assert(!isMemTile(j, 0) &amp;&amp; (isShimPLTile(j, 0) || isShimNOCTile(j, 0)) &amp;&amp;</div>
+<div class="line"><a name="l00657"></a><span class="lineno">  657</span>&#160;           !isCoreTile(j, 0));</div>
+<div class="line"><a name="l00658"></a><span class="lineno">  658</span>&#160;    assert(isShimPLTile(j, 0) ^ isShimNOCTile(j, 0));</div>
+<div class="line"><a name="l00659"></a><span class="lineno">  659</span>&#160;  }</div>
+<div class="line"><a name="l00660"></a><span class="lineno">  660</span>&#160; </div>
+<div class="line"><a name="l00661"></a><span class="lineno">  661</span>&#160;  <span class="comment">// Every tile in a memtile row must be a memtile.</span></div>
+<div class="line"><a name="l00662"></a><span class="lineno">  662</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 1; i &lt; 1 + static_cast&lt;int&gt;(getNumMemTileRows()); i++)</div>
+<div class="line"><a name="l00663"></a><span class="lineno">  663</span>&#160;    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; columns(); j++)</div>
+<div class="line"><a name="l00664"></a><span class="lineno">  664</span>&#160;      assert(isMemTile(j, i) &amp;&amp; !isShimPLTile(j, i) &amp;&amp; !isShimNOCTile(j, i) &amp;&amp;</div>
+<div class="line"><a name="l00665"></a><span class="lineno">  665</span>&#160;             !isCoreTile(j, i));</div>
+<div class="line"><a name="l00666"></a><span class="lineno">  666</span>&#160; </div>
+<div class="line"><a name="l00667"></a><span class="lineno">  667</span>&#160;  <span class="comment">// Every other tile is a coretile.</span></div>
+<div class="line"><a name="l00668"></a><span class="lineno">  668</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 1 + getNumMemTileRows(); i &lt; rows(); i++)</div>
+<div class="line"><a name="l00669"></a><span class="lineno">  669</span>&#160;    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; columns(); j++)</div>
+<div class="line"><a name="l00670"></a><span class="lineno">  670</span>&#160;      assert(!isMemTile(j, i) &amp;&amp; !isShimPLTile(j, i) &amp;&amp; !isShimNOCTile(j, i) &amp;&amp;</div>
+<div class="line"><a name="l00671"></a><span class="lineno">  671</span>&#160;             isCoreTile(j, i));</div>
+<div class="line"><a name="l00672"></a><span class="lineno">  672</span>&#160; </div>
+<div class="line"><a name="l00673"></a><span class="lineno">  673</span>&#160;  <span class="comment">// Looking North, buses must match</span></div>
+<div class="line"><a name="l00674"></a><span class="lineno">  674</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; rows() - 1; i++)</div>
+<div class="line"><a name="l00675"></a><span class="lineno">  675</span>&#160;    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; columns(); j++)</div>
+<div class="line"><a name="l00676"></a><span class="lineno">  676</span>&#160;      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::North) ==</div>
+<div class="line"><a name="l00677"></a><span class="lineno">  677</span>&#160;             getNumDestSwitchboxConnections(j, i + 1, WireBundle::South));</div>
+<div class="line"><a name="l00678"></a><span class="lineno">  678</span>&#160;  <span class="comment">// Looking South, buses must match</span></div>
+<div class="line"><a name="l00679"></a><span class="lineno">  679</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 1; i &lt; rows(); i++)</div>
+<div class="line"><a name="l00680"></a><span class="lineno">  680</span>&#160;    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; columns(); j++)</div>
+<div class="line"><a name="l00681"></a><span class="lineno">  681</span>&#160;      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::South) ==</div>
+<div class="line"><a name="l00682"></a><span class="lineno">  682</span>&#160;             getNumDestSwitchboxConnections(j, i - 1, WireBundle::North));</div>
+<div class="line"><a name="l00683"></a><span class="lineno">  683</span>&#160;  <span class="comment">// Looking East, buses must match</span></div>
+<div class="line"><a name="l00684"></a><span class="lineno">  684</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; rows(); i++)</div>
+<div class="line"><a name="l00685"></a><span class="lineno">  685</span>&#160;    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; columns() - 1; j++)</div>
+<div class="line"><a name="l00686"></a><span class="lineno">  686</span>&#160;      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::East) ==</div>
+<div class="line"><a name="l00687"></a><span class="lineno">  687</span>&#160;             getNumDestSwitchboxConnections(j + 1, i, WireBundle::West));</div>
+<div class="line"><a name="l00688"></a><span class="lineno">  688</span>&#160;  <span class="comment">// Looking West, buses must match</span></div>
+<div class="line"><a name="l00689"></a><span class="lineno">  689</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; rows(); i++)</div>
+<div class="line"><a name="l00690"></a><span class="lineno">  690</span>&#160;    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 1; j &lt; columns(); j++)</div>
+<div class="line"><a name="l00691"></a><span class="lineno">  691</span>&#160;      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::West) ==</div>
+<div class="line"><a name="l00692"></a><span class="lineno">  692</span>&#160;             getNumDestSwitchboxConnections(j - 1, i, WireBundle::East));</div>
+<div class="line"><a name="l00693"></a><span class="lineno">  693</span>&#160;  <span class="comment">// Edges have no connections</span></div>
+<div class="line"><a name="l00694"></a><span class="lineno">  694</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; columns(); j++)</div>
+<div class="line"><a name="l00695"></a><span class="lineno">  695</span>&#160;    assert(getNumSourceSwitchboxConnections(j, rows() - 1, WireBundle::North) ==</div>
+<div class="line"><a name="l00696"></a><span class="lineno">  696</span>&#160;           0);</div>
+<div class="line"><a name="l00697"></a><span class="lineno">  697</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; rows(); i++)</div>
+<div class="line"><a name="l00698"></a><span class="lineno">  698</span>&#160;    assert(getNumSourceSwitchboxConnections(columns() - 1, i,</div>
+<div class="line"><a name="l00699"></a><span class="lineno">  699</span>&#160;                                            WireBundle::East) == 0);</div>
+<div class="line"><a name="l00700"></a><span class="lineno">  700</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; rows(); i++)</div>
+<div class="line"><a name="l00701"></a><span class="lineno">  701</span>&#160;    assert(getNumSourceSwitchboxConnections(0, i, WireBundle::West) == 0);</div>
+<div class="line"><a name="l00702"></a><span class="lineno">  702</span>&#160; </div>
+<div class="line"><a name="l00703"></a><span class="lineno">  703</span>&#160;  <span class="comment">// FIFOS are consistent</span></div>
+<div class="line"><a name="l00704"></a><span class="lineno">  704</span>&#160;  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; rows(); i++)</div>
+<div class="line"><a name="l00705"></a><span class="lineno">  705</span>&#160;    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> j = 0; j &lt; columns(); j++)</div>
+<div class="line"><a name="l00706"></a><span class="lineno">  706</span>&#160;      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::FIFO) ==</div>
+<div class="line"><a name="l00707"></a><span class="lineno">  707</span>&#160;             getNumDestSwitchboxConnections(j, i, WireBundle::FIFO));</div>
+<div class="line"><a name="l00708"></a><span class="lineno">  708</span>&#160;}</div>
 <div class="line"><a name="l00709"></a><span class="lineno">  709</span>&#160; </div>
-<div class="line"><a name="l00710"></a><span class="lineno">  710</span>&#160;} <span class="comment">// namespace AIE</span></div>
-<div class="line"><a name="l00711"></a><span class="lineno">  711</span>&#160;} <span class="comment">// namespace xilinx</span></div>
+<div class="line"><a name="l00710"></a><span class="lineno"><a class="line" href="classxilinx_1_1AIE_1_1NPU2TargetModel.html#a3c3c6a21f7fba170b398e846f640e4c2">  710</a></span>&#160;<a class="code" href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3">AIEArch</a> NPU2TargetModel::getTargetArch()<span class="keyword"> const </span>{ <span class="keywordflow">return</span> AIEArch::AIE2p; }</div>
+<div class="line"><a name="l00711"></a><span class="lineno">  711</span>&#160; </div>
+<div class="line"><a name="l00712"></a><span class="lineno">  712</span>&#160;} <span class="comment">// namespace AIE</span></div>
+<div class="line"><a name="l00713"></a><span class="lineno">  713</span>&#160;} <span class="comment">// namespace xilinx</span></div>
 <div class="ttc" id="aAIEDialect_8cpp_html_a7585c08f47b5f720ae1e3d2e8ee5f9b6"><div class="ttname"><a href="AIEDialect_8cpp.html#a7585c08f47b5f720ae1e3d2e8ee5f9b6">isLegalTileConnection</a></div><div class="ttdeci">bool isLegalTileConnection(TileOp tile, const AIETargetModel &amp;targetModel, MasterSetOp masterOp, PacketRulesOp slaveOp)</div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8cpp_source.html#l01229">AIEDialect.cpp:1229</a></div></div>
 <div class="ttc" id="aAIETargetModel_8h_html"><div class="ttname"><a href="AIETargetModel_8h.html">AIETargetModel.h</a></div></div>
 <div class="ttc" id="anamespacellvm_html"><div class="ttname"><a href="namespacellvm.html">llvm</a></div><div class="ttdef"><b>Definition:</b> <a href="AIEDialect_8h_source.html#l00279">AIEDialect.h:279</a></div></div>
@@ -777,7 +779,7 @@ $(function() {
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Jan 10 2025 11:12:32 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.1
+Generated on Fri Jan 10 2025 20:31:56 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.1
 </small></address>
 </body>
 </html>

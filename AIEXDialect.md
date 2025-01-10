@@ -41,7 +41,7 @@ Traits: `HasParent<BPIDOp>`
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`)
-* Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
+* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
 <tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
@@ -128,7 +128,7 @@ Traits: `SingleBlockImplicitTerminator<AIE::EndOp>`, `SingleBlock`
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`)
-* Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
+* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
 <tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
@@ -179,7 +179,7 @@ Example:
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`)
-* Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
+* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
 <tr><td><code>sourceChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>destBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
 * Core (`Core`)
@@ -192,7 +192,7 @@ Example:
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`)
-* Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
+* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
 <tr><td><code>destChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
@@ -645,7 +645,7 @@ Traits: `HasParent<MulticastOp>`
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`)
-* Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
+* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
 <tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
@@ -702,7 +702,7 @@ Traits: `SingleBlockImplicitTerminator<AIE::EndOp>`, `SingleBlock`
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`)
-* Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
+* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
 <tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
@@ -1184,7 +1184,7 @@ A route operation that routes one herd to another.
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`)
-* Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
+* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
 <tr><td><code>sourceChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>destBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
 * Core (`Core`)
@@ -1197,7 +1197,7 @@ A route operation that routes one herd to another.
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`)
-* Ctrl (`Ctrl`){{% /markdown %}}</details></td></tr>
+* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
 <tr><td><code>destChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
@@ -1444,5 +1444,5 @@ Bundle of wires
 | PLIO | `7` | PLIO |
 | NOC | `8` | NOC |
 | Trace | `9` | Trace |
-| Ctrl | `10` | Ctrl |
+| TileControl | `10` | TileControl |
 

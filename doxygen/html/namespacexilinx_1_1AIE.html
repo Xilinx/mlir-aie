@@ -421,11 +421,6 @@ Functions</h2></td></tr>
 <tr class="separator:a1dda4c79ef281525b2a66279a99bde70"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac051a078a70e1ace098439c647027d71"><td class="memItemLeft" align="right" valign="top">llvm::SetVector&lt; Block * &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#ac051a078a70e1ace098439c647027d71">getOrderedChainOfBlocks</a> (Region *region)</td></tr>
 <tr class="separator:ac051a078a70e1ace098439c647027d71"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ab2a7f0a0b367fdbd03c8cac689bfd45d"><td class="memTemplParams" colspan="2">template&lt;typename OpType &gt; </td></tr>
-<tr class="memitem:ab2a7f0a0b367fdbd03c8cac689bfd45d"><td class="memTemplItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#ab2a7f0a0b367fdbd03c8cac689bfd45d">generateDMAConfig</a> (OpType memOp, raw_ostream &amp;output, const <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> &amp;targetModel, DenseMap&lt; Block *, int &gt; blockMap)</td></tr>
-<tr class="separator:ab2a7f0a0b367fdbd03c8cac689bfd45d"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a7e57a6f540b607144eab68af6fa06c5c"><td class="memItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a7e57a6f540b607144eab68af6fa06c5c">AIETranslateToXAIEV2</a> (ModuleOp module, raw_ostream &amp;output)</td></tr>
-<tr class="separator:a7e57a6f540b607144eab68af6fa06c5c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="var-members"></a>
 Variables</h2></td></tr>
@@ -499,8 +494,6 @@ Variables</h2></td></tr>
 <tr class="separator:ac28e688f96def9fccc6ec6884cb2ce31"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aeac74c4261ceaa6b4f2f336f21037fc5"><td class="memItemLeft" align="right" valign="top">const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#aeac74c4261ceaa6b4f2f336f21037fc5">hsa_cpp_file_header</a></td></tr>
 <tr class="separator:aeac74c4261ceaa6b4f2f336f21037fc5"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a11bed4eb7e14a4e8b7baff13123491a0"><td class="memItemLeft" align="right" valign="top">const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a11bed4eb7e14a4e8b7baff13123491a0">xaie_cpp_file_header</a></td></tr>
-<tr class="separator:a11bed4eb7e14a4e8b7baff13123491a0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>Include the generated interface declarations. </p>
@@ -1587,7 +1580,7 @@ Variables</h2></td></tr>
 </div>
 </div>
 <a id="a05f2272ae28e7eb0ee2a405bb83def50"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a05f2272ae28e7eb0ee2a405bb83def50">&#9670;&nbsp;</a></span>AIETranslateToXAIEV2() <span class="overload">[1/2]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a05f2272ae28e7eb0ee2a405bb83def50">&#9670;&nbsp;</a></span>AIETranslateToXAIEV2()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -1611,38 +1604,6 @@ Variables</h2></td></tr>
         </tr>
       </table>
 </div><div class="memdoc">
-
-</div>
-</div>
-<a id="a7e57a6f540b607144eab68af6fa06c5c"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a7e57a6f540b607144eab68af6fa06c5c">&#9670;&nbsp;</a></span>AIETranslateToXAIEV2() <span class="overload">[2/2]</span></h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2 </td>
-          <td>(</td>
-          <td class="paramtype">ModuleOp&#160;</td>
-          <td class="paramname"><em>module</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">raw_ostream &amp;&#160;</td>
-          <td class="paramname"><em>output</em>&#160;</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td>)</td>
-          <td></td><td></td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p class="definition">Definition at line <a class="el" href="AIETargetXAIEV2_8cpp_source.html#l00297">297</a> of file <a class="el" href="AIETargetXAIEV2_8cpp_source.html">AIETargetXAIEV2.cpp</a>.</p>
-
-<p class="reference">References <a class="el" href="namespacexilinx_1_1AIE.html#a8b4a31c788eb8ca9a68d3547818861b7">collectBuffers()</a>, <a class="el" href="namespacexilinx_1_1AIE.html#a3a91d62b738d30b89aaca25caf49edbe">collectTiles()</a>, and <a class="el" href="AIETargetXAIEV2_8cpp_source.html#l00033">xaie_cpp_file_header</a>.</p>
 
 </div>
 </div>
@@ -1704,7 +1665,7 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="reference">Referenced by <a class="el" href="AIETargetBCF_8cpp_source.html#l00029">AIETranslateToBCF()</a>, <a class="el" href="AIETargetHSA_8cpp_source.html#l00059">AIETranslateToHSA()</a>, <a class="el" href="AIETargetXAIEV2_8cpp_source.html#l00297">AIETranslateToXAIEV2()</a>, and <a class="el" href="AIETargets_8cpp_source.html#l00113">registerAIETranslations()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIETargetBCF_8cpp_source.html#l00029">AIETranslateToBCF()</a>, <a class="el" href="AIETargetHSA_8cpp_source.html#l00059">AIETranslateToHSA()</a>, and <a class="el" href="AIETargets_8cpp_source.html#l00113">registerAIETranslations()</a>.</p>
 
 </div>
 </div>
@@ -1734,7 +1695,7 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="reference">Referenced by <a class="el" href="AIETargetBCF_8cpp_source.html#l00029">AIETranslateToBCF()</a>, <a class="el" href="AIETargetHSA_8cpp_source.html#l00059">AIETranslateToHSA()</a>, <a class="el" href="AIETargetXAIEV2_8cpp_source.html#l00297">AIETranslateToXAIEV2()</a>, and <a class="el" href="AIETargets_8cpp_source.html#l00113">registerAIETranslations()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIETargetBCF_8cpp_source.html#l00029">AIETranslateToBCF()</a>, <a class="el" href="AIETargetHSA_8cpp_source.html#l00059">AIETranslateToHSA()</a>, and <a class="el" href="AIETargets_8cpp_source.html#l00113">registerAIETranslations()</a>.</p>
 
 </div>
 </div>
@@ -2110,52 +2071,6 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="ab2a7f0a0b367fdbd03c8cac689bfd45d"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ab2a7f0a0b367fdbd03c8cac689bfd45d">&#9670;&nbsp;</a></span>generateDMAConfig()</h2>
-
-<div class="memitem">
-<div class="memproto">
-<div class="memtemplate">
-template&lt;typename OpType &gt; </div>
-      <table class="memname">
-        <tr>
-          <td class="memname">mlir::LogicalResult xilinx::AIE::generateDMAConfig </td>
-          <td>(</td>
-          <td class="paramtype">OpType&#160;</td>
-          <td class="paramname"><em>memOp</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">raw_ostream &amp;&#160;</td>
-          <td class="paramname"><em>output</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">const <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> &amp;&#160;</td>
-          <td class="paramname"><em>targetModel</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">DenseMap&lt; Block *, int &gt;&#160;</td>
-          <td class="paramname"><em>blockMap</em>&#160;</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td>)</td>
-          <td></td><td></td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p class="definition">Definition at line <a class="el" href="AIETargetXAIEV2_8cpp_source.html#l00076">76</a> of file <a class="el" href="AIETargetXAIEV2_8cpp_source.html">AIETargetXAIEV2.cpp</a>.</p>
-
-<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00052">col</a>, <a class="el" href="namespacexilinx_1_1AIE.html#aa24308f50831e769c860b40367d4f1c4">generateXAieDmaSetMultiDimAddr()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#afe68b1d7bd9a0e47dbbe503c901623d9">xilinx::AIE::AIETargetModel::getMemTileSize()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a8c4ec93f7c39f76e6dbc79a9d952ee41">xilinx::AIE::AIETargetModel::getNumLocks()</a>, <a class="el" href="namespacexilinx_1_1AIE.html#adba49e9a6edf00cb9a1d163723ee65ff">getOrderedChainOfBlocks()</a>, <a class="el" href="namespacexilinx_1_1AIE.html#a87152ce789fda226cb1c3cda6173b5f1">getTargetModel()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00254">xilinx::AIE::AIETargetModel::hasProperty()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00164">xilinx::AIE::AIETargetModel::isEast()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00154">xilinx::AIE::AIETargetModel::isInternal()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a78ddfb308023713b1b668cf3c7c6988d">xilinx::AIE::AIETargetModel::isMemTile()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a90a0fc9b36e2b77e4be4f99987b3336e">xilinx::AIE::AIETargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00159">xilinx::AIE::AIETargetModel::isWest()</a>, <a class="el" href="namespacexilinx_1_1AIE.html#ae7117415c2852a94ffab918d367229c5">packetStr()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00052">row</a>, <a class="el" href="namespacexilinx_1_1AIE.html#ad0b6a2385fd06b61f03cc35eef4c0687">tileDMAInstRefStr()</a>, <a class="el" href="namespacexilinx_1_1AIE.html#a4be32a3757efc28e498d23bf45dec2ff">tileDMAInstStr()</a>, <a class="el" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr()</a>, and <a class="el" href="AIETargetBCF_8cpp_source.html#l00024">utohexstr()</a>.</p>
-
-</div>
-</div>
 <a id="aa24308f50831e769c860b40367d4f1c4"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#aa24308f50831e769c860b40367d4f1c4">&#9670;&nbsp;</a></span>generateXAieDmaSetMultiDimAddr() <span class="overload">[1/2]</span></h2>
 
@@ -2235,8 +2150,6 @@ template&lt;typename OpType &gt; </div>
         </tr>
       </table>
 </div><div class="memdoc">
-
-<p class="reference">Referenced by <a class="el" href="AIETargetXAIEV2_8cpp_source.html#l00076">generateDMAConfig()</a>.</p>
 
 </div>
 </div>
@@ -2454,7 +2367,7 @@ template&lt;typename OpType &gt; </div>
       </table>
 </div><div class="memdoc">
 
-<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00593">xilinx::AIE::AIERTControl::addInitConfig()</a>, and <a class="el" href="AIETargetXAIEV2_8cpp_source.html#l00076">generateDMAConfig()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00593">xilinx::AIE::AIERTControl::addInitConfig()</a>.</p>
 
 </div>
 </div>
@@ -2514,7 +2427,7 @@ template&lt;typename OpType &gt; </div>
       </table>
 </div><div class="memdoc">
 
-<p class="reference">Referenced by <a class="el" href="AIETargetBCF_8cpp_source.html#l00029">AIETranslateToBCF()</a>, <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00056">basicAllocation()</a>, <a class="el" href="AIETargetXAIEV2_8cpp_source.html#l00076">generateDMAConfig()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00106">DMAChannelAnalysis::getDMAChannelIndex()</a>, <a class="el" href="AIEAssignRuntimeSequenceBDIDs_8cpp_source.html#l00027">AIEAssignRuntimeSequenceBDIDsPass::getGeneratorForTile()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00054">LockAnalysis::getLockID()</a>, <a class="el" href="AIETokenAnalysis_8cpp_source.html#l00177">xilinx::AIEX::TokenAnalysis::getShareableTileOp()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00156">AIEObjectFifoStatefulTransformPass::isSharedMemory()</a>, <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00218">AIEDMATasksToNPUPass::rewriteSingleBD()</a>, <a class="el" href="AIELocalizeLocks_8cpp_source.html#l00028">AIELocalizeLocksPass::runOnOperation()</a>, <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00180">AIEDMATasksToNPUPass::setAddressForSingleBD()</a>, <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00354">simpleBankAwareAllocation()</a>, and <a class="el" href="AIEXDialect_8cpp_source.html#l00148">xilinx::AIEX::verifyStridesWraps()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIETargetBCF_8cpp_source.html#l00029">AIETranslateToBCF()</a>, <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00056">basicAllocation()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00106">DMAChannelAnalysis::getDMAChannelIndex()</a>, <a class="el" href="AIEAssignRuntimeSequenceBDIDs_8cpp_source.html#l00027">AIEAssignRuntimeSequenceBDIDsPass::getGeneratorForTile()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00054">LockAnalysis::getLockID()</a>, <a class="el" href="AIETokenAnalysis_8cpp_source.html#l00177">xilinx::AIEX::TokenAnalysis::getShareableTileOp()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00156">AIEObjectFifoStatefulTransformPass::isSharedMemory()</a>, <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00218">AIEDMATasksToNPUPass::rewriteSingleBD()</a>, <a class="el" href="AIELocalizeLocks_8cpp_source.html#l00028">AIELocalizeLocksPass::runOnOperation()</a>, <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00180">AIEDMATasksToNPUPass::setAddressForSingleBD()</a>, <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00354">simpleBankAwareAllocation()</a>, and <a class="el" href="AIEXDialect_8cpp_source.html#l00148">xilinx::AIEX::verifyStridesWraps()</a>.</p>
 
 </div>
 </div>
@@ -2961,8 +2874,6 @@ template&lt;typename OpType &gt; </div>
         </tr>
       </table>
 </div><div class="memdoc">
-
-<p class="reference">Referenced by <a class="el" href="AIETargetXAIEV2_8cpp_source.html#l00076">generateDMAConfig()</a>.</p>
 
 </div>
 </div>
@@ -3574,8 +3485,6 @@ template&lt;typename OpType &gt; </div>
       </table>
 </div><div class="memdoc">
 
-<p class="reference">Referenced by <a class="el" href="AIETargetXAIEV2_8cpp_source.html#l00076">generateDMAConfig()</a>.</p>
-
 </div>
 </div>
 <a id="a614f76e20251027422501614db31f6a8"></a>
@@ -3688,8 +3597,6 @@ template&lt;typename OpType &gt; </div>
       </table>
 </div><div class="memdoc">
 
-<p class="reference">Referenced by <a class="el" href="AIETargetXAIEV2_8cpp_source.html#l00076">generateDMAConfig()</a>.</p>
-
 </div>
 </div>
 <a id="a4d0ec77311d176ae0bb3abb1cf4b2ef7"></a>
@@ -3789,8 +3696,6 @@ template&lt;typename OpType &gt; </div>
         </tr>
       </table>
 </div><div class="memdoc">
-
-<p class="reference">Referenced by <a class="el" href="AIETargetXAIEV2_8cpp_source.html#l00076">generateDMAConfig()</a>.</p>
 
 </div>
 </div>
@@ -4012,7 +3917,7 @@ template&lt;typename OpType &gt; </div>
 
 <p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00052">52</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00676">xilinx::AIE::AIERTControl::addAieElf()</a>, <a class="el" href="AIERT_8cpp_source.html#l00696">xilinx::AIE::AIERTControl::addAieElfs()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00397">xilinx::AIE::Pathfinder::addFixedConnection()</a>, <a class="el" href="AIERT_8cpp_source.html#l00593">xilinx::AIE::AIERTControl::addInitConfig()</a>, <a class="el" href="AIETargetSimulationFiles_8cpp_source.html#l00215">AIETranslateGraphXPE()</a>, <a class="el" href="AIETargetSimulationFiles_8cpp_source.html#l00156">AIETranslateShimSolution()</a>, <a class="el" href="AIETargetHSA_8cpp_source.html#l00059">AIETranslateToHSA()</a>, <a class="el" href="AIERT_8cpp_source.html#l00468">xilinx::AIE::AIERTControl::configureSwitches()</a>, <a class="el" href="AIERT_8cpp_source.html#l00723">xilinx::AIE::AIERTControl::dmaUpdateBdAddr()</a>, <a class="el" href="AIETargetXAIEV2_8cpp_source.html#l00076">generateDMAConfig()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00302">AIEGenerateColumnControlOverlayPass::generatePacketFlowsForControl()</a>, <a class="el" href="AIEXDialect_8cpp_source.html#l00039">xilinx::AIEX::getBufferDescriptorAddressRegisterAddress()</a>, <a class="el" href="AIEFlowsToJSON_8cpp_source.html#l00034">getNextCoords()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00399">xilinx::AIE::AIE2TargetModel::getNumBanks()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00380">xilinx::AIE::AIE2TargetModel::getNumBDs()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00225">xilinx::AIE::AIE1TargetModel::getNumDestShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00520">xilinx::AIE::AIE2TargetModel::getNumDestShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00110">xilinx::AIE::AIE1TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00370">xilinx::AIE::AIE2TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00376">xilinx::AIE::AIE2TargetModel::getNumLocks()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00243">xilinx::AIE::AIE1TargetModel::getNumSourceShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00540">xilinx::AIE::AIE2TargetModel::getNumSourceShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00166">xilinx::AIE::AIE1TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00441">xilinx::AIE::AIE2TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00172">xilinx::AIE::DynamicTileAnalysis::getShimMux()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00155">xilinx::AIE::DynamicTileAnalysis::getSwitchbox()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00144">xilinx::AIE::DynamicTileAnalysis::getTile()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00070">getTileToControllerIdMap()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00045">getTileToControllerIdMap6RowsOrLess()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00189">xilinx::AIE::Pathfinder::initialize()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00384">xilinx::AIE::AIE2TargetModel::isBdChannelAccessible()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00261">xilinx::AIE::AIE1TargetModel::isLegalTileConnection()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00559">xilinx::AIE::AIE2TargetModel::isLegalTileConnection()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00445">xilinx::AIE::VC1902TargetModel::isShimNOCorPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00477">xilinx::AIE::VE2302TargetModel::isShimNOCorPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00515">xilinx::AIE::VE2802TargetModel::isShimNOCorPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00544">xilinx::AIE::BaseNPUTargetModel::isShimNOCorPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00437">xilinx::AIE::VC1902TargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00469">xilinx::AIE::VE2302TargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00507">xilinx::AIE::VE2802TargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00563">xilinx::AIE::NPUTargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00441">xilinx::AIE::VC1902TargetModel::isShimPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00473">xilinx::AIE::VE2302TargetModel::isShimPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00511">xilinx::AIE::VE2802TargetModel::isShimPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00567">xilinx::AIE::NPUTargetModel::isShimPLTile()</a>, <a class="el" href="AIECoreToStandard_8cpp_source.html#l00399">AIEBufferToStandard::matchAndRewrite()</a>, <a class="el" href="AIECoreToStandard_8cpp_source.html#l00449">AIECoreToStandardFunc::matchAndRewrite()</a>, <a class="el" href="AIEMaterializeBDChains_8cpp_source.html#l00036">DMAStartBdChainForOpPattern::matchAndRewrite()</a>, <a class="el" href="test__library_8cpp_source.html#l00304">mlir_aie_acquire_lock()</a>, <a class="el" href="test__library_8cpp_source.html#l01046">mlir_aie_clear_config()</a>, <a class="el" href="test__library_8cpp_source.html#l01076">mlir_aie_clear_shim_config()</a>, <a class="el" href="test__library_8cpp_source.html#l00378">mlir_aie_clear_tile_memory()</a>, <a class="el" href="test__library_8cpp_source.html#l00341">mlir_aie_data_mem_rd_word()</a>, <a class="el" href="test__library_8cpp_source.html#l00351">mlir_aie_data_mem_wr_word()</a>, <a class="el" href="test__library_8cpp_source.html#l00366">mlir_aie_dump_tile_memory()</a>, <a class="el" href="test__library_8cpp_source.html#l00359">mlir_aie_get_tile_addr()</a>, <a class="el" href="test__library_8cpp_source.html#l00508">mlir_aie_print_dma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00713">mlir_aie_print_memtiledma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00775">mlir_aie_print_shimdma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00945">mlir_aie_print_tile_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00318">mlir_aie_release_lock()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00042">operator&lt;()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00046">operator==()</a>, <a class="el" href="test__library_8cpp_source.html#l00698">print_aie2_lock_status()</a>, <a class="el" href="test__utils_8h_source.html#l00070">test_utils::print_matrix()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00025">xilinx::AIE::DynamicTileAnalysis::runAnalysis()</a>, <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00923">xilinx::AIE::AIEPathfinderPass::runOnOperation()</a>, <a class="el" href="AIEAssignBufferDescriptorIDs_8cpp_source.html#l00056">AIEAssignBufferDescriptorIDsPass::runOnOperation()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00142">AIEAssignTileCtrlIDsPass::runOnOperation()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00187">AIEGenerateColumnControlOverlayPass::runOnOperation()</a>, <a class="el" href="AIELocalizeLocks_8cpp_source.html#l00028">AIELocalizeLocksPass::runOnOperation()</a>, <a class="el" href="AIECtrlPacketToDma_8cpp_source.html#l00056">AIECtrlPacketToDmaPass::runOnOperation()</a>, <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00262">xilinx::AIE::AIEPathfinderPass::runOnPacketFlow()</a>, <a class="el" href="AIETargetShared_8cpp_source.html#l00050">tileDMAInstRefStr()</a>, <a class="el" href="AIETargetShared_8cpp_source.html#l00038">tileDMAInstStr()</a>, <a class="el" href="AIETargetShared_8cpp_source.html#l00027">tileLocStr()</a>, and <a class="el" href="AIEFlowsToJSON_8cpp_source.html#l00049">translateSwitchboxes()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00676">xilinx::AIE::AIERTControl::addAieElf()</a>, <a class="el" href="AIERT_8cpp_source.html#l00696">xilinx::AIE::AIERTControl::addAieElfs()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00397">xilinx::AIE::Pathfinder::addFixedConnection()</a>, <a class="el" href="AIERT_8cpp_source.html#l00593">xilinx::AIE::AIERTControl::addInitConfig()</a>, <a class="el" href="AIETargetSimulationFiles_8cpp_source.html#l00215">AIETranslateGraphXPE()</a>, <a class="el" href="AIETargetSimulationFiles_8cpp_source.html#l00156">AIETranslateShimSolution()</a>, <a class="el" href="AIETargetHSA_8cpp_source.html#l00059">AIETranslateToHSA()</a>, <a class="el" href="AIERT_8cpp_source.html#l00468">xilinx::AIE::AIERTControl::configureSwitches()</a>, <a class="el" href="AIERT_8cpp_source.html#l00723">xilinx::AIE::AIERTControl::dmaUpdateBdAddr()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00302">AIEGenerateColumnControlOverlayPass::generatePacketFlowsForControl()</a>, <a class="el" href="AIEXDialect_8cpp_source.html#l00039">xilinx::AIEX::getBufferDescriptorAddressRegisterAddress()</a>, <a class="el" href="AIEFlowsToJSON_8cpp_source.html#l00034">getNextCoords()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00399">xilinx::AIE::AIE2TargetModel::getNumBanks()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00380">xilinx::AIE::AIE2TargetModel::getNumBDs()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00225">xilinx::AIE::AIE1TargetModel::getNumDestShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00520">xilinx::AIE::AIE2TargetModel::getNumDestShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00110">xilinx::AIE::AIE1TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00370">xilinx::AIE::AIE2TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00376">xilinx::AIE::AIE2TargetModel::getNumLocks()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00243">xilinx::AIE::AIE1TargetModel::getNumSourceShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00540">xilinx::AIE::AIE2TargetModel::getNumSourceShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00166">xilinx::AIE::AIE1TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00441">xilinx::AIE::AIE2TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00172">xilinx::AIE::DynamicTileAnalysis::getShimMux()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00155">xilinx::AIE::DynamicTileAnalysis::getSwitchbox()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00144">xilinx::AIE::DynamicTileAnalysis::getTile()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00070">getTileToControllerIdMap()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00045">getTileToControllerIdMap6RowsOrLess()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00189">xilinx::AIE::Pathfinder::initialize()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00384">xilinx::AIE::AIE2TargetModel::isBdChannelAccessible()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00261">xilinx::AIE::AIE1TargetModel::isLegalTileConnection()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00559">xilinx::AIE::AIE2TargetModel::isLegalTileConnection()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00445">xilinx::AIE::VC1902TargetModel::isShimNOCorPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00477">xilinx::AIE::VE2302TargetModel::isShimNOCorPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00515">xilinx::AIE::VE2802TargetModel::isShimNOCorPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00544">xilinx::AIE::BaseNPUTargetModel::isShimNOCorPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00437">xilinx::AIE::VC1902TargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00469">xilinx::AIE::VE2302TargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00507">xilinx::AIE::VE2802TargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00563">xilinx::AIE::NPUTargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00441">xilinx::AIE::VC1902TargetModel::isShimPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00473">xilinx::AIE::VE2302TargetModel::isShimPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00511">xilinx::AIE::VE2802TargetModel::isShimPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00567">xilinx::AIE::NPUTargetModel::isShimPLTile()</a>, <a class="el" href="AIECoreToStandard_8cpp_source.html#l00399">AIEBufferToStandard::matchAndRewrite()</a>, <a class="el" href="AIECoreToStandard_8cpp_source.html#l00449">AIECoreToStandardFunc::matchAndRewrite()</a>, <a class="el" href="AIEMaterializeBDChains_8cpp_source.html#l00036">DMAStartBdChainForOpPattern::matchAndRewrite()</a>, <a class="el" href="test__library_8cpp_source.html#l00304">mlir_aie_acquire_lock()</a>, <a class="el" href="test__library_8cpp_source.html#l01046">mlir_aie_clear_config()</a>, <a class="el" href="test__library_8cpp_source.html#l01076">mlir_aie_clear_shim_config()</a>, <a class="el" href="test__library_8cpp_source.html#l00378">mlir_aie_clear_tile_memory()</a>, <a class="el" href="test__library_8cpp_source.html#l00341">mlir_aie_data_mem_rd_word()</a>, <a class="el" href="test__library_8cpp_source.html#l00351">mlir_aie_data_mem_wr_word()</a>, <a class="el" href="test__library_8cpp_source.html#l00366">mlir_aie_dump_tile_memory()</a>, <a class="el" href="test__library_8cpp_source.html#l00359">mlir_aie_get_tile_addr()</a>, <a class="el" href="test__library_8cpp_source.html#l00508">mlir_aie_print_dma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00713">mlir_aie_print_memtiledma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00775">mlir_aie_print_shimdma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00945">mlir_aie_print_tile_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00318">mlir_aie_release_lock()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00042">operator&lt;()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00046">operator==()</a>, <a class="el" href="test__library_8cpp_source.html#l00698">print_aie2_lock_status()</a>, <a class="el" href="test__utils_8h_source.html#l00070">test_utils::print_matrix()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00025">xilinx::AIE::DynamicTileAnalysis::runAnalysis()</a>, <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00923">xilinx::AIE::AIEPathfinderPass::runOnOperation()</a>, <a class="el" href="AIEAssignBufferDescriptorIDs_8cpp_source.html#l00056">AIEAssignBufferDescriptorIDsPass::runOnOperation()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00142">AIEAssignTileCtrlIDsPass::runOnOperation()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00187">AIEGenerateColumnControlOverlayPass::runOnOperation()</a>, <a class="el" href="AIELocalizeLocks_8cpp_source.html#l00028">AIELocalizeLocksPass::runOnOperation()</a>, <a class="el" href="AIECtrlPacketToDma_8cpp_source.html#l00056">AIECtrlPacketToDmaPass::runOnOperation()</a>, <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00262">xilinx::AIE::AIEPathfinderPass::runOnPacketFlow()</a>, <a class="el" href="AIETargetShared_8cpp_source.html#l00050">tileDMAInstRefStr()</a>, <a class="el" href="AIETargetShared_8cpp_source.html#l00038">tileDMAInstStr()</a>, <a class="el" href="AIETargetShared_8cpp_source.html#l00027">tileLocStr()</a>, and <a class="el" href="AIEFlowsToJSON_8cpp_source.html#l00049">translateSwitchboxes()</a>.</p>
 
 </div>
 </div>
@@ -4570,7 +4475,7 @@ template&lt;typename OpType &gt; </div>
 
 <p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00052">52</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00676">xilinx::AIE::AIERTControl::addAieElf()</a>, <a class="el" href="AIERT_8cpp_source.html#l00696">xilinx::AIE::AIERTControl::addAieElfs()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00397">xilinx::AIE::Pathfinder::addFixedConnection()</a>, <a class="el" href="AIERT_8cpp_source.html#l00593">xilinx::AIE::AIERTControl::addInitConfig()</a>, <a class="el" href="AIETargetSimulationFiles_8cpp_source.html#l00215">AIETranslateGraphXPE()</a>, <a class="el" href="AIETargetAirbin_8cpp_source.html#l00427">xilinx::AIE::TileAddress::clearRange()</a>, <a class="el" href="AIERT_8cpp_source.html#l00468">xilinx::AIE::AIERTControl::configureSwitches()</a>, <a class="el" href="AIERT_8cpp_source.html#l00723">xilinx::AIE::AIERTControl::dmaUpdateBdAddr()</a>, <a class="el" href="AIETargetXAIEV2_8cpp_source.html#l00076">generateDMAConfig()</a>, <a class="el" href="AIEXDialect_8cpp_source.html#l00039">xilinx::AIEX::getBufferDescriptorAddressRegisterAddress()</a>, <a class="el" href="AIEFlowsToJSON_8cpp_source.html#l00034">getNextCoords()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00399">xilinx::AIE::AIE2TargetModel::getNumBanks()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00380">xilinx::AIE::AIE2TargetModel::getNumBDs()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00225">xilinx::AIE::AIE1TargetModel::getNumDestShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00520">xilinx::AIE::AIE2TargetModel::getNumDestShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00110">xilinx::AIE::AIE1TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00370">xilinx::AIE::AIE2TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00376">xilinx::AIE::AIE2TargetModel::getNumLocks()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00243">xilinx::AIE::AIE1TargetModel::getNumSourceShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00540">xilinx::AIE::AIE2TargetModel::getNumSourceShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00166">xilinx::AIE::AIE1TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00441">xilinx::AIE::AIE2TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00172">xilinx::AIE::DynamicTileAnalysis::getShimMux()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00155">xilinx::AIE::DynamicTileAnalysis::getSwitchbox()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00144">xilinx::AIE::DynamicTileAnalysis::getTile()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00070">getTileToControllerIdMap()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00045">getTileToControllerIdMap6RowsOrLess()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00189">xilinx::AIE::Pathfinder::initialize()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00384">xilinx::AIE::AIE2TargetModel::isBdChannelAccessible()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00273">xilinx::AIE::AIE1TargetModel::isCoreTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00466">xilinx::AIE::VE2302TargetModel::isCoreTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00501">xilinx::AIE::VE2802TargetModel::isCoreTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00537">xilinx::AIE::BaseNPUTargetModel::isCoreTile()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00261">xilinx::AIE::AIE1TargetModel::isLegalTileConnection()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00559">xilinx::AIE::AIE2TargetModel::isLegalTileConnection()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00467">xilinx::AIE::VE2302TargetModel::isMemTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00503">xilinx::AIE::VE2802TargetModel::isMemTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00538">xilinx::AIE::BaseNPUTargetModel::isMemTile()</a>, <a class="el" href="AIETargetAirbin_8cpp_source.html#l00328">xilinx::AIE::TileAddress::isShim()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00445">xilinx::AIE::VC1902TargetModel::isShimNOCorPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00477">xilinx::AIE::VE2302TargetModel::isShimNOCorPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00515">xilinx::AIE::VE2802TargetModel::isShimNOCorPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00544">xilinx::AIE::BaseNPUTargetModel::isShimNOCorPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00437">xilinx::AIE::VC1902TargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00469">xilinx::AIE::VE2302TargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00507">xilinx::AIE::VE2802TargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00563">xilinx::AIE::NPUTargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00595">xilinx::AIE::VirtualizedNPUTargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00612">xilinx::AIE::NPU2TargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00441">xilinx::AIE::VC1902TargetModel::isShimPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00473">xilinx::AIE::VE2302TargetModel::isShimPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00511">xilinx::AIE::VE2802TargetModel::isShimPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00567">xilinx::AIE::NPUTargetModel::isShimPLTile()</a>, <a class="el" href="AIECoreToStandard_8cpp_source.html#l00399">AIEBufferToStandard::matchAndRewrite()</a>, <a class="el" href="AIECoreToStandard_8cpp_source.html#l00449">AIECoreToStandardFunc::matchAndRewrite()</a>, <a class="el" href="test__library_8cpp_source.html#l00304">mlir_aie_acquire_lock()</a>, <a class="el" href="test__library_8cpp_source.html#l01046">mlir_aie_clear_config()</a>, <a class="el" href="test__library_8cpp_source.html#l01076">mlir_aie_clear_shim_config()</a>, <a class="el" href="test__library_8cpp_source.html#l00378">mlir_aie_clear_tile_memory()</a>, <a class="el" href="test__library_8cpp_source.html#l00341">mlir_aie_data_mem_rd_word()</a>, <a class="el" href="test__library_8cpp_source.html#l00351">mlir_aie_data_mem_wr_word()</a>, <a class="el" href="test__library_8cpp_source.html#l00366">mlir_aie_dump_tile_memory()</a>, <a class="el" href="test__library_8cpp_source.html#l00359">mlir_aie_get_tile_addr()</a>, <a class="el" href="test__library_8cpp_source.html#l00508">mlir_aie_print_dma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00713">mlir_aie_print_memtiledma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00775">mlir_aie_print_shimdma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00945">mlir_aie_print_tile_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00318">mlir_aie_release_lock()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00042">operator&lt;()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00046">operator==()</a>, <a class="el" href="test__library_8cpp_source.html#l00698">print_aie2_lock_status()</a>, <a class="el" href="test__utils_8h_source.html#l00070">test_utils::print_matrix()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00025">xilinx::AIE::DynamicTileAnalysis::runAnalysis()</a>, <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00923">xilinx::AIE::AIEPathfinderPass::runOnOperation()</a>, <a class="el" href="AIEAssignBufferDescriptorIDs_8cpp_source.html#l00056">AIEAssignBufferDescriptorIDsPass::runOnOperation()</a>, <a class="el" href="AIELocalizeLocks_8cpp_source.html#l00028">AIELocalizeLocksPass::runOnOperation()</a>, <a class="el" href="AIECtrlPacketToDma_8cpp_source.html#l00056">AIECtrlPacketToDmaPass::runOnOperation()</a>, <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00262">xilinx::AIE::AIEPathfinderPass::runOnPacketFlow()</a>, <a class="el" href="AIETargetShared_8cpp_source.html#l00050">tileDMAInstRefStr()</a>, <a class="el" href="AIETargetShared_8cpp_source.html#l00038">tileDMAInstStr()</a>, <a class="el" href="AIETargetShared_8cpp_source.html#l00027">tileLocStr()</a>, and <a class="el" href="AIEFlowsToJSON_8cpp_source.html#l00049">translateSwitchboxes()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00676">xilinx::AIE::AIERTControl::addAieElf()</a>, <a class="el" href="AIERT_8cpp_source.html#l00696">xilinx::AIE::AIERTControl::addAieElfs()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00397">xilinx::AIE::Pathfinder::addFixedConnection()</a>, <a class="el" href="AIERT_8cpp_source.html#l00593">xilinx::AIE::AIERTControl::addInitConfig()</a>, <a class="el" href="AIETargetSimulationFiles_8cpp_source.html#l00215">AIETranslateGraphXPE()</a>, <a class="el" href="AIETargetAirbin_8cpp_source.html#l00427">xilinx::AIE::TileAddress::clearRange()</a>, <a class="el" href="AIERT_8cpp_source.html#l00468">xilinx::AIE::AIERTControl::configureSwitches()</a>, <a class="el" href="AIERT_8cpp_source.html#l00723">xilinx::AIE::AIERTControl::dmaUpdateBdAddr()</a>, <a class="el" href="AIEXDialect_8cpp_source.html#l00039">xilinx::AIEX::getBufferDescriptorAddressRegisterAddress()</a>, <a class="el" href="AIEFlowsToJSON_8cpp_source.html#l00034">getNextCoords()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00399">xilinx::AIE::AIE2TargetModel::getNumBanks()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00380">xilinx::AIE::AIE2TargetModel::getNumBDs()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00225">xilinx::AIE::AIE1TargetModel::getNumDestShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00520">xilinx::AIE::AIE2TargetModel::getNumDestShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00110">xilinx::AIE::AIE1TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00370">xilinx::AIE::AIE2TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00376">xilinx::AIE::AIE2TargetModel::getNumLocks()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00243">xilinx::AIE::AIE1TargetModel::getNumSourceShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00540">xilinx::AIE::AIE2TargetModel::getNumSourceShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00166">xilinx::AIE::AIE1TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00441">xilinx::AIE::AIE2TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00172">xilinx::AIE::DynamicTileAnalysis::getShimMux()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00155">xilinx::AIE::DynamicTileAnalysis::getSwitchbox()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00144">xilinx::AIE::DynamicTileAnalysis::getTile()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00070">getTileToControllerIdMap()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00045">getTileToControllerIdMap6RowsOrLess()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00189">xilinx::AIE::Pathfinder::initialize()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00384">xilinx::AIE::AIE2TargetModel::isBdChannelAccessible()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00273">xilinx::AIE::AIE1TargetModel::isCoreTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00466">xilinx::AIE::VE2302TargetModel::isCoreTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00501">xilinx::AIE::VE2802TargetModel::isCoreTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00537">xilinx::AIE::BaseNPUTargetModel::isCoreTile()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00261">xilinx::AIE::AIE1TargetModel::isLegalTileConnection()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00559">xilinx::AIE::AIE2TargetModel::isLegalTileConnection()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00467">xilinx::AIE::VE2302TargetModel::isMemTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00503">xilinx::AIE::VE2802TargetModel::isMemTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00538">xilinx::AIE::BaseNPUTargetModel::isMemTile()</a>, <a class="el" href="AIETargetAirbin_8cpp_source.html#l00328">xilinx::AIE::TileAddress::isShim()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00445">xilinx::AIE::VC1902TargetModel::isShimNOCorPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00477">xilinx::AIE::VE2302TargetModel::isShimNOCorPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00515">xilinx::AIE::VE2802TargetModel::isShimNOCorPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00544">xilinx::AIE::BaseNPUTargetModel::isShimNOCorPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00437">xilinx::AIE::VC1902TargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00469">xilinx::AIE::VE2302TargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00507">xilinx::AIE::VE2802TargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00563">xilinx::AIE::NPUTargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00595">xilinx::AIE::VirtualizedNPUTargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00612">xilinx::AIE::NPU2TargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00441">xilinx::AIE::VC1902TargetModel::isShimPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00473">xilinx::AIE::VE2302TargetModel::isShimPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00511">xilinx::AIE::VE2802TargetModel::isShimPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00567">xilinx::AIE::NPUTargetModel::isShimPLTile()</a>, <a class="el" href="AIECoreToStandard_8cpp_source.html#l00399">AIEBufferToStandard::matchAndRewrite()</a>, <a class="el" href="AIECoreToStandard_8cpp_source.html#l00449">AIECoreToStandardFunc::matchAndRewrite()</a>, <a class="el" href="test__library_8cpp_source.html#l00304">mlir_aie_acquire_lock()</a>, <a class="el" href="test__library_8cpp_source.html#l01046">mlir_aie_clear_config()</a>, <a class="el" href="test__library_8cpp_source.html#l01076">mlir_aie_clear_shim_config()</a>, <a class="el" href="test__library_8cpp_source.html#l00378">mlir_aie_clear_tile_memory()</a>, <a class="el" href="test__library_8cpp_source.html#l00341">mlir_aie_data_mem_rd_word()</a>, <a class="el" href="test__library_8cpp_source.html#l00351">mlir_aie_data_mem_wr_word()</a>, <a class="el" href="test__library_8cpp_source.html#l00366">mlir_aie_dump_tile_memory()</a>, <a class="el" href="test__library_8cpp_source.html#l00359">mlir_aie_get_tile_addr()</a>, <a class="el" href="test__library_8cpp_source.html#l00508">mlir_aie_print_dma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00713">mlir_aie_print_memtiledma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00775">mlir_aie_print_shimdma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00945">mlir_aie_print_tile_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00318">mlir_aie_release_lock()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00042">operator&lt;()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00046">operator==()</a>, <a class="el" href="test__library_8cpp_source.html#l00698">print_aie2_lock_status()</a>, <a class="el" href="test__utils_8h_source.html#l00070">test_utils::print_matrix()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00025">xilinx::AIE::DynamicTileAnalysis::runAnalysis()</a>, <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00923">xilinx::AIE::AIEPathfinderPass::runOnOperation()</a>, <a class="el" href="AIEAssignBufferDescriptorIDs_8cpp_source.html#l00056">AIEAssignBufferDescriptorIDsPass::runOnOperation()</a>, <a class="el" href="AIELocalizeLocks_8cpp_source.html#l00028">AIELocalizeLocksPass::runOnOperation()</a>, <a class="el" href="AIECtrlPacketToDma_8cpp_source.html#l00056">AIECtrlPacketToDmaPass::runOnOperation()</a>, <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00262">xilinx::AIE::AIEPathfinderPass::runOnPacketFlow()</a>, <a class="el" href="AIETargetShared_8cpp_source.html#l00050">tileDMAInstRefStr()</a>, <a class="el" href="AIETargetShared_8cpp_source.html#l00038">tileDMAInstStr()</a>, <a class="el" href="AIETargetShared_8cpp_source.html#l00027">tileLocStr()</a>, and <a class="el" href="AIEFlowsToJSON_8cpp_source.html#l00049">translateSwitchboxes()</a>.</p>
 
 </div>
 </div>
@@ -4664,58 +4569,10 @@ template&lt;typename OpType &gt; </div>
 
 </div>
 </div>
-<a id="a11bed4eb7e14a4e8b7baff13123491a0"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a11bed4eb7e14a4e8b7baff13123491a0">&#9670;&nbsp;</a></span>xaie_cpp_file_header</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">const char* xilinx::AIE::xaie_cpp_file_header</td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-<b>Initial value:</b><div class="fragment"><div class="line">= R<span class="stringliteral">&quot;code(</span></div>
-<div class="line"><span class="stringliteral">// This file was auto-generated by aiecc.py --aie-generate-xaie.</span></div>
-<div class="line"><span class="stringliteral"></span> </div>
-<div class="line"><span class="stringliteral">#ifndef MLIR_AIE_QUIET</span></div>
-<div class="line"><span class="stringliteral">#define __mlir_aie_verbose(x) x</span></div>
-<div class="line"><span class="stringliteral">#else</span></div>
-<div class="line"><span class="stringliteral">#define __mlir_aie_verbose(x)</span></div>
-<div class="line"><span class="stringliteral">#endif</span></div>
-<div class="line"><span class="stringliteral"></span> </div>
-<div class="line"><span class="stringliteral">// The following is a wrapper for the common &quot;if(call() != 0) return 1&quot; pattern.</span></div>
-<div class="line"><span class="stringliteral">// Use this only in functions that return int. If the call this wrapper is used</span></div>
-<div class="line"><span class="stringliteral">// on does not succeed, the expanded code will exit out of the function</span></div>
-<div class="line"><span class="stringliteral">// containing this macro with an error code.</span></div>
-<div class="line"><span class="stringliteral">#define __mlir_aie_try(x) do { \</span></div>
-<div class="line"><span class="stringliteral">  AieRC ret = (x); \</span></div>
-<div class="line"><span class="stringliteral">  if(ret != XAIE_OK) { \</span></div>
-<div class="line"><span class="stringliteral">    return x; \</span></div>
-<div class="line"><span class="stringliteral">  } \</span></div>
-<div class="line"><span class="stringliteral">} while(0)</span></div>
-<div class="line"><span class="stringliteral"></span> </div>
-<div class="line"><span class="stringliteral">static XAie_DmaDimDesc *__mlir_aie_alloc_dim_desc(size_t ndims) {</span></div>
-<div class="line"><span class="stringliteral">  XAie_DmaDimDesc *ret = NULL;</span></div>
-<div class="line"><span class="stringliteral">  ret = (XAie_DmaDimDesc *)calloc(sizeof(XAie_DmaDimDesc), ndims);</span></div>
-<div class="line"><span class="stringliteral">  if(NULL == ret) {</span></div>
-<div class="line"><span class="stringliteral">    __mlir_aie_verbose(fprintf(stderr, &quot;Allocating DmaDimDesc failed.\n&quot;));</span></div>
-<div class="line"><span class="stringliteral">  }</span></div>
-<div class="line"><span class="stringliteral">  return ret;</span></div>
-<div class="line"><span class="stringliteral">}</span></div>
-<div class="line"><span class="stringliteral"></span> </div>
-<div class="line"><span class="stringliteral">)code&quot;</span></div>
-</div><!-- fragment -->
-<p class="definition">Definition at line <a class="el" href="AIETargetXAIEV2_8cpp_source.html#l00033">33</a> of file <a class="el" href="AIETargetXAIEV2_8cpp_source.html">AIETargetXAIEV2.cpp</a>.</p>
-
-<p class="reference">Referenced by <a class="el" href="AIETargetXAIEV2_8cpp_source.html#l00297">AIETranslateToXAIEV2()</a>.</p>
-
-</div>
-</div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Jan 10 2025 11:12:32 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.1
+Generated on Fri Jan 10 2025 20:31:57 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.1
 </small></address>
 </body>
 </html>
