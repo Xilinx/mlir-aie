@@ -123,7 +123,7 @@ def design():
                         row=0,
                         direction=1,
                         channel=0,
-                        issue_token=1,
+                        issue_token=True,
                         repeat_count=0,
                     )
                     # Wait for the task completion token of the previously set off chain of BDs
