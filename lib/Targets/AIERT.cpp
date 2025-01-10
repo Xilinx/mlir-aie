@@ -439,7 +439,7 @@ LogicalResult AIERTControl::initBuffers(DeviceOp &targetOp) {
             bytes.begin());
         byteVec.insert(byteVec.end(), bytes.begin(), bytes.end());
       }
-    } else if (denseInit.getElementType().isa<FloatType>()) {
+    } else if (isa<FloatType>(denseInit.getElementType())) {
       for (auto floatVal : denseInit.getValues<APFloat>()) {
         APInt floatInt = floatVal.bitcastToAPInt();
         // Get the size in bytes
