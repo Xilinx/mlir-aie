@@ -27,10 +27,10 @@ module {
 
     aie.packet_flow(0x1) {
       aie.packet_source<%tile_0_0, DMA : 0>
-      aie.packet_dest<%tile_0_2, Ctrl : 0>
+      aie.packet_dest<%tile_0_2, TileControl : 0>
     }
     aie.packet_flow(0x2) {
-      aie.packet_source<%tile_0_2, Ctrl : 0>
+      aie.packet_source<%tile_0_2, TileControl : 0>
       aie.packet_dest<%tile_0_0, DMA : 0>
     }
     aie.packet_flow(0x3) {

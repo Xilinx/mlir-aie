@@ -40,11 +40,11 @@ def main(opts):
 
     if not errors:
         print("\nPASS!\n")
-        exit(0)
+        sys.exit(0)
     else:
         print("\nError count: ", errors)
         print("\nFailed.\n")
-        exit(-1)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

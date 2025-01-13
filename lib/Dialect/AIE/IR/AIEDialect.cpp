@@ -455,21 +455,35 @@ LogicalResult HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
 // has valid DMA channels.
 template <typename ConcreteType>
 LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
+  DenseSet<DMAChannel> inputChannels;
+  DenseSet<DMAChannel> outputChannels;
   auto element = cast<ConcreteType>(op);
-  DenseSet<DMAChannel> usedChannels;
-  for (auto &bodyOp : element.getBody().getOps()) {
-    // check for duplicate DMA channels within the same MemTileDMAOp
+  Region &body = element.getBody();
+  if (body.empty())
+    return op->emitOpError("should have non-empty body");
+  for (auto &bodyOp : body.getOps()) {
+    // check for duplicate DMA channels within the same ShimDMAOp
     if (auto dmaStart = dyn_cast<DMAStartOp>(bodyOp)) {
       DMAChannel dmaChan = {dmaStart.getChannelDir(),
                             dmaStart.getChannelIndex()};
-      if (usedChannels.count(dmaChan))
-        return dmaStart.emitOpError()
-               << "duplicate DMA channel "
-               << stringifyDMAChannelDir(dmaChan.direction) << dmaChan.channel
-               << " not allowed";
-      usedChannels.insert(dmaChan);
+      // check if number of input and output channels is more than available
+      // hardware
+      if (dmaChan.direction == DMAChannelDir::S2MM)
+        inputChannels.insert(dmaChan);
+      else
+        outputChannels.insert(dmaChan);
     }
   }
+
+  if (inputChannels.size() >
+      element.getTileOp().getNumSourceConnections(WireBundle::DMA))
+    return op->emitOpError(
+        "uses more input channels than available on this tile");
+
+  if (outputChannels.size() >
+      element.getTileOp().getNumDestConnections(WireBundle::DMA))
+    return op->emitOpError(
+        "uses more output channels than available on this tile");
   return success();
 }
 
@@ -1335,49 +1349,12 @@ int ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
 //===----------------------------------------------------------------------===//
 
 LogicalResult ShimDMAOp::verify() {
-  Region &body = getBody();
-  DenseSet<DMAChannel> usedChannels;
-  std::vector<DMAChannel> inputChannels;
-  std::vector<DMAChannel> outputChannels;
-
-  if (getBody().empty())
-    return emitOpError("should have non-empty body");
-
   if (!getTileOp().isShimNOCTile())
     return emitOpError("must be in a ShimTile with a NOC connection");
 
   if (HasSomeTerminator<DMAStartOp, NextBDOp, EndOp>::verifyTrait(*this)
           .failed())
     return failure();
-
-  for (auto &bodyOp : body.getOps()) {
-    // check for duplicate DMA channels within the same ShimDMAOp
-    if (auto dmaStart = dyn_cast<DMAStartOp>(bodyOp)) {
-      DMAChannel dmaChan = {dmaStart.getChannelDir(),
-                            dmaStart.getChannelIndex()};
-      if (usedChannels.count(dmaChan))
-        return dmaStart.emitOpError()
-               << "duplicate DMA channel "
-               << stringifyDMAChannelDir(dmaChan.direction) << dmaChan.channel
-               << " in MemOp";
-      usedChannels.insert(dmaChan);
-      // check if number of input and output channels is more than available
-      // hardware
-      if (dmaChan.direction == DMAChannelDir::S2MM)
-        inputChannels.push_back(dmaChan);
-      else
-        outputChannels.push_back(dmaChan);
-    }
-  }
-
-  if (inputChannels.size() >
-      getTileOp().getNumSourceConnections(WireBundle::DMA))
-    return emitOpError("uses more input channels than available on this tile");
-
-  if (outputChannels.size() >
-      getTileOp().getNumDestConnections(WireBundle::DMA))
-    return emitOpError("uses more output channels than available on this tile");
-
   return success();
 }
 
@@ -1509,49 +1486,16 @@ static ParseResult parseBufferInitialValue(OpAsmParser &parser, Type &type,
 
 LogicalResult MemOp::verify() {
   Region &body = getBody();
-  DenseSet<DMAChannel> usedChannels;
-  std::vector<DMAChannel> inputChannels;
-  std::vector<DMAChannel> outputChannels;
-  if (body.empty())
-    return emitOpError("should have non-empty body");
-
   if (HasSomeTerminator<DMAStartOp, NextBDOp, EndOp>::verifyTrait(*this)
           .failed())
     return failure();
 
   for (auto &bodyOp : body.getOps()) {
-    // check for duplicate DMA channels within the same MemOp
-    if (auto dmaStart = dyn_cast<DMAStartOp>(bodyOp)) {
-      DMAChannel dmaChan = {dmaStart.getChannelDir(),
-                            dmaStart.getChannelIndex()};
-      if (usedChannels.count(dmaChan))
-        return dmaStart.emitOpError()
-               << "duplicate DMA channel "
-               << stringifyDMAChannelDir(dmaChan.direction) << dmaChan.channel
-               << " in MemOp";
-      usedChannels.insert(dmaChan);
-      // check if number of input and output channels is more than available
-      // hardware
-      if (dmaChan.direction == DMAChannelDir::S2MM)
-        inputChannels.push_back(dmaChan);
-      else
-        outputChannels.push_back(dmaChan);
-    }
-
     if (auto allocOp = dyn_cast<memref::AllocOp>(bodyOp))
       if (!allocOp->getAttr("id"))
         return allocOp.emitOpError()
                << "allocOp in MemOp region should have an id attribute";
   }
-
-  if (inputChannels.size() >
-      getTileOp().getNumSourceConnections(WireBundle::DMA))
-    return emitOpError("uses more input channels than available on this tile");
-
-  if (outputChannels.size() >
-      getTileOp().getNumDestConnections(WireBundle::DMA))
-    return emitOpError("uses more output channels than available on this tile");
-
   return success();
 }
 
@@ -1566,12 +1510,8 @@ int MemOp::rowIndex() { return getTileOp().rowIndex(); }
 //===----------------------------------------------------------------------===//
 
 LogicalResult MemTileDMAOp::verify() {
-  std::vector<DMAChannel> inputChannels;
-  std::vector<DMAChannel> outputChannels;
-
   assert(getOperation()->getNumRegions() == 1 &&
          "MemTileDMAOp has zero region!");
-  assert(!getBody().empty() && "MemTileDMAOp should have non-empty body");
 
   if (HasSomeTerminator<DMAStartOp, NextBDOp, EndOp>::verifyTrait(*this)
           .failed())
@@ -1584,14 +1524,6 @@ LogicalResult MemTileDMAOp::verify() {
                << "allocOp in MemTileDMAOp region should have an id attribute";
     }
     if (auto startOp = dyn_cast<DMAStartOp>(bodyOp)) {
-      // check if number of input and output channels is more than available
-      // hardware
-      DMAChannel dmaChan = {startOp.getChannelDir(), startOp.getChannelIndex()};
-      if (dmaChan.direction == DMAChannelDir::S2MM)
-        inputChannels.push_back(dmaChan);
-      else
-        outputChannels.push_back(dmaChan);
-
       if (startOp.getChannelIndex() > 3) {
         // Channels 4 and 5 in a memtile are restricted to only access local
         // buffers and locks.
@@ -1648,14 +1580,6 @@ LogicalResult MemTileDMAOp::verify() {
       }
     }
   }
-
-  if (inputChannels.size() >
-      getTileOp().getNumSourceConnections(WireBundle::DMA))
-    return emitOpError("uses more input channels than available on this tile");
-
-  if (outputChannels.size() >
-      getTileOp().getNumDestConnections(WireBundle::DMA))
-    return emitOpError("uses more output channels than available on this tile");
 
   return success();
 }
@@ -1994,6 +1918,85 @@ TileOp MemTileDMAOp::getTileOp() {
 int MemTileDMAOp::colIndex() { return getTileOp().colIndex(); }
 
 int MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
+
+//===----------------------------------------------------------------------===//
+// DMAStartOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
+
+  llvm::SetVector<Block *> reachable;
+  SmallVector<Block *, 16> worklist;
+  Block *firstBD = op.getSuccessor(0);
+  reachable.insert(firstBD);
+  worklist.push_back(firstBD);
+  while (!worklist.empty()) {
+    Block *block = worklist.pop_back_val();
+    if (block->empty())
+      continue;
+    auto successors = block->getTerminator()->getSuccessors();
+    for (auto *i : successors) {
+      if (!reachable.contains(i)) {
+        reachable.insert(i);
+        worklist.push_back(i);
+      }
+    }
+  }
+
+  // BD chain ends with an EndOp, indicating non-repeating pattern: BD chain
+  // folding not applicable.
+  if (isa<EndOp>((reachable.back())->getTerminator()))
+    return failure();
+
+  // Check for identical bds.
+  auto areEquivalentBDs = [](Block *b1, Block *b2) {
+    auto b1OpRange = b1->without_terminator();
+    auto b2OpRange = b2->without_terminator();
+    if (llvm::range_size(b1OpRange) != llvm::range_size(b2OpRange))
+      return false;
+    if (!llvm::all_of(llvm::zip_equal(b1OpRange, b2OpRange),
+                      [](std::tuple<Operation &, Operation &> pair) {
+                        return OperationEquivalence::isEquivalentTo(
+                            &std::get<0>(pair), &std::get<1>(pair),
+                            OperationEquivalence::IgnoreLocations);
+                      }))
+      return false;
+    return true;
+  };
+
+  // Get a vector of unique BDs.
+  SmallVector<Block *> uniquePattern;
+  auto patternIt = reachable.begin();
+  while (patternIt != reachable.end() &&
+         llvm::none_of(uniquePattern, [patternIt, areEquivalentBDs](Block *b1) {
+           return areEquivalentBDs(*patternIt, b1);
+         })) {
+    uniquePattern.push_back(*patternIt);
+    patternIt++;
+  }
+
+  unsigned idx = 0;
+  while (patternIt != reachable.end()) {
+    // BD repetition found. Check if repeating pattern.
+    if (!areEquivalentBDs(*patternIt, uniquePattern[idx]))
+      return failure();
+    patternIt++;
+    idx = (++idx) % uniquePattern.size();
+  }
+
+  // Repeating BD chains detected. Erasing repetitions.
+  auto lastBDTerm = dyn_cast<NextBDOp>(reachable.back()->getTerminator());
+  auto lastUniqueBDTerm =
+      dyn_cast<NextBDOp>(uniquePattern.back()->getTerminator());
+  lastUniqueBDTerm.setSuccessor(lastBDTerm.getSuccessor());
+
+  return success();
+}
+
+void DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
+                                             MLIRContext *context) {
+  patterns.add(FoldDMAStartOp);
+}
 
 //===----------------------------------------------------------------------===//
 // SwitchboxOp

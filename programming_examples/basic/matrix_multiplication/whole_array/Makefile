@@ -9,25 +9,47 @@
 ##===----------------------------------------------------------------------===##
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=whole_array
-targetname=matrixMultiplication
+targetname=whole_array
 
-M?=640
-K?=896
-N?=768
-m?=16
-k?=32
-n?=48
-n_aie_cols?=2
+# M, K, N: final GEMM dimensions
+M?=512
+K?=512
+N?=512
+
+# m, k, n: single AIE core GEMM dimensions
+m?=64
+k?=64
+n?=64
+
+n_aie_cols?=4
 b_col_maj?=0
 
 kernels=mm_${m}x${k}x${n}
 aieargs+=-m $m -k $k -n $n --n-aie-cols ${n_aie_cols} --b-col-maj ${b_col_maj}
 runargs+=--b_col_maj ${b_col_maj}
 target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
-use_tiler?=0
+use_alt?=0
+use_iron?=0
 
-ifeq (${use_tiler}, 1)
-aie_py_src=aie2_tiler.py
+# set this flag to 1 for linear buffer allocation
+# else, 0 for bank-aware
+use_linear_buf_alloc?=1
+
+ifeq (${use_linear_buf_alloc}, 1)
+buffer_aloc_flag=basic-sequential
+else
+buffer_aloc_flag=bank-aware
+endif
+
+ifeq (${use_alt}, 1)
+aie_py_src=${targetname}_alt.py
+ifeq (${use_iron}, 1)
+$(error Cannot specify both alt design and IRON)
+endif
+endif
+
+ifeq (${use_iron}, 1)
+aie_py_src=${targetname}_iron.py
 endif
 
 include ${srcdir}/../makefile-common

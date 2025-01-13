@@ -38,7 +38,7 @@ concurrency:
 env:
   DEBIAN_FRONTEND: noninteractive
   XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
-  VITIS: /opt/ryzen_ai-1.3.0/vitis_aie_essentials
+  VITIS: /opt/ryzen_ai-1.3.0.1/vitis_aie_essentials
   CMAKE_ARGS: |
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
@@ -50,13 +50,16 @@ env:
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
             -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
             -DAIE_INCLUDE_INTEGRATION_TESTS=OFF
-  # -j12 here to reduce the number of parallel chess jobs.
-  LIT_OPTS: -sv --time-tests -j12 --timeout 600 --show-unsupported --show-excluded
+  LIT_OPTS: -sv --time-tests --timeout 600 --show-unsupported --show-excluded
 
 jobs:
   build-tests:
     name: Run Tests on Ryzen AI
-    runs-on: amd7940hs
+    runs-on: ${{ matrix.runner_type }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner_type: [ amd7940hs, amdhx370 ]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -98,6 +101,14 @@ jobs:
           mkdir build
           pushd build
 
+          # -j here to reduce the number of parallel chess jobs.
+          # -j6 for 32GB RAM, -j12 for 64GB RAM
+          if [ x"${{ matrix.runner_type }}" == x"amdhx370" ]; then
+            LIT_OPTS="-j6 $LIT_OPTS"
+          else
+            LIT_OPTS="-j12 $LIT_OPTS"
+          fi
+
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
           cmake .. -G Ninja \
             -DPython3_EXECUTABLE=$(which python) \
@@ -114,7 +125,11 @@ jobs:
 
   build-quick-setup:
     name: Run Examples on Ryzen AI
-    runs-on: amd7940hs
+    runs-on: ${{ matrix.runner_type }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner_type: [ amd7940hs ]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -149,6 +164,14 @@ jobs:
 
           # build is created by the build-mlir-aie-from-wheels.sh script
           pushd build
+
+          # -j here to reduce the number of parallel chess jobs.
+          # -j6 for 32GB RAM, -j12 for 64GB RAM
+          if [ x"${{ matrix.runner_type }}" == x"amdhx370" ]; then
+            LIT_OPTS="-j6 $LIT_OPTS"
+          else
+            LIT_OPTS="-j12 $LIT_OPTS"
+          fi
 
           ninja install
           ninja check-reference-designs

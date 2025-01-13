@@ -221,7 +221,7 @@ struct AIEGenerateColumnControlOverlayPass
 
         generatePacketFlowsForControl(
             builder, device, shimTile, AIE::WireBundle::South, tilesOnCol,
-            AIE::WireBundle::Ctrl, 0, tileIDMap, false);
+            AIE::WireBundle::TileControl, 0, tileIDMap, false);
       }
       if (clRouteShimDmaToTileCTRL) {
         // Get all tile ops on column col
@@ -234,7 +234,7 @@ struct AIEGenerateColumnControlOverlayPass
 
         generatePacketFlowsForControl(
             builder, device, shimTile, AIE::WireBundle::DMA, tilesOnCol,
-            AIE::WireBundle::Ctrl, 0, tileIDMap, true);
+            AIE::WireBundle::TileControl, 0, tileIDMap, true);
       }
     }
   }

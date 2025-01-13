@@ -175,4 +175,3 @@ module {
     aie.shim_dma_allocation @out(S2MM, 0, 0)
   }
 }
-

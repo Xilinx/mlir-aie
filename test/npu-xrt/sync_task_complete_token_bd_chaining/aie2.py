@@ -10,8 +10,7 @@
 # RUN: %python %S/aie2.py > ./aie2.mlir
 # RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
 # RUN: clang %S/test.cpp -o test -std=c++11 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-# RUN: %run_on_npu ./test | FileCheck %s
-# CHECK: PASS!
+# RUN: %run_on_npu ./test
 
 from aie.extras.context import mlir_mod_ctx
 
@@ -124,7 +123,7 @@ def design():
                         row=0,
                         direction=1,
                         channel=0,
-                        issue_token=1,
+                        issue_token=True,
                         repeat_count=0,
                     )
                     # Wait for the task completion token of the previously set off chain of BDs

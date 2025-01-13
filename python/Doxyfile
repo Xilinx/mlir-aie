@@ -1,0 +1,39 @@
+# Example Doxyfile for a Python project
+
+#---------------------------------------------------------------------------
+# Project related configuration options
+#---------------------------------------------------------------------------
+PROJECT_NAME           = "IRON"
+PROJECT_NUMBER         = "1.0"
+OUTPUT_DIRECTORY       = "../docs/python"
+CREATE_SUBDIRS         = NO
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+
+#---------------------------------------------------------------------------
+# Build related configuration options
+#---------------------------------------------------------------------------
+INPUT                  = helpers/taplib iron
+FILE_PATTERNS          = *.py
+RECURSIVE              = YES
+
+#---------------------------------------------------------------------------
+# Output related configuration options
+#---------------------------------------------------------------------------
+GENERATE_LATEX         = NO
+GENERATE_MAN           = NO
+GENERATE_RTF           = NO
+GENERATE_XML           = NO
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+HTML_FILE_EXTENSION    = .html
+
+#---------------------------------------------------------------------------
+# Python specific configuration options
+#---------------------------------------------------------------------------
+OPTIMIZE_OUTPUT_FOR_C  = NO
+OPTIMIZE_OUTPUT_JAVA   = NO
+OPTIMIZE_FOR_FORTRAN   = NO
+OPTIMIZE_OUTPUT_VHDL   = NO
+EXTENSION_MAPPING      = py=Python
