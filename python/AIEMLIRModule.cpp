@@ -115,8 +115,8 @@ NB_MODULE(_aie, m) {
   m.def(
       "transaction_binary_to_mlir",
       [](MlirContext ctx, nb::bytes bytes) {
-        std::string s = static_cast<const char *>(bytes.data());
-        MlirStringRef bin = {s.data(), s.size()};
+        MlirStringRef bin = {static_cast<const char *>(bytes.data()),
+                             bytes.size()};
         return aieTranslateBinaryToTxn(ctx, bin);
       },
       "ctx"_a, "binary"_a);
