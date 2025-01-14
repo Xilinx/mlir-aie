@@ -151,12 +151,9 @@ if (AIE_ENABLE_PYTHON_PASSES)
   # Missed one...
   get_target_property(RegisterEverythingSources MLIRPythonExtension.RegisterEverything INTERFACE_SOURCES)
 
-  set(PYBINDINGS_SRC "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core")
-
   set(_py_srcs
     ${CMAKE_CURRENT_SOURCE_DIR}/AIEMLIRModule.cpp
     # Python passes
-    ${CMAKE_CURRENT_SOURCE_DIR}/PybindTypes.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PythonPass.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/RouterPass.cpp
 
@@ -197,7 +194,6 @@ if (AIE_ENABLE_PYTHON_PASSES)
   )
   target_include_directories(
     AIEPythonExtensions.MLIR
-    INTERFACE $<BUILD_INTERFACE:${PYBINDINGS_SRC}>
   )
   if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
     target_include_directories(AIEPythonExtensions.MLIR INTERFACE ${XRT_INCLUDE_DIR})
