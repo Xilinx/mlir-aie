@@ -7,7 +7,6 @@ lit
 numpy>=1.19.5, <=1.26 # 2.1 would be nice for typing improvements, but it doesn't seem to work well with pyxrt
 pandas
 psutil
-pybind11>=2.9.0, <=2.10.3
 rich
 setuptools
 wheel
