@@ -10,18 +10,19 @@
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=single_core
-targetname=single_core
+# targetname=single_core
+targetname=single_core_opt
 kernels=mm
 
 # M, K, N: final GEMM dimensions
-M?=512
-K?=512
-N?=512
+M?=48
+K?=232
+N?=240
 
 # m, k, n: single AIE core GEMM dimensions
-m?=64
-k?=64
-n?=64
+m?=48
+k?=232
+n?=48
 
 kernels=mm_${m}x${k}x${n}
 aieargs+=-m $m -k $k -n $n

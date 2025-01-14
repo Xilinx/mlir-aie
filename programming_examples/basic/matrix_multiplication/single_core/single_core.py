@@ -100,20 +100,25 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
         np.dtype(dtype_out).itemsize >= np.dtype(dtype_in).itemsize
     ), f"Output dtype ({dtype_out}) must be equal or larger to input dtype ({dtype_in})"
 
+    
+    # Matrix dimensions    
     A_sz = M * K
     B_sz = K * N
     C_sz = M * N
 
+    # used for sizes in npu_dma_memcpy_nd()
     M_div_m = M // m
     K_div_k = K // k
     N_div_n = N // n
+
+    # used for strides in npu_dma_memcpy_nd()
+    m_x_K = m * K
+    k_x_N = k * N
+    m_x_N = m * N
+
+    # tiles in M and N dimensions
     tiles = M_div_m * N_div_n
 
-    # Matrix B: KxN, submatrices b: kxn
-    k_x_N = k * N
-
-    # Output Matrix C: MxN
-    m_x_N = m * N
 
     with mlir_mod_ctx() as ctx:
 
@@ -272,53 +277,114 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
                         ],
                     )
 
-                # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
-                rows_per_block = 4
-                for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
-                    # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
-                    # that's what this loop is for
-                    for pingpong in [0, 1]:
-                        C_row_offset = (
-                            tile_row_block * rows_per_block * m * N
-                            + pingpong * rows_per_block // 2 * m * N
-                        )
-                        row_base = (
-                            tile_row_block * rows_per_block
-                            + pingpong * rows_per_block // 2
-                        )
-                        bd_id_base = 8 * pingpong
-                        num_tile_rows = min([rows_per_block // 2, M_div_m - row_base])
-                        if num_tile_rows <= 0:
-                            # At the very last iteration, we may not need a 'pong' iteration
-                            break
+
+
+                m_K_tiles = 5
+
+                # assume for now that m_tiles are divisible by m_K_tiles
+                M_div_m_div_m_K_tiles = M_div_m // m_K_tiles
+
+                base_bd_id = 0
+
+                for row_iter_m_K in range(M_div_m_div_m_K_tiles):
+
+                    for iter in range(m_K_tiles):
+
+                        # offset increases in the M dimension 
+                        A_offset = m_x_K * (row_iter_m_K * m_K_tiles + iter)
+
+                        # assign BDs
+                        bd_id_A = base_bd_id + iter
+                        bd_id_B = base_bd_id + m_K_tiles + iter
+
+
                         npu_dma_memcpy_nd(
-                            metadata=outC,
-                            bd_id=bd_id_base,
-                            mem=C,
-                            offsets=[0, 0, 0, C_row_offset],
-                            sizes=[num_tile_rows, N_div_n, m, n],
-                            strides=[m_x_N, n, N, 1],
+                            metadata=inA,
+                            bd_id=bd_id_A,
+                            mem=A,
+                            offsets=[0, 0, 0, A_offset],
+                            sizes=[N_div_n, K_div_k, m, k],
+                            strides=[0, k, K, 1],
                         )
-                        for tile_row in range(num_tile_rows):
-                            A_row_offset = (row_base + tile_row) * m * K
-                            npu_dma_memcpy_nd(
-                                metadata=inA,
-                                bd_id=bd_id_base + 2 * tile_row + 1,
-                                mem=A,
-                                offsets=[0, 0, 0, A_row_offset],
-                                sizes=[N_div_n, K_div_k, m, k],
-                                strides=[0, k, K, 1],
-                            )
-                            npu_dma_memcpy_nd(
-                                metadata=inB,
-                                bd_id=bd_id_base + 2 * tile_row + 2,
-                                mem=B,
-                                sizes=[N_div_n, K_div_k, k, n],
-                                strides=[n, k_x_N, N, 1],
-                            )
-                        if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
-                            dma_wait(outC)
-                dma_wait(outC)
+
+
+
+                        npu_dma_memcpy_nd(
+                            metadata=inB,
+                            bd_id=bd_id_B,
+                            mem=B,
+                            sizes=[N_div_n, K_div_k, k, n],
+                            strides=[n, k_x_N, N, 1],
+                        )
+
+
+                    C_offset = m_x_N * (row_iter_m_K * m_K_tiles)
+
+                    bd_id_C = base_bd_id + 2*m_K_tiles
+
+                    npu_dma_memcpy_nd(
+                        metadata=outC,
+                        bd_id=bd_id_C,
+                        mem=C,
+                        offsets=[0, 0, 0, C_offset],
+                        sizes=[m_K_tiles, N_div_n, m, n],
+                        strides=[m_x_N, n, N, 1],
+                    )
+
+
+                    dma_wait(outC)
+
+
+
+                
+
+                # # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
+                # rows_per_block = 4
+                # for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
+                #     # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
+                #     # that's what this loop is for
+                #     for pingpong in [0, 1]:
+                #         C_row_offset = (
+                #             tile_row_block * rows_per_block * m * N
+                #             + pingpong * rows_per_block // 2 * m * N
+                #         )
+                #         row_base = (
+                #             tile_row_block * rows_per_block
+                #             + pingpong * rows_per_block // 2
+                #         )
+                #         bd_id_base = 8 * pingpong
+                #         num_tile_rows = min([rows_per_block // 2, M_div_m - row_base])
+                #         if num_tile_rows <= 0:
+                #             # At the very last iteration, we may not need a 'pong' iteration
+                #             break
+                #         npu_dma_memcpy_nd(
+                #             metadata=outC,
+                #             bd_id=bd_id_base,
+                #             mem=C,
+                #             offsets=[0, 0, 0, C_row_offset],
+                #             sizes=[num_tile_rows, N_div_n, m, n],
+                #             strides=[m_x_N, n, N, 1],
+                #         )
+                #         for tile_row in range(num_tile_rows):
+                #             A_row_offset = (row_base + tile_row) * m * K
+                #             npu_dma_memcpy_nd(
+                #                 metadata=inA,
+                #                 bd_id=bd_id_base + 2 * tile_row + 1,
+                #                 mem=A,
+                #                 offsets=[0, 0, 0, A_row_offset],
+                #                 sizes=[N_div_n, K_div_k, m, k],
+                #                 strides=[0, k, K, 1],
+                #             )
+                #             npu_dma_memcpy_nd(
+                #                 metadata=inB,
+                #                 bd_id=bd_id_base + 2 * tile_row + 2,
+                #                 mem=B,
+                #                 sizes=[N_div_n, K_div_k, k, n],
+                #                 strides=[n, k_x_N, N, 1],
+                #             )
+                #         if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
+                #             dma_wait(outC)
+                # dma_wait(outC)
 
     print(ctx.module)
 

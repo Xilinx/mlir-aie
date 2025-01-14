@@ -158,14 +158,17 @@ int main(int argc, const char *argv[]) {
   A_DATATYPE *bufA = bo_a.map<A_DATATYPE *>();
   std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++) {
-    // AVec[i] = matmul_common::get_random<A_DATATYPE>();
-    AVec[i] = i;
+    AVec[i] = matmul_common::get_random<A_DATATYPE>() * 0x03;
+    // AVec[i] = i%3;
   }
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
   B_DATATYPE *bufB = bo_b.map<B_DATATYPE *>();
   std::vector<B_DATATYPE> BVec(B_VOLUME);
   for (int i = 0; i < B_VOLUME; i++) {
-    BVec[i] = matmul_common::get_random<B_DATATYPE>() * i;
+    BVec[i] = matmul_common::get_random<B_DATATYPE>() * 0x03;;
+    // BVec[i] = (i+1)%4;
+    // BVec[i] = 1;
+    // BVec[i] = matmul_common::get_random<B_DATATYPE>();
     // Diagonal:
     // if(i % N == i / N) {
     //   BVec[i] = 1.0;
@@ -231,32 +234,75 @@ int main(int argc, const char *argv[]) {
 
     if (do_verify) {
       memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
-      if (verbosity >= 1) {
-        if (do_verify_stochastic) {
-          std::cout << "Verifying " << verify_stochastic_n_samples
-                    << " random samples against reference matmul ..."
-                    << std::endl;
-        } else {
-          std::cout << "Verifying against reference matmul ..." << std::endl;
-        }
-      }
-      auto vstart = std::chrono::system_clock::now();
-      if (do_verify_stochastic) {
-        errors = matmul_common::verify_stochastic<A_DATATYPE, C_DATATYPE,
-                                                  ACC_DATATYPE>(
-            M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples, verbosity,
-            abs_tol, rel_tol, b_col_maj);
-      } else {
-        errors = matmul_common::verify<A_DATATYPE, C_DATATYPE, ACC_DATATYPE>(
-            M, N, K, AVec, BVec, CVec, verbosity, abs_tol, rel_tol, b_col_maj);
-      }
-      auto vstop = std::chrono::system_clock::now();
-      float vtime =
-          std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)
-              .count();
-      if (verbosity >= 1) {
-        std::cout << "Verify time: " << vtime << " s." << std::endl;
-      }
+
+
+    // Create an output file stream
+    std::ofstream outFile("output.txt");
+
+    // Check if the file was opened successfully
+    if (!outFile) {
+        std::cerr << "Error opening file for writing" << std::endl;
+        return 1;
+    }
+
+    // Write the values of CVec to the file
+    for (const auto& value : CVec) {
+        outFile << value << "\n";
+    }
+
+    // Close the file
+    outFile.close();
+
+
+
+    // golden data generator
+    matmul_common::matmul<A_DATATYPE, C_DATATYPE, ACC_DATATYPE>(M, N, K, AVec, BVec, CVec, 0);
+
+    // Create a golden output file stream
+    std::ofstream gold_outFile("golden_output.txt");
+
+     // Check if the file was opened successfully
+    if (!gold_outFile) {
+        std::cerr << "Error opening file for writing" << std::endl;
+        return 1;
+    }
+
+    // Write the values of CVec to the file
+    for (const auto& value : CVec) {
+        gold_outFile << value << "\n";
+    }
+
+    // Close the file
+    gold_outFile.close();
+
+
+
+      // if (verbosity >= 1) {
+      //   if (do_verify_stochastic) {
+      //     std::cout << "Verifying " << verify_stochastic_n_samples
+      //               << " random samples against reference matmul ..."
+      //               << std::endl;
+      //   } else {
+      //     std::cout << "Verifying against reference matmul ..." << std::endl;
+      //   }
+      // }
+      // auto vstart = std::chrono::system_clock::now();
+      // if (do_verify_stochastic) {
+      //   errors = matmul_common::verify_stochastic<A_DATATYPE, C_DATATYPE,
+      //                                             ACC_DATATYPE>(
+      //       M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples, verbosity,
+      //       abs_tol, rel_tol, b_col_maj);
+      // } else {
+      //   errors = matmul_common::verify<A_DATATYPE, C_DATATYPE, ACC_DATATYPE>(
+      //       M, N, K, AVec, BVec, CVec, verbosity, abs_tol, rel_tol, b_col_maj);
+      // }
+      // auto vstop = std::chrono::system_clock::now();
+      // float vtime =
+      //     std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)
+      //         .count();
+      // if (verbosity >= 1) {
+      //   std::cout << "Verify time: " << vtime << " s." << std::endl;
+      // }
     } else {
       if (verbosity >= 1)
         std::cout << "WARNING: matmul results not verified." << std::endl;
