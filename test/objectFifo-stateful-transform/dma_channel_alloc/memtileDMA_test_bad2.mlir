@@ -1,4 +1,4 @@
-//===- tileDMA_test_bad4.mlir ----------------------------------*- MLIR -*-===//
+//===- memtileDMA_test_bad2.mlir -------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -12,7 +12,7 @@
 
 // CHECK:   error: 'aie.tile' op number of output DMA channel exceeded!
 
-module @tileDMA_channels {
+module @memtileDMA_channels {
     aie.device(xcve2302) {
         %tile11 = aie.tile(1, 1)
         %tile33 = aie.tile(3, 3)
