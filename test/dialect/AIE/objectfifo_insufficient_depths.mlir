@@ -1,4 +1,4 @@
-//===- init_values_bad2.mlir ------------------------------------*- MLIR -*-===//
+//===- objectfifo_insufficient_depths.mlir ----------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,15 +8,16 @@
 // 
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-objectFifo-stateful-transform %s 2>&1 | FileCheck %s
+// RUN: not aie-opt %s 2>&1 | FileCheck %s
 
-// CHECK:   error: custom op 'aie.objectfifo' initial values should initialize all objects
+// CHECK: 'aie.objectfifo' op does not have enough depths specified for producer and for each consumer.
 
-module @init {
+module @objectfifo_insufficient_depths {
  aie.device(xcve2302) {
     %tile12 = aie.tile(1, 2)
+    %tile13 = aie.tile(1, 3)
     %tile23 = aie.tile(2, 3)
 
-    aie.objectfifo @of0 (%tile12, {%tile23}, 3 : i32) : !aie.objectfifo<memref<4xi32>> = [dense<[0, 1, 2, 3]> : memref<4xi32>]
+    aie.objectfifo @of_0 (%tile12, {%tile13, %tile23}, [2, 2]) : !aie.objectfifo<memref<16xi32>>
  }
 }

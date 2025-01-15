@@ -1,4 +1,4 @@
-//===- init_values_bad3.mlir ------------------------------------*- MLIR -*-===//
+//===- objectfifo_release_outside_core.mlir ---------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,15 +8,17 @@
 // 
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-objectFifo-stateful-transform %s 2>&1 | FileCheck %s
+// RUN: not aie-opt %s 2>&1 | FileCheck %s
 
-// CHECK:   error: custom op 'aie.objectfifo' initial value should be an elements attribute
+// CHECK: 'aie.objectfifo.release' op must be called from inside a CoreOp
 
-module @init {
+module @objectfifo_release_outside_core {
  aie.device(xcve2302) {
     %tile12 = aie.tile(1, 2)
     %tile23 = aie.tile(2, 3)
 
-    aie.objectfifo @of0 (%tile12, {%tile23}, 1 : i32) : !aie.objectfifo<memref<4xi32>> = [[0, 1, 2, 3]]
+    aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+
+    aie.objectfifo.release @of_0 (Produce, 1)
  }
 }

@@ -520,6 +520,11 @@ LogicalResult ObjectFifoCreateOp::verify() {
   }
 
   if (getInitValues().has_value()) {
+    if (getProducerTileOp().isShimTile())
+      return emitError("`init_values` unavailable for shim tiles");
+  }
+
+  if (getInitValues().has_value()) {
     if ((int)getInitValues().value().size() != size())
       return emitError("`init_values` does not initialize all objects");
   }
@@ -883,9 +888,6 @@ ObjectFifoCreateOp ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ObjectFifoAcquireOp::verify() {
-  if (acqNumber() < 1)
-    return emitOpError("must acquire at least one element");
-
   auto parent = getOperation()->getParentOfType<CoreOp>();
   if (parent == nullptr)
     return emitOpError("must be called from inside a CoreOp");
@@ -941,9 +943,6 @@ ObjectFifoCreateOp ObjectFifoAcquireOp::getObjectFifo() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ObjectFifoReleaseOp::verify() {
-  if (relNumber() < 1)
-    return emitOpError("must release at least one element");
-
   auto parent = getOperation()->getParentOfType<CoreOp>();
   if (parent == nullptr)
     return emitOpError("must be called from inside a CoreOp");

@@ -1,4 +1,4 @@
-//===- init_values_bad.mlir -------------------------------------*- MLIR -*-===//
+//===- objectfifo_init_values_type_mismatch.mlir ----------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,11 +8,11 @@
 // 
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-objectFifo-stateful-transform %s 2>&1 | FileCheck %s
+// RUN: not aie-opt %s 2>&1 | FileCheck %s
 
-// CHECK:   error: inferred shape of elements literal ({{\[}}2, 3]) does not match type ({{\[}}2, 2])
+// CHECK: inferred shape of elements literal ({{\[}}2, 3]) does not match type ({{\[}}2, 2])
 
-module @init {
+module @objectfifo_init_values_type_mismatch {
  aie.device(xcve2302) {
     %tile12 = aie.tile(1, 2)
     %tile23 = aie.tile(2, 3)

@@ -1,4 +1,4 @@
-//===- link_test_join_distribute_bad.mlir -----------------------*- MLIR -*-===//
+//===- objectfifo_link_test_join_distribute_bad.mlir ------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -10,11 +10,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-objectFifo-stateful-transform %s 2>&1 | FileCheck %s
+// RUN: not aie-opt %s 2>&1 | FileCheck %s
 
 // CHECK:   error: ObjectFifoLinkOp does not support 'join' and 'distribute' at the same time
 
-module @link_test_join_distribute_bad {
+module @objectfifo_link_test_join_distribute_bad {
     aie.device(xcve2302) {
         %tile20 = aie.tile(2, 0)
         %tile21 = aie.tile(2, 1)
