@@ -1,4 +1,4 @@
-//===- link_test_AIE2.mlir --------------------------------------*- MLIR -*-===//
+//===- link_test_broadcast.mlir --------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -178,7 +178,7 @@
 // CHECK:           }
 // CHECK:         }
 
-module @link_AIE2 {
+module @link_test_broadcast {
     aie.device(xcve2302) {
         %tile00 = aie.tile(0, 0)
         %tile01 = aie.tile(0, 1)

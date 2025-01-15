@@ -1,4 +1,4 @@
-//===- AIE2_static_l1.mlir -------------------------------------*- MLIR -*-===//
+//===- AIE2_static_L1.mlir -------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -17,6 +17,7 @@
 // In the end, %dstbuf23 should hold [0, 1, 2, 3, 4, 5, ... 15]
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+
 // CHECK:     %[[t0:.*]] = aie.tile(2, 2)
 // CHECK:     %[[t1:.*]] = aie.tile(2, 3)
 // CHECK:     %[[PL:.*]] = aie.lock(%[[t0]], 0) {init = 4 : i32, sym_name = "fifo_prod_lock"}
@@ -45,7 +46,7 @@
 // CHECK:       aie.end
 // CHECK:     }
 
-module @aie2_static_l1 {
+module @aie2_static_L1 {
     aie.device(xcve2302) {
         %i_c0 = arith.constant 0 : index
         %i_c1 = arith.constant 1 : index

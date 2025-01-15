@@ -1,4 +1,4 @@
-//===- AIE2_cyclostatic_l1.mlir --------------------------------*- MLIR -*-===//
+//===- AIE2_cyclostatic_L1.mlir --------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -13,7 +13,7 @@
 // The consumer consumes {1, 2, 1} elements, in that order.
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
-// CHECK: module @aie2_cyclostatic_l1 {
+// CHECK: module @aie2_cyclostatic_L1 {
 // CHECK:   aie.device(xcve2302) {
 // CHECK:     %[[t0:.*]] = aie.tile(2, 2)
 // CHECK:     %[[t1:.*]] = aie.tile(2, 3)
@@ -42,7 +42,7 @@
 // CHECK:   }
 // CHECK: }
 
-module @aie2_cyclostatic_l1 {
+module @aie2_cyclostatic_L1 {
     aie.device(xcve2302) {
 
         %tile22 = aie.tile(2, 2)  // producer tile

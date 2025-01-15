@@ -1,4 +1,4 @@
-//===- link_test_broadcast.mlir ------------------------------------------------*- MLIR -*-===//
+//===- link_test_broadcast_skip_connection.mlir -----------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -138,7 +138,7 @@
 // CHECK:           }
 // CHECK:         }
 
-module @link_broadcast {
+module @link_test_broadcast_skip_connection {
     aie.device(xcve2302) {
         %tile20 = aie.tile(2, 0)
         %tile21 = aie.tile(2, 1)
