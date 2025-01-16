@@ -276,8 +276,8 @@ struct AIEObjectFifoStatefulTransformPass
 
   // Checks if via_shared_mem attribute of the objectfifo is set and if so
   // tries to apply it. If the desired shared memory module is available to
-  // both producer and consumer then it will be used, otherwise a warning is
-  // emitted and the original shared memory module is used instead.
+  // both producer and consumer then it will be used, otherwise an error is
+  // emitted.
   void checkAndApplyViaSharedMemAttribute(ObjectFifoCreateOp createOp,
                                           int &share_direction) {
     if (createOp.getViaSharedMem().has_value()) {
@@ -303,8 +303,8 @@ struct AIEObjectFifoStatefulTransformPass
           if (share_direction == newShareDirection)
             share_direction = (share_direction == -1) ? 1 : -1;
           else
-            createOp->emitWarning("Memory module specified by `via_shared_mem` "
-                                  "is not available as shared memory module");
+            createOp->emitOpError("no access to shared memory module specified by "
+                                  "`via_shared_mem`");
         }
       }
     }
@@ -1506,7 +1506,7 @@ struct AIEObjectFifoStatefulTransformPass
                                  share_direction);
       } else {
         if (createOp.getViaSharedMem().has_value())
-          createOp->emitWarning("No access to shared memory module; ignoring "
+          createOp->emitOpError("no access to shared memory module specified by "
                                 "`via_shared_mem`");
 
         if (isa<ArrayAttr>(createOp.getElemNumber()))
