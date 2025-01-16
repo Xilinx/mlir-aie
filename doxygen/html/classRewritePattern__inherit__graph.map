@@ -1,8 +1,13 @@
 <map id="RewritePattern" name="RewritePattern">
-<area shape="rect" id="node1" title=" " alt="" coords="5,115,124,141"/>
-<area shape="rect" id="node2" href="$structDMAInlineBDChainPattern.html" title=" " alt="" coords="196,5,387,32"/>
-<area shape="rect" id="node3" href="$structDMAStartBdChainForOpPattern.html" title=" " alt="" coords="180,56,403,83"/>
-<area shape="rect" id="node4" href="$structDynamicSizeNoImplicitBroadcastPattern.html" title=" " alt="" coords="172,107,411,149"/>
-<area shape="rect" id="node5" href="$structHoistCastOpToDataSourcePattern.html" title=" " alt="" coords="172,173,411,200"/>
-<area shape="rect" id="node6" href="$structSetInboundsToReadStoreOpPattern.html" title=" " alt="" coords="191,225,392,266"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,112,124,137"/>
+<area shape="rect" id="Node000002" href="$structDMAInlineBDChainPattern.html" title=" " alt="" coords="196,5,387,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="87,100,124,68,171,40,203,28,204,33,173,44,127,73,90,104"/>
+<area shape="rect" id="Node000003" href="$structDMAStartBdChainForOpPattern.html" title=" " alt="" coords="180,55,403,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="118,105,171,90,225,77,227,83,173,95,119,110"/>
+<area shape="rect" id="Node000004" href="$structDynamicSizeNoImplicitBroadcastPattern.html" title=" " alt="" coords="172,105,411,145"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="138,122,172,122,172,127,138,127"/>
+<area shape="rect" id="Node000005" href="$structHoistCastOpToDataSourcePattern.html" title=" " alt="" coords="172,169,411,195"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="119,139,173,154,227,167,225,172,171,159,118,144"/>
+<area shape="rect" id="Node000006" href="$structSetInboundsToReadStoreOpPattern.html" title=" " alt="" coords="191,219,392,259"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="91,145,128,175,173,204,205,217,203,222,171,208,125,180,88,149"/>
 </map>

@@ -1,4 +1,5 @@
 <map id="xilinx::AIE::MERegDMABD" name="xilinx::AIE::MERegDMABD">
-<area shape="rect" id="node1" title=" " alt="" coords="5,197,196,224"/>
-<area shape="rect" id="node2" title=" " alt="" coords="63,5,138,32"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,196,196,221"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="63,5,138,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="103,45,103,196,98,196,98,45"/>
 </map>

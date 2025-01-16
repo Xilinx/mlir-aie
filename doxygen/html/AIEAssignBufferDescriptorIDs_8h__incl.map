@@ -1,10 +1,17 @@
 <map id="include/aie/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.h" name="include/aie/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.h">
-<area shape="rect" id="node1" title=" " alt="" coords="310,5,541,61"/>
-<area shape="rect" id="node2" href="$AIETargetModel_8h.html" title=" " alt="" coords="356,109,495,151"/>
-<area shape="rect" id="node3" href="$AIEEnums_8h.html" title=" " alt="" coords="186,199,321,240"/>
-<area shape="rect" id="node7" title=" " alt="" coords="345,206,505,233"/>
-<area shape="rect" id="node8" title=" " alt="" coords="529,206,609,233"/>
-<area shape="rect" id="node4" title=" " alt="" coords="5,295,165,322"/>
-<area shape="rect" id="node5" title=" " alt="" coords="190,295,317,322"/>
-<area shape="rect" id="node6" title=" " alt="" coords="341,288,475,329"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="310,5,541,60"/>
+<area shape="rect" id="Node000002" href="$AIETargetModel_8h.html" title=" " alt="" coords="356,108,495,148"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="428,60,428,94,423,94,423,60"/>
+<area shape="rect" id="Node000003" href="$AIEEnums_8h.html" title=" " alt="" coords="186,196,321,236"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="389,150,304,192,302,187,386,146"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="345,203,505,229"/>
+<area shape="poly" id="edge6_Node000002_Node000007" title=" " alt="" coords="428,148,428,189,423,189,423,148"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="529,203,609,229"/>
+<area shape="poly" id="edge7_Node000002_Node000008" title=" " alt="" coords="458,146,540,194,537,199,456,150"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="5,291,165,317"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="218,238,121,288,119,283,215,234"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="190,291,317,317"/>
+<area shape="poly" id="edge4_Node000003_Node000005" title=" " alt="" coords="256,236,256,277,251,277,251,236"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="341,284,475,324"/>
+<area shape="poly" id="edge5_Node000003_Node000006" title=" " alt="" coords="289,234,363,275,361,280,286,238"/>
 </map>

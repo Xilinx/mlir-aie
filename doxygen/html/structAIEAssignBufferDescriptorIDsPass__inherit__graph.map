@@ -1,4 +1,5 @@
 <map id="AIEAssignBufferDescriptorIDsPass" name="AIEAssignBufferDescriptorIDsPass">
-<area shape="rect" id="node1" title=" " alt="" coords="39,109,231,151"/>
-<area shape="rect" id="node2" href="$classAIEAssignBufferDescriptorIDsBase.html" title=" " alt="" coords="5,5,265,61"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="39,108,231,148"/>
+<area shape="rect" id="Node000002" href="$classAIEAssignBufferDescriptorIDsBase.html" title=" " alt="" coords="5,5,265,60"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="138,74,138,108,133,108,133,74"/>
 </map>

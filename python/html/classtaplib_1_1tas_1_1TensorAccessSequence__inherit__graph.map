@@ -1,5 +1,7 @@
 <map id="taplib.tas.TensorAccessSequence" name="taplib.tas.TensorAccessSequence">
-<area shape="rect" id="node1" title=" " alt="" coords="51,80,289,107"/>
-<area shape="rect" id="node2" title=" " alt="" coords="5,5,175,32"/>
-<area shape="rect" id="node3" title=" " alt="" coords="199,5,301,32"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="51,79,289,104"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,175,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="115,38,159,76,155,80,111,42"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="199,5,301,31"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="229,42,185,80,181,76,225,38"/>
 </map>

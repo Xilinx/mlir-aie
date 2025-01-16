@@ -1,5 +1,7 @@
 <map id="LowerVectorToAIEVec" name="LowerVectorToAIEVec">
-<area shape="rect" id="node1" title="Lower incoming vector operations into their corresponding AIE vector intrinsics." alt="" coords="141,124,301,151"/>
-<area shape="rect" id="node2" href="$classPassWrapper.html" title=" " alt="" coords="5,5,224,47"/>
-<area shape="rect" id="node3" title=" " alt="" coords="248,13,408,39"/>
+<area shape="rect" id="Node000001" title="Lower incoming vector operations into their corresponding AIE vector intrinsics." alt="" coords="141,123,301,148"/>
+<area shape="rect" id="Node000002" href="$classPassWrapper.html" title=" " alt="" coords="5,5,224,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="145,53,211,120,208,124,141,57"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="248,13,408,38"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="309,50,235,124,231,120,305,46"/>
 </map>

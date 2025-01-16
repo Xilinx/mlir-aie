@@ -1,8 +1,13 @@
 <map id="xilinx::AIE::AIERTControl" name="xilinx::AIE::AIERTControl">
-<area shape="rect" id="node1" title=" " alt="" coords="100,261,279,288"/>
-<area shape="rect" id="node2" title=" " alt="" coords="5,165,115,191"/>
-<area shape="rect" id="node3" title=" " alt="" coords="139,165,239,191"/>
-<area shape="rect" id="node4" href="$classxilinx_1_1AIE_1_1BaseNPUTargetModel.html" title=" " alt="" coords="264,157,459,199"/>
-<area shape="rect" id="node5" href="$classxilinx_1_1AIE_1_1AIE2TargetModel.html" title=" " alt="" coords="259,81,463,108"/>
-<area shape="rect" id="node6" href="$classxilinx_1_1AIE_1_1AIETargetModel.html" title=" " alt="" coords="263,5,459,32"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="95,257,274,283"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,162,105,187"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="78,195,120,231,161,255,158,260,116,236,74,199"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="130,162,239,187"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="187,201,187,257,182,257,182,201"/>
+<area shape="rect" id="Node000004" href="$classxilinx_1_1AIE_1_1BaseNPUTargetModel.html" title=" " alt="" coords="263,155,458,195"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="314,203,208,260,205,255,312,199"/>
+<area shape="rect" id="Node000005" href="$classxilinx_1_1AIE_1_1AIE2TargetModel.html" title=" " alt="" coords="259,80,463,105"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="363,119,363,155,358,155,358,119"/>
+<area shape="rect" id="Node000006" href="$classxilinx_1_1AIE_1_1AIETargetModel.html" title=" " alt="" coords="263,5,459,31"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="363,45,363,80,358,80,358,45"/>
 </map>

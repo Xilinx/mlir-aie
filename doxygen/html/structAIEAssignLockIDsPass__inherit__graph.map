@@ -1,4 +1,5 @@
 <map id="AIEAssignLockIDsPass" name="AIEAssignLockIDsPass">
-<area shape="rect" id="node1" title=" " alt="" coords="20,95,187,121"/>
-<area shape="rect" id="node2" href="$classAIEAssignLockIDsBase.html" title=" " alt="" coords="5,5,201,47"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="20,93,187,119"/>
+<area shape="rect" id="Node000002" href="$classAIEAssignLockIDsBase.html" title=" " alt="" coords="5,5,201,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="106,59,106,93,101,93,101,59"/>
 </map>

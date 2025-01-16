@@ -1,5 +1,7 @@
 <map id="OpRewritePattern" name="OpRewritePattern">
-<area shape="rect" id="node1" title=" " alt="" coords="5,57,141,84"/>
-<area shape="rect" id="node2" href="$structConvertLeadingUnitDimInsertToReshapePattern.html" title=" " alt="" coords="189,5,404,61"/>
-<area shape="rect" id="node3" href="$structSwapUnaryOpsPattern.html" title=" " alt="" coords="201,86,393,127"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,56,141,81"/>
+<area shape="rect" id="Node000002" href="$structConvertLeadingUnitDimInsertToReshapePattern.html" title=" " alt="" coords="189,5,404,60"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="154,53,189,47,190,53,155,58"/>
+<area shape="rect" id="Node000003" href="$structSwapUnaryOpsPattern.html" title=" " alt="" coords="201,85,393,125"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="155,79,201,87,200,92,154,84"/>
 </map>

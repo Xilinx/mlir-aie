@@ -1,4 +1,5 @@
 <map id="AIECanonicalizeDeviceBase" name="AIECanonicalizeDeviceBase">
-<area shape="rect" id="node1" title=" " alt="" coords="19,5,222,32"/>
-<area shape="rect" id="node2" href="$structAIECanonicalizeDevicePass.html" title=" " alt="" coords="5,80,236,121"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="19,5,222,31"/>
+<area shape="rect" id="Node000002" href="$structAIECanonicalizeDevicePass.html" title=" " alt="" coords="5,79,236,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="123,44,123,79,118,79,118,44"/>
 </map>

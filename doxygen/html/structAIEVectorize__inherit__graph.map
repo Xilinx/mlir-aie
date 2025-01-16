@@ -1,4 +1,5 @@
 <map id="AIEVectorize" name="AIEVectorize">
-<area shape="rect" id="node1" title=" " alt="" coords="77,80,180,107"/>
-<area shape="rect" id="node2" href="$classAIEVectorizeBase.html" title=" " alt="" coords="5,5,252,32"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="77,79,180,104"/>
+<area shape="rect" id="Node000002" href="$classAIEVectorizeBase.html" title=" " alt="" coords="5,5,252,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="131,44,131,79,126,79,126,44"/>
 </map>

@@ -1,14 +1,7 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="node1" href="$classPassWrapper.html" title=" " alt="" coords="5,259,112,285"/>
-<area shape="rect" id="node2" href="$structAIEVecConvOpTransformationPass.html" title=" " alt="" coords="173,5,417,32"/>
-<area shape="rect" id="node3" href="$structAIEVecTransformationPass.html" title=" " alt="" coords="199,56,392,83"/>
-<area shape="rect" id="node4" href="$structCanonicalizeVectorForAIEVecPass.html" title=" " alt="" coords="176,107,415,133"/>
-<area shape="rect" id="node5" href="$structDynamicSizeNoImplicitBroadcastPass.html" title=" " alt="" coords="161,157,429,184"/>
-<area shape="rect" id="node6" href="$structExtendUPDOpsPass.html" title=" " alt="" coords="221,208,370,235"/>
-<area shape="rect" id="node7" href="$structHoistCastOpToDataSourcePass.html" title=" " alt="" coords="185,259,406,285"/>
-<area shape="rect" id="node8" href="$structLowerVectorToAIEVec.html" title="Lower incoming vector operations into their corresponding AIE vector intrinsics." alt="" coords="215,309,375,336"/>
-<area shape="rect" id="node9" href="$structRedundantLoadStoreOptimizationPass.html" title=" " alt="" coords="160,360,431,387"/>
-<area shape="rect" id="node10" href="$structReorderOperationsPass.html" title=" " alt="" coords="209,411,382,437"/>
-<area shape="rect" id="node11" href="$structSimplifyUPDOpsPass.html" title=" " alt="" coords="217,461,374,488"/>
-<area shape="rect" id="node12" href="$structVectorBroadcastLoweringPass.html" title=" " alt="" coords="187,512,403,539"/>
+<area shape="rect" id="Node000000" href="$classmlir_1_1Type_1_1TypeBase.html" title=" " alt="" coords="5,42,161,67"/>
+<area shape="rect" id="Node000001" href="$classxilinx_1_1AIE_1_1AIEObjectFifoSubviewType.html" title="This class defines the AIE ObjectFifoSubview type." alt="" coords="224,5,407,45"/>
+<area shape="poly" id="edge65_Node000000_Node000001" title=" " alt="" coords="175,40,223,34,224,40,175,46"/>
+<area shape="rect" id="Node000002" href="$classxilinx_1_1AIE_1_1AIEObjectFifoType.html" title="This class defines the AIE ObjectFifo type." alt="" coords="209,70,421,95"/>
+<area shape="poly" id="edge66_Node000000_Node000002" title=" " alt="" coords="175,63,210,67,210,73,175,68"/>
 </map>

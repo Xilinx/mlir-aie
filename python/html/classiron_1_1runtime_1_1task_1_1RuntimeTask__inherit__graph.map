@@ -1,9 +1,15 @@
 <map id="iron.runtime.task.RuntimeTask" name="iron.runtime.task.RuntimeTask">
-<area shape="rect" id="node1" title=" " alt="" coords="345,97,568,124"/>
-<area shape="rect" id="node4" href="$classiron_1_1runtime_1_1dmatask_1_1DMATask.html" title=" " alt="" coords="616,5,843,32"/>
-<area shape="rect" id="node5" href="$classiron_1_1runtime_1_1task_1_1FinishTaskGroupTask.html" title=" " alt="" coords="641,57,817,98"/>
-<area shape="rect" id="node6" href="$classiron_1_1runtime_1_1task_1_1InlineOpRuntimeTask.html" title=" " alt="" coords="642,122,817,163"/>
-<area shape="rect" id="node7" href="$classiron_1_1runtime_1_1task_1_1RuntimeStartTask.html" title=" " alt="" coords="633,187,826,229"/>
-<area shape="rect" id="node2" href="$classiron_1_1resolvable_1_1Resolvable.html" title=" " alt="" coords="103,97,297,124"/>
-<area shape="rect" id="node3" title=" " alt="" coords="5,97,55,124"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="345,95,568,120"/>
+<area shape="rect" id="Node000004" href="$classiron_1_1runtime_1_1dmatask_1_1DMATask.html" title=" " alt="" coords="616,5,843,31"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="497,87,552,63,615,41,663,28,664,33,617,46,554,68,499,92"/>
+<area shape="rect" id="Node000005" href="$classiron_1_1runtime_1_1task_1_1FinishTaskGroupTask.html" title=" " alt="" coords="641,55,817,95"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="578,90,641,83,641,88,579,96"/>
+<area shape="rect" id="Node000006" href="$classiron_1_1runtime_1_1task_1_1InlineOpRuntimeTask.html" title=" " alt="" coords="642,119,817,159"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="579,119,642,126,642,132,579,124"/>
+<area shape="rect" id="Node000007" href="$classiron_1_1runtime_1_1task_1_1RuntimeStartTask.html" title=" " alt="" coords="633,183,826,223"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="500,123,617,169,654,181,653,186,615,174,498,128"/>
+<area shape="rect" id="Node000002" href="$classiron_1_1resolvable_1_1Resolvable.html" title=" " alt="" coords="103,95,297,120"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="311,105,345,105,345,110,311,110"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,95,55,120"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="68,105,102,105,102,110,68,110"/>
 </map>

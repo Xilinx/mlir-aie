@@ -1,5 +1,5 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="node1" href="$classmlir_1_1Type_1_1TypeBase.html" title=" " alt="" coords="5,42,161,69"/>
-<area shape="rect" id="node2" href="$classxilinx_1_1AIE_1_1AIEObjectFifoSubviewType.html" title="This class defines the AIE ObjectFifoSubview type." alt="" coords="224,5,407,47"/>
-<area shape="rect" id="node3" href="$classxilinx_1_1AIE_1_1AIEObjectFifoType.html" title="This class defines the AIE ObjectFifo type." alt="" coords="209,71,421,98"/>
+<area shape="rect" id="Node000000" title=" " alt="" coords="5,5,191,45"/>
+<area shape="rect" id="Node000001" href="$structxilinx_1_1AIE_1_1MyOffsetSizeAndStrideOpInterface.html" title=" " alt="" coords="239,5,420,45"/>
+<area shape="poly" id="edge56_Node000000_Node000001" title=" " alt="" coords="205,23,239,23,239,28,205,28"/>
 </map>

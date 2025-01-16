@@ -1,6 +1,9 @@
 <map id="xilinx::aievec::OptimizeAIEVecOptions" name="xilinx::aievec::OptimizeAIEVecOptions">
-<area shape="rect" id="node1" title="Options for the &quot;optimize&#45;aievec&quot; pipeline." alt="" coords="353,64,529,105"/>
-<area shape="rect" id="node2" title=" " alt="" coords="5,5,211,47"/>
-<area shape="rect" id="node3" title=" " alt="" coords="28,71,188,98"/>
-<area shape="rect" id="node4" title=" " alt="" coords="31,122,185,149"/>
+<area shape="rect" id="Node000001" title="Options for the &quot;optimize&#45;aievec&quot; pipeline." alt="" coords="353,63,529,103"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,211,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="225,30,330,45,384,60,383,65,329,51,224,35"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="28,70,188,95"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="202,80,353,80,353,85,202,85"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="31,119,185,145"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="199,118,329,100,353,96,354,101,330,105,199,124"/>
 </map>

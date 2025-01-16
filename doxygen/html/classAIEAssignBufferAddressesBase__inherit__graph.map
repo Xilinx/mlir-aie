@@ -1,4 +1,5 @@
 <map id="AIEAssignBufferAddressesBase" name="AIEAssignBufferAddressesBase">
-<area shape="rect" id="node1" title=" " alt="" coords="11,5,235,32"/>
-<area shape="rect" id="node2" href="$structAIEAssignBufferAddressesPass.html" title=" " alt="" coords="5,80,241,136"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="11,5,235,31"/>
+<area shape="rect" id="Node000002" href="$structAIEAssignBufferAddressesPass.html" title=" " alt="" coords="5,79,241,133"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="126,44,126,79,121,79,121,44"/>
 </map>

@@ -1,4 +1,5 @@
 <map id="AIEBroadcastPacketPass" name="AIEBroadcastPacketPass">
-<area shape="rect" id="node1" title=" " alt="" coords="21,95,199,121"/>
-<area shape="rect" id="node2" href="$classAIEBroadcastPacketBase.html" title=" " alt="" coords="5,5,215,47"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="21,93,199,119"/>
+<area shape="rect" id="Node000002" href="$classAIEBroadcastPacketBase.html" title=" " alt="" coords="5,5,215,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="113,59,113,93,107,93,107,59"/>
 </map>

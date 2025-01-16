@@ -1,9 +1,15 @@
 <map id="include/aie/Dialect/AIE/IR/AIETargetModel.h" name="include/aie/Dialect/AIE/IR/AIETargetModel.h">
-<area shape="rect" id="node1" title=" " alt="" coords="335,5,516,47"/>
-<area shape="rect" id="node2" href="$AIEEnums_8h.html" title=" " alt="" coords="186,95,321,136"/>
-<area shape="rect" id="node6" title=" " alt="" coords="345,102,505,129"/>
-<area shape="rect" id="node7" title=" " alt="" coords="529,102,609,129"/>
-<area shape="rect" id="node3" title=" " alt="" coords="5,191,165,218"/>
-<area shape="rect" id="node4" title=" " alt="" coords="190,191,317,218"/>
-<area shape="rect" id="node5" title=" " alt="" coords="341,184,475,225"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="335,5,516,45"/>
+<area shape="rect" id="Node000002" href="$AIEEnums_8h.html" title=" " alt="" coords="186,93,321,133"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="389,48,304,90,302,85,386,43"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="345,101,505,126"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="428,46,428,87,423,87,423,46"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="529,101,609,126"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="458,43,540,91,537,96,456,48"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,189,165,214"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="218,136,121,185,119,180,215,131"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="190,189,317,214"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="256,134,256,175,251,175,251,134"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="341,181,475,221"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="289,131,363,172,361,177,286,136"/>
 </map>

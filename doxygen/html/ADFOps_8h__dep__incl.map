@@ -1,6 +1,9 @@
 <map id="include/aie/Dialect/ADF/ADFOps.h" name="include/aie/Dialect/ADF/ADFOps.h">
-<area shape="rect" id="node1" title=" " alt="" coords="283,5,425,47"/>
-<area shape="rect" id="node2" href="$ADFDialect_8cpp.html" title=" " alt="" coords="5,102,228,129"/>
-<area shape="rect" id="node3" href="$ADFOps_8cpp.html" title=" " alt="" coords="253,102,455,129"/>
-<area shape="rect" id="node4" href="$ADFGenerateCppGraph_8cpp.html" title=" " alt="" coords="479,95,685,136"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="283,5,425,45"/>
+<area shape="rect" id="Node000002" href="$ADFDialect_8cpp.html" title=" " alt="" coords="5,101,228,126"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="290,53,149,103,147,98,288,48"/>
+<area shape="rect" id="Node000003" href="$ADFOps_8cpp.html" title=" " alt="" coords="253,101,455,126"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="357,59,357,100,351,100,351,59"/>
+<area shape="rect" id="Node000004" href="$ADFGenerateCppGraph_8cpp.html" title=" " alt="" coords="479,93,685,133"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="418,48,533,91,531,96,416,53"/>
 </map>

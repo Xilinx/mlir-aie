@@ -1,10 +1,19 @@
 <map id="include/aie/Dialect/ADF/ADFDialect.h" name="include/aie/Dialect/ADF/ADFDialect.h">
-<area shape="rect" id="node1" title=" " alt="" coords="480,5,623,47"/>
-<area shape="rect" id="node2" href="$ADFOps_8h.html" title=" " alt="" coords="312,95,455,136"/>
-<area shape="rect" id="node3" href="$ADFDialect_8cpp.html" title=" " alt="" coords="5,191,228,218"/>
-<area shape="rect" id="node5" href="$ADFGenerateCppGraph_8cpp.html" title=" " alt="" coords="479,184,685,225"/>
-<area shape="rect" id="node6" href="$InitialAllDialect_8h.html" title=" " alt="" coords="589,102,799,129"/>
-<area shape="rect" id="node8" href="$AIETargets_8cpp.html" title=" " alt="" coords="823,102,1011,129"/>
-<area shape="rect" id="node4" href="$ADFOps_8cpp.html" title=" " alt="" coords="253,191,455,218"/>
-<area shape="rect" id="node7" href="$Registration_8cpp.html" title=" " alt="" coords="709,191,892,218"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="480,5,623,45"/>
+<area shape="rect" id="Node000002" href="$ADFOps_8h.html" title=" " alt="" coords="312,93,455,133"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="504,54,421,96,419,91,501,49"/>
+<area shape="rect" id="Node000003" href="$ADFDialect_8cpp.html" title=" " alt="" coords="5,189,228,214"/>
+<area shape="poly" id="edge7_Node000001_Node000003" title=" " alt="" coords="467,46,385,67,300,96,251,119,205,145,134,191,132,186,202,141,249,114,298,91,383,62,465,41"/>
+<area shape="rect" id="Node000005" href="$ADFGenerateCppGraph_8cpp.html" title=" " alt="" coords="479,181,685,221"/>
+<area shape="poly" id="edge8_Node000001_Node000005" title=" " alt="" coords="560,59,581,181,576,182,554,60"/>
+<area shape="rect" id="Node000006" href="$InitialAllDialect_8h.html" title=" " alt="" coords="589,101,799,126"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="595,50,676,98,674,103,593,55"/>
+<area shape="rect" id="Node000008" href="$AIETargets_8cpp.html" title=" " alt="" coords="823,101,1011,126"/>
+<area shape="poly" id="edge9_Node000001_Node000008" title=" " alt="" coords="637,44,868,98,867,103,636,49"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="313,140,153,191,151,186,311,135"/>
+<area shape="rect" id="Node000004" href="$ADFOps_8cpp.html" title=" " alt="" coords="253,189,455,214"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="375,147,361,189,356,187,370,145"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="441,136,540,179,537,184,438,141"/>
+<area shape="rect" id="Node000007" href="$Registration_8cpp.html" title=" " alt="" coords="709,189,892,214"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="721,133,788,186,785,190,717,137"/>
 </map>

@@ -1,5 +1,7 @@
 <map id="xilinx::aievec::CanonicalizeVectorForAIEVecOptions" name="xilinx::aievec::CanonicalizeVectorForAIEVecOptions">
-<area shape="rect" id="node1" title="Options for the &quot;canonicalize&#45;vector&#45;for&#45;aievec&quot; pipeline." alt="" coords="439,35,639,76"/>
-<area shape="rect" id="node2" title=" " alt="" coords="5,5,296,47"/>
-<area shape="rect" id="node3" title=" " alt="" coords="71,71,231,98"/>
+<area shape="rect" id="Node000001" title="Options for the &quot;canonicalize&#45;vector&#45;for&#45;aievec&quot; pipeline." alt="" coords="439,35,639,75"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,296,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="310,33,415,41,438,43,438,49,414,47,310,39"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="71,70,231,95"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="245,79,414,71,438,68,439,73,415,76,245,85"/>
 </map>
