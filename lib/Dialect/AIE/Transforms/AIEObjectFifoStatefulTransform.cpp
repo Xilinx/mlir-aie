@@ -1405,9 +1405,6 @@ struct AIEObjectFifoStatefulTransformPass
       // Only FIFOs using DMA are split into two ends;
       // skip in shared memory case
       if (int share_direction = 0; !requiresDMAs(createOp, share_direction)) {
-        if (createOp.getRepeatCount().has_value())
-          createOp->emitWarning("Repeat unavailable for tiles sharing memory; "
-                                "ignoring `repeat_count`");
         continue;
       }
 
