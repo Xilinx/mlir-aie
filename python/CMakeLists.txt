@@ -213,6 +213,9 @@ if (AIE_ENABLE_PYTHON_PASSES)
   endforeach()
   set_property(TARGET MLIRPythonSources.ExecutionEngine PROPERTY mlir_python_DEPENDS "")
 
+  # Set NB_DOMAIN for nanobind, to avoid domain conflict with other LLVM projects.
+  set(MLIR_BINDINGS_PYTHON_NB_DOMAIN "_aie")
+
   add_mlir_python_modules(AIEPythonModules
     ROOT_PREFIX "${AIE_PYTHON_PACKAGES_DIR}/aie"
     INSTALL_PREFIX "${AIE_PYTHON_INSTALL_DIR}/aie"
