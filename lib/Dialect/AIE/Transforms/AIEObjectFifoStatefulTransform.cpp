@@ -1571,7 +1571,7 @@ struct AIEObjectFifoStatefulTransformPass
           producerWireType = producer.getProducerTileOp().isShimTile()
                                  ? WireBundle::PLIO
                                  : WireBundle::DMA;
-          consumerWireType = !(producer.getProducerTileOp().isShimTile())
+          consumerWireType = consumer.getProducerTileOp().isShimTile()
                                  ? WireBundle::PLIO
                                  : WireBundle::DMA;
         } else {
