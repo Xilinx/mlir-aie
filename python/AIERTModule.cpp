@@ -13,13 +13,12 @@
 
 #include "aie/Bindings/PyTypes.h"
 
-#include <pybind11/pybind11.h>
-#include <pybind11/pytypes.h>
+#include <nanobind/nanobind.h>
 
 #include <algorithm>
 
-namespace py = pybind11;
-using namespace py::literals;
+namespace nb = nanobind;
+using namespace nb::literals;
 
 class PyAIERTControl {
 public:
@@ -31,10 +30,10 @@ public:
   AieRtControl ctl;
 };
 
-PYBIND11_MODULE(_aiert, m) {
+NB_MODULE(_aiert, m) {
 
-  py::class_<PyAIERTControl>(m, "AIERTControl", py::module_local())
-      .def(py::init<PyAieTargetModel>(), "target_model"_a)
+  nb::class_<PyAIERTControl>(m, "AIERTControl")
+      .def(nb::init<PyAieTargetModel>(), "target_model"_a)
       .def("start_transaction",
            [](PyAIERTControl &self) { aieRtStartTransaction(self.ctl); })
       .def("export_serialized_transaction",
