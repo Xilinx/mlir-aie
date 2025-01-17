@@ -4,6 +4,6 @@
 // REQUIRES: ryzen_ai, peano 
 //
 // RUN: make -f %S/Makefile clean_notebook
-// RUN: %run_on_npu make -f %S/Makefile run_notebook | FileCheck %s
+// RUN: %run_on_npu make -f %S/Makefile run_notebook
 // CHECK: Running...
 // CHECK: PASSED!

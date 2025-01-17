@@ -758,7 +758,7 @@ struct VectorBroadcastLoweringPass
     patterns.add<ConvertLeadingUnitDimInsertToReshapePattern>(
         patterns.getContext());
 
-    (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+    (void)applyPatternsGreedily(op, std::move(patterns));
   }
 };
 
@@ -872,7 +872,7 @@ struct HoistCastOpToDataSourcePass
 
     patterns.add<HoistCastOpToDataSourcePattern>(patterns.getContext());
 
-    (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+    (void)applyPatternsGreedily(op, std::move(patterns));
   }
 };
 
@@ -899,7 +899,7 @@ struct ReorderOperationsPass
                                  extInElemTy);
         });
 
-    (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+    (void)applyPatternsGreedily(op, std::move(patterns));
   }
 };
 

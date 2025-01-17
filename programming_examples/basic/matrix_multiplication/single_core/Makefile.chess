@@ -15,14 +15,14 @@ targetname=single_core_opt
 kernels=mm
 
 # M, K, N: final GEMM dimensions
-M?=48
-K?=232
-N?=240
+M?=512
+K?=512
+N?=512
 
 # m, k, n: single AIE core GEMM dimensions
-m?=48
-k?=232
-n?=48
+m?=64
+k?=64
+n?=64
 
 kernels=mm_${m}x${k}x${n}
 aieargs+=-m $m -k $k -n $n

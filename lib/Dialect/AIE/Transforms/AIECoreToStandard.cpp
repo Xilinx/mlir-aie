@@ -51,7 +51,7 @@ static auto getAIE1Intrinsics(OpBuilder &builder) {
   Type int32Type = IntegerType::get(builder.getContext(), 32);
   Type int128Type = IntegerType::get(builder.getContext(), 128);
   Type int384Type = IntegerType::get(builder.getContext(), 384);
-  Type floatType = FloatType::getF32(builder.getContext());
+  Type floatType = Float32Type::get(builder.getContext());
 
   // Note that not all of these are valid for a particular design, or needed.
   // For right now, we will just accept the noise.

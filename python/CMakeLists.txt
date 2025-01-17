@@ -191,6 +191,9 @@ if (AIE_ENABLE_PYTHON_PASSES)
 
     PRIVATE_LINK_LIBS
       ${_py_libs}
+
+    PYTHON_BINDINGS_LIBRARY
+      nanobind
   )
   target_include_directories(
     AIEPythonExtensions.MLIR
@@ -209,6 +212,9 @@ if (AIE_ENABLE_PYTHON_PASSES)
     set_property(TARGET ${t} PROPERTY mlir_python_DEPENDS "")
   endforeach()
   set_property(TARGET MLIRPythonSources.ExecutionEngine PROPERTY mlir_python_DEPENDS "")
+
+  # Set NB_DOMAIN for nanobind, to avoid domain conflict with other LLVM projects.
+  set(MLIR_BINDINGS_PYTHON_NB_DOMAIN "_aie")
 
   add_mlir_python_modules(AIEPythonModules
     ROOT_PREFIX "${AIE_PYTHON_PACKAGES_DIR}/aie"
@@ -282,6 +288,8 @@ else ()
       AIECAPI
     PRIVATE_LINK_LIBS
       LLVMSupport
+    PYTHON_BINDINGS_LIBRARY
+      nanobind
   )
 
   if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
@@ -298,6 +306,8 @@ else ()
         LLVMSupport
         xrt_coreutil
         uuid
+      PYTHON_BINDINGS_LIBRARY
+        nanobind
     )
     target_include_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_INCLUDE_DIR})
     target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})
@@ -314,6 +324,9 @@ else ()
 
     PRIVATE_LINK_LIBS
       LLVMSupport
+
+    PYTHON_BINDINGS_LIBRARY
+      nanobind
   )
 
   add_mlir_python_common_capi_library(AIEAggregateCAPI

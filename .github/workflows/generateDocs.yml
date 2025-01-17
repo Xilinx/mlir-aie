@@ -32,7 +32,7 @@ jobs:
         run: sudo apt-get install -y graphviz lld doxygen
 
       - name: Install Python packages
-        run: sudo pip install psutil rich numpy pybind11
+        run: sudo pip install psutil rich numpy pybind11 nanobind
 
       - name: Install Ninja
         # https://github.com/llvm/actions/tree/main/install-ninja
