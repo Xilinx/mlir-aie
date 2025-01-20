@@ -77,7 +77,7 @@ trace_xclbin_target?=build/trace_${target_suffix}.xclbin
 insts_target?=build/insts_${target_suffix}.txt
 aie_py_src?=${targetname}.py
 
-runargs?=-v 2 --warmup 5 --iters 5
+runargs?=-v 2 --warmup 5 --iters 10
 aieargs+=-M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
 
 CHESS?=false

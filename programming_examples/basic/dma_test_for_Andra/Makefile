@@ -20,13 +20,15 @@ targetname = dma_test
 m ?= 8
 k ?= 20
 K ?= 20
+r ?= 4
+s ?= 5
 
 aie_py_src=${targetname}.py
 
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${m} ${k} ${K} > $@
+	python3 $< ${m} ${k} ${K} ${r} ${s} > $@
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
@@ -46,7 +48,7 @@ else
 endif
 
 run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --m ${m} --k ${k} --K ${K}
+	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --m ${m} --k ${k} --K ${K} --r ${r} --s ${s}
 
 clean:
 	rm -rf build _build inst ${targetname}.exe

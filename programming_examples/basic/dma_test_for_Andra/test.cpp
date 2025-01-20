@@ -69,7 +69,11 @@ int main(int argc, const char *argv[]) {
       "k", po::value<int>()->default_value(64),
       "k, number of columns in the small tile")(
       "K", po::value<int>()->default_value(256),
-      "K, number of columns in the large tile");
+      "K, number of columns in the large tile")(
+      "r", po::value<int>()->default_value(8),
+      "r, number of columns in the large tile")(
+      "s", po::value<int>()->default_value(8),
+      "s, number of columns in the large tile");
 
   po::variables_map vm;
 
@@ -99,10 +103,12 @@ int main(int argc, const char *argv[]) {
 
 
 
-  // input arguments m, k, K 
-  uint32_t m = vm["m"].as<int>();
-  uint32_t k = vm["k"].as<int>();
-  uint32_t K = vm["K"].as<int>();
+  // input arguments m, k, K, r, s
+  int m = vm["m"].as<int>();
+  int k = vm["k"].as<int>();
+  int K = vm["K"].as<int>();
+  int r = vm["r"].as<int>();
+  int s = vm["s"].as<int>();
 
 
 
@@ -169,7 +175,9 @@ int main(int argc, const char *argv[]) {
 
   // <<<<<<<<< The code below emulates the "of_in_shim_to_mem" OBjFifo in line 57 >>>>>>>
   // calculate the number of tiles in the 'K' dimension
-  uint32_t K_div_k = K/k;
+  int K_div_k = K/k;
+
+  int index = 0;
 
   // write the input data to the input vector in pre-tiled format
   for (int tile_k = 0; tile_k < K_div_k; tile_k++){
@@ -177,8 +185,10 @@ int main(int argc, const char *argv[]) {
     for (int ii = 0; ii < m; ii++){
       for (int jj = 0; jj < k; jj++){
         
-        int index = tile_k*m*k + ii*k + jj;
+        // here just copy of index for easy debug
+        // later replace with random data
         srcVecA[index] = index;
+        index++;
       }
     }
   }
@@ -215,29 +225,80 @@ int main(int argc, const char *argv[]) {
   int errors = 0;
 
 
-  // create a referecne vector to verify the data
+  // create a reference vector to verify the data
   std::vector<int32_t> refVecA(m*K);
 
 
-  // TODO: write here the final transformation you want to have for verification
-  // for (int i = 0; i < m*K; i++)
-  //   refVecA[i] = i;
+  // Final transformation you want to have for verification
+  // assumes data are pre-tiled (in m*k tiles). 
+  // See line 176 in this file, where data are send to the npu pre-tiled. 
+
+  int m_div_r = m/r;
+  int k_div_s = k/s;
+
+  // because assumed that data are pre-tiled, 
+  // the input index just needs to be increased in every iteration 
+  int in_index = 0;
+
+
+  for (int tile_k = 0; tile_k < K_div_k; tile_k++){
+
+    for (int ii = 0; ii < m_div_r; ii++){
+      for (int jj = 0; jj < k_div_s; jj++){
+
+        for (int r_ii = 0; r_ii < r; r_ii++){
+          for (int s_jj = 0; s_jj < s; s_jj++){
+            
+            // transformation index
+            int transf_index = 
+              (tile_k * (m*k)) + // offset for each m*k tile in (big) 'K' dimension (MemTile stores multiple m*k tiles, each one processed in CompTile)
+              (ii * (r*k) + jj * (s) + r_ii * (k) +  s_jj * (1)); // transformation index for r*s tiled acccess pattern of m*k tile
+
+            // store the access pattern to the reference vector for verification
+            refVecA[in_index] = srcVecA[transf_index];
+
+            in_index++;
+
+          }
+        }
+      }
+    }
+  }
+
 
   // copy output data to the output vector
   memcpy(OutVec.data(), bufOut, (OutVec.size() * sizeof(int32_t)));
 
 
+  // <<<<<<<<<<<<< write the npu output data into a file >>>>>>>>>>>>>
   // Open a file in write mode
-  std::ofstream outFile("output.txt");
+  std::ofstream npu_outFile("npu_output.txt");
 
  // Check if the file is open
-  if (outFile.is_open()) {
+  if (npu_outFile.is_open()) {
     // Iterate through the vector and write each element to the file
     for (const auto& elem : OutVec) {
-        outFile << elem << "\n"; // Write each element followed by a newline
+        npu_outFile << elem << "\n"; // Write each element followed by a newline
     }
-    outFile.close(); // Close the file
-    std::cout << "Data written to file successfully.\n";
+    npu_outFile.close(); // Close the file
+    std::cout << "Npu data written to npu_output.txt file successfully.\n";
+  } else {
+      std::cerr << "Unable to open file for writing.\n";
+  }
+
+
+  // <<<<<<<<<<<<< write the golden output data into a file >>>>>>>>>>>>>
+  // Open a file in write mode
+  std::ofstream gold_outFile("gold_output.txt");
+
+ // Check if the file is open
+  if (gold_outFile.is_open()) {
+    // Iterate through the vector and write each element to the file
+    for (const auto& elem : refVecA) {
+        gold_outFile << elem << "\n"; // Write each element followed by a newline
+    }
+    gold_outFile.close(); // Close the file
+    std::cout << "Golden data written to gold_output.txt file successfully.\n";
   } else {
       std::cerr << "Unable to open file for writing.\n";
   }
@@ -245,13 +306,12 @@ int main(int argc, const char *argv[]) {
 
 
   // verification
-  // for (int i = 0; i < m*K; i++) {
-  //   std::cout << "ref = " << (int)refVecA[i] << " NPU output = " << (int)OutVec[i] << "\n";
-  //   if (OutVec[i] != refVecA[i]) {
-  //     std::cout << "ref = " << refVecA[i] << " NPU output = " << OutVec[i] << "\n";
-  //     errors++;
-  //   }
-  // }
+  for (int i = 0; i < m*K; i++) {
+    if (OutVec[i] != refVecA[i]) {
+      std::cout << "ref = " << (int)refVecA[i] << " NPU output = " << (int)OutVec[i] << "\n";
+      errors++;
+    }
+  }
 
 
   if (!errors) {

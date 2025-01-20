@@ -16,17 +16,12 @@ from aie.helpers.dialects.ext.scf import _for as range_
 from aie.helpers.taplib import TensorAccessPattern
 
 
-
-
 # this resembles the buffer A data layout and transformations
-def my_passthrough(m, k, K):
+def my_passthrough(m, k, K, r, s):
 
     # large K must be divisible by small k 
     assert K % k == 0
 
-    # those define the API sizes for the MatMul kernels
-    r = 4
-    s = 5
 
     # assertions for m and k which should be divisible by the API sizes
     assert m % r == 0
@@ -96,7 +91,6 @@ def my_passthrough(m, k, K):
                         (r*s, 1),
                     ]
                 ],
-                
             )
 
 
@@ -177,12 +171,12 @@ def my_passthrough(m, k, K):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("dims", help="m, k, K", type=int, nargs="*", default=[32, 64, 256])
+    p.add_argument("dims", help="m, k, K, r, s", type=int, nargs="*")
     args = p.parse_args()
 
-    if len(args.dims) != 3:
+    if len(args.dims) != 5:
         print(
-            "ERROR: Must provide all 3 dimensions", file=sys.stderr
+            "ERROR: Must provide all 5 dimensions", file=sys.stderr
         )
         exit(-1)
 
@@ -190,4 +184,6 @@ if __name__ == "__main__":
         m=args.dims[0],
         k=args.dims[1],
         K=args.dims[2],
+        r=args.dims[3],
+        s=args.dims[4],
     )
