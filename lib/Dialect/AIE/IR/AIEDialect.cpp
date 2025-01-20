@@ -510,8 +510,7 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError(
           "`via_shared_mem` can only be used in 1-to-1 object FIFOs");
     if (getVia_DMA())
-      return emitError(
-          "`via_shared_mem` and `via_DMA` cannot occur together");
+      return emitError("`via_shared_mem` and `via_DMA` cannot occur together");
   }
 
   if (getRepeatCount().has_value()) {
