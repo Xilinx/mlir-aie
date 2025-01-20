@@ -10,8 +10,8 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK: module @init_join_input {
-module @init_join_input {
+// CHECK: module @init_join_output {
+module @init_join_output {
   aie.device(xcve2302) {
     memref.global "public" @of2_cons : memref<4xi32>
     memref.global "public" @of2 : memref<4xi32>
@@ -113,7 +113,7 @@ module @init_join_input {
   }
 }
 
-module @init_join_input {
+module @init_join_output {
  aie.device(xcve2302) {
     %tile10 = aie.tile(1, 0)
     %tile11 = aie.tile(1, 1)
