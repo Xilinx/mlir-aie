@@ -303,8 +303,9 @@ struct AIEObjectFifoStatefulTransformPass
           if (share_direction == newShareDirection)
             share_direction = (share_direction == -1) ? 1 : -1;
           else
-            createOp->emitOpError("no access to shared memory module specified by "
-                                  "`via_shared_mem`");
+            createOp->emitOpError(
+                "no access to shared memory module specified by "
+                "`via_shared_mem`");
         }
       }
     }
