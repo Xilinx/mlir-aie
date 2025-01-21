@@ -1507,8 +1507,9 @@ struct AIEObjectFifoStatefulTransformPass
                                  share_direction);
       } else {
         if (createOp.getViaSharedMem().has_value())
-          createOp->emitOpError("no access to shared memory module specified by "
-                                "`via_shared_mem`");
+          createOp->emitOpError(
+              "no access to shared memory module specified by "
+              "`via_shared_mem`");
 
         if (isa<ArrayAttr>(createOp.getElemNumber()))
           createOp.setElemNumberAttr(
