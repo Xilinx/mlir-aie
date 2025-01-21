@@ -8,35 +8,29 @@
 // 
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-objectFifo-stateful-transform -split-input-file %s 2>&1 | FileCheck %s
-
-// CHECK:   error: 'aie.objectfifo' op no access to shared memory module specified by `via_shared_mem`
+// RUN: aie-opt --aie-objectFifo-stateful-transform -split-input-file --verify-diagnostics %s
 
 aie.device(npu1) {
    %tile12 = aie.tile(1, 2)
    %tile33 = aie.tile(3, 3)
-
+   // expected-error@+1 {{'aie.objectfifo' op no access to shared memory module specified by `via_shared_mem`}}
    aie.objectfifo @of1 (%tile12, {%tile33}, 1 : i32) {via_shared_mem = 1 : i32} : !aie.objectfifo<memref<16xi32>>
 }
 
 // -----
 
-// CHECK:   error: 'aie.objectfifo' op no access to shared memory module specified by `via_shared_mem`
-
 aie.device(npu1) {
    %tile12 = aie.tile(1, 2)
    %tile13 = aie.tile(1, 3)
-
+   // expected-error@+1 {{'aie.objectfifo' op no access to shared memory module specified by `via_shared_mem`}}
    aie.objectfifo @of1 (%tile12, {%tile13}, 1 : i32) {via_shared_mem = 1 : i32, repeat_count = 2 : i32} : !aie.objectfifo<memref<16xi32>>
 }
 
 // -----
 
-// CHECK:   error: 'aie.objectfifo' op no access to shared memory module specified by `via_shared_mem`
-
 aie.device(npu1) {
    %tile12 = aie.tile(1, 2)
    %tile13 = aie.tile(1, 3)
-
+   // expected-error@+1 {{'aie.objectfifo' op no access to shared memory module specified by `via_shared_mem`}}
    aie.objectfifo @of1 (%tile12 dimensionsToStream [<size = 1, stride = 1>, <size = 1, stride = 1>], {%tile13}, 1 : i32) {via_shared_mem = 1 : i32} : !aie.objectfifo<memref<16xi32>>
 }
