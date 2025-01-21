@@ -303,8 +303,9 @@ struct AIEObjectFifoStatefulTransformPass
           if (share_direction == newShareDirection)
             share_direction = (share_direction == -1) ? 1 : -1;
           else
-            createOp->emitOpError("no access to shared memory module specified by "
-                                  "`via_shared_mem`");
+            createOp->emitOpError(
+                "no access to shared memory module specified by "
+                "`via_shared_mem`");
         }
       }
     }
@@ -1503,8 +1504,9 @@ struct AIEObjectFifoStatefulTransformPass
                                  share_direction);
       } else {
         if (createOp.getViaSharedMem().has_value())
-          createOp->emitOpError("no access to shared memory module specified by "
-                                "`via_shared_mem`");
+          createOp->emitOpError(
+              "no access to shared memory module specified by "
+              "`via_shared_mem`");
 
         if (isa<ArrayAttr>(createOp.getElemNumber()))
           createOp.setElemNumberAttr(
