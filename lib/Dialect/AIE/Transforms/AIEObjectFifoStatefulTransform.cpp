@@ -303,9 +303,8 @@ struct AIEObjectFifoStatefulTransformPass
           if (share_direction == newShareDirection)
             share_direction = (share_direction == -1) ? 1 : -1;
           else
-            createOp->emitOpError(
-                "no access to shared memory module specified by "
-                "`via_shared_mem`");
+            createOp->emitOpError("no access to shared memory module specified by "
+                                  "`via_shared_mem`");
         }
       }
     }
@@ -343,6 +342,7 @@ struct AIEObjectFifoStatefulTransformPass
   std::vector<LockOp> createObjectFifoLocks(OpBuilder &builder,
                                             LockAnalysis &lockAnalysis,
                                             ObjectFifoCreateOp op, int numElem,
+                                            int joinDistribFactor,
                                             TileOp creation_tile,
                                             int repeatCount) {
     std::vector<LockOp> locks;
@@ -380,7 +380,7 @@ struct AIEObjectFifoStatefulTransformPass
                             : 0;
       int prodLockID = lockAnalysis.getLockID(creation_tile);
       assert(prodLockID >= 0 && "No more locks to allocate!");
-      int prodLockValue = (numElem - initValues) * repeatCount;
+      int prodLockValue = (numElem - initValues) * joinDistribFactor * repeatCount;
       auto prodLock = builder.create<LockOp>(
           builder.getUnknownLoc(), creation_tile, prodLockID, prodLockValue);
       prodLock.getOperation()->setAttr(
@@ -390,7 +390,7 @@ struct AIEObjectFifoStatefulTransformPass
 
       int consLockID = lockAnalysis.getLockID(creation_tile);
       assert(consLockID >= 0 && "No more locks to allocate!");
-      int consLockValue = initValues * repeatCount;
+      int consLockValue = initValues * joinDistribFactor * repeatCount;
       auto consLock = builder.create<LockOp>(
           builder.getUnknownLoc(), creation_tile, consLockID, consLockValue);
       consLock.getOperation()->setAttr(
@@ -495,19 +495,20 @@ struct AIEObjectFifoStatefulTransformPass
       of_elem_index++;
     }
     int repeatCount = 1;
+    int joinDistribFactor = 1;
     if (op.getRepeatCount().has_value())
       repeatCount = op.getRepeatCount().value();
     if (linked) {
       if (linkOp->getRepeatCount().has_value())
         repeatCount = linkOp->getRepeatCount().value();
       if (linkOp->isDistribute())
-        numElem *= linkOp->getFifoOuts().size();
+        joinDistribFactor *= linkOp->getFifoOuts().size();
       else if (linkOp->isJoin())
-        numElem *= linkOp->getFifoIns().size();
+        joinDistribFactor *= linkOp->getFifoIns().size();
       objFifoLinks[*linkOp] = op;
     }
     std::vector<LockOp> locks = createObjectFifoLocks(
-        builder, lockAnalysis, op, numElem, creation_tile, repeatCount);
+        builder, lockAnalysis, op, numElem, joinDistribFactor, creation_tile, repeatCount);
     buffersPerFifo[op] = buffers;
     locksPerFifo[op] = locks;
   }
@@ -1504,9 +1505,8 @@ struct AIEObjectFifoStatefulTransformPass
                                  share_direction);
       } else {
         if (createOp.getViaSharedMem().has_value())
-          createOp->emitOpError(
-              "no access to shared memory module specified by "
-              "`via_shared_mem`");
+          createOp->emitOpError("no access to shared memory module specified by "
+                                "`via_shared_mem`");
 
         if (isa<ArrayAttr>(createOp.getElemNumber()))
           createOp.setElemNumberAttr(
