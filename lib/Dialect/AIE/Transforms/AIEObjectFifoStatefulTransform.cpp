@@ -303,8 +303,9 @@ struct AIEObjectFifoStatefulTransformPass
           if (share_direction == newShareDirection)
             share_direction = (share_direction == -1) ? 1 : -1;
           else
-            createOp->emitOpError("no access to shared memory module specified by "
-                                  "`via_shared_mem`");
+            createOp->emitOpError(
+                "no access to shared memory module specified by "
+                "`via_shared_mem`");
         }
       }
     }
@@ -380,7 +381,8 @@ struct AIEObjectFifoStatefulTransformPass
                             : 0;
       int prodLockID = lockAnalysis.getLockID(creation_tile);
       assert(prodLockID >= 0 && "No more locks to allocate!");
-      int prodLockValue = (numElem - initValues) * joinDistribFactor * repeatCount;
+      int prodLockValue =
+          (numElem - initValues) * joinDistribFactor * repeatCount;
       auto prodLock = builder.create<LockOp>(
           builder.getUnknownLoc(), creation_tile, prodLockID, prodLockValue);
       prodLock.getOperation()->setAttr(
@@ -1505,8 +1507,9 @@ struct AIEObjectFifoStatefulTransformPass
                                  share_direction);
       } else {
         if (createOp.getViaSharedMem().has_value())
-          createOp->emitOpError("no access to shared memory module specified by "
-                                "`via_shared_mem`");
+          createOp->emitOpError(
+              "no access to shared memory module specified by "
+              "`via_shared_mem`");
 
         if (isa<ArrayAttr>(createOp.getElemNumber()))
           createOp.setElemNumberAttr(
