@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+
 // CHECK:  aie.device(xcve2302) {
 // CHECK:    memref.global "public" @of2 : memref<16xi32>
 // CHECK:    memref.global "public" @of1_cons : memref<16xi32>

@@ -46,6 +46,8 @@
 // CHECK:           }
 // CHECK:         }
 
+// single objectfifo (two different end points), single core, interaction between acquire / release calls, AIE1
+
 module @singleFifo {
     aie.device(xcvc1902) {
         %tile12 = aie.tile(1, 2)

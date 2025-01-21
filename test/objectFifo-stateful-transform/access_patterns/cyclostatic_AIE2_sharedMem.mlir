@@ -90,6 +90,9 @@
 // CHECK:           }
 // CHECK:         }
 
+// single objectfifo (two different end points), two cores,
+// interaction between acquire / release calls in cyclostatic pattern with for loop, shared mem
+
 module @cyclostatic {
     aie.device(xcve2302) {
         %tile12 = aie.tile(1, 2)

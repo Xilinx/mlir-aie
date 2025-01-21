@@ -76,6 +76,9 @@
 // CHECK:           }
 // CHECK:         }
 
+// two objectfifos, two cores, producers and consumers are different for each objectfifo,
+// interaction between acquire / release calls to both objectfifos on both cores, AIE1
+
 module @multiCoreMixedFifo {
     aie.device(xcvc1902) {
         %tile12 = aie.tile(1, 2)
