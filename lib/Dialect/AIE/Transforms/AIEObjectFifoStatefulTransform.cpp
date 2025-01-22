@@ -1380,6 +1380,26 @@ struct AIEObjectFifoStatefulTransformPass
                                         builder.getBoolAttr(plio));
   }
 
+  /// Function used to verify that an objectfifo is present in at most one 
+  /// ObjectFifoLinkOp.
+  void verifyObjectFifoLinks(DeviceOp &device) {
+    DenseSet<ObjectFifoCreateOp> objectfifoset;
+    for (ObjectFifoLinkOp link : device.getOps<ObjectFifoLinkOp>()) {
+      for (ObjectFifoCreateOp inOf : link.getInputObjectFifos()) {
+        if (objectfifoset.count(inOf))
+          inOf.emitOpError("objectfifo cannot be in more than one "
+                           "ObjectFifoLinkOp");
+        objectfifoset.insert(inOf);
+      }
+      for (ObjectFifoCreateOp outOf : link.getOutputObjectFifos()) {
+        if (objectfifoset.count(outOf))
+          outOf.emitOpError("objectfifo cannot be in more than one "
+                            "ObjectFifoLinkOp");
+        objectfifoset.insert(outOf);
+      }
+    }
+  }
+
   void runOnOperation() override {
     DeviceOp device = getOperation();
     LockAnalysis lockAnalysis(device);
@@ -1390,6 +1410,9 @@ struct AIEObjectFifoStatefulTransformPass
     auto consumerWireType = WireBundle::DMA;
     std::set<TileOp>
         objectFifoTiles; // track cores to check for loops during unrolling
+
+    verifyObjectFifoLinks(device);
+
     //===------------------------------------------------------------------===//
     // Split objectFifos into a consumer end and producer end if needed
     //===------------------------------------------------------------------===//
