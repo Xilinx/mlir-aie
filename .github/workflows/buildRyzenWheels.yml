@@ -221,7 +221,7 @@ jobs:
 
             auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/aie_python_bindings*whl --plat manylinux_2_35_x86_64
 
-      - uses: geekyeggo/delete-artifact@v4
+      - uses: geekyeggo/delete-artifact@v3
         if: github.event_name == 'pull_request'
         with:
           name: mlir_aie
