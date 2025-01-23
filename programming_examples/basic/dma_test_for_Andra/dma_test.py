@@ -92,7 +92,6 @@ def my_passthrough(m, k, K, r, s):
                     ]
                 ],
             )
-            #of_in_mem_to_comp.set_repeat_count(2)
 
 
             # links mem to comp
