@@ -173,7 +173,7 @@
 // CHECK:         case 1 {
 // CHECK:           scf.yield %input_fifo_cons_buff_0 : memref<10xi32>
 // CHECK:         }
-// CHECK:         default {
+// CHECK:        default {
 // CHECK:           scf.yield %input_fifo_cons_buff_1 : memref<10xi32>
 // CHECK:         }
 // CHECK:         func.call @add_10_i32(%16, %19, %13) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
