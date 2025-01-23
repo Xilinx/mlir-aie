@@ -18,8 +18,23 @@ all: build/final.xclbin build/insts.txt
 
 targetname = dma_test
 m ?= 64
+M ?= 512
 k ?= 64
-K ?= 64
+K ?= 512
+n ?= 64
+N ?= 512
+
+
+# set this flag to 1 for linear data transfer from/to DDR
+# else, 0 for blocked
+linear_DDR_data?=0
+
+ifeq (${linear_DDR_data}, 1)
+data_layout_DDR=linear
+else
+data_layout_DDR=blocked
+endif
+
 
 
 aie_py_src=${targetname}.py
@@ -27,7 +42,7 @@ aie_py_src=${targetname}.py
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${m} ${k} ${K} > $@
+	python3 $< ${m} ${M} ${k} ${K} ${n} ${N} ${data_layout_DDR} > $@
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
@@ -47,7 +62,7 @@ else
 endif
 
 run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --m ${m} --k ${k} --K ${K}
+	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --m ${m} --M ${M} --k ${k} --K ${K} --n ${n} --N ${N}
 
 clean:
 	rm -rf build _build inst ${targetname}.exe

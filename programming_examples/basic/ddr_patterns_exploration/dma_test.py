@@ -17,17 +17,22 @@ from aie.helpers.taplib import TensorAccessPattern
 
 
 # this resembles the buffer A data layout and transformations
-def my_passthrough(m, k, K):
+def my_passthrough(m, M, k, K, n, N, data_layout_DDR):
+
+
+    # large M must be divisible by small m 
+    assert M % m == 0
 
     # large K must be divisible by small k 
     assert K % k == 0
 
-        
-    # send the entire m*K
-    big_tile_ty = np.ndarray[(m, K), np.dtype[np.int32]]
+    # large N must be divisible by small n
+    assert N % n == 0
 
-    small_tile_ty = np.ndarray[(4, 1), np.dtype[np.int32]]
+    
+    mem_tile_A_ty = np.ndarray[(m, k), np.dtype[np.int32]]
 
+    mem_tile_B_ty = np.ndarray[(k, n), np.dtype[np.int32]]
     
     with mlir_mod_ctx() as ctx:
 
@@ -43,25 +48,47 @@ def my_passthrough(m, k, K):
             # AIE-array data movement with object fifos
 
             # Input
-            of_in_shim_to_mem = object_fifo(
-                "shim_to_mem",
+            of_in_shim_to_mem_A = object_fifo(
+                "shim_to_mem_A",
                 ShimTile,
-                ComputeTile,
-                1,              # single buffer here to allow max buffer transaction 
-                big_tile_ty,
+                MemTile,
+                2,              # double buffer 
+                mem_tile_A_ty,
             )
 
 
-            of_out_mem_to_shim = object_fifo(
-                "mem_to_shim",
-                ComputeTile,
+            of_out_mem_A_to_shim = object_fifo(
+                "mem_A_to_shim",
+                MemTile,
                 ShimTile,
-                1, 
-                small_tile_ty
+                2, 
+                mem_tile_A_ty
             )
 
-            # # links of_in to of_out
-            object_fifo_link(of_in_shim_to_mem, of_out_mem_to_shim)
+            # links of_in to of_out
+            object_fifo_link(of_in_shim_to_mem_A, of_out_mem_A_to_shim)
+
+
+            # Input
+            of_in_shim_to_mem_B = object_fifo(
+                "shim_to_mem_B",
+                ShimTile,
+                MemTile,
+                2,              # double buffer 
+                mem_tile_B_ty,
+            )
+
+
+            of_out_mem_B_to_shim = object_fifo(
+                "mem_B_to_shim",
+                MemTile,
+                ShimTile,
+                2, 
+                mem_tile_B_ty
+            )
+
+            # links of_in to of_out
+            object_fifo_link(of_in_shim_to_mem_B, of_out_mem_B_to_shim)
 
 
 
@@ -73,49 +100,87 @@ def my_passthrough(m, k, K):
                     
                     
 
-            # set the runtime type as 1D array
-            big_runtime_ty = np.ndarray[(m*K,), np.dtype[np.int32]]
+            # set the runtime type as 1D array.
+            # send the entire A buffer of M*K size
+            runtime_A_ty = np.ndarray[(M*K,), np.dtype[np.int32]]
 
-            small_runtime_ty = np.ndarray[(4,), np.dtype[np.int32]]
+            runtime_B_ty = np.ndarray[(K*N,), np.dtype[np.int32]]
+
+            runtime_C_ty = np.ndarray[(M*K + K*N,), np.dtype[np.int32]]
+
             
             # To/from AIE-array data movement
-            @runtime_sequence(big_runtime_ty, big_runtime_ty, small_runtime_ty)
+            @runtime_sequence(runtime_A_ty, runtime_B_ty, runtime_C_ty)
             def sequence(A, B, C):
                 
                 npu_dma_memcpy_nd(
-                    metadata=of_in_shim_to_mem,
+                    metadata=of_in_shim_to_mem_A,
                     bd_id=0,
                     mem=A,
-                    sizes=[1, 1, 1, m*K],
-                    issue_token=True,       # issue_token must be True to wait on the input transmission
+                    sizes=([M//m, K//k, m, k] if data_layout_DDR=="blocked" else 
+                           [1, 1, 1, M*K]),
+                    strides=([m*K, k, K, 1] if data_layout_DDR=="blocked" else 
+                             None),
                 )
 
                 npu_dma_memcpy_nd(
-                    metadata=of_out_mem_to_shim, 
+                    metadata=of_out_mem_A_to_shim, 
                     bd_id=1, 
-                    mem=C, 
-                    sizes=[1, 1, 1, 4])
+                    mem=C,
+                    sizes=([M//m, K//k, m, k] if data_layout_DDR=="blocked" else 
+                           [1, 1, 1, M*K]),
+                    strides=([m*K, k, K, 1] if data_layout_DDR=="blocked" else
+                             None),
+                )
+
+                npu_dma_memcpy_nd(
+                    metadata=of_in_shim_to_mem_B,
+                    bd_id=2,
+                    mem=B,
+                    sizes=([N//n, K//k, k, n] if data_layout_DDR=="blocked" else
+                           [1, 1, 1, K*N]),
+                    strides=([n, k*N, N, 1] if data_layout_DDR=="blocked" else
+                             None),
+                )
+
+                npu_dma_memcpy_nd(
+                    metadata=of_out_mem_B_to_shim, 
+                    bd_id=3, 
+                    mem=C,
+                    offsets=[0, 0, 0, M*K],  # offset for the A output buffer of M*K size
+                    sizes=([N//n, K//k, k, n] if data_layout_DDR=="blocked" else
+                           [1, 1, 1, K*N]),
+                    strides=([n, k*N, N, 1] if data_layout_DDR=="blocked" else
+                             None),
+                )
                 
-                # wait only on input to measure the one sided data transmission from DDR
-                dma_wait(of_in_shim_to_mem)
-                dma_wait(of_out_mem_to_shim)
+                
+                dma_wait(of_out_mem_A_to_shim)
+                dma_wait(of_out_mem_B_to_shim)
+
+
 
     print(ctx.module)
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("dims", help="m, k, K", type=int, nargs="*")
+    p.add_argument("dims", help="m, M, k, K, n, N", type=int, nargs="*")
+    p.add_argument("data_layout_DDR", help="Layout of data in DDR", type=str, choices=["linear", "blocked"], default="linear")
     args = p.parse_args()
 
-    if len(args.dims) != 3:
+    if len(args.dims) != 6:
         print(
-            "ERROR: Must provide all 3 dimensions", file=sys.stderr
+            "ERROR: Must provide all 6 dimensions", file=sys.stderr
         )
         exit(-1)
 
     my_passthrough(
         m=args.dims[0],
-        k=args.dims[1],
-        K=args.dims[2],
+        M=args.dims[1],
+        k=args.dims[2],
+        K=args.dims[3],
+        n=args.dims[4],
+        N=args.dims[5],
+        data_layout_DDR=args.data_layout_DDR,
     )

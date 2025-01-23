@@ -66,10 +66,16 @@ int main(int argc, const char *argv[]) {
       "path of file containing userspace instructions to be sent to the LX6")(
       "m", po::value<int>()->default_value(32),
       "m, number of rows in the small tile")(
+      "M", po::value<int>()->default_value(1024),
+      "M, number of rows in the small tile")(
       "k", po::value<int>()->default_value(64),
       "k, number of columns in the small tile")(
       "K", po::value<int>()->default_value(256),
-      "K, number of columns in the large tile");
+      "K, number of columns in the large tile")(
+      "n", po::value<int>()->default_value(256),
+      "n, number of columns in the large tile")(
+      "N", po::value<int>()->default_value(256),
+      "N, number of columns in the large tile");
 
   po::variables_map vm;
 
@@ -99,10 +105,13 @@ int main(int argc, const char *argv[]) {
 
 
 
-  // input arguments m, k, K
+  // input arguments m, M, k, K
   int m = vm["m"].as<int>();
+  int M = vm["M"].as<int>();
   int k = vm["k"].as<int>();
   int K = vm["K"].as<int>();
+  int n = vm["n"].as<int>();
+  int N = vm["N"].as<int>();
 
 
 
@@ -150,11 +159,11 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_inA = xrt::bo(device, m * K * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+  auto bo_inA = xrt::bo(device, M * K * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(3));
-  auto bo_inB = xrt::bo(device, m * K * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+  auto bo_inB = xrt::bo(device, K * N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(4));
-  auto bo_out = xrt::bo(device, 4 * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+  auto bo_out = xrt::bo(device, (M * K + K * N) * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(5));
 
   if (verbosity >= 1)
@@ -164,30 +173,61 @@ int main(int argc, const char *argv[]) {
   int32_t *bufInA = bo_inA.map<int32_t *>();
 
   // input source vector A
-  std::vector<int32_t> srcVecA(m*K);
+  std::vector<int32_t> srcVecA(M*K);
+
+  // xrt input buffer mapped to input buffer B
+  int32_t *bufInB = bo_inB.map<int32_t *>();
+
+  // input source vector B
+  std::vector<int32_t> srcVecB(K*N);
 
 
   
+  int M_div_m = M/m;
   int K_div_k = K/k;
 
   int index = 0;
 
-  // write the input data to the input vector in pre-tiled format
-  for (int tile_k = 0; tile_k < K_div_k; tile_k++){
+  for (int tile_m = 0; tile_m < M_div_m; tile_m++){
+    for (int tile_k = 0; tile_k < K_div_k; tile_k++){
 
-    for (int ii = 0; ii < m; ii++){
-      for (int jj = 0; jj < k; jj++){
-        
-        // here just copy of index for easy debug
-        // later replace with random data
-        srcVecA[index] = index;
-        index++;
+      for (int ii = 0; ii < m; ii++){
+        for (int jj = 0; jj < k; jj++){
+
+          // here just copy of index for easy debug
+          // later replace with random data
+          srcVecA[index] = index;
+          index++;
+        }
+      }
+    }
+  }
+
+
+  int N_div_n = N/n;
+  
+  index = 0;
+
+  for (int tile_n = 0; tile_n < N_div_n; tile_n++){
+    for (int tile_k = 0; tile_k < K_div_k; tile_k++){
+
+      for (int ii = 0; ii < n; ii++){
+        for (int jj = 0; jj < k; jj++){
+
+          // here just copy of index for easy debug
+          // later replace with random data
+          srcVecB[index] = index;
+          index++;
+        }
       }
     }
   }
 
   // copy the input data to the input buffer A 
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(int32_t)));
+
+  // copy the input data to the input buffer B
+  memcpy(bufInB, srcVecB.data(), (srcVecB.size() * sizeof(int32_t)));
 
 
   // copy instructions
@@ -197,17 +237,18 @@ int main(int argc, const char *argv[]) {
   // sync instructions and input buffer
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_inB.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
 
 
   // warmup and total iterations
-  int n_warmup_iter = 10;
-  int n_total_iter = 100;
+  int n_warmup_iter = 50;
+  int n_total_iter = 500;
 
   // total DDR time of all iterations (excluding warmup)
   float DDR_time_total = 0;
 
-  float DDR_time_min = 9999999;
+  float DDR_time_min = 999999999;
   float DDR_time_max = 0;
 
   for (int iter = 0; iter < n_total_iter; iter++){
@@ -226,6 +267,36 @@ int main(int argc, const char *argv[]) {
     // stop timer
     auto stop = std::chrono::high_resolution_clock::now();
 
+    
+//   // sync output buffer after kernel running
+//   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+
+//   // map xrt output buffer to output buffer
+//   int32_t *bufOut = bo_out.map<int32_t *>();
+
+//   // create a vector for the output data 
+//   std::vector<int32_t> OutVec(M*K);
+
+//   // copy output data to the output vector
+//   memcpy(OutVec.data(), bufOut, (OutVec.size() * sizeof(int32_t)));
+
+
+//   // <<<<<<<<<<<<< write the output data into a file >>>>>>>>>>>>>
+//   // Open a file in write mode
+//   std::ofstream outFile("output.txt");
+
+//  // Check if the file is open
+//   if (outFile.is_open()) {
+//     // Iterate through the vector and write each element to the file
+//     for (const auto& elem : OutVec) {
+//         outFile << elem << "\n"; // Write each element followed by a newline
+//     }
+//     outFile.close(); // Close the file
+//     std::cout << "Output data written to output.txt file successfully.\n";
+//   } else {
+//       std::cerr << "Unable to open file for writing.\n";
+//   }
+
 
     if (iter < n_warmup_iter) {
       /* Warmup iterations do not count towards average runtime. */
@@ -243,16 +314,22 @@ int main(int argc, const char *argv[]) {
   }
 
 
-  std::cout << std::endl
-            << "Avg DDR time: " << DDR_time_total / n_total_iter << "us."
-            << std::endl;
+  // total data in KBytes
+  int total_size_Kbytes = (2*(M*K + K*N))*sizeof(int32_t)/1024;
 
-  std::cout << std::endl
-            << "Min DDR time: " << DDR_time_min << "us." << std::endl;
+  std::cout << std::endl << "Total size: " << float(total_size_Kbytes)/1024 << " MB" << std::endl;
 
-  std::cout << std::endl
-            << "Max DDR time: " << DDR_time_max << "us." << std::endl;
-  
+  float DDR_time_avg = DDR_time_total / (n_total_iter - n_warmup_iter);
+
+  std::cout << std::endl << "Avg DDR time: " << DDR_time_avg << "us." << std::endl;
+  std::cout << "Avg DDR BW: " << total_size_Kbytes / DDR_time_avg << " GB/s" << std::endl;
+
+  std::cout << std::endl << "Min DDR time: " << DDR_time_min << "us." << std::endl;
+  std::cout << "Max DDR BW: " << total_size_Kbytes / DDR_time_min << " GB/s" << std::endl;
+
+  std::cout << std::endl << "Max DDR time: " << DDR_time_max << "us." << std::endl;
+  std::cout << "Min DDR BW: " << total_size_Kbytes / DDR_time_max << " GB/s" << std::endl;
+
 
   // // sync output buffer after kernel running
   // bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
