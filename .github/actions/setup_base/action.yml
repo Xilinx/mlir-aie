@@ -121,10 +121,10 @@ runs:
         else
           WORKSPACE_ROOT=$GITHUB_WORKSPACE
         fi
+        mkdir -p "$WORKSPACE_ROOT"
         
         if [[ -d "$WORKSPACE_ROOT" ]]; then
           ls -la "$WORKSPACE_ROOT"
-          rm -rf "$WORKSPACE_ROOT"
         fi 
         
         git clone --recursive -b ${{ github.head_ref || github.ref_name }} https://github.com/${{ github.repository }}.git "$WORKSPACE_ROOT"
@@ -137,6 +137,7 @@ runs:
         echo "WORKSPACE_ROOT=$WORKSPACE_ROOT" | tee -a $GITHUB_OUTPUT
 
     - name: Docker prune
+      working-directory: ${{ env.TEMP }}
       if: contains(inputs.MATRIX_OS, 'ubuntu')
       shell: bash
       run: |
