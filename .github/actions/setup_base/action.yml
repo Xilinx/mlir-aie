@@ -34,14 +34,6 @@ description: ''
 runs:
   using: "composite"
   steps:
-    - name: Set unified TZ
-      uses: szenius/set-timezone@v2.0
-      with:
-        # this is an arbitrary choice
-        timezoneLinux: "Asia/Singapore"
-        timezoneMacos: "Asia/Singapore"
-        timezoneWindows: "Singapore Standard Time"
-    
     - name: Setup tmate session
       if: ${{ inputs.DEBUG_ENABLED && inputs.DEBUG_OS == inputs.MATRIX_OS && inputs.DEBUG_ARCH == inputs.MATRIX_ARCH }}
       uses: mxschmitt/action-tmate@v3
@@ -73,9 +65,9 @@ runs:
         large-packages: true
         swap-storage: false # This frees space on the wrong partition.
 
-    - uses: actions/setup-python@v4
+    - uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: '3.10'
 
     - name: Install Ninja
       uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c # Jan 17
@@ -87,29 +79,35 @@ runs:
         
         sudo apt-get update
         sudo apt-get install -y binutils-aarch64-linux-gnu \
-          g++-aarch64-linux-gnu gcc-aarch64-linux-gnu
+          g++-aarch64-linux-gnu gcc-aarch64-linux-gnu openssl libssl-dev
 
     - name: pip install standard tools
       shell: bash
       run: pip install cibuildwheel wheel
 
     - name: install rename
-      if: ${{ inputs.MATRIX_OS == 'ubuntu-20.04' || inputs.MATRIX_OS == 'macos-13' }}
+      if: ${{ inputs.MATRIX_OS == 'ubuntu-20.04' || inputs.MATRIX_OS == 'macos-12' || inputs.MATRIX_OS == 'macos-14' }}
       shell: bash
       run: |
         
-        if [ x"${{ inputs.MATRIX_OS }}" == x"macos-13" ]; then
+        if [ x"${{ inputs.MATRIX_OS }}" == x"macos-12" ] || [ x"${{ inputs.MATRIX_OS }}" == x"macos-14" ]; then
           brew install rename
         else
           sudo apt-get install -y rename
         fi
 
+    # why all this? two reasons:
+    # 1. because the windows runner have not enough space on D, which is also the checkout location (why????)
+    # see https://github.com/actions/runner-images/issues/1341
+    # 2. because windows has a command length limit even in 2023 of 8192 characeters (or something like that). how
+    # do we hit that during anything we're doing here? during the linking phase of MLIR-C.dll, which links together
+    # absolutely all the libs in MLIR using their full/abs paths.
     - run: echo "TEMP=$env:USERPROFILE\AppData\Local\Temp" >> $env:GITHUB_ENV
       if: ${{ inputs.MATRIX_OS == 'windows-2019' }}
       shell: pwsh
 
     - run: echo "TEMP=/tmp" >> $GITHUB_ENV
-      if: ${{ inputs.MATRIX_OS == 'ubuntu-20.04' || inputs.MATRIX_OS == 'macos-13' }}
+      if: ${{ inputs.MATRIX_OS == 'ubuntu-20.04' || inputs.MATRIX_OS == 'macos-12' || inputs.MATRIX_OS == 'macos-14' }}
       shell: bash
 
     - name: Set workspace root
@@ -123,13 +121,15 @@ runs:
         else
           WORKSPACE_ROOT=$GITHUB_WORKSPACE
         fi
-        mkdir -p "$WORKSPACE_ROOT"
         
         if [[ -d "$WORKSPACE_ROOT" ]]; then
           ls -la "$WORKSPACE_ROOT"
+          rm -rf "$WORKSPACE_ROOT"
         fi 
         
-        # working-directory is "executed" in powershell
+        git clone --recursive -b ${{ github.head_ref || github.ref_name }} https://github.com/${{ github.repository }}.git "$WORKSPACE_ROOT"
+        ls "$WORKSPACE_ROOT"
+        
         if [ x"${{ inputs.MATRIX_OS }}" == x"windows-2019" ]; then
           WORKSPACE_ROOT="C:\a"
         fi
@@ -137,7 +137,6 @@ runs:
         echo "WORKSPACE_ROOT=$WORKSPACE_ROOT" | tee -a $GITHUB_OUTPUT
 
     - name: Docker prune
-      working-directory: ${{ env.TEMP }}
       if: contains(inputs.MATRIX_OS, 'ubuntu')
       shell: bash
       run: |
