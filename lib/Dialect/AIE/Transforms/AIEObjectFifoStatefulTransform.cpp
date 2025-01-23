@@ -1380,7 +1380,7 @@ struct AIEObjectFifoStatefulTransformPass
                                         builder.getBoolAttr(plio));
   }
 
-  /// Function used to verify that an objectfifo is present in at most one 
+  /// Function used to verify that an objectfifo is present in at most one
   /// ObjectFifoLinkOp.
   void verifyObjectFifoLinks(DeviceOp &device) {
     DenseSet<ObjectFifoCreateOp> objectfifoset;
