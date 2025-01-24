@@ -12,30 +12,24 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1
 from aie.iron.controlflow import range_
 
-width = 32
-height = 32
-in_channels = 64
-out_channels = 64
 
-if len(sys.argv) == 3:
-    width = int(sys.argv[1])
-    height = int(sys.argv[2])
+def conv2dk1(
+    dev, width: int, height: int, in_channels: int, out_channels: int, trace_size: int
+):
 
+    actIn = width * in_channels  # 32*64 = 2048
+    bufIn = actIn * 2  # double buffer
 
-actIn = width * in_channels  # 32*64 = 2048
-bufIn = actIn * 2  # double buffer
+    weights = in_channels * out_channels
 
-weights = in_channels * out_channels
+    actOut = width * out_channels  # 32*64 = 2048
+    bufOut = actOut * 2  # double buffer
 
-actOut = width * out_channels  # 32*64 = 2048
-bufOut = actOut * 2  # double buffer
+    tensorInSize = width * height * in_channels
+    tensorOutSize = width * height * out_channels
 
-tensorSize = width * height * in_channels
+    N_in_bytes = tensorOutSize  # Number of bytes of output data (1 byte/elem)
 
-N_in_bytes = tensorSize  # Number of bytes of output data (1 byte/elem)
-
-
-def conv2dk1(trace_size: int):
     # Type definitions
     actIn_ty = np.ndarray[(actIn,), np.dtype[np.int8]]
     bufIn_ty = np.ndarray[(bufIn,), np.dtype[np.int8]]
@@ -44,7 +38,8 @@ def conv2dk1(trace_size: int):
 
     out_ty = np.ndarray[(actOut,), np.dtype[np.int8]]
     bufOut_ty = np.ndarray[(bufOut,), np.dtype[np.int8]]
-    tensor_ty = np.ndarray[(tensorSize,), np.dtype[np.int8]]
+    tensorIn_ty = np.ndarray[(tensorInSize,), np.dtype[np.int8]]
+    tensorOut_ty = np.ndarray[(tensorOutSize,), np.dtype[np.int8]]
 
     # AIE Core Function declarations
     conv2dk1_i8_kernel = Kernel(
@@ -82,10 +77,10 @@ def conv2dk1(trace_size: int):
 
     # Task for the core to perform
     def core_fn(of_wts, of_act, of_out, my_rtp, conv2dk1_i8):
-        y_dim = 32
-        x_dim = 32
-        ci = 64
-        co = 64
+        y_dim = height
+        x_dim = width
+        ci = in_channels
+        co = out_channels
 
         elemWts = of_wts.acquire(1)
         scale = my_rtp[0]
@@ -114,7 +109,7 @@ def conv2dk1(trace_size: int):
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(tensor_ty, weights_ty, tensor_ty) as (I, W, O):
+    with rt.sequence(tensorIn_ty, weights_ty, tensorOut_ty) as (I, W, O):
         # Initialize the runtime parameter values
         def set_rtps(my_rtp):
             my_rtp[0] = 10
@@ -130,9 +125,39 @@ def conv2dk1(trace_size: int):
         rt.drain(of_outOFL2L3.cons(), O, wait=True)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
-if __name__ == "__main__":
-    trace_size = 0 if (len(sys.argv) != 2) else int(sys.argv[1])
-    print(conv2dk1(trace_size=trace_size))
+try:
+    device_name = str(sys.argv[1])
+    if device_name == "npu":
+        dev = NPU1Col1()
+    elif device_name == "npu2":
+        dev = NPU2()
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+    width = int(sys.argv[2])
+    if width % 8 != 0 or width < 8:
+        print("Width size must be a multiple of 8 and greater than or equal to 8")
+        raise ValueError
+    height = int(sys.argv[3])
+    if height < 2:
+        print("Height needs to be > 1 at the moment (BUG)")
+        raise ValueError
+    in_channels = int(sys.argv[4])
+    if in_channels % 8 != 0 or in_channels < 8:
+        print(
+            "Input channels size must be a multiple of 8 and greater than or equal to 8"
+        )
+        raise ValueError
+    out_channels = int(sys.argv[5])
+    if out_channels % 8 != 0 or out_channels < 8:
+        print(
+            "Output channel size must be a multiple of 8 and greater than or equal to 8"
+        )
+        raise ValueError
+    trace_size = 0 if (len(sys.argv) != 7) else int(sys.argv[6])
+except ValueError:
+    print("Argument has inappropriate value")
+module = conv2dk1(dev, width, height, in_channels, out_channels, trace_size)
+print(module)
