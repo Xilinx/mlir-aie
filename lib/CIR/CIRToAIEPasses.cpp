@@ -347,11 +347,10 @@ mlir::MemRefType bufferMemrefType(mlir::Type buffer,
   if (auto p = mlir::dyn_cast<cir::PointerType>(buffer)) {
     if (auto bufferType = mlir::dyn_cast<cir::StructType>(p.getPointee())) {
       LLVM_DEBUG(bufferType.dump());
-      // For now the aie::buffer is implemented as a std::array in the buffer
-      // struct
       auto members = bufferType.getMembers();
       if (auto stdArrayType =
               mlir::dyn_cast<cir::StructType>(members.front())) {
+        // If the aie::buffer is implemented as a std::array in the buffer struct
         LLVM_DEBUG(stdArrayType.dump());
         // Access the array inside the std::array struct
         if (auto arrayType = mlir::dyn_cast<cir::ArrayType>(
@@ -363,8 +362,17 @@ mlir::MemRefType bufferMemrefType(mlir::Type buffer,
           return memref;
         }
       }
+      if (auto arrayType = mlir::dyn_cast<cir::ArrayType>(members.front())) {
+        // If the aie::buffer is implemented as a C array in the buffer struct
+        LLVM_DEBUG(arrayType.dump());
+        auto memref = mlir::dyn_cast<mlir::MemRefType>(
+                                                       typeConverter.convertType(arrayType));
+        LLVM_DEBUG(memref.dump());
+        return memref;
+      }
     }
   }
+  assert(false && "Cannot deconstruct the aie::buffer");
   return {};
 }
 

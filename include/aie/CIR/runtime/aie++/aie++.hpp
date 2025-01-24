@@ -11,15 +11,18 @@ namespace aie {
 
 // template <typename T, std::size_t Size> using buffer_t = std::array<T, Size>;
 template <typename T, std::size_t Size> struct buffer {
-  using storage_t = std::array<T, Size>;
+  //using storage_t = std::array<T, Size>;
+  using storage_t = T[Size];
   storage_t storage;
   operator storage_t&() { return storage; }
   // The previous is not enough
   decltype(auto) operator[](std::size_t index) { return storage[index]; }
 
-  auto begin() { return storage.begin(); }
+  //auto begin() { return storage.begin(); }
+  auto begin() { return &storage[0]; }
 
-  auto end() { return storage.end(); }
+  //auto end() { return storage.end(); }
+  auto end() { return &storage[Size]; }
 };
 
 template <typename Channel> void aquire() {}
