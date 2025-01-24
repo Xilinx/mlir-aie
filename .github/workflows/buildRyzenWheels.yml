@@ -231,7 +231,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           path: wheelhouse/repaired_wheel/aie_python_bindings*.whl
-          name: ryzen_ai_wheel
+          name: ryzen_ai_wheel-python-${{ matrix.python_version }}
 
       - name: Release current commit
         if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
