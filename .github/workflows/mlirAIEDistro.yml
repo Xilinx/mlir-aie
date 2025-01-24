@@ -206,8 +206,6 @@ jobs:
         
         export PIP_NO_BUILD_ISOLATION=false
         
-        pip install -r requirements.txt
-        
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
         DATETIME=${{ needs.get_aie_project_commit.outputs.DATETIME }} \
