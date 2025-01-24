@@ -339,8 +339,10 @@ bool isUnrealizedConversionCastWithAnnotation(
 }
 
 // Generate the equivalent memref type of an aie::buffer
-mlir::MemRefType bufferMemrefType(mlir::Type buffer) {
-  static mlir::TypeConverter typeConverter = cir::prepareTypeConverter();
+mlir::MemRefType bufferMemrefType(mlir::Type buffer,
+                                  mlir::DataLayout &dataLayout) {
+  static mlir::TypeConverter typeConverter =
+      cir::prepareTypeConverter(dataLayout);
   LLVM_DEBUG(buffer.dump());
   if (auto p = mlir::dyn_cast<cir::PointerType>(buffer)) {
     if (auto bufferType = mlir::dyn_cast<cir::StructType>(p.getPointee())) {
@@ -602,6 +604,8 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
   // pattern to access some contextual information?
   // It should be OK since it is a module pass, so no parallelism here.
   static inline CIRToAIETypesAnalysis *cat;
+  // Used to lower some datatypes like unions.
+  mlir::DataLayout dataLayout;
 
   // Try to lower the operation as an aie.buffer and return true on success
   //
@@ -616,7 +620,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
       if (auto bufferDetail = cat->getTypeDetail(bufCast.getType(0));
           bufferDetail.base == "aie::buffer") {
         LLVM_DEBUG(bufCast.emitRemark("Buffer cast from tile"));
-        auto mrt = bufferMemrefType(bufCast.getType(0));
+        auto mrt = bufferMemrefType(bufCast.getType(0), dataLayout);
         // \todo outline
         auto tileDetail = cat->getTypeDetail(bufCast.getOperand(0).getType());
         auto tileOp =
@@ -854,6 +858,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
     // Compute the analysis for the module since it is a module pass.
     cat = &getAnalysis<CIRToAIETypesAnalysis>();
     auto module = getOperation();
+    mlir::DataLayout dataLayout{module};
     mlir::OpBuilder b{module};
     // Use pre-order walk to keep the C++ ordered semantics while lowering the
     // AIE constructs
