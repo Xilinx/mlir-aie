@@ -112,7 +112,7 @@ jobs:
             mv "$WHL_FN" "`echo $WHL_FN | sed "s/cp310-cp310/py3-none/"`"
 
       - name: Upload mlir_aie
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           path: wheelhouse/repaired_wheel/mlir_aie*whl
           name: mlir_aie
@@ -154,7 +154,7 @@ jobs:
           fetch-depth: 2
           submodules: "true"
 
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           # unpacks default artifact into dist/
           # if `name: artifact` is omitted, the action will create extra parent dir
@@ -221,14 +221,14 @@ jobs:
 
             auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/aie_python_bindings*whl --plat manylinux_2_35_x86_64
 
-      - uses: geekyeggo/delete-artifact@v4
+      - uses: geekyeggo/delete-artifact@v5
         if: github.event_name == 'pull_request'
         with:
           name: mlir_aie
 
       - name: Upload wheels
         if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           path: wheelhouse/repaired_wheel/aie_python_bindings*.whl
           name: ryzen_ai_wheel
