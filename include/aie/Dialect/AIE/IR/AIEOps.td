@@ -1848,7 +1848,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
   let arguments = (
     ins ObjectFifoPort:$port,
         FlatSymbolRefAttr:$objFifo_name,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$size
+        ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size
   );
 
   let results = (outs AIE_ObjectFifoSubviewType:$subview);
@@ -1884,7 +1884,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
   let arguments = (
     ins ObjectFifoPort:$port,
         FlatSymbolRefAttr:$objFifo_name,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$size
+        ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size
   );
 
   let assemblyFormat = [{
