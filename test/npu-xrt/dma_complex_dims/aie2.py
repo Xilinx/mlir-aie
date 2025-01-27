@@ -32,13 +32,13 @@ def my_passthrough(m, k, K, r, s):
     # assertions for m and k which should be divisible by the API sizes
     assert m % r == 0
     assert k % s == 0
-        
+
     # compute tile is m x k (small tile)
     comp_tile_ty = np.ndarray[(m, k), np.dtype[np.int32]]
 
     # memory tile is m x K (larger tile)
     mem_tile_ty = np.ndarray[(m, K), np.dtype[np.int32]]
-    
+
     with mlir_mod_ctx() as ctx:
 
         @device(AIEDevice.npu1_1col)
@@ -149,10 +149,8 @@ def my_passthrough(m, k, K, r, s):
                 )
 
                 npu_dma_memcpy_nd(
-                    metadata=of_out_mem_to_shim, 
-                    bd_id=0, 
-                    mem=C, 
-                    sizes=[1, 1, 1, m * K])
+                    metadata=of_out_mem_to_shim, bd_id=0, mem=C, sizes=[1, 1, 1, m * K]
+                )
                 
                 # wait only on output since input will have completed before output
                 dma_wait(of_out_mem_to_shim)
