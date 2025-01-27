@@ -151,7 +151,6 @@ def my_passthrough(m, k, K, r, s):
                 npu_dma_memcpy_nd(
                     metadata=of_out_mem_to_shim, bd_id=0, mem=C, sizes=[1, 1, 1, m * K]
                 )
-                
                 # wait only on output since input will have completed before output
                 dma_wait(of_out_mem_to_shim)
 
