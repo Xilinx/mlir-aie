@@ -58,17 +58,6 @@ def my_passthrough(m, k, K, r, s):
                 MemTile,
                 2,
                 mem_tile_ty,
-                None,
-                # Emulate the pre-tiling of m*k in software (test.cpp)
-                # because data will conme from DDR in row-major format.
-                # Thus, this is comment out for our testing.
-                # [
-                #     [
-                #         (m, k),
-                #         (K // k, m * k),
-                #         (k, 1),
-                #     ]
-                # ],
             )
 
             of_in_mem_to_comp = object_fifo(
@@ -115,11 +104,6 @@ def my_passthrough(m, k, K, r, s):
             # links comp to mem
             object_fifo_link(of_out_comp_to_mem, of_out_mem_to_shim)
 
-            # <<<<<<<<<<<<<<<<< This one didn't really work!! >>>>>>>>>>>>>>>>>>
-            # links mem to comp (in) and comp to mem (out)
-            # such that compute tile can pass (see below)
-            # object_fifo_link(of_in_mem_to_comp, of_out_comp_to_mem)
-
             # Compute tile just passes, doesn't do any operation
             @core(ComputeTile)
             def core_body():
@@ -130,7 +114,6 @@ def my_passthrough(m, k, K, r, s):
                         for i in range_(m):
                             for j in range_(k):
                                 elem_out[i, j] = elem_in[i, j]
-                                # pass
 
                         of_in_mem_to_comp.release(ObjectFifoPort.Consume, 1)
                         of_out_comp_to_mem.release(ObjectFifoPort.Produce, 1)
