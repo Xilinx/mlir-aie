@@ -844,13 +844,11 @@ struct AIEObjectFifoStatefulTransformPass
           }
         } else {
           if (target != op) {
-            if (dims.getValue().empty()) {
-              auto targetFifo =
-                  llvm::cast<AIEObjectFifoType>(target.getElemType());
-              auto targetElemType =
-                  llvm::cast<MemRefType>(targetFifo.getElementType());
-              lenOut = targetElemType.getNumElements();
-            }
+            auto targetFifo =
+                llvm::cast<AIEObjectFifoType>(target.getElemType());
+            auto targetElemType =
+                llvm::cast<MemRefType>(targetFifo.getElementType());
+            lenOut = targetElemType.getNumElements();
           }
         }
 
