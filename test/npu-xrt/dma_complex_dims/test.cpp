@@ -101,14 +101,12 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << std::endl;
 
-
   // input arguments m, k, K, r, s
   int m = vm["m"].as<int>();
   int k = vm["k"].as<int>();
   int K = vm["K"].as<int>();
   int r = vm["r"].as<int>();
   int s = vm["s"].as<int>();
-
 
   // Start the XRT test code
   // Get a device handle
@@ -170,7 +168,6 @@ int main(int argc, const char *argv[]) {
   // input source vector A
   std::vector<int32_t> srcVecA(m * K);
 
-
   // <<<<<<<<< The code below emulates the "of_in_shim_to_mem" OBjFifo in line
   // 57 >>>>>>> calculate the number of tiles in the 'K' dimension
   int K_div_k = K / k;
@@ -222,8 +219,8 @@ int main(int argc, const char *argv[]) {
   std::vector<int32_t> refVecA(m * K);
 
   // Final transformation you want to have for verification
-  // assumes data are pre-tiled (in m*k tiles). 
-  // See line 176 in this file, where data are send to the npu pre-tiled. 
+  // assumes data are pre-tiled (in m*k tiles).
+  // See line 176 in this file, where data are send to the npu pre-tiled.
 
   int m_div_r = m / r;
   int k_div_s = k / s;
@@ -236,13 +233,13 @@ int main(int argc, const char *argv[]) {
     for (int ii = 0; ii < m_div_r; ii++) {
       for (int jj = 0; jj < k_div_s; jj++) {
         for (int r_ii = 0; r_ii < r; r_ii++) {
-          for (int s_jj = 0; s_jj < s; s_jj++) {  
+          for (int s_jj = 0; s_jj < s; s_jj++) {
             // transformation index
-            int transf_index = 
-              (tile_k * (m * k)) + // offset for each m*k tile in (big) 'K'
-                                   // dimension (MemTile stores multiple m*k
-                                   // tiles, each one processed in CompTile)
-              (ii * (r * k) + jj * (s) + r_ii * (k) +
+            int transf_index =
+                (tile_k * (m * k)) + // offset for each m*k tile in (big) 'K'
+                                     // dimension (MemTile stores multiple m*k
+                                     // tiles, each one processed in CompTile)
+                (ii * (r * k) + jj * (s) + r_ii * (k) +
                  s_jj * (1)); // transformation index for r*s tiled acccess
                               // pattern of m*k tile
 
