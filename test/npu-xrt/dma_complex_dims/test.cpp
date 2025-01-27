@@ -102,14 +102,12 @@ int main(int argc, const char *argv[]) {
     std::cout << "Sequence instr count: " << instr_v.size() << std::endl;
 
 
-
   // input arguments m, k, K, r, s
   int m = vm["m"].as<int>();
   int k = vm["k"].as<int>();
   int K = vm["K"].as<int>();
   int r = vm["r"].as<int>();
   int s = vm["s"].as<int>();
-
 
 
   // Start the XRT test code
@@ -166,25 +164,23 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
 
-  // xrt input buffer mapped to input buffer A 
+  // xrt input buffer mapped to input buffer A
   int32_t *bufInA = bo_inA.map<int32_t *>();
 
   // input source vector A
-  std::vector<int32_t> srcVecA(m*K);
+  std::vector<int32_t> srcVecA(m * K);
 
 
-  // <<<<<<<<< The code below emulates the "of_in_shim_to_mem" OBjFifo in line 57 >>>>>>>
-  // calculate the number of tiles in the 'K' dimension
-  int K_div_k = K/k;
+  // <<<<<<<<< The code below emulates the "of_in_shim_to_mem" OBjFifo in line
+  // 57 >>>>>>> calculate the number of tiles in the 'K' dimension
+  int K_div_k = K / k;
 
   int index = 0;
 
   // write the input data to the input vector in pre-tiled format
-  for (int tile_k = 0; tile_k < K_div_k; tile_k++){
-
-    for (int ii = 0; ii < m; ii++){
-      for (int jj = 0; jj < k; jj++){
-        
+  for (int tile_k = 0; tile_k < K_div_k; tile_k++) {
+    for (int ii = 0; ii < m; ii++) {
+      for (int jj = 0; jj < k; jj++) {
         // here just copy of index for easy debug
         // later replace with random data
         srcVecA[index] = index;
@@ -193,9 +189,8 @@ int main(int argc, const char *argv[]) {
     }
   }
 
-  // copy the input data to the input buffer A 
+  // copy the input data to the input buffer A
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(int32_t)));
-
 
   // copy instructions
   void *bufInstr = bo_instr.map<void *>();
@@ -204,7 +199,6 @@ int main(int argc, const char *argv[]) {
   // sync instructions and input buffer
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-
 
   // run kernel
   if (verbosity >= 1)
@@ -219,46 +213,43 @@ int main(int argc, const char *argv[]) {
   // map xrt output buffer to output buffer
   int32_t *bufOut = bo_out.map<int32_t *>();
 
-  // create a vector for the output data 
-  std::vector<int32_t> OutVec(m*K);
+  // create a vector for the output data
+  std::vector<int32_t> OutVec(m * K);
 
   int errors = 0;
 
-
   // create a reference vector to verify the data
-  std::vector<int32_t> refVecA(m*K);
-
+  std::vector<int32_t> refVecA(m * K);
 
   // Final transformation you want to have for verification
   // assumes data are pre-tiled (in m*k tiles). 
   // See line 176 in this file, where data are send to the npu pre-tiled. 
 
-  int m_div_r = m/r;
-  int k_div_s = k/s;
+  int m_div_r = m / r;
+  int k_div_s = k / s;
 
-  // because assumed that data are pre-tiled, 
-  // the input index just needs to be increased in every iteration 
+  // because assumed that data are pre-tiled,
+  // the input index just needs to be increased in every iteration
   int in_index = 0;
 
-
-  for (int tile_k = 0; tile_k < K_div_k; tile_k++){
-
-    for (int ii = 0; ii < m_div_r; ii++){
-      for (int jj = 0; jj < k_div_s; jj++){
-
-        for (int r_ii = 0; r_ii < r; r_ii++){
-          for (int s_jj = 0; s_jj < s; s_jj++){
-            
+  for (int tile_k = 0; tile_k < K_div_k; tile_k++) {
+    for (int ii = 0; ii < m_div_r; ii++) {
+      for (int jj = 0; jj < k_div_s; jj++) {
+        for (int r_ii = 0; r_ii < r; r_ii++) {
+          for (int s_jj = 0; s_jj < s; s_jj++) {  
             // transformation index
             int transf_index = 
-              (tile_k * (m*k)) + // offset for each m*k tile in (big) 'K' dimension (MemTile stores multiple m*k tiles, each one processed in CompTile)
-              (ii * (r*k) + jj * (s) + r_ii * (k) +  s_jj * (1)); // transformation index for r*s tiled acccess pattern of m*k tile
+              (tile_k * (m * k)) + // offset for each m*k tile in (big) 'K'
+                                   // dimension (MemTile stores multiple m*k
+                                   // tiles, each one processed in CompTile)
+              (ii * (r * k) + jj * (s) + r_ii * (k) +
+                 s_jj * (1)); // transformation index for r*s tiled acccess
+                              // pattern of m*k tile
 
             // store the access pattern to the reference vector for verification
             refVecA[in_index] = srcVecA[transf_index];
 
             in_index++;
-
           }
         }
       }
@@ -269,9 +260,10 @@ int main(int argc, const char *argv[]) {
   memcpy(OutVec.data(), bufOut, (OutVec.size() * sizeof(int32_t)));
 
   // verification
-  for (int i = 0; i < m*K; i++) {
+  for (int i = 0; i < m * K; i++) {
     if (OutVec[i] != refVecA[i]) {
-      std::cout << "ref = " << (int)refVecA[i] << " NPU output = " << (int)OutVec[i] << "\n";
+      std::cout << "ref = " << (int)refVecA[i]
+                << " NPU output = " << (int)OutVec[i] << "\n";
       errors++;
     }
   }
