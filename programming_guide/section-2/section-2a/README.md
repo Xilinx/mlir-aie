@@ -38,9 +38,9 @@ class ObjectFifo(Resolvable):
 ```
 The Object FIFO functions as an ordered buffer that has a count of `default_depth` objects; by default it is set to `2` which represents double or ping-pong buffering. All objects in an Object FIFO have to be of the same `obj_type` datatype. The datatype is a tensor-like attribute where the size of the tensor and the type of the individual elements are specified at the same time (i.e. `np.ndarray[(16,), np.dtype[np.int32]]`). The `name` input must be unique and can either be given by the user or left empty for the compiler to complete. It is required for subsequent lowering steps in the compiler flow.
 
-As it traverses the AIE array, data can be restructured using the capabilities of Data Movement Accelerators (DMAs). As a reminder, DMAs exist at every tile in the array and they are responsible for taking data arriving on the AXI stream and writing it into the tile's local memory, and inversely. They can be given access patterns to express the order in which data should be sent onto the AXI stream by the Object FIFO's producer (using the `dims_to_stream` input) or read from it by each consumer (using the `default_dims_from_stream_per_cons` input). These inputs have their own dedicated section (see Data Layout Transformations in [section-2c](../section-2c/README.md#data-layout-transformations)). The `plio` input can be used when one of the Object FIFO's endpoints is a Shim tile to indicate to the compiler that the communication should be wired through a dedicated `plio` port.
+As it traverses the AIE array, data can be restructured using the capabilities of Data Movement Accelerators (DMAs). These components are explained in more detail [here](./README.md#advanced-topic-data-movement-accelerators), however as a quick introduction, DMAs exist at every tile in the array and they are responsible for taking data arriving on the AXI stream interconnect and writing it into the tile's local memory, and inversely. DMAs can be given access patterns to express the order in which data should be sent onto the AXI stream by the Object FIFO's producer (using the `dims_to_stream` input) or read from it by each consumer (using the `default_dims_from_stream_per_cons` input). These inputs have their own dedicated section (see Data Layout Transformations in [section-2c](../section-2c/README.md#data-layout-transformations)). The `plio` input can be used when one of the Object FIFO's endpoints is a Shim tile to indicate to the compiler that the communication should be wired through a dedicated `plio` port.
 
-Below is an example of how to initialize an Object FIFO `in` of datatype `<256xi32>` with depth `3`:
+Below is an example of how to initialize an Object FIFO named `in` of datatype `<256xi32>` with depth `3`:
 ```python
 # Define tensor types
 line_size = 256
@@ -50,7 +50,7 @@ line_type = np.ndarray[(line_size,), np.dtype[np.int32]]
 of_in = ObjectFifo(line_type, name="in", default_depth=3)
 ```
 
-Object FIFO endpoints are separated into producers and consumers, where an Object FIFO may only have one producer and one or multiple consumers. These endpoints are also refered to as the "actors" of the Object FIFO, based on dataflow theory terminology. At this level of abstraction the endpoints are typically Workers that have access to `ObjectFifoHandle`s, with one other use case being in the Runtime where an Object FIFO may be filled from or drained to external memory. The code snippet below shows two Workers running processes defined by `core_fn` and `core_fn2` which take as input a producer or a consumer handle for `of_in` respectively:
+Object FIFO endpoints are separated into producers and consumers, where an Object FIFO may only have one producer and one or multiple consumers. These endpoints are also refered to as the "actors" of the Object FIFO, based on dataflow theory terminology. At this level of abstraction the endpoints are typically Workers that have access to `ObjectFifoHandle`s, with one other use case being in the Runtime where an Object FIFO may be filled from or drained to external memory (TODO: add link to section). The code snippet below shows two Workers running processes defined by `core_fn` and `core_fn2` which take as input a producer or a consumer handle for `of_in` respectively:
 ```python
 # Dataflow with ObjectFifos
 of_in = ObjectFifo(line_type, name="in", default_depth=3)
@@ -72,18 +72,18 @@ test_fn2 = Kernel(
 def core_fn(of_in, test_func):
     # ...
 
-def core_fn2(of_in, of_out, test_func2):
+def core_fn2(of_in, test_func2):
     # ...
 
 # Create workers to perform the tasks
 my_worker = Worker(core_fn, [of_in.prod(), test_fn])
 my_worker = Worker(core_fn2, [of_in.cons(), test_fn2])
 ```
-As the Object FIFO may only have one producer process, each call to `prod()` will return a reference to the same ObjectFifoHandle, whereas each call of `cons()` will return a reference to a new ObjectFifoHandle for that consumer process.
+As the Object FIFO may only have one producer process, each call to `prod()` will return a reference to the same `ObjectFifoHandle`, whereas each call of `cons()` will return a reference to a new `ObjectFifoHandle` for that consumer process.
 
 At the beginning of this section it was mentioned that the compiler can infer the endpoints of an Object FIFO based on its usage. This specifically refers to the usage of the `ObjectFifoHandle`s which can be used to collect the producer and consumers of an Object FIFO. One can thus observe different data movement patterns which are the subject of the next [section](../section-2b/README.md#key-object-fifo-patterns).
 
-During the next steps of the compiler flow, the Object FIFO producer and consumer Worker processes are mapped to explicit AIE tiles (see [Section 1 - Basic AI Engine building blocks](../../section-1/)) using a Placer. Under the hood, the data movement configuration for different types of tiles (Shim tiles, Memory tiles, and Compute tiles) is different, but there is no difference between them when using an Object FIFO. 
+During the next steps of the compiler flow, the Object FIFO producer and consumer Worker processes are mapped to explicit AIE tiles (see [Section 1 - Basic AI Engine building blocks](../../section-1/)) using a Placer (TODO: link to Placer doc). Under the hood, the data movement configuration for different types of tiles (Shim tiles, Memory tiles, and Compute tiles) is different, but there is no difference between them when using an Object FIFO. 
 
 To initialize an Object FIFO at this level of abstraction, users can use the `object_fifo` class constructor (defined in [aie.py](../../../python/dialects/aie.py)):
 ```python
@@ -105,7 +105,7 @@ class object_fifo:
 ```
 Some of the inputs are the same as they were at the higher level, while the other inputs differ slightly. We will now go over each of the inputs, what they represent and why they are required by the abstraction. We will first focus on the mandatory inputs then go over the default-valued inputs later in this section. The `dimensionsToStream` and `dimensionsFromStreamPerConsumer` inputs have their own dedicated section (see Data Layout Transformations in [section-2c](../section-2c/README.md#data-layout-transformations)).
 
-Just like at the highest level of abstraction, the Object FIFO functions as an ordered buffer that has a count of `depth` objects of specified `datatype`. Currently, all objects in an Object FIFO have to be of the same datatype. The `datatype` is a tensor-like attribute where the size of the tensor and the type of the individual elements are specified at the same time (i.e. `<16xi32>`). Unlike before the `depth` can be defined as either an integer or an array of integers. The latter is explained further down in this section.
+Just like at the highest level of abstraction, the Object FIFO functions as an ordered buffer that has a count of `depth` objects of specified `datatype`. Currently, all objects in an Object FIFO have to be of the same datatype. The `datatype` is a tensor-like attribute where the size of the tensor and the type of the individual elements are specified at the same time (i.e. `<16xi32>`). Unlike before, the `depth` can be defined as either an integer or an array of integers. The latter is explained further down in this section.
 
 An Object FIFO is created between a producer, or source tile, and a consumer, or destination tile. The tiles are where producer and consumer processes accessing the Object FIFO will be executed. These processes are also refered to as the "actors" of the Object FIFO, based on dataflow theory terminology. Below, you can see an example where `of_in` is created between producer tile A and consumer tile B with depth `3`:
 ```python
@@ -123,7 +123,6 @@ As you will see in the ["Key Object FIFO Patterns" section](../section-2b/README
 
 An Object FIFO can be accessed by the producer and consumer processes registered to it. Before a process can have access to the objects, it has to acquire them from the Object FIFO. This is because the Object FIFO is a synchronized communication primitive that leverages the synchronization mechanism available in the target hardware architecture to ensure that two processes cannot access the same object at the same time. Once a process has finished working with an object and has no further use for it, it must release it so that another process will be able to acquire and access it. The patterns in which a producer or a consumer process acquires and releases objects from an Object FIFO are called "access patterns". We can specifically refer to the acquire and release patterns as well.
 
-TODO: acquire and release at higher level
 To acquire one or multiple objects users should use the `_acquire()` function of the `ObjectFifo` class:
 ```python
 def _acquire(
@@ -132,10 +131,11 @@ def _acquire(
         num_elem: int,
     )
 ```
-Based on the `num_elem` input representing the number of acquired elements, the acquire function will either directly return an object, or an array of objects. The `port` input is required by the lower level variant of the `acquire()` function of the `object_fifo` class:
+And its lower level variant, the `acquire()` function of the `object_fifo` class:
 ```python
 def acquire(self, port, num_elem)
 ```
+Based on the `num_elem` input representing the number of acquired elements, both acquire functions will either directly return an object, or an array of objects. The `port` input is explained further in this section.
 
 The Object FIFO is an ordered primitive and the API keeps track for each process which object is the next one that they will have access to when acquiring, based on how many they have already acquired and released. Specifically, the first time a process acquires an object it will have access to the first object of the Object FIFO, and after releasing it and acquiring a new one, it'll have access to the second object, and so on until the last object, after which the order starts from the first one again. When acquiring multiple objects and accessing them in the returned array, the object at index 0 will always be the <u>oldest</u> object that process has access to, which may not be the first object in the pool of that Object FIFO.
 
@@ -147,7 +147,7 @@ def _release(
         num_elem: int,
     )
 ```
-The lower level variant is the `release()` function of the `object_fifo` class:
+And its lower level variant, the `release()` function of the `object_fifo` class:
 ```python
 def release(self, port, num_elem)
 ```
@@ -188,22 +188,22 @@ The following code snippet shows how the same example as above is written at a l
 ```python
 A = tile(1, 3)
 B = tile(2, 4)
-of0 = object_fifo("objfifo0", A, B, 3, np.ndarray[(256,), np.dtype[np.int32]])
+of_in = object_fifo("in", A, B, 3, np.ndarray[(256,), np.dtype[np.int32]])
 
 @core(A)
 def core_body():
     for _ in range_(3):
-        elem0 = of0.acquire(ObjectFifoPort.Produce, 1)
+        elem0 = of_in.acquire(ObjectFifoPort.Produce, 1)
         test_func(elem0)
-        of0.release(ObjectFifoPort.Produce, 1)
+        of_in.release(ObjectFifoPort.Produce, 1)
 
 @core(B)
 def core_body():
-    elems = of0.acquire(ObjectFifoPort.Consume, 3)
+    elems = of_in.acquire(ObjectFifoPort.Consume, 3)
     test_func2(elems[0])
     test_func2(elems[1])
     test_func2(elems[2])
-    of0.release(ObjectFifoPort.Consume, 3)
+    of_in.release(ObjectFifoPort.Consume, 3)
 ```
 
 The figure below illustrates this code: Each of the 4 drawings represents the state of the system during one iteration of execution. In the first three iterations, the producer process on tile A, drawn in blue, progressively acquires the elements of `of0` one by one. Once the third element has been released in the fourth iteration, the consumer process on tile B, drawn in green, is able to acquire all three objects at once.
@@ -237,7 +237,7 @@ The AIE architecture is a spatial architecture that requires explicit data movem
 
 A more in-depth, yet still abstract, view of the Object FIFO's depth is that the producer and each consumer have their own working resource pool available in their local memory modules which they can use to send and receive data in relation to the data movement described by the Object FIFO. The Object FIFO primitive and its lowering typically allocate the depth of each of these pools such that the resulting behaviour matches that of the conceptual depth.
 
-The user does however have the possibility to manually choose the depth of these pools. This feature is available because, while the Object FIFO primitive tries to offer a unified representation of the data movement across the AIE array, it also aims to provide performance programmers with the tools to control it more finely.
+The user does however have the possibility to manually choose the depth of these pools. This feature is available because, while the Object FIFO primitive tries to offer a unified representation of the data movement across the AIE array, it also aims to provide performance programmers with the tools to control it more finely. <u>This feature is available at the explicitly placed level of Object FIFO abstraction.</u>
 
 For example, in the code snippet below `of0` describes the data movement between producer A and consumer B:
 ```python
@@ -269,9 +269,9 @@ A conceptual depth of `2` would have sufficed for this system to function withou
 
 The equivalent of this conceptual depth of `3` using an array of depths would be:
 ```python
-of0 = object_fifo("objfifo0", A, B, [1, 2], np.ndarray[(256,), np.dtype[np.int32]])
+of0 = object_fifo("objfifo0", A, B, [2, 3], np.ndarray[(256,), np.dtype[np.int32]])
 ```
-where `1` is the number of resources available locally to producer A and `2` is the number available to consumer B.
+where `2` is the number of resources available locally to producer A and `3` is the number available to consumer B.
 
 > **NOTE:**  For a correct lowering, this feature should be used in situations where the producers and consumers of the Object FIFO are running on different tiles.
 
@@ -339,9 +339,9 @@ The intent of this high-level view showcases that the DMA is able to interact wi
 > **NOTE:**  It is possible to directly configure the DMAs without the use of the Object FIFO primitive to setup data movement between tiles. This is described in [Section 2f](../section-2f/README.md).
 
 ## <u>Exercises</u>
-1. In the previous [subsection](./README.md/#specifying-the-object-fifo-depth-as-an-array) it was explained that the conceptual depth of `3` for `of0` could be represented as an array of depths `[1, 2]`. With the advanced knowledge on the topic of DMAs, do you think those depths suffice for the compute cores on tiles A and B to run concurrently with their local DMAs? <img src="../../../mlir_tutorials/images/answer1.jpg" title="No. In the case of producer A, only a single object was allocated for the design which results in the compute core and the DMA having to wait while the other party respectively computes or moves the data. This is similar for consumer B, where the compute core acquires both allocated objects, leaving none for the DMA to interact with." height=25>
+1. In the previous [subsection](./README.md/#specifying-the-object-fifo-depth-as-an-array) it was explained that the conceptual depth of `3` for `of0` could be represented as an array of depths `[2, 3]`. With the advanced knowledge on the topic of DMAs, do you think those are the minimal depths required for the design to execute without deadlocking? <img src="../../../mlir_tutorials/images/answer1.jpg" title="No. In the case of producer A, only a single object needs to be allocated, in which case the compute core and the DMA will have to wait while the other party respectively computes or moves the data. This is similar for consumer B, where a depth of 2 would suffice. So the minimal depths for the design to run without deadlocking are [1, 2]." height=25>
 
-1. How would you update the depths? <img src="../../../mlir_tutorials/images/answer1.jpg" title="Producer A requires a ping-pong buffer to function concurrently with its DMA. Similarly, consumer B requires two additional objects that the DMA can write new data into while B computes. The updated depths are [2, 4]." height=25>
+2. Do you think the depths `[2, 3]` are sufficient for both compute cores on A and B to execute concurrently with their DMAs? <img src="../../../mlir_tutorials/images/answer1.jpg" title="Producer A requires a ping-pong buffer to function concurrently with its DMA. Similarly, consumer B requires two additional objects that the DMA can write new data into while B computes. The updated depths are [2, 4]." height=25>
 
 -----
 [[Up](..)] [[Next - Section 2b](../section-2b/)]
