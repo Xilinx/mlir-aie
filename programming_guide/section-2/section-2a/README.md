@@ -299,7 +299,7 @@ where `2` is the number of resources available locally to producer A and `3` is 
 
 > **NOTE:**  For a correct lowering, this feature should be used in situations where the producers and consumers of the Object FIFO are running on different tiles.
 
-The feature of specifying the depths of the resource pools for different actors of the Object FIFO is used to support a specific dependency that can arise when working with multiple Object FIFOs and it is further explained in the ["Key Object FIFO Patterns" section](../section-2b/02_Broadcast/README.md#object-fifo-broadcast-pattern).
+The feature of specifying the depths of the resource pools for different actors of the Object FIFO is used to support a specific dependency that can arise when working with multiple Object FIFOs and it is further explained in the ["Key Object FIFO Patterns" section](../section-2b/02_Broadcast/README.md#broadcast-with-skip-connection).
 
 ### Additional Inputs of the Object FIFO
 
