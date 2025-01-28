@@ -8,7 +8,7 @@
 // (c) Copyright 2021-2023, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
-#include "AIETargetShared.h"
+#include "aie/Targets/AIETargetShared.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"

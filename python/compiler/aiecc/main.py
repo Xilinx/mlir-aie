@@ -214,17 +214,22 @@ def emit_partition(mlir_module_str, kernel_id="0x901", start_columns=None):
     with Context() as ctx, Location.unknown():
         ctx.allow_unregistered_dialects = True
         module = Module.parse(mlir_module_str)
-        tiles = find_ops(
-            module.operation,
-            lambda o: isinstance(o.operation.opview, aiedialect.TileOp),
-        )
-        min_col = min([t.col.value for t in tiles], default=0)
-        max_col = max([t.col.value for t in tiles], default=0)
-    num_cols = max_col - min_col + 1
     device = find_ops(
         module.operation,
         lambda o: isinstance(o.operation.opview, aiedialect.DeviceOp),
     )
+    if int(device[0].device) is int(aiedialect.AIEDevice.npu1):
+        num_cols = 5
+    elif int(device[0].device) is int(aiedialect.AIEDevice.npu2):
+        num_cols = 8
+    elif int(device[0].device) is int(aiedialect.AIEDevice.npu1_1col):
+        num_cols = 1
+    elif int(device[0].device) is int(aiedialect.AIEDevice.npu1_2col):
+        num_cols = 2
+    elif int(device[0].device) is int(aiedialect.AIEDevice.npu1_3col):
+        num_cols = 3
+    elif int(device[0].device) is int(aiedialect.AIEDevice.npu1_4col):
+        num_cols = 4
 
     if start_columns is None:
         # It's arguable that this should should come from the device model

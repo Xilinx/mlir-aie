@@ -16,7 +16,9 @@ The kernel executes on AIE tile (`col`, 2). Both input vectors are brought into 
 
 ## Source Files Overview
 
-1. `aie2.py`: defines the AIE array structural design using IRON AIE language bindings. This generates mlir-aie that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `vector_vector_mul.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+
+1. `vector_vector_mul_alt.py`: An alternate version of the design in `vector_vector_mul.py`, that is expressed in a lower-level version of IRON.
 
 1. `test.cpp`: This C++ code is a testbench for the design example targetting Ryzen™ AI (AIE-ML). The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the program verifies the results.
 
@@ -24,34 +26,42 @@ The kernel executes on AIE tile (`col`, 2). Both input vectors are brought into 
 
 ## Ryzen™ AI Usage
 
-### C++ Testbench
+### Compilation
 
-To compile the design and C++ testbench:
-
-```
+To compile the design:
+```shell
 make
-make vectorAdd.exe
 ```
+
+To compile the alternative design:
+```shell
+env use_alt=1 make
+```
+
+To compile the C++ testbench:
+```shell
+make vector_vector_mul.exe
+```
+
+### C++ Testbench
 
 To run the design:
 
-```
+```shell
 make run
 ```
 
 ## VCK5000 Usage
 
-### C++ Testbench
-
 To compile the design and C++ testbench:
 
-```
+```shell
 make vck5000
 ```
 
 To run the design:
 
-```
+```shell
 ./test.elf
 ```
 

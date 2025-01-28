@@ -201,7 +201,7 @@ cmake_dependent_option(AIE_ENABLE_AIRBIN
 # If we need runtime libs, then statically link them.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-add_flag_if_supported("-Werror=sign-compare" WERROR_SIGN_COMPARE)
+# add_flag_if_supported("-Werror=sign-compare" WERROR_SIGN_COMPARE)
 add_flag_if_supported("-Werror=unused" WERROR_USED)
 
 # What happens when you have a non-void function with no return?

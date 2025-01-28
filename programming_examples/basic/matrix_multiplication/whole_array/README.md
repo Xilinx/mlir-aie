@@ -34,22 +34,36 @@ With the default configuration, this design will set up an array of AIEs to perf
 
 You will need C++23 for `bfloat16_t` support in the `test.cpp`, which can be found in `g++-13`: [https://lindevs.com/install-g-on-ubuntu](https://lindevs.com/install-g-on-ubuntu)
 
-To compile the design:
+To compile and run the design:
 
-```
+```shell
 make
-make matrixMultiplication.exe
-```
-
-To run the design:
-
-```
+make whole_array.exe
 make run
+```
+
+To compile and run the alternative design with tiling:
+
+```shell
+env use_alt=1 make
+env use_alt=1 make whole_array.exe
+env use_alt=1 make run
+```
+
+To compile and run the alternative design with higher-level IRON:
+
+```shell
+env use_iron=1 make
+env use_iron=1 make whole_array.exe
+env use_iron=1 make run
 ```
 
 ## Detailed Design Explanation
 
-The configuration of the AI Engine array is described in the `aie2.py` file.
+The configuration of the AI Engine array is described in the [`whole_array.py`](./whole_array.py) file. There are two alternative versions of this design:
+* [`whole_array_alt.py`](./whole_array_alt.py): This design integrates some data visualization tools for runtime data movement, which can be viewed using the accompanying [notebook](./mat_mul_whole_array_visualization.ipynb). It also features the use of alternative instructions in the runtime sequence but is intended to be functionally equivalent to the orginal design.
+* [`whole_array_iron.py`](./whole_array_iron.py): This design uses a higher-level version of IRON but is also intended to be functionally equivalent. Note that this design does not support tracing at this time.
+
 It is linked against a compute microkernel which is implemented in C++.
 The following sections elaborate on each of the steps outlined in the high-level summary above.
 
@@ -59,7 +73,7 @@ The following sections elaborate on each of the steps outlined in the high-level
 
 ### 1. Defining Matrix Dimensions and Data Types
 
-In the first section of the code in `aie2.py`, we define the following constants:
+In the first section of the code in `whole_array.py`, we define the following constants:
 
 | Matrix        | Size      | Submatrix Size (1.) | Vector Intrinsic Size (2.) |
 |---------------|-----------|---------------------|-----------------------|

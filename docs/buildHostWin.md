@@ -68,7 +68,7 @@ All steps in WSL Ubuntu terminal.
             cd vitis_aie_essentials
             unzip vitis_aie_essentials*.whl
          ```
-      - Get local license for AIE Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense) providing your machine's MAC address (`ip -brief link show eth0`) 
+      - Get local license for AIE Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense) providing your machine's MAC address (`ip -brief link show eth0`). Be sure to select License Type of `Node` instead of `Floating`.
       - copy license file (Xilinx.lic) to your preferred location (licenseFilePath) and update your setup configuration accordingly, for instance
         ```
         export XILINXD_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
@@ -89,7 +89,7 @@ All steps in WSL Ubuntu terminal.
 
 
       - Install Vitis in WSL Ubuntu. We will assume you use the default installation directory, `/tools/Xilinx`.
-      - Get local license for AIE Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense) providing your machine's MAC address (`ip -brief link show eth0`) 
+      - Get local license for AIE Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense) providing your machine's MAC address (`ip -brief link show eth0`). Be sure to select License Type of `Node` instead of `Floating`. 
       - copy license file (Xilinx.lic) to your preferred location (licenseFilePath) and update your setup configuration accordingly, for instance
         ```
         export XILINXD_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
@@ -136,13 +136,15 @@ All steps in WSL Ubuntu terminal.
 
 All steps in Win11 (powershell where needed).
 
-1. Upgrade the NPU driver to version 10.106.8.62 [download here](https://account.amd.com/en/forms/downloads/ryzen-ai-software-platform-xef.html?filename=ipu_stack_rel_silicon_2308.zip), following the [instructions](href="https://ryzenai.docs.amd.com/en/latest/inst.html) on setting up the driver.
+1. Upgrade the NPU driver to version 10.106.8.62 [download here](https://account.amd.com/en/forms/downloads/ryzen-ai-software-platform-xef.html?filename=ipu_stack_rel_silicon_2308.zip), following the [instructions](href="https://ryzenai.docs.amd.com/en/latest/inst.html) on setting up the driver. Note that we currently have two steps for driver update. This version provides the `xrt_coreutil.dll` under `C:\Windows\System32\AMD` which is needed to generate the `xrt_coreutil.lib`. However, we also want to install the most up-to-date NPU driver package linked from [here](https://ryzenai.docs.amd.com/en/latest/inst.html#install-npu-drivers) under `NPU Driver`. Use version 10.106.8.62 to generate the `xrt_coreutil.lib`, then come back and upgrade the driver to the most up-to-date one.
+
 1. Install [Microsoft Visual Studio 17 2022 Community Edition](https://visualstudio.microsoft.com/vs/community/) with package for C++ development.
 
 1. Install CMake on windows ([https://cmake.org/download/](https://cmake.org/download/))
     - [Download](https://boostorg.jfrog.io/artifactory/main/release/1.83.0/source/boost_1_83_0.zip) and [compile](https://www.boost.org/doc/libs/1_83_0/more/getting_started/windows.html) boost (current version 1.83). 
     - Extract zip file into `C:\Technical\thirdParty`
     - Run `bootstrap.bat` and after that `b2.exe`
+    - Note: If you run into an error during the compilation phase, see [here](https://stackoverflow.com/questions/78835588/cannot-build-boost-library-on-windows-11) for suggestions on a workaround. This involves modifying the `tools/build/src/tools/msvc.jam` file and run `.\b2.exe --reconfigure install`
 1. Optional (only needed for vision examples): install [opencv](https://docs.opencv.org/4.x/d3/d52/tutorial_windows_install.html) and add this install to your PATH environmental variable, for instance `C:\Technical\thirdParty\opencv\build\x64\vc16\bin`
 
 1. Clone [https://github.com/Xilinx/XRT](https://github.com/Xilinx/XRT) for instance under `C:\Technical` and `git checkout 2023.2`

@@ -87,7 +87,6 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
     git clone https://github.com/amd/xdna-driver.git
     export XDNA_SRC_DIR=$(realpath xdna-driver)
     cd xdna-driver
-    git reset --hard 3d5a8cf1af2adfbb6306ad71b45e5f3e1ffc5b37
     git submodule update --init --recursive
     ```
 
@@ -106,19 +105,25 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
        ```bash
        cd $XDNA_SRC_DIR/xrt/build
-       ./build.sh -noert -noalveo
+       ./build.sh -npu -opt
        ```
 
     3. Install XRT.
 
        ```bash
        cd $XDNA_SRC_DIR/xrt/build/Release
-       sudo apt reinstall ./xrt_202420.2.18.0_24.10-amd64-xrt.deb ./xrt_202420.2.18.0_24.10-amd64-xbflash.deb
+       sudo apt reinstall ./xrt_202510.2.19.0_22.04-amd64-npu.deb
        ```
 
-       > **An error is expected in this step.** Ignore it.
+       > **An error might occur during this proces.** If so, do the following steps.
 
-
+       ```bash
+       cd $XDNA_SRC_DIR/xrt/build/Release
+       sudo apt remove xrt-npu
+       sudo dpkg -i --force-overwrite ./xrt_202510.2.19.0_22.04-amd64-npu.deb
+       sudo apt -f install
+       sudo apt reinstall ./xrt_202510.2.19.0_22.04-amd64-npu.deb
+       ```      
 
 1. Build XDNA-Driver. Below steps are adapted from [here](https://github.com/amd/xdna-driver).
 
@@ -132,7 +137,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
     ```bash
     cd $XDNA_SRC_DIR/build/Release
-    sudo apt reinstall ./xrt_plugin.2.18.0_ubuntu24.10-x86_64-amdxdna.deb
+    sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu22.04-x86_64-amdxdna.deb
     ```
     
 1. Check that the NPU is working if the device appears with xrt-smi:
@@ -218,6 +223,8 @@ For your design of interest, for instance from [programming_examples](../program
 
 1. Continue to the [IRON AIE Application Programming Guide](programming_guide)
 
+1. Some MLIR-AIE documentation is available on the [website](https://xilinx.github.io/mlir-aie/)
+
 # Detailed Getting Started Guides and Documentation: 
 
 [Getting Started on a Versal™ board](docs/Building.md)
@@ -231,6 +238,8 @@ For your design of interest, for instance from [programming_examples](../program
 [IRON AIE Application Programming Guide](programming_guide)
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
+
+Interested in contributing MLIR-AIE? [Information for developers](./CONTRIBUTING.md)
 
 -----
 
