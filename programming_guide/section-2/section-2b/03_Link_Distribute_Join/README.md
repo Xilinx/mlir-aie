@@ -14,7 +14,28 @@
 
 By design, an Object FIFO handles both the configuration of the data movement between the producer and consumer tiles, as well as the allocation of objects over the memory modules of the tiles. In order to put data consumed from one Object FIFO into another Object FIFO, the user could explicitly do this in the core code of a shared tile between the two FIFOs. However, if the goal is to simply copy data from one Object FIFO to the other without modifying it, doing it in the manner described above results in allocating more objects than necessary, i.e., the data being copied to the second Object FIFO is already available in the first one. Additionally, Shim tiles and Mem tiles do not have a core on which the copy can be done explicitly.
 
-Instead of an explicit copy, the Object FIFO API provides an implicit copy via an `object_fifo_link`, which can be initialized using its class constructor (defined in [aie.py](../../../../python/dialects/aie.py)):
+Instead of an explicit copy, the Object FIFO API provides an implicit copy via the `forward()` function (defined in [objectfifo.py](../../../../python/iron/dataflow/objectfifo.py)), where an `ObjectFifoHandle` of type consumer is forwarded to the producer of a newly-constructed `ObjectFifo`:
+```python
+def forward(
+    self,
+    placement: PlacementTile = AnyMemTile,
+    obj_type: type[np.ndarray] | None = None,
+    depth: int | None = None,
+    name: str | None = None,
+    dims_to_stream: list[Sequence[int]] | None = None,
+    dims_from_stream: list[Sequence[int]] | None = None,
+    plio: bool = False,
+)
+```
+
+In the example below a consumer `ObjectFifoHandle` to `of0` is forwarded to `of1` as its producer:
+```python
+of0 = ObjectFifo(mem_tile_ty, name="objfifo0")
+of1 = of0.cons().forward(obj_type=aie_tile_ty)
+```
+By default the `forward()` function will use a Mem tile to perform the implicit copy between the two Object FIFOs, unless directed otherwise.
+
+This functionality is also available at the explicitly placed level of abstraction. The Object FIFO API provides an implicit copy via an `object_fifo_link`, which can be initialized using its class constructor (defined in [aie.py](../../../../python/dialects/aie.py)):
 ```python
 class object_fifo_link(ObjectFifoLinkOp):
     def __init__(
@@ -37,7 +58,7 @@ of1 = object_fifo("objfifo1", B, C, 2, np.ndarray[(256,), np.dtype[np.int32]])
 object_fifo_link(of0, of1)
 ```
 
-Depending on how many Object FIFOs are specified in `fifoIns` and `fifoOuts`, two different data patterns can be achieved: a Distribute or a Join. They are described in the two next subsections. Currently, it is not possible to do both patterns at once, i.e., if `fifoIns` is an array then `fifoOuts` can only be a single Object FIFO, and the other way around.
+Depending on how many Object FIFOs are specified in `fifoIns` and `fifoOuts`, two different data patterns can be achieved: a Distribute or a Join. They are described in the two next subsections. Currently, it is not possible to do both patterns at once, i.e., if `fifoIns` is an array then `fifoOuts` can only be a single Object FIFO, and the other way around. At the highest level of abstraction these patterns are available as well.
 
 A full design example that uses this features is available in Section 2e: [03_external_mem_to_core_L2](../../section-2e/03_external_mem_to_core_L2/).
 
