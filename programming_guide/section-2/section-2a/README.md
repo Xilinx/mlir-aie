@@ -50,7 +50,9 @@ line_type = np.ndarray[(line_size,), np.dtype[np.int32]]
 of_in = ObjectFifo(line_type, name="in", default_depth=3)
 ```
 
-Object FIFO endpoints are separated into producers and consumers, where an Object FIFO may only have one producer and one or multiple consumers. These endpoints are also refered to as the "actors" of the Object FIFO, based on dataflow theory terminology. At this level of abstraction the endpoints are typically Workers that have access to `ObjectFifoHandle`s, with one other use case being in the Runtime where an Object FIFO may be filled from or drained to external memory (TODO: add link to section). The code snippet below shows two Workers running processes defined by `core_fn` and `core_fn2` which take as input a producer or a consumer handle for `of_in` respectively:
+Object FIFO endpoints are separated into producers and consumers, where an Object FIFO may only have one producer and one or multiple consumers. These endpoints are also refered to as the "actors" of the Object FIFO, based on dataflow theory terminology. At this level of abstraction the endpoints are typically Workers that have access to `ObjectFifoHandle`s, with one other use case being when an Object FIFO is filled from or drained to external memory at runtime (as explained in the Runtime Data Movement [section](../section-2g/README.md)). 
+
+The code snippet below shows two Workers running processes defined by `core_fn` and `core_fn2` which take as input a producer or a consumer handle for `of_in` respectively:
 ```python
 # Dataflow with ObjectFifos
 of_in = ObjectFifo(line_type, name="in", default_depth=3)
@@ -215,6 +217,28 @@ Examples of designs that use these features are available in Section 2e: [01_sin
 ### Object FIFOs with the same producer / consumer
 
 An Object FIFO can be created with the same tile as both its producer and consumer tile. This is mostly done to ensure proper synchronization within the process itself, as opposed to synchronization across multiple processes running on different tiles, as we have seen in examples up until this point. Composing two kernels with access to a shared buffer is an application that leverages this property of the Object FIFO, as showcased in the code snippet below, where `test_func` and `test_func2` are composed using `of0`:
+```python
+# Dataflow with ObjectFifos
+of0 = ObjectFifo(line_type, name="objfifo0", default_depth=3)
+
+# External, binary kernel definition
+# ...
+
+# Tasks for the cores to perform
+def core_fn(of_in, of_out, test_func, test_func2):
+    for _ in range_(3):
+        elemIn = of_in.acquire(1)
+        test_func(elemIn, line_size)
+        of_in.release(1)
+
+        elemOut = of_out.acquire(1)
+        test_func2(elemIn, line_size)
+        of_out.release(1)
+
+# Create workers to perform the tasks
+my_worker = Worker(core_fn, [of0.prod(), of0.cons(), test_fn, test_fn2])
+```
+The following code snippet shows how the same example as above is written at a lower level of abstraction with explicitly placed enpoints:
 ```python
 A = tile(1, 3)
 of0 = object_fifo("objfifo0", A, A, 3, np.ndarray[(256,), np.dtype[np.int32]])
