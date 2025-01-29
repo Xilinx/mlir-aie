@@ -40,7 +40,7 @@
 // CHECK:     aie.flow(%tile_1_1, DMA : 0, %tile_1_2, DMA : 0)
 // CHECK:     aie.flow(%tile_1_1, DMA : 1, %tile_3_3, DMA : 0)
 // CHECK:     aie.shim_dma_allocation @of0(MM2S, 0, 1)
-// CHECK:     %memtile_dma_1_1 = aie.memtile_dma(%tile_1_1) {
+// CHECK:    %memtile_dma_1_1 = aie.memtile_dma(%tile_1_1) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:       aie.use_lock(%of0_cons_prod_lock, AcquireGreaterEqual, 6)
@@ -53,30 +53,70 @@
 // CHECK:       aie.use_lock(%of0_cons_cons_lock, Release, 6)
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb3:  // pred: ^bb0
-// CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6, repeat_count = 2)
-// CHECK:     ^bb4:  // 2 preds: ^bb3, ^bb5
+// CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb10, repeat_count = 2)
+// CHECK:     ^bb4:  // 2 preds: ^bb3, ^bb9
 // CHECK:       aie.use_lock(%of0_cons_cons_lock, AcquireGreaterEqual, 1)
 // CHECK:       aie.dma_bd(%of0_cons_buff_0 : memref<32xi32>, 0, 16)
 // CHECK:       aie.use_lock(%of0_cons_prod_lock, Release, 1)
 // CHECK:       aie.next_bd ^bb5
 // CHECK:     ^bb5:  // pred: ^bb4
 // CHECK:       aie.use_lock(%of0_cons_cons_lock, AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%of0_cons_buff_1 : memref<32xi32>, 0, 16)
+// CHECK:       aie.dma_bd(%of0_cons_buff_0 : memref<32xi32>, 0, 16)
 // CHECK:       aie.use_lock(%of0_cons_prod_lock, Release, 1)
-// CHECK:       aie.next_bd ^bb4
-// CHECK:     ^bb6:  // pred: ^bb3
-// CHECK:       %2 = aie.dma_start(MM2S, 1, ^bb7, ^bb9, repeat_count = 2)
-// CHECK:     ^bb7:  // 2 preds: ^bb6, ^bb8
+// CHECK:       aie.next_bd ^bb6
+// CHECK:     ^bb6:  // pred: ^bb5
 // CHECK:       aie.use_lock(%of0_cons_cons_lock, AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%of0_cons_buff_0 : memref<32xi32>, 16, 16)
+// CHECK:       aie.dma_bd(%of0_cons_buff_0 : memref<32xi32>, 0, 16)
+// CHECK:       aie.use_lock(%of0_cons_prod_lock, Release, 1)
+// CHECK:       aie.next_bd ^bb7
+// CHECK:     ^bb7:  // pred: ^bb6
+// CHECK:       aie.use_lock(%of0_cons_cons_lock, AcquireGreaterEqual, 1)
+// CHECK:       aie.dma_bd(%of0_cons_buff_1 : memref<32xi32>, 0, 16)
 // CHECK:       aie.use_lock(%of0_cons_prod_lock, Release, 1)
 // CHECK:       aie.next_bd ^bb8
 // CHECK:     ^bb8:  // pred: ^bb7
 // CHECK:       aie.use_lock(%of0_cons_cons_lock, AcquireGreaterEqual, 1)
+// CHECK:       aie.dma_bd(%of0_cons_buff_1 : memref<32xi32>, 0, 16)
+// CHECK:       aie.use_lock(%of0_cons_prod_lock, Release, 1)
+// CHECK:       aie.next_bd ^bb9
+// CHECK:     ^bb9:  // pred: ^bb8
+// CHECK:       aie.use_lock(%of0_cons_cons_lock, AcquireGreaterEqual, 1)
+// CHECK:       aie.dma_bd(%of0_cons_buff_1 : memref<32xi32>, 0, 16)
+// CHECK:       aie.use_lock(%of0_cons_prod_lock, Release, 1)
+// CHECK:       aie.next_bd ^bb4
+// CHECK:     ^bb10:  // pred: ^bb3
+// CHECK:       %2 = aie.dma_start(MM2S, 1, ^bb11, ^bb17, repeat_count = 2)
+// CHECK:     ^bb11:  // 2 preds: ^bb10, ^bb16
+// CHECK:       aie.use_lock(%of0_cons_cons_lock, AcquireGreaterEqual, 1)
+// CHECK:       aie.dma_bd(%of0_cons_buff_0 : memref<32xi32>, 16, 16)
+// CHECK:       aie.use_lock(%of0_cons_prod_lock, Release, 1)
+// CHECK:       aie.next_bd ^bb12
+// CHECK:     ^bb12:  // pred: ^bb11
+// CHECK:       aie.use_lock(%of0_cons_cons_lock, AcquireGreaterEqual, 1)
+// CHECK:       aie.dma_bd(%of0_cons_buff_0 : memref<32xi32>, 16, 16)
+// CHECK:       aie.use_lock(%of0_cons_prod_lock, Release, 1)
+// CHECK:       aie.next_bd ^bb13
+// CHECK:     ^bb13:  // pred: ^bb12
+// CHECK:       aie.use_lock(%of0_cons_cons_lock, AcquireGreaterEqual, 1)
+// CHECK:       aie.dma_bd(%of0_cons_buff_0 : memref<32xi32>, 16, 16)
+// CHECK:       aie.use_lock(%of0_cons_prod_lock, Release, 1)
+// CHECK:       aie.next_bd ^bb14
+// CHECK:     ^bb14:  // pred: ^bb13
+// CHECK:       aie.use_lock(%of0_cons_cons_lock, AcquireGreaterEqual, 1)
 // CHECK:       aie.dma_bd(%of0_cons_buff_1 : memref<32xi32>, 16, 16)
 // CHECK:       aie.use_lock(%of0_cons_prod_lock, Release, 1)
-// CHECK:       aie.next_bd ^bb7
-// CHECK:     ^bb9:  // pred: ^bb6
+// CHECK:       aie.next_bd ^bb15
+// CHECK:     ^bb15:  // pred: ^bb14
+// CHECK:       aie.use_lock(%of0_cons_cons_lock, AcquireGreaterEqual, 1)
+// CHECK:       aie.dma_bd(%of0_cons_buff_1 : memref<32xi32>, 16, 16)
+// CHECK:       aie.use_lock(%of0_cons_prod_lock, Release, 1)
+// CHECK:       aie.next_bd ^bb16
+// CHECK:     ^bb16:  // pred: ^bb15
+// CHECK:       aie.use_lock(%of0_cons_cons_lock, AcquireGreaterEqual, 1)
+// CHECK:       aie.dma_bd(%of0_cons_buff_1 : memref<32xi32>, 16, 16)
+// CHECK:       aie.use_lock(%of0_cons_prod_lock, Release, 1)
+// CHECK:       aie.next_bd ^bb11
+// CHECK:     ^bb17:  // pred: ^bb10
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:     %mem_1_2 = aie.mem(%tile_1_2) {
