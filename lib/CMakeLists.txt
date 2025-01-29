@@ -6,8 +6,11 @@
 # (c) Copyright 2021 Xilinx Inc.
 
 
-add_subdirectory(Targets)
-add_subdirectory(Dialect)
 add_subdirectory(CAPI)
+if (CLANGIR_MLIR_FRONTEND)
+  add_subdirectory(CIR)
+endif()
+add_subdirectory(Dialect)
 add_subdirectory(Conversion)
 add_subdirectory(Target)
+add_subdirectory(Targets)
