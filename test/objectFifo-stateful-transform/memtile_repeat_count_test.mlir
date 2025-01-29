@@ -53,7 +53,7 @@
 // CHECK:       aie.use_lock(%of0_cons_cons_lock, Release, 6)
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb3:  // pred: ^bb0
-// CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb10, repeat_count = 2)
+// CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb10)
 // CHECK:     ^bb4:  // 2 preds: ^bb3, ^bb9
 // CHECK:       aie.use_lock(%of0_cons_cons_lock, AcquireGreaterEqual, 1)
 // CHECK:       aie.dma_bd(%of0_cons_buff_0 : memref<32xi32>, 0, 16)
@@ -85,7 +85,7 @@
 // CHECK:       aie.use_lock(%of0_cons_prod_lock, Release, 1)
 // CHECK:       aie.next_bd ^bb4
 // CHECK:     ^bb10:  // pred: ^bb3
-// CHECK:       %2 = aie.dma_start(MM2S, 1, ^bb11, ^bb17, repeat_count = 2)
+// CHECK:       %2 = aie.dma_start(MM2S, 1, ^bb11, ^bb17)
 // CHECK:     ^bb11:  // 2 preds: ^bb10, ^bb16
 // CHECK:       aie.use_lock(%of0_cons_cons_lock, AcquireGreaterEqual, 1)
 // CHECK:       aie.dma_bd(%of0_cons_buff_0 : memref<32xi32>, 16, 16)
