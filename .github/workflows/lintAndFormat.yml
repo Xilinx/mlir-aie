@@ -97,7 +97,7 @@ jobs:
 
       - name: Upload clang-tidy fixes
         if: ${{ steps.clang-tidy-fixes.outputs.FIXES }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           path: fixes.yml
           name: clang-tidy-fixes.yml
@@ -143,10 +143,10 @@ jobs:
           cat clang-format.diff
 
       - name: Upload clang-format
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           path: clang-format.diff
-          name: format_diffs
+          name: clang_format_diffs
 
       - name: Check C/C++ format
         uses: reviewdog/action-suggester@v1
@@ -165,10 +165,10 @@ jobs:
           cat black-format.diff
 
       - name: Upload black-format
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           path: black-format.diff
-          name: format_diffs
+          name: black_format_diffs
 
       - name: Check Python format
         if: success() || failure()

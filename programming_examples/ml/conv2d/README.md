@@ -81,7 +81,7 @@ To compile the design:
 make
 ```
 
-To compile the design:
+To compile the design using the lower-level IRON version (currently needed for trace):
 ```shell
 env use_alt=1 make
 ```
@@ -90,3 +90,6 @@ To run the design:
 ```shell
 make run_py
 ```
+
+## Configure design
+To configure the parameters of the convolution such as data width, height and the number of input and output channels, you can edit the top of the `Makefile`. Choosing the scalar or vectorized version of the kernel can likewise be selected in the `Makefile` by modifying the `vectorized` variable. 
