@@ -678,19 +678,23 @@ struct AIEObjectFifoStatefulTransformPass
     Block *succ;
     Block *curr = bdBlock;
     size_t blockIndex = 0;
+    size_t totalBlocks = 0;
     for (size_t i = 0; i < numBlocks; i++) {
       if (blockIndex >= buffersPerFifo[target].size())
         break;
-      if (i == numBlocks - 1)
-        succ = bdBlock;
-      else
-        succ = builder.createBlock(endBlock);
+      for (int r = 0; r < repeatCount; r++) {
+        if (totalBlocks == numBlocks * repeatCount - 1)
+          succ = bdBlock;
+        else
+          succ = builder.createBlock(endBlock);
 
-      builder.setInsertionPointToStart(curr);
-      createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
-                              buffersPerFifo[target][blockIndex], /*offset*/ 0,
-                              len, channelDir, blockIndex, succ, dims, nullptr);
-      curr = succ;
+        builder.setInsertionPointToStart(curr);
+        createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
+                                buffersPerFifo[target][blockIndex], /*offset*/ 0,
+                                len, channelDir, blockIndex, succ, dims, nullptr);
+        curr = succ;
+        totalBlocks++;
+      }
       blockIndex++;
     }
   }
@@ -901,23 +905,27 @@ struct AIEObjectFifoStatefulTransformPass
     Block *succ;
     Block *curr = bdBlock;
     size_t blockIndex = 0;
+    size_t totalBlocks = 0;
     for (size_t i = 0; i < numBlocks; i++) {
       if (blockIndex >= buffersPerFifo[target].size())
         break;
-      if (i == numBlocks - 1)
-        succ = bdBlock;
-      else
-        succ = builder.createBlock(endBlock);
+      for (int r = 0; r < repeatCount; r++) {
+        if (totalBlocks == numBlocks * repeatCount - 1)
+          succ = bdBlock;
+        else
+          succ = builder.createBlock(endBlock);
 
-      builder.setInsertionPointToStart(curr);
-      int offset = 0;
-      if (isDistribute || isJoin)
-        offset = extraOffset;
-      createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
-                              buffersPerFifo[target][blockIndex], offset,
-                              lenOut, channelDir, blockIndex, succ, dims,
-                              padDimensions);
-      curr = succ;
+        builder.setInsertionPointToStart(curr);
+        int offset = 0;
+        if (isDistribute || isJoin)
+          offset = extraOffset;
+        createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
+                                buffersPerFifo[target][blockIndex], offset,
+                                lenOut, channelDir, blockIndex, succ, dims,
+                                padDimensions);
+        curr = succ;
+        totalBlocks++;
+      }
       blockIndex++;
     }
   }
