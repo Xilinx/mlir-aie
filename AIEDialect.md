@@ -65,11 +65,11 @@ Interfaces: `InferTypeOpInterface`
 
 _Definition of a Parametrizable Chain of Buffer Descriptors_
 
-This operation allows you to define buffer descriptor chains with parametrizable inputs. 
+This operation allows you to define buffer descriptor chains with parametrizable inputs.
 This is useful for common patterns such as double buffering (ping-pong) that may look identical but use different input/output buffers and locks.
 Currently, only buffers and locks are parametrizable.
 
-Once defined, an abstract BD chain can be used elsewhere using AIEX ops in the runtime sequence. 
+Once defined, an abstract BD chain can be used elsewhere using AIEX ops in the runtime sequence.
 In the future, abstract BD chains will also be usable elsewhere, inside the static configuration.
 At its usage sites, the abstract BD chain will be concretized with the given input arguments.
 
@@ -143,8 +143,8 @@ Syntax:
 operation ::= `aie.cascade_flow` `(` $source_tile `,` $dest_tile `)` attr-dict
 ```
 
-The `aie.cascade_flow` operation represents a cascade connection between two `aie.tile` operations.  
-During lowering, this is replaced by `aie.configure_cascade` operations for each `aie.tile` based on 
+The `aie.cascade_flow` operation represents a cascade connection between two `aie.tile` operations.
+During lowering, this is replaced by `aie.configure_cascade` operations for each `aie.tile` based on
 their relative placement to one another.
 
 Example:
@@ -173,7 +173,7 @@ Syntax:
 operation ::= `aie.configure_cascade` `(` $tile `,` $inputDir `,` $outputDir `)` attr-dict
 ```
 
-An operation to configure the cascade on a single tile in both the input and the output 
+An operation to configure the cascade on a single tile in both the input and the output
 directions.
 
 Example:
@@ -553,9 +553,9 @@ All strides are expressed in multiples of the element width (just like `len` and
 ## DMA constant padding on AIE-ML Devices
 
 AIE-ML devices can apply constant padding at the buffer descriptor level, described with pairs of padding
-counts before and after a dimension, to all dimensions in the data layout transformations. The padding 
-counts can be supplied to the `dma_bd` through an optional argument, an array of "tuple-like" attributes 
-`bd_pad_layout<const_pad_before, const_pad_after>`, followed by an optional argument `const_val` (default 
+counts before and after a dimension, to all dimensions in the data layout transformations. The padding
+counts can be supplied to the `dma_bd` through an optional argument, an array of "tuple-like" attributes
+`bd_pad_layout<const_pad_before, const_pad_after>`, followed by an optional argument `const_val` (default
 is 0). All counts are expressed in multiples of the element width.
 
 #### Attributes:
@@ -1592,13 +1592,13 @@ operation ::= `aie.packet_flow` `(` $ID `)` regions attr-dict
 
 A logical packet-switched flow between tiles.  During place and
 route, this is replaced by MasterSets and PacketRules inside
-switchboxes. 
+switchboxes.
 
-The optional attribute keep_pkt_header indicates whether each 
-data packet's packet header gets preserved at the flow's 
+The optional attribute keep_pkt_header indicates whether each
+data packet's packet header gets preserved at the flow's
 destination. The optional attribute priority_route indicates
-whether the packet flow is routed in priority over other flows, 
-so that they always get allocated with the same master, slave 
+whether the packet flow is routed in priority over other flows,
+so that they always get allocated with the same master, slave
 ports, arbiters and master selects (msel).
 
 Example:
