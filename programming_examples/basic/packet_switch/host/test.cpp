@@ -21,8 +21,8 @@
 
 #include "test_utils.h"
 
-#define IN_DATATYPE int8_t
-#define OUT_DATATYPE int8_t
+using IN_DATATYPE = int8_t;
+using OUT_DATATYPE = int8_t;
 
 int main(int argc, const char *argv[]) {
     std::vector<uint32_t> instr_v;

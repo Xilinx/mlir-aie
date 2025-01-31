@@ -4,38 +4,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
-# Modified by Alfred
 
 DEVICE ?= npu1
 HOME_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-
-
-# Kernel stuff
-WARNING_FLAGS = -Wno-parentheses -Wno-attributes -Wno-macro-redefined
-AIEOPT_DIR := $(shell realpath $(dir $(shell which aie-opt))/..)
-LLVM_AIE_DIR := $(shell realpath $(dir $(shell which aie-opt))/../../)
-ifeq ($(DEVICE), npu2) # Strix point
-	AIETOOLS_DIR := $(shell realpath $(dir $(shell which xchesscc))/../..)
-	AIE_INCLUDE_DIR := ${AIETOOLS_DIR}/data/versal_prod/lib
-	AIE2_INCLUDE_DIR := ${AIETOOLS_DIR}/data/aie_ml/lib
-else # Hawkeye point
-	VITIS_ROOT := $(shell realpath $(dir $(shell which xchesscc))/../..)
-	AIETOOLS_DIR := ${VITIS_ROOT}/aietools
-	AIE_INCLUDE_DIR := ${VITIS_ROOT}/aietools/data/versal_prod/lib
-	AIE2_INCLUDE_DIR := ${VITIS_ROOT}/aietools/data/aie_ml/lib
-
-	CHESS_FLAGS = -P ${AIE_INCLUDE_DIR}
-	PEANO_INSTALL_DIR := ${LLVM_AIE_DIR}/llvm-aie
-	PEANOWRAP2_FLAGS = -O2 -v -std=c++20 --target=aie2-none-unknown-elf ${WARNING_FLAGS} -DNDEBUG -I ${AIEOPT_DIR}/include -I /tools/Xilinx/Vitis/2023.2/aietools/include
-endif
-
-CHESSCCWRAP1_FLAGS = aie -I ${AIETOOLS_DIR}/include 
-CHESSCCWRAP2_FLAGS = aie2 -I ${AIETOOLS_DIR}/include
-CHESSCCWRAP2P_FLAGS = aie2p -I ${AIETOOLS_DIR}/include 
-
-CHESSCC1_FLAGS = -f -p me -P ${AIE_INCLUDE_DIR} -I ${AIETOOLS_DIR}/include
-CHESSCC2_FLAGS = -f -p me -P ${AIE2_INCLUDE_DIR} -I ${AIETOOLS_DIR}/include -D__AIENGINE__=2 -D__AIEARCH__=20
-CHESS_FLAGS = -P ${AIE_INCLUDE_DIR}
+include ${HOME_DIR}/../../makefile-common
 
 # Kernel
 KERNEL_O_DIR := build/bitstream
@@ -57,7 +29,7 @@ XCLBIN_TARGET := ${BITSTREAM_O_DIR}/final.xclbin
 # Host stuff
 HOST_SRCDIR := ${HOME_DIR}/host
 HOST_O_DIR := build/host
-HOST_C_TARGET := host.exe
+HOST_C_TARGET := packet_switch.exe
 
 HOST_HEADERS = $(wildcard ${HOST_SRCDIR}/*.hpp)
 HOST_SRCS = $(wildcard ${HOST_SRCDIR}/*.cpp)
@@ -65,35 +37,19 @@ HOST_OBJS = $(patsubst $(HOST_SRCDIR)/%.cpp,$(HOST_O_DIR)/%.o,$(HOST_SRCS))
 HOST_OBJS += $(HOST_O_DIR)/test_utils.o
 
 CXX := g++-13
-ifeq ($(DEVICE),npu1)
-	CXXFLAGS += -c
-	CXXFLAGS += -std=c++23
-	CXXFLAGS += -ggdb
-	CXXFLAGS += -I/opt/xilinx/xrt/include
-	CXXFLAGS += -I/usr/include/boost
-	CXXFLAGS += -I${HOME_DIR}/host
-	CXXFLAGS += -I${HOME_DIR}/../../../runtime_lib/test_lib
+CXXFLAGS += -c
+CXXFLAGS += -std=c++23
+CXXFLAGS += -ggdb
+CXXFLAGS += -I/opt/xilinx/xrt/include
+CXXFLAGS += -I/usr/include/boost
+CXXFLAGS += -I${HOME_DIR}/host
+CXXFLAGS += -I${HOME_DIR}/../../../runtime_lib/test_lib
 
-	LDFLAGS += -lm
-	LDFLAGS += -L/opt/xilinx/xrt/lib
-	LDFLAGS += -Wl,-rpath,/opt/xilinx/xrt/lib
-	LDFLAGS += -lxrt_coreutil
-	LDFLAGS += -lboost_program_options -lboost_filesystem
-else ifeq ($(DEVICE),npu2)
-	CXXFLAGS += -c
-	CXXFLAGS += -std=c++23
-	CXXFLAGS += -ggdb
-	CXXFLAGS += -I/opt/xilinx/xrt/include
-	CXXFLAGS += -I/usr/include/boost
-	CXXFLAGS += -I${HOME_DIR}/host
-	CXXFLAGS += -I${HOME_DIR}/../../../runtime_lib/test_lib
-
-	LDFLAGS += -lm
-	LDFLAGS += -L/opt/xilinx/xrt/lib
-	LDFLAGS += -Wl,-rpath,/opt/xilinx/xrt/lib
-	LDFLAGS += -lxrt_coreutil
-	LDFLAGS += -lboost_program_options -lboost_filesystem
-endif
+LDFLAGS += -lm
+LDFLAGS += -L/opt/xilinx/xrt/lib
+LDFLAGS += -Wl,-rpath,/opt/xilinx/xrt/lib
+LDFLAGS += -lxrt_coreutil
+LDFLAGS += -lboost_program_options -lboost_filesystem
 
 .PHONY: all link bitstream host clean instructions
 all: ${XCLBIN_TARGET} ${INSTS_TARGET} ${HOST_C_TARGET}
@@ -101,7 +57,7 @@ all: ${XCLBIN_TARGET} ${INSTS_TARGET} ${HOST_C_TARGET}
 clean:
 	-@rm -rf build 
 	-@rm -rf log
-	-@rm -rf host.exe
+	-@rm -rf ${HOST_C_TARGET}
 	-@rm -rf trace*
 	-@rm -rf *.xclbin
 	-@rm -rf *.txt
@@ -115,7 +71,9 @@ test:
 
 instructions: ${INSTS_TARGET}
 
+
 kernel: ${KERNEL_OBJS}
+
 
 link: ${MLIR_TARGET} 
 
@@ -171,13 +129,10 @@ ${HOST_C_TARGET}: ${HOST_OBJS}
 	echo ${HOST_OBJS}
 	$(CXX) -o "$@" $(+) $(LDFLAGS)
 
-$(HOST_O_DIR)/host.o: $(HOST_SRCDIR)/host.cpp $(HOST_HEADERS)
+$(HOST_O_DIR)/test.o: $(HOST_SRCDIR)/test.cpp $(HOST_HEADERS)
 	-@mkdir -p $(@D)
 	$(CXX) $(CXXFLAGS) -o "$@" "$<"
 
-$(HOST_O_DIR)/%.o: ${HOME_DIR}/../../../runtime_lib/test_lib/%.cpp $(HOST_HEADERS)
-	-@mkdir -p $(@D)
-	$(CXX) $(CXXFLAGS) -o "$@" "$<"
 
 $(HOST_O_DIR)/test_utils.o: ${HOME_DIR}/../../../runtime_lib/test_lib/test_utils.cpp
 	-@mkdir -p $(@D)
