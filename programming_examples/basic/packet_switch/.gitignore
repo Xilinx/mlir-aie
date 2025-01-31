@@ -1,0 +1,4 @@
+build
+*.exe
+*.txt
+*.xclbin
