@@ -27,7 +27,7 @@ N ?= 512
 
 # set this flag to 1 for linear data transfer from/to DDR
 # else, 0 for blocked
-linear_DDR_data?=0
+linear_DDR_data?=1
 
 ifeq (${linear_DDR_data}, 1)
 data_layout_DDR=linear

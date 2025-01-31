@@ -16,6 +16,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <random>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -173,6 +174,13 @@ int main(int argc, const char *argv[]) {
   std::vector<int32_t> srcVecA(m*K);
 
 
+  // Create a random device and a Mersenne Twister engine
+  std::random_device rd;
+  std::mt19937 gen(rd());
+
+   // Define the range for int32 values
+    std::uniform_int_distribution<int32_t> dist(0, 10000);
+
   // <<<<<<<<< The code below emulates the "of_in_shim_to_mem" OBjFifo in line 57 >>>>>>>
   // calculate the number of tiles in the 'K' dimension
   int K_div_k = K/k;
@@ -188,6 +196,7 @@ int main(int argc, const char *argv[]) {
         // here just copy of index for easy debug
         // later replace with random data
         srcVecA[index] = index;
+        // srcVecA[index] = dist(gen);
         index++;
       }
     }

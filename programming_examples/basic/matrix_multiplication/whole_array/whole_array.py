@@ -263,6 +263,16 @@ def my_matmul(
                 mem_tiles[col],
                 fifo_depth,
                 B_l2_ty,
+                None,
+                # S2MM conversion of col-maj order K*n
+                # into blocked row-maj order of k*n blocks
+                [
+                    [
+                        (n, 1), 
+                        # (K // k, k*n), 
+                        (k, n),
+                    ]
+                ],
             )
             B_l2l1_fifos[col] = object_fifo(
                 f"B_L2L1_{col}",

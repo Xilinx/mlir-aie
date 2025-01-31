@@ -18,7 +18,7 @@ all: build/final.xclbin build/insts.txt
 
 targetname = dma_test
 m ?= 8
-k ?= 5
+k ?= 10
 K ?= 20
 r ?= 4
 s ?= 5
