@@ -132,12 +132,6 @@ module {
             aiex.npu.dma_wait { symbol = @objFifo_out0 }
         }
 
-        //aie.shim_dma_allocation @objFifo_in1(MM2S, 0, 0)
-        //aiex.runtime_sequence(%arg0: memref<256xi8>, %arg2: memref<256xi8>) {
-        //    aiex.npu.dma_memcpy_nd (0, 0, %arg0[0, 0, 0, 0][1, 1, 1, 256][0, 0, 0, 1], packet = <pkt_id = 1, pkt_type = 0>) {id = 0 : i64, metadata = @objFifo_in1} : memref<256xi8>
-        //    aiex.npu.dma_memcpy_nd (0, 0, %arg2[0, 0, 0, 0][1, 1, 1, 256][0, 0, 0, 1]) {id = 2 : i64, metadata = @objFifo_out1, issue_token = true} : memref<256xi8>
-        //    aiex.npu.dma_wait { symbol = @objFifo_out1 }
-        //}
         aie.shim_dma_allocation @objFifo_out0(S2MM, 0, 0)
         aie.shim_dma_allocation @objFifo_out1(S2MM, 0, 0)
 
