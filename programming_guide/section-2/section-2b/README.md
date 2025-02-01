@@ -31,11 +31,11 @@ The Object FIFO primitive supports several data movement patterns. We will now d
 
 * Broadcast data from one producer to multiple consumers
 </details>
-<details><summary><a href="./03_Link_Distribute_Join/">Object FIFO Distribute &amp; Join Patterns with Object FIFO Link</a></summary>
+<details><summary><a href="./03_Implicit_Copy/">Implicit Copy Across Object FIFOs: Distribute &amp; Join Patterns</a></summary>
 
-* Implicit copy of data from one Object FIFO to another via an Object FIFO Link
+* Implicit copy of data from one Object FIFO to another
 * Distribute different pieces of the input data to multiple consumers 
-* Join outputs from different consumers into a bigger data tensor
+* Join outputs from different producers into a bigger data tensor
 </details>
 <details><summary><a href="./04_Repeat/">Object FIFO Repeat Pattern</a></summary>
 

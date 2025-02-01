@@ -56,4 +56,4 @@ of2.set_repeat_count(3)
 The code snippet above is part of a test that can be found [here](../../../../test/npu-xrt/objectfifo_repeat/distribute_repeat/).
 
 -----
-[[Prev](../03_Link_Distribute_Join/)] [[Up](..)] [[Next - Section 2c](../../section-2c/)]
+[[Prev](../03_Implicit_Copy/)] [[Up](..)] [[Next - Section 2c](../../section-2c/)]
