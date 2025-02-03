@@ -12,20 +12,24 @@ subdir=whole_array
 targetname=whole_array
 
 # M, K, N: final GEMM dimensions
-M?=512
-K?=512
-N?=512
+M?=1024
+K?=1536
+N?=1536
 
 # m, k, n: single AIE core GEMM dimensions
 m?=64
 k?=64
 n?=64
 
+# mtk block for A buffer
+mtk?=1536
+
+# work for now with 4 aie cols
 n_aie_cols?=4
 b_col_maj?=0
 
 kernels=mm_${m}x${k}x${n}
-aieargs+=-m $m -k $k -n $n --n-aie-cols ${n_aie_cols} --b-col-maj ${b_col_maj}
+aieargs+=-m $m -k $k -n $n -mtk ${mtk} --n-aie-cols ${n_aie_cols} --b-col-maj ${b_col_maj}
 runargs+=--b_col_maj ${b_col_maj}
 target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
 use_alt?=0
@@ -58,7 +62,7 @@ build/mm_b_row_maj_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
 
-build/mm_b_col_maj_${m}x${k}x${n}.o: ${kernels_dir}/mm_b_col_maj.cc
+build/mm_b_col_maj_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
 

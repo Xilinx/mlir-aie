@@ -12,20 +12,23 @@ subdir=whole_array
 targetname=whole_array
 
 # M, K, N: final GEMM dimensions
-M?=512
-K?=512
-N?=512
+M?=1536
+K?=1584
+N?=1536
 
 # m, k, n: single AIE core GEMM dimensions
 m?=64
-k?=64
+k?=88
 n?=64
+
+# mtk block for A buffer
+mtk?=1584
 
 n_aie_cols?=4
 b_col_maj?=0
 
 kernels=mm_${m}x${k}x${n}
-aieargs+=-m $m -k $k -n $n --n-aie-cols ${n_aie_cols} --b-col-maj ${b_col_maj}
+aieargs+=-m $m -k $k -n $n -mtk ${mtk} --n-aie-cols ${n_aie_cols} --b-col-maj ${b_col_maj}
 runargs+=--b_col_maj ${b_col_maj}
 target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
 
@@ -43,7 +46,7 @@ use_linear_buf_alloc?=1
 # via the usage of chess pragmas (see mm.cc).
 # Instruction memory and compilation time increases in this case.
 # Set to 0 otherwise.
-opt_perf?=0
+opt_perf?=1
 
 
 ifeq (${use_linear_buf_alloc}, 1)
@@ -73,7 +76,7 @@ build/mm_b_row_maj_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 ${opt_flag_arg} -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
 
-build/mm_b_col_maj_${m}x${k}x${n}.o: ${kernels_dir}/mm_b_col_maj.cc
+build/mm_b_col_maj_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
 
