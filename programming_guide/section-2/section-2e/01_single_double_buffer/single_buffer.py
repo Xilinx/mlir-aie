@@ -21,6 +21,7 @@ data_ty = np.ndarray[(16,), np.dtype[np.int32]]
 # Dataflow with ObjectFifos
 of_in = ObjectFifo(data_ty, name="in", default_depth=1)
 
+
 # Task for the core to perform
 def core_fn(of_in):
     # Effective while(1)
