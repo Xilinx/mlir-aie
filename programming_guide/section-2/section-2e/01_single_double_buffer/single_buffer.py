@@ -31,6 +31,7 @@ def core_fn(of_in):
             elem_out[i] = 1
         of_in.release(1)
 
+
 def core_fn2(of_in):
     # Effective while(1)
     for _ in range_(8):
