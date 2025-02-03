@@ -97,9 +97,9 @@ module {
       %c1_i64 = arith.constant 1 : i64
       %c64_i64 = arith.constant 64 : i64
       %c128_i64 = arith.constant 128 : i64
-      aiex.npu.dma_memcpy_nd (0, 0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c0_i64, %c64_i64, %c1_i64], packet = <pkt_id = 3, pkt_type = 0>) {id = 0 : i64, metadata = @objFifo_in0} : memref<128x64xi8>
-      aiex.npu.dma_memcpy_nd (0, 0, %arg0[%c0_i64, %c0_i64, %c64_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c0_i64, %c64_i64, %c1_i64], packet = <pkt_id = 7, pkt_type = 0>) {id = 1 : i64, metadata = @objFifo_in1} : memref<128x64xi8>
-      aiex.npu.dma_memcpy_nd (0, 0, %arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c128_i64, %c64_i64][%c0_i64, %c0_i64, %c64_i64, %c1_i64]) {id = 2 : i64, metadata = @objFifo_out0, issue_token = true} : memref<128x64xi8>
+      aiex.npu.dma_memcpy_nd (%arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c0_i64, %c64_i64, %c1_i64], packet = <pkt_id = 3, pkt_type = 0>) {id = 0 : i64, metadata = @objFifo_in0} : memref<128x64xi8>
+      aiex.npu.dma_memcpy_nd (%arg0[%c0_i64, %c0_i64, %c64_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c0_i64, %c64_i64, %c1_i64], packet = <pkt_id = 7, pkt_type = 0>) {id = 1 : i64, metadata = @objFifo_in1} : memref<128x64xi8>
+      aiex.npu.dma_memcpy_nd (%arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c128_i64, %c64_i64][%c0_i64, %c0_i64, %c64_i64, %c1_i64]) {id = 2 : i64, metadata = @objFifo_out0, issue_token = true} : memref<128x64xi8>
       aiex.npu.dma_wait { symbol = @objFifo_out0 }
     }
 

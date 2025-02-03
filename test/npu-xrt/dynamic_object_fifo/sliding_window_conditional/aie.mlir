@@ -160,8 +160,8 @@ module {
     } {link_with = "kernel.o"}
     aie.shim_dma_allocation @input_fifo(MM2S, 0, 0)
     aiex.runtime_sequence(%arg0: memref<10xi32>, %arg1: memref<10xi32>) {
-      aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 1, 100][0, 0, 0, 1]) {id = 0 : i64, metadata = @input_fifo} : memref<10xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg1[0, 0, 0, 0][1, 1, 1, 100][0, 0, 0, 1]) {id = 2 : i64, metadata = @output_fifo} : memref<10xi32>
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 100][0, 0, 0, 1]) {id = 0 : i64, metadata = @input_fifo} : memref<10xi32>
+      aiex.npu.dma_memcpy_nd(%arg1[0, 0, 0, 0][1, 1, 1, 100][0, 0, 0, 1]) {id = 2 : i64, metadata = @output_fifo} : memref<10xi32>
       aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
     }
     aie.shim_dma_allocation @output_fifo(S2MM, 0, 0)
