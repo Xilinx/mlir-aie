@@ -10,11 +10,65 @@
 
 # <ins>Section 1 - Basic AI Engine building blocks</ins>
 
-When we program the AIE-array, we need to declare and configure its structural building blocks: compute tiles for vector processing, memory tiles as larger level-2 shared scratchpads, and shim tiles supporting data movement to external memory. In this programming guide, we will utilize the IRON Python bindings for MLIR-AIE components to describe our design at the tile level of granularity. Later on, we will explore vector programming in C/C++ when we focus on kernel programming. But let's first look at a basic Python source file (named [aie2.py](./aie2.py)) for an IRON design.
+When we program the AIE-array, we need to declare and configure its structural building blocks: compute tiles for vector processing, memory tiles as larger level-2 shared scratchpads, and shim tiles supporting data movement to external memory. In this programming guide, we will utilize the IRON Python bindings to describe our design at different levels of granularity. Later on, we will explore vector programming in C/C++ when we focus on kernel programming.
 
 ## <ins>Walkthrough of Python source file (aie2.py)</ins>
-At the top of this Python source, we include modules that define the IRON AIE language bindings `aie.dialects.aie` and the mlir-aie context `aie.extras.context`, which binds to MLIR definitions for AI Engines.
 
+Let's first look at a basic Python source file (named [aie2.py](./aie2.py)) for an IRON design at the highest level of abstraction:
+
+At the top of this Python source, we include modules that define the IRON language bindings `aie.iron` for high-level abstraction constructs, resource placement algorithms `aie.iron.placers` and target architecture `aie.iron.device`.
+```python
+from aie.iron import Program, Runtime, Worker
+from aie.iron.placers import SequentialPlacer
+from aie.iron.device import NPU1Col4
+```
+Then we declare the compute tasks and assign them to Workers, which are currently unplaced. Data movement between the Workers is also declared at this step, however that part of design configuration has its own dedicated [section](../section-2/) and is not covered here.
+```python
+# Dataflow configuration
+# described in a future section of the guide...
+
+# Task for the core to perform
+def core_fn():
+    # compute task
+
+# Create a worker to perform the task
+my_worker = Worker(core_fn, [])
+```
+A Worker takes as input a routine to run, and the list of arguments needed to run it. The Worker class is defined below and can be found in [worker.py](../../python/iron/worker.py). The Worker can be explicitly placed on a `placement` tile in the AIE array or its the placement can be left to the compiler, as is explained further in this section. Finally, the `while_true` input is set to True as Workers typically run continuously once the design is started.
+```python
+class Worker(ObjectFifoEndpoint):
+    def __init__(
+        self,
+        core_fn: Callable | None,
+        fn_args: list = [],
+        placement: PlacementTile | None = AnyComputeTile,
+        while_true: bool = True,
+    )
+```
+In the previous code snippet it was mentioned that the data movement between Workers needs to be configured. This does not include data movement to/from the AIE array which is handled inside the `Runtime` sequence. The next section of the programming guide has a dedicated [section](../section-2/section-2g/) for runtime data movement.
+```python
+# Runtime operations to move data to/from the AIE-array
+rt = Runtime()
+with rt.sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
+    # runtime sequence tasks
+```
+All the components are tied together into a `Program` which represents all design information needed to run the design on a device. It is also at this stage that the previously unplaced Workers are mapped onto AIE tiles using a `Placer`. Currently, only one placement algorithm is available in IRON, the `SequentialPlacer()` as is seen in the code snippet below. Other placers can be added with minimal effort and we encourage all users to experiment with these tools which can be found in [placers.py](../../python/iron/placers.py). Finally, the program is printed to produce the corresponding MLIR definitions from the IRON AIE bindings.
+```python
+# Create the program from the device type and runtime
+my_program = Program(NPU1Col4(), rt)
+
+# Place components (assign them resources on the device) and generate an MLIR module
+module = my_program.resolve_program(SequentialPlacer())
+
+# Print the generated MLIR
+print(module)
+```
+
+> **NOTE:**  All components described or mentioned above inherit from the `resolvable` interface which defers the creation of MLIR operations until their `resolve()` function is called. That is the task of the `resolve_program()` function of the `Program` which will raise an error if one of the IRON classes does not have enough information to generate its MLIR equivalent.
+
+IRON also enables users to describe their design at the tile level of granularity where components are explicitly placed on AIE tiles using coordinates. Let's again look through a basic Python source file (named [aie2_placed.py](./aie2.py)) for an IRON design at this level.
+
+At the top of this Python source, we include modules that define the IRON AIE language bindings `aie.dialects.aie` and the mlir-aie context `aie.extras.context`, which binds to MLIR definitions for AI Engines.
 ```python
 from aie.dialects.aie import * # primary mlir-aie dialect definitions
 from aie.extras.context import mlir_mod_ctx # mlir-aie context
