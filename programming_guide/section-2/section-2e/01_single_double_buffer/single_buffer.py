@@ -37,7 +37,8 @@ def core_fn2(of_in):
     for _ in range_(8):
         elem_in = of_in.acquire(1)
         of_in.release(1)
-        
+
+
 # Create a worker to perform the task
 my_worker = Worker(core_fn, [of_in.prod()])
 my_worker2 = Worker(core_fn2, [of_in.cons()])
