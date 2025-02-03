@@ -44,7 +44,7 @@ class Kernel(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        if self._op == None:
+        if not self._op:
             self._op = external_func(self._name, inputs=self._arg_types)
 
     def __call__(self, *args, **kwargs):

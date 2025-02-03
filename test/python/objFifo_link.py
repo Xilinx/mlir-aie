@@ -20,17 +20,17 @@ from util import construct_and_print_module
 
 # CHECK:  module {
 # CHECK:    aie.device(xcve2802) {
-# CHECK:      %tile_0_0 = aie.tile(0, 0)
-# CHECK:      %tile_1_1 = aie.tile(1, 1)
-# CHECK:      %tile_2_2 = aie.tile(2, 2)
-# CHECK:      %tile_2_3 = aie.tile(2, 3)
-# CHECK:      aie.objectfifo @of0(%tile_0_0, {%tile_1_1}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
-# CHECK:      aie.objectfifo @of1(%tile_1_1, {%tile_2_2, %tile_2_3}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+# CHECK:      %{{.*}}tile_0_0 = aie.tile(0, 0)
+# CHECK:      %{{.*}}tile_1_1 = aie.tile(1, 1)
+# CHECK:      %{{.*}}tile_2_2 = aie.tile(2, 2)
+# CHECK:      %{{.*}}tile_2_3 = aie.tile(2, 3)
+# CHECK:      aie.objectfifo @of0(%{{.*}}tile_0_0, {%{{.*}}tile_1_1}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
+# CHECK:      aie.objectfifo @of1(%{{.*}}tile_1_1, {%{{.*}}tile_2_2, %{{.*}}tile_2_3}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
 # CHECK:      aie.objectfifo.link [@of0] -> [@of1]([] [])
-# CHECK:      aie.objectfifo @of2(%tile_1_1 dimensionsToStream [<size = 1, stride = 2>], {%tile_2_2 dimensionsFromStream [<size = 1, stride = 2>], %tile_2_3 dimensionsFromStream [<size = 1, stride = 2>]}, [2 : i32, 2 : i32, 7 : i32]) : !aie.objectfifo<memref<256xui8>>
-# CHECK:      aie.objectfifo @of3(%tile_0_0, {%tile_1_1}, 1 : i32) : !aie.objectfifo<memref<256xi32>>
-# CHECK:      aie.objectfifo @of4(%tile_1_1, {%tile_2_2}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
-# CHECK:      aie.objectfifo @of5(%tile_1_1, {%tile_2_3}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+# CHECK:      aie.objectfifo @of2(%{{.*}}tile_1_1 dimensionsToStream [<size = 1, stride = 2>], {%{{.*}}tile_2_2 dimensionsFromStream [<size = 1, stride = 2>], %{{.*}}tile_2_3 dimensionsFromStream [<size = 1, stride = 2>]}, [2 : i32, 2 : i32, 7 : i32]) : !aie.objectfifo<memref<256xui8>>
+# CHECK:      aie.objectfifo @of3(%{{.*}}tile_0_0, {%{{.*}}tile_1_1}, 1 : i32) : !aie.objectfifo<memref<256xi32>>
+# CHECK:      aie.objectfifo @of4(%{{.*}}tile_1_1, {%{{.*}}tile_2_2}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+# CHECK:      aie.objectfifo @of5(%{{.*}}tile_1_1, {%{{.*}}tile_2_3}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
 # CHECK:      aie.objectfifo.link [@of3] -> [@of4, @of5]([] [0, 128])
 # CHECK:    }
 # CHECK:  }
