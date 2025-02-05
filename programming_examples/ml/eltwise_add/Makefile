@@ -46,9 +46,14 @@ build/aie_trace.mlir: ${srcdir}/${aie_py_src}
 
 build/final.xclbin: build/aie.mlir build/add.o
 	mkdir -p ${@D}
+ifeq ($(CHESS), true)
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
+else
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
+endif
 
 build/final_trace.xclbin: build/aie_trace.mlir build/add.o
 	mkdir -p ${@D}
@@ -82,6 +87,7 @@ trace: ${targetname}.exe build/final_trace.xclbin
 
 
 clean_trace:
-	rm trace.txt trace_eltwise_add.json	
+	rm -rf trace.txt trace_eltwise_add.json	
+
 clean: clean_trace
 	rm -rf build _build ${targetname}.exe
