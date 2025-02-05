@@ -63,7 +63,7 @@ def my_vector_mul():
         rt.drain(of_out.cons(), C, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
 module = my_vector_mul()
