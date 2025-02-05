@@ -18,7 +18,7 @@ from aie.helpers.util import np_ndarray_type_get_shape
 import aie.utils.trace as trace_utils
 
 
-def my_eltwise_add(trace_size):
+def my_eltwise_add(dev, trace_size):
 
     word_size_in = 2
     N = 65536
@@ -32,7 +32,7 @@ def my_eltwise_add(trace_size):
     tiles = N_div_n // n_cores
     buffer_depth = 2
 
-    @device(AIEDevice.npu1_1col)
+    @device(dev)
     def device_body():
         tile_ty = np.ndarray[(n,), np.dtype[bfloat16]]
 
@@ -166,11 +166,18 @@ def my_eltwise_add(trace_size):
 
 
 try:
-    trace_size = 0 if (len(sys.argv) < 2) else int(sys.argv[1])
+    device_name = str(sys.argv[1])
+    if device_name == "npu":
+        dev = AIEDevice.npu1_1col
+    elif device_name == "npu2":
+        dev = AIEDevice.npu2
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
+    trace_size = 0 if (len(sys.argv) != 3) else int(sys.argv[2])
 except ValueError:
     print("Argument is not an integer")
 with mlir_mod_ctx() as ctx:
-    my_eltwise_add(trace_size)
+    my_eltwise_add(dev, trace_size)
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)
