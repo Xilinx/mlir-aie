@@ -257,7 +257,8 @@ class Core(CoreOp):
 # Create an aie buffer of (shape x datatype) on given tile.
 # shape examples: [256], [256, 256], [256, 256,]
 # This class hides the BufferOp and instead pretends to be a MemRef
-class buffer(BufferOp, ShapedValue):
+@ShapedValue
+class buffer(BufferOp):
     def __init__(self):
         raise ValueError("Should never be called")
 

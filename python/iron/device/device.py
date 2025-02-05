@@ -8,9 +8,11 @@
 
 from abc import abstractmethod
 from ... import ir  # type: ignore
-from ...dialects.aie import AIEDevice, tile, TileOp  # type: ignore
+from ...dialects.aie import AIEDevice, tile, TileOp, get_target_model  # type: ignore
 from ..resolvable import Resolvable
 from .tile import Tile
+
+import re
 
 
 class Device(Resolvable):
@@ -53,32 +55,31 @@ class Device(Resolvable):
                 raise ValueError("Cannot set operation more than once.")
             self._op = op
 
-    def __init__(self, cols: int, rows: int) -> None:
+    def __init__(self, device: AIEDevice) -> None:
         """Initialize a representation of a device.
 
         Args:
-            cols (int): Number of columns on the device
-            rows (int): Number of rows on the device.
+            device (AIEDevice): aie device
         """
-        self._cols = cols
-        self._rows = rows
+        self._device = device
         self._tiles: list[list[Device.__DeviceTile]] = []
 
         # Create all "physical" tiles belonging to the device at initialization to
-        # ensure only one "physical" tile object is every created corresponding to the same
+        # ensure only one "physical" tile object is ever created corresponding to the same
         # coordinates.
-        for c in range(self._cols):
+        tm = get_target_model(device)
+        for c in range(tm.columns()):
             self._tiles.append([])
-            for r in range(self._rows):
+            for r in range(tm.rows()):
                 self._tiles[c].append(Device.__DeviceTile(c, r))
 
     @property
     def rows(self) -> int:
-        return self._rows
+        return get_target_model(self._device).rows()
 
     @property
     def cols(self) -> int:
-        return self._cols
+        return get_target_model(self._device).columns()
 
     @abstractmethod
     def get_shim_tiles(self) -> list[Tile]:
@@ -128,116 +129,59 @@ class NPUBase(Device):
     * The 2nd+ tiles in each column are compute tiles
     """
 
-    def __init__(self, cols: int, rows: int) -> None:
-        """Initialize a device based on numbers of rows and columns.
+    def __init__(self, device: AIEDevice) -> None:
+        """Initialize a device based on the AIEDevice.
 
         Args:
-            cols (int): Number of columns
-            rows (int): Number of rows
+            device (AIEDevice): aie device
         """
-        super().__init__(cols=cols, rows=rows)
+        super().__init__(device=device)
 
     def get_shim_tiles(self) -> list[Tile]:
         shim_tiles = []
-        for col in range(self._cols):
+        for col in range(self.cols):
             shim_tiles.append(Tile(col, 0))
         return shim_tiles
 
     def get_mem_tiles(self) -> list[Tile]:
         mem_tiles = []
-        for col in range(self._cols):
+        for col in range(self.cols):
             mem_tiles.append(Tile(col, 1))
         return mem_tiles
 
     def get_compute_tiles(self) -> list[Tile]:
         compute_tiles = []
-        for col in range(self._cols):
-            for row in range(2, self._rows):
+        mem_tile_rows = get_target_model(self._device).get_num_mem_tile_rows()
+        for col in range(self.cols):
+            for row in range(1 + mem_tile_rows, self.rows):
                 compute_tiles.append(Tile(col, row))
         return compute_tiles
 
 
-class NPU1Col1(NPUBase):
-    """A representation of a device that resolves to AIEDevice.npu1_1col"""
+def create_class(class_name, device):
 
-    def __init__(self) -> None:
-        super().__init__(cols=1, rows=6)
+    def _device__init__(self) -> None:
+        super(globals()[class_name], self).__init__(device=device)
 
-    def resolve(
+    def _device_resolve(
         self,
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        return AIEDevice.npu1_1col
+        return device
+
+    base = NPUBase if "NPU" in class_name else Device
+    globals()[class_name] = type(
+        class_name,
+        (base,),
+        {
+            "__init__": _device__init__,
+            "resolve": _device_resolve,
+            "__doc__": f"A representation of a device that resolves to {device}",
+        },
+    )
 
 
-class NPU1Col2(NPUBase):
-    """A representation of a device that resolves to AIEDevice.npu1_2col"""
-
-    def __init__(self) -> None:
-        super().__init__(cols=2, rows=6)
-
-    def resolve(
-        self,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        return AIEDevice.npu1_2col
-
-
-class NPU1Col3(NPUBase):
-    """A representation of a device that resolves to AIEDevice.npu1_3col"""
-
-    def __init__(self) -> None:
-        super().__init__(cols=3, rows=6)
-
-    def resolve(
-        self,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        return AIEDevice.npu1_3col
-
-
-class NPU1Col4(NPUBase):
-    """A representation of a device that resolves to AIEDevice.npu1_4col"""
-
-    def __init__(self) -> None:
-        super().__init__(cols=4, rows=6)
-
-    def resolve(
-        self,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        return AIEDevice.npu1_4col
-
-
-class NPU2(NPUBase):
-    """A representation of a device that resolves to AIEDevice.npu2"""
-
-    def __init__(self) -> None:
-        super().__init__(cols=8, rows=6)
-
-    def resolve(
-        self,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        return AIEDevice.npu2
-
-
-class XCVC1902(Device):
-    """A placeholder representation of a device that resolves to IEDevice.xcvc1902
-    TODO: this needs to be implemented.
-    """
-
-    def __init__(self) -> None:
-        raise NotImplementedError("This device type is not yet implementated")
-
-    def resolve(
-        self,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        return AIEDevice.xcvc1902
+for device in AIEDevice:
+    class_name = re.sub(r"NPU(\d+)_(\d+)COL", r"NPU\1Col\2", device.name.upper())
+    create_class(class_name, device)

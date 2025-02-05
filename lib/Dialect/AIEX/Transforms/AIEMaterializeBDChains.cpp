@@ -125,8 +125,8 @@ struct AIEMaterializeBDChainsPass
     RewritePatternSet patterns_0(ctx);
     patterns_0.insert<DMAStartBdChainForOpPattern>(ctx);
     DMAConfigureTaskOp::getCanonicalizationPatterns(patterns_0, ctx);
-    if (failed(applyPatternsAndFoldGreedily(device, std::move(patterns_0),
-                                            rewriter_config))) {
+    if (failed(applyPatternsGreedily(device, std::move(patterns_0),
+                                     rewriter_config))) {
       signalPassFailure();
     }
 
@@ -135,8 +135,8 @@ struct AIEMaterializeBDChainsPass
     rewriter_config.enableRegionSimplification =
         GreedySimplifyRegionLevel::Disabled;
     DMAConfigureTaskOp::getCanonicalizationPatterns(patterns_1, ctx);
-    if (failed(applyPatternsAndFoldGreedily(device, std::move(patterns_1),
-                                            rewriter_config))) {
+    if (failed(applyPatternsGreedily(device, std::move(patterns_1),
+                                     rewriter_config))) {
       signalPassFailure();
     }
   }

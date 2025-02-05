@@ -51,6 +51,7 @@ def my_vector_scalar(dev, vector_size, trace_size):
             scale_fn(elem_in, elem_out, elem_factor, n)
             of_in.release(1)
             of_out.release(1)
+        of_factor.release(1)
 
     # Create a worker to run the task on a compute tile
     worker = Worker(
