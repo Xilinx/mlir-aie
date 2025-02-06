@@ -21,7 +21,113 @@
 
 -----
 
-This section will focus on the process of taking code written for a single core and transforming it into a design with multiple cores relatively quickly. For this we will start with the code in [aie2.py](./aie2.py) which contains a simple design running on a single compute tile, and progressively turn it into the code in [aie2_multi.py](./aie2_multi.py) which contains the same design that distributes the work to three compute tiles.
+This section will focus on the process of taking code written for a single core and transforming it into a design with multiple cores relatively quickly. We will go over this process both for the highest level of IRON API as well as for the explicitly placed level.
+
+### High-Level IRON
+
+We will start with the code in [aie2.py](./aie2.py) which contains a simple design running on a single Worker, and progressively turn it into the code in [aie2_multi.py](./aie2_multi.py) which contains the same design that distributes the work to three Workers.
+
+In the first part of our design we set up the data movement using ObjectFifos. The simple design has a total of four ObjectFifos, two of which are created by forwarding data for an implicit copy. The ObjectFifos move objects of datatype `<48xi32>`. `of_in` brings data from external memory and is linked, through a Mem tile, to `of_in0` which brings data from the Mem tile to the Worker. For the output side, `of_out0` brings data from the Worker to the Mem tile where it is linked to `of_out` to bring the data out to external memory. The corresponding code is shown below:
+```python
+data_size = 48
+
+# Define tensor types
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+
+# Input data movement
+of_in = ObjectFifo(data_ty, name="in")
+of_in1 = of_in.cons().forward(obj_type=data_ty, name="in1")
+
+# Output data movement
+of_out1 = ObjectFifo(data_ty, name="out1")
+of_out = of_out1.cons().forward(obj_type=data_ty, name="out")
+```
+For our scale out design we will keep using a single Mem tile, but we will increase the number of Workers to three. Now each Worker will receive objects of datatype `<16xi32>`. Data brought into the AIE array via `of_in` will be split into three ObjectFifos for each Worker. Similarly data produced by each Worker will be joined and sent to external memory through `of_out`. Please [see distribute and join patterns](../section-2b/03_Link_Distribute_Join/README.md) for more details. These changes result in the following code:
+```python
+n_workers = 3
+data_size = 48
+tile_size = data_size // 3
+
+# Define tensor types
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
+
+# Input data movement
+of_offsets = [tile_size * worker for worker in range(n_workers)]
+
+of_in = ObjectFifo(data_ty, name="in")
+of_ins = (
+    of_ins
+    .cons()
+    .split(
+        of_offsets,
+        obj_types=[tile_ty] * n_workers,
+        names=[f"in{worker}" for worker in range(n_workers)],
+    )
+)
+
+# Output data movement
+of_out = ObjectFifo(data_ty, name="out")
+of_outs = (
+    of_out.prod().join(
+        of_offsets,
+        obj_types=[tile_ty] * n_workers,
+        names=[f"out{worker}" for worker in range(n_workers)],
+    )
+)
+```
+The Worker of this simple design acquires one object of each ObjectFifo, adds `1` to each entry of the incoming data, copies it to the object of the outgoing ObjectFifo, then releases both objects:
+```python
+# Task for the core to perform
+def core_fn(of_in, of_out):
+    elem_in = of_in1.acquire(1)
+    elem_out = of_out1.acquire(1)
+    for _ in range_(data_size):
+        elem_out[i] = elem_in[i] + 1
+    of_in1.release(1)
+    of_out1.release(1)
+
+
+# Create a worker to perform the task
+my_worker = Worker(core_fn, [of_in1.cons(), of_out1.prod()])
+```
+For our larger design we create more Workers and select the input and output ObjecFifos for each from the lists we made in the previous part:
+```python
+# Create workers to perform the tasks
+workers = []
+for worker in range(n_workers):
+    workers.append(
+        Worker(
+            core_fn,
+            [
+                of_ins[worker].cons(),
+                of_outs[worker].prod(),
+            ],
+        )
+    )
+```
+Finally, in our simple design we write a runtime sequence to bring data to/from external memory and start our Worker:
+```python
+# Runtime operations to move data to/from the AIE-array
+rt = Runtime()
+with rt.sequence(data_size, data_size, data_size) as (a_in, b_out, _):
+    rt.start(my_worker)
+    rt.fill(of_in.prod(), a_in)
+    rt.drain(of_out.cons(), b_out, wait=True)
+```
+The runtime sequence remains largely unchanged for the larger design except that it has to start all three Workers:
+```python
+# Runtime operations to move data to/from the AIE-array
+rt = Runtime()
+with rt.sequence(data_size, data_size, data_size) as (a_in, b_out, _):
+    rt.start(*workers)
+    rt.fill(of_in.prod(), a_in)
+    rt.drain(of_out.cons(), b_out, wait=True)
+```
+
+### Explicitly Placed Level IRON
+
+We will start with the code in [aie2_placed.py](./aie2_placed.py) which contains a simple design running on a single compute tile, and progressively turn it into the code in [aie2_placed_multi.py](./aie2_placed_multi.py) which contains the same design that distributes the work to three compute tiles.
 
 The first step in the design is the tile declaration. In the simple design we use one Shim tile to bring data from external memory into the AIE array inside of a Mem tile that will then send the data to a compute tile, wait for the output and send it back to external memory through the Shim tile. Below is how those tiles are declared in the simple design:
 ```python

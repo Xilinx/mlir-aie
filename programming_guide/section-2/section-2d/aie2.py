@@ -4,66 +4,54 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
-from aie.dialects.aie import *  # primary mlir-aie dialect definitions
-from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
+import sys
 
-from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
-from aie.helpers.dialects.ext.scf import (
-    _for as range_,
-)  # scf (structured control flow) dialect
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron.placers import SequentialPlacer
+from aie.iron.device import NPU1Col1
+from aie.iron.controlflow import range_
 
-buffer_depth = 2
+dev = NPU1Col1()
 data_size = 48
 
+# Define tensor types
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 
-# AI Engine structural design function
-def mlir_aie_design():
-    # ctx wrapper - to convert python to mlir
-    with mlir_mod_ctx() as ctx:
+# Input data movement
+of_in = ObjectFifo(data_ty, name="in")
+of_in1 = of_in.cons().forward(obj_type=data_ty, name="in1")
 
-        # Device declaration - aie2 device xcvc1902
-        @device(AIEDevice.npu1_1col)
-        def device_body():
-            data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+# Output data movement
+of_out1 = ObjectFifo(data_ty, name="out1")
+of_out = of_out1.cons().forward(obj_type=data_ty, name="out")
 
-            # Tile(s) declarations
-            ShimTile = tile(0, 0)
-            MemTile = tile(0, 1)
-            ComputeTile = tile(0, 2)
-
-            # Data movement with object FIFOs
-
-            # Input data movement
-            of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, data_ty)
-            of_in1 = object_fifo("in1", MemTile, ComputeTile, buffer_depth, data_ty)
-            object_fifo_link(of_in, of_in1)
-
-            # Output data movement
-            of_out = object_fifo("out", MemTile, ShimTile, buffer_depth, data_ty)
-            of_out1 = object_fifo("out1", ComputeTile, MemTile, buffer_depth, data_ty)
-            object_fifo_link(of_out1, of_out)
-
-            # Set up compute tiles
-            @core(ComputeTile)
-            def core_body():
-                # Effective while(1)
-                for _ in range_(0xFFFFFFFF):
-                    elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
-                    elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
-                    for i in range_(data_size):
-                        elem_out[i] = elem_in[i] + 1
-                    of_in1.release(ObjectFifoPort.Consume, 1)
-                    of_out1.release(ObjectFifoPort.Produce, 1)
-
-    # Print the mlir conversion
-    res = ctx.module.operation.verify()
-    if res == True:
-        print(ctx.module)
-    else:
-        print(res)
+# Task for the core to perform
+def core_fn(of_in, of_out):
+    elem_in = of_in1.acquire(1)
+    elem_out = of_out1.acquire(1)
+    for _ in range_(data_size):
+        elem_out[i] = elem_in[i] + 1
+    of_in1.release(1)
+    of_out1.release(1)
 
 
-# Call design function to generate mlir code to stdout
-mlir_aie_design()
+# Create a worker to perform the task
+my_worker = Worker(core_fn, [of_in1.cons(), of_out1.prod()])
+
+# Runtime operations to move data to/from the AIE-array
+rt = Runtime()
+with rt.sequence(data_size, data_size, data_size) as (a_in, b_out, _):
+    rt.start(my_worker)
+    rt.fill(of_in.prod(), a_in)
+    rt.drain(of_out.cons(), b_out, wait=True)
+
+# Create the program from the device type and runtime
+my_program = Program(dev, rt)
+
+# Place components (assign them resources on the device) and generate an MLIR module
+module = my_program.resolve_program(SequentialPlacer())
+
+# Print the generated MLIR
+print(module)

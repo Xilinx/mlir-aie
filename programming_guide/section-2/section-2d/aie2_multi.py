@@ -4,96 +4,84 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
-from aie.dialects.aie import *  # primary mlir-aie dialect definitions
-from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
+import sys
 
-from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
-from aie.helpers.dialects.ext.scf import (
-    _for as range_,
-)  # scf (structured control flow) dialect
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron.placers import SequentialPlacer
+from aie.iron.device import NPU1Col1
+from aie.iron.controlflow import range_
 
-n_cores = 3
-buffer_depth = 2
+dev = NPU1Col1()
+n_workers = 3
 data_size = 48
 tile_size = data_size // 3
 
+# Define tensor types
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
 
-# AI Engine structural design function
-def mlir_aie_design():
-    # ctx wrapper - to convert python to mlir
-    with mlir_mod_ctx() as ctx:
+# Input data movement
+of_offsets = [tile_size * worker for worker in range(n_workers)]
 
-        # Device declaration - aie2 device xcvc1902
-        @device(AIEDevice.npu1_1col)
-        def device_body():
-            tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
-            data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+of_in = ObjectFifo(data_ty, name="in")
+of_ins = (
+    of_ins
+    .cons()
+    .split(
+        of_offsets,
+        obj_types=[tile_ty] * n_workers,
+        names=[f"in{worker}" for worker in range(n_workers)],
+    )
+)
 
-            # Tile(s) declarations
-            ShimTile = tile(0, 0)
-            MemTile = tile(0, 1)
-            ComputeTiles = [tile(0, 2 + i) for i in range(n_cores)]
+# Output data movement
+of_out = ObjectFifo(data_ty, name="out")
+of_outs = (
+    of_out.prod().join(
+        of_offsets,
+        obj_types=[tile_ty] * n_workers,
+        names=[f"out{worker}" for worker in range(n_workers)],
+    )
+)
 
-            # Data movement with object FIFOs
-
-            # Input data movement
-            inX_fifos = []
-
-            of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, data_ty)
-            for i in range(n_cores):
-                inX_fifos.append(
-                    object_fifo(
-                        f"in{i}",
-                        MemTile,
-                        ComputeTiles[i],
-                        buffer_depth,
-                        tile_ty,
-                    )
-                )
-            if n_cores > 1:
-                of_offsets = [tile_size * i for i in range(n_cores)]
-            else:
-                of_offsets = []
-            object_fifo_link(of_in, inX_fifos, [], of_offsets)
-
-            # Output data movement
-            outX_fifos = []
-
-            of_out = object_fifo("out", MemTile, ShimTile, buffer_depth, data_ty)
-            for i in range(n_cores):
-                outX_fifos.append(
-                    object_fifo(
-                        f"out{i}",
-                        ComputeTiles[i],
-                        MemTile,
-                        buffer_depth,
-                        tile_ty,
-                    )
-                )
-            object_fifo_link(outX_fifos, of_out, of_offsets, [])
-
-            # Set up compute tiles
-            for i in range(n_cores):
-                # Compute tile i
-                @core(ComputeTiles[i])
-                def core_body():
-                    for _ in range_(0xFFFFFFFF):
-                        elem_in = inX_fifos[i].acquire(ObjectFifoPort.Consume, 1)
-                        elem_out = outX_fifos[i].acquire(ObjectFifoPort.Produce, 1)
-                        for j in range_(tile_size):
-                            elem_out[j] = elem_in[j] + 1
-                        inX_fifos[i].release(ObjectFifoPort.Consume, 1)
-                        outX_fifos[i].release(ObjectFifoPort.Produce, 1)
-
-    # Print the mlir conversion
-    res = ctx.module.operation.verify()
-    if res == True:
-        print(ctx.module)
-    else:
-        print(res)
+# Task for the core to perform
+def core_fn(of_in, of_out):
+    elem_in = of_in1.acquire(1)
+    elem_out = of_out1.acquire(1)
+    for _ in range_(data_size):
+        elem_out[i] = elem_in[i] + 1
+    of_in1.release(1)
+    of_out1.release(1)
 
 
-# Call design function to generate mlir code to stdout
-mlir_aie_design()
+# Create workers to perform the tasks
+workers = []
+for worker in range(n_workers):
+    workers.append(
+        Worker(
+            core_fn,
+            [
+                of_ins[worker].cons(),
+                of_outs[worker].prod(),
+            ],
+        )
+    )
+
+# Runtime operations to move data to/from the AIE-array
+rt = Runtime()
+with rt.sequence(data_size, data_size, data_size) as (a_in, b_out, _):
+    rt.start(*workers)
+    rt.fill(of_in.prod(), a_in)
+    rt.drain(of_out.cons(), b_out, wait=True)
+
+# Create the program from the device type and runtime
+my_program = Program(dev, rt)
+
+# Place components (assign them resources on the device) and generate an MLIR module
+module = my_program.resolve_program(SequentialPlacer())
+
+# Print the generated MLIR
+print(module)
+
