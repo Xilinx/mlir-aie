@@ -80,12 +80,12 @@ The Worker of this simple design acquires one object of each ObjectFifo, adds `1
 ```python
 # Task for the core to perform
 def core_fn(of_in, of_out):
-    elem_in = of_in1.acquire(1)
-    elem_out = of_out1.acquire(1)
+    elem_in = of_in.acquire(1)
+    elem_out = of_out.acquire(1)
     for _ in range_(data_size):
         elem_out[i] = elem_in[i] + 1
-    of_in1.release(1)
-    of_out1.release(1)
+    of_in.release(1)
+    of_out.release(1)
 
 
 # Create a worker to perform the task
