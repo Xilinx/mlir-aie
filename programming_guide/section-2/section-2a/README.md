@@ -133,10 +133,6 @@ def _acquire(
         num_elem: int,
     )
 ```
-And its lower level variant, the `acquire()` function of the `object_fifo` class:
-```python
-def acquire(self, port, num_elem)
-```
 Based on the `num_elem` input representing the number of acquired elements, both acquire functions will either directly return an object, or an array of objects. The `port` input is explained further in this section.
 
 The Object FIFO is an ordered primitive and the API keeps track for each process which object is the next one that they will have access to when acquiring, based on how many they have already acquired and released. Specifically, the first time a process acquires an object it will have access to the first object of the Object FIFO, and after releasing it and acquiring a new one, it'll have access to the second object, and so on until the last object, after which the order starts from the first one again. When acquiring multiple objects and accessing them in the returned array, the object at index 0 will always be the <u>oldest</u> object that process has access to, which may not be the first object in the pool of that Object FIFO.
@@ -148,10 +144,6 @@ def _release(
         port: ObjectFifoPort,
         num_elem: int,
     )
-```
-And its lower level variant, the `release()` function of the `object_fifo` class:
-```python
-def release(self, port, num_elem)
 ```
 A process may release one, some or all of the objects it has acquired. The release function will release objects from oldest to youngest in acquired order. If a process does not release all of the objects it has acquired, then the next time it acquires objects the oldest objects will be those that were not released. This functionality is intended to achieve the behaviour of a sliding window through the Object FIFO primitive. This is described further in the ["Key Object FIFO Patterns" section](../section-2b/01_Reuse/README.md#object-fifo-reuse-pattern). 
 
@@ -186,7 +178,12 @@ my_worker = Worker(core_fn, [of_in.prod(), test_fn])
 my_worker = Worker(core_fn2, [of_in.cons(), test_fn2])
 ```
 
-The following code snippet shows how the same example as above is written at a lower level of abstraction with explicitly placed enpoints:
+The explicitly placed variants of the `acquire()` and `release()` functions of the `object_fifo` class are shown below:
+```python
+def acquire(self, port, num_elem)
+def release(self, port, num_elem)
+```
+The following code snippet shows how the same example as above is written at a lower level of abstraction with explicitly placed enpoints.
 ```python
 A = tile(1, 3)
 B = tile(2, 4)
