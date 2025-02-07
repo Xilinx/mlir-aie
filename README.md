@@ -114,7 +114,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
        ```bash
        cd $XDNA_SRC_DIR/xrt/build/Release
-       sudo apt reinstall ./xrt_202510.2.19.0_22.04-amd64-npu.deb
+       sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-npu.deb
        ```
 
        > **An error might occur during this proces.** If so, do the following steps.
@@ -122,9 +122,9 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
        ```bash
        cd $XDNA_SRC_DIR/xrt/build/Release
        sudo apt remove xrt-npu
-       sudo dpkg -i --force-overwrite ./xrt_202510.2.19.0_22.04-amd64-npu.deb
+       sudo dpkg -i --force-overwrite ./xrt_202510.2.19.0_24.10-amd64-npu.deb
        sudo apt -f install
-       sudo apt reinstall ./xrt_202510.2.19.0_22.04-amd64-npu.deb
+       sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-npu.deb
        ```      
 
 1. Build XDNA-Driver. Below steps are adapted from [here](https://github.com/amd/xdna-driver).
@@ -139,7 +139,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
     ```bash
     cd $XDNA_SRC_DIR/build/Release
-    sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu22.04-x86_64-amdxdna.deb
+    sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu24.10-x86_64-amdxdna.deb
     ```
     
 1. Check that the NPU is working if the device appears with xrt-smi:
@@ -175,7 +175,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    sudo apt install libopencv-dev python3-opencv
    ```
 
-1. Remember to source the Vitis™ AIE Essentials setup script from [above](#install-aietools).
+1. Remember to source the Vitis™ AIE Essentials setup script, if required, from [above](#install-aietools).
    
 1. Remember to source the XRT setup script: `source /opt/xilinx/xrt/setup.sh`
 
@@ -192,13 +192,13 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 ## Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU
 
-> Remember to set up your environment including Vitis™ AIE Essentials, your license, XRT, and IRON
+> Remember to set up your environment including IRON, and XRT, (and if required Vitis™ AIE Essentials, and your license)
 > ```
->   source yourVitisSetupScript.sh
->   export LM_LICENSE_FILE=/opt/Xilinx.lic
 >   source /opt/xilinx/xrt/setup.sh
 >   source ironenv/bin/activate
 >   source utils/env_setup.sh my_install/mlir_aie my_install/mlir my_install/llvm-aie
+>   source yourVitisSetupScript.sh
+>   export LM_LICENSE_FILE=/opt/Xilinx.lic
 > ```
 
 For your design of interest, for instance from [programming_examples](../programming_examples/), 2 steps are needed: (i) build the AIE design and then (ii) build the host code.
