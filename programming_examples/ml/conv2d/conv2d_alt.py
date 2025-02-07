@@ -160,9 +160,9 @@ if __name__ == "__main__":
     try:
         device_name = str(sys.argv[1])
         if device_name == "npu":
-            dev = AIEDevice.NPU1Col1()
+            dev = AIEDevice.npu1_1col
         elif device_name == "npu2":
-            dev = AIEDevice.NPU2()
+            dev = AIEDevice.npu2
         else:
             raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
         width = int(sys.argv[2])
