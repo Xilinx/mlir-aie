@@ -8,6 +8,7 @@
 
 from aie.dialects.aie import *  # primary mlir-aie dialect definitions
 from aie.extras.context import mlir_mod_ctx  # mlir-aie context
+from aie.helpers.dialects.ext.scf import _for as range_
 
 
 # AI Engine structural design function
@@ -21,6 +22,16 @@ def mlir_aie_design():
         ComputeTile1 = tile(1, 3)
         ComputeTile2 = tile(2, 3)
         ComputeTile3 = tile(2, 4)
+
+        data_size = 48
+        data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+
+        # Compute core declarations
+        @core(ComputeTile1)
+        def core_body():
+            local = buffer(ComputeTile1, data_ty, name="local")
+            for i in range_(data_size):
+                local[i] = local[i] + 1
 
 
 # Declares that subsequent code is in mlir-aie context

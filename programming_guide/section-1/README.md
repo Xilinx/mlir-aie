@@ -22,18 +22,12 @@ from aie.iron import Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col4
 ```
-Then we declare the compute tasks and assign them to Workers, which are currently unplaced. Data movement between the Workers is also declared at this step, however that part of design configuration has its own dedicated [section](../section-2/) and is not covered here.
+Data movement between the Workers is usually also declared at this step, however that part of design configuration has its own dedicated [section](../section-2/) and is not covered in detail here.
 ```python
 # Dataflow configuration
 # described in a future section of the guide...
-
-# Task for the core to perform
-def core_fn():
-    # compute task
-
-# Create a worker to perform the task
-my_worker = Worker(core_fn, [])
 ```
+In the AIE array, computational kernels are run on compute tiles, which are represented by Workers. 
 A Worker takes as input a routine to run, and the list of arguments needed to run it. The Worker class is defined below and can be found in [worker.py](../../python/iron/worker.py). The Worker can be explicitly placed on a `placement` tile in the AIE array or its the placement can be left to the compiler, as is explained further in this section. Finally, the `while_true` input is set to True as Workers typically run continuously once the design is started.
 ```python
 class Worker(ObjectFifoEndpoint):
@@ -45,12 +39,23 @@ class Worker(ObjectFifoEndpoint):
         while_true: bool = True,
     )
 ```
-In the previous code snippet it was mentioned that the data movement between Workers needs to be configured. This does not include data movement to/from the AIE array which is handled inside the `Runtime` sequence. The next section of the programming guide has a dedicated [section](../section-2/section-2g/) for runtime data movement.
+In our simple design there is only one Worker which will perform the `core_fn` routine. The compute routine declares a local data tensor, iterates over it and adds one to each entry. As we will see in the next section of the guide, computational tasks usually run on data that is brought into the AIE array from external memory and the output produced is sent back out.
+```python
+# Task for the core to perform
+def core_fn():
+    local = LocalBuffer(data_ty, name="local")
+    for i in range_(data_size):
+        local[i] = local[i] + 1
+
+# Create a worker to perform the task
+my_worker = Worker(core_fn, [])
+```
+In the previous code snippet it was mentioned that the data movement between Workers needs to be configured. This does not include data movement to/from the AIE array which is handled inside the `Runtime` sequence. The programming guide has a dedicated [section](../section-2/section-2g/) for runtime data movement. In this example, as we do not look in-depth at data movement configuration, the runtime sequence will only start the Worker.
 ```python
 # Runtime operations to move data to/from the AIE-array
 rt = Runtime()
-with rt.sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
-    # runtime sequence tasks
+with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
+    rt.start(my_worker)
 ```
 All the components are tied together into a `Program` which represents all design information needed to run the design on a device. It is also at this stage that the previously unplaced Workers are mapped onto AIE tiles using a `Placer`. Currently, only one placement algorithm is available in IRON, the `SequentialPlacer()` as is seen in the code snippet below. Other placers can be added with minimal effort and we encourage all users to experiment with these tools which can be found in [placers.py](../../python/iron/placers.py). Finally, the program is printed to produce the corresponding MLIR definitions from the IRON AIE bindings.
 ```python
@@ -65,6 +70,8 @@ print(module)
 ```
 
 > **NOTE:**  All components described or mentioned above inherit from the `resolvable` interface which defers the creation of MLIR operations until their `resolve()` function is called. That is the task of the `resolve_program()` function of the `Program` which will raise an error if one of the IRON classes does not have enough information to generate its MLIR equivalent.
+
+## <ins>Walkthrough of Python source file (aie2_placed.py)</ins>
 
 IRON also enables users to describe their design at the tile level of granularity where components are explicitly placed on AIE tiles using coordinates. Let's again look through a basic Python source file (named [aie2_placed.py](./aie2.py)) for an IRON design at this level.
 
@@ -94,6 +101,18 @@ The arguments for the tile declaration are the tile coordinates (column, row). W
         ComputeTile1 = tile(1, 3)
         ComputeTile2 = tile(2, 3)
         ComputeTile3 = tile(2, 4)
+```
+Compute cores can be mapped to compute tiles. They can also be linked to external kernel functions that can then be called from within the body of the core, however that is beyond the scope of this section and is explained further in the guide. In this example design the compute core declares a local data tensor, iterates over it and adds one to each entry.
+```python
+        data_size = 48
+        data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+
+        # Compute core declarations
+        @core(ComputeTile1)
+        def core_body():
+            local = buffer(ComputeTile1, data_ty, name="local")
+            for i in range_(data_size):
+                local[i] = local[i] + 1
 ```
 Once we are done declaring our blocks (and connections) within our design function, we move onto the main body of our program where we call the function and output our design in MLIR. This is done by first declaring the MLIR context via the `with mlir_mod_ctx() as ctx:` line. This indicates that subsequent indented Python code is in the MLIR context, and we follow this by calling our previously defined design function `mlir_aie_design()`. This means all the code within the design function is understood to be in the MLIR context and contains the IRON custom Python binding definitions of the more detailed MLIR block definitions. The final line is `print(ctx.module)`, which takes the code defined in our MLIR context and prints it to stdout. This will then convert our Python-bound code to its MLIR equivalent and print it to stdout. 
 ```python
