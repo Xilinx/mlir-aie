@@ -83,4 +83,3 @@ module = my_program.resolve_program(SequentialPlacer())
 
 # Print the generated MLIR
 print(module)
-
