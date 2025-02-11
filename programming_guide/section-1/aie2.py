@@ -27,6 +27,7 @@ def core_fn():
     for i in range_(data_size):
         local[i] = local[i] + 1
 
+
 # Create a worker to perform the task
 my_worker = Worker(core_fn, [])
 
