@@ -26,14 +26,10 @@ tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
 of_offsets = [tile_size * worker for worker in range(n_workers)]
 
 of_in = ObjectFifo(data_ty, name="in")
-of_ins = (
-    of_in
-    .cons()
-    .split(
-        of_offsets,
-        obj_types=[tile_ty] * n_workers,
-        names=[f"in{worker}" for worker in range(n_workers)],
-    )
+of_ins = of_in.cons().split(
+    of_offsets,
+    obj_types=[tile_ty] * n_workers,
+    names=[f"in{worker}" for worker in range(n_workers)],
 )
 
 # Output data movement
