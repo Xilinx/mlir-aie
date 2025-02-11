@@ -15,7 +15,7 @@ from aie.iron.controlflow import range_
 
 dev = NPU1Col1()
 tensor_size = 4096
-tile_size = data_size // 4
+tile_size = tensor_size // 4
 
 # Define tensor types
 tensor_ty = np.ndarray[(tensor_size,), np.dtype[np.int32]]
@@ -49,7 +49,7 @@ def core_fn(of_in, of_factor, of_out, scale_scalar):
 
 
 # Create a worker to perform the task
-my_worker = Worker(core_fn, [of_in1.cons(), of_factor.cons() of_out1.prod(), scale_fn])
+my_worker = Worker(core_fn, [of_in.cons(), of_factor.cons(), of_out.prod(), scale_fn])
 
 # Runtime operations to move data to/from the AIE-array
 rt = Runtime()
