@@ -125,11 +125,11 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
 
               StringRef metadata = builder.getStringAttr(shimDmaAllocName);
               builder.create<NpuDmaMemcpyNdOp>(
-                  builder.getUnknownLoc(), 0, 0, newBlockArg,
+                  builder.getUnknownLoc(), newBlockArg, SmallVector<Value>{},
                   SmallVector<Value>{}, SmallVector<Value>{},
-                  SmallVector<Value>{}, ArrayRef(staticOffsets),
-                  ArrayRef(staticSizes), ArrayRef(staticStrides),
-                  controllerIdPkt, metadata, 0, true, 0, 0, 0, 0, 0, 0);
+                  ArrayRef(staticOffsets), ArrayRef(staticSizes),
+                  ArrayRef(staticStrides), controllerIdPkt, metadata, 0, true,
+                  0, 0, 0, 0, 0, 0);
 
               auto shimRow = builder.getI32IntegerAttr(0);
               auto shimCol = builder.getI32IntegerAttr(col);
