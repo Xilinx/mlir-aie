@@ -38,12 +38,10 @@ of_ins = (
 
 # Output data movement
 of_out = ObjectFifo(data_ty, name="out")
-of_outs = (
-    of_out.prod().join(
-        of_offsets,
-        obj_types=[tile_ty] * n_workers,
-        names=[f"out{worker}" for worker in range(n_workers)],
-    )
+of_outs = of_out.prod().join(
+    of_offsets,
+    obj_types=[tile_ty] * n_workers,
+    names=[f"out{worker}" for worker in range(n_workers)],
 )
 
 # Task for the core to perform
