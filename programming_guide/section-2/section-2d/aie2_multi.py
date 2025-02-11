@@ -44,6 +44,7 @@ of_outs = of_out.prod().join(
     names=[f"out{worker}" for worker in range(n_workers)],
 )
 
+
 # Task for the core to perform
 def core_fn(of_in, of_out):
     elem_in = of_in.acquire(1)
