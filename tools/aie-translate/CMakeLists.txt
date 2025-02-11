@@ -17,6 +17,11 @@ get_property(translation_libs GLOBAL PROPERTY MLIR_TRANSLATION_LIBS)
 set(LIBS
   ${dialect_libs}
   ${translation_libs}
+  $<IF:$<BOOL:${CLANGIR_MLIR_FRONTEND}>,
+    clangCIR
+    clangCIRLoweringDirectToLLVM
+    clangCIRLoweringThroughMLIR
+  ,>
   AIE
   AIETransforms
   AIEX
@@ -25,13 +30,17 @@ set(LIBS
   AIETargets
   MLIRAIEVecDialect
   MLIRAIEVecAIE1Dialect
-  MLIRXLLVMToLLVMIRTranslation
   MLIRIR
   MLIRParser
   MLIRPass
   MLIRTargetAIEVecCpp
   MLIRTargetLLVMIRExport
   MLIRTargetLLVMIRImport
+  MLIRXLLVMToLLVMIRTranslation
 )
+
+if (CLANGIR_MLIR_FRONTEND)
+  target_compile_definitions(aie-translate PRIVATE CLANGIR_MLIR_FRONTEND)
+endif()
 
 target_link_libraries(aie-translate PRIVATE ${LIBS})
