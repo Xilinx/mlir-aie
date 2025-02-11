@@ -31,7 +31,7 @@ of_out = of_out1.cons().forward(obj_type=data_ty, name="out")
 def core_fn(of_in, of_out):
     elem_in = of_in.acquire(1)
     elem_out = of_out.acquire(1)
-    for _ in range_(data_size):
+    for i in range_(data_size):
         elem_out[i] = elem_in[i] + 1
     of_in.release(1)
     of_out.release(1)
@@ -42,7 +42,7 @@ my_worker = Worker(core_fn, [of_in1.cons(), of_out1.prod()])
 
 # Runtime operations to move data to/from the AIE-array
 rt = Runtime()
-with rt.sequence(data_size, data_size, data_size) as (a_in, b_out, _):
+with rt.sequence(data_ty, data_ty, data_ty) as (a_in, b_out, _):
     rt.start(my_worker)
     rt.fill(of_in.prod(), a_in)
     rt.drain(of_out.cons(), b_out, wait=True)

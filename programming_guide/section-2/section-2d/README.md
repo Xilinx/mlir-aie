@@ -125,6 +125,11 @@ with rt.sequence(data_size, data_size, data_size) as (a_in, b_out, _):
     rt.drain(of_out.cons(), b_out, wait=True)
 ```
 
+To compile the designs:
+```python
+make all
+```
+
 ### Explicitly Placed Level IRON
 
 We will start with the code in [aie2_placed.py](./aie2_placed.py) which contains a simple design running on a single compute tile, and progressively turn it into the code in [aie2_placed_multi.py](./aie2_placed_multi.py) which contains the same design that distributes the work to three compute tiles.
@@ -234,6 +239,11 @@ for i in range(n_cores):
                 elem_out[i] = elem_in[i] + 1
             inX_fifos[i].release(ObjectFifoPort.Consume, 1)
             outX_fifos[i].release(ObjectFifoPort.Produce, 1)
+```
+
+To compile the designs:
+```python
+make placed
 ```
 
 -----

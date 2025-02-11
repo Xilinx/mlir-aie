@@ -27,7 +27,7 @@ of_offsets = [tile_size * worker for worker in range(n_workers)]
 
 of_in = ObjectFifo(data_ty, name="in")
 of_ins = (
-    of_ins
+    of_in
     .cons()
     .split(
         of_offsets,
@@ -50,7 +50,7 @@ of_outs = (
 def core_fn(of_in, of_out):
     elem_in = of_in.acquire(1)
     elem_out = of_out.acquire(1)
-    for _ in range_(data_size):
+    for i in range_(data_size):
         elem_out[i] = elem_in[i] + 1
     of_in.release(1)
     of_out.release(1)
@@ -71,7 +71,7 @@ for worker in range(n_workers):
 
 # Runtime operations to move data to/from the AIE-array
 rt = Runtime()
-with rt.sequence(data_size, data_size, data_size) as (a_in, b_out, _):
+with rt.sequence(data_ty, data_ty, data_ty) as (a_in, b_out, _):
     rt.start(*workers)
     rt.fill(of_in.prod(), a_in)
     rt.drain(of_out.cons(), b_out, wait=True)
