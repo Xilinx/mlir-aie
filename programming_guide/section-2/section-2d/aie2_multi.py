@@ -26,25 +26,20 @@ tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
 of_offsets = [tile_size * worker for worker in range(n_workers)]
 
 of_in = ObjectFifo(data_ty, name="in")
-of_ins = (
-    of_in
-    .cons()
-    .split(
-        of_offsets,
-        obj_types=[tile_ty] * n_workers,
-        names=[f"in{worker}" for worker in range(n_workers)],
-    )
+of_ins = of_in.cons().split(
+    of_offsets,
+    obj_types=[tile_ty] * n_workers,
+    names=[f"in{worker}" for worker in range(n_workers)],
 )
 
 # Output data movement
 of_out = ObjectFifo(data_ty, name="out")
-of_outs = (
-    of_out.prod().join(
-        of_offsets,
-        obj_types=[tile_ty] * n_workers,
-        names=[f"out{worker}" for worker in range(n_workers)],
-    )
+of_outs = of_out.prod().join(
+    of_offsets,
+    obj_types=[tile_ty] * n_workers,
+    names=[f"out{worker}" for worker in range(n_workers)],
 )
+
 
 # Task for the core to perform
 def core_fn(of_in, of_out):
@@ -84,4 +79,3 @@ module = my_program.resolve_program(SequentialPlacer())
 
 # Print the generated MLIR
 print(module)
-
