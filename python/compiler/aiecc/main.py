@@ -384,6 +384,7 @@ def downgrade_ir_for_chess(llvmir_chesslinked):
             "memory(argmem: write, inaccessiblemem: write)",
             "inaccessiblemem_or_argmemonly writeonly",
         )
+        .replace("captures(none)", "nocapture")
     )
     return llvmir_chesslinked
 

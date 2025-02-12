@@ -13,31 +13,24 @@ from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 import aie.utils.trace as trace_utils
 
-width = 32
-height = 32
-in_channels = 64
-out_channels = 64
 
-if len(sys.argv) == 3:
-    width = int(sys.argv[1])
-    height = int(sys.argv[2])
-
-
-actIn = width * in_channels  # 32*64 = 2048
-bufIn = actIn * 2  # double buffer
-
-weights = in_channels * out_channels
-
-actOut = width * out_channels  # 32*64 = 2048
-bufOut = actOut * 2  # double buffer
-
-tensorSize = width * height * in_channels
-
-N_in_bytes = tensorSize  # Number of bytes of output data (1 byte/elem)
-
-
-def conv2dk1(trace_size: int):
+def conv2dk1(
+    dev, width: int, height: int, in_channels: int, out_channels: int, trace_size: int
+):
     with mlir_mod_ctx() as ctx:
+
+        actIn = width * in_channels  # 32*64 = 2048
+        bufIn = actIn * 2  # double buffer
+
+        weights = in_channels * out_channels
+
+        actOut = width * out_channels  # 32*64 = 2048
+        bufOut = actOut * 2  # double buffer
+
+        tensorInSize = width * height * in_channels
+        tensorOutSize = width * height * out_channels
+
+        N_in_bytes = tensorOutSize  # Number of bytes of output data (1 byte/elem)
 
         @device(AIEDevice.npu1_1col)
         def device_body():
@@ -49,7 +42,8 @@ def conv2dk1(trace_size: int):
 
             out_ty = np.ndarray[(actOut,), np.dtype[np.int8]]
             bufOut_ty = np.ndarray[(bufOut,), np.dtype[np.int8]]
-            tensor_ty = np.ndarray[(tensorSize,), np.dtype[np.int8]]
+            tensorIn_ty = np.ndarray[(tensorInSize,), np.dtype[np.int8]]
+            tensorOut_ty = np.ndarray[(tensorOutSize,), np.dtype[np.int8]]
 
             # AIE Core Function declarations
             conv2dk1_i8 = external_func(
@@ -105,10 +99,10 @@ def conv2dk1(trace_size: int):
             # Compute tile 2
             @core(ComputeTile2, "conv2dk1_i8.o")
             def core_body():
-                y_dim = 32
-                x_dim = 32
-                ci = 64
-                co = 64
+                y_dim = height
+                x_dim = width
+                ci = in_channels
+                co = out_channels
 
                 for _ in range_(0xFFFFFFFF):
                     elemWts = of_inOF_wts_0_L3L2.acquire(ObjectFifoPort.Consume, 1)
@@ -126,7 +120,7 @@ def conv2dk1(trace_size: int):
                     of_inOF_wts_0_L3L2.release(ObjectFifoPort.Consume, 1)
 
             # To/from AIE-array data movement
-            @runtime_sequence(tensor_ty, weights_ty, tensor_ty)
+            @runtime_sequence(tensorIn_ty, weights_ty, tensorOut_ty)
             def sequence(I, W, O):
 
                 if trace_size > 0:
@@ -139,7 +133,7 @@ def conv2dk1(trace_size: int):
                 in_act_task = shim_dma_single_bd_task(
                     of_inOF_act_L3L2,
                     I,
-                    sizes=[1, 1, 1, tensorSize],
+                    sizes=[1, 1, 1, tensorInSize],
                     issue_token=True,
                 )
                 in_wts_task = shim_dma_single_bd_task(
@@ -151,7 +145,7 @@ def conv2dk1(trace_size: int):
                 out_task = shim_dma_single_bd_task(
                     of_outOFL2L3,
                     O,
-                    sizes=[1, 1, 1, tensorSize],
+                    sizes=[1, 1, 1, tensorOutSize],
                     issue_token=True,
                 )
 
@@ -163,5 +157,37 @@ def conv2dk1(trace_size: int):
 
 
 if __name__ == "__main__":
-    trace_size = 0 if (len(sys.argv) != 2) else int(sys.argv[1])
-    conv2dk1(trace_size=trace_size)
+    try:
+        device_name = str(sys.argv[1])
+        if device_name == "npu":
+            # dev = NPU1Col1()
+            dev = 0  # placeholders
+        elif device_name == "npu2":
+            # dev = NPU2()
+            dev = 1  # placeholders
+        else:
+            raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+        width = int(sys.argv[2])
+        if width % 8 != 0 or width < 8:
+            print("Width size must be a multiple of 8 and greater than or equal to 8")
+            raise ValueError
+        height = int(sys.argv[3])
+        if height % 8 != 0 or height < 8:
+            print("Height size must be a multiple of 8 and greater than or equal to 8")
+            raise ValueError
+        in_channels = int(sys.argv[4])
+        if in_channels % 8 != 0 or in_channels < 8:
+            print(
+                "Input channels size must be a multiple of 8 and greater than or equal to 8"
+            )
+            raise ValueError
+        out_channels = int(sys.argv[5])
+        if out_channels % 8 != 0 or out_channels < 8:
+            print(
+                "Output channel size must be a multiple of 8 and greater than or equal to 8"
+            )
+            raise ValueError
+        trace_size = 0 if (len(sys.argv) != 7) else int(sys.argv[6])
+    except ValueError:
+        print("Argument has inappropriate value")
+    conv2dk1(dev, width, height, in_channels, out_channels, trace_size)
