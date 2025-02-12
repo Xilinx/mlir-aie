@@ -509,11 +509,18 @@ LogicalResult ObjectFifoCreateOp::verify() {
     if (getConsumerTiles().size() > 1)
       return emitError(
           "`via_shared_mem` can only be used in 1-to-1 object FIFOs");
+    if (getVia_DMA())
+      return emitError("`via_shared_mem` and `via_DMA` cannot occur together");
   }
 
   if (getRepeatCount().has_value()) {
     if (getProducerTileOp().isShimTile())
       return emitError("`repeat_count` unavailable for shim tiles");
+  }
+
+  if (getInitValues().has_value()) {
+    if (getProducerTileOp().isShimTile())
+      return emitError("`init_values` unavailable for shim tiles");
   }
 
   if (getInitValues().has_value()) {
@@ -880,9 +887,6 @@ ObjectFifoCreateOp ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ObjectFifoAcquireOp::verify() {
-  if (acqNumber() < 1)
-    return emitOpError("must acquire at least one element");
-
   auto parent = getOperation()->getParentOfType<CoreOp>();
   if (parent == nullptr)
     return emitOpError("must be called from inside a CoreOp");
@@ -938,9 +942,6 @@ ObjectFifoCreateOp ObjectFifoAcquireOp::getObjectFifo() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ObjectFifoReleaseOp::verify() {
-  if (relNumber() < 1)
-    return emitOpError("must release at least one element");
-
   auto parent = getOperation()->getParentOfType<CoreOp>();
   if (parent == nullptr)
     return emitOpError("must be called from inside a CoreOp");
