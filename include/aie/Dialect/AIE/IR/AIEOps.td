@@ -27,15 +27,15 @@ class AIE_Op<string mnemonic, list<Trait> traits = []> :
 
 
 def AIE_DeviceOp: AIE_Op<"device", [
-    AIETarget, HasParent<"mlir::ModuleOp">,
+    AIETarget,
     SymbolTable, SingleBlockImplicitTerminator<"EndOp">, IsolatedFromAbove
   ]> {
   let summary = "Define an AIE design targetting a complete device";
   let description = [{
     This operation describes a design that executes on a particular AIEngine device.
-    It exists at the toplevel of a design; although currently it does not replace the
-    default toplevel module in MLIR, the intention is that this could be the case
-    in the future.
+
+    It does not replace the default toplevel module in MLIR since it can be
+    possible to have several devices in the same module.
 
     When using this operation, all resources in a physical device are available and
     the design does not need to be concerned with other potential users of a physical

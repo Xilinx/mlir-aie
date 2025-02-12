@@ -23,7 +23,18 @@ set(LIBS
   ${dialect_libs}
   ${conversion_libs}
   ${extension_libs}
-  MLIROptLib
+  $<IF:$<BOOL:${CLANGIR_MLIR_FRONTEND}>,
+    clangCIR
+    clangCIRLoweringThroughMLIR
+    clangCIRLoweringDirectToLLVM
+    CIRToAIEPasses
+    MLIRAnalysis
+    MLIRCIR
+    MLIRCIRTransforms
+    MLIRDialect
+    MLIRTransforms
+    MLIRTransformUtils
+  ,>
   ADF
   AIE
   AIETransforms
@@ -36,7 +47,12 @@ set(LIBS
   MLIRAIEVecTransformOps
   MLIRAIEVecTransforms
   MLIRAIEVecToLLVM
+  MLIROptLib
   MLIRTransformDialect
   MLIRXLLVMDialect
   )
+
 target_link_libraries(aie-opt PUBLIC ${LIBS})
+if (CLANGIR_MLIR_FRONTEND)
+  target_compile_definitions(aie-opt PRIVATE CLANGIR_MLIR_FRONTEND)
+endif()
