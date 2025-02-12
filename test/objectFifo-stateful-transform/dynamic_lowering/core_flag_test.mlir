@@ -10,7 +10,7 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK:     %core_0_2 = aie.core(%tile_0_2) {
+// CHECK:     %core_0_2 = aie.core(%{{.*}}tile_0_2) {
 // CHECK:       %c0_i32 = arith.constant 0 : i32
 // CHECK:       %c0 = arith.constant 0 : index
 // CHECK:       %c2_i32 = arith.constant 2 : i32
@@ -68,7 +68,7 @@
 // CHECK:       }
 // CHECK:       aie.end
 // CHECK:     } {dynamic_objfifo_lowering = true}
-// CHECK:     %core_0_4 = aie.core(%tile_0_4) {
+// CHECK:     %core_0_4 = aie.core(%{{.*}}tile_0_4) {
 // CHECK:       %c0 = arith.constant 0 : index
 // CHECK:       %c1 = arith.constant 1 : index
 // CHECK:       %c10 = arith.constant 10 : index
