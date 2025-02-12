@@ -19,8 +19,9 @@ dev = NPU1Col1()
 data_ty = np.ndarray[(16,), np.dtype[np.int32]]
 
 # Dataflow with ObjectFifos
-of_in = ObjectFifo(data_ty, name="in", default_depth=1) # single buffer
-of_out = ObjectFifo(data_ty, name="out", default_depth=1) # single buffer
+of_in = ObjectFifo(data_ty, name="in", default_depth=1)  # single buffer
+of_out = ObjectFifo(data_ty, name="out", default_depth=1)  # single buffer
+
 
 # Task for the core to perform
 def core_fn(of_in):
