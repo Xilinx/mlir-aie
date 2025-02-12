@@ -29,6 +29,7 @@ of_in1 = of_in0.cons().forward(name="in1", obj_type=tile8_ty)
 of_out1 = ObjectFifo(tile8_ty, name="out1")
 of_out0 = of_out1.cons().forward(name="out0", obj_type=tile24_ty)
 
+
 # Task for the core to perform
 def core_fn(of_in, of_out):
     elem_in = of_in.acquire(1)
