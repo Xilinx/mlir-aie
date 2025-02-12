@@ -17,17 +17,17 @@
 // CHECK:      func.func @passthrough_10_i32(%arg0: memref<10xi32>) {
 // CHECK:        return
 // CHECK:      }
-// CHECK:      %tile_0_0 = aie.tile(0, 0)
-// CHECK:      %tile_0_2 = aie.tile(0, 2)
-// CHECK:      %tile_0_4 = aie.tile(0, 4)
-// CHECK:      %input_fifo_cons_buff_0 = aie.buffer(%tile_0_2) {sym_name = "input_fifo_cons_buff_0"} : memref<10xi32> 
-// CHECK:      %input_fifo_cons_prod_lock = aie.lock(%tile_0_2, 0) {init = 1 : i32, sym_name = "input_fifo_cons_prod_lock"}
-// CHECK:      %input_fifo_cons_cons_lock = aie.lock(%tile_0_2, 1) {init = 0 : i32, sym_name = "input_fifo_cons_cons_lock"}
-// CHECK:      %input_fifo_prod_lock = aie.lock(%tile_0_0, 0) {init = 1 : i32, sym_name = "input_fifo_prod_lock"}
-// CHECK:      %input_fifo_cons_lock = aie.lock(%tile_0_0, 1) {init = 0 : i32, sym_name = "input_fifo_cons_lock"}
-// CHECK:      aie.flow(%tile_0_0, DMA : 0, %tile_0_2, DMA : 0)
-// CHECK:      %buffer_0_2 = aie.buffer(%tile_0_2) : memref<1xi32> 
-// CHECK:      %core_0_2 = aie.core(%tile_0_2) {
+// CHECK:      %{{.*}}tile_0_0 = aie.tile(0, 0)
+// CHECK:      %{{.*}}tile_0_2 = aie.tile(0, 2)
+// CHECK:      %{{.*}}tile_0_4 = aie.tile(0, 4)
+// CHECK:      %input_fifo_cons_buff_0 = aie.buffer(%{{.*}}tile_0_2) {sym_name = "input_fifo_cons_buff_0"} : memref<10xi32> 
+// CHECK:      %input_fifo_cons_prod_lock = aie.lock(%{{.*}}tile_0_2, 0) {init = 1 : i32, sym_name = "input_fifo_cons_prod_lock"}
+// CHECK:      %input_fifo_cons_cons_lock = aie.lock(%{{.*}}tile_0_2, 1) {init = 0 : i32, sym_name = "input_fifo_cons_cons_lock"}
+// CHECK:      %input_fifo_prod_lock = aie.lock(%{{.*}}tile_0_0, 0) {init = 1 : i32, sym_name = "input_fifo_prod_lock"}
+// CHECK:      %input_fifo_cons_lock = aie.lock(%{{.*}}tile_0_0, 1) {init = 0 : i32, sym_name = "input_fifo_cons_lock"}
+// CHECK:      aie.flow(%{{.*}}tile_0_0, DMA : 0, %{{.*}}tile_0_2, DMA : 0)
+// CHECK:      %buffer_0_2 = aie.buffer(%{{.*}}tile_0_2) : memref<1xi32> 
+// CHECK:      %core_0_2 = aie.core(%{{.*}}tile_0_2) {
 // CHECK:        %c0_i32 = arith.constant 0 : i32
 // CHECK:        %c0 = arith.constant 0 : index
 // CHECK:        %c1_i32 = arith.constant 1 : i32
@@ -50,7 +50,7 @@
 // CHECK:        aie.end
 // CHECK:      } {dynamic_objfifo_lowering = true}
 // CHECK:      aie.shim_dma_allocation @input_fifo(MM2S, 0, 0)
-// CHECK:      %mem_0_2 = aie.mem(%tile_0_2) {
+// CHECK:      %mem_0_2 = aie.mem(%{{.*}}tile_0_2) {
 // CHECK:        %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:      ^bb1:  // 2 preds: ^bb0, ^bb1
 // CHECK:        aie.use_lock(%input_fifo_cons_prod_lock, AcquireGreaterEqual, 1)

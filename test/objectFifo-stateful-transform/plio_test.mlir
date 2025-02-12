@@ -10,10 +10,10 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK:  aie.flow(%tile_2_0, PLIO : 0, %tile_2_2, DMA : 0)
-// CHECK:  aie.flow(%tile_2_2, DMA : 0, %tile_2_0, PLIO : 0)
-// CHECK:  aie.flow(%tile_2_2, DMA : 1, %tile_2_3, DMA : 0)
-// CHECK:  aie.flow(%tile_2_2, DMA : 1, %tile_2_0, PLIO : 1)
+// CHECK:  aie.flow(%{{.*}}tile_2_0, PLIO : 0, %{{.*}}tile_2_2, DMA : 0)
+// CHECK:  aie.flow(%{{.*}}tile_2_2, DMA : 0, %{{.*}}tile_2_0, PLIO : 0)
+// CHECK:  aie.flow(%{{.*}}tile_2_2, DMA : 1, %{{.*}}tile_2_3, DMA : 0)
+// CHECK:  aie.flow(%{{.*}}tile_2_2, DMA : 1, %{{.*}}tile_2_0, PLIO : 1)
 // CHECK:  aie.shim_dma_allocation @of_0(MM2S, 0, 2) {plio = true}
 // CHECK:  aie.shim_dma_allocation @of_1(S2MM, 0, 2) {plio = true}
 // CHECK:  aie.shim_dma_allocation @of_2(S2MM, 1, 2) {plio = true}

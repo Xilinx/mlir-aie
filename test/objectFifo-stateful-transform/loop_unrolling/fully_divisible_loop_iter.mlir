@@ -13,16 +13,16 @@
 // CHECK:  module {
 // CHECK:    aie.device(xcvc1902) {
 // CHECK:      memref.global "public" @loop_of : memref<16xi32>
-// CHECK:      %tile_1_2 = aie.tile(1, 2)
-// CHECK:      %tile_1_3 = aie.tile(1, 3)
-// CHECK:      %loop_of_buff_0 = aie.buffer(%tile_1_2) {sym_name = "loop_of_buff_0"} : memref<16xi32> 
-// CHECK:      %loop_of_buff_1 = aie.buffer(%tile_1_2) {sym_name = "loop_of_buff_1"} : memref<16xi32> 
-// CHECK:      %loop_of_lock_0 = aie.lock(%tile_1_2, 0) {init = 0 : i32, sym_name = "loop_of_lock_0"}
-// CHECK:      %loop_of_lock_1 = aie.lock(%tile_1_2, 1) {init = 0 : i32, sym_name = "loop_of_lock_1"}
+// CHECK:      %{{.*}}tile_1_2 = aie.tile(1, 2)
+// CHECK:      %{{.*}}tile_1_3 = aie.tile(1, 3)
+// CHECK:      %loop_of_buff_0 = aie.buffer(%{{.*}}tile_1_2) {sym_name = "loop_of_buff_0"} : memref<16xi32> 
+// CHECK:      %loop_of_buff_1 = aie.buffer(%{{.*}}tile_1_2) {sym_name = "loop_of_buff_1"} : memref<16xi32> 
+// CHECK:      %loop_of_lock_0 = aie.lock(%{{.*}}tile_1_2, 0) {init = 0 : i32, sym_name = "loop_of_lock_0"}
+// CHECK:      %loop_of_lock_1 = aie.lock(%{{.*}}tile_1_2, 1) {init = 0 : i32, sym_name = "loop_of_lock_1"}
 // CHECK:      func.func @some_work(%arg0: memref<16xi32>, %arg1: index) {
 // CHECK:        return
 // CHECK:      }
-// CHECK:      %core_1_2 = aie.core(%tile_1_2) {
+// CHECK:      %core_1_2 = aie.core(%{{.*}}tile_1_2) {
 // CHECK:        %c0 = arith.constant 0 : index
 // CHECK:        %c1 = arith.constant 1 : index
 // CHECK:        %c4 = arith.constant 4 : index
