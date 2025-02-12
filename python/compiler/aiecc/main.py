@@ -1113,16 +1113,14 @@ class FlowRunner:
                         generated_insts_mlir,
                     ],
                 )
-                await self.do_call(
-                    progress_bar.task,
-                    [
-                        "aie-translate",
-                        "--aie-npu-instgen",
-                        generated_insts_mlir,
-                        "-o",
-                        opts.insts_name,
-                    ],
-                )
+                # read file_with_addresses as mlir module
+                with Context(), Location.unknown():
+                    file_with_addresses_module = Module.parse(
+                        await read_file_async(file_with_addresses)
+                    )
+                    bin = aiedialect.translate_npu_to_binary(file_with_addresses_module)
+                    with open(opts.insts_name, "w") as f:
+                        f.write(bin)
                 if opts.only_npu:
                     return
 

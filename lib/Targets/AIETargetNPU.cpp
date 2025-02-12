@@ -186,7 +186,7 @@ void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
 } // namespace
 
 LogicalResult
-xilinx::AIE::AIETranslateToNPU(ModuleOp module,
+xilinx::AIE::AIETranslateNpuToBinary(ModuleOp module,
                                std::vector<uint32_t> &instructions,
                                StringRef sequenceName) {
 
@@ -242,11 +242,11 @@ xilinx::AIE::AIETranslateToNPU(ModuleOp module,
   return success();
 }
 
-LogicalResult xilinx::AIE::AIETranslateToNPU(ModuleOp module,
+LogicalResult xilinx::AIE::AIETranslateNpuToBinary(ModuleOp module,
                                              raw_ostream &output,
                                              StringRef sequenceName) {
   std::vector<uint32_t> instructions;
-  auto r = AIETranslateToNPU(module, instructions, sequenceName);
+  auto r = AIETranslateNpuToBinary(module, instructions, sequenceName);
   if (failed(r))
     return r;
   for (auto w : instructions)
