@@ -1,72 +1,58 @@
+# single_buffer.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 AMD Inc.
+# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
-from aie.helpers.dialects.ext.scf import _for as range_
-from aie.extras.context import mlir_mod_ctx
+import sys
 
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron.placers import SequentialPlacer
+from aie.iron.device import NPU1Col1
+from aie.iron.controlflow import range_
 
-def external_mem_to_core_L2():
-    with mlir_mod_ctx() as ctx:
+dev = NPU1Col1()
 
-        @device(AIEDevice.npu1_1col)
-        def device_body():
-            tile24_ty = np.ndarray[(24,), np.dtype[np.int32]]
-            tile8_ty = np.ndarray[(8,), np.dtype[np.int32]]
+# Define tensor types
+data_ty = np.ndarray[(48,), np.dtype[np.int32]]
+tile24_ty = np.ndarray[(24,), np.dtype[np.int32]]
+tile8_ty = np.ndarray[(8,), np.dtype[np.int32]]
 
-            # Tile declarations
-            ShimTile = tile(0, 0)
-            MemTile = tile(0, 1)
-            ComputeTile2 = tile(0, 2)
+# Dataflow with ObjectFifos
+# Input
+of_in0 = ObjectFifo(tile24_ty, name="in0")
+of_in1 = of_in0.cons().forward(name="in1", obj_type=tile8_ty)
 
-            # AIE-array data movement with object fifos
-            # Input
-            of_in0 = object_fifo("in0", ShimTile, MemTile, 2, tile24_ty)
-            of_in1 = object_fifo("in1", MemTile, ComputeTile2, 2, tile8_ty)
-            object_fifo_link(of_in0, of_in1)
+# Output
+of_out1 = ObjectFifo(tile8_ty, name="out1")
+of_out0 = of_out1.cons().forward(name="out0", obj_type=tile24_ty)
 
-            # Output
-            of_out0 = object_fifo("out0", MemTile, ShimTile, 2, tile24_ty)
-            of_out1 = object_fifo("out1", ComputeTile2, MemTile, 2, tile8_ty)
-            object_fifo_link(of_out1, of_out0)
+# Task for the core to perform
+def core_fn(of_in, of_out):
+    elem_in = of_in.acquire(1)
+    elem_out = of_out.acquire(1)
+    for i in range_(8):
+        elem_out[i] = elem_in[i] + 1
+    of_in.release(1)
+    of_out.release(1)
 
-            # Set up compute tiles
-            # Compute tile 2
-            @core(ComputeTile2)
-            def core_body():
-                # Effective while(1)
-                for _ in range_(6):
-                    elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
-                    elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
-                    for i in range_(8):
-                        elem_out[i] = elem_in[i] + 1
-                    of_in1.release(ObjectFifoPort.Consume, 1)
-                    of_out1.release(ObjectFifoPort.Produce, 1)
+# Create a worker to perform the task
+my_worker = Worker(core_fn, [of_in1.cons(), of_out1.prod()])
 
-            data_ty = np.ndarray[(48,), np.dtype[np.int32]]
+# To/from AIE-array runtime data movement
+rt = Runtime()
+with rt.sequence(data_ty, data_ty, data_ty) as (a_in, _, c_out):
+    rt.start(my_worker)
+    rt.fill(of_in0.prod(), a_in)
+    rt.drain(of_out0.cons(), c_out, wait=True)
 
-            # To/from AIE-array data movement
-            @runtime_sequence(data_ty, data_ty, data_ty)
-            def sequence(inTensor, notUsed, outTensor):
-                npu_dma_memcpy_nd(
-                    metadata=of_in0, bd_id=1, mem=inTensor, sizes=[1, 1, 1, 48]
-                )
-                npu_dma_memcpy_nd(
-                    metadata=of_out0, bd_id=0, mem=outTensor, sizes=[1, 1, 1, 48]
-                )
-                # of_out0 will only complete after of_in0 completes, so we just wait on of_out0 instead of both
-                dma_wait(of_out0)
+# Create the program from the device type and runtime
+my_program = Program(dev, rt)
 
-    res = ctx.module.operation.verify()
-    if res == True:
-        print(ctx.module)
-    else:
-        print(res)
+# Place components (assign them resources on the device) and generate an MLIR module
+module = my_program.resolve_program(SequentialPlacer())
 
-
-external_mem_to_core_L2()
+# Print the generated MLIR
+print(module)

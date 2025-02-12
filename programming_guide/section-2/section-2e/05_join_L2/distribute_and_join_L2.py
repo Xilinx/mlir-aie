@@ -1,100 +1,85 @@
+# single_buffer.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 AMD Inc.
+# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
-from aie.helpers.dialects.ext.scf import _for as range_
-from aie.extras.context import mlir_mod_ctx
+import sys
 
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron.placers import SequentialPlacer
+from aie.iron.device import NPU1Col1
+from aie.iron.controlflow import range_
 
-def distribute_join_L2():
-    with mlir_mod_ctx() as ctx:
+dev = NPU1Col1()
+n_workers = 3
 
-        @device(AIEDevice.npu1_1col)
-        def device_body():
-            tile24_ty = np.ndarray[(24,), np.dtype[np.int32]]
-            tile8_ty = np.ndarray[(8,), np.dtype[np.int32]]
+# Define tensor types
+data_ty = np.ndarray[(48,), np.dtype[np.int32]]
+tile24_ty = np.ndarray[(24,), np.dtype[np.int32]]
+tile8_ty = np.ndarray[(8,), np.dtype[np.int32]]
 
-            # Tile declarations
-            ShimTile = tile(0, 0)
-            MemTile = tile(0, 1)
-            ComputeTile0 = tile(0, 2)
-            ComputeTile1 = tile(0, 3)
-            ComputeTile2 = tile(0, 4)
+# Dataflow with ObjectFifos
+# Input
+of_offsets = [8 * worker for worker in range(n_workers)]
 
-            # AIE-array data movement with object fifos
-            # Input
-            of_in = object_fifo("in", ShimTile, MemTile, 2, tile24_ty)
-            of_in0 = object_fifo("in0", MemTile, ComputeTile0, 2, tile8_ty)
-            of_in1 = object_fifo("in1", MemTile, ComputeTile1, 2, tile8_ty)
-            of_in2 = object_fifo("in2", MemTile, ComputeTile2, 2, tile8_ty)
-            object_fifo_link(of_in, [of_in0, of_in1, of_in2], [], [0, 8, 16])
+of_in = ObjectFifo(tile24_ty, name="in")
+of_ins = (
+    of_in
+    .cons()
+    .split(
+        of_offsets,
+        obj_types=[tile8_ty] * n_workers,
+        names=[f"in{worker}" for worker in range(n_workers)],
+    )
+)
 
-            # Output
-            of_out = object_fifo("out", MemTile, ShimTile, 2, tile24_ty)
-            of_out0 = object_fifo("out0", ComputeTile0, MemTile, 2, tile8_ty)
-            of_out1 = object_fifo("out1", ComputeTile1, MemTile, 2, tile8_ty)
-            of_out2 = object_fifo("out2", ComputeTile2, MemTile, 2, tile8_ty)
-            object_fifo_link([of_out0, of_out1, of_out2], of_out, [0, 8, 16], [])
+# Output
+of_out = ObjectFifo(tile24_ty, name="out")
+of_outs = (
+    of_out.prod().join(
+        of_offsets,
+        obj_types=[tile8_ty] * n_workers,
+        names=[f"out{worker}" for worker in range(n_workers)],
+    )
+)
 
-            # Set up compute tiles
-            # Compute tile 2
-            @core(ComputeTile0)
-            def core_body():
-                # Effective while(1)
-                for _ in range_(2):
-                    elem_in = of_in0.acquire(ObjectFifoPort.Consume, 1)
-                    elem_out = of_out0.acquire(ObjectFifoPort.Produce, 1)
-                    for i in range_(8):
-                        elem_out[i] = elem_in[i] + 1
-                    of_in0.release(ObjectFifoPort.Consume, 1)
-                    of_out0.release(ObjectFifoPort.Produce, 1)
+# Task for the core to perform
+def core_fn(of_in, of_out):
+    elem_in = of_in.acquire(1)
+    elem_out = of_out.acquire(1)
+    for i in range_(8):
+        elem_out[i] = elem_in[i] + 1
+    of_in.release(1)
+    of_out.release(1)
 
-            # Compute tile 3
-            @core(ComputeTile1)
-            def core_body():
-                # Effective while(1)
-                for _ in range_(2):
-                    elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
-                    elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
-                    for i in range_(8):
-                        elem_out[i] = elem_in[i] + 1
-                    of_in1.release(ObjectFifoPort.Consume, 1)
-                    of_out1.release(ObjectFifoPort.Produce, 1)
+# Create a worker to perform the task
+workers = []
+for worker in range(n_workers):
+    workers.append(
+        Worker(
+            core_fn,
+            [
+                of_ins[worker].cons(),
+                of_outs[worker].prod(),
+            ],
+        )
+    )
 
-            # Compute tile 4
-            @core(ComputeTile2)
-            def core_body():
-                # Effective while(1)
-                for _ in range_(2):
-                    elem_in = of_in2.acquire(ObjectFifoPort.Consume, 1)
-                    elem_out = of_out2.acquire(ObjectFifoPort.Produce, 1)
-                    for i in range_(8):
-                        elem_out[i] = elem_in[i] + 1
-                    of_in2.release(ObjectFifoPort.Consume, 1)
-                    of_out2.release(ObjectFifoPort.Produce, 1)
+# To/from AIE-array runtime data movement
+rt = Runtime()
+with rt.sequence(data_ty, data_ty, data_ty) as (a_in, _, c_out):
+    rt.start(*workers)
+    rt.fill(of_in.prod(), a_in)
+    rt.drain(of_out.cons(), c_out, wait=True)
 
-            data_ty = np.ndarray[(48,), np.dtype[np.int32]]
+# Create the program from the device type and runtime
+my_program = Program(dev, rt)
 
-            @runtime_sequence(data_ty, data_ty, data_ty)
-            def sequence(inTensor, notUsed, outTensor):
-                npu_dma_memcpy_nd(
-                    metadata=of_in,
-                    bd_id=1,
-                    mem=inTensor,
-                    sizes=[1, 1, 1, 48],
-                    issue_token=True,
-                )
-                npu_dma_memcpy_nd(
-                    metadata=of_out, bd_id=0, mem=outTensor, sizes=[1, 1, 1, 48]
-                )
-                dma_wait(of_in, of_out)
+# Place components (assign them resources on the device) and generate an MLIR module
+module = my_program.resolve_program(SequentialPlacer())
 
-    print(ctx.module)
-
-
-distribute_join_L2()
+# Print the generated MLIR
+print(module)

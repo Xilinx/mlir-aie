@@ -19,35 +19,34 @@ dev = NPU1Col1()
 data_ty = np.ndarray[(16,), np.dtype[np.int32]]
 
 # Dataflow with ObjectFifos
-of_in = ObjectFifo(data_ty, name="in", default_depth=1)
-
+of_in = ObjectFifo(data_ty, name="in", default_depth=1) # single buffer
+of_out = ObjectFifo(data_ty, name="out", default_depth=1) # single buffer
 
 # Task for the core to perform
 def core_fn(of_in):
-    # Effective while(1)
-    for _ in range_(8):
-        elem_out = of_in.acquire(1)
-        for i in range_(16):
-            elem_out[i] = 1
-        of_in.release(1)
+    elem_out = of_in.acquire(1)
+    for i in range_(16):
+        elem_out[i] = 1
+    of_in.release(1)
 
-
-def core_fn2(of_in):
-    # Effective while(1)
-    for _ in range_(8):
-        elem_in = of_in.acquire(1)
-        of_in.release(1)
-
+def core_fn2(of_in, of_out):
+    elem_in = of_in.acquire(1)
+    elem_out = of_out.acquire(1)
+    for i in range_(16):
+        elem_out[i] = elem_in[i]
+    of_in.release(1)
+    of_out.release(1)
 
 # Create a worker to perform the task
 my_worker = Worker(core_fn, [of_in.prod()])
-my_worker2 = Worker(core_fn2, [of_in.cons()])
+my_worker2 = Worker(core_fn2, [of_in.cons(), of_out.prod()])
 
-# Runtime operations to move data to/from the AIE-array
+# To/from AIE-array runtime data movement
 rt = Runtime()
-with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
+with rt.sequence(data_ty, data_ty, data_ty) as (_, _, c_out):
     rt.start(my_worker)
     rt.start(my_worker2)
+    rt.drain(of_out.cons(), c_out, wait=True)
 
 # Create the program from the device type and runtime
 my_program = Program(dev, rt)
