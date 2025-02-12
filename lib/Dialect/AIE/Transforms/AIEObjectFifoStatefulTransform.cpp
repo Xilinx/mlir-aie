@@ -276,8 +276,8 @@ struct AIEObjectFifoStatefulTransformPass
 
   // Checks if via_shared_mem attribute of the objectfifo is set and if so
   // tries to apply it. If the desired shared memory module is available to
-  // both producer and consumer then it will be used, otherwise a warning is
-  // emitted and the original shared memory module is used instead.
+  // both producer and consumer then it will be used, otherwise an error is
+  // emitted.
   void checkAndApplyViaSharedMemAttribute(ObjectFifoCreateOp createOp,
                                           int &share_direction) {
     if (createOp.getViaSharedMem().has_value()) {
@@ -303,8 +303,9 @@ struct AIEObjectFifoStatefulTransformPass
           if (share_direction == newShareDirection)
             share_direction = (share_direction == -1) ? 1 : -1;
           else
-            createOp->emitWarning("Memory module specified by `via_shared_mem` "
-                                  "is not available as shared memory module");
+            createOp->emitOpError(
+                "no access to shared memory module specified by "
+                "`via_shared_mem`");
         }
       }
     }
@@ -342,6 +343,7 @@ struct AIEObjectFifoStatefulTransformPass
   std::vector<LockOp> createObjectFifoLocks(OpBuilder &builder,
                                             LockAnalysis &lockAnalysis,
                                             ObjectFifoCreateOp op, int numElem,
+                                            int joinDistribFactor,
                                             TileOp creation_tile,
                                             int repeatCount) {
     std::vector<LockOp> locks;
@@ -379,7 +381,8 @@ struct AIEObjectFifoStatefulTransformPass
                             : 0;
       int prodLockID = lockAnalysis.getLockID(creation_tile);
       assert(prodLockID >= 0 && "No more locks to allocate!");
-      int prodLockValue = (numElem - initValues) * repeatCount;
+      int prodLockValue =
+          (numElem - initValues) * joinDistribFactor * repeatCount;
       auto prodLock = builder.create<LockOp>(
           builder.getUnknownLoc(), creation_tile, prodLockID, prodLockValue);
       prodLock.getOperation()->setAttr(
@@ -389,7 +392,7 @@ struct AIEObjectFifoStatefulTransformPass
 
       int consLockID = lockAnalysis.getLockID(creation_tile);
       assert(consLockID >= 0 && "No more locks to allocate!");
-      int consLockValue = initValues * repeatCount;
+      int consLockValue = initValues * joinDistribFactor * repeatCount;
       auto consLock = builder.create<LockOp>(
           builder.getUnknownLoc(), creation_tile, consLockID, consLockValue);
       consLock.getOperation()->setAttr(
@@ -494,19 +497,20 @@ struct AIEObjectFifoStatefulTransformPass
       of_elem_index++;
     }
     int repeatCount = 1;
+    int joinDistribFactor = 1;
     if (op.getRepeatCount().has_value())
       repeatCount = op.getRepeatCount().value();
     if (linked) {
       if (linkOp->getRepeatCount().has_value())
         repeatCount = linkOp->getRepeatCount().value();
       if (linkOp->isDistribute())
-        numElem *= linkOp->getFifoOuts().size();
+        joinDistribFactor *= linkOp->getFifoOuts().size();
       else if (linkOp->isJoin())
-        numElem *= linkOp->getFifoIns().size();
+        joinDistribFactor *= linkOp->getFifoIns().size();
       objFifoLinks[*linkOp] = op;
     }
     std::vector<LockOp> locks = createObjectFifoLocks(
-        builder, lockAnalysis, op, numElem, creation_tile, repeatCount);
+        builder, lockAnalysis, op, numElem, joinDistribFactor, creation_tile, repeatCount);
     buffersPerFifo[op] = buffers;
     locksPerFifo[op] = locks;
   }
@@ -1374,6 +1378,26 @@ struct AIEObjectFifoStatefulTransformPass
                                         builder.getBoolAttr(plio));
   }
 
+  /// Function used to verify that an objectfifo is present in at most one
+  /// ObjectFifoLinkOp.
+  void verifyObjectFifoLinks(DeviceOp &device) {
+    DenseSet<ObjectFifoCreateOp> objectfifoset;
+    for (ObjectFifoLinkOp link : device.getOps<ObjectFifoLinkOp>()) {
+      for (ObjectFifoCreateOp inOf : link.getInputObjectFifos()) {
+        if (objectfifoset.count(inOf))
+          inOf.emitOpError("objectfifo cannot be in more than one "
+                           "ObjectFifoLinkOp");
+        objectfifoset.insert(inOf);
+      }
+      for (ObjectFifoCreateOp outOf : link.getOutputObjectFifos()) {
+        if (objectfifoset.count(outOf))
+          outOf.emitOpError("objectfifo cannot be in more than one "
+                            "ObjectFifoLinkOp");
+        objectfifoset.insert(outOf);
+      }
+    }
+  }
+
   void runOnOperation() override {
     DeviceOp device = getOperation();
     LockAnalysis lockAnalysis(device);
@@ -1384,6 +1408,9 @@ struct AIEObjectFifoStatefulTransformPass
     auto consumerWireType = WireBundle::DMA;
     std::set<TileOp>
         objectFifoTiles; // track cores to check for loops during unrolling
+
+    verifyObjectFifoLinks(device);
+
     //===------------------------------------------------------------------===//
     // Split objectFifos into a consumer end and producer end if needed
     //===------------------------------------------------------------------===//
@@ -1403,9 +1430,6 @@ struct AIEObjectFifoStatefulTransformPass
       // Only FIFOs using DMA are split into two ends;
       // skip in shared memory case
       if (int share_direction = 0; !requiresDMAs(createOp, share_direction)) {
-        if (createOp.getRepeatCount().has_value())
-          createOp->emitWarning("Repeat unavailable for tiles sharing memory; "
-                                "ignoring `repeat_count`");
         continue;
       }
 
@@ -1504,8 +1528,9 @@ struct AIEObjectFifoStatefulTransformPass
                                  share_direction);
       } else {
         if (createOp.getViaSharedMem().has_value())
-          createOp->emitWarning("No access to shared memory module; ignoring "
-                                "`via_shared_mem`");
+          createOp->emitOpError(
+              "no access to shared memory module specified by "
+              "`via_shared_mem`");
 
         if (isa<ArrayAttr>(createOp.getElemNumber()))
           createOp.setElemNumberAttr(
@@ -1569,7 +1594,7 @@ struct AIEObjectFifoStatefulTransformPass
           producerWireType = producer.getProducerTileOp().isShimTile()
                                  ? WireBundle::PLIO
                                  : WireBundle::DMA;
-          consumerWireType = !(producer.getProducerTileOp().isShimTile())
+          consumerWireType = consumer.getProducerTileOp().isShimTile()
                                  ? WireBundle::PLIO
                                  : WireBundle::DMA;
         } else {
