@@ -339,7 +339,7 @@ bool isUnrealizedConversionCastWithAnnotation(
 }
 
 // Generate the equivalent memref type of an aie::buffer
-mlir::MemRefType bufferMemrefType(mlir::Type buffer,
+mlir::MemRefType bufferMemRefType(mlir::Type buffer,
                                   mlir::DataLayout &dataLayout) {
   static mlir::TypeConverter typeConverter =
       cir::prepareTypeConverter(dataLayout);
@@ -628,7 +628,7 @@ struct CIRToAIE : CIRToAIEBase<CIRToAIE> {
       if (auto bufferDetail = cat->getTypeDetail(bufCast.getType(0));
           bufferDetail.base == "aie::buffer") {
         LLVM_DEBUG(bufCast.emitRemark("Buffer cast from tile"));
-        auto mrt = bufferMemrefType(bufCast.getType(0), dataLayout);
+        auto mrt = bufferMemRefType(bufCast.getType(0), dataLayout);
         // \todo outline
         auto tileDetail = cat->getTypeDetail(bufCast.getOperand(0).getType());
         auto tileOp =
