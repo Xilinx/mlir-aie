@@ -47,8 +47,8 @@
 // CHECK:         %c1_2 = arith.constant 1 : index
 // CHECK:         %c9 = arith.constant 9 : index
 // CHECK:         aie.use_lock(%output_fifo_prod_lock, AcquireGreaterEqual, 1)
-// CHECK:         %0 = memref.load %buffer_0_2[%c0] : memref<2xi32>
-// CHECK:         %1 = arith.index_cast %0 : i32 to index
+// CHECK:         %[[VAL_0:.*]] = memref.load %buffer_0_2[%c0] : memref<2xi32>
+// CHECK:         %1 = arith.index_cast %[[VAL_0:.*]] : i32 to index
 // CHECK:         %2 = scf.index_switch %1 -> memref<10xi32> 
 // CHECK:         case 0 {
 // CHECK:           scf.yield %output_fifo_buff_0 : memref<10xi32>
@@ -212,8 +212,8 @@ module {
       %c1 = arith.constant 1 : index
       %c8 = arith.constant 9 : index
 
-      %0 = aie.objectfifo.acquire @output_fifo(Produce, 1) : !aie.objectfifosubview<memref<10xi32>>
-      %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+      %[[VAL_0:.*]] = aie.objectfifo.acquire @output_fifo(Produce, 1) : !aie.objectfifosubview<memref<10xi32>>
+      %1 = aie.objectfifo.subview.access %[[VAL_0:.*]][0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
       %2 = aie.objectfifo.acquire @input_fifo(Consume, 1) : !aie.objectfifosubview<memref<10xi32>>
       %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
       func.call @add_10_i32(%3, %3, %1) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
