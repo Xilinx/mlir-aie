@@ -46,6 +46,7 @@ of_outs = (
     )
 )
 
+
 # Task for the core to perform
 def core_fn(of_in, of_out):
     elem_in = of_in.acquire(1)
