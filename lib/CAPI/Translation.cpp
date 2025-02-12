@@ -93,7 +93,7 @@ MlirOperation aieTranslateBinaryToTxn(MlirContext ctx, MlirStringRef binary) {
 }
 
 MlirStringRef aieTranslateNpuToBinary(MlirOperation moduleOp,
-                                MlirStringRef sequenceName) {
+                                      MlirStringRef sequenceName) {
   std::string npu;
   llvm::raw_string_ostream os(npu);
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
