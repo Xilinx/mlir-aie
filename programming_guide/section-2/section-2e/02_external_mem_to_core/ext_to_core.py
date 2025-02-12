@@ -23,6 +23,7 @@ data_ty = np.ndarray[(48,), np.dtype[np.int32]]
 of_in = ObjectFifo(tile_ty, name="in")
 of_out = ObjectFifo(tile_ty, name="out")
 
+
 # Task for the core to perform
 def core_fn(of_in, of_out):
     elem_in = of_in.acquire(1)
