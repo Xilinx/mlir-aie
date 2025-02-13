@@ -143,11 +143,9 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
 
 It may be desirable to reconfigure the runtime sequence and reuse some of the resources from a previous configuration, especially given that some of these resources, like the BDs in a DMA task queue, are limited.
 
-To facilitate this reconfiguration step, IRON introduces `RuntimeTaskGroups` which can be created using the `task_group()` function as defined in [runtime.py](../../../python/iron/runtime/runtime.py).
+To facilitate this reconfiguration step, IRON introduces `RuntimeTaskGroup`s which can be created using the `task_group()` function as defined in [runtime.py](../../../python/iron/runtime/runtime.py).
 
-`RuntimeTasks` defined within the task group code region will be appended to the runtime sequence defined by that task group and executed in order as a single configuration of the runtime. After the task group finishes, the resources used by the `RuntimeTasks` will be freed and reconfigured by the next task group. To mark the end of a task group code region, the `finish_task_group()` is used.
-
-
+`RuntimeTask`s can be added to a task group by specifying their `task_group` input. Tasks in the same group will be appended to the runtime sequence and executed in order as a single configuration of the runtime. The `finish_task_group()` operation is used to mark the end of a task group, i.e., after this operation all of the resources used by the `RuntimeTask`s in the group will be freed and reconfigured by the next task group.
 
 -----
 [[Up](./README.md)]
