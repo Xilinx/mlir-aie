@@ -136,5 +136,7 @@ The runtime sequence uses another representation of data layout transformations 
 
 Runtime sequence operations such as `fill()` and `drain()` at the highest IRON abstraction level, or `dma_wait` and `npu_dma_memcpy_nd` at the placed level, can optionally take a `tap` as input to change the access pattern to/from external memory on-the-fly. For more details on programming the runtime sequence please see the corresponding [section](../section-2g/README.md).
 
+Examples containing `tap`s are available in the [programming_examples](../../../programming_examples/). A few notable ones are [dma_transpose](../../../programming_examples/basic/dma_transpose/) and [row_wise_bias_add](../../../programming_examples/basic/row_wise_bias_add/).
+
 -----
 [[Prev - Section 2b](../section-2b/)] [[Up](..)] [[Next - Section 2d](../section-2d/)]
