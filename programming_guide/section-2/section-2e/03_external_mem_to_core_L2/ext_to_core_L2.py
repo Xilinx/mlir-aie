@@ -29,6 +29,7 @@ of_in1 = of_in0.cons().forward(name="in1", obj_type=tile8_ty)
 of_out1 = ObjectFifo(tile8_ty, name="out1")
 of_out0 = of_out1.cons().forward(name="out0", obj_type=tile24_ty)
 
+
 # Task for the core to perform
 def core_fn(of_in, of_out):
     elem_in = of_in.acquire(1)
@@ -37,6 +38,7 @@ def core_fn(of_in, of_out):
         elem_out[i] = elem_in[i] + 1
     of_in.release(1)
     of_out.release(1)
+
 
 # Create a worker to perform the task
 my_worker = Worker(core_fn, [of_in1.cons(), of_out1.prod()])

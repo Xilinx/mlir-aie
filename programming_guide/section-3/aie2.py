@@ -36,6 +36,7 @@ of_factor = ObjectFifo(scalar_ty, name="infactor")
 # Output data movement
 of_out = ObjectFifo(tile_ty, name="out")
 
+
 # Task for the core to perform
 def core_fn(of_in, of_factor, of_out, scale_scalar):
     elem_factor = of_factor.acquire(1)
