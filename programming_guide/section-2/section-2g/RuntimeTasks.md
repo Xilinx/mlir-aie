@@ -149,5 +149,20 @@ To facilitate this reconfiguration step, IRON introduces `RuntimeTaskGroup`s whi
 
 > **NOTE:**  Because of their ability to wait on runtime tasks until completion and free all the resources at the same time, task groups are well-placed to handle the asynchronous nature of runtime data movement tasks.
 
+The runtime sequence in the code snippet below has two task groups. We can observe that the creation of the second task group happens at the end of execution of the first task group.
+```python
+rt = Runtime()
+with rt.sequence(data_ty, data_ty, data_ty) as (a_in, _, c_out):
+    rt.start(*workers)
+
+    tg = rt.task_group() # start first task group
+    for groups in [0, 1]:
+        rt.fill(of_in.prod(), a_in, task_group=tg)
+        rt.drain(of_out.cons(), c_out, task_group=tg, wait=True)
+        rt.finish_task_group(tg)
+        tg = rt.task_group() # start second task group
+    rt.finish_task_group(tg)
+```
+
 -----
 [[Up](./README.md)]
