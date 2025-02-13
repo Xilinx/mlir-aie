@@ -56,6 +56,7 @@ def core_fn(of_in, of_out):
     of_in.release(1)
     of_out.release(1)
 
+
 # Create a worker to perform the task
 workers = []
 for worker in range(n_workers):
