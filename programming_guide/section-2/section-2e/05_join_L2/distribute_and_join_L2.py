@@ -34,12 +34,10 @@ of_ins = of_in.cons().split(
 
 # Output
 of_out = ObjectFifo(tile24_ty, name="out")
-of_outs = (
-    of_out.prod().join(
-        of_offsets,
-        obj_types=[tile8_ty] * n_workers,
-        names=[f"out{worker}" for worker in range(n_workers)],
-    )
+of_outs = of_out.prod().join(
+    of_offsets,
+    obj_types=[tile8_ty] * n_workers,
+    names=[f"out{worker}" for worker in range(n_workers)],
 )
 
 
