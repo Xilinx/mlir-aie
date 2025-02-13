@@ -21,6 +21,44 @@
 
 -----
 
+IRON proposes a `Runtime` class with a `sequence()` function which can be programmed with `RuntimeTasks` that will launch Workers, fill and drain ObjectFifos with data from/to external memory. All IRON constructs introduced in this section are available [here](../../../python/iron/runtime/).
+
+To create a Runtime sequence users can write:
+```python
+# To/from AIE-array runtime data movement
+rt = Runtime()
+with rt.sequence(data_ty_a, data_ty_b, data_ty_c) as (a, b, c):
+    # runtime tasks
+```
+The arguments to this function describe buffers that will be available on the host side; the body of the function describes how those buffers are moved into the AIE-array.
+
+#### **Runtime Tasks**
+
+Runtime tasks are performed during runtime and they may be synchronous or asynchronous. Tasks can be added to the runtime sequence during the creation of the IRON design, and they can also be queued during runtime.
+
+The `start()` operation is used to start one or multiple Workers that were declared in the IRON design. It is shown below and defined in [runtime.py](../../../python/iron/runtime/runtime.py):
+```python
+def start(self, *args: Worker)
+```
+If more than one Worker is given as input, they will be started in order.
+
+The code snippet below shows how one `my_worker` Worker is started:
+```python
+rt = Runtime()
+with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
+    rt.start(my_worker)
+```
+
+To start multiple Workers with a single use of this operation users can write:
+```python
+workers = []
+# create and append Workers to the "workers" array
+
+rt = Runtime()
+with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
+    rt.start(*workers)
+```
+
 The `fill()` operation is used to fill an `in_fifo` ObjectFifoHandle of type producer with data from a `source` runtime buffer. It is shown below and defined in [runtime.py](../../../python/iron/runtime/runtime.py):
 ```python
 def fill(
@@ -33,9 +71,16 @@ def fill(
         placement: PlacementTile = AnyShimTile,
     )
 ```
-When the `wait` input is set to `True` this operation will be waited upon, i.e., a token will be produced when the operation is finished that a controller is waiting on. A `placement` Shim tile can also be explicitly specified, otherwise the compiler will choose one based on the placement algorithm.
+When the `wait` input is set to `True` this operation will be waited upon, i.e., a token will be produced when the operation is finished that a controller is waiting on. A `placement` Shim tile can also be explicitly specified, otherwise the compiler will choose one based on the placement algorithm. The `task_group` is explained further in this section.
 
-The `drain()` operation is used to fill an ObjectFifoHandle of type consumer of data and write that data to a runtime buffer. It is shown below and defined in [runtime.py](../../../python/iron/runtime/runtime.py):
+The code snippet below shows how data from a source runtime buffer `a_in` is sent to the producer `ObjectFifoHandle` of `of_in`. This data could then be read via a consumer `ObjectFifoHandle` of the same Object FIFO.
+```python
+rt = Runtime()
+with rt.sequence(data_ty, data_ty, data_ty) as (a_in, _, _):
+    rt.fill(of_in.prod(), a_in)
+```
+
+The `drain()` operation is used to fill an out_fifo ObjectFifoHandle of type consumer of data and write that data to a dest runtime buffer. It is shown below and defined in [runtime.py](../../../python/iron/runtime/runtime.py):
 ```python
 def drain(
     self,
@@ -47,11 +92,62 @@ def drain(
     placement: PlacementTile = AnyShimTile,
 )
 ```
-When the `wait` input is set to `True` this operation will be waited upon, i.e., a token will be produced when the operation is finished that a controller is waiting on. A `placement` Shim tile can also be explicitly specified, otherwise the compiler will choose one based on the placement algorithm.
+When the `wait` input is set to `True` this operation will be waited upon, i.e., a token will be produced when the operation is finished that a controller is waiting on. A `placement` Shim tile can also be explicitly specified, otherwise the compiler will choose one based on the placement algorithm. The `task_group` is explained further in this section.
 
-It is possible to reconfigure the DMAs in the AIE array at runtime to change the configuration of the data or to reuse some of the BDs, which can be very interesting as they are a limited resource. To facilitate this reconfiguration step, IRON introduces `RuntimeTaskGroups` which can be created using the `task_group()` function as defined in [runtime.py](../../../python/iron/runtime/runtime.py).
+The code snippet below shows how data from a consumer `ObjectFifoHandle` of `of_out` is drained into a destination runtime buffer `c_out`. Data could be produced into `of_out` via its producer `ObjectFifoHandle`. Additionally, the `wait` input of the `drain()` task is set meaning that this task will be waited on until completion, i.e., until the `c_out` runtime buffer had received enough data as described by the `data_ty`.
+```python
+rt = Runtime()
+with rt.sequence(data_ty, data_ty, data_ty) as (_, _, c_out):
+    rt.drain(of_out.cons(), c_out, wait=True)
+```
 
-`RuntimeTasks` defined within the task group code region will be appended to the runtime sequence defined by that task group and executed as a single configuration of the runtime at time `t`. After the task group finishes at time `t+1`, the `RuntimeTasks` will be freed and the next task group will start. To mark the end of a task group code region, the `finish_task_group()` is used.
+#### **Inline Operations into a Runtime Sequence**
+
+In some cases it may be desirable to insert a Python function that generates arbitrary MLIR operations into the runtime sequence. One such example is when users want to set runtime parameters, which will be loaded into the local memory modules of the Workers at runtime, or to setup tracing in the design.
+
+To inline operations into the runtime sequence, users can use the `inline_ops()` operation. It is shown below and defined in [runtime.py](../../../python/iron/runtime/runtime.py):
+```python
+def inline_ops(self, inline_func: Callable, inline_args: list)
+```
+The `inline_func` is the function to execute within an MLIR context and the `inline_args` are state the function needs to execute.
+
+In the following code snippet, an array of `GlobalBuffers` is created where each of the buffers will hold a runtime parameter of type `16xi32`. A [`GlobalBuffer`](../../../python/iron/globalbuffer.py) is a memory region declared at the top-level of the IRON design that is available both to the Workers and to the runtime for operations. When `use_write_rtp` is set, runtime parameter specific operations will be generated within the runtime sequence at lower-levels of compiler abstraction.
+```python
+# Runtime parameters
+rtps = []
+for i in range(4):
+    rtps.append(
+        GlobalBuffer(
+            np.ndarray[(16,), np.dtype[np.int32]],
+            name=f"rtp{i}",
+            use_write_rtp=True,
+        )
+    )
+```
+The actual values of the runtime parameters will be loaded into each of the buffers at runtime:
+```python
+rt = Runtime()
+with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
+
+    # Set runtime parameters
+    def set_rtps(*args):
+        for rtp in args:
+            rtp[0] = 50
+            rtp[1] = 255
+            rtp[2] = 0
+
+    rt.inline_ops(set_rtps, rtps)
+```
+
+#### **Runtime Task Groups**
+
+It may be desirable to reconfigure the runtime sequence and reuse some of the resources from a previous configuration, especially given that some of these resources, like the BDs in a DMA task queue, are limited.
+
+To facilitate this reconfiguration step, IRON introduces `RuntimeTaskGroups` which can be created using the `task_group()` function as defined in [runtime.py](../../../python/iron/runtime/runtime.py).
+
+`RuntimeTasks` defined within the task group code region will be appended to the runtime sequence defined by that task group and executed in order as a single configuration of the runtime. After the task group finishes, the resources used by the `RuntimeTasks` will be freed and reconfigured by the next task group. To mark the end of a task group code region, the `finish_task_group()` is used.
+
+
 
 -----
 [[Up](./README.md)]
