@@ -145,7 +145,9 @@ It may be desirable to reconfigure the runtime sequence and reuse some of the re
 
 To facilitate this reconfiguration step, IRON introduces `RuntimeTaskGroup`s which can be created using the `task_group()` function as defined in [runtime.py](../../../python/iron/runtime/runtime.py).
 
-`RuntimeTask`s can be added to a task group by specifying their `task_group` input. Tasks in the same group will be appended to the runtime sequence and executed in order as a single configuration of the runtime. The `finish_task_group()` operation is used to mark the end of a task group, i.e., after this operation all of the resources used by the `RuntimeTask`s in the group will be freed and reconfigured by the next task group.
+`RuntimeTask`s can be added to a task group by specifying their `task_group` input. Tasks in the same group will be appended to the runtime sequence and executed in order. The `finish_task_group()` operation is used to mark the end of a task group, i.e., after this operation all of the tasks in the group will be waited on for completion after which they will be freed at the same time and the runtime sequence will be reconfigured by the next task group.
+
+> **NOTE:**  Because of their ability to wait on runtime tasks until completion and free all the resources at the same time, task groups are well-placed to handle the asynchronous nature of runtime data movement tasks.
 
 -----
 [[Up](./README.md)]
