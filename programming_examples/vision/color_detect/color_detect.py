@@ -11,6 +11,7 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 
+
 def color_detect(dev, width, height):
     lineWidth = width
     lineWidthInBytes = width * 4
