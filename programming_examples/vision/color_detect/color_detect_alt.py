@@ -12,13 +12,6 @@ from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 
-width = 64
-height = 36
-if len(sys.argv) == 3:
-    width = int(sys.argv[1])
-    height = int(sys.argv[2])
-
-
 def color_detect(dev, width, height):
     lineWidth = width
     lineWidthInBytes = width * 4
@@ -224,8 +217,10 @@ try:
         dev = AIEDevice.npu2
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+
     width = 36 if (len(sys.argv) != 4) else int(sys.argv[2])
     height = 64 if (len(sys.argv) != 4) else int(sys.argv[3])
+
 except ValueError:
     print("Argument has inappropriate value")
 with mlir_mod_ctx() as ctx:
