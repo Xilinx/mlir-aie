@@ -246,9 +246,9 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span>} <span class="comment">// namespace</span></div>
 <div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span> </div>
 <div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span>LogicalResult</div>
-<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span><a class="code hl_function" href="namespacexilinx_1_1AIE.html#a3cd7d351d3dc7e37a09a130dbc484514">xilinx::AIE::AIETranslateToNPU</a>(ModuleOp module,</div>
-<div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span>                               std::vector&lt;uint32_t&gt; &amp;instructions,</div>
-<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span>                               StringRef sequenceName) {</div>
+<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span><a class="code hl_function" href="namespacexilinx_1_1AIE.html#a8e7e5dffbdc9faa6d87184fff735b34c">xilinx::AIE::AIETranslateNpuToBinary</a>(ModuleOp module,</div>
+<div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span>                                     std::vector&lt;uint32_t&gt; &amp;instructions,</div>
+<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span>                                     StringRef sequenceName) {</div>
 <div class="line"><a id="l00192" name="l00192"></a><span class="lineno">  192</span> </div>
 <div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span>  <span class="keyword">auto</span> words = reserveAndGetTail(instructions, 4);</div>
 <div class="line"><a id="l00194" name="l00194"></a><span class="lineno">  194</span> </div>
@@ -302,11 +302,11 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00242" name="l00242"></a><span class="lineno">  242</span>  <span class="keywordflow">return</span> success();</div>
 <div class="line"><a id="l00243" name="l00243"></a><span class="lineno">  243</span>}</div>
 <div class="line"><a id="l00244" name="l00244"></a><span class="lineno">  244</span> </div>
-<div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span>LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a3cd7d351d3dc7e37a09a130dbc484514">xilinx::AIE::AIETranslateToNPU</a>(ModuleOp module,</div>
-<div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span>                                             raw_ostream &amp;output,</div>
-<div class="line"><a id="l00247" name="l00247"></a><span class="lineno">  247</span>                                             StringRef sequenceName) {</div>
+<div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span>LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a8e7e5dffbdc9faa6d87184fff735b34c">xilinx::AIE::AIETranslateNpuToBinary</a>(ModuleOp module,</div>
+<div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span>                                                   raw_ostream &amp;output,</div>
+<div class="line"><a id="l00247" name="l00247"></a><span class="lineno">  247</span>                                                   StringRef sequenceName) {</div>
 <div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>  std::vector&lt;uint32_t&gt; instructions;</div>
-<div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>  <span class="keyword">auto</span> r = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a3cd7d351d3dc7e37a09a130dbc484514">AIETranslateToNPU</a>(module, instructions, sequenceName);</div>
+<div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>  <span class="keyword">auto</span> r = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a8e7e5dffbdc9faa6d87184fff735b34c">AIETranslateNpuToBinary</a>(module, instructions, sequenceName);</div>
 <div class="line"><a id="l00250" name="l00250"></a><span class="lineno">  250</span>  <span class="keywordflow">if</span> (failed(r))</div>
 <div class="line"><a id="l00251" name="l00251"></a><span class="lineno">  251</span>    <span class="keywordflow">return</span> r;</div>
 <div class="line"><a id="l00252" name="l00252"></a><span class="lineno">  252</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> w : instructions)</div>
@@ -388,13 +388,13 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a15496c5385f3fd0d2ffe4cf3ce16ae5b"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a15496c5385f3fd0d2ffe4cf3ce16ae5b">xilinx::AIE::AIETranslateControlPacketsToUI32Vec</a></div><div class="ttdeci">mlir::LogicalResult AIETranslateControlPacketsToUI32Vec(mlir::ModuleOp module, llvm::raw_ostream &amp;output, llvm::StringRef sequenceName=&quot;&quot;)</div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a1e6006c1b4fccd997eba880457892eec"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">xilinx::AIE::row</a></div><div class="ttdeci">int row</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00052">AIETargetModel.h:52</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a2e68be9ae4fa95fd84120dc8154599e6"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">xilinx::AIE::col</a></div><div class="ttdeci">int col</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00052">AIETargetModel.h:52</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_a3cd7d351d3dc7e37a09a130dbc484514"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a3cd7d351d3dc7e37a09a130dbc484514">xilinx::AIE::AIETranslateToNPU</a></div><div class="ttdeci">mlir::LogicalResult AIETranslateToNPU(mlir::ModuleOp module, llvm::raw_ostream &amp;output, llvm::StringRef sequenceName=&quot;&quot;)</div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_a8e7e5dffbdc9faa6d87184fff735b34c"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a8e7e5dffbdc9faa6d87184fff735b34c">xilinx::AIE::AIETranslateNpuToBinary</a></div><div class="ttdeci">mlir::LogicalResult AIETranslateNpuToBinary(mlir::ModuleOp module, llvm::raw_ostream &amp;output, llvm::StringRef sequenceName=&quot;&quot;)</div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a98d14c817daebc58ad822d608bc73313"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">xilinx::AIE::getTargetModel</a></div><div class="ttdeci">const AIETargetModel &amp; getTargetModel(mlir::Operation *op)</div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00021">AIEToConfiguration.h:21</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Feb 13 2025 21:28:03 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Feb 13 2025 23:54:05 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
