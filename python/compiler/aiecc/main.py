@@ -93,11 +93,8 @@ AIE_LOWER_TO_LLVM = (
     + LOWER_TO_LLVM_PIPELINE
 )
 
-CREATE_PATH_FINDER_FLOWS = Pipeline().Nested(
-    "aie.device", Pipeline().add_pass("aie-create-pathfinder-flows")
-)
-
-DMA_TO_NPU = Pipeline().Nested(
+# pipeline to lower and legalize runtime sequence for NPU
+NPU_LOWERING_PIPELINE = Pipeline().Nested(
     "aie.device",
     Pipeline()
     .add_pass("aie-materialize-bd-chains")
@@ -335,7 +332,7 @@ def do_run(command, verbose=False):
 def run_passes(pass_pipeline, mlir_module_str, outputfile=None, verbose=False):
     if verbose:
         print("Running:", pass_pipeline)
-    with Context() as ctx, Location.unknown():
+    with Context(), Location.unknown():
         module = Module.parse(mlir_module_str)
         pm = PassManager.parse(pass_pipeline)
         try:
@@ -348,6 +345,23 @@ def run_passes(pass_pipeline, mlir_module_str, outputfile=None, verbose=False):
             with open(outputfile, "w") as g:
                 g.write(mlir_module_str)
     return mlir_module_str
+
+
+def run_passes_module(pass_pipeline, mlir_module, outputfile=None, verbose=False):
+    if verbose:
+        print("Running:", pass_pipeline)
+    with mlir_module.context, Location.unknown():
+        pm = PassManager.parse(pass_pipeline)
+        try:
+            pm.run(mlir_module.operation)
+        except Exception as e:
+            print("Error running pass pipeline: ", pass_pipeline, e)
+            raise e
+        if outputfile:
+            mlir_module_str = str(mlir_module)
+            with open(outputfile, "w") as g:
+                g.write(mlir_module_str)
+    return mlir_module
 
 
 def corefile(dirname, core, ext):
@@ -1102,24 +1116,24 @@ class FlowRunner:
 
             # Optionally generate insts.txt for NPU instruction stream
             if opts.npu or opts.only_npu:
-                generated_insts_mlir = self.prepend_tmp("generated_npu_insts.mlir")
-                await self.do_call(
-                    progress_bar.task,
-                    [
-                        "aie-opt",
-                        f"--pass-pipeline={DMA_TO_NPU}",
-                        file_with_addresses,
-                        "-o",
-                        generated_insts_mlir,
-                    ],
-                )
-                # read file_with_addresses as mlir module
                 with Context(), Location.unknown():
                     file_with_addresses_module = Module.parse(
-                        await read_file_async(generated_insts_mlir)
+                        await read_file_async(file_with_addresses)
+                    )
+                    pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
+                    generated_npu_insts_file = (
+                        self.prepend_tmp("npu_insts.mlir")
+                        if self.opts.verbose
+                        else None
+                    )
+                    generated_insts_mlir_module = run_passes_module(
+                        pass_pipeline,
+                        file_with_addresses_module,
+                        generated_npu_insts_file,
+                        self.opts.verbose,
                     )
                     insts = aiedialect.translate_npu_to_binary(
-                        file_with_addresses_module.operation
+                        generated_insts_mlir_module.operation
                     )
                     with open(opts.insts_name, "w") as f:
                         for inst in insts:
