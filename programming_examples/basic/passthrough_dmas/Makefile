@@ -19,7 +19,7 @@ targetname = passthrough_dmas
 LENGTH ?= 4096
 
 aie_py_src=${targetname}.py
-use_alt?=0
+use_alt?=1
 
 ifeq (${use_alt}, 1)
 aie_py_src=${targetname}_alt.py
@@ -39,9 +39,14 @@ inst/insts.txt: ${srcdir}/${aie_py_src}
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
+ifeq ($(devicename),npu2)
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--no-xchesscc --no-xbridge \
-				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
+		--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
+else
+	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+		--no-xchesscc --no-xbridge \
+		--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
+endif
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
