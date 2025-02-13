@@ -1121,22 +1121,22 @@ class FlowRunner:
                         await read_file_async(file_with_addresses)
                     )
                     pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
-                    generated_npu_insts_file = (
+                    npu_insts_file = (
                         self.prepend_tmp("npu_insts.mlir")
                         if self.opts.verbose
                         else None
                     )
-                    generated_insts_mlir_module = run_passes_module(
+                    npu_insts_module = run_passes_module(
                         pass_pipeline,
                         file_with_addresses_module,
-                        generated_npu_insts_file,
+                        npu_insts_file,
                         self.opts.verbose,
                     )
-                    insts = aiedialect.translate_npu_to_binary(
-                        generated_insts_mlir_module.operation
+                    npu_insts = aiedialect.translate_npu_to_binary(
+                        npu_insts_module.operation
                     )
                     with open(opts.insts_name, "w") as f:
-                        for inst in insts:
+                        for inst in npu_insts:
                             f.write(f"{inst}\n")
                 if opts.only_npu:
                     return
