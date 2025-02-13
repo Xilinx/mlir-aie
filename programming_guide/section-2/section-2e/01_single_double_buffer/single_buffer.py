@@ -39,6 +39,7 @@ def core_fn2(of_in, of_out):
     of_in.release(1)
     of_out.release(1)
 
+
 # Create a worker to perform the task
 my_worker = Worker(core_fn, [of_in.prod()])
 my_worker2 = Worker(core_fn2, [of_in.cons(), of_out.prod()])
