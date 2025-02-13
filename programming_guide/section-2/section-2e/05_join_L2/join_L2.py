@@ -26,18 +26,18 @@ tile8_ty = np.ndarray[(8,), np.dtype[np.int32]]
 of_offsets = [8 * worker for worker in range(n_workers)]
 
 of_out = ObjectFifo(tile24_ty, name="out")
-of_outs = (
-    of_out.prod().join(
-        of_offsets,
-        obj_types=[tile8_ty] * n_workers,
-        names=[f"out{worker}" for worker in range(n_workers)],
-    )
+of_outs = of_out.prod().join(
+    of_offsets,
+    obj_types=[tile8_ty] * n_workers,
+    names=[f"out{worker}" for worker in range(n_workers)],
 )
 
-# Task for the core to perform
+
+    elem_out = of_out.acquire(1)
 def core_fn(of_out):
     elem_out = of_out.acquire(1)
     of_out.release(1)
+
 
 # Create a worker to perform the task
 workers = []

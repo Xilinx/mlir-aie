@@ -32,10 +32,12 @@ of_ins = of_in.cons().split(
     names=[f"in{worker}" for worker in range(n_workers)],
 )
 
+
 # Task for the core to perform
 def core_fn(of_in):
     elem_in = of_in.acquire(1)
     of_in.release(1)
+
 
 # Create a worker to perform the task
 workers = []
