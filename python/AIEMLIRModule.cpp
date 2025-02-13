@@ -132,7 +132,7 @@ NB_MODULE(_aie, m) {
           individualInstructions[i] = individualInstructions[i].attr("strip")();
         return individualInstructions;
       },
-      "module"_a, "sequence_name"_a);
+      "module"_a, "sequence_name"_a = "");
 
   m.def(
       "generate_control_packets",

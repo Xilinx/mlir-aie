@@ -1116,11 +1116,14 @@ class FlowRunner:
                 # read file_with_addresses as mlir module
                 with Context(), Location.unknown():
                     file_with_addresses_module = Module.parse(
-                        await read_file_async(file_with_addresses)
+                        await read_file_async(generated_insts_mlir)
                     )
-                    bin = aiedialect.translate_npu_to_binary(file_with_addresses_module)
+                    insts = aiedialect.translate_npu_to_binary(
+                        file_with_addresses_module.operation
+                    )
                     with open(opts.insts_name, "w") as f:
-                        f.write(bin)
+                        for inst in insts:
+                            f.write(f"{inst}\n")
                 if opts.only_npu:
                     return
 
