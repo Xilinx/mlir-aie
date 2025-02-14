@@ -13,14 +13,20 @@ device ?= npu
 mlirFileName = aie
 
 # Modify these params to configure design
+#width = 64
 width = 32
 height = 32
 in_channels = 64
 out_channels = 64
 vectorized ?= true
+#vectorized ?= false
 trace_size = 16384
 
+ifeq ($(device),npu2)
+VPATH := ${srcdir}/../../../aie_kernels/aie2p
+else
 VPATH := ${srcdir}/../../../aie_kernels/aie2
+endif
 
 aie_py_src = conv2d.py
 aie_py_trace_src = conv2d_alt.py
