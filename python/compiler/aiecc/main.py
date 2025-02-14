@@ -399,6 +399,7 @@ def downgrade_ir_for_chess(llvmir_chesslinked):
             "inaccessiblemem_or_argmemonly writeonly",
         )
         .replace("captures(none)", "nocapture")
+        .replace("getelementptr inbounds nuw", "getelementptr inbounds")
     )
     return llvmir_chesslinked
 
