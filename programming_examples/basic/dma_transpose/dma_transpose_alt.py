@@ -26,6 +26,7 @@ if len(sys.argv) > 3:
 else:
     raise ValueError("[ERROR] Not enough arguments provided")
 
+
 def my_passthrough(M, K, N, generate_access_map=False):
     tensor_ty = np.ndarray[(M, K), np.dtype[np.int32]]
     data_transform = TensorAccessPattern(

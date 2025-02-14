@@ -24,7 +24,8 @@ if len(sys.argv) > 3:
         dev = AIEDevice.npu2
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
-    
+
+
 def my_passthrough(M, K, N, generate_access_map=False):
     tensor_ty = np.ndarray[(M, K), np.dtype[np.int32]]
     data_transform = TensorAccessPattern(
