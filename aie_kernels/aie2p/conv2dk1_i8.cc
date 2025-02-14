@@ -88,13 +88,13 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
   event0();
 
   constexpr int NUM_ACC = 4; // Number of accumulators
-  constexpr int MMUL_M = 8;  // Matrix A M size in MxK (Input width)
+  constexpr int MMUL_M = 8; // Matrix A M size in MxK (Input width)
   constexpr int MMUL_K = 8;
   constexpr int MMUL_N = 8;
   constexpr int CHANNEL_FACTOR = MMUL_K;
-  constexpr int MMUL_MK = MMUL_M * MMUL_K;
-  constexpr int MMUL_KN = MMUL_K * MMUL_N;
-  constexpr int MMUL_MN = MMUL_M * MMUL_N;
+  constexpr int MMUL_MK = MMUL_M*MMUL_K;
+  constexpr int MMUL_KN = MMUL_K*MMUL_N;
+  constexpr int MMUL_MN = MMUL_M*MMUL_N;
 
   using MMUL8x8x8 = aie::mmul<MMUL_M, MMUL_K, MMUL_N, int8, int8>;
   ::aie::set_saturation(
@@ -105,6 +105,7 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
   int8_t *restrict out_ptr = output;
 
   const int scaleT = scale;
+
 
   MMUL8x8x8 acc_tmp[NUM_ACC];
   for (int x = 0; x < NUM_ACC; x++) {
@@ -117,16 +118,15 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 
   // constexpr int iw_partial_rem = (input_width / MMUL_M) % NUM_ACC;
   // const int iw_partial_rem = (32 / MMUL_M) % NUM_ACC;
-
+  
   assert((input_width / MMUL_M) % NUM_ACC == 0);
-
+  
   const int iw_partial_rem = 0; // TODO - See restriction
 
   assert((input_channels / CHANNEL_FACTOR) > 2); // Assume IC >= 16
 
-  int8_t *input_begin_ptr = input;
-  int8_t *input_rem_begin_ptr =
-      input + iw_partial * MMUL_M * NUM_ACC * CHANNEL_FACTOR;
+  int8_t* input_begin_ptr = input;
+  int8_t* input_rem_begin_ptr = input + iw_partial*MMUL_M*NUM_ACC*CHANNEL_FACTOR;
 
   if (iw_partial > 0) {
 
@@ -143,7 +143,7 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
               acc_tmp[x].mac(in_a, in_b);
             }
             // Move to next ic/8 position but in the same input range
-            input += (iw * CHANNEL_FACTOR) - MMUL_MK * NUM_ACC;
+            input += (iw * CHANNEL_FACTOR) - MMUL_MK*NUM_ACC; 
           }
         // input ptr just moves to next section
 
@@ -154,16 +154,14 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
           acc_tmp[xx] = aie::zeros<acc32, MMUL_MN>();
         }
         // reset to next set of 64*NUM_ACC inputs
-        input -= (input_channels * iw) - MMUL_MK * NUM_ACC;
-        // reset kernel back to beginning of ic/8
-        kernels -= (input_channels / CHANNEL_FACTOR) * MMUL_KN;
+        input -= (input_channels*iw) - MMUL_MK*NUM_ACC; 
+        // reset kernel back to beginning of ic/8                 
+        kernels -= (input_channels / CHANNEL_FACTOR) * MMUL_KN; 
       }
       input = input_begin_ptr; // reset beginning of input ptr
-      kernels += (input_channels / CHANNEL_FACTOR) *
-                 MMUL_KN; // move to next oc/8 weights
-      out_ptr +=
-          (iw_partial_rem *
-           MMUL_MN); // move to next oc/8 (skip remainder section if present)
+      kernels += (input_channels / CHANNEL_FACTOR) * MMUL_KN; // move to next oc/8 weights
+      out_ptr += (iw_partial_rem *
+                 MMUL_MN); // move to next oc/8 (skip remainder section if present)
     }
 
   } // if(iw_partial > 0) {
@@ -184,8 +182,7 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
             input += MMUL_MK; // act oc0..3(ic0..7)
             acc_tmp[x].mac(in_a, in_b);
           }
-          input += (iw * CHANNEL_FACTOR) -
-                   (MMUL_MK * iw_partial_rem); // Move to next ic/8 position
+          input += (iw * CHANNEL_FACTOR) - (MMUL_MK*iw_partial_rem); // Move to next ic/8 position
         }
       // input ptr just moves to next section
       for (int xx = 0; xx < iw_partial_rem; xx++) {
@@ -194,15 +191,14 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
         out_ptr += MMUL_MN;
         acc_tmp[xx] = aie::zeros<acc32, MMUL_MN>();
       }
-      // input   -= ((ics-1)/8)*(iw*8)+(iw_partial_rem*32); // reset to
-      // beginning of input ptr for remainder reset to beginning of input ptr
-      // for remainder
-      input = input_rem_begin_ptr;
+      // input   -= ((ics-1)/8)*(iw*8)+(iw_partial_rem*32); // reset to beginning of
+      // input ptr for remainder
+      // reset to beginning of input ptr for remainder
+      input = input_rem_begin_ptr; 
       // kernel ptr already at next oc/8
-      out_ptr +=
-          (iw * CHANNEL_FACTOR) -
-          (iw_partial_rem *
-           MMUL_MN); // move to next oc/8 (skip remainder section if present)
+      out_ptr += (iw * CHANNEL_FACTOR) -
+                 (iw_partial_rem *
+                  MMUL_MN); // move to next oc/8 (skip remainder section if present)
     }
 
   } // if(iw_partial_rem > 0)
