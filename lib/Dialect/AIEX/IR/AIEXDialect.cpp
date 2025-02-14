@@ -77,7 +77,7 @@ uint64_t AIEX::getBufferDescriptorAddressRegisterAddress(
   hardware does not support a 0 stride (repeat).
   */
 void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
-                                   mlir::MemRefType referencedBufType,
+                                   mlir::BaseMemRefType referencedBufType,
                                    llvm::SmallVector<int64_t, 4> inputSizes,
                                    llvm::SmallVector<int64_t, 4> inputStrides,
                                    llvm::SmallVector<int64_t, 4> &sizes,
@@ -146,7 +146,7 @@ void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
 
 mlir::LogicalResult
 AIEX::verifyStridesWraps(mlir::Operation *forOp,
-                         mlir::MemRefType referencedBufType, int tileCol,
+                         mlir::BaseMemRefType referencedBufType, int tileCol,
                          int tileRow, llvm::SmallVector<int64_t, 4> inputSizes,
                          llvm::SmallVector<int64_t, 4> inputStrides,
                          llvm::SmallVector<int64_t, 4> hardwareSizes,
@@ -307,7 +307,7 @@ int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
         return getConstantIntValue(s).value();
       });
   size_t offset = 0;
-  MemRefType my_memref = getMemref().getType();
+  BaseMemRefType my_memref = getMemref().getType();
   size_t R = offsets.size();
   size_t el_bit_width = my_memref.getElementTypeBitWidth();
   assert(el_bit_width % 8 == 0 &&
@@ -336,7 +336,7 @@ bool AIEX::NpuDmaMemcpyNdOp::isLinearTransferWithoutTransformation() {
 }
 
 LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
-  MemRefType buffer = getMemref().getType();
+  BaseMemRefType buffer = getMemref().getType();
   const auto &targetModel = AIE::getTargetModel(*this);
   auto addressGranularity = targetModel.getAddressGenGranularity();
 
