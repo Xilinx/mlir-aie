@@ -19,7 +19,7 @@ data_size = 4096
 PASSTHROUGH_SIZE = ${data_size}
 
 aie_py_src=${targetname}.py
-use_alt?=1
+use_alt?=0
 
 ifeq (${use_alt}, 1)
 aie_py_src=${targetname}_alt.py
