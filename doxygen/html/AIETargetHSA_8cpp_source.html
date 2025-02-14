@@ -205,7 +205,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00142" name="l00142"></a><span class="lineno">  142</span>    <span class="comment">// buffer_offset</span></div>
 <div class="line"><a id="l00143" name="l00143"></a><span class="lineno">  143</span>    <span class="keywordtype">size_t</span> stride = 1;</div>
 <div class="line"><a id="l00144" name="l00144"></a><span class="lineno">  144</span>    <span class="keywordtype">size_t</span> offset = 0;</div>
-<div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>    MemRefType my_memref = op.getMemref().getType();</div>
+<div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>    BaseMemRefType my_memref = op.getMemref().getType();</div>
 <div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>    <span class="keyword">auto</span> shape = my_memref.getShape();</div>
 <div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span>    <span class="keywordtype">size_t</span> R = shape.size();</div>
 <div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>    <span class="keywordtype">size_t</span> el_bit_width = my_memref.getElementTypeBitWidth();</div>
@@ -303,7 +303,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Feb 13 2025 23:54:05 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Feb 14 2025 17:03:16 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
