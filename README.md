@@ -16,7 +16,7 @@ This project is primarily intended to support the open-source community, particu
 
 # Getting Started for AMD Ryzen™ AI - Linux Quick Setup Instructions
 
-These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 24.10** install with Linux 6.11 kernel. 
+These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 24.04.2** or **Ubuntu 24.10** install with included Linux 6.11 kernel. 
 
 ## Initial Setup
 
