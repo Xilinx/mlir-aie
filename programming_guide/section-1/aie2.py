@@ -11,7 +11,7 @@ import sys
 
 from aie.iron import LocalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col4
+from aie.iron.device import NPU1Col4, Tile
 from aie.iron.controlflow import range_
 
 data_size = 48
@@ -30,7 +30,7 @@ def core_fn():
 
 
 # Create a worker to perform the task
-my_worker = Worker(core_fn, [])
+my_worker = Worker(core_fn, [], placement=Tile(0, 2))
 
 # Runtime operations to move data to/from the AIE-array
 rt = Runtime()

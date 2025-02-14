@@ -20,7 +20,7 @@ At the top of this Python source, we include modules that define the IRON langua
 ```python
 from aie.iron import Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col4
+from aie.iron.device import NPU1Col4, Tile
 ```
 Data movement between the Workers is usually also declared at this step, however that part of design configuration has its own dedicated [section](../section-2/) and is not covered in detail here.
 ```python
@@ -39,7 +39,7 @@ class Worker(ObjectFifoEndpoint):
         while_true: bool = True,
     )
 ```
-In our simple design there is only one Worker which will perform the `core_fn` routine. The compute routine declares a local data tensor, iterates over it and adds one to each entry. As we will see in the next section of the guide, computational tasks usually run on data that is brought into the AIE array from external memory and the output produced is sent back out.
+In our simple design there is only one Worker which will perform the `core_fn` routine. The compute routine declares a local data tensor, iterates over it and adds one to each entry. As we will see in the next section of the guide, computational tasks usually run on data that is brought into the AIE array from external memory and the output produced is sent back out. Note that in this example design the Worker is explicitly placed on a Compute tile with coordinates (0,2) in the AIE array.
 ```python
 # Task for the core to perform
 def core_fn():
@@ -48,7 +48,7 @@ def core_fn():
         local[i] = local[i] + 1
 
 # Create a worker to perform the task
-my_worker = Worker(core_fn, [])
+my_worker = Worker(core_fn, [], placement=Tile(0, 2))
 ```
 In the previous code snippet it was mentioned that the data movement between Workers needs to be configured. This does not include data movement to/from the AIE array which is handled inside the `Runtime` sequence. The programming guide has a dedicated [section](../section-2/section-2g/) for runtime data movement. In this example, as we do not look in-depth at data movement configuration, the runtime sequence will only start the Worker.
 ```python
@@ -142,11 +142,15 @@ Next to the compute tiles, an AIE-array also contains data movers for accessing 
 ## <u>Exercises</u>
 1. To run our Python program from the command line, we type `python3 aie2.py`, which converts our Python structural design into MLIR source code. This works from the command line if our design environment already contains the mlir-aie Python-bound dialect module. We included this in the [Makefile](./Makefile), so go ahead and run `make` now. Then take a look at the generated MLIR source under `build/aie.mlir`.
 
-2. Run `make clean` to remove the generated files. Then introduce an error to the Python source, such as misspelling `tile` to `tilex`, and then run `make` again. What messages do you see? <img src="../../mlir_tutorials/images/answer1.jpg" title="There is a Python error because tilex is not recognized." height=25>
+2. Run `make clean` to remove the generated files. Then introduce an error to the Python source, such as misspelling `sequence` to `sequenc`, and then run `make` again. What messages do you see? <img src="../../mlir_tutorials/images/answer1.jpg" title="There is a Python error because sequenc is not recognized." height=25>
 
-3. Run `make clean` again. Now change the error by renaming `tilex` back to `tile`, but change the coordinates to (-1,3), which is an invalid location. Run `make` again. What messages do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="No error is generated." height=25>
+3. Run `make clean` again. Now change the error by renaming `sequenc` back to `sequence`, but place the Worker on a tile with coordinates (-1, 3), which is an invalid location. Run `make` again. What message do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="There is a partial placement error." height=25>
 
-4. No error is generated but our code is invalid. Take a look at the generated MLIR code under `build/aie.mlir`. This generated output is invalid MLIR syntax and running our mlir-aie tools on this MLIR source will generate an error. We do, however, have some additional Python structural syntax checks that can be enabled if we use the function `ctx.module.operation.verify()`. This verifies that our Python-bound code has valid operation within the mlir-aie context. 
+4. Now let's take a look at the placed version of the code. Run `make placed` and look at the generated MLIR source under `build/aie_placed.mlir`.
+
+5. Run `make clean` to remove the generated files. Introduce the same error as above by changing the coordinates of `ComputeTile1` to (-1,3). Run `make placed` again. What message do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="There is no error." height=25>
+
+6. No error is generated but our code is invalid. Take a look at the generated MLIR code under `build/aie_placed.mlir`. This generated output is invalid MLIR syntax and running our mlir-aie tools on this MLIR source will generate an error. We do, however, have some additional Python structural syntax checks that can be enabled if we use the function `ctx.module.operation.verify()`. This verifies that our Python-bound code has valid operation within the mlir-aie context. 
 
     Qualify the `print(ctx.module)` call with a check on `ctx.module.operation.verify()` using a code block like the following:
     ```python
@@ -156,7 +160,7 @@ Next to the compute tiles, an AIE-array also contains data movers for accessing 
     else:
         print(res)
     ```
-    Make this change and run `make` again. What message do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="It now says 'column value fails to satisfy the constraint' because the minimum value is 0." height=25>
+    Make this change and run `make placed` again. What message do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="It now says 'column value fails to satisfy the constraint' because the minimum value is 0." height=25>
 
 -----
 [[Prev - Section 0](../section-0/)] [[Top](..)] [[Next - Section 2](../section-2/)]

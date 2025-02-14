@@ -19,7 +19,7 @@ def mlir_aie_design():
     def device_body():
 
         # Tile(s) declarations
-        ComputeTile1 = tile(1, 3)
+        ComputeTile1 = tile(-1, 3)
         ComputeTile2 = tile(2, 3)
         ComputeTile3 = tile(2, 4)
 
