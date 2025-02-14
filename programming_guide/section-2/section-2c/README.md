@@ -130,5 +130,13 @@ and further represented as in the image below:
 
 Other examples containing data layout transformations are available in the [programming_examples](../../../programming_examples/). A few notable ones are [matrix_vector_multiplication](../../../programming_examples/basic/matrix_multiplication/matrix_vector/) and [matrix_multiplication_whole_array](../../../programming_examples/basic/matrix_multiplication/whole_array/).
 
+### Data Layout Transformations with the Runtime Sequence
+
+The runtime sequence uses another representation of data layout transformations named `Tensor Access Pattern`, or `tap`, which is available in the `taplib` library on AIEs with IRON. An in-depth introduction to `taplib` is available [here](../../../programming_examples/basic/tiling_exploration/README.md).
+
+Runtime sequence operations such as `fill()` and `drain()` at the highest IRON abstraction level, or `dma_wait` and `npu_dma_memcpy_nd` at the placed level, can optionally take a `tap` as input to change the access pattern to/from external memory on-the-fly. For more details on programming the runtime sequence please see the corresponding [section](../section-2g/README.md).
+
+Examples containing `tap`s are available in the [programming_examples](../../../programming_examples/). A few notable ones are [dma_transpose](../../../programming_examples/basic/dma_transpose/) and [row_wise_bias_add](../../../programming_examples/basic/row_wise_bias_add/).
+
 -----
 [[Prev - Section 2b](../section-2b/)] [[Up](..)] [[Next - Section 2d](../section-2d/)]

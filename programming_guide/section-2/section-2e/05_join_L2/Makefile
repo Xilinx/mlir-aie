@@ -11,14 +11,25 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 include ${srcdir}/../../../../programming_examples/makefile-common
 
 targetname = distribute_and_join_L2
-devicename = npu
-col = 0
 
-all: build/final.xclbin build/insts.txt
+aie_py_src=${targetname}.py
+use_placed?=0
 
-build/aie.mlir: ${srcdir}/distribute_and_join_L2.py
+ifeq (${use_placed}, 1)
+aie_py_src=${targetname}_placed.py
+endif
+
+build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${devicename} ${col} > $@
+	python3 $< > $@
+
+.PHONY: inst/insts.txt
+inst/insts.txt: ${srcdir}/${aie_py_src}
+	rm -rf inst
+	mkdir -p inst 
+	python3 $< ${LENGTH} > inst/aie.mlir
+	pushd inst && aiecc.py --aie-only-generate-npu --npu-insts-name=insts.txt aie.mlir && popd
+	${powershell} ./build/${targetname}.exe -x build/final.xclbin -i inst/insts.txt -k MLIR_AIE -l ${LENGTH}
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
