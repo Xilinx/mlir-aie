@@ -24,7 +24,8 @@ if len(sys.argv) > 2:
         dev = AIEDevice.npu2
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
-    
+
+
 def passthroughKernel(vector_size):
     N = vector_size
     lineWidthInBytes = N // 4  # chop input in 4 sub-tensors
