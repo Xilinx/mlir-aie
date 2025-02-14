@@ -10,11 +10,11 @@ import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1
+from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
 
 
-def vector_softmax(trace_size):
+def vector_softmax(dev, trace_size):
     N = 262144  # *1024
 
     # Tile sizes
@@ -88,13 +88,20 @@ def vector_softmax(trace_size):
         rt.drain(outC.cons(), C, wait=True)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
 try:
-    trace_size = 0 if (len(sys.argv) != 2) else int(sys.argv[1])
+    device_name = str(sys.argv[1])
+    if device_name == "npu":
+        dev = NPU1Col1()
+    elif device_name == "npu2":
+        dev = NPU2()
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
+    trace_size = 0 if (len(sys.argv) != 3) else int(sys.argv[2])
 except ValueError:
     print("Argument is not an integer")
 
-module = vector_softmax(trace_size)
+module = vector_softmax(dev, trace_size)
 print(module)
