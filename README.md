@@ -36,8 +36,6 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 ### Install AIETools
 
-> You may skip the Vitis™ installation step, and proceed to step: [Install the XDNA™ Driver](#install-the-xdna-driver), if you intend to only target AMD XDNA™/AIE-ML (AIE2) using our open-source single-core compiler [Peano](https://github.com/Xilinx/llvm-aie). AMD XDNA™ 2 (AIE2P) is not currently supported without installing AMD Vitis™ AIE Essentials. 
-
 #### Supporting AMD Ryzen™ AI with AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P): Install AMD Vitis™ AIE Essentials 
 
 1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3 Early Accesss](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab). We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
@@ -114,7 +112,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
        ```bash
        cd $XDNA_SRC_DIR/xrt/build/Release
-       sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-npu.deb
+       sudo apt reinstall ./xrt_202510.2.19.0_22.04-amd64-npu.deb
        ```
 
        > **An error might occur during this proces.** If so, do the following steps.
@@ -122,9 +120,9 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
        ```bash
        cd $XDNA_SRC_DIR/xrt/build/Release
        sudo apt remove xrt-npu
-       sudo dpkg -i --force-overwrite ./xrt_202510.2.19.0_24.10-amd64-npu.deb
+       sudo dpkg -i --force-overwrite ./xrt_202510.2.19.0_22.04-amd64-npu.deb
        sudo apt -f install
-       sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-npu.deb
+       sudo apt reinstall ./xrt_202510.2.19.0_22.04-amd64-npu.deb
        ```      
 
 1. Build XDNA-Driver. Below steps are adapted from [here](https://github.com/amd/xdna-driver).
@@ -139,7 +137,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
     ```bash
     cd $XDNA_SRC_DIR/build/Release
-    sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu24.10-x86_64-amdxdna.deb
+    sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu22.04-x86_64-amdxdna.deb
     ```
     
 1. Check that the NPU is working if the device appears with xrt-smi:
@@ -175,7 +173,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    sudo apt install libopencv-dev python3-opencv
    ```
 
-1. Remember to source the Vitis™ AIE Essentials setup script, if required, from [above](#install-aietools).
+1. Remember to source the Vitis™ AIE Essentials setup script from [above](#install-aietools).
    
 1. Remember to source the XRT setup script: `source /opt/xilinx/xrt/setup.sh`
 
@@ -192,13 +190,13 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 ## Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU
 
-> Remember to set up your environment including IRON, and XRT, (and if required Vitis™ AIE Essentials, and your license)
+> Remember to set up your environment including Vitis™ AIE Essentials, your license, XRT, and IRON
 > ```
+>   source yourVitisSetupScript.sh
+>   export LM_LICENSE_FILE=/opt/Xilinx.lic
 >   source /opt/xilinx/xrt/setup.sh
 >   source ironenv/bin/activate
 >   source utils/env_setup.sh my_install/mlir_aie my_install/mlir my_install/llvm-aie
->   source yourVitisSetupScript.sh
->   export LM_LICENSE_FILE=/opt/Xilinx.lic
 > ```
 
 For your design of interest, for instance from [programming_examples](../programming_examples/), 2 steps are needed: (i) build the AIE design and then (ii) build the host code.

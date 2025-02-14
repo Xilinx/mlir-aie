@@ -21,8 +21,6 @@ trace_size = 8192
 aie_py_src=relu.py
 use_alt?=0
 
-CHESS ?= false
-
 ifeq (${use_alt}, 1)
 aie_py_src=relu_alt.py
 endif
@@ -31,7 +29,6 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 build/%.o: %.cc
 	mkdir -p ${@D}
-
 ifeq ($(device),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
 else ifeq ($(device),npu2)
@@ -50,7 +47,6 @@ build/aie_trace.mlir: ${srcdir}/${aie_py_src}
 
 build/final.xclbin: build/aie.mlir build/relu.o
 	mkdir -p ${@D}
-
 ifeq ($(device),npu)
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
 	--no-xchesscc --no-xbridge \
@@ -89,8 +85,5 @@ trace: ${targetname}.exe build/final_trace.xclbin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
 	../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > trace_relu.json
 
-clean_trace:
-	rm -rf trace.txt trace_relu.json
-
-clean: clean_trace
+clean:
 	rm -rf build _build ${targetname}.exe
