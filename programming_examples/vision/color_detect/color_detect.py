@@ -216,8 +216,10 @@ try:
         dev = NPU2()
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+
     width = 36 if (len(sys.argv) != 4) else int(sys.argv[2])
     height = 64 if (len(sys.argv) != 4) else int(sys.argv[3])
+
 except ValueError:
     print("Argument has inappropriate value")
 module = color_detect(dev, width, height)
