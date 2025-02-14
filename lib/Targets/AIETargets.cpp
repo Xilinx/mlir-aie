@@ -157,7 +157,7 @@ void registerAIETranslations() {
       "aie-output-binary", llvm::cl::init(false),
       llvm::cl::desc(
           "Select binary (true) or text (false) output for supported "
-          "translations. e.g. aie-npu-to-binary, aie-ctrlpkt-to-bin"));
+          "translations. e.g. aie-npu-instgen, aie-ctrlpkt-to-bin"));
 
   static llvm::cl::opt<std::string> sequenceName(
       "aie-sequence-name", llvm::cl::init(""),
@@ -344,18 +344,18 @@ void registerAIETranslations() {
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationNPU(
-      "aie-npu-to-binary", "Translate npu instructions to binary",
+      "aie-npu-instgen", "Translate npu instructions to binary",
       [](ModuleOp module, raw_ostream &output) {
         if (outputBinary == true) {
           std::vector<uint32_t> instructions;
-          auto r = AIETranslateNpuToBinary(module, instructions, sequenceName);
+          auto r = AIETranslateToNPU(module, instructions, sequenceName);
           if (failed(r))
             return r;
           output.write(reinterpret_cast<const char *>(instructions.data()),
                        instructions.size() * sizeof(uint32_t));
           return success();
         }
-        return AIETranslateNpuToBinary(module, output, sequenceName);
+        return AIETranslateToNPU(module, output, sequenceName);
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationCtrlPkt(

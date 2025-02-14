@@ -285,7 +285,7 @@ public:
   matchAndRewrite(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     const auto &targetModel = AIE::getTargetModel(op);
-    BaseMemRefType bufferType = op.getMemref().getType();
+    MemRefType bufferType = op.getMemref().getType();
     auto *ctx = op->getContext();
     auto i32ty = IntegerType::get(ctx, 32);
     auto zero = IntegerAttr::get(i32ty, 0);

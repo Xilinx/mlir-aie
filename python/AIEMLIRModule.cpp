@@ -122,17 +122,16 @@ NB_MODULE(_aie, m) {
       "ctx"_a, "binary"_a);
 
   m.def(
-      "translate_npu_to_binary",
-      [&stealCStr](MlirOperation op, const std::string &sequence_name) {
-        nb::str npuInstructions = stealCStr(aieTranslateNpuToBinary(
-            op, {sequence_name.data(), sequence_name.size()}));
+      "npu_instgen",
+      [&stealCStr](MlirOperation op) {
+        nb::str npuInstructions = stealCStr(aieTranslateToNPU(op));
         auto individualInstructions =
             nb::cast<nb::list>(npuInstructions.attr("split")());
         for (size_t i = 0; i < individualInstructions.size(); ++i)
           individualInstructions[i] = individualInstructions[i].attr("strip")();
         return individualInstructions;
       },
-      "module"_a, "sequence_name"_a = "");
+      "module"_a);
 
   m.def(
       "generate_control_packets",
