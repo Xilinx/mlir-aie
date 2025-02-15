@@ -11,12 +11,6 @@ import pyxrt as xrt
 import sys
 import time
 
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
-from aie.dialects.scf import *
-from aie.extras.context import mlir_mod_ctx
-from aie.extras.dialects.ext import memref, arith
-
 import aie.utils.test as test_utils
 
 
@@ -129,11 +123,11 @@ def main(opts):
 
     if not errors:
         print("\nPASS!\n")
-        exit(0)
+        sys.exit(0)
     else:
         print("\nError count: ", errors)
         print("\nFailed.\n")
-        exit(-1)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -36,7 +36,7 @@ def AIEVecAIE1_AddOp:
   AIEVecAIE1_Op<"add", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs,
+  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
                DefaultValuedStrAttr<StrAttr, "">:$xstart,
                DefaultValuedStrAttr<StrAttr, "">:$xoffsets,
                DefaultValuedStrAttr<StrAttr, "">:$xoffsets_hi,
@@ -45,7 +45,7 @@ def AIEVecAIE1_AddOp:
                DefaultValuedStrAttr<StrAttr, "">:$zoffsets,
                DefaultValuedStrAttr<StrAttr, "">:$zoffsets_hi,
                DefaultValuedStrAttr<StrAttr, "">:$zsquare)>,
-  Results<(outs AnyVector:$result)> {
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE1 vector add";
   let description = [{
     AMD-specific advanced add operation that adds two 1-D vectors 
@@ -78,7 +78,7 @@ def AIEVecAIE1_SubOp:
   AIEVecAIE1_Op<"sub", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs,
+  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
                DefaultValuedStrAttr<StrAttr, "">:$xstart,
                DefaultValuedStrAttr<StrAttr, "">:$xoffsets,
                DefaultValuedStrAttr<StrAttr, "">:$xoffsets_hi,
@@ -87,7 +87,7 @@ def AIEVecAIE1_SubOp:
                DefaultValuedStrAttr<StrAttr, "">:$zoffsets,
                DefaultValuedStrAttr<StrAttr, "">:$zoffsets_hi,
                DefaultValuedStrAttr<StrAttr, "">:$zsquare)>,
-  Results<(outs AnyVector:$result)> {
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE1 vector subtract";
   let description = [{
     AMD-specific advanced sub operation that subtracts two 1-D vectors
@@ -120,7 +120,7 @@ def AIEVecAIE1_MulOp:
   AIEVecAIE1_Op<"mul", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs,
+  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
                DefaultValuedStrAttr<StrAttr, "">:$xstart,
                DefaultValuedStrAttr<StrAttr, "">:$xoffsets,
                DefaultValuedStrAttr<StrAttr, "">:$xoffsets_hi,
@@ -131,7 +131,7 @@ def AIEVecAIE1_MulOp:
                DefaultValuedStrAttr<StrAttr, "">:$zoffsets_hi,
                DefaultValuedStrAttr<StrAttr, "">:$zstep,
                DefaultValuedStrAttr<StrAttr, "">:$zsquare)>,
-  Results<(outs AnyVector:$result)> {
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE vector multiply";
   let description = [{
     AMD-specific multiply operation that multiplies two 1-D vectors.
@@ -184,7 +184,8 @@ def AIEVecAIE1_FMAOp :
   AIEVecAIE1_Op<"mac", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyVector:$acc,
+  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
+               AnyVectorOfNonZeroRank:$acc,
                DefaultValuedStrAttr<StrAttr, "">:$xstart,
                DefaultValuedStrAttr<StrAttr, "">:$xoffsets,
                DefaultValuedStrAttr<StrAttr, "">:$xoffsets_hi,
@@ -196,7 +197,7 @@ def AIEVecAIE1_FMAOp :
                DefaultValuedStrAttr<StrAttr, "">:$zstep,
                DefaultValuedStrAttr<StrAttr, "">:$zsquare,
                DefaultValuedAttr<BoolAttr, "false">:$fmsub)>,
-  Results<(outs AnyVector:$result)> {
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE vector fused multiply-add";
   let description = [{
     AMD-specific multiply-add operation. It multiplies two 1-D vectors,
@@ -255,7 +256,7 @@ def AIEVecAIE1_SelectOp:
   AIEVecAIE1_Op<"select", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$xbuff,
+  Arguments<(ins AnyVectorOfNonZeroRank:$xbuff,
                DefaultValuedStrAttr<StrAttr, "">:$select,
                DefaultValuedStrAttr<StrAttr, "">:$xstart,
                DefaultValuedStrAttr<StrAttr, "">:$xoffsets,
@@ -265,8 +266,8 @@ def AIEVecAIE1_SelectOp:
                DefaultValuedStrAttr<StrAttr, "">:$yoffsets,
                DefaultValuedStrAttr<StrAttr, "">:$yoffsets_hi,
                DefaultValuedStrAttr<StrAttr, "">:$ysquare,
-               Optional<AnyVector>:$ybuff)>,
-  Results<(outs AnyVector:$result)> {
+               Optional<AnyVectorOfNonZeroRank>:$ybuff)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE vector lane selection";
   let description = [{
     AMD-specific vector lane selection operation. It selects between the
@@ -313,9 +314,9 @@ def AIEVecAIE1_ExtOp:
   AIEVecAIE1_Op<"ext", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$source,
+  Arguments<(ins AnyVectorOfNonZeroRank:$source,
              ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<8>]>:$index)>,
-  Results<(outs AnyVector:$result)> {
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE ext";
   let description = [{
     AMD-specific vector extract intrinsic. Selects contiguous lanes from 

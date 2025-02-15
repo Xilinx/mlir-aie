@@ -14,7 +14,9 @@ This IRON design flow example, called "Passthrough Kernel", demonstrates a simpl
 
 ## Source Files Overview
 
-1. `aie2.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. The file generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `passthrough_kernel.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. The file generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+
+1. `passthrough_kernel_alt.py`: A Python script that defines the AIE array structural design using an alternative IRON syntax that yields MLIR-AIE operations. The file generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
 
 1. `passThrough.cc`: A C++ implementation of vectorized memcpy operations for AIE cores. Found [here](../../../aie_kernels/generic/passThrough.cc).
 
@@ -28,15 +30,15 @@ This IRON design flow example, called "Passthrough Kernel", demonstrates a simpl
 
 This simple example effectively passes data through a single compute tile in the NPU's AIE array. The design is described as shown in the figure to the right. The overall design flow is as follows:
 1. An object FIFO called "of_in" connects a Shim Tile to a Compute Tile, and another called "of_out" connects the Compute Tile back to the Shim Tile. 
-1. The runtime data movement is expressed to read `4096` uint8_t data from host memory to the compute tile and write the `4096` data back to host memory. 
+1. The runtime data movement is expressed to read `4096` `uint8_t` data from host memory to the compute tile and write the `4096` data back to host memory. 
 1. The compute tile acquires this input data in "object" sized (`1024`) blocks from "of_in" and copies them to another output "object" it has acquired from "of_out". Note that a vectorized kernel running on the Compute Tile's AIE core copies the data from the input "object" to the output "object".
 1. After the vectorized copy is performed, the Compute Tile releases the "objects", allowing the DMAs (abstracted by the object FIFO) to transfer the data back to host memory and copy additional blocks into the Compute Tile,  "of_out" and "of_in" respectively.
 
-It is important to note that the Shim Tile and Compute Tile DMAs move data concurrently, and the Compute Tile's AIE Core also processes data concurrently with the data movement. This is made possible by expressing depth `2` in declaring, for example, `object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)` to denote ping-pong buffers.
+It is important to note that the Shim Tile and Compute Tile DMAs move data concurrently, and the Compute Tile's AIE Core also processes data concurrently with the data movement. This is made possible by expressing depth `2` in declaring the ObjectFifo, for example, `ObjectFifo(line_ty, name="in", default_depth=2)` to denote ping-pong buffers. If `default_depth` is not declared, the default is `2` in reference to this pattern.
 
 ## Design Component Details
 
-### AIE Array Structural Design
+### AIE Array Structural Alternative Design 
 
 This design performs a memcpy operation on a vector of input data. The AIE design is described in a Python module as follows:
 
@@ -66,34 +68,35 @@ This design performs a memcpy operation on a vector of input data. The AIE desig
 
 1. **Vectorized Copying:** The `passThrough_aie()` function processes multiple data elements simultaneously, taking advantage of AIE vector datapath capabilities to load, copy and store data elements.
 
-1. **C-style Wrapper Functions:** `passThroughLine()` and `passThroughTile()` are two C-style wrapper functions to call the templated `passThrough_aie()` vectorized memcpy implementation from the AIE design implemented in `aie2.py`. The `passThroughLine()` and `passThroughTile()` functions are compiled for `uint8_t`, `int16_t`, or `int32_t` determined by the value the `BIT_WIDTH` variable defines. 
+1. **C-style Wrapper Functions:** `passThroughLine()` and `passThroughTile()` are two C-style wrapper functions to call the templated `passThrough_aie()` vectorized memcpy implementation from the AIE design implemented in `passthrough_kernel.py`. The `passThroughLine()` and `passThroughTile()` functions are compiled for `uint8_t`, `int16_t`, or `int32_t` determined by the value the `BIT_WIDTH` variable defines. 
 
 ## Usage
 
-### C++ Testbench
+### Compilation
 
 To compile the design:
 
-```
+```shell
 make
 ```
 
+To compile the alternative design:
+```shell
+env use_alt=1 make
+```
+
+### C++ Testbench
+
 To complete compiling the C++ testbench and run the design:
 
-```
+```shell
 make run
 ```
 
 ### Python Testbench
 
-To compile the design:
-
-```
-make
-```
-
 To run the design:
 
-```
+```shell
 make run_py
 ```

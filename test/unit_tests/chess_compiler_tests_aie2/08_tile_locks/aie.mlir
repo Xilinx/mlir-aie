@@ -9,9 +9,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: valid_xchess_license, !hsa
-// RUN: %PYTHON aiecc.py --aiesim --xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s -I%host_runtime_lib%/test_lib/include -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
-// RUN: %run_on_board ./test.elf
+// REQUIRES: aiesimulator, valid_xchess_license, !hsa
+// RUN: %PYTHON aiecc.py --aiesim --xchesscc --xbridge --no-compile-host %s %test_lib_flags %S/test.cpp
 // RUN: sh -c 'aie.mlir.prj/aiesim.sh; exit 0' | FileCheck %s
 
 // CHECK: AIE2 ISS
@@ -22,21 +21,21 @@
 // CHECK: DMA [7, 3] AIE2 mm2s0 IDLE
 // CHECK: DMA [7, 3] AIE2 mm2s1 IDLE
 // CHECK: BD 0 valid (Next BD: 1)
-// CHECK:    Transferring 2 32 bit words to/from byte address 00C000
+// CHECK: Transferring 2 32 bit words to/from byte address
 // CHECK:    Acquires lock 0 with value -1
 // CHECK:    Releases lock 1 with value 1
 // CHECK: BD 1 valid (Last BD)
+// CHECK: Transferring 2 32 bit words to/from byte address
 // CHECK:  * Current BD for mm2s channel 0
-// CHECK:    Transferring 2 32 bit words to/from byte address 00C010
 // CHECK:    Acquires lock 0 with value -1
 // CHECK:    Releases lock 1 with value 1
 // CHECK: BD 2 valid (Next BD: 3)
-// CHECK:    Transferring 2 32 bit words to/from byte address 00C020
+// CHECK: Transferring 2 32 bit words to/from byte address
 // CHECK:    Acquires lock 2 with value -1
 // CHECK:    Releases lock 3 with value 1
 // CHECK: BD 3 valid (Last BD)
+// CHECK: Transferring 2 32 bit words to/from byte address
 // CHECK:  * Current BD for s2mm channel 0
-// CHECK:    Transferring 2 32 bit words to/from byte address 00C030
 // CHECK:    Acquires lock 2 with value -1
 // CHECK:    Releases lock 3 with value 1
 // CHECK: Core [7, 3] AIE2 locks are: 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0

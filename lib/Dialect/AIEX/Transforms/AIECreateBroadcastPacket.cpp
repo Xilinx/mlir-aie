@@ -50,7 +50,7 @@ struct AIEBroadcastPacketPass
   void runOnOperation() override {
 
     DeviceOp device = getOperation();
-    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
+    OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
 
     for (auto broadcastpacket : device.getOps<BroadcastPacketOp>()) {
       Region &r = broadcastpacket.getPorts();
@@ -66,7 +66,7 @@ struct AIEBroadcastPacketPass
           int flowID = bpid.IDInt();
           builder.setInsertionPointAfter(broadcastpacket);
           PacketFlowOp pkFlow = builder.create<PacketFlowOp>(
-              builder.getUnknownLoc(), flowID, nullptr);
+              builder.getUnknownLoc(), flowID, nullptr, nullptr);
           Region &r_pkFlow = pkFlow.getPorts();
           Block *b_pkFlow = builder.createBlock(&r_pkFlow);
           builder.setInsertionPointToStart(b_pkFlow);

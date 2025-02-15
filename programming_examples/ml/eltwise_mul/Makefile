@@ -14,31 +14,40 @@ include ${srcdir}/../../makefile-common
 
 all: build/final.xclbin
 
-targetname = myEltwiseMul
+targetname = eltwise_mul
 trace_size = 8192
+
+aie_py_src=${targetname}.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=${targetname}_alt.py
+endif
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 build/%.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
 
-build/aie.mlir: ${srcdir}/aie2.py
+build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< > $@
 
-build/aie_trace.mlir: ${srcdir}/aie2.py
+build/aie_trace.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${trace_size} > $@
 
 build/final.xclbin: build/aie.mlir build/mul.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
 build/final_trace.xclbin: build/aie_trace.mlir build/mul.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
 
@@ -53,10 +62,10 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: ${targetname}.exe build/final.xclbin build/insts.txt 
+run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
-trace: ${targetname}.exe build/final_trace.xclbin build/insts.txt 
+trace: ${targetname}.exe build/final_trace.xclbin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
 	../../utils/parse_eventIR.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > parse_eventIR_vs.json
 clean:

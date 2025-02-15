@@ -198,15 +198,15 @@ module @ndDMAObjFifoAIE2 {
     %tile22 = aie.tile(2, 2)
     %tile23 = aie.tile(2, 3)
 
-    aie.objectfifo @of0 (%tile12 toStream [<size = 16, stride = 1>, <size = 16, stride = 16>, <size = 1, stride = 1>], // transpose
-                         {%tile13 fromStream [<size = 1, stride = 1>],
-                          %tile33 fromStream [<size = 3, stride = 4>]},
+    aie.objectfifo @of0 (%tile12 dimensionsToStream [<size = 16, stride = 1>, <size = 16, stride = 16>, <size = 1, stride = 1>], // transpose
+                         {%tile13 dimensionsFromStream [<size = 1, stride = 1>],
+                          %tile33 dimensionsFromStream [<size = 3, stride = 4>]},
                          4 : i32) : !aie.objectfifo<memref<256xi32>>
 
-    aie.objectfifo @of1 (%tile12 toStream [<size = 128, stride = 2>], {%tile33},
+    aie.objectfifo @of1 (%tile12 dimensionsToStream [<size = 128, stride = 2>], {%tile33},
                          2 : i32) : !aie.objectfifo<memref<256xi32>>
 
-    aie.objectfifo @of3 (%tile22, {%tile23 fromStream [<size = 9, stride = 9>]},
+    aie.objectfifo @of3 (%tile22, {%tile23 dimensionsFromStream [<size = 9, stride = 9>]},
                          2 : i32) : !aie.objectfifo<memref<256xi32>>
  }
 }

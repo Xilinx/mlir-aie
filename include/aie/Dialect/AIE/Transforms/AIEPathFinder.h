@@ -22,7 +22,7 @@
 namespace xilinx::AIE {
 
 #define OVER_CAPACITY_COEFF 0.1
-#define USED_CAPACITY_COEFF 0.1
+#define USED_CAPACITY_COEFF 0.02
 #define DEMAND_COEFF 1.1
 #define DEMAND_BASE 1.0
 #define MAX_CIRCUIT_STREAM_CAPACITY 1
@@ -49,6 +49,10 @@ using SwitchboxConnect = struct SwitchboxConnect {
   std::vector<std::vector<int>> usedCapacity;
   // how many packet streams are actually using this Channel
   std::vector<std::vector<int>> packetFlowCount;
+  // only sharing the channel with the same packet group id
+  std::vector<std::vector<int>> packetGroupId;
+  // flags indicating priority routings
+  std::vector<std::vector<bool>> isPriority;
 
   // resize the matrices to the size of srcPorts and dstPorts
   void resize() {
@@ -60,6 +64,9 @@ using SwitchboxConnect = struct SwitchboxConnect {
     usedCapacity.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
     packetFlowCount.resize(srcPorts.size(),
                            std::vector<int>(dstPorts.size(), 0));
+    packetGroupId.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
+    isPriority.resize(srcPorts.size(),
+                      std::vector<bool>(dstPorts.size(), false));
   }
 
   // update demand at the beginning of each dijkstraShortestPaths iteration
@@ -74,11 +81,13 @@ using SwitchboxConnect = struct SwitchboxConnect {
     }
   }
 
-  // inside each dijkstraShortestPaths interation, bump demand when exceeds
-  // capacity
+  // Inside each dijkstraShortestPaths interation, bump demand when exceeds
+  // capacity. If isPriority is true, then set demand to INF to ensure routing
+  // consistency for prioritized flows
   void bumpDemand(size_t i, size_t j) {
     if (usedCapacity[i][j] >= MAX_CIRCUIT_STREAM_CAPACITY) {
-      demand[i][j] *= DEMAND_COEFF;
+      demand[i][j] *=
+          isPriority[i][j] ? std::numeric_limits<int>::max() : DEMAND_COEFF;
     }
   }
 };
@@ -114,7 +123,8 @@ using PathEndPoint = struct PathEndPoint {
 };
 
 using Flow = struct Flow {
-  bool isPacketFlow;
+  int packetGroupId;
+  bool isPriorityFlow;
   PathEndPoint src;
   std::vector<PathEndPoint> dsts;
 };
@@ -178,7 +188,9 @@ public:
   virtual void initialize(int maxCol, int maxRow,
                           const AIETargetModel &targetModel) = 0;
   virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
-                       Port dstPort, bool isPacketFlow) = 0;
+                       Port dstPort, bool isPacketFlow,
+                       bool isPriorityFlow) = 0;
+  virtual void sortFlows(const int maxCol, const int maxRow) = 0;
   virtual bool addFixedConnection(SwitchboxOp switchboxOp) = 0;
   virtual std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) = 0;
@@ -190,7 +202,8 @@ public:
   void initialize(int maxCol, int maxRow,
                   const AIETargetModel &targetModel) override;
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort,
-               bool isPacketFlow) override;
+               bool isPacketFlow, bool isPriorityFlow) override;
+  void sortFlows(const int maxCol, const int maxRow) override;
   bool addFixedConnection(SwitchboxOp switchboxOp) override;
   std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) override;
@@ -244,6 +257,9 @@ public:
 
   ShimMuxOp getShimMux(mlir::OpBuilder &builder, int col);
 };
+
+// Get enum int value from WireBundle.
+int getWireBundleAsInt(WireBundle bundle);
 
 } // namespace xilinx::AIE
 

@@ -31,7 +31,12 @@ void AIEXDialect::initialize() {
       >();
 }
 
-uint64_t getBufferDescriptorAddressRegisterAddress(
+} // namespace xilinx::AIEX
+
+#define GET_OP_CLASSES
+#include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
+
+uint64_t AIEX::getBufferDescriptorAddressRegisterAddress(
     const AIE::AIETargetModel &tm, unsigned bd_id, unsigned col, unsigned row) {
   assert(bd_id < tm.getNumBDs(col, row));
   return ((col & 0xff) << tm.getColumnShift()) |
@@ -71,12 +76,12 @@ uint64_t getBufferDescriptorAddressRegisterAddress(
   Note: strides are expressed offset by one from user input strides, because the
   hardware does not support a 0 stride (repeat).
   */
-void getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
-                             mlir::MemRefType referencedBufType,
-                             llvm::SmallVector<int64_t, 4> inputSizes,
-                             llvm::SmallVector<int64_t, 4> inputStrides,
-                             llvm::SmallVector<int64_t, 4> &sizes,
-                             llvm::SmallVector<int64_t, 4> &strides) {
+void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
+                                   mlir::BaseMemRefType referencedBufType,
+                                   llvm::SmallVector<int64_t, 4> inputSizes,
+                                   llvm::SmallVector<int64_t, 4> inputStrides,
+                                   llvm::SmallVector<int64_t, 4> &sizes,
+                                   llvm::SmallVector<int64_t, 4> &strides) {
   assert(inputSizes.size() == inputStrides.size());
   assert(sizes.size() == 4);
   assert(strides.size() == 4);
@@ -140,13 +145,13 @@ void getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
 }
 
 mlir::LogicalResult
-verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
-                   int tileCol, int tileRow,
-                   llvm::SmallVector<int64_t, 4> inputSizes,
-                   llvm::SmallVector<int64_t, 4> inputStrides,
-                   llvm::SmallVector<int64_t, 4> hardwareSizes,
-                   llvm::SmallVector<int64_t, 4> hardwareStrides,
-                   bool skipTransformationChecks) {
+AIEX::verifyStridesWraps(mlir::Operation *forOp,
+                         mlir::BaseMemRefType referencedBufType, int tileCol,
+                         int tileRow, llvm::SmallVector<int64_t, 4> inputSizes,
+                         llvm::SmallVector<int64_t, 4> inputStrides,
+                         llvm::SmallVector<int64_t, 4> hardwareSizes,
+                         llvm::SmallVector<int64_t, 4> hardwareStrides,
+                         bool skipTransformationChecks) {
   const auto &targetModel = AIE::getTargetModel(forOp);
   auto addressGranularity = targetModel.getAddressGenGranularity();
   auto elemWidth = referencedBufType.getElementTypeBitWidth();
@@ -185,10 +190,6 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
     return forOp->emitOpError(msg.str());
   }
 
-  if (skipTransformationChecks) {
-    return success();
-  }
-
   for (int i = 0; i < 3; i++) {
     if (inputSizes[i] > 1 && inputStrides[i] < 1) {
       // If inputSize[i] == 1, anything is allowable in the stride, since that
@@ -198,14 +199,14 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
              << i << " must be a positive integer.";
     }
   }
-  // A value of zero is allowable for the fourth-dimension stride, as such a
-  // "repeat" can be accomplished by setting size==1 and repeat_count=size.
+  // A value of zero is allowable for the fourth-dimension stride
+  // (this indicates an interation stride for the repeat of 0)
   if (inputSizes[3] > 1 && inputStrides[3] < 0) {
     return forOp->emitOpError("Stride 3 must be a non-negative integer.");
   }
 
   for (int i = 0; i < 4; i++) {
-    // strides[0] == 1 is ok iff the tranfer size is a multiple of
+    // strides[0] == 1 is ok iff the transfer size is a multiple of
     // addressGranularity, which is checked below
     if (i == 0 && inputStrides[i] == 1)
       continue;
@@ -219,7 +220,7 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
     }
   }
 
-  if (hardwareSizes[0] > (1 << wrap_bits) - 1)
+  if (!skipTransformationChecks && hardwareSizes[0] > (1 << wrap_bits) - 1)
     return forOp->emitOpError(
         "Size 0 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
         "] range.");
@@ -247,11 +248,6 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
 
   return success();
 }
-
-} // namespace xilinx::AIEX
-
-#define GET_OP_CLASSES
-#include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
 
 //===----------------------------------------------------------------------===//
 // UseTokenOp
@@ -306,25 +302,26 @@ int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
       llvm::map_to_vector(llvm::reverse(getMixedOffsets()), [](OpFoldResult s) {
         return getConstantIntValue(s).value();
       });
-  size_t stride = 1;
+  llvm::SmallVector<int64_t, 4> strides =
+      llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
   size_t offset = 0;
-  MemRefType my_memref = getMemref().getType();
-  auto shape = my_memref.getShape();
-  size_t R = shape.size();
+  BaseMemRefType my_memref = getMemref().getType();
+  size_t R = offsets.size();
   size_t el_bit_width = my_memref.getElementTypeBitWidth();
   assert(el_bit_width % 8 == 0 &&
          "Expected Memref element bitwidth to be multiple of 8.");
   size_t S = el_bit_width / 8;
-  for (size_t i = 0; i < R; i++) {
-    offset += offsets[i] * stride * S;
-    stride *= shape[R - i - 1];
-  }
+  for (size_t i = 0; i < R; i++)
+    offset += offsets[i] * strides[i] * S;
   return offset;
 }
 
-// dma_memcpy_nd transfers of the form [1, 1, 1, len][0, 0, 0, 1] do not
+// dma_memcpy_nd transfers of the form [*, 1, 1, len][*, 0, 0, 1] do not
 // specify any data layout transformation, but simply express a contiguous
-// transfer of `len`.
+// transfer of `len`. We exclude checks to 4th dimension, because repeat count
+// is still possible without a data layout transformation.
 bool AIEX::NpuDmaMemcpyNdOp::isLinearTransferWithoutTransformation() {
   llvm::SmallVector<int64_t, 4> inputSizes =
       llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
@@ -334,21 +331,21 @@ bool AIEX::NpuDmaMemcpyNdOp::isLinearTransferWithoutTransformation() {
       llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
         return getConstantIntValue(s).value();
       });
-  return (inputSizes[1] == 1 && inputSizes[2] == 1 && inputSizes[3] == 1 &&
-          inputStrides[0] == 1 && inputStrides[1] == 0 &&
-          inputStrides[2] == 0 && inputStrides[3] == 0);
+  return (inputSizes[1] == 1 && inputSizes[2] == 1 && inputStrides[0] == 1 &&
+          inputStrides[1] == 0 && inputStrides[2] == 0);
 }
 
 LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
-  MemRefType buffer = getMemref().getType();
+  BaseMemRefType buffer = getMemref().getType();
   const auto &targetModel = AIE::getTargetModel(*this);
   auto addressGranularity = targetModel.getAddressGenGranularity();
 
   if (buffer.getElementTypeBitWidth() > addressGranularity) {
     return emitOpError("Maximum element bit width allowed is ")
            << addressGranularity << "bits. ";
-  } else if ((buffer.getNumElements() * buffer.getElementTypeBitWidth()) <
-             addressGranularity) {
+  } else if (buffer.hasStaticShape() &&
+             (buffer.getNumElements() * buffer.getElementTypeBitWidth()) <
+                 addressGranularity) {
     return emitOpError("Minimum data transfer size required is ")
            << addressGranularity << "bits. ";
   }
@@ -446,9 +443,11 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
 LogicalResult AIEX::NpuWriteBdOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
+  bool isLinearTransfer =
+      (getD0Size() >= 1) && (getD1Size() == 1) && (getIterationSize() == 0);
   if (getBdId() > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
-  if (getD0Size() > 0x3FF)
+  if (!isLinearTransfer && getD0Size() > 0x3FF)
     return emitOpError("D0 Size exceeds the [0:1023] range.");
   if (getD0Stride() > 0xFFFFF)
     return emitOpError("D0 Stride exceeds the [0:1M-1] range.");
@@ -462,6 +461,13 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
     return emitOpError("Iteration Size exceeds the [0:63] range.");
   if (getIterationStride() > 0xFFFFF)
     return emitOpError("Iteration Stride exceeds the [0:1M-1] range.");
+  if (targetModel.isShimNOCTile(getColumn(), getRow()) && getD2Size() != 0)
+    return emitOpError("ShimTile only supports 3 dimensions of sizes.");
+  if (targetModel.isShimNOCTile(getColumn(), getRow()) &&
+      (getD0ZeroBefore() != 0 || getD0ZeroAfter() != 0 ||
+       getD1ZeroBefore() != 0 || getD1ZeroAfter() != 0 ||
+       getD2ZeroBefore() != 0 || getD2ZeroAfter() != 0))
+    return emitOpError("ShimTile doesn't support zero padding.");
   return success();
 }
 
@@ -532,16 +538,6 @@ LogicalResult AIEX::RuntimeSequenceOp::verify() {
     (*this)->emitOpError() << "must be inside AIE device operation.";
     return failure();
   }
-  auto seq_ops = device.getOps<AIEX::RuntimeSequenceOp>();
-  if (std::distance(seq_ops.begin(), seq_ops.end()) > 1) {
-    auto err = device.emitOpError()
-               << "Cannot have more than one runtime sequence per device.";
-    for (auto it = seq_ops.begin(); it != seq_ops.end(); ++it) {
-      AIEX::RuntimeSequenceOp seq_op = *it;
-      err.attachNote(seq_op.getLoc()) << "Sequence operation definition here.";
-    }
-    return failure();
-  }
   return success();
 }
 
@@ -555,6 +551,13 @@ std::optional<uint32_t> AIEX::DMAConfigureTaskOp::getFirstBdId() {
     return std::nullopt;
   }
   auto bd_ops = body.front().getOps<AIE::DMABDOp>();
+  if (bd_ops.empty() && body.front().getNumSuccessors() == 1) {
+    // Allow the first block to be empty and point to the entry point of the
+    // chain. This allows for specifying cyclying BD chains (infinite loops)
+    // within the constraints of MLIR syntax.
+    Block &chain_entry = *body.front().getSuccessor(0);
+    bd_ops = chain_entry.getOps<AIE::DMABDOp>();
+  }
   if (bd_ops.empty()) {
     return std::nullopt;
   }
@@ -622,7 +625,7 @@ LogicalResult AIEX::DMAStartBdChainOp::verify() {
   }
 
   auto actualArgTypes = getArgs().getTypes();
-  ArrayRef<Type> expectedArgTypes = chain.getEntryArgTypesAttr().getTypes();
+  auto expectedArgTypes = chain.getRegion().getArgumentTypes();
   if (actualArgTypes.size() != expectedArgTypes.size()) {
     return emitOpError("Number of arguments mismatches.");
   }
@@ -634,4 +637,22 @@ LogicalResult AIEX::DMAStartBdChainOp::verify() {
     }
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// NpuControlPacketOp
+//===----------------------------------------------------------------------===//
+
+uint32_t AIEX::NpuControlPacketOp::getRowFromAddr() {
+  const auto &targetModel = AIE::getTargetModel(*this);
+  uint32_t addr = getAddress();
+  uint32_t rowInt = (addr >> targetModel.getRowShift()) & 0x1f;
+  return rowInt;
+}
+
+uint32_t AIEX::NpuControlPacketOp::getColumnFromAddr() {
+  const auto &targetModel = AIE::getTargetModel(*this);
+  uint32_t addr = getAddress();
+  uint32_t colInt = (addr >> targetModel.getColumnShift()) & 0x1f;
+  return colInt;
 }

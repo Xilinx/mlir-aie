@@ -101,7 +101,7 @@ struct AIELowerMemcpyPass : public AIELowerMemcpyBase<AIELowerMemcpyPass> {
   void runOnOperation() override {
 
     DeviceOp device = getOperation();
-    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
+    OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
 
     // Setup FlowOps
     // Since memcpy moves data from one memory module to another, we use

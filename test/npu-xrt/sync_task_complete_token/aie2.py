@@ -9,15 +9,14 @@
 #
 # RUN: %python %S/aie2.py > ./aie2.mlir
 # RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
-# RUN: clang %S/test.cpp -o test -std=c++11 -Wall %xrt_flags -lrt -lstdc++
-# RUN: %run_on_npu ./test | FileCheck %s
-# CHECK: PASS!
+# RUN: clang %S/test.cpp -o test -std=c++11 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
+# RUN: %run_on_npu ./test
 
 from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
+from aie.helpers.dialects.ext.scf import _for as range_
 
 
 dtype = T.i32
@@ -54,20 +53,14 @@ def design():
             # Core
             @core(tiles[2][0])
             def core_body():
-                for _ in for_(0xFFFFFFFF):
+                for _ in range_(0xFFFFFFFF):
                     elem_output = fifo_output.acquire(ObjectFifoPort.Produce, 1)
-                    zero = constant(T.i32(), 0)
-                    memref.store(zero, elem_output, [0])
-                    for _ in for_(16):
+                    elem_output[0] = 0
+                    for _ in range_(16):
                         elem_input = fifo_input.acquire(ObjectFifoPort.Consume, 1)
-                        a = memref.load(elem_output, [0])
-                        b = memref.load(elem_input, [0])
-                        c = a + b
-                        memref.store(c, elem_output, [0])
+                        elem_output[0] = elem_output[0] + elem_input[0]
                         fifo_input.release(ObjectFifoPort.Consume, 1)
-                        yield_([])
                     fifo_output.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             # To/from AIE-array data movement
             @runtime_sequence(memref_t, memref_t)
@@ -76,7 +69,7 @@ def design():
                     # Configure and start, and wait for 16 BDs, each transferring the next contiguous input tile.
                     for j in range(16):
                         npu_dma_memcpy_nd(
-                            metadata=fifo_input.sym_name.value,
+                            metadata=fifo_input,
                             bd_id=j,
                             mem=input,
                             offsets=[0, 0, 0, i * 16 + j],
@@ -84,18 +77,18 @@ def design():
                             strides=[0, 0, 0, 1],
                             issue_token=True,
                         )
-                        npu_dma_wait(fifo_input.sym_name.value)
+                        dma_wait(fifo_input)
                     # After transferring 16 input tiles, one output tile will be produced;
                     # issue a BD to transfer it back
                     npu_dma_memcpy_nd(
-                        metadata=fifo_output.sym_name.value,
+                        metadata=fifo_output,
                         bd_id=0,
                         mem=output,
                         offsets=[0, 0, 0, i],
                         sizes=[1, 1, 1, 1],
                         strides=[0, 0, 0, 1],
                     )
-                    npu_dma_wait(fifo_output.sym_name.value)
+                    dma_wait(fifo_output)
 
     print(ctx.module)
 

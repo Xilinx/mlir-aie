@@ -58,6 +58,8 @@ aie-opt --aie-canonicalize-device <path to mlir source file> | aie-opt --aie-obj
 ```
 We note that in the above command there are actually two lowering passes being applied. The first pass will ensure that there exists a target device configuration in the source code, or add one if there isn't. That is the same pass that is used by `aiecc.py`, but needs to be explicitly called when running lowering passes separately. Further details on the device configuration can be found in [tutorial-2b](../../tutorial-2/tutorial-2b/).
 
+Two different lowerings currently exist for objectFifo operations: one is a static lowering that keeps track of acquire / release operations at compile-time and unrolls for-loops to ensure the proper buffer / lock pair is accessed each iteration; the other is a runtime solution which keeps track of acquire / release operations in a global state buffer which is then read to determine the correct buffer to access each iteration through an scf.IndexSwitchOp. Additional details can be found in the [Design Patterns](../../../docs/AIEDesignPatterns.md).
+
 ## <ins>Tutorial 3 Lab </ins>
 
 1. Read through the [/objectFifo_ver/aie.mlir](aie.mlir) design. In which tile and its local memory will the objectFifo lowering generate the buffer and its lock? <img src="../../images/answer1.jpg" title="On even rows tiles have local memories to their left, so the shared memory is that of tile (2,4). That is where the lowering will generate the shared buffer and lock." height=25>

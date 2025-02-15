@@ -46,6 +46,8 @@ set(AIE_RUNTIME_TARGETS "x86_64" CACHE STRING "Architectures to compile the runt
 list(GET AIE_RUNTIME_TARGETS 0 firstRuntimeTarget)
 set(AIE_RUNTIME_TEST_TARGET ${firstRuntimeTarget} CACHE STRING "Runtime architecture to test with.")
 
+set(AIE_VITIS_COMPONENTS "AIE;AIE2;AIE2P" CACHE STRING "Vitis components")
+
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
@@ -61,7 +63,7 @@ set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
 set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
 set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
 
-find_package(Vitis 2023.2 COMPONENTS AIE AIE2)
+find_package(Vitis 2023.2 COMPONENTS ${AIE_VITIS_COMPONENTS})
 find_package(Python3 COMPONENTS Interpreter)
 find_package(XRT)
 find_package(hsa-runtime64)
@@ -117,3 +119,5 @@ add_lit_testsuite(check-aie "Running the aie regression tests"
   ARGS "-sv --timeout 600"
 )
 set_target_properties(check-aie PROPERTIES FOLDER "Tests")
+
+add_subdirectory(CppTests)

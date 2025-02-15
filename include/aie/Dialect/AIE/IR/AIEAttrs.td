@@ -49,12 +49,12 @@ def EastWire:   I32EnumAttrCase<"East", 6>;
 def PLIOWire:   I32EnumAttrCase<"PLIO", 7>;
 def NOCWire:    I32EnumAttrCase<"NOC", 8>;
 def TraceWire:  I32EnumAttrCase<"Trace", 9>;
-def ControlWire:  I32EnumAttrCase<"Ctrl", 10>;
+def TileControlWire:  I32EnumAttrCase<"TileControl", 10>;
 
 def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
   [
     CoreWire, DMAWire, FIFOWire, SouthWire, WestWire, NorthWire,
-    EastWire, PLIOWire, NOCWire, TraceWire, ControlWire
+    EastWire, PLIOWire, NOCWire, TraceWire, TileControlWire
   ]> {
 
   let cppNamespace = "xilinx::AIE";
@@ -90,7 +90,8 @@ def LockBlocking: I32EnumAttr<"LockBlocking", "lock operation is blocking",
 def AIEArch: I32EnumAttr<"AIEArch", "AIE Architecture",
   [
     I32EnumAttrCase<"AIE1", 1>,
-    I32EnumAttrCase<"AIE2", 2>
+    I32EnumAttrCase<"AIE2", 2>,
+    I32EnumAttrCase<"AIE2p", 3>,
   ]> {
 
   let cppNamespace = "xilinx::AIE";
@@ -105,7 +106,8 @@ def AIEDevice: I32EnumAttr<"AIEDevice", "AIE Device",
     I32EnumAttrCase<"npu1_1col", 5>,
     I32EnumAttrCase<"npu1_2col", 6>,
     I32EnumAttrCase<"npu1_3col", 7>,
-    I32EnumAttrCase<"npu1_4col", 8>
+    I32EnumAttrCase<"npu1_4col", 8>,
+    I32EnumAttrCase<"npu2", 9>,
   ]> {
 
   let cppNamespace = "xilinx::AIE";
@@ -138,7 +140,7 @@ def BDDimLayoutAttr : AttrDef<AIE_Dialect, "BDDimLayout", []> {
   }];
 
   let parameters = (ins
-    "uint16_t" : $size,
+    "uint32_t" : $size,
     "uint32_t" : $stride
   );
 
@@ -194,5 +196,9 @@ def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
 
   let assemblyFormat = "`<` struct(params) `>`";
 }
+
+def InitValuesArrayAttr
+  : OptionalAttr<TypedArrayAttrBase<ElementsAttr, "array of ElementsAttr">>;
+
 
 #endif // AIE_ATTRS

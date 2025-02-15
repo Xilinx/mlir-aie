@@ -11,22 +11,19 @@ from aie.dialects.aie import (
     Device,
     MemOp,
     ObjectFifoPort,
-    ObjectFifoSubviewType,
     buffer,
     external_buffer,
     bd_dim_layout,
     end,
     object_fifo,
-    objectfifo_acquire,
     object_fifo_link,
-    objectfifo_subview_access,
     tile,
     cascade_flow,
     WireBundle,
     packetflow,
     get_target_model,
 )
-from aie.ir import InsertionPoint, Block, TypeAttr
+from aie.ir import InsertionPoint, Block
 from aie.extras.context import mlir_mod_ctx
 from aie.extras import types as T
 
@@ -86,11 +83,10 @@ def deviceOp():
 @construct_and_print_module
 def bufferOp():
     t = tile(col=0, row=3)
-    b = buffer(t, (12,), T.i32())
+    b = buffer(t, np.ndarray[(12,), np.dtype[np.int32]])
     b = buffer(
         t,
-        (2, 2),
-        T.i32(),
+        T.memref(2, 2, T.i32()),
         initial_value=np.arange(2 * 2, dtype=np.int32).reshape(2, 2),
     )
 
@@ -99,13 +95,13 @@ def bufferOp():
 # CHECK: %[[VAL_0:.*]] = aie.external_buffer : memref<12xi32>
 @construct_and_print_module
 def externalBufferOp():
-    b = external_buffer((12,), T.i32())
+    b = external_buffer(T.memref(12, T.i32()))
 
 
 # CHECK-LABEL: objFifo
 # CHECK: %[[VAL0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL1:.*]] = aie.tile(2, 2)
-# CHECK: aie.objectfifo @of0(%[[VAL0]] toStream [<size = 1, stride = 2>], {%[[VAL1]] fromStream [<size = 1, stride = 2>]}, 2 : i32) {via_DMA = true} : !aie.objectfifo<memref<12xf16>>
+# CHECK: aie.objectfifo @of0(%[[VAL0]] dimensionsToStream [<size = 1, stride = 2>], {%[[VAL1]] dimensionsFromStream [<size = 1, stride = 2>]}, 2 : i32) {via_DMA = true} : !aie.objectfifo<memref<4xf16>> = [dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : memref<4xf16>, dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : memref<4xf16>]
 @construct_and_print_module
 def objFifo():
     dev = Device(AIEDevice.xcvc1902)
@@ -118,10 +114,11 @@ def objFifo():
             tile0,
             tile1,
             2,
-            T.memref(12, T.f16()),
+            np.ndarray[(4,), np.dtype[np.float16]],
             [bd_dim_layout(size=1, stride=2)],
             [[bd_dim_layout(size=1, stride=2)]],
             via_DMA=True,
+            initValues=[np.arange(4, dtype=np.float16), np.arange(4, dtype=np.float16)],
         )
         end()
 
@@ -132,7 +129,7 @@ def objFifo():
 # CHECK: %[[VAL_2:.*]] = aie.tile(7, 3)
 # CHECK: aie.objectfifo @[[VAL_3:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
 # CHECK: aie.objectfifo @[[VAL_4:.*]](%[[VAL_1]], {%[[VAL_2]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
-# CHECK: aie.objectfifo.link [@[[VAL_3]]] -> [@[[VAL_4]]]()
+# CHECK: aie.objectfifo.link [@[[VAL_3]]] -> [@[[VAL_4]]]([] [])
 @construct_and_print_module
 def objFifoLink():
     dev = Device(AIEDevice.xcve2302)
@@ -143,7 +140,7 @@ def objFifoLink():
         tile2 = tile(col=7, row=3)
         of0 = object_fifo("of0", tile0, tile1, 2, T.memref(12, T.f16()))
         of1 = object_fifo("of1", tile1, tile2, 2, T.memref(12, T.f16()))
-        object_fifo_link(of0, of1)
+        object_fifo_link(of0, of1, [], [])
         end()
 
 
@@ -165,6 +162,7 @@ def objFifoAcquire():
         with InsertionPoint(bb):
             acq = of0.acquire(port=ObjectFifoPort.Consume, num_elem=1)
             end()
+        end()
 
 
 # CHECK-LABEL: objFifoSubviewAccess
@@ -180,20 +178,15 @@ def objFifoSubviewAccess():
     with InsertionPoint(bb):
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
-        of0 = object_fifo("of0", tile0, tile1, 2, T.memref(12, T.f16()))
+        of0 = object_fifo(
+            "of0", tile0, tile1, 2, np.ndarray[(12,), np.dtype[np.float16]]
+        )
         C = Core(tile1)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            acq = objectfifo_acquire(
-                ObjectFifoSubviewType.get(T.memref(12, T.f16())),
-                ObjectFifoPort.Consume,
-                "of0",
-                1,
-            )
-            subview = objectfifo_subview_access(
-                T.memref(12, T.f16()), subview=acq, index=0
-            )
+            acq = of0.acquire(ObjectFifoPort.Consume, 1)
             end()
+        end()
 
 
 # CHECK-LABEL: objFifoRelease
@@ -214,6 +207,7 @@ def objFifoRelease():
         with InsertionPoint(bb):
             acq = of0.release(ObjectFifoPort.Produce, 1)
             end()
+        end()
 
 
 # CHECK-LABEL: cascadeFlowOp

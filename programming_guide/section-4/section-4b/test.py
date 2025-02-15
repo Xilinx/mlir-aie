@@ -11,12 +11,6 @@ import pyxrt as xrt
 import sys
 import time
 
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
-from aie.dialects.scf import *
-from aie.extras.context import mlir_mod_ctx
-from aie.extras.dialects.ext import memref, arith
-
 import aie.utils.test as test_utils
 import aie.utils.trace as trace_utils
 
@@ -84,6 +78,7 @@ def main(opts):
     npu_time_min = 9999999
     npu_time_max = 0
     errors = 0
+    enable_trace = True if opts.trace_size > 0 else False
 
     # ------------------------------------------------------
     # Main run loop
@@ -104,8 +99,8 @@ def main(opts):
             continue
 
         # Copy output results and verify they are correct
-        entire_buffer = bo_inout2.read(OUT_SIZE, 0).view(np.uint32)
-        output_buffer = entire_buffer[:INOUT2_VOLUME]
+        full_buffer = bo_inout2.read(OUT_SIZE, 0).view(np.uint32)
+        output_buffer = full_buffer[:INOUT2_VOLUME]
         if opts.verify:
             if opts.verbosity >= 1:
                 print("Verifying results ...")
@@ -113,15 +108,19 @@ def main(opts):
             e = np.equal(output_buffer, ref)
             errors = errors + np.size(e) - np.count_nonzero(e)
 
-        # Write trace values if trace_size > 0
-        if opts.trace_size > 0:
-            trace_buffer = entire_buffer[INOUT2_VOLUME:]
-            trace_utils.write_out_trace(trace_buffer, str(opts.trace_file))
+        # Write trace values enable_trace is True
+        if enable_trace:
+            if i == 0:
+                trace_buffer = full_buffer[INOUT2_VOLUME:].view(np.uint32)
 
         npu_time = stop - start
         npu_time_total = npu_time_total + npu_time
         npu_time_min = min(npu_time_min, npu_time)
         npu_time_max = max(npu_time_max, npu_time)
+
+    # Write trace results
+    if enable_trace:
+        trace_utils.write_out_trace(trace_buffer, str(opts.trace_file))
 
     # ------------------------------------------------------
     # Print verification and timing results
@@ -135,11 +134,11 @@ def main(opts):
 
     if not errors:
         print("\nPASS!\n")
-        exit(0)
+        sys.exit(0)
     else:
         print("\nError count: ", errors)
         print("\nFailed.\n")
-        exit(-1)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

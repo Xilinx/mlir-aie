@@ -78,14 +78,13 @@
 // LD44-NEXT:    program (RX) : ORIGIN = 0, LENGTH = 0x0020000
 // LD44-NEXT:    data (!RX) : ORIGIN = 0x28450, LENGTH = 0x7BB0
 // LD44-NEXT: }
-// LD44-NEXT: ENTRY(_main_init)
+// LD44-NEXT: ENTRY(__start)
 // LD44-NEXT: SECTIONS
 // LD44-NEXT: {
 // LD44-NEXT:   . = 0x0;
 // LD44-NEXT:  .text : {
-// LD44-NEXT:     /* the _main_init symbol has to come at address zero. */
-// LD44-NEXT:     *crt0.o(.text)
-// LD44-NEXT:     . = 0x200;
+// LD44-NEXT:     /* the __start symbol has to come at address zero. */
+// LD44-NEXT:     *crt0.o(.text*)
 // LD44-NEXT:     _ctors_start = .;
 // LD44-NEXT:     _init_array_start = .;
 // LD44-NEXT:     KEEP(SORT(*.init_array))
@@ -93,13 +92,25 @@
 // LD44-NEXT:     _init_array_end = .;
 // LD44-NEXT:     _dtors_start = .;
 // LD44-NEXT:     _dtors_end = .;
-// LD44-NEXT:     *(.text)
+// LD44-NEXT:     *(.text*)
 // LD44-NEXT:  } > program
 // LD44-NEXT:  .data : {
-// LD44-NEXT:     *(.data*);
+// LD44-NEXT:     *(.data*)
 // LD44-NEXT:     *(.rodata*)
 // LD44-NEXT:  } > data
-// LD44-NEXT:   . = 0x28000;
+// LD44-NEXT:  .comment : {
+// LD44-NEXT:     *(.comment*)
+// LD44-NEXT:  }
+// LD44-NEXT:  .symtab : {
+// LD44-NEXT:     *(.symtab)
+// LD44-NEXT:  }
+// LD44-NEXT:  .shstrtab : {
+// LD44-NEXT:     *(.shstrtab)
+// LD44-NEXT:  }
+// LD44-NEXT:  .strtab : {
+// LD44-NEXT:     *(.strtab)
+// LD44-NEXT:  }
+// LD44:   . = 0x28000;
 // LD44-NEXT:   _sp_start_value_DM_stack = .;
 // LD44-NEXT:   . += 0x400;
 // LD44-NEXT: . = 0x20000

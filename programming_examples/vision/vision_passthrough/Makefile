@@ -18,23 +18,31 @@ PASSTHROUGH_HEIGHT = 1080
 #PASSTHROUGH_WIDTH = 512
 #PASSTHROUGH_HEIGHT = 9
 
-targetname = passThrough
+targetname = vision_passthrough
+
+aie_py_src=${targetname}.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=${targetname}_alt.py
+endif
 
 .PHONY: all template clean
 
 all: build/final_${PASSTHROUGH_WIDTH}.xclbin
 
-build/aie2_lineBased_8b_${PASSTHROUGH_WIDTH}.mlir: ${srcdir}/aie2.py
+build/aie2_lineBased_8b_${PASSTHROUGH_WIDTH}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${PASSTHROUGH_WIDTH} ${PASSTHROUGH_HEIGHT} > $@
 
 build/passThrough.cc.o: passThrough.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
 	
 build/final_${PASSTHROUGH_WIDTH}.xclbin: build/aie2_lineBased_8b_${PASSTHROUGH_WIDTH}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host --basic-alloc-scheme \
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host --alloc-scheme=basic-sequential \
+		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
@@ -48,7 +56,7 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: ${targetname}.exe build/final_${PASSTHROUGH_WIDTH}.xclbin build/insts.txt
+run: ${targetname}.exe build/final_${PASSTHROUGH_WIDTH}.xclbin
 	${powershell} ./$< -x build/final_${PASSTHROUGH_WIDTH}.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:

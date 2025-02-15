@@ -12,7 +12,14 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-targetname = testExp
+targetname = vector_exp
+
+aie_py_src=${targetname}.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=${targetname}_alt.py
+endif
 
 all: build/final.xclbin build/insts.txt
 
@@ -20,22 +27,23 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 build/exp.o: bf16_exp.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I../../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I${srcdir}/../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
 
 build/lut_based_ops.o: ${srcdir}/../../../aie_runtime_lib/AIE2/lut_based_ops.cpp
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -c $< -o ${@F}
 
 build/kernels.a: build/exp.o build/lut_based_ops.o
 	ar rvs $@ $+
 
-build/aie.mlir: ${srcdir}/aie2.py
+build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< > $@
 
 build/final.xclbin: build/aie.mlir build/kernels.a
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				--no-xchesscc --no-xbridge \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
@@ -49,7 +57,7 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: ${targetname}.exe build/final.xclbin build/insts.txt 
+run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean: 

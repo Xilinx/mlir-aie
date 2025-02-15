@@ -67,7 +67,6 @@ private:
     return std::nullopt;
   }
 };
-} // namespace
 
 struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
   using OpConversionPattern::OpConversionPattern;
@@ -227,12 +226,31 @@ public:
   matchAndRewrite(NpuPushQueueOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
+    auto column = rewriter.getI32IntegerAttr(op.getColumn());
+    auto row = rewriter.getI32IntegerAttr(0);
+    bool isMM2S = op.getDirection() == AIE::DMAChannelDir::MM2S;
+
+    // control packet for issuing token
+    if (op.getIssueToken()) {
+      // set the task-complete-token controller ID field in the dma control
+      // register
+      AIE::TileOp shimTile = AIE::TileOp::getOrCreate(
+          rewriter, op->getParentOfType<AIE::DeviceOp>(), op.getColumn(), 0);
+      if (shimTile->hasAttr("controller_id")) {
+        uint32_t ctrl_offset = isMM2S ? 0x1D210 : 0x1D200;
+        if (op.getChannel() == 1)
+          ctrl_offset += 0x8;
+        AIE::PacketInfoAttr controller_id_attr =
+            shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
+        uint32_t data = controller_id_attr.getPktId() << 8;
+        uint32_t mask = 0x00000F00;
+        rewriter.create<NpuMaskWrite32Op>(op->getLoc(), ctrl_offset, data, mask,
+                                          nullptr, column, row);
+      }
+    }
+
     // the offset of the task queue register in the tile
-    uint32_t queue_offset;
-    if (op.getDirection() == AIE::DMAChannelDir::MM2S)
-      queue_offset = 0x1D214;
-    else
-      queue_offset = 0x1D204;
+    uint32_t queue_offset = isMM2S ? 0x1D214 : 0x1D204;
     if (op.getChannel() == 1)
       queue_offset += 0x8;
 
@@ -245,8 +263,6 @@ public:
     if (op.getIssueToken())
       cmd |= 0x80000000;
 
-    auto column = rewriter.getI32IntegerAttr(op.getColumn());
-    auto row = rewriter.getI32IntegerAttr(0);
     rewriter.create<NpuWrite32Op>(op->getLoc(), queue_offset, cmd, nullptr,
                                   column, row);
     rewriter.eraseOp(op);
@@ -269,7 +285,7 @@ public:
   matchAndRewrite(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     const auto &targetModel = AIE::getTargetModel(op);
-    MemRefType bufferType = op.getMemref().getType();
+    BaseMemRefType bufferType = op.getMemref().getType();
     auto *ctx = op->getContext();
     auto i32ty = IntegerType::get(ctx, 32);
     auto zero = IntegerAttr::get(i32ty, 0);
@@ -301,6 +317,7 @@ public:
     auto d0_stride = zero;
     auto d1_size = zero;
     auto d1_stride = zero;
+    auto d2_size = zero;
     auto d2_stride = zero;
     auto iteration_current = zero;
     auto iteration_size = zero;
@@ -314,6 +331,12 @@ public:
     auto lock_acq_enable = zero;
     auto lock_acq_val = zero;
     auto lock_acq_id = zero;
+    auto d0_zero_before = zero;
+    auto d1_zero_before = zero;
+    auto d2_zero_before = zero;
+    auto d0_zero_after = zero;
+    auto d1_zero_after = zero;
+    auto d2_zero_after = zero;
 
     auto issue_token = BoolAttr::get(ctx, false);
     auto repeat_count = zero;
@@ -332,6 +355,9 @@ public:
 
     // column
     column = IntegerAttr::get(i32ty, col);
+
+    // row
+    row = IntegerAttr::get(i32ty, 0);
 
     // arg_idx
     AIEX::RuntimeSequenceOp seq_op =
@@ -366,8 +392,8 @@ public:
     }
     buffer_length = IntegerAttr::get(i32ty, buffer_length_val);
 
-    // buffer_offset
-    buffer_offset = IntegerAttr::get(i32ty, offset);
+    // buffer_offset - zero because the complete address is set by the patch op
+    buffer_offset = IntegerAttr::get(i32ty, 0);
 
     // enable_packet
     if (auto packetInfo = op.getPacket()) {
@@ -390,22 +416,27 @@ public:
       // d2_stride
       d2_stride = IntegerAttr::get(i32ty, strides[2]);
 
-      // iteration_current, iteration_size, iteration_stride, repeat_count
-      if (inputSizes[3] > 1) {
-        if (inputStrides[3] > 0) {
-          iteration_size = IntegerAttr::get(i32ty, sizes[3]);
-          iteration_stride = IntegerAttr::get(i32ty, strides[3]);
-        } else {
-          // We allow users to encode the repeat_count as a dimension 3 stride
-          // of 0. This must lower to a iteration wrap of 0, so no stride is
-          // ever added. We then repeat the BD using the repeat_count in
-          // NpuPushQueueOp.
-          iteration_size = zero;
-          iteration_stride = zero;
-        }
-      }
-      repeat_count = IntegerAttr::get(i32ty, sizes[3]);
+      // d2_size
+      if (targetModel.isMemTile(col, 0)) // Need to be any row
+        d2_size = IntegerAttr::get(i32ty, sizes[2]);
+      else
+        d2_size = IntegerAttr::get(i32ty, 0);
     }
+    // iteration_current, iteration_size, iteration_stride, repeat_count
+    if (inputSizes[3] > 1) {
+      if (inputStrides[3] > 0) {
+        iteration_size = IntegerAttr::get(i32ty, sizes[3]);
+        iteration_stride = IntegerAttr::get(i32ty, strides[3]);
+      } else {
+        // We allow users to encode the repeat_count as a dimension 3 stride
+        // of 0. This must lower to a iteration wrap of 0, so no stride is
+        // ever added. We then repeat the BD using the repeat_count in
+        // NpuPushQueueOp.
+        iteration_size = zero;
+        iteration_stride = zero;
+      }
+    }
+    repeat_count = IntegerAttr::get(i32ty, sizes[3]);
 
     // next_bd
 
@@ -424,6 +455,24 @@ public:
 
     // lock_acq_id
 
+    // d0_zero_before
+    d0_zero_before = IntegerAttr::get(i32ty, op.getD0ZeroBefore());
+
+    // d1_zero_before
+    d1_zero_before = IntegerAttr::get(i32ty, op.getD1ZeroBefore());
+
+    // d2_zero_before
+    d2_zero_before = IntegerAttr::get(i32ty, op.getD2ZeroBefore());
+
+    // d0_zero_after
+    d0_zero_after = IntegerAttr::get(i32ty, op.getD0ZeroAfter());
+
+    // d1_zero_after
+    d1_zero_after = IntegerAttr::get(i32ty, op.getD1ZeroAfter());
+
+    // d2_zero_after
+    d2_zero_after = IntegerAttr::get(i32ty, op.getD2ZeroAfter());
+
     // Set the issue_token
     issue_token = BoolAttr::get(ctx, op.getIssueToken());
     // Earlier, all S2MM channels were implicitly assumed to issue a token.
@@ -431,12 +480,20 @@ public:
     if (!isMM2S)
       issue_token = BoolAttr::get(ctx, true);
 
+    if (targetModel.isMemTile(col, 0) && (!isMM2S) &&
+        (op.getD0ZeroBefore() != 0 || op.getD0ZeroAfter() != 0 ||
+         op.getD1ZeroBefore() != 0 || op.getD1ZeroAfter() != 0 ||
+         op.getD2ZeroBefore() != 0 || op.getD2ZeroAfter() != 0))
+      op->emitOpError("MemTile supports zero padding only on MM2S direction");
+
     rewriter.create<NpuWriteBdOp>(
         op->getLoc(), column, bd_id, buffer_length, buffer_offset,
         enable_packet, out_of_order_id, packet_id, packet_type, d0_size,
-        d0_stride, d1_size, d1_stride, d2_stride, iteration_current,
+        d0_stride, d1_size, d1_stride, d2_size, d2_stride, iteration_current,
         iteration_size, iteration_stride, next_bd, row, use_next_bd, valid_bd,
-        lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id);
+        lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id,
+        d0_zero_before, d1_zero_before, d2_zero_before, d0_zero_after,
+        d1_zero_after, d2_zero_after);
 
     uint64_t addr = getBufferDescriptorAddressRegisterAddress(
         targetModel, op.getId(), col, 0);
@@ -494,7 +551,12 @@ public:
 struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  WriteBdToBlockWritePattern(MLIRContext *context, PatternBenefit benefit = 1)
+private:
+  static int cachedId;
+
+public:
+  WriteBdToBlockWritePattern(MLIRContext *context, int &cachedId,
+                             PatternBenefit benefit = 1)
       : OpConversionPattern(context, benefit) {}
 
   LogicalResult
@@ -505,7 +567,7 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
     const AIE::AIETargetModel &tm = dev.getTargetModel();
 
     std::vector<uint32_t> words(8, 0);
-    auto bd_id = op.getBdId();
+    uint32_t bd_id = op.getBdId();
     uint32_t bd_addr;
     if (tm.isShimNOCTile(op.getColumn(), op.getRow())) {
       bd_addr = (op.getColumn() << tm.getColumnShift()) |
@@ -553,6 +615,12 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
       words[7] |= (op.getLockAcqEnable() & 0x1) << 12;
       words[7] |= (op.getLockAcqVal() & 0xef) << 5;
       words[7] |= op.getLockAcqId() & 0xf;
+
+      if (op.getD0ZeroBefore() || op.getD1ZeroBefore() ||
+          op.getD2ZeroBefore() || op.getD0ZeroAfter() || op.getD1ZeroAfter() ||
+          op.getD2ZeroAfter()) {
+        op->emitError("Zero padding is only available on MemTile");
+      }
     } else if (tm.isMemTile(op.getColumn(), op.getRow())) {
       bd_addr = (op.getColumn() << tm.getColumnShift()) |
                 (op.getRow() << tm.getRowShift()) | (0xA0000 + bd_id * 0x20);
@@ -564,6 +632,7 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
       words[0] |= op.getBufferLength() & 0x1ffff;
 
       // DMA_BDX_1
+      words[1] |= (op.getD0ZeroBefore() & 0x3F) << 26;
       words[1] |= (op.getNextBd() & 0x3f) << 20;
       words[1] |= (op.getUseNextBd() & 0x1) << 19;
       words[1] |= op.getBufferOffset() & 0x7ffff;
@@ -574,15 +643,20 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
 
       // DMA_BDX_3
       // TODO: Secure Access
+      words[3] |= (op.getD1ZeroBefore() & 0x1F) << 27;
       words[3] |= (op.getD1Size() & 0x3ff) << 17;
       words[3] |= op.getD1Stride() & 0x1ffff;
 
       // DMA_BDX_4
       // TODO: D2Size
+      words[4] |= (op.getD2ZeroBefore() & 0xF) << 27;
       words[4] |= op.getD2Stride() & 0x1ffff;
 
       // DMA_BDX_5
       // ToDO: D3Stride
+      words[5] |= (op.getD2ZeroAfter() & 0xF) << 28;
+      words[5] |= (op.getD1ZeroAfter() & 0x1F) << 23;
+      words[5] |= (op.getD0ZeroAfter() & 0x3F) << 17;
 
       // DMA_BDX_6
       words[6] |= (op.getIterationCurrent() & 0x3f) << 23;
@@ -602,21 +676,36 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
                     "ShimTiles and MemTiles currently.");
       return failure();
     }
+
     MemRefType memrefType = MemRefType::get({8}, rewriter.getI32Type());
     TensorType tensorType = RankedTensorType::get({8}, rewriter.getI32Type());
     memref::GlobalOp global = nullptr;
-    {
+    auto initVal = DenseElementsAttr::get<uint32_t>(tensorType, words);
+    auto otherGlobals = dev.getOps<memref::GlobalOp>();
+    for (auto g : otherGlobals) {
+      if (g == op)
+        continue;
+      if (g.getType() != memrefType)
+        continue;
+      auto otherValue = g.getInitialValue();
+      if (!otherValue)
+        continue;
+      if (*otherValue != initVal)
+        continue;
+      global = g;
+      break;
+    }
+    if (!global) {
       OpBuilder::InsertionGuard guard(rewriter);
-      std::string name = "blockwrite_data_";
       rewriter.setInsertionPoint(
           op->getParentOfType<AIEX::RuntimeSequenceOp>());
-      int id = 0;
-      while (dev.lookupSymbol(name + std::to_string(id)))
-        id++;
-      name += std::to_string(id);
+      std::string name = "blockwrite_data_";
+      while (dev.lookupSymbol(name + std::to_string(cachedId)))
+        cachedId++;
+      name += std::to_string(cachedId);
       global = rewriter.create<memref::GlobalOp>(
           op->getLoc(), name, rewriter.getStringAttr("private"), memrefType,
-          DenseElementsAttr::get<uint32_t>(tensorType, words), true, nullptr);
+          initVal, true, nullptr);
     }
     auto memref = rewriter.create<memref::GetGlobalOp>(op->getLoc(), memrefType,
                                                        global.getName());
@@ -626,6 +715,8 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
     return success();
   }
 };
+
+int WriteBdToBlockWritePattern::cachedId = 0;
 
 struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
@@ -644,6 +735,7 @@ struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
     target.addLegalDialect<memref::MemRefDialect>();
     target.addLegalOp<AIE::BufferOp>();
     target.addLegalOp<AIE::ShimDMAAllocationOp>();
+    target.addLegalOp<AIE::TileOp>();
 
     target.addIllegalOp<NpuDmaMemcpyNdOp>();
     target.addIllegalOp<NpuDmaWaitOp>();
@@ -671,6 +763,8 @@ struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
       signalPassFailure();
   }
 };
+
+} // namespace
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>> AIEX::createAIEDmaToNpuPass() {
   return std::make_unique<AIEDmaToNpuPass>();

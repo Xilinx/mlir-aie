@@ -15,12 +15,14 @@
 # <llvm dir>    - optional, default is 'llvm'
 # <build dir>   - optional, default is 'build' (for llvm/build)
 # <install dir> - optional, default is 'install' (for llvm/install)
+# <target>      - optional, default is 'X86'
 #
 ##===----------------------------------------------------------------------===##
 
 LLVM_DIR=${1:-"llvm"}
 BUILD_DIR=${2:-"build"}
 INSTALL_DIR=${3:-"install"}
+BUILD_TARGET=${4:-"X86"}
 
 mkdir -p $LLVM_DIR/$BUILD_DIR
 mkdir -p $LLVM_DIR/$INSTALL_DIR
@@ -44,7 +46,7 @@ CMAKE_CONFIGS="\
   -DMLIR_ENABLE_BINDINGS_PYTHON=ON \
   -DCMAKE_INSTALL_PREFIX=../$INSTALL_DIR \
   -DLLVM_ENABLE_PROJECTS=mlir \
-  -DLLVM_TARGETS_TO_BUILD:STRING=X86;ARM;AArch64 \
+  -DLLVM_TARGETS_TO_BUILD:STRING=$BUILD_TARGET \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
   -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \

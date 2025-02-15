@@ -15,15 +15,22 @@ include ${srcdir}/../../makefile-common
 all: build/final.xclbin build/insts.txt
 
 devicename ?= npu
-targetname = passThroughDMAs
+targetname = passthrough_dmas
 LENGTH ?= 4096
 
-build/aie.mlir: ${srcdir}/aie2.py
+aie_py_src=${targetname}.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=${targetname}_alt.py
+endif
+
+build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${LENGTH} ${devicename} ${col} > $@
 
 .PHONY: inst/insts.txt
-inst/insts.txt: ${srcdir}/aie2.py
+inst/insts.txt: ${srcdir}/${aie_py_src}
 	rm -rf inst
 	mkdir -p inst 
 	python3 $< ${LENGTH} > inst/aie.mlir
@@ -33,6 +40,7 @@ inst/insts.txt: ${srcdir}/aie2.py
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				--no-xchesscc --no-xbridge \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
@@ -46,7 +54,7 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: ${targetname}.exe build/final.xclbin build/insts.txt
+run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -l ${LENGTH}
 
 # Changing variables when we target VCK5000

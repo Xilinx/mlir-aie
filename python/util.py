@@ -5,7 +5,7 @@ import multiprocessing
 import numbers
 import os
 from collections import defaultdict
-from typing import List, Tuple, Dict, Set
+from typing import List, Tuple, Dict, Set, TypeVar
 
 
 def build_graph(max_cols, max_rows, target_model):
@@ -468,36 +468,6 @@ class Router:
         return True
 
 
-def tiling_calculator_tile_sizes(*matrix_dims, tile_n_cols=4, tile_n_rows=4):
-    rows, cols = matrix_dims
-    n_tiles_row = rows // tile_n_rows
-    n_tiles_col = cols // tile_n_cols
-
-    sizes_strides = [
-        [n_tiles_row, cols * tile_n_rows],
-        [n_tiles_col, tile_n_cols],
-        [tile_n_rows, cols],
-        [tile_n_cols, 1],
-    ]
-
-    return sizes_strides
-
-
-def tiling_calculator_n_tiles(*matrix_dims, n_tile_rows=4, n_tile_cols=4):
-    rows, cols = matrix_dims
-    tile_n_rows = rows // n_tile_rows
-    tile_n_cols = cols // n_tile_cols
-
-    sizes_strides = [
-        [n_tile_rows, cols * tile_n_rows],
-        [n_tile_cols, tile_n_cols],
-        [tile_n_rows, cols],
-        [tile_n_cols, 1],
-    ]
-
-    return sizes_strides
-
-
 def _to_js(sizes_strides):
     # plug into https://andreroesti.com/data-layout-viz/data_layout.html
     return f"""
@@ -505,3 +475,13 @@ def _to_js(sizes_strides):
         {sizes_strides}
     ])
     """
+
+
+E = TypeVar("E")
+
+
+def single_elem_or_list_to_list(val: list[E] | E) -> list[E]:
+    """does not work for list of lists but still useful"""
+    if not isinstance(val, list):
+        return [val]
+    return val

@@ -37,6 +37,8 @@ static StringRef getArchIntrinsicString(AIEArch arch) {
     return "aie";
   case AIEArch::AIE2:
     return "aie2";
+  case AIEArch::AIE2p:
+    return "aie2p";
   }
   llvm::report_fatal_error("unsupported arch");
 }
@@ -49,7 +51,7 @@ static auto getAIE1Intrinsics(OpBuilder &builder) {
   Type int32Type = IntegerType::get(builder.getContext(), 32);
   Type int128Type = IntegerType::get(builder.getContext(), 128);
   Type int384Type = IntegerType::get(builder.getContext(), 384);
-  Type floatType = FloatType::getF32(builder.getContext());
+  Type floatType = Float32Type::get(builder.getContext());
 
   // Note that not all of these are valid for a particular design, or needed.
   // For right now, we will just accept the noise.
@@ -122,6 +124,7 @@ static void declareAIEIntrinsics(AIEArch arch, OpBuilder &builder) {
     registerIntrinsics(getAIE1Intrinsics(builder));
     return;
   case AIEArch::AIE2:
+  case AIEArch::AIE2p:
     registerIntrinsics(getAIE2Intrinsics(builder));
     return;
   }
@@ -280,7 +283,7 @@ struct AIEPutCascadeToStdLowering : OpConversionPattern<PutCascadeOp> {
              << funcName;
     SmallVector<Value, 2> args;
     args.push_back(op.getCascadeValue());
-    if (targetModel.getTargetArch() == AIEArch::AIE2)
+    if (isa<AIE2TargetModel>(targetModel))
       args.push_back(rewriter.create<arith::ConstantOp>(
           op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           rewriter.getI32IntegerAttr(1))); // enable
@@ -314,7 +317,7 @@ struct AIEGetCascadeToStdLowering : OpConversionPattern<GetCascadeOp> {
       return op.emitOpError("Could not find the intrinsic function ")
              << funcName;
     SmallVector<Value, 2> args;
-    if (targetModel.getTargetArch() == AIEArch::AIE2)
+    if (isa<AIE2TargetModel>(targetModel))
       args.push_back(rewriter.create<arith::ConstantOp>(
           op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           rewriter.getI32IntegerAttr(1))); // enable

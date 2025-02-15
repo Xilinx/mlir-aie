@@ -5,47 +5,49 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2021 Xilinx Inc.
-# (c) Copyright 2022-2023 Advanced Micro Devices, Inc.
-
-AIETOOLS=`realpath $(dirname $(which xchesscc))/../`
-
-TARGET_AIE_LIBDIR=$AIETOOLS/data/versal_prod/lib
-TARGET_AIE2_LIBDIR=$AIETOOLS/data/aie_ml/lib
+# (c) Copyright 2022-2024 Advanced Micro Devices, Inc.
 
 TARGET=${1^^}
 shift
 
-if [ $TARGET != "AIE" -a $TARGET != "AIE2" ]
+# check to see if the next command line argument is -aietools
+if [ "$1" == "-aietools" ]
   then
-    echo "xchesscc_wrapper: first argument is expected to be the target architecture (aie or aie2)"
+    AIETOOLS=$2
+    shift
+    shift
+fi
+
+AIETOOLS_PATH=`realpath $(dirname $(which xchesscc))/../`
+AIETOOLS="${AIETOOLS:-${AIETOOLS_PATH}}"
+
+if [ $TARGET != "AIE" -a $TARGET != "AIE2" -a $TARGET != "AIE2P" ]
+  then
+    echo "xchesscc_wrapper: first argument is expected to be the target architecture (aie or aie2 or aie2p)"
     exit 1
 fi
 if [ $TARGET == "AIE" ]
   then
     EXTRA_DEFS="-D__AIE_ARCH__=10 -D__AIEARCH__=10"
+    AIEARCH=versal_prod
+    AIETARGET=versal_prod
 elif [ $TARGET == "AIE2" ]
   then
     EXTRA_DEFS="-D__AIE_ARCH__=20 -D__AIEARCH__=20"
-fi
-if [ -z "$AIETOOLS" ]
+    AIEARCH=aie2
+    AIETARGET=aie_ml
+elif [ $TARGET == "AIE2P" ]
   then
-    echo "xchesscc_wrapper needs a valid Vitis installation"
+    EXTRA_DEFS="-D__AIE_ARCH__=21 -D__AIEARCH__=21"
+    AIEARCH=aie2p
+    AIETARGET=aie2p
+else
+    echo "xchesscc_wrapper unknown architecture $TARGET"
     exit 1
 fi
 
-if [ -z "$AIETOOLS" ]
-  then
-    echo "xchesscc_wrapper needs a valid Vitis installation"
-    exit 1
-fi
-
-TARGETVAR=TARGET_${TARGET}_LIBDIR
-LIBDIR=${!TARGETVAR}
+LIBDIR=${AIETOOLS}/data/${AIETARGET}/lib
+INCDIR=${AIETOOLS}/include
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-export RDI_DATADIR=$AIETOOLS/data
-export UNWRAPPED_XCHESSCC=$AIETOOLS/bin/unwrapped/lnx64.o/xchesscc
-export LD_LIBRARY_PATH=$AIETOOLS/lib/lnx64.o:$AIETOOLS/lnx64/tools/dot/lib:$LD_LIBRARY_PATH
-# Carefully crafted path so that we can inject other scripts into the chess path, namely chess-clang
-export PATH=$DIR:$AIETOOLS/bin/unwrapped/lnx64.o:$AIETOOLS/tps/lnx64/target/bin/LNa64bin
-$UNWRAPPED_XCHESSCC -p me -C Release_LLVM -D__AIENGINE__ $EXTRA_DEFS -Y clang=$DIR/chess-clang -P $LIBDIR -d -f $@
+xchesscc --aiearch ${AIEARCH} -p me -C Release_LLVM -D__AIENGINE__ $EXTRA_DEFS -I $INCDIR -P $LIBDIR -d -f $@

@@ -5,8 +5,6 @@
 //
 // (c) Copyright 2024 AMD Inc.
 
-// REQUIRES: ryzen_ai
-//
 // RUN: aie-opt --verify-diagnostics --aie-dma-tasks-to-npu %s
 
 // This test ensures the proper error is emitted if a user attempts to configure a task 

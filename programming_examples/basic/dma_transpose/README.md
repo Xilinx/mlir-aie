@@ -12,14 +12,45 @@
 
 This reference design can be run on a Ryzen™ AI NPU.
 
-In the [design](./aie2.py), a 2-D array in a row-major layout is read from external memory to `ComputeTile2` with a transposed layout,
-by using an implicit copy via the compute tile's Data Movement Accelerator (DMA). The data is read from and written to external memory through the Shim tile (`col`, 0).
+In the [design](./dma_transpose_iron.py), a 2-D array in a row-major layout is read from external memory to a compute tile with a transposed layout,
+by using an implicit copy via the compute tile's Data Movement Accelerator (DMA). The data is read from and written to external memory through a shim tile.
 
-The implicit copy is performed using the `object_fifo_link` operation that specifies how input data arriving via `of_in` should be sent further via `of_out` by specifically leveraging the compute tile's DMA. This operation and its functionality are described in more depth in [Section-2b](../../../programming_guide/section-2/section-2b/README.md/#object-fifo-link) of the programming guide.
+This data movement transformation can be visualized as a map which shows the order the data the data is streamed (e.g., in transposed layout):
+<p align="center">
+  <img
+    src="transpose_data.png">
+    <h3 align="center"> Visualization of the Transpose Data Transformation for M=64, K=32. 
+ </h3> 
+</p>
 
+The implicit copy is performed using the `ObjectFifo.forward()` function that specifies how input data arriving via `of_in` should be sent further via `of_out` by specifically leveraging a compute tile's (`AnyComputeTile`'s) DMA. 
 
-To compile and run the design for NPU:
+## Design Versions
+* [dma_transpose_iron.py](./dma_transpose_iron.py) shows how to use the current version of IRON
+* [dma_transpose.py](./dma_transpose.py) shows a lower-level version of IRON, where constructors directly correspond to MLIR operations
+* [dma_transpose._alt.py](./dma_transpose_alt.py)
+
+The `object_fifo_link` operation used explicitly by`dma_transpose.py` and `dma_transpose._alt.py` is described in more depth in [Section-2b](../../../programming_guide/section-2/section-2b/README.md/#object-fifo-link) of the programming guide.
+
+To compile and run the design `dma_transpose_iron.py` for NPU:
+```shell
+env use_iron=1 make
+make run
 ```
+
+To compile and run the design `dma_transpose.py` for NPU:
+```shell
 make
 make run
+```
+
+To compile and run the design `dma_transpose_alt.py` for NPU:
+```shell
+env use_alt=1 make
+make run
+```
+
+To generate a data visualization of the transpose (like that above), run:
+```shell
+make generate_access_map
 ```

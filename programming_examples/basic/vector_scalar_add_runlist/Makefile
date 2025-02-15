@@ -14,15 +14,23 @@ include ${srcdir}/../../makefile-common
 
 all: build/final.xclbin
 
-targetname = vectorScalarAdd
+targetname = vector_scalar_add
 
-build/aie.mlir: ${srcdir}/aie2.py
+aie_py_src=${targetname}.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=${targetname}_alt.py
+endif
+
+build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< > $@
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
 ${targetname}.exe: ${srcdir}/test.cpp
@@ -36,7 +44,7 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: ${targetname}.exe build/final.xclbin build/insts.txt 
+run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:

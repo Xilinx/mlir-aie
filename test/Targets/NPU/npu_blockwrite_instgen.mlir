@@ -8,16 +8,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-dma-to-npu %s | aie-translate --aie-npu-instgen | FileCheck %s
+// RUN: aie-opt --aie-dma-to-npu %s | aie-translate --aie-npu-to-binary | FileCheck %s
 module {
   aie.device(npu1_4col) {
     aiex.runtime_sequence(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
 
       // TXN header
-      // CHECK: 06030100
-      // CHECK: 00000105
+      // CHECK: 06030001
+      // CHECK: 00000104
       // CHECK: 00000003
-      // CHECK: 00000068
+      // CHECK: 00000058
 
       %c16_i64 = arith.constant 16 : i64
       %c1_i64 = arith.constant 1 : i64
@@ -25,10 +25,8 @@ module {
       %c64_i64 = arith.constant 64 : i64
       %c0_i32 = arith.constant 0 : i32
       %c1_i32 = arith.constant 1 : i32
-      // CHECK: 00000001
-      // CHECK: 00000000
       // CHECK: 061A00C0
-      // CHECK: 00000030
+      // CHECK: 0000002C
       // CHECK: 00000001
       // CHECK: 00580002
       // CHECK: 000C0005
@@ -48,9 +46,16 @@ module {
                          row = 1 : i32,
                          d0_stride = 5 : i32,
                          d0_size = 6 : i32,
+                         d0_zero_after = 0 : i32,
+                         d0_zero_before = 0 : i32,
                          d1_stride = 7 : i32,
                          d1_size = 8 : i32,
+                         d1_zero_after = 0 : i32,
+                         d1_zero_before = 0 : i32,
+                         d2_size = 1 : i32,
                          d2_stride = 9 : i32,
+                         d2_zero_after = 0 : i32,
+                         d2_zero_before = 0 : i32,
                          ddr_id = 10 : i32,
                          iteration_current = 11 : i32,
                          iteration_stride = 12 : i32,
@@ -64,9 +69,7 @@ module {
                          use_next_bd = 1 : i32,
                          valid_bd = 1 : i32}
       // CHECK: 00000000
-      // CHECK: 00000000
       // CHECK: 06400DEF
-      // CHECK: 00000000
       // CHECK: 00000042
       aiex.npu.write32 { column = 3 : i32, row = 4 : i32, address = 0xabc00def : ui32, value = 0x42 : ui32 }
 

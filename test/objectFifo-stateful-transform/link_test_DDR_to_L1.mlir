@@ -33,7 +33,6 @@
 // CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
 // CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_2]], DMA : 0)
 // CHECK:           %[[VAL_13:.*]] = aie.external_buffer {sym_name = "ext_buff_in"} : memref<16xi32>
-// CHECK:           aie.shim_dma_allocation @to_memTile(MM2S, 0, 2)
 // CHECK:           %[[VAL_14:.*]] = aie.shim_dma(%[[VAL_0]]) {
 // CHECK:             %[[VAL_15:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -44,6 +43,7 @@
 // CHECK:           ^bb2:  // pred: ^bb0
 // CHECK:             aie.end
 // CHECK:           }
+// CHECK:           aie.shim_dma_allocation @to_memTile(MM2S, 0, 2)
 // CHECK:           %[[VAL_16:.*]] = aie.memtile_dma(%[[VAL_1]]) {
 // CHECK:             %[[VAL_17:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
@@ -97,7 +97,7 @@ module @link_DDR_L1 {
         aie.objectfifo @to_memTile (%tile20, {%tile21}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
         aie.objectfifo @from_memTile (%tile21, {%tile22}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
-        aie.objectfifo.link [@to_memTile] -> [@from_memTile] ()
+        aie.objectfifo.link [@to_memTile] -> [@from_memTile] ([] [])
 
         %ext_buff_in = aie.external_buffer {sym_name = "ext_buff_in"}: memref<16xi32>
         aie.objectfifo.register_external_buffers @to_memTile (%tile20, {%ext_buff_in}) : (memref<16xi32>)

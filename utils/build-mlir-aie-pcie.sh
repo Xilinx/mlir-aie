@@ -47,13 +47,12 @@ set -o pipefail
 set -e
 
 # Building LIBXAIE with the VCK5000 backend
-if [ -z "$LIBXAIE_DIR" ] || [ -z "$HSAKMT_DIR" ]; then
+if [ -z "$LIBXAIE_DIR" ] ; then
   echo "No LIBXAIE_DIR. Building aie-rt with AMDAIR backend"
-  git clone https://github.com/stephenneuendorffer/aie-rt
   mkdir aie-rt-x86_64-hsa
   mkdir aie-rt-x86_64-hsa/lib/
+  cp -r $(pwd)/../third_party/aie-rt/ ./
   cd aie-rt
-  git checkout phoenix_v2023.2
   cd driver/src
   make -f Makefile.Linux CFLAGS="-D__AIEAMDAIR__"
   cp -r ../include ../../../aie-rt-x86_64-hsa

@@ -135,7 +135,7 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
   void runOnOperation() override {
 
     DeviceOp device = getOperation();
-    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
+    OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
 
     TokenAnalysis TA(device);
     TA.runAnalysis();

@@ -25,6 +25,8 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include "test_utils.h"
+
 #include "matrix_multiplication.h"
 
 constexpr int M = 16;
@@ -60,7 +62,7 @@ int main(int argc, const char *argv[]) {
   srand(time(NULL));
 
   std::vector<uint32_t> instr_v =
-      matmul_common::load_instr_sequence(vm["instr"].as<std::string>());
+      test_utils::load_instr_sequence(vm["instr"].as<std::string>());
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 

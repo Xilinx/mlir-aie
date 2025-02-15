@@ -2,11 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
-
+import numpy as np
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
-    call,
     Core,
     Device,
     ObjectFifoPort,
@@ -16,25 +15,22 @@ from aie.dialects.aie import (
     tile,
     end,
 )
-from aie.extras.dialects.ext import arith
-from aie.dialects.scf import for_, yield_
-from aie.ir import TypeAttr, Block, InsertionPoint
+from aie.helpers.dialects.ext.scf import _for as range_
+from aie.ir import Block, InsertionPoint
 
 from util import construct_and_print_module
-
-range_ = for_
 
 
 # CHECK:  module {
 # CHECK:    aie.device(xcve2802) {
 # CHECK:      func.func private @test_func(memref<8x8xi32>, i32) -> i32
-# CHECK:      %tile_0_2 = aie.tile(0, 2)
-# CHECK:      %tile_1_2 = aie.tile(1, 2)
-# CHECK:      %tile_3_3 = aie.tile(3, 3)
-# CHECK:      aie.objectfifo @of0(%tile_0_2, {%tile_1_2}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
-# CHECK:      aie.objectfifo @of1(%tile_1_2, {%tile_3_3}, 2 : i32) : !aie.objectfifo<memref<8x8xi32>>
-# CHECK:      aie.objectfifo.link [@of0] -> [@of1]()
-# CHECK:      %core_3_3 = aie.core(%tile_3_3) {
+# CHECK:      %{{.*}}tile_0_2 = aie.tile(0, 2)
+# CHECK:      %{{.*}}tile_1_2 = aie.tile(1, 2)
+# CHECK:      %{{.*}}tile_3_3 = aie.tile(3, 3)
+# CHECK:      aie.objectfifo @of0(%{{.*}}tile_0_2, {%{{.*}}tile_1_2}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
+# CHECK:      aie.objectfifo @of1(%{{.*}}tile_1_2, {%{{.*}}tile_3_3}, 2 : i32) : !aie.objectfifo<memref<8x8xi32>>
+# CHECK:      aie.objectfifo.link [@of0] -> [@of1]([] [])
+# CHECK:      %core_3_3 = aie.core(%{{.*}}tile_3_3) {
 # CHECK:        %c0 = arith.constant 0 : index
 # CHECK:        %c10 = arith.constant 10 : index
 # CHECK:        %c1 = arith.constant 1 : index
@@ -54,8 +50,10 @@ def core_ext_kernel():
     dev = Device(AIEDevice.xcve2802)
     dev_block = Block.create_at_start(dev.body_region)
     with InsertionPoint(dev_block):
-        external_func(
-            "test_func", inputs=[T.memref(8, 8, T.i32()), T.i32()], outputs=[T.i32()]
+        test_func = external_func(
+            "test_func",
+            inputs=[np.ndarray[(8, 8), np.dtype[np.int32]], np.int32],
+            outputs=[T.i32()],
         )
 
         S = tile(0, 2)
@@ -71,7 +69,7 @@ def core_ext_kernel():
         with InsertionPoint(bb):
             for _ in range_(10):
                 elem0 = of1.acquire(ObjectFifoPort.Consume, 1)
-                res = call("test_func", [elem0, arith.constant(4)], [T.i32()])
+                res = test_func(elem0, 4)
                 of1.release(ObjectFifoPort.Consume, 1)
-                yield_([])
             end()
+        end()

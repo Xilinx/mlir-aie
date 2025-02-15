@@ -34,15 +34,14 @@ static void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset) {
 //    program (RX) : ORIGIN = 0, LENGTH = 0x0020000
 //    data (!RX) : ORIGIN = 0x20000, LENGTH = 0x0020000
 // }
-// ENTRY(_main_init)
+// ENTRY(__start)
 // INPUT(something.o)
 // SECTIONS
 // {
 //   . = 0x0;
 //   .text : {
-//      // the _main_init symbol from me_basic.o has to come at address zero.
-//      *me_basic.o(.text)
-//      . = 0x200;
+//      // the __start symbol has to come at address zero.
+//      *crt0.o(.text*)
 //      __ctors_start__ = .;
 //      __init_array_start = .;
 //      KEEP(SORT(*)(.init_array))
@@ -50,16 +49,18 @@ static void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset) {
 //      __init_array_end = .;
 //      __dtors_start__ = .;
 //      __dtors_end__ = .;
-//      *(.text)
+//      *(.text*)
 //   } > program
-//   .data : { *(.data) } > data
+//   .data : { *(.data*) } > data
 //   . = 0x20000;
 //   _sp_start_value_DM_stack = .;
 //   . = 0x24000;
 //   a = .;
 //   . += 1024;
-//   .bss : { *(.bss) } > data
+//   .bss : { *(.bss*) } > data
 // }
+// PROVIDE(main = core_3_3);
+
 LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
                                                   raw_ostream &output,
                                                   int tileCol, int tileRow) {
@@ -98,14 +99,13 @@ MEMORY
              << ", LENGTH = 0x" << llvm::utohexstr(length);
       output << R"THESCRIPT(
 }
-ENTRY(_main_init)
+ENTRY(__start)
 SECTIONS
 {
   . = 0x0;
   .text : {
-     /* the _main_init symbol has to come at address zero. */
-     *crt0.o(.text)
-     . = 0x200;
+     /* the __start symbol has to come at address zero. */
+     *crt0.o(.text*)
      _ctors_start = .;
      _init_array_start = .;
      KEEP(SORT(*.init_array))
@@ -113,12 +113,25 @@ SECTIONS
      _init_array_end = .;
      _dtors_start = .;
      _dtors_end = .;
-     *(.text)
+     *(.text*)
   } > program
   .data : {
-     *(.data*);
+     *(.data*)
      *(.rodata*)
   } > data
+  .comment : {
+     *(.comment*)
+  }
+  .symtab : {
+     *(.symtab)
+  }
+  .shstrtab : {
+     *(.shstrtab)
+  }
+  .strtab : {
+     *(.strtab)
+  }
+
 )THESCRIPT";
       auto doBuffer = [&](std::optional<TileID> tile, int offset,
                           std::string dir) {
@@ -155,8 +168,7 @@ SECTIONS
       doBuffer(targetModel.getMemEast(srcCoord),
                targetModel.getMemEastBaseAddress(), std::string("east"));
 
-      output << "  .bss : { *(.bss) } > data\n";
-      output << "  .bss.DMb.4 : { *(.bss.DMb.4) } > data\n";
+      output << "  .bss : { *(.bss*) } > data\n";
       output << "}\n";
       if (auto coreOp = tile.getCoreOp()) {
         if (auto fileAttr = coreOp.getLinkWith())

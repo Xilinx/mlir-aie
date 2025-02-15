@@ -5,8 +5,6 @@
 //
 // (c) Copyright 2024 AMD Inc.
 
-// REQUIRES: ryzen_ai
-//
 // RUN: aie-opt --aie-materialize-bd-chains %s | FileCheck %s
 // XFAIL: *
 // Referencing locks inside sequence function not yet implemented

@@ -16,30 +16,45 @@ mlirFileName = aie
 
 VPATH := ${srcdir}/../../../../aie_kernels/aie2
 
+aie_py_src=resnet.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=resnet_alt.py
+endif
+
 all: build/conv2dk1_i8.o build/conv2dk1_skip_init.o build/conv2dk3.o build/conv2dk1_skip.o build/conv2dk1_ui8.o build/final.xclbin
 
-build/${mlirFileName}.mlir: ${srcdir}/aie2.py
+build/${mlirFileName}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< > $@
 
 build/conv2dk1_i8.o: conv2dk1.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -DINT8_ACT -c $< -o $@
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DINT8_ACT -c $< -o ${@F}
 
 build/conv2dk3.o: conv2dk3.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -DUINT8_ACT -c $< -o $@
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DUINT8_ACT -c $< -o ${@F}
 
 build/conv2dk1_skip_init.o: conv2dk1_skip_init.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -DINT8_ACT -c $< -o $@
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DINT8_ACT -c $< -o ${@F}
 
 build/conv2dk1_ui8.o: conv2dk1.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -DUINT8_ACT -c $< -o $@
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DUINT8_ACT -c $< -o ${@F}
 
 build/conv2dk1_skip.o: conv2dk1_skip.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -DUINT8_ACT -c $< -o $@
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DUINT8_ACT -c $< -o ${@F}
 
 build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1_i8.o build/conv2dk1_skip_init.o build/conv2dk3.o build/conv2dk1_skip.o build/conv2dk1_ui8.o
-	cd build && aiecc.py --basic-alloc-scheme --aie-generate-cdo --aie-generate-npu --no-compile-host \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
+	mkdir -p ${@D}
+	cd ${@D} &&	aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
+
 clean:
 	rm -rf build log
 

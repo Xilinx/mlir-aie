@@ -149,8 +149,13 @@ uint32_t aieTargetModelGetMemTileSize(AieTargetModel targetModel) {
   return unwrap(targetModel).getMemTileSize();
 }
 
+uint32_t aieTargetModelGetNumBanks(AieTargetModel targetModel, int col,
+                                   int row) {
+  return unwrap(targetModel).getNumBanks(col, row);
+}
+
 bool aieTargetModelIsNPU(AieTargetModel targetModel) {
-  return unwrap(targetModel).isNPU();
+  return unwrap(targetModel).hasProperty(xilinx::AIE::AIETargetModel::IsNPU);
 }
 
 uint32_t aieTargetModelGetColumnShift(AieTargetModel targetModel) {

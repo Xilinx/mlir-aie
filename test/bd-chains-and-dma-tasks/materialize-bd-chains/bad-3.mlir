@@ -5,8 +5,6 @@
 //
 // (c) Copyright 2024 AMD Inc.
 
-// REQUIRES: ryzen_ai
-//
 // RUN: aie-opt --verify-diagnostics --aie-materialize-bd-chains %s
 
 // This test ensures the proper error gets emitted if the user attempts to

@@ -13,9 +13,16 @@ mlirFileName = aieWithTrace_1core
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
+aie_py_src=conv2d_fused_relu.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=conv2d_fused_relu_alt.py
+endif
+
 all: build/conv2dk1.o build/final.xclbin
 
-build/${mlirFileName}.mlir: ${srcdir}/aie2.py
+build/${mlirFileName}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< > $@
 
@@ -24,16 +31,19 @@ insts.txt: build/${mlirFileName}.mlir
 	aiecc.py -v --aie-only-generate-npu --npu-insts-name=$@ $<
 
 build/conv2dk1.o: conv2dk1.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -DINT8_ACT -c $< -o $@
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DINT8_ACT -c $< -o$ ${@F} 
 
 build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1.o  
-	cd build && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%) 
 
 clean:
 	rm -rf build *.elf* *.lst *.bif ${mlirFileName}.mlir.prj log* *.xclbin sim \
 		chess* *.o insts.txt \
 		*.log aie_partition.json *.bin BOOT.BIN _x test.exe
 
-run_py: 
+run_py: build/final.xclbin
 	${powershell} python3  ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE

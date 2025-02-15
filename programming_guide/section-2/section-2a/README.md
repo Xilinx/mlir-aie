@@ -34,20 +34,24 @@ class object_fifo:
         producerTile,
         consumerTiles,
         depth,
-        datatype,
+        datatype: MemRefType | type[np.ndarray],
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
+        initValues=None,
+        via_DMA=None,
+        plio=None,
+        disable_synchronization=None,
     )
 ```
-We will now go over each of the inputs, what they represent and why they are required by the abstraction. We will first focus on the mandatory inputs and in a later section of the guide on the default-valued ones (see Data Layout Transformations in [section-2c](../section-2c/README.md#data-layout-transformations)).
+We will now go over each of the inputs, what they represent and why they are required by the abstraction. We will first focus on the mandatory inputs then go over the default-valued inputs later in this section. The `dimensionsToStream` and `dimensionsFromStreamPerConsumer` inputs have their own dedicated section (see Data Layout Transformations in [section-2c](../section-2c/README.md#data-layout-transformations)).
 
-First of all, an Object FIFO has a unique `name` which is required for the lowering steps. The Object FIFO functions as an ordered buffer that has  a count of `depth` objects of specified `datatype`. Currently, all objects in an Object FIFO have to be of the same datatype. The `datatype` is a tensor-like attribute where the size of the tensor and the type of the individual elements are specified at the same time (i.e. `<16xi32>`). The `depth` can be either an integer or an array of integers. The latter is explained further down in this section.
+First of all, an Object FIFO has a unique `name` which is required for the lowering steps. The Object FIFO functions as an ordered buffer that has a count of `depth` objects of specified `datatype`. Currently, all objects in an Object FIFO have to be of the same datatype. The `datatype` is a tensor-like attribute where the size of the tensor and the type of the individual elements are specified at the same time (i.e. `<16xi32>`). The `depth` can be either an integer or an array of integers. The latter is explained further down in this section.
 
 An Object FIFO is created between a producer, or source tile, and a consumer, or destination tile. The tiles are where producer and consumer processes accessing the Object FIFO will be executed. These processes are also refered to as the "actors" of the Object FIFO, based on dataflow theory terminology. Below, you can see an example of an Object FIFO created between producer tile A and consumer tile B:
 ```python
 A = tile(1, 3)
 B = tile(2, 4)
-of0 = object_fifo("objfifo0", A, B, 3, T.memref(256, T.i32()))
+of0 = object_fifo("objfifo0", A, B, 3, np.ndarray[(256,), np.dtype[np.int32]])
 ```
 The created Object FIFO is stored in the `of0` variable and is named `objfifo0`. It has a depth of `3` objects of datatype `<256xi32>`. The figure below represents a logical view of `of0` where no assumptions are made about where the tiles and the Object FIFO resources are placed:
 
@@ -81,22 +85,21 @@ Below you can see an example of two processes that are <u>iterating over the obj
 ```python
 A = tile(1, 3)
 B = tile(2, 4)
-of0 = object_fifo("objfifo0", A, B, 3, T.memref(256, T.i32()))
+of0 = object_fifo("objfifo0", A, B, 3, np.ndarray[(256,), np.dtype[np.int32]])
 
 @core(A)
 def core_body():
     for _ in range_(3):
         elem0 = of0.acquire(ObjectFifoPort.Produce, 1)
-        call(test_func, [elem0])
+        test_func(elem0)
         of0.release(ObjectFifoPort.Produce, 1)
-        yield_([])
 
 @core(B)
 def core_body():
     elems = of0.acquire(ObjectFifoPort.Consume, 3)
-    call(test_func2, [elems[0]])
-    call(test_func2, [elems[1]])
-    call(test_func2, [elems[2]])
+    test_func2(elems[0])
+    test_func2(elems[1])
+    test_func2(elems[2])
     of0.release(ObjectFifoPort.Consume, 3)
 ```
 
@@ -111,19 +114,18 @@ Examples of designs that use these features are available in Section 2e: [01_sin
 An Object FIFO can be created with the same tile as both its producer and consumer tile. This is mostly done to ensure proper synchronization within the process itself, as opposed to synchronization across multiple processes running on different tiles, as we have seen in examples up until this point. Composing two kernels with access to a shared buffer is an application that leverages this property of the Object FIFO, as showcased in the code snippet below, where `test_func` and  `test_func2` are composed using `of0`:
 ```python
 A = tile(1, 3)
-of0 = object_fifo("objfifo0", A, A, 3, T.memref(256, T.i32()))
+of0 = object_fifo("objfifo0", A, A, 3, np.ndarray[(256,), np.dtype[np.int32]])
 
 @core(A)
 def core_body():
     for _ in range_(3):
         elem0 = of0.acquire(ObjectFifoPort.Produce, 1)
-        call(test_func, [elem0])
+        test_func(elem0)
         of0.release(ObjectFifoPort.Produce, 1)
 
         elem1 = of0.acquire(ObjectFifoPort.Consume, 1)
-        call(test_func2, [elem1])
+        test_func2(elem1)
         of0.release(ObjectFifoPort.Consume, 1)
-        yield_([])
 ```
 
 ### Specifying the Object FIFO Depth as an Array
@@ -138,7 +140,7 @@ For example, in the code snippet below `of0` describes the data movement between
 ```python
 A = tile(1, 3)
 B = tile(2, 4)
-of0 = object_fifo("objfifo0", A, B, 3, T.memref(256, T.i32()))
+of0 = object_fifo("objfifo0", A, B, 3, np.ndarray[(256,), np.dtype[np.int32]])
 ```
 The conceptual depth of the Object FIFO is `3`. The reasoning behind this choice of depth can be understood by looking at the acquire and release patterns of the two actors:
 ```python
@@ -146,17 +148,15 @@ The conceptual depth of the Object FIFO is `3`. The reasoning behind this choice
 def core_body():
     for _ in range_(9):
         elem0 = of0.acquire(ObjectFifoPort.Produce, 1)
-        call(produce_func, [elem0])
+        produce_func(elem0)
         of0.release(ObjectFifoPort.Produce, 1)
-        yield_([])
 
 @core(B)
 def core_body():
     for _ in range_(9):
         elems = of0.acquire(ObjectFifoPort.Consume, 2)
-        call(consume_func, [elems[0], elems[1]])
+        consume_func(elems[0], elems[1])
         of0.release(ObjectFifoPort.Consume, 2)
-        yield_([])
 ```
 Each iteration:
 * producer A acquires one object to produce into, calls the kernel function `produce_func` to store new data in it for B to consume, and releases the object,
@@ -166,13 +166,56 @@ A conceptual depth of `2` would have sufficed for this system to function withou
 
 The equivalent of this conceptual depth of `3` using an array of depths would be:
 ```python
-of0 = object_fifo("objfifo0", A, B, [1, 2], T.memref(256, T.i32()))
+of0 = object_fifo("objfifo0", A, B, [1, 2], np.ndarray[(256,), np.dtype[np.int32]])
 ```
 where `1` is the number of resources available locally to producer A and `2` is the number available to consumer B.
 
 > **NOTE:**  For a correct lowering, this feature should be used in situations where the producers and consumers of the Object FIFO are running on different tiles.
 
 The feature of specifying the depths of the resource pools for different actors of the Object FIFO is used to support a specific dependency that can arise when working with multiple Object FIFOs and it is further explained in the ["Key Object FIFO Patterns" section](../section-2b/02_Broadcast/README.md#object-fifo-broadcast-pattern).
+
+### Additional Inputs of the Object FIFO
+
+So far, this section has introduced the mandatory inputs of the Object FIFO. This part of the guide will focus on the remaining inputs and explain what part they play in guiding the Object FIFO lowering.
+```python
+class object_fifo:
+    def __init__(
+        ...
+        initValues=None,
+        via_DMA=None,
+        plio=None,
+        disable_synchronization=None,
+    )
+```
+As a reminder, the `dimensionsToStream` and `dimensionsFromStreamPerConsumer` inputs have their own dedicated section (see Data Layout Transformations in [section-2c](../section-2c/README.md#data-layout-transformations)).
+
+Upon instantiation of an Object FIFO it is possible to initialize its objects by providing an array of initial values to the `initValues` input. This is shown in the code snippet below where the two objects of `of0` are respectively initialized with the arrays `[0, 1, 2, 3]` and `[4, 5, 6, 7]`:
+```python
+A = tile(1, 3)
+B = tile(2, 4)
+of0 = object_fifo(
+    "of0",
+    A,
+    B,
+    2,
+    np.ndarray[(2, 2), np.dtype[np.int32]],
+    initValues=[
+        np.arange(4, dtype=np.int32),
+        np.arange(4, 8, dtype=np.int32)
+    ],
+)
+```
+It is important to note that the initial values must match the `datatype` of the Object FIFO. To help with this process, the Object FIFO API will try to reshape the given initial values. In the example above the initial values will be reshaped as `[[0, 1], [2, 3]]` and `[[4, 5], [6, 7]]` to match the `<2x2xi32>` datatype.
+
+When an Object FIFO is initialized upon creation, the underlying synchronization mechanism is set in such a way that the producer of the Object FIFO cannot immediately acquire new objects to ensure that the initial values are not overwritten by new data before the consumers have had time to read it.
+
+**The remaining inputs of the Object FIFO are considered an advanced topic and are not required to understand the rest of this guide.**
+
+The `via_DMA` input of the Object FIFO is used mostly for debug or benchmarking purposes. It can be set to true to enforce that the lowered data movement configuration use the Data Movement Accelerators (or "DMAs") of the tiles. The DMAs are described further in the Advanced Topic section below. For further information about the Object FIFO lowering and how the `via_DMA` attribute influences it please see the sections of the MLIR-AIE [tutorials](../../../mlir_tutorials/) on communication using local memory or DMAs.
+
+The `plio` input is used to provide information about the data movement configuration to the Object FIFO lowering. When the Object FIFO is lowered the communication flows which are established between its tiles will be wired through a dedicated `plio` port.
+
+The Object FIFO is a synchronized data movement primitive that couples dedicated synchronization resources to its objects to ensure that only one actor at a time can access them, thus preventing data corruption. These synchronization resources cost additional cycles at runtime and it may be desirable to remove them when they aren't required. One example of such a situation is when using Object FIFOs with same producer / consumer as the accesses within a core will execute sequentially. The `disable_synchronization` input of the Object FIFO serves that exact purpose and when it is set to true there will be no synchronization resources coupled to the objects.
 
 ### Advanced Topic: Data Movement Accelerators
 

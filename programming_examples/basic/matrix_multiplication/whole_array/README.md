@@ -30,26 +30,40 @@ In summary, this design leverages an AI Engine accelerator to accomplish matrix 
 
 ## Building and Running the Design
 
-As configured, this design will set up an array of AIEs to perform matrix-matrix multiplication on a `bfloat16` data type, with `A`, `B` and `C` matrices all of size `512` &times; `512` &times; `512`. The tiling size is configured as `64` &times; `64` for `a`, `b`, and `c`.
+With the default configuration, this design will set up an array of AIEs to perform matrix-matrix multiplication on a `int16` input data type (`int32` output). The tiling size is configured as `64` &times; `64` for `a`, `b`, and `c` by default.
 
 You will need C++23 for `bfloat16_t` support in the `test.cpp`, which can be found in `g++-13`: [https://lindevs.com/install-g-on-ubuntu](https://lindevs.com/install-g-on-ubuntu)
 
-To compile the design:
+To compile and run the design:
 
-```
+```shell
 make
-make matrixMultiplication.exe
-```
-
-To run the design:
-
-```
+make whole_array.exe
 make run
+```
+
+To compile and run the alternative design with tiling:
+
+```shell
+env use_alt=1 make
+env use_alt=1 make whole_array.exe
+env use_alt=1 make run
+```
+
+To compile and run the alternative design with higher-level IRON:
+
+```shell
+env use_iron=1 make
+env use_iron=1 make whole_array.exe
+env use_iron=1 make run
 ```
 
 ## Detailed Design Explanation
 
-The configuration of the AI Engine array is described in the `aie2.py` file.
+The configuration of the AI Engine array is described in the [`whole_array.py`](./whole_array.py) file. There are two alternative versions of this design:
+* [`whole_array_alt.py`](./whole_array_alt.py): This design integrates some data visualization tools for runtime data movement, which can be viewed using the accompanying [notebook](./mat_mul_whole_array_visualization.ipynb). It also features the use of alternative instructions in the runtime sequence but is intended to be functionally equivalent to the orginal design.
+* [`whole_array_iron.py`](./whole_array_iron.py): This design uses a higher-level version of IRON but is also intended to be functionally equivalent. Note that this design does not support tracing at this time.
+
 It is linked against a compute microkernel which is implemented in C++.
 The following sections elaborate on each of the steps outlined in the high-level summary above.
 
@@ -59,7 +73,7 @@ The following sections elaborate on each of the steps outlined in the high-level
 
 ### 1. Defining Matrix Dimensions and Data Types
 
-In the first section of the code in `aie2.py`, we define the following constants:
+In the first section of the code in `whole_array.py`, we define the following constants:
 
 | Matrix        | Size      | Submatrix Size (1.) | Vector Intrinsic Size (2.) |
 |---------------|-----------|---------------------|-----------------------|
@@ -141,9 +155,33 @@ Of note is the `object_fifo_link()` operation. This operation establishes a conn
 
 We assume our data are stored in **row-major format** in the host's memory. For processing on the AIE compute cores, we need to transform the data layouts, such the above listed *sub-matrix tiles* are laid out contiguously in AIE compute core memory. Thankfully, AIE hardware has extensive support for transforming data using the DMAs as it is received and sent with zero cost. In the following, we will explain how we make use of this hardware feature to transform our data.
 
+#### Runtime Sequence Tiling and Data Layout Transformations Notebook
+
+There is a notebook that includes visualization for the runtime sequence `npu_dma_memcpy_nd` operations use to transfer matrices A, B, and C.
+
+To run the notebook:
+* Start a jupyter server at the root directory of your clone of `mlir-aie`.
+  Make sure you use a terminal that has run the `utils/setup_env.sh` script
+  so that the correct environment variables are percolated to jupyter.
+  Below is an example of how to start a jupyter server:
+  ```bash
+  python3 -m jupyter notebook --no-browser --port=8080
+  ```
+* In your browser, navigate to the URL (which includes a token) which is found
+  in the output of the above command.
+* Navigate to `programming_examples/basic/matrix_multiplication/whole_array`
+* Double click `mat_mul_whole_array_visualization.ipynb` to start the notebook; choose the ipykernel called `ironenv`.
+* You should now be good to go! Note that generating the animations in the notebook can take several minutes.
+
+#### Run the Notebook as a Script
+```bash
+make clean
+make run
+```
+
 ##### Tiling to Vector Intrinsic Size
 
-The `memA_fifos` and `memB_fifos` receive sub-matrices of size `m`&times;`k` and `k`&times;`n`, respectively. The FIFOs translate those matrices from a row-major format into the `r`&times;`s`-sized and `s`&times;`t`-sized blocks required by the hardware's vector instrinsics before sending them into the compute cores memory.
+The `memA_fifos` and `memB_fifos` receive sub-matrices of size `m`&times;`k` and `k`&times;`n`, respectively. The FIFOs translate those matrices from a row-major format (or, alternatively, column-major for `B` if `b_col_maj` is set) into the `r`&times;`s`-sized and `s`&times;`t`-sized blocks required by the hardware's vector instrinsics before sending them into the compute cores memory.
 
 For matrix A (`memA_fifos`), this transformation is expressed using the following wraps and strides as a list of tuples `(wrap, stride)`, given as arguments to the `object_fifo()` operation:
 (Note that `//` denotes integer floor-division in Python.)
@@ -179,7 +217,7 @@ Let us break down each component of this pattern. We do so back-to-front for eas
 
 > You can use this [data layout visualizer](http://andreroesti.com/data-layout-viz/data_layout.html) to better understand data layout transformations expressed as wraps and strides.
 
-The matrix B transformation (`memB_fifos`) is equivalent after substituting the correct dimensions (`k`&times;`n` instead of `m`&times;`k` and `s`&times;`t` isntead of `r`&times;`s`).
+The matrix B transformation (`memB_fifos`) is equivalent after substituting the correct dimensions (`k`&times;`n` instead of `m`&times;`k` and `s`&times;`t` isntead of `r`&times;`s`). If a column-major layout is used for `B` (argument `b_col_maj` is set), the transformation is analogous but transposed.
 
 Analogously, the output matrix C is transformed back from `r`&times;`t`-sized blocks back into a row-major matrix of contiguous rows with size `m`&times;`n`.
 
@@ -202,14 +240,17 @@ We define a `core_body()` function for each compute core `i`, inside of which we
 
 The signature of the `aie.runtime_sequence()` operation lists as its arguments all the external buffers from the host that we wish to read from or write to on the AI Engine's shim tiles. The body of this function describes how these buffers are transfered from and to the host, including tiling the input matrices into `m`&times;`k` and `k`&times;`n`-sized sub-matrices, and combining the `m`&times;`n`-sized output tiles into the larger output `M`&times;`N` matrix buffer.
 
-* The `tile_row_block` variable segments the M (rows of A) into smaller chunks, each containing `rows_per_block` tile rows. This is done so the buffer descriptors (BDs) can be reused for efficient DMA transfers.
+* The `tb` variable segments the M (rows of A) into smaller chunks, each containing `tb_max_rows` tile rows. This is done so the buffer descriptors (BDs) can be reused for efficient DMA transfers.
 * For each column `i`:
     * For each `tile_row` in the current row block:
         * The DMA transfer function `npu_dma_memcpy_nd` loads a segment of matrix A and matrix B data (submatrix a, submatrix b) from the host into the corresponding `inA_fifos` for the respective column, maintaining the appropriate strides and offsets.
         * Analogously to the data layout transformations described [further above](#tiling-and-data-layout-transformations) to translate a `m`&times;`k` matrix into blocks of `r`&times;`s`-submatrices, this transfer translates the input `M`&times;`K` and `K`&times;`N` matrices into submatrices of size `m`&times;`k` and `k`&times;`n`.
-           > Note that data layout transformations in the `npu_dma_memcpy_nd` operation are expressed in units of 4 bytes. This is why you will see all strides and the lowest-dimension length multiplied by a factor of `word_size_in` or `word_size_out` (to get the size in bytes) and then divided by four (to get the size in units of 4 bytes). This discrepancy will be streamlined in future versions.
     * The DMA transfer function `npu_dma_memcpy_nd` sends a segment of matrix C data (submatrix c) from the corresponding `outC_fifos` for the respective column, back to the host while maintaining the appropriate strides and offsets.
-    * After completing DMA transfers for each column, `npu_sync` is used to synchronize their completion.
+    * After completing DMA transfers for each column, `dma_wait` is used to synchronize their completion.
+
+The aforementioned transfers of rows of tiles of the `A` matrix are further split into a "ping" and a "pong" phase.
+This allows us to reconfigure half of the buffer descriptors used for transferring `A` concurrently with the other half running (transferring data).
+This interleaved design improves performance thanks to overlapped reconfiguration and data movement, especially if there is a large number of rows of tiles of `A`.
 
 ## Compute Microkernels
 
@@ -224,5 +265,7 @@ This C++ code demonstrates how to implement matrix multiplication for different 
 1. Extern "C" interface functions: These functions provide a C-compatible interface to the main matrix multiplication functions, making it easier to call these functions from other languages or environments.
 
 1. Zeroing functions: Functions like `zero_vectorized` and `zero_scalar` initialize the output matrix (`c_out`) with all zero values.
+
+1. `matmul_vectorized_b_col_maj` functions: These functions are identical to the `matmul_vectorized_2x2` implementation except for diffrences in pointer arithmetic for accessing the `B` matrix and issuing a transpose instruction for `B`. This allows us to feed column-major `s`&times;`t`-sized tiles into the compute kernel, which then transposes those into row-major.
 
 This code showcases efficient performance in matrix multiplication-intensive workloads and can be adapted for other types of inputs and operations as needed.

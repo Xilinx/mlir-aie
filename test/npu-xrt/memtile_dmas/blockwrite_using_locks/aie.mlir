@@ -11,7 +11,7 @@ module {
     memref.global "public" @out : memref<4096xi32>
     memref.global "public" @in_cons : memref<4096xi32>
     memref.global "public" @in : memref<4096xi32>
-    %tile_0_0 = aie.tile(0, 0)
+    %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
     %tile_0_1 = aie.tile(0, 1)
     %in_cons_buff_0 = aie.buffer(%tile_0_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "in_cons_buff_0"} : memref<4096xi32> 
     %in_cons_prod_lock = aie.lock(%tile_0_1, 0) {init = 1 : i32, sym_name = "in_cons_prod_lock"}
@@ -37,6 +37,7 @@ module {
       %1 = memref.get_global @blockwrite_data_1 : memref<8xi32>
       aiex.npu.blockwrite(%1) {address = 118816 : ui32} : memref<8xi32>
       aiex.npu.address_patch {addr = 118820 : ui32, arg_idx = 0 : i32, arg_plus = 0 : i32}
+      aiex.npu.maskwrite32 {address = 119296 : ui32, column = 0 : i32, row = 0 : i32, mask = 0x00000F00 : ui32, value = 0x100 : ui32}
       aiex.npu.write32 {address = 119316 : ui32, column = 0 : i32, row = 0 : i32, value = 1 : ui32}
       aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
     }

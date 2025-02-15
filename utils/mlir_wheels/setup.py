@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 from pprint import pprint
+from sysconfig import get_paths
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
@@ -135,6 +136,12 @@ class CMakeBuild(build_ext):
                 "-DCMAKE_CXX_FLAGS=/MT",
                 "-DLLVM_USE_CRT_MINSIZEREL=MT",
                 "-DLLVM_USE_CRT_RELEASE=MT",
+            ]
+
+        # workaround for Could NOT find Python (missing: Python_INCLUDE_DIRS Development on aarch64
+        if platform.system() == "Linux":
+            cmake_args += [
+                f"-DPython_INCLUDE_DIR={get_paths()['include']}",
             ]
 
         cmake_args_dict = get_cross_cmake_args()

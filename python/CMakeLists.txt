@@ -36,12 +36,19 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/trace_events_enum.py
 )
 
-declare_mlir_python_sources(AIEPythonSources.Extras
+declare_mlir_python_sources(AIEPythonSources.Helpers
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
-    extras/*.py
-    extras/dialects/ext/*.py
-    extras/runtime/*.py
+    helpers/*.py
+    helpers/dialects/ext/*.py
+    helpers/runtime/*.py
+    helpers/taplib/*.py
+)
+
+declare_mlir_python_sources(AIEPythonSources.Iron
+  ADD_TO_PARENT AIEPythonSources
+  SOURCES_GLOB
+    iron/*.py
 )
 
 declare_mlir_dialect_python_bindings(
@@ -91,7 +98,6 @@ declare_mlir_python_sources(AIEPythonSources.Compiler
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
     compiler/aiecc/*.py
-    compiler/util.py
 )
 
 if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
@@ -102,6 +108,12 @@ if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
       _mlir_libs/_xrt.pyi
   )
 endif()
+
+declare_mlir_python_sources(AIEPythonSources.AIERT
+  ADD_TO_PARENT AIEPythonSources
+  SOURCES
+    aiert.py
+)
 
 ################################################################################
 # Extensions
@@ -167,6 +179,7 @@ if (AIE_ENABLE_PYTHON_PASSES)
     list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/XRTModule.cpp)
     list(APPEND _py_libs xrt_coreutil uuid)
   endif()
+  list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/AIERTModule.cpp)
 
   declare_mlir_python_extension(AIEPythonExtensions.MLIR
     MODULE_NAME _aie
@@ -178,6 +191,9 @@ if (AIE_ENABLE_PYTHON_PASSES)
 
     PRIVATE_LINK_LIBS
       ${_py_libs}
+
+    PYTHON_BINDINGS_LIBRARY
+      nanobind
   )
   target_include_directories(
     AIEPythonExtensions.MLIR
@@ -196,6 +212,9 @@ if (AIE_ENABLE_PYTHON_PASSES)
     set_property(TARGET ${t} PROPERTY mlir_python_DEPENDS "")
   endforeach()
   set_property(TARGET MLIRPythonSources.ExecutionEngine PROPERTY mlir_python_DEPENDS "")
+
+  # Set NB_DOMAIN for nanobind, to avoid domain conflict with other LLVM projects.
+  set(MLIR_BINDINGS_PYTHON_NB_DOMAIN "_aie")
 
   add_mlir_python_modules(AIEPythonModules
     ROOT_PREFIX "${AIE_PYTHON_PACKAGES_DIR}/aie"
@@ -269,6 +288,8 @@ else ()
       AIECAPI
     PRIVATE_LINK_LIBS
       LLVMSupport
+    PYTHON_BINDINGS_LIBRARY
+      nanobind
   )
 
   if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
@@ -285,10 +306,28 @@ else ()
         LLVMSupport
         xrt_coreutil
         uuid
+      PYTHON_BINDINGS_LIBRARY
+        nanobind
     )
     target_include_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_INCLUDE_DIR})
     target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})
   endif()
+
+  declare_mlir_python_extension(AIEPythonExtensions.AIERT
+    MODULE_NAME _aiert
+    ADD_TO_PARENT AIEPythonExtensions
+    ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
+
+    PARTIAL_SOURCES_INTENDED
+    SOURCES
+      AIERTModule.cpp
+
+    PRIVATE_LINK_LIBS
+      LLVMSupport
+
+    PYTHON_BINDINGS_LIBRARY
+      nanobind
+  )
 
   add_mlir_python_common_capi_library(AIEAggregateCAPI
     INSTALL_COMPONENT AIEPythonModules
@@ -388,8 +427,9 @@ add_custom_command(
   TARGET AIEPythonModules PRE_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy
   ${CMAKE_CURRENT_SOURCE_DIR}/compiler/aiecc.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/compiler/txn2mlir.py
   ${CMAKE_BINARY_DIR}/bin
 )
 # during install
-install(PROGRAMS compiler/aiecc.py DESTINATION bin)
+install(PROGRAMS compiler/aiecc.py compiler/txn2mlir.py DESTINATION bin)
 

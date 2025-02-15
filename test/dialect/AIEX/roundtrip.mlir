@@ -50,3 +50,17 @@ aie.device(npu1_4col) {
     aiex.npu.write32 {address = 432 : ui32, value = 1 : ui32}
   }
 }
+
+// -----
+
+// CHECK: aie.device
+// CHECK: aiex.control_packet {address = 1234 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 1 : i32}
+// CHECK: aiex.control_packet {address = 5678 : ui32, data = array<i32: 22, 42, 62, 72>, opcode = 2 : i32, stream_id = 7 : i32}
+// CHECK: aiex.control_packet {address = 43981 : ui32, length = 3 : i32, opcode = 1 : i32, stream_id = 4 : i32}
+aie.device(npu1) {
+  aiex.runtime_sequence() {
+    aiex.control_packet {address = 1234 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 1 : i32}
+    aiex.control_packet {address = 5678 : ui32, data = array<i32: 22, 42, 62, 72>, opcode = 2 : i32, stream_id = 7 : i32}
+    aiex.control_packet {address = 0xABCD : ui32, length = 3 : i32, opcode = 1 : i32, stream_id = 4 : i32}
+  }
+}

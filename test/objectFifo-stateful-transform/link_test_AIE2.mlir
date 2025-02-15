@@ -41,8 +41,6 @@
 // CHECK:           %[[VAL_20:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "mem_in_1_cons_buff_6"} : memref<3000xi32>
 // CHECK:           %[[VAL_21:.*]] = aie.lock(%[[VAL_1]], 0) {init = 7 : i32, sym_name = "mem_in_1_cons_prod_lock"}
 // CHECK:           %[[VAL_22:.*]] = aie.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "mem_in_1_cons_cons_lock"}
-// CHECK:           %[[VAL_23:.*]] = aie.lock(%[[VAL_0]], 0) {init = 0 : i32, sym_name = "mem_in_prod_lock"}
-// CHECK:           %[[VAL_24:.*]] = aie.lock(%[[VAL_0]], 1) {init = 0 : i32, sym_name = "mem_in_cons_lock"}
 // CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
 // CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_2]], DMA : 0)
 // CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_3]], DMA : 0)
@@ -53,7 +51,6 @@
 // CHECK:             memref.store %[[VAL_26]], %[[VAL_10]]{{\[}}%[[VAL_27]]] : memref<3000xi32>
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @mem_in(MM2S, 0, 0)
 // CHECK:           %[[VAL_28:.*]] = aie.core(%[[VAL_3]]) {
 // CHECK:             %[[VAL_29:.*]] = arith.constant 11 : i32
 // CHECK:             %[[VAL_30:.*]] = arith.constant 0 : index
@@ -61,6 +58,7 @@
 // CHECK:             memref.store %[[VAL_29]], %[[VAL_4]]{{\[}}%[[VAL_30]]] : memref<3000xi32>
 // CHECK:             aie.end
 // CHECK:           }
+// CHECK:           aie.shim_dma_allocation @mem_in(MM2S, 0, 0)
 // CHECK:           %[[VAL_31:.*]] = aie.mem(%[[VAL_2]]) {
 // CHECK:             %[[VAL_32:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
@@ -189,7 +187,7 @@ module @link_AIE2 {
 
         aie.objectfifo @mem_in (%tile00, {%tile02, %tile01}, [2,2,7]) : !aie.objectfifo<memref<3000xi32>>
         aie.objectfifo @mem_out (%tile01, {%tile03}, 7 : i32) : !aie.objectfifo<memref<3000xi32>>
-        aie.objectfifo.link [@mem_in] -> [@mem_out] ()
+        aie.objectfifo.link [@mem_in] -> [@mem_out] ([] [])
 
         %core02 = aie.core(%tile02) {
             %v11 = arith.constant 11 : i32

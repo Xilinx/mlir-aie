@@ -42,6 +42,7 @@ void parse_options(int argc, const char *argv[], po::options_description &desc,
                    po::variables_map &vm);
 
 std::vector<uint32_t> load_instr_sequence(std::string instr_path);
+std::vector<uint32_t> load_instr_binary(std::string instr_path);
 
 void init_xrt_load_kernel(xrt::device &device, xrt::kernel &kernel,
                           int verbosity, std::string xclbinFileName,

@@ -13,7 +13,7 @@
 # CHECK: aiex.npu.write32 {address = 213220 : ui32, column = 0 : i32, row = 2 : i32, value = 757865039 : ui32}
 # CHECK: aiex.npu.write32 {address = 261888 : ui32, column = 0 : i32, row = 2 : i32, value = 289 : ui32}
 # CHECK: aiex.npu.write32 {address = 261892 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32}
-# CHECK: aiex.npu.writebd {bd_id = 3 : i32, buffer_length = 8192 : i32, buffer_offset = 1024 : i32, column = 0 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d2_stride = 0 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, row = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
+# CHECK: aiex.npu.writebd {bd_id = 3 : i32, buffer_length = 8192 : i32, buffer_offset = 1024 : i32, column = 0 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d0_zero_after = 0 : i32, d0_zero_before = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d1_zero_after = 0 : i32, d1_zero_before = 0 : i32, d2_size = 0 : i32, d2_stride = 0 : i32, d2_zero_after = 0 : i32, d2_zero_before = 0 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, row = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
 # CHECK: aiex.npu.address_patch {addr = 118884 : ui32, arg_idx = 2 : i32, arg_plus = 1024 : i32}
 # CHECK: aiex.npu.write32 {address = 119308 : ui32, column = 0 : i32, row = 0 : i32, value = 3 : ui32}
 
@@ -21,7 +21,7 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import *
+from aie.helpers.dialects.ext.scf import _for as range_
 from aie.extras.context import mlir_mod_ctx
 from aie.utils.trace import *
 
@@ -67,13 +67,12 @@ def passthroughKernel():
             # Compute tile 2
             @core(ComputeTile2, "passThrough.cc.o")
             def core_body():
-                for _ in for_(sys.maxsize):
+                for _ in range_(sys.maxsize):
                     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
-                    call(passThroughLine, [elemIn, elemOut, lineWidthInBytes])
+                    passThroughLine(elemIn, elemOut, lineWidthInBytes)
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
 
             #    print(ctx.module.operation.verify())
 
@@ -95,30 +94,30 @@ def passthroughKernel():
                         start=0x1,
                         stop=0x0,
                         events=[
-                            PortEvent(0x4B, 1, True),
-                            0x22,
-                            0x21,
                             0x25,
-                            0x2D,
-                            0x2C,
-                            0x1A,
+                            0x21,
+                            0x22,
+                            PortEvent(0x4B, 1, True),
                             PortEvent(0x4F, 1, False),
+                            0x1A,
+                            0x2C,
+                            0x2D,
                         ],
                     )
 
                 npu_dma_memcpy_nd(
-                    metadata="in",
+                    metadata=of_in,
                     bd_id=0,
                     mem=inTensor,
                     sizes=[1, 1, 1, tensorSizeInInt32s],
                 )
                 npu_dma_memcpy_nd(
-                    metadata="out",
+                    metadata=of_out,
                     bd_id=1,
                     mem=outTensor,
                     sizes=[1, 1, 1, tensorSizeInInt32s],
                 )
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                dma_wait(of_out)
 
     print(ctx.module)
 

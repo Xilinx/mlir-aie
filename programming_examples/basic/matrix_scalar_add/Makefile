@@ -14,15 +14,23 @@ include ${srcdir}/../../makefile-common
 
 SHELL := /bin/bash
 
-targetname = matrixAddOne
+targetname = matrix_scalar_add
 devicename = npu
 col = 0
+
+aie_py_src=${targetname}.py
+use_alt?=0
+
+ifeq (${use_alt}, 1)
+aie_py_src=${targetname}_alt.py
+endif
 
 all: build/final.xclbin
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
 ${targetname}.exe: ${srcdir}/test.cpp
@@ -36,7 +44,7 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-build/aie.mlir: ${srcdir}/aie2.py
+build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${devicename} ${col} > $@
 
@@ -55,7 +63,7 @@ vck5000: build/aie.mlir
 			-Wl,-R/opt/xaiengine/lib \
 			-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
 
-run: ${targetname}.exe build/final.xclbin build/insts.txt 
+run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:

@@ -145,11 +145,24 @@ def parse_args(args=None):
         help="Disable linking of AIE code",
     )
     parser.add_argument(
-        "--basic-alloc-scheme",
-        dest="basic_alloc_scheme",
+        "--alloc-scheme",
+        dest="alloc_scheme",
+        default="bank-aware",
+        help="Allocation scheme for AIE buffers: basic-sequential, bank-aware (default).",
+    )
+    parser.add_argument(
+        "--generate-ctrl-pkt-overlay",
+        dest="ctrl_pkt_overlay",
         default=False,
         action="store_true",
-        help="Use basic memory allocation scheme for AIE buffer address assignment",
+        help="Generate column-wise overlay of control packet routings",
+    )
+    parser.add_argument(
+        "--dynamic-objFifos",
+        dest="dynamic_objFifos",
+        default=False,
+        action="store_true",
+        help="Use dynamic object fifos for the for loops",
     )
     parser.add_argument(
         "--aie-generate-airbin",
@@ -236,6 +249,22 @@ def parse_args(args=None):
         action="store_const",
         const=True,
         help="Generate libxaie v2 for CDO",
+    )
+    parser.add_argument(
+        "--aie-generate-txn",
+        dest="txn",
+        default=False,
+        action="store_const",
+        const=True,
+        help="Generate txn binary for configuration",
+    )
+    parser.add_argument(
+        "--aie-generate-ctrlpkt",
+        dest="ctrlpkt",
+        default=False,
+        action="store_const",
+        const=True,
+        help="Generate control packets for configuration",
     )
     parser.add_argument(
         "--aie-generate-xclbin",

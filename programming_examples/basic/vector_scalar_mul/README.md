@@ -14,7 +14,9 @@ This IRON design flow example, called "Vector Scalar Multiplication", demonstrat
 
 ## Source Files Overview
 
-1. `aie2.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (i.e., XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `vector_scalar_mul.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+
+1. `vector_scalar_mul_alt.py`: An alternate version of the design in `vector_scalar_mul.py`, that is expressed in a lower-level version of IRON.
 
 1. `scale.cc`: A C++ implementation of scalar and vectorized vector scalar multiply operations for AIE cores. Found [here](../../../aie_kernels/aie2/scale.cc).
 
@@ -32,11 +34,11 @@ This simple example uses a single compute tile in the NPU's AIE array. The desig
 1. The compute tile acquires this input data in "object" sized (`1024`) blocks from "of_in" and stores the result to another output "object" it has acquired from "of_out". Note that a scalar or vectorized kernel running on the Compute Tile's AIE core multiplies the data from the input "object" by a scale factor before storing it to the output "object".
 1. After the compute is performed, the Compute Tile releases the "objects", allowing the DMAs (abstracted by the object FIFO) to transfer the data back to host memory and copy additional blocks into the Compute Tile,  "of_out" and "of_in" respectively.
 
-It is important to note that the Shim Tile and Compute Tile DMAs move data concurrently, and the Compute Tile's AIE Core also processes data concurrently with the data movement. This is made possible by expressing depth `2` in declaring, for example, `object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)` to denote ping-pong buffers.
+It is important to note that the Shim Tile and Compute Tile DMAs move data concurrently, and the Compute Tile's AIE Core also processes data concurrently with the data movement. This is made possible by having an `ObjectFifo` with `default_depth` of `2` (this is default) to denote ping-pong buffers.
 
 ## Design Component Details
 
-### AIE Array Structural Design
+### AIE Array Structural Design in `vector_scalar_mul_alt.py`
 
 This design performs a memcpy operation on a vector of input data. The AIE design is described in a Python module as follows:
 
@@ -72,30 +74,27 @@ This design performs a memcpy operation on a vector of input data. The AIE desig
 
 ## Usage
 
+### Compilation
+
+To compile the design:
+```shell
+make
+```
+
+To compile the alternative design:
+```shell
+env use_alt=1 make
+```
+
+To compile the C++ testbench:
+```shell
+make vector_scalar_mul.exe
+```
+
 ### C++ Testbench
-
-To compile the design:
-
-```
-make
-```
-
-To complete compiling the C++ testbench and run the design:
-
-```
-make run
-```
-
-### Python Testbench
-
-To compile the design:
-
-```
-make
-```
 
 To run the design:
 
-```
-make run_py
+```shell
+make run
 ```

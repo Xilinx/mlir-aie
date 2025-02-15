@@ -5,8 +5,6 @@
 //
 // (c) Copyright 2024 AMD Inc.
 
-// REQUIRES: ryzen_ai
-//
 // RUN: aie-opt --verify-diagnostics --aie-dma-tasks-to-npu %s 
 
 // This test ensures that the correct error is emitted if an illegal data layout transformation is specified

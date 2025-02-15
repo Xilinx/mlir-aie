@@ -45,6 +45,8 @@ int main(int argc, const char *argv[]) {
   constexpr int IN_SIZE = IN_VOLUME * sizeof(DATATYPE);
   int OUT_SIZE = IN_SIZE + trace_size;
 
+  std::cout << "IN_SIZE: " << IN_SIZE << ", OUT_SIZE: " << OUT_SIZE;
+
   // Load instruction sequence
   std::vector<uint32_t> instr_v =
       test_utils::load_instr_sequence(vm["instr"].as<std::string>());
@@ -163,7 +165,7 @@ int main(int argc, const char *argv[]) {
     }
 
     // Write trace values if trace_size > 0
-    if (trace_size > 0) {
+    if (trace_size > 0 and iter == 0) {
       test_utils::write_out_trace(((char *)bufOut) + IN_SIZE, trace_size,
                                   vm["trace_file"].as<std::string>());
     }

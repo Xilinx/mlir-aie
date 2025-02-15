@@ -88,7 +88,7 @@ struct RedundantLoadStoreOptimizationPass
     patterns.add<SetInboundsToReadOp, SetInboundsToWriteOp>(
         patterns.getContext());
 
-    (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+    (void)applyPatternsGreedily(op, std::move(patterns));
     IRRewriter rewriter(&getContext());
     vector::transferOpflowOpt(rewriter, op);
   }

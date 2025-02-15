@@ -24,13 +24,13 @@ module {
     aie.objectfifo @objFifo_in2(%1, {%3}, 2 : i32) : !aie.objectfifo<memref<128xui8>>
     aie.objectfifo @objFifo_in3(%1, {%4}, 2 : i32) : !aie.objectfifo<memref<128xui8>>
     aie.objectfifo @objFifo_in4(%1, {%5}, 2 : i32) : !aie.objectfifo<memref<128xui8>>
-    aie.objectfifo.link [@objFifo_in0] -> [@objFifo_in1, @objFifo_in2, @objFifo_in3, @objFifo_in4] ()
+    aie.objectfifo.link [@objFifo_in0] -> [@objFifo_in1, @objFifo_in2, @objFifo_in3, @objFifo_in4] ([] [0, 128, 256, 384])
     aie.objectfifo @objFifo_out0(%1, {%0}, 2 : i32) : !aie.objectfifo<memref<512xui8>>
     aie.objectfifo @objFifo_out1(%2, {%1}, 2 : i32) : !aie.objectfifo<memref<128xui8>>
     aie.objectfifo @objFifo_out2(%3, {%1}, 2 : i32) : !aie.objectfifo<memref<128xui8>>
     aie.objectfifo @objFifo_out3(%4, {%1}, 2 : i32) : !aie.objectfifo<memref<128xui8>>
     aie.objectfifo @objFifo_out4(%5, {%1}, 2 : i32) : !aie.objectfifo<memref<128xui8>>
-    aie.objectfifo.link [@objFifo_out1, @objFifo_out2, @objFifo_out3, @objFifo_out4] -> [@objFifo_out0] ()
+    aie.objectfifo.link [@objFifo_out1, @objFifo_out2, @objFifo_out3, @objFifo_out4] -> [@objFifo_out0] ([0, 128, 256, 384] [])
     func.func private @thresholdLine(%in: memref<128xui8>, %out: memref<128xui8>, %lineWidth: i32,  %thresholdValue: i32, %maxValue: i32, %thresholdType: i8) -> ()
     %24 = aie.core(%2) {
       %c0 = arith.constant 0 : index

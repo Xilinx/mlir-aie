@@ -1,10 +1,12 @@
-//===- test_congestion0.mlir ------------------------------------------------*- MLIR -*-===//
+//===- test_congestion0.mlir -----------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Copyright (C) 2024, Advanced Micro Devices, Inc.
-// SPDX-License-Identifier: MIT
 //
 //===----------------------------------------------------------------------===//
-// REQUIRES: ryzen_ai, chess
 
 // RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s -o %t.opt
 // RUN: FileCheck %s --check-prefix=CHECK1 < %t.opt
@@ -20,7 +22,7 @@
 // CHECK1:      aie.packet_dest<%[[VAL_0:.*]], DMA : 0>
 // CHECK1:    }
 // CHECK1:    aie.packet_flow(4) {
-// CHECK1:      aie.packet_source<%[[VAL_1:.*]], DMA : 1>
+// CHECK1:      aie.packet_source<%[[VAL_1:.*]], DMA : 0>
 // CHECK1:      aie.packet_dest<%[[VAL_0:.*]], DMA : 4>
 // CHECK1:    }
 // CHECK1:    aie.packet_flow(1) {
@@ -36,7 +38,7 @@
 // CHECK1:      aie.packet_dest<%[[VAL_0:.*]], DMA : 3>
 // CHECK1:    }
 
-// CHECK2: "total_path_length": 8
+// CHECK2: "total_path_length": 10
 
 module {
  aie.device(npu1_1col) {
@@ -63,7 +65,7 @@ module {
     aie.packet_dest<%tile_0_1, DMA : 3>
   }
   aie.packet_flow(4) { 
-    aie.packet_source<%tile_0_2, DMA : 1> 
+    aie.packet_source<%tile_0_2, DMA : 0> 
     aie.packet_dest<%tile_0_1, DMA : 4>
   }
  }

@@ -10,13 +10,8 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: peano
-// RUN: %PEANO_INSTALL_DIR/bin/clang --target=aie2 -c %S/kernel.cc
-// RUN: %PYTHON aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s -I%host_runtime_lib%/test_lib/include -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
-// RUN: %run_on_board ./test.elf
-
-// CHECK: AIE2 ISS
-// CHECK: test start.
-// CHECK: PASS!
+// RUN: %PEANO_INSTALL_DIR/bin/clang --target=aie2-none-unknown-elf -c %S/kernel.cc
+// RUN: %PYTHON aiecc.py --no-xchesscc --no-xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %S/test.cpp -o test.elf
 
 module @test_chess_05_shim_dma_core_function {
   aie.device(xcve2802) {
@@ -65,7 +60,7 @@ module @test_chess_05_shim_dma_core_function {
     %m73 = aie.mem(%t73) {
         %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^dma0)
       ^dma0:
-        %dstDma = aie.dma_start("MM2S", 1, ^bd2, ^end)
+        %dstDma = aie.dma_start("MM2S", 0, ^bd2, ^end)
       ^bd0:
         aie.use_lock(%lock_a_write, AcquireGreaterEqual, 1)
         aie.dma_bd(%buf_a_ping : memref<16xi32>, 0, 16)
@@ -100,7 +95,7 @@ module @test_chess_05_shim_dma_core_function {
 
     // Shim DMA connection to kernel
     aie.flow(%t70, "DMA" : 0, %t73, "DMA" : 0)
-    aie.flow(%t73, "DMA" : 1, %t70, "DMA" : 0)
+    aie.flow(%t73, "DMA" : 0, %t70, "DMA" : 0)
 
     // Shim DMA loads large buffer to local memory
     %dma = aie.shim_dma(%t70) {

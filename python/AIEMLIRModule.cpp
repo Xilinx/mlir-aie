@@ -10,13 +10,15 @@
 #include "aie-c/TargetModel.h"
 #include "aie-c/Translation.h"
 
+#include "aie/Bindings/PyTypes.h"
+
 #include "mlir-c/IR.h"
 #include "mlir-c/Support.h"
-#include "mlir/Bindings/Python/PybindAdaptors.h"
+#include "mlir/Bindings/Python/Diagnostics.h"
+#include "mlir/Bindings/Python/NanobindAdaptors.h"
+#include "llvm/ADT/Twine.h"
 
-#include <pybind11/cast.h>
-#include <pybind11/detail/common.h>
-#include <pybind11/pybind11.h>
+#include <nanobind/nanobind.h>
 
 #include <cstdlib>
 #include <stdexcept>
@@ -24,21 +26,11 @@
 #include <unicodeobject.h>
 #include <vector>
 
-using namespace mlir::python::adaptors;
-namespace py = pybind11;
-using namespace py::literals;
+using namespace mlir::python;
+namespace nb = nanobind;
+using namespace nb::literals;
 
-class PyAieTargetModel {
-public:
-  PyAieTargetModel(AieTargetModel model) : model(model) {}
-  operator AieTargetModel() const { return model; }
-  AieTargetModel get() const { return model; }
-
-private:
-  AieTargetModel model;
-};
-
-PYBIND11_MODULE(_aie, m) {
+NB_MODULE(_aie, m) {
 
   aieRegisterAllPasses();
 
@@ -55,33 +47,35 @@ PYBIND11_MODULE(_aie, m) {
       "registry"_a);
 
   // AIE types bindings
-  mlir_type_subclass(m, "ObjectFifoType", aieTypeIsObjectFifoType)
+  nanobind_adaptors::mlir_type_subclass(m, "ObjectFifoType",
+                                        aieTypeIsObjectFifoType)
       .def_classmethod(
           "get",
-          [](const py::object &cls, const MlirType type) {
+          [](const nb::object &cls, const MlirType type) {
             return cls(aieObjectFifoTypeGet(type));
           },
           "Get an instance of ObjectFifoType with given element type.",
-          "self"_a, "type"_a = py::none());
+          "self"_a, "type"_a = nb::none());
 
-  mlir_type_subclass(m, "ObjectFifoSubviewType", aieTypeIsObjectFifoSubviewType)
+  nanobind_adaptors::mlir_type_subclass(m, "ObjectFifoSubviewType",
+                                        aieTypeIsObjectFifoSubviewType)
       .def_classmethod(
           "get",
-          [](const py::object &cls, const MlirType type) {
+          [](const nb::object &cls, const MlirType type) {
             return cls(aieObjectFifoSubviewTypeGet(type));
           },
           "Get an instance of ObjectFifoSubviewType with given element type.",
-          "self"_a, "type"_a = py::none());
+          "self"_a, "type"_a = nb::none());
 
   auto stealCStr = [](MlirStringRef mlirString) {
     if (!mlirString.data || mlirString.length == 0)
       throw std::runtime_error("couldn't translate");
     std::string cpp(mlirString.data, mlirString.length);
     free((void *)mlirString.data);
-    py::handle pyS = PyUnicode_DecodeLatin1(cpp.data(), cpp.length(), nullptr);
+    nb::handle pyS = PyUnicode_DecodeLatin1(cpp.data(), cpp.length(), nullptr);
     if (!pyS)
-      throw py::error_already_set();
-    return py::reinterpret_steal<py::str>(pyS);
+      throw nb::python_error();
+    return nb::steal<nb::str>(pyS);
   };
 
   m.def(
@@ -108,19 +102,45 @@ PYBIND11_MODULE(_aie, m) {
         if (mlirLogicalResultIsFailure(aieTranslateToCDODirect(
                 op, {workDirPath.data(), workDirPath.size()}, bigendian,
                 emitUnified, cdoDebug, aieSim, xaieDebug, enableCores)))
-          throw py::value_error("Failed to generate cdo because: " +
-                                scope.takeMessage());
+          throw nb::value_error(
+              (llvm::Twine("Failed to generate cdo because: ") +
+               llvm::Twine(scope.takeMessage()))
+                  .str()
+                  .c_str());
       },
       "module"_a, "work_dir_path"_a, "bigendian"_a = false,
       "emit_unified"_a = false, "cdo_debug"_a = false, "aiesim"_a = false,
       "xaie_debug"_a = false, "enable_cores"_a = true);
 
   m.def(
-      "npu_instgen",
-      [&stealCStr](MlirOperation op) {
-        py::str npuInstructions = stealCStr(aieTranslateToNPU(op));
+      "transaction_binary_to_mlir",
+      [](MlirContext ctx, nb::bytes bytes) {
+        MlirStringRef bin = {static_cast<const char *>(bytes.data()),
+                             bytes.size()};
+        return aieTranslateBinaryToTxn(ctx, bin);
+      },
+      "ctx"_a, "binary"_a);
+
+  m.def(
+      "translate_npu_to_binary",
+      [&stealCStr](MlirOperation op, const std::string &sequence_name) {
+        nb::str npuInstructions = stealCStr(aieTranslateNpuToBinary(
+            op, {sequence_name.data(), sequence_name.size()}));
         auto individualInstructions =
-            npuInstructions.attr("split")().cast<py::list>();
+            nb::cast<nb::list>(npuInstructions.attr("split")());
+        for (size_t i = 0; i < individualInstructions.size(); ++i)
+          individualInstructions[i] = individualInstructions[i].attr("strip")();
+        return individualInstructions;
+      },
+      "module"_a, "sequence_name"_a = "");
+
+  m.def(
+      "generate_control_packets",
+      [&stealCStr](MlirOperation op) {
+        nb::str ctrlPackets =
+            stealCStr(aieTranslateControlPacketsToUI32Vec(op));
+        auto individualInstructions =
+            nb::cast<nb::list>(ctrlPackets.attr("split")());
         for (size_t i = 0; i < individualInstructions.size(); ++i)
           individualInstructions[i] = individualInstructions[i].attr("strip")();
         return individualInstructions;
@@ -156,7 +176,7 @@ PYBIND11_MODULE(_aie, m) {
   m.def("get_target_model",
         [](uint32_t d) -> PyAieTargetModel { return aieGetTargetModel(d); });
 
-  py::class_<PyAieTargetModel>(m, "AIETargetModel", py::module_local())
+  nb::class_<PyAieTargetModel>(m, "AIETargetModel")
       .def(
           "columns",
           [](PyAieTargetModel &self) {

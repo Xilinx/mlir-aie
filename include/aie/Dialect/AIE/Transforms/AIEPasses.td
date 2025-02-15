@@ -27,8 +27,8 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
   let constructor = "xilinx::AIE::createAIEAssignBufferAddressesPass()";
 
   let options = [
-    Option<"clBasicAlloc", "basic-alloc", "bool", /*default=*/"false",
-            "Flag to enable the basic sequential allocation scheme (not bank-aware).">
+    Option<"clAllocScheme", "alloc-scheme", "std::string", /*default=*/"",
+           "Select allocation scheme: basic-sequential or bank-aware. Default is bank-aware, falling back to basic-sequential if it fails.">,
   ];
 }
 
@@ -200,6 +200,11 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
     "mlir::memref::MemRefDialect",
     "xilinx::AIE::AIEDialect",
   ];
+
+  let options = [
+    Option<"clDynamicObjectFifos", "dynamic-objFifos", "bool", /*default=*/"false", 
+    "Flag to enable dynamic object fifo lowering in cores instead of loop unrolling.">
+  ];
 }
 
 def AIEObjectFifoRegisterProcess : Pass<"aie-register-objectFifos", "DeviceOp"> {
@@ -229,6 +234,41 @@ def AIELowerCascadeFlows : Pass<"aie-lower-cascade-flows", "DeviceOp"> {
   let constructor = "xilinx::AIE::createAIELowerCascadeFlowsPass()";
   let dependentDialects = [
     "xilinx::AIE::AIEDialect",
+  ];
+}
+
+def AIEAssignTileCtrlIDs : Pass<"aie-assign-tile-controller-ids", "DeviceOp"> {
+  let summary = "Assign controller id per aie.tile_op";
+  let description = [{
+    For each aie.tile_op used in the design, assign a unique controller ID.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEAssignTileCtrlIDsPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+  ];
+  let options = [
+    Option<"clColumnWiseUniqueIDs", "column-wise-unique-ids", "bool", /*default=*/"true",
+            "Flag to generate controller ids only unique within each column. Otherwise globally unique.">,
+  ];
+}
+
+def AIEGenerateColumnControlOverlay : Pass<"aie-generate-column-control-overlay", "DeviceOp"> {
+  let summary = "Spawns streaming interconnect network for column control";
+  let description = [{
+    For each column of AIE tiles being employed in the design, spawn a network of control packet
+    streaming interconnects which overlay on top of the design.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEGenerateColumnControlOverlayPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+  ];
+  let options = [
+    Option<"clRouteShimCTRLToTCT", "route-shim-to-tct", "std::string", /*default=*/"\"shim-only\"",
+            "Flag to generate TCT routing between tile CTRL and shim SOUTH ports. Available options: ['shim-only', 'all-tiles', 'disable'].">,      
+    Option<"clRouteShimDmaToTileCTRL", "route-shim-to-tile-ctrl", "bool", /*default=*/"false",
+            "Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.">,  
   ];
 }
 

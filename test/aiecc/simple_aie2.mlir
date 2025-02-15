@@ -8,6 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+// REQUIRES: chess
+// REQUIRES: peano
+
 // RUN: %PYTHON aiecc.py --compile --xchesscc --no-link -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf | FileCheck %s --check-prefix=XCHESSCC
 // RUN: %PYTHON aiecc.py --compile --no-xchesscc --no-link -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf | FileCheck %s --check-prefix=PEANO
 // RUN: %PYTHON aiecc.py --no-compile --no-link -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf | FileCheck %s --check-prefix=NOCOMPILE
