@@ -1171,8 +1171,9 @@ class FlowRunner:
                     file_llvmir_hacked = await self.chesshack(progress_bar.task, file_llvmir, aie_target)
                     await self.do_call(progress_bar.task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "+Wclang,-xir", "-f", file_llvmir_hacked, "-o", self.unified_file_core_obj])
                 elif opts.compile:
+                    file_llvmir_hacked = await self.peanohack(file_llvmir)
                     file_llvmir_opt = self.prepend_tmp("input.opt.ll")
-                    await self.do_call(progress_bar.task, [self.peano_opt_path, "--passes=default<O2>", "-inline-threshold=10", "-S", file_llvmir, "-o", file_llvmir_opt])
+                    await self.do_call(progress_bar.task, [self.peano_opt_path, "--passes=default<O2>", "-inline-threshold=10", "-S", file_llvmir_hacked, "-o", file_llvmir_opt])
                     await self.do_call(progress_bar.task, [self.peano_llc_path, file_llvmir_opt, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", self.unified_file_core_obj])
             # fmt: on
 
