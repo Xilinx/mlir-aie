@@ -404,6 +404,11 @@ def downgrade_ir_for_chess(llvmir_chesslinked):
     return llvmir_chesslinked
 
 
+def downgrade_ir_for_peano(llvmir):
+    llvmir = llvmir.replace("getelementptr inbounds nuw", "getelementptr inbounds")
+    return llvmir
+
+
 class FlowRunner:
     def __init__(self, mlir_module_str, opts, tmpdirname):
         self.mlir_module_str = mlir_module_str
@@ -495,6 +500,16 @@ class FlowRunner:
 
         return llvmir_chesslinked_path
 
+    # In order to run peano on modern ll code, we need a bunch of hacks.
+    async def peanohack(self, llvmir):
+        llvmir_peanohack = llvmir + "peanohack.ll"
+
+        llvmir_ir = await read_file_async(llvmir)
+        llvmir_hacked_ir = downgrade_ir_for_peano(llvmir_ir)
+        await write_file_async(llvmir_hacked_ir, llvmir_peanohack)
+
+        return llvmir_peanohack
+
     async def process_core(
         self,
         core,
@@ -564,8 +579,9 @@ class FlowRunner:
 
             elif opts.compile:
                 if not opts.unified:
+                    file_core_llvmir_peanohacked = await self.peanohack(file_core_llvmir)
                     file_core_llvmir_stripped = corefile(self.tmpdirname, core, "stripped.ll")
-                    await self.do_call(task, [self.peano_opt_path, "--passes=default<O2>,strip", "-S", file_core_llvmir, "-o", file_core_llvmir_stripped])
+                    await self.do_call(task, [self.peano_opt_path, "--passes=default<O2>,strip", "-S", file_core_llvmir_peanohacked, "-o", file_core_llvmir_stripped])
                     await self.do_call(task, [self.peano_llc_path, file_core_llvmir_stripped, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", file_core_obj])
                 else:
                     file_core_obj = self.unified_file_core_obj
