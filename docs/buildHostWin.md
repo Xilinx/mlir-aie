@@ -102,7 +102,7 @@ All steps in WSL Ubuntu terminal.
           #################################################################################
           # Setup Vitis (which is just for aietools)
           #################################################################################
-          export MYXILINX_VER=2023.2
+          export MYXILINX_VER=2024.2
           export MYXILINX_BASE=/tools/Xilinx
           export XILINX_LOC=$MYXILINX_BASE/Vitis/$MYXILINX_VER
           export AIETOOLS_ROOT=$XILINX_LOC/aietools
@@ -119,8 +119,7 @@ All steps in WSL Ubuntu terminal.
      ```
      source utils/quick_setup.sh
      # NOTE: this will install mlir-aie in my_install/mlir_aie
-     # and llvm in my_install/mlir. Be sure to account for this
-     # using utils/env_setup.sh later on.
+     # Be sure to account for this using utils/env_setup.sh later on.
      ```
 
    * [Optional] Build from source following regular get started instructions [https://xilinx.github.io/mlir-aie/Building.html](https://xilinx.github.io/mlir-aie/Building.html)
@@ -147,7 +146,7 @@ All steps in Win11 (powershell where needed).
     - Note: If you run into an error during the compilation phase, see [here](https://stackoverflow.com/questions/78835588/cannot-build-boost-library-on-windows-11) for suggestions on a workaround. This involves modifying the `tools/build/src/tools/msvc.jam` file and run `.\b2.exe --reconfigure install`
 1. Optional (only needed for vision examples): install [opencv](https://docs.opencv.org/4.x/d3/d52/tutorial_windows_install.html) and add this install to your PATH environmental variable, for instance `C:\Technical\thirdParty\opencv\build\x64\vc16\bin`
 
-1. Clone [https://github.com/Xilinx/XRT](https://github.com/Xilinx/XRT) for instance under `C:\Technical` and `git checkout 2023.2`
+1. Clone [https://github.com/Xilinx/XRT](https://github.com/Xilinx/XRT) for instance under `C:\Technical` and `git checkout 2024.2`
 1. Create a .lib file from the .dll shipping with the driver
     - In wsl, generate a .def file (see above)
     - Start a x86 Native Tools Command Prompt (installed as part of VS17), go to the folder `C:\Technical\xrtNPUfromDLL` and run command: 
@@ -169,7 +168,7 @@ If you used the quick setup script (precompiled mlir-aie binaries), use this set
 cd <yourPathToDesignsWithMLIR-AIE>
 source <yourPathToBuildMLIR-AIE>/ironenv/bin/activate
 source yourVitisSetupScript (example shown above)
-source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/my_install/mlir_aie <yourPathToBuildMLIR-AIE>/my_install/mlir
+source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/my_install/mlir_aie
 ```
 
 ### `setup.sh` - Option B - Built from Source
@@ -178,7 +177,7 @@ source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/my
 cd <yourPathToDesignsWithMLIR-AIE>
 source <yourPathToBuildMLIR-AIE>/sandbox/bin/activate
 source yourVitisSetupScript (example shown above)
-source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/install <yourPathToBuildMLIR-AIE>/llvm/install
+source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/install
 ```
 
 
