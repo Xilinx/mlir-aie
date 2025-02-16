@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
-# XFAIL:*
 
 import inspect
 
@@ -268,7 +267,7 @@ def test_i8xi8_add_elem(module):
         )
         .drop_equivalent_buffer_results()
         .buffer_results_to_out_params()
-        .Func(p().buffer_deallocation())
+        .add_pass("buffer-deallocation-pipeline")
         .canonicalize()
         .cse()
         .convert_linalg_to_affine_loops()
