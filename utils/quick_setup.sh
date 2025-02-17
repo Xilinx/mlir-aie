@@ -62,14 +62,12 @@ pip download aie_python_bindings -f https://github.com/Xilinx/mlir-aie/releases/
 unzip -q -o aie_python_bindings*.whl
 rm *.whl
 popd
-pip download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro/
-unzip -q mlir-*_x86_64.whl
-pip -q download llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
-unzip -q llvm_aie*.whl
 rm -rf mlir*.whl
-rm -rf llvm_aie*.whl
-export PEANO_INSTALL_DIR=`realpath llvm-aie`
 popd
+
+python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
+
 python3 -m pip install -r python/requirements.txt
 
 # This installs the pre-commit hooks defined in .pre-commit-config.yaml
@@ -77,7 +75,8 @@ pre-commit install
 
 HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
 python3 -m pip install -r python/requirements_ml.txt
-source utils/env_setup.sh my_install/mlir_aie my_install/mlir
+
+source utils/env_setup.sh my_install/mlir_aie
 
 # This creates an ipykernel (for use in notebooks) using the ironenv venv
 python3 -m ipykernel install --user --name ironenv

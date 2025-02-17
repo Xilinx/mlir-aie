@@ -384,8 +384,15 @@ def downgrade_ir_for_chess(llvmir_chesslinked):
             "memory(argmem: write, inaccessiblemem: write)",
             "inaccessiblemem_or_argmemonly writeonly",
         )
+        .replace("captures(none)", "nocapture")
+        .replace("getelementptr inbounds nuw", "getelementptr inbounds")
     )
     return llvmir_chesslinked
+
+
+def downgrade_ir_for_peano(llvmir):
+    llvmir = llvmir.replace("getelementptr inbounds nuw", "getelementptr inbounds")
+    return llvmir
 
 
 class FlowRunner:
@@ -479,6 +486,16 @@ class FlowRunner:
 
         return llvmir_chesslinked_path
 
+    # In order to run peano on modern ll code, we need a bunch of hacks.
+    async def peanohack(self, llvmir):
+        llvmir_peanohack = llvmir + "peanohack.ll"
+
+        llvmir_ir = await read_file_async(llvmir)
+        llvmir_hacked_ir = downgrade_ir_for_peano(llvmir_ir)
+        await write_file_async(llvmir_hacked_ir, llvmir_peanohack)
+
+        return llvmir_peanohack
+
     async def process_core(
         self,
         core,
@@ -548,8 +565,9 @@ class FlowRunner:
 
             elif opts.compile:
                 if not opts.unified:
+                    file_core_llvmir_peanohacked = await self.peanohack(file_core_llvmir)
                     file_core_llvmir_stripped = corefile(self.tmpdirname, core, "stripped.ll")
-                    await self.do_call(task, [self.peano_opt_path, "--passes=default<O2>,strip", "-S", file_core_llvmir, "-o", file_core_llvmir_stripped])
+                    await self.do_call(task, [self.peano_opt_path, "--passes=default<O2>,strip", "-S", file_core_llvmir_peanohacked, "-o", file_core_llvmir_stripped])
                     await self.do_call(task, [self.peano_llc_path, file_core_llvmir_stripped, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", file_core_obj])
                 else:
                     file_core_obj = self.unified_file_core_obj
@@ -1138,8 +1156,9 @@ class FlowRunner:
                     file_llvmir_hacked = await self.chesshack(progress_bar.task, file_llvmir, aie_target)
                     await self.do_call(progress_bar.task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "+Wclang,-xir", "-f", file_llvmir_hacked, "-o", self.unified_file_core_obj])
                 elif opts.compile:
+                    file_llvmir_hacked = await self.peanohack(file_llvmir)
                     file_llvmir_opt = self.prepend_tmp("input.opt.ll")
-                    await self.do_call(progress_bar.task, [self.peano_opt_path, "--passes=default<O2>", "-inline-threshold=10", "-S", file_llvmir, "-o", file_llvmir_opt])
+                    await self.do_call(progress_bar.task, [self.peano_opt_path, "--passes=default<O2>", "-inline-threshold=10", "-S", file_llvmir_hacked, "-o", file_llvmir_opt])
                     await self.do_call(progress_bar.task, [self.peano_llc_path, file_llvmir_opt, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", self.unified_file_core_obj])
             # fmt: on
 
