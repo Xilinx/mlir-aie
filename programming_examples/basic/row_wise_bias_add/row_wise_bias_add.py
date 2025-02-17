@@ -68,17 +68,18 @@ def row_wise_bias_add(dev, M, N, m, n):
     # Place components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())
 
+
 try:
     device_name = str(sys.argv[1])
     if device_name == "npu":
-        dev =  NPU1Col1()
+        dev = NPU1Col1()
     elif device_name == "npu2":
         dev = NPU2()
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 except ValueError:
     print("Argument has inappropriate value")
-    
+
 module = row_wise_bias_add(
     dev, int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
 )

@@ -66,17 +66,18 @@ def row_wise_bias_add(dev, M, N, m, n):
             dma_await_task(out_task)
             dma_free_task(in_task, bias_task)
 
+
 try:
     device_name = str(sys.argv[1])
     if device_name == "npu":
-        dev =  AIEDevice.npu1_1col
+        dev = AIEDevice.npu1_1col
     elif device_name == "npu2":
         dev = AIEDevice.npu2
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 except ValueError:
     print("Argument has inappropriate value")
-    
+
 # Declares that subsequent code is in mlir-aie context
 with mlir_mod_ctx() as ctx:
     row_wise_bias_add(
