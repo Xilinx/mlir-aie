@@ -89,7 +89,7 @@ You will...
         export LM_LICENSE_FILE=/opt/Xilinx.lic
        ```
       
-#### Option B - Supporting AMD Ryzen™ AI and AMD Versal™ with AIE and AIE-ML/XDNA™ (AIE2): Install AMD Vitis™ 2023.2 
+#### Option B - Supporting AMD Ryzen™ AI and AMD Versal™ with AIE and AIE-ML/XDNA™ (AIE2): Install AMD Vitis™ 2024.2 
 
 1. Install Vitis™ under from [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html). You will need to run the installer as root. We will assume you use the default installation directory, `/tools/Xilinx`.
 
@@ -108,7 +108,7 @@ You will...
         #################################################################################
         # Setup Vitis (which is just for aietools)
         #################################################################################
-        export MYXILINX_VER=2023.2
+        export MYXILINX_VER=2024.2
         export MYXILINX_BASE=/tools/Xilinx
         export XILINX_LOC=$MYXILINX_BASE/Vitis/$MYXILINX_VER
         export AIETOOLS_ROOT=$XILINX_LOC/aietools
@@ -332,7 +332,7 @@ You will...
    ````
 
 1. Source `utils/quick_setup.sh` to setup the prerequisites and
-   install the mlir-aie and llvm compiler tools from whls.
+   install the mlir-aie compiler tools from whls.
 
 1. Jump ahead to [Build Device AIE Part](#build-device-aie-part) step 2 below.
 
@@ -361,7 +361,7 @@ export PATH="${NEW_CMAKE_DIR}/bin":"${PATH}"
 
 cd ${MLIR_AIE_BUILD_DIR}
 source ${MLIR_AIE_BUILD_DIR}/ironenv/bin/activate
-source ${MLIR_AIE_BUILD_DIR}/utils/env_setup.sh ${MLIR_AIE_BUILD_DIR}/my_install/mlir_aie ${MLIR_AIE_BUILD_DIR}/my_install/mlir ${MLIR_AIE_BUILD_DIR}/my_install/llvm-aie
+source ${MLIR_AIE_BUILD_DIR}/utils/env_setup.sh ${MLIR_AIE_BUILD_DIR}/my_install/mlir_aie
 ```
 
 > Replace `${MLIR_AIE_BUILD_DIR}` with the directory in which you *built* mlir-aie above. Replace `${NEW_CMAKE_DIR}` with the directory in which you installed CMake 3.28 above. Instead of search and replace, you can also define these values as environment variables.
@@ -374,7 +374,7 @@ source ${MLIR_AIE_BUILD_DIR}/utils/env_setup.sh ${MLIR_AIE_BUILD_DIR}/my_install
 cd ${MLIR_AIE_BUILD_DIR}
 source ${MLIR_AIE_BUILD_DIR}/sandbox/bin/activate
 source /opt/xilinx/xrt/setup.sh
-source ${MLIR_AIE_BUILD_DIR}/utils/env_setup.sh ${MLIR_AIE_BUILD_DIR}/install ${MLIR_AIE_BUILD_DIR}/llvm/install
+source ${MLIR_AIE_BUILD_DIR}/utils/env_setup.sh ${MLIR_AIE_BUILD_DIR}/install
 ```
 
 > Replace `${MLIR_AIE_BUILD_DIR}` with the directory in which you *built* mlir-aie above. Instead of search and replace, you can also define `MLIR_AIE_BUILD_DIR` as an environment variable.
