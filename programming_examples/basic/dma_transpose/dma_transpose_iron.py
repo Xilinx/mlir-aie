@@ -58,6 +58,7 @@ def my_passthrough(M, K, generate_acccess_map=False):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
+    p.add_argument("device_name", help="Device name (npu or npu2)", type=str)
     p.add_argument("dims", help="M K", type=int, nargs="*", default=[64, 64])
     p.add_argument(
         "--generate-access-map",
@@ -72,7 +73,7 @@ if __name__ == "__main__":
         )
         exit(-1)
     my_passthrough(
-        M=args.dims[1],
-        K=args.dims[2],
+        M=args.dims[0],
+        K=args.dims[1],
         generate_acccess_map=args.generate_access_map,
     )
