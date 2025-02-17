@@ -1083,11 +1083,32 @@ struct AIEObjectFifoStatefulTransformPass
         // !! NOTE !! objectFifos with same producer / consumer tile
         // need two counters (accessed based on the ObjectFifoPort)
         std::map<std::pair<ObjectFifoCreateOp, ObjectFifoPort>, int> fifoSizes;
+        // Also, keep a map of the ConstantOps for the indices per OF
+        // and a map with the ConstantOps for the sizes per OF.
+        std::map<std::pair<ObjectFifoCreateOp, ObjectFifoPort>,
+                 arith::ConstantOp>
+            globalIndices;
+        std::map<std::pair<ObjectFifoCreateOp, ObjectFifoPort>,
+                 arith::ConstantOp>
+            constantSizes;
+
+        int index = 0;
+        builder.setInsertionPointToStart(&(coreOp.getBody().front()));
+        Value initVal = builder.create<arith::ConstantOp>(
+            builder.getUnknownLoc(), builder.getI32IntegerAttr(0));
         coreOp.walk([&](ObjectFifoAcquireOp acqOp) {
           ObjectFifoCreateOp op = acqOp.getObjectFifo();
           ObjectFifoPort port = acqOp.getPort();
-          if (fifoSizes.find({op, port}) == fifoSizes.end())
+          if (fifoSizes.find({op, port}) == fifoSizes.end()) {
             fifoSizes[{op, port}] = op.size();
+            auto indexOp = builder.create<arith::ConstantOp>(
+              initVal.getLoc(), builder.getIndexAttr(index));
+            globalIndices[{op, port}] = indexOp;
+            index++;
+            auto size = builder.create<arith::ConstantOp>(
+                indexOp.getLoc(), builder.getI32IntegerAttr(op.size()));
+            constantSizes[{op, port}] = size;
+          }
         });
         builder.setInsertionPoint(coreOp);
         auto memrefTy =
@@ -1099,29 +1120,10 @@ struct AIEObjectFifoStatefulTransformPass
             /*initial_value*/ nullptr, /*mem_bank*/ nullptr);
 
         // Initialize all counters in the global buffers to 0.
-        // Also, keep a map of the ConstantOps for the indices per OF
-        // and a map with the ConstantOps for the sizes per OF.
-        std::map<std::pair<ObjectFifoCreateOp, ObjectFifoPort>,
-                 arith::ConstantOp>
-            globalIndices;
-        std::map<std::pair<ObjectFifoCreateOp, ObjectFifoPort>,
-                 arith::ConstantOp>
-            constantSizes;
-        int index = 0;
-        builder.setInsertionPointToStart(&(coreOp.getBody().front()));
-        Value initVal = builder.create<arith::ConstantOp>(
-            builder.getUnknownLoc(), builder.getI32IntegerAttr(0));
-        for (auto i : fifoSizes) {
-          auto indexOp = builder.create<arith::ConstantOp>(
-              initVal.getLoc(), builder.getIndexAttr(index));
-          globalIndices[i.first] = indexOp;
-          index++;
-          auto size = builder.create<arith::ConstantOp>(
-              indexOp.getLoc(), builder.getI32IntegerAttr(i.second));
-          constantSizes[i.first] = size;
+        for (auto i : constantSizes) {
           builder.create<memref::StoreOp>(
-              size.getLoc(), initVal, globalNextIndex,
-              ValueRange(ArrayRef({indexOp.getResult()})));
+              i.second.getLoc(), initVal, globalNextIndex,
+              ValueRange(ArrayRef({globalIndices[i.first].getResult()})));
         }
 
         // Walk the code:
