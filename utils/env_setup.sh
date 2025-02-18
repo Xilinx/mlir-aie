@@ -12,40 +12,28 @@
 # 
 #
 # source env_setup.sh <mlir-aie install dir> 
-#                     <llvm install dir> 
 #                     <llvm-aie/peano install dir>
 #
 # e.g. source env_setup.sh /scratch/mlir-aie/install 
-#                          /scratch/llvm/install
 #                          /scratch/llvm-aie/install
 #
 ##===----------------------------------------------------------------------===##
 
-if [ "$#" -lt 2 ]; then
-    echo "ERROR: Needs 2 arguments for <mlir-aie install dir> and <llvm install dir>"
+if [ "$#" -lt 1 ]; then
+    echo "ERROR: Needs an argument for <mlir-aie install dir>."
     return 1
 fi
 
 export MLIR_AIE_INSTALL_DIR=`realpath $1`
-export LLVM_INSTALL_DIR=`realpath $2`
-if [ "$#" -eq 3 ]; then
-    export PEANO_INSTALL_DIR=`realpath $3`
+if [ "$#" -eq 2 ]; then
+    export PEANO_INSTALL_DIR=`realpath $2`
 fi
 
 if [[ $PEANO_INSTALL_DIR == "" ]]; then
-  mkdir -p my_install
-  if [ ! -d "my_install/llvm-aie" ]; then
-    pushd my_install
-    pip -q download llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
-    unzip -q llvm_aie*.whl
-    rm -rf llvm_aie*.whl
-    export PEANO_INSTALL_DIR=`realpath llvm-aie`
-    popd
-  else
-    export PEANO_INSTALL_DIR=`realpath my_install/llvm-aie`
-  fi
+  python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+  export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
 fi
 
-export PATH=${PEANO_INSTALL_DIR}/bin:${MLIR_AIE_INSTALL_DIR}/bin:${LLVM_INSTALL_DIR}/bin:${PATH} 
+export PATH=${MLIR_AIE_INSTALL_DIR}/bin:${PATH} 
 export PYTHONPATH=${MLIR_AIE_INSTALL_DIR}/python:${PYTHONPATH}
-export LD_LIBRARY_PATH=${PEANO_INSTALL_DIR}/bin:${MLIR_AIE_INSTALL_DIR}/lib:${LLVM_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}
+export LD_LIBRARY_PATH=${MLIR_AIE_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}
