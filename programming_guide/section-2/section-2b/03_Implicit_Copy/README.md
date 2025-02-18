@@ -61,7 +61,7 @@ object_fifo_link(of0, of1)
 
 Depending on how many Object FIFOs are specified in `fifoIns` and `fifoOuts`, two different data patterns can be achieved: a Distribute or a Join. They are described in the two next subsections. Currently, it is not possible to do both patterns at once, i.e., if `fifoIns` is an array then `fifoOuts` can only be a single Object FIFO, and the other way around. At the highest level of abstraction these patterns are available as well.
 
-A full design example that uses this features is available in Section 2e: [03_external_mem_to_core_L2](../../section-2e/03_external_mem_to_core_L2/).
+A full design example that uses this features is available in Section 2f: [03_external_mem_to_core_L2](../../section-2f/03_external_mem_to_core_L2/).
 
 ### Distribute
 
@@ -116,7 +116,7 @@ of2 = object_fifo("objfifo2", B, D, 2, np.ndarray[(128,), np.dtype[np.int32]])
 object_fifo_link(of0, [of1, of2], [], [0, 128])
 ```
 
-A full design example that uses this feature is available in Section 2e: [04_distribute_L2](../../section-2e/04_distribute_L2/).
+A full design example that uses this feature is available in Section 2f: [04_distribute_L2](../../section-2f/04_distribute_L2/).
 
 ### Join
 
@@ -170,7 +170,7 @@ of2 = object_fifo("objfifo2", D, B, 2, np.ndarray[(128,), np.dtype[np.int32]])
 object_fifo_link([of1, of2], of0, [0, 128], [])
 ```
 
-A full design example that uses these features is available in Section 2e: [05_join_L2](../../section-2e/05_join_L2/).
+A full design example that uses these features is available in Section 2f: [05_join_L2](../../section-2f/05_join_L2/).
 
 -----
 [[Prev](../02_Broadcast/)] [[Up](..)] [[Next](../04_Repeat/)]

@@ -14,10 +14,10 @@
     * Section 2a - Introduction
     * [Section 2b - Key Object FIFO Patterns](../section-2b/)
     * [Section 2c - Data Layout Transformations](../section-2c/)
-    * [Section 2d - Programming for multiple cores](../section-2d/)
-    * [Section 2e - Practical Examples](../section-2e/)
-    * [Section 2f - Data Movement Without Object FIFOs](../section-2f/)
-    * [Section 2g - Runtime Data Movement](../section-2g/)
+    * [Section 2d - Runtime Data Movement](../section-2d/)
+    * [Section 2e - Programming for multiple cores](../section-2e/)
+    * [Section 2f - Practical Examples](../section-2f/)
+    * [Section 2g - Data Movement Without Object FIFOs](../section-2g/)
 
 -----
 
@@ -50,7 +50,7 @@ line_type = np.ndarray[(line_size,), np.dtype[np.int32]]
 of_in = ObjectFifo(line_type, name="in", default_depth=3)
 ```
 
-Object FIFO endpoints are separated into producers and consumers, where an Object FIFO may only have one producer and one or multiple consumers. These endpoints are also refered to as the "actors" of the Object FIFO, based on dataflow theory terminology. At this level of abstraction the endpoints are typically Workers that have access to `ObjectFifoHandle`s, with one other use case being when an Object FIFO is filled from or drained to external memory at runtime (as explained in the Runtime Data Movement [section](../section-2g/README.md)). 
+Object FIFO endpoints are separated into producers and consumers, where an Object FIFO may only have one producer and one or multiple consumers. These endpoints are also refered to as the "actors" of the Object FIFO, based on dataflow theory terminology. At this level of abstraction the endpoints are typically Workers that have access to `ObjectFifoHandle`s, with one other use case being when an Object FIFO is filled from or drained to external memory at runtime (as explained in the Runtime Data Movement [section](../section-2d/README.md)). 
 
 The code snippet below shows two Workers running processes defined by `core_fn` and `core_fn2` which take as input a producer or a consumer handle for `of_in` respectively:
 ```python
@@ -209,7 +209,7 @@ The figure below illustrates this code: Each of the 4 drawings represents the st
 
 <img src="./../../assets/AcquireRelease.png" height="400">
 
-Examples of designs that use these features are available in Section 2e: [01_single_double_buffer](../section-2e/01_single_double_buffer/) and [02_external_mem_to_core](../section-2e/02_external_mem_to_core/).
+Examples of designs that use these features are available in Section 2f: [01_single_double_buffer](../section-2f/01_single_double_buffer/) and [02_external_mem_to_core](../section-2f/02_external_mem_to_core/).
 
 ### Object FIFOs with the same producer / consumer
 
@@ -357,7 +357,7 @@ The intent of this high-level view showcases that the DMA is able to interact wi
 
 <img src="./../../assets/ComputeTile_2.png" height="250">
 
-> **NOTE:**  It is possible to directly configure the DMAs without the use of the Object FIFO primitive to setup data movement between tiles. This is described in [Section 2f](../section-2f/README.md).
+> **NOTE:**  It is possible to directly configure the DMAs without the use of the Object FIFO primitive to setup data movement between tiles. This is described in [Section 2g](../section-2g/README.md).
 
 ## <u>Exercises</u>
 1. In the previous [subsection](./README.md/#specifying-the-object-fifo-depth-as-an-array) it was explained that the conceptual depth of `3` for `of0` could be represented as an array of depths `[2, 3]`. With the advanced knowledge on the topic of DMAs, do you think those are the minimal depths required for the design to execute without deadlocking? <img src="../../../mlir_tutorials/images/answer1.jpg" title="No. In the case of producer A, only a single object needs to be allocated, in which case the compute core and the DMA will have to wait while the other party respectively computes or moves the data. This is similar for consumer B, where a depth of 2 would suffice. So the minimal depths for the design to run without deadlocking are [1, 2]." height=25>

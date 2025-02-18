@@ -37,7 +37,7 @@ This IRON AIE programming guide first introduces the language bindings for AIE-a
 
 * Introduce the topic of objectfifos and how they abstract connections between tiles and data in the AIE array memories
 * Explain key objectfifo data movement patterns
-* Introduce more complex objectfifo connection patterns (link/ broadcast, join/ distribute)
+* Introduce more complex objectfifo connection patterns (broadcast, implicit copy, join, distribute)
 * Demonstrate objectfifos with practical examples
 * Explain runtime data movement between the host and AIE array
 </details>
