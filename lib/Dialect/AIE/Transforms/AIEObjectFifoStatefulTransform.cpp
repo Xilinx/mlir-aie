@@ -1102,7 +1102,7 @@ struct AIEObjectFifoStatefulTransformPass
           if (fifoSizes.find({op, port}) == fifoSizes.end()) {
             fifoSizes[{op, port}] = op.size();
             auto indexOp = builder.create<arith::ConstantOp>(
-              initVal.getLoc(), builder.getIndexAttr(index));
+                initVal.getLoc(), builder.getIndexAttr(index));
             globalIndices[{op, port}] = indexOp;
             index++;
             auto size = builder.create<arith::ConstantOp>(
