@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-dma-to-npu %s | aie-translate --aie-npu-to-binary | FileCheck %s
+// RUN: aie-opt --aie-dma-to-npu %s | aie-translate --aie-npu-instgen | FileCheck %s
 module {
   aie.device(npu1_4col) {
     aiex.runtime_sequence(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {

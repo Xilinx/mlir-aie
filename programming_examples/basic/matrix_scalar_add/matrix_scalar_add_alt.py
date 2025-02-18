@@ -30,6 +30,8 @@ def my_matrix_add_one():
         raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
     if sys.argv[1] == "npu":
         dev = AIEDevice.npu1_1col
+    elif sys.argv[1] == "npu2":
+        dev = AIEDevice.npu2
     elif sys.argv[1] == "xcvc1902":
         dev = AIEDevice.xcvc1902
     else:

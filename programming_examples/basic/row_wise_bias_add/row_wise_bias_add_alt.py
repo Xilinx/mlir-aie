@@ -14,12 +14,12 @@ from aie.helpers.dialects.ext.scf import _for as range_
 from aie.helpers.taplib import TensorTiler2D
 
 
-def row_wise_bias_add(M, N, m, n):
+def row_wise_bias_add(dev, M, N, m, n):
 
     assert M % m == 0
     assert N % n == 0
 
-    @device(AIEDevice.npu1_1col)
+    @device(dev)
     def device_body():
 
         tensor_ty = np.ndarray[(m * n,), np.dtype[np.float32]]
@@ -67,10 +67,21 @@ def row_wise_bias_add(M, N, m, n):
             dma_free_task(in_task, bias_task)
 
 
+try:
+    device_name = str(sys.argv[1])
+    if device_name == "npu":
+        dev = AIEDevice.npu1_1col
+    elif device_name == "npu2":
+        dev = AIEDevice.npu2
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+except ValueError:
+    print("Argument has inappropriate value")
+
 # Declares that subsequent code is in mlir-aie context
 with mlir_mod_ctx() as ctx:
     row_wise_bias_add(
-        int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
+        dev, int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
     )
     res = ctx.module.operation.verify()
     if res == True:
