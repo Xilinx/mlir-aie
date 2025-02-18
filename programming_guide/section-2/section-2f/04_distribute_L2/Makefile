@@ -10,11 +10,20 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../../../programming_examples/makefile-common
 
+targetname = ext_to_core_L2
+
+aie_py_src=${targetname}.py
+use_placed?=0
+
+ifeq (${use_placed}, 1)
+aie_py_src=${targetname}_placed.py
+endif
+
 all: build/aie.mlir
 
-build/aie.mlir: ${srcdir}/single_buffer.py
+build/aie.mlir: ${srcdir}/distribute_L2.py
 	mkdir -p ${@D}
-	python3 $< > $@ 
+	python3 $< ${devicename} ${col} > $@
 
 clean:
-	rm -rf build
+	rm -rf build _build ${targetname}.exe
