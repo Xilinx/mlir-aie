@@ -350,25 +350,22 @@ mlir::MemRefType bufferMemRefType(mlir::Type buffer,
       auto members = bufferType.getMembers();
       if (auto stdArrayType =
               mlir::dyn_cast<cir::StructType>(members.front())) {
-        // If the aie::buffer is implemented as a std::array in the buffer struct
+        // If the aie::buffer is implemented as a std::array in the buffer
+        // struct
         LLVM_DEBUG(stdArrayType.dump());
         // Access the array inside the std::array struct
         if (auto arrayType = mlir::dyn_cast<cir::ArrayType>(
                 stdArrayType.getMembers().front())) {
           LLVM_DEBUG(arrayType.dump());
-          auto memref = mlir::dyn_cast<mlir::MemRefType>(
-              typeConverter.convertType(arrayType));
-          LLVM_DEBUG(memref.dump());
-          return memref;
+          return mlir::cast<mlir::MemRefType>(cir::lowerArrayType(
+              arrayType, /* hasValueSemantics */ false, typeConverter));
         }
       }
       if (auto arrayType = mlir::dyn_cast<cir::ArrayType>(members.front())) {
         // If the aie::buffer is implemented as a C array in the buffer struct
         LLVM_DEBUG(arrayType.dump());
-        auto memref = mlir::dyn_cast<mlir::MemRefType>(
-                                                       typeConverter.convertType(arrayType));
-        LLVM_DEBUG(memref.dump());
-        return memref;
+        return mlir::cast<mlir::MemRefType>(cir::lowerArrayType(
+            arrayType, /* hasValueSemantics */ false, typeConverter));
       }
     }
   }
