@@ -1121,8 +1121,9 @@ struct AIEObjectFifoStatefulTransformPass
 
         // Initialize all counters in the global buffers to 0.
         for (auto i : constantSizes) {
+          builder.setInsertionPointAfter(i.second);
           builder.create<memref::StoreOp>(
-              i.second.getLoc(), initVal, globalNextIndex,
+              builder.getUnknownLoc(), initVal, globalNextIndex,
               ValueRange(ArrayRef({globalIndices[i.first].getResult()})));
         }
 
