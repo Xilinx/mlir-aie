@@ -15,4 +15,4 @@ ml_dtypes
 matplotlib
 notebook
 pre-commit
-nanobind
+nanobind>=2.5
