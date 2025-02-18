@@ -1300,7 +1300,7 @@ port and returns a subview of the acquired objects.
 * Produce (`Produce`)
 * Consume (`Consume`){{% /markdown %}}</details></td></tr>
 <tr><td><code>objFifo_name</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
-<tr><td><code>size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 1</td></tr>
 </table>
 
 #### Results:
@@ -1489,7 +1489,7 @@ This operation releases the lock of the next object in the `objectFifo` named `@
 * Produce (`Produce`)
 * Consume (`Consume`){{% /markdown %}}</details></td></tr>
 <tr><td><code>objFifo_name</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
-<tr><td><code>size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 1</td></tr>
 </table>
 
 
