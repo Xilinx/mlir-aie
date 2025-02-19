@@ -21,7 +21,7 @@ To understand the need for a data movement abstraction we must first understand 
 > **NOTE:**  For more in-depth, low-level material on Object FIFO programming in MLIR, please see the MLIR-AIE [tutorials](../../mlir_tutorials/).
 
 This guide is split into five sections, where each section builds on top of the previous ones:
-> **NOTE:**  Section 2e contains several practical code examples with common design patterns using the Object FIFO which can be quickly picked up and tweaked for desired use.
+> **NOTE:**  Section 2f contains several practical code examples with common design patterns using the Object FIFO which can be quickly picked up and tweaked for desired use.
 
 <details><summary><a href="./section-2a">Section 2a - Introduction</a></summary>
 
@@ -41,11 +41,15 @@ This guide is split into five sections, where each section builds on top of the 
 
 * Introduce data layout transformation capabilities
 </details>
-<details><summary><a href="./section-2d">Section 2d - Programming for multiple cores</a></summary>
+<details><summary><a href="./section-2d">Section 2d - Runtime Data Movement</a></summary>
+
+* Walkthrough of the process of managing runtime data movement from/to host memory to/from the AIE array
+</details>
+<details><summary><a href="./section-2e">Section 2e - Programming for multiple cores</a></summary>
 
 * Walkthrough of the process of efficiently upgrading to designs with multiple cores
 </details>
-<details><summary><a href="./section-2e">Section 2e - Practical Examples</a></summary>
+<details><summary><a href="./section-2f">Section 2f - Practical Examples</a></summary>
 
 * Practical examples using Object FIFOs
     * Single / Double buffer
@@ -54,14 +58,11 @@ This guide is split into five sections, where each section builds on top of the 
     * Distribute in L2
     * Join in L2
 </details>
-<details><summary><a href="./section-2f">Section 2f - Data Movement Without Object FIFOs</a></summary>
+<details><summary><a href="./section-2g">Section 2g - Data Movement Without Object FIFOs</a></summary>
 
 * Walkthrough of the process of programming DMA regions
 </details>
-<details><summary><a href="./section-2g">Section 2g - Runtime Data Movement</a></summary>
 
-* Walkthrough of the process of managing runtime data movement from/to host memory to/from the AIE array
-</details>
 
 -----
 [[Prev - Section 1](../section-1/)] [[Top](..)] [[Next - Section 3](../section-3/)]

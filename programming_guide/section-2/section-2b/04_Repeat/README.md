@@ -10,7 +10,7 @@
 
 # <ins>Object FIFO Repeat Pattern</ins>
 
-The explicitly placed Object FIFO provides users with a way to specify that data from the producer should be repeated. This feature is available using the following syntax:
+The closer-to-metal Object FIFO provides users with a way to specify that data from the producer should be repeated. This feature is available using the following syntax:
 ```python
 of0 = object_fifo("objfifo0", A, B, 2, np.ndarray[(256,), np.dtype[np.int32]])
 of0.set_repeat_count(2) # the data in each object is sent to the consumer C twice

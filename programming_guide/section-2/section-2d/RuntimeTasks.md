@@ -21,7 +21,7 @@
 
 -----
 
-IRON proposes a `Runtime` class with a `sequence()` function which can be programmed with `RuntimeTasks` that will launch Workers, fill and drain ObjectFifos with data from/to external memory. All IRON constructs introduced in this section are available [here](../../../python/iron/runtime/).
+IRON proposes a `Runtime` class with a `sequence()` function which can be programmed with `RuntimeTasks` that will launch Workers, fill and drain Object FIFOs with data from/to external memory. All IRON constructs introduced in this section are available [here](../../../python/iron/runtime/).
 
 To create a Runtime sequence users can write:
 ```python
@@ -59,7 +59,7 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
     rt.start(*workers)
 ```
 
-The `fill()` operation is used to fill an `in_fifo` ObjectFifoHandle of type producer with data from a `source` runtime buffer. It is shown below and defined in [runtime.py](../../../python/iron/runtime/runtime.py):
+The `fill()` operation is used to fill an `in_fifo` `ObjectFifoHandle` of type producer with data from a `source` runtime buffer. It is shown below and defined in [runtime.py](../../../python/iron/runtime/runtime.py):
 ```python
 def fill(
         self,
@@ -80,7 +80,7 @@ with rt.sequence(data_ty, data_ty, data_ty) as (a_in, _, _):
     rt.fill(of_in.prod(), a_in)
 ```
 
-The `drain()` operation is used to fill an out_fifo ObjectFifoHandle of type consumer of data and write that data to a dest runtime buffer. It is shown below and defined in [runtime.py](../../../python/iron/runtime/runtime.py):
+The `drain()` operation is used to fill an `out_fifo` `ObjectFifoHandle` of type consumer of data and write that data to a `dest` runtime buffer. It is shown below and defined in [runtime.py](../../../python/iron/runtime/runtime.py):
 ```python
 def drain(
     self,

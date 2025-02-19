@@ -22,7 +22,7 @@
 
 -----
 
-The Object FIFO primitive supports several data movement patterns. We will now describe each of the currently supported patterns in three subsections and provide links to more in-depth practical code examples that showcase each of them.
+The Object FIFO primitive supports several data movement patterns. We will now describe each of the currently supported patterns in four subsections and provide links to more in-depth practical code examples that showcase each of them.
 
 <details><summary><a href="./01_Reuse/">Object FIFO Reuse Pattern</a></summary>
 

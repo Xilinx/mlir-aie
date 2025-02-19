@@ -18,17 +18,17 @@ Let's first look at a basic Python source file (named [aie2.py](./aie2.py)) for 
 
 At the top of this Python source, we include modules that define the IRON language bindings `aie.iron` for high-level abstraction constructs, resource placement algorithms `aie.iron.placers` and target architecture `aie.iron.device`.
 ```python
-from aie.iron import Program, Runtime, Worker
+from aie.iron import Program, Runtime, Worker, GlobalBuffer
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col4, Tile
 ```
-Data movement between the Workers is usually also declared at this step, however that part of design configuration has its own dedicated [section](../section-2/) and is not covered in detail here.
+Data movement inside the AIE-array is usually also declared at this step, however that part of design configuration has its own dedicated [section](../section-2/) and is not covered in detail here.
 ```python
 # Dataflow configuration
 # described in a future section of the guide...
 ```
 In the AIE array, computational kernels are run on compute tiles, which are represented by Workers. 
-A Worker takes as input a routine to run, and the list of arguments needed to run it. The Worker class is defined below and can be found in [worker.py](../../python/iron/worker.py). The Worker can be explicitly placed on a `placement` tile in the AIE array or its the placement can be left to the compiler, as is explained further in this section. Finally, the `while_true` input is set to True as Workers typically run continuously once the design is started.
+A Worker takes as input a routine to run, and the list of arguments needed to run it. The Worker class is defined below and can be found in [worker.py](../../python/iron/worker.py). The Worker can be explicitly placed on a `placement` tile in the AIE array or its the placement can be left to the compiler, as is explained further in this section. Finally, the `while_true` input is set to True by default as Workers typically run continuously once the design is started.
 ```python
 class Worker(ObjectFifoEndpoint):
     def __init__(
@@ -39,16 +39,17 @@ class Worker(ObjectFifoEndpoint):
         while_true: bool = True,
     )
 ```
-In our simple design there is only one Worker which will perform the `core_fn` routine. The compute routine declares a local data tensor, iterates over it and adds one to each entry. As we will see in the next section of the guide, computational tasks usually run on data that is brought into the AIE array from external memory and the output produced is sent back out. Note that in this example design the Worker is explicitly placed on a Compute tile with coordinates (0,2) in the AIE array.
+In our simple design there is only one Worker which will perform the `core_fn` routine. The compute routine takes as input a data tensor, iterates over it and adds one to each entry. As we will see in the next section of the guide, computational tasks usually run on data that is brought into the AIE array from external memory and the output produced is sent back out. Note that in this example design the Worker is explicitly placed on a Compute tile with coordinates (0,2) in the AIE array.
 ```python
+buff = GlobalBuffer(data_ty, name="buff")
+
 # Task for the core to perform
-def core_fn():
-    local = LocalBuffer(data_ty, name="local")
+def core_fn(buff_in):
     for i in range_(data_size):
-        local[i] = local[i] + 1
+        buff_in[i] = buff_in[i] + 1
 
 # Create a worker to perform the task
-my_worker = Worker(core_fn, [], placement=Tile(0, 2))
+my_worker = Worker(core_fn, [buff], placement=Tile(0, 2))
 ```
 In the previous code snippet it was mentioned that the data movement between Workers needs to be configured. This does not include data movement to/from the AIE array which is handled inside the `Runtime` sequence. The programming guide has a dedicated [section](../section-2/section-2d/) for runtime data movement. In this example, as we do not look in-depth at data movement configuration, the runtime sequence will only start the Worker.
 ```python

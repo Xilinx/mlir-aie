@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 2g - Runtime Data Movement</ins>
+# <ins>Section 2d - Runtime Data Movement</ins>
 
 * [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
     * [Section 2a - Introduction](../section-2a/)
@@ -31,7 +31,7 @@ In high-performance computing applications, efficiently managing data movement a
 
 For high-level IRON constructs like `RuntimeTasks`, please continue with this [reading](./RuntimeTasks.md).
 
-For explicitly placed, lower-level IRON functions like `npu_dma_memcpy_nd` and `dma_wait` please continue reading [here](./DMATasks.md).
+For explicitly placed, closer-to-metal IRON API functions like `npu_dma_memcpy_nd` and `dma_wait` please continue reading [here](./DMATasks.md).
 
 -----
 [[Prev - Section 2c](../section-2c/)] [[Up](..)] [[Next - Section 2e](../section-2e/)]

@@ -9,7 +9,7 @@
 import numpy as np
 import sys
 
-from aie.iron import LocalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import Program, Runtime, Worker, GlobalBuffer
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col4, Tile
 from aie.iron.controlflow import range_
@@ -21,16 +21,15 @@ data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 # described in a future section of the guide...
 
 
+buff = GlobalBuffer(data_ty, name="buff")
 
-
-def core_fn():
-    local = LocalBuffer(data_ty, name="local")
+def core_fn(buff_in):
     for i in range_(data_size):
-        local[i] = local[i] + 1
+        buff_in[i] = buff_in[i] + 1
 
 
 # Create a worker to perform the task
-my_worker = Worker(core_fn, [], placement=Tile(0, 2))
+my_worker = Worker(core_fn, [buff], placement=Tile(0, 2))
 
 # Runtime operations to move data to/from the AIE-array
 rt = Runtime()

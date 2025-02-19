@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 2d - Programming for multiple cores</ins>
+# <ins>Section 2e - Programming for multiple cores</ins>
 
 * [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
     * [Section 2a - Introduction](../section-2a/)
@@ -27,7 +27,7 @@ This section will focus on the process of taking code written for a single core 
 
 We will start with the code in [aie2.py](./aie2.py) which contains a simple design running on a single Worker, and progressively turn it into the code in [aie2_multi.py](./aie2_multi.py) which contains the same design that distributes the work to three Workers.
 
-In the first part of our design we set up the data movement using ObjectFifos. The simple design has a total of four ObjectFifos, two of which are created by forwarding data for an implicit copy. The ObjectFifos move objects of datatype `<48xi32>`. `of_in` brings data from external memory and is linked, through a Mem tile, to `of_in0` which brings data from the Mem tile to the Worker. For the output side, `of_out0` brings data from the Worker to the Mem tile where it is linked to `of_out` to bring the data out to external memory. The corresponding code is shown below:
+In the first part of our design we set up the data movement using Object FIFOs. The simple design has a total of four Object FIFOs, two of which are created by forwarding data for an implicit copy. The Object FIFOs move objects of datatype `<48xi32>`. `of_in` brings data from external memory and is linked, through a Mem tile, to `of_in0` which brings data from the Mem tile to the Worker. For the output side, `of_out0` brings data from the Worker to the Mem tile where it is linked to `of_out` to bring the data out to external memory. The corresponding code is shown below:
 ```python
 data_size = 48
 
@@ -42,7 +42,7 @@ of_in1 = of_in.cons().forward(obj_type=data_ty, name="in1")
 of_out1 = ObjectFifo(data_ty, name="out1")
 of_out = of_out1.cons().forward(obj_type=data_ty, name="out")
 ```
-For our scale out design we will keep using a single Mem tile, but we will increase the number of Workers to three. Now each Worker will receive objects of datatype `<16xi32>`. Data brought into the AIE array via `of_in` will be split into three ObjectFifos for each Worker. Similarly data produced by each Worker will be joined and sent to external memory through `of_out`. Please [see distribute and join patterns](../section-2b/03_Link_Distribute_Join/README.md) for more details. These changes result in the following code:
+For our scale out design we will keep using a single Mem tile, but we will increase the number of Workers to three. Now each Worker will receive objects of datatype `<16xi32>`. Data brought into the AIE array via `of_in` will be split into three Object FIFOs for each Worker. Similarly data produced by each Worker will be joined and sent to external memory through `of_out`. Please [see distribute and join patterns](../section-2b/03_Link_Distribute_Join/README.md) for more details. These changes result in the following code:
 ```python
 n_workers = 3
 data_size = 48
@@ -76,7 +76,7 @@ of_outs = (
     )
 )
 ```
-The Worker of this simple design acquires one object of each ObjectFifo, adds `1` to each entry of the incoming data, copies it to the object of the outgoing ObjectFifo, then releases both objects:
+The Worker of this simple design acquires one object of each Object FIFO, adds `1` to each entry of the incoming data, copies it to the object of the outgoing Object FIFO, then releases both objects:
 ```python
 # Task for the core to perform
 def core_fn(of_in, of_out):
@@ -91,7 +91,7 @@ def core_fn(of_in, of_out):
 # Create a worker to perform the task
 my_worker = Worker(core_fn, [of_in1.cons(), of_out1.prod()])
 ```
-For our larger design we create more Workers and select the input and output ObjecFifos for each from the lists we made in the previous part:
+For our larger design we create more Workers and select the input and output Object FIFOs for each Worker from the lists we made in the previous part:
 ```python
 # Create workers to perform the tasks
 workers = []

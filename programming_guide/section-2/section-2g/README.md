@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 2f - Data Movement Without Object FIFOs</ins>
+# <ins>Section 2g - Data Movement Without Object FIFOs</ins>
 
 * [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
     * [Section 2a - Introduction](../section-2a/)
@@ -17,7 +17,7 @@
     * [Section 2d - Runtime Data Movement](../section-2d/)
     * [Section 2e - Programming for multiple cores](../section-2e/)
     * [Section 2f - Practical Examples](../section-2f/)
-    * Section 26 - Data Movement Without Object FIFOs
+    * Section 2g - Data Movement Without Object FIFOs
 
 -----
 

@@ -50,4 +50,4 @@ The [test.cpp](./test.cpp) as well as the `# To/from AIE-array data movement` se
 Other examples containing this data movement pattern are available in the [programming_examples](../../../../programming_examples/). A notable one is [vector_exp](../../../../programming_examples/basic/vector_exp/).
 
 -----
-[[Prev](../04_distribute_L2/)] [[Up](..)] [[Next - Section 2f](../../section-2f/)]
+[[Prev](../04_distribute_L2/)] [[Up](..)] [[Next - Section 2g](../../section-2g/)]

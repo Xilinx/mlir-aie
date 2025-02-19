@@ -12,9 +12,9 @@
 
 ### Object FIFO Implicit Copy
 
-By design, an Object FIFO handles both the configuration of the data movement between producer and consumer(s), as well as the allocation of objects over the memory modules of Workers. In order to put data consumed from one Object FIFO into another Object FIFO, the user could explicitly do this in the core code of a shared Worker between the two FIFOs. However, if the goal is to simply copy data from one Object FIFO to the other without modifying it, doing it in the manner described above results in allocating more objects than necessary, i.e., the data being copied to the second Object FIFO is already available in the first one. Additionally, Shim tiles and Mem tiles do not have a core on which the copy can be done explicitly.
+By design, an Object FIFO handles both the configuration of the data movement between producer and consumer(s), as well as the allocation of objects over the memory modules of Workers. Data consumed from one Object FIFO could be explicitly put into another Object FIFO in the core code of a shared Worker between the two FIFOs. However, if the goal is to simply copy data from one Object FIFO to the other without modifying it, doing it in the manner described above results in allocating more objects than necessary, i.e., the data being copied to the second Object FIFO is already available in the first one. Additionally, Shim tiles and Mem tiles do not have a core on which the copy can be done explicitly.
 
-Instead of an explicit copy, the Object FIFO API provides an implicit copy via the `forward()` function (defined in [objectfifo.py](../../../../python/iron/dataflow/objectfifo.py)), where an `ObjectFifoHandle` of type consumer is forwarded to the producer of a newly-constructed `ObjectFifo`:
+Instead of an explicit copy, the Object FIFO API provides an implicit copy via the `forward()` function (defined in [objectfifo.py](../../../../python/iron/dataflow/objectfifo.py)), where an `ObjectFifoHandle` of type consumer is forwarded to the producer of a newly-constructed Object FIFO:
 ```python
 def forward(
     self,
@@ -27,7 +27,7 @@ def forward(
     plio: bool = False,
 )
 ```
-The `forward()` function creates a new `ObjectFifo` to which the user can additionally specify the same inputs as to a regular `ObjectFifo`. The `placement` tile is where the implicit copy will be done and is by default set to be a Mem tile.
+The `forward()` function creates a new Object FIFO to which the user can additionally specify the same inputs as to a regular Object FIFO. The `placement` tile is where the implicit copy will be done and is by default set to be a Mem tile.
 
 In the example below a consumer `ObjectFifoHandle` to `of0` is forwarded to `of1` as its producer:
 ```python
@@ -79,7 +79,7 @@ def split(
     plio: bool = False,
 ) -> list[ObjectFifo]
 ```
-The `split()` function creates multiple consumer `ObjectFifos` to which the user can additionally specify the same inputs as to a regular `ObjectFifo`. The `offsets` are used to specify from which location in the producer Object FIFO's allocated memory to send data to each consumer Object FIFO.
+The `split()` function creates multiple consumer Object FIFOs to which the user can additionally specify the same inputs as to a regular Object FIFO. The `offsets` are used to specify from which location in the producer Object FIFO's allocated memory to send data to each consumer Object FIFO.
 
 Below you can see an example of an Object FIFO's consumer `ObjectFifoHandle` being split into `2` consumers, i.e. the number of cores that will be used in the design. The `split()` function is additionally given the offsets from which data will be sent to each consumer Object FIFO, the datatype of their objects, and their names.
 ```python
@@ -134,9 +134,9 @@ def join(
     plio: bool = False,
 ) -> list[ObjectFifo]
 ```
-The `join()` function creates multiple producer `ObjectFifos` to which the user can additionally specify the same inputs as to a regular `ObjectFifo`. The `offsets` are used to specify to which location in the producer Object FIFO's allocated memory to write data from each producer Object FIFO.
+The `join()` function creates multiple producer Object FIFOs to which the user can additionally specify the same inputs as to a regular Object FIFO. The `offsets` are used to specify to which location in the producer Object FIFO's allocated memory to write data from each producer Object FIFO.
 
-Below you can see an example of `2` Object FIFO's being created and joined in the producer `ObjectFifoHandle` of `of0`. The `join()` function is additionally given the offsets from which data will be written by each producer `ObjectFifo`, the datatype of their objects, and their names.
+Below you can see an example of `2` Object FIFO's being created and joined in the producer `ObjectFifoHandle` of `of0`. The `join()` function is additionally given the offsets from which data will be written by each producer Object FIFO, the datatype of their objects, and their names.
 ```python
 of0 = ObjectFifo(mem_tile_ty, name="objfifo0")
 n_cores = 2

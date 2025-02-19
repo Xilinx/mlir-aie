@@ -65,7 +65,7 @@ of_factor = ObjectFifo(scalar_ty, name="infactor")
 # Output data movement
 of_out = ObjectFifo(tile_ty, name="out")
 ```
-We also need to set up the data movement to/from the AIE-array: configure n-dimensional DMA transfers in the shimDMAs to read/write to/from L3 external memory. For NPU, this is done in the runtime sequence (more details in [section 2-g](../section-2/section-2g)). Note that the n-dimensional transfer has a size of 4096 int32 elements and that the `fill()` and `drain()` runtime functions have the `ObjectFifoHandle` argument match either a producer handle (for `of_in` and `of_factor`) or a consumer handle (for `of_out`).
+We also need to set up the data movement to/from the AIE-array: configure n-dimensional DMA transfers in the shimDMAs to read/write to/from L3 external memory. For NPU, this is done in the runtime sequence (more details in [section 2d](../section-2/section-2d)). Note that the n-dimensional transfer has a size of 4096 int32 elements and that the `fill()` and `drain()` runtime functions have the `ObjectFifoHandle` argument match either a producer handle (for `of_in` and `of_factor`) or a consumer handle (for `of_out`).
 Note that for transfers into the AIE-array that we want to explicitly wait on, we must specify `wait=True`.
 
 ```python
@@ -78,7 +78,7 @@ with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
     rt.drain(of_out.cons(), c_out, wait=True)
 ```
 
-Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in Object FIFO terminology: we need to program the acquire and release patterns of `of_in`, `of_factor` and `of_out`. Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire an object of 1024 integers to read from `of_in` and one similar sized object from `of_out`. Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective `of_in` and `of_out` objectFIFO. Finally, after the 4 sub-vector iterations, we release the `of_factor` objectFIFO.
+Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in Object FIFO terminology: we need to program the acquire and release patterns of `of_in`, `of_factor` and `of_out`. Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire an object of 1024 integers to read from `of_in` and one similar sized object from `of_out`. Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective `of_in` and `of_out` Object FIFOs. Finally, after the 4 sub-vector iterations, we release the `of_factor` Object FIFO.
 
 This access and execute pattern runs on the AIE compute core and needs to get linked against the precompiled external function `scale.o`. We run this pattern in a very large loop to enable enqueuing multiple rounds of vector scalar multiply work from the host code.
 

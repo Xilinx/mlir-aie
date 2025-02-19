@@ -23,7 +23,7 @@
 
 ### Initializing an Object FIFO
 
-An Object FIFO represents the data movement connection between a source and one or multiple destinations. The endpoints of the Object FIFO are inferred based on its usage in the rest of the program. At the highest level of abstraction, the Object FIFO can be initialized using the `ObjectFifo` class constructor (defined in [objectfifo.py](../../../python/iron/dataflow/objectfifo.py)):
+An Object FIFO represents the data movement connection between a source and one or multiple destinations. The endpoints of the Object FIFO are inferred based on its usage in the rest of the program. With IRON, the Object FIFO can be initialized using the `ObjectFifo` class constructor (defined in [objectfifo.py](../../../python/iron/dataflow/objectfifo.py)):
 ```python
 class ObjectFifo(Resolvable):
     def __init__(
@@ -85,9 +85,9 @@ As the Object FIFO may only have one producer process, each call to `prod()` wil
 
 At the beginning of this section it was mentioned that the compiler can infer the endpoints of an Object FIFO based on its usage. This specifically refers to the usage of the `ObjectFifoHandle`s which can be used to collect the producer and consumers of an Object FIFO. One can thus observe different data movement patterns which are the subject of the next [section](../section-2b/README.md#key-object-fifo-patterns).
 
-During the next steps of the compiler flow, the Object FIFO producer and consumer Worker processes are mapped to explicit AIE tiles (see [Section 1 - Basic AI Engine building blocks](../../section-1/)) using a Placer (TODO: link to Placer doc). Under the hood, the data movement configuration for different types of tiles (Shim tiles, Memory tiles, and Compute tiles) is different, but there is no difference between them when using an Object FIFO. 
+During the next steps of the compiler flow, the Object FIFO producer and consumer Worker processes are mapped to explicit AIE tiles (see [Section 1 - Basic AI Engine building blocks](../../section-1/)) using a [Placer](../../../python/iron/placers.py). Under the hood, the data movement configuration for different types of tiles (Shim tiles, Memory tiles, and Compute tiles) is different, but there is no difference between them when using an Object FIFO. 
 
-To initialize an Object FIFO at this level of abstraction, users can use the `object_fifo` class constructor (defined in [aie.py](../../../python/dialects/aie.py)):
+To initialize an Object FIFO using the closer-to-metal IRON API, users can use the `object_fifo` class constructor (defined in [aie.py](../../../python/dialects/aie.py)):
 ```python
 class object_fifo:
     def __init__(
@@ -125,7 +125,7 @@ As you will see in the ["Key Object FIFO Patterns" section](../section-2b/README
 
 An Object FIFO can be accessed by the producer and consumer processes registered to it. Before a process can have access to the objects, it has to acquire them from the Object FIFO. This is because the Object FIFO is a synchronized communication primitive that leverages the synchronization mechanism available in the target hardware architecture to ensure that two processes cannot access the same object at the same time. Once a process has finished working with an object and has no further use for it, it must release it so that another process will be able to acquire and access it. The patterns in which a producer or a consumer process acquires and releases objects from an Object FIFO are called "access patterns". We can specifically refer to the acquire and release patterns as well.
 
-To acquire one or multiple objects users should use the `_acquire()` function of the `ObjectFifo` class:
+The `_acquire()` function is used to acquire one or multiple objects from an Object FIFO:
 ```python
 def _acquire(
         self,
@@ -133,11 +133,11 @@ def _acquire(
         num_elem: int,
     )
 ```
-Based on the `num_elem` input representing the number of acquired elements, both acquire functions will either directly return an object, or an array of objects. The `port` input is explained further in this section.
+Based on the `num_elem` input representing the number of acquired elements, the function will either directly return an object, or an array of objects. The `port` input is explained further in this section.
 
 The Object FIFO is an ordered primitive and the API keeps track for each process which object is the next one that they will have access to when acquiring, based on how many they have already acquired and released. Specifically, the first time a process acquires an object it will have access to the first object of the Object FIFO, and after releasing it and acquiring a new one, it'll have access to the second object, and so on until the last object, after which the order starts from the first one again. When acquiring multiple objects and accessing them in the returned array, the object at index 0 will always be the <u>oldest</u> object that process has access to, which may not be the first object in the pool of that Object FIFO.
 
-To release one or multiple objects users should use the `_release()` function of the `ObjectFifo` class:
+The `_release()` function is used to release one or multiple objects:
 ```python
 def _release(
         self,
@@ -178,7 +178,7 @@ my_worker = Worker(core_fn, [of_in.prod(), test_fn])
 my_worker = Worker(core_fn2, [of_in.cons(), test_fn2])
 ```
 
-The explicitly placed variants of the `acquire()` and `release()` functions of the `object_fifo` class are shown below:
+The closer-to-metal API variants of the `acquire()` and `release()` functions of the `object_fifo` class are shown below:
 ```python
 def acquire(self, port, num_elem)
 def release(self, port, num_elem)
@@ -205,7 +205,7 @@ def core_body():
     of_in.release(ObjectFifoPort.Consume, 3)
 ```
 
-The figure below illustrates this code: Each of the 4 drawings represents the state of the system during one iteration of execution. In the first three iterations, the producer process on tile A, drawn in blue, progressively acquires the elements of `of0` one by one. Once the third element has been released in the fourth iteration, the consumer process on tile B, drawn in green, is able to acquire all three objects at once.
+The figure below illustrates this code: Each of the 4 drawings represents the state of the system during one iteration of execution. In the first three iterations, the producer process on tile A, drawn in blue, progressively acquires and releases the elements of `of0` one by one. Once the third element has been released in the fourth iteration, the consumer process on tile B, drawn in green, is able to acquire all three objects at once.
 
 <img src="./../../assets/AcquireRelease.png" height="400">
 
