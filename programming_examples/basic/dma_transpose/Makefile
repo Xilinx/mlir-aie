@@ -14,7 +14,7 @@ include ${srcdir}/../../makefile-common
 
 SHELL := /bin/bash
 
-device ?= npu
+devicename ?= npu
 VPATH := ${srcdir}/../../../aie_kernels/generic
 all: build/final.xclbin build/insts.txt
 
@@ -39,11 +39,11 @@ endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${device} ${M} ${K} > $@
+	python3 $< ${devicename} ${M} ${K} > $@
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
-ifeq (${device}, npu)
+ifeq (${devicename}, npu)
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--no-xchesscc --no-xbridge \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
@@ -68,7 +68,7 @@ run: ${targetname}.exe build/final.xclbin
 
 generate_access_map: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< --generate-access-map ${device} ${M} ${K} 
+	python3 $< --generate-access-map ${devicename} ${M} ${K} 
 
 clean:
 	rm -rf build _build inst ${targetname}.exe

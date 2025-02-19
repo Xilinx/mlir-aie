@@ -14,7 +14,7 @@ include ${srcdir}/../../makefile-common
 
 all: build/final.xclbin
 
-device = npu
+devicename = npu
 targetname = vector_scalar_add
 
 aie_py_src=${targetname}.py
@@ -26,11 +26,11 @@ endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${device} > $@
+	python3 $< ${devicename} > $@
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
-ifeq (${device}, npu2)
+ifeq (${devicename}, npu2)
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		 --xclbin-name=${@F} --npu-insts-name=insts.txt $(<F)
 else
