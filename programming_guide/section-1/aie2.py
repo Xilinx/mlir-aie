@@ -23,6 +23,7 @@ data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 
 buff = GlobalBuffer(data_ty, name="buff")
 
+
 def core_fn(buff_in):
     for i in range_(data_size):
         buff_in[i] = buff_in[i] + 1
