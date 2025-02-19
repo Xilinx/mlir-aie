@@ -20,7 +20,12 @@ out_channels = 64
 vectorized ?= true
 trace_size = 16384
 
+ifeq ($(device),npu2)
+VPATH := ${srcdir}/../../../aie_kernels/aie2p
+else
 VPATH := ${srcdir}/../../../aie_kernels/aie2
+endif
+
 
 aie_py_src = conv2d.py
 aie_py_trace_src = conv2d_alt.py
