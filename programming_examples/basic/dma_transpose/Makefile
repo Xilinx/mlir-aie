@@ -14,6 +14,8 @@ include ${srcdir}/../../makefile-common
 
 SHELL := /bin/bash
 
+devicename ?= npu
+VPATH := ${srcdir}/../../../aie_kernels/generic
 all: build/final.xclbin build/insts.txt
 
 targetname = dma_transpose
@@ -37,13 +39,18 @@ endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${M} ${K} > $@
+	python3 $< ${devicename} ${M} ${K} > $@
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
+ifeq (${devicename}, npu)
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--no-xchesscc --no-xbridge \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
+else
+	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
+endif
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -61,7 +68,7 @@ run: ${targetname}.exe build/final.xclbin
 
 generate_access_map: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< --generate-access-map ${M} ${K}
+	python3 $< --generate-access-map ${devicename} ${M} ${K} 
 
 clean:
 	rm -rf build _build inst ${targetname}.exe

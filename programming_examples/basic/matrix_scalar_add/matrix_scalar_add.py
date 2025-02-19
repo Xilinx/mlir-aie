@@ -10,7 +10,7 @@ import sys
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, XCVC1902
+from aie.iron.device import NPU1Col1, NPU2, XCVC1902
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorTiler2D
 
@@ -31,6 +31,8 @@ def my_matrix_add_one():
         raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
     if sys.argv[1] == "npu":
         dev = NPU1Col1()
+    elif sys.argv[1] == "npu2":
+        dev = NPU2()
     elif sys.argv[1] == "xcvc1902":
         dev = XCVC1902()
     else:
