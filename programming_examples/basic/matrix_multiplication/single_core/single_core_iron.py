@@ -190,14 +190,14 @@ def my_matmul(
     rows_per_block = 4
 
     # Define tensor access patterns for inputs/outputs
-    A_taps = TensorTiler2D.group_tiler(
+    A_tiles = TensorTiler2D.group_tiler(
         (M, K), (m, k), (1, K_div_k), pattern_repeat=N_div_n
     )
     # There is only one access pattern for B - it tiles the entire matrix in (k x n) tiles.
     b_tap = TensorTiler2D.group_tiler(
         (K, N), (k, n), (K_div_k, N_div_n), tile_group_col_major=True
     )[0]
-    C_taps = TensorTiler2D.group_tiler((M, N), (m, n), (rows_per_block // 2, N_div_n))
+    C_tiles = TensorTiler2D.group_tiler((M, N), (m, n), (rows_per_block // 2, N_div_n))
     c_index = 0
 
     # Runtime operations to move data to/from the AIE-array
@@ -221,9 +221,9 @@ def my_matmul(
                 tgs.append(rt.task_group())
                 for tile_row in range(num_tile_rows):
                     # -- A --
-                    tile_offset = (row_base + tile_row) % len(A_taps)
-                    rt.fill(inA.prod(), A, tap=A_taps[tile_offset], task_group=tgs[-1])
-                    A_taps.append(A_taps[tile_offset])
+                    tile_offset = (row_base + tile_row) % len(A_tiles)
+                    rt.fill(inA.prod(), A, tap=A_tiles[tile_offset], task_group=tgs[-1])
+                    A_taps.append(A_tiles[tile_offset])
 
                     # -- B --
                     rt.fill(inB.prod(), B, tap=b_tap, task_group=tgs[-1])
@@ -231,9 +231,9 @@ def my_matmul(
 
                 # -- C --
                 rt.drain(
-                    outC.cons(), C, tap=C_taps[c_index], task_group=tgs[-1], wait=True
+                    outC.cons(), C, tap=C_tiles[c_index], task_group=tgs[-1], wait=True
                 )
-                C_taps.append(C_taps[c_index])
+                C_taps.append(C_tiles[c_index])
                 c_index += 1
 
                 if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):

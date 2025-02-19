@@ -19,10 +19,10 @@ from util import construct_and_print_module
 
 # CHECK:  module {
 # CHECK:    aie.device(xcve2302) {
-# CHECK:      %tile_0_1 = aie.tile(0, 1)
-# CHECK:      %tile_1_3 = aie.tile(1, 3)
-# CHECK:      aie.objectfifo @of0(%tile_0_1, {%tile_1_3}, 2 : i32) : !aie.objectfifo<memref<2x2xi32>> = [dense<[{{\[}}0, 1], [2, 3]]> : memref<2x2xi32>, dense<[{{\[}}4, 5], [6, 7]]> : memref<2x2xi32>]
-# CHECK:      aie.objectfifo @of1(%tile_0_1, {%tile_1_3}, 2 : i32) : !aie.objectfifo<memref<4xi32>> = [dense<[0, 1, 2, 3]> : memref<4xi32>, dense<[4, 5, 6, 7]> : memref<4xi32>]
+# CHECK:      %{{.*}}tile_0_1 = aie.tile(0, 1)
+# CHECK:      %{{.*}}tile_1_3 = aie.tile(1, 3)
+# CHECK:      aie.objectfifo @of0(%{{.*}}tile_0_1, {%{{.*}}tile_1_3}, 2 : i32) : !aie.objectfifo<memref<2x2xi32>> = [dense<[{{\[}}0, 1], [2, 3]]> : memref<2x2xi32>, dense<[{{\[}}4, 5], [6, 7]]> : memref<2x2xi32>]
+# CHECK:      aie.objectfifo @of1(%{{.*}}tile_0_1, {%{{.*}}tile_1_3}, 2 : i32) : !aie.objectfifo<memref<4xi32>> = [dense<[0, 1, 2, 3]> : memref<4xi32>, dense<[4, 5, 6, 7]> : memref<4xi32>]
 # CHECK:    }
 # CHECK:  }
 

@@ -142,7 +142,7 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
     // buffer_offset
     size_t stride = 1;
     size_t offset = 0;
-    MemRefType my_memref = op.getMemref().getType();
+    BaseMemRefType my_memref = op.getMemref().getType();
     auto shape = my_memref.getShape();
     size_t R = shape.size();
     size_t el_bit_width = my_memref.getElementTypeBitWidth();

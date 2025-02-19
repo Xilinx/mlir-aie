@@ -24,7 +24,7 @@ from .aie import (
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint
+from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint, Attribute, AttrBuilder
 
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
@@ -802,7 +802,7 @@ def broadcast_flow(
 # Runtime sequence
 
 
-def runtime_sequence(*inputs: Type):
+def runtime_sequence(*inputs: Type, sym_name=None, context=None):
     def decorator(f):
         seq_op = RuntimeSequenceOp()
         my_inputs = []
@@ -810,9 +810,13 @@ def runtime_sequence(*inputs: Type):
             my_inputs.append(try_convert_np_type_to_mlir_type(input))
         entry_block = seq_op.body.blocks.append(*my_inputs)
         args = entry_block.arguments
+        name = sym_name if sym_name else f.__name__
         with InsertionPoint(entry_block):
             f(*args)
-
+        seq_op.attributes["sym_name"] = (name if (
+            isinstance(name, Attribute) or
+                not AttrBuilder.contains('SymbolNameAttr')) else
+                    AttrBuilder.get('SymbolNameAttr')(name, context=context))
     return decorator
 
 

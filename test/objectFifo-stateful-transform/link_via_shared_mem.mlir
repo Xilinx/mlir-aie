@@ -18,32 +18,32 @@
 //CHECK:    memref.global "public" @of2 : memref<16xi32>
 //CHECK:    memref.global "public" @of1_cons : memref<16xi32>
 //CHECK:    memref.global "public" @of1 : memref<16xi32>
-//CHECK:    %tile_2_0 = aie.tile(2, 0)
-//CHECK:    %tile_1_2 = aie.tile(1, 2)
-//CHECK:    %tile_2_2 = aie.tile(2, 2)
-//CHECK:    %of2_cons_buff_0 = aie.buffer(%tile_2_2) {sym_name = "of2_cons_buff_0"} : memref<16xi32> 
-//CHECK:    %of2_cons_buff_1 = aie.buffer(%tile_2_2) {sym_name = "of2_cons_buff_1"} : memref<16xi32> 
-//CHECK:    %of2_cons_prod_lock = aie.lock(%tile_2_2, 0) {init = 2 : i32, sym_name = "of2_cons_prod_lock"}
-//CHECK:    %of2_cons_cons_lock = aie.lock(%tile_2_2, 1) {init = 0 : i32, sym_name = "of2_cons_cons_lock"}
-//CHECK:    %of1_cons_buff_0 = aie.buffer(%tile_1_2) {sym_name = "of1_cons_buff_0"} : memref<16xi32> 
-//CHECK:    %of1_cons_buff_1 = aie.buffer(%tile_1_2) {sym_name = "of1_cons_buff_1"} : memref<16xi32> 
-//CHECK:    %of1_cons_prod_lock = aie.lock(%tile_1_2, 0) {init = 2 : i32, sym_name = "of1_cons_prod_lock"}
-//CHECK:    %of1_cons_cons_lock = aie.lock(%tile_1_2, 1) {init = 0 : i32, sym_name = "of1_cons_cons_lock"}
-//CHECK:    %of1_prod_lock = aie.lock(%tile_2_0, 0) {init = 1 : i32, sym_name = "of1_prod_lock"}
-//CHECK:    %of1_cons_lock = aie.lock(%tile_2_0, 1) {init = 0 : i32, sym_name = "of1_cons_lock"}
-//CHECK:    aie.flow(%tile_2_0, DMA : 0, %tile_1_2, DMA : 0)
-//CHECK:    aie.flow(%tile_1_2, DMA : 0, %tile_2_2, DMA : 0)
+//CHECK:    %{{.*}}tile_2_0 = aie.tile(2, 0)
+//CHECK:    %{{.*}}tile_1_2 = aie.tile(1, 2)
+//CHECK:    %{{.*}}tile_2_2 = aie.tile(2, 2)
+//CHECK:    %of2_cons_buff_0 = aie.buffer(%{{.*}}tile_2_2) {sym_name = "of2_cons_buff_0"} : memref<16xi32>
+//CHECK:    %of2_cons_buff_1 = aie.buffer(%{{.*}}tile_2_2) {sym_name = "of2_cons_buff_1"} : memref<16xi32>
+//CHECK:    %of2_cons_prod_lock = aie.lock(%{{.*}}tile_2_2, 0) {init = 2 : i32, sym_name = "of2_cons_prod_lock"}
+//CHECK:    %of2_cons_cons_lock = aie.lock(%{{.*}}tile_2_2, 1) {init = 0 : i32, sym_name = "of2_cons_cons_lock"}
+//CHECK:    %of1_cons_buff_0 = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
+//CHECK:    %of1_cons_buff_1 = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1_cons_buff_1"} : memref<16xi32>
+//CHECK:    %of1_cons_prod_lock = aie.lock(%{{.*}}tile_1_2, 0) {init = 2 : i32, sym_name = "of1_cons_prod_lock"}
+//CHECK:    %of1_cons_cons_lock = aie.lock(%{{.*}}tile_1_2, 1) {init = 0 : i32, sym_name = "of1_cons_cons_lock"}
+//CHECK:    %of1_prod_lock = aie.lock(%{{.*}}tile_2_0, 0) {init = 1 : i32, sym_name = "of1_prod_lock"}
+//CHECK:    %of1_cons_lock = aie.lock(%{{.*}}tile_2_0, 1) {init = 0 : i32, sym_name = "of1_cons_lock"}
+//CHECK:    aie.flow(%{{.*}}tile_2_0, DMA : 0, %{{.*}}tile_1_2, DMA : 0)
+//CHECK:    aie.flow(%{{.*}}tile_1_2, DMA : 0, %{{.*}}tile_2_2, DMA : 0)
 //CHECK:    func.func @some_work(%arg0: memref<16xi32>) {
 //CHECK:      return
 //CHECK:    }
-//CHECK:    %core_2_2 = aie.core(%tile_2_2) {
+//CHECK:    %core_2_2 = aie.core(%{{.*}}tile_2_2) {
 //CHECK:      aie.use_lock(%of2_cons_cons_lock, AcquireGreaterEqual, 1)
 //CHECK:      func.call @some_work(%of2_cons_buff_0) : (memref<16xi32>) -> ()
 //CHECK:      aie.use_lock(%of2_cons_prod_lock, Release, 1)
 //CHECK:      aie.end
 //CHECK:    }
 //CHECK:    aie.shim_dma_allocation @of1(MM2S, 0, 2)
-//CHECK:    %mem_1_2 = aie.mem(%tile_1_2) {
+//CHECK:    %mem_1_2 = aie.mem(%{{.*}}tile_1_2) {
 //CHECK:      %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 //CHECK:    ^bb1:
 //CHECK:      aie.use_lock(%of1_cons_prod_lock, AcquireGreaterEqual, 1)
@@ -70,7 +70,7 @@
 //CHECK:    ^bb6:
 //CHECK:      aie.end
 //CHECK:    }
-//CHECK:    %mem_2_2 = aie.mem(%tile_2_2) {
+//CHECK:    %mem_2_2 = aie.mem(%{{.*}}tile_2_2) {
 //CHECK:      %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 //CHECK:    ^bb1:
 //CHECK:      aie.use_lock(%of2_cons_prod_lock, AcquireGreaterEqual, 1)
@@ -101,7 +101,7 @@ module @link_AIE2 {
         func.func @some_work(%lineOut : memref<16xi32>) -> () {
             return
         }
-        
+
         %core22 = aie.core(%tile22) {
             %subview = aie.objectfifo.acquire @of2 (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
             %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>

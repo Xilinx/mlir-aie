@@ -33,7 +33,7 @@ from .._mlir_libs._aie import (
     generate_cdo,
     generate_xaie,
     generate_control_packets,
-    npu_instgen,
+    translate_npu_to_binary,
     register_dialect,
     translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
