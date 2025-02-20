@@ -52,18 +52,22 @@ class TileOp;
 } // namespace xilinx::AIE
 
 namespace xilinx::AIE {
-  class DeviceOp;
-  class ShimDMAAllocationOp;
-  struct ShimDMAllocationGetter {
-    public:
-      std::optional<AIE::ShimDMAAllocationOp> get(DeviceOp dev, mlir::StringRef sym_name);
-    private:
-      llvm::DenseMap<std::pair<DeviceOp, mlir::StringRef>, std::optional<AIE::ShimDMAAllocationOp>> allocGetter;
-      std::optional<AIE::ShimDMAAllocationOp> cachelessGet(DeviceOp dev, mlir::StringRef sym_name);
-  }; 
+class DeviceOp;
+class ShimDMAAllocationOp;
+struct ShimDMAllocationGetter {
+public:
+  std::optional<AIE::ShimDMAAllocationOp> get(DeviceOp dev,
+                                              mlir::StringRef sym_name);
+
+private:
+  llvm::DenseMap<std::pair<DeviceOp, mlir::StringRef>,
+                 std::optional<AIE::ShimDMAAllocationOp>>
+      allocGetter;
+  std::optional<AIE::ShimDMAAllocationOp>
+  cachelessGet(DeviceOp dev, mlir::StringRef sym_name);
+};
 } // namespace xilinx::AIE
 
-  
 namespace xilinx::AIE {
 mlir::LogicalResult
 verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);

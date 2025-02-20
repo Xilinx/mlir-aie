@@ -295,15 +295,15 @@ public:
     auto issue_token = BoolAttr::get(ctx, false);
     auto repeat_count = zero;
     llvm::SmallVector<int64_t, 4> inputSizes = llvm::map_to_vector(
-      llvm::reverse(op.getMixedSizes()),
-      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-  llvm::SmallVector<int64_t, 4> inputStrides = llvm::map_to_vector(
-      llvm::reverse(op.getMixedStrides()),
-      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-  llvm::SmallVector<int64_t, 4> sizes(4);
-  llvm::SmallVector<int64_t, 4> strides(4);
-  getHardwareStridesWraps(targetModel, bufferType, inputSizes, inputStrides,
-                          sizes, strides);
+        llvm::reverse(op.getMixedSizes()),
+        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+    llvm::SmallVector<int64_t, 4> inputStrides = llvm::map_to_vector(
+        llvm::reverse(op.getMixedStrides()),
+        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+    llvm::SmallVector<int64_t, 4> sizes(4);
+    llvm::SmallVector<int64_t, 4> strides(4);
+    getHardwareStridesWraps(targetModel, bufferType, inputSizes, inputStrides,
+                            sizes, strides);
     int64_t offset = op.getOffsetInBytes();
 
     // column
@@ -473,7 +473,8 @@ private:
 public:
   using OpConversionPattern::OpConversionPattern;
 
-  DmaWaitToSyncPattern(MLIRContext *context, AIE::ShimDMAllocationGetter &getter,
+  DmaWaitToSyncPattern(MLIRContext *context,
+                       AIE::ShimDMAllocationGetter &getter,
                        PatternBenefit benefit = 1)
       : OpConversionPattern(context, benefit), allocGetter(getter) {}
 
