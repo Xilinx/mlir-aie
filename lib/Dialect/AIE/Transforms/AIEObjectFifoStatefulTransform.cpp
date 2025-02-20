@@ -124,7 +124,7 @@ public:
                 allocOp.getChannelIndex();
           }
         }
-      } 
+      }
     }
   }
 
