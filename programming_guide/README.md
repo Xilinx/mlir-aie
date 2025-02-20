@@ -14,7 +14,9 @@
 
 The AI Engine (AIE) array is a spatial compute architecture: a modular and scalable system with spatially distributed compute and memories. Its compute-dense vector processing runs independently and concurrently to explicitly scheduled data movement. Since the vector compute core (green) of each AIE can only operate on data in its L1 scratchpad memory (light blue), data movement accelerators (purple) bi-directionally transport this data over a switched (dark blue) interconnect network from any level in the memory hierarchy.
 
-Programming the AIE-array configures all its spatial building blocks: the compute cores' program memory, the data movers' buffer descriptors, interconnect with switches, etc. This guide introduces our Interface Representation for hands-ON (IRON) close-to-metal programming of the AIE-array. IRON is an open-access toolkit enabling performance engineers to build fast and efficient, often specialized designs through a set of Python language bindings around mlir-aie, our MLIR-based representation of the AIE-array. mlir-aie provides the foundation from which complex and performant AI Engine designs can be defined and is supported by simulation and hardware implementation infrastructure. 
+Programming the AIE-array configures all its spatial building blocks: the compute cores' program memory, the data movers' buffer descriptors, interconnect with switches, etc. This guide introduces our Interface Representation for hands-ON (IRON) close-to-metal programming of the AIE-array. IRON is an open-access toolkit enabling performance engineers to build fast and efficient, often specialized designs through a set of Python language bindings around mlir-aie, our MLIR-based representation of the AIE-array. mlir-aie provides the foundation from which complex and performant AI Engine designs can be defined and is supported by simulation and hardware implementation infrastructure.
+
+IRON offers multiple entry points into programming the AIE-array tailored around the user's experience. At its highest level of abstraction, IRON enables users to create a program where dedicated tasks are given to workers without requiring in-depth knowledge of the underlying hardware architecture. For users that desire more fine grained control over the AIE-array configuration, IRON supports a closer-to-metal explicitly placed API. This guide is structured such that both levels of programming are described in every section.
 
 > **NOTE:**  For those interested in better understanding how AI Engine designs are defined at the MLIR level, take a look through the [MLIR tutorial](../mlir_tutorials/) material. mlir-aie also serves as a lower layer for other higher-level abstraction MLIR layers such as [mlir-air](https://github.com/Xilinx/mlir-air).
 
@@ -35,7 +37,7 @@ This IRON AIE programming guide first introduces the language bindings for AIE-a
 
 * Introduce the topic of objectfifos and how they abstract connections between tiles and data in the AIE array memories
 * Explain key objectfifo data movement patterns
-* Introduce more complex objectfifo connection patterns (link/ broadcast, join/ distribute)
+* Introduce more complex objectfifo connection patterns (broadcast, implicit copy, join, distribute)
 * Demonstrate objectfifos with practical examples
 * Explain runtime data movement between the host and AIE array
 </details>

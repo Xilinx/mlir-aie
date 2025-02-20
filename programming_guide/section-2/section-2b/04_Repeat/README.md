@@ -10,7 +10,7 @@
 
 # <ins>Object FIFO Repeat Pattern</ins>
 
-The Object FIFO provides users with a way to specify that data from the producer should be repeated. This feature is available using the following syntax:
+The closer-to-metal Object FIFO provides users with a way to specify that data from the producer should be repeated. This feature is available using the following syntax:
 ```python
 of0 = object_fifo("objfifo0", A, B, 2, np.ndarray[(256,), np.dtype[np.int32]])
 of0.set_repeat_count(2) # the data in each object is sent to the consumer C twice
@@ -20,7 +20,7 @@ This repetition is achieved using the Data Movement Accelerator (DMA) of the Obj
 
 <img src="./../../../assets/RepeatSharedTile.png" height="300">
 
-For more information into DMAs and their buffer descriptors you can refer to the [Advanced Topic of Section 2a](../../section-2a/README.md#advanced-topic-data-movement-accelerators) and [Section 2f](../../section-2f/).
+For more information into DMAs and their buffer descriptors you can refer to the [Advanced Topic of Section 2a](../../section-2a/README.md#advanced-topic-data-movement-accelerators) and [Section 2g](../../section-2g/).
 
 As the repeat pattern relies on synchronization logic, the Object FIFO lowering will use available information to modify the values of Object FIFO ```acquire``` and ```release``` operations to ensure that enough tokens are produced by the compute tile to allow the DMA to repeat and that these tokens are accounted for by the first ```acquire``` operation post DMA repetition. Doing this adjustement for Object FIFOs of depth larger than 1 is non-trivial and currently not supported.
 
@@ -42,11 +42,8 @@ of1.set_repeat_count(2) # the data in each object is sent to the consumer C twic
 
 <img src="./../../../assets/Repeat.png" height="150">
 
-<<<<<<< HEAD
-=======
 In this case the repetition is achieved using the Data Movement Accelerator (DMA) of the Object FIFO link's shared tile.
 
->>>>>>> 6e065c01fc05b2edb3d6d93fe3e851aa7aeab7b3
 In particular, the repeat functionality can be used in conjunction with the distribute pattern introduced in the previous section. Currently, the repeat value specified for each distribute destination must be the same to ensure functional correctness. Additionally, the syntax currently doesn't support both output Object FIFOs with repeat and without at the same time, in the same distribute pattern. The code below shows how the two output Object FIFOs of a distribute pattern can be set to each repeat three times:
 ```python
 of0 = object_fifo("objfifo0", A, B, 2, np.ndarray[(256,), np.dtype[np.int32]])
@@ -59,4 +56,4 @@ of2.set_repeat_count(3)
 The code snippet above is part of a test that can be found [here](../../../../test/npu-xrt/objectfifo_repeat/distribute_repeat/).
 
 -----
-[[Prev](../03_Link_Distribute_Join/)] [[Up](..)] [[Next - Section 2c](../../section-2c/)]
+[[Prev](../03_Implicit_Copy/)] [[Up](..)] [[Next - Section 2c](../../section-2c/)]
