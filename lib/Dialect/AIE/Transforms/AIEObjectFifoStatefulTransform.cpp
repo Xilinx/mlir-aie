@@ -71,7 +71,8 @@ class DMAChannelAnalysis {
       channelsPerTile;
   // for a tile on (col, row) keeps track of already used (channel, index) pairs
   DenseMap<std::tuple<ObjectFifoCreateOp, DMAChannelDir>, int64_t> allocPerFifo;
-  // map (ObjectFifo, channel direction) pairs to corresponding ShimDMAAllocationOp channel index
+  // map (ObjectFifo, channel direction) pairs to corresponding
+  // ShimDMAAllocationOp channel index
 
 public:
   DMAChannelAnalysis(DeviceOp &device) {
