@@ -92,7 +92,8 @@ public:
       for (auto &bl : r.getBlocks()) {
         for (auto op : bl.getOps<DMAStartOp>()) {
           channelsPerTile[{{memOp.colIndex(), memOp.rowIndex()},
-                            op.getChannelDir(), op.getChannelIndex()}] = 1;
+                           op.getChannelDir(),
+                           op.getChannelIndex()}] = 1;
         }
       }
     }
