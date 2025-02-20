@@ -67,7 +67,8 @@ public:
 // DMA Channel Analysis
 //===----------------------------------------------------------------------===//
 class DMAChannelAnalysis {
-  DenseMap<std::tuple<std::pair<int, int>, DMAChannelDir, int64_t>, int> channelsPerTile;
+  DenseMap<std::tuple<std::pair<int, int>, DMAChannelDir, int64_t>, int>
+      channelsPerTile;
   // for a tile on (col, row) keeps track of already used (channel, index) pairs
   DenseMap<std::tuple<ObjectFifoCreateOp, DMAChannelDir>, int64_t> allocPerFifo;
   // map (ObjectFifo, channel direction) pairs to corresponding ShimDMAAllocationOp channel index
