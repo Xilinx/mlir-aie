@@ -166,12 +166,11 @@ public:
                                       DMAChannelDir channelDir,
                                       int channelIndex, bool plio) {
     if (allocPerFifo.find({obj_fifo, channelDir}) == allocPerFifo.end())
-      builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(),
-                                          SymbolRefAttr::get(ctx, obj_fifo.getName()),
-                                          DMAChannelDirAttr::get(ctx, channelDir),
-                                          builder.getI64IntegerAttr(channelIndex),
-                                          builder.getI64IntegerAttr(colIndex),
-                                          builder.getBoolAttr(plio));
+      builder.create<ShimDMAAllocationOp>(
+          builder.getUnknownLoc(), SymbolRefAttr::get(ctx, obj_fifo.getName()),
+          DMAChannelDirAttr::get(ctx, channelDir),
+          builder.getI64IntegerAttr(channelIndex),
+          builder.getI64IntegerAttr(colIndex), builder.getBoolAttr(plio));
   }
 };
 
