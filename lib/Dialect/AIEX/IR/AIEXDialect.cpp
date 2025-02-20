@@ -370,6 +370,10 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
       llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
         return getConstantIntValue(s).value();
       });
+      llvm::SmallVector<int64_t, 4> hardwareSizes(4);
+      llvm::SmallVector<int64_t, 4> hardwareStrides(4);
+      getHardwareStridesWraps(targetModel, buffer, inputSizes, inputStrides,
+        hardwareSizes, hardwareStrides);
   int64_t offset = getOffsetInBytes();
 
   // The experimental HSA target uses this op on AIE1, skip all the AIE2
@@ -380,6 +384,22 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   if (offset % 4 != 0) {
     return emitOpError("Offset must be 4-byte-aligned.");
   }
+
+    // dma_memcpy_nd transfers of the form [1, 1, 1, len][0, 0, 0, 1] do not
+    // specify any data layout transformation, but simply express a contiguous
+    // transfer of `len`. For backwards compatibility, we allow this to proceed
+    // even if it exceeds the maximum stride/wrap size of any one dimension,
+    // and simply do not lower any data layout transformations, since there is
+    // no other way to express this at the dma_memcpy_nd interface otherwise.
+    AIE::ShimDMAllocationGetter allocGetter;
+    AIE::DeviceOp dev = (*this)->getParentOfType<AIE::DeviceOp>();
+    int col = allocGetter.get(dev, getMetadata())->getCol();
+    bool skipTransformationChecks = isLinearTransferWithoutTransformation();
+    if (failed(verifyStridesWraps(*this, buffer, col, 0, inputSizes,
+                                  inputStrides, hardwareSizes, hardwareStrides,
+                                  skipTransformationChecks))) {
+      return failure();
+    }
 
   // packet header
   if (auto packetInfo = getPacket()) {

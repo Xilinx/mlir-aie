@@ -22,52 +22,6 @@ using namespace xilinx::AIEX;
 
 namespace {
 
-// Helper class to get a ShimDMAAllocationOp for a given <device, symbol name>
-// pair. An object of this class is invalidated if, for any symbol_name, a
-// ShimDMAAllocationOp that uses it changes, as the cache is not updated in this
-// case.
-struct ShimDMAllocationGetter {
-
-public:
-  // Return the first ShimDMAAllocationOp nested inside the DeviceOp 'dev' that
-  // uses the symbol 'sym_name'
-  std::optional<AIE::ShimDMAAllocationOp> get(AIE::DeviceOp dev,
-                                              StringRef sym_name) {
-
-    auto key = std::make_pair(dev, sym_name);
-    auto it = allocGetter.find(key);
-    if (it != allocGetter.end())
-      return it->second;
-
-    auto allocOp = cachelessGet(dev, sym_name);
-    allocGetter[key] = allocOp;
-    return allocOp;
-  }
-
-private:
-  llvm::DenseMap<std::pair<AIE::DeviceOp, StringRef>,
-                 std::optional<AIE::ShimDMAAllocationOp>>
-      allocGetter;
-
-  // Finding the ShimDMAAllocationOp for a given <DeviceOp, symbol_name> pair
-  // can be slow when the symbol is used in many places. This version of the
-  // function is only called when the cache does not have a ShimDMAAllocationOp
-  // stored from a previous lookup.
-  std::optional<AIE::ShimDMAAllocationOp> cachelessGet(AIE::DeviceOp dev,
-                                                       StringRef sym_name) {
-    auto *sym = dev.lookupSymbol(sym_name);
-    if (!sym)
-      return std::nullopt;
-
-    auto uses = SymbolTable::getSymbolUses(sym, dev);
-    for (auto use : *uses)
-      if (auto infoOp = dyn_cast<AIE::ShimDMAAllocationOp>(use.getUser()))
-        return infoOp;
-
-    return std::nullopt;
-  }
-};
-
 struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -274,10 +228,10 @@ struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
   using OpConversionPattern::OpConversionPattern;
 
 private:
-  ShimDMAllocationGetter &allocGetter;
+  AIE::ShimDMAllocationGetter &allocGetter;
 
 public:
-  DmaToNpuPattern(MLIRContext *context, ShimDMAllocationGetter &getter,
+  DmaToNpuPattern(MLIRContext *context, AIE::ShimDMAllocationGetter &getter,
                   PatternBenefit benefit = 1)
       : OpConversionPattern(context, benefit), allocGetter(getter) {}
 
@@ -340,17 +294,16 @@ public:
 
     auto issue_token = BoolAttr::get(ctx, false);
     auto repeat_count = zero;
-
     llvm::SmallVector<int64_t, 4> inputSizes = llvm::map_to_vector(
-        llvm::reverse(op.getMixedSizes()),
-        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-    llvm::SmallVector<int64_t, 4> inputStrides = llvm::map_to_vector(
-        llvm::reverse(op.getMixedStrides()),
-        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-    llvm::SmallVector<int64_t, 4> sizes(4);
-    llvm::SmallVector<int64_t, 4> strides(4);
-    getHardwareStridesWraps(targetModel, bufferType, inputSizes, inputStrides,
-                            sizes, strides);
+      llvm::reverse(op.getMixedSizes()),
+      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+  llvm::SmallVector<int64_t, 4> inputStrides = llvm::map_to_vector(
+      llvm::reverse(op.getMixedStrides()),
+      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+  llvm::SmallVector<int64_t, 4> sizes(4);
+  llvm::SmallVector<int64_t, 4> strides(4);
+  getHardwareStridesWraps(targetModel, bufferType, inputSizes, inputStrides,
+                          sizes, strides);
     int64_t offset = op.getOffsetInBytes();
 
     // column
@@ -358,19 +311,6 @@ public:
 
     // row
     row = IntegerAttr::get(i32ty, 0);
-
-    // dma_memcpy_nd transfers of the form [1, 1, 1, len][0, 0, 0, 1] do not
-    // specify any data layout transformation, but simply express a contiguous
-    // transfer of `len`. For backwards compatibility, we allow this to proceed
-    // even if it exceeds the maximum stride/wrap size of any one dimension,
-    // and simply do not lower any data layout transformations, since there is
-    // no other way to express this at the dma_memcpy_nd interface otherwise.
-    bool skipTransformationChecks = op.isLinearTransferWithoutTransformation();
-    if (failed(verifyStridesWraps(op, bufferType, col, 0, inputSizes,
-                                  inputStrides, sizes, strides,
-                                  skipTransformationChecks))) {
-      return failure();
-    }
 
     // arg_idx
     AIEX::RuntimeSequenceOp seq_op =
@@ -528,12 +468,12 @@ public:
 struct DmaWaitToSyncPattern : OpConversionPattern<NpuDmaWaitOp> {
 
 private:
-  ShimDMAllocationGetter &allocGetter;
+  AIE::ShimDMAllocationGetter &allocGetter;
 
 public:
   using OpConversionPattern::OpConversionPattern;
 
-  DmaWaitToSyncPattern(MLIRContext *context, ShimDMAllocationGetter &getter,
+  DmaWaitToSyncPattern(MLIRContext *context, AIE::ShimDMAllocationGetter &getter,
                        PatternBenefit benefit = 1)
       : OpConversionPattern(context, benefit), allocGetter(getter) {}
 
@@ -739,7 +679,7 @@ struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
   void runOnOperation() override {
 
-    ShimDMAllocationGetter cachingGetter;
+    AIE::ShimDMAllocationGetter cachingGetter;
 
     AIE::DeviceOp device = getOperation();
 
