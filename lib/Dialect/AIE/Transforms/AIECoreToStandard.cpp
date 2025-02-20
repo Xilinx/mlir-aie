@@ -113,8 +113,12 @@ static auto getAIE2pIntrinsics(OpBuilder &builder) {
   Type accType = VectorType::get({16}, int32Type);
   IntrinsicDecls functions = {
       {"debug_i32", {int32Type}, {}},
-      {"llvm.aie2p.put.ms", {int32Type, int32Type}, {}}, //(%value, %tlast) -> ()
-      {"llvm.aie2p.get.ss", {}, {int32Type, int32Type}}, //() -> (%value, %tlast)
+      {"llvm.aie2p.put.ms",
+       {int32Type, int32Type},
+       {}}, //(%value, %tlast) -> ()
+      {"llvm.aie2p.get.ss",
+       {},
+       {int32Type, int32Type}}, //() -> (%value, %tlast)
       {"llvm.aie2p.mcd.write.vec",
        {accType, int32Type},
        {}}, // (%value, %enable) -> ()
