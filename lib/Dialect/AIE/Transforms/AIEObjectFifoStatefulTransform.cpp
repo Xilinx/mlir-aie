@@ -67,7 +67,10 @@ public:
 // DMA Channel Analysis
 //===----------------------------------------------------------------------===//
 class DMAChannelAnalysis {
-  DenseMap<std::tuple<Value, DMAChannelDir, int>, int> channelsPerTile;
+  DenseMap<std::tuple<std::pair<int, int>, DMAChannelDir, int64_t>, int> channelsPerTile;
+  // for a tile on (col, row) keeps track of already used (channel, index) pairs
+  DenseMap<std::tuple<ObjectFifoCreateOp, DMAChannelDir>, int64_t> allocPerFifo;
+  // map (ObjectFifo, channel direction) pairs to corresponding ShimDMAAllocationOp channel index
 
 public:
   DMAChannelAnalysis(DeviceOp &device) {
@@ -76,8 +79,8 @@ public:
       Region &r = memOp.getBody();
       for (auto &bl : r.getBlocks()) {
         for (auto op : bl.getOps<DMAStartOp>()) {
-          channelsPerTile[{memOp.getTile(), op.getChannelDir(),
-                           op.getChannelIndex()}] = 1;
+          channelsPerTile[{{memOp.colIndex(), memOp.rowIndex()},
+                            op.getChannelDir(), op.getChannelIndex()}] = 1;
         }
       }
     }
@@ -85,8 +88,8 @@ public:
       Region &r = memOp.getBody();
       for (auto &bl : r.getBlocks()) {
         for (auto op : bl.getOps<DMAStartOp>()) {
-          channelsPerTile[{memOp.getTile(), op.getChannelDir(),
-                           op.getChannelIndex()}] = 1;
+          channelsPerTile[{{memOp.colIndex(), memOp.rowIndex()},
+                            op.getChannelDir(), op.getChannelIndex()}] = 1;
         }
       }
     }
@@ -94,16 +97,37 @@ public:
       Region &r = memOp.getBody();
       for (auto &bl : r.getBlocks()) {
         for (auto op : bl.getOps<DMAStartOp>()) {
-          channelsPerTile[{memOp.getTile(), op.getChannelDir(),
-                           op.getChannelIndex()}] = 1;
+          channelsPerTile[{{memOp.colIndex(), memOp.rowIndex()},
+                            op.getChannelDir(), op.getChannelIndex()}] = 1;
         }
       }
+    }
+    // go over the channels allocated by each ShimDMAAllocationOp
+    // and update channel map and allocPerFifo
+    for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
+      channelsPerTile[{{allocOp.getCol(), 0}, allocOp.getChannelDir(),
+                        allocOp.getChannelIndex()}] = 1;
+      Operation *parent = allocOp.getOperation();
+      while ((parent = parent->getParentOp())) {
+        if (parent->hasTrait<OpTrait::SymbolTable>()) {
+          if (auto *st = SymbolTable::lookupSymbolIn(parent, allocOp.getSymName());
+              isa_and_nonnull<ObjectFifoCreateOp>(st)) {
+            ObjectFifoCreateOp objfifo = dyn_cast<ObjectFifoCreateOp>(st);
+            allocPerFifo[{objfifo, allocOp.getChannelDir()}] = allocOp.getChannelIndex();
+          }
+        }
+      } 
     }
   }
 
   /// Given a tile and DMAChannelDir, returns next usable channel index for
-  /// that tile.
-  int getDMAChannelIndex(TileOp tileOp, DMAChannelDir dir) {
+  /// that tile. If a ShimDMAAllocationOp already exists for this ObjectFifo
+  /// symbol and channel direction, return the channel index it allocated.
+  int getDMAChannelIndex(ObjectFifoCreateOp original, TileOp tileOp,
+                         DMAChannelDir dir) {
+    if (allocPerFifo.find({original, dir}) != allocPerFifo.end())
+      return allocPerFifo[{original, dir}];
+
     const auto &targetModel = getTargetModel(tileOp);
     int maxChannelNum = 0;
     if (tileOp.isShimTile())
@@ -116,13 +140,31 @@ public:
         maxChannelNum = targetModel.getNumDestSwitchboxConnections(
             tileOp.getCol(), tileOp.getRow(), WireBundle::DMA);
     }
-    for (int i = 0; i < maxChannelNum; i++)
-      if (int usageCnt = channelsPerTile[{tileOp.getResult(), dir, i}];
+    for (int i = 0; i < maxChannelNum; i++) {
+      std::pair<int, int> coords = {tileOp.getCol(), tileOp.getRow()};
+      if (int usageCnt = channelsPerTile[{coords, dir, i}];
           usageCnt == 0) {
-        channelsPerTile[{tileOp.getResult(), dir, i}] = 1;
+        channelsPerTile[{coords, dir, i}] = 1;
         return i;
       }
+    }
     return -1;
+  }
+
+  /// Function used to generate, from an objectFifo with a shimTile endpoint, a
+  /// shimDMAAllocationOp containing the channelDir, channelIndex and
+  /// shimTile col assigned by the objectFifo lowering.
+  void createObjectFifoAllocationInfo(OpBuilder &builder, MLIRContext *ctx,
+                                      ObjectFifoCreateOp obj_fifo, int colIndex,
+                                      DMAChannelDir channelDir,
+                                      int channelIndex, bool plio) {
+    if (allocPerFifo.find({obj_fifo, channelDir}) == allocPerFifo.end())
+      builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(),
+                                          SymbolRefAttr::get(ctx, obj_fifo.getName()),
+                                          DMAChannelDirAttr::get(ctx, channelDir),
+                                          builder.getI64IntegerAttr(channelIndex),
+                                          builder.getI64IntegerAttr(colIndex),
+                                          builder.getBoolAttr(plio));
   }
 };
 
@@ -1367,20 +1409,6 @@ struct AIEObjectFifoStatefulTransformPass
     return objFifo.size();
   }
 
-  /// Function used to generate, from an objectFifo with a shimTile endpoint, a
-  /// shimDMAAllocationOp containing the channelDir, channelIndex and
-  /// shimTile col assigned by the objectFifo lowering.
-  void createObjectFifoAllocationInfo(OpBuilder &builder, MLIRContext *ctx,
-                                      FlatSymbolRefAttr obj_fifo, int colIndex,
-                                      DMAChannelDir channelDir,
-                                      int channelIndex, bool plio) {
-    builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(), obj_fifo,
-                                        DMAChannelDirAttr::get(ctx, channelDir),
-                                        builder.getI64IntegerAttr(channelIndex),
-                                        builder.getI64IntegerAttr(colIndex),
-                                        builder.getBoolAttr(plio));
-  }
-
   /// Function used to verify that an objectfifo is present in at most one
   /// ObjectFifoLinkOp.
   void verifyObjectFifoLinks(DeviceOp &device) {
@@ -1559,7 +1587,7 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto &[producer, consumers] : splitFifos) {
       // create producer tile DMA
       int producerChanIndex = dmaAnalysis.getDMAChannelIndex(
-          producer.getProducerTileOp(), DMAChannelDir::MM2S);
+          producer, producer.getProducerTileOp(), DMAChannelDir::MM2S);
       if (producerChanIndex == -1)
         producer.getProducerTileOp().emitOpError(
             "number of output DMA channel exceeded!");
@@ -1571,16 +1599,15 @@ struct AIEObjectFifoStatefulTransformPass
       builder.setInsertionPoint(device.getBody()->getTerminator());
 
       if (producer.getProducerTileOp().isShimTile())
-        createObjectFifoAllocationInfo(
-            builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
-            producer.getProducerTileOp().colIndex(), producerChan.direction,
-            producerChan.channel, producer.getPlio());
+        dmaAnalysis.createObjectFifoAllocationInfo(
+            builder, ctx, producer, producer.getProducerTileOp().colIndex(),
+            producerChan.direction, producerChan.channel, producer.getPlio());
 
       for (auto consumer : consumers) {
 
         // create consumer tile DMA
         int consumerChanIndex = dmaAnalysis.getDMAChannelIndex(
-            consumer.getProducerTileOp(), DMAChannelDir::S2MM);
+            producer, consumer.getProducerTileOp(), DMAChannelDir::S2MM);
         if (consumerChanIndex == -1)
           consumer.getProducerTileOp().emitOpError(
               "number of input DMA channel exceeded!");
@@ -1606,10 +1633,9 @@ struct AIEObjectFifoStatefulTransformPass
         }
 
         if (consumer.getProducerTileOp().isShimTile())
-          createObjectFifoAllocationInfo(
-              builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
-              consumer.getProducerTileOp().colIndex(), consumerChan.direction,
-              consumerChan.channel, producer.getPlio());
+          dmaAnalysis.createObjectFifoAllocationInfo(
+              builder, ctx, producer, consumer.getProducerTileOp().colIndex(),
+              consumerChan.direction, consumerChan.channel, producer.getPlio());
 
         // create flow
         builder.setInsertionPointAfter(producer);
