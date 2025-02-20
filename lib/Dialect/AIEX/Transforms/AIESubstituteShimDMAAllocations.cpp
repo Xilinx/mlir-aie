@@ -67,7 +67,7 @@ struct AIESubstituteShimDMAAllocationsPass
     RewritePatternSet patterns(&getContext());
     patterns.insert<DMAConfigureTaskForOpPattern>(&getContext());
 
-    (void)applyPatternsAndFoldGreedily(device, std::move(patterns));
+    (void)applyPatternsGreedily(device, std::move(patterns));
   }
 };
 
