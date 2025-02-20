@@ -119,7 +119,8 @@ public:
                   SymbolTable::lookupSymbolIn(parent, allocOp.getSymName());
               isa_and_nonnull<ObjectFifoCreateOp>(st)) {
             ObjectFifoCreateOp objfifo = dyn_cast<ObjectFifoCreateOp>(st);
-            allocPerFifo[{objfifo, allocOp.getChannelDir()}] = allocOp.getChannelIndex();
+            allocPerFifo[{objfifo, allocOp.getChannelDir()}] =
+                allocOp.getChannelIndex();
           }
         }
       } 
