@@ -43,10 +43,7 @@ else
    echo "This script requires python3.10 or python3.12"
    return 1
 fi
-if ! hash unzip; then
-  echo "unzip is not installed"
-  return 1
-fi
+
 # if an install is already present, remove it to start from a clean slate
 rm -rf ironenv
 rm -rf my_install
