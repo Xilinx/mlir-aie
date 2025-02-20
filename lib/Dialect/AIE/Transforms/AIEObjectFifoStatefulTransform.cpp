@@ -150,8 +150,7 @@ public:
     }
     for (int i = 0; i < maxChannelNum; i++) {
       std::pair<int, int> coords = {tileOp.getCol(), tileOp.getRow()};
-      if (int usageCnt = channelsPerTile[{coords, dir, i}];
-          usageCnt == 0) {
+      if (int usageCnt = channelsPerTile[{coords, dir, i}]; usageCnt == 0) {
         channelsPerTile[{coords, dir, i}] = 1;
         return i;
       }
