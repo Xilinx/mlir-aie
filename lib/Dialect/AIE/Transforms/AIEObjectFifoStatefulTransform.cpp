@@ -110,8 +110,9 @@ public:
     // go over the channels allocated by each ShimDMAAllocationOp
     // and update channel map and allocPerFifo
     for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
-      channelsPerTile[{{allocOp.getCol(), 0}, allocOp.getChannelDir(),
-                        allocOp.getChannelIndex()}] = 1;
+      channelsPerTile[{{allocOp.getCol(), 0},
+                       allocOp.getChannelDir(),
+                       allocOp.getChannelIndex()}] = 1;
       Operation *parent = allocOp.getOperation();
       while ((parent = parent->getParentOp())) {
         if (parent->hasTrait<OpTrait::SymbolTable>()) {
