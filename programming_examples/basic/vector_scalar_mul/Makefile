@@ -18,7 +18,7 @@ device = npu
 targetname = vector_scalar_mul
 data_size = 4096
 trace_size = 8192
-CHESS ?= true
+CHESS ?= false
 
 aie_py_src=${targetname}.py
 use_alt?=0
