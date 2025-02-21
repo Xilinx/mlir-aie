@@ -107,14 +107,14 @@ run_py: build/final_${data_size}.xclbin build/insts_${data_size}.txt
 
 trace: ${targetname}_${data_size}.exe build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt 
 	${powershell} ./$< -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift 1 > trace_vs.json
-	${srcdir}/../../utils/get_trace_summary.py --filename trace_vs.json
+	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift 1 > trace_vector_scalar_mul.json
+	${srcdir}/../../utils/get_trace_summary.py --filename trace_vector_scalar_mul.json
 
 trace_py: build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt
 	#${powershell} python3 ${srcdir}/test_orig.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -i2s ${in2_size} -os ${out_size} --size 4096
 	${powershell} python3 ${srcdir}/test.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -i2s ${in2_size} -os ${out_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift 1 > trace_vs.json
-	${srcdir}/../../utils/get_trace_summary.py --filename trace_vs.json
+	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift 1 > trace_vector_scalar_mul.json
+	${srcdir}/../../utils/get_trace_summary.py --filename trace_vector_scalar_mul.json
 
 
 clean_trace:

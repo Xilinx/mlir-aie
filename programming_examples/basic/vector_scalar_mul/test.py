@@ -16,9 +16,9 @@ def main(opts):
     in2_size = int(opts.in2_size)  # in bytes
     out_size = int(opts.out_size)  # in bytes
 
-    print(str(in1_size) + ", " + str(in2_size) + ", " + str(out_size))
-
+    # --------------------------------------------------------------------------
     # ----- Edit your data types -----------------------------------------------
+    # --------------------------------------------------------------------------
 
     in1_dtype = np.int16
     in2_dtype = np.int32
@@ -30,7 +30,9 @@ def main(opts):
     in2_volume = in2_size // np.dtype(in2_dtype).itemsize
     out_volume = out_size // np.dtype(out_dtype).itemsize
 
-    # ----- Edit your data init, and reference data here -----------------------
+    # --------------------------------------------------------------------------
+    # ----- Edit your data init and reference data here ------------------------
+    # --------------------------------------------------------------------------
 
     # check buffer sizes
     assert in2_size == 4
