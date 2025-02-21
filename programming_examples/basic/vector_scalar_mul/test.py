@@ -12,29 +12,29 @@ import aie.utils.test as test_utils
 
 
 def main(opts):
-    in1_size = int(opts.in1_size) # in bytes
-    in2_size = int(opts.in2_size) # in bytes
-    out_size = int(opts.out_size) # in bytes
+    in1_size = int(opts.in1_size)  # in bytes
+    in2_size = int(opts.in2_size)  # in bytes
+    out_size = int(opts.out_size)  # in bytes
 
     print(str(in1_size) + ", " + str(in2_size) + ", " + str(out_size))
 
-    #----- Edit your data types -----------------------------------------------
+    # ----- Edit your data types -----------------------------------------------
 
     in1_dtype = np.int16
     in2_dtype = np.int32
     out_dtype = in1_dtype
-    
-    #--------------------------------------------------------------------------
+
+    # --------------------------------------------------------------------------
 
     in1_volume = in1_size // np.dtype(in1_dtype).itemsize
     in2_volume = in2_size // np.dtype(in2_dtype).itemsize
     out_volume = out_size // np.dtype(out_dtype).itemsize
 
-    #----- Edit your data init, and reference data here -----------------------
+    # ----- Edit your data init, and reference data here -----------------------
 
     # check buffer sizes
-    assert (in2_size == 4)
-    assert (out_size == in1_size)
+    assert in2_size == 4
+    assert out_size == in1_size
 
     scale_factor = 3
 
@@ -46,11 +46,22 @@ def main(opts):
     # Define reference data
     ref = np.arange(1, in1_volume + 1, dtype=out_dtype) * scale_factor
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     print("Running...\n")
-    res = xrt_utils.xrt_test_run(in1_dtype, in2_dtype, out_dtype, in1_data, in2_data, out_data,
-                       in1_volume, in2_volume, out_volume, ref, opts)
+    res = xrt_utils.xrt_test_run(
+        in1_dtype,
+        in2_dtype,
+        out_dtype,
+        in1_data,
+        in2_data,
+        out_data,
+        in1_volume,
+        in2_volume,
+        out_volume,
+        ref,
+        opts,
+    )
     sys.exit(res)
 
 

@@ -10,6 +10,7 @@ import time
 import numpy as np
 import pyxrt as xrt
 
+
 class AIE_Application:
 
     def __init__(self, xclbin_path, insts_path, kernel_name="PP_FD_PRE"):
@@ -168,10 +169,20 @@ def execute(app, input_one=None, input_two=None):
     app.run()
     return app.buffers[5].read()
 
-def xrt_test_run(in1_dtype, in2_dtype, out_dtype, 
-                 in1_data, in2_data, out_data, 
-                 in1_volume, in2_volume, out_volume,
-                 ref, opts):
+
+def xrt_test_run(
+    in1_dtype,
+    in2_dtype,
+    out_dtype,
+    in1_data,
+    in2_data,
+    out_data,
+    in1_volume,
+    in2_volume,
+    out_volume,
+    ref,
+    opts,
+):
     enable_trace = opts.trace_size > 0
 
     app = setup_aie(
@@ -200,7 +211,6 @@ def xrt_test_run(in1_dtype, in2_dtype, out_dtype,
     if enable_trace:
         trace_buffer = full_output[out_size:].view(np.uint32)
 
-
     if enable_trace:
         if opts.verbosity >= 1:
             print("trace_buffer shape: ", trace_buffer.shape)
@@ -217,8 +227,8 @@ def xrt_test_run(in1_dtype, in2_dtype, out_dtype,
 
     if not errors:
         print("\nPASS!\n")
-        return(0)
+        return 0
     else:
         print("\nError count: ", errors)
         print("\nFailed.\n")
-        return(1)    
+        return 1
