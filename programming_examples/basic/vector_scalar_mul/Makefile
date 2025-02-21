@@ -21,7 +21,7 @@ in1_size = 8192 # in bytes
 in2_size = 4 # in bytes, should always be 4 (1x int32)
 out_size = 8192 # in bytes, should always be equal to in1_size
 trace_size = 8192
-CHESS ?= true
+CHESS ?= false
 
 data_size = in1_size
 aie_py_src=${targetname}.py
