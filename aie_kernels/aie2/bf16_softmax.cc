@@ -4,6 +4,7 @@
 void softmax_simple_bf16(bfloat16 *restrict input_vector,
                          bfloat16 *restrict output_vector,
                          const int32_t vector_size) {
+  event0();
   // Find maximum for numerical stability
   float max_val = (float)input_vector[0];
   for (uint32_t i = 1; i < vector_size; i++) {
@@ -47,6 +48,7 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
     float val = (float)output_vector[i] * inv_sum;
     output_vector[i] = (bfloat16)val;
   }
+  event1();
   return;
 }
 

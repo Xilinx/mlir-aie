@@ -34,7 +34,7 @@ build/aie2_lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${device} ${data_size} 0 > $@
 
-build/aie_trace__lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
+build/aie2_trace_lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${device} ${data_size} ${trace_size} > $@
 
@@ -59,7 +59,7 @@ else
 		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
 endif
 
-build/final_trace_${data_size}.xclbin: build/aie2_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
+build/final_trace_${data_size}.xclbin: build/aie2_trace_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
 ifeq ($(device),npu)
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
@@ -93,11 +93,13 @@ run_py: build/final_${data_size}.xclbin build/insts_${data_size}.txt
 
 trace: ${targetname}_${data_size}.exe build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt 
 	${powershell} ./$< -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size}
-	../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift 1 > trace_vs.json
+	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir --colshift 1 > trace_passthrough_kernel.json
+	${srcdir}/../../utils/get_trace_summary.py --filename trace_passthrough_kernel.json
 
 trace_py: build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt
 	${powershell} python3 ${srcdir}/test.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size} -s ${data_size}
-	../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift 1 > trace_vs.json
+	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir --colshift 1 > trace_passthrough_kernel.json
+	${srcdir}/../../utils/get_trace_summary.py --filename trace_passthrough_kernel.json
 
 clean_trace:
 	rm -rf tmpTrace trace.txt parse*json trace*json
