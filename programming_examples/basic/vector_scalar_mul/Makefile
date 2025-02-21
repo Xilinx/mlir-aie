@@ -29,8 +29,6 @@ endif
 
 all: build/final_${data_size}.xclbin build/insts_${data_size}.txt
 
-kristof: build/insts_${data_size}.txt
-
 build/%.o: %.cc
 	mkdir -p ${@D}
 ifeq ($(device),npu)
