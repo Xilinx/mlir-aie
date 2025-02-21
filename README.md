@@ -1,3 +1,8 @@
+This is a work-in-progress version adding the [`aie++` C++ programming
+model](docs/CIR.md) to MLIR AIE based on [ClangIR for MLIR AIE
+fork](https://github.com/keryell/clangir/tree/mlir-aie-version).
+
+
 # MLIR-based AI Engine toolchain
 
 [![Build and Test across Python versions](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml)
@@ -16,14 +21,14 @@ This project is primarily intended to support the open-source community, particu
 
 # Getting Started for AMD Ryzen™ AI - Linux Quick Setup Instructions
 
-These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 24.10** install with Linux 6.11 kernel. 
+These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 24.10** install with Linux 6.11 kernel.
 
 ## Initial Setup
 
 #### Update BIOS:
 
 Be sure you have the latest BIOS for your laptop or mini PC, this will ensure the NPU (sometimes referred to as IPU) is enabled in the system. You may need to manually enable the NPU:
-   ```Advanced → CPU Configuration → IPU``` 
+   ```Advanced → CPU Configuration → IPU```
 
 > **NOTE:** Some manufacturers only provide Windows executables to update the BIOS, please do this before installing Ubuntu.
 
@@ -36,14 +41,14 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 ### Install AIETools
 
-#### Supporting AMD Ryzen™ AI with AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P): Install AMD Vitis™ AIE Essentials 
+#### Supporting AMD Ryzen™ AI with AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P): Install AMD Vitis™ AIE Essentials
 
 1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3 Early Accesss](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab). We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
 
    > This is an early access lounge, you must register and be granted access at this time.
 
     1. Download VAIML Installer for Linux based compilation: `ryzen_ai-1.3.0ea1.tgz`
- 
+
     1. Extract the required tools:
 
        ``` bash
@@ -60,7 +65,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
     1. Get a local license for AI Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense).
 
     1. Copy your license file (Xilinx.lic) to your preferred location, e.g. `/opt/Xilinx.lic`:
-       
+
 1. Setup your environment using the following script for Vitis™ for AIETools:
 
    ```bash
@@ -76,7 +81,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 ### Install the XDNA™ Driver
 
 1. Install the following prerequisite packages.
- 
+
    ```bash
    sudo apt install \
    libidn11-dev
@@ -95,7 +100,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 1. Install XRT. (Below steps are adapted from [here](https://xilinx.github.io/XRT/master/html/build.html).)
 
     1. Install XRT prerequisites.
-    
+
        ```bash
        cd $XDNA_SRC_DIR
        sudo ./tools/amdxdna_deps.sh
@@ -123,7 +128,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
        sudo dpkg -i --force-overwrite ./xrt_202510.2.19.0_22.04-amd64-npu.deb
        sudo apt -f install
        sudo apt reinstall ./xrt_202510.2.19.0_22.04-amd64-npu.deb
-       ```      
+       ```
 
 1. Build XDNA-Driver. Below steps are adapted from [here](https://github.com/amd/xdna-driver).
 
@@ -139,9 +144,9 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
     cd $XDNA_SRC_DIR/build/Release
     sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu22.04-x86_64-amdxdna.deb
     ```
-    
+
 1. Check that the NPU is working if the device appears with xrt-smi:
-   
+
    ```bash
    source /opt/xilinx/xrt/setup.sh
    xrt-smi examine
@@ -150,7 +155,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    > At the bottom of the output you should see:
    >  ```
    >  Devices present
-   >  BDF             :  Name             
+   >  BDF             :  Name
    > ------------------------------------
    >  [0000:66:00.1]  :  RyzenAI-npu1
    >  ```
@@ -174,12 +179,12 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    ```
 
 1. Remember to source the Vitis™ AIE Essentials setup script from [above](#install-aietools).
-   
+
 1. Remember to source the XRT setup script: `source /opt/xilinx/xrt/setup.sh`
 
 ## Install IRON for AMD Ryzen™ AI AIE Application Development
 
-1. Clone [the mlir-aie repository](https://github.com/Xilinx/mlir-aie.git), best under /home/username for speed (yourPathToBuildMLIR-AIE): 
+1. Clone [the mlir-aie repository](https://github.com/Xilinx/mlir-aie.git), best under /home/username for speed (yourPathToBuildMLIR-AIE):
    ```bash
    git clone https://github.com/Xilinx/mlir-aie.git
    cd mlir-aie
@@ -225,7 +230,7 @@ For your design of interest, for instance from [programming_examples](../program
 
 1. Some MLIR-AIE documentation is available on the [website](https://xilinx.github.io/mlir-aie/)
 
-# Detailed Getting Started Guides and Documentation: 
+# Detailed Getting Started Guides and Documentation:
 
 [Getting Started on a Versal™ board](docs/Building.md)
 
