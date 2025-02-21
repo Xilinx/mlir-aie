@@ -16,7 +16,7 @@ all: build/final.xclbin
 
 targetname = myFirstProgram
 trace_size = 8192
-CHESS ?= true
+CHESS ?= false
 
 build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
