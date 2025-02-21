@@ -80,13 +80,22 @@ namespace xilinx::AIE {
 std::optional<AIE::ShimDMAAllocationOp>
 ShimDMAllocationGetter::get(DeviceOp dev, StringRef sym_name) {
   auto key = std::make_pair(dev, sym_name);
-  auto it = allocGetter.find(key); // Now using the member allocGetter
-  if (it != allocGetter.end())
+  auto it = allocGetter.find(key);
+  if (it != allocGetter.end()) {
     return it->second;
+  }
+
+  // Call cachelessGet to look for the allocation operation
   auto allocOp = cachelessGet(dev, sym_name);
-  allocGetter[key] = allocOp;
-  return allocOp;
+
+  // Only cache the value if it's not empty (i.e., not std::nullopt)
+  if (allocOp.has_value()) {
+    allocGetter[key] = allocOp; // Cache it
+  }
+
+  return allocOp; // Return the found or empty optional
 }
+
 // Finding the ShimDMAAllocationOp for a given <DeviceOp, symbol_name> pair
 // can be slow when the symbol is used in many places. This version of the
 // function is only called when the cache does not have a ShimDMAAllocationOp
