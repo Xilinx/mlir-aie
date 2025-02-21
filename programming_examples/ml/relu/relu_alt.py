@@ -115,7 +115,11 @@ def my_relu(trace_size):
 
             if trace_size > 0:
                 trace_utils.configure_packet_tracing_aie2(
-                    tiles_to_trace=tiles_to_trace, shim=ShimTile, trace_size=trace_size, trace_offset=N_in_bytes, ddr_id=1
+                    tiles_to_trace=tiles_to_trace,
+                    shim=ShimTile,
+                    trace_size=trace_size,
+                    trace_offset=N_in_bytes,
+                    ddr_id=1,
                 )
 
             in_task = shim_dma_single_bd_task(
@@ -132,6 +136,7 @@ def my_relu(trace_size):
             dma_await_task(in_task, out_task)
 
             trace_utils.gen_trace_done_aie2(ShimTile)
+
 
 try:
     trace_size = 0 if (len(sys.argv) != 2) else int(sys.argv[1])

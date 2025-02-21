@@ -621,7 +621,7 @@ def configure_simple_tracing_aie2(
     size=8192,
     offset=0,
     start=CoreEvent.TRUE,
-    stop=CoreEvent.NONE, # NOTE: No stop event can cause errors in trace generation
+    stop=CoreEvent.NONE,  # NOTE: No stop event can cause errors in trace generation
     events=[
         CoreEvent.INSTR_EVENT_0,
         CoreEvent.INSTR_EVENT_1,
@@ -671,8 +671,13 @@ def configure_core_packet_tracing_aie2(
     ],
 ):
     configure_coretile_tracing_aie2(
-        tile=tile, start=start, stop=stop, events=events, 
-        enable_packet=1, packet_id=flow_id, packet_type=PacketType.CORE
+        tile=tile,
+        start=start,
+        stop=stop,
+        events=events,
+        enable_packet=1,
+        packet_id=flow_id,
+        packet_type=PacketType.CORE,
     )
     configure_timer_ctrl_core_aie2(tile, start)
     configure_shimtile_tracing_aie2(
@@ -766,7 +771,7 @@ def configure_packet_tracing_flow(tiles_to_trace, shim):
 def configure_shim_packet_tracing_aie2(
     shim,
     brdcst_num=15,
-    user_event=CoreEvent.USER_EVENT_3, # 0x7F, 127: user even t#1
+    user_event=CoreEvent.USER_EVENT_3,  # 0x7F, 127: user even t#1
 ):
     configure_timer_ctrl_core_aie2(shim, user_event)
     configure_broadcast_core_aie2(shim, brdcst_num, user_event)
@@ -807,14 +812,15 @@ def configure_packet_tracing_aie2(
             enable_token=enable_token,
             start=start,
             stop=stop,
-            events=events
+            events=events,
         )
     configure_shim_packet_tracing_aie2(shim)
+
 
 def gen_trace_done_aie2(
     shim,
     brdcst_num=14,
-    user_event=CoreEvent.USER_EVENT_2, #0x7E, 126       
+    user_event=CoreEvent.USER_EVENT_2,  # 0x7E, 126
 ):
     configure_broadcast_core_aie2(shim, brdcst_num, user_event)
     configure_event_gen_core_aie2(shim, user_event)

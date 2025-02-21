@@ -62,7 +62,11 @@ def passthroughKernel(dev, vector_size, trace_size):
         def sequence(inTensor, outTensor, notUsed):
             if trace_size > 0:
                 trace_utils.configure_packet_tracing_aie2(
-                    tiles_to_trace=tiles_to_trace, shim=ShimTile, trace_size=trace_size, trace_offset=N, ddr_id=1
+                    tiles_to_trace=tiles_to_trace,
+                    shim=ShimTile,
+                    trace_size=trace_size,
+                    trace_offset=N,
+                    ddr_id=1,
                 )
 
             in_task = shim_dma_single_bd_task(
@@ -76,6 +80,7 @@ def passthroughKernel(dev, vector_size, trace_size):
             dma_await_task(in_task, out_task)
 
             trace_utils.gen_trace_done_aie2(ShimTile)
+
 
 try:
     device_name = str(sys.argv[1])

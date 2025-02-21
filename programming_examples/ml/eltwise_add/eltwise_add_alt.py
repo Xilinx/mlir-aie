@@ -66,7 +66,6 @@ def my_eltwise_add(trace_size):
         if trace_size > 0:
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
-
         inA_fifos = []
         inB_fifos = []
         outC_fifos = []
@@ -163,6 +162,7 @@ def my_eltwise_add(trace_size):
             dma_await_task(a_task, b_task, c_task)
 
             trace_utils.gen_trace_done_aie2(ShimTile)
+
 
 try:
     trace_size = 0 if (len(sys.argv) < 2) else int(sys.argv[1])
