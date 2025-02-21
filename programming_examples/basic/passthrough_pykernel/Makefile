@@ -35,14 +35,9 @@ build/aie.mlir: ${srcdir}/${aie_py_src}
 
 build/final_${data_size}.xclbin: build/aie.mlir
 	mkdir -p ${@D}
-ifeq ($(devicename),npu)
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
-else ifeq ($(devicename),npu2)
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
-		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
-endif
 
 ${targetname}_${data_size}.exe: ${srcdir}/test.cpp
 	rm -rf _build
