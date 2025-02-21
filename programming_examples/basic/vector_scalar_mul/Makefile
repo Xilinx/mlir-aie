@@ -54,6 +54,7 @@ build/aie_trace_${data_size}.mlir: ${srcdir}/${aie_py_src}
 #build/insts_${data_size}.txt: build/final_${data_size}.xclbin
 build/final_${data_size}.xclbin: build/aie_${data_size}.mlir build/scale.o
 	mkdir -p ${@D}
+ifeq ($(device),npu)
 ifeq ($(CHESS), true)
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-npu --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
@@ -62,15 +63,24 @@ else
     	  --no-xchesscc --no-xbridge \
 				--aie-generate-npu --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
 endif
+else
+	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				--aie-generate-npu --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
+endif
 
 build/final_trace_${data_size}.xclbin: build/aie_trace_${data_size}.mlir build/scale.o
 	mkdir -p ${@D}
+ifeq ($(device),npu)
 ifeq ($(CHESS), true)
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-npu --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
 else
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
+				--aie-generate-npu --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
+endif
+else
+	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-npu --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
 endif
 
