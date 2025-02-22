@@ -15,10 +15,12 @@ include ${srcdir}/../../makefile-common
 device = npu
 targetname = passthrough_kernel
 VPATH := ${srcdir}/../../../aie_kernels/generic
-data_size = 4096
+in1_size = 4096 # in bytes
+out_size = 4096 # in bytes, should always be equal to in1_size
 trace_size = 8192
 PASSTHROUGH_SIZE = ${data_size}
 
+data_size = in1_size
 aie_py_src=${targetname}.py
 use_alt?=0
 
@@ -32,11 +34,11 @@ all: build/final_${data_size}.xclbin
 
 build/aie2_lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${device} ${data_size} 0 > $@
+	python3 $< ${device} ${in1_size} ${out_size} 0 > $@
 
 build/aie2_trace_lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${device} ${data_size} ${trace_size} > $@
+	python3 $< ${device} ${in1_size} ${out_size} ${trace_size} > $@
 
 build/passThrough.cc.o: passThrough.cc
 	mkdir -p ${@D}
@@ -74,7 +76,7 @@ endif
 ${targetname}_${data_size}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname} -DPASSTHROUGH_SIZE=${data_size}
+	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}  -DIN1_SIZE=${in1_size} -DOUT_SIZE=${out_size}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -85,11 +87,8 @@ endif
 run: ${targetname}_${data_size}.exe build/final_${data_size}.xclbin build/insts_${data_size}.txt
 	${powershell} ./$< -x build/final_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE 
 
-#run-g: ${targetname}.exe build/final_${data_size}.xclbin build/insts.txt
-#	${powershell} ./$< -x build/final_${data_size}.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
-
 run_py: build/final_${data_size}.xclbin build/insts_${data_size}.txt
-	${powershell} python3 ${srcdir}/test.py -s ${data_size} -x build/final_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test.py -s ${data_size} -x build/final_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -i1s ${in1_size} -os ${out_size}
 
 trace: ${targetname}_${data_size}.exe build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt 
 	${powershell} ./$< -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size}
@@ -97,7 +96,7 @@ trace: ${targetname}_${data_size}.exe build/final_trace_${data_size}.xclbin buil
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_passthrough_kernel.json
 
 trace_py: build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt
-	${powershell} python3 ${srcdir}/test.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size} -s ${data_size}
+	${powershell} python3 ${srcdir}/test.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -os ${out_size}
 	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir --colshift 1 > trace_passthrough_kernel.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_passthrough_kernel.json
 

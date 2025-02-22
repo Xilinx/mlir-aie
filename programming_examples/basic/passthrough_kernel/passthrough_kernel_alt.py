@@ -16,8 +16,8 @@ from aie.helpers.dialects.ext.scf import _for as range_
 import aie.utils.trace as trace_utils
 
 
-def passthroughKernel(dev, vector_size, trace_size):
-    N = vector_size
+def passthroughKernel(dev, in1_size, out_size, trace_size):
+    N = in1_size
     lineWidthInBytes = N // 4  # chop input in 4 sub-tensors
 
     @device(dev)
@@ -83,6 +83,9 @@ def passthroughKernel(dev, vector_size, trace_size):
 
 
 try:
+    if (len(sys.argv) < 4):
+        raise ValueError("[ERROR] Need at least 4 arguments (dev, in1_size, out_size)")
+
     device_name = str(sys.argv[1])
     if device_name == "npu":
         dev = AIEDevice.npu1_1col
@@ -90,13 +93,14 @@ try:
         dev = AIEDevice.npu2
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-    vector_size = int(sys.argv[2])
-    if vector_size % 64 != 0 or vector_size < 512:
-        print("Vector size must be a multiple of 64 and greater than or equal to 512")
+    in1_size = int(sys.argv[2])
+    if in1_size % 64 != 0 or in1_size < 512:
+        print("In1 buffer size must be a multiple of 64 and greater than or equal to 512")
         raise ValueError
-    trace_size = 0 if (len(sys.argv) != 4) else int(sys.argv[3])
+    out_size = int(sys.argv[3])
+    trace_size = 0 if (len(sys.argv) != 5) else int(sys.argv[4])
 except ValueError:
     print("Argument has inappropriate value")
 with mlir_mod_ctx() as ctx:
-    passthroughKernel(dev, vector_size, trace_size)
+    passthroughKernel(dev, in1_size, out_size, trace_size)
     print(ctx.module)
