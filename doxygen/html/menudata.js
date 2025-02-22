@@ -203,7 +203,8 @@ var menudata={children:[
 {text:"p",url:"globals_func_p.html#index_p"},
 {text:"s",url:"globals_func_s.html#index_s"},
 {text:"u",url:"globals_func_u.html#index_u"},
-{text:"v",url:"globals_func_v.html#index_v"}]},
+{text:"v",url:"globals_func_v.html#index_v"},
+{text:"x",url:"globals_func_x.html#index_x"}]},
 {text:"Typedefs",url:"globals_type.html",children:[
 {text:"a",url:"globals_type.html#index_a"},
 {text:"b",url:"globals_type.html#index_b"},

@@ -263,9 +263,9 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span>    <span class="keywordflow">if</span> (!func)</div>
 <div class="line"><a id="l00194" name="l00194"></a><span class="lineno">  194</span>      <span class="keywordflow">return</span> op.emitOpError(<span class="stringliteral">&quot;Could not find the intrinsic function &quot;</span>)</div>
 <div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span>             &lt;&lt; funcName;</div>
-<div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>    SmallVector&lt;Value, 1&gt; args;</div>
-<div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>    args.push_back(op.getArg());</div>
-<div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>    rewriter.create&lt;func::CallOp&gt;(rewriter.getUnknownLoc(), func, args);</div>
+<div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>    SmallVector&lt;Value, 1&gt; <a class="code hl_struct" href="structargs.html">args</a>;</div>
+<div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>    <a class="code hl_struct" href="structargs.html">args</a>.push_back(op.getArg());</div>
+<div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>    rewriter.create&lt;func::CallOp&gt;(rewriter.getUnknownLoc(), func, <a class="code hl_struct" href="structargs.html">args</a>);</div>
 <div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span>    rewriter.eraseOp(op);</div>
 <div class="line"><a id="l00200" name="l00200"></a><span class="lineno">  200</span>    <span class="keywordflow">return</span> success();</div>
 <div class="line"><a id="l00201" name="l00201"></a><span class="lineno">  201</span>  }</div>
@@ -309,17 +309,17 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00233" name="l00233"></a><span class="lineno">  233</span>    <span class="keywordflow">if</span> (!putMSFunc)</div>
 <div class="line"><a id="l00234" name="l00234"></a><span class="lineno">  234</span>      <span class="keywordflow">return</span> op.emitOpError(<span class="stringliteral">&quot;Could not find the intrinsic function &quot;</span>)</div>
 <div class="line"><a id="l00235" name="l00235"></a><span class="lineno">  235</span>             &lt;&lt; funcName;</div>
-<div class="line"><a id="l00236" name="l00236"></a><span class="lineno">  236</span>    SmallVector&lt;Value, 2&gt; args;</div>
+<div class="line"><a id="l00236" name="l00236"></a><span class="lineno">  236</span>    SmallVector&lt;Value, 2&gt; <a class="code hl_struct" href="structargs.html">args</a>;</div>
 <div class="line"><a id="l00237" name="l00237"></a><span class="lineno">  237</span>    <span class="keywordflow">if</span> (targetModel.getTargetArch() == AIEArch::AIE1) {</div>
-<div class="line"><a id="l00238" name="l00238"></a><span class="lineno">  238</span>      args.push_back(op.getChannel());</div>
-<div class="line"><a id="l00239" name="l00239"></a><span class="lineno">  239</span>      args.push_back(op.getStreamValue());</div>
+<div class="line"><a id="l00238" name="l00238"></a><span class="lineno">  238</span>      <a class="code hl_struct" href="structargs.html">args</a>.push_back(op.getChannel());</div>
+<div class="line"><a id="l00239" name="l00239"></a><span class="lineno">  239</span>      <a class="code hl_struct" href="structargs.html">args</a>.push_back(op.getStreamValue());</div>
 <div class="line"><a id="l00240" name="l00240"></a><span class="lineno">  240</span>    } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00241" name="l00241"></a><span class="lineno">  241</span>      args.push_back(op.getStreamValue());</div>
-<div class="line"><a id="l00242" name="l00242"></a><span class="lineno">  242</span>      args.push_back(rewriter.create&lt;arith::ConstantOp&gt;(</div>
+<div class="line"><a id="l00241" name="l00241"></a><span class="lineno">  241</span>      <a class="code hl_struct" href="structargs.html">args</a>.push_back(op.getStreamValue());</div>
+<div class="line"><a id="l00242" name="l00242"></a><span class="lineno">  242</span>      <a class="code hl_struct" href="structargs.html">args</a>.push_back(rewriter.create&lt;arith::ConstantOp&gt;(</div>
 <div class="line"><a id="l00243" name="l00243"></a><span class="lineno">  243</span>          op.getLoc(), IntegerType::get(rewriter.getContext(), 32),</div>
 <div class="line"><a id="l00244" name="l00244"></a><span class="lineno">  244</span>          rewriter.getI32IntegerAttr(0))); <span class="comment">// tlast</span></div>
 <div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span>    }</div>
-<div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span>    rewriter.create&lt;func::CallOp&gt;(rewriter.getUnknownLoc(), putMSFunc, args);</div>
+<div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span>    rewriter.create&lt;func::CallOp&gt;(rewriter.getUnknownLoc(), putMSFunc, <a class="code hl_struct" href="structargs.html">args</a>);</div>
 <div class="line"><a id="l00247" name="l00247"></a><span class="lineno">  247</span>    rewriter.eraseOp(op);</div>
 <div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>    <span class="keywordflow">return</span> success();</div>
 <div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>  }</div>
@@ -363,11 +363,11 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00281" name="l00281"></a><span class="lineno">  281</span>    <span class="keywordflow">if</span> (!getSSFunc)</div>
 <div class="line"><a id="l00282" name="l00282"></a><span class="lineno">  282</span>      <span class="keywordflow">return</span> op.emitOpError(<span class="stringliteral">&quot;Could not find the intrinsic function &quot;</span>)</div>
 <div class="line"><a id="l00283" name="l00283"></a><span class="lineno">  283</span>             &lt;&lt; funcName;</div>
-<div class="line"><a id="l00284" name="l00284"></a><span class="lineno">  284</span>    SmallVector&lt;Value, 2&gt; args;</div>
+<div class="line"><a id="l00284" name="l00284"></a><span class="lineno">  284</span>    SmallVector&lt;Value, 2&gt; <a class="code hl_struct" href="structargs.html">args</a>;</div>
 <div class="line"><a id="l00285" name="l00285"></a><span class="lineno">  285</span>    <span class="keywordflow">if</span> (targetModel.getTargetArch() == AIEArch::AIE1)</div>
-<div class="line"><a id="l00286" name="l00286"></a><span class="lineno">  286</span>      args.push_back(op.getChannel());</div>
+<div class="line"><a id="l00286" name="l00286"></a><span class="lineno">  286</span>      <a class="code hl_struct" href="structargs.html">args</a>.push_back(op.getChannel());</div>
 <div class="line"><a id="l00287" name="l00287"></a><span class="lineno">  287</span>    <span class="keyword">auto</span> getSSCall = rewriter.create&lt;func::CallOp&gt;(rewriter.getUnknownLoc(),</div>
-<div class="line"><a id="l00288" name="l00288"></a><span class="lineno">  288</span>                                                   getSSFunc, args);</div>
+<div class="line"><a id="l00288" name="l00288"></a><span class="lineno">  288</span>                                                   getSSFunc, <a class="code hl_struct" href="structargs.html">args</a>);</div>
 <div class="line"><a id="l00289" name="l00289"></a><span class="lineno">  289</span>    rewriter.replaceOp(op, getSSCall.getResult(0));</div>
 <div class="line"><a id="l00290" name="l00290"></a><span class="lineno">  290</span>    <span class="comment">// Capture TLAST in AIEv2?</span></div>
 <div class="line"><a id="l00291" name="l00291"></a><span class="lineno">  291</span>    <span class="keywordflow">return</span> success();</div>
@@ -404,14 +404,14 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00316" name="l00316"></a><span class="lineno">  316</span>    <span class="keywordflow">if</span> (!putMCDFunc)</div>
 <div class="line"><a id="l00317" name="l00317"></a><span class="lineno">  317</span>      <span class="keywordflow">return</span> op.emitOpError(<span class="stringliteral">&quot;Could not find the intrinsic function &quot;</span>)</div>
 <div class="line"><a id="l00318" name="l00318"></a><span class="lineno">  318</span>             &lt;&lt; funcName;</div>
-<div class="line"><a id="l00319" name="l00319"></a><span class="lineno">  319</span>    SmallVector&lt;Value, 2&gt; args;</div>
-<div class="line"><a id="l00320" name="l00320"></a><span class="lineno">  320</span>    args.push_back(op.getCascadeValue());</div>
+<div class="line"><a id="l00319" name="l00319"></a><span class="lineno">  319</span>    SmallVector&lt;Value, 2&gt; <a class="code hl_struct" href="structargs.html">args</a>;</div>
+<div class="line"><a id="l00320" name="l00320"></a><span class="lineno">  320</span>    <a class="code hl_struct" href="structargs.html">args</a>.push_back(op.getCascadeValue());</div>
 <div class="line"><a id="l00321" name="l00321"></a><span class="lineno">  321</span>    <span class="keywordflow">if</span> (isa&lt;AIE2TargetModel&gt;(targetModel))</div>
-<div class="line"><a id="l00322" name="l00322"></a><span class="lineno">  322</span>      args.push_back(rewriter.create&lt;arith::ConstantOp&gt;(</div>
+<div class="line"><a id="l00322" name="l00322"></a><span class="lineno">  322</span>      <a class="code hl_struct" href="structargs.html">args</a>.push_back(rewriter.create&lt;arith::ConstantOp&gt;(</div>
 <div class="line"><a id="l00323" name="l00323"></a><span class="lineno">  323</span>          op.getLoc(), IntegerType::get(rewriter.getContext(), 32),</div>
 <div class="line"><a id="l00324" name="l00324"></a><span class="lineno">  324</span>          rewriter.getI32IntegerAttr(1))); <span class="comment">// enable</span></div>
 <div class="line"><a id="l00325" name="l00325"></a><span class="lineno">  325</span> </div>
-<div class="line"><a id="l00326" name="l00326"></a><span class="lineno">  326</span>    rewriter.create&lt;func::CallOp&gt;(rewriter.getUnknownLoc(), putMCDFunc, args);</div>
+<div class="line"><a id="l00326" name="l00326"></a><span class="lineno">  326</span>    rewriter.create&lt;func::CallOp&gt;(rewriter.getUnknownLoc(), putMCDFunc, <a class="code hl_struct" href="structargs.html">args</a>);</div>
 <div class="line"><a id="l00327" name="l00327"></a><span class="lineno">  327</span>    rewriter.eraseOp(op);</div>
 <div class="line"><a id="l00328" name="l00328"></a><span class="lineno">  328</span>    <span class="keywordflow">return</span> success();</div>
 <div class="line"><a id="l00329" name="l00329"></a><span class="lineno">  329</span>  }</div>
@@ -447,14 +447,14 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00353" name="l00353"></a><span class="lineno">  353</span>    <span class="keywordflow">if</span> (!getSCDFunc)</div>
 <div class="line"><a id="l00354" name="l00354"></a><span class="lineno">  354</span>      <span class="keywordflow">return</span> op.emitOpError(<span class="stringliteral">&quot;Could not find the intrinsic function &quot;</span>)</div>
 <div class="line"><a id="l00355" name="l00355"></a><span class="lineno">  355</span>             &lt;&lt; funcName;</div>
-<div class="line"><a id="l00356" name="l00356"></a><span class="lineno">  356</span>    SmallVector&lt;Value, 2&gt; args;</div>
+<div class="line"><a id="l00356" name="l00356"></a><span class="lineno">  356</span>    SmallVector&lt;Value, 2&gt; <a class="code hl_struct" href="structargs.html">args</a>;</div>
 <div class="line"><a id="l00357" name="l00357"></a><span class="lineno">  357</span>    <span class="keywordflow">if</span> (isa&lt;AIE2TargetModel&gt;(targetModel))</div>
-<div class="line"><a id="l00358" name="l00358"></a><span class="lineno">  358</span>      args.push_back(rewriter.create&lt;arith::ConstantOp&gt;(</div>
+<div class="line"><a id="l00358" name="l00358"></a><span class="lineno">  358</span>      <a class="code hl_struct" href="structargs.html">args</a>.push_back(rewriter.create&lt;arith::ConstantOp&gt;(</div>
 <div class="line"><a id="l00359" name="l00359"></a><span class="lineno">  359</span>          op.getLoc(), IntegerType::get(rewriter.getContext(), 32),</div>
 <div class="line"><a id="l00360" name="l00360"></a><span class="lineno">  360</span>          rewriter.getI32IntegerAttr(1))); <span class="comment">// enable</span></div>
 <div class="line"><a id="l00361" name="l00361"></a><span class="lineno">  361</span> </div>
 <div class="line"><a id="l00362" name="l00362"></a><span class="lineno">  362</span>    <span class="keyword">auto</span> getSCDCall = rewriter.create&lt;func::CallOp&gt;(rewriter.getUnknownLoc(),</div>
-<div class="line"><a id="l00363" name="l00363"></a><span class="lineno">  363</span>                                                    getSCDFunc, args);</div>
+<div class="line"><a id="l00363" name="l00363"></a><span class="lineno">  363</span>                                                    getSCDFunc, <a class="code hl_struct" href="structargs.html">args</a>);</div>
 <div class="line"><a id="l00364" name="l00364"></a><span class="lineno">  364</span>    rewriter.replaceOp(op, getSCDCall.getResult(0));</div>
 <div class="line"><a id="l00365" name="l00365"></a><span class="lineno">  365</span>    <span class="keywordflow">return</span> success();</div>
 <div class="line"><a id="l00366" name="l00366"></a><span class="lineno">  366</span>  }</div>
@@ -502,22 +502,22 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00402" name="l00402"></a><span class="lineno">  402</span>      <span class="keywordflow">if</span> (!useLockFunc)</div>
 <div class="line"><a id="l00403" name="l00403"></a><span class="lineno">  403</span>        <span class="keywordflow">return</span> useLock.emitOpError(<span class="stringliteral">&quot;Could not find the intrinsic function!&quot;</span>);</div>
 <div class="line"><a id="l00404" name="l00404"></a><span class="lineno">  404</span> </div>
-<div class="line"><a id="l00405" name="l00405"></a><span class="lineno">  405</span>      SmallVector&lt;Value, 2&gt; args;</div>
+<div class="line"><a id="l00405" name="l00405"></a><span class="lineno">  405</span>      SmallVector&lt;Value, 2&gt; <a class="code hl_struct" href="structargs.html">args</a>;</div>
 <div class="line"><a id="l00406" name="l00406"></a><span class="lineno">  406</span>      <span class="keyword">auto</span> lockValue = useLock.getLockValue();</div>
 <div class="line"><a id="l00407" name="l00407"></a><span class="lineno">  407</span> </div>
 <div class="line"><a id="l00408" name="l00408"></a><span class="lineno">  408</span>      <span class="comment">// AIE2 acquire greater equal is encoded as a negative value.</span></div>
 <div class="line"><a id="l00409" name="l00409"></a><span class="lineno">  409</span>      <span class="keywordflow">if</span> (useLock.acquireGE()) {</div>
 <div class="line"><a id="l00410" name="l00410"></a><span class="lineno">  410</span>        lockValue = -lockValue;</div>
 <div class="line"><a id="l00411" name="l00411"></a><span class="lineno">  411</span>      }</div>
-<div class="line"><a id="l00412" name="l00412"></a><span class="lineno">  412</span>      args.push_back(rewriter.create&lt;arith::IndexCastOp&gt;(</div>
+<div class="line"><a id="l00412" name="l00412"></a><span class="lineno">  412</span>      <a class="code hl_struct" href="structargs.html">args</a>.push_back(rewriter.create&lt;arith::IndexCastOp&gt;(</div>
 <div class="line"><a id="l00413" name="l00413"></a><span class="lineno">  413</span>          useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),</div>
 <div class="line"><a id="l00414" name="l00414"></a><span class="lineno">  414</span>          useLock.getLock()));</div>
-<div class="line"><a id="l00415" name="l00415"></a><span class="lineno">  415</span>      args.push_back(rewriter.create&lt;arith::ConstantOp&gt;(</div>
+<div class="line"><a id="l00415" name="l00415"></a><span class="lineno">  415</span>      <a class="code hl_struct" href="structargs.html">args</a>.push_back(rewriter.create&lt;arith::ConstantOp&gt;(</div>
 <div class="line"><a id="l00416" name="l00416"></a><span class="lineno">  416</span>          useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),</div>
 <div class="line"><a id="l00417" name="l00417"></a><span class="lineno">  417</span>          rewriter.getI32IntegerAttr(lockValue)));</div>
 <div class="line"><a id="l00418" name="l00418"></a><span class="lineno">  418</span> </div>
 <div class="line"><a id="l00419" name="l00419"></a><span class="lineno">  419</span>      rewriter.create&lt;func::CallOp&gt;(rewriter.getUnknownLoc(), useLockFunc,</div>
-<div class="line"><a id="l00420" name="l00420"></a><span class="lineno">  420</span>                                    args);</div>
+<div class="line"><a id="l00420" name="l00420"></a><span class="lineno">  420</span>                                    <a class="code hl_struct" href="structargs.html">args</a>);</div>
 <div class="line"><a id="l00421" name="l00421"></a><span class="lineno">  421</span>    }</div>
 <div class="line"><a id="l00422" name="l00422"></a><span class="lineno">  422</span>    rewriter.eraseOp(useLock);</div>
 <div class="line"><a id="l00423" name="l00423"></a><span class="lineno">  423</span>    <span class="keywordflow">return</span> success();</div>
@@ -821,11 +821,12 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="astructAIEUseLockToStdLowering_html"><div class="ttname"><a href="structAIEUseLockToStdLowering.html">AIEUseLockToStdLowering</a></div><div class="ttdef"><b>Definition</b> <a href="AIECoreToStandard_8cpp_source.html#l00369">AIECoreToStandard.cpp:369</a></div></div>
 <div class="ttc" id="astructAIEUseLockToStdLowering_html_a5af78d15c062a17115d08e755b9f31cd"><div class="ttname"><a href="structAIEUseLockToStdLowering.html#a5af78d15c062a17115d08e755b9f31cd">AIEUseLockToStdLowering::AIEUseLockToStdLowering</a></div><div class="ttdeci">ModuleOp &amp; AIEUseLockToStdLowering(MLIRContext *context, ModuleOp &amp;m, PatternBenefit benefit=1)</div><div class="ttdef"><b>Definition</b> <a href="AIECoreToStandard_8cpp_source.html#l00373">AIECoreToStandard.cpp:373</a></div></div>
 <div class="ttc" id="astructAIEUseLockToStdLowering_html_aa98076be68a1bf035116f1fcf64de259"><div class="ttname"><a href="structAIEUseLockToStdLowering.html#aa98076be68a1bf035116f1fcf64de259">AIEUseLockToStdLowering::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(UseLockOp useLock, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIECoreToStandard_8cpp_source.html#l00377">AIECoreToStandard.cpp:377</a></div></div>
+<div class="ttc" id="astructargs_html"><div class="ttname"><a href="structargs.html">args</a></div><div class="ttdef"><b>Definition</b> <a href="xrt__test__wrapper_8h_source.html#l00011">xrt_test_wrapper.h:11</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIEOpRemoval_html"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIEOpRemoval.html">xilinx::AIE::AIEOpRemoval</a></div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l00194">AIECreatePathFindFlows.cpp:194</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Feb 21 2025 20:05:24 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Sat Feb 22 2025 01:10:43 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
