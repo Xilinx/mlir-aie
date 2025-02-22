@@ -16,7 +16,6 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 device = npu
 targetname = vector_scalar_mul
-# in1_size = 4096
 in1_size = 8192 # in bytes
 in2_size = 4 # in bytes, should always be 4 (1x int32)
 out_size = 8192 # in bytes, should always be equal to in1_size
