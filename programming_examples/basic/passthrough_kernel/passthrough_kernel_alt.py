@@ -56,8 +56,6 @@ def passthroughKernel(dev, in1_size, out_size, trace_size):
                 of_in.release(ObjectFifoPort.Consume, 1)
                 of_out.release(ObjectFifoPort.Produce, 1)
 
-        #    print(ctx.module.operation.verify())
-
         @runtime_sequence(vector_ty, vector_ty, vector_ty)
         def sequence(inTensor, outTensor, notUsed):
             if trace_size > 0:
@@ -83,7 +81,7 @@ def passthroughKernel(dev, in1_size, out_size, trace_size):
 
 
 try:
-    if (len(sys.argv) < 4):
+    if len(sys.argv) < 4:
         raise ValueError("[ERROR] Need at least 4 arguments (dev, in1_size, out_size)")
 
     device_name = str(sys.argv[1])
@@ -95,7 +93,9 @@ try:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
     in1_size = int(sys.argv[2])
     if in1_size % 64 != 0 or in1_size < 512:
-        print("In1 buffer size must be a multiple of 64 and greater than or equal to 512")
+        print(
+            "In1 buffer size must be a multiple of 64 and greater than or equal to 512"
+        )
         raise ValueError
     out_size = int(sys.argv[3])
     trace_size = 0 if (len(sys.argv) != 5) else int(sys.argv[4])

@@ -44,7 +44,6 @@ struct args parse_args(int argc, const char *argv[]) {
   return myargs;
 }
 
-
 /*
  ******************************************************************************
  * XRT based test wrapper for 2 inputs and 1 output
@@ -216,8 +215,7 @@ int xrt_test_run(int IN1_VOLUME, int IN2_VOLUME, int OUT_VOLUME,
 template <typename T1, typename T3, void (*init_bufIn1)(T1 *, int),
           void (*init_bufOut)(T3 *, int),
           int (*verify_results)(T1 *, T3 *, int, int)>
-int xrt_test_run(int IN1_VOLUME, int OUT_VOLUME,
-                 struct args myargs) {
+int xrt_test_run(int IN1_VOLUME, int OUT_VOLUME, struct args myargs) {
 
   srand(time(NULL));
 
@@ -253,7 +251,8 @@ int xrt_test_run(int IN1_VOLUME, int OUT_VOLUME,
   T3 *bufOut = bo_out.map<T3 *>();
 
   init_bufIn1(bufIn1, IN1_VOLUME);
-  init_bufOut(bufOut, OUT_VOLUME); // <<< what size do I pass it? reset with trace?
+  init_bufOut(bufOut,
+              OUT_VOLUME); // <<< what size do I pass it? reset with trace?
 
   // sync host to device memories
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -299,8 +298,7 @@ int xrt_test_run(int IN1_VOLUME, int OUT_VOLUME,
       }
       auto vstart = std::chrono::system_clock::now();
 
-      errors +=
-          verify_results(bufIn1, bufOut, IN1_VOLUME, myargs.verbosity);
+      errors += verify_results(bufIn1, bufOut, IN1_VOLUME, myargs.verbosity);
 
       auto vstop = std::chrono::system_clock::now();
       float vtime =

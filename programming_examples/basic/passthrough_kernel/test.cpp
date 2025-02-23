@@ -38,8 +38,8 @@ void initialize_bufOut(DATATYPE_OUT *bufOut, int SIZE) {
 }
 
 // Functional correctness verifyer
-int verify_passthrough_kernel(DATATYPE_IN1 *bufIn1, 
-                             DATATYPE_OUT *bufOut, int SIZE, int verbosity) {
+int verify_passthrough_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
+                              int SIZE, int verbosity) {
   int errors = 0;
 
   for (int i = 0; i < SIZE; i++) {
@@ -68,8 +68,7 @@ int main(int argc, const char *argv[]) {
 
   args myargs = parse_args(argc, argv);
 
-  int res = xrt_test_run<DATATYPE_IN1, DATATYPE_OUT,
-                         initialize_bufIn1, 
+  int res = xrt_test_run<DATATYPE_IN1, DATATYPE_OUT, initialize_bufIn1,
                          initialize_bufOut, verify_passthrough_kernel>(
       IN1_VOLUME, OUT_VOLUME, myargs);
   return res;
