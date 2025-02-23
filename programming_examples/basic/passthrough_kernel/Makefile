@@ -11,14 +11,13 @@
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
+VPATH := ${srcdir}/../../../aie_kernels/generic
 
 device = npu
 targetname = passthrough_kernel
-VPATH := ${srcdir}/../../../aie_kernels/generic
 in1_size = 4096 # in bytes
 out_size = 4096 # in bytes, should always be equal to in1_size
 trace_size = 8192
-PASSTHROUGH_SIZE = ${data_size}
 
 data_size = in1_size
 aie_py_src=${targetname}.py
@@ -40,7 +39,7 @@ build/aie2_trace_lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${device} ${in1_size} ${out_size} ${trace_size} > $@
 
-build/passThrough.cc.o: passThrough.cc
+build/%.cc.o: %.cc
 	mkdir -p ${@D}
 ifeq ($(device),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
@@ -88,7 +87,7 @@ run: ${targetname}_${data_size}.exe build/final_${data_size}.xclbin build/insts_
 	${powershell} ./$< -x build/final_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE 
 
 run_py: build/final_${data_size}.xclbin build/insts_${data_size}.txt
-	${powershell} python3 ${srcdir}/test.py -s ${data_size} -x build/final_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -i1s ${in1_size} -os ${out_size}
+	${powershell} python3 ${srcdir}/test.py -x build/final_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -i1s ${in1_size} -os ${out_size}
 
 trace: ${targetname}_${data_size}.exe build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt 
 	${powershell} ./$< -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size}
