@@ -348,14 +348,14 @@ void registerAIETranslations() {
       [](ModuleOp module, raw_ostream &output) {
         if (outputBinary == true) {
           std::vector<uint32_t> instructions;
-          auto r = AIETranslateToNPUToBinary(module, instructions, sequenceName);
+          auto r = AIETranslateNPUToBinary(module, instructions, sequenceName);
           if (failed(r))
             return r;
           output.write(reinterpret_cast<const char *>(instructions.data()),
                        instructions.size() * sizeof(uint32_t));
           return success();
         }
-        return AIETranslateToNPUToBinary(module, output, sequenceName);
+        return AIETranslateNPUToBinary(module, output, sequenceName);
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationCtrlPkt(

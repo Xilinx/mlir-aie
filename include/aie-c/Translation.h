@@ -21,7 +21,8 @@ extern "C" {
 MLIR_CAPI_EXPORTED MlirStringRef aieTranslateAIEVecToCpp(MlirOperation op,
                                                          bool aie2);
 MLIR_CAPI_EXPORTED MlirStringRef aieTranslateModuleToLLVMIR(MlirOperation op);
-MLIR_CAPI_EXPORTED MlirStringRef aieTranslateNpuToBinary(MlirOperation op);
+MLIR_CAPI_EXPORTED MlirStringRef aieTranslateNpuToBinary(MlirOperation op,
+                                                         MlirStringRef name);
 MLIR_CAPI_EXPORTED MlirStringRef
 aieTranslateControlPacketsToUI32Vec(MlirOperation op);
 MLIR_CAPI_EXPORTED MlirStringRef aieTranslateToXAIEV2(MlirOperation op);
