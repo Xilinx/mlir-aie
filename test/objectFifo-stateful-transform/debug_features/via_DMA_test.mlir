@@ -19,16 +19,16 @@
 // CHECK:     %tile_1_3 = aie.tile(1, 3)
 // CHECK:     %of_stream_cons_buff_0 = aie.buffer(%tile_1_3) {sym_name = "of_stream_cons_buff_0"} : memref<16xi32> 
 // CHECK:     %of_stream_cons_buff_1 = aie.buffer(%tile_1_3) {sym_name = "of_stream_cons_buff_1"} : memref<16xi32> 
-// CHECK:     %of_stream_cons_prod_lock = aie.lock(%tile_1_3, 0) {init = 2 : i32, sym_name = "of_stream_cons_prod_lock"}
-// CHECK:     %of_stream_cons_cons_lock = aie.lock(%tile_1_3, 1) {init = 0 : i32, sym_name = "of_stream_cons_cons_lock"}
+// CHECK:     %of_stream_cons_prod_lock = aie.lock(%tile_1_3, 0) {init = 2 : i32, sym_name = "of_stream_cons_prod_lock_0"}
+// CHECK:     %of_stream_cons_cons_lock = aie.lock(%tile_1_3, 1) {init = 0 : i32, sym_name = "of_stream_cons_cons_lock_0"}
 // CHECK:     %of_stream_buff_0 = aie.buffer(%tile_1_2) {sym_name = "of_stream_buff_0"} : memref<16xi32> 
 // CHECK:     %of_stream_buff_1 = aie.buffer(%tile_1_2) {sym_name = "of_stream_buff_1"} : memref<16xi32> 
-// CHECK:     %of_stream_prod_lock = aie.lock(%tile_1_2, 2) {init = 2 : i32, sym_name = "of_stream_prod_lock"}
-// CHECK:     %of_stream_cons_lock = aie.lock(%tile_1_2, 3) {init = 0 : i32, sym_name = "of_stream_cons_lock"}
+// CHECK:     %of_stream_prod_lock = aie.lock(%tile_1_2, 2) {init = 2 : i32, sym_name = "of_stream_prod_lock_0"}
+// CHECK:     %of_stream_cons_lock = aie.lock(%tile_1_2, 3) {init = 0 : i32, sym_name = "of_stream_cons_lock_0"}
 // CHECK:     %of_shared_buff_0 = aie.buffer(%tile_1_2) {sym_name = "of_shared_buff_0"} : memref<16xi32> 
 // CHECK:     %of_shared_buff_1 = aie.buffer(%tile_1_2) {sym_name = "of_shared_buff_1"} : memref<16xi32> 
-// CHECK:     %of_shared_prod_lock = aie.lock(%tile_1_2, 0) {init = 2 : i32, sym_name = "of_shared_prod_lock"}
-// CHECK:     %of_shared_cons_lock = aie.lock(%tile_1_2, 1) {init = 0 : i32, sym_name = "of_shared_cons_lock"}
+// CHECK:     %of_shared_prod_lock = aie.lock(%tile_1_2, 0) {init = 2 : i32, sym_name = "of_shared_prod_lock_0"}
+// CHECK:     %of_shared_cons_lock = aie.lock(%tile_1_2, 1) {init = 0 : i32, sym_name = "of_shared_cons_lock_0"}
 // CHECK:     aie.flow(%tile_1_2, DMA : 0, %tile_1_3, DMA : 0)
 // CHECK:     %mem_1_2 = aie.mem(%tile_1_2) {
 // CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
