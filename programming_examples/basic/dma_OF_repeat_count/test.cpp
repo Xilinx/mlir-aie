@@ -104,13 +104,11 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << std::endl;
 
-
   // input arguments m, k, K, r, s
   int m = vm["m"].as<int>();
   int k = vm["k"].as<int>();
   int K = vm["K"].as<int>();
   int repeat_N = vm["repeat_N"].as<int>();
-  
 
   // Start the XRT test code
   // Get a device handle
@@ -227,7 +225,6 @@ int main(int argc, const char *argv[]) {
 
   int errors = 0;
 
-
   // copy output data to the output vector
   memcpy(OutVec.data(), bufOut, (OutVec.size() * sizeof(int32_t)));
 
@@ -239,14 +236,13 @@ int main(int argc, const char *argv[]) {
   if (npu_outFile.is_open()) {
     // Iterate through the vector and write each element to the file
     for (const auto &elem : OutVec) {
-        npu_outFile << elem << "\n"; // Write each element followed by a newline
+      npu_outFile << elem << "\n"; // Write each element followed by a newline
     }
     npu_outFile.close(); // Close the file
     std::cout << "Npu data written to npu_output.txt file successfully.\n";
   } else {
     std::cerr << "Unable to open file for writing.\n";
   }
-
 
   // // verification
   // for (int i = 0; i < m*K; i++) {
@@ -255,7 +251,6 @@ int main(int argc, const char *argv[]) {
   //     (int)OutVec[i] << "\n"; errors++;
   //   }
   // }
-
 
   if (!errors) {
     std::cout << std::endl << "PASS!" << std::endl << std::endl;
