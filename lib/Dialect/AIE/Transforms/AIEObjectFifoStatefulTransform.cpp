@@ -706,7 +706,8 @@ struct AIEObjectFifoStatefulTransformPass
         builder.setInsertionPointToStart(curr);
         createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
                                 buffersPerFifo[target][elemIndex], /*offset*/ 0,
-                                len, channelDir, elemIndex, succ, dims, nullptr);
+                                len, channelDir, elemIndex, succ, dims,
+                                nullptr);
         curr = succ;
         totalBlocks++;
       }
