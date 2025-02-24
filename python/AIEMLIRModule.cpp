@@ -122,10 +122,10 @@ NB_MODULE(_aie, m) {
       "ctx"_a, "binary"_a);
 
   m.def(
-    "translate_npu_to_binary",
-    [&stealCStr](MlirOperation op, const std::string &sequence_name) {
-      nb::str npuInstructions = stealCStr(aieTranslateNpuToBinary(
-          op, {sequence_name.data(), sequence_name.size()}));
+      "translate_npu_to_binary",
+      [&stealCStr](MlirOperation op, const std::string &sequence_name) {
+        nb::str npuInstructions = stealCStr(aieTranslateNpuToBinary(
+            op, {sequence_name.data(), sequence_name.size()}));
         auto individualInstructions =
             nb::cast<nb::list>(npuInstructions.attr("split")());
         for (size_t i = 0; i < individualInstructions.size(); ++i)
