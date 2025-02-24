@@ -359,7 +359,6 @@ struct AIEObjectFifoStatefulTransformPass
         numElem = externalBuffersPerFifo[op].size();
     }
     if (target.getTargetArch() == AIEArch::AIE1) {
-      int of_elem_index = 0; // used to give objectFifo elements a symbolic name
       for (int i = 0; i < numElem; i++) {
         // create corresponding aie1 locks
         int initValue = op.getInitValues().has_value() ? 1 : 0;
@@ -370,35 +369,38 @@ struct AIEObjectFifoStatefulTransformPass
         lock.getOperation()->setAttr(
             SymbolTable::getSymbolAttrName(),
             builder.getStringAttr(op.name().str() + "_lock_" +
-                                  std::to_string(of_elem_index)));
+                                  std::to_string(i)));
         locks.push_back(lock);
-        of_elem_index++;
       }
     } else {
       // create corresponding aie2 locks
-      auto initValues = op.getInitValues().has_value()
-                            ? op.getInitValues().value().size()
-                            : 0;
-      int prodLockID = lockAnalysis.getLockID(creation_tile);
-      assert(prodLockID >= 0 && "No more locks to allocate!");
-      int prodLockValue =
-          (numElem - initValues) * joinDistribFactor * repeatCount;
-      auto prodLock = builder.create<LockOp>(
-          builder.getUnknownLoc(), creation_tile, prodLockID, prodLockValue);
-      prodLock.getOperation()->setAttr(
-          SymbolTable::getSymbolAttrName(),
-          builder.getStringAttr(op.name().str() + "_prod_lock"));
-      locks.push_back(prodLock);
+      for (int i = 0; i < joinDistribFactor; i++) {
+        auto initValues = op.getInitValues().has_value()
+                              ? op.getInitValues().value().size()
+                              : 0;
+        int prodLockID = lockAnalysis.getLockID(creation_tile);
+        assert(prodLockID >= 0 && "No more locks to allocate!");
+        int prodLockValue =
+            (numElem - initValues) * repeatCount;
+        auto prodLock = builder.create<LockOp>(
+            builder.getUnknownLoc(), creation_tile, prodLockID, prodLockValue);
+        prodLock.getOperation()->setAttr(
+            SymbolTable::getSymbolAttrName(),
+            builder.getStringAttr(op.name().str() + "_prod_lock_" +
+                                  std::to_string(i)));
+        locks.push_back(prodLock);
 
-      int consLockID = lockAnalysis.getLockID(creation_tile);
-      assert(consLockID >= 0 && "No more locks to allocate!");
-      int consLockValue = initValues * joinDistribFactor * repeatCount;
-      auto consLock = builder.create<LockOp>(
-          builder.getUnknownLoc(), creation_tile, consLockID, consLockValue);
-      consLock.getOperation()->setAttr(
-          SymbolTable::getSymbolAttrName(),
-          builder.getStringAttr(op.name().str() + "_cons_lock"));
-      locks.push_back(consLock);
+        int consLockID = lockAnalysis.getLockID(creation_tile);
+        assert(consLockID >= 0 && "No more locks to allocate!");
+        int consLockValue = initValues * repeatCount;
+        auto consLock = builder.create<LockOp>(
+            builder.getUnknownLoc(), creation_tile, consLockID, consLockValue);
+        consLock.getOperation()->setAttr(
+            SymbolTable::getSymbolAttrName(),
+            builder.getStringAttr(op.name().str() + "_cons_lock_" +
+                                  std::to_string(i)));
+        locks.push_back(consLock);
+      }
     }
     return locks;
   }
@@ -496,6 +498,7 @@ struct AIEObjectFifoStatefulTransformPass
       }
       of_elem_index++;
     }
+
     int repeatCount = 1;
     int joinDistribFactor = 1;
     if (op.getRepeatCount().has_value())
@@ -555,7 +558,7 @@ struct AIEObjectFifoStatefulTransformPass
   template <typename MyOp>
   void createBdBlock(OpBuilder &builder, ObjectFifoCreateOp op, int lockMode,
                      int acqNum, int relNum, MyOp buff, int offset, int len,
-                     DMAChannelDir channelDir, size_t blockIndex, Block *succ,
+                     DMAChannelDir channelDir, size_t lockIndex, Block *succ,
                      BDDimLayoutArrayAttr dims,
                      BDPadLayoutArrayAttr padDimensions) {
     LockOp acqLock;
@@ -569,16 +572,18 @@ struct AIEObjectFifoStatefulTransformPass
           target.getTargetArch() == AIEArch::AIE1) {
         acqMode = lockMode == 0 ? 1 : 0;
         relMode = lockMode == 0 ? 0 : 1;
-        acqLock = locksPerFifo[op][blockIndex];
-        relLock = locksPerFifo[op][blockIndex];
+        acqLock = locksPerFifo[op][lockIndex];
+        relLock = locksPerFifo[op][lockIndex];
       } else {
         acqMode = acqNum;
         relMode = relNum;
         acqLockAction = LockAction::AcquireGreaterEqual;
-        acqLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][0]
-                                                    : locksPerFifo[op][1];
-        relLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][1]
-                                                    : locksPerFifo[op][0];
+        int prodLockIndex = 0;//lockIndex * 2;
+        int consLockIndex = 1;//lockIndex * 2 + 1
+        acqLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][prodLockIndex]
+                                                    : locksPerFifo[op][consLockIndex];
+        relLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][consLockIndex]
+                                                    : locksPerFifo[op][prodLockIndex];
       }
     }
     createBd(builder, acqLock, acqMode, acqLockAction, relLock, relMode, buff,
@@ -681,10 +686,10 @@ struct AIEObjectFifoStatefulTransformPass
     // create Bd blocks
     Block *succ;
     Block *curr = bdBlock;
-    size_t blockIndex = 0;
+    size_t elemIndex = 0;
     size_t totalBlocks = 0;
     for (size_t i = 0; i < numBlocks; i++) {
-      if (blockIndex >= buffersPerFifo[target].size())
+      if (elemIndex >= buffersPerFifo[target].size())
         break;
       for (int r = 0; r < repeatCount; r++) {
         if (totalBlocks == numBlocks * repeatCount - 1)
@@ -694,12 +699,12 @@ struct AIEObjectFifoStatefulTransformPass
 
         builder.setInsertionPointToStart(curr);
         createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
-                                buffersPerFifo[target][blockIndex], /*offset*/ 0,
-                                len, channelDir, blockIndex, succ, dims, nullptr);
+                                buffersPerFifo[target][elemIndex], /*offset*/ 0,
+                                len, channelDir, elemIndex, succ, dims, nullptr);
         curr = succ;
         totalBlocks++;
       }
-      blockIndex++;
+      elemIndex++;
     }
   }
 
@@ -756,24 +761,24 @@ struct AIEObjectFifoStatefulTransformPass
     // create Bd blocks
     Block *succ;
     Block *curr = bdBlock;
-    size_t blockIndex = 0;
+    size_t elemIndex = 0;
     for (size_t i = 0; i < numBlocks; i++) {
-      if (blockIndex >= externalBuffersPerFifo[op].size())
+      if (elemIndex >= externalBuffersPerFifo[op].size())
         break;
       if (i == numBlocks - 1)
         succ = bdBlock;
       else
         succ = builder.createBlock(endBlock);
 
-      MemRefType buffer = externalBuffersPerFifo[op][blockIndex].getType();
+      MemRefType buffer = externalBuffersPerFifo[op][elemIndex].getType();
       int len = buffer.getNumElements();
       builder.setInsertionPointToStart(curr);
       createBdBlock<ExternalBufferOp>(builder, op, lockMode, acqNum, relNum,
-                                      externalBuffersPerFifo[op][blockIndex],
-                                      /*offset*/ 0, len, channelDir, blockIndex,
+                                      externalBuffersPerFifo[op][elemIndex],
+                                      /*offset*/ 0, len, channelDir, elemIndex,
                                       succ, dims, nullptr);
       curr = succ;
-      blockIndex++;
+      elemIndex++;
     }
   }
 
@@ -805,25 +810,26 @@ struct AIEObjectFifoStatefulTransformPass
     bool isDistribute = false;
     bool isJoin = false;
     int extraOffset = 0;
-    if (auto linkOp = getOptionalLinkOp(op)) {
+    int joinDistribFactor = 1;
+    int joinDistribLockIndex = 0;
+    auto linkOp = getOptionalLinkOp(op);
+    if (linkOp) {
       if (objFifoLinks.find(*linkOp) != objFifoLinks.end()) {
         target = objFifoLinks[*linkOp];
         auto srcOffsets = linkOp->getSrcOffsets();
         auto dstOffsets = linkOp->getDstOffsets();
 
-        if (linkOp->getRepeatCount().has_value()) {
+        if (linkOp->getRepeatCount().has_value())
           if (linkOp->getInputObjectFifos()[0] == op) {
             acqNum *= linkOp->getRepeatCount().value();
             relNum *= linkOp->getRepeatCount().value();
           }
-        }
 
         if (linkOp->isJoin()) {
           // compute offset and length
           isJoin = true;
           if (target == op) {
-            acqNum *= linkOp->getFifoIns().size();
-            relNum *= linkOp->getFifoIns().size();
+            joinDistribFactor *= linkOp->getFifoIns().size();
           } else {
             int i = 0;
             for (auto fifoIn : linkOp->getInputObjectFifos()) {
@@ -833,13 +839,13 @@ struct AIEObjectFifoStatefulTransformPass
             }
             extraOffset = *getConstantIntValue(srcOffsets[i]);
             lenOut = linkOp->getJoinTransferLengths()[i];
+            joinDistribLockIndex = i;
           }
         } else if (linkOp->isDistribute()) {
           // compute offset and length
           isDistribute = true;
           if (target == op) {
-            acqNum *= linkOp->getFifoOuts().size();
-            relNum *= linkOp->getFifoOuts().size();
+            joinDistribFactor *= linkOp->getFifoOuts().size();
           } else {
             int i = 0;
             for (auto fifoOut : linkOp->getOutputObjectFifos()) {
@@ -849,6 +855,7 @@ struct AIEObjectFifoStatefulTransformPass
             }
             extraOffset = *getConstantIntValue(dstOffsets[i]);
             lenOut = linkOp->getDistributeTransferLengths()[i];
+            joinDistribLockIndex = i;
           }
         } else {
           if (target != op) {
@@ -906,29 +913,45 @@ struct AIEObjectFifoStatefulTransformPass
     // create Bd blocks
     Block *succ;
     Block *curr = bdBlock;
-    size_t blockIndex = 0;
+    size_t elemIndex = 0;
+    size_t lockIndex = 0;
     size_t totalBlocks = 0;
     for (size_t i = 0; i < numBlocks; i++) {
-      if (blockIndex >= buffersPerFifo[target].size())
+      if (elemIndex >= buffersPerFifo[target].size())
         break;
-      for (int r = 0; r < repeatCount; r++) {
-        if (totalBlocks == numBlocks * repeatCount - 1)
+      for (int r = 0; r < repeatCount * joinDistribFactor; r++) {
+        if (totalBlocks == numBlocks * repeatCount * joinDistribFactor - 1)
           succ = bdBlock;
         else
           succ = builder.createBlock(endBlock);
 
         builder.setInsertionPointToStart(curr);
         int offset = 0;
-        if (isDistribute || isJoin)
-          offset = extraOffset;
+        if (isDistribute || isJoin) {
+          if (target == op) {
+            if (isDistribute) {
+              offset = *getConstantIntValue(linkOp->getDstOffsets()[r]);
+              lenOut = linkOp->getDistributeTransferLengths()[r];
+            } else {
+              offset = *getConstantIntValue(linkOp->getSrcOffsets()[r]);
+              lenOut = linkOp->getJoinTransferLengths()[r];
+            }
+            lockIndex = r % joinDistribFactor;
+          } else {
+            offset = extraOffset;
+            lockIndex = joinDistribLockIndex;
+          }
+        } else {
+          lockIndex = elemIndex;
+        }
         createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
-                                buffersPerFifo[target][blockIndex], offset,
-                                lenOut, channelDir, blockIndex, succ, dims,
+                                buffersPerFifo[target][elemIndex], offset,
+                                lenOut, channelDir, lockIndex, succ, dims,
                                 padDimensions);
         curr = succ;
         totalBlocks++;
       }
-      blockIndex++;
+      elemIndex++;
     }
   }
 
