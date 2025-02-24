@@ -16,11 +16,16 @@ from aie.helpers.dialects.ext.scf import _for as range_
 import aie.utils.trace as trace_utils
 
 
-def my_vector_scalar(dev, vector_size, trace_size):
-    N = vector_size
-    N_in_bytes = N * 2
+def my_vector_scalar(dev, in1_size, in2_size, out_size, trace_size):
+    # N = vector_size
+    # N_in_bytes = N * 2 # TODO How to force this to match data type
+    N_in_bytes = in1_size  # TODO How to force this to match data type
+    N = N_in_bytes // 2
     N_div_n = 4  # chop input vector into 4 sub-vectors
     n = N // N_div_n
+
+    assert in2_size == 4, "2nd input buffer must be size 4 (4 bytes = 1 integer)."
+    assert out_size == in1_size, "Output buffer size must match input buffer size."
 
     buffer_depth = 2
 
@@ -97,6 +102,11 @@ def my_vector_scalar(dev, vector_size, trace_size):
 
 
 try:
+    if len(sys.argv) < 5:
+        raise ValueError(
+            "[ERROR] Need at least 4 arguments (dev, in1_size, in2_size, out_size)"
+        )
+
     device_name = str(sys.argv[1])
     if device_name == "npu":
         dev = AIEDevice.npu1_1col
@@ -104,13 +114,17 @@ try:
         dev = AIEDevice.npu2
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-    vector_size = int(sys.argv[2])
-    if vector_size % 64 != 0 or vector_size < 512:
-        print("Vector size must be a multiple of 64 and greater than or equal to 512")
+    in1_size = int(sys.argv[2])
+    if in1_size % 128 != 0 or in1_size < 1024:
+        print(
+            "In1 buffer size must be a multiple of 128 (so len is multiple of 64) and greater than or equal to 1024 (so len >= 512)"
+        )
         raise ValueError
-    trace_size = 0 if (len(sys.argv) != 4) else int(sys.argv[3])
+    in2_size = int(sys.argv[3])
+    out_size = int(sys.argv[4])
+    trace_size = 0 if (len(sys.argv) != 6) else int(sys.argv[5])
 except ValueError:
     print("Argument has inappropriate value")
 with mlir_mod_ctx() as ctx:
-    my_vector_scalar(dev, vector_size, trace_size)
+    my_vector_scalar(dev, in1_size, in2_size, out_size, trace_size)
 print(ctx.module)

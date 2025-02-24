@@ -86,9 +86,10 @@ def vector_softmax(dev, trace_size):
         object_fifo_link(inA, inA_fifos, [], of_a_offsets)
         object_fifo_link(outC_fifos, outC, of_c_offsets, [])
 
-        # Set up a circuit-switched flow from core to shim for tracing information
+        # Set up a packet-switched flow from core to shim for tracing information
+        tiles_to_trace = [cores[0]]
         if trace_size > 0:
-            flow(cores[0], WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
+            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
         # Set up compute tiles
         for i in range(n_cores):
@@ -112,12 +113,12 @@ def vector_softmax(dev, trace_size):
         def sequence(A, C):
 
             if trace_size > 0:
-                trace_utils.configure_simple_tracing_aie2(
-                    cores[0],
-                    ShimTile,
+                trace_utils.configure_packet_tracing_aie2(
+                    tiles_to_trace=tiles_to_trace,
+                    shim=ShimTile,
+                    trace_size=trace_size,
+                    trace_offset=N_in_bytes,
                     ddr_id=1,
-                    size=trace_size,
-                    offset=N_in_bytes,
                 )
 
             in_task = shim_dma_single_bd_task(
@@ -131,6 +132,8 @@ def vector_softmax(dev, trace_size):
             )
             dma_start_task(in_task, out_task)
             dma_await_task(in_task, out_task)
+
+            trace_utils.gen_trace_done_aie2(ShimTile)
 
 
 try:
