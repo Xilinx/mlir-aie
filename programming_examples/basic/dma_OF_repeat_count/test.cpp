@@ -187,10 +187,8 @@ int main(int argc, const char *argv[]) {
 
   // write the input data to the input vector in pre-tiled format
   for (int tile_k = 0; tile_k < 2 * K_div_k; tile_k++) {
-
-    for (int ii = 0; ii < m; ii++){
-      for (int jj = 0; jj < k; jj++){
-        
+    for (int ii = 0; ii < m; ii++) {
+      for (int jj = 0; jj < k; jj++) {
         // here just copy of index for easy debug
         // later replace with random data
         srcVecA[index] = index;
