@@ -179,9 +179,9 @@ int main(int argc, const char *argv[]) {
   // Define the range for int32 values
   std::uniform_int_distribution<int32_t> dist(0, 10000);
 
-  // <<<<<<<<< The code below emulates the "of_in_shim_to_mem" OBjFifo in line 57 >>>>>>>
-  // calculate the number of tiles in the 'K' dimension
-  int K_div_k = K/k;
+  // <<<<<<<<< The code below emulates the "of_in_shim_to_mem" OBjFifo in line
+  // 57 >>>>>>> calculate the number of tiles in the 'K' dimension
+  int K_div_k = K / k;
 
   int index = 0;
 
