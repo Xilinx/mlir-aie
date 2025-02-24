@@ -172,8 +172,7 @@ int main(int argc, const char *argv[]) {
   int32_t *bufInA = bo_inA.map<int32_t *>();
 
   // input source vector A
-  std::vector<int32_t> srcVecA(2*m*K);
-
+  std::vector<int32_t> srcVecA(2 * m * K);
 
   // Create a random device and a Mersenne Twister engine
   std::random_device rd;
