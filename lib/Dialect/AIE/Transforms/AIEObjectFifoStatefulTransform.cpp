@@ -380,8 +380,7 @@ struct AIEObjectFifoStatefulTransformPass
                               : 0;
         int prodLockID = lockAnalysis.getLockID(creation_tile);
         assert(prodLockID >= 0 && "No more locks to allocate!");
-        int prodLockValue =
-            (numElem - initValues) * repeatCount;
+        int prodLockValue = (numElem - initValues) * repeatCount;
         auto prodLock = builder.create<LockOp>(
             builder.getUnknownLoc(), creation_tile, prodLockID, prodLockValue);
         prodLock.getOperation()->setAttr(
@@ -560,7 +559,8 @@ struct AIEObjectFifoStatefulTransformPass
                      int acqNum, int relNum, MyOp buff, int offset, int len,
                      DMAChannelDir channelDir, size_t lockIndex, Block *succ,
                      BDDimLayoutArrayAttr dims,
-                     BDPadLayoutArrayAttr padDimensions, bool distribOrJoin=false) {
+                     BDPadLayoutArrayAttr padDimensions,
+                     bool distribOrJoin = false) {
     LockOp acqLock;
     LockOp relLock;
     int acqMode = 1;
@@ -584,10 +584,12 @@ struct AIEObjectFifoStatefulTransformPass
           prodLockIndex = lockIndex * 2;
           consLockIndex = lockIndex * 2 + 1;
         }
-        acqLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][prodLockIndex]
-                                                    : locksPerFifo[op][consLockIndex];
-        relLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][consLockIndex]
-                                                    : locksPerFifo[op][prodLockIndex];
+        acqLock = channelDir == DMAChannelDir::S2MM
+                      ? locksPerFifo[op][prodLockIndex]
+                      : locksPerFifo[op][consLockIndex];
+        relLock = channelDir == DMAChannelDir::S2MM
+                      ? locksPerFifo[op][consLockIndex]
+                      : locksPerFifo[op][prodLockIndex];
       }
     }
     createBd(builder, acqLock, acqMode, acqLockAction, relLock, relMode, buff,
@@ -704,7 +706,8 @@ struct AIEObjectFifoStatefulTransformPass
         builder.setInsertionPointToStart(curr);
         createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
                                 buffersPerFifo[target][elemIndex], /*offset*/ 0,
-                                len, channelDir, elemIndex, succ, dims, nullptr);
+                                len, channelDir, elemIndex, succ, dims,
+                                nullptr);
         curr = succ;
         totalBlocks++;
       }
