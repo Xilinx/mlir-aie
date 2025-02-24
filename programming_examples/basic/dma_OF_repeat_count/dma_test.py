@@ -19,26 +19,22 @@ from aie.helpers.taplib import TensorAccessPattern
 # this resembles the buffer A data layout and transformations
 def my_passthrough(m, k, K, repeat_N):
 
-    # large K must be divisible by small k 
+    # large K must be divisible by small k
     assert K % k == 0
-
 
     # just put some r,s here for the test
     r = 4
     s = 5
 
-
     # # assertions for m and k which should be divisible by the API sizes
     # assert m % r == 0
     # assert k % s == 0
-    
-        
+
     # compute tile is m x k (small tile)
     comp_tile_ty = np.ndarray[(m, k), np.dtype[np.int32]]
 
     # memory tile is m x K (larger tile)
     mem_tile_ty = np.ndarray[(m, K), np.dtype[np.int32]]
-    
 
     with mlir_mod_ctx() as ctx:
 
@@ -50,10 +46,9 @@ def my_passthrough(m, k, K, repeat_N):
             MemTile = tile(0, 1)
             ComputeTile = tile(0, 2)
 
-
             # AIE-array data movement with object fifos
 
-            # Input 
+            # Input
             of_in_shim_to_mem = object_fifo(
                 "shim_to_mem",
                 ShimTile,
@@ -94,10 +89,8 @@ def my_passthrough(m, k, K, repeat_N):
             # repeat N times
             of_in_mem_to_comp.set_repeat_count(repeat_N)
 
-
             # links mem to comp
             object_fifo_link(of_in_shim_to_mem, of_in_mem_to_comp)
-
 
             # Output
             of_out_comp_to_mem = object_fifo(
@@ -112,7 +105,7 @@ def my_passthrough(m, k, K, repeat_N):
                 "mem_to_shim",
                 MemTile,
                 ShimTile,
-                2, 
+                2,
                 mem_tile_ty,
                 # [
                 #     (K // k, m * k),
@@ -125,18 +118,20 @@ def my_passthrough(m, k, K, repeat_N):
             # links comp to mem
             object_fifo_link(of_out_comp_to_mem, of_out_mem_to_shim)
 
-
-
             # Compute tile just passes, doesn't do any operation
             @core(ComputeTile)
             def core_body():
                 for _ in range_(sys.maxsize):
-                    
+
                     # remember to repeat N times
                     for _ in range_(repeat_N):
-                        for _ in range_(K//k):
-                            elem_in = of_in_mem_to_comp.acquire(ObjectFifoPort.Consume, 1)
-                            elem_out = of_out_comp_to_mem.acquire(ObjectFifoPort.Produce, 1)
+                        for _ in range_(K // k):
+                            elem_in = of_in_mem_to_comp.acquire(
+                                ObjectFifoPort.Consume, 1
+                            )
+                            elem_out = of_out_comp_to_mem.acquire(
+                                ObjectFifoPort.Produce, 1
+                            )
                             for i in range_(m):
                                 for j in range_(k):
                                     elem_out[i, j] = elem_in[i, j]
@@ -145,29 +140,29 @@ def my_passthrough(m, k, K, repeat_N):
                         of_in_mem_to_comp.release(ObjectFifoPort.Consume, 1)
                         of_out_comp_to_mem.release(ObjectFifoPort.Produce, 1)
 
-
             # set the runtime type as 1D array
-            in_runtime_ty = np.ndarray[(2*m*K,), np.dtype[np.int32]]
+            in_runtime_ty = np.ndarray[(2 * m * K,), np.dtype[np.int32]]
 
-            out_runtime_ty = np.ndarray[(2*m*K*repeat_N,), np.dtype[np.int32]]
+            out_runtime_ty = np.ndarray[(2 * m * K * repeat_N,), np.dtype[np.int32]]
 
             # To/from AIE-array data movement
             @runtime_sequence(in_runtime_ty, in_runtime_ty, out_runtime_ty)
             def sequence(A, B, C):
-                
+
                 npu_dma_memcpy_nd(
                     metadata=of_in_shim_to_mem,
                     bd_id=1,
                     mem=A,
-                    sizes=[1, 1, 1, 2*m*K],
+                    sizes=[1, 1, 1, 2 * m * K],
                 )
 
                 npu_dma_memcpy_nd(
-                    metadata=of_out_mem_to_shim, 
-                    bd_id=0, 
-                    mem=C, 
-                    sizes=[1, 1, 1, 2*m*K*repeat_N])
-                
+                    metadata=of_out_mem_to_shim,
+                    bd_id=0,
+                    mem=C,
+                    sizes=[1, 1, 1, 2 * m * K * repeat_N],
+                )
+
                 # wait only on output since input will have completed before output
                 dma_wait(of_out_mem_to_shim)
 
