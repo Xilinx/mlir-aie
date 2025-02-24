@@ -156,12 +156,12 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_inA = xrt::bo(device, 2* m * K * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(3));
-  auto bo_inB = xrt::bo(device, 2* m * K * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(4));
-  auto bo_out = xrt::bo(device, 2* m * K * repeat_N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(5));
+  auto bo_inA = xrt::bo(device, 2 * m * K * sizeof(int32_t),
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto bo_inB = xrt::bo(device, 2 * m * K * sizeof(int32_t),
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  auto bo_out = xrt::bo(device, 2 * m * K * repeat_N * sizeof(int32_t),
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
@@ -179,9 +179,9 @@ int main(int argc, const char *argv[]) {
   // Define the range for int32 values
   std::uniform_int_distribution<int32_t> dist(0, 10000);
 
-  // <<<<<<<<< The code below emulates the "of_in_shim_to_mem" OBjFifo in line 57 >>>>>>>
-  // calculate the number of tiles in the 'K' dimension
-  int K_div_k = K/k;
+  // <<<<<<<<< The code below emulates the "of_in_shim_to_mem" OBjFifo in line
+  // 57 >>>>>>> calculate the number of tiles in the 'K' dimension
+  int K_div_k = K / k;
 
   int index = 0;
 
@@ -251,8 +251,8 @@ int main(int argc, const char *argv[]) {
   // // verification
   // for (int i = 0; i < m*K; i++) {
   //   if (OutVec[i] != refVecA[i]) {
-  //     std::cout << "ref = " << (int)refVecA[i] << " NPU output = " << (int)OutVec[i] << "\n";
-  //     errors++;
+  //     std::cout << "ref = " << (int)refVecA[i] << " NPU output = " <<
+  //     (int)OutVec[i] << "\n"; errors++;
   //   }
   // }
 
