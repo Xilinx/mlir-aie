@@ -13,10 +13,10 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <random>
 #include <sstream>
 #include <string>
 #include <vector>
-#include <random>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -105,14 +105,12 @@ int main(int argc, const char *argv[]) {
     std::cout << "Sequence instr count: " << instr_v.size() << std::endl;
 
 
-
   // input arguments m, k, K, r, s
   int m = vm["m"].as<int>();
   int k = vm["k"].as<int>();
   int K = vm["K"].as<int>();
   int repeat_N = vm["repeat_N"].as<int>();
   
-
 
   // Start the XRT test code
   // Get a device handle
@@ -168,7 +166,7 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
 
-  // xrt input buffer mapped to input buffer A 
+  // xrt input buffer mapped to input buffer A
   int32_t *bufInA = bo_inA.map<int32_t *>();
 
   // input source vector A
@@ -178,8 +176,8 @@ int main(int argc, const char *argv[]) {
   std::random_device rd;
   std::mt19937 gen(rd());
 
-   // Define the range for int32 values
-    std::uniform_int_distribution<int32_t> dist(0, 10000);
+  // Define the range for int32 values
+  std::uniform_int_distribution<int32_t> dist(0, 10000);
 
   // <<<<<<<<< The code below emulates the "of_in_shim_to_mem" OBjFifo in line 57 >>>>>>>
   // calculate the number of tiles in the 'K' dimension
@@ -188,7 +186,7 @@ int main(int argc, const char *argv[]) {
   int index = 0;
 
   // write the input data to the input vector in pre-tiled format
-  for (int tile_k = 0; tile_k < 2*K_div_k; tile_k++){
+  for (int tile_k = 0; tile_k < 2 * K_div_k; tile_k++) {
 
     for (int ii = 0; ii < m; ii++){
       for (int jj = 0; jj < k; jj++){
@@ -202,9 +200,8 @@ int main(int argc, const char *argv[]) {
     }
   }
 
-  // copy the input data to the input buffer A 
+  // copy the input data to the input buffer A
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(int32_t)));
-
 
   // copy instructions
   void *bufInstr = bo_instr.map<void *>();
@@ -213,7 +210,6 @@ int main(int argc, const char *argv[]) {
   // sync instructions and input buffer
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-
 
   // run kernel
   if (verbosity >= 1)
@@ -228,35 +224,30 @@ int main(int argc, const char *argv[]) {
   // map xrt output buffer to output buffer
   int32_t *bufOut = bo_out.map<int32_t *>();
 
-  // create a vector for the output data 
-  std::vector<int32_t> OutVec(2*m*K*repeat_N);
+  // create a vector for the output data
+  std::vector<int32_t> OutVec(2 * m * K * repeat_N);
 
   int errors = 0;
 
 
- 
   // copy output data to the output vector
   memcpy(OutVec.data(), bufOut, (OutVec.size() * sizeof(int32_t)));
-
 
   // <<<<<<<<<<<<< write the npu output data into a file >>>>>>>>>>>>>
   // Open a file in write mode
   std::ofstream npu_outFile("npu_output.txt");
 
- // Check if the file is open
+  // Check if the file is open
   if (npu_outFile.is_open()) {
     // Iterate through the vector and write each element to the file
-    for (const auto& elem : OutVec) {
+    for (const auto &elem : OutVec) {
         npu_outFile << elem << "\n"; // Write each element followed by a newline
     }
     npu_outFile.close(); // Close the file
     std::cout << "Npu data written to npu_output.txt file successfully.\n";
   } else {
-      std::cerr << "Unable to open file for writing.\n";
+    std::cerr << "Unable to open file for writing.\n";
   }
-
-
-  
 
 
   // // verification
