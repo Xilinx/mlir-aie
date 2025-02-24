@@ -803,21 +803,26 @@ def broadcast_flow(
 
 
 def runtime_sequence(*inputs: Type, sym_name=None, context=None):
-     def decorator(f):
-         seq_op = RuntimeSequenceOp()
-         my_inputs = []
-         for input in inputs:
-             my_inputs.append(try_convert_np_type_to_mlir_type(input))
-         entry_block = seq_op.body.blocks.append(*my_inputs)
-         args = entry_block.arguments
-         name = sym_name if sym_name else f.__name__
-         with InsertionPoint(entry_block):
-             f(*args)
-         seq_op.attributes["sym_name"] = (name if (
-             isinstance(name, Attribute) or
-                 not AttrBuilder.contains('SymbolNameAttr')) else
-                     AttrBuilder.get('SymbolNameAttr')(name, context=context))
-     return decorator
+    def decorator(f):
+        seq_op = RuntimeSequenceOp()
+        my_inputs = []
+        for input in inputs:
+            my_inputs.append(try_convert_np_type_to_mlir_type(input))
+        entry_block = seq_op.body.blocks.append(*my_inputs)
+        args = entry_block.arguments
+        name = sym_name if sym_name else f.__name__
+        with InsertionPoint(entry_block):
+            f(*args)
+        seq_op.attributes["sym_name"] = (
+            name
+            if (
+                isinstance(name, Attribute)
+                or not AttrBuilder.contains("SymbolNameAttr")
+            )
+            else AttrBuilder.get("SymbolNameAttr")(name, context=context)
+        )
+
+    return decorator
 
 
 _orig_dma_configure_task = dma_configure_task
