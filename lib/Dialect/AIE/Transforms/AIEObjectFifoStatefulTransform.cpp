@@ -560,7 +560,7 @@ struct AIEObjectFifoStatefulTransformPass
                      int acqNum, int relNum, MyOp buff, int offset, int len,
                      DMAChannelDir channelDir, size_t lockIndex, Block *succ,
                      BDDimLayoutArrayAttr dims,
-                     BDPadLayoutArrayAttr padDimensions) {
+                     BDPadLayoutArrayAttr padDimensions, bool distribOrJoin=false) {
     LockOp acqLock;
     LockOp relLock;
     int acqMode = 1;
@@ -578,8 +578,12 @@ struct AIEObjectFifoStatefulTransformPass
         acqMode = acqNum;
         relMode = relNum;
         acqLockAction = LockAction::AcquireGreaterEqual;
-        int prodLockIndex = 0;//lockIndex * 2;
-        int consLockIndex = 1;//lockIndex * 2 + 1
+        int prodLockIndex = 0;
+        int consLockIndex = 1;
+        if (distribOrJoin) {
+          prodLockIndex = lockIndex * 2;
+          consLockIndex = lockIndex * 2 + 1;
+        }
         acqLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][prodLockIndex]
                                                     : locksPerFifo[op][consLockIndex];
         relLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][consLockIndex]
@@ -916,6 +920,7 @@ struct AIEObjectFifoStatefulTransformPass
     size_t elemIndex = 0;
     size_t lockIndex = 0;
     size_t totalBlocks = 0;
+    bool distribOrJoin = false;
     for (size_t i = 0; i < numBlocks; i++) {
       if (elemIndex >= buffersPerFifo[target].size())
         break;
@@ -928,6 +933,7 @@ struct AIEObjectFifoStatefulTransformPass
         builder.setInsertionPointToStart(curr);
         int offset = 0;
         if (isDistribute || isJoin) {
+          distribOrJoin = true;
           if (target == op) {
             if (isDistribute) {
               offset = *getConstantIntValue(linkOp->getDstOffsets()[r]);
@@ -947,7 +953,7 @@ struct AIEObjectFifoStatefulTransformPass
         createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
                                 buffersPerFifo[target][elemIndex], offset,
                                 lenOut, channelDir, lockIndex, succ, dims,
-                                padDimensions);
+                                padDimensions, distribOrJoin);
         curr = succ;
         totalBlocks++;
       }
