@@ -393,12 +393,14 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   // no other way to express this at the dma_memcpy_nd interface otherwise.
   AIE::ShimDMAllocationGetter allocGetter;
   AIE::DeviceOp dev = (*this)->getParentOfType<AIE::DeviceOp>();
-  int col = allocGetter.get(dev, getMetadata())->getCol();
-  bool skipTransformationChecks = isLinearTransferWithoutTransformation();
-  if (failed(verifyStridesWraps(*this, buffer, col, 0, inputSizes, inputStrides,
-                                hardwareSizes, hardwareStrides,
-                                skipTransformationChecks))) {
-    return failure();
+  if (auto allocOp = allocGetter.get(dev, getMetadata())) {
+    int col = allocOp->getCol();
+    bool skipTransformationChecks = isLinearTransferWithoutTransformation();
+    if (failed(verifyStridesWraps(*this, buffer, col, 0, inputSizes, inputStrides,
+                                  hardwareSizes, hardwareStrides,
+                                  skipTransformationChecks))) {
+      return failure();
+    }
   }
 
   // packet header
