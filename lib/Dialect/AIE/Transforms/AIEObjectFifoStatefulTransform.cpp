@@ -559,7 +559,8 @@ struct AIEObjectFifoStatefulTransformPass
                      int acqNum, int relNum, MyOp buff, int offset, int len,
                      DMAChannelDir channelDir, size_t lockIndex, Block *succ,
                      BDDimLayoutArrayAttr dims,
-                     BDPadLayoutArrayAttr padDimensions, bool distribOrJoin=false) {
+                     BDPadLayoutArrayAttr padDimensions,
+                     bool distribOrJoin = false) {
     LockOp acqLock;
     LockOp relLock;
     int acqMode = 1;
