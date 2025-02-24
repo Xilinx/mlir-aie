@@ -253,8 +253,8 @@ int main(int argc, const char *argv[]) {
   // // verification
   // for (int i = 0; i < m*K; i++) {
   //   if (OutVec[i] != refVecA[i]) {
-  //     std::cout << "ref = " << (int)refVecA[i] << " NPU output = " << (int)OutVec[i] << "\n";
-  //     errors++;
+  //     std::cout << "ref = " << (int)refVecA[i] << " NPU output = " <<
+  //     (int)OutVec[i] << "\n"; errors++;
   //   }
   // }
 
