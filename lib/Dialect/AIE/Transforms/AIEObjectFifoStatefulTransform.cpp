@@ -584,10 +584,12 @@ struct AIEObjectFifoStatefulTransformPass
           prodLockIndex = lockIndex * 2;
           consLockIndex = lockIndex * 2 + 1;
         }
-        acqLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][prodLockIndex]
-                                                    : locksPerFifo[op][consLockIndex];
-        relLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][consLockIndex]
-                                                    : locksPerFifo[op][prodLockIndex];
+        acqLock = channelDir == DMAChannelDir::S2MM
+                      ? locksPerFifo[op][prodLockIndex]
+                      : locksPerFifo[op][consLockIndex];
+        relLock = channelDir == DMAChannelDir::S2MM
+                      ? locksPerFifo[op][consLockIndex]
+                      : locksPerFifo[op][prodLockIndex];
       }
     }
     createBd(builder, acqLock, acqMode, acqLockAction, relLock, relMode, buff,
