@@ -6,6 +6,7 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 import copy
+import time
 import numpy as np
 import pyxrt as xrt
 
@@ -167,3 +168,67 @@ def execute(app, input_one=None, input_two=None):
         app.buffers[4].write(input_two)
     app.run()
     return app.buffers[5].read()
+
+
+def xrt_test_run(
+    in1_dtype,
+    in2_dtype,
+    out_dtype,
+    in1_data,
+    in2_data,
+    out_data,
+    in1_volume,
+    in2_volume,
+    out_volume,
+    ref,
+    opts,
+):
+    enable_trace = opts.trace_size > 0
+
+    app = setup_aie(
+        opts.xclbin,
+        opts.instr,
+        in1_volume,
+        in1_dtype,
+        in2_volume,
+        in2_dtype,
+        out_volume,
+        out_dtype,
+        enable_trace=enable_trace,
+        trace_size=opts.trace_size,
+    )
+
+    out_size = out_volume * out_data.itemsize
+    # print("out_size: " + str(out_size))
+
+    start = time.time_ns()
+    full_output = execute(app, in1_data, in2_data)
+    stop = time.time_ns()
+    npu_time = stop - start
+    print("npu_time: ", npu_time)
+
+    aie_output = full_output[:out_size].view(out_dtype)
+    if enable_trace:
+        trace_buffer = full_output[out_size:].view(np.uint32)
+
+    if enable_trace:
+        if opts.verbosity >= 1:
+            print("trace_buffer shape: ", trace_buffer.shape)
+            print("trace_buffer dtype: ", trace_buffer.dtype)
+        write_out_trace(trace_buffer, str(opts.trace_file))
+
+    # Copy output results and verify they are correct
+    errors = 0
+    if opts.verify:
+        if opts.verbosity >= 1:
+            print("Verifying results ...")
+        e = np.equal(ref, aie_output)
+        errors = np.size(e) - np.count_nonzero(e)
+
+    if not errors:
+        print("\nPASS!\n")
+        return 0
+    else:
+        print("\nError count: ", errors)
+        print("\nFailed.\n")
+        return 1

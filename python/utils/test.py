@@ -68,6 +68,27 @@ def create_default_argparser():
         default="trace.txt",
         help="where to store trace output",
     )
+    p.add_argument(
+        "-i1s",
+        "--in1_size",
+        dest="in1_size",
+        default=0,
+        help="Input 1 buffer size in bytes",
+    )
+    p.add_argument(
+        "-i2s",
+        "--in2_size",
+        dest="in2_size",
+        default=0,
+        help="Input 2 buffer size in bytes",
+    )
+    p.add_argument(
+        "-os",
+        "--out_size",
+        dest="out_size",
+        default=0,
+        help="Output buffer size in bytes",
+    )
     return p
 
 
