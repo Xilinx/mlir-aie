@@ -43,9 +43,10 @@ else
 endif
 else ifeq ($(devicename),npu2)
 ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -c $< -o ${@F}; 
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}; 
 else 
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}; 
+endif
 else
 	echo "Device type not supported"
 endif
