@@ -41,14 +41,9 @@ build/aie.mlir: ${srcdir}/${aie_py_src}
 
 build/final.xclbin: build/aie.mlir build/reduce_min.cc.o
 	mkdir -p ${@D}
-ifeq ($(devicename),npu2)
-	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-		--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
-else
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
     			--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
-endif
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
