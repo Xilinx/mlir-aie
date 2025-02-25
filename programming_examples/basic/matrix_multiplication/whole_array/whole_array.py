@@ -30,6 +30,7 @@ def main():
         prog="AIE Matrix Multiplication MLIR Design (Whole Array)",
         description="Emits MLIR code for a matrix multiplication design of the given input size",
     )
+    argparser.add_argument("-device", type=str, default="npu")
     argparser.add_argument("-M", type=int, default=512)
     argparser.add_argument("-K", type=int, default=512)
     argparser.add_argument("-N", type=int, default=512)
@@ -57,6 +58,7 @@ def main():
     args = argparser.parse_args()
     with mlir_mod_ctx() as ctx:
         maybe_taps = my_matmul(
+            args.device,
             args.M,
             args.K,
             args.N,
@@ -82,6 +84,7 @@ def ceildiv(a, b):
 
 
 def my_matmul(
+    dev,
     M,
     K,
     N,
@@ -108,18 +111,32 @@ def my_matmul(
         np.dtype(dtype_out).itemsize >= np.dtype(dtype_in).itemsize
     ), f"Output dtype ({dtype_out}) must be equal or larger to input dtype ({dtype_in})"
 
-    if dtype_in_str == "bf16":
-        r = 4
-        s = 8
-        t = 4
-    elif dtype_in_str == "i8":
-        r = 4
-        s = 8
-        t = 8
-    elif dtype_in_str == "i16":
-        r = 4
-        s = 4
-        t = 4
+    if dev == "npu":
+        if dtype_in_str == "bf16":
+            r = 4
+            s = 8
+            t = 4
+        elif dtype_in_str == "i8":
+            r = 4
+            s = 8
+            t = 8
+        elif dtype_in_str == "i16":
+            r = 4
+            s = 4
+            t = 4
+    else:
+        if dtype_in_str == "bf16":
+            r = 8
+            s = 8
+            t = 8
+        elif dtype_in_str == "i8":
+            r = 8
+            s = 8
+            t = 8
+        elif dtype_in_str == "i16":
+            r = 4
+            s = 4
+            t = 8
 
     # Input matrix A:
     # Conceptually, we divide input A into (m * n_rows, k)-sized blocks. These
@@ -161,13 +178,17 @@ def my_matmul(
 
     n_A_tiles_per_shim = n_aie_rows // n_aie_cols
 
-    dev = None
-    if n_aie_cols == 1:
-        dev = AIEDevice.npu1_1col
-    elif n_aie_cols == 2:
-        dev = AIEDevice.npu1_2col
-    elif n_aie_cols == 4:
-        dev = AIEDevice.npu1_4col
+    dev_ty = None
+    if dev == "npu":
+        if n_aie_cols == 1:
+            dev_ty = AIEDevice.npu1_1col
+        elif n_aie_cols == 2:
+            dev_ty = AIEDevice.npu1_2col
+        elif n_aie_cols == 4:
+            dev_ty = AIEDevice.npu1_4col
+    else:
+        n_aie_cols = 4
+        dev_ty = AIEDevice.npu2
 
     # These will hold TensorAccessPattern objects that represent the runtime
     # npu_dma_memcpy_nd operations of this design. They are only used if generate_taps is true
@@ -175,7 +196,7 @@ def my_matmul(
     B_taps = []
     C_taps = []
 
-    @device(dev)
+    @device(dev_ty)
     def device_body():
         A_l2_ty = np.ndarray[(m * k * n_A_tiles_per_shim,), np.dtype[dtype_in]]
         B_l2_ty = np.ndarray[(k * n,), np.dtype[dtype_in]]
