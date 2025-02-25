@@ -10,7 +10,7 @@
 
 # <ins>Section 1 - Basic AI Engine building blocks</ins>
 
-When we program the AIE-array, we need to declare and configure its structural building blocks: compute tiles for vector processing, memory tiles as larger level-2 shared scratchpads, and shim tiles supporting data movement to external memory. In this programming guide, we will utilize the IRON Python bindings to describe our design at different levels of granularity. Later on, we will explore vector programming in C/C++ when we focus on kernel programming.
+When we program the AIE-array, we need to declare and configure its structural building blocks: compute tiles for vector processing, memory tiles as larger level-2 shared scratchpads, and shim tiles supporting data movement to external memory. In this programming guide, we will utilize the IRON Python library to describe our design at different levels of granularity. Later on, we will explore vector programming in C/C++ when we focus on kernel programming.
 
 ## <ins>Walkthrough of Python source file (aie2.py)</ins>
 
