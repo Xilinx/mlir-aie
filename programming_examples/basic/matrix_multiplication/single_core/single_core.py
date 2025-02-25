@@ -30,6 +30,7 @@ def main():
         prog="AIE Matrix Multiplication MLIR Design (Whole Array)",
         description="Emits MLIR code for a matrix multiplication design of the given input size",
     )
+    argparser.add_argument("-device", type=str, default="npu")
     argparser.add_argument("-M", type=int, default=256)
     argparser.add_argument("-K", type=int, default=256)
     argparser.add_argument("-N", type=int, default=256)
@@ -48,6 +49,7 @@ def main():
     argparser.add_argument("--trace_size", type=int, default=0)
     args = argparser.parse_args()
     my_matmul(
+        args.device,
         args.M,
         args.K,
         args.N,
@@ -64,24 +66,40 @@ def ceildiv(a, b):
     return (a + b - 1) // b
 
 
-def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
+def my_matmul(dev, M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
 
     assert M % m == 0
     assert K % k == 0
     assert N % n == 0
 
-    if dtype_in_str == "bf16":
-        r = 4
-        s = 8
-        t = 4
-    elif dtype_in_str == "i8":
-        r = 4
-        s = 8
-        t = 8
-    elif dtype_in_str == "i16":
-        r = 4
-        s = 4
-        t = 4
+    if dev == "npu":
+        dev = AIEDevice.npu1_1col
+        if dtype_in_str == "bf16":
+            r = 4
+            s = 8
+            t = 4
+        elif dtype_in_str == "i8":
+            r = 4
+            s = 8
+            t = 8
+        elif dtype_in_str == "i16":
+            r = 4
+            s = 4
+            t = 4
+    else:
+        dev = AIEDevice.npu2
+        if dtype_in_str == "bf16":
+            r = 4
+            s = 8
+            t = 4
+        elif dtype_in_str == "i8":
+            r = 8
+            s = 8
+            t = 8
+        elif dtype_in_str == "i16":
+            r = 4
+            s = 4
+            t = 8
 
     assert m % r == 0
     assert k % s == 0
@@ -119,7 +137,12 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
 
         C_sz_in_bytes = C_sz * np.dtype(dtype_out).itemsize
 
-        @device(AIEDevice.npu1_1col)
+        if dev == "npu":
+            dev_ty = AIEDevice.npu1_1col
+        else:
+            dev_ty = AIEDevice.npu2
+
+        @device(dev_ty)
         def device_body():
             a_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
             b_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
