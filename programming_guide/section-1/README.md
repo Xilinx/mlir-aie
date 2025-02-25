@@ -16,7 +16,7 @@ When we program the AIE-array, we need to declare and configure its structural b
 
 Let's first look at a basic Python source file (named [aie2.py](./aie2.py)) for an IRON design at the highest level of abstraction:
 
-At the top of this Python source, we include modules that define the IRON language bindings `aie.iron` for high-level abstraction constructs, resource placement algorithms `aie.iron.placers` and target architecture `aie.iron.device`.
+At the top of this Python source, we include modules that define the IRON libraries `aie.iron` for high-level abstraction constructs, resource placement algorithms `aie.iron.placers` and target architecture `aie.iron.device`.
 ```python
 from aie.iron import Program, Runtime, Worker, GlobalBuffer
 from aie.iron.placers import SequentialPlacer
