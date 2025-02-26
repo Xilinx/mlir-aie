@@ -396,8 +396,8 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   if (auto allocOp = allocGetter.get(dev, getMetadata())) {
     int col = allocOp->getCol();
     bool skipTransformationChecks = isLinearTransferWithoutTransformation();
-    if (failed(verifyStridesWraps(*this, buffer, col, 0, inputSizes, inputStrides,
-                                  hardwareSizes, hardwareStrides,
+    if (failed(verifyStridesWraps(*this, buffer, col, 0, inputSizes,
+                                  inputStrides, hardwareSizes, hardwareStrides,
                                   skipTransformationChecks))) {
       return failure();
     }
