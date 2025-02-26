@@ -55,7 +55,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
        sudo ./tools/amdxdna_deps.sh
        ```
 
-    2. Build XRT. Remember to source the aietools/Vitis setup script from [above](#install-xilinx-vitis-20232).
+    2. Build XRT.
 
        ```bash
        cd $XDNA_SRC_DIR/xrt/build
