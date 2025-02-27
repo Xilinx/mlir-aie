@@ -155,9 +155,6 @@ jobs:
           # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
           cd ..
 
-          # See comment above for the same command.
-          find mlir -exec touch -a -m -t 201108231405.14 {} \;
-
           ./utils/build-mlir-aie-from-wheels.sh
 
           # build is created by the build-mlir-aie-from-wheels.sh script
