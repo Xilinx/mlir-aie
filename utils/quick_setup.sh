@@ -83,9 +83,3 @@ pushd programming_examples
 echo "PATH              : $PATH"
 echo "LD_LIBRARY_PATH   : $LD_LIBRARY_PATH"
 echo "PYTHONPATH        : $PYTHONPATH"
-VPP=`which xchesscc`
-if test -f "$VPP"; then
-  echo "Vitis Found     : $VPP"
-else
-  echo "Warning: Strix Point XDNA2 NPUs are NOT currently supported without a Vitis installation."
-fi
