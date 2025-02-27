@@ -152,6 +152,8 @@ def conv2dk1(
                 dma_start_task(in_act_task, in_wts_task, out_task)
                 dma_await_task(in_act_task, in_wts_task, out_task)
 
+                trace_utils.gen_trace_done_aie2(ShimTile)
+
     #    print(ctx.module.operation.verify())
     print(ctx.module)
 
