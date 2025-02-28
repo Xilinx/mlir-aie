@@ -14,7 +14,13 @@ build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@ 
 
+build/aie_placed.mlir: ${srcdir}/aie2_placed.py
+	mkdir -p ${@D}
+	python3 $< > $@ 
+
 all: build/aie.mlir
+
+placed: build/aie_placed.mlir
 
 clean:
 	rm -rf build 
