@@ -14,10 +14,11 @@ from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
 
 
-def my_vector_scalar(dev, vector_size, trace_size):
+def my_vector_scalar(dev, in1_size, in2_size, out_size, trace_size):
     if trace_size != 0:
         raise NotImplementedError("Trace not supported yet.")
-    N = vector_size
+    N_in_bytes = in1_size
+    N = N_in_bytes // 2
     N_div_n = 4  # chop input vector into 4 sub-vectors
     n = N // N_div_n
     vectorized = True
@@ -71,6 +72,11 @@ def my_vector_scalar(dev, vector_size, trace_size):
 
 
 try:
+    if len(sys.argv) < 5:
+        raise ValueError(
+            "[ERROR] Need at least 4 arguments (dev, in1_size, in2_size, out_size)"
+        )
+
     device_name = str(sys.argv[1])
     if device_name == "npu":
         dev = NPU1Col1()
@@ -78,12 +84,16 @@ try:
         dev = NPU2()
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-    vector_size = int(sys.argv[2])
-    if vector_size % 64 != 0 or vector_size < 512:
-        print("Vector size must be a multiple of 64 and greater than or equal to 512")
+    in1_size = int(sys.argv[2])
+    if in1_size % 128 != 0 or in1_size < 1024:
+        print(
+            "In1 buffer size must be a multiple of 128 (so len is multiple of 64) and greater than or equal to 1024 (so len >= 512)"
+        )
         raise ValueError
-    trace_size = 0 if (len(sys.argv) != 4) else int(sys.argv[3])
+    in2_size = int(sys.argv[3])
+    out_size = int(sys.argv[4])
+    trace_size = 0 if (len(sys.argv) != 6) else int(sys.argv[5])
 except ValueError:
     print("Argument has inappropriate value")
-module = my_vector_scalar(dev, vector_size, trace_size)
+module = my_vector_scalar(dev, in1_size, in2_size, out_size, trace_size)
 print(module)

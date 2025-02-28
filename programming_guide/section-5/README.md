@@ -17,7 +17,7 @@ The [programming examples](../../programming_examples) are a number of sample de
 #### Passthrough
 
 The [passthrough](../../programming_examples/basic/passthrough_kernel/) example is the simplest "getting started" example.  It copies 4096 bytes from the input to output using vectorized loads and stores.  The design example shows a typical project organization which is easy to reproduce with other examples.  There are only really 4 important files here.
-1. [`aie2.py`](../../programming_examples/basic/passthrough_kernel/aie2.py) The AIE structural design which includes the shim tile connected to the external memory, and a single AIE core for performing the copy.  It also shows a simple use of the ObjectFIFOs described in [section 2](../section-2).
+1. [`passthrough_kernel.py`](../../programming_examples/basic/passthrough_kernel/aie2.py) The AIE structural design which includes the shim tile connected to the external memory, and a single AIE core for performing the copy.  It also shows a simple use of the Object FIFOs described in [section 2](../section-2).
 1. [`passthrough.cc`](../../aie_kernels/generic/passThrough.cc)  This is a C++ file which performs the vectorized copy operation.
 1. [`test.cpp`](../../programming_examples/basic/passthrough_kernel/test.cpp) or [`test.py`](../../programming_examples/basic/passthrough_kernel/test.py) A C++ or Python main application for exercising the design, and comparing against a CPU reference
 1. [`Makefile`](../../programming_examples/basic/passthrough_kernel/Makefile) A Makefile documenting (and implementing) the build process for the various artifacts.

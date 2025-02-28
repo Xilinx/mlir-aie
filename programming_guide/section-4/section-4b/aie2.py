@@ -84,6 +84,8 @@ def my_vector_scalar(opts):
             )
             npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, 4096])
             dma_wait(of_in, of_factor, of_out)
+            if enableTrace:
+                trace_utils.gen_trace_done_aie2(ShimTile)
 
 
 if __name__ == "__main__":
