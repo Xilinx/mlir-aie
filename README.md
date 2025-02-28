@@ -1,4 +1,4 @@
-This is a work-in-progress version adding the [`aie++` C++ programming
+This is a huge work-in-progress version adding the [`aie++` C++ programming
 model](docs/CIR.md) to MLIR AIE based on [ClangIR for MLIR AIE
 fork](https://github.com/keryell/clangir/tree/mlir-aie-version).
 
