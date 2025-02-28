@@ -12,6 +12,7 @@ include ${srcdir}/../../makefile-common
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
+device = npu
 COLORDETECT_WIDTH = 1920
 COLORDETECT_HEIGHT = 1080
 
@@ -36,7 +37,13 @@ mlir: build/aie2_lineBased_8b_${COLORDETECT_WIDTH}.mlir
 
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
+ifeq ($(device),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+else ifeq ($(device),npu2)
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+else
+	echo "Device type not supported"
+endif
 
 build/combined_bitwiseOR_gray2rgba_bitwiseAND.a: build/bitwiseOR.cc.o build/gray2rgba.cc.o build/bitwiseAND.cc.o
 	mkdir -p ${@D}
@@ -44,13 +51,18 @@ build/combined_bitwiseOR_gray2rgba_bitwiseAND.a: build/bitwiseOR.cc.o build/gray
 
 build/aie2_lineBased_8b_${COLORDETECT_WIDTH}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${COLORDETECT_WIDTH} ${COLORDETECT_HEIGHT} > $@
+	python3 $< ${device} ${COLORDETECT_WIDTH} ${COLORDETECT_HEIGHT} > $@
 
 build/final_${COLORDETECT_WIDTH}.xclbin: build/aie2_lineBased_8b_${COLORDETECT_WIDTH}.mlir build/rgba2hue.cc.o build/threshold.cc.o build/combined_bitwiseOR_gray2rgba_bitwiseAND.a
 	mkdir -p ${@D}
+ifeq ($(device),npu)
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host --alloc-scheme=basic-sequential \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
+else
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host --alloc-scheme=basic-sequential \
+		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
+endif
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	mkdir -p ${@D}

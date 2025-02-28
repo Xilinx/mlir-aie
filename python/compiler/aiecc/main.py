@@ -93,11 +93,8 @@ AIE_LOWER_TO_LLVM = (
     + LOWER_TO_LLVM_PIPELINE
 )
 
-CREATE_PATH_FINDER_FLOWS = Pipeline().Nested(
-    "aie.device", Pipeline().add_pass("aie-create-pathfinder-flows")
-)
-
-DMA_TO_NPU = Pipeline().Nested(
+# pipeline to lower and legalize runtime sequence for NPU
+NPU_LOWERING_PIPELINE = Pipeline().Nested(
     "aie.device",
     Pipeline()
     .add_pass("aie-materialize-bd-chains")
@@ -353,6 +350,23 @@ def run_passes(pass_pipeline, mlir_module_str, outputfile=None, verbose=False):
     return mlir_module_str
 
 
+def run_passes_module(pass_pipeline, mlir_module, outputfile=None, verbose=False):
+    if verbose:
+        print("Running:", pass_pipeline)
+    with mlir_module.context, Location.unknown():
+        pm = PassManager.parse(pass_pipeline)
+        try:
+            pm.run(mlir_module.operation)
+        except Exception as e:
+            print("Error running pass pipeline: ", pass_pipeline, e)
+            raise e
+        if outputfile:
+            mlir_module_str = str(mlir_module)
+            with open(outputfile, "w") as g:
+                g.write(mlir_module_str)
+    return mlir_module
+
+
 def corefile(dirname, core, ext):
     col, row, _ = core
     return os.path.join(dirname, f"core_{col}_{row}.{ext}")
@@ -387,8 +401,15 @@ def downgrade_ir_for_chess(llvmir_chesslinked):
             "memory(argmem: write, inaccessiblemem: write)",
             "inaccessiblemem_or_argmemonly writeonly",
         )
+        .replace("captures(none)", "nocapture")
+        .replace("getelementptr inbounds nuw", "getelementptr inbounds")
     )
     return llvmir_chesslinked
+
+
+def downgrade_ir_for_peano(llvmir):
+    llvmir = llvmir.replace("getelementptr inbounds nuw", "getelementptr inbounds")
+    return llvmir
 
 
 class FlowRunner:
@@ -482,6 +503,16 @@ class FlowRunner:
 
         return llvmir_chesslinked_path
 
+    # In order to run peano on modern ll code, we need a bunch of hacks.
+    async def peanohack(self, llvmir):
+        llvmir_peanohack = llvmir + "peanohack.ll"
+
+        llvmir_ir = await read_file_async(llvmir)
+        llvmir_hacked_ir = downgrade_ir_for_peano(llvmir_ir)
+        await write_file_async(llvmir_hacked_ir, llvmir_peanohack)
+
+        return llvmir_peanohack
+
     async def process_core(
         self,
         core,
@@ -551,8 +582,9 @@ class FlowRunner:
 
             elif opts.compile:
                 if not opts.unified:
+                    file_core_llvmir_peanohacked = await self.peanohack(file_core_llvmir)
                     file_core_llvmir_stripped = corefile(self.tmpdirname, core, "stripped.ll")
-                    await self.do_call(task, [self.peano_opt_path, "--passes=default<O2>,strip", "-S", file_core_llvmir, "-o", file_core_llvmir_stripped])
+                    await self.do_call(task, [self.peano_opt_path, "--passes=default<O2>,strip", "-S", file_core_llvmir_peanohacked, "-o", file_core_llvmir_stripped])
                     await self.do_call(task, [self.peano_llc_path, file_core_llvmir_stripped, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", file_core_obj])
                 else:
                     file_core_obj = self.unified_file_core_obj
@@ -1105,27 +1137,28 @@ class FlowRunner:
 
             # Optionally generate insts.txt for NPU instruction stream
             if opts.npu or opts.only_npu:
-                generated_insts_mlir = self.prepend_tmp("generated_npu_insts.mlir")
-                await self.do_call(
-                    progress_bar.task,
-                    [
-                        "aie-opt",
-                        f"--pass-pipeline={DMA_TO_NPU}",
-                        file_with_addresses,
-                        "-o",
-                        generated_insts_mlir,
-                    ],
-                )
-                await self.do_call(
-                    progress_bar.task,
-                    [
-                        "aie-translate",
-                        "--aie-npu-instgen",
-                        generated_insts_mlir,
-                        "-o",
-                        opts.insts_name,
-                    ],
-                )
+                with Context(), Location.unknown():
+                    file_with_addresses_module = Module.parse(
+                        await read_file_async(file_with_addresses)
+                    )
+                    pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
+                    npu_insts_file = (
+                        self.prepend_tmp("npu_insts.mlir")
+                        if self.opts.verbose
+                        else None
+                    )
+                    npu_insts_module = run_passes_module(
+                        pass_pipeline,
+                        file_with_addresses_module,
+                        npu_insts_file,
+                        self.opts.verbose,
+                    )
+                    npu_insts = aiedialect.translate_npu_to_binary(
+                        npu_insts_module.operation
+                    )
+                    with open(opts.insts_name, "w") as f:
+                        for inst in npu_insts:
+                            f.write(f"{inst}\n")
                 if opts.only_npu:
                     return
 
@@ -1142,8 +1175,9 @@ class FlowRunner:
                     file_llvmir_hacked = await self.chesshack(progress_bar.task, file_llvmir, aie_target)
                     await self.do_call(progress_bar.task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "+Wclang,-xir", "-f", file_llvmir_hacked, "-o", self.unified_file_core_obj])
                 elif opts.compile:
+                    file_llvmir_hacked = await self.peanohack(file_llvmir)
                     file_llvmir_opt = self.prepend_tmp("input.opt.ll")
-                    await self.do_call(progress_bar.task, [self.peano_opt_path, "--passes=default<O2>", "-inline-threshold=10", "-S", file_llvmir, "-o", file_llvmir_opt])
+                    await self.do_call(progress_bar.task, [self.peano_opt_path, "--passes=default<O2>", "-inline-threshold=10", "-S", file_llvmir_hacked, "-o", file_llvmir_opt])
                     await self.do_call(progress_bar.task, [self.peano_llc_path, file_llvmir_opt, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", self.unified_file_core_obj])
             # fmt: on
 

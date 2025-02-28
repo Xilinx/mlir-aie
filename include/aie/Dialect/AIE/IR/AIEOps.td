@@ -130,9 +130,18 @@ def AIE_TileOp: AIE_Op<"tile", [
   let extraClassDefinition = [{
     void $cppClass::getAsmResultNames(
         function_ref<void(::mlir::Value, ::llvm::StringRef)> setNameFn) {
-       std::string nameWithoutDialect =
+       std::string tileName =
              getOperationName().str().substr(getOperationName().find('.') + 1);
-       setNameFn(getResult(), nameWithoutDialect + "_" +
+       // Specialize the SSA value name according to the tile kind
+       if (isMemTile())
+         tileName = "mem_" + tileName;
+       else if (isShimNOCTile())
+         tileName = "shim_noc_" + tileName;
+       else if (isShimPLTile())
+         tileName = "shim_pl_" + tileName;
+       else if (isShimTile())
+         tileName = "shim_" + tileName;
+       setNameFn(getResult(), tileName + "_" +
                                   std::to_string(getCol()) + "_" +
                                   std::to_string(getRow()));
     }
@@ -1004,7 +1013,7 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
     bool isSend() { return getChannelDir() == DMAChannelDir::MM2S; }
     bool isRecv() { return getChannelDir() == DMAChannelDir::S2MM; }
   }];
-  
+
   let hasCanonicalizer = 1;
 }
 
@@ -1848,7 +1857,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
   let arguments = (
     ins ObjectFifoPort:$port,
         FlatSymbolRefAttr:$objFifo_name,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$size
+        ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size
   );
 
   let results = (outs AIE_ObjectFifoSubviewType:$subview);
@@ -1884,7 +1893,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
   let arguments = (
     ins ObjectFifoPort:$port,
         FlatSymbolRefAttr:$objFifo_name,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$size
+        ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size
   );
 
   let assemblyFormat = [{

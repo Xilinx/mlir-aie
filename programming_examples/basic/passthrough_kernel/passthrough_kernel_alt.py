@@ -35,9 +35,10 @@ def passthroughKernel(dev, vector_size, trace_size):
         ShimTile = tile(0, 0)
         ComputeTile2 = tile(0, 2)
 
-        # Set up a circuit-switched flow from core to shim for tracing information
+        # Set up a packet-switched flow from core to shim for tracing information
+        tiles_to_trace = [ComputeTile2]
         if trace_size > 0:
-            flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
+            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
         # AIE-array data movement with object fifos
         of_in = object_fifo("in", ShimTile, ComputeTile2, 2, line_ty)
@@ -60,13 +61,14 @@ def passthroughKernel(dev, vector_size, trace_size):
         @runtime_sequence(vector_ty, vector_ty, vector_ty)
         def sequence(inTensor, outTensor, notUsed):
             if trace_size > 0:
-                trace_utils.configure_simple_tracing_aie2(
-                    ComputeTile2,
-                    ShimTile,
+                trace_utils.configure_packet_tracing_aie2(
+                    tiles_to_trace=tiles_to_trace,
+                    shim=ShimTile,
+                    trace_size=trace_size,
+                    trace_offset=N,
                     ddr_id=1,
-                    size=trace_size,
-                    offset=N,
                 )
+
             in_task = shim_dma_single_bd_task(
                 of_in, inTensor, sizes=[1, 1, 1, N], issue_token=True
             )
@@ -76,6 +78,8 @@ def passthroughKernel(dev, vector_size, trace_size):
 
             dma_start_task(in_task, out_task)
             dma_await_task(in_task, out_task)
+
+            trace_utils.gen_trace_done_aie2(ShimTile)
 
 
 try:

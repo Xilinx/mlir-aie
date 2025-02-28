@@ -39,7 +39,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 ## Prerequisites
 
-### Install AIETools
+### Install the XDNA™ Driver
 
 #### Supporting AMD Ryzen™ AI with AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P): Install AMD Vitis™ AIE Essentials
 
