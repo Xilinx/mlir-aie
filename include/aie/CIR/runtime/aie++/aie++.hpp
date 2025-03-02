@@ -1,27 +1,46 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <source_location>
 #include <utility>
 
 // #include <string_view>
 
 namespace aie {
 
+// A wrapper to get the name of something because the support of the annotate
+// attribute can not handle directly a function yet.
+template <auto Name> struct __cir_aie_name {
+  constexpr auto name(std::source_location sl = {}) {
+    return sl.function_name();
+  };
+};
+
 // using namespace std::literals::string_view_literals;
 
 // template <typename T, std::size_t Size> using buffer_t = std::array<T, Size>;
 template <typename T, std::size_t Size> struct buffer {
-  //using storage_t = std::array<T, Size>;
-  using storage_t = T[Size];
+  using storage_t = std::array<T, Size>;
+  // using storage_t = T[Size];
   storage_t storage;
   operator storage_t&() { return storage; }
-  // The previous is not enough
-  decltype(auto) operator[](std::size_t index) { return storage[index]; }
 
-  //auto begin() { return storage.begin(); }
+  static T& replacement_operator_at(T (&storage)[Size], std::size_t index)
+      __attribute__((annotate("cir.aie.label", "replacement_operator_at"))) {
+    return storage[index];
+  }
+
+  // The previous is not enough
+  decltype(auto) operator[](std::size_t index)
+      __attribute__((annotate("cir.aie.replace_by",
+                              "replacement_operator_at"))) {
+    return replacement_operator_at(*(T (*)[Size])&storage[0], index);
+  }
+
+  // auto begin() { return storage.begin(); }
   auto begin() { return &storage[0]; }
 
-  //auto end() { return storage.end(); }
+  // auto end() { return storage.end(); }
   auto end() { return &storage[Size]; }
 };
 
