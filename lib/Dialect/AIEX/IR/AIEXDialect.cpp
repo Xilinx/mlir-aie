@@ -401,7 +401,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
                                   skipTransformationChecks))) {
       return failure();
     }
-  } 
+  }
 
   // packet header
   if (auto packetInfo = getPacket()) {
