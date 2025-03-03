@@ -32,7 +32,7 @@ build/%.o: %.cc
 ifeq ($(device),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
 else ifeq ($(device),npu2)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
 else
 	echo "Device type not supported"
 endif
@@ -47,25 +47,15 @@ build/aie_trace.mlir: ${srcdir}/${aie_py_src}
 
 build/final.xclbin: build/aie.mlir build/mul.o
 	mkdir -p ${@D}
-ifeq ($(device),npu)
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
-else
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
-endif
 
 build/final_trace.xclbin: build/aie_trace.mlir build/mul.o
 	mkdir -p ${@D}
-ifeq ($(device),npu)
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
-else
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
-endif
 
 
 ${targetname}.exe: ${srcdir}/test.cpp
