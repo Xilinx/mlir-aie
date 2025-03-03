@@ -8,19 +8,27 @@
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-include ${srcdir}/../../programming_examples/makefile-common
+include ${srcdir}/../../../programming_examples/makefile-common
 
 build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@ 
 
+build/aie_multi.mlir: ${srcdir}/aie2_multi.py
+	mkdir -p ${@D}
+	python3 $< > $@
+
 build/aie_placed.mlir: ${srcdir}/aie2_placed.py
 	mkdir -p ${@D}
 	python3 $< > $@ 
 
-all: build/aie.mlir
+build/aie_placed_multi.mlir: ${srcdir}/aie2_placed_multi.py
+	mkdir -p ${@D}
+	python3 $< > $@ 
 
-placed: build/aie_placed.mlir
+all: build/aie.mlir build/aie_multi.mlir
+
+placed: build/aie_placed.mlir build/aie_placed_multi.mlir
 
 clean:
-	rm -rf build 
+	rm -rf build

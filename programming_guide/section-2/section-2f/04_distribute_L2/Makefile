@@ -8,19 +8,22 @@
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-include ${srcdir}/../../programming_examples/makefile-common
+include ${srcdir}/../../../../programming_examples/makefile-common
 
-build/aie.mlir: ${srcdir}/aie2.py
-	mkdir -p ${@D}
-	python3 $< > $@ 
+targetname = ext_to_core_L2
 
-build/aie_placed.mlir: ${srcdir}/aie2_placed.py
-	mkdir -p ${@D}
-	python3 $< > $@ 
+aie_py_src=${targetname}.py
+use_placed?=0
+
+ifeq (${use_placed}, 1)
+aie_py_src=${targetname}_placed.py
+endif
 
 all: build/aie.mlir
 
-placed: build/aie_placed.mlir
+build/aie.mlir: ${srcdir}/distribute_L2.py
+	mkdir -p ${@D}
+	python3 $< ${devicename} ${col} > $@
 
 clean:
-	rm -rf build 
+	rm -rf build _build ${targetname}.exe
