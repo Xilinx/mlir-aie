@@ -35,7 +35,7 @@ build/dut.o: build/dut.cc
 ifeq ($(device),npu)
 	cd ${@D} &&	${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I../../../../aie_runtime_lib/AIE2 -c ${<F} -o ${@F}
 else ifeq ($(device),npu2)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -I../../../../aie_runtime_lib/AIE2P -c ${<F} -o ${@F}
+	cd ${@D} &&	${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -I../../../../aie_runtime_lib/AIE2P -c ${<F} -o ${@F}
 else
 	echo "Device type not supported"
 endif
@@ -45,7 +45,7 @@ build/lut_based_ops.o: ../../../aie_runtime_lib/AIE2/lut_based_ops.cpp
 ifeq ($(device),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -c $(<:%=../%) -o ${@F}
 else ifeq ($(device),npu2)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -I. -c $(<:%=../%) -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -I. -c $(<:%=../%) -o ${@F}
 else
 	echo "Device type not supported"
 endif
@@ -55,7 +55,7 @@ build/softmax.o: bf16_softmax.cc
 ifeq ($(device),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -I../../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
 else ifeq ($(device),npu2)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -I. -I../../../../aie_runtime_lib/AIE2P -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -I. -I../../../../aie_runtime_lib/AIE2P -c $< -o ${@F}
 else
 	echo "Device type not supported"
 endif
@@ -74,25 +74,16 @@ build/aie_trace.mlir: ${srcdir}/${aie_py_src}
 
 build/final.xclbin: build/aie.mlir build/kernels.a
 	mkdir -p ${@D}
-ifeq ($(device),npu)
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
     	--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
-				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
-else
-	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
+				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)	--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 endif
 
 build/final_trace.xclbin: build/aie_trace.mlir build/kernels.a
 	mkdir -p ${@D}
-ifeq ($(device),npu)
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
     	--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
-else
-	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
-endif
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
