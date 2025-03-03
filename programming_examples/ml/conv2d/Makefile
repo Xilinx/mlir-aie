@@ -47,9 +47,9 @@ else
 endif
 else ifeq ($(device),npu2)
 ifeq ($(vectorized), true)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -DINT8_ACT -c $< -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DINT8_ACT -c $< -o ${@F}
 else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -DSCALAR -DINT8_ACT -c $< -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DSCALAR -DINT8_ACT -c $< -o ${@F}
 endif
 else
 	echo "Device type not supported"
@@ -65,15 +65,25 @@ build/${mlirFileName}_trace.mlir: ${srcdir}/${aie_py_trace_src}
 
 build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1_i8.o 
 	mkdir -p ${@D} 
+ifeq ($(device),npu)
 	cd ${@D} && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
+else
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
+endif
 
 build/final_trace.xclbin: build/${mlirFileName}_trace.mlir build/conv2dk1_i8.o 
 	mkdir -p ${@D} 
+ifeq ($(device),npu)
 	cd ${@D} && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts_trace.txt $(<:%=../%)
+else
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--xclbin-name=${@F} --npu-insts-name=insts_trace.txt ${<F}
+endif
 
 run_py: build/final.xclbin
 	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -wd ${width} -ht ${height} -ic ${in_channels} -oc ${out_channels}
