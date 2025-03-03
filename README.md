@@ -20,7 +20,7 @@ These instructions will guide you through everything required for building and e
 
 ## Initial Setup
 
-  > Be sure you have the latest BIOS on your laptop or mini-PC that enables the NPU. See [here](update-bios).
+  > Be sure you have the latest BIOS on your laptop or mini-PC that enables the NPU. See [here](#update-bios).
 
 ## Prerequisites
 
