@@ -304,6 +304,12 @@ public:
     llvm::SmallVector<int64_t, 4> strides(4);
     getHardwareStridesWraps(targetModel, bufferType, inputSizes, inputStrides,
                             sizes, strides);
+    bool skipTransformationChecks = isLinearTransferWithoutTransformation();
+    if (failed(verifyStridesWraps(op, bufferType, column, 0, inputSizes,
+                                  inputStrides, sizes, strides,
+                                  skipTransformationChecks))) {
+      return failure();
+    }
     int64_t offset = op.getOffsetInBytes();
 
     // column

@@ -401,8 +401,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
                                   skipTransformationChecks))) {
       return failure();
     }
-  } else
-    return emitOpError("Shim DMA Allocation Op not found.");
+  } 
 
   // packet header
   if (auto packetInfo = getPacket()) {
