@@ -14,7 +14,7 @@ include ${srcdir}/../../makefile-common
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
-devicename = npu
+devicename ?= npu
 targetname = vector_scalar_mul
 # in1_size = 4096
 in1_size = 8192 # in bytes

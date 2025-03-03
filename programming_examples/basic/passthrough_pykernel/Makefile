@@ -12,7 +12,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-devicename = npu
+devicename ?= npu
 targetname = passthrough_pykernel
 VPATH := ${srcdir}/../../../aie_kernels/generic
 data_size = 4096

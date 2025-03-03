@@ -14,7 +14,7 @@ include ${srcdir}/../../makefile-common
 
 all: build/final.xclbin
 
-devicename = npu
+devicename ?= npu
 targetname = vector_scalar_add
 
 aie_py_src=${targetname}.py

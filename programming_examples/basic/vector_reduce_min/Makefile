@@ -13,7 +13,7 @@ include ${srcdir}/../../makefile-common
 ACDC_AIE = $(dir $(shell which aie-opt))/..
 
 targetname = vector_reduce_min
-devicename = npu
+devicename ?= npu
 col = 0
 
 aie_py_src=${targetname}.py

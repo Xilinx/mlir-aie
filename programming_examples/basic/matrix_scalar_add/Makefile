@@ -15,7 +15,7 @@ include ${srcdir}/../../makefile-common
 SHELL := /bin/bash
 
 targetname = matrix_scalar_add
-devicename = npu
+devicename ?= npu
 col = 0
 
 aie_py_src=${targetname}.py
