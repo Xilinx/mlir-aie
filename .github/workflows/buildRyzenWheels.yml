@@ -101,6 +101,7 @@ jobs:
             
             export ENABLE_RTTI=${{ inputs.ENABLE_RTTI }}
 
+            NO_RTTI=""  # Set a default value
             if [ x"$ENABLE_RTTI" == x"OFF" ]; then
               NO_RTTI="-no-rtti"
             fi
