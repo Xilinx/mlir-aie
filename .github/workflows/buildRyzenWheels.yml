@@ -102,8 +102,10 @@ jobs:
             export ENABLE_RTTI=${{ inputs.ENABLE_RTTI }}
 
             NO_RTTI=""  # Set a default value
+            NO_RTTI_UNDERSCORE=""  # Set a default value
             if [ x"$ENABLE_RTTI" == x"false" ]; then
               NO_RTTI="-no-rtti"
+              NO_RTTI_UNDERSCORE="_no_rtti"
             fi
             VERSION=$(utils/clone-llvm.sh --get-wheel-version)
             pip -q download mlir$NO_RTTI==$VERSION \
@@ -112,7 +114,7 @@ jobs:
             # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
             # That means wheels have file with time stamps in the future which makes ninja loop
             # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
-            find mlir$NO_RTTI -exec touch -a -m -t 201108231405.14 {} \;
+            find mlir$NO_RTTI_UNDERSCORE -exec touch -a -m -t 201108231405.14 {} \;
 
             export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
             export MLIR_INSTALL_ABS_PATH=$PWD/mlir
