@@ -12,6 +12,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
+devicename ?= npu
 targetname = passthrough_pykernel
 VPATH := ${srcdir}/../../../aie_kernels/generic
 data_size = 4096
@@ -30,7 +31,7 @@ all: build/final_${data_size}.xclbin
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${PASSTHROUGH_SIZE} > $@
+	python3 $< ${PASSTHROUGH_SIZE} ${devicename} > $@
 
 build/final_${data_size}.xclbin: build/aie.mlir
 	mkdir -p ${@D}
