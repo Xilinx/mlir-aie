@@ -24,7 +24,7 @@ module {
   aie.shim_dma_allocation @airMemcpyId12(MM2S, 0, 0)
   memref.global "public" @airMemcpyId12 : memref<1x2x1x32x32xi32, 1 : i32>
   aiex.runtime_sequence (%arg0: memref<2x64x64xi32>, %arg1: memref<2x64x64xi32>, %arg2: memref<2x64x64xi32>) {
-    aiex.npu.dma_memcpy_nd(0, 0, %arg0[1, 0, 0, 0][1, 2, 32, 32][4096, 2048, 64, 1]) {id = 0 : i64, metadata = @airMemcpyId12} : memref<2x64x64xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[1, 0, 0, 0][1, 2, 32, 32][4096, 2048, 64, 1]) {id = 0 : i64, metadata = @airMemcpyId12} : memref<2x64x64xi32>
   }
  }
 }

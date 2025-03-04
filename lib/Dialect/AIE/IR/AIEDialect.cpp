@@ -70,6 +70,49 @@ struct AIEDialectFoldInterface : DialectFoldInterface {
 
 } // end anonymous namespace
 
+// Helper class to get a ShimDMAAllocationOp for a given <device, symbol name>
+//  pair. An object of this class is invalidated if, for any symbol_name, a
+//  ShimDMAAllocationOp that uses it changes, as the cache is not updated in
+//  this case.
+namespace xilinx::AIE {
+// Return the first ShimDMAAllocationOp nested inside the DeviceOp 'dev' that
+// uses the symbol 'sym_name'
+std::optional<AIE::ShimDMAAllocationOp>
+ShimDMAllocationGetter::get(DeviceOp dev, StringRef sym_name) {
+  auto key = std::make_pair(dev, sym_name);
+  auto it = allocGetter.find(key);
+  if (it != allocGetter.end()) {
+    return it->second;
+  }
+
+  // Call cachelessGet to look for the allocation operation
+  auto allocOp = cachelessGet(dev, sym_name);
+
+  // Only cache the value if it's not empty (i.e., not std::nullopt)
+  if (allocOp.has_value()) {
+    allocGetter[key] = allocOp; // Cache it
+  }
+
+  return allocOp; // Return the found or empty optional
+}
+
+// Finding the ShimDMAAllocationOp for a given <DeviceOp, symbol_name> pair
+// can be slow when the symbol is used in many places. This version of the
+// function is only called when the cache does not have a ShimDMAAllocationOp
+// stored from a previous lookup.
+std::optional<AIE::ShimDMAAllocationOp>
+ShimDMAllocationGetter::cachelessGet(DeviceOp dev, mlir::StringRef sym_name) {
+  auto *sym = dev.lookupSymbol(sym_name);
+  if (!sym)
+    return std::nullopt;
+  auto uses = SymbolTable::getSymbolUses(sym, dev);
+  for (auto use : *uses)
+    if (auto infoOp = dyn_cast<AIE::ShimDMAAllocationOp>(use.getUser()))
+      return infoOp;
+  return std::nullopt;
+}
+} // namespace xilinx::AIE
+
 namespace xilinx::AIE {
 
 LogicalResult myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {

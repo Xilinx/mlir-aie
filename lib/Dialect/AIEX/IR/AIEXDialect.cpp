@@ -391,11 +391,16 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   // even if it exceeds the maximum stride/wrap size of any one dimension,
   // and simply do not lower any data layout transformations, since there is
   // no other way to express this at the dma_memcpy_nd interface otherwise.
-  bool skipTransformationChecks = isLinearTransferWithoutTransformation();
-  if (failed(verifyStridesWraps(*this, buffer, getX(), getY(), inputSizes,
-                                inputStrides, hardwareSizes, hardwareStrides,
-                                skipTransformationChecks))) {
-    return failure();
+  AIE::ShimDMAllocationGetter allocGetter;
+  AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
+  if (auto allocOp = allocGetter.get(dev, getMetadata())) {
+    int col = allocOp->getCol();
+    bool skipTransformationChecks = isLinearTransferWithoutTransformation();
+    if (failed(verifyStridesWraps(*this, buffer, col, 0, inputSizes,
+                                  inputStrides, hardwareSizes, hardwareStrides,
+                                  skipTransformationChecks))) {
+      return failure();
+    }
   }
 
   // packet header
