@@ -809,10 +809,15 @@ def runtime_sequence(*inputs: Type, sym_name=None, context=None):
         name = sym_name if sym_name else f.__name__
         with InsertionPoint(entry_block):
             f(*args)
-        seq_op.attributes["sym_name"] = (name if (
-            isinstance(name, Attribute) or
-                not AttrBuilder.contains('SymbolNameAttr')) else
-                    AttrBuilder.get('SymbolNameAttr')(name, context=context))
+        seq_op.attributes["sym_name"] = (
+            name
+            if (
+                isinstance(name, Attribute)
+                or not AttrBuilder.contains("SymbolNameAttr")
+            )
+            else AttrBuilder.get("SymbolNameAttr")(name, context=context)
+        )
+
     return decorator
 
 
