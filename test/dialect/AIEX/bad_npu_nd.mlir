@@ -68,7 +68,7 @@ module {
 
 // Offsets need to be 4-byte aligned.
 
- module {
+module {
   aie.device(npu1_4col) {
     aiex.runtime_sequence(%a : memref<8xi8>) {
       %c0 = arith.constant 0 : i64
@@ -86,7 +86,7 @@ module {
 // Strides and sizes expressed in types other than i32 should not overflow hardware limitations when converted to 4-byte granularity.
 // The following tests check this.
   
-  module {
+module {
   aie.device(npu1_4col) {
     memref.global "public" @objectfifo : memref<8xi8, 1 : i8>
     aiex.runtime_sequence(%a : memref<8xi8>) {
