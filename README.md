@@ -61,7 +61,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
        ```bash
        cd $XDNA_SRC_DIR/xrt/build/Release
-       sudo apt reinstall ./xrt_202510.2.19.0_22.04-amd64-npu.deb
+       sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-npu.deb
        ```
 
        > **An error might occur during this proces.** If so, do the following steps.
@@ -69,9 +69,9 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
        ```bash
        cd $XDNA_SRC_DIR/xrt/build/Release
        sudo apt remove xrt-npu
-       sudo dpkg -i --force-overwrite ./xrt_202510.2.19.0_22.04-amd64-npu.deb
+       sudo dpkg -i --force-overwrite ./xrt_202510.2.19.0_24.10-amd64-npu.deb
        sudo apt -f install
-       sudo apt reinstall ./xrt_202510.2.19.0_22.04-amd64-npu.deb
+       sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-npu.deb
        ```      
 
 1. Build XDNA-Driver. Below steps are adapted from [here](https://github.com/amd/xdna-driver).
@@ -86,7 +86,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
     ```bash
     cd $XDNA_SRC_DIR/build/Release
-    sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu22.04-x86_64-amdxdna.deb
+    sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu24.10-x86_64-amdxdna.deb
     ```
     
 1. Check that the NPU is working if the device appears with xrt-smi:
@@ -122,7 +122,6 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    sudo apt install libopencv-dev python3-opencv
    ```
 
-
 ## Install IRON for AMD Ryzen™ AI AIE Application Development
 
 1. Clone [the mlir-aie repository](https://github.com/Xilinx/mlir-aie.git):
@@ -138,8 +137,6 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 > Remember to set up your environment including IRON, and XRT
 > ```
->   source yourVitisSetupScript.sh
->   export LM_LICENSE_FILE=/opt/Xilinx.lic
 >   source /opt/xilinx/xrt/setup.sh
 >   source ironenv/bin/activate
 >   source utils/env_setup.sh  
