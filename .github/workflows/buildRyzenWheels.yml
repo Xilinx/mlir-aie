@@ -3,6 +3,17 @@ name: Build wheels for Ryzen AI
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      ENABLE_RTTI:
+        description: 'Run the build with rtti enabled'
+        type: boolean
+        required: false
+        default: true
+      AIE_COMMIT:
+        description: 'AIE commit to build'
+        type: string
+        required: false
+        default: ''
   merge_group:
 
   schedule:
@@ -97,13 +108,18 @@ jobs:
             # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
             find mlir -exec touch -a -m -t 201108231405.14 {} \;
 
+            export ENABLE_RTTI=${{ inputs.ENABLE_RTTI }}
             export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
             export MLIR_INSTALL_ABS_PATH=$PWD/mlir
             export MLIR_AIE_SOURCE_DIR=$PWD
             export WHEELHOUSE_DIR=$PWD/wheelhouse
             export CMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx
             export XRT_ROOT=/opt/xilinx/xrt
-            export AIE_PROJECT_COMMIT=$MLIR_VERSION
+            if [ x"${{ inputs.AIE_COMMIT }}" == x"" ]; then
+              export AIE_PROJECT_COMMIT=$MLIR_VERSION
+            else
+              export AIE_PROJECT_COMMIT="${{ inputs.AIE_COMMIT }}"
+            fi
             export AIE_VITIS_COMPONENTS='AIE2;AIE2P'
             export DATETIME=$(date +"%Y%m%d%H")
 
@@ -114,7 +130,7 @@ jobs:
 
             popd
 
-            auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/mlir_aie-*.whl --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so --exclude libmlir_float16_utils.so
+            auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/mlir_aie*.whl --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so --exclude libmlir_float16_utils.so
             # WHL_FN=$(ls $WHEELHOUSE_DIR/repaired_wheel/mlir_aie*whl)
             # mv "$WHL_FN" "`echo $WHL_FN | sed "s/cp310-cp310/py3-none/"`"
 
