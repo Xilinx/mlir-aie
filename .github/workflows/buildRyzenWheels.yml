@@ -81,7 +81,6 @@ jobs:
             git config --global --add safe.directory $PWD
             MLIR_VERSION=$(git rev-parse --short HEAD)
             echo "Building mlir-aie version $MLIR_VERSION"
-            echo "ENABLE_RTTI=${{ inputs.ENABLE_RTTI }}" | tee -a $GITHUB_ENV
 
             python${{ matrix.python_version }} -m venv ${{ github.workspace }}/aie-venv
             source ${{ github.workspace }}/aie-venv/bin/activate
@@ -104,6 +103,7 @@ jobs:
             # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
             find mlir -exec touch -a -m -t 201108231405.14 {} \;
 
+            export ENABLE_RTTI=${{ inputs.ENABLE_RTTI }}
             export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
             export MLIR_INSTALL_ABS_PATH=$PWD/mlir
             export MLIR_AIE_SOURCE_DIR=$PWD
