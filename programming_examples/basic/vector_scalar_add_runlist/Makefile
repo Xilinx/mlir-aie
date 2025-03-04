@@ -14,6 +14,7 @@ include ${srcdir}/../../makefile-common
 
 all: build/final.xclbin
 
+devicename ?= npu
 targetname = vector_scalar_add
 
 aie_py_src=${targetname}.py
@@ -25,7 +26,7 @@ endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< > $@
+	python3 $< ${devicename} > $@
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
