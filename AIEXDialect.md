@@ -778,7 +778,7 @@ _Half DMA operator_
 Syntax:
 
 ```
-operation ::= `aiex.npu.dma_memcpy_nd` `(` $x `,` $y `,` $memref ``
+operation ::= `aiex.npu.dma_memcpy_nd` `(` $memref ``
               custom<DynamicIndexList>($offsets, $static_offsets) ``
               custom<DynamicIndexList>($sizes, $static_sizes) ``
               custom<DynamicIndexList>($strides, $static_strides) ``
@@ -788,9 +788,9 @@ operation ::= `aiex.npu.dma_memcpy_nd` `(` $x `,` $y `,` $memref ``
 
 An n-dimensional half DMA operator.
 
-Programs a DMA on coordinates (`x`, `y`) to access a memory `memref` with an access
-pattern specified by `offsets`, `sizes` and `strides` or `static_offsets`, `static_sizes`
-and `static_strides`. The operator references the target channel through the `metadata`
+Programs a DMA to access a memory `memref` with an access pattern specified by `offsets`,
+`sizes` and `strides` or `static_offsets`, `static_sizes` and `static_strides`. The operator
+references the target DMA coordinates (`x`, `y`) and channel through the `metadata`
 symbol and specifies a descriptor `id` to be used, which will become the `bd_id` to be used
 when lowered further. The `issue_token` attribute specifies whether the execution of this
 operation should issue a token which can be received and read for synchronization purposes.
@@ -857,8 +857,6 @@ Interfaces: `MyOffsetSizeAndStrideOpInterface`
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>x</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
-<tr><td><code>y</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>static_offsets</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 4 elements</td></tr>
 <tr><td><code>static_sizes</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 4 elements</td></tr>
 <tr><td><code>static_strides</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 4 elements</td></tr>
@@ -880,7 +878,7 @@ Interfaces: `MyOffsetSizeAndStrideOpInterface`
 
 | Operand | Description |
 | :-----: | ----------- |
-| `memref` | ranked or unranked memref of any type values |
+| `memref` | memref of any type values |
 | `offsets` | variadic of 64-bit signless integer |
 | `sizes` | variadic of 64-bit signless integer |
 | `strides` | variadic of 64-bit signless integer |
