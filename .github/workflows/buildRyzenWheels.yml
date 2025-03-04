@@ -117,7 +117,7 @@ jobs:
             find mlir$NO_RTTI_UNDERSCORE -exec touch -a -m -t 201108231405.14 {} \;
 
             export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
-            export MLIR_INSTALL_ABS_PATH=$PWD/mlir
+            export MLIR_INSTALL_ABS_PATH=$PWD/mlir$NO_RTTI_UNDERSCORE
             export MLIR_AIE_SOURCE_DIR=$PWD
             export WHEELHOUSE_DIR=$PWD/wheelhouse
             export CMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx
