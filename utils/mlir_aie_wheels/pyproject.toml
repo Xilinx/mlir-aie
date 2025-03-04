@@ -26,7 +26,7 @@ environment-pass = [
     "ENABLE_RTTI",
 ]
 repair-wheel-command = [
-    "auditwheel repair -w {dest_dir} {wheel} --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so --exclude libmlir_float16_utils.so"
+    "auditwheel repair -w {dest_dir} {wheel} --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so:libmlir_float16_utils.so"
 ]
 
 [tool.cibuildwheel.macos]
