@@ -3,6 +3,12 @@ name: Build wheels for Ryzen AI
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      ENABLE_RTTI:
+        description: 'Run the build with rtti enabled'
+        type: boolean
+        required: false
+        default: true
   merge_group:
 
   schedule:
@@ -75,6 +81,7 @@ jobs:
             git config --global --add safe.directory $PWD
             MLIR_VERSION=$(git rev-parse --short HEAD)
             echo "Building mlir-aie version $MLIR_VERSION"
+            echo "ENABLE_RTTI=${{ inputs.ENABLE_RTTI }}" | tee -a $GITHUB_ENV
 
             python${{ matrix.python_version }} -m venv ${{ github.workspace }}/aie-venv
             source ${{ github.workspace }}/aie-venv/bin/activate
