@@ -9,6 +9,11 @@ on:
         type: boolean
         required: false
         default: true
+      AIE_COMMIT:
+        description: 'AIE commit to build'
+        type: string
+        required: false
+        default: ''
   merge_group:
 
   schedule:
@@ -110,7 +115,11 @@ jobs:
             export WHEELHOUSE_DIR=$PWD/wheelhouse
             export CMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx
             export XRT_ROOT=/opt/xilinx/xrt
-            export AIE_PROJECT_COMMIT=$MLIR_VERSION
+            if [ x"${{ inputs.AIE_COMMIT }}" == x"" ]; then
+              export AIE_PROJECT_COMMIT=$MLIR_VERSION
+            else
+              export AIE_PROJECT_COMMIT="${{ inputs.AIE_COMMIT }}"
+            fi
             export AIE_VITIS_COMPONENTS='AIE2;AIE2P'
             export DATETIME=$(date +"%Y%m%d%H")
 
