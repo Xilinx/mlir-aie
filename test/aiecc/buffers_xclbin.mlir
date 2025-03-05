@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: %python aiecc.py --no-compile --no-link --aie-generate-xclbin %s
+// RUN: %python aiecc.py -n --no-compile --no-link --aie-generate-xclbin %s
 // RUN: FileCheck %s --input-file=buffers_xclbin.mlir.prj/kernels.json
 
 // CHECK: {

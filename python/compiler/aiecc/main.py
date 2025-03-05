@@ -1170,19 +1170,20 @@ class FlowRunner:
             )
 
             input_physical = self.prepend_tmp("input_physical.mlir")
-            processes = [self.do_call(
-                None,
-                [
-                    "aie-opt",
-                    "--aie-create-pathfinder-flows",
-                    file_with_addresses,
-                    "-o",
-                    input_physical
-                ]
-            )]
-            await asyncio.gather(
-                *processes
-            )
+            processes = [
+                self.do_call(
+                    None,
+                    [
+                        "aie-opt",
+                        "--aie-create-pathfinder-flows",
+                        file_with_addresses,
+                        "-o",
+                        input_physical,
+                    ],
+                    force=True,
+                )
+            ]
+            await asyncio.gather(*processes)
 
             if len(opts.host_args) > 0:
                 await self.process_host_cgen(aie_target, input_physical)
