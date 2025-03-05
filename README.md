@@ -22,7 +22,7 @@ These instructions will guide you through everything required for building and e
 
   > Be sure you have the latest BIOS on your laptop or mini-PC that enables the NPU. See [here](#update-bios).
 
-If starting from `Ubuntu 24.04` you may need to update the Linux kernel by installing the Hardware Enablement (HWE) stack:
+If starting from `Ubuntu 24.04` you may need to update the Linux kernel to 6.11+ by installing the Hardware Enablement (HWE) stack:
 
   ```bash
   sudo apt update 
