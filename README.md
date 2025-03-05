@@ -97,12 +97,14 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
     # Ubuntu 24.04
     cd $XDNA_SRC_DIR/build/Release
     sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu24.04-x86_64-amdxdna.deb
+    sudo reboot
     ```
 
     ```bash
     # Ubuntu 24.10
     cd $XDNA_SRC_DIR/build/Release
     sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu24.10-x86_64-amdxdna.deb
+    sudo reboot
     ```
     
 1. Check that the NPU is working if the device appears with xrt-smi:
