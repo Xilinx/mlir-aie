@@ -17,9 +17,17 @@ PROBLEM_SIZE = 1024
 MEM_TILE_WIDTH = 64
 AIE_TILE_WIDTH = 32
 
+if len(sys.argv) > 1:
+    if sys.argv[1] == "npu":
+        dev = AIEDevice.npu1_1col
+    elif sys.argv[1] == "npu2":
+        dev = AIEDevice.npu2
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+
 
 def my_vector_bias_add():
-    @device(AIEDevice.npu1_1col)
+    @device(dev)
     def device_body():
         mem_tile_ty = np.ndarray[(MEM_TILE_WIDTH,), np.dtype[np.int32]]
         aie_tile_ty = np.ndarray[(AIE_TILE_WIDTH,), np.dtype[np.int32]]

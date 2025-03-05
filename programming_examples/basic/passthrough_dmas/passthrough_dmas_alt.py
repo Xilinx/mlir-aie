@@ -25,6 +25,8 @@ if len(sys.argv) > 1:
 if len(sys.argv) > 2:
     if sys.argv[2] == "npu":
         dev = AIEDevice.npu1_1col
+    elif sys.argv[2] == "npu2":
+        dev = AIEDevice.npu2
     elif sys.argv[2] == "xcvc1902":
         dev = AIEDevice.xcvc1902
     else:
