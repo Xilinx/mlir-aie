@@ -1736,7 +1736,9 @@ struct AIEObjectFifoStatefulTransformPass
         // and the previous one
         // !!! operations may not be in the same block !!!
         int numRel = 0;
-        for (std::vector<ObjectFifoReleaseOp>::iterator relOp = releaseOps[{op, portNum}].begin(); relOp != releaseOps[{op, portNum}].end();) {
+        for (std::vector<ObjectFifoReleaseOp>::iterator relOp =
+                 releaseOps[{op, portNum}].begin();
+             relOp != releaseOps[{op, portNum}].end();) {
           bool erased = false;
           Operation *acqBlockDefOp = acquireOp.getOperation();
           do {
