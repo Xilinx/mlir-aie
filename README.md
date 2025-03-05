@@ -16,11 +16,19 @@ This project is primarily intended to support the open-source community, particu
 
 # Getting Started for AMD Ryzen™ AI on Linux
 
-These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 24.04.2** or **Ubuntu 24.10** install with included Linux 6.11 kernel. 
+These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 24.04** or **Ubuntu 24.10** install.
 
 ## Initial Setup
 
   > Be sure you have the latest BIOS on your laptop or mini-PC that enables the NPU. See [here](#update-bios).
+
+If starting from `Ubuntu 24.04` you may need to update the Linux kernel by installing the Hardware Enablement (HWE) stack:
+
+  ```bash
+  sudo apt update 
+  sudo apt install --install-recommends linux-generic-hwe-24.04
+  sudo reboot
+  ```
 
 ## Prerequisites
 
@@ -61,18 +69,15 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
        ```bash
        cd $XDNA_SRC_DIR/xrt/build/Release
-       sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-npu.deb
+       # Ubuntu 24.04
+       sudo apt reinstall ./xrt_202510.2.19.0_24.04-amd64-base.deb
+       sudo apt reinstall ./xrt_202510.2.19.0_24.04-amd64-base-dev.deb
+       # Ubuntu 24.10
+       sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-base.deb
+       sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-base-dev.deb
        ```
 
-       > **An error might occur during this proces.** If so, do the following steps.
-
-       ```bash
-       cd $XDNA_SRC_DIR/xrt/build/Release
-       sudo apt remove xrt-npu
-       sudo dpkg -i --force-overwrite ./xrt_202510.2.19.0_24.10-amd64-npu.deb
-       sudo apt -f install
-       sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-npu.deb
-       ```      
+       > **An error might occur during this proces.** If so, you may have to remove and force-overwrite/reinstall the packages.
 
 1. Build XDNA-Driver. Below steps are adapted from [here](https://github.com/amd/xdna-driver).
 
@@ -86,6 +91,9 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
     ```bash
     cd $XDNA_SRC_DIR/build/Release
+    # Ubuntu 24.04
+    sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu24.04-x86_64-amdxdna.deb
+    # Ubuntu 24.10
     sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu24.10-x86_64-amdxdna.deb
     ```
     
