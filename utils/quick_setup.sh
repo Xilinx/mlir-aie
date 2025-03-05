@@ -33,6 +33,12 @@ if [[ $WSL_DISTRO_NAME == "" ]]; then
 else
   echo "Environment is WSL"
 fi
+# Check if the current environment is NPU2
+if echo "$NPU" | grep -qi "npu4"; then
+    export NPU2=0
+else
+    export NPU2=1
+fi
 if hash python3.12; then
    echo "Using python version `python3.12 --version`"
    my_python=python3.12
