@@ -128,15 +128,12 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
     ```bash
     sudo apt install \
-    build-essential clang clang-14 lld lld-14 cmake python3-venv python3-pip libxrender1 libxtst6 libxi6
+    build-essential clang clang-14 lld lld-14 cmake python3-venv python3-pip
     ```
 
-1. Install g++13 and opencv which is needed for some programming examples:
+1. Install opencv which is needed for some programming examples:
 
    ```bash
-   sudo add-apt-repository ppa:ubuntu-toolchain-r/test
-   sudo apt update
-   sudo apt install gcc-13 g++-13 -y
    sudo apt install libopencv-dev python3-opencv
    ```
 
@@ -148,34 +145,23 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    cd mlir-aie
    ```
 
-1. Source `utils/quick_setup.sh` to setup the prerequisites and
-   install the mlir-aie compiler tools from whls.
+1. Install IRON library, mlir-aie and llvm-aie compilers from whls:
+   ```bash
+   source utils/quick_setup.sh
+   ```
 
 ## Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU
 
-> Remember to set up your environment including IRON, and XRT
-> ```
->   source /opt/xilinx/xrt/setup.sh
->   source ironenv/bin/activate
->   source utils/env_setup.sh  
-> ```
-> 
 For your design of interest, for instance from [programming_examples](../programming_examples/), 2 steps are needed: (i) build the AIE design and then (ii) build the host code.
 
 ### Build Device AIE Part
 
-1. Goto the design of interest and run `make`
+1. Goto the design of interest and run:
+   ```bash
+   make
+   ```
 
-### Build and Run Host Part
-
-1. Build: Goto the same design of interest folder where the AIE design just was built (see above)
-    ```bash
-    make <testName>.exe
-    ```
-    > Note that the host code target has a `.exe` file extension even on Linux. Although unusual, this is an easy way for us to distinguish whether we want to compile device code or host code.
-
-
-1. Run (program arguments are just an example for vector_scalar_add design)
+1. Build host code and execute the design:
     ```bash
     make run
     ```
