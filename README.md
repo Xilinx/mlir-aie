@@ -68,11 +68,15 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
     3. Install XRT.
 
        ```bash
-       cd $XDNA_SRC_DIR/xrt/build/Release
        # Ubuntu 24.04
+       cd $XDNA_SRC_DIR/xrt/build/Release
        sudo apt reinstall ./xrt_202510.2.19.0_24.04-amd64-base.deb
        sudo apt reinstall ./xrt_202510.2.19.0_24.04-amd64-base-dev.deb
+       ```
+       
+       ```bash
        # Ubuntu 24.10
+       cd $XDNA_SRC_DIR/xrt/build/Release
        sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-base.deb
        sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-base-dev.deb
        ```
@@ -90,10 +94,14 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 1. Install XDNA™.
 
     ```bash
-    cd $XDNA_SRC_DIR/build/Release
     # Ubuntu 24.04
+    cd $XDNA_SRC_DIR/build/Release
     sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu24.04-x86_64-amdxdna.deb
+    ```
+
+    ```bash
     # Ubuntu 24.10
+    cd $XDNA_SRC_DIR/build/Release
     sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu24.10-x86_64-amdxdna.deb
     ```
     
