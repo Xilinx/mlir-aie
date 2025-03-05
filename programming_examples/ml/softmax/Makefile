@@ -14,7 +14,7 @@ include ${srcdir}/../../makefile-common
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
-device ?= npu
+device ?= $(if $(NPU2),npu2,npu)
 targetname = softmax
 trace_size = 8192
 

@@ -14,7 +14,7 @@ include ${srcdir}/../../makefile-common
 
 all: build/final.xclbin
 
-device ?= npu
+device ?= $(if $(NPU2),npu2,npu)
 targetname = eltwise_add
 trace_size = 8192
 

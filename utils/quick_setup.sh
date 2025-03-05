@@ -33,6 +33,12 @@ if [[ $WSL_DISTRO_NAME == "" ]]; then
 else
   echo "Environment is WSL"
 fi
+# Check if the current environment is NPU2
+if echo "$NPU" | grep -qi "npu4"; then
+    export NPU2=0
+else
+    export NPU2=1
+fi
 if hash python3.12; then
    echo "Using python version `python3.12 --version`"
    my_python=python3.12
@@ -52,7 +58,7 @@ source ironenv/bin/activate
 python3 -m pip install --upgrade pip
 
 python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/ 
-MLIR_AIE_DIR="$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie"
+export MLIR_AIE_INSTALL_DIR="$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie"
 
 python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
 export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"

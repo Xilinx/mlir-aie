@@ -14,7 +14,7 @@ include ${srcdir}/../../makefile-common
 
 SHELL := /bin/bash
 
-devicename ?= npu
+devicename ?= $(if $(NPU2),npu2,npu)
 VPATH := ${srcdir}/../../../aie_kernels/generic
 all: build/final.xclbin build/insts.txt
 

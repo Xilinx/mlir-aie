@@ -14,7 +14,7 @@ include ${srcdir}/../../makefile-common
 
 all: build/final.xclbin build/insts.txt
 
-devicename ?= npu
+devicename ?= $(if $(NPU2),npu2,npu)
 targetname = passthrough_dmas
 LENGTH ?= 4096
 

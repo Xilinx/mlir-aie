@@ -32,7 +32,7 @@ xclbin_target?=build/final.xclbin
 insts_target?=build/insts.txt
 host_target?=build/test
 
-devicename ?= npu
+devicename ?= $(if $(NPU2),npu2,npu)
 M=768
 N=2304
 m=96
