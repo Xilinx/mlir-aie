@@ -16,11 +16,19 @@ This project is primarily intended to support the open-source community, particu
 
 # Getting Started for AMD Ryzen™ AI on Linux
 
-These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 24.04.2** or **Ubuntu 24.10** install with included Linux 6.11 kernel. 
+These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 24.04** or **Ubuntu 24.10** install.
 
 ## Initial Setup
 
   > Be sure you have the latest BIOS on your laptop or mini-PC that enables the NPU. See [here](#update-bios).
+
+If starting from `Ubuntu 24.04` you may need to update the Linux kernel to 6.11+ by installing the Hardware Enablement (HWE) stack:
+
+  ```bash
+  sudo apt update 
+  sudo apt install --install-recommends linux-generic-hwe-24.04
+  sudo reboot
+  ```
 
 ## Prerequisites
 
@@ -60,19 +68,20 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
     3. Install XRT.
 
        ```bash
+       # Ubuntu 24.04
        cd $XDNA_SRC_DIR/xrt/build/Release
-       sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-npu.deb
+       sudo apt reinstall ./xrt_202510.2.19.0_24.04-amd64-base.deb
+       sudo apt reinstall ./xrt_202510.2.19.0_24.04-amd64-base-dev.deb
+       ```
+       
+       ```bash
+       # Ubuntu 24.10
+       cd $XDNA_SRC_DIR/xrt/build/Release
+       sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-base.deb
+       sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-base-dev.deb
        ```
 
-       > **An error might occur during this proces.** If so, do the following steps.
-
-       ```bash
-       cd $XDNA_SRC_DIR/xrt/build/Release
-       sudo apt remove xrt-npu
-       sudo dpkg -i --force-overwrite ./xrt_202510.2.19.0_24.10-amd64-npu.deb
-       sudo apt -f install
-       sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-npu.deb
-       ```      
+       > **An error might occur during this proces.** If so, you may have to remove and force-overwrite/reinstall the packages.
 
 1. Build XDNA-Driver. Below steps are adapted from [here](https://github.com/amd/xdna-driver).
 
@@ -85,8 +94,17 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 1. Install XDNA™.
 
     ```bash
+    # Ubuntu 24.04
+    cd $XDNA_SRC_DIR/build/Release
+    sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu24.04-x86_64-amdxdna.deb
+    sudo reboot
+    ```
+
+    ```bash
+    # Ubuntu 24.10
     cd $XDNA_SRC_DIR/build/Release
     sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu24.10-x86_64-amdxdna.deb
+    sudo reboot
     ```
     
 1. Check that the NPU is working if the device appears with xrt-smi:
@@ -110,15 +128,12 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
     ```bash
     sudo apt install \
-    build-essential clang clang-14 lld lld-14 cmake python3-venv python3-pip libxrender1 libxtst6 libxi6
+    build-essential clang clang-14 lld lld-14 cmake python3-venv python3-pip
     ```
 
-1. Install g++13 and opencv which is needed for some programming examples:
+1. Install opencv which is needed for some programming examples:
 
    ```bash
-   sudo add-apt-repository ppa:ubuntu-toolchain-r/test
-   sudo apt update
-   sudo apt install gcc-13 g++-13 -y
    sudo apt install libopencv-dev python3-opencv
    ```
 
@@ -130,34 +145,23 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    cd mlir-aie
    ```
 
-1. Source `utils/quick_setup.sh` to setup the prerequisites and
-   install the mlir-aie compiler tools from whls.
+1. Install IRON library, mlir-aie and llvm-aie compilers from whls:
+   ```bash
+   source utils/quick_setup.sh
+   ```
 
 ## Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU
 
-> Remember to set up your environment including IRON, and XRT
-> ```
->   source /opt/xilinx/xrt/setup.sh
->   source ironenv/bin/activate
->   source utils/env_setup.sh  
-> ```
-> 
 For your design of interest, for instance from [programming_examples](../programming_examples/), 2 steps are needed: (i) build the AIE design and then (ii) build the host code.
 
 ### Build Device AIE Part
 
-1. Goto the design of interest and run `make`
+1. Goto the design of interest and run:
+   ```bash
+   make
+   ```
 
-### Build and Run Host Part
-
-1. Build: Goto the same design of interest folder where the AIE design just was built (see above)
-    ```bash
-    make <testName>.exe
-    ```
-    > Note that the host code target has a `.exe` file extension even on Linux. Although unusual, this is an easy way for us to distinguish whether we want to compile device code or host code.
-
-
-1. Run (program arguments are just an example for vector_scalar_add design)
+1. Build host code and execute the design:
     ```bash
     make run
     ```
