@@ -1862,153 +1862,158 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l01736" name="l01736"></a><span class="lineno"> 1736</span>        <span class="comment">// and the previous one</span></div>
 <div class="line"><a id="l01737" name="l01737"></a><span class="lineno"> 1737</span>        <span class="comment">// !!! operations may not be in the same block !!!</span></div>
 <div class="line"><a id="l01738" name="l01738"></a><span class="lineno"> 1738</span>        <span class="keywordtype">int</span> numRel = 0;</div>
-<div class="line"><a id="l01739" name="l01739"></a><span class="lineno"> 1739</span>        <span class="keywordflow">for</span> (<span class="keyword">auto</span> relOp : releaseOps[{op, portNum}]) {</div>
-<div class="line"><a id="l01740" name="l01740"></a><span class="lineno"> 1740</span>          Operation *acqBlockDefOp = acquireOp.getOperation();</div>
-<div class="line"><a id="l01741" name="l01741"></a><span class="lineno"> 1741</span>          <span class="keywordflow">do</span> {</div>
-<div class="line"><a id="l01742" name="l01742"></a><span class="lineno"> 1742</span>            Operation *relBlockDefOp = relOp.getOperation();</div>
-<div class="line"><a id="l01743" name="l01743"></a><span class="lineno"> 1743</span>            <span class="keywordflow">do</span> {</div>
-<div class="line"><a id="l01744" name="l01744"></a><span class="lineno"> 1744</span>              <span class="keywordflow">if</span> (acqBlockDefOp-&gt;getBlock() == relBlockDefOp-&gt;getBlock()) {</div>
-<div class="line"><a id="l01745" name="l01745"></a><span class="lineno"> 1745</span>                <span class="keywordflow">if</span> (relBlockDefOp-&gt;isBeforeInBlock(acqBlockDefOp)) {</div>
-<div class="line"><a id="l01746" name="l01746"></a><span class="lineno"> 1746</span>                  releaseOps[{op, portNum}].erase(</div>
-<div class="line"><a id="l01747" name="l01747"></a><span class="lineno"> 1747</span>                      releaseOps[{op, portNum}]</div>
-<div class="line"><a id="l01748" name="l01748"></a><span class="lineno"> 1748</span>                          .begin()); <span class="comment">// to ensure that we do not account</span></div>
-<div class="line"><a id="l01749" name="l01749"></a><span class="lineno"> 1749</span>                  <span class="comment">// the ReleaseOps again later,</span></div>
-<div class="line"><a id="l01750" name="l01750"></a><span class="lineno"> 1750</span>                  <span class="comment">// after the subview is created</span></div>
-<div class="line"><a id="l01751" name="l01751"></a><span class="lineno"> 1751</span>                  numRel += relOp.relNumber();</div>
-<div class="line"><a id="l01752" name="l01752"></a><span class="lineno"> 1752</span>                }</div>
-<div class="line"><a id="l01753" name="l01753"></a><span class="lineno"> 1753</span>              }</div>
-<div class="line"><a id="l01754" name="l01754"></a><span class="lineno"> 1754</span>            } <span class="keywordflow">while</span> ((relBlockDefOp = relBlockDefOp-&gt;getParentOp()) &amp;&amp;</div>
-<div class="line"><a id="l01755" name="l01755"></a><span class="lineno"> 1755</span>                     !isa&lt;DeviceOp&gt;(relBlockDefOp));</div>
-<div class="line"><a id="l01756" name="l01756"></a><span class="lineno"> 1756</span>          } <span class="keywordflow">while</span> ((acqBlockDefOp = acqBlockDefOp-&gt;getParentOp()) &amp;&amp;</div>
-<div class="line"><a id="l01757" name="l01757"></a><span class="lineno"> 1757</span>                   !isa&lt;DeviceOp&gt;(acqBlockDefOp));</div>
-<div class="line"><a id="l01758" name="l01758"></a><span class="lineno"> 1758</span>        }</div>
-<div class="line"><a id="l01759" name="l01759"></a><span class="lineno"> 1759</span> </div>
-<div class="line"><a id="l01760" name="l01760"></a><span class="lineno"> 1760</span>        <span class="comment">// track indices of elements to acquire</span></div>
-<div class="line"><a id="l01761" name="l01761"></a><span class="lineno"> 1761</span>        std::vector&lt;int&gt; acquiredIndices;</div>
-<div class="line"><a id="l01762" name="l01762"></a><span class="lineno"> 1762</span>        <span class="keywordflow">if</span> (!acquiresPerFifo[{op, portNum}].empty()) {</div>
-<div class="line"><a id="l01763" name="l01763"></a><span class="lineno"> 1763</span>          <span class="comment">// take into account what has already been acquired by previous</span></div>
-<div class="line"><a id="l01764" name="l01764"></a><span class="lineno"> 1764</span>          <span class="comment">// AcquireOp in program order</span></div>
-<div class="line"><a id="l01765" name="l01765"></a><span class="lineno"> 1765</span>          acquiredIndices = acquiresPerFifo[{op, portNum}];</div>
-<div class="line"><a id="l01766" name="l01766"></a><span class="lineno"> 1766</span>          <span class="comment">// take into account what has been released in-between</span></div>
-<div class="line"><a id="l01767" name="l01767"></a><span class="lineno"> 1767</span>          <span class="keywordflow">if</span> (<span class="keyword">static_cast&lt;</span><span class="keywordtype">size_t</span><span class="keyword">&gt;</span>(numRel) &gt; acquiredIndices.size()) {</div>
-<div class="line"><a id="l01768" name="l01768"></a><span class="lineno"> 1768</span>            acquireOp-&gt;emitOpError(<span class="stringliteral">&quot;cannot release more elements than are &quot;</span></div>
-<div class="line"><a id="l01769" name="l01769"></a><span class="lineno"> 1769</span>                                   <span class="stringliteral">&quot;already acquired&quot;</span>);</div>
-<div class="line"><a id="l01770" name="l01770"></a><span class="lineno"> 1770</span>            <span class="keywordflow">return</span>;</div>
-<div class="line"><a id="l01771" name="l01771"></a><span class="lineno"> 1771</span>          }</div>
-<div class="line"><a id="l01772" name="l01772"></a><span class="lineno"> 1772</span>          <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; numRel; i++)</div>
-<div class="line"><a id="l01773" name="l01773"></a><span class="lineno"> 1773</span>            acquiredIndices.erase(acquiredIndices.begin());</div>
-<div class="line"><a id="l01774" name="l01774"></a><span class="lineno"> 1774</span>        }</div>
-<div class="line"><a id="l01775" name="l01775"></a><span class="lineno"> 1775</span> </div>
-<div class="line"><a id="l01776" name="l01776"></a><span class="lineno"> 1776</span>        <span class="comment">// acquire locks</span></div>
-<div class="line"><a id="l01777" name="l01777"></a><span class="lineno"> 1777</span>        <span class="keywordtype">int</span> numLocks = acquireOp.acqNumber();</div>
-<div class="line"><a id="l01778" name="l01778"></a><span class="lineno"> 1778</span>        <span class="keywordtype">int</span> alreadyAcq = acquiredIndices.size();</div>
-<div class="line"><a id="l01779" name="l01779"></a><span class="lineno"> 1779</span>        <span class="keywordtype">int</span> numCreate;</div>
-<div class="line"><a id="l01780" name="l01780"></a><span class="lineno"> 1780</span>        <span class="keywordflow">if</span> (numLocks &gt; alreadyAcq)</div>
-<div class="line"><a id="l01781" name="l01781"></a><span class="lineno"> 1781</span>          numCreate = numLocks - alreadyAcq;</div>
-<div class="line"><a id="l01782" name="l01782"></a><span class="lineno"> 1782</span>        <span class="keywordflow">else</span></div>
-<div class="line"><a id="l01783" name="l01783"></a><span class="lineno"> 1783</span>          numCreate = 0;</div>
-<div class="line"><a id="l01784" name="l01784"></a><span class="lineno"> 1784</span> </div>
-<div class="line"><a id="l01785" name="l01785"></a><span class="lineno"> 1785</span>        <span class="comment">// account for repetition</span></div>
-<div class="line"><a id="l01786" name="l01786"></a><span class="lineno"> 1786</span>        <span class="keywordflow">if</span> (op.getRepeatCount().has_value())</div>
-<div class="line"><a id="l01787" name="l01787"></a><span class="lineno"> 1787</span>          numCreate *= op.getRepeatCount().value();</div>
-<div class="line"><a id="l01788" name="l01788"></a><span class="lineno"> 1788</span> </div>
-<div class="line"><a id="l01789" name="l01789"></a><span class="lineno"> 1789</span>        <span class="keyword">auto</span> dev = op-&gt;getParentOfType&lt;DeviceOp&gt;();</div>
-<div class="line"><a id="l01790" name="l01790"></a><span class="lineno"> 1790</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> &amp;targetArch = dev.getTargetModel();</div>
-<div class="line"><a id="l01791" name="l01791"></a><span class="lineno"> 1791</span>            targetArch.getTargetArch() == AIEArch::AIE1)</div>
-<div class="line"><a id="l01792" name="l01792"></a><span class="lineno"> 1792</span>          createUseLocks(builder, op, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#ab66d81c9b6c34445a229064cf527f089">port</a>, acqPerFifo, numCreate,</div>
-<div class="line"><a id="l01793" name="l01793"></a><span class="lineno"> 1793</span>                         LockAction::Acquire);</div>
-<div class="line"><a id="l01794" name="l01794"></a><span class="lineno"> 1794</span>        <span class="keywordflow">else</span></div>
-<div class="line"><a id="l01795" name="l01795"></a><span class="lineno"> 1795</span>          createUseLocks(builder, op, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#ab66d81c9b6c34445a229064cf527f089">port</a>, acqPerFifo, numCreate,</div>
-<div class="line"><a id="l01796" name="l01796"></a><span class="lineno"> 1796</span>                         LockAction::AcquireGreaterEqual);</div>
-<div class="line"><a id="l01797" name="l01797"></a><span class="lineno"> 1797</span> </div>
-<div class="line"><a id="l01798" name="l01798"></a><span class="lineno"> 1798</span>        <span class="comment">// if objFifo was linked with others, find which objFifos</span></div>
-<div class="line"><a id="l01799" name="l01799"></a><span class="lineno"> 1799</span>        <span class="comment">// elements to use</span></div>
-<div class="line"><a id="l01800" name="l01800"></a><span class="lineno"> 1800</span>        ObjectFifoCreateOp target = op;</div>
-<div class="line"><a id="l01801" name="l01801"></a><span class="lineno"> 1801</span>        <span class="keywordflow">if</span> (linkOp)</div>
-<div class="line"><a id="l01802" name="l01802"></a><span class="lineno"> 1802</span>          <span class="keywordflow">if</span> (objFifoLinks.find(*linkOp) != objFifoLinks.end())</div>
-<div class="line"><a id="l01803" name="l01803"></a><span class="lineno"> 1803</span>            target = objFifoLinks[*linkOp];</div>
-<div class="line"><a id="l01804" name="l01804"></a><span class="lineno"> 1804</span> </div>
-<div class="line"><a id="l01805" name="l01805"></a><span class="lineno"> 1805</span>        <span class="comment">// create subview: buffers that were already acquired + new acquires</span></div>
-<div class="line"><a id="l01806" name="l01806"></a><span class="lineno"> 1806</span>        <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; numCreate; i++) {</div>
-<div class="line"><a id="l01807" name="l01807"></a><span class="lineno"> 1807</span>          acquiredIndices.push_back(start);</div>
-<div class="line"><a id="l01808" name="l01808"></a><span class="lineno"> 1808</span>          start = (start + 1) % op.size();</div>
-<div class="line"><a id="l01809" name="l01809"></a><span class="lineno"> 1809</span>        }</div>
-<div class="line"><a id="l01810" name="l01810"></a><span class="lineno"> 1810</span>        std::vector&lt;BufferOp *&gt; subviewRefs;</div>
-<div class="line"><a id="l01811" name="l01811"></a><span class="lineno"> 1811</span>        subviewRefs.reserve(acquiredIndices.size());</div>
-<div class="line"><a id="l01812" name="l01812"></a><span class="lineno"> 1812</span>        <span class="keywordflow">for</span> (<span class="keyword">auto</span> index : acquiredIndices)</div>
-<div class="line"><a id="l01813" name="l01813"></a><span class="lineno"> 1813</span>          subviewRefs.push_back(&amp;buffersPerFifo[target][index]);</div>
-<div class="line"><a id="l01814" name="l01814"></a><span class="lineno"> 1814</span> </div>
-<div class="line"><a id="l01815" name="l01815"></a><span class="lineno"> 1815</span>        subviews[acquireOp] = subviewRefs;</div>
-<div class="line"><a id="l01816" name="l01816"></a><span class="lineno"> 1816</span>        acquiresPerFifo[{op, portNum}] = acquiredIndices;</div>
-<div class="line"><a id="l01817" name="l01817"></a><span class="lineno"> 1817</span>      });</div>
-<div class="line"><a id="l01818" name="l01818"></a><span class="lineno"> 1818</span> </div>
-<div class="line"><a id="l01819" name="l01819"></a><span class="lineno"> 1819</span>      <span class="comment">//===----------------------------------------------------------------===//</span></div>
-<div class="line"><a id="l01820" name="l01820"></a><span class="lineno"> 1820</span>      <span class="comment">// Replace subview.access ops</span></div>
-<div class="line"><a id="l01821" name="l01821"></a><span class="lineno"> 1821</span>      <span class="comment">//===----------------------------------------------------------------===//</span></div>
-<div class="line"><a id="l01822" name="l01822"></a><span class="lineno"> 1822</span>      coreOp.walk([&amp;](ObjectFifoSubviewAccessOp accessOp) {</div>
-<div class="line"><a id="l01823" name="l01823"></a><span class="lineno"> 1823</span>        <span class="keyword">auto</span> acqOp = accessOp.getSubview().getDefiningOp&lt;ObjectFifoAcquireOp&gt;();</div>
-<div class="line"><a id="l01824" name="l01824"></a><span class="lineno"> 1824</span>        <span class="keywordflow">if</span> (ObjectFifoCreateOp op = acqOp.getObjectFifo()) {</div>
-<div class="line"><a id="l01825" name="l01825"></a><span class="lineno"> 1825</span>          <span class="keywordflow">if</span> (<span class="keyword">auto</span> linkOp = getOptionalLinkOp(op); linkOp.has_value()) {</div>
-<div class="line"><a id="l01826" name="l01826"></a><span class="lineno"> 1826</span>            <span class="keywordflow">if</span> (!linkOp-&gt;isDistribute() &amp;&amp; !linkOp-&gt;isJoin()) {</div>
-<div class="line"><a id="l01827" name="l01827"></a><span class="lineno"> 1827</span>              <span class="keywordflow">for</span> (<span class="keyword">auto</span> consumerTile : op.getConsumerTiles()) {</div>
-<div class="line"><a id="l01828" name="l01828"></a><span class="lineno"> 1828</span>                <span class="keywordflow">if</span> (<span class="keyword">auto</span> consumerTileOp =</div>
-<div class="line"><a id="l01829" name="l01829"></a><span class="lineno"> 1829</span>                        dyn_cast&lt;TileOp&gt;(consumerTile.getDefiningOp())) {</div>
-<div class="line"><a id="l01830" name="l01830"></a><span class="lineno"> 1830</span>                  <span class="keywordtype">int</span> share_dir_value = 0;</div>
-<div class="line"><a id="l01831" name="l01831"></a><span class="lineno"> 1831</span>                  <span class="keywordtype">bool</span> sharing = isSharedMemory(</div>
-<div class="line"><a id="l01832" name="l01832"></a><span class="lineno"> 1832</span>                      op.getProducerTileOp(), consumerTileOp, &amp;share_dir_value);</div>
-<div class="line"><a id="l01833" name="l01833"></a><span class="lineno"> 1833</span>                  <span class="keywordflow">if</span> (!sharing)</div>
-<div class="line"><a id="l01834" name="l01834"></a><span class="lineno"> 1834</span>                    accessOp-&gt;emitOpError(</div>
-<div class="line"><a id="l01835" name="l01835"></a><span class="lineno"> 1835</span>                        <span class="stringliteral">&quot;currently cannot access objectFifo used in &quot;</span></div>
-<div class="line"><a id="l01836" name="l01836"></a><span class="lineno"> 1836</span>                        <span class="stringliteral">&quot;ObjectFifoLinkOp if the tiles don&#39;t share memory&quot;</span>);</div>
-<div class="line"><a id="l01837" name="l01837"></a><span class="lineno"> 1837</span>                }</div>
-<div class="line"><a id="l01838" name="l01838"></a><span class="lineno"> 1838</span>              }</div>
-<div class="line"><a id="l01839" name="l01839"></a><span class="lineno"> 1839</span>            } <span class="keywordflow">else</span></div>
-<div class="line"><a id="l01840" name="l01840"></a><span class="lineno"> 1840</span>              accessOp-&gt;emitOpError(</div>
-<div class="line"><a id="l01841" name="l01841"></a><span class="lineno"> 1841</span>                  <span class="stringliteral">&quot;currently cannot access objectFifo used in &quot;</span></div>
-<div class="line"><a id="l01842" name="l01842"></a><span class="lineno"> 1842</span>                  <span class="stringliteral">&quot;ObjectFifoLinkOp if it is a distribute or join link&quot;</span>);</div>
-<div class="line"><a id="l01843" name="l01843"></a><span class="lineno"> 1843</span>          }</div>
-<div class="line"><a id="l01844" name="l01844"></a><span class="lineno"> 1844</span>        }</div>
-<div class="line"><a id="l01845" name="l01845"></a><span class="lineno"> 1845</span>        accessOp.getOutput().replaceAllUsesWith(</div>
-<div class="line"><a id="l01846" name="l01846"></a><span class="lineno"> 1846</span>            subviews[acqOp][accessOp.getIndex()]-&gt;getBuffer());</div>
-<div class="line"><a id="l01847" name="l01847"></a><span class="lineno"> 1847</span>      });</div>
-<div class="line"><a id="l01848" name="l01848"></a><span class="lineno"> 1848</span>    }</div>
-<div class="line"><a id="l01849" name="l01849"></a><span class="lineno"> 1849</span>    <span class="comment">// make global symbols to replace the to be erased ObjectFifoCreateOps</span></div>
-<div class="line"><a id="l01850" name="l01850"></a><span class="lineno"> 1850</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> createOp : device.getOps&lt;ObjectFifoCreateOp&gt;()) {</div>
-<div class="line"><a id="l01851" name="l01851"></a><span class="lineno"> 1851</span>      builder.setInsertionPointToStart(device.getBody());</div>
-<div class="line"><a id="l01852" name="l01852"></a><span class="lineno"> 1852</span>      <span class="keyword">auto</span> sym_name = createOp.getName();</div>
-<div class="line"><a id="l01853" name="l01853"></a><span class="lineno"> 1853</span>      createOp-&gt;setAttr(SymbolTable::getSymbolAttrName(),</div>
-<div class="line"><a id="l01854" name="l01854"></a><span class="lineno"> 1854</span>                        builder.getStringAttr(<span class="stringliteral">&quot;__erase_&quot;</span> + sym_name));</div>
-<div class="line"><a id="l01855" name="l01855"></a><span class="lineno"> 1855</span>      <span class="keyword">auto</span> memrefType = llvm::cast&lt;AIEObjectFifoType&gt;(createOp.getElemType())</div>
-<div class="line"><a id="l01856" name="l01856"></a><span class="lineno"> 1856</span>                            .getElementType();</div>
-<div class="line"><a id="l01857" name="l01857"></a><span class="lineno"> 1857</span>      builder.create&lt;memref::GlobalOp&gt;(builder.getUnknownLoc(), sym_name,</div>
-<div class="line"><a id="l01858" name="l01858"></a><span class="lineno"> 1858</span>                                       builder.getStringAttr(<span class="stringliteral">&quot;public&quot;</span>),</div>
-<div class="line"><a id="l01859" name="l01859"></a><span class="lineno"> 1859</span>                                       memrefType, <span class="keyword">nullptr</span>, <span class="keyword">false</span>, <span class="keyword">nullptr</span>);</div>
-<div class="line"><a id="l01860" name="l01860"></a><span class="lineno"> 1860</span>    }</div>
-<div class="line"><a id="l01861" name="l01861"></a><span class="lineno"> 1861</span> </div>
-<div class="line"><a id="l01862" name="l01862"></a><span class="lineno"> 1862</span>    <span class="comment">//===------------------------------------------------------------------===//</span></div>
-<div class="line"><a id="l01863" name="l01863"></a><span class="lineno"> 1863</span>    <span class="comment">// Remove old ops</span></div>
-<div class="line"><a id="l01864" name="l01864"></a><span class="lineno"> 1864</span>    <span class="comment">//===------------------------------------------------------------------===//</span></div>
-<div class="line"><a id="l01865" name="l01865"></a><span class="lineno"> 1865</span>    SetVector&lt;Operation *&gt; opsToErase;</div>
-<div class="line"><a id="l01866" name="l01866"></a><span class="lineno"> 1866</span>    device.walk([&amp;](Operation *op) {</div>
-<div class="line"><a id="l01867" name="l01867"></a><span class="lineno"> 1867</span>      <span class="keywordflow">if</span> (isa&lt;ObjectFifoCreateOp, ObjectFifoLinkOp,</div>
-<div class="line"><a id="l01868" name="l01868"></a><span class="lineno"> 1868</span>              ObjectFifoRegisterExternalBuffersOp, ObjectFifoAcquireOp,</div>
-<div class="line"><a id="l01869" name="l01869"></a><span class="lineno"> 1869</span>              ObjectFifoSubviewAccessOp, ObjectFifoReleaseOp&gt;(op))</div>
-<div class="line"><a id="l01870" name="l01870"></a><span class="lineno"> 1870</span>        opsToErase.insert(op);</div>
-<div class="line"><a id="l01871" name="l01871"></a><span class="lineno"> 1871</span>    });</div>
-<div class="line"><a id="l01872" name="l01872"></a><span class="lineno"> 1872</span>    SmallVector&lt;Operation *&gt; sorted{opsToErase.begin(), opsToErase.end()};</div>
-<div class="line"><a id="l01873" name="l01873"></a><span class="lineno"> 1873</span>    computeTopologicalSorting(sorted);</div>
-<div class="line"><a id="l01874" name="l01874"></a><span class="lineno"> 1874</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> *op : llvm::reverse(sorted))</div>
-<div class="line"><a id="l01875" name="l01875"></a><span class="lineno"> 1875</span>      op-&gt;erase();</div>
-<div class="line"><a id="l01876" name="l01876"></a><span class="lineno"> 1876</span>  }</div>
+<div class="line"><a id="l01739" name="l01739"></a><span class="lineno"> 1739</span>        <span class="keywordflow">for</span> (std::vector&lt;ObjectFifoReleaseOp&gt;::iterator relOp =</div>
+<div class="line"><a id="l01740" name="l01740"></a><span class="lineno"> 1740</span>                 releaseOps[{op, portNum}].begin();</div>
+<div class="line"><a id="l01741" name="l01741"></a><span class="lineno"> 1741</span>             relOp != releaseOps[{op, portNum}].end();) {</div>
+<div class="line"><a id="l01742" name="l01742"></a><span class="lineno"> 1742</span>          <span class="keywordtype">bool</span> erased = <span class="keyword">false</span>;</div>
+<div class="line"><a id="l01743" name="l01743"></a><span class="lineno"> 1743</span>          Operation *acqBlockDefOp = acquireOp.getOperation();</div>
+<div class="line"><a id="l01744" name="l01744"></a><span class="lineno"> 1744</span>          <span class="keywordflow">do</span> {</div>
+<div class="line"><a id="l01745" name="l01745"></a><span class="lineno"> 1745</span>            Operation *relBlockDefOp = (*relOp).getOperation();</div>
+<div class="line"><a id="l01746" name="l01746"></a><span class="lineno"> 1746</span>            <span class="keywordflow">do</span> {</div>
+<div class="line"><a id="l01747" name="l01747"></a><span class="lineno"> 1747</span>              <span class="keywordflow">if</span> (acqBlockDefOp-&gt;getBlock() == relBlockDefOp-&gt;getBlock()) {</div>
+<div class="line"><a id="l01748" name="l01748"></a><span class="lineno"> 1748</span>                <span class="keywordflow">if</span> (relBlockDefOp-&gt;isBeforeInBlock(acqBlockDefOp)) {</div>
+<div class="line"><a id="l01749" name="l01749"></a><span class="lineno"> 1749</span>                  numRel += (*relOp).relNumber();</div>
+<div class="line"><a id="l01750" name="l01750"></a><span class="lineno"> 1750</span>                  relOp = releaseOps[{op, portNum}].erase(relOp);</div>
+<div class="line"><a id="l01751" name="l01751"></a><span class="lineno"> 1751</span>                  <span class="comment">// to ensure that we do not account</span></div>
+<div class="line"><a id="l01752" name="l01752"></a><span class="lineno"> 1752</span>                  <span class="comment">// the ReleaseOps again later,</span></div>
+<div class="line"><a id="l01753" name="l01753"></a><span class="lineno"> 1753</span>                  <span class="comment">// after the subview is created</span></div>
+<div class="line"><a id="l01754" name="l01754"></a><span class="lineno"> 1754</span>                  erased = <span class="keyword">true</span>;</div>
+<div class="line"><a id="l01755" name="l01755"></a><span class="lineno"> 1755</span>                }</div>
+<div class="line"><a id="l01756" name="l01756"></a><span class="lineno"> 1756</span>              }</div>
+<div class="line"><a id="l01757" name="l01757"></a><span class="lineno"> 1757</span>            } <span class="keywordflow">while</span> ((relBlockDefOp = relBlockDefOp-&gt;getParentOp()) &amp;&amp;</div>
+<div class="line"><a id="l01758" name="l01758"></a><span class="lineno"> 1758</span>                     !isa&lt;DeviceOp&gt;(relBlockDefOp) &amp;&amp; !erased);</div>
+<div class="line"><a id="l01759" name="l01759"></a><span class="lineno"> 1759</span>          } <span class="keywordflow">while</span> ((acqBlockDefOp = acqBlockDefOp-&gt;getParentOp()) &amp;&amp;</div>
+<div class="line"><a id="l01760" name="l01760"></a><span class="lineno"> 1760</span>                   !isa&lt;DeviceOp&gt;(acqBlockDefOp) &amp;&amp; !erased);</div>
+<div class="line"><a id="l01761" name="l01761"></a><span class="lineno"> 1761</span>          <span class="keywordflow">if</span> (!erased)</div>
+<div class="line"><a id="l01762" name="l01762"></a><span class="lineno"> 1762</span>            ++relOp;</div>
+<div class="line"><a id="l01763" name="l01763"></a><span class="lineno"> 1763</span>        }</div>
+<div class="line"><a id="l01764" name="l01764"></a><span class="lineno"> 1764</span> </div>
+<div class="line"><a id="l01765" name="l01765"></a><span class="lineno"> 1765</span>        <span class="comment">// track indices of elements to acquire</span></div>
+<div class="line"><a id="l01766" name="l01766"></a><span class="lineno"> 1766</span>        std::vector&lt;int&gt; acquiredIndices;</div>
+<div class="line"><a id="l01767" name="l01767"></a><span class="lineno"> 1767</span>        <span class="keywordflow">if</span> (!acquiresPerFifo[{op, portNum}].empty()) {</div>
+<div class="line"><a id="l01768" name="l01768"></a><span class="lineno"> 1768</span>          <span class="comment">// take into account what has already been acquired by previous</span></div>
+<div class="line"><a id="l01769" name="l01769"></a><span class="lineno"> 1769</span>          <span class="comment">// AcquireOp in program order</span></div>
+<div class="line"><a id="l01770" name="l01770"></a><span class="lineno"> 1770</span>          acquiredIndices = acquiresPerFifo[{op, portNum}];</div>
+<div class="line"><a id="l01771" name="l01771"></a><span class="lineno"> 1771</span>          <span class="comment">// take into account what has been released in-between</span></div>
+<div class="line"><a id="l01772" name="l01772"></a><span class="lineno"> 1772</span>          <span class="keywordflow">if</span> (<span class="keyword">static_cast&lt;</span><span class="keywordtype">size_t</span><span class="keyword">&gt;</span>(numRel) &gt; acquiredIndices.size()) {</div>
+<div class="line"><a id="l01773" name="l01773"></a><span class="lineno"> 1773</span>            acquireOp-&gt;emitOpError(<span class="stringliteral">&quot;cannot release more elements than are &quot;</span></div>
+<div class="line"><a id="l01774" name="l01774"></a><span class="lineno"> 1774</span>                                   <span class="stringliteral">&quot;already acquired&quot;</span>);</div>
+<div class="line"><a id="l01775" name="l01775"></a><span class="lineno"> 1775</span>            <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l01776" name="l01776"></a><span class="lineno"> 1776</span>          }</div>
+<div class="line"><a id="l01777" name="l01777"></a><span class="lineno"> 1777</span>          <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; numRel; i++)</div>
+<div class="line"><a id="l01778" name="l01778"></a><span class="lineno"> 1778</span>            acquiredIndices.erase(acquiredIndices.begin());</div>
+<div class="line"><a id="l01779" name="l01779"></a><span class="lineno"> 1779</span>        }</div>
+<div class="line"><a id="l01780" name="l01780"></a><span class="lineno"> 1780</span> </div>
+<div class="line"><a id="l01781" name="l01781"></a><span class="lineno"> 1781</span>        <span class="comment">// acquire locks</span></div>
+<div class="line"><a id="l01782" name="l01782"></a><span class="lineno"> 1782</span>        <span class="keywordtype">int</span> numLocks = acquireOp.acqNumber();</div>
+<div class="line"><a id="l01783" name="l01783"></a><span class="lineno"> 1783</span>        <span class="keywordtype">int</span> alreadyAcq = acquiredIndices.size();</div>
+<div class="line"><a id="l01784" name="l01784"></a><span class="lineno"> 1784</span>        <span class="keywordtype">int</span> numCreate;</div>
+<div class="line"><a id="l01785" name="l01785"></a><span class="lineno"> 1785</span>        <span class="keywordflow">if</span> (numLocks &gt; alreadyAcq)</div>
+<div class="line"><a id="l01786" name="l01786"></a><span class="lineno"> 1786</span>          numCreate = numLocks - alreadyAcq;</div>
+<div class="line"><a id="l01787" name="l01787"></a><span class="lineno"> 1787</span>        <span class="keywordflow">else</span></div>
+<div class="line"><a id="l01788" name="l01788"></a><span class="lineno"> 1788</span>          numCreate = 0;</div>
+<div class="line"><a id="l01789" name="l01789"></a><span class="lineno"> 1789</span> </div>
+<div class="line"><a id="l01790" name="l01790"></a><span class="lineno"> 1790</span>        <span class="comment">// account for repetition</span></div>
+<div class="line"><a id="l01791" name="l01791"></a><span class="lineno"> 1791</span>        <span class="keywordflow">if</span> (op.getRepeatCount().has_value())</div>
+<div class="line"><a id="l01792" name="l01792"></a><span class="lineno"> 1792</span>          numCreate *= op.getRepeatCount().value();</div>
+<div class="line"><a id="l01793" name="l01793"></a><span class="lineno"> 1793</span> </div>
+<div class="line"><a id="l01794" name="l01794"></a><span class="lineno"> 1794</span>        <span class="keyword">auto</span> dev = op-&gt;getParentOfType&lt;DeviceOp&gt;();</div>
+<div class="line"><a id="l01795" name="l01795"></a><span class="lineno"> 1795</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> &amp;targetArch = dev.getTargetModel();</div>
+<div class="line"><a id="l01796" name="l01796"></a><span class="lineno"> 1796</span>            targetArch.getTargetArch() == AIEArch::AIE1)</div>
+<div class="line"><a id="l01797" name="l01797"></a><span class="lineno"> 1797</span>          createUseLocks(builder, op, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#ab66d81c9b6c34445a229064cf527f089">port</a>, acqPerFifo, numCreate,</div>
+<div class="line"><a id="l01798" name="l01798"></a><span class="lineno"> 1798</span>                         LockAction::Acquire);</div>
+<div class="line"><a id="l01799" name="l01799"></a><span class="lineno"> 1799</span>        <span class="keywordflow">else</span></div>
+<div class="line"><a id="l01800" name="l01800"></a><span class="lineno"> 1800</span>          createUseLocks(builder, op, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#ab66d81c9b6c34445a229064cf527f089">port</a>, acqPerFifo, numCreate,</div>
+<div class="line"><a id="l01801" name="l01801"></a><span class="lineno"> 1801</span>                         LockAction::AcquireGreaterEqual);</div>
+<div class="line"><a id="l01802" name="l01802"></a><span class="lineno"> 1802</span> </div>
+<div class="line"><a id="l01803" name="l01803"></a><span class="lineno"> 1803</span>        <span class="comment">// if objFifo was linked with others, find which objFifos</span></div>
+<div class="line"><a id="l01804" name="l01804"></a><span class="lineno"> 1804</span>        <span class="comment">// elements to use</span></div>
+<div class="line"><a id="l01805" name="l01805"></a><span class="lineno"> 1805</span>        ObjectFifoCreateOp target = op;</div>
+<div class="line"><a id="l01806" name="l01806"></a><span class="lineno"> 1806</span>        <span class="keywordflow">if</span> (linkOp)</div>
+<div class="line"><a id="l01807" name="l01807"></a><span class="lineno"> 1807</span>          <span class="keywordflow">if</span> (objFifoLinks.find(*linkOp) != objFifoLinks.end())</div>
+<div class="line"><a id="l01808" name="l01808"></a><span class="lineno"> 1808</span>            target = objFifoLinks[*linkOp];</div>
+<div class="line"><a id="l01809" name="l01809"></a><span class="lineno"> 1809</span> </div>
+<div class="line"><a id="l01810" name="l01810"></a><span class="lineno"> 1810</span>        <span class="comment">// create subview: buffers that were already acquired + new acquires</span></div>
+<div class="line"><a id="l01811" name="l01811"></a><span class="lineno"> 1811</span>        <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; numCreate; i++) {</div>
+<div class="line"><a id="l01812" name="l01812"></a><span class="lineno"> 1812</span>          acquiredIndices.push_back(start);</div>
+<div class="line"><a id="l01813" name="l01813"></a><span class="lineno"> 1813</span>          start = (start + 1) % op.size();</div>
+<div class="line"><a id="l01814" name="l01814"></a><span class="lineno"> 1814</span>        }</div>
+<div class="line"><a id="l01815" name="l01815"></a><span class="lineno"> 1815</span>        std::vector&lt;BufferOp *&gt; subviewRefs;</div>
+<div class="line"><a id="l01816" name="l01816"></a><span class="lineno"> 1816</span>        subviewRefs.reserve(acquiredIndices.size());</div>
+<div class="line"><a id="l01817" name="l01817"></a><span class="lineno"> 1817</span>        <span class="keywordflow">for</span> (<span class="keyword">auto</span> index : acquiredIndices)</div>
+<div class="line"><a id="l01818" name="l01818"></a><span class="lineno"> 1818</span>          subviewRefs.push_back(&amp;buffersPerFifo[target][index]);</div>
+<div class="line"><a id="l01819" name="l01819"></a><span class="lineno"> 1819</span> </div>
+<div class="line"><a id="l01820" name="l01820"></a><span class="lineno"> 1820</span>        subviews[acquireOp] = subviewRefs;</div>
+<div class="line"><a id="l01821" name="l01821"></a><span class="lineno"> 1821</span>        acquiresPerFifo[{op, portNum}] = acquiredIndices;</div>
+<div class="line"><a id="l01822" name="l01822"></a><span class="lineno"> 1822</span>      });</div>
+<div class="line"><a id="l01823" name="l01823"></a><span class="lineno"> 1823</span> </div>
+<div class="line"><a id="l01824" name="l01824"></a><span class="lineno"> 1824</span>      <span class="comment">//===----------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l01825" name="l01825"></a><span class="lineno"> 1825</span>      <span class="comment">// Replace subview.access ops</span></div>
+<div class="line"><a id="l01826" name="l01826"></a><span class="lineno"> 1826</span>      <span class="comment">//===----------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l01827" name="l01827"></a><span class="lineno"> 1827</span>      coreOp.walk([&amp;](ObjectFifoSubviewAccessOp accessOp) {</div>
+<div class="line"><a id="l01828" name="l01828"></a><span class="lineno"> 1828</span>        <span class="keyword">auto</span> acqOp = accessOp.getSubview().getDefiningOp&lt;ObjectFifoAcquireOp&gt;();</div>
+<div class="line"><a id="l01829" name="l01829"></a><span class="lineno"> 1829</span>        <span class="keywordflow">if</span> (ObjectFifoCreateOp op = acqOp.getObjectFifo()) {</div>
+<div class="line"><a id="l01830" name="l01830"></a><span class="lineno"> 1830</span>          <span class="keywordflow">if</span> (<span class="keyword">auto</span> linkOp = getOptionalLinkOp(op); linkOp.has_value()) {</div>
+<div class="line"><a id="l01831" name="l01831"></a><span class="lineno"> 1831</span>            <span class="keywordflow">if</span> (!linkOp-&gt;isDistribute() &amp;&amp; !linkOp-&gt;isJoin()) {</div>
+<div class="line"><a id="l01832" name="l01832"></a><span class="lineno"> 1832</span>              <span class="keywordflow">for</span> (<span class="keyword">auto</span> consumerTile : op.getConsumerTiles()) {</div>
+<div class="line"><a id="l01833" name="l01833"></a><span class="lineno"> 1833</span>                <span class="keywordflow">if</span> (<span class="keyword">auto</span> consumerTileOp =</div>
+<div class="line"><a id="l01834" name="l01834"></a><span class="lineno"> 1834</span>                        dyn_cast&lt;TileOp&gt;(consumerTile.getDefiningOp())) {</div>
+<div class="line"><a id="l01835" name="l01835"></a><span class="lineno"> 1835</span>                  <span class="keywordtype">int</span> share_dir_value = 0;</div>
+<div class="line"><a id="l01836" name="l01836"></a><span class="lineno"> 1836</span>                  <span class="keywordtype">bool</span> sharing = isSharedMemory(</div>
+<div class="line"><a id="l01837" name="l01837"></a><span class="lineno"> 1837</span>                      op.getProducerTileOp(), consumerTileOp, &amp;share_dir_value);</div>
+<div class="line"><a id="l01838" name="l01838"></a><span class="lineno"> 1838</span>                  <span class="keywordflow">if</span> (!sharing)</div>
+<div class="line"><a id="l01839" name="l01839"></a><span class="lineno"> 1839</span>                    accessOp-&gt;emitOpError(</div>
+<div class="line"><a id="l01840" name="l01840"></a><span class="lineno"> 1840</span>                        <span class="stringliteral">&quot;currently cannot access objectFifo used in &quot;</span></div>
+<div class="line"><a id="l01841" name="l01841"></a><span class="lineno"> 1841</span>                        <span class="stringliteral">&quot;ObjectFifoLinkOp if the tiles don&#39;t share memory&quot;</span>);</div>
+<div class="line"><a id="l01842" name="l01842"></a><span class="lineno"> 1842</span>                }</div>
+<div class="line"><a id="l01843" name="l01843"></a><span class="lineno"> 1843</span>              }</div>
+<div class="line"><a id="l01844" name="l01844"></a><span class="lineno"> 1844</span>            } <span class="keywordflow">else</span></div>
+<div class="line"><a id="l01845" name="l01845"></a><span class="lineno"> 1845</span>              accessOp-&gt;emitOpError(</div>
+<div class="line"><a id="l01846" name="l01846"></a><span class="lineno"> 1846</span>                  <span class="stringliteral">&quot;currently cannot access objectFifo used in &quot;</span></div>
+<div class="line"><a id="l01847" name="l01847"></a><span class="lineno"> 1847</span>                  <span class="stringliteral">&quot;ObjectFifoLinkOp if it is a distribute or join link&quot;</span>);</div>
+<div class="line"><a id="l01848" name="l01848"></a><span class="lineno"> 1848</span>          }</div>
+<div class="line"><a id="l01849" name="l01849"></a><span class="lineno"> 1849</span>        }</div>
+<div class="line"><a id="l01850" name="l01850"></a><span class="lineno"> 1850</span>        accessOp.getOutput().replaceAllUsesWith(</div>
+<div class="line"><a id="l01851" name="l01851"></a><span class="lineno"> 1851</span>            subviews[acqOp][accessOp.getIndex()]-&gt;getBuffer());</div>
+<div class="line"><a id="l01852" name="l01852"></a><span class="lineno"> 1852</span>      });</div>
+<div class="line"><a id="l01853" name="l01853"></a><span class="lineno"> 1853</span>    }</div>
+<div class="line"><a id="l01854" name="l01854"></a><span class="lineno"> 1854</span>    <span class="comment">// make global symbols to replace the to be erased ObjectFifoCreateOps</span></div>
+<div class="line"><a id="l01855" name="l01855"></a><span class="lineno"> 1855</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> createOp : device.getOps&lt;ObjectFifoCreateOp&gt;()) {</div>
+<div class="line"><a id="l01856" name="l01856"></a><span class="lineno"> 1856</span>      builder.setInsertionPointToStart(device.getBody());</div>
+<div class="line"><a id="l01857" name="l01857"></a><span class="lineno"> 1857</span>      <span class="keyword">auto</span> sym_name = createOp.getName();</div>
+<div class="line"><a id="l01858" name="l01858"></a><span class="lineno"> 1858</span>      createOp-&gt;setAttr(SymbolTable::getSymbolAttrName(),</div>
+<div class="line"><a id="l01859" name="l01859"></a><span class="lineno"> 1859</span>                        builder.getStringAttr(<span class="stringliteral">&quot;__erase_&quot;</span> + sym_name));</div>
+<div class="line"><a id="l01860" name="l01860"></a><span class="lineno"> 1860</span>      <span class="keyword">auto</span> memrefType = llvm::cast&lt;AIEObjectFifoType&gt;(createOp.getElemType())</div>
+<div class="line"><a id="l01861" name="l01861"></a><span class="lineno"> 1861</span>                            .getElementType();</div>
+<div class="line"><a id="l01862" name="l01862"></a><span class="lineno"> 1862</span>      builder.create&lt;memref::GlobalOp&gt;(builder.getUnknownLoc(), sym_name,</div>
+<div class="line"><a id="l01863" name="l01863"></a><span class="lineno"> 1863</span>                                       builder.getStringAttr(<span class="stringliteral">&quot;public&quot;</span>),</div>
+<div class="line"><a id="l01864" name="l01864"></a><span class="lineno"> 1864</span>                                       memrefType, <span class="keyword">nullptr</span>, <span class="keyword">false</span>, <span class="keyword">nullptr</span>);</div>
+<div class="line"><a id="l01865" name="l01865"></a><span class="lineno"> 1865</span>    }</div>
+<div class="line"><a id="l01866" name="l01866"></a><span class="lineno"> 1866</span> </div>
+<div class="line"><a id="l01867" name="l01867"></a><span class="lineno"> 1867</span>    <span class="comment">//===------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l01868" name="l01868"></a><span class="lineno"> 1868</span>    <span class="comment">// Remove old ops</span></div>
+<div class="line"><a id="l01869" name="l01869"></a><span class="lineno"> 1869</span>    <span class="comment">//===------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l01870" name="l01870"></a><span class="lineno"> 1870</span>    SetVector&lt;Operation *&gt; opsToErase;</div>
+<div class="line"><a id="l01871" name="l01871"></a><span class="lineno"> 1871</span>    device.walk([&amp;](Operation *op) {</div>
+<div class="line"><a id="l01872" name="l01872"></a><span class="lineno"> 1872</span>      <span class="keywordflow">if</span> (isa&lt;ObjectFifoCreateOp, ObjectFifoLinkOp,</div>
+<div class="line"><a id="l01873" name="l01873"></a><span class="lineno"> 1873</span>              ObjectFifoRegisterExternalBuffersOp, ObjectFifoAcquireOp,</div>
+<div class="line"><a id="l01874" name="l01874"></a><span class="lineno"> 1874</span>              ObjectFifoSubviewAccessOp, ObjectFifoReleaseOp&gt;(op))</div>
+<div class="line"><a id="l01875" name="l01875"></a><span class="lineno"> 1875</span>        opsToErase.insert(op);</div>
+<div class="line"><a id="l01876" name="l01876"></a><span class="lineno"> 1876</span>    });</div>
+<div class="line"><a id="l01877" name="l01877"></a><span class="lineno"> 1877</span>    SmallVector&lt;Operation *&gt; sorted{opsToErase.begin(), opsToErase.end()};</div>
+<div class="line"><a id="l01878" name="l01878"></a><span class="lineno"> 1878</span>    computeTopologicalSorting(sorted);</div>
+<div class="line"><a id="l01879" name="l01879"></a><span class="lineno"> 1879</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> *op : llvm::reverse(sorted))</div>
+<div class="line"><a id="l01880" name="l01880"></a><span class="lineno"> 1880</span>      op-&gt;erase();</div>
+<div class="line"><a id="l01881" name="l01881"></a><span class="lineno"> 1881</span>  }</div>
 </div>
-<div class="line"><a id="l01877" name="l01877"></a><span class="lineno"> 1877</span>};</div>
+<div class="line"><a id="l01882" name="l01882"></a><span class="lineno"> 1882</span>};</div>
 </div>
-<div class="line"><a id="l01878" name="l01878"></a><span class="lineno"> 1878</span> </div>
-<div class="line"><a id="l01879" name="l01879"></a><span class="lineno"> 1879</span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt;</div>
-<div class="foldopen" id="foldopen01880" data-start="{" data-end="}">
-<div class="line"><a id="l01880" name="l01880"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#a5459b0bd5290b07e027e71f964e7cee8"> 1880</a></span><a class="code hl_function" href="namespacexilinx_1_1AIE.html#a5459b0bd5290b07e027e71f964e7cee8">AIE::createAIEObjectFifoStatefulTransformPass</a>() {</div>
-<div class="line"><a id="l01881" name="l01881"></a><span class="lineno"> 1881</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEObjectFifoStatefulTransformPass&gt;();</div>
-<div class="line"><a id="l01882" name="l01882"></a><span class="lineno"> 1882</span>}</div>
+<div class="line"><a id="l01883" name="l01883"></a><span class="lineno"> 1883</span> </div>
+<div class="line"><a id="l01884" name="l01884"></a><span class="lineno"> 1884</span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt;</div>
+<div class="foldopen" id="foldopen01885" data-start="{" data-end="}">
+<div class="line"><a id="l01885" name="l01885"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#a5459b0bd5290b07e027e71f964e7cee8"> 1885</a></span><a class="code hl_function" href="namespacexilinx_1_1AIE.html#a5459b0bd5290b07e027e71f964e7cee8">AIE::createAIEObjectFifoStatefulTransformPass</a>() {</div>
+<div class="line"><a id="l01886" name="l01886"></a><span class="lineno"> 1886</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEObjectFifoStatefulTransformPass&gt;();</div>
+<div class="line"><a id="l01887" name="l01887"></a><span class="lineno"> 1887</span>}</div>
 </div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEPasses_8h_html"><div class="ttname"><a href="AIEPasses_8h.html">AIEPasses.h</a></div></div>
@@ -2023,7 +2028,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html_ab277d93d6936e486a39cbfff44266d85a08399f79ab083784cb4e423dfd78f003"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html#ab277d93d6936e486a39cbfff44266d85a08399f79ab083784cb4e423dfd78f003">xilinx::AIE::AIETargetModel::UsesSemaphoreLocks</a></div><div class="ttdeci">@ UsesSemaphoreLocks</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00077">AIETargetModel.h:77</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00021">AIEToConfiguration.h:21</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_a5459b0bd5290b07e027e71f964e7cee8"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a5459b0bd5290b07e027e71f964e7cee8">xilinx::AIE::createAIEObjectFifoStatefulTransformPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIEObjectFifoStatefulTransformPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01880">AIEObjectFifoStatefulTransform.cpp:1880</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_a5459b0bd5290b07e027e71f964e7cee8"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a5459b0bd5290b07e027e71f964e7cee8">xilinx::AIE::createAIEObjectFifoStatefulTransformPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIEObjectFifoStatefulTransformPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01885">AIEObjectFifoStatefulTransform.cpp:1885</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a98d14c817daebc58ad822d608bc73313"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">xilinx::AIE::getTargetModel</a></div><div class="ttdeci">const AIETargetModel &amp; getTargetModel(mlir::Operation *op)</div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_ab66d81c9b6c34445a229064cf527f089"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#ab66d81c9b6c34445a229064cf527f089">xilinx::AIE::port</a></div><div class="ttdeci">Port port</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8h_source.html#l00100">AIEPathFinder.h:100</a></div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00021">AIEToConfiguration.h:21</a></div></div>
@@ -2067,7 +2072,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Mar 4 2025 23:21:50 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Mar 5 2025 14:20:10 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
