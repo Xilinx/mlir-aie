@@ -35,6 +35,7 @@ env:
   DEBIAN_FRONTEND: noninteractive
   VITIS: /opt/ryzen_ai-1.3.0/vitis_aie_essentials
   XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
+  ENABLE_RTTI: true
 
 jobs:
   build-repo:
@@ -125,7 +126,8 @@ jobs:
             if [ x"${{ inputs.AIE_COMMIT }}" == x"" ]; then
               export AIE_PROJECT_COMMIT=$MLIR_VERSION
             else
-              export AIE_PROJECT_COMMIT="${{ inputs.AIE_COMMIT }}"
+              MLIR_VERSION = "${{ inputs.AIE_COMMIT }}"
+              export AIE_PROJECT_COMMIT=${MLIR_VERSION:0:7}
             fi
             export AIE_VITIS_COMPONENTS='AIE2;AIE2P'
             export DATETIME=$(date +"%Y%m%d%H")
