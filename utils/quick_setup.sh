@@ -52,7 +52,7 @@ source ironenv/bin/activate
 python3 -m pip install --upgrade pip
 
 python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/ 
-MLIR_AIE_DIR="$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie"
+export MLIR_AIE_INSTALL_DIR="$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie"
 
 python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
 export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
