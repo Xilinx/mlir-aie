@@ -111,13 +111,13 @@ jobs:
 
             ENABLE_RTTI_VAR=${{ matrix.ENABLE_RTTI }}
             if [ -z "$ENABLE_RTTI_VAR" ]; then  
-                ENABLE_RTTI_VAR=true  
+                ENABLE_RTTI_VAR=ON
             fi
             export ENABLE_RTTI=$ENABLE_RTTI_VAR
 
             NO_RTTI=""  # Set a default value
             NO_RTTI_UNDERSCORE=""  # Set a default value
-            if [ x"$ENABLE_RTTI" == x"false" ]; then
+            if [ x"$ENABLE_RTTI" == x"OFF" ]; then
               NO_RTTI="-no-rtti"
               NO_RTTI_UNDERSCORE="_no_rtti"
             fi
