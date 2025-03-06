@@ -207,7 +207,7 @@ mem_topology = {
 }
 
 
-def emit_partition(mlir_module_str, kernel_id="0x901"):
+def emit_partition(mlir_module_str, pdi_name, kernel_id="0x901"):
     with Context(), Location.unknown():
         module = Module.parse(mlir_module_str)
     device = find_ops(
@@ -242,7 +242,7 @@ def emit_partition(mlir_module_str, kernel_id="0x901"):
             "PDIs": [
                 {
                     "uuid": str(pdi_uuid),
-                    "file_name": "./design.pdi",
+                    "file_name": pdi_name,
                     "cdo_groups": [
                         {
                             "name": "DPU",
@@ -658,7 +658,8 @@ class FlowRunner:
         processes.append(
             write_file_async(
                 json.dumps(
-                    emit_partition(self.mlir_module_str, opts.kernel_id), indent=2
+                    emit_partition(self.mlir_module_str, opts.pdi_name, opts.kernel_id),
+                    indent=2,
                 ),
                 self.prepend_tmp("aie_partition.json"),
             )
@@ -727,8 +728,6 @@ class FlowRunner:
         # fmt: on
 
     async def process_host_cgen(self, aie_target, file_physical):
-        if len(opts.host_args) == 0:
-            return
         async with self.limit:
             if self.stopall:
                 return
@@ -1185,7 +1184,7 @@ class FlowRunner:
             ]
             await asyncio.gather(*processes)
 
-            if len(opts.host_args) > 0:
+            if opts.compile_host and len(opts.host_args) > 0:
                 await self.process_host_cgen(aie_target, input_physical)
 
             input_physical_str = await read_file_async(input_physical)
