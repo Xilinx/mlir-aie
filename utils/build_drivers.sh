@@ -13,9 +13,11 @@ if [[ "$(echo -e "$KERNEL_VERSION\n$REQUIRED_VERSION" | sort -V | head -n1)" != 
 fi
 
 # Clone the XDNA driver repository and initialize submodules
+XDNA_SHA=7c1d273ef9946848a9f236f1216cfda10d9465cb
 git clone https://github.com/amd/xdna-driver.git
 export XDNA_SRC_DIR=$(realpath xdna-driver)
 cd xdna-driver
+git checkout "$XDNA_SHA"
 git submodule update --init --recursive
 
 # Install XRT dependencies
