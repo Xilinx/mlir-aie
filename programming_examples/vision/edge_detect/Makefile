@@ -12,7 +12,7 @@ include ${srcdir}/../../makefile-common
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
-device ?= $(if $(NPU2),npu2,npu)
+device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 EDGEDETECT_WIDTH = 1920
 EDGEDETECT_HEIGHT = 1080
 

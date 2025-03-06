@@ -12,7 +12,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-devicename ?= $(if $(NPU2),npu2,npu)
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = passthrough_kernel
 VPATH := ${srcdir}/../../../aie_kernels/generic
 data_size = 4096
