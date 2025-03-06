@@ -44,7 +44,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
     > This script will install package dependencies, build the xdna-driver and xrt packages, and install them. *These steps require `sudo` access.*
   
     ```bash
-    ./utils/build_drivers.sh
+    bash ./utils/build_drivers.sh
     ```
 
 1. Reboot as directed after the script exits. 
