@@ -12,6 +12,12 @@ from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 
+width = 64
+height = 36
+if len(sys.argv) == 3:
+    width = int(sys.argv[1])
+    height = int(sys.argv[2])
+
 
 def color_detect(dev, width, height):
     lineWidth = width

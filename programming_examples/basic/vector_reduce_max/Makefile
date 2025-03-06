@@ -15,7 +15,7 @@ include ${srcdir}/../../makefile-common
 ACDC_AIE = $(dir $(shell which aie-opt))/..
 
 targetname = vector_reduce_max
-devicename = npu
+devicename ?= $(if $(NPU2),npu2,npu)
 col = 0
 
 aie_py_src=${targetname}.py
@@ -31,7 +31,11 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
+ifeq ($(devicename),npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
+else
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
+endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
