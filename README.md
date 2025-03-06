@@ -37,73 +37,19 @@ If starting from `Ubuntu 24.04` you may need to update the Linux kernel to 6.11+
 Turn off SecureBoot (Allows for unsigned drivers to be installed):
    ```BIOS → Security → Secure boot → Disable```
 
-### Install the XDNA™ Driver
+### Build and install the XDNA™ Driver and XRT
 
-1. Clone the XDNA™ driver repository and its submodules.
+1. Execute the scripted build process:
+
+  > This script will install packages, built the xdna-driver and xrt packages, and install them. *These steps require `sudo` access.*
+
     ```bash
-    git clone https://github.com/amd/xdna-driver.git
-    export XDNA_SRC_DIR=$(realpath xdna-driver)
-    cd xdna-driver
-    git submodule update --init --recursive
+    ./utils/build_drivers.sh
     ```
 
-    > The submodules use SSH remotes. You will need a GitHub account and locally installed SSH keys to pull the submodules. Follow [these instructions](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent) to set up an SSH key. Alternatively, edit `.gitmodules` to use HTTPS instead of SSH.
-
-1. Install XRT. (Below steps are adapted from [here](https://xilinx.github.io/XRT/master/html/build.html).)
-
-    1. Install XRT prerequisites.
-    
-       ```bash
-       cd $XDNA_SRC_DIR
-       sudo ./tools/amdxdna_deps.sh
-       ```
-
-    2. Build XRT.
-
-       ```bash
-       cd $XDNA_SRC_DIR/xrt/build
-       ./build.sh -npu -opt
-       ```
-
-    3. Install XRT.
-
-       ```bash
-       # Ubuntu 24.04
-       cd $XDNA_SRC_DIR/xrt/build/Release
-       sudo apt reinstall ./xrt_202510.2.19.0_24.04-amd64-base.deb
-       sudo apt reinstall ./xrt_202510.2.19.0_24.04-amd64-base-dev.deb
-       ```
-       
-       ```bash
-       # Ubuntu 24.10
-       cd $XDNA_SRC_DIR/xrt/build/Release
-       sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-base.deb
-       sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-base-dev.deb
-       ```
-
-       > **An error might occur during this proces.** If so, you may have to remove and force-overwrite/reinstall the packages.
-
-1. Build XDNA-Driver. Below steps are adapted from [here](https://github.com/amd/xdna-driver).
+1. Reboot as directed after the script exits. 
 
     ```bash
-    cd $XDNA_SRC_DIR/build
-    ./build.sh -release
-    ./build.sh -package
-    ```
-
-1. Install XDNA™.
-
-    ```bash
-    # Ubuntu 24.04
-    cd $XDNA_SRC_DIR/build/Release
-    sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu24.04-x86_64-amdxdna.deb
-    sudo reboot
-    ```
-
-    ```bash
-    # Ubuntu 24.10
-    cd $XDNA_SRC_DIR/build/Release
-    sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu24.10-x86_64-amdxdna.deb
     sudo reboot
     ```
     
