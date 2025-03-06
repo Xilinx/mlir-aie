@@ -494,9 +494,9 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   let description = [{
     An n-dimensional half DMA operator.
 
-    Programs a DMA on coordinates (`x`, `y`) to access a memory `memref` with an access
-    pattern specified by `offsets`, `sizes` and `strides` or `static_offsets`, `static_sizes`
-    and `static_strides`. The operator references the target channel through the `metadata`
+    Programs a DMA to access a memory `memref` with an access pattern specified by `offsets`,
+    `sizes` and `strides` or `static_offsets`, `static_sizes` and `static_strides`. The operator
+    references the target DMA coordinates (`x`, `y`) and channel through the `metadata`
     symbol and specifies a descriptor `id` to be used, which will become the `bd_id` to be used
     when lowered further. The `issue_token` attribute specifies whether the execution of this
     operation should issue a token which can be received and read for synchronization purposes.
@@ -557,9 +557,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   }];
 
   let arguments = (
-    ins I64Attr:$x,
-        I64Attr:$y,
-        AnyRankedOrUnrankedMemRef:$memref,
+    ins AnyMemRef:$memref,
         // NOTE: these are in reverse order: offset3, offset2, ...
         Variadic<I64>:$offsets,
         Variadic<I64>:$sizes,
@@ -580,7 +578,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   );
 
   let assemblyFormat = [{
-    `(` $x `,` $y `,` $memref ``
+    `(` $memref ``
     custom<DynamicIndexList>($offsets, $static_offsets) ``
     custom<DynamicIndexList>($sizes, $static_sizes) ``
     custom<DynamicIndexList>($strides, $static_strides) ``

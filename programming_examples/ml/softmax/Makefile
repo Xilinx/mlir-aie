@@ -14,6 +14,7 @@ include ${srcdir}/../../makefile-common
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
+device ?= $(if $(NPU2),npu2,npu)
 targetname = softmax
 trace_size = 8192
 
@@ -31,26 +32,44 @@ build/dut.cc: ${srcdir}/bf16_softmax.mlir
 	cd ${@D} &&	aie-opt $< -affine-super-vectorize="virtual-vector-size=16 test-fastest-varying=0 vectorize-reductions=true" --convert-vector-to-aievec="aie-target=aie2" -lower-affine | aie-translate -aie2=true --aievec-to-cpp -o ${@F}
 
 build/dut.o: build/dut.cc
+ifeq ($(device),npu)
 	cd ${@D} &&	${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I../../../../aie_runtime_lib/AIE2 -c ${<F} -o ${@F}
+else ifeq ($(device),npu2)
+	cd ${@D} &&	${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -I../../../../aie_runtime_lib/AIE2P -c ${<F} -o ${@F}
+else
+	echo "Device type not supported"
+endif
 
 build/lut_based_ops.o: ../../../aie_runtime_lib/AIE2/lut_based_ops.cpp
 	mkdir -p ${@D}
+ifeq ($(device),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -c $(<:%=../%) -o ${@F}
+else ifeq ($(device),npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -I. -c $(<:%=../%) -o ${@F}
+else
+	echo "Device type not supported"
+endif
 
 build/softmax.o: bf16_softmax.cc
 	mkdir -p ${@D}
+ifeq ($(device),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -I../../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
+else ifeq ($(device),npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -I. -I../../../../aie_runtime_lib/AIE2P -c $< -o ${@F}
+else
+	echo "Device type not supported"
+endif
 
 build/kernels.a: build/softmax.o 
 	ar rvs $@ $+
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< > $@
+	python3 $< ${device} > $@
 
 build/aie_trace.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${trace_size} > $@
+	python3 $< ${device} ${trace_size} > $@
 
 
 build/final.xclbin: build/aie.mlir build/kernels.a
@@ -64,7 +83,6 @@ build/final_trace.xclbin: build/aie_trace.mlir build/kernels.a
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
     	--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
-
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -85,11 +103,9 @@ profile: ${targetname}.exe build/final.xclbin
 
 trace: ${targetname}.exe build/final_trace.xclbin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
-	../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > trace_softmax.json
+	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > trace_softmax.json
+	${srcdir}/../../utils/get_trace_summary.py --filename trace_softmax.json
 
-clean_trace:
-	rm -rf trace.txt trace_softmax.json
-
-clean: clean_trace
+clean: 
 	rm -rf build _build ${targetname}.exe 
 

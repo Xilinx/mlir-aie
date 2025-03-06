@@ -30,7 +30,9 @@ else()
     set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
 endif()
 
-set(VECTORSCALARMUL_SIZE 4096 CACHE STRING "vector size")
+set(IN1_SIZE 8192 CACHE STRING "in1 buffer size")
+set(IN2_SIZE 4 CACHE STRING "in2 buffer size")
+set(OUT_SIZE 8192 CACHE STRING "out buffer size")
 set(TARGET_NAME test CACHE STRING "Target to be built")
 
 SET (ProjectName ${TARGET_NAME})
@@ -51,7 +53,9 @@ add_executable(${currentTarget}
 )
 
 target_compile_definitions(${currentTarget} PUBLIC 
-    VECTORSCALARMUL_SIZE=${VECTORSCALARMUL_SIZE}
+    IN1_SIZE=${IN1_SIZE}
+    IN2_SIZE=${IN2_SIZE}
+    OUT_SIZE=${OUT_SIZE}
     DISABLE_ABI_CHECK=1
     )
 

@@ -17,7 +17,7 @@ from aie.helpers.util import np_ndarray_type_get_shape
 import aie.utils.trace as trace_utils
 
 
-def vector_softmax(trace_size):
+def vector_softmax(dev, trace_size):
 
     word_size_in = 2
     N = 262144  # *1024
@@ -31,7 +31,7 @@ def vector_softmax(trace_size):
     tiles = N_div_n // n_cores
     buffer_depth = 2
 
-    @device(AIEDevice.npu1_1col)
+    @device(dev)
     def device_body():
         tile_ty = np.ndarray[(n,), np.dtype[bfloat16]]
 
@@ -86,9 +86,10 @@ def vector_softmax(trace_size):
         object_fifo_link(inA, inA_fifos, [], of_a_offsets)
         object_fifo_link(outC_fifos, outC, of_c_offsets, [])
 
-        # Set up a circuit-switched flow from core to shim for tracing information
+        # Set up a packet-switched flow from core to shim for tracing information
+        tiles_to_trace = [cores[0]]
         if trace_size > 0:
-            flow(cores[0], WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
+            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
         # Set up compute tiles
         for i in range(n_cores):
@@ -112,12 +113,12 @@ def vector_softmax(trace_size):
         def sequence(A, C):
 
             if trace_size > 0:
-                trace_utils.configure_simple_tracing_aie2(
-                    cores[0],
-                    ShimTile,
+                trace_utils.configure_packet_tracing_aie2(
+                    tiles_to_trace=tiles_to_trace,
+                    shim=ShimTile,
+                    trace_size=trace_size,
+                    trace_offset=N_in_bytes,
                     ddr_id=1,
-                    size=trace_size,
-                    offset=N_in_bytes,
                 )
 
             in_task = shim_dma_single_bd_task(
@@ -132,14 +133,23 @@ def vector_softmax(trace_size):
             dma_start_task(in_task, out_task)
             dma_await_task(in_task, out_task)
 
+            trace_utils.gen_trace_done_aie2(ShimTile)
+
 
 try:
-    trace_size = 0 if (len(sys.argv) != 2) else int(sys.argv[1])
+    device_name = str(sys.argv[1])
+    if device_name == "npu":
+        dev = AIEDevice.npu1_1col
+    elif device_name == "npu2":
+        dev = AIEDevice.npu2
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
+    trace_size = 0 if (len(sys.argv) != 3) else int(sys.argv[2])
 except ValueError:
     print("Argument is not an integer")
 
 with mlir_mod_ctx() as ctx:
-    vector_softmax(trace_size)
+    vector_softmax(dev, trace_size)
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)

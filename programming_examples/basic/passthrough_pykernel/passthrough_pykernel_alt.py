@@ -15,11 +15,22 @@ from aie.helpers.dialects.ext.func import func
 from aie.helpers.dialects.ext.scf import _for as range_
 
 
+dev = AIEDevice.npu1_1col
+
+if len(sys.argv) > 2:
+    if sys.argv[2] == "npu":
+        dev = AIEDevice.npu1_1col
+    elif sys.argv[2] == "npu2":
+        dev = AIEDevice.npu2
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
+
+
 def passthroughKernel(vector_size):
     N = vector_size
     lineWidthInBytes = N // 4  # chop input in 4 sub-tensors
 
-    @device(AIEDevice.npu1_1col)
+    @device(dev)
     def device_body():
         # define types
         line_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]

@@ -13,7 +13,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 include ${srcdir}/../../makefile-common
 
 targetname = vector_vector_mul
-devicename = npu
+devicename ?= $(if $(NPU2),npu2,npu)
 col = 0
 
 aie_py_src=${targetname}.py
