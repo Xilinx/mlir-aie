@@ -109,11 +109,7 @@ jobs:
             pip install -r python/requirements_ml.txt
             HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
 
-            ENABLE_RTTI_VAR=${{ matrix.ENABLE_RTTI }}
-            if [ -z "$ENABLE_RTTI_VAR" ]; then  
-                ENABLE_RTTI_VAR=ON
-            fi
-            export ENABLE_RTTI=$ENABLE_RTTI_VAR
+            export ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}
 
             NO_RTTI=""  # Set a default value
             NO_RTTI_UNDERSCORE=""  # Set a default value
