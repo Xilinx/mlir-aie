@@ -12,7 +12,7 @@ include ${srcdir}/../../makefile-common
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
-device ?= $(if $(NPU2),npu2,npu)
+device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 COLORTHRESHOLD_WIDTH  = 1920
 COLORTHRESHOLD_HEIGHT = 1080
 

@@ -35,9 +35,9 @@ else
 fi
 # Check if the current environment is NPU2
 if echo "$NPU" | grep -qi "npu4"; then
-    export NPU2=0
-else
     export NPU2=1
+else
+    export NPU2=0
 fi
 if hash python3.12; then
    echo "Using python version `python3.12 --version`"
