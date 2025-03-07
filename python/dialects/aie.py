@@ -913,8 +913,8 @@ class TileOp(TileOp):
         )
 
 
-def tile(col, row, *, loc=None, ip=None):
-    return TileOp(col=col, row=row, loc=loc, ip=ip)
+def tile(col, row, *, loc=None, ip=None, allocation_scheme=None):
+    return TileOp(col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme)
 
 
 # BDChainOp

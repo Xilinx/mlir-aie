@@ -147,8 +147,7 @@ def parse_args(args=None):
     parser.add_argument(
         "--alloc-scheme",
         dest="alloc_scheme",
-        default="bank-aware",
-        help="Allocation scheme for AIE buffers: basic-sequential, bank-aware (default).",
+        help="Allocation scheme for AIE buffers: basic-sequential or bank-aware. May be overruled by a tile's specific allocation scheme.",
     )
     parser.add_argument(
         "--generate-ctrl-pkt-overlay",
