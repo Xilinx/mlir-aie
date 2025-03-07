@@ -4,12 +4,12 @@ import argparse
 import sys
 import re
 
-from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEvent
+from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
 
 # Number of different trace types, currently 4
 # core:    pkt type 0
 # mem:     pkt type 1
-# intfc:   pkt type 2
+# shim:   pkt type 2
 # memtile: pkt type 3
 NumTraceTypes = 4
 NUM_EVENTS = 8  # number of events we can view per trace
@@ -66,7 +66,7 @@ def core_trace_and_mem_trace_de_interleave(word_stream):
 
     # core_streams = dict()   # pkt type 0
     # mem_stream = dict()     # pkt type 1
-    # intfc_stream = dict()   # pkt type 2
+    # shim_stream = dict()   # pkt type 2
     # memtile_stream = dict() # pkt type 3
 
     # index lists based on row/col and if its not null, that means it already exists
@@ -109,7 +109,7 @@ def core_trace_and_mem_trace_de_interleave(word_stream):
     return toks_list
 
 
-# toks_list is a list of toks dictionaries where each dictionary is a type (core, mem, intfc, memtile)
+# toks_list is a list of toks dictionaries where each dictionary is a type (core, mem, shim, memtile)
 # each dictionary key is a tile location (row,col) whose value is a list of stream data
 def convert_to_byte_stream(toks_list):
     byte_stream_list = list()
@@ -403,6 +403,8 @@ def convert_commands_to_json(trace_events, commands, pid_events):
             timer = 0  # TODO Some way to set this or sync this between trace types and row,col
             # timer on each execution is the time for the last execution
             # so we by default will increment it by 1 for each event
+            if DEBUG:
+                print("tt: "+str(tt)+", loc: "+str(loc)+", NUM_EVENTS: "+str(NUM_EVENTS)+"\n")
             pid = pid_events[tt][loc][NUM_EVENTS]
 
             active_events = dict()
@@ -547,7 +549,7 @@ def process_name_metadata(trace_events, pid, trace_type, loc):
     elif trace_type == 1:
         trace_event["args"]["name"] = "mem_trace for tile" + str(loc)
     elif trace_type == 2:
-        trace_event["args"]["name"] = "intfc_trace for tile" + str(loc)
+        trace_event["args"]["name"] = "shim_trace for tile" + str(loc)
     elif trace_type == 3:
         trace_event["args"]["name"] = "memtile_trace for tile" + str(loc)
 
@@ -572,6 +574,11 @@ def thread_name_metadata(trace_events, trace_type, loc, pid, tid, pid_events):
 # pid_events: list(idx=pkt_type, value=labels_dict)
 # label_dict: dict(key=row,col, value=labels list)
 # labels_list: list(idx=label idx, value=label code)
+# 
+# This searches for npu.write32 and categorizes them based on address and row.
+# It's probably not the best way to do it but it's the initial implementation.
+# memtile and core/shim tiles have different addresses. For now, we distinguish
+# between core and shim tile by row=0
 def parse_mlir_trace_events(lines):
     # arg can be column, row, address or value
     # 1: arg: 2: val
@@ -638,39 +645,74 @@ def parse_mlir_trace_events(lines):
 
             # core event 0
             if address == 0x340E0:  # 213216, match ignoring case
-                if pid_events[0].get(key) == None:
-                    pid_events[0][key] = [
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                    ]  # TODO no better way to init this?
-                # print("Trace event 0 configured to be ",hex(value))
-                pid_events[0][key][0] = value & 0xFF
-                pid_events[0][key][1] = (value >> 8) & 0xFF
-                pid_events[0][key][2] = (value >> 16) & 0xFF
-                pid_events[0][key][3] = (value >> 24) & 0xFF
+                if row == 0: # shim
+                    if pid_events[2].get(key) == None:
+                        pid_events[2][key] = [
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                        ]  # TODO no better way to init this?
+                    # print("Trace event 0 configured to be ",hex(value))
+                    pid_events[2][key][0] = value & 0xFF
+                    pid_events[2][key][1] = (value >> 8) & 0xFF
+                    pid_events[2][key][2] = (value >> 16) & 0xFF
+                    pid_events[2][key][3] = (value >> 24) & 0xFF
+                else: # core
+                    if pid_events[0].get(key) == None:
+                        pid_events[0][key] = [
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                        ]  # TODO no better way to init this?
+                    # print("Trace event 0 configured to be ",hex(value))
+                    pid_events[0][key][0] = value & 0xFF
+                    pid_events[0][key][1] = (value >> 8) & 0xFF
+                    pid_events[0][key][2] = (value >> 16) & 0xFF
+                    pid_events[0][key][3] = (value >> 24) & 0xFF
             # core event 1
             elif address == 0x340E4:  # 213220, match ignoring case
-                if pid_events[0].get(key) == None:
-                    pid_events[0][key] = [
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                    ]  # TODO no better way to init this?
-                pid_events[0][key][4] = value & 0xFF
-                pid_events[0][key][5] = (value >> 8) & 0xFF
-                pid_events[0][key][6] = (value >> 16) & 0xFF
-                pid_events[0][key][7] = (value >> 24) & 0xFF
+                if row == 0: # shim
+                    if pid_events[2].get(key) == None:
+                        pid_events[2][key] = [
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                        ]  # TODO no better way to init this?
+                    pid_events[2][key][4] = value & 0xFF
+                    pid_events[2][key][5] = (value >> 8) & 0xFF
+                    pid_events[2][key][6] = (value >> 16) & 0xFF
+                    pid_events[2][key][7] = (value >> 24) & 0xFF
+                else: # core
+                    if pid_events[0].get(key) == None:
+                        pid_events[0][key] = [
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                        ]  # TODO no better way to init this?
+                    pid_events[0][key][4] = value & 0xFF
+                    pid_events[0][key][5] = (value >> 8) & 0xFF
+                    pid_events[0][key][6] = (value >> 16) & 0xFF
+                    pid_events[0][key][7] = (value >> 24) & 0xFF
             # mem event 0
             elif address == 0x140E0:  # 82144
                 if pid_events[1].get(key) == None:
@@ -741,7 +783,7 @@ def parse_mlir_trace_events(lines):
                 pid_events[3][key][5] = (value >> 8) & 0xFF
                 pid_events[3][key][6] = (value >> 16) & 0xFF
                 pid_events[3][key][7] = (value >> 24) & 0xFF
-            # TODO intfc event 0, 1 needs to also be defined
+            # TODO shim event 0, 1 needs to also be defined
 
     # print("Found labels:\n")
     # for j in pid_events:
@@ -761,7 +803,7 @@ def lookup_event_name_by_type(trace_type, code):
     elif trace_type == 1:  # Mem traces
         events_enum = MemEvent
     elif trace_type == 2:  # Shim traces
-        events_enum = PLEvent
+        events_enum = ShimTileEvent
     elif trace_type == 3:  # MemTile traces
         events_enum = MemTileEvent
     if events_enum is not None and code in set(x.value for x in events_enum):
@@ -907,7 +949,7 @@ with open(opts.filename, "r") as f:
     bs_0 = convert_to_byte_stream(toks_list)
     # core_bs_0    = convert_to_byte_stream(core_toks)
     # mem_bs_0     = convert_to_byte_stream(mem_toks)
-    # intfc_bs_0   = convert_to_byte_stream(intfc_toks)
+    # shim_bs_0   = convert_to_byte_stream(shim_toks)
     # memtile_bs_0 = convert_to_byte_stream(memtile_toks)
 
     if DEBUG:
@@ -922,7 +964,7 @@ with open(opts.filename, "r") as f:
     commands_0 = convert_to_commands(bs_0, False)
     # core_commands_0    = convert_to_commands(core_bs_0, False)
     # mem_commands_0     = convert_to_commands(mem_bs_0, False)
-    # intfc_commands_0   = convert_to_commands(intfc_bs_0, False)
+    # shim_commands_0   = convert_to_commands(shim_bs_0, False)
     # memtile_commands_0 = convert_to_commands(memtile_bs_0, False)
 
     # core_commands_1 = convert_to_commands(core_bs_1, False)
