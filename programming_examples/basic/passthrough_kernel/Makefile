@@ -34,11 +34,11 @@ all: build/final_${data_size}.xclbin
 
 build/aie2_lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${device} ${in1_size} ${out_size} 0 > $@
+	python3 $< ${devicename} ${in1_size} ${out_size} 0 > $@
 
 build/aie2_trace_lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${device} ${in1_size} ${out_size} ${trace_size} > $@
+	python3 $< ${devicename} ${in1_size} ${out_size} ${trace_size} > $@
 
 build/%.cc.o: %.cc
 	mkdir -p ${@D}

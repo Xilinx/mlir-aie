@@ -25,18 +25,6 @@ def vector_reduce_max(dev, in1_size, out_size, trace_size):
 
     buffer_depth = 2
 
-    if len(sys.argv) != 3:
-        raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
-
-    if sys.argv[1] == "npu":
-        dev = AIEDevice.npu1_1col
-    elif sys.argv[1] == "npu2":
-        dev = AIEDevice.npu2
-    elif sys.argv[1] == "xcvc1902":
-        dev = AIEDevice.xcvc1902
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-
     @device(dev)
     def device_body():
         in_ty = np.ndarray[(N,), np.dtype[np.int32]]

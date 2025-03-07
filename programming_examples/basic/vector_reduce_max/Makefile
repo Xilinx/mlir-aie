@@ -33,11 +33,11 @@ all: build/final.xclbin
 
 build/aie2.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${device} ${in1_size} ${out_size} 0 > $@
+	python3 $< ${devicename} ${in1_size} ${out_size} 0 > $@
 
 build/aie2_trace.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${device} ${in1_size} ${out_size} ${trace_size} > $@
+	python3 $< ${devicename} ${in1_size} ${out_size} ${trace_size} > $@
 
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
@@ -50,7 +50,7 @@ endif
 
 build/final.xclbin: build/aie2.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
-ifeq ($(device),npu)
+ifeq ($(devicename),npu)
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
@@ -61,7 +61,7 @@ endif
 
 build/final_trace.xclbin: build/aie2_trace.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
-ifeq ($(device),npu)
+ifeq ($(devicename),npu)
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)

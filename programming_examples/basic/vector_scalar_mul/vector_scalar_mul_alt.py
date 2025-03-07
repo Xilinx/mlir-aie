@@ -104,33 +104,27 @@ def vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
 
             trace_utils.gen_trace_done_aie2(ShimTile)
 
-try:
-    if len(sys.argv) < 5:
-        raise ValueError(
-            "[ERROR] Need at least 4 arguments (dev, in1_size, in2_size, out_size)"
-        )
+if len(sys.argv) < 5:
+    raise ValueError(
+        "[ERROR] Need at least 4 arguments (dev, in1_size, in2_size, out_size)"
+    )
 
-    device_name = str(sys.argv[1])
-    if device_name == "npu":
-        dev = AIEDevice.npu1_1col
-    elif device_name == "npu2":
-        dev = AIEDevice.npu2
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-    in1_size = int(sys.argv[2])
-    if in1_size % 128 != 0 or in1_size < 1024:
-        print(
-            "In1 buffer size must be a multiple of 128 (so len is multiple of 64) and greater than or equal to 1024 (so len >= 512)"
-        )
-        raise ValueError
-    in2_size = int(sys.argv[3])
-    out_size = int(sys.argv[4])
-    trace_size = 0 if (len(sys.argv) != 6) else int(sys.argv[5])
-except ValueError:
-    print("Argument has inappropriate value")
-with mlir_mod_ctx() as ctx:
-    my_vector_scalar(dev, in1_size, in2_size, out_size, trace_size)
-print(ctx.module)
+device_name = str(sys.argv[1])
+if device_name == "npu":
+    dev = AIEDevice.npu1_1col
+elif device_name == "npu2":
+    dev = AIEDevice.npu2
+else:
+    raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+in1_size = int(sys.argv[2])
+if in1_size % 128 != 0 or in1_size < 1024:
+    print(
+        "In1 buffer size must be a multiple of 128 (so len is multiple of 64) and greater than or equal to 1024 (so len >= 512)"
+    )
+    raise ValueError
+in2_size = int(sys.argv[3])
+out_size = int(sys.argv[4])
+trace_size = 0 if (len(sys.argv) != 6) else int(sys.argv[5])
 
 with mlir_mod_ctx() as ctx:
     vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size)
