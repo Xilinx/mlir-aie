@@ -14,7 +14,7 @@ include ${srcdir}/../../makefile-common
 
 all: build/final.xclbin
 
-device ?= $(if $(NPU2),npu2,npu)
+device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = eltwise_add
 trace_size = 8192
 
@@ -47,13 +47,13 @@ build/aie_trace.mlir: ${srcdir}/${aie_py_src}
 
 build/final.xclbin: build/aie.mlir build/add.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
 build/final_trace.xclbin: build/aie_trace.mlir build/add.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 

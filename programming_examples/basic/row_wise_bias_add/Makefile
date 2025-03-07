@@ -32,7 +32,7 @@ xclbin_target?=build/final.xclbin
 insts_target?=build/insts.txt
 host_target?=build/test
 
-devicename ?= $(if $(NPU2),npu2,npu)
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 M=768
 N=2304
 m=96
@@ -62,9 +62,9 @@ ${mlir_target}: ${srcdir}/${aie_py_src}
 
 ${xclbin_target}: ${mlir_target} build/kernel.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 				--no-xchesscc --no-xbridge \
-				--aie-generate-npu --npu-insts-name=${insts_target:build/%=%} ${<:%=../%}
+				--aie-generate-npu-insts --npu-insts-name=${insts_target:build/%=%} ${<:%=../%}
 
 ${host_target}: ${srcdir}/test.cpp ${xclbin_target}
 	mkdir -p ${@D}

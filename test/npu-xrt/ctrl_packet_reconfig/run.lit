@@ -4,10 +4,10 @@
 // REQUIRES: ryzen_ai
 //
 // RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %S/aie1.mlir -o aie1_overlay.mlir
-// RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --no-compile-host --xclbin-name=aie1.xclbin aie1_overlay.mlir
+// RUN: %python aiecc.py --no-aiesim --aie-generate-xclbin --no-compile-host --xclbin-name=aie1.xclbin aie1_overlay.mlir
 //
 // RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %S/aie2.mlir -o aie2_overlay.mlir
-// RUN: %python aiecc.py --no-aiesim --aie-generate-ctrlpkt --aie-generate-npu --no-compile-host --npu-insts-name=aie2_run_seq.txt aie2_overlay.mlir
+// RUN: %python aiecc.py --no-aiesim --aie-generate-ctrlpkt --aie-generate-npu-insts --no-compile-host --npu-insts-name=aie2_run_seq.txt aie2_overlay.mlir
 //
 // RUN: aie-translate -aie-ctrlpkt-to-bin -aie-sequence-name=configure aie2_overlay.mlir.prj/ctrlpkt.mlir -o ctrlpkt.txt
 //

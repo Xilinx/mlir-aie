@@ -12,7 +12,7 @@ include ${srcdir}/../../makefile-common
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
-device ?= $(if $(NPU2),npu2,npu)
+device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 COLORTHRESHOLD_WIDTH  = 1920
 COLORTHRESHOLD_HEIGHT = 1080
 
@@ -48,7 +48,7 @@ build/aie2_${COLORTHRESHOLD_WIDTH}.mlir: ${srcdir}/${aie_py_src}
 
 build/final_${COLORTHRESHOLD_WIDTH}.xclbin: build/aie2_${COLORTHRESHOLD_WIDTH}.mlir build/threshold.cc.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host --alloc-scheme=basic-sequential \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 

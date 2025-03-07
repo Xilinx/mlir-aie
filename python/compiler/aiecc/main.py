@@ -207,7 +207,7 @@ mem_topology = {
 }
 
 
-def emit_partition(mlir_module_str, kernel_id="0x901"):
+def emit_partition(mlir_module_str, pdi_name, kernel_id="0x901"):
     with Context(), Location.unknown():
         module = Module.parse(mlir_module_str)
     device = find_ops(
@@ -242,7 +242,7 @@ def emit_partition(mlir_module_str, kernel_id="0x901"):
             "PDIs": [
                 {
                     "uuid": str(pdi_uuid),
-                    "file_name": "./design.pdi",
+                    "file_name": pdi_name,
                     "cdo_groups": [
                         {
                             "name": "DPU",
@@ -489,6 +489,8 @@ class FlowRunner:
     # In order to run peano on modern ll code, we need a bunch of hacks.
     async def peanohack(self, llvmir):
         llvmir_peanohack = llvmir + "peanohack.ll"
+        if not self.opts.execute:
+            return llvmir_peanohack
 
         llvmir_ir = await read_file_async(llvmir)
         llvmir_hacked_ir = downgrade_ir_for_peano(llvmir_ir)
@@ -583,75 +585,56 @@ class FlowRunner:
                 self.progress_bar.update(task, advance=0, visible=False)
             # fmt: on
 
-    async def process_cdo(self):
-        from aie.dialects.aie import generate_cdo
-
+    async def process_cdo(self, module_str):
         with Context(), Location.unknown():
-            for elf in glob.glob("*.elf"):
-                try:
-                    shutil.copy(elf, self.tmpdirname)
-                except shutil.SameFileError:
-                    pass
-            for elf_map in glob.glob("*.elf.map"):
-                try:
-                    shutil.copy(elf_map, self.tmpdirname)
-                except shutil.SameFileError:
-                    pass
-            input_physical = Module.parse(
-                await read_file_async(self.prepend_tmp("input_physical.mlir"))
-            )
-            generate_cdo(input_physical.operation, self.tmpdirname)
+            input_physical = Module.parse(module_str)
+            aiedialect.generate_cdo(input_physical.operation, self.tmpdirname)
 
-    async def process_txn(self):
-
+    async def process_txn(self, module_str):
         with Context(), Location.unknown():
-            for elf in glob.glob("*.elf"):
-                try:
-                    shutil.copy(elf, self.tmpdirname)
-                except shutil.SameFileError:
-                    pass
-            for elf_map in glob.glob("*.elf.map"):
-                try:
-                    shutil.copy(elf_map, self.tmpdirname)
-                except shutil.SameFileError:
-                    pass
-            input_physical = await read_file_async(
-                self.prepend_tmp("input_physical.mlir")
-            )
             run_passes(
                 "builtin.module(aie.device(convert-aie-to-transaction{elf-dir="
                 + self.tmpdirname
                 + "}))",
-                input_physical,
+                module_str,
                 self.prepend_tmp("txn.mlir"),
                 self.opts.verbose,
             )
 
-    async def process_ctrlpkt(self):
-
+    async def process_ctrlpkt(self, module_str):
         with Context(), Location.unknown():
-            for elf in glob.glob("*.elf"):
-                try:
-                    shutil.copy(elf, self.tmpdirname)
-                except shutil.SameFileError:
-                    pass
-            for elf_map in glob.glob("*.elf.map"):
-                try:
-                    shutil.copy(elf_map, self.tmpdirname)
-                except shutil.SameFileError:
-                    pass
-            input_physical = await read_file_async(
-                self.prepend_tmp("input_physical.mlir")
-            )
             run_passes(
                 "builtin.module(aie.device(convert-aie-to-control-packets{elf-dir="
                 + self.tmpdirname
                 + "}))",
-                input_physical,
+                module_str,
                 self.prepend_tmp("ctrlpkt.mlir"),
                 self.opts.verbose,
             )
 
+    async def process_pdi_gen(self):
+
+        await write_file_async(
+            emit_design_bif(self.tmpdirname),
+            self.prepend_tmp(opts.pdi_name + ".bif"),
+        )
+
+        await self.do_call(
+            None,
+            [
+                "bootgen",
+                "-arch",
+                "versal",
+                "-image",
+                self.prepend_tmp(opts.pdi_name + ".bif"),
+                "-o",
+                self.prepend_tmp(opts.pdi_name),
+                "-w",
+            ],
+        )
+
+    # generate an xclbin. The inputs are self.mlir_module_str and the cdo
+    # binaries from the process_cdo step.
     async def process_xclbin_gen(self):
         if opts.progress:
             task = self.progress_bar.add_task(
@@ -660,41 +643,72 @@ class FlowRunner:
         else:
             task = None
 
-        await write_file_async(
-            json.dumps(mem_topology, indent=2),
-            self.prepend_tmp("mem_topology.json"),
+        # collect the tasks to generate the inputs to xclbinutil
+        processes = []
+
+        # generate mem_topology.json
+        processes.append(
+            write_file_async(
+                json.dumps(mem_topology, indent=2),
+                self.prepend_tmp("mem_topology.json"),
+            )
         )
 
-        await write_file_async(
-            json.dumps(emit_partition(self.mlir_module_str, opts.kernel_id), indent=2),
-            self.prepend_tmp("aie_partition.json"),
-        )
-
-        buffer_arg_names = [f"bo{i}" for i in range(5)]
-        await write_file_async(
-            json.dumps(
-                emit_design_kernel_json(
-                    opts.kernel_name,
-                    opts.kernel_id,
-                    opts.instance_name,
-                    buffer_arg_names,
+        # generate aie_partition.json
+        processes.append(
+            write_file_async(
+                json.dumps(
+                    emit_partition(self.mlir_module_str, opts.pdi_name, opts.kernel_id),
+                    indent=2,
                 ),
-                indent=2,
-            ),
-            self.prepend_tmp("kernels.json"),
+                self.prepend_tmp("aie_partition.json"),
+            )
         )
 
-        await write_file_async(
-            emit_design_bif(self.tmpdirname),
-            self.prepend_tmp("design.bif"),
+        # generate kernels.json
+        buffer_arg_names = [f"bo{i}" for i in range(5)]
+        processes.append(
+            write_file_async(
+                json.dumps(
+                    emit_design_kernel_json(
+                        opts.kernel_name,
+                        opts.kernel_id,
+                        opts.instance_name,
+                        buffer_arg_names,
+                    ),
+                    indent=2,
+                ),
+                self.prepend_tmp("kernels.json"),
+            )
         )
+
+        # generate pdi
+        processes.append(self.process_pdi_gen())
+
+        # get partition info from input xclbin, if present
+        if opts.xclbin_input:
+            processes.append(
+                self.do_call(
+                    task,
+                    [
+                        "xclbinutil",
+                        "--dump-section",
+                        "AIE_PARTITION:JSON:"
+                        + self.prepend_tmp("aie_input_partition.json"),
+                        "--force",
+                        "--quiet",
+                        "--input",
+                        opts.xclbin_input,
+                    ],
+                )
+            )
+
+        # wait for all of the above to finish
+        await asyncio.gather(*processes)
 
         # fmt: off
-        await self.do_call(task, ["bootgen", "-arch", "versal", "-image", self.prepend_tmp("design.bif"), "-o", self.prepend_tmp("design.pdi"), "-w"])
         if opts.xclbin_input:
-            await self.do_call(task, ["xclbinutil",
-                                      "--dump-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_input_partition.json"),
-                                      "--force", "--quiet", "--input", opts.xclbin_input])
+            # patch the input partition json with the new partition information
             with open(self.prepend_tmp("aie_input_partition.json")) as f:
                 input_partition = json.load(f)
             with open(self.prepend_tmp("aie_partition.json")) as f:
@@ -706,13 +720,14 @@ class FlowRunner:
         else:
             flag = ["--add-replace-section", "MEM_TOPOLOGY:JSON:" + self.prepend_tmp("mem_topology.json")]
 
+        # run xclbinutil to generate the xclbin
         await self.do_call(task, ["xclbinutil"] + flag +
                                  ["--add-kernel", self.prepend_tmp("kernels.json"),
                                   "--add-replace-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_partition.json"),
                                   "--force", "--quiet", "--output", opts.xclbin_name])
         # fmt: on
 
-    async def process_host_cgen(self, aie_target, file_with_addresses):
+    async def process_host_cgen(self, aie_target, file_physical):
         async with self.limit:
             if self.stopall:
                 return
@@ -723,19 +738,6 @@ class FlowRunner:
                 )
             else:
                 task = None
-
-            # Generate the included host interface
-            file_physical = self.prepend_tmp("input_physical.mlir")
-            await self.do_call(
-                task,
-                [
-                    "aie-opt",
-                    "--aie-create-pathfinder-flows",
-                    file_with_addresses,
-                    "-o",
-                    file_physical,
-                ],
-            )
 
             if opts.airbin:
                 file_airbin = self.prepend_tmp("air.bin")
@@ -874,7 +876,7 @@ class FlowRunner:
             if task:
                 self.progress_bar.update(task, advance=0, visible=False)
 
-    async def gen_sim(self, task, aie_target):
+    async def gen_sim(self, task, aie_target, file_physical):
         # For simulation, we need to additionally parse the 'remaining' options to avoid things
         # which conflict with the options below (e.g. -o)
         print(opts.host_args)
@@ -921,7 +923,6 @@ class FlowRunner:
             "include",
         )
         sim_genwrapper = os.path.join(runtime_simlib_path, "genwrapper_for_ps.cpp")
-        file_physical = self.prepend_tmp("input_physical.mlir")
         memory_allocator = os.path.join(
             runtime_testlib_path, "libmemory_allocator_sim_aie.a"
         )
@@ -1086,12 +1087,11 @@ class FlowRunner:
                 "[green] MLIR compilation:", total=1, command="1 Worker"
             )
 
-            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
-
             pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
                 opts.alloc_scheme, opts.dynamic_objFifos, opts.ctrl_pkt_overlay
             ).materialize(module=True)
 
+            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
             run_passes(
                 pass_pipeline,
                 self.mlir_module_str,
@@ -1118,7 +1118,7 @@ class FlowRunner:
             aie_peano_target = aie_target.lower() + "-none-elf"
 
             # Optionally generate insts.txt for NPU instruction stream
-            if opts.npu or opts.only_npu:
+            if opts.npu:
                 with Context(), Location.unknown():
                     file_with_addresses_module = Module.parse(
                         await read_file_async(file_with_addresses)
@@ -1141,8 +1141,6 @@ class FlowRunner:
                     with open(opts.insts_name, "w") as f:
                         for inst in npu_insts:
                             f.write(f"{inst}\n")
-                if opts.only_npu:
-                    return
 
             # fmt: off
             if opts.unified:
@@ -1170,13 +1168,32 @@ class FlowRunner:
                 command="%d Workers" % nworkers,
             )
 
-            processes = [self.process_host_cgen(aie_target, file_with_addresses)]
-            await asyncio.gather(
-                *processes
-            )  # ensure that process_host_cgen finishes before running gen_sim
+            input_physical = self.prepend_tmp("input_physical.mlir")
+            processes = [
+                self.do_call(
+                    None,
+                    [
+                        "aie-opt",
+                        "--aie-create-pathfinder-flows",
+                        file_with_addresses,
+                        "-o",
+                        input_physical,
+                    ],
+                    force=True,
+                )
+            ]
+            await asyncio.gather(*processes)
+
+            if opts.compile_host and len(opts.host_args) > 0:
+                await self.process_host_cgen(aie_target, input_physical)
+
+            input_physical_str = await read_file_async(input_physical)
+
             processes = []
             if opts.aiesim:
-                processes.append(self.gen_sim(progress_bar.task, aie_target))
+                processes.append(
+                    self.gen_sim(progress_bar.task, aie_target, input_physical)
+                )
             for core in cores:
                 processes.append(
                     self.process_core(
@@ -1188,18 +1205,36 @@ class FlowRunner:
                 )
             await asyncio.gather(*processes)
 
-            # Must have elfs, before we build the final binary assembly
-            if opts.cdo and opts.execute:
-                await self.process_cdo()
+            # copy the elfs left by proess_core to the tmpdir for process_cdo
+            for elf in glob.glob("*.elf"):
+                try:
+                    shutil.copy(elf, self.tmpdirname)
+                except shutil.SameFileError:
+                    pass
+            for elf_map in glob.glob("*.elf.map"):
+                try:
+                    shutil.copy(elf_map, self.tmpdirname)
+                except shutil.SameFileError:
+                    pass
 
-            if opts.cdo or opts.xcl:
-                await self.process_xclbin_gen()
+            if (opts.cdo or opts.xcl or opts.pdi) and opts.execute:
+                await self.process_cdo(input_physical_str)
+
+            processes = []
+            if opts.xcl:
+                processes.append(self.process_xclbin_gen())
+            # self.process_pdi_gen is called in process_xclbin_gen,
+            # so don't call it again if opts.xcl is set
+            elif opts.pdi:
+                processes.append(self.process_pdi_gen())
 
             if opts.txn and opts.execute:
-                await self.process_txn()
+                processes.append(self.process_txn(input_physical_str))
 
             if opts.ctrlpkt and opts.execute:
-                await self.process_ctrlpkt()
+                processes.append(self.process_ctrlpkt(input_physical_str))
+
+            await asyncio.gather(*processes)
 
     def dumpprofile(self):
         sortedruntimes = sorted(
