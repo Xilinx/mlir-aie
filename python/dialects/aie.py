@@ -268,7 +268,7 @@ class buffer(BufferOp):
         tile,
         datatype: MemRefType | type[np.ndarray],
         name: str | None = None,
-        address = None,
+        address=None,
         initial_value: np.ndarray | None = None,
         use_write_rtp: bool = False,
         loc=None,

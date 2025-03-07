@@ -103,7 +103,7 @@ def bufferOp():
         T.memref(2, 2, T.i32()),
         initial_value=np.arange(2 * 2, dtype=np.int32).reshape(2, 2),
     )
-    b = buffer(t, np.ndarray[(42,), np.dtype[np.int8]], address=0xbeef)
+    b = buffer(t, np.ndarray[(42,), np.dtype[np.int8]], address=0xBEEF)
 
 
 # CHECK-LABEL: externalBufferOp
