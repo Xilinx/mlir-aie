@@ -1215,6 +1215,9 @@ LogicalResult TileOp::verify() {
     }
   }
 
+  if(isShimTile() && getAllocationScheme())
+    return emitOpError("Shim tiles cannot have an allocation scheme");
+
   return success();
 }
 

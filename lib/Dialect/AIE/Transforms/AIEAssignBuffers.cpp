@@ -474,25 +474,28 @@ struct AIEAssignBufferAddressesPass
       }
     });
 
-    // Select allocation scheme
-    if (clAllocScheme == "basic-sequential") {
-      for (auto tile : device.getOps<TileOp>()) {
-        if (auto res = basicAllocation(tile); res.failed())
-          return signalPassFailure();
-      }
-    } else if (clAllocScheme == "bank-aware") {
-      for (auto tile : device.getOps<TileOp>()) {
-        if (auto res = simpleBankAwareAllocation(tile); res.failed())
-          return signalPassFailure();
-      }
-    } else {
-      for (auto tile : device.getOps<TileOp>()) {
-        tile.emitWarning("Memory allocation scheme is either not provided or "
-                         "unrecognized. Defaulting to bank-aware allocation.");
-        if (auto res = simpleBankAwareAllocation(tile); res.failed()) {
-          if (auto res2 = basicAllocation(tile); res2.failed())
+    // Select allocation scheme per tile
+    for (auto tile : device.getOps<TileOp>()) {
+      auto tileAllocationScheme = tile.getAllocationScheme();
+      
+      if (!tileAllocationScheme)
+        tileAllocationScheme = clAllocScheme;
+      else
+        tileAllocationScheme = tileAllocationScheme;
+
+      if (tileAllocationScheme == "basic-sequential") {
+          if (auto res = basicAllocation(tile); res.failed())
             return signalPassFailure();
-        }
+      } else if (tileAllocationScheme == "bank-aware") {    
+          if (auto res = simpleBankAwareAllocation(tile); res.failed())
+            return signalPassFailure();
+      } else {
+          tile.emitWarning("Memory allocation scheme is either not provided or "
+                           "unrecognized. Defaulting to bank-aware allocation.");
+          if (auto res = simpleBankAwareAllocation(tile); res.failed()) {
+            if (auto res2 = basicAllocation(tile); res2.failed())
+              return signalPassFailure();
+          }
       }
     }
   }
