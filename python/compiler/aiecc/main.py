@@ -207,39 +207,25 @@ mem_topology = {
 }
 
 
-def emit_partition(mlir_module_str, kernel_id="0x901", start_columns=None):
+def emit_partition(mlir_module_str, kernel_id="0x901"):
     with Context(), Location.unknown():
         module = Module.parse(mlir_module_str)
     device = find_ops(
         module.operation,
         lambda o: isinstance(o.operation.opview, aiedialect.DeviceOp),
     )
-    if int(device[0].device) is int(aiedialect.AIEDevice.npu1):
-        num_cols = 5
-    elif int(device[0].device) is int(aiedialect.AIEDevice.npu2):
-        num_cols = 8
-    elif int(device[0].device) is int(aiedialect.AIEDevice.npu1_1col):
-        num_cols = 1
-    elif int(device[0].device) is int(aiedialect.AIEDevice.npu1_2col):
-        num_cols = 2
-    elif int(device[0].device) is int(aiedialect.AIEDevice.npu1_3col):
-        num_cols = 3
-    elif int(device[0].device) is int(aiedialect.AIEDevice.npu1_4col):
-        num_cols = 4
+    device = aiedialect.AIEDevice(int(device[0].device))
+    num_cols = aiedialect.get_target_model(device).columns()
 
-    if start_columns is None:
-        # It's arguable that this should should come from the device model
-        # somehow.  Or perhaps that it shouldn't be needed in the
-        # XCLbin at all, since it is basically describing information
-        # which is already inherent in the CDO.
-        # For the time being, we just leave it here.
-        if len(device) > 0 and (
-            int(device[0].device)
-            in [int(aiedialect.AIEDevice.npu1), int(aiedialect.AIEDevice.npu2)]
-        ):
-            start_columns = [0]
-        else:
-            start_columns = list(range(1, 6 - num_cols))
+    # It's arguable that this should should come from the device model
+    # somehow.  Or perhaps that it shouldn't be needed in the
+    # XCLbin at all, since it is basically describing information
+    # which is already inherent in the CDO.
+    # For the time being, we just leave it here.
+    if device in [aiedialect.AIEDevice.npu1, aiedialect.AIEDevice.npu2]:
+        start_columns = [0]
+    else:
+        start_columns = list(range(1, 6 - num_cols))
 
     # Generate a uuid
     pdi_uuid = uuid.uuid4()

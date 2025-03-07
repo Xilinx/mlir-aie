@@ -14,6 +14,7 @@ include ${srcdir}/../../makefile-common
 
 all: build/final.xclbin
 
+device ?= $(if $(NPU2),npu2,npu)
 targetname = eltwise_mul
 trace_size = 8192
 
@@ -28,15 +29,21 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 build/%.o: %.cc
 	mkdir -p ${@D}
+ifeq ($(device),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
+else ifeq ($(device),npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
+else
+	echo "Device type not supported"
+endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< > $@
+	python3 $< ${device} 0 > $@
 
 build/aie_trace.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${trace_size} > $@
+	python3 $< ${device} ${trace_size} > $@
 
 build/final.xclbin: build/aie.mlir build/mul.o
 	mkdir -p ${@D}

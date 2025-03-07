@@ -27,7 +27,7 @@ if [ "$#" -lt 1 ]; then
     pushd my_install
     pip -q download mlir==$VERSION \
       -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
-    unzip -q mlir-*.whl
+    unzip -q -u mlir-*.whl
     popd
     WHL_MLIR_DIR=`realpath my_install/mlir`
     echo "WHL_MLIR DIR: $WHL_MLIR_DIR"

@@ -14,7 +14,7 @@ include ${srcdir}/../../makefile-common
 
 all: build/final.xclbin build/insts.txt
 
-devicename ?= npu
+devicename ?= $(if $(NPU2),npu2,npu)
 targetname = passthrough_dmas
 LENGTH ?= 4096
 
@@ -40,8 +40,8 @@ inst/insts.txt: ${srcdir}/${aie_py_src}
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--no-xchesscc --no-xbridge \
-				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
+		--no-xchesscc --no-xbridge \
+		--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build

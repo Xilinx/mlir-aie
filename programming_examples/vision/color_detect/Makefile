@@ -12,7 +12,7 @@ include ${srcdir}/../../makefile-common
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
-device = npu
+device ?= $(if $(NPU2),npu2,npu)
 COLORDETECT_WIDTH = 1920
 COLORDETECT_HEIGHT = 1080
 

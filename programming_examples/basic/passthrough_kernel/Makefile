@@ -13,7 +13,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 include ${srcdir}/../../makefile-common
 VPATH := ${srcdir}/../../../aie_kernels/generic
 
-device ?= npu
+devicename ?= $(if $(NPU2),npu2,npu)
 targetname = passthrough_kernel
 in1_size = 4096 # in bytes
 out_size = 4096 # in bytes, should always be equal to in1_size
@@ -42,44 +42,25 @@ build/aie2_trace_lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
 
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
-ifeq ($(device),npu)
-ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}; 
-else
+ifeq ($(devicename),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
-endif
-else ifeq ($(device),npu2)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+else ifeq ($(devicename),npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
 else
 	echo "Device type not supported"
 endif
 	
 build/final_${data_size}.xclbin: build/aie2_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
-ifeq ($(device),npu)
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
-else
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
-		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
-endif
 
 build/final_trace_${data_size}.xclbin: build/aie2_trace_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
-ifeq ($(device),npu)
-ifeq ($(CHESS), true)
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
-		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
-else
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
-endif
-else
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
-		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
-endif
 
 
 ${targetname}_${data_size}.exe: ${srcdir}/test.cpp

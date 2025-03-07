@@ -15,7 +15,7 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 all: build/final.xclbin
 
-device ?= npu
+device ?= $(if $(NPU2),npu2,npu)
 targetname = relu
 in1_size = 131072 # in bytes
 out_size = 131072 # in bytes, should always be equal to in1_size

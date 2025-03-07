@@ -1736,25 +1736,30 @@ struct AIEObjectFifoStatefulTransformPass
         // and the previous one
         // !!! operations may not be in the same block !!!
         int numRel = 0;
-        for (auto relOp : releaseOps[{op, portNum}]) {
+        for (std::vector<ObjectFifoReleaseOp>::iterator relOp =
+                 releaseOps[{op, portNum}].begin();
+             relOp != releaseOps[{op, portNum}].end();) {
+          bool erased = false;
           Operation *acqBlockDefOp = acquireOp.getOperation();
           do {
-            Operation *relBlockDefOp = relOp.getOperation();
+            Operation *relBlockDefOp = (*relOp).getOperation();
             do {
               if (acqBlockDefOp->getBlock() == relBlockDefOp->getBlock()) {
                 if (relBlockDefOp->isBeforeInBlock(acqBlockDefOp)) {
-                  releaseOps[{op, portNum}].erase(
-                      releaseOps[{op, portNum}]
-                          .begin()); // to ensure that we do not account
+                  numRel += (*relOp).relNumber();
+                  relOp = releaseOps[{op, portNum}].erase(relOp);
+                  // to ensure that we do not account
                   // the ReleaseOps again later,
                   // after the subview is created
-                  numRel += relOp.relNumber();
+                  erased = true;
                 }
               }
             } while ((relBlockDefOp = relBlockDefOp->getParentOp()) &&
-                     !isa<DeviceOp>(relBlockDefOp));
+                     !isa<DeviceOp>(relBlockDefOp) && !erased);
           } while ((acqBlockDefOp = acqBlockDefOp->getParentOp()) &&
-                   !isa<DeviceOp>(acqBlockDefOp));
+                   !isa<DeviceOp>(acqBlockDefOp) && !erased);
+          if (!erased)
+            ++relOp;
         }
 
         // track indices of elements to acquire

@@ -14,7 +14,7 @@ include ${srcdir}/../../makefile-common
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
-device = npu
+devicename ?= $(if $(NPU2),npu2,npu)
 targetname = vector_reduce_max
 in1_size = 4096 # in bytes
 out_size = 4 # in bytes, should always be equal to in1_size
@@ -41,14 +41,13 @@ build/aie2_trace.mlir: ${srcdir}/${aie_py_src}
 
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
-ifeq ($(device),npu)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
-else ifeq ($(device),npu2)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+
+ifeq ($(devicename),npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
 else
-	echo "Device type not supported"
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
 endif
-	
+
 build/final.xclbin: build/aie2.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
 ifeq ($(device),npu)
