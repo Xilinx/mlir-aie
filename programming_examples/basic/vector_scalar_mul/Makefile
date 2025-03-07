@@ -14,7 +14,7 @@ include ${srcdir}/../../makefile-common
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
-devicename ?= $(if $(NPU2),npu2,npu)
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = vector_scalar_mul
 in1_size = 8192 # in bytes
 in2_size = 4 # in bytes, should always be 4 (1x int32)
@@ -62,23 +62,23 @@ build/aie_trace_${data_size}.mlir: ${srcdir}/${aie_py_src}
 build/final_${data_size}.xclbin: build/aie_${data_size}.mlir build/scale.o
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-npu --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+				--aie-generate-npu-insts --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
 else
-	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     	  --no-xchesscc --no-xbridge \
-				--aie-generate-npu --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
+				--aie-generate-npu-insts --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
 endif
 
 build/final_trace_${data_size}.xclbin: build/aie_trace_${data_size}.mlir build/scale.o
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-npu --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+				--aie-generate-npu-insts --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
 else
-	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
-				--aie-generate-npu --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
+				--aie-generate-npu-insts --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
 endif
 
 ${targetname}_${data_size}.exe: ${srcdir}/test.cpp

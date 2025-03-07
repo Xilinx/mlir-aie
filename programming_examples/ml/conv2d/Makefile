@@ -9,7 +9,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-device ?= $(if $(NPU2),npu2,npu)
+device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 mlirFileName = aie
 
 # Modify these params to configure design
@@ -66,22 +66,22 @@ build/${mlirFileName}_trace.mlir: ${srcdir}/${aie_py_trace_src}
 build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1_i8.o 
 	mkdir -p ${@D} 
 ifeq ($(device),npu)
-	cd ${@D} && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
+	cd ${@D} && aiecc.py -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 else
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 endif
 
 build/final_trace.xclbin: build/${mlirFileName}_trace.mlir build/conv2dk1_i8.o 
 	mkdir -p ${@D} 
 ifeq ($(device),npu)
-	cd ${@D} && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
+	cd ${@D} && aiecc.py -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts_trace.txt $(<:%=../%)
 else
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--xclbin-name=${@F} --npu-insts-name=insts_trace.txt ${<F}
 endif
 

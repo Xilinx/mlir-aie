@@ -36,20 +36,23 @@ class Worker(ObjectFifoEndpoint):
         fn_args: list = [],
         placement: PlacementTile | None = AnyComputeTile,
         while_true: bool = True,
+        stack_size: int = None
     ):
         """Construct a Worker
 
         Args:
             core_fn (Callable | None): The task to run on a core. If None, a busy-loop (`while(true): pass`) core will be generated.
             fn_args (list, optional): Pointers to arguments, which should include all context the core_fn needs to run. Defaults to [].
-            placement (PlacementTile | None, optional): The placcement for the Worker. Defaults to AnyComputeTile.
+            placement (PlacementTile | None, optional): The placement for the Worker. Defaults to AnyComputeTile.
             while_true (bool, optional): If true, will wrap the core_fn in a while(true) loop to ensure it runs until reconfiguration. Defaults to True.
+            stack_size (int, optional): The stack_size in bytes to be allocated for the worker. Defaults to 1024 bytes.
 
         Raises:
             ValueError: Parameters are validated.
         """
         self._tile = placement
         self._while_true = while_true
+        self.stack_size = stack_size
 
         # If no core_fn is given, make a simple while(true) loop.
         if core_fn is None:
@@ -136,7 +139,7 @@ class Worker(ObjectFifoEndpoint):
         # query this value, e.g., Worker.current_core_placement.get()
         self.current_core_placement.set(my_tile)
 
-        @core(my_tile, my_link)
+        @core(my_tile, link_with=my_link, stack_size=self.stack_size)
         def core_body():
             for _ in range_(sys.maxsize) if self._while_true else range(1):
                 self.core_fn(*self.fn_args)

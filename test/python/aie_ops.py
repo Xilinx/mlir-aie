@@ -50,6 +50,19 @@ def coreOp():
     with InsertionPoint(bb):
         end()
 
+# CHECK-LABEL: coreOpParameters
+# CHECK: %[[VAL1:.*]] = aie.tile(1, 1)
+# CHECK: %[[VAL2:.*]] = aie.core(%[[VAL1]]) {
+# CHECK:   aie.end
+# CHECK: } {dynamic_objfifo_lowering = false, link_with = "test.elf", stack_size = 2048 : i32}
+@construct_and_print_module
+def coreOpParameters():
+    t = tile(col=1, row=1)
+    c = Core(t, link_with="test.elf", dynamic_objfifo_lowering=False, stack_size=2048)
+    bb = Block.create_at_start(c.body)
+    with InsertionPoint(bb):
+        end()
+
 
 # CHECK-LABEL: memOp
 # CHECK: %[[VAL1:.*]] = aie.tile(2, 2)

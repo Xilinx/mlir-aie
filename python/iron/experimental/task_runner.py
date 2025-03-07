@@ -36,7 +36,7 @@ class TaskRunner:
     @classmethod
     def _aiecc_args(cls, xclbin, insts):
         return [
-            "--aie-generate-cdo",
+            "--aie-generate-xclbin",
             f"--xclbin-name={xclbin}",
             "--no-xchesscc",
             "--no-xbridge",
