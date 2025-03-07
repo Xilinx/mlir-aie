@@ -6,7 +6,8 @@ var searchData=
   ['simple_5ftiler_3',['simple_tiler',['../classtaplib_1_1tensortiler2d_1_1TensorTiler2D.html#afdb3dd59166be81e76e0ad4bc9814414',1,'taplib::tensortiler2d::TensorTiler2D']]],
   ['sizes_4',['sizes',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#ac4e71f3396aa299990ebe2ceb6197247',1,'taplib::tap::TensorAccessPattern']]],
   ['split_5',['split',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#a90205496ee0aa0af4cd6faf382df77cc',1,'iron::dataflow::objectfifo::ObjectFifoHandle']]],
-  ['start_6',['start',['../classiron_1_1runtime_1_1runtime_1_1Runtime.html#a374badc82bbd7649468f72f637818399',1,'iron::runtime::runtime::Runtime']]],
-  ['step_5ftiler_7',['step_tiler',['../classtaplib_1_1tensortiler2d_1_1TensorTiler2D.html#a2d78c25921c651593955c00f155b3f46',1,'taplib::tensortiler2d::TensorTiler2D']]],
-  ['strides_8',['strides',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#a65e95e762442c88b58ae46e52c39c58b',1,'taplib::tap::TensorAccessPattern']]]
+  ['stack_5fsize_6',['stack_size',['../classiron_1_1worker_1_1Worker.html#aeb350baef4bd70400fe64d2a0943f2a9',1,'iron::worker::Worker']]],
+  ['start_7',['start',['../classiron_1_1runtime_1_1runtime_1_1Runtime.html#a374badc82bbd7649468f72f637818399',1,'iron::runtime::runtime::Runtime']]],
+  ['step_5ftiler_8',['step_tiler',['../classtaplib_1_1tensortiler2d_1_1TensorTiler2D.html#a2d78c25921c651593955c00f155b3f46',1,'taplib::tensortiler2d::TensorTiler2D']]],
+  ['strides_9',['strides',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#a65e95e762442c88b58ae46e52c39c58b',1,'taplib::tap::TensorAccessPattern']]]
 ];

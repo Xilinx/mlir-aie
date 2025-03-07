@@ -109,8 +109,8 @@ Collaboration diagram for iron.worker.Worker:</div>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a76b594a34752a914d6f3616a7793cfbc" id="r_a76b594a34752a914d6f3616a7793cfbc"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1worker_1_1Worker.html#a76b594a34752a914d6f3616a7793cfbc">__init__</a> (self, Callable|None <a class="el" href="classiron_1_1worker_1_1Worker.html#a15ecd070e55b67be77d2bdce2cce9476">core_fn</a>, list <a class="el" href="classiron_1_1worker_1_1Worker.html#ae62c026d16faacefe8d6945eaec9be4c">fn_args</a>=[], PlacementTile|None placement=<a class="el" href="classiron_1_1device_1_1tile_1_1AnyComputeTile.html">AnyComputeTile</a>, bool while_true=True)</td></tr>
-<tr class="separator:a76b594a34752a914d6f3616a7793cfbc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5c9b033021e06afa2d83e0d446617b2e" id="r_a5c9b033021e06afa2d83e0d446617b2e"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1worker_1_1Worker.html#a5c9b033021e06afa2d83e0d446617b2e">__init__</a> (self, Callable|None <a class="el" href="classiron_1_1worker_1_1Worker.html#a15ecd070e55b67be77d2bdce2cce9476">core_fn</a>, list <a class="el" href="classiron_1_1worker_1_1Worker.html#ae62c026d16faacefe8d6945eaec9be4c">fn_args</a>=[], PlacementTile|None placement=<a class="el" href="classiron_1_1device_1_1tile_1_1AnyComputeTile.html">AnyComputeTile</a>, bool while_true=True, int <a class="el" href="classiron_1_1worker_1_1Worker.html#aeb350baef4bd70400fe64d2a0943f2a9">stack_size</a>=None)</td></tr>
+<tr class="separator:a5c9b033021e06afa2d83e0d446617b2e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:adda4470f0b31e75f2a3c50359c7785ed" id="r_adda4470f0b31e75f2a3c50359c7785ed"><td class="memItemLeft" align="right" valign="top">None&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1worker_1_1Worker.html#adda4470f0b31e75f2a3c50359c7785ed">place</a> (self, <a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a> <a class="el" href="classiron_1_1placeable_1_1Placeable.html#a13bda709bf9b8fbd6ac31f83efc0ad32">tile</a>)</td></tr>
 <tr class="separator:adda4470f0b31e75f2a3c50359c7785ed"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae9e00ef2d147ca99e95ceb9fa33a7200" id="r_ae9e00ef2d147ca99e95ceb9fa33a7200"><td class="memItemLeft" align="right" valign="top">list[<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html">ObjectFifoHandle</a>]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1worker_1_1Worker.html#ae9e00ef2d147ca99e95ceb9fa33a7200">fifos</a> (self)</td></tr>
@@ -125,6 +125,8 @@ Public Member Functions</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
 Public Attributes</h2></td></tr>
+<tr class="memitem:aeb350baef4bd70400fe64d2a0943f2a9" id="r_aeb350baef4bd70400fe64d2a0943f2a9"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1worker_1_1Worker.html#aeb350baef4bd70400fe64d2a0943f2a9">stack_size</a></td></tr>
+<tr class="separator:aeb350baef4bd70400fe64d2a0943f2a9"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a15ecd070e55b67be77d2bdce2cce9476" id="r_a15ecd070e55b67be77d2bdce2cce9476"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1worker_1_1Worker.html#a15ecd070e55b67be77d2bdce2cce9476">core_fn</a></td></tr>
 <tr class="separator:a15ecd070e55b67be77d2bdce2cce9476"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae62c026d16faacefe8d6945eaec9be4c" id="r_ae62c026d16faacefe8d6945eaec9be4c"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1worker_1_1Worker.html#ae62c026d16faacefe8d6945eaec9be4c">fn_args</a></td></tr>
@@ -156,8 +158,8 @@ Protected Attributes</h2></td></tr>
 Worker is an object that takes a `core_fn` and a set of arguments.
 A Worker must be placed on a Compute Core.
 </pre><pre class="fragment">This variable is the current core if resolving() within the Worker, or None otherwise.</pre> </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
-<a id="a76b594a34752a914d6f3616a7793cfbc" name="a76b594a34752a914d6f3616a7793cfbc"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a76b594a34752a914d6f3616a7793cfbc">&#9670;&#160;</a></span>__init__()</h2>
+<a id="a5c9b033021e06afa2d83e0d446617b2e" name="a5c9b033021e06afa2d83e0d446617b2e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a5c9b033021e06afa2d83e0d446617b2e">&#9670;&#160;</a></span>__init__()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -190,7 +192,13 @@ A Worker must be placed on a Compute Core.
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">bool &#160;</td>
-          <td class="paramname"><em>while_true</em> = <code>True</code>&#160;</td>
+          <td class="paramname"><em>while_true</em> = <code>True</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int &#160;</td>
+          <td class="paramname"><em>stack_size</em> = <code>None</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -204,8 +212,9 @@ A Worker must be placed on a Compute Core.
 Args:
     core_fn (Callable | None): The task to run on a core. If None, a busy-loop (`while(true): pass`) core will be generated.
     fn_args (list, optional): Pointers to arguments, which should include all context the core_fn needs to run. Defaults to [].
-    placement (PlacementTile | None, optional): The placcement for the Worker. Defaults to AnyComputeTile.
+    placement (PlacementTile | None, optional): The placement for the Worker. Defaults to AnyComputeTile.
     while_true (bool, optional): If true, will wrap the core_fn in a while(true) loop to ensure it runs until reconfiguration. Defaults to True.
+    stack_size (int, optional): The stack_size in bytes to be allocated for the worker. Defaults to 1024 bytes.
 
 Raises:
     ValueError: Parameters are validated.
@@ -477,6 +486,20 @@ Args:
       <table class="memname">
         <tr>
           <td class="memname">iron.worker.Worker.link_with</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="aeb350baef4bd70400fe64d2a0943f2a9" name="aeb350baef4bd70400fe64d2a0943f2a9"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aeb350baef4bd70400fe64d2a0943f2a9">&#9670;&#160;</a></span>stack_size</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.worker.Worker.stack_size</td>
         </tr>
       </table>
 </div><div class="memdoc">
