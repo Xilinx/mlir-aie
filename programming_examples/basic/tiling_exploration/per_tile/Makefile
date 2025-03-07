@@ -29,7 +29,7 @@ build/aie_${data_str}.mlir: ${srcdir}/${aie_py_src}
 
 build/final_${data_str}.xclbin: build/aie_${data_str}.mlir
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts_${data_str}.txt $(<:%=../%)
 

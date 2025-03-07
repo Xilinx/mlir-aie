@@ -221,20 +221,12 @@ def parse_args(args=None):
         help="Show progress visualization",
     )
     parser.add_argument(
-        "--aie-generate-npu",
+        "--aie-generate-npu-insts",
         dest="npu",
         default=False,
         action="store_const",
         const=True,
-        help="Generate npu instruction stream",
-    )
-    parser.add_argument(
-        "--aie-only-generate-npu",
-        dest="only_npu",
-        default=False,
-        action="store_const",
-        const=True,
-        help="Generate npu instruction stream only",
+        help="Generate npu instruction stream from default runtime sequence",
     )
     parser.add_argument(
         "--npu-insts-name",
@@ -293,6 +285,20 @@ def parse_args(args=None):
         dest="xclbin_name",
         default="final.xclbin",
         help="Output xclbin filename for CDO/XCLBIN target",
+    )
+    parser.add_argument(
+        "--aie-generate-pdi",
+        dest="pdi",
+        default=False,
+        action="store_const",
+        const=True,
+        help="Generate pdi binary for configuration",
+    )
+    parser.add_argument(
+        "--pdi-name",
+        dest="pdi_name",
+        default="design.pdi",
+        help="Output pdi filename for PDI/CDO/XCLBIN target",
     )
     parser.add_argument(
         "--xclbin-kernel-name",
