@@ -84,7 +84,7 @@ def vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
 
             if trace_size > 0:
                 trace_utils.configure_packet_tracing_aie2(
-                    tiles_to_trace=tiles_to_trace, 
+                    tiles_to_trace=tiles_to_trace,
                     shim=ShimTile,
                     trace_size=trace_size,
                 )
@@ -103,6 +103,7 @@ def vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
             dma_await_task(in_task, in_factor_task, out_task)
 
             trace_utils.gen_trace_done_aie2(ShimTile)
+
 
 if len(sys.argv) < 5:
     raise ValueError(

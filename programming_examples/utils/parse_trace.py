@@ -404,7 +404,15 @@ def convert_commands_to_json(trace_events, commands, pid_events):
             # timer on each execution is the time for the last execution
             # so we by default will increment it by 1 for each event
             if DEBUG:
-                print("tt: "+str(tt)+", loc: "+str(loc)+", NUM_EVENTS: "+str(NUM_EVENTS)+"\n")
+                print(
+                    "tt: "
+                    + str(tt)
+                    + ", loc: "
+                    + str(loc)
+                    + ", NUM_EVENTS: "
+                    + str(NUM_EVENTS)
+                    + "\n"
+                )
             pid = pid_events[tt][loc][NUM_EVENTS]
 
             active_events = dict()
@@ -574,7 +582,7 @@ def thread_name_metadata(trace_events, trace_type, loc, pid, tid, pid_events):
 # pid_events: list(idx=pkt_type, value=labels_dict)
 # label_dict: dict(key=row,col, value=labels list)
 # labels_list: list(idx=label idx, value=label code)
-# 
+#
 # This searches for npu.write32 and categorizes them based on address and row.
 # It's probably not the best way to do it but it's the initial implementation.
 # memtile and core/shim tiles have different addresses. For now, we distinguish
@@ -645,7 +653,7 @@ def parse_mlir_trace_events(lines):
 
             # core event 0
             if address == 0x340E0:  # 213216, match ignoring case
-                if row == 0: # shim
+                if row == 0:  # shim
                     if pid_events[2].get(key) == None:
                         pid_events[2][key] = [
                             0,
@@ -662,7 +670,7 @@ def parse_mlir_trace_events(lines):
                     pid_events[2][key][1] = (value >> 8) & 0xFF
                     pid_events[2][key][2] = (value >> 16) & 0xFF
                     pid_events[2][key][3] = (value >> 24) & 0xFF
-                else: # core
+                else:  # core
                     if pid_events[0].get(key) == None:
                         pid_events[0][key] = [
                             0,
@@ -681,7 +689,7 @@ def parse_mlir_trace_events(lines):
                     pid_events[0][key][3] = (value >> 24) & 0xFF
             # core event 1
             elif address == 0x340E4:  # 213220, match ignoring case
-                if row == 0: # shim
+                if row == 0:  # shim
                     if pid_events[2].get(key) == None:
                         pid_events[2][key] = [
                             0,
@@ -697,7 +705,7 @@ def parse_mlir_trace_events(lines):
                     pid_events[2][key][5] = (value >> 8) & 0xFF
                     pid_events[2][key][6] = (value >> 16) & 0xFF
                     pid_events[2][key][7] = (value >> 24) & 0xFF
-                else: # core
+                else:  # core
                     if pid_events[0].get(key) == None:
                         pid_events[0][key] = [
                             0,

@@ -32,7 +32,7 @@ std::int32_t max = (std::int32_t)-2147483648;
 void initialize_bufIn1(DATATYPE_IN1 *bufIn1, int SIZE) {
   for (int i = 0; i < SIZE; i++) {
     std::int32_t next = test_utils::random_int32_t(100000);
-    if(next > max)
+    if (next > max)
       max = next;
     bufIn1[i] = next;
   }
@@ -44,15 +44,15 @@ void initialize_bufOut(DATATYPE_OUT *bufOut, int SIZE) {
 }
 
 // Functional correctness verifyer
-int verify_vector_reduce_max(DATATYPE_IN1 *bufIn1, 
-                             DATATYPE_OUT *bufOut, int SIZE, int verbosity) {
+int verify_vector_reduce_max(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
+                             int SIZE, int verbosity) {
   int errors = 0;
 
-  if(bufOut[0] != max) {
+  if (bufOut[0] != max) {
     errors++;
     std::cout << "max is " << max << " calc " << bufOut[0] << std::endl;
   } else {
-    if(verbosity >= 1)    
+    if (verbosity >= 1)
       std::cout << "max is " << max << " calc " << bufOut[0] << std::endl;
   }
   return errors;
@@ -69,8 +69,7 @@ int main(int argc, const char *argv[]) {
 
   args myargs = parse_args(argc, argv);
 
-  int res = xrt_test_run<DATATYPE_IN1, DATATYPE_OUT,
-                         initialize_bufIn1, 
+  int res = xrt_test_run<DATATYPE_IN1, DATATYPE_OUT, initialize_bufIn1,
                          initialize_bufOut, verify_vector_reduce_max>(
       IN1_VOLUME, OUT_VOLUME, myargs);
   return res;

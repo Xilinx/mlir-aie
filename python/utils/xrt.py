@@ -130,7 +130,7 @@ def setup_aie(
     kernel_name="MLIR_AIE",
     trace_size=16384,
     verbosity=0,
-    trace_after_output=False
+    trace_after_output=False,
 ):
     app = AIE_Application(xclbin_path, insts_path, kernel_name)
 
@@ -138,39 +138,49 @@ def setup_aie(
 
     if in_0_shape and in_0_dtype:
         if verbosity >= 1:
-            print("register 1st input to "+str(buf_id))
+            print("register 1st input to " + str(buf_id))
         app.register_buffer(buf_id, shape=in_0_shape, dtype=in_0_dtype)
         buf_id += 1
     if in_1_shape and in_1_dtype:
         if verbosity >= 1:
-            print("register 2nd input to "+str(buf_id))
+            print("register 2nd input to " + str(buf_id))
         app.register_buffer(buf_id, shape=in_1_shape, dtype=in_1_dtype)
         buf_id += 1
 
     if enable_trace:
         if trace_after_output:
-            out_buf_len_bytes = np.prod(out_buf_shape) * np.dtype(out_buf_dtype).itemsize
+            out_buf_len_bytes = (
+                np.prod(out_buf_shape) * np.dtype(out_buf_dtype).itemsize
+            )
             out_buf_shape = (out_buf_len_bytes + trace_size,)
             out_buf_dtype = np.uint8
 
-
     if verbosity >= 1:
-        print("register output to "+str(buf_id))
+        print("register output to " + str(buf_id))
     if in_1_shape and in_1_dtype:
         app.register_buffer(buf_id, shape=out_buf_shape, dtype=out_buf_dtype)
         buf_id += 1
     else:
         app.register_buffer(buf_id, shape=out_buf_shape, dtype=out_buf_dtype)
         buf_id += 1
-        app.register_buffer(5, shape=(1,), dtype=np.uint32) # TODO Need so register 7 succeeds (not needed in C/C++ host code)
+        app.register_buffer(
+            5, shape=(1,), dtype=np.uint32
+        )  # TODO Need so register 7 succeeds (not needed in C/C++ host code)
 
     if enable_trace:
         if not trace_after_output:
             trace_buf_shape = (trace_size,)
             trace_buf_dtype = np.uint8
             if verbosity >= 1:
-                print("register trace on 7: size: "+str(trace_buf_shape) + ", dtype:" + str(trace_buf_dtype))
-            app.register_buffer(6, shape=(1,), dtype=np.uint32) # TODO Need so register 7 succeeds (not needed in C/C++ host code)
+                print(
+                    "register trace on 7: size: "
+                    + str(trace_buf_shape)
+                    + ", dtype:"
+                    + str(trace_buf_dtype)
+                )
+            app.register_buffer(
+                6, shape=(1,), dtype=np.uint32
+            )  # TODO Need so register 7 succeeds (not needed in C/C++ host code)
             app.register_buffer(7, shape=trace_buf_shape, dtype=trace_buf_dtype)
 
     return app
@@ -224,7 +234,7 @@ def xrt_test_run(
     out_volume,
     ref,
     opts,
-    trace_after_output=False
+    trace_after_output=False,
 ):
     enable_trace = opts.trace_size > 0
 
@@ -240,7 +250,7 @@ def xrt_test_run(
         enable_trace=enable_trace,
         trace_size=opts.trace_size,
         verbosity=opts.verbosity,
-        trace_after_output=trace_after_output
+        trace_after_output=trace_after_output,
     )
 
     out_size = out_volume * out_data.itemsize

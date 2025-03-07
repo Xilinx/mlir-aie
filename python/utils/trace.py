@@ -15,7 +15,9 @@ from enum import IntEnum
 
 
 class GenericEvent:
-    def __init__(self, code: typing.Union[CoreEvent, MemEvent, ShimTileEvent, MemTileEvent]):
+    def __init__(
+        self, code: typing.Union[CoreEvent, MemEvent, ShimTileEvent, MemTileEvent]
+    ):
         # For backwards compatibility, allow integer as event
         if isinstance(code, int):
             code = CoreEvent(code)
@@ -195,7 +197,6 @@ class MemTilePortEvent(GenericEvent):
         return ret
 
 
-
 class ShimTilePortEvent(GenericEvent):
     def __init__(self, code, port_number, master=True):
         # For backwards compatibility, allow integer as event
@@ -244,21 +245,25 @@ class ShimTilePortEvent(GenericEvent):
 
         return ret
 
+
 # TODO Should be expanded to be more correct
 # Checks if tile is a shim tile (for now, assumes row 0 is only shim tile, true for aie1/aie2/aie2p)
 def isShimTile(tile):
-    return(int(tile.row) == 0)
+    return int(tile.row) == 0
+
 
 # TODO Should be expanded to be more correct
 # Checks if tile is a Mem tile (for now, assumes row 1 is only mem tile, true for aie1/aie2/aie2p)
 def isMemTile(tile):
-    return(int(tile.row) == 1)
+    return int(tile.row) == 1
+
 
 # TODO Should be expanded to be more correct
 # Checks if tile is a Core tile (for now, assumes any row > 1 is core tile, true for aie1/aie2/aie2p)
 # though we're not checking max row value so this isn't 100% accurate
 def isCoreTile(tile):
-    return(int(tile.row) > 1)
+    return int(tile.row) > 1
+
 
 def extract_trace(out_buf, out_buf_shape, out_buf_dtype, trace_size):
     trace_size_words = trace_size // 4
@@ -521,9 +526,9 @@ def configure_memtile_tracing_aie2(
             else:
                 all_reg_writes[addr] = value
     for addr, value in all_reg_writes.items():
-        npu_write32(column=int(tile.col), row=int(tile.row), address=addr, value=value)    # For backwards compatibility, allow integers for start/stop events
-
-
+        npu_write32(
+            column=int(tile.col), row=int(tile.row), address=addr, value=value
+        )  # For backwards compatibility, allow integers for start/stop events
 
 
 # Configures the shimtile for tracing given start/stop events, trace events, and optional
@@ -650,6 +655,7 @@ def configure_timer_ctrl_memtile_aie2(tile, event):
         value=eventValue,
     )
 
+
 # Configure timer in core tile to reset based on `event`
 def configure_timer_ctrl_shimtile_aie2(tile, event):
     addr = 0x34000
@@ -671,9 +677,15 @@ def configure_broadcast_core_aie2(tile, num, event):
     elif isMemTile(tile):
         base_addr = 0x94010
     elif isCoreTile(tile):
-        base_addr = 0x34010    
+        base_addr = 0x34010
     else:
-        raise ValueError("Invalid tile("+str(tile.col)+","+str(tile.row)+"). Check tile coordinates are within a valid range.")
+        raise ValueError(
+            "Invalid tile("
+            + str(tile.col)
+            + ","
+            + str(tile.row)
+            + "). Check tile coordinates are within a valid range."
+        )
 
     addr = base_addr + num * 4
     npu_write32(
@@ -1041,6 +1053,7 @@ def configure_shim_trace_start_aie2(
     configure_broadcast_core_aie2(shim, brdcst_num, user_event)
     configure_event_gen_core_aie2(shim, user_event)
 
+
 # Generate a done event (broadcasted shim user event) that the other tile will use as stop event
 def gen_trace_done_aie2(
     shim,
@@ -1049,6 +1062,7 @@ def gen_trace_done_aie2(
 ):
     configure_broadcast_core_aie2(shim, brdcst_num, user_event)
     configure_event_gen_core_aie2(shim, user_event)
+
 
 # Wrapper to iterate over tiles to trace and configure their default packet tracing config
 # along with the shim config for packet tracing
@@ -1113,8 +1127,8 @@ def configure_packet_tracing_aie2(
                     size=trace_size,
                     offset=trace_offset,
                     enable_token=enable_token,
-                    start=start_user_event, 
-                    stop=stop_user_event, 
+                    start=start_user_event,
+                    stop=stop_user_event,
                     events=shimtile_events,
                 )
             else:
@@ -1127,8 +1141,8 @@ def configure_packet_tracing_aie2(
                     size=trace_size,
                     offset=trace_offset,
                     enable_token=enable_token,
-                    start=start_shimtile_broadcast_event, 
-                    stop=stop_shimtile_broadcast_event, 
+                    start=start_shimtile_broadcast_event,
+                    stop=stop_shimtile_broadcast_event,
                     events=shimtile_events,
                 )
         elif isMemTile(tiles_to_trace[i]):
@@ -1141,8 +1155,8 @@ def configure_packet_tracing_aie2(
                 size=trace_size,
                 offset=trace_offset,
                 enable_token=enable_token,
-                start=start_memtile_broadcast_event, 
-                stop=stop_memtile_broadcast_event, 
+                start=start_memtile_broadcast_event,
+                stop=stop_memtile_broadcast_event,
                 events=memtile_events,
             )
         elif isCoreTile(tiles_to_trace[i]):
@@ -1155,15 +1169,17 @@ def configure_packet_tracing_aie2(
                 size=trace_size,
                 offset=trace_offset,
                 enable_token=enable_token,
-                start=start_core_broadcast_event, 
-                stop=stop_core_broadcast_event, 
+                start=start_core_broadcast_event,
+                stop=stop_core_broadcast_event,
                 events=coretile_events,
             )
         else:
-            raise ValueError("Invalid tile("+str(tiles_to_trace[i].col)+","+str(tiles_to_trace[i].row)+"). Check tile coordinates are within a valid range.")
+            raise ValueError(
+                "Invalid tile("
+                + str(tiles_to_trace[i].col)
+                + ","
+                + str(tiles_to_trace[i].row)
+                + "). Check tile coordinates are within a valid range."
+            )
 
-    configure_shim_trace_start_aie2(
-        shim, 
-        start_broadcast_num,
-        start_user_event)
-
+    configure_shim_trace_start_aie2(shim, start_broadcast_num, start_user_event)

@@ -40,7 +40,7 @@ void initialize_bufIn1(DATATYPE_IN1 *bufIn1, int SIZE) {
   for (int i = 0; i < SIZE; i++) {
     uint16_t raw = (uint16_t)i;
     bufIn1[i] = *(std::bfloat16_t *)(&raw);
-  }  
+  }
 }
 
 // Initialize Output buffer
@@ -49,8 +49,8 @@ void initialize_bufOut(DATATYPE_OUT *bufOut, int SIZE) {
 }
 
 // Functional correctness verifyer
-int verify_relu_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
-                              int SIZE, int verbosity) {
+int verify_relu_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut, int SIZE,
+                       int verbosity) {
   int errors = 0;
 
   for (uint32_t i = 0; i < SIZE; i++) {
@@ -67,7 +67,8 @@ int verify_relu_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
       errors++;
     } else {
       if (verbosity > 1)
-        std::cout << "Correct output " << bufOut[i] << " == " << ref << std::endl;
+        std::cout << "Correct output " << bufOut[i] << " == " << ref
+                  << std::endl;
     }
   }
 
