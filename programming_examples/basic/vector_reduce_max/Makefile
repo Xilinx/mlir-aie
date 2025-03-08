@@ -52,19 +52,20 @@ endif
 build/final.xclbin: build/aie2.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
 ifeq ($(devicename),npu)
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
-		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
+	echo $(devicename)
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+    		--no-xchesscc --no-xbridge \
+		--aie-generate-npu-insts --npu-insts-name=insts.txt $(<:%=../%)
 else
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+		--aie-generate-npu-insts --npu-insts-name=insts.txt $(<:%=../%)
 endif
 
 build/final_trace.xclbin: build/aie2_trace.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-    			--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
-				--aie-generate-npu-insts --npu-insts-name=insts.txt $(<:%=../%)
+    		--no-xchesscc --no-xbridge \
+		--aie-generate-npu-insts --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
