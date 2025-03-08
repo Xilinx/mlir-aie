@@ -83,7 +83,7 @@ int xrt_test_run(int IN1_VOLUME, int IN2_VOLUME, int OUT_VOLUME,
   int tmp_trace_size = (myargs.trace_size > 0) ? myargs.trace_size : 1;
   auto bo_trace = xrt::bo(device, tmp_trace_size, XRT_BO_FLAGS_HOST_ONLY,
                           kernel.group_id(7));
-                          
+
   if (myargs.verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
 

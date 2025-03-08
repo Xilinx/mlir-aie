@@ -202,7 +202,9 @@ def write_out_trace(trace, file_name):
         f.write(out_str)
 
 
-def execute(app, input_one=None, input_two=None, enable_trace=False, trace_after_output=False):
+def execute(
+    app, input_one=None, input_two=None, enable_trace=False, trace_after_output=False
+):
     if not (input_one is None):
         app.buffers[3].write(input_one)
     if not (input_two is None):
@@ -238,8 +240,8 @@ def xrt_test_run(
 ):
     enable_trace = opts.trace_size > 0
     if opts.verbosity >= 1:
-        print("trace size = ",str(opts.trace_size))
-        print("enable_trace = ",str(enable_trace))
+        print("trace size = ", str(opts.trace_size))
+        print("enable_trace = ", str(enable_trace))
 
     app = setup_aie(
         opts.xclbin,
@@ -261,7 +263,9 @@ def xrt_test_run(
         print("out_size: " + str(out_size))
 
     start = time.time_ns()
-    full_output, trace_buffer = execute(app, in1_data, in2_data, enable_trace, trace_after_output)
+    full_output, trace_buffer = execute(
+        app, in1_data, in2_data, enable_trace, trace_after_output
+    )
     stop = time.time_ns()
     npu_time = stop - start
     print("npu_time: ", npu_time)
