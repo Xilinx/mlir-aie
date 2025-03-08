@@ -95,6 +95,7 @@ def vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
 
             trace_utils.gen_trace_done_aie2(ShimTile)
 
+
 if len(sys.argv) < 5:
     raise ValueError(
         "[ERROR] Need at least 4 arguments (dev, in1_size, in2_size, out_size)"
