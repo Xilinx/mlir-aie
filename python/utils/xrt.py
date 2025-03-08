@@ -202,7 +202,7 @@ def write_out_trace(trace, file_name):
         f.write(out_str)
 
 
-def execute(app, input_one=None, input_two=None, trace_after_output=False):
+def execute(app, input_one=None, input_two=None, enable_trace=False, trace_after_output=False):
     if not (input_one is None):
         app.buffers[3].write(input_one)
     if not (input_two is None):
@@ -210,7 +210,7 @@ def execute(app, input_one=None, input_two=None, trace_after_output=False):
 
     app.run()
 
-    if trace_after_output:
+    if trace_after_output or not enable_trace:
         if not (input_two is None):
             return app.buffers[5].read(), 0
         else:
@@ -237,6 +237,9 @@ def xrt_test_run(
     trace_after_output=False,
 ):
     enable_trace = opts.trace_size > 0
+    if opts.verbosity >= 1:
+        print("trace size = ",str(opts.trace_size))
+        print("enable_trace = ",str(enable_trace))
 
     app = setup_aie(
         opts.xclbin,
@@ -254,10 +257,11 @@ def xrt_test_run(
     )
 
     out_size = out_volume * out_data.itemsize
-    # print("out_size: " + str(out_size))
+    if opts.verbosity >= 1:
+        print("out_size: " + str(out_size))
 
     start = time.time_ns()
-    full_output, trace_buffer = execute(app, in1_data, in2_data, trace_after_output)
+    full_output, trace_buffer = execute(app, in1_data, in2_data, enable_trace, trace_after_output)
     stop = time.time_ns()
     npu_time = stop - start
     print("npu_time: ", npu_time)

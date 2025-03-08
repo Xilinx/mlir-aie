@@ -78,9 +78,12 @@ int xrt_test_run(int IN1_VOLUME, int IN2_VOLUME, int OUT_VOLUME,
                         kernel.group_id(4));
   auto bo_out = xrt::bo(device, OUT_VOLUME * sizeof(T3), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(5));
-  auto bo_trace = xrt::bo(device, myargs.trace_size, XRT_BO_FLAGS_HOST_ONLY,
-                          kernel.group_id(7));
 
+  // Workaround so we declare a really small trace buffer when one is not used
+  int tmp_trace_size = (myargs.trace_size > 0) ? myargs.trace_size : 1;
+  auto bo_trace = xrt::bo(device, tmp_trace_size, XRT_BO_FLAGS_HOST_ONLY,
+                          kernel.group_id(7));
+                          
   if (myargs.verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
 
@@ -98,14 +101,16 @@ int xrt_test_run(int IN1_VOLUME, int IN2_VOLUME, int OUT_VOLUME,
   init_bufIn2(bufIn2, IN2_VOLUME);
   init_bufOut(bufOut, OUT_VOLUME); // <<< what size do I pass it?
 
-  memset(bufTrace, 0, myargs.trace_size);
+  if (myargs.trace_size > 0)
+    memset(bufTrace, 0, myargs.trace_size);
 
   // sync host to device memories
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_in1.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_in2.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_trace.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  if (myargs.trace_size > 0)
+    bo_trace.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   // ------------------------------------------------------
   // Initialize run configs
@@ -135,7 +140,8 @@ int xrt_test_run(int IN1_VOLUME, int IN2_VOLUME, int OUT_VOLUME,
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-    bo_trace.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    if (myargs.trace_size > 0)
+      bo_trace.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
     if (iter < myargs.n_warmup_iterations)
       /* Warmup iterations do not count towards average runtime. */
@@ -246,7 +252,9 @@ int xrt_test_run(int IN1_VOLUME, int OUT_VOLUME, struct args myargs) {
                         kernel.group_id(3));
   auto bo_out = xrt::bo(device, OUT_VOLUME * sizeof(T3), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(4));
-  auto bo_trace = xrt::bo(device, myargs.trace_size, XRT_BO_FLAGS_HOST_ONLY,
+  // Workaround so we declare a really small trace buffer when one is not used
+  int tmp_trace_size = (myargs.trace_size > 0) ? myargs.trace_size : 1;
+  auto bo_trace = xrt::bo(device, tmp_trace_size, XRT_BO_FLAGS_HOST_ONLY,
                           kernel.group_id(7));
 
   if (myargs.verbosity >= 1)
@@ -264,13 +272,15 @@ int xrt_test_run(int IN1_VOLUME, int OUT_VOLUME, struct args myargs) {
   init_bufIn1(bufIn1, IN1_VOLUME);
   init_bufOut(bufOut,
               OUT_VOLUME); // <<< what size do I pass it? reset with trace?
-  memset(bufTrace, 0, myargs.trace_size);
+  if (myargs.trace_size > 0)
+    memset(bufTrace, 0, myargs.trace_size);
 
   // sync host to device memories
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_in1.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_trace.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  if (myargs.trace_size > 0)
+    bo_trace.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   // ------------------------------------------------------
   // Initialize run configs
@@ -301,7 +311,8 @@ int xrt_test_run(int IN1_VOLUME, int OUT_VOLUME, struct args myargs) {
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-    bo_trace.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    if (myargs.trace_size > 0)
+      bo_trace.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
     if (iter < myargs.n_warmup_iterations)
       /* Warmup iterations do not count towards average runtime. */
