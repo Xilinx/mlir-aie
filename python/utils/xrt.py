@@ -196,19 +196,6 @@ def write_out_trace(trace, file_name):
         f.write(out_str)
 
 
-# def execute(
-#     app, input_one=None, input_two=None
-# ):
-#     if not (input_one is None):
-#         app.buffers[3].write(input_one)
-#     if not (input_two is None):
-#         app.buffers[4].write(input_two)
-
-#     app.run()
-
-#     return app.buffers[5].read(), 0
-
-
 def execute(
     app, input_one=None, input_two=None, enable_trace=False, trace_after_output=False
 ):
@@ -272,17 +259,12 @@ def xrt_test_run(
         print("out_size: " + str(out_size))
 
     start = time.time_ns()
-    # full_output, trace_buffer = execute_with_trace(
-    #     app, in1_data, in2_data, enable_trace, trace_after_output
-    # )
     if enable_trace:
-        full_output, trace_buffer = execute_with_trace(
+        full_output, trace_buffer = execute(
             app, in1_data, in2_data, enable_trace, trace_after_output
         )
     else:
-        full_output = execute_with_trace(
-            app, in1_data, in2_data, enable_trace, trace_after_output
-        )
+        full_output = execute(app, in1_data, in2_data, enable_trace, trace_after_output)
     stop = time.time_ns()
     npu_time = stop - start
     print("npu_time: ", npu_time)
