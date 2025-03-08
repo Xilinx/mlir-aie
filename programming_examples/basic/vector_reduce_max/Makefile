@@ -51,15 +51,9 @@ endif
 
 build/final.xclbin: build/aie2.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
-ifeq ($(devicename),npu)
-	echo $(devicename)
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
 		--aie-generate-npu-insts --npu-insts-name=insts.txt $(<:%=../%)
-else
-	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-		--aie-generate-npu-insts --npu-insts-name=insts.txt $(<:%=../%)
-endif
 
 build/final_trace.xclbin: build/aie2_trace.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
