@@ -56,11 +56,6 @@ def vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
         )
         of_out = object_fifo("out", ComputeTile2, ShimTile, buffer_depth, tile_ty)
 
-        # Set up a packet-switched flow from core to shim for tracing information
-        tiles_to_trace = [ComputeTile2, ShimTile]
-        if trace_size > 0:
-            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
-
         # Set up compute tiles
 
         # Compute tile 2
@@ -77,6 +72,11 @@ def vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
                 of_factor.release(ObjectFifoPort.Consume, 1)
+
+        # Set up a packet-switched flow from core to shim for tracing information
+        tiles_to_trace = [ComputeTile2, ShimTile]
+        if trace_size > 0:
+            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
         # To/from AIE-array data movement
         @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
