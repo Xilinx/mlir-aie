@@ -7,50 +7,61 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 import sys
-from aie.utils.xrt import setup_aie, execute as execute_on_aie
+import aie.utils.xrt as xrt_utils
 import aie.utils.test as test_utils
 
 
 def main(opts):
+    in1_size = int(opts.in1_size)  # in bytes
+    in2_size = int(opts.in2_size)  # in bytes
+    out_size = int(opts.out_size)  # in bytes
+
+    # --------------------------------------------------------------------------
+    # ----- Edit your data types -----------------------------------------------
+    # --------------------------------------------------------------------------
+
+    in1_dtype = np.uint8
+    out_dtype = in1_dtype
+
+    # --------------------------------------------------------------------------
+
+    in1_volume = in1_size // np.dtype(in1_dtype).itemsize
+    out_volume = out_size // np.dtype(out_dtype).itemsize
+
+    # --------------------------------------------------------------------------
+    # ----- Edit your data init and reference data here ------------------------
+    # --------------------------------------------------------------------------
+
+    # check buffer sizes
+    assert out_size == in1_size
+
+    # Initialize data
+    in1_data = np.arange(0, in1_volume, dtype=in1_dtype)
+    out_data = np.zeros([out_volume], dtype=out_dtype)
+
+    # Define reference data
+    ref = in1_data
+
+    # --------------------------------------------------------------------------
+
     print("Running...\n")
-
-    data_size = int(opts.size)
-    dtype = np.uint8
-
-    app = setup_aie(
-        opts.xclbin,
-        opts.instr,
-        data_size,
-        dtype,
+    res = xrt_utils.xrt_test_run(
+        in1_dtype,
         None,
+        out_dtype,
+        in1_data,
         None,
-        data_size,
-        dtype,
+        out_data,
+        in1_volume,
+        None,
+        out_volume,
+        ref,
+        opts,
     )
-    input = np.arange(1, data_size + 1, dtype=dtype)
-    aie_output = execute_on_aie(app, input)
-
-    # Copy output results and verify they are correct
-    errors = 0
-    if opts.verify:
-        if opts.verbosity >= 1:
-            print("Verifying results ...")
-        e = np.equal(input, aie_output)
-        errors = np.size(e) - np.count_nonzero(e)
-
-    if not errors:
-        print("\nPASS!\n")
-        sys.exit(0)
-    else:
-        print("\nError count: ", errors)
-        print("\nFailed.\n")
-        sys.exit(1)
+    sys.exit(res)
 
 
 if __name__ == "__main__":
     p = test_utils.create_default_argparser()
-    p.add_argument(
-        "-s", "--size", required=True, dest="size", help="Passthrough kernel size"
-    )
     opts = p.parse_args(sys.argv[1:])
     main(opts)

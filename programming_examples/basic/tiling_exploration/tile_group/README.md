@@ -36,7 +36,7 @@ Modify tensor and tile dimensions in the `Makefile`.
 To compile and run the design for NPU:
 ```bash
 make clean
-make run
+make run_py
 ```
 
 To generate a data visualization (like that above), run:

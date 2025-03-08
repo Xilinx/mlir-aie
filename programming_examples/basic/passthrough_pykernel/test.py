@@ -7,7 +7,7 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 import sys
-from aie.utils.xrt import setup_aie, execute as execute_on_aie
+from aie.utils.xrt import setup_aie, execute
 import aie.utils.test as test_utils
 
 
@@ -28,7 +28,7 @@ def main(opts):
         dtype,
     )
     input = np.arange(1, data_size + 1, dtype=dtype)
-    aie_output = execute_on_aie(app, input)
+    aie_output = execute(app, input)
 
     # Copy output results and verify they are correct
     errors = 0

@@ -69,10 +69,6 @@ int verify_vector_scalar_mul(DATATYPE_IN1 *bufIn1, DATATYPE_IN2 *bufIn2,
 
 int main(int argc, const char *argv[]) {
 
-  // constexpr int IN1_VOLUME = VECTORSCALARMUL_SIZE; // 1024; define via
-  // Makefile constexpr int IN2_VOLUME = 1; constexpr int OUT_VOLUME =
-  // IN1_VOLUME; // define via Makefile
-
   constexpr int IN1_VOLUME = IN1_SIZE / sizeof(DATATYPE_IN1);
   constexpr int IN2_VOLUME = IN2_SIZE / sizeof(DATATYPE_IN2);
   constexpr int OUT_VOLUME = OUT_SIZE / sizeof(DATATYPE_OUT);

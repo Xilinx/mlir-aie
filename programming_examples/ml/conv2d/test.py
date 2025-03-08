@@ -80,6 +80,7 @@ def main(opts):
         dtype_out,
         enable_trace=enable_trace,
         trace_size=trace_size,
+        trace_after_output=True,
     )
 
     # ------------------------------------------------------

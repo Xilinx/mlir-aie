@@ -16,7 +16,7 @@ from aie.helpers.dialects.ext.scf import _for as range_
 import aie.utils.trace as trace_utils
 
 
-def my_vector_scalar(dev, in1_size, in2_size, out_size, trace_size):
+def vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
     # N = vector_size
     # N_in_bytes = N * 2 # TODO How to force this to match data type
     N_in_bytes = in1_size  # TODO How to force this to match data type
@@ -56,11 +56,6 @@ def my_vector_scalar(dev, in1_size, in2_size, out_size, trace_size):
         )
         of_out = object_fifo("out", ComputeTile2, ShimTile, buffer_depth, tile_ty)
 
-        # Set up a packet-switched flow from core to shim for tracing information
-        tiles_to_trace = [ComputeTile2]
-        if trace_size > 0:
-            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
-
         # Set up compute tiles
 
         # Compute tile 2
@@ -78,13 +73,20 @@ def my_vector_scalar(dev, in1_size, in2_size, out_size, trace_size):
                     of_out.release(ObjectFifoPort.Produce, 1)
                 of_factor.release(ObjectFifoPort.Consume, 1)
 
+        # Set up a packet-switched flow from core to shim for tracing information
+        tiles_to_trace = [ComputeTile2, ShimTile]
+        if trace_size > 0:
+            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+
         # To/from AIE-array data movement
         @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
 
             if trace_size > 0:
                 trace_utils.configure_packet_tracing_aie2(
-                    tiles_to_trace, ShimTile, trace_size, N_in_bytes
+                    tiles_to_trace=tiles_to_trace,
+                    shim=ShimTile,
+                    trace_size=trace_size,
                 )
 
             in_task = shim_dma_single_bd_task(
@@ -100,31 +102,35 @@ def my_vector_scalar(dev, in1_size, in2_size, out_size, trace_size):
             dma_start_task(in_task, in_factor_task, out_task)
             dma_await_task(in_task, in_factor_task, out_task)
 
+            trace_utils.gen_trace_done_aie2(ShimTile)
 
-try:
-    if len(sys.argv) < 5:
-        raise ValueError(
-            "[ERROR] Need at least 4 arguments (dev, in1_size, in2_size, out_size)"
-        )
 
-    device_name = str(sys.argv[1])
-    if device_name == "npu":
-        dev = AIEDevice.npu1_1col
-    elif device_name == "npu2":
-        dev = AIEDevice.npu2
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-    in1_size = int(sys.argv[2])
-    if in1_size % 128 != 0 or in1_size < 1024:
-        print(
-            "In1 buffer size must be a multiple of 128 (so len is multiple of 64) and greater than or equal to 1024 (so len >= 512)"
-        )
-        raise ValueError
-    in2_size = int(sys.argv[3])
-    out_size = int(sys.argv[4])
-    trace_size = 0 if (len(sys.argv) != 6) else int(sys.argv[5])
-except ValueError:
-    print("Argument has inappropriate value")
+if len(sys.argv) < 5:
+    raise ValueError(
+        "[ERROR] Need at least 4 arguments (dev, in1_size, in2_size, out_size)"
+    )
+
+device_name = str(sys.argv[1])
+if device_name == "npu":
+    dev = AIEDevice.npu1_1col
+elif device_name == "npu2":
+    dev = AIEDevice.npu2
+else:
+    raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+in1_size = int(sys.argv[2])
+if in1_size % 128 != 0 or in1_size < 1024:
+    print(
+        "In1 buffer size must be a multiple of 128 (so len is multiple of 64) and greater than or equal to 1024 (so len >= 512)"
+    )
+    raise ValueError
+in2_size = int(sys.argv[3])
+out_size = int(sys.argv[4])
+trace_size = 0 if (len(sys.argv) != 6) else int(sys.argv[5])
+
 with mlir_mod_ctx() as ctx:
-    my_vector_scalar(dev, in1_size, in2_size, out_size, trace_size)
-print(ctx.module)
+    vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size)
+    res = ctx.module.operation.verify()
+    if res == True:
+        print(ctx.module)
+    else:
+        print(res)

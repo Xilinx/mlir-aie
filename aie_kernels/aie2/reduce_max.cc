@@ -8,6 +8,7 @@
 void _reduce_max_vector(int32_t *restrict in, int32_t *restrict out,
                         const int32_t input_size) {
 
+  event0();
   v16int32 tiny = broadcast_to_v16int32((int32_t)INT32_MIN);
   const int32_t vector_size = 16;
   v16int32 after_vector;
@@ -29,17 +30,20 @@ void _reduce_max_vector(int32_t *restrict in, int32_t *restrict out,
   v16int32 fifth = max(fourth, fourth_shift);
   int32_t last = extract_elem(fifth, 0U);
   *(int32_t *)out = last;
+  event1();
   return;
 }
 
 void _reduce_max_scalar(int32_t *restrict in, int32_t *restrict out,
                         const int32_t input_size) {
+  event0();
   int32_t running_max = (int32_t)INT32_MIN;
   for (int32_t i = 0; i < input_size; i++) {
     if (in[i] > running_max)
       running_max = in[i];
   }
   *(int32_t *)out = running_max;
+  event1();
 
   return;
 }

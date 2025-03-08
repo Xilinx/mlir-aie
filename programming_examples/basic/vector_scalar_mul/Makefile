@@ -16,7 +16,6 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = vector_scalar_mul
-# in1_size = 4096
 in1_size = 8192 # in bytes
 in2_size = 4 # in bytes, should always be 4 (1x int32)
 out_size = 8192 # in bytes, should always be equal to in1_size
@@ -105,7 +104,6 @@ trace: ${targetname}_${data_size}.exe build/final_trace_${data_size}.xclbin buil
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_vector_scalar_mul.json
 
 trace_py: build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt
-	#${powershell} python3 ${srcdir}/test_orig.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -i2s ${in2_size} -os ${out_size} --size 4096
 	${powershell} python3 ${srcdir}/test.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -i2s ${in2_size} -os ${out_size}
 	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift 1 > trace_vector_scalar_mul.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_vector_scalar_mul.json

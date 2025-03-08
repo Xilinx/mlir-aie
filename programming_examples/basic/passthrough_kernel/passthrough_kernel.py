@@ -20,18 +20,21 @@ try:
         dev = NPU2()
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-    vector_size = int(sys.argv[2])
-    if vector_size % 64 != 0 or vector_size < 512:
-        print("Vector size must be a multiple of 64 and greater than or equal to 512")
+    in1_size = int(sys.argv[2])
+    if in1_size % 64 != 0 or in1_size < 512:
+        print(
+            "In1 buffer size must be a multiple of 64 and greater than or equal to 512"
+        )
         raise ValueError
-    trace_size = 0 if (len(sys.argv) != 4) else int(sys.argv[3])
+    out_size = int(sys.argv[3])
+    trace_size = 0 if (len(sys.argv) != 5) else int(sys.argv[4])
 except ValueError:
     print("Argument has inappropriate value")
 
 # Define tensor types
-line_size = vector_size // 4
+line_size = in1_size // 4
 line_type = np.ndarray[(line_size,), np.dtype[np.uint8]]
-vector_type = np.ndarray[(vector_size,), np.dtype[np.uint8]]
+vector_type = np.ndarray[(in1_size,), np.dtype[np.uint8]]
 
 # Dataflow with ObjectFifos
 of_in = ObjectFifo(line_type, name="in")

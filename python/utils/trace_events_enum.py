@@ -59,6 +59,7 @@ class CoreEvent(Enum):
     INT_FP_0 = 51
     FP_INVALID = 52
     FP_INF = 53
+    rsvd = 54
     PM_REG_ACCESS_FAILURE = 55
     STREAM_PKT_PARITY_ERROR = 56
     CONTROL_PKT_ERROR = 57
@@ -259,7 +260,7 @@ class MemEvent(Enum):
     USER_EVENT_3 = 127
 
 
-class PLEvent(Enum):
+class ShimTileEvent(Enum):
     NONE = 0
     TRUE = 1
     GROUP_0 = 2
