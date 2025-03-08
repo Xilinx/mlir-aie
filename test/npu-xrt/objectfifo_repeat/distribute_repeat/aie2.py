@@ -39,7 +39,7 @@ if len(sys.argv) > 3:
     col = int(sys.argv[3])
 
 assert N % 2 == 0, "N must be even"
-repeat_counter = 7
+repeat_counter = 1
 out_size = N * repeat_counter
 
 

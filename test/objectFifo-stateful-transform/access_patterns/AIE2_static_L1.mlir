@@ -20,8 +20,8 @@
 
 // CHECK:     %[[t0:.*]] = aie.tile(2, 2)
 // CHECK:     %[[t1:.*]] = aie.tile(2, 3)
-// CHECK:     %[[PL:.*]] = aie.lock(%[[t0]], 0) {init = 4 : i32, sym_name = "fifo_prod_lock"}
-// CHECK:     %[[CL:.*]] = aie.lock(%[[t0]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock"}
+// CHECK:     %[[PL:.*]] = aie.lock(%[[t0]], 0) {init = 4 : i32, sym_name = "fifo_prod_lock_0"}
+// CHECK:     %[[CL:.*]] = aie.lock(%[[t0]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
 // CHECK:     %[[c0:.*]] = aie.core(%[[t0]]) {
 // CHECK:         aie.use_lock(%[[PL]], AcquireGreaterEqual, 1)
 // CHECK:         aie.use_lock(%[[CL]], Release, 1)
