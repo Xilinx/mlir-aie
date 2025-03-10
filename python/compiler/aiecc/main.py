@@ -751,18 +751,6 @@ class FlowRunner:
                         file_airbin,
                     ],
                 )
-            else:
-                file_inc_cpp = self.prepend_tmp("aie_inc.cpp")
-                await self.do_call(
-                    task,
-                    [
-                        "aie-translate",
-                        "--aie-generate-xaie",
-                        file_physical,
-                        "-o",
-                        file_inc_cpp,
-                    ],
-                )
 
             if opts.link_against_hsa:
                 file_inc_cpp = self.prepend_tmp("aie_data_movement.cpp")
