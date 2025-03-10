@@ -21,11 +21,13 @@ module @test {
     // CHECK: {{.*}} = aie.buffer({{.*}}) {address = {{.*}} : i32, mem_bank = {{.*}} : i32, sym_name = {{.*}}}
     %b3 = aie.buffer(%t1) : memref<16xi16>
 
+    // The tile allocation scheme overrides the alloc-scheme flag.
     // CHECK: aie.tile(4, 4) {allocation_scheme = "basic-sequential"}
     %t2 = aie.tile(4, 4) { allocation_scheme="basic-sequential" }
     // CHECK: {address = {{.*}} : i32, sym_name = {{.*}}}
     %b4 = aie.buffer(%t2) : memref<500xi32>
 
+    // The default allocation scheme is given by the falg in this case.
     // CHECK-NOT: allocation_scheme =
     %t3 = aie.tile(4,5)
     // CHECK: {{.*}} = aie.buffer({{.*}}) {address = {{.*}} : i32, mem_bank = {{.*}} : i32, sym_name = {{.*}}}
