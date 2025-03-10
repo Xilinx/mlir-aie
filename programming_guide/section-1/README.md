@@ -74,7 +74,7 @@ print(module)
 
 ## <ins>Walkthrough of Python source file (aie2_placed.py)</ins>
 
-IRON also enables users to describe their design at the tile level of granularity where components are explicitly placed on AIE tiles using coordinates. Let's again look through a basic Python source file (named [aie2_placed.py](./aie2.py)) for an IRON design at this level.
+IRON also enables users to describe their design at the tile level of granularity where components are explicitly placed on AIE tiles using coordinates. Let's again look through a basic Python source file (named [aie2_placed.py](./aie2_placed.py)) for an IRON design at this level.
 
 At the top of this Python source, we include modules that define the IRON AIE libraries `aie.dialects.aie` and the mlir-aie context `aie.extras.context`, which binds to MLIR definitions for AI Engines.
 ```python
