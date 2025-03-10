@@ -17,12 +17,12 @@
 // CHECK:           %{{.*}}tile_3_3 = aie.tile(3, 3)
 // CHECK:           %objfifo_cons_buff_0 = aie.buffer(%{{.*}}tile_3_3) {sym_name = "objfifo_cons_buff_0"} : memref<16xi32> 
 // CHECK:           %objfifo_cons_buff_1 = aie.buffer(%{{.*}}tile_3_3) {sym_name = "objfifo_cons_buff_1"} : memref<16xi32> 
-// CHECK:           %objfifo_cons_prod_lock = aie.lock(%{{.*}}tile_3_3, 0) {init = 2 : i32, sym_name = "objfifo_cons_prod_lock"}
-// CHECK:           %objfifo_cons_cons_lock = aie.lock(%{{.*}}tile_3_3, 1) {init = 0 : i32, sym_name = "objfifo_cons_cons_lock"}
+// CHECK:           %objfifo_cons_prod_lock = aie.lock(%{{.*}}tile_3_3, 0) {init = 2 : i32, sym_name = "objfifo_cons_prod_lock_0"}
+// CHECK:           %objfifo_cons_cons_lock = aie.lock(%{{.*}}tile_3_3, 1) {init = 0 : i32, sym_name = "objfifo_cons_cons_lock_0"}
 // CHECK:           %objfifo_buff_0 = aie.buffer(%{{.*}}tile_1_1) {sym_name = "objfifo_buff_0"} : memref<16xi32> 
 // CHECK:           %objfifo_buff_1 = aie.buffer(%{{.*}}tile_1_1) {sym_name = "objfifo_buff_1"} : memref<16xi32> 
-// CHECK:           %objfifo_prod_lock = aie.lock(%{{.*}}tile_1_1, 3) {init = 2 : i32, sym_name = "objfifo_prod_lock"}
-// CHECK:           %objfifo_cons_lock = aie.lock(%{{.*}}tile_1_1, 4) {init = 0 : i32, sym_name = "objfifo_cons_lock"}
+// CHECK:           %objfifo_prod_lock = aie.lock(%{{.*}}tile_1_1, 3) {init = 2 : i32, sym_name = "objfifo_prod_lock_0"}
+// CHECK:           %objfifo_cons_lock = aie.lock(%{{.*}}tile_1_1, 4) {init = 0 : i32, sym_name = "objfifo_cons_lock_0"}
 // CHECK:           %buffer_1_1 = aie.buffer(%{{.*}}tile_1_1) : memref<16xi32> 
 // CHECK:           %lock_1_1 = aie.lock(%{{.*}}tile_1_1, 0)
 // CHECK:           %buffer_1_1_0 = aie.buffer(%{{.*}}tile_1_1) : memref<16xi32> 
