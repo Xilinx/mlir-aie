@@ -37,7 +37,7 @@ class Worker(ObjectFifoEndpoint):
         placement: PlacementTile | None = AnyComputeTile,
         while_true: bool = True,
         stack_size: int = None,
-        allocation_scheme: str = None
+        allocation_scheme: str = None,
     ):
         """Construct a Worker
 
@@ -47,9 +47,9 @@ class Worker(ObjectFifoEndpoint):
             placement (PlacementTile | None, optional): The placement for the Worker. Defaults to AnyComputeTile.
             while_true (bool, optional): If true, will wrap the core_fn in a while(true) loop to ensure it runs until reconfiguration. Defaults to True.
             stack_size (int, optional): The stack_size in bytes to be allocated for the worker. Defaults to 1024 bytes.
-            allocation_scheme (str, optional): The memory allocation scheme to use for the Worker, either 'basic-sequential' or 'bank-aware'. If None, defaults to bank-aware. 
+            allocation_scheme (str, optional): The memory allocation scheme to use for the Worker, either 'basic-sequential' or 'bank-aware'. If None, defaults to bank-aware.
                 Will override any allocation scheme set on the tile given as placement.
-                
+
         Raises:
             ValueError: Parameters are validated.
         """

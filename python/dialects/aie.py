@@ -245,7 +245,9 @@ Device = DeviceOp
 
 class Core(CoreOp):
     # Until https://github.com/llvm/llvm-project/pull/73620 gets figured out.
-    def __init__(self, tile, link_with=None, dynamic_objfifo_lowering=None, stack_size=None):
+    def __init__(
+        self, tile, link_with=None, dynamic_objfifo_lowering=None, stack_size=None
+    ):
         super().__init__(
             result=T.index(),
             tile=tile,
@@ -919,8 +921,6 @@ def tile(col, row, *, loc=None, ip=None, allocation_scheme=None):
 
 
 # BDChainOp
-
-_orig_bd_chain = bd_chain
 
 
 def bd_chain(*inputs: T.Type | type[np.ndarray]):

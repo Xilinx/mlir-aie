@@ -40,7 +40,11 @@ print(module)
 # =============================================================================
 # CHECK: {allocation_scheme = "basic-sequential"}
 
-my_worker = Worker(None, placement=Tile(1, 2, allocation_scheme="bank-aware"), allocation_scheme="basic-sequential")
+my_worker = Worker(
+    None,
+    placement=Tile(1, 2, allocation_scheme="bank-aware"),
+    allocation_scheme="basic-sequential",
+)
 
 rt = Runtime()
 with rt.sequence():

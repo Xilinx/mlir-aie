@@ -39,10 +39,16 @@ class Device(Resolvable):
             self,
             loc: ir.Location | None = None,
             ip: ir.InsertionPoint | None = None,
-            allocation_scheme: str | None = None
+            allocation_scheme: str | None = None,
         ) -> None:
             if self._op == None:
-                self._op = tile(self._col, self._row, loc=loc, ip=ip, allocation_scheme=allocation_scheme)
+                self._op = tile(
+                    self._col,
+                    self._row,
+                    loc=loc,
+                    ip=ip,
+                    allocation_scheme=allocation_scheme,
+                )
 
         @property
         def op(self) -> TileOp:
@@ -114,7 +120,7 @@ class Device(Resolvable):
         self,
         tile: Tile,
         loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None
+        ip: ir.InsertionPoint | None = None,
     ) -> None:
         self._tiles[tile.col][tile.row].resolve(loc, ip, tile.allocation_scheme)
         tile.op = self._tiles[tile.col][tile.row].op

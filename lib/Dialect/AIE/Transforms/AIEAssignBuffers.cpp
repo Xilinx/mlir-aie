@@ -13,8 +13,6 @@
 
 #include "mlir/IR/Attributes.h"
 
-#include "llvm/ADT/Twine.h"
-
 #define DEBUG_TYPE "aie-assign-buffers"
 
 using namespace mlir;
@@ -477,25 +475,23 @@ struct AIEAssignBufferAddressesPass
     // Select allocation scheme per tile
     for (auto tile : device.getOps<TileOp>()) {
       auto tileAllocationScheme = tile.getAllocationScheme();
-      
+
       if (!tileAllocationScheme)
         tileAllocationScheme = clAllocScheme;
-      else
-        tileAllocationScheme = tileAllocationScheme;
 
       if (tileAllocationScheme == "basic-sequential") {
-          if (auto res = basicAllocation(tile); res.failed())
-            return signalPassFailure();
-      } else if (tileAllocationScheme == "bank-aware") {    
-          if (auto res = simpleBankAwareAllocation(tile); res.failed())
-            return signalPassFailure();
+        if (auto res = basicAllocation(tile); res.failed())
+          return signalPassFailure();
+      } else if (tileAllocationScheme == "bank-aware") {
+        if (auto res = simpleBankAwareAllocation(tile); res.failed())
+          return signalPassFailure();
       } else {
-          tile.emitWarning("Memory allocation scheme is either not provided or "
-                           "unrecognized. Defaulting to bank-aware allocation.");
-          if (auto res = simpleBankAwareAllocation(tile); res.failed()) {
-            if (auto res2 = basicAllocation(tile); res2.failed())
-              return signalPassFailure();
-          }
+        tile.emitWarning("Memory allocation scheme is either not provided or "
+                         "unrecognized. Defaulting to bank-aware allocation.");
+        if (auto res = simpleBankAwareAllocation(tile); res.failed()) {
+          if (auto res2 = basicAllocation(tile); res2.failed())
+            return signalPassFailure();
+        }
       }
     }
   }

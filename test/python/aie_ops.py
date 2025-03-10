@@ -36,11 +36,13 @@ from util import construct_and_print_module
 def tileOp():
     t = tile(col=0, row=0)
 
+
 # CHECK-LABEL: tileOpAllocationScheme
 # CHECK: aie.tile(2, 2) {allocation_scheme = "basic-sequential"}
 @construct_and_print_module
 def tileOpAllocationScheme():
-    t = tile(col=2, row=2, allocation_scheme = "basic-sequential")
+    t = tile(col=2, row=2, allocation_scheme="basic-sequential")
+
 
 # CHECK-LABEL: coreOp
 # CHECK: %[[VAL1:.*]] = aie.tile(1, 1)
@@ -54,6 +56,7 @@ def coreOp():
     bb = Block.create_at_start(c.body)
     with InsertionPoint(bb):
         end()
+
 
 # CHECK-LABEL: coreOpParameters
 # CHECK: %[[VAL1:.*]] = aie.tile(1, 1)
