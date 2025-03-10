@@ -1184,6 +1184,19 @@ class FlowRunner:
             ]
             await asyncio.gather(*processes)
 
+            if opts.compile_host or opts.aiesim:
+                file_inc_cpp = self.prepend_tmp("aie_inc.cpp")
+                await self.do_call(
+                    None,
+                    [
+                        "aie-translate",
+                        "--aie-generate-xaie",
+                        input_physical,
+                        "-o",
+                        file_inc_cpp,
+                    ],
+                )
+
             if opts.compile_host and len(opts.host_args) > 0:
                 await self.process_host_cgen(aie_target, input_physical)
 
