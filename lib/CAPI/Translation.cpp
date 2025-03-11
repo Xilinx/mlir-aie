@@ -163,6 +163,102 @@ MlirStringRef aieLLVMLink(MlirStringRef *modules, int nModules) {
   return mlirStringRefCreate(cStr, ll.size());
 }
 
+MlirOperation aieRuntimeSequenceCreate(MlirStringRef name, int dev) {
+
+  std::string seqName(name.data, name.length);
+
+  // Create an MLIR context using the registry
+  auto *context = new MLIRContext;
+  context->allowUnregisteredDialects();
+  context->loadDialect<memref::MemRefDialect>();
+  context->loadDialect<xilinx::AIE::AIEDialect>();
+  context->loadDialect<xilinx::AIEX::AIEXDialect>();
+
+  // create a new ModuleOp and set the insertion point
+  auto loc = mlir::UnknownLoc::get(context);
+  OpBuilder builder(context);
+
+  auto module = ModuleOp::create(loc);
+  builder.setInsertionPointToStart(module.getBody());
+
+  auto device = builder.create<DeviceOp>(loc, AIEDevice(dev));
+
+  device.getRegion().emplaceBlock();
+  DeviceOp::ensureTerminator(device.getBodyRegion(), builder, loc);
+  builder.setInsertionPointToStart(device.getBody());
+
+  StringAttr seq_sym_name = builder.getStringAttr(seqName);
+  auto seq = builder.create<xilinx::AIEX::RuntimeSequenceOp>(loc, seq_sym_name);
+  seq.getBody().push_back(new Block);
+
+  return wrap(module.getOperation());
+}
+
+MlirStringRef aieRuntimeSequenceAddNpuDmaMempy(
+    MlirOperation m, uint32_t id, uint32_t direction, uint32_t channel,
+    uint32_t column, uint64_t addr, uint32_t offsets[4], uint32_t sizes[4],
+    uint32_t strides[4]) {
+
+  auto module = cast<ModuleOp>(unwrap(m));
+
+  // get the runtime sequence from the module
+  DeviceOp deviceOp = *(module.getOps<DeviceOp>().begin());
+  xilinx::AIEX::RuntimeSequenceOp seq =
+      *(deviceOp.getOps<xilinx::AIEX::RuntimeSequenceOp>().begin());
+
+  auto loc = seq->getLoc();
+  auto ctx = seq->getContext();
+  OpBuilder builder(module);
+  builder.setInsertionPoint(seq);
+
+  auto memrefType =
+      MemRefType::get({1}, mlir::IntegerType::get(ctx, 32), nullptr, 0);
+  auto arg = seq.getBody().addArgument(memrefType, loc);
+  const std::vector<int64_t> staticOffsets = {offsets[0], offsets[1],
+                                              offsets[2], offsets[3]};
+  const std::vector<int64_t> staticSizes = {sizes[0], sizes[1], sizes[2],
+                                            sizes[3]};
+  const std::vector<int64_t> staticStrides = {strides[0], strides[1],
+                                              strides[2], strides[3]};
+  std::string metadata = "memcpy" + std::to_string(id);
+
+  if (!deviceOp.lookupSymbol(metadata))
+    builder.create<memref::GlobalOp>(builder.getUnknownLoc(), metadata,
+                                    builder.getStringAttr("public"), memrefType,
+                                    nullptr, false, nullptr);
+  builder.create<ShimDMAAllocationOp>(loc, metadata, DMAChannelDir(direction),
+                                      channel, column);
+
+  builder.setInsertionPointToEnd(&seq.getBody().front());
+  builder.create<xilinx::AIEX::NpuDmaMemcpyNdOp>(
+      loc, arg, SmallVector<mlir::Value>{}, SmallVector<mlir::Value>{},
+      SmallVector<mlir::Value>{}, mlir::ArrayRef(staticOffsets),
+      mlir::ArrayRef(staticSizes), mlir::ArrayRef(staticStrides), nullptr,
+      metadata, id);
+
+  char *cStr = static_cast<char *>(malloc(metadata.size()));
+  metadata.copy(cStr, metadata.size());
+  return mlirStringRefCreate(cStr, metadata.size());
+}
+
+MlirLogicalResult aieRuntimeSequenceAddNpuDmaWait(MlirOperation m,
+                                                  MlirStringRef symbol) {
+
+  auto module = cast<ModuleOp>(unwrap(m));
+
+  // get the runtime sequence from the module
+  DeviceOp deviceOp = *(module.getOps<DeviceOp>().begin());
+  xilinx::AIEX::RuntimeSequenceOp seq =
+      *(deviceOp.getOps<xilinx::AIEX::RuntimeSequenceOp>().begin());
+
+  auto loc = seq->getLoc();
+  OpBuilder builder(module);
+  builder.setInsertionPointToEnd(&seq.getBody().front());
+  builder.create<xilinx::AIEX::NpuDmaWaitOp>(
+      loc, StringRef{symbol.data, symbol.length});
+  return {1};
+}
+
 DEFINE_C_API_PTR_METHODS(AieRtControl, xilinx::AIE::AIERTControl)
 
 AieRtControl getAieRtControl(AieTargetModel tm) {

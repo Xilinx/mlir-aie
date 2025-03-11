@@ -176,6 +176,26 @@ NB_MODULE(_aie, m) {
   m.def("get_target_model",
         [](uint32_t d) -> PyAieTargetModel { return aieGetTargetModel(d); });
 
+  m.def("runtime_sequence_create", [](const std::string &name, int device) {
+    return aieRuntimeSequenceCreate({name.data(), name.size()}, device);
+  });
+
+  m.def("runtime_sequence_add_dma_memcpy",
+        [&stealCStr](MlirOperation runtime_sequence, uint32_t direction, uint32_t id,
+           uint32_t channel, uint32_t column, uint64_t addr,
+           std::vector<uint32_t> offsets, std::vector<uint32_t> sizes,
+           std::vector<uint32_t> strides) {
+            return stealCStr(aieRuntimeSequenceAddNpuDmaMempy(
+              runtime_sequence, id, direction, channel, column, addr,
+              offsets.data(), sizes.data(), strides.data()));
+        });
+
+  m.def("runtime_sequence_add_dma_wait",
+        [](MlirOperation runtime_sequence, const std::string &symbol) {
+          return aieRuntimeSequenceAddNpuDmaWait(
+              runtime_sequence, {symbol.data(), symbol.size()}).value;
+        });
+
   nb::class_<PyAieTargetModel>(m, "AIETargetModel")
       .def(
           "columns",

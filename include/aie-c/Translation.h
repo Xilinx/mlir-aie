@@ -38,6 +38,13 @@ aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath,
 MLIR_CAPI_EXPORTED MlirOperation aieTranslateBinaryToTxn(MlirContext ctx,
                                                          MlirStringRef binary);
 
+MLIR_CAPI_EXPORTED MlirOperation aieRuntimeSequenceCreate(MlirStringRef name, int dev);
+MLIR_CAPI_EXPORTED MlirStringRef aieRuntimeSequenceAddNpuDmaMempy(
+  MlirOperation runtime_sequence, uint32_t id, uint32_t direction, uint32_t channel, uint32_t column, uint64_t addr,
+    uint32_t offsets[4], uint32_t sizes[4], uint32_t strides[4]);
+MLIR_CAPI_EXPORTED MlirLogicalResult
+aieRuntimeSequenceAddNpuDmaWait(MlirOperation runtime_sequence, MlirStringRef symbol);
+
 struct AieRtControl {
   void *ptr;
 };

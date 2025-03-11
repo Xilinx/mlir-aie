@@ -38,6 +38,9 @@ from .._mlir_libs._aie import (
     translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
     transaction_binary_to_mlir,
+    runtime_sequence_create,
+    runtime_sequence_add_dma_memcpy,
+    runtime_sequence_add_dma_wait,
 )
 from ..extras import types as T
 from ..extras.meta import region_op
