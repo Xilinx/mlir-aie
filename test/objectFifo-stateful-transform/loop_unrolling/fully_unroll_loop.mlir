@@ -15,16 +15,16 @@
 // CHECK:      memref.global "public" @of_1 : memref<16xi32>
 // CHECK:      %{{.*}}tile_1_2 = aie.tile(1, 2)
 // CHECK:      %{{.*}}tile_1_3 = aie.tile(1, 3)
-// CHECK:      %of_2_buff_0 = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_2_buff_0"} : memref<16xi32> 
-// CHECK:      %of_2_buff_1 = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_2_buff_1"} : memref<16xi32> 
-// CHECK:      %of_2_buff_2 = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_2_buff_2"} : memref<16xi32> 
-// CHECK:      %of_2_lock_0 = aie.lock(%{{.*}}tile_1_2, 0) {init = 0 : i32, sym_name = "of_2_lock_0"}
-// CHECK:      %of_2_lock_1 = aie.lock(%{{.*}}tile_1_2, 1) {init = 0 : i32, sym_name = "of_2_lock_1"}
-// CHECK:      %of_2_lock_2 = aie.lock(%{{.*}}tile_1_2, 2) {init = 0 : i32, sym_name = "of_2_lock_2"}
-// CHECK:      %of_1_buff_0 = aie.buffer(%{{.*}}tile_1_3) {sym_name = "of_1_buff_0"} : memref<16xi32> 
-// CHECK:      %of_1_buff_1 = aie.buffer(%{{.*}}tile_1_3) {sym_name = "of_1_buff_1"} : memref<16xi32> 
-// CHECK:      %of_1_lock_0 = aie.lock(%{{.*}}tile_1_3, 0) {init = 0 : i32, sym_name = "of_1_lock_0"}
-// CHECK:      %of_1_lock_1 = aie.lock(%{{.*}}tile_1_3, 1) {init = 0 : i32, sym_name = "of_1_lock_1"}
+// CHECK:      %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_2_buff_0"} : memref<16xi32> 
+// CHECK:      %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_2_buff_1"} : memref<16xi32> 
+// CHECK:      %[[VAL_2:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_2_buff_2"} : memref<16xi32> 
+// CHECK:      %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_1_2, 0) {init = 0 : i32, sym_name = "of_2_lock_0"}
+// CHECK:      %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_1_2, 1) {init = 0 : i32, sym_name = "of_2_lock_1"}
+// CHECK:      %[[VAL_5:.*]] = aie.lock(%{{.*}}tile_1_2, 2) {init = 0 : i32, sym_name = "of_2_lock_2"}
+// CHECK:      %[[VAL_6:.*]] = aie.buffer(%{{.*}}tile_1_3) {sym_name = "of_1_buff_0"} : memref<16xi32> 
+// CHECK:      %[[VAL_7:.*]] = aie.buffer(%{{.*}}tile_1_3) {sym_name = "of_1_buff_1"} : memref<16xi32> 
+// CHECK:      %[[VAL_8:.*]] = aie.lock(%{{.*}}tile_1_3, 0) {init = 0 : i32, sym_name = "of_1_lock_0"}
+// CHECK:      %[[VAL_9:.*]] = aie.lock(%{{.*}}tile_1_3, 1) {init = 0 : i32, sym_name = "of_1_lock_1"}
 // CHECK:      func.func @some_work(%arg0: memref<16xi32>, %arg1: memref<16xi32>, %arg2: index) {
 // CHECK:        return
 // CHECK:      }
@@ -32,35 +32,35 @@
 // CHECK:        %c0 = arith.constant 0 : index
 // CHECK:        %c1 = arith.constant 1 : index
 // CHECK:        %c4 = arith.constant 4 : index
-// CHECK:        aie.use_lock(%of_1_lock_0, Acquire, 1)
-// CHECK:        aie.use_lock(%of_2_lock_0, Acquire, 0)
-// CHECK:        func.call @some_work(%of_1_buff_0, %of_2_buff_0, %c0) : (memref<16xi32>, memref<16xi32>, index) -> ()
-// CHECK:        aie.use_lock(%of_1_lock_0, Release, 0)
-// CHECK:        aie.use_lock(%of_2_lock_0, Release, 1)
+// CHECK:        aie.use_lock(%[[VAL_8], Acquire, 1)
+// CHECK:        aie.use_lock(%[[VAL_3], Acquire, 0)
+// CHECK:        func.call @some_work(%[[VAL_6], %[[VAL_0], %c0) : (memref<16xi32>, memref<16xi32>, index) -> ()
+// CHECK:        aie.use_lock(%[[VAL_8], Release, 0)
+// CHECK:        aie.use_lock(%[[VAL_3], Release, 1)
 // CHECK:        %c1_1 = arith.constant 1 : index
 // CHECK:        %0 = arith.muli %c1, %c1_1 : index
 // CHECK:        %1 = arith.addi %c0, %0 : index
-// CHECK:        aie.use_lock(%of_1_lock_1, Acquire, 1)
-// CHECK:        aie.use_lock(%of_2_lock_1, Acquire, 0)
-// CHECK:        func.call @some_work(%of_1_buff_1, %of_2_buff_1, %1) : (memref<16xi32>, memref<16xi32>, index) -> ()
-// CHECK:        aie.use_lock(%of_1_lock_1, Release, 0)
-// CHECK:        aie.use_lock(%of_2_lock_1, Release, 1)
+// CHECK:        aie.use_lock(%[[VAL_9], Acquire, 1)
+// CHECK:        aie.use_lock(%[[VAL_4], Acquire, 0)
+// CHECK:        func.call @some_work(%[[VAL_7], %[[VAL_1], %1) : (memref<16xi32>, memref<16xi32>, index) -> ()
+// CHECK:        aie.use_lock(%[[VAL_9], Release, 0)
+// CHECK:        aie.use_lock(%[[VAL_4], Release, 1)
 // CHECK:        %c2 = arith.constant 2 : index
 // CHECK:        %2 = arith.muli %c1, %c2 : index
 // CHECK:        %3 = arith.addi %c0, %2 : index
-// CHECK:        aie.use_lock(%of_1_lock_0, Acquire, 1)
-// CHECK:        aie.use_lock(%of_2_lock_2, Acquire, 0)
-// CHECK:        func.call @some_work(%of_1_buff_0, %of_2_buff_2, %3) : (memref<16xi32>, memref<16xi32>, index) -> ()
-// CHECK:        aie.use_lock(%of_1_lock_0, Release, 0)
-// CHECK:        aie.use_lock(%of_2_lock_2, Release, 1)
+// CHECK:        aie.use_lock(%[[VAL_8], Acquire, 1)
+// CHECK:        aie.use_lock(%[[VAL_5], Acquire, 0)
+// CHECK:        func.call @some_work(%[[VAL_6], %[[VAL_2], %3) : (memref<16xi32>, memref<16xi32>, index) -> ()
+// CHECK:        aie.use_lock(%[[VAL_8], Release, 0)
+// CHECK:        aie.use_lock(%[[VAL_5], Release, 1)
 // CHECK:        %c3 = arith.constant 3 : index
 // CHECK:        %4 = arith.muli %c1, %c3 : index
 // CHECK:        %5 = arith.addi %c0, %4 : index
-// CHECK:        aie.use_lock(%of_1_lock_1, Acquire, 1)
-// CHECK:        aie.use_lock(%of_2_lock_0, Acquire, 0)
-// CHECK:        func.call @some_work(%of_1_buff_1, %of_2_buff_0, %5) : (memref<16xi32>, memref<16xi32>, index) -> ()
-// CHECK:        aie.use_lock(%of_1_lock_1, Release, 0)
-// CHECK:        aie.use_lock(%of_2_lock_0, Release, 1)
+// CHECK:        aie.use_lock(%[[VAL_9], Acquire, 1)
+// CHECK:        aie.use_lock(%[[VAL_3], Acquire, 0)
+// CHECK:        func.call @some_work(%[[VAL_7], %[[VAL_0], %5) : (memref<16xi32>, memref<16xi32>, index) -> ()
+// CHECK:        aie.use_lock(%[[VAL_9], Release, 0)
+// CHECK:        aie.use_lock(%[[VAL_3], Release, 1)
 // CHECK:        aie.end
 // CHECK:      }
 // CHECK:    }

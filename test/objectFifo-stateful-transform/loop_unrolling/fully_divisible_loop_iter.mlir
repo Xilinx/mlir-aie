@@ -15,10 +15,10 @@
 // CHECK:      memref.global "public" @loop_of : memref<16xi32>
 // CHECK:      %{{.*}}tile_1_2 = aie.tile(1, 2)
 // CHECK:      %{{.*}}tile_1_3 = aie.tile(1, 3)
-// CHECK:      %loop_of_buff_0 = aie.buffer(%{{.*}}tile_1_2) {sym_name = "loop_of_buff_0"} : memref<16xi32> 
-// CHECK:      %loop_of_buff_1 = aie.buffer(%{{.*}}tile_1_2) {sym_name = "loop_of_buff_1"} : memref<16xi32> 
-// CHECK:      %loop_of_lock_0 = aie.lock(%{{.*}}tile_1_2, 0) {init = 0 : i32, sym_name = "loop_of_lock_0"}
-// CHECK:      %loop_of_lock_1 = aie.lock(%{{.*}}tile_1_2, 1) {init = 0 : i32, sym_name = "loop_of_lock_1"}
+// CHECK:      %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "loop_of_buff_0"} : memref<16xi32> 
+// CHECK:      %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "loop_of_buff_1"} : memref<16xi32> 
+// CHECK:      %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_1_2, 0) {init = 0 : i32, sym_name = "loop_of_lock_0"}
+// CHECK:      %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_1_2, 1) {init = 0 : i32, sym_name = "loop_of_lock_1"}
 // CHECK:      func.func @some_work(%arg0: memref<16xi32>, %arg1: index) {
 // CHECK:        return
 // CHECK:      }
@@ -28,15 +28,15 @@
 // CHECK:        %c4 = arith.constant 4 : index
 // CHECK:        %c2 = arith.constant 2 : index
 // CHECK:        scf.for %arg0 = %c0 to %c4 step %c2 {
-// CHECK:          aie.use_lock(%loop_of_lock_0, Acquire, 0)
-// CHECK:          func.call @some_work(%loop_of_buff_0, %arg0) : (memref<16xi32>, index) -> ()
-// CHECK:          aie.use_lock(%loop_of_lock_0, Release, 1)
+// CHECK:          aie.use_lock(%[[VAL_2], Acquire, 0)
+// CHECK:          func.call @some_work(%[[VAL_0], %arg0) : (memref<16xi32>, index) -> ()
+// CHECK:          aie.use_lock(%[[VAL_2], Release, 1)
 // CHECK:          %c1_0 = arith.constant 1 : index
 // CHECK:          %0 = arith.muli %c1, %c1_0 : index
 // CHECK:          %1 = arith.addi %arg0, %0 : index
-// CHECK:          aie.use_lock(%loop_of_lock_1, Acquire, 0)
-// CHECK:          func.call @some_work(%loop_of_buff_1, %1) : (memref<16xi32>, index) -> ()
-// CHECK:          aie.use_lock(%loop_of_lock_1, Release, 1)
+// CHECK:          aie.use_lock(%[[VAL_3], Acquire, 0)
+// CHECK:          func.call @some_work(%[[VAL_1], %1) : (memref<16xi32>, index) -> ()
+// CHECK:          aie.use_lock(%[[VAL_3], Release, 1)
 // CHECK:        }
 // CHECK:        aie.end
 // CHECK:      }
