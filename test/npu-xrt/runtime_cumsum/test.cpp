@@ -98,6 +98,18 @@ int main(int argc, const char *argv[]) {
 
     INOUT_DATATYPE *bufOut = bo_inA.map<INOUT_DATATYPE *>();
 
+    std::vector<INOUT_DATATYPE> ref(INOUT_SIZE);
+    for (int i = 0; i < 16; i++){
+        ref[i] = srcVecA[i];
+        ref[1 * 16 + i] = srcVecA[i];
+        ref[2 * 16 + i] = ref[1 * 16 + i] + ref[i];
+        ref[3 * 16 + i] = ref[2 * 16 + i] + ref[1 * 16 + i] + ref[i];
+        ref[4 * 16 + i] = ref[3 * 16 + i] + ref[2 * 16 + i] + ref[1 * 16 + i] + ref[i];
+        ref[5 * 16 + i] = ref[4 * 16 + i] + ref[3 * 16 + i] + ref[2 * 16 + i] + ref[1 * 16 + i] + ref[i];
+        ref[6 * 16 + i] = ref[5 * 16 + i] + ref[4 * 16 + i] + ref[3 * 16 + i] + ref[2 * 16 + i] + ref[1 * 16 + i] + ref[i];
+        ref[7 * 16 + i] = ref[6 * 16 + i] + ref[5 * 16 + i] + ref[4 * 16 + i] + ref[3 * 16 + i] + ref[2 * 16 + i] + ref[1 * 16 + i] + ref[i];
+    }
+
     int errors = 0;
 
     printf("Output:\n");
@@ -109,5 +121,20 @@ int main(int argc, const char *argv[]) {
     }
     printf("\n");
 
-    return 0;
+    for (uint32_t i = 0; i < INOUT_SIZE; i++){
+        if (*(bufOut + i) != ref[i]) {
+            if(errors < 10){
+                std::cout << "Error in output " << i << "; Input: " << srcVecA[i] << "; Output: " << *(bufOut + i) << " != reference:" << ref[i] << std::endl;
+            }
+            errors++;
+        }
+    }
+
+    if (!errors) {
+        std::cout << "\nPASS!\n\n";
+        return 0;
+    }
+
+    std::cout << "\nfailed.\n\n";
+    return 1;
 }
