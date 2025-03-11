@@ -486,8 +486,6 @@ struct AIEAssignBufferAddressesPass
         if (auto res = simpleBankAwareAllocation(tile); res.failed())
           return signalPassFailure();
       } else {
-        tile.emitWarning("Memory allocation scheme is either not provided or "
-                         "unrecognized. Defaulting to bank-aware allocation.");
         if (auto res = simpleBankAwareAllocation(tile); res.failed()) {
           if (auto res2 = basicAllocation(tile); res2.failed())
             return signalPassFailure();
