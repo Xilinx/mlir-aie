@@ -22,6 +22,7 @@ import tempfile
 from textwrap import dedent
 import time
 import uuid
+import struct
 
 from aie.extras.runtime.passes import Pipeline
 from aie.extras.util import find_ops
@@ -1128,7 +1129,7 @@ class FlowRunner:
                     )
                     with open(opts.insts_name, "w") as f:
                         for inst in npu_insts:
-                            f.write(f"{inst}\n")
+                            f.write(f"{inst:08X}\n")
 
             # fmt: off
             if opts.unified:

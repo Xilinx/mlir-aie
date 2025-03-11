@@ -44,4 +44,4 @@ def gen_cp_sequence():
 aie_module = gen_cp_sequence()
 print(aie_module)
 for i in generate_control_packets(aie_module.operation):
-    print(i)
+    print(f"{i:08X}")
