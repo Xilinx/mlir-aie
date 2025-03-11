@@ -153,6 +153,9 @@ static VirtualizedNPUTargetModel NPUmodel2col(2);
 static VirtualizedNPUTargetModel NPUmodel3col(3);
 static VirtualizedNPUTargetModel NPUmodel4col(4);
 static NPU2TargetModel NPU2model;
+static VirtualizedNPU2TargetModel NPU2model1col(1);
+static VirtualizedNPU2TargetModel NPU2model2col(2);
+static VirtualizedNPU2TargetModel NPU2model4col(4);
 
 const AIETargetModel &getTargetModel(Operation *op) {
   if (auto t = dyn_cast<AIETarget>(op))
@@ -185,6 +188,12 @@ const AIETargetModel &getTargetModel(AIEDevice device) {
     return NPUmodel4col;
   case AIEDevice::npu2:
     return NPU2model;
+  case AIEDevice::npu2_1col:
+    return NPU2model1col;
+  case AIEDevice::npu2_2col:
+    return NPU2model2col;
+  case AIEDevice::npu2_4col:
+    return NPU2model4col;
   }
   return VC1902model;
 }
