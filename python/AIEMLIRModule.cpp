@@ -123,27 +123,26 @@ NB_MODULE(_aie, m) {
 
   m.def(
       "translate_npu_to_binary",
-      [&stealCStr](MlirOperation op, const std::string &sequence_name) {
-        nb::str npuInstructions = stealCStr(aieTranslateNpuToBinary(
-            op, {sequence_name.data(), sequence_name.size()}));
-        auto individualInstructions =
-            nb::cast<nb::list>(npuInstructions.attr("split")());
-        for (size_t i = 0; i < individualInstructions.size(); ++i)
-          individualInstructions[i] = individualInstructions[i].attr("strip")();
-        return individualInstructions;
+      [](MlirOperation op, const std::string &sequence_name) {
+        MlirStringRef instStr = aieTranslateNpuToBinary(
+            op, {sequence_name.data(), sequence_name.size()});
+        std::vector<uint32_t> vec(
+            reinterpret_cast<const uint32_t *>(instStr.data),
+            reinterpret_cast<const uint32_t *>(instStr.data) + instStr.length);
+        free((void *)instStr.data);
+        return vec;
       },
       "module"_a, "sequence_name"_a = "");
 
   m.def(
       "generate_control_packets",
-      [&stealCStr](MlirOperation op) {
-        nb::str ctrlPackets =
-            stealCStr(aieTranslateControlPacketsToUI32Vec(op));
-        auto individualInstructions =
-            nb::cast<nb::list>(ctrlPackets.attr("split")());
-        for (size_t i = 0; i < individualInstructions.size(); ++i)
-          individualInstructions[i] = individualInstructions[i].attr("strip")();
-        return individualInstructions;
+      [](MlirOperation op) {
+        MlirStringRef instStr = aieTranslateControlPacketsToUI32Vec(op);
+        std::vector<uint32_t> vec(
+            reinterpret_cast<const uint32_t *>(instStr.data),
+            reinterpret_cast<const uint32_t *>(instStr.data) + instStr.length);
+        free((void *)instStr.data);
+        return vec;
       },
       "module"_a);
 
