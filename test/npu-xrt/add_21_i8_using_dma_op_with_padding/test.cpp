@@ -28,7 +28,7 @@ constexpr int OUT_SIZE = 64;
 #define OUT_DATATYPE int8_t
 
 int main(int argc, const char *argv[]) {
-  std::vector<uint32_t> instr_v = test_utils::load_instr_sequence("insts.txt");
+  std::vector<uint32_t> instr_v = test_utils::load_instr_binary("insts.bin");
 
   // Start the XRT test code
   // Get a device handle
