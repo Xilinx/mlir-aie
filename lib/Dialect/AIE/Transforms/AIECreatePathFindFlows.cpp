@@ -36,8 +36,6 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
                              DynamicTileAnalysis &a, PatternBenefit benefit = 1)
       : OpConversionPattern(context, benefit), device(d), analyzer(a) {}
 
-  LogicalResult match(FlowOp op) const { return success(); }
-
   void addConnection(ConversionPatternRewriter &rewriter,
                      // could be a shim-mux or a switchbox.
                      Interconnect op, FlowOp flowOp, WireBundle inBundle,
@@ -60,8 +58,9 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
                << outIndex << "\n");
   }
 
-  void rewrite(FlowOp flowOp, OpAdaptor adaptor,
-               ConversionPatternRewriter &rewriter) const {
+  mlir::LogicalResult
+  matchAndRewrite(FlowOp flowOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
     Operation *Op = flowOp.getOperation();
 
     auto srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
@@ -90,7 +89,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     if (analyzer.processedFlows[srcPoint]) {
       LLVM_DEBUG(llvm::dbgs() << "Flow already processed!\n");
       rewriter.eraseOp(Op);
-      return;
+      return failure();
     }
     // std::map<TileID, SwitchSetting>
     SwitchSettings settings = analyzer.flowSolutions[srcPoint];
@@ -167,6 +166,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
 
     analyzer.processedFlows[srcPoint] = true;
     rewriter.eraseOp(Op);
+    return success();
   }
 };
 
