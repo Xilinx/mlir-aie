@@ -59,10 +59,10 @@ int main(int argc, const char *argv[]) {
   }
 
   std::vector<uint32_t> instr_0_v =
-      test_utils::load_instr_sequence(vm["instr0"].as<std::string>());
+      test_utils::load_instr_binary(vm["instr0"].as<std::string>());
 
   std::vector<uint32_t> instr_1_v =
-      test_utils::load_instr_sequence(vm["instr1"].as<std::string>());
+      test_utils::load_instr_binary(vm["instr1"].as<std::string>());
 
   std::vector<uint32_t> cfg_1_v =
       test_utils::load_instr_binary(vm["cfg"].as<std::string>());

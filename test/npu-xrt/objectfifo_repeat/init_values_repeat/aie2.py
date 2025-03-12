@@ -1,7 +1,7 @@
 # test/npu-xrt/objectfifo_repeat/init_values_repeat/aie2.py
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# See https://llvm.org/LICENSE.bin for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 AMD Inc.
@@ -9,9 +9,9 @@
 # REQUIRES: ryzen_ai, peano
 #
 # RUN: %python %S/aie2.py 4096 > ./aie2.mlir
-# RUN: %python aiecc.py --no-aiesim --no-xchesscc --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
+# RUN: %python aiecc.py --no-aiesim --no-xchesscc --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-# RUN: %run_on_npu ./test.exe -x final.xclbin -i insts.txt -k MLIR_AIE -l 4096
+# RUN: %run_on_npu ./test.exe -x final.xclbin -i insts.bin -k MLIR_AIE -l 4096
 import numpy as np
 import sys
 

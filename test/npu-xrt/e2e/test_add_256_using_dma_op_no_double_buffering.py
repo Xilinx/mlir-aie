@@ -1,7 +1,7 @@
 # npu-xrt/e2e/test_add_256_using_dma_op_no_double_buffering.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# See https://llvm.org/LICENSE.bin for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
@@ -187,7 +187,7 @@ def test_add_256_using_dma_op_no_double_buffering(ctx: MLIRContext, workdir: Pat
 
             aie.end()
 
-    INSTS = "npu_insts.txt"
+    INSTS = "npu_insts.bin"
     XCLBIN = "final.xclbin"
     aiecc_run(ctx.module, aiecc_args(XCLBIN, INSTS))
     app = setup_aie(
