@@ -1,7 +1,7 @@
 ##===- Makefile -----------------------------------------------------------===##
 # 
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# See https://llvm.org/LICENSE.bin for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
@@ -74,7 +74,7 @@ mlir_target?=build/aie_${target_suffix}.mlir
 trace_mlir_target?=build/aie_trace_${target_suffix}.mlir
 xclbin_target?=build/final_${target_suffix}.xclbin
 trace_xclbin_target?=build/trace_${target_suffix}.xclbin
-insts_target?=build/insts_${target_suffix}.txt
+insts_target?=build/insts_${target_suffix}.bin
 aie_py_src?=${targetname}.py
 
 runargs?=-v 2 --warmup 1 --iters 1
@@ -143,13 +143,13 @@ run: ${targetname}.exe ${xclbin_target}
 trace: ${targetname}.exe ${trace_xclbin_target} ${insts_target}
 	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
 	${powershell} ./$< -x ${trace_xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N ${runargs} -t ${trace_size}
-	../../../utils/parse_trace.py --filename trace.txt --mlir ${trace_mlir_target} --colshift 1 > trace_mm.json
+	../../../utils/parse_trace.py --filename trace.bin --mlir ${trace_mlir_target} --colshift 1 > trace_mm.json
 
 #	${powershell} ./$< -x ${trace_xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N -v 1 --warmup 0 --iters 1 -t ${trace_size}
 
 .PHONY: parse_trace
 parse_trace:
-	../../../utils/parse_trace.py --filename trace.txt --mlir ${trace_mlir_target} --colshift 1 > trace_mm.json
+	../../../utils/parse_trace.py --filename trace.bin --mlir ${trace_mlir_target} --colshift 1 > trace_mm.json
 
 .PHONY: clean
 clean: clean_trace
@@ -157,4 +157,4 @@ clean: clean_trace
 
 .PHONY: clean_trace
 clean_trace:
-	rm -rf tmpTrace parse*.json trace*json trace.txt
+	rm -rf tmpTrace parse*.json trace*json trace.bin

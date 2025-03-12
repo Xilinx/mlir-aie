@@ -1,7 +1,7 @@
 ##===- Makefile -----------------------------------------------------------===##
 # 
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# See https://llvm.org/LICENSE.bin for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # 
 ##===----------------------------------------------------------------------===##
@@ -40,7 +40,7 @@ build/final.xclbin: build/aie.mlir build/scale.o
     			$(if $(shell [ $(CHESS) != true ] && echo true), \
     			    --no-xchesscc --no-xbridge \
     			) \
-				--aie-generate-npu-insts --npu-insts-name=insts.txt $(<:%=../%)
+				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 
 build/trace.xclbin: build/aie_trace.mlir build/scale.o
 	mkdir -p ${@D}
@@ -48,7 +48,7 @@ build/trace.xclbin: build/aie_trace.mlir build/scale.o
     			$(if $(shell [ $(CHESS) != true ] && echo true), \
     			    --no-xchesscc --no-xbridge \
     			) \
-				--aie-generate-npu-insts --npu-insts-name=insts.txt $(<:%=../%)
+				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	echo $(powershell_srcdir)
@@ -63,21 +63,21 @@ else
 endif
 
 run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
+	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
 
 run_py: build/final.xclbin
-	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
 
 trace: ${targetname}.exe build/trace.xclbin
-	${powershell} ./$< -x build/trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../../programming_examples/utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > trace_4b.json
+	${powershell} ./$< -x build/trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
+	${srcdir}/../../../programming_examples/utils/parse_trace.py --filename trace.bin --mlir build/aie_trace.mlir --colshift 1 > trace_4b.json
 
 trace_py: build/trace.xclbin
-	${powershell} python3 ${srcdir}/test.py -x build/trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../../programming_examples/utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > trace_4b.json
+	${powershell} python3 ${srcdir}/test.py -x build/trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
+	${srcdir}/../../../programming_examples/utils/parse_trace.py --filename trace.bin --mlir build/aie_trace.mlir --colshift 1 > trace_4b.json
 
 clean_trace:
-	rm -rf tmpTrace trace.txt trace*json
+	rm -rf tmpTrace trace.bin trace*json
 
 clean: clean_trace
 	rm -rf build _build ${targetname}.exe

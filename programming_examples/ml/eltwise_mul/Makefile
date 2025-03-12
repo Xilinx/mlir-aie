@@ -1,7 +1,7 @@
 ##===- Makefile -----------------------------------------------------------===##
 # 
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# See https://llvm.org/LICENSE.bin for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
@@ -73,8 +73,8 @@ run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
 
 trace: ${targetname}.exe build/final_trace.xclbin
-	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > trace_eltwise_mul.json
+	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
+	${srcdir}/../../utils/parse_trace.py --filename trace.bin --mlir build/aie_trace.mlir --colshift 1 > trace_eltwise_mul.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_eltwise_mul.json
 
 clean:

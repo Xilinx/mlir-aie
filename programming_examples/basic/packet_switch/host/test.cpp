@@ -35,10 +35,10 @@ int main(int argc, const char *argv[]) {
     }
 
     if (app_id == 0){
-      instr_v = test_utils::load_instr_sequence("insts_add.txt");
+      instr_v = test_utils::load_instr_binary("insts_add.txt");
     }
     else{
-      instr_v = test_utils::load_instr_sequence("insts_mul.txt");
+      instr_v = test_utils::load_instr_binary("insts_mul.txt");
     }
 
     int IN_SIZE = 256;
