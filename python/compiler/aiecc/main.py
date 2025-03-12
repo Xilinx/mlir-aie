@@ -1127,9 +1127,9 @@ class FlowRunner:
                     npu_insts = aiedialect.translate_npu_to_binary(
                         npu_insts_module.operation
                     )
-                    with open(opts.insts_name, "w") as f:
+                    with open(opts.insts_name, "wb") as f:
                         for inst in npu_insts:
-                            f.write(f"{inst:08X}\n")
+                            f.write(struct.pack("<I", inst))
 
             # fmt: off
             if opts.unified:
