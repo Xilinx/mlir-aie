@@ -1,0 +1,469 @@
+
+// Function: void core_0_2()
+[
+  0 : core_0_2 bnd=e
+  1 : _cst val=1f typ=__i1
+  2 : _cst val=4294967294f typ=__i64
+  3 : _cst val=0f typ=__i64
+  4 : __tmp typ=__i64
+  5 : _cst val=19f typ=__i64
+  6 : _cst val=52f typ=__i32
+  7 : _cst val=-1f typ=__i32
+  8 : llvm___aie2___acquire bnd=e
+  9 : _cst val=0f
+  10 : _cst val=12288f
+  11 : _cst val=2f
+  12 : memC_buff_0 typ=__Pvoid bnd=e
+  13 : zero_i16 bnd=e
+  14 : _cst val=49f typ=__i32
+  15 : _cst val=51f typ=__i32
+  16 : _cst val=7680f
+  17 : _cst val=1f
+  18 : memA_cons_buff_0 typ=__Pvoid bnd=e
+  19 : _cst val=11520f
+  20 : memB_cons_buff_0 typ=__Pvoid bnd=e
+  21 : matmul_i8_i16 bnd=e
+  22 : _cst val=48f typ=__i32
+  23 : _cst val=1f typ=__i32
+  24 : llvm___aie2___release bnd=e
+  25 : _cst val=50f typ=__i32
+  26 : memA_cons_buff_1 typ=__Pvoid bnd=e
+  27 : memB_cons_buff_1 typ=__Pvoid bnd=e
+  28 : _cst val=53f typ=__i32
+  29 : memC_buff_1 typ=__Pvoid bnd=e
+  30 : _cst val=2f typ=__i64
+  31 : _cst val=38f typ=__i64
+  32 : __tmp typ=__i1
+  33 : __tmp typ=__i32
+  34 : _cst val=1f typ=__i64
+  35 : _cst val=4294967295f typ=__i64
+]
+Lcore_0_2
+{
+  { // BB#0
+    ( vreg.1 var=1 ) const ( ) <1>;
+    ( vreg.2 var=2 ) const ( ) <2>;
+    ( vreg.3 var=3 ) const ( ) <3>;
+  } #2
+  // NOTE: GOTO FROM BB#0 TO BB#1 [HIDDEN]
+  do {
+    { // no associated BB
+      ( vreg.189 var=4 ) entry ( vreg.184 vreg.3 ) <189>;
+    } #4
+    {
+      sync {
+        ( vreg.4 var=4 ) sync_link ( vreg.189 ) sid=1 <4>;
+      } #6
+      { // BB#1
+        ( ) chain_tie_loop ( ) <5>;
+        ( vreg.6 var=5 ) const ( ) <6>;
+        ( vreg.7 var=3 ) const ( ) <7>;
+      } #7
+      // NOTE: GOTO FROM BB#1 TO BB#2 [HIDDEN]
+      do {
+        { // no associated BB
+          ( vreg.180 var=4 ) entry ( vreg.175 vreg.7 ) <180>;
+        } #9
+        {
+          sync {
+            ( vreg.8 var=4 ) sync_link ( vreg.180 ) sid=2 <8>;
+          } #11
+          { // BB#2
+            ( ) chain_tie_loop ( ) <9>;
+            ( vreg.10 var=6 ) const ( ) <10>;
+            ( vreg.11 var=7 ) const ( ) <11>;
+            ( vreg.12 var=8 ) const ( ) <12>;
+            ( vreg.13 var=9 ) const ( ) <13>;
+            ( ) lcall /* llvm___aie2___acquire */ ( vreg.13 vreg.12 vreg.10 vreg.11 ) <14>;
+            ( vreg.15 var=10 ) const ( ) <15>;
+            ( vreg.16 var=11 ) const ( ) <16>;
+            ( vreg.17 var=12 ) global ( vreg.15 vreg.16 ) <17>;
+            ( vreg.18 var=13 ) const ( ) <18>;
+            ( vreg.19 var=9 ) const ( ) <19>;
+            ( ) lcall /* zero_i16 */ ( vreg.19 vreg.18 vreg.17 ) <20>;
+            ( vreg.21 var=14 ) const ( ) <21>;
+            ( vreg.22 var=8 ) const ( ) <22>;
+            ( vreg.23 var=9 ) const ( ) <23>;
+            ( ) lcall /* llvm___aie2___acquire */ ( vreg.23 vreg.22 vreg.21 vreg.11 ) <24>;
+            ( vreg.25 var=15 ) const ( ) <25>;
+            ( vreg.26 var=8 ) const ( ) <26>;
+            ( vreg.27 var=9 ) const ( ) <27>;
+            ( ) lcall /* llvm___aie2___acquire */ ( vreg.27 vreg.26 vreg.25 vreg.11 ) <28>;
+            ( vreg.29 var=16 ) const ( ) <29>;
+            ( vreg.30 var=17 ) const ( ) <30>;
+            ( vreg.31 var=18 ) global ( vreg.29 vreg.30 ) <31>;
+            ( vreg.32 var=19 ) const ( ) <32>;
+            ( vreg.33 var=17 ) const ( ) <33>;
+            ( vreg.34 var=20 ) global ( vreg.32 vreg.33 ) <34>;
+            ( vreg.35 var=21 ) const ( ) <35>;
+            ( vreg.36 var=9 ) const ( ) <36>;
+            ( ) lcall /* matmul_i8_i16 */ ( vreg.36 vreg.35 vreg.31 vreg.34 vreg.17 ) <37>;
+            ( vreg.38 var=22 ) const ( ) <38>;
+            ( vreg.39 var=23 ) const ( ) <39>;
+            ( vreg.40 var=24 ) const ( ) <40>;
+            ( vreg.41 var=9 ) const ( ) <41>;
+            ( ) lcall /* llvm___aie2___release */ ( vreg.41 vreg.40 vreg.38 vreg.39 ) <42>;
+            ( vreg.43 var=25 ) const ( ) <43>;
+            ( vreg.44 var=24 ) const ( ) <44>;
+            ( vreg.45 var=9 ) const ( ) <45>;
+            ( ) lcall /* llvm___aie2___release */ ( vreg.45 vreg.44 vreg.43 vreg.39 ) <46>;
+            ( vreg.47 var=8 ) const ( ) <47>;
+            ( vreg.48 var=9 ) const ( ) <48>;
+            ( ) lcall /* llvm___aie2___acquire */ ( vreg.48 vreg.47 vreg.21 vreg.11 ) <49>;
+            ( vreg.50 var=8 ) const ( ) <50>;
+            ( vreg.51 var=9 ) const ( ) <51>;
+            ( ) lcall /* llvm___aie2___acquire */ ( vreg.51 vreg.50 vreg.25 vreg.11 ) <52>;
+            ( vreg.53 var=16 ) const ( ) <53>;
+            ( vreg.54 var=17 ) const ( ) <54>;
+            ( vreg.55 var=26 ) global ( vreg.53 vreg.54 ) <55>;
+            ( vreg.56 var=19 ) const ( ) <56>;
+            ( vreg.57 var=17 ) const ( ) <57>;
+            ( vreg.58 var=27 ) global ( vreg.56 vreg.57 ) <58>;
+            ( vreg.59 var=21 ) const ( ) <59>;
+            ( vreg.60 var=9 ) const ( ) <60>;
+            ( ) lcall /* matmul_i8_i16 */ ( vreg.60 vreg.59 vreg.55 vreg.58 vreg.17 ) <61>;
+            ( vreg.62 var=24 ) const ( ) <62>;
+            ( vreg.63 var=9 ) const ( ) <63>;
+            ( ) lcall /* llvm___aie2___release */ ( vreg.63 vreg.62 vreg.38 vreg.39 ) <64>;
+            ( vreg.65 var=24 ) const ( ) <65>;
+            ( vreg.66 var=9 ) const ( ) <66>;
+            ( ) lcall /* llvm___aie2___release */ ( vreg.66 vreg.65 vreg.43 vreg.39 ) <67>;
+            ( vreg.68 var=8 ) const ( ) <68>;
+            ( vreg.69 var=9 ) const ( ) <69>;
+            ( ) lcall /* llvm___aie2___acquire */ ( vreg.69 vreg.68 vreg.21 vreg.11 ) <70>;
+            ( vreg.71 var=8 ) const ( ) <71>;
+            ( vreg.72 var=9 ) const ( ) <72>;
+            ( ) lcall /* llvm___aie2___acquire */ ( vreg.72 vreg.71 vreg.25 vreg.11 ) <73>;
+            ( vreg.74 var=21 ) const ( ) <74>;
+            ( vreg.75 var=9 ) const ( ) <75>;
+            ( ) lcall /* matmul_i8_i16 */ ( vreg.75 vreg.74 vreg.31 vreg.34 vreg.17 ) <76>;
+            ( vreg.77 var=24 ) const ( ) <77>;
+            ( vreg.78 var=9 ) const ( ) <78>;
+            ( ) lcall /* llvm___aie2___release */ ( vreg.78 vreg.77 vreg.38 vreg.39 ) <79>;
+            ( vreg.80 var=24 ) const ( ) <80>;
+            ( vreg.81 var=9 ) const ( ) <81>;
+            ( ) lcall /* llvm___aie2___release */ ( vreg.81 vreg.80 vreg.43 vreg.39 ) <82>;
+            ( vreg.83 var=8 ) const ( ) <83>;
+            ( vreg.84 var=9 ) const ( ) <84>;
+            ( ) lcall /* llvm___aie2___acquire */ ( vreg.84 vreg.83 vreg.21 vreg.11 ) <85>;
+            ( vreg.86 var=8 ) const ( ) <86>;
+            ( vreg.87 var=9 ) const ( ) <87>;
+            ( ) lcall /* llvm___aie2___acquire */ ( vreg.87 vreg.86 vreg.25 vreg.11 ) <88>;
+            ( vreg.89 var=21 ) const ( ) <89>;
+            ( vreg.90 var=9 ) const ( ) <90>;
+            ( ) lcall /* matmul_i8_i16 */ ( vreg.90 vreg.89 vreg.55 vreg.58 vreg.17 ) <91>;
+            ( vreg.92 var=24 ) const ( ) <92>;
+            ( vreg.93 var=9 ) const ( ) <93>;
+            ( ) lcall /* llvm___aie2___release */ ( vreg.93 vreg.92 vreg.38 vreg.39 ) <94>;
+            ( vreg.95 var=24 ) const ( ) <95>;
+            ( vreg.96 var=9 ) const ( ) <96>;
+            ( ) lcall /* llvm___aie2___release */ ( vreg.96 vreg.95 vreg.43 vreg.39 ) <97>;
+            ( vreg.98 var=28 ) const ( ) <98>;
+            ( vreg.99 var=24 ) const ( ) <99>;
+            ( vreg.100 var=9 ) const ( ) <100>;
+            ( ) lcall /* llvm___aie2___release */ ( vreg.100 vreg.99 vreg.98 vreg.39 ) <101>;
+            ( vreg.102 var=8 ) const ( ) <102>;
+            ( vreg.103 var=9 ) const ( ) <103>;
+            ( ) lcall /* llvm___aie2___acquire */ ( vreg.103 vreg.102 vreg.10 vreg.11 ) <104>;
+            ( vreg.105 var=10 ) const ( ) <105>;
+            ( vreg.106 var=11 ) const ( ) <106>;
+            ( vreg.107 var=29 ) global ( vreg.105 vreg.106 ) <107>;
+            ( vreg.108 var=13 ) const ( ) <108>;
+            ( vreg.109 var=9 ) const ( ) <109>;
+            ( ) lcall /* zero_i16 */ ( vreg.109 vreg.108 vreg.107 ) <110>;
+            ( vreg.111 var=8 ) const ( ) <111>;
+            ( vreg.112 var=9 ) const ( ) <112>;
+            ( ) lcall /* llvm___aie2___acquire */ ( vreg.112 vreg.111 vreg.21 vreg.11 ) <113>;
+            ( vreg.114 var=8 ) const ( ) <114>;
+            ( vreg.115 var=9 ) const ( ) <115>;
+            ( ) lcall /* llvm___aie2___acquire */ ( vreg.115 vreg.114 vreg.25 vreg.11 ) <116>;
+            ( vreg.117 var=21 ) const ( ) <117>;
+            ( vreg.118 var=9 ) const ( ) <118>;
+            ( ) lcall /* matmul_i8_i16 */ ( vreg.118 vreg.117 vreg.31 vreg.34 vreg.107 ) <119>;
+            ( vreg.120 var=24 ) const ( ) <120>;
+            ( vreg.121 var=9 ) const ( ) <121>;
+            ( ) lcall /* llvm___aie2___release */ ( vreg.121 vreg.120 vreg.38 vreg.39 ) <122>;
+            ( vreg.123 var=24 ) const ( ) <123>;
+            ( vreg.124 var=9 ) const ( ) <124>;
+            ( ) lcall /* llvm___aie2___release */ ( vreg.124 vreg.123 vreg.43 vreg.39 ) <125>;
+            ( vreg.126 var=8 ) const ( ) <126>;
+            ( vreg.127 var=9 ) const ( ) <127>;
+            ( ) lcall /* llvm___aie2___acquire */ ( vreg.127 vreg.126 vreg.21 vreg.11 ) <128>;
+            ( vreg.129 var=8 ) const ( ) <129>;
+            ( vreg.130 var=9 ) const ( ) <130>;
+            ( ) lcall /* llvm___aie2___acquire */ ( vreg.130 vreg.129 vreg.25 vreg.11 ) <131>;
+            ( vreg.132 var=21 ) const ( ) <132>;
+            ( vreg.133 var=9 ) const ( ) <133>;
+            ( ) lcall /* matmul_i8_i16 */ ( vreg.133 vreg.132 vreg.55 vreg.58 vreg.107 ) <134>;
+            ( vreg.135 var=24 ) const ( ) <135>;
+            ( vreg.136 var=9 ) const ( ) <136>;
+            ( ) lcall /* llvm___aie2___release */ ( vreg.136 vreg.135 vreg.38 vreg.39 ) <137>;
+            ( vreg.138 var=24 ) const ( ) <138>;
+            ( vreg.139 var=9 ) const ( ) <139>;
+            ( ) lcall /* llvm___aie2___release */ ( vreg.139 vreg.138 vreg.43 vreg.39 ) <140>;
+            ( vreg.141 var=8 ) const ( ) <141>;
+            ( vreg.142 var=9 ) const ( ) <142>;
+            ( ) lcall /* llvm___aie2___acquire */ ( vreg.142 vreg.141 vreg.21 vreg.11 ) <143>;
+            ( vreg.144 var=8 ) const ( ) <144>;
+            ( vreg.145 var=9 ) const ( ) <145>;
+            ( ) lcall /* llvm___aie2___acquire */ ( vreg.145 vreg.144 vreg.25 vreg.11 ) <146>;
+            ( vreg.147 var=21 ) const ( ) <147>;
+            ( vreg.148 var=9 ) const ( ) <148>;
+            ( ) lcall /* matmul_i8_i16 */ ( vreg.148 vreg.147 vreg.31 vreg.34 vreg.107 ) <149>;
+            ( vreg.150 var=24 ) const ( ) <150>;
+            ( vreg.151 var=9 ) const ( ) <151>;
+            ( ) lcall /* llvm___aie2___release */ ( vreg.151 vreg.150 vreg.38 vreg.39 ) <152>;
+            ( vreg.153 var=24 ) const ( ) <153>;
+            ( vreg.154 var=9 ) const ( ) <154>;
+            ( ) lcall /* llvm___aie2___release */ ( vreg.154 vreg.153 vreg.43 vreg.39 ) <155>;
+            ( vreg.156 var=8 ) const ( ) <156>;
+            ( vreg.157 var=9 ) const ( ) <157>;
+            ( ) lcall /* llvm___aie2___acquire */ ( vreg.157 vreg.156 vreg.21 vreg.11 ) <158>;
+            ( vreg.159 var=8 ) const ( ) <159>;
+            ( vreg.160 var=9 ) const ( ) <160>;
+            ( ) lcall /* llvm___aie2___acquire */ ( vreg.160 vreg.159 vreg.25 vreg.11 ) <161>;
+            ( vreg.162 var=21 ) const ( ) <162>;
+            ( vreg.163 var=9 ) const ( ) <163>;
+            ( ) lcall /* matmul_i8_i16 */ ( vreg.163 vreg.162 vreg.55 vreg.58 vreg.107 ) <164>;
+            ( vreg.165 var=24 ) const ( ) <165>;
+            ( vreg.166 var=9 ) const ( ) <166>;
+            ( ) lcall /* llvm___aie2___release */ ( vreg.166 vreg.165 vreg.38 vreg.39 ) <167>;
+            ( vreg.168 var=24 ) const ( ) <168>;
+            ( vreg.169 var=9 ) const ( ) <169>;
+            ( ) lcall /* llvm___aie2___release */ ( vreg.169 vreg.168 vreg.43 vreg.39 ) <170>;
+            ( vreg.171 var=24 ) const ( ) <171>;
+            ( vreg.172 var=9 ) const ( ) <172>;
+            ( ) lcall_tail /* llvm___aie2___release */ ( vreg.172 vreg.171 vreg.98 vreg.39 ) <173>;
+            ( vreg.174 var=30 ) const ( ) <174>;
+            ( vreg.175 var=4 ) add___i64 ( vreg.8 vreg.174 ) <175>;
+            ( vreg.176 var=31 ) const ( ) <176>;
+            ( vreg.177 var=32 ) setult___i64 ( vreg.8 vreg.176 ) <177>;
+            ( vreg.178 var=33 ) zext___i1___i32 ( vreg.177 ) <178>;
+          } #12
+          if {
+            { // no associated BB
+              ( ) if_expr ( vreg.177 ) <179>;
+            } #14
+            {
+              // NOTE: GOTO FROM BB#2 TO BB#2 [HIDDEN]
+            } #15
+            {
+              // NOTE: GOTO FROM BB#2 TO BB#3 [HIDDEN]
+            } #16
+            { // no associated BB
+            } #17
+          } #13 // if
+        } #10
+        { // no associated BB
+          ( ) while_expr ( vreg.177 ) <181>;
+          ( ) backedge_taken_count ( vreg.6 ) <182>;
+        } #18
+      } #8// do_while
+      // NOTE: GOTO FROM BB#2 TO BB#3 [HIDDEN]
+      { // BB#3
+        ( vreg.183 var=34 ) const ( ) <183>;
+        ( vreg.184 var=4 ) add___i64 ( vreg.4 vreg.183 ) <184>;
+        ( vreg.185 var=35 ) const ( ) <185>;
+        ( vreg.186 var=32 ) setlt___i64 ( vreg.184 vreg.185 ) <186>;
+        ( vreg.187 var=33 ) zext___i1___i32 ( vreg.186 ) <187>;
+      } #19
+      if {
+        { // no associated BB
+          ( ) if_expr ( vreg.186 ) <188>;
+        } #21
+        {
+          // NOTE: GOTO FROM BB#3 TO BB#1 [HIDDEN]
+        } #22
+        {
+          // NOTE: GOTO FROM BB#3 TO BB#4 [HIDDEN]
+        } #23
+        { // no associated BB
+        } #24
+      } #20 // if
+    } #5
+    { // no associated BB
+      ( ) while_expr ( vreg.186 ) <190>;
+      ( ) backedge_taken_count ( vreg.2 ) <191>;
+    } #25
+  } #3// do_while
+  // NOTE: GOTO FROM BB#3 TO BB#4 [HIDDEN]
+  { // BB#4
+    ( ) return ( ) <192>;
+  } #26 nxt=-2
+} #1
+0 : 'core_0_2';
+----------
+0 : (0,0:0,0);
+----------
+
+// Function: void llvm___aie2___acquire(i32 , i32 )
+[
+  0 : llvm___aie2___acquire bnd=e
+  1 : _cst val=1f typ=__i1
+  2 : __arg0 typ=__i32
+  3 : __arg1 typ=__i32
+  4 : _Z25chess_separator_schedulerv bnd=e
+  5 : _cst val=0f
+  6 : __regcall3__chessintr_void_acquire_guarded___uint___uint bnd=e
+]
+Lllvm___aie2___acquire
+{
+  { // BB#0
+    ( vreg.1 var=1 ) const ( ) <1>;
+    ( vreg.2 var=2 ) inp ( ) <2>;
+    ( vreg.3 var=3 ) inp ( ) <3>;
+    ( ) chain_tie_volatile ( ) <4>;
+    ( vreg.5 var=4 ) const ( ) <5>;
+    ( vreg.6 var=5 ) const ( ) <6>;
+    ( ) lcall /* _Z25chess_separator_schedulerv */ ( vreg.6 vreg.5 ) <7>;
+    ( vreg.8 var=6 ) const ( ) <8>;
+    ( vreg.9 var=5 ) const ( ) <9>;
+    ( ) lcall /* __regcall3__chessintr_void_acquire_guarded___uint___uint */ ( vreg.9 vreg.8 vreg.2 vreg.3 ) <10>;
+    ( vreg.11 var=4 ) const ( ) <11>;
+    ( vreg.12 var=5 ) const ( ) <12>;
+    ( ) lcall /* _Z25chess_separator_schedulerv */ ( vreg.12 vreg.11 ) <13>;
+    ( ) chain_tie_volatile ( ) <14>;
+    ( ) return ( ) <15>;
+  } #2 nxt=-2
+} #1
+0 : 'llvm___aie2___acquire';
+----------
+0 : (0,0:0,0);
+----------
+==========alias_info
+4 :;
+14 :;
+
+// Function: void llvm___aie2___release(i32 , i32 )
+[
+  0 : llvm___aie2___release bnd=e
+  1 : _cst val=1f typ=__i1
+  2 : __arg0 typ=__i32
+  3 : __arg1 typ=__i32
+  4 : _Z25chess_separator_schedulerv bnd=e
+  5 : _cst val=0f
+  6 : __regcall3__chessintr_void_release_guarded___uint___sint bnd=e
+]
+Lllvm___aie2___release
+{
+  { // BB#0
+    ( vreg.1 var=1 ) const ( ) <1>;
+    ( vreg.2 var=2 ) inp ( ) <2>;
+    ( vreg.3 var=3 ) inp ( ) <3>;
+    ( ) chain_tie_volatile ( ) <4>;
+    ( vreg.5 var=4 ) const ( ) <5>;
+    ( vreg.6 var=5 ) const ( ) <6>;
+    ( ) lcall /* _Z25chess_separator_schedulerv */ ( vreg.6 vreg.5 ) <7>;
+    ( vreg.8 var=6 ) const ( ) <8>;
+    ( vreg.9 var=5 ) const ( ) <9>;
+    ( ) lcall /* __regcall3__chessintr_void_release_guarded___uint___sint */ ( vreg.9 vreg.8 vreg.2 vreg.3 ) <10>;
+    ( vreg.11 var=4 ) const ( ) <11>;
+    ( vreg.12 var=5 ) const ( ) <12>;
+    ( ) lcall /* _Z25chess_separator_schedulerv */ ( vreg.12 vreg.11 ) <13>;
+    ( ) chain_tie_volatile ( ) <14>;
+    ( ) return ( ) <15>;
+  } #2 nxt=-2
+} #1
+0 : 'llvm___aie2___release';
+----------
+0 : (0,0:0,0);
+----------
+==========alias_info
+4 :;
+14 :;
+
+// Function: void llvm___aie___event0()
+[
+  0 : llvm___aie___event0 bnd=e
+  1 : _cst val=1f typ=__i1
+  2 : _cst val=0f typ=uint2_t
+  3 : __regcall3__chessintr_void_event_uint2_t bnd=e
+  4 : _cst val=0f
+]
+Lllvm___aie___event0
+{
+  { // BB#0
+    ( vreg.1 var=1 ) const ( ) <1>;
+    ( vreg.2 var=2 ) const ( ) <2>;
+    ( vreg.3 var=3 ) const ( ) <3>;
+    ( vreg.4 var=4 ) const ( ) <4>;
+    ( ) lcall_tail /* __regcall3__chessintr_void_event_uint2_t */ ( vreg.4 vreg.3 vreg.2 ) <5>;
+    ( ) return ( ) <6>;
+  } #2 nxt=-2
+} #1
+0 : 'llvm___aie___event0';
+----------
+0 : (0,0:0,0);
+----------
+
+// Function: void llvm___aie___event1()
+[
+  0 : llvm___aie___event1 bnd=e
+  1 : _cst val=1f typ=__i1
+  2 : _cst val=1f typ=uint2_t
+  3 : __regcall3__chessintr_void_event_uint2_t bnd=e
+  4 : _cst val=0f
+]
+Lllvm___aie___event1
+{
+  { // BB#0
+    ( vreg.1 var=1 ) const ( ) <1>;
+    ( vreg.2 var=2 ) const ( ) <2>;
+    ( vreg.3 var=3 ) const ( ) <3>;
+    ( vreg.4 var=4 ) const ( ) <4>;
+    ( ) lcall_tail /* __regcall3__chessintr_void_event_uint2_t */ ( vreg.4 vreg.3 vreg.2 ) <5>;
+    ( ) return ( ) <6>;
+  } #2 nxt=-2
+} #1
+0 : 'llvm___aie___event1';
+----------
+0 : (0,0:0,0);
+----------
+
+[
+1 : _cst val=7680f
+2 : _cst val=1f
+3 : memA_cons_buff_1 typ=__Pvoid bnd=e
+4 : memA_cons_buff_0 typ=__Pvoid bnd=e
+5 : _cst val=11520f
+6 : memB_cons_buff_1 typ=__Pvoid bnd=e
+7 : memB_cons_buff_0 typ=__Pvoid bnd=e
+8 : _cst val=12288f
+9 : _cst val=2f
+10 : memC_buff_1 typ=__Pvoid bnd=e
+11 : memC_buff_0 typ=__Pvoid bnd=e
+]
+llvmgvt
+{ // no associated BB
+( vreg.1 var=1 ) const ( ) <1>;
+( vreg.2 var=2 ) const ( ) <2>;
+( vreg.3 var=3 ) global ( vreg.1 vreg.2 ) <3>;
+( ) out ( vreg.3 ) <4>;
+( vreg.5 var=1 ) const ( ) <5>;
+( vreg.6 var=2 ) const ( ) <6>;
+( vreg.7 var=4 ) global ( vreg.5 vreg.6 ) <7>;
+( ) out ( vreg.7 ) <8>;
+( vreg.9 var=5 ) const ( ) <9>;
+( vreg.10 var=2 ) const ( ) <10>;
+( vreg.11 var=6 ) global ( vreg.9 vreg.10 ) <11>;
+( ) out ( vreg.11 ) <12>;
+( vreg.13 var=5 ) const ( ) <13>;
+( vreg.14 var=2 ) const ( ) <14>;
+( vreg.15 var=7 ) global ( vreg.13 vreg.14 ) <15>;
+( ) out ( vreg.15 ) <16>;
+( vreg.17 var=8 ) const ( ) <17>;
+( vreg.18 var=9 ) const ( ) <18>;
+( vreg.19 var=10 ) global ( vreg.17 vreg.18 ) <19>;
+( ) out ( vreg.19 ) <20>;
+( vreg.21 var=8 ) const ( ) <21>;
+( vreg.22 var=9 ) const ( ) <22>;
+( vreg.23 var=11 ) global ( vreg.21 vreg.22 ) <23>;
+( ) out ( vreg.23 ) <24>;
+} #0
+0 : './dummy_file';
+----------
+0 : (0,0:0,0);
+----------
+==========debug_type_info
+==========data_init
+	.section	".linker-options","e",@llvm_linker_options

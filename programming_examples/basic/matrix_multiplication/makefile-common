@@ -34,8 +34,8 @@ current_dir := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 include ${current_dir}../../makefile-common
 
 
-dtype_in?=i16
-dtype_out?=i16
+dtype_in?=i8
+dtype_out?=i32
 trace_size?=65536
 
 
@@ -90,9 +90,9 @@ kernels_dir=${srcdir}/../../../../aie_kernels/aie2
 .PHONY: all
 all: ${xclbin_target} ${targetname}.exe
 
-build/%.o: ${kernels_dir}/%.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+# build/%.o: ${kernels_dir}/%.cc
+# 	mkdir -p ${@D}
+# 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
 
 ${mlir_target}: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}

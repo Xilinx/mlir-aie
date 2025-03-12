@@ -1,0 +1,119 @@
+##===- Makefile -----------------------------------------------------------===##
+# 
+# This file licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# 
+##===----------------------------------------------------------------------===##
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+subdir=whole_array
+targetname=whole_array_optimized
+
+
+# M, K, N: final GEMM dimensions
+M?=3840
+K?=4000
+N?=4032
+
+# m, k, n: single AIE core GEMM dimensions
+m?=48
+k?=100
+n?=56
+
+# mtk block for A buffer
+mtk=400
+
+# ktn block for B buffer
+ktn=400
+
+# is it col-major?
+b_col_maj?=1
+
+# data types
+dtype_in?=i16
+dtype_out?=i32
+
+# iterations
+warmup=5
+iters=5
+
+runargs=-v 2 --warmup ${warmup} --iters ${iters}
+
+
+n_aie_cols?=4
+n_aie_rows?=4
+
+
+kernels=mm_${m}x${k}x${n}
+aieargs+=-m $m -k $k -n $n -mtk ${mtk} -ktn ${ktn} --n-aie-cols ${n_aie_cols} --n-aie-rows ${n_aie_rows} --b-col-maj ${b_col_maj}
+runargs+=--b_col_maj ${b_col_maj}
+target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_rows}rx${n_aie_cols}c
+
+include ${srcdir}/../makefile-common
+
+CHESS=true
+
+# set this flag to 1 for linear buffer allocation
+# else, 0 for bank-aware
+use_linear_buf_alloc?=1
+
+# When this flag is set to 1, optimal performance is attained
+# via the usage of chess pragmas (see mm.cc).
+# Instruction memory and compilation time increases in this case.
+# Set to 0 otherwise.
+opt_perf?=1
+
+
+# Use this flag when you have precompiled kernels
+# inside the corresponding directories to avoid large chess compilation times
+precompiled_flag?=0
+
+
+ifeq (${use_linear_buf_alloc}, 1)
+buffer_aloc_flag=basic-sequential
+else
+buffer_aloc_flag=bank-aware
+endif
+
+opt_flag_arg=
+ifeq (${opt_perf}, 1)
+opt_flag_arg=-DOPT_PERF_ENABLED
+endif
+
+
+# when not precompiled, perform compilation
+ifeq (${precompiled_flag}, 0)
+
+build/mm_b_row_maj_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 ${opt_flag_arg} -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
+
+build/mm_b_col_maj_${m}x${k}x${n}.o: ${kernels_dir}/mm_b_col_maj.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 ${opt_flag_arg} -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
+
+
+ifneq (${b_col_maj}, 1)
+build/mm_${m}x${k}x${n}.o: build/mm_b_row_maj_${m}x${k}x${n}.o 
+	mkdir -p ${@D}
+	ar rvs $@ $^
+else
+build/mm_${m}x${k}x${n}.o: build/mm_b_col_maj_${m}x${k}x${n}.o
+	mkdir -p ${@D}
+	ar rvs $@ $^
+endif
+
+# when precompiled, just copy the compiled kernels into the build directory
+else 
+ifneq (${b_col_maj}, 1)
+build/mm_${m}x${k}x${n}.o: precompiled_rowmaj_kernels/mm_b_row_maj_${m}x${k}x${n}_${dtype_in}_${dtype_out}.o
+	mkdir -p ${@D}
+	ar rvs $@ $^
+else
+build/mm_${m}x${k}x${n}.o: precompiled_colmaj_kernels/mm_b_col_maj_${m}x${k}x${n}_${dtype_in}_${dtype_out}.o
+	mkdir -p ${@D}
+	ar rvs $@ $^
+endif
+endif

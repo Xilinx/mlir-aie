@@ -1,0 +1,3813 @@
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=std::bfloat16_t -DDTYPE_OUT=std::bfloat16_t -DDTYPE_ACC=float" \
+	cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=whole_array_optimized -Dsubdir=whole_array
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.9s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[ 33%] Building CXX object CMakeFiles/whole_array_optimized.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/whole_array_optimized.dir/whole_array/test.cpp.o
+[100%] Linking CXX executable whole_array_optimized
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[100%] Built target whole_array_optimized
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+cp _build/whole_array_optimized whole_array_optimized.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/whole_array_optimized.py -m 80 -k 40 -n 96 -mtk 40 -ktn 40 --n-aie-cols 4 --n-aie-rows 4 --b-col-maj 1 -M 4160 -K 4160 -N 4224 --dtype_in bf16 --dtype_out bf16 --trace_size 0 > build/aie_4160x4160x4224_80x40x96_4rx4c.mlir
+mkdir -p build
+ar rvs build/mm_80x40x96.o precompiled_colmaj_kernels/mm_b_col_maj_80x40x96_bf16_bf16.o
+a - precompiled_colmaj_kernels/mm_b_col_maj_80x40x96_bf16_bf16.o
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final_4160x4160x4224_80x40x96_4rx4c.xclbin \
+			  \
+			--aie-generate-npu --npu-insts-name=insts_4160x4160x4224_80x40x96_4rx4c.txt ../build/aie_4160x4160x4224_80x40x96_4rx4c.mlir
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:19 17/17 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4160x4224_80x40x96_4rx4c.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4160x4224_80x40x96_4rx4c.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4160x4224_80x40x96_4rx4c.mlir.prj/aie_cdo_enable.bin
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
+ ./whole_array_optimized.exe -x build/final_4160x4160x4224_80x40x96_4rx4c.xclbin -i build/insts_4160x4160x4224_80x40x96_4rx4c.txt -k MLIR_AIE -M 4160 -K 4160 -N 4224 -v 2 --warmup 10 --iters 100 --b_col_maj 1
+Matrix size 4160x4160x4224
+Sequence instr count: 2868
+Loading xclbin: build/final_4160x4160x4224_80x40x96_4rx4c.xclbin
+Kernel opcode: MLIR_AIE
+Name: MLIR_AIE
+Registering xclbin: build/final_4160x4160x4224_80x40x96_4rx4c.xclbin
+Getting hardware context.
+Getting handle to kernel:MLIR_AIE
+Writing data into buffer objects.
+DTYPE_IN  = std::bfloat16_t
+DTYPE_OUT = std::bfloat16_t
+Verification tolerance 0.5 absolute, 0.05 relative.
+A = 
+      0.00        1.00        2.00        3.00        4.00   ...    4160.00     4160.00     4160.00     4160.00     4160.00  
+   4160.00     4160.00     4160.00     4160.00     4160.00   ...    8320.00     8320.00     8320.00     8320.00     8320.00  
+   8320.00     8320.00     8320.00     8320.00     8320.00   ...   12480.00    12480.00    12480.00    12480.00    12480.00  
+  12480.00    12480.00    12480.00    12480.00    12480.00   ...   16640.00    16640.00    16640.00    16640.00    16640.00  
+  16640.00    16640.00    16640.00    16640.00    16640.00   ...   20736.00    20736.00    20736.00    20736.00    20736.00  
+      ...         ...         ...         ...         ...    ...       ...         ...         ...         ...         ...   
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+B = 
+      0.00        3.91        7.25       11.38        4.38   ...    2880.00     7680.00     1296.00    13120.00     4928.00  
+  16640.00     2768.00    13696.00     7680.00     3648.00   ...   25728.00    20992.00      824.00    32256.00    25600.00  
+  27392.00    17024.00     9792.00    28544.00    12608.00   ...   43520.00    20736.00    37888.00      984.00    38144.00  
+   1944.00    47616.00    33024.00     9472.00    26112.00   ...   24704.00     2288.00     5792.00    56320.00     2288.00  
+   2640.00    45824.00    35072.00    66048.00    67584.00   ...   28672.00    19328.00    48128.00    16256.00    33280.00  
+      ...         ...         ...         ...         ...    ...       ...         ...         ...         ...         ...   
+26345472.00  61603840.00  10551296.00  1556480.00  7569408.00   ... 18874368.00  57671680.00  13172736.00  12845056.00  9961472.00  
+7569408.00  16187392.00  44040192.00  59768832.00  54525952.00   ... 46923776.00  51642368.00  4128768.00  36175872.00  41418752.00  
+4947968.00  64225280.00  66584576.00  30146560.00  18087936.00   ... 45088768.00  13565952.00  4554752.00  43778048.00  4489216.00  
+34340864.00  27000832.00  36175872.00  5144576.00  19136512.00   ... 61603840.00  33554432.00  2965504.00  32768000.00  31719424.00  
+22413312.00  1073152.00  38010880.00  21233664.00  65798144.00   ... 44564480.00  39845888.00  8847360.00  41680896.00  43778048.00  
+Running Kernel (iteration 0).
+Running Kernel (iteration 1).
+Running Kernel (iteration 2).
+Running Kernel (iteration 3).
+Running Kernel (iteration 4).
+Running Kernel (iteration 5).
+Running Kernel (iteration 6).
+Running Kernel (iteration 7).
+Running Kernel (iteration 8).
+Running Kernel (iteration 9).
+Running Kernel (iteration 10).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 11).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 12).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 13).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 14).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 15).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 16).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 17).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 18).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 19).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 20).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 21).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 22).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 23).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 24).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 25).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 26).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 27).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 28).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 29).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 30).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 31).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 32).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 33).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 34).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 35).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 36).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 37).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 38).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 39).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 40).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 41).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 42).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 43).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 44).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 45).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 46).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 47).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 48).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 49).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 50).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 51).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 52).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 53).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 54).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 55).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 56).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 57).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 58).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 59).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 60).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 61).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 62).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 63).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 64).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 65).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 66).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 67).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 68).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 69).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 70).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 71).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 72).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 73).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 74).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 75).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 76).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 77).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 78).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 79).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 80).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 81).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 82).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 83).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 84).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 85).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 86).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 87).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 88).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 89).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 90).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 91).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 92).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 93).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 94).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 95).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 96).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 97).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 98).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 99).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 100).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 101).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 102).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 103).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 104).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 105).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 106).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 107).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 108).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 109).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+
+Avg NPU matmul time: 78339us.
+Avg NPU gflops: 1866
+
+Min NPU matmul time: 75629us.
+Max NPU gflops: 1933
+
+Max NPU matmul time: 81516us.
+Min NPU gflops: 1793
+
+Error count: 1 (out of 1 random samples)
+
+
+Failed.
+
+rm -rf tmpTrace parse*.json trace*json trace.txt
+rm -rf build _build *.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=std::bfloat16_t -DDTYPE_OUT=std::bfloat16_t -DDTYPE_ACC=float" \
+	cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=whole_array_optimized -Dsubdir=whole_array
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.7s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[ 33%] Building CXX object CMakeFiles/whole_array_optimized.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/whole_array_optimized.dir/whole_array/test.cpp.o
+[100%] Linking CXX executable whole_array_optimized
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[100%] Built target whole_array_optimized
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+cp _build/whole_array_optimized whole_array_optimized.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/whole_array_optimized.py -m 80 -k 40 -n 96 -mtk 80 -ktn 80 --n-aie-cols 4 --n-aie-rows 4 --b-col-maj 1 -M 4160 -K 4160 -N 4224 --dtype_in bf16 --dtype_out bf16 --trace_size 0 > build/aie_4160x4160x4224_80x40x96_4rx4c.mlir
+mkdir -p build
+ar rvs build/mm_80x40x96.o precompiled_colmaj_kernels/mm_b_col_maj_80x40x96_bf16_bf16.o
+a - precompiled_colmaj_kernels/mm_b_col_maj_80x40x96_bf16_bf16.o
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final_4160x4160x4224_80x40x96_4rx4c.xclbin \
+			  \
+			--aie-generate-npu --npu-insts-name=insts_4160x4160x4224_80x40x96_4rx4c.txt ../build/aie_4160x4160x4224_80x40x96_4rx4c.mlir
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:20 17/17 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4160x4224_80x40x96_4rx4c.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4160x4224_80x40x96_4rx4c.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4160x4224_80x40x96_4rx4c.mlir.prj/aie_cdo_enable.bin
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
+ ./whole_array_optimized.exe -x build/final_4160x4160x4224_80x40x96_4rx4c.xclbin -i build/insts_4160x4160x4224_80x40x96_4rx4c.txt -k MLIR_AIE -M 4160 -K 4160 -N 4224 -v 2 --warmup 10 --iters 100 --b_col_maj 1
+Matrix size 4160x4160x4224
+Sequence instr count: 2868
+Loading xclbin: build/final_4160x4160x4224_80x40x96_4rx4c.xclbin
+Kernel opcode: MLIR_AIE
+Name: MLIR_AIE
+Registering xclbin: build/final_4160x4160x4224_80x40x96_4rx4c.xclbin
+Getting hardware context.
+Getting handle to kernel:MLIR_AIE
+Writing data into buffer objects.
+DTYPE_IN  = std::bfloat16_t
+DTYPE_OUT = std::bfloat16_t
+Verification tolerance 0.5 absolute, 0.05 relative.
+A = 
+      0.00        1.00        2.00        3.00        4.00   ...    4160.00     4160.00     4160.00     4160.00     4160.00  
+   4160.00     4160.00     4160.00     4160.00     4160.00   ...    8320.00     8320.00     8320.00     8320.00     8320.00  
+   8320.00     8320.00     8320.00     8320.00     8320.00   ...   12480.00    12480.00    12480.00    12480.00    12480.00  
+  12480.00    12480.00    12480.00    12480.00    12480.00   ...   16640.00    16640.00    16640.00    16640.00    16640.00  
+  16640.00    16640.00    16640.00    16640.00    16640.00   ...   20736.00    20736.00    20736.00    20736.00    20736.00  
+      ...         ...         ...         ...         ...    ...       ...         ...         ...         ...         ...   
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+B = 
+      0.00        3.91        7.25       11.38        4.38   ...    2880.00     7680.00     1296.00    13120.00     4928.00  
+  16640.00     2768.00    13696.00     7680.00     3648.00   ...   25728.00    20992.00      824.00    32256.00    25600.00  
+  27392.00    17024.00     9792.00    28544.00    12608.00   ...   43520.00    20736.00    37888.00      984.00    38144.00  
+   1944.00    47616.00    33024.00     9472.00    26112.00   ...   24704.00     2288.00     5792.00    56320.00     2288.00  
+   2640.00    45824.00    35072.00    66048.00    67584.00   ...   28672.00    19328.00    48128.00    16256.00    33280.00  
+      ...         ...         ...         ...         ...    ...       ...         ...         ...         ...         ...   
+26345472.00  61603840.00  10551296.00  1556480.00  7569408.00   ... 18874368.00  57671680.00  13172736.00  12845056.00  9961472.00  
+7569408.00  16187392.00  44040192.00  59768832.00  54525952.00   ... 46923776.00  51642368.00  4128768.00  36175872.00  41418752.00  
+4947968.00  64225280.00  66584576.00  30146560.00  18087936.00   ... 45088768.00  13565952.00  4554752.00  43778048.00  4489216.00  
+34340864.00  27000832.00  36175872.00  5144576.00  19136512.00   ... 61603840.00  33554432.00  2965504.00  32768000.00  31719424.00  
+22413312.00  1073152.00  38010880.00  21233664.00  65798144.00   ... 44564480.00  39845888.00  8847360.00  41680896.00  43778048.00  
+Running Kernel (iteration 0).
+Running Kernel (iteration 1).
+Running Kernel (iteration 2).
+Running Kernel (iteration 3).
+Running Kernel (iteration 4).
+Running Kernel (iteration 5).
+Running Kernel (iteration 6).
+Running Kernel (iteration 7).
+Running Kernel (iteration 8).
+Running Kernel (iteration 9).
+Running Kernel (iteration 10).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 11).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 12).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 13).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 14).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 15).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 16).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 17).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 18).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 19).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 20).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 21).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 22).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 23).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 24).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 25).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 26).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 27).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 28).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 29).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 30).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 31).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 32).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 33).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 34).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 35).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 36).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 37).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 38).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 39).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 40).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 41).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 42).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 43).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 44).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 45).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 46).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 47).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 48).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 49).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 50).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 51).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 52).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 53).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 54).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 55).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 56).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 57).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 58).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 59).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 60).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 61).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 62).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 63).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 64).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 65).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 66).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 67).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 68).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 69).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 70).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 71).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 72).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 73).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 74).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 75).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 76).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 77).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 78).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 79).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 80).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 81).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 82).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 83).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 84).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 85).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 86).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 87).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 88).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 89).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 90).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 91).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 92).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 93).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 94).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 95).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 96).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 97).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 98).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 99).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 100).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 101).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 102).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 103).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 104).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 105).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 106).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 107).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 108).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 109).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+
+Avg NPU matmul time: 56616us.
+Avg NPU gflops: 2582
+
+Min NPU matmul time: 53330us.
+Max NPU gflops: 2741
+
+Max NPU matmul time: 59428us.
+Min NPU gflops: 2460
+
+Error count: 1 (out of 1 random samples)
+
+
+Failed.
+
+rm -rf tmpTrace parse*.json trace*json trace.txt
+rm -rf build _build *.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=std::bfloat16_t -DDTYPE_OUT=std::bfloat16_t -DDTYPE_ACC=float" \
+	cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=whole_array_optimized -Dsubdir=whole_array
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (1.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[ 33%] Building CXX object CMakeFiles/whole_array_optimized.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/whole_array_optimized.dir/whole_array/test.cpp.o
+[100%] Linking CXX executable whole_array_optimized
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[100%] Built target whole_array_optimized
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+cp _build/whole_array_optimized whole_array_optimized.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/whole_array_optimized.py -m 80 -k 40 -n 96 -mtk 160 -ktn 160 --n-aie-cols 4 --n-aie-rows 4 --b-col-maj 1 -M 4160 -K 4160 -N 4224 --dtype_in bf16 --dtype_out bf16 --trace_size 0 > build/aie_4160x4160x4224_80x40x96_4rx4c.mlir
+mkdir -p build
+ar rvs build/mm_80x40x96.o precompiled_colmaj_kernels/mm_b_col_maj_80x40x96_bf16_bf16.o
+a - precompiled_colmaj_kernels/mm_b_col_maj_80x40x96_bf16_bf16.o
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final_4160x4160x4224_80x40x96_4rx4c.xclbin \
+			  \
+			--aie-generate-npu --npu-insts-name=insts_4160x4160x4224_80x40x96_4rx4c.txt ../build/aie_4160x4160x4224_80x40x96_4rx4c.mlir
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:20 17/17 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4160x4224_80x40x96_4rx4c.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4160x4224_80x40x96_4rx4c.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4160x4224_80x40x96_4rx4c.mlir.prj/aie_cdo_enable.bin
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
+ ./whole_array_optimized.exe -x build/final_4160x4160x4224_80x40x96_4rx4c.xclbin -i build/insts_4160x4160x4224_80x40x96_4rx4c.txt -k MLIR_AIE -M 4160 -K 4160 -N 4224 -v 2 --warmup 10 --iters 100 --b_col_maj 1
+Matrix size 4160x4160x4224
+Sequence instr count: 2868
+Loading xclbin: build/final_4160x4160x4224_80x40x96_4rx4c.xclbin
+Kernel opcode: MLIR_AIE
+Name: MLIR_AIE
+Registering xclbin: build/final_4160x4160x4224_80x40x96_4rx4c.xclbin
+Getting hardware context.
+Getting handle to kernel:MLIR_AIE
+Writing data into buffer objects.
+DTYPE_IN  = std::bfloat16_t
+DTYPE_OUT = std::bfloat16_t
+Verification tolerance 0.5 absolute, 0.05 relative.
+A = 
+      0.00        1.00        2.00        3.00        4.00   ...    4160.00     4160.00     4160.00     4160.00     4160.00  
+   4160.00     4160.00     4160.00     4160.00     4160.00   ...    8320.00     8320.00     8320.00     8320.00     8320.00  
+   8320.00     8320.00     8320.00     8320.00     8320.00   ...   12480.00    12480.00    12480.00    12480.00    12480.00  
+  12480.00    12480.00    12480.00    12480.00    12480.00   ...   16640.00    16640.00    16640.00    16640.00    16640.00  
+  16640.00    16640.00    16640.00    16640.00    16640.00   ...   20736.00    20736.00    20736.00    20736.00    20736.00  
+      ...         ...         ...         ...         ...    ...       ...         ...         ...         ...         ...   
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+B = 
+      0.00        3.91        7.25       11.38        4.38   ...    2880.00     7680.00     1296.00    13120.00     4928.00  
+  16640.00     2768.00    13696.00     7680.00     3648.00   ...   25728.00    20992.00      824.00    32256.00    25600.00  
+  27392.00    17024.00     9792.00    28544.00    12608.00   ...   43520.00    20736.00    37888.00      984.00    38144.00  
+   1944.00    47616.00    33024.00     9472.00    26112.00   ...   24704.00     2288.00     5792.00    56320.00     2288.00  
+   2640.00    45824.00    35072.00    66048.00    67584.00   ...   28672.00    19328.00    48128.00    16256.00    33280.00  
+      ...         ...         ...         ...         ...    ...       ...         ...         ...         ...         ...   
+26345472.00  61603840.00  10551296.00  1556480.00  7569408.00   ... 18874368.00  57671680.00  13172736.00  12845056.00  9961472.00  
+7569408.00  16187392.00  44040192.00  59768832.00  54525952.00   ... 46923776.00  51642368.00  4128768.00  36175872.00  41418752.00  
+4947968.00  64225280.00  66584576.00  30146560.00  18087936.00   ... 45088768.00  13565952.00  4554752.00  43778048.00  4489216.00  
+34340864.00  27000832.00  36175872.00  5144576.00  19136512.00   ... 61603840.00  33554432.00  2965504.00  32768000.00  31719424.00  
+22413312.00  1073152.00  38010880.00  21233664.00  65798144.00   ... 44564480.00  39845888.00  8847360.00  41680896.00  43778048.00  
+Running Kernel (iteration 0).
+Running Kernel (iteration 1).
+Running Kernel (iteration 2).
+Running Kernel (iteration 3).
+Running Kernel (iteration 4).
+Running Kernel (iteration 5).
+Running Kernel (iteration 6).
+Running Kernel (iteration 7).
+Running Kernel (iteration 8).
+Running Kernel (iteration 9).
+Running Kernel (iteration 10).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 11).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 12).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 13).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 14).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 15).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 16).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 17).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 18).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 19).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 20).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 21).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 22).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 23).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 24).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 25).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 26).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 27).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 28).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 29).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 30).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 31).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 32).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 33).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 34).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 35).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 36).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 37).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 38).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 39).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 40).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 41).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 42).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 43).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 44).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 45).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 46).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 47).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 48).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 49).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 50).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 51).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 52).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 53).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 54).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 55).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 56).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 57).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 58).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 59).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 60).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 61).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 62).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 63).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 64).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 65).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 66).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 67).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 68).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 69).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 70).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 71).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 72).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 73).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 74).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 75).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 76).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 77).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 78).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 79).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 80).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 81).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 82).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 83).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 84).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 85).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 86).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 87).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 88).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 89).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 90).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 91).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 92).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 93).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 94).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 95).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 96).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 97).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 98).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 99).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 100).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 101).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 102).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 103).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 104).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 105).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 106).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 107).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 108).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 109).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+
+Avg NPU matmul time: 53008us.
+Avg NPU gflops: 2758
+
+Min NPU matmul time: 52230us.
+Max NPU gflops: 2799
+
+Max NPU matmul time: 54696us.
+Min NPU gflops: 2673
+
+Error count: 1 (out of 1 random samples)
+
+
+Failed.
+
+rm -rf tmpTrace parse*.json trace*json trace.txt
+rm -rf build _build *.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=std::bfloat16_t -DDTYPE_OUT=std::bfloat16_t -DDTYPE_ACC=float" \
+	cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=whole_array_optimized -Dsubdir=whole_array
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.6s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[ 33%] Building CXX object CMakeFiles/whole_array_optimized.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/whole_array_optimized.dir/whole_array/test.cpp.o
+[100%] Linking CXX executable whole_array_optimized
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[100%] Built target whole_array_optimized
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+cp _build/whole_array_optimized whole_array_optimized.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/whole_array_optimized.py -m 80 -k 40 -n 96 -mtk 320 -ktn 320 --n-aie-cols 4 --n-aie-rows 4 --b-col-maj 1 -M 4160 -K 4160 -N 4224 --dtype_in bf16 --dtype_out bf16 --trace_size 0 > build/aie_4160x4160x4224_80x40x96_4rx4c.mlir
+mkdir -p build
+ar rvs build/mm_80x40x96.o precompiled_colmaj_kernels/mm_b_col_maj_80x40x96_bf16_bf16.o
+a - precompiled_colmaj_kernels/mm_b_col_maj_80x40x96_bf16_bf16.o
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final_4160x4160x4224_80x40x96_4rx4c.xclbin \
+			  \
+			--aie-generate-npu --npu-insts-name=insts_4160x4160x4224_80x40x96_4rx4c.txt ../build/aie_4160x4160x4224_80x40x96_4rx4c.mlir
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:21 17/17 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4160x4224_80x40x96_4rx4c.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4160x4224_80x40x96_4rx4c.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4160x4224_80x40x96_4rx4c.mlir.prj/aie_cdo_enable.bin
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
+ ./whole_array_optimized.exe -x build/final_4160x4160x4224_80x40x96_4rx4c.xclbin -i build/insts_4160x4160x4224_80x40x96_4rx4c.txt -k MLIR_AIE -M 4160 -K 4160 -N 4224 -v 2 --warmup 10 --iters 100 --b_col_maj 1
+Matrix size 4160x4160x4224
+Sequence instr count: 2868
+Loading xclbin: build/final_4160x4160x4224_80x40x96_4rx4c.xclbin
+Kernel opcode: MLIR_AIE
+Name: MLIR_AIE
+Registering xclbin: build/final_4160x4160x4224_80x40x96_4rx4c.xclbin
+Getting hardware context.
+Getting handle to kernel:MLIR_AIE
+Writing data into buffer objects.
+DTYPE_IN  = std::bfloat16_t
+DTYPE_OUT = std::bfloat16_t
+Verification tolerance 0.5 absolute, 0.05 relative.
+A = 
+      0.00        1.00        2.00        3.00        4.00   ...    4160.00     4160.00     4160.00     4160.00     4160.00  
+   4160.00     4160.00     4160.00     4160.00     4160.00   ...    8320.00     8320.00     8320.00     8320.00     8320.00  
+   8320.00     8320.00     8320.00     8320.00     8320.00   ...   12480.00    12480.00    12480.00    12480.00    12480.00  
+  12480.00    12480.00    12480.00    12480.00    12480.00   ...   16640.00    16640.00    16640.00    16640.00    16640.00  
+  16640.00    16640.00    16640.00    16640.00    16640.00   ...   20736.00    20736.00    20736.00    20736.00    20736.00  
+      ...         ...         ...         ...         ...    ...       ...         ...         ...         ...         ...   
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+B = 
+      0.00        3.91        7.25       11.38        4.38   ...    2880.00     7680.00     1296.00    13120.00     4928.00  
+  16640.00     2768.00    13696.00     7680.00     3648.00   ...   25728.00    20992.00      824.00    32256.00    25600.00  
+  27392.00    17024.00     9792.00    28544.00    12608.00   ...   43520.00    20736.00    37888.00      984.00    38144.00  
+   1944.00    47616.00    33024.00     9472.00    26112.00   ...   24704.00     2288.00     5792.00    56320.00     2288.00  
+   2640.00    45824.00    35072.00    66048.00    67584.00   ...   28672.00    19328.00    48128.00    16256.00    33280.00  
+      ...         ...         ...         ...         ...    ...       ...         ...         ...         ...         ...   
+26345472.00  61603840.00  10551296.00  1556480.00  7569408.00   ... 18874368.00  57671680.00  13172736.00  12845056.00  9961472.00  
+7569408.00  16187392.00  44040192.00  59768832.00  54525952.00   ... 46923776.00  51642368.00  4128768.00  36175872.00  41418752.00  
+4947968.00  64225280.00  66584576.00  30146560.00  18087936.00   ... 45088768.00  13565952.00  4554752.00  43778048.00  4489216.00  
+34340864.00  27000832.00  36175872.00  5144576.00  19136512.00   ... 61603840.00  33554432.00  2965504.00  32768000.00  31719424.00  
+22413312.00  1073152.00  38010880.00  21233664.00  65798144.00   ... 44564480.00  39845888.00  8847360.00  41680896.00  43778048.00  
+Running Kernel (iteration 0).
+Running Kernel (iteration 1).
+Running Kernel (iteration 2).
+Running Kernel (iteration 3).
+Running Kernel (iteration 4).
+Running Kernel (iteration 5).
+Running Kernel (iteration 6).
+Running Kernel (iteration 7).
+Running Kernel (iteration 8).
+Running Kernel (iteration 9).
+Running Kernel (iteration 10).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 11).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 12).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 13).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 14).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 15).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 16).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 17).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 18).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 19).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 20).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 21).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 22).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 23).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 24).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 25).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 26).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 27).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 28).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 29).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 30).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 31).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 32).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 33).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 34).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 35).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 36).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 37).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 38).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 39).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 40).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 41).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 42).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 43).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 44).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 45).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 46).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 47).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 48).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 49).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 50).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 51).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 52).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 53).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 54).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 55).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 56).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 57).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 58).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 59).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 60).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 61).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 62).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 63).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 64).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 65).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 66).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 67).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 68).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 69).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 70).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 71).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 72).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 73).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 74).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 75).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 76).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 77).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 78).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 79).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 80).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 81).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 82).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 83).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 84).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 85).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 86).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 87).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 88).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 89).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 90).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 91).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 92).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 93).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 94).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 95).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 96).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 97).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 98).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 99).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 100).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 101).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 102).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 103).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 104).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 105).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 106).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 107).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 108).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 109).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+
+Avg NPU matmul time: 52318us.
+Avg NPU gflops: 2794
+
+Min NPU matmul time: 51572us.
+Max NPU gflops: 2835
+
+Max NPU matmul time: 53233us.
+Min NPU gflops: 2746
+
+Error count: 1 (out of 1 random samples)
+
+
+Failed.
+
+rm -rf tmpTrace parse*.json trace*json trace.txt
+rm -rf build _build *.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=std::bfloat16_t -DDTYPE_OUT=std::bfloat16_t -DDTYPE_ACC=float" \
+	cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=whole_array_optimized -Dsubdir=whole_array
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (1.2s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[ 33%] Building CXX object CMakeFiles/whole_array_optimized.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/whole_array_optimized.dir/whole_array/test.cpp.o
+[100%] Linking CXX executable whole_array_optimized
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[100%] Built target whole_array_optimized
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+cp _build/whole_array_optimized whole_array_optimized.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/whole_array_optimized.py -m 80 -k 40 -n 96 -mtk 520 -ktn 520 --n-aie-cols 4 --n-aie-rows 4 --b-col-maj 1 -M 4160 -K 4160 -N 4224 --dtype_in bf16 --dtype_out bf16 --trace_size 0 > build/aie_4160x4160x4224_80x40x96_4rx4c.mlir
+mkdir -p build
+ar rvs build/mm_80x40x96.o precompiled_colmaj_kernels/mm_b_col_maj_80x40x96_bf16_bf16.o
+a - precompiled_colmaj_kernels/mm_b_col_maj_80x40x96_bf16_bf16.o
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final_4160x4160x4224_80x40x96_4rx4c.xclbin \
+			  \
+			--aie-generate-npu --npu-insts-name=insts_4160x4160x4224_80x40x96_4rx4c.txt ../build/aie_4160x4160x4224_80x40x96_4rx4c.mlir
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:19 17/17 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4160x4224_80x40x96_4rx4c.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4160x4224_80x40x96_4rx4c.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4160x4224_80x40x96_4rx4c.mlir.prj/aie_cdo_enable.bin
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
+ ./whole_array_optimized.exe -x build/final_4160x4160x4224_80x40x96_4rx4c.xclbin -i build/insts_4160x4160x4224_80x40x96_4rx4c.txt -k MLIR_AIE -M 4160 -K 4160 -N 4224 -v 2 --warmup 10 --iters 100 --b_col_maj 1
+Matrix size 4160x4160x4224
+Sequence instr count: 2868
+Loading xclbin: build/final_4160x4160x4224_80x40x96_4rx4c.xclbin
+Kernel opcode: MLIR_AIE
+Name: MLIR_AIE
+Registering xclbin: build/final_4160x4160x4224_80x40x96_4rx4c.xclbin
+Getting hardware context.
+Getting handle to kernel:MLIR_AIE
+Writing data into buffer objects.
+DTYPE_IN  = std::bfloat16_t
+DTYPE_OUT = std::bfloat16_t
+Verification tolerance 0.5 absolute, 0.05 relative.
+A = 
+      0.00        1.00        2.00        3.00        4.00   ...    4160.00     4160.00     4160.00     4160.00     4160.00  
+   4160.00     4160.00     4160.00     4160.00     4160.00   ...    8320.00     8320.00     8320.00     8320.00     8320.00  
+   8320.00     8320.00     8320.00     8320.00     8320.00   ...   12480.00    12480.00    12480.00    12480.00    12480.00  
+  12480.00    12480.00    12480.00    12480.00    12480.00   ...   16640.00    16640.00    16640.00    16640.00    16640.00  
+  16640.00    16640.00    16640.00    16640.00    16640.00   ...   20736.00    20736.00    20736.00    20736.00    20736.00  
+      ...         ...         ...         ...         ...    ...       ...         ...         ...         ...         ...   
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+17301504.00  17301504.00  17301504.00  17301504.00  17301504.00   ... 17301504.00  17301504.00  17301504.00  17301504.00  17301504.00  
+B = 
+      0.00        3.91        7.25       11.38        4.38   ...    2880.00     7680.00     1296.00    13120.00     4928.00  
+  16640.00     2768.00    13696.00     7680.00     3648.00   ...   25728.00    20992.00      824.00    32256.00    25600.00  
+  27392.00    17024.00     9792.00    28544.00    12608.00   ...   43520.00    20736.00    37888.00      984.00    38144.00  
+   1944.00    47616.00    33024.00     9472.00    26112.00   ...   24704.00     2288.00     5792.00    56320.00     2288.00  
+   2640.00    45824.00    35072.00    66048.00    67584.00   ...   28672.00    19328.00    48128.00    16256.00    33280.00  
+      ...         ...         ...         ...         ...    ...       ...         ...         ...         ...         ...   
+26345472.00  61603840.00  10551296.00  1556480.00  7569408.00   ... 18874368.00  57671680.00  13172736.00  12845056.00  9961472.00  
+7569408.00  16187392.00  44040192.00  59768832.00  54525952.00   ... 46923776.00  51642368.00  4128768.00  36175872.00  41418752.00  
+4947968.00  64225280.00  66584576.00  30146560.00  18087936.00   ... 45088768.00  13565952.00  4554752.00  43778048.00  4489216.00  
+34340864.00  27000832.00  36175872.00  5144576.00  19136512.00   ... 61603840.00  33554432.00  2965504.00  32768000.00  31719424.00  
+22413312.00  1073152.00  38010880.00  21233664.00  65798144.00   ... 44564480.00  39845888.00  8847360.00  41680896.00  43778048.00  
+Running Kernel (iteration 0).
+Running Kernel (iteration 1).
+Running Kernel (iteration 2).
+Running Kernel (iteration 3).
+Running Kernel (iteration 4).
+Running Kernel (iteration 5).
+Running Kernel (iteration 6).
+Running Kernel (iteration 7).
+Running Kernel (iteration 8).
+Running Kernel (iteration 9).
+Running Kernel (iteration 10).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 11).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 12).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 13).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 14).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 15).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 16).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 17).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 18).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 19).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 20).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 21).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 22).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 23).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 24).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 25).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 26).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 27).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 28).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 29).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 30).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 31).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 32).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 33).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 34).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 35).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 36).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 37).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 38).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 39).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 40).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 41).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 42).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 43).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 44).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 45).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 46).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 47).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 48).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 49).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 50).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 51).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 52).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 53).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 54).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 55).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 56).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 57).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 58).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 59).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 60).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 61).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 62).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 63).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 64).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 65).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 66).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 67).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 68).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 69).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 70).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 71).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 72).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 73).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 74).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 75).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 76).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 77).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 78).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 79).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 80).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 81).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 82).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 83).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 84).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 85).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 86).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 87).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 88).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 89).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 90).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 91).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 92).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 93).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 94).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 95).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 96).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 97).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 98).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 99).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 100).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 101).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 102).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 103).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 104).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 105).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 106).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 107).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 108).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+Running Kernel (iteration 109).
+Verifying 1 random samples against reference matmul ...
+
+[ 1217,  3031] 477381560501272576.00 =!= 531424756029718528.00
+Maximum relative error:  10%
+Verify time: 0 s.
+
+Avg NPU matmul time: 52450us.
+Avg NPU gflops: 2787
+
+Min NPU matmul time: 51710us.
+Max NPU gflops: 2827
+
+Max NPU matmul time: 53524us.
+Min NPU gflops: 2731
+
+Error count: 1 (out of 1 random samples)
+
+
+Failed.
+
+rm -rf tmpTrace parse*.json trace*json trace.txt
+rm -rf build _build *.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=std::bfloat16_t -DDTYPE_OUT=std::bfloat16_t -DDTYPE_ACC=float" \
+	cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=whole_array_optimized -Dsubdir=whole_array
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.5s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[ 33%] Building CXX object CMakeFiles/whole_array_optimized.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/whole_array_optimized.dir/whole_array/test.cpp.o
+[100%] Linking CXX executable whole_array_optimized
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[100%] Built target whole_array_optimized
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+cp _build/whole_array_optimized whole_array_optimized.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/whole_array_optimized.py -m 80 -k 40 -n 96 -mtk 1040 -ktn 1040 --n-aie-cols 4 --n-aie-rows 4 --b-col-maj 1 -M 4160 -K 4160 -N 4224 --dtype_in bf16 --dtype_out bf16 --trace_size 0 > build/aie_4160x4160x4224_80x40x96_4rx4c.mlir
+mkdir -p build
+ar rvs build/mm_80x40x96.o precompiled_colmaj_kernels/mm_b_col_maj_80x40x96_bf16_bf16.o
+a - precompiled_colmaj_kernels/mm_b_col_maj_80x40x96_bf16_bf16.o
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final_4160x4160x4224_80x40x96_4rx4c.xclbin \
+			  \
+			--aie-generate-npu --npu-insts-name=insts_4160x4160x4224_80x40x96_4rx4c.txt ../build/aie_4160x4160x4224_80x40x96_4rx4c.mlir
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+Error running pass pipeline:  builtin.module(lower-affine,aie-canonicalize-device,aie.device(aie-assign-lock-ids,aie-register-objectFifos,aie-objectFifo-stateful-transform{ dynamic-objFifos=0 },aie-assign-bd-ids,aie-lower-cascade-flows,aie-lower-broadcast-packet,aie-lower-multicast,aie-assign-tile-controller-ids,aie-generate-column-control-overlay{ route-shim-to-tile-ctrl=0 },aie-assign-buffer-addresses{ alloc-scheme=basic-sequential }),convert-scf-to-cf) Failure while executing pass pipeline:
+error: "-":9:21: 'aie.tile' op allocated buffers exceeded available memory
+  (no stack allocated)
+  
+ note: "-":9:21: see current operation: %4 = "aie.tile"() <{col = 0 : i32, row = 1 : i32}> {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 26>} : () -> index
+ note: "-":9:21: MemoryMap:
+  	B_L3L2_0_cons_buff_0 	: 0x0-0x30BFF 	(199680 bytes)
+  	B_L3L2_0_cons_buff_1 	: 0x30C00-0x617FF 	(199680 bytes)
+  	A_L3L2_0_cons_buff_0 	: 0x61800-0x8A1FF 	(166400 bytes)
+  	A_L3L2_0_cons_buff_1 	: 0x8A200-0xB2BFF 	(166400 bytes)
+  	C_L2L3_0_buff_0 	: 0xB2C00-0xC1BFF 	(61440 bytes)
+  	C_L2L3_0_buff_1 	: 0xC1C00-0xD0BFF 	(61440 bytes)
+  
+ MLIR compilation:                               0% -:--:-- 0:00:00 0/1 1 Worker
+rm -rf tmpTrace parse*.json trace*json trace.txt
+rm -rf build _build *.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=std::bfloat16_t -DDTYPE_OUT=std::bfloat16_t -DDTYPE_ACC=float" \
+	cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=whole_array_optimized -Dsubdir=whole_array
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.5s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[ 33%] Building CXX object CMakeFiles/whole_array_optimized.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/whole_array_optimized.dir/whole_array/test.cpp.o
+[100%] Linking CXX executable whole_array_optimized
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[100%] Built target whole_array_optimized
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+cp _build/whole_array_optimized whole_array_optimized.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/whole_array_optimized.py -m 80 -k 40 -n 96 -mtk 2080 -ktn 2080 --n-aie-cols 4 --n-aie-rows 4 --b-col-maj 1 -M 4160 -K 4160 -N 4224 --dtype_in bf16 --dtype_out bf16 --trace_size 0 > build/aie_4160x4160x4224_80x40x96_4rx4c.mlir
+mkdir -p build
+ar rvs build/mm_80x40x96.o precompiled_colmaj_kernels/mm_b_col_maj_80x40x96_bf16_bf16.o
+a - precompiled_colmaj_kernels/mm_b_col_maj_80x40x96_bf16_bf16.o
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final_4160x4160x4224_80x40x96_4rx4c.xclbin \
+			  \
+			--aie-generate-npu --npu-insts-name=insts_4160x4160x4224_80x40x96_4rx4c.txt ../build/aie_4160x4160x4224_80x40x96_4rx4c.mlir
+Unable to parse module assembly:
+error: "-":642:7: 'aiex.npu.dma_memcpy_nd' op Size 0 exceeds the [0:1023] range.
+ note: "-":642:7: see current operation: "aiex.npu.dma_memcpy_nd"(%arg0) <{id = 1 : i64, metadata = @A_L3L2_0, operandSegmentSizes = array<i32: 1, 0, 0, 0>, static_offsets = array<i64: 0, 0, 0, 0>, static_sizes = array<i64: 11, 2, 80, 2080>, static_strides = array<i64: 0, 2080, 4160, 1>, x = 0 : i64, y = 0 : i64}> : (memref<17305600xbf16>) -> ()
+rm -rf tmpTrace parse*.json trace*json trace.txt
+rm -rf build _build *.exe

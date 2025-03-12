@@ -1,0 +1,398 @@
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design -DTARGET_NAME=DDR_bandwidth_test
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.7s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+[ 33%] Building CXX object CMakeFiles/DDR_bandwidth_test.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/DDR_bandwidth_test.dir/test.cpp.o
+[100%] Linking CXX executable DDR_bandwidth_test
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+[100%] Built target DDR_bandwidth_test
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+cp _build/DDR_bandwidth_test DDR_bandwidth_test.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/DDR_bandwidth_test.py 32 4096 16 4096 16 4096 4 A_row_B_row > build/aie.mlir
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final.xclbin \
+			--no-xchesscc --no-xbridge \
+			--aie-generate-npu --npu-insts-name=insts.txt ../build/aie.mlir
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:00 1/1 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/build/aie.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/build/aie.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/build/aie.mlir.prj/aie_cdo_enable.bin
+./DDR_bandwidth_test.exe -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --m 32 --M 4096 --k 16 --K 4096 --n 16 --N 4096
+Name: MLIR_AIE
+
+Total size: 64 MB
+
+Avg DDR time: 30782.4us.
+Avg DDR BW: 2.12901 GB/s
+
+Min DDR time: 28502us.
+Max DDR BW: 2.29935 GB/s
+
+Max DDR time: 33956us.
+Min DDR BW: 1.93003 GB/s
+rm -rf build _build inst DDR_bandwidth_test.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design -DTARGET_NAME=DDR_bandwidth_test
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.6s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+[ 33%] Building CXX object CMakeFiles/DDR_bandwidth_test.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/DDR_bandwidth_test.dir/test.cpp.o
+[100%] Linking CXX executable DDR_bandwidth_test
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+[100%] Built target DDR_bandwidth_test
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+cp _build/DDR_bandwidth_test DDR_bandwidth_test.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/DDR_bandwidth_test.py 32 4096 32 4096 32 4096 4 A_row_B_row > build/aie.mlir
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final.xclbin \
+			--no-xchesscc --no-xbridge \
+			--aie-generate-npu --npu-insts-name=insts.txt ../build/aie.mlir
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:00 1/1 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/build/aie.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/build/aie.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/build/aie.mlir.prj/aie_cdo_enable.bin
+./DDR_bandwidth_test.exe -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --m 32 --M 4096 --k 32 --K 4096 --n 32 --N 4096
+Name: MLIR_AIE
+
+Total size: 64 MB
+
+Avg DDR time: 15493.1us.
+Avg DDR BW: 4.23002 GB/s
+
+Min DDR time: 14339us.
+Max DDR BW: 4.57047 GB/s
+
+Max DDR time: 18596us.
+Min DDR BW: 3.5242 GB/s
+rm -rf build _build inst DDR_bandwidth_test.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design -DTARGET_NAME=DDR_bandwidth_test
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.6s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+[ 33%] Building CXX object CMakeFiles/DDR_bandwidth_test.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/DDR_bandwidth_test.dir/test.cpp.o
+[100%] Linking CXX executable DDR_bandwidth_test
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+[100%] Built target DDR_bandwidth_test
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+cp _build/DDR_bandwidth_test DDR_bandwidth_test.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/DDR_bandwidth_test.py 32 4096 64 4096 64 4096 4 A_row_B_row > build/aie.mlir
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final.xclbin \
+			--no-xchesscc --no-xbridge \
+			--aie-generate-npu --npu-insts-name=insts.txt ../build/aie.mlir
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:00 1/1 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/build/aie.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/build/aie.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/build/aie.mlir.prj/aie_cdo_enable.bin
+./DDR_bandwidth_test.exe -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --m 32 --M 4096 --k 64 --K 4096 --n 64 --N 4096
+Name: MLIR_AIE
+
+Total size: 64 MB
+
+Avg DDR time: 8120.39us.
+Avg DDR BW: 8.07055 GB/s
+
+Min DDR time: 7374us.
+Max DDR BW: 8.88744 GB/s
+
+Max DDR time: 11512us.
+Min DDR BW: 5.69284 GB/s
+rm -rf build _build inst DDR_bandwidth_test.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design -DTARGET_NAME=DDR_bandwidth_test
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.6s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+[ 33%] Building CXX object CMakeFiles/DDR_bandwidth_test.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/DDR_bandwidth_test.dir/test.cpp.o
+[100%] Linking CXX executable DDR_bandwidth_test
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+[100%] Built target DDR_bandwidth_test
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+cp _build/DDR_bandwidth_test DDR_bandwidth_test.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/DDR_bandwidth_test.py 32 4096 128 4096 128 4096 4 A_row_B_row > build/aie.mlir
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final.xclbin \
+			--no-xchesscc --no-xbridge \
+			--aie-generate-npu --npu-insts-name=insts.txt ../build/aie.mlir
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:00 1/1 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/build/aie.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/build/aie.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/build/aie.mlir.prj/aie_cdo_enable.bin
+./DDR_bandwidth_test.exe -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --m 32 --M 4096 --k 128 --K 4096 --n 128 --N 4096
+Name: MLIR_AIE
+
+Total size: 64 MB
+
+Avg DDR time: 5081.91us.
+Avg DDR BW: 12.8959 GB/s
+
+Min DDR time: 4386us.
+Max DDR BW: 14.9421 GB/s
+
+Max DDR time: 7272us.
+Min DDR BW: 9.0121 GB/s
+rm -rf build _build inst DDR_bandwidth_test.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design -DTARGET_NAME=DDR_bandwidth_test
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.6s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+[ 33%] Building CXX object CMakeFiles/DDR_bandwidth_test.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/DDR_bandwidth_test.dir/test.cpp.o
+[100%] Linking CXX executable DDR_bandwidth_test
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+[100%] Built target DDR_bandwidth_test
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+cp _build/DDR_bandwidth_test DDR_bandwidth_test.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/DDR_bandwidth_test.py 32 4096 256 4096 256 4096 4 A_row_B_row > build/aie.mlir
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final.xclbin \
+			--no-xchesscc --no-xbridge \
+			--aie-generate-npu --npu-insts-name=insts.txt ../build/aie.mlir
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:00 1/1 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/build/aie.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/build/aie.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/build/aie.mlir.prj/aie_cdo_enable.bin
+./DDR_bandwidth_test.exe -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --m 32 --M 4096 --k 256 --K 4096 --n 256 --N 4096
+Name: MLIR_AIE
+
+Total size: 64 MB
+
+Avg DDR time: 3819.57us.
+Avg DDR BW: 17.1579 GB/s
+
+Min DDR time: 3048us.
+Max DDR BW: 21.5013 GB/s
+
+Max DDR time: 5672us.
+Min DDR BW: 11.5543 GB/s
+rm -rf build _build inst DDR_bandwidth_test.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design -DTARGET_NAME=DDR_bandwidth_test
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.6s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+[ 33%] Building CXX object CMakeFiles/DDR_bandwidth_test.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/DDR_bandwidth_test.dir/test.cpp.o
+[100%] Linking CXX executable DDR_bandwidth_test
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+[100%] Built target DDR_bandwidth_test
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/_build'
+cp _build/DDR_bandwidth_test DDR_bandwidth_test.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/ddr_exploration/parametric_design/DDR_bandwidth_test.py 32 4096 512 4096 512 4096 4 A_row_B_row > build/aie.mlir
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final.xclbin \
+			--no-xchesscc --no-xbridge \
+			--aie-generate-npu --npu-insts-name=insts.txt ../build/aie.mlir
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+Error running pass pipeline:  builtin.module(lower-affine,aie-canonicalize-device,aie.device(aie-assign-lock-ids,aie-register-objectFifos,aie-objectFifo-stateful-transform{ dynamic-objFifos=0 },aie-assign-bd-ids,aie-lower-cascade-flows,aie-lower-broadcast-packet,aie-lower-multicast,aie-assign-tile-controller-ids,aie-generate-column-control-overlay{ route-shim-to-tile-ctrl=0 },aie-assign-buffer-addresses{ alloc-scheme=basic-sequential }),convert-scf-to-cf) Failure while executing pass pipeline:
+error: "-":7:21: 'aie.tile' op allocated buffers exceeded available memory
+  (no stack allocated)
+  
+ note: "-":7:21: see current operation: %4 = "aie.tile"() <{col = 0 : i32, row = 1 : i32}> {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 26>} : () -> index
+ note: "-":7:21: MemoryMap:
+  	inB0_cons_buff_0 	: 0x0-0x3FFFF 	(262144 bytes)
+  	inB0_cons_buff_1 	: 0x40000-0x7FFFF 	(262144 bytes)
+  	inA0_cons_buff_0 	: 0x80000-0x83FFF 	(16384 bytes)
+  	inA0_cons_buff_1 	: 0x84000-0x87FFF 	(16384 bytes)
+  
+ MLIR compilation:                                            0% -:--:-- 0:00:00 0/1 1 Worker
+rm -rf build _build inst DDR_bandwidth_test.exe

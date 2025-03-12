@@ -45,6 +45,7 @@ def main():
         choices=["bf16", "i8", "i16", "f32", "i32"],
         default="i32",
     )
+    argparser.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
     argparser.add_argument("--trace_size", type=int, default=0)
     args = argparser.parse_args()
     my_matmul(
@@ -56,6 +57,7 @@ def main():
         args.n,
         args.dtype_in,
         args.dtype_out,
+        args.b_col_maj,
         args.trace_size,
     )
 
@@ -64,7 +66,7 @@ def ceildiv(a, b):
     return (a + b - 1) // b
 
 
-def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
+def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, b_col_maj, trace_size):
 
     assert M % m == 0
     assert K % k == 0
@@ -128,8 +130,14 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
             # AIE Core Function declarations
             func_type = "" if vectorized else "scalar_"
             zero = external_func(f"zero_{func_type}{dtype_out_str}", inputs=[c_ty])
+
+            matmul_func_name = (
+                f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}" 
+                if not b_col_maj
+                else f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}_b_col_maj"
+            )
             matmul = external_func(
-                f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}",
+                matmul_func_name,
                 inputs=[a_ty, b_ty, c_ty],
             )
 
@@ -162,23 +170,60 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
             object_fifo_link(inA, memA)
 
             # Input B
-            inB = object_fifo("inB", shim_tile, mem_tile, 2, b_ty)
+
+            
+            inB = object_fifo("inB", shim_tile, mem_tile, 2, b_ty, None,
+            # S2MM transformation here
+            #  [
+            #     [
+            #         (n, k),
+            #         (1, k*n),
+            #         (k, 1),
+            #     ]
+            #  ],
+             )
+
+
+            B_transformations = []
+            if vectorized:
+                if not b_col_maj:
+                    B_transformations = [
+                        (k // s, s * n),
+                        (n // t, t),
+                        (s, n),
+                        (t, 1),
+                    ]
+                else: 
+                    B_transformations = [
+                        (n // t, t * k),
+                        (k // s, s),
+                        (t, k),
+                        (s, 1),
+                    ]
+            
+            
             memB = object_fifo(
                 "memB",
                 mem_tile,
                 compute_tile2,
                 2,
                 b_ty,
-                (
-                    [
-                        (k // s, s * n),
-                        (n // t, t),
-                        (s, n),
-                        (t, 1),
-                    ]
-                    if vectorized
-                    else []
-                ),
+                B_transformations,
+                # MM2S
+                # [
+                #     (1, k*n),
+                #     (k//s, s),
+                #     (n, k),
+                #     (s, 1),
+                # ],
+                # # S2MM
+                # [
+                #     [
+                #         (k//s, s*t),
+                #         (n//t, k*t),
+                #         (s*t, 1),
+                #     ]
+                # ],
             )
             object_fifo_link(inB, memB)
 
@@ -309,12 +354,20 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
                                 sizes=[N_div_n, K_div_k, m, k],
                                 strides=[0, k, K, 1],
                             )
+
+                            if not b_col_maj:
+                                B_sizes = [N_div_n, K_div_k, k, n]
+                                B_strides = [n, k_x_N, N, 1]
+                            else: 
+                                B_sizes = [N // n, K // k, n, k]
+                                B_strides = [n * K, k, K, 1]
+                                
                             npu_dma_memcpy_nd(
                                 metadata=inB,
                                 bd_id=bd_id_base + 2 * tile_row + 2,
                                 mem=B,
-                                sizes=[N_div_n, K_div_k, k, n],
-                                strides=[n, k_x_N, N, 1],
+                                sizes=B_sizes,
+                                strides=B_strides,
                             )
                         if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
                             dma_wait(outC)

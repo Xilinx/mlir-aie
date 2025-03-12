@@ -1,0 +1,4842 @@
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=int8_t -DDTYPE_OUT=int16_t -DDTYPE_ACC=int16_t" \
+	cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=whole_array_optimized -Dsubdir=whole_array
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.8s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[ 33%] Building CXX object CMakeFiles/whole_array_optimized.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/whole_array_optimized.dir/whole_array/test.cpp.o
+[100%] Linking CXX executable whole_array_optimized
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[100%] Built target whole_array_optimized
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+cp _build/whole_array_optimized whole_array_optimized.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/whole_array_optimized.py -m 80 -k 88 -n 96 -mtk 88 -ktn 88 --n-aie-cols 4 --n-aie-rows 4 --b-col-maj 0 -M 4160 -K 4224 -N 4224 --dtype_in i8 --dtype_out i16 --trace_size 0 > build/aie_4160x4224x4224_80x88x96_4rx4c.mlir
+mkdir -p build
+ar rvs build/mm_80x88x96.o precompiled_rowmaj_kernels/mm_b_row_maj_80x88x96_i8_i16.o
+a - precompiled_rowmaj_kernels/mm_b_row_maj_80x88x96_i8_i16.o
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final_4160x4224x4224_80x88x96_4rx4c.xclbin \
+			  \
+			--aie-generate-npu --npu-insts-name=insts_4160x4224x4224_80x88x96_4rx4c.txt ../build/aie_4160x4224x4224_80x88x96_4rx4c.mlir
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:17 17/17 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_enable.bin
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
+ ./whole_array_optimized.exe -x build/final_4160x4224x4224_80x88x96_4rx4c.xclbin -i build/insts_4160x4224x4224_80x88x96_4rx4c.txt -k MLIR_AIE -M 4160 -K 4224 -N 4224 -v 2 --warmup 10 --iters 100 --b_col_maj 0
+Matrix size 4160x4224x4224
+Sequence instr count: 2868
+Loading xclbin: build/final_4160x4224x4224_80x88x96_4rx4c.xclbin
+Kernel opcode: MLIR_AIE
+Name: MLIR_AIE
+Registering xclbin: build/final_4160x4224x4224_80x88x96_4rx4c.xclbin
+Getting hardware context.
+Getting handle to kernel:MLIR_AIE
+Writing data into buffer objects.
+DTYPE_IN  = int8_t
+DTYPE_OUT = int16_t
+Verification tolerance 0 absolute, 0 relative.
+A = 
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+B = 
+       0       -45        92      -103       -88   ...      -82        36       -76       -16        24  
+       0       -76        64       -94        -4   ...      -22       -56       105       116        86  
+       0        35       -22        69      -100   ...      -91        64        64        66      -103  
+    -128       -91        98         5       -92   ...      -47       -40        41        -8       -31  
+       0        82        28        32         8   ...       76       -56        27       106      -118  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    -128       -66        12        95       -88   ...       72        72        -6       -74       -31  
+       0        -9        16      -112        76   ...      -28        64        -7      -110        48  
+       0      -126       104       -42        96   ...      122        32       -60       -32       -29  
+       0      -112      -102      -111       -32   ...     -100        36      -108        94      -125  
+    -128        76      -116       -66       -48   ...      101        44       110       -52         2  
+Running Kernel (iteration 0).
+Running Kernel (iteration 1).
+Running Kernel (iteration 2).
+Running Kernel (iteration 3).
+Running Kernel (iteration 4).
+Running Kernel (iteration 5).
+Running Kernel (iteration 6).
+Running Kernel (iteration 7).
+Running Kernel (iteration 8).
+Running Kernel (iteration 9).
+Running Kernel (iteration 10).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 11).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 12).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 13).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 14).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 15).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 16).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 17).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 18).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 19).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 20).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 21).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 22).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 23).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 24).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 25).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 26).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 27).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 28).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 29).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 30).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 31).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 32).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 33).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 34).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 35).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 36).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 37).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 38).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 39).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 40).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 41).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 42).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 43).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 44).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 45).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 46).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 47).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 48).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 49).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 50).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 51).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 52).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 53).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 54).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 55).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 56).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 57).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 58).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 59).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 60).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 61).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 62).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 63).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 64).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 65).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 66).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 67).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 68).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 69).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 70).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 71).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 72).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 73).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 74).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 75).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 76).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 77).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 78).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 79).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 80).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 81).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 82).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 83).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 84).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 85).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 86).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 87).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 88).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 89).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 90).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 91).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 92).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 93).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 94).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 95).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 96).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 97).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 98).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 99).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 100).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 101).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 102).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 103).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 104).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 105).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 106).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 107).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 108).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 109).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+
+Avg NPU matmul time: 36019.77us.
+Avg NPU gflops: 4121.26
+
+Min NPU matmul time: 34668.00us.
+Max NPU gflops: 4281.96
+
+Max NPU matmul time: 38623.00us.
+Min NPU gflops: 3843.48
+
+PASS!
+
+rm -rf tmpTrace parse*.json trace*json trace.txt
+rm -rf build _build *.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=int8_t -DDTYPE_OUT=int16_t -DDTYPE_ACC=int16_t" \
+	cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=whole_array_optimized -Dsubdir=whole_array
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.6s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[ 33%] Building CXX object CMakeFiles/whole_array_optimized.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/whole_array_optimized.dir/whole_array/test.cpp.o
+[100%] Linking CXX executable whole_array_optimized
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[100%] Built target whole_array_optimized
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+cp _build/whole_array_optimized whole_array_optimized.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/whole_array_optimized.py -m 80 -k 88 -n 96 -mtk 176 -ktn 176 --n-aie-cols 4 --n-aie-rows 4 --b-col-maj 0 -M 4160 -K 4224 -N 4224 --dtype_in i8 --dtype_out i16 --trace_size 0 > build/aie_4160x4224x4224_80x88x96_4rx4c.mlir
+mkdir -p build
+ar rvs build/mm_80x88x96.o precompiled_rowmaj_kernels/mm_b_row_maj_80x88x96_i8_i16.o
+a - precompiled_rowmaj_kernels/mm_b_row_maj_80x88x96_i8_i16.o
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final_4160x4224x4224_80x88x96_4rx4c.xclbin \
+			  \
+			--aie-generate-npu --npu-insts-name=insts_4160x4224x4224_80x88x96_4rx4c.txt ../build/aie_4160x4224x4224_80x88x96_4rx4c.mlir
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:17 17/17 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_enable.bin
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
+ ./whole_array_optimized.exe -x build/final_4160x4224x4224_80x88x96_4rx4c.xclbin -i build/insts_4160x4224x4224_80x88x96_4rx4c.txt -k MLIR_AIE -M 4160 -K 4224 -N 4224 -v 2 --warmup 10 --iters 100 --b_col_maj 0
+Matrix size 4160x4224x4224
+Sequence instr count: 2868
+Loading xclbin: build/final_4160x4224x4224_80x88x96_4rx4c.xclbin
+Kernel opcode: MLIR_AIE
+Name: MLIR_AIE
+Registering xclbin: build/final_4160x4224x4224_80x88x96_4rx4c.xclbin
+Getting hardware context.
+Getting handle to kernel:MLIR_AIE
+Writing data into buffer objects.
+DTYPE_IN  = int8_t
+DTYPE_OUT = int16_t
+Verification tolerance 0 absolute, 0 relative.
+A = 
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+B = 
+       0       -45        92      -103       -88   ...      -82        36       -76       -16        24  
+       0       -76        64       -94        -4   ...      -22       -56       105       116        86  
+       0        35       -22        69      -100   ...      -91        64        64        66      -103  
+    -128       -91        98         5       -92   ...      -47       -40        41        -8       -31  
+       0        82        28        32         8   ...       76       -56        27       106      -118  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    -128       -66        12        95       -88   ...       72        72        -6       -74       -31  
+       0        -9        16      -112        76   ...      -28        64        -7      -110        48  
+       0      -126       104       -42        96   ...      122        32       -60       -32       -29  
+       0      -112      -102      -111       -32   ...     -100        36      -108        94      -125  
+    -128        76      -116       -66       -48   ...      101        44       110       -52         2  
+Running Kernel (iteration 0).
+Running Kernel (iteration 1).
+Running Kernel (iteration 2).
+Running Kernel (iteration 3).
+Running Kernel (iteration 4).
+Running Kernel (iteration 5).
+Running Kernel (iteration 6).
+Running Kernel (iteration 7).
+Running Kernel (iteration 8).
+Running Kernel (iteration 9).
+Running Kernel (iteration 10).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 11).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 12).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 13).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 14).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 15).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 16).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 17).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 18).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 19).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 20).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 21).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 22).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 23).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 24).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 25).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 26).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 27).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 28).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 29).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 30).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 31).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 32).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 33).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 34).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 35).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 36).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 37).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 38).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 39).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 40).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 41).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 42).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 43).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 44).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 45).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 46).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 47).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 48).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 49).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 50).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 51).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 52).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 53).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 54).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 55).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 56).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 57).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 58).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 59).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 60).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 61).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 62).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 63).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 64).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 65).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 66).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 67).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 68).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 69).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 70).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 71).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 72).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 73).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 74).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 75).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 76).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 77).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 78).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 79).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 80).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 81).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 82).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 83).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 84).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 85).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 86).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 87).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 88).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 89).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 90).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 91).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 92).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 93).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 94).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 95).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 96).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 97).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 98).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 99).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 100).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 101).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 102).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 103).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 104).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 105).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 106).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 107).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 108).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 109).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+
+Avg NPU matmul time: 30511.66us.
+Avg NPU gflops: 4865.25
+
+Min NPU matmul time: 29120.00us.
+Max NPU gflops: 5097.76
+
+Max NPU matmul time: 32763.00us.
+Min NPU gflops: 4530.93
+
+PASS!
+
+rm -rf tmpTrace parse*.json trace*json trace.txt
+rm -rf build _build *.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=int8_t -DDTYPE_OUT=int16_t -DDTYPE_ACC=int16_t" \
+	cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=whole_array_optimized -Dsubdir=whole_array
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.5s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[ 33%] Building CXX object CMakeFiles/whole_array_optimized.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/whole_array_optimized.dir/whole_array/test.cpp.o
+[100%] Linking CXX executable whole_array_optimized
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[100%] Built target whole_array_optimized
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+cp _build/whole_array_optimized whole_array_optimized.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/whole_array_optimized.py -m 80 -k 88 -n 96 -mtk 264 -ktn 264 --n-aie-cols 4 --n-aie-rows 4 --b-col-maj 0 -M 4160 -K 4224 -N 4224 --dtype_in i8 --dtype_out i16 --trace_size 0 > build/aie_4160x4224x4224_80x88x96_4rx4c.mlir
+mkdir -p build
+ar rvs build/mm_80x88x96.o precompiled_rowmaj_kernels/mm_b_row_maj_80x88x96_i8_i16.o
+a - precompiled_rowmaj_kernels/mm_b_row_maj_80x88x96_i8_i16.o
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final_4160x4224x4224_80x88x96_4rx4c.xclbin \
+			  \
+			--aie-generate-npu --npu-insts-name=insts_4160x4224x4224_80x88x96_4rx4c.txt ../build/aie_4160x4224x4224_80x88x96_4rx4c.mlir
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:17 17/17 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_enable.bin
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
+ ./whole_array_optimized.exe -x build/final_4160x4224x4224_80x88x96_4rx4c.xclbin -i build/insts_4160x4224x4224_80x88x96_4rx4c.txt -k MLIR_AIE -M 4160 -K 4224 -N 4224 -v 2 --warmup 10 --iters 100 --b_col_maj 0
+Matrix size 4160x4224x4224
+Sequence instr count: 2868
+Loading xclbin: build/final_4160x4224x4224_80x88x96_4rx4c.xclbin
+Kernel opcode: MLIR_AIE
+Name: MLIR_AIE
+Registering xclbin: build/final_4160x4224x4224_80x88x96_4rx4c.xclbin
+Getting hardware context.
+Getting handle to kernel:MLIR_AIE
+Writing data into buffer objects.
+DTYPE_IN  = int8_t
+DTYPE_OUT = int16_t
+Verification tolerance 0 absolute, 0 relative.
+A = 
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+B = 
+       0       -45        92      -103       -88   ...      -82        36       -76       -16        24  
+       0       -76        64       -94        -4   ...      -22       -56       105       116        86  
+       0        35       -22        69      -100   ...      -91        64        64        66      -103  
+    -128       -91        98         5       -92   ...      -47       -40        41        -8       -31  
+       0        82        28        32         8   ...       76       -56        27       106      -118  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    -128       -66        12        95       -88   ...       72        72        -6       -74       -31  
+       0        -9        16      -112        76   ...      -28        64        -7      -110        48  
+       0      -126       104       -42        96   ...      122        32       -60       -32       -29  
+       0      -112      -102      -111       -32   ...     -100        36      -108        94      -125  
+    -128        76      -116       -66       -48   ...      101        44       110       -52         2  
+Running Kernel (iteration 0).
+Running Kernel (iteration 1).
+Running Kernel (iteration 2).
+Running Kernel (iteration 3).
+Running Kernel (iteration 4).
+Running Kernel (iteration 5).
+Running Kernel (iteration 6).
+Running Kernel (iteration 7).
+Running Kernel (iteration 8).
+Running Kernel (iteration 9).
+Running Kernel (iteration 10).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 11).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 12).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 13).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 14).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 15).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 16).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 17).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 18).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 19).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 20).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 21).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 22).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 23).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 24).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 25).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 26).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 27).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 28).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 29).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 30).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 31).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 32).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 33).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 34).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 35).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 36).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 37).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 38).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 39).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 40).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 41).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 42).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 43).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 44).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 45).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 46).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 47).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 48).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 49).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 50).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 51).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 52).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 53).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 54).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 55).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 56).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 57).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 58).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 59).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 60).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 61).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 62).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 63).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 64).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 65).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 66).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 67).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 68).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 69).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 70).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 71).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 72).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 73).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 74).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 75).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 76).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 77).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 78).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 79).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 80).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 81).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 82).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 83).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 84).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 85).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 86).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 87).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 88).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 89).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 90).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 91).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 92).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 93).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 94).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 95).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 96).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 97).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 98).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 99).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 100).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 101).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 102).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 103).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 104).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 105).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 106).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 107).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 108).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 109).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+
+Avg NPU matmul time: 30958.22us.
+Avg NPU gflops: 4795.07
+
+Min NPU matmul time: 29464.00us.
+Max NPU gflops: 5038.25
+
+Max NPU matmul time: 34314.00us.
+Min NPU gflops: 4326.13
+
+PASS!
+
+rm -rf tmpTrace parse*.json trace*json trace.txt
+rm -rf build _build *.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=int8_t -DDTYPE_OUT=int16_t -DDTYPE_ACC=int16_t" \
+	cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=whole_array_optimized -Dsubdir=whole_array
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.5s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[ 33%] Building CXX object CMakeFiles/whole_array_optimized.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/whole_array_optimized.dir/whole_array/test.cpp.o
+[100%] Linking CXX executable whole_array_optimized
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[100%] Built target whole_array_optimized
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+cp _build/whole_array_optimized whole_array_optimized.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/whole_array_optimized.py -m 80 -k 88 -n 96 -mtk 352 -ktn 352 --n-aie-cols 4 --n-aie-rows 4 --b-col-maj 0 -M 4160 -K 4224 -N 4224 --dtype_in i8 --dtype_out i16 --trace_size 0 > build/aie_4160x4224x4224_80x88x96_4rx4c.mlir
+mkdir -p build
+ar rvs build/mm_80x88x96.o precompiled_rowmaj_kernels/mm_b_row_maj_80x88x96_i8_i16.o
+a - precompiled_rowmaj_kernels/mm_b_row_maj_80x88x96_i8_i16.o
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final_4160x4224x4224_80x88x96_4rx4c.xclbin \
+			  \
+			--aie-generate-npu --npu-insts-name=insts_4160x4224x4224_80x88x96_4rx4c.txt ../build/aie_4160x4224x4224_80x88x96_4rx4c.mlir
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:17 17/17 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_enable.bin
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
+ ./whole_array_optimized.exe -x build/final_4160x4224x4224_80x88x96_4rx4c.xclbin -i build/insts_4160x4224x4224_80x88x96_4rx4c.txt -k MLIR_AIE -M 4160 -K 4224 -N 4224 -v 2 --warmup 10 --iters 100 --b_col_maj 0
+Matrix size 4160x4224x4224
+Sequence instr count: 2868
+Loading xclbin: build/final_4160x4224x4224_80x88x96_4rx4c.xclbin
+Kernel opcode: MLIR_AIE
+Name: MLIR_AIE
+Registering xclbin: build/final_4160x4224x4224_80x88x96_4rx4c.xclbin
+Getting hardware context.
+Getting handle to kernel:MLIR_AIE
+Writing data into buffer objects.
+DTYPE_IN  = int8_t
+DTYPE_OUT = int16_t
+Verification tolerance 0 absolute, 0 relative.
+A = 
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+B = 
+       0       -45        92      -103       -88   ...      -82        36       -76       -16        24  
+       0       -76        64       -94        -4   ...      -22       -56       105       116        86  
+       0        35       -22        69      -100   ...      -91        64        64        66      -103  
+    -128       -91        98         5       -92   ...      -47       -40        41        -8       -31  
+       0        82        28        32         8   ...       76       -56        27       106      -118  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    -128       -66        12        95       -88   ...       72        72        -6       -74       -31  
+       0        -9        16      -112        76   ...      -28        64        -7      -110        48  
+       0      -126       104       -42        96   ...      122        32       -60       -32       -29  
+       0      -112      -102      -111       -32   ...     -100        36      -108        94      -125  
+    -128        76      -116       -66       -48   ...      101        44       110       -52         2  
+Running Kernel (iteration 0).
+Running Kernel (iteration 1).
+Running Kernel (iteration 2).
+Running Kernel (iteration 3).
+Running Kernel (iteration 4).
+Running Kernel (iteration 5).
+Running Kernel (iteration 6).
+Running Kernel (iteration 7).
+Running Kernel (iteration 8).
+Running Kernel (iteration 9).
+Running Kernel (iteration 10).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 11).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 12).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 13).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 14).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 15).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 16).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 17).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 18).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 19).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 20).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 21).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 22).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 23).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 24).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 25).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 26).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 27).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 28).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 29).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 30).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 31).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 32).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 33).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 34).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 35).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 36).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 37).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 38).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 39).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 40).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 41).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 42).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 43).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 44).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 45).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 46).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 47).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 48).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 49).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 50).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 51).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 52).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 53).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 54).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 55).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 56).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 57).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 58).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 59).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 60).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 61).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 62).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 63).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 64).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 65).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 66).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 67).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 68).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 69).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 70).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 71).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 72).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 73).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 74).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 75).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 76).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 77).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 78).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 79).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 80).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 81).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 82).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 83).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 84).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 85).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 86).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 87).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 88).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 89).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 90).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 91).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 92).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 93).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 94).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 95).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 96).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 97).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 98).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 99).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 100).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 101).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 102).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 103).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 104).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 105).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 106).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 107).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 108).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 109).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+
+Avg NPU matmul time: 29647.57us.
+Avg NPU gflops: 5007.05
+
+Min NPU matmul time: 28028.00us.
+Max NPU gflops: 5296.38
+
+Max NPU matmul time: 32446.00us.
+Min NPU gflops: 4575.20
+
+PASS!
+
+rm -rf tmpTrace parse*.json trace*json trace.txt
+rm -rf build _build *.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=int8_t -DDTYPE_OUT=int16_t -DDTYPE_ACC=int16_t" \
+	cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=whole_array_optimized -Dsubdir=whole_array
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.5s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[ 33%] Building CXX object CMakeFiles/whole_array_optimized.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/whole_array_optimized.dir/whole_array/test.cpp.o
+[100%] Linking CXX executable whole_array_optimized
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[100%] Built target whole_array_optimized
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+cp _build/whole_array_optimized whole_array_optimized.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/whole_array_optimized.py -m 80 -k 88 -n 96 -mtk 528 -ktn 528 --n-aie-cols 4 --n-aie-rows 4 --b-col-maj 0 -M 4160 -K 4224 -N 4224 --dtype_in i8 --dtype_out i16 --trace_size 0 > build/aie_4160x4224x4224_80x88x96_4rx4c.mlir
+mkdir -p build
+ar rvs build/mm_80x88x96.o precompiled_rowmaj_kernels/mm_b_row_maj_80x88x96_i8_i16.o
+a - precompiled_rowmaj_kernels/mm_b_row_maj_80x88x96_i8_i16.o
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final_4160x4224x4224_80x88x96_4rx4c.xclbin \
+			  \
+			--aie-generate-npu --npu-insts-name=insts_4160x4224x4224_80x88x96_4rx4c.txt ../build/aie_4160x4224x4224_80x88x96_4rx4c.mlir
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:17 17/17 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_enable.bin
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
+ ./whole_array_optimized.exe -x build/final_4160x4224x4224_80x88x96_4rx4c.xclbin -i build/insts_4160x4224x4224_80x88x96_4rx4c.txt -k MLIR_AIE -M 4160 -K 4224 -N 4224 -v 2 --warmup 10 --iters 100 --b_col_maj 0
+Matrix size 4160x4224x4224
+Sequence instr count: 2868
+Loading xclbin: build/final_4160x4224x4224_80x88x96_4rx4c.xclbin
+Kernel opcode: MLIR_AIE
+Name: MLIR_AIE
+Registering xclbin: build/final_4160x4224x4224_80x88x96_4rx4c.xclbin
+Getting hardware context.
+Getting handle to kernel:MLIR_AIE
+Writing data into buffer objects.
+DTYPE_IN  = int8_t
+DTYPE_OUT = int16_t
+Verification tolerance 0 absolute, 0 relative.
+A = 
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+B = 
+       0       -45        92      -103       -88   ...      -82        36       -76       -16        24  
+       0       -76        64       -94        -4   ...      -22       -56       105       116        86  
+       0        35       -22        69      -100   ...      -91        64        64        66      -103  
+    -128       -91        98         5       -92   ...      -47       -40        41        -8       -31  
+       0        82        28        32         8   ...       76       -56        27       106      -118  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    -128       -66        12        95       -88   ...       72        72        -6       -74       -31  
+       0        -9        16      -112        76   ...      -28        64        -7      -110        48  
+       0      -126       104       -42        96   ...      122        32       -60       -32       -29  
+       0      -112      -102      -111       -32   ...     -100        36      -108        94      -125  
+    -128        76      -116       -66       -48   ...      101        44       110       -52         2  
+Running Kernel (iteration 0).
+Running Kernel (iteration 1).
+Running Kernel (iteration 2).
+Running Kernel (iteration 3).
+Running Kernel (iteration 4).
+Running Kernel (iteration 5).
+Running Kernel (iteration 6).
+Running Kernel (iteration 7).
+Running Kernel (iteration 8).
+Running Kernel (iteration 9).
+Running Kernel (iteration 10).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 11).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 12).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 13).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 14).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 15).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 16).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 17).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 18).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 19).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 20).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 21).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 22).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 23).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 24).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 25).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 26).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 27).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 28).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 29).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 30).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 31).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 32).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 33).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 34).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 35).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 36).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 37).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 38).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 39).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 40).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 41).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 42).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 43).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 44).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 45).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 46).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 47).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 48).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 49).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 50).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 51).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 52).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 53).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 54).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 55).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 56).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 57).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 58).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 59).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 60).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 61).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 62).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 63).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 64).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 65).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 66).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 67).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 68).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 69).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 70).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 71).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 72).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 73).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 74).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 75).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 76).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 77).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 78).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 79).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 80).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 81).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 82).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 83).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 84).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 85).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 86).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 87).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 88).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 89).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 90).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 91).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 92).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 93).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 94).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 95).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 96).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 97).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 98).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 99).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 100).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 101).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 102).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 103).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 104).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 105).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 106).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 107).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 108).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 109).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+
+Avg NPU matmul time: 29508.04us.
+Avg NPU gflops: 5030.73
+
+Min NPU matmul time: 28246.00us.
+Max NPU gflops: 5255.50
+
+Max NPU matmul time: 31301.00us.
+Min NPU gflops: 4742.56
+
+PASS!
+
+rm -rf tmpTrace parse*.json trace*json trace.txt
+rm -rf build _build *.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=int8_t -DDTYPE_OUT=int16_t -DDTYPE_ACC=int16_t" \
+	cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=whole_array_optimized -Dsubdir=whole_array
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.5s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[ 33%] Building CXX object CMakeFiles/whole_array_optimized.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/whole_array_optimized.dir/whole_array/test.cpp.o
+[100%] Linking CXX executable whole_array_optimized
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[100%] Built target whole_array_optimized
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+cp _build/whole_array_optimized whole_array_optimized.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/whole_array_optimized.py -m 80 -k 88 -n 96 -mtk 704 -ktn 704 --n-aie-cols 4 --n-aie-rows 4 --b-col-maj 0 -M 4160 -K 4224 -N 4224 --dtype_in i8 --dtype_out i16 --trace_size 0 > build/aie_4160x4224x4224_80x88x96_4rx4c.mlir
+mkdir -p build
+ar rvs build/mm_80x88x96.o precompiled_rowmaj_kernels/mm_b_row_maj_80x88x96_i8_i16.o
+a - precompiled_rowmaj_kernels/mm_b_row_maj_80x88x96_i8_i16.o
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final_4160x4224x4224_80x88x96_4rx4c.xclbin \
+			  \
+			--aie-generate-npu --npu-insts-name=insts_4160x4224x4224_80x88x96_4rx4c.txt ../build/aie_4160x4224x4224_80x88x96_4rx4c.mlir
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:17 17/17 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_enable.bin
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
+ ./whole_array_optimized.exe -x build/final_4160x4224x4224_80x88x96_4rx4c.xclbin -i build/insts_4160x4224x4224_80x88x96_4rx4c.txt -k MLIR_AIE -M 4160 -K 4224 -N 4224 -v 2 --warmup 10 --iters 100 --b_col_maj 0
+Matrix size 4160x4224x4224
+Sequence instr count: 2868
+Loading xclbin: build/final_4160x4224x4224_80x88x96_4rx4c.xclbin
+Kernel opcode: MLIR_AIE
+Name: MLIR_AIE
+Registering xclbin: build/final_4160x4224x4224_80x88x96_4rx4c.xclbin
+Getting hardware context.
+Getting handle to kernel:MLIR_AIE
+Writing data into buffer objects.
+DTYPE_IN  = int8_t
+DTYPE_OUT = int16_t
+Verification tolerance 0 absolute, 0 relative.
+A = 
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+B = 
+       0       -45        92      -103       -88   ...      -82        36       -76       -16        24  
+       0       -76        64       -94        -4   ...      -22       -56       105       116        86  
+       0        35       -22        69      -100   ...      -91        64        64        66      -103  
+    -128       -91        98         5       -92   ...      -47       -40        41        -8       -31  
+       0        82        28        32         8   ...       76       -56        27       106      -118  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    -128       -66        12        95       -88   ...       72        72        -6       -74       -31  
+       0        -9        16      -112        76   ...      -28        64        -7      -110        48  
+       0      -126       104       -42        96   ...      122        32       -60       -32       -29  
+       0      -112      -102      -111       -32   ...     -100        36      -108        94      -125  
+    -128        76      -116       -66       -48   ...      101        44       110       -52         2  
+Running Kernel (iteration 0).
+Running Kernel (iteration 1).
+Running Kernel (iteration 2).
+Running Kernel (iteration 3).
+Running Kernel (iteration 4).
+Running Kernel (iteration 5).
+Running Kernel (iteration 6).
+Running Kernel (iteration 7).
+Running Kernel (iteration 8).
+Running Kernel (iteration 9).
+Running Kernel (iteration 10).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 11).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 12).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 13).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 14).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 15).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 16).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 17).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 18).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 19).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 20).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 21).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 22).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 23).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 24).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 25).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 26).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 27).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 28).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 29).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 30).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 31).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 32).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 33).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 34).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 35).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 36).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 37).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 38).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 39).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 40).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 41).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 42).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 43).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 44).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 45).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 46).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 47).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 48).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 49).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 50).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 51).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 52).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 53).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 54).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 55).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 56).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 57).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 58).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 59).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 60).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 61).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 62).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 63).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 64).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 65).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 66).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 67).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 68).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 69).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 70).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 71).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 72).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 73).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 74).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 75).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 76).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 77).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 78).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 79).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 80).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 81).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 82).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 83).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 84).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 85).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 86).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 87).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 88).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 89).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 90).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 91).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 92).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 93).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 94).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 95).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 96).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 97).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 98).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 99).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 100).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 101).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 102).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 103).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 104).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 105).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 106).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 107).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 108).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 109).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+
+Avg NPU matmul time: 29057.38us.
+Avg NPU gflops: 5108.75
+
+Min NPU matmul time: 27715.00us.
+Max NPU gflops: 5356.19
+
+Max NPU matmul time: 30465.00us.
+Min NPU gflops: 4872.70
+
+PASS!
+
+rm -rf tmpTrace parse*.json trace*json trace.txt
+rm -rf build _build *.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=int8_t -DDTYPE_OUT=int16_t -DDTYPE_ACC=int16_t" \
+	cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=whole_array_optimized -Dsubdir=whole_array
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.5s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[ 33%] Building CXX object CMakeFiles/whole_array_optimized.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/whole_array_optimized.dir/whole_array/test.cpp.o
+[100%] Linking CXX executable whole_array_optimized
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[100%] Built target whole_array_optimized
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+cp _build/whole_array_optimized whole_array_optimized.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/whole_array_optimized.py -m 80 -k 88 -n 96 -mtk 1056 -ktn 1056 --n-aie-cols 4 --n-aie-rows 4 --b-col-maj 0 -M 4160 -K 4224 -N 4224 --dtype_in i8 --dtype_out i16 --trace_size 0 > build/aie_4160x4224x4224_80x88x96_4rx4c.mlir
+mkdir -p build
+ar rvs build/mm_80x88x96.o precompiled_rowmaj_kernels/mm_b_row_maj_80x88x96_i8_i16.o
+a - precompiled_rowmaj_kernels/mm_b_row_maj_80x88x96_i8_i16.o
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final_4160x4224x4224_80x88x96_4rx4c.xclbin \
+			  \
+			--aie-generate-npu --npu-insts-name=insts_4160x4224x4224_80x88x96_4rx4c.txt ../build/aie_4160x4224x4224_80x88x96_4rx4c.mlir
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:17 17/17 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_enable.bin
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
+ ./whole_array_optimized.exe -x build/final_4160x4224x4224_80x88x96_4rx4c.xclbin -i build/insts_4160x4224x4224_80x88x96_4rx4c.txt -k MLIR_AIE -M 4160 -K 4224 -N 4224 -v 2 --warmup 10 --iters 100 --b_col_maj 0
+Matrix size 4160x4224x4224
+Sequence instr count: 2868
+Loading xclbin: build/final_4160x4224x4224_80x88x96_4rx4c.xclbin
+Kernel opcode: MLIR_AIE
+Name: MLIR_AIE
+Registering xclbin: build/final_4160x4224x4224_80x88x96_4rx4c.xclbin
+Getting hardware context.
+Getting handle to kernel:MLIR_AIE
+Writing data into buffer objects.
+DTYPE_IN  = int8_t
+DTYPE_OUT = int16_t
+Verification tolerance 0 absolute, 0 relative.
+A = 
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+B = 
+       0       -45        92      -103       -88   ...      -82        36       -76       -16        24  
+       0       -76        64       -94        -4   ...      -22       -56       105       116        86  
+       0        35       -22        69      -100   ...      -91        64        64        66      -103  
+    -128       -91        98         5       -92   ...      -47       -40        41        -8       -31  
+       0        82        28        32         8   ...       76       -56        27       106      -118  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    -128       -66        12        95       -88   ...       72        72        -6       -74       -31  
+       0        -9        16      -112        76   ...      -28        64        -7      -110        48  
+       0      -126       104       -42        96   ...      122        32       -60       -32       -29  
+       0      -112      -102      -111       -32   ...     -100        36      -108        94      -125  
+    -128        76      -116       -66       -48   ...      101        44       110       -52         2  
+Running Kernel (iteration 0).
+Running Kernel (iteration 1).
+Running Kernel (iteration 2).
+Running Kernel (iteration 3).
+Running Kernel (iteration 4).
+Running Kernel (iteration 5).
+Running Kernel (iteration 6).
+Running Kernel (iteration 7).
+Running Kernel (iteration 8).
+Running Kernel (iteration 9).
+Running Kernel (iteration 10).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 11).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 12).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 13).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 14).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 15).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 16).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 17).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 18).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 19).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 20).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 21).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 22).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 23).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 24).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 25).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 26).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 27).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 28).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 29).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 30).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 31).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 32).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 33).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 34).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 35).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 36).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 37).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 38).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 39).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 40).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 41).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 42).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 43).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 44).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 45).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 46).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 47).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 48).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 49).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 50).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 51).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 52).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 53).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 54).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 55).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 56).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 57).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 58).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 59).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 60).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 61).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 62).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 63).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 64).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 65).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 66).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 67).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 68).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 69).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 70).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 71).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 72).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 73).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 74).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 75).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 76).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 77).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 78).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 79).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 80).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 81).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 82).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 83).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 84).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 85).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 86).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 87).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 88).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 89).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 90).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 91).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 92).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 93).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 94).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 95).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 96).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 97).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 98).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 99).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 100).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 101).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 102).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 103).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 104).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 105).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 106).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 107).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 108).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 109).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+
+Avg NPU matmul time: 28936.59us.
+Avg NPU gflops: 5130.08
+
+Min NPU matmul time: 27650.00us.
+Max NPU gflops: 5368.79
+
+Max NPU matmul time: 30677.00us.
+Min NPU gflops: 4839.03
+
+PASS!
+
+rm -rf tmpTrace parse*.json trace*json trace.txt
+rm -rf build _build *.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=int8_t -DDTYPE_OUT=int16_t -DDTYPE_ACC=int16_t" \
+	cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=whole_array_optimized -Dsubdir=whole_array
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.5s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[ 33%] Building CXX object CMakeFiles/whole_array_optimized.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/whole_array_optimized.dir/whole_array/test.cpp.o
+[100%] Linking CXX executable whole_array_optimized
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[100%] Built target whole_array_optimized
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+cp _build/whole_array_optimized whole_array_optimized.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/whole_array_optimized.py -m 80 -k 88 -n 96 -mtk 1408 -ktn 1408 --n-aie-cols 4 --n-aie-rows 4 --b-col-maj 0 -M 4160 -K 4224 -N 4224 --dtype_in i8 --dtype_out i16 --trace_size 0 > build/aie_4160x4224x4224_80x88x96_4rx4c.mlir
+mkdir -p build
+ar rvs build/mm_80x88x96.o precompiled_rowmaj_kernels/mm_b_row_maj_80x88x96_i8_i16.o
+a - precompiled_rowmaj_kernels/mm_b_row_maj_80x88x96_i8_i16.o
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final_4160x4224x4224_80x88x96_4rx4c.xclbin \
+			  \
+			--aie-generate-npu --npu-insts-name=insts_4160x4224x4224_80x88x96_4rx4c.txt ../build/aie_4160x4224x4224_80x88x96_4rx4c.mlir
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:17 17/17 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_enable.bin
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
+ ./whole_array_optimized.exe -x build/final_4160x4224x4224_80x88x96_4rx4c.xclbin -i build/insts_4160x4224x4224_80x88x96_4rx4c.txt -k MLIR_AIE -M 4160 -K 4224 -N 4224 -v 2 --warmup 10 --iters 100 --b_col_maj 0
+Matrix size 4160x4224x4224
+Sequence instr count: 2868
+Loading xclbin: build/final_4160x4224x4224_80x88x96_4rx4c.xclbin
+Kernel opcode: MLIR_AIE
+Name: MLIR_AIE
+Registering xclbin: build/final_4160x4224x4224_80x88x96_4rx4c.xclbin
+Getting hardware context.
+Getting handle to kernel:MLIR_AIE
+Writing data into buffer objects.
+DTYPE_IN  = int8_t
+DTYPE_OUT = int16_t
+Verification tolerance 0 absolute, 0 relative.
+A = 
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+B = 
+       0       -45        92      -103       -88   ...      -82        36       -76       -16        24  
+       0       -76        64       -94        -4   ...      -22       -56       105       116        86  
+       0        35       -22        69      -100   ...      -91        64        64        66      -103  
+    -128       -91        98         5       -92   ...      -47       -40        41        -8       -31  
+       0        82        28        32         8   ...       76       -56        27       106      -118  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    -128       -66        12        95       -88   ...       72        72        -6       -74       -31  
+       0        -9        16      -112        76   ...      -28        64        -7      -110        48  
+       0      -126       104       -42        96   ...      122        32       -60       -32       -29  
+       0      -112      -102      -111       -32   ...     -100        36      -108        94      -125  
+    -128        76      -116       -66       -48   ...      101        44       110       -52         2  
+Running Kernel (iteration 0).
+Running Kernel (iteration 1).
+Running Kernel (iteration 2).
+Running Kernel (iteration 3).
+Running Kernel (iteration 4).
+Running Kernel (iteration 5).
+Running Kernel (iteration 6).
+Running Kernel (iteration 7).
+Running Kernel (iteration 8).
+Running Kernel (iteration 9).
+Running Kernel (iteration 10).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 11).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 12).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 13).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 14).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 15).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 16).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 17).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 18).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 19).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 20).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 21).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 22).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 23).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 24).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 25).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 26).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 27).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 28).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 29).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 30).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 31).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 32).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 33).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 34).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 35).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 36).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 37).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 38).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 39).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 40).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 41).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 42).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 43).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 44).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 45).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 46).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 47).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 48).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 49).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 50).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 51).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 52).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 53).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 54).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 55).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 56).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 57).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 58).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 59).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 60).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 61).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 62).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 63).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 64).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 65).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 66).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 67).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 68).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 69).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 70).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 71).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 72).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 73).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 74).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 75).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 76).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 77).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 78).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 79).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 80).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 81).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 82).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 83).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 84).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 85).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 86).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 87).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 88).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 89).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 90).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 91).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 92).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 93).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 94).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 95).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 96).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 97).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 98).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 99).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 100).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 101).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 102).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 103).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 104).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 105).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 106).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 107).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 108).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 109).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+
+Avg NPU matmul time: 28541.16us.
+Avg NPU gflops: 5201.15
+
+Min NPU matmul time: 27114.00us.
+Max NPU gflops: 5474.92
+
+Max NPU matmul time: 30738.00us.
+Min NPU gflops: 4829.43
+
+PASS!
+
+rm -rf tmpTrace parse*.json trace*json trace.txt
+rm -rf build _build *.exe
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=int8_t -DDTYPE_OUT=int16_t -DDTYPE_ACC=int16_t" \
+	cmake /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=whole_array_optimized -Dsubdir=whole_array
+-- The C compiler identification is GNU 13.1.0
+-- The CXX compiler identification is GNU 13.1.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0")
+-- Configuring done (0.5s)
+-- Generating done (0.0s)
+-- Build files have been written to: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[2]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[3]: Entering directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[ 33%] Building CXX object CMakeFiles/whole_array_optimized.dir/scratch/endrtaka/matmul_dir/mlir-aie/runtime_lib/test_lib/test_utils.cpp.o
+[ 66%] Building CXX object CMakeFiles/whole_array_optimized.dir/whole_array/test.cpp.o
+[100%] Linking CXX executable whole_array_optimized
+gmake[3]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+[100%] Built target whole_array_optimized
+gmake[2]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+gmake[1]: Leaving directory '/scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/_build'
+cp _build/whole_array_optimized whole_array_optimized.exe 
+mkdir -p build
+python3 /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/whole_array_optimized.py -m 80 -k 88 -n 96 -mtk 2112 -ktn 2112 --n-aie-cols 4 --n-aie-rows 4 --b-col-maj 0 -M 4160 -K 4224 -N 4224 --dtype_in i8 --dtype_out i16 --trace_size 0 > build/aie_4160x4224x4224_80x88x96_4rx4c.mlir
+mkdir -p build
+ar rvs build/mm_80x88x96.o precompiled_rowmaj_kernels/mm_b_row_maj_80x88x96_i8_i16.o
+a - precompiled_rowmaj_kernels/mm_b_row_maj_80x88x96_i8_i16.o
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-cdo --no-compile-host --xclbin-name=final_4160x4224x4224_80x88x96_4rx4c.xclbin \
+			  \
+			--aie-generate-npu --npu-insts-name=insts_4160x4224x4224_80x88x96_4rx4c.txt ../build/aie_4160x4224x4224_80x88x96_4rx4c.mlir
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+WARNING: Default location for XILINX_VIVADO_IP_OVERRIDE not found: /build/xfndry/IP_2024.2_INTEGRATION_VERIFIED/customer/vivado/data/ip
+
+
+****** Bootgen v2024.1
+  **** Build date : Feb  4 2025-04:13:21
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+
+[INFO]   : Bootimage generated successfully
+
+Info: Embedded Metadata section is missing project.platform.device.core element, adding it.
+Found xchesscc at /proj/xbuilds/2024.2_INT_1113_1001/installs/all_platforms/Vitis/2024.2/aietools
+ AIE Compilation: ━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 0:00:18 17/17 4 Workers
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_elfs.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_init.bin
+Generating: /scratch/endrtaka/matmul_dir/mlir-aie/programming_examples/basic/matrix_multiplication_experiments/whole_array/build/aie_4160x4224x4224_80x88x96_4rx4c.mlir.prj/aie_cdo_enable.bin
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
+ ./whole_array_optimized.exe -x build/final_4160x4224x4224_80x88x96_4rx4c.xclbin -i build/insts_4160x4224x4224_80x88x96_4rx4c.txt -k MLIR_AIE -M 4160 -K 4224 -N 4224 -v 2 --warmup 10 --iters 100 --b_col_maj 0
+Matrix size 4160x4224x4224
+Sequence instr count: 2868
+Loading xclbin: build/final_4160x4224x4224_80x88x96_4rx4c.xclbin
+Kernel opcode: MLIR_AIE
+Name: MLIR_AIE
+Registering xclbin: build/final_4160x4224x4224_80x88x96_4rx4c.xclbin
+Getting hardware context.
+Getting handle to kernel:MLIR_AIE
+Writing data into buffer objects.
+DTYPE_IN  = int8_t
+DTYPE_OUT = int16_t
+Verification tolerance 0 absolute, 0 relative.
+A = 
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+       0         1         2         3         4   ...      123       124       125       126       127  
+    -128      -127      -126      -125      -124   ...       -5        -4        -3        -2        -1  
+B = 
+       0       -45        92      -103       -88   ...      -82        36       -76       -16        24  
+       0       -76        64       -94        -4   ...      -22       -56       105       116        86  
+       0        35       -22        69      -100   ...      -91        64        64        66      -103  
+    -128       -91        98         5       -92   ...      -47       -40        41        -8       -31  
+       0        82        28        32         8   ...       76       -56        27       106      -118  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    -128       -66        12        95       -88   ...       72        72        -6       -74       -31  
+       0        -9        16      -112        76   ...      -28        64        -7      -110        48  
+       0      -126       104       -42        96   ...      122        32       -60       -32       -29  
+       0      -112      -102      -111       -32   ...     -100        36      -108        94      -125  
+    -128        76      -116       -66       -48   ...      101        44       110       -52         2  
+Running Kernel (iteration 0).
+Running Kernel (iteration 1).
+Running Kernel (iteration 2).
+Running Kernel (iteration 3).
+Running Kernel (iteration 4).
+Running Kernel (iteration 5).
+Running Kernel (iteration 6).
+Running Kernel (iteration 7).
+Running Kernel (iteration 8).
+Running Kernel (iteration 9).
+Running Kernel (iteration 10).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 11).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 12).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 13).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 14).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 15).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 16).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 17).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 18).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 19).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 20).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 21).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 22).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 23).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 24).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 25).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 26).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 27).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 28).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 29).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 30).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 31).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 32).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 33).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 34).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 35).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 36).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 37).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 38).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 39).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 40).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 41).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 42).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 43).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 44).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 45).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 46).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 47).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 48).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 49).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 50).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 51).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 52).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 53).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 54).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 55).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 56).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 57).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 58).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 59).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 60).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 61).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 62).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 63).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 64).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 65).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 66).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 67).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 68).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 69).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 70).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 71).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 72).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 73).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 74).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 75).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 76).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 77).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 78).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 79).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 80).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 81).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 82).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 83).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 84).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 85).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 86).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 87).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 88).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 89).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 90).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 91).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 92).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 93).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 94).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 95).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 96).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 97).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 98).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 99).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 100).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 101).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 102).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 103).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 104).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 105).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 106).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 107).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 108).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+Running Kernel (iteration 109).
+Verifying 1 random samples against reference matmul ...
+
+Verify time: 0.00 s.
+
+Avg NPU matmul time: 29325.20us.
+Avg NPU gflops: 5062.09
+
+Min NPU matmul time: 28087.00us.
+Max NPU gflops: 5285.25
+
+Max NPU matmul time: 31752.00us.
+Min NPU gflops: 4675.20
+
+PASS!
+
+rm -rf tmpTrace parse*.json trace*json trace.txt
+rm -rf build _build *.exe
