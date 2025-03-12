@@ -9,12 +9,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "llvm/ADT/DenseMap.h"
+#include <algorithm>
+#include <cstdint>
 
 using namespace mlir;
 using namespace xilinx;
@@ -291,6 +293,7 @@ public:
     auto d0_zero_after = zero;
     auto d1_zero_after = zero;
     auto d2_zero_after = zero;
+    auto burst_length = zero;
 
     auto issue_token = BoolAttr::get(ctx, false);
     auto repeat_count = zero;
@@ -433,6 +436,9 @@ public:
     // d2_zero_after
     d2_zero_after = IntegerAttr::get(i32ty, op.getD2ZeroAfter());
 
+    // burst_size
+    burst_length = IntegerAttr::get(i32ty, op.getBurstLength());
+
     // Set the issue_token
     issue_token = BoolAttr::get(ctx, op.getIssueToken());
     // Earlier, all S2MM channels were implicitly assumed to issue a token.
@@ -453,7 +459,7 @@ public:
         iteration_size, iteration_stride, next_bd, row, use_next_bd, valid_bd,
         lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id,
         d0_zero_before, d1_zero_before, d2_zero_before, d0_zero_after,
-        d1_zero_after, d2_zero_after);
+        d1_zero_after, d2_zero_after, burst_length);
 
     uint64_t addr = getBufferDescriptorAddressRegisterAddress(
         targetModel, op.getId(), col, 0);
@@ -509,6 +515,32 @@ public:
   }
 };
 
+// Helper method to retrieve the encoding associated to a burst length,
+// or to find the highest available burst length if the requested one is 0
+// (default value).
+uint32_t getBurstLengthEncoding(const AIE::AIETargetModel &tm,
+                                uint32_t burstLengthRequested) {
+  auto bel = tm.getBurstEncodingsAndLengths();
+
+  // If we have the default burst length (no burst length was specified),
+  // use the highest one available on our target model
+  if (burstLengthRequested == 0) {
+    return std::max_element(bel.begin(), bel.end(),
+                            [](auto pair1, auto pair2) {
+                              return pair1.second < pair2.second;
+                            })
+        ->first;
+  }
+
+  // Note that if we are given a burst size, we are checking its existence in
+  // the pass verification already, so we can safely assume it exists.
+  return std::find_if(bel.begin(), bel.end(),
+                      [burstLengthRequested](auto p) {
+                        return p.second == burstLengthRequested;
+                      })
+      ->first;
+}
+
 struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -534,6 +566,8 @@ public:
       bd_addr = (op.getColumn() << tm.getColumnShift()) |
                 (op.getRow() << tm.getRowShift()) | (0x1D000 + bd_id * 0x20);
 
+      auto burstLengthEncoding = getBurstLengthEncoding(tm, op.getBurstLength());
+
       // DMA_BDX_0
       words[0] = op.getBufferLength();
 
@@ -553,7 +587,7 @@ public:
       words[3] |= op.getD0Stride() & 0xfffff;
 
       // DMA_BDX_4
-      words[4] = 0x80000000; // burst length;
+      words[4] = burstLengthEncoding; // burst length;
       words[4] |= (op.getD1Size() & 0x3ff) << 20;
       words[4] |= op.getD1Stride() & 0xfffff;
 

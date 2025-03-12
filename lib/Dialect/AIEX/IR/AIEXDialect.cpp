@@ -15,6 +15,10 @@
 #include "mlir/Transforms/InliningUtils.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <numeric>
+#include <optional>
+#include <string>
 
 using namespace mlir;
 using namespace xilinx;
@@ -335,6 +339,38 @@ bool AIEX::NpuDmaMemcpyNdOp::isLinearTransferWithoutTransformation() {
           inputStrides[1] == 0 && inputStrides[2] == 0);
 }
 
+// Helper method to check if a requested burst length is supported by the target
+// model. Returns an error message if the burst length is not supported or an
+// empty option otherwise.
+static std::optional<std::string>
+checkBurstLength(const xilinx::AIE::AIETargetModel &targetModel,
+                 uint32_t requestedBurstLength) {
+  if (requestedBurstLength != 0) {
+    auto bel = targetModel.getBurstEncodingsAndLengths();
+    auto pair = std::find_if(
+        bel.begin(), bel.end(),
+        [requestedBurstLength](const std::pair<uint32_t, uint32_t> &p) {
+          return p.second == requestedBurstLength;
+        });
+
+    if (pair == bel.end()) {
+      std::string errorMessage =
+          "Requested burst length is not supported by the target."
+          "Supported burst lengths:";
+
+      errorMessage =
+          std::accumulate(bel.begin(), bel.end(), errorMessage,
+                          [](const std::string &a, auto b) {
+                            return a + " " + std::to_string(b.second);
+                          });
+
+      return errorMessage;
+    }
+  }
+
+  return std::nullopt;
+}
+
 LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   BaseMemRefType buffer = getMemref().getType();
   const auto &targetModel = AIE::getTargetModel(*this);
@@ -375,6 +411,11 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   getHardwareStridesWraps(targetModel, buffer, inputSizes, inputStrides,
                           hardwareSizes, hardwareStrides);
   int64_t offset = getOffsetInBytes();
+
+  auto errorMessage = checkBurstLength(targetModel, getBurstLength());
+  if (errorMessage.has_value()) {
+    return emitOpError(errorMessage.value());
+  }
 
   // The experimental HSA target uses this op on AIE1, skip all the AIE2
   // specific checks
@@ -473,6 +514,14 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
        getD1ZeroBefore() != 0 || getD1ZeroAfter() != 0 ||
        getD2ZeroBefore() != 0 || getD2ZeroAfter() != 0))
     return emitOpError("ShimTile doesn't support zero padding.");
+  if (!targetModel.isShimNOCTile(getColumn(), getRow()) &&
+      getBurstLength() != 0)
+    return emitOpError("Only ShimTiles support burst length.");
+  auto errorMessage = checkBurstLength(targetModel, getBurstLength());
+  if (errorMessage.has_value()) {
+    return emitOpError(errorMessage.value());
+  }
+  
   return success();
 }
 
