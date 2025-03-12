@@ -4,14 +4,11 @@ VPATH := $(VISION_KERNELS_VPATH_BASE)/threshold
 
 all: final.xclbin
 
-insts.txt: aie.mlir
-	aiecc.py -v --aie-only-generate-npu --npu-insts-name=$@ $<
-
 threshold.o: threshold.cc
 	xchesscc -d ${CHESSCC2_FLAGS} -DBIT_WIDTH=8 -c $< -o $@
 	
 final.xclbin: aie.mlir threshold.o
-	aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
+	aiecc.py -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--xclbin-name=$@ --npu-insts-name=insts.txt $<
 
 clean:

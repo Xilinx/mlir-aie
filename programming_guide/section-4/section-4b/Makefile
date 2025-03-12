@@ -36,19 +36,19 @@ endif
 
 build/final.xclbin: build/aie.mlir build/scale.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     			$(if $(shell [ $(CHESS) != true ] && echo true), \
     			    --no-xchesscc --no-xbridge \
     			) \
-				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
+				--aie-generate-npu-insts --npu-insts-name=insts.txt $(<:%=../%)
 
 build/trace.xclbin: build/aie_trace.mlir build/scale.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     			$(if $(shell [ $(CHESS) != true ] && echo true), \
     			    --no-xchesscc --no-xbridge \
     			) \
-				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
+				--aie-generate-npu-insts --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	echo $(powershell_srcdir)

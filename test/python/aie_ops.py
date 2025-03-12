@@ -50,6 +50,19 @@ def coreOp():
     with InsertionPoint(bb):
         end()
 
+# CHECK-LABEL: coreOpParameters
+# CHECK: %[[VAL1:.*]] = aie.tile(1, 1)
+# CHECK: %[[VAL2:.*]] = aie.core(%[[VAL1]]) {
+# CHECK:   aie.end
+# CHECK: } {dynamic_objfifo_lowering = false, link_with = "test.elf", stack_size = 2048 : i32}
+@construct_and_print_module
+def coreOpParameters():
+    t = tile(col=1, row=1)
+    c = Core(t, link_with="test.elf", dynamic_objfifo_lowering=False, stack_size=2048)
+    bb = Block.create_at_start(c.body)
+    with InsertionPoint(bb):
+        end()
+
 
 # CHECK-LABEL: memOp
 # CHECK: %[[VAL1:.*]] = aie.tile(2, 2)
@@ -80,6 +93,7 @@ def deviceOp():
 # CHECK: %[[VAL_0:.*]] = aie.tile(0, 3)
 # CHECK: %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<12xi32>
 # CHECK: %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) : memref<2x2xi32> = dense<{{\[}}[0, 1], [2, 3]]>
+# CHECK: %[[VAL_3:.*]] = aie.buffer(%[[VAL_0]]) {address = 48879 : i32} : memref<42xi8>
 @construct_and_print_module
 def bufferOp():
     t = tile(col=0, row=3)
@@ -89,6 +103,7 @@ def bufferOp():
         T.memref(2, 2, T.i32()),
         initial_value=np.arange(2 * 2, dtype=np.int32).reshape(2, 2),
     )
+    b = buffer(t, np.ndarray[(42,), np.dtype[np.int8]], address=0xBEEF)
 
 
 # CHECK-LABEL: externalBufferOp

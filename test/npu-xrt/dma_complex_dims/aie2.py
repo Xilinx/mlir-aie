@@ -9,7 +9,7 @@
 # REQUIRES: ryzen_ai, peano
 #
 # RUN: %python %S/aie2.py --m 8 --k 5 --K 20 --r 4 --s 5 > ./aie2.mlir
-# RUN: %python aiecc.py --no-aiesim --no-xchesscc --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
+# RUN: %python aiecc.py --no-aiesim --no-xchesscc --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
 # RUN: %run_on_npu ./test.exe -x final.xclbin -i insts.txt -k MLIR_AIE --m 8 --k 5 --K 20 --r 4 --s 5
 import argparse

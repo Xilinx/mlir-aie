@@ -95,7 +95,7 @@ else
 	echo "Device type not supported"
 endif
 
-# Build bitstream
+# Build xclbin
 ${XCLBIN_TARGET}: ${XCLBIN_MLIR_SRCS} ${KERNEL_OBJS}
 ifeq ($(DEVICE),npu1)
 	sed -i 's/npu2/npu1_1col/' $<
@@ -105,7 +105,7 @@ else
 	echo "Device type not supported"
 endif
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host \
 		--xclbin-name=${@F} $(<:${HOME_DIR}/kernel/%=../../kernel/%)
 	cp ${XCLBIN_TARGET} ./final.xclbin
 
@@ -120,7 +120,7 @@ else
 	echo "Device type not supported"
 endif
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-only-generate-npu --no-compile-host \
+	cd ${@D} && aiecc.py --aie-generate-npu-insts --no-compile-host \
 		--npu-insts-name=${@:${BITSTREAM_O_DIR}/%=%} $(<:${HOME_DIR}/kernel/%=../../kernel/%) 
 	cp $@ ./
 
