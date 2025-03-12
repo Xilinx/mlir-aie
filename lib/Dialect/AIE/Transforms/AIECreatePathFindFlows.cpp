@@ -36,7 +36,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
                              DynamicTileAnalysis &a, PatternBenefit benefit = 1)
       : OpConversionPattern(context, benefit), device(d), analyzer(a) {}
 
-  LogicalResult match(FlowOp op) const override { return success(); }
+  LogicalResult match(FlowOp op) const { return success(); }
 
   void addConnection(ConversionPatternRewriter &rewriter,
                      // could be a shim-mux or a switchbox.
@@ -61,7 +61,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
   }
 
   void rewrite(FlowOp flowOp, OpAdaptor adaptor,
-               ConversionPatternRewriter &rewriter) const override {
+               ConversionPatternRewriter &rewriter) const {
     Operation *Op = flowOp.getOperation();
 
     auto srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
