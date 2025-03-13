@@ -1,10 +1,10 @@
-//===- dma_to_npu_write_bd_invalid_burst_length.mlir ------------------------------*- MLIR -*-===//
+//===- dma_to_npu__burst_length_invalid.mlir ------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2023-2024 Advanced Micro Devices, Inc. or its affiliates
+// (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 //
 //===----------------------------------------------------------------------===//
 

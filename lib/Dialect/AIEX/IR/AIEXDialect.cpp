@@ -355,7 +355,7 @@ checkBurstLength(const xilinx::AIE::AIETargetModel &targetModel,
 
     if (pair == bel.end()) {
       std::string errorMessage =
-          "Requested burst length is not supported by the target."
+          "Requested burst length is not supported by the target. "
           "Supported burst lengths:";
 
       errorMessage =
@@ -521,7 +521,7 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
   if (errorMessage.has_value()) {
     return emitOpError(errorMessage.value());
   }
-  
+
   return success();
 }
 

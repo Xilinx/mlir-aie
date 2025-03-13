@@ -290,6 +290,12 @@ bool AIE1TargetModel::isLegalTileConnection(int col, int row,
   return false;
 }
 
+std::vector<std::pair<uint32_t, uint32_t>>
+AIE1TargetModel::getBurstEncodingsAndLengths() const {
+  return {std::pair(0x00000000, 64), std::pair(0x40000000, 128),
+          std::pair(0x80000000, 256)};
+}
+
 ///
 /// AIE2 TargetModel
 ///
