@@ -26,7 +26,7 @@
 // CHECK:     %[[VAL_7:.*]] = aie.lock(%{{.*}}tile_1_2, 1) {init = 6 : i32, sym_name = "of0_cons_lock_0"}
 // CHECK:     aie.flow(%{{.*}}tile_1_2, DMA : 0, %{{.*}}tile_1_3, DMA : 0)
 // CHECK:     %mem_1_2 = aie.mem(%{{.*}}tile_1_2) {
-// CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3, repeat_count = 2)
+// CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:       aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, 1)
 // CHECK:       aie.dma_bd(%[[VAL_4]] : memref<2x2xi32>, 0, 4)

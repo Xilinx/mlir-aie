@@ -53,11 +53,14 @@
 // CHECK:       aie.dma_bd(%[[VAL_0]] : memref<36xi32>, 16, 20)
 // CHECK:       aie.next_bd ^bb3
 // CHECK:     ^bb4:  // pred: ^bb2
-// CHECK:       %2 = aie.dma_start(MM2S, 0, ^bb5, ^bb6)
-// CHECK:     ^bb5:  // 2 preds: ^bb4, ^bb5
-// CHECK:       aie.dma_bd(%[[VAL_0]] : memref<36xi32>, 0, 36)
+// CHECK:       %2 = aie.dma_start(MM2S, 0, ^bb5, ^bb7)
+// CHECK:     ^bb5:  // 2 preds: ^bb4, ^bb6
+// CHECK:       aie.dma_bd(%[[VAL_0]] : memref<36xi32>, 0, 16)
+// CHECK:       aie.next_bd ^bb6
+// CHECK:     ^bb6:  // pred: ^bb5
+// CHECK:       aie.dma_bd(%[[VAL_0]] : memref<36xi32>, 16, 20)
 // CHECK:       aie.next_bd ^bb5
-// CHECK:     ^bb6:  // pred: ^bb4
+// CHECK:     ^bb7:  // pred: ^bb4
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:     %mem_2_3 = aie.mem(%{{.*}}tile_2_3) {

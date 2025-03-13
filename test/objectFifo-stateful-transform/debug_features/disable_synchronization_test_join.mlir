@@ -34,21 +34,24 @@
 // CHECK:     aie.flow(%{{.*}}tile_2_1, DMA : 1, %{{.*}}tile_2_3, DMA : 0)
 // CHECK:     aie.shim_dma_allocation @link1(MM2S, 0, 2)
 // CHECK:     %memtile_dma_2_1 = aie.memtile_dma(%{{.*}}tile_2_1) {
-// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
-// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
-// CHECK:       aie.dma_bd(%[[VAL_6]] : memref<36xi32>, 0, 36)
-// CHECK:       aie.next_bd ^bb1
-// CHECK:     ^bb2:  // pred: ^bb0
-// CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb3, ^bb4)
-// CHECK:     ^bb3:  // 2 preds: ^bb2, ^bb3
+// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
+// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:       aie.dma_bd(%[[VAL_6]] : memref<36xi32>, 0, 16)
-// CHECK:       aie.next_bd ^bb3
-// CHECK:     ^bb4:  // pred: ^bb2
-// CHECK:       %2 = aie.dma_start(MM2S, 1, ^bb5, ^bb6)
-// CHECK:     ^bb5:  // 2 preds: ^bb4, ^bb5
+// CHECK:       aie.next_bd ^bb2
+// CHECK:     ^bb2:  // pred: ^bb1
 // CHECK:       aie.dma_bd(%[[VAL_6]] : memref<36xi32>, 16, 20)
-// CHECK:       aie.next_bd ^bb5
-// CHECK:     ^bb6:  // pred: ^bb4
+// CHECK:       aie.next_bd ^bb1
+// CHECK:     ^bb3:  // pred: ^bb0
+// CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb5)
+// CHECK:     ^bb4:  // 2 preds: ^bb3, ^bb4
+// CHECK:       aie.dma_bd(%[[VAL_6]] : memref<36xi32>, 0, 16)
+// CHECK:       aie.next_bd ^bb4
+// CHECK:     ^bb5:  // pred: ^bb3
+// CHECK:       %2 = aie.dma_start(MM2S, 1, ^bb6, ^bb7)
+// CHECK:     ^bb6:  // 2 preds: ^bb5, ^bb6
+// CHECK:       aie.dma_bd(%[[VAL_6]] : memref<36xi32>, 16, 20)
+// CHECK:       aie.next_bd ^bb6
+// CHECK:     ^bb7:  // pred: ^bb5
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:     %mem_2_2 = aie.mem(%{{.*}}tile_2_2) {

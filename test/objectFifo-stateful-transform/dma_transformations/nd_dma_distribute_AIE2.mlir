@@ -68,24 +68,24 @@
 // CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb6, ^bb8)
 // CHECK:     ^bb6:  // 2 preds: ^bb5, ^bb7
 // CHECK:       aie.use_lock(%of0_cons_cons_lock_0, AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%of0_cons_buff_0 : memref<256xi32>, 0, 512, [<size = 4, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
+// CHECK:       aie.dma_bd(%of0_cons_buff_0 : memref<256xi32>, 0, 128, [<size = 4, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
 // CHECK:       aie.use_lock(%of0_cons_prod_lock_0, Release, 1)
 // CHECK:       aie.next_bd ^bb7
 // CHECK:     ^bb7:  // pred: ^bb6
 // CHECK:       aie.use_lock(%of0_cons_cons_lock_0, AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%of0_cons_buff_1 : memref<256xi32>, 0, 512, [<size = 4, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
+// CHECK:       aie.dma_bd(%of0_cons_buff_1 : memref<256xi32>, 0, 128, [<size = 4, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
 // CHECK:       aie.use_lock(%of0_cons_prod_lock_0, Release, 1)
 // CHECK:       aie.next_bd ^bb6
 // CHECK:     ^bb8:  // pred: ^bb5
 // CHECK:       %2 = aie.dma_start(MM2S, 1, ^bb9, ^bb11)
 // CHECK:     ^bb9:  // 2 preds: ^bb8, ^bb10
 // CHECK:       aie.use_lock(%of0_cons_cons_lock_1, AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%of0_cons_buff_0 : memref<256xi32>, 512, -256, [<size = 4, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
+// CHECK:       aie.dma_bd(%of0_cons_buff_0 : memref<256xi32>, 512, 128, [<size = 4, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
 // CHECK:       aie.use_lock(%of0_cons_prod_lock_1, Release, 1)
 // CHECK:       aie.next_bd ^bb10
 // CHECK:     ^bb10:  // pred: ^bb9
 // CHECK:       aie.use_lock(%of0_cons_cons_lock_1, AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%of0_cons_buff_1 : memref<256xi32>, 512, -256, [<size = 4, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
+// CHECK:       aie.dma_bd(%of0_cons_buff_1 : memref<256xi32>, 512, 128, [<size = 4, stride = 64>, <size = 2, stride = 4>, <size = 8, stride = 8>, <size = 4, stride = 1>])
 // CHECK:       aie.use_lock(%of0_cons_prod_lock_1, Release, 1)
 // CHECK:       aie.next_bd ^bb9
 // CHECK:     ^bb11:  // pred: ^bb8
