@@ -10,6 +10,8 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s
 
+// Currently not supported: link should also support lengths in addition to offsets, currently length cannot be correctly inferred.
+
 // CHECK: module @ndDMAObjFifoAIE2 {
 // CHECK:   aie.device(xcve2302) {
 // CHECK:     memref.global "public" @of2_cons : memref<128xi32>
@@ -46,22 +48,22 @@
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb5)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb4
 // CHECK:       aie.use_lock(%[[VAL_10]], AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%[[VAL_8]] : memref<256xi32>, 0, 512)
+// CHECK:       aie.dma_bd(%[[VAL_8]] : memref<256xi32>, 0, 128)
 // CHECK:       aie.use_lock(%[[VAL_11]], Release, 1)
 // CHECK:       aie.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
 // CHECK:       aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%[[VAL_8]] : memref<256xi32>, 512, -256)
+// CHECK:       aie.dma_bd(%[[VAL_8]] : memref<256xi32>, 128, 128)
 // CHECK:       aie.use_lock(%[[VAL_13]], Release, 1)
 // CHECK:       aie.next_bd ^bb3
 // CHECK:     ^bb3:  // pred: ^bb2
 // CHECK:       aie.use_lock(%[[VAL_10]], AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%[[VAL_9]] : memref<256xi32>, 0, 512)
+// CHECK:       aie.dma_bd(%[[VAL_9]] : memref<256xi32>, 0, 128)
 // CHECK:       aie.use_lock(%[[VAL_11]], Release, 1)
 // CHECK:       aie.next_bd ^bb4
 // CHECK:     ^bb4:  // pred: ^bb3
 // CHECK:       aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%[[VAL_9]] : memref<256xi32>, 512, -256)
+// CHECK:       aie.dma_bd(%[[VAL_9]] : memref<256xi32>, 128, 128)
 // CHECK:       aie.use_lock(%[[VAL_13]], Release, 1)
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb5:  // pred: ^bb0
