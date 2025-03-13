@@ -51,7 +51,7 @@ def main(opts):
     # --------------------------------------------------------------------------
 
     print("Running...\n")
-    res = xrt_utils.xrt_test_run(
+    res = xrt_utils.setup_and_run_aie(
         in1_dtype,
         in2_dtype,
         out_dtype,

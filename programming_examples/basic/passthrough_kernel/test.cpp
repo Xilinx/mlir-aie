@@ -68,8 +68,8 @@ int main(int argc, const char *argv[]) {
 
   args myargs = parse_args(argc, argv);
 
-  int res = xrt_test_run<DATATYPE_IN1, DATATYPE_OUT, initialize_bufIn1,
-                         initialize_bufOut, verify_passthrough_kernel>(
+  int res = setup_and_run_aie<DATATYPE_IN1, DATATYPE_OUT, initialize_bufIn1,
+                              initialize_bufOut, verify_passthrough_kernel>(
       IN1_VOLUME, OUT_VOLUME, myargs);
   return res;
 }

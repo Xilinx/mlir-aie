@@ -52,8 +52,8 @@ struct args parse_args(int argc, const char *argv[]) {
 template <typename T1, typename T2, typename T3, void (*init_bufIn1)(T1 *, int),
           void (*init_bufIn2)(T2 *, int), void (*init_bufOut)(T3 *, int),
           int (*verify_results)(T1 *, T2 *, T3 *, int, int)>
-int xrt_test_run(int IN1_VOLUME, int IN2_VOLUME, int OUT_VOLUME,
-                 struct args myargs) {
+int setup_and_run_aie(int IN1_VOLUME, int IN2_VOLUME, int OUT_VOLUME,
+                      struct args myargs) {
 
   srand(time(NULL));
 
@@ -229,7 +229,7 @@ int xrt_test_run(int IN1_VOLUME, int IN2_VOLUME, int OUT_VOLUME,
 template <typename T1, typename T3, void (*init_bufIn1)(T1 *, int),
           void (*init_bufOut)(T3 *, int),
           int (*verify_results)(T1 *, T3 *, int, int)>
-int xrt_test_run(int IN1_VOLUME, int OUT_VOLUME, struct args myargs) {
+int setup_and_run_aie(int IN1_VOLUME, int OUT_VOLUME, struct args myargs) {
 
   srand(time(NULL));
 

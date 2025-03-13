@@ -6,6 +6,7 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
+import argparse
 import sys
 
 from aie.dialects.aie import *
@@ -16,15 +17,22 @@ from aie.helpers.dialects.ext.scf import _for as range_
 import aie.utils.trace as trace_utils
 
 
-def passthrough_kernel(dev, in1_size, out_size, trace_size):
-    N = in1_size
+def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
+    in1_dtype = np.uint8
+    out_dtype = np.uint8
+
+    N = in1_size // in1_dtype(0).nbytes
     lineWidthInBytes = N // 4  # chop input in 4 sub-tensors
+
+    assert (
+        out_size == in1_size
+    ), "Output buffer size must be equal to input buffer size."
 
     @device(dev)
     def device_body():
         # define types
-        vector_ty = np.ndarray[(N,), np.dtype[np.uint8]]
-        line_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
+        vector_ty = np.ndarray[(N,), np.dtype[in1_dtype]]
+        line_ty = np.ndarray[(lineWidthInBytes,), np.dtype[in1_dtype]]
 
         # AIE Core Function declarations
         passThroughLine = external_func(
@@ -81,25 +89,42 @@ def passthrough_kernel(dev, in1_size, out_size, trace_size):
 if len(sys.argv) < 4:
     raise ValueError("[ERROR] Need at least 4 arguments (dev, in1_size, out_size)")
 
-device_name = str(sys.argv[1])
-if device_name == "npu":
+
+p = argparse.ArgumentParser()
+p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
+p.add_argument(
+    "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
+)
+p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
+p.add_argument(
+    "-t",
+    "--trace_size",
+    required=False,
+    dest="trace_size",
+    default=0,
+    help="Trace buffer size",
+)
+opts = p.parse_args(sys.argv[1:])
+
+if opts.device == "npu":
     dev = AIEDevice.npu1_1col
-elif device_name == "npu2":
+elif opts.device == "npu2":
     dev = AIEDevice.npu2
 else:
     raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-in1_size = int(sys.argv[2])
+in1_size = int(opts.in1_size)
 if in1_size % 64 != 0 or in1_size < 512:
-    raise ValueError(
-        "[ERROR] In1 buffer size ("
+    print(
+        "In1 buffer size ("
         + str(in1_size)
         + ") must be a multiple of 64 and greater than or equal to 512"
     )
-out_size = int(sys.argv[3])
-trace_size = 0 if (len(sys.argv) != 5) else int(sys.argv[4])
+    raise ValueError
+out_size = int(opts.out_size)
+trace_size = int(opts.trace_size)
 
 with mlir_mod_ctx() as ctx:
-    passthrough_kernel(dev, in1_size, out_size, trace_size)
+    my_passthrough_kernel(dev, in1_size, out_size, trace_size)
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)

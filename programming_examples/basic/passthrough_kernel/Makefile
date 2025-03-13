@@ -20,6 +20,7 @@ out_size = 4096 # in bytes, should always be equal to in1_size
 trace_size = 8192
 CHESS ?= false
 
+colshift ?= $(if $(filter 1,$(NPU2)),0,1)
 data_size = in1_size
 aie_py_src=${targetname}.py
 use_alt?=0
@@ -32,14 +33,6 @@ endif
 
 all: build/final_${data_size}.xclbin
 
-build/aie2_lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${devicename} ${in1_size} ${out_size} 0 > $@
-
-build/aie2_trace_lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${devicename} ${in1_size} ${out_size} ${trace_size} > $@
-
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
 ifeq ($(devicename),npu)
@@ -49,7 +42,15 @@ else ifeq ($(devicename),npu2)
 else
 	echo "Device type not supported"
 endif
-	
+
+build/aie2_lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
+	mkdir -p ${@D}
+	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} > $@
+
+build/aie2_trace_lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
+	mkdir -p ${@D}
+	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} -t ${trace_size} > $@
+
 build/final_${data_size}.xclbin: build/aie2_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
@@ -82,12 +83,12 @@ run_py: build/final_${data_size}.xclbin build/insts_${data_size}.txt
 
 trace: ${targetname}_${data_size}.exe build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt 
 	${powershell} ./$< -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir --colshift 1 > trace_passthrough_kernel.json
+	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir --colshift ${colshift} > trace_passthrough_kernel.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_passthrough_kernel.json
 
 trace_py: build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt
 	${powershell} python3 ${srcdir}/test.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -os ${out_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir --colshift 1 > trace_passthrough_kernel.json
+	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir --colshift ${colshift} > trace_passthrough_kernel.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_passthrough_kernel.json
 
 clean_trace:

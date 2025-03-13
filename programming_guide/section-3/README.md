@@ -118,11 +118,11 @@ Note that since the scalar factor is communicated through an object, it is provi
 
 ## Host Code
 
-The host code acts as an environment setup and testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and kick off the execution of the AIE design on the NPU. After running, it verifies the results and optionally outputs trace data (to be covered in [section-4c](../section-4/section-4c/)). Both C++ [test.cpp](./test.cpp) and Python [test.py](./test.py) variants of this code are available.
+The host code acts as an environment setup and testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and kick off the execution of the AIE design on the NPU. After running, it verifies the results and optionally outputs trace data (to be covered in [section-4b](../section-4/section-4b/)). Both C++ [test.cpp](./test.cpp) and Python [test.py](./test.py) variants of this code are available.
 
 For convenience, a set of test utilities support common elements of command line parsing, the XRT-based environment setup and testbench functionality: [test_utils.h](../../runtime_lib/test_lib/test_utils.h) or [test.py](../../python/utils/test.py).   
 
-The host code contains the following elements:
+The host code contains the following sections (with C/C++ code examples):
 
 1. *Parse program arguments and set up constants*: the host code typically requires the following 3 arguments: 
     * `-x` the XCLBIN file
@@ -131,22 +131,125 @@ The host code contains the following elements:
     
     This is because it is its task to load those files and set the kernel name. Both the XCLBIN and instruction sequence are generated when compiling the AIE-array structural description and kernel code with `aiecc.py`.
 
+    ```c
+    // Program arguments parsing
+    po::options_description desc("Allowed options");
+    po::variables_map vm;
+    test_utils::add_default_options(desc);
+
+    test_utils::parse_options(argc, argv, desc, vm);
+    int verbosity = vm["verbosity"].as<int>();
+
+    // Declaring design constants
+    constexpr bool VERIFY = true;
+    constexpr int IN_SIZE = 4096;
+    constexpr int OUT_SIZE = IN_SIZE;
+    ```
+
 1. *Read instruction sequence*: load the instruction sequence from the specified file in memory
+
+    ```c
+    // Load instruction sequence
+    std::vector<uint32_t> instr_v =
+        test_utils::load_instr_sequence(vm["instr"].as<std::string>());
+    ```
 
 1. *Create XRT environment*: so that we can use the XRT runtime
 
-1. *Create XRT buffer objects* for the instruction sequence, inputs (vector `a` and `factor`) and output (vector `c`). Note that the `kernel.group_id(<number>)` needs to match the order of `def sequence(A, F, C):` in the data movement to/from the AIE-array of python AIE-array structural description, starting with ID number 2 for the first sequence argument and then incrementing by 1. This mapping is described as well in the [python utils documentation](../../python/utils/README.md#configure-shimdma). 
+    ```c
+    xrt::device device;
+    xrt::kernel kernel;
 
-1. *Initialize and synchronize*: host to device XRT buffer objects
+    test_utils::init_xrt_load_kernel(device, kernel, verbosity,
+                                    vm["xclbin"].as<std::string>(),
+                                    vm["kernel"].as<std::string>());
+    ```
 
+1. *Create XRT buffer objects* for the instruction sequence, inputs (vector `a` and `factor`) and output (vector `c`). 
+
+    XRT currently supports the mapping of up to 5 inout buffers to the kernel. The AIE array does not have a limit to how many inout buffers its data movers can map to but for the sake of simplicity, XRT limits this to 5. If more than 5 is needed, we can map multiple data movers to the same inout buffer with an offset for each data mover. Most of the examples only use 2 inout buffers (1 input, 1 output) or 3 inout buffers (2 inputs, 1 output). Later on, when we introduce tracing, we will use another inout buffer dedicated to trace data.
+
+    Note that the `kernel.group_id(<number>)` needs to match the order of `def sequence(A, F, C):` in the data movement to/from the AIE-array of python AIE-array structural description, starting with ID number 3 for the first sequence argument and then incrementing by 1. So the 1 input, 1 output pattern maps to group_id=3,4 while the 2 input, 1 output pattern maps to group_id=3,4,5 as shown below.
+
+    This mapping is described as well in the [python utils documentation](../../python/utils/README.md#configure-shimdma). 
+
+    ```c
+    // set up the buffer objects
+    auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
+                            XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
+    auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(DATATYPE),
+                            XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+    auto bo_inFactor = xrt::bo(device, 1 * sizeof(DATATYPE),
+                                XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+    auto bo_outC = xrt::bo(device, OUT_SIZE * sizeof(DATATYPE),
+                            XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
+    ```
+
+1. *Initialize and synchronize*: host to device XRT buffer objects.
+
+    Here, we iniitliaze the values of our host buffer objects (including output) and call `sync` to synchronize that data to the device buffer object accessed by the kernel.
+
+    ```c
+    // Copy instruction stream to xrt buffer object
+    void *bufInstr = bo_instr.map<void *>();
+    memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
+
+    // Initialize buffer bo_inA
+    DATATYPE *bufInA = bo_inA.map<DATATYPE *>();
+    for (int i = 0; i < IN_SIZE; i++)
+        bufInA[i] = i + 1;
+
+    // Initialize buffer bo_inFactor
+    DATATYPE *bufInFactor = bo_inFactor.map<DATATYPE *>();
+    *bufInFactor = scaleFactor;
+
+    // Zero out buffer bo_outC
+    DATATYPE *bufOut = bo_outC.map<DATATYPE *>();
+    memset(bufOut, 0, OUT_SIZE * sizeof(DATATYPE));
+
+    // sync host to device memories
+    bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+    bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+    bo_inFactor.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+    bo_outC.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+    ```
 1. *Run on AIE and synchronize*: Execute the kernel, wait to finish, and synchronize device to host XRT buffer objects
+
+    ```c
+    unsigned int opcode = 3;
+    auto run =
+        kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inFactor, bo_outC);
+    run.wait();
+
+    // Sync device to host memories
+    bo_outC.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    ```
 
 1. *Run testbench checks*: Compare device results to reference and report test status
 
+    ```c
+    // Compare out to golden
+    int errors = 0;
+    if (verbosity >= 1) {
+        std::cout << "Verifying results ..." << std::endl;
+    }
+    for (uint32_t i = 0; i < IN_SIZE; i++) {
+        int32_t ref = bufInA[i] * scaleFactor;
+        int32_t test = bufOut[i];
+        if (test != ref) {
+        if (verbosity >= 1)
+            std::cout << "Error in output " << test << " != " << ref << std::endl;
+        errors++;
+        } else {
+        if (verbosity >= 1)
+            std::cout << "Correct output " << test << " == " << ref << std::endl;
+        }
+    }
+    ```
 
 ## Running the Program
 
-To compile the design and C++ testbench:
+To compile the design and C/C++ host code:
 
 ```sh
 make
@@ -160,7 +263,7 @@ make run
 
 ### Python Testbench
 
-To compile the design and run the Python testbench:
+To compile the design and run the Python host code:
 
 ```sh
 make
@@ -171,5 +274,14 @@ To run the design:
 ```sh
 make run_py
 ```
+
+## Host code templates and design practices
+Because our design is defined in several different files such as:
+* top level design - aie2.py
+* kernel source - vector_scalar_mul.cc
+* host code - test.cpp/test.py
+
+ensuring that top level design parameters stay consistent is important so we don't, for example, get system hangs when buffer sizes in the host code don't match the buffer size in the top level design. To help with this, we will share example design templates in [section-4b](../section4/section-4b) which puts these top level parameters in the `Makefile` and passes them to the other design files. More details will be described in [section-4b](../section-4/section-4b) or can be directly seen in example designs like [vector_scalar_mul](../../programming_examples/basic/vector_scalar_mul).
+
 -----
 [[Prev - Section 2](../section-2/)] [[Top](..)] [[Next - Section 4](../section-4/)]

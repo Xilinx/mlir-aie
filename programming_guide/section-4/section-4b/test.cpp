@@ -75,9 +75,9 @@ int main(int argc, const char *argv[]) {
 
   args myargs = parse_args(argc, argv);
 
-  int res = xrt_test_run<DATATYPE_IN1, DATATYPE_IN2, DATATYPE_OUT,
-                         initialize_bufIn1, initialize_bufIn2,
-                         initialize_bufOut, verify_vector_scalar_mul>(
+  int res = setup_and_run_aie<DATATYPE_IN1, DATATYPE_IN2, DATATYPE_OUT,
+                              initialize_bufIn1, initialize_bufIn2,
+                              initialize_bufOut, verify_vector_scalar_mul>(
       IN1_VOLUME, IN2_VOLUME, OUT_VOLUME, myargs);
   return res;
 }

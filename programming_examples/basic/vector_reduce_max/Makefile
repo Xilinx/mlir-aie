@@ -20,7 +20,7 @@ in1_size = 4096 # in bytes
 out_size = 4 # in bytes, should always be equal to in1_size
 trace_size = 1024
 
-
+colshift ?= $(if $(filter 1,$(NPU2)),0,1)
 aie_py_src=${targetname}.py
 use_alt?=0
 
@@ -32,22 +32,21 @@ endif
 
 all: build/final.xclbin
 
-build/aie2.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${devicename} ${in1_size} ${out_size} 0 > $@
-
-build/aie2_trace.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${devicename} ${in1_size} ${out_size} ${trace_size} > $@
-
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
-
 ifeq ($(devicename),npu2)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
 else
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
 endif
+
+build/aie2.mlir: ${srcdir}/${aie_py_src}
+	mkdir -p ${@D}
+	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} > $@
+
+build/aie2_trace.mlir: ${srcdir}/${aie_py_src}
+	mkdir -p ${@D}
+	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} -t ${trace_size} > $@
 
 build/final.xclbin: build/aie2.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
@@ -79,13 +78,13 @@ run_py: build/final.xclbin build/insts.txt
 	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -i1s ${in1_size} -os ${out_size}
 
 trace: ${targetname}.exe build/final_trace.xclbin build/insts.txt 
-	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size} -v 1
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace.mlir --colshift 1 > trace_vector_reduce_max.json
+	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
+	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace.mlir --colshift ${colshift} > trace_vector_reduce_max.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_vector_reduce_max.json
 
 trace_py: build/final_trace.xclbin build/insts.txt
 	${powershell} python3 ${srcdir}/test.py -x build/final_trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -os ${out_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace.mlir --colshift 1 > trace_vector_reduce_max.json
+	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace.mlir --colshift ${colshift} > trace_vector_reduce_max.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_vector_reduce_max.json
 
 clean_trace:
