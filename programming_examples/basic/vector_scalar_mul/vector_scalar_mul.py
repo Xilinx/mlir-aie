@@ -55,7 +55,7 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
         elem_factor = of_factor.acquire(1)
 
         # Number of sub-vector "tile" iterations
-        for _ in range_(N_div_n):
+        for _ in range_(num_sub_vectors):
             elem_in = of_in.acquire(1)
             elem_out = of_out.acquire(1)
             scale_fn(elem_in, elem_out, elem_factor, tile_size)
