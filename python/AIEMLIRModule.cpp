@@ -126,9 +126,10 @@ NB_MODULE(_aie, m) {
       [](MlirOperation op, const std::string &sequence_name) {
         MlirStringRef instStr = aieTranslateNpuToBinary(
             op, {sequence_name.data(), sequence_name.size()});
+        size_t num_insts = instStr.length / sizeof(uint32_t);
         std::vector<uint32_t> vec(
             reinterpret_cast<const uint32_t *>(instStr.data),
-            reinterpret_cast<const uint32_t *>(instStr.data) + instStr.length);
+            reinterpret_cast<const uint32_t *>(instStr.data) + num_insts);
         free((void *)instStr.data);
         return vec;
       },
@@ -138,9 +139,10 @@ NB_MODULE(_aie, m) {
       "generate_control_packets",
       [](MlirOperation op) {
         MlirStringRef instStr = aieTranslateControlPacketsToUI32Vec(op);
+        size_t num_insts = instStr.length / sizeof(uint32_t);
         std::vector<uint32_t> vec(
             reinterpret_cast<const uint32_t *>(instStr.data),
-            reinterpret_cast<const uint32_t *>(instStr.data) + instStr.length);
+            reinterpret_cast<const uint32_t *>(instStr.data) + num_insts);
         free((void *)instStr.data);
         return vec;
       },
