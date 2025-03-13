@@ -1,6 +1,6 @@
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# See https://llvm.org/LICENSE.bin for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
@@ -68,10 +68,10 @@ build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1_i8.o
 ifeq ($(device),npu)
 	cd ${@D} && aiecc.py -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
+		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
 else
 	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
+		--xclbin-name=${@F} --npu-insts-name=insts.bin ${<F}
 endif
 
 build/final_trace.xclbin: build/${mlirFileName}_trace.mlir build/conv2dk1_i8.o 
@@ -79,21 +79,21 @@ build/final_trace.xclbin: build/${mlirFileName}_trace.mlir build/conv2dk1_i8.o
 ifeq ($(device),npu)
 	cd ${@D} && aiecc.py -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts_trace.txt $(<:%=../%)
+		--xclbin-name=${@F} --npu-insts-name=insts_trace.bin $(<:%=../%)
 else
 	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
-		--xclbin-name=${@F} --npu-insts-name=insts_trace.txt ${<F}
+		--xclbin-name=${@F} --npu-insts-name=insts_trace.bin ${<F}
 endif
 
 run_py: build/final.xclbin
-	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -wd ${width} -ht ${height} -ic ${in_channels} -oc ${out_channels}
+	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -wd ${width} -ht ${height} -ic ${in_channels} -oc ${out_channels}
 
 trace_py: build/final_trace.xclbin
-	${powershell} python3 ${srcdir}/test.py -x build/final_trace.xclbin -i build/insts_trace.txt -k MLIR_AIE -wd ${width} -ht ${height} -ic ${in_channels} -oc ${out_channels} -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename log/trace_conv2d.txt --mlir build/aie_trace.mlir --colshift 1 > log/trace_conv2d.json
+	${powershell} python3 ${srcdir}/test.py -x build/final_trace.xclbin -i build/insts_trace.bin -k MLIR_AIE -wd ${width} -ht ${height} -ic ${in_channels} -oc ${out_channels} -t ${trace_size}
+	${srcdir}/../../utils/parse_trace.py --filename log/trace_conv2d.bin --mlir build/aie_trace.mlir --colshift 1 > log/trace_conv2d.json
 	${srcdir}/../../utils/get_trace_summary.py --filename log/trace_conv2d.json
 
 clean:
 	rm -rf build *.elf* *.lst *.bif ${mlirFileName}.mlir.prj log* *.xclbin sim \
-		chess* *.o insts.txt \
+		chess* *.o insts.bin \
 		*.log aie_partition.json *.bin BOOT.BIN _x test.exe

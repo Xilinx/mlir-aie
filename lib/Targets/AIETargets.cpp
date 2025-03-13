@@ -346,33 +346,36 @@ void registerAIETranslations() {
   TranslateFromMLIRRegistration registrationNPU(
       "aie-npu-to-binary", "Translate npu instructions to binary",
       [](ModuleOp module, raw_ostream &output) {
-        if (outputBinary == true) {
-          std::vector<uint32_t> instructions;
-          auto r = AIETranslateNpuToBinary(module, instructions, sequenceName);
-          if (failed(r))
-            return r;
+        std::vector<uint32_t> instructions;
+        auto r = AIETranslateNpuToBinary(module, instructions, sequenceName);
+        if (failed(r))
+          return r;
+        if (outputBinary) {
           output.write(reinterpret_cast<const char *>(instructions.data()),
-                       instructions.size() * sizeof(uint32_t));
-          return success();
+                      instructions.size() * sizeof(uint32_t));
+        } else {
+            for (auto w : instructions)
+              output << llvm::format("%08X\n", w);
         }
-        return AIETranslateNpuToBinary(module, output, sequenceName);
+        return success();
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationCtrlPkt(
       "aie-ctrlpkt-to-bin", "Translate aiex.control_packet ops to binary",
       [](ModuleOp module, raw_ostream &output) {
-        if (outputBinary == true) {
-          std::vector<uint32_t> instructions;
-          auto r = AIETranslateControlPacketsToUI32Vec(module, instructions,
-                                                       sequenceName);
-          if (failed(r))
-            return r;
+        std::vector<uint32_t> instructions;
+        auto r = AIETranslateControlPacketsToUI32Vec(module, instructions,
+                                                      sequenceName);
+        if (failed(r))
+          return r;
+        if (outputBinary) {
           output.write(reinterpret_cast<const char *>(instructions.data()),
                        instructions.size() * sizeof(uint32_t));
-          return success();
+        } else {
+          for (auto w : instructions)
+            output << llvm::format("%08X\n", w);
         }
-        return AIETranslateControlPacketsToUI32Vec(module, output,
-                                                   sequenceName);
+        return success();
       },
       registerDialects);
 }

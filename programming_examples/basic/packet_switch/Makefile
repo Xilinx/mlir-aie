@@ -1,6 +1,6 @@
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# See https://llvm.org/LICENSE.bin for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2025, Advanced Micro Devices, Inc.
@@ -22,8 +22,8 @@ MLIR_O_DIR := build/mlir
 BITSTREAM_O_DIR := build/bitstream
 XCLBIN_MLIR_SRCS := ${HOME_DIR}/mlir/aie_add.mlir
 XCLBIN_MLIR_SRCS += ${HOME_DIR}/mlir/aie_mul.mlir
-INSTS_TARGET := ${BITSTREAM_O_DIR}/insts_mul.txt
-INSTS_TARGET += ${BITSTREAM_O_DIR}/insts_add.txt
+INSTS_TARGET := ${BITSTREAM_O_DIR}/insts_mul.bin
+INSTS_TARGET += ${BITSTREAM_O_DIR}/insts_add.bin
 XCLBIN_TARGET := ${BITSTREAM_O_DIR}/final.xclbin
 
 # Host stuff
@@ -60,7 +60,7 @@ clean:
 	-@rm -rf ${HOST_C_TARGET}
 	-@rm -rf trace*
 	-@rm -rf *.xclbin
-	-@rm -rf *.txt
+	-@rm -rf *.bin
 
 
 test:
@@ -111,7 +111,7 @@ endif
 
 
 # Build instructions
-${BITSTREAM_O_DIR}/insts_%.txt: ${HOME_DIR}/mlir/aie_%.mlir
+${BITSTREAM_O_DIR}/insts_%.bin: ${HOME_DIR}/mlir/aie_%.mlir
 ifeq ($(DEVICE),npu1)
 	sed -i 's/npu2/npu1_1col/' $<
 else ifeq ($(DEVICE),npu2)

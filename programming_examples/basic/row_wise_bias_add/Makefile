@@ -1,7 +1,7 @@
 ##===- Makefile -----------------------------------------------------------===##
 # 
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# See https://llvm.org/LICENSE.bin for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
@@ -29,7 +29,7 @@ CXX=g++-13 -ggdb
 
 mlir_target?=build/aie.mlir
 xclbin_target?=build/final.xclbin
-insts_target?=build/insts.txt
+insts_target?=build/insts.bin
 host_target?=build/test
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)

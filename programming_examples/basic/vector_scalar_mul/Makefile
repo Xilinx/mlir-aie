@@ -1,7 +1,7 @@
 ##===- Makefile -----------------------------------------------------------===##
 # 
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# See https://llvm.org/LICENSE.bin for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
@@ -31,7 +31,7 @@ ifeq (${use_alt}, 1)
 aie_py_src=${targetname}_alt.py
 endif
 
-all: build/final_${data_size}.xclbin build/insts_${data_size}.txt
+all: build/final_${data_size}.xclbin build/insts_${data_size}.bin
 
 build/%.o: %.cc
 	mkdir -p ${@D}
@@ -59,27 +59,27 @@ build/aie_trace_${data_size}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${devicename} ${in1_size} ${in2_size} ${out_size} ${trace_size} > $@
 
-#build/insts_${data_size}.txt: build/final_${data_size}.xclbin
+#build/insts_${data_size}.bin: build/final_${data_size}.xclbin
 build/final_${data_size}.xclbin: build/aie_${data_size}.mlir build/scale.o
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-npu-insts --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
+				--aie-generate-npu-insts --npu-insts-name=insts_${data_size}.bin $(<:%=../%)
 else
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     	  --no-xchesscc --no-xbridge \
-				--aie-generate-npu-insts --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
+				--aie-generate-npu-insts --npu-insts-name=insts_${data_size}.bin $(<:%=../%)
 endif
 
 build/final_trace_${data_size}.xclbin: build/aie_trace_${data_size}.mlir build/scale.o
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-npu-insts --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
+				--aie-generate-npu-insts --npu-insts-name=insts_${data_size}.bin $(<:%=../%)
 else
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
-				--aie-generate-npu-insts --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
+				--aie-generate-npu-insts --npu-insts-name=insts_${data_size}.bin $(<:%=../%)
 endif
 
 ${targetname}_${data_size}.exe: ${srcdir}/test.cpp
@@ -93,26 +93,26 @@ else
 	cp _build/${targetname}_${data_size} $@ 
 endif
 
-run: ${targetname}_${data_size}.exe build/final_${data_size}.xclbin build/insts_${data_size}.txt 
-	${powershell} ./$< -x build/final_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE
+run: ${targetname}_${data_size}.exe build/final_${data_size}.xclbin build/insts_${data_size}.bin 
+	${powershell} ./$< -x build/final_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE
 
-run_py: build/final_${data_size}.xclbin build/insts_${data_size}.txt
-	${powershell} python3 ${srcdir}/test.py -x build/final_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -i1s ${in1_size} -i2s ${in2_size} -os ${out_size}
+run_py: build/final_${data_size}.xclbin build/insts_${data_size}.bin
+	${powershell} python3 ${srcdir}/test.py -x build/final_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE -i1s ${in1_size} -i2s ${in2_size} -os ${out_size}
 
-trace: ${targetname}_${data_size}.exe build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt 
-	${powershell} ./$< -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift 1 > trace_vector_scalar_mul.json
+trace: ${targetname}_${data_size}.exe build/final_trace_${data_size}.xclbin build/insts_${data_size}.bin 
+	${powershell} ./$< -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE -t ${trace_size}
+	${srcdir}/../../utils/parse_trace.py --filename trace.bin --mlir build/aie_trace_${data_size}.mlir --colshift 1 > trace_vector_scalar_mul.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_vector_scalar_mul.json
 
-trace_py: build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt
-	#${powershell} python3 ${srcdir}/test_orig.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -i2s ${in2_size} -os ${out_size} --size 4096
-	${powershell} python3 ${srcdir}/test.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -i2s ${in2_size} -os ${out_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift 1 > trace_vector_scalar_mul.json
+trace_py: build/final_trace_${data_size}.xclbin build/insts_${data_size}.bin
+	#${powershell} python3 ${srcdir}/test_orig.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -i2s ${in2_size} -os ${out_size} --size 4096
+	${powershell} python3 ${srcdir}/test.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -i2s ${in2_size} -os ${out_size}
+	${srcdir}/../../utils/parse_trace.py --filename trace.bin --mlir build/aie_trace_${data_size}.mlir --colshift 1 > trace_vector_scalar_mul.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_vector_scalar_mul.json
 
 
 clean_trace:
-	rm -rf tmpTrace trace.txt parse*json trace*json
+	rm -rf tmpTrace trace.bin parse*json trace*json
 
 clean: clean_trace
 	rm -rf build _build ${targetname}*.exe

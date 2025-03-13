@@ -29,7 +29,7 @@
 #define BIAS_SIZE (N * sizeof(float))    // in bytes
 #define OUT_SIZE (M * N * sizeof(float)) // in bytes
 
-std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
+std::vector<uint32_t> load_instr_binary(std::string instr_path) {
   std::ifstream instr_file(instr_path);
   std::string line;
   std::vector<uint32_t> instr_v;
@@ -55,7 +55,7 @@ void print_matrix(float *buf, int n_rows, int n_cols) {
 
 int main(int argc, const char *argv[]) {
 
-  std::vector<uint32_t> instr_v = load_instr_sequence(INSTS_TXT);
+  std::vector<uint32_t> instr_v = load_instr_binary(INSTS_TXT);
   assert(instr_v.size() > 0);
 
   // Get a device handle

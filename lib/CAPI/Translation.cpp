@@ -94,26 +94,26 @@ MlirOperation aieTranslateBinaryToTxn(MlirContext ctx, MlirStringRef binary) {
 
 MlirStringRef aieTranslateNpuToBinary(MlirOperation moduleOp,
                                       MlirStringRef sequenceName) {
-  std::string npu;
-  llvm::raw_string_ostream os(npu);
+  std::vector<uint32_t> insts;
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
   llvm::StringRef name(sequenceName.data, sequenceName.length);
-  if (failed(AIETranslateNpuToBinary(mod, os, name)))
+  if (failed(AIETranslateNpuToBinary(mod, insts, name)))
     return mlirStringRefCreate(nullptr, 0);
-  char *cStr = static_cast<char *>(malloc(npu.size()));
-  npu.copy(cStr, npu.size());
-  return mlirStringRefCreate(cStr, npu.size());
+  size_t insts_size = insts.size() * sizeof(uint32_t);
+  char *cStr = static_cast<char *>(malloc(insts_size));
+  memcpy(cStr, insts.data(), insts_size);
+  return mlirStringRefCreate(cStr, insts_size);
 }
 
 MlirStringRef aieTranslateControlPacketsToUI32Vec(MlirOperation moduleOp) {
-  std::string npu;
-  llvm::raw_string_ostream os(npu);
+  std::vector<uint32_t> insts;
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
-  if (failed(AIETranslateControlPacketsToUI32Vec(mod, os)))
+  if (failed(AIETranslateControlPacketsToUI32Vec(mod, insts)))
     return mlirStringRefCreate(nullptr, 0);
-  char *cStr = static_cast<char *>(malloc(npu.size()));
-  npu.copy(cStr, npu.size());
-  return mlirStringRefCreate(cStr, npu.size());
+  size_t insts_size = insts.size() * sizeof(uint32_t);
+  char *cStr = static_cast<char *>(malloc(insts_size));
+  memcpy(cStr, insts.data(), insts_size);
+  return mlirStringRefCreate(cStr, insts_size);
 }
 
 MlirStringRef aieTranslateToXAIEV2(MlirOperation moduleOp) {
