@@ -44,7 +44,7 @@
 // CHECK:     aie.shim_dma_allocation @of0(MM2S, 0, 1)
 // CHECK:     %memtile_dma_1_1 = aie.memtile_dma(%{{.*}}tile_1_1) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb5)
-// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
+// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb4
 // CHECK:       aie.use_lock(%[[VAL_10]], AcquireGreaterEqual, 3)
 // CHECK:       aie.dma_bd(%[[VAL_8]] : memref<32xi32>, 0, 16)
 // CHECK:       aie.use_lock(%[[VAL_11]], Release, 3)
