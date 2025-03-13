@@ -36,9 +36,9 @@
 // CHECK:        %c1 = arith.constant 1 : index
 // CHECK:        %c10 = arith.constant 10 : index
 // CHECK:        scf.for %arg0 = %c0_0 to %c10 step %c1 {
-// CHECK:          aie.use_lock(%[[VAL_2], AcquireGreaterEqual, 1)
-// CHECK:          func.call @passthrough_10_i32(%[[VAL_0]) : (memref<10xi32>) -> ()
-// CHECK:          aie.use_lock(%[[VAL_1], Release, 1)
+// CHECK:          aie.use_lock(%[[VAL_2]], AcquireGreaterEqual, 1)
+// CHECK:          func.call @passthrough_10_i32(%[[VAL_0]]) : (memref<10xi32>) -> ()
+// CHECK:          aie.use_lock(%[[VAL_1]], Release, 1)
 // CHECK:          %0 = memref.load %buffer_0_2[%c0] : memref<1xi32>
 // CHECK:          %c1_i32_1 = arith.constant 1 : i32
 // CHECK:          %1 = arith.addi %0, %c1_i32_1 : i32
@@ -53,9 +53,9 @@
 // CHECK:      %mem_0_2 = aie.mem(%{{.*}}tile_0_2) {
 // CHECK:        %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:      ^bb1:  // 2 preds: ^bb0, ^bb1
-// CHECK:        aie.use_lock(%[[VAL_1], AcquireGreaterEqual, 1)
-// CHECK:        aie.dma_bd(%[[VAL_0] : memref<10xi32>, 0, 10)
-// CHECK:        aie.use_lock(%[[VAL_2], Release, 1)
+// CHECK:        aie.use_lock(%[[VAL_1]], AcquireGreaterEqual, 1)
+// CHECK:        aie.dma_bd(%[[VAL_0]] : memref<10xi32>, 0, 10)
+// CHECK:        aie.use_lock(%[[VAL_2]], Release, 1)
 // CHECK:        aie.next_bd ^bb1
 // CHECK:      ^bb2:  // pred: ^bb0
 // CHECK:        aie.end

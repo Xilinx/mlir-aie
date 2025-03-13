@@ -28,15 +28,15 @@
 // CHECK:        %c4 = arith.constant 4 : index
 // CHECK:        %c2 = arith.constant 2 : index
 // CHECK:        scf.for %arg0 = %c0 to %c4 step %c2 {
-// CHECK:          aie.use_lock(%[[VAL_2], Acquire, 0)
-// CHECK:          func.call @some_work(%[[VAL_0], %arg0) : (memref<16xi32>, index) -> ()
-// CHECK:          aie.use_lock(%[[VAL_2], Release, 1)
+// CHECK:          aie.use_lock(%[[VAL_2]], Acquire, 0)
+// CHECK:          func.call @some_work(%[[VAL_0]], %arg0) : (memref<16xi32>, index) -> ()
+// CHECK:          aie.use_lock(%[[VAL_2]], Release, 1)
 // CHECK:          %c1_0 = arith.constant 1 : index
 // CHECK:          %0 = arith.muli %c1, %c1_0 : index
 // CHECK:          %1 = arith.addi %arg0, %0 : index
-// CHECK:          aie.use_lock(%[[VAL_3], Acquire, 0)
-// CHECK:          func.call @some_work(%[[VAL_1], %1) : (memref<16xi32>, index) -> ()
-// CHECK:          aie.use_lock(%[[VAL_3], Release, 1)
+// CHECK:          aie.use_lock(%[[VAL_3]], Acquire, 0)
+// CHECK:          func.call @some_work(%[[VAL_1]], %1) : (memref<16xi32>, index) -> ()
+// CHECK:          aie.use_lock(%[[VAL_3]], Release, 1)
 // CHECK:        }
 // CHECK:        aie.end
 // CHECK:      }

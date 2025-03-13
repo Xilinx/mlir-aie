@@ -32,14 +32,14 @@
 // CHECK:     %[[VAL_7:.*]] = aie.lock(%{{.*}}tile_1_1, 1) {init = 0 : i32, sym_name = "of2_cons_lock_0"}
 // CHECK:     %[[VAL_8:.*]] = aie.lock(%{{.*}}tile_1_1, 2) {init = 2 : i32, sym_name = "of2_prod_lock_1"}
 // CHECK:     %[[VAL_9:.*]] = aie.lock(%{{.*}}tile_1_1, 3) {init = 0 : i32, sym_name = "of2_cons_lock_1"}
-// CHECK:     %[[VAL_10:.*]]%[[VAL_10]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "of1_buff_0"} : memref<128xi32> 
-// CHECK:     %[[VAL_11:.*]]%[[VAL_11]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "of1_buff_1"} : memref<128xi32> 
-// CHECK:     %[[VAL_12:.*]]%[[VAL_12]]_0 = aie.lock(%{{.*}}tile_3_3, 0) {init = 2 : i32, sym_name = "of1_prod_lock_0"}
-// CHECK:     %[[VAL_13:.*]]%[[VAL_13]]_0 = aie.lock(%{{.*}}tile_3_3, 1) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
-// CHECK:     %[[VAL_14:.*]]%[[VAL_14]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of0_buff_0"} : memref<128xi32> 
-// CHECK:     %[[VAL_15:.*]]%[[VAL_15]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of0_buff_1"} : memref<128xi32> 
-// CHECK:     %[[VAL_16:.*]]%[[VAL_16]]_0 = aie.lock(%{{.*}}tile_1_2, 0) {init = 2 : i32, sym_name = "of0_prod_lock_0"}
-// CHECK:     %[[VAL_17:.*]]%[[VAL_17]]_0 = aie.lock(%{{.*}}tile_1_2, 1) {init = 0 : i32, sym_name = "of0_cons_lock_0"}
+// CHECK:     %[[VAL_10:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "of1_buff_0"} : memref<128xi32> 
+// CHECK:     %[[VAL_11:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "of1_buff_1"} : memref<128xi32> 
+// CHECK:     %[[VAL_12:.*]] = aie.lock(%{{.*}}tile_3_3, 0) {init = 2 : i32, sym_name = "of1_prod_lock_0"}
+// CHECK:     %[[VAL_13:.*]] = aie.lock(%{{.*}}tile_3_3, 1) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
+// CHECK:     %[[VAL_14:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of0_buff_0"} : memref<128xi32> 
+// CHECK:     %[[VAL_15:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of0_buff_1"} : memref<128xi32> 
+// CHECK:     %[[VAL_16:.*]] = aie.lock(%{{.*}}tile_1_2, 0) {init = 2 : i32, sym_name = "of0_prod_lock_0"}
+// CHECK:     %[[VAL_17:.*]] = aie.lock(%{{.*}}tile_1_2, 1) {init = 0 : i32, sym_name = "of0_cons_lock_0"}
 // CHECK:     aie.flow(%{{.*}}tile_1_2, DMA : 0, %{{.*}}tile_1_1, DMA : 0)
 // CHECK:     aie.flow(%{{.*}}tile_3_3, DMA : 0, %{{.*}}tile_1_1, DMA : 1)
 // CHECK:     aie.flow(%{{.*}}tile_1_1, DMA : 0, %{{.*}}tile_2_3, DMA : 0)

@@ -33,7 +33,7 @@
 // CHECK:     %[[VAL_8:.*]] = aie.buffer(%{{.*}}tile_2_3) {sym_name = "of1_buff_0"} : memref<2xi32> 
 // CHECK:     %[[VAL_9:.*]] = aie.buffer(%{{.*}}tile_2_3) {sym_name = "of1_buff_1"} : memref<2xi32> 
 // CHECK:     %[[VAL_10:.*]] = aie.lock(%{{.*}}tile_2_3, 0) {init = 2 : i32, sym_name = "of1_prod_lock_0"}
-// CHECK:     %[[VAL_11:.*]]] = aie.lock(%{{.*}}tile_2_3, 1) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
+// CHECK:     %[[VAL_11:.*]] = aie.lock(%{{.*}}tile_2_3, 1) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
 // CHECK:     %[[VAL_12:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of0_buff_0"} : memref<2xi32> 
 // CHECK:     %[[VAL_13:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of0_buff_1"} : memref<2xi32> 
 // CHECK:     %[[VAL_14:.*]] = aie.lock(%{{.*}}tile_1_2, 0) {init = 2 : i32, sym_name = "of0_prod_lock_0"}

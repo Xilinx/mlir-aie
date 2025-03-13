@@ -27,19 +27,19 @@
 // CHECK-LABEL:       %mem_7_2 = aie.mem(%{{.*}}tile_7_2) {
 // CHECK-LABEL:         %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK-LABEL:       ^bb1:  // 2 preds: ^bb0, ^bb3
-// CHECK-LABEL:         aie.use_lock(%[[VAL_3], Acquire, 0)
-// CHECK-LABEL:         aie.dma_bd(%[[VAL_0] : memref<16xi32>, 0, 16)
-// CHECK-LABEL:         aie.use_lock(%[[VAL_3], Release, 1)
+// CHECK-LABEL:         aie.use_lock(%[[VAL_3]], Acquire, 0)
+// CHECK-LABEL:         aie.dma_bd(%[[VAL_0]] : memref<16xi32>, 0, 16)
+// CHECK-LABEL:         aie.use_lock(%[[VAL_3]], Release, 1)
 // CHECK-LABEL:         aie.next_bd ^bb2
 // CHECK-LABEL:       ^bb2:  // pred: ^bb1
-// CHECK-LABEL:         aie.use_lock(%[[VAL_4], Acquire, 0)
-// CHECK-LABEL:         aie.dma_bd(%[[VAL_1] : memref<16xi32>, 0, 16)
-// CHECK-LABEL:         aie.use_lock(%[[VAL_4], Release, 1)
+// CHECK-LABEL:         aie.use_lock(%[[VAL_4]], Acquire, 0)
+// CHECK-LABEL:         aie.dma_bd(%[[VAL_1]] : memref<16xi32>, 0, 16)
+// CHECK-LABEL:         aie.use_lock(%[[VAL_4]], Release, 1)
 // CHECK-LABEL:         aie.next_bd ^bb3
 // CHECK-LABEL:       ^bb3:  // pred: ^bb2
-// CHECK-LABEL:         aie.use_lock(%[[VAL_5], Acquire, 0)
-// CHECK-LABEL:         aie.dma_bd(%[[VAL_2] : memref<16xi32>, 0, 16)
-// CHECK-LABEL:         aie.use_lock(%[[VAL_5], Release, 1)
+// CHECK-LABEL:         aie.use_lock(%[[VAL_5]], Acquire, 0)
+// CHECK-LABEL:         aie.dma_bd(%[[VAL_2]] : memref<16xi32>, 0, 16)
+// CHECK-LABEL:         aie.use_lock(%[[VAL_5]], Release, 1)
 // CHECK-LABEL:         aie.next_bd ^bb1
 // CHECK-LABEL:       ^bb4:  // pred: ^bb0
 // CHECK-LABEL:         aie.end

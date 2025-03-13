@@ -26,9 +26,9 @@
 // CHECK:     %memtile_dma_1_1 = aie.memtile_dma(%{{.*}}tile_1_1) {
 // CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2, repeat_count = 2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
-// CHECK:       aie.use_lock(%[[VAL_5], AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%[[VAL_3] : memref<16xi32>, 0, 16)
-// CHECK:       aie.use_lock(%[[VAL_4], Release, 1)
+// CHECK:       aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, 1)
+// CHECK:       aie.dma_bd(%[[VAL_3]] : memref<16xi32>, 0, 16)
+// CHECK:       aie.use_lock(%[[VAL_4]], Release, 1)
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb2:  // pred: ^bb0
 // CHECK:       aie.end
@@ -36,9 +36,9 @@
 // CHECK:     %mem_1_3 = aie.mem(%{{.*}}tile_1_3) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
-// CHECK:       aie.use_lock(%[[VAL_1], AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%[[VAL_0] : memref<16xi32>, 0, 16)
-// CHECK:       aie.use_lock(%[[VAL_2], Release, 1)
+// CHECK:       aie.use_lock(%[[VAL_1]], AcquireGreaterEqual, 1)
+// CHECK:       aie.dma_bd(%[[VAL_0]] : memref<16xi32>, 0, 16)
+// CHECK:       aie.use_lock(%[[VAL_2]], Release, 1)
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb2:  // pred: ^bb0
 // CHECK:       aie.end
