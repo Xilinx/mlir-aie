@@ -12,6 +12,7 @@ include ${srcdir}/../../makefile-common
 
 VPATH := ${srcdir}/../../../aie_kernels/generic
 
+device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 PASSTHROUGH_WIDTH = 1920
 PASSTHROUGH_HEIGHT = 1080
 
@@ -33,15 +34,21 @@ all: build/final_${PASSTHROUGH_WIDTH}.xclbin
 
 build/aie2_lineBased_8b_${PASSTHROUGH_WIDTH}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${PASSTHROUGH_WIDTH} ${PASSTHROUGH_HEIGHT} > $@
+	python3 $< ${device} ${PASSTHROUGH_WIDTH} ${PASSTHROUGH_HEIGHT} > $@
 
 build/passThrough.cc.o: passThrough.cc
 	mkdir -p ${@D}
+ifeq ($(device),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+else ifeq ($(device),npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+else
+	echo "Device type not supported"
+endif
 	
 build/final_${PASSTHROUGH_WIDTH}.xclbin: build/aie2_lineBased_8b_${PASSTHROUGH_WIDTH}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host --alloc-scheme=basic-sequential \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 

@@ -13,7 +13,7 @@ include ${srcdir}/../../makefile-common
 ACDC_AIE = $(dir $(shell which aie-opt))/..
 
 targetname = vector_reduce_min
-devicename = npu
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 col = 0
 
 aie_py_src=${targetname}.py
@@ -29,7 +29,11 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
+ifeq ($(devicename),npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
+else
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
+endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
@@ -37,9 +41,9 @@ build/aie.mlir: ${srcdir}/${aie_py_src}
 
 build/final.xclbin: build/aie.mlir build/reduce_min.cc.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     			--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
-				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
+				--aie-generate-npu-insts --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build

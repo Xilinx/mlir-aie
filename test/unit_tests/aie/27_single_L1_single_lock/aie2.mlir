@@ -12,8 +12,6 @@
 // RUN: %PYTHON aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s %test_lib_flags %extraAieCcFlags% %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
-// XFAIL: *
-
 module @test27_simple_shim_dma_single_lock {
   aie.device(xcve2802) {
     %tile72 = aie.tile(7, 3)

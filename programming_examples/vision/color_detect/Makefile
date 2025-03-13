@@ -12,7 +12,7 @@ include ${srcdir}/../../makefile-common
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
-device = npu
+device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 COLORDETECT_WIDTH = 1920
 COLORDETECT_HEIGHT = 1080
 
@@ -56,11 +56,11 @@ build/aie2_lineBased_8b_${COLORDETECT_WIDTH}.mlir: ${srcdir}/${aie_py_src}
 build/final_${COLORDETECT_WIDTH}.xclbin: build/aie2_lineBased_8b_${COLORDETECT_WIDTH}.mlir build/rgba2hue.cc.o build/threshold.cc.o build/combined_bitwiseOR_gray2rgba_bitwiseAND.a
 	mkdir -p ${@D}
 ifeq ($(device),npu)
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host --alloc-scheme=basic-sequential \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 else
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host --alloc-scheme=basic-sequential \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 endif
 

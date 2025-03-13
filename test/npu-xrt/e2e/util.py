@@ -62,7 +62,7 @@ def annot(op, annot):
 
 def aiecc_args(xclbin, insts):
     return [
-        "--aie-generate-cdo",
+        "--aie-generate-xclbin",
         f"--xclbin-name={xclbin}",
         "--no-xchesscc",
         "--no-xbridge",
