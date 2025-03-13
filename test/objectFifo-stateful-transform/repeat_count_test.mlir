@@ -38,7 +38,7 @@
 // CHECK:       %c1 = arith.constant 1 : index
 // CHECK:       %c12 = arith.constant 12 : index
 // CHECK:       scf.for %arg0 = %c0 to %c12 step %c1 {
-// CHECK:         aie.use_lock(%[[VAL_9]], AcquireGreaterEqual, 1)
+// CHECK:         aie.use_lock(%[[VAL_8]], AcquireGreaterEqual, 1)
 // CHECK:         aie.use_lock(%[[VAL_4]], AcquireGreaterEqual, 3)
 // CHECK:         aie.use_lock(%[[VAL_5]], Release, 3)
 // CHECK:         aie.use_lock(%[[VAL_8]], Release, 1)
