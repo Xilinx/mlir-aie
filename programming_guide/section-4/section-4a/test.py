@@ -117,9 +117,17 @@ def main(opts):
 
     # TODO - Mac count to guide gflops
 
+    print(
+        "\nNumber of iterations:",
+        str(opts.iters),
+        "(warmup iterations:",
+        str(opts.warmup_iters),
+        ")",
+    )
+
     print("\nAvg NPU time: {}us.".format(int((npu_time_total / opts.iters) / 1000)))
-    print("\nMin NPU time: {}us.".format(int((npu_time_min / opts.iters) / 1000)))
-    print("\nMax NPU time: {}us.".format(int((npu_time_max / opts.iters) / 1000)))
+    print("\nMin NPU time: {}us.".format(int((npu_time_min) / 1000)))
+    print("\nMax NPU time: {}us.".format(int((npu_time_max) / 1000)))
 
     if not errors:
         print("\nPASS!\n")
