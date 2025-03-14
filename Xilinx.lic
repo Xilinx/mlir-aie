@@ -1,0 +1,45 @@
+# ----- REMOVE LINES ABOVE HERE --------------------------
+#
+# This license is valid from Thu Mar 13 18:14:40 UTC 2025.
+#
+# This is license NODELOCKED to HOSTID=c8a3e8809f79;
+# there is no need to run lmgrd for this license.
+#
+#
+# This is a permanent license generated on Thu Mar 13 18:14:40 UTC 2025
+INCREMENT AIEMLbuild xilinxd 2026.03 permanent uncounted 06436F62BB29 \
+VENDOR_STRING=endri.taka@amd.com,AIEMLbuild,software,permanent,_213366197_0_0_842 \
+HOSTID=c8a3e8809f79 ISSUER="Xilinx Inc" START=13-Mar-2025 \
+TS_OK
+#
+# This is a permanent license generated on Thu Mar 13 18:14:40 UTC 2025
+INCREMENT AIEMLsim xilinxd 2026.03 permanent uncounted A60DF4589399 \
+VENDOR_STRING=endri.taka@amd.com,AIEMLsim,software,permanent,_213366197_0_0_348 \
+HOSTID=c8a3e8809f79 ISSUER="Xilinx Inc" START=13-Mar-2025 \
+TS_OK
+#
+# This is a permanent license generated on Thu Mar 13 18:14:40 UTC 2025
+INCREMENT AIEbuild xilinxd 2026.03 permanent uncounted FCA69EB51A9A \
+VENDOR_STRING=endri.taka@amd.com,AIEbuild,software,permanent,_213366197_0_0_447 \
+HOSTID=c8a3e8809f79 ISSUER="Xilinx Inc" START=13-Mar-2025 \
+TS_OK
+#
+# This is a permanent license generated on Thu Mar 13 18:14:40 UTC 2025
+INCREMENT AIEsim xilinxd 2026.03 permanent uncounted 6D5B969534EA \
+VENDOR_STRING=endri.taka@amd.com,AIEsim,software,permanent,_213366197_0_0_723 \
+HOSTID=c8a3e8809f79 ISSUER="Xilinx Inc" START=13-Mar-2025 \
+TS_OK
+#
+# This is a permanent license generated on Thu Mar 13 18:14:40 UTC 2025
+INCREMENT MEbuild xilinxd 2026.03 permanent uncounted BD0B0E9501DB \
+VENDOR_STRING=endri.taka@amd.com,MEbuild,software,permanent,_213366197_0_0_301 \
+HOSTID=c8a3e8809f79 ISSUER="Xilinx Inc" START=13-Mar-2025 \
+TS_OK
+#
+# This is a permanent license generated on Thu Mar 13 18:14:40 UTC 2025
+INCREMENT MEsim xilinxd 2026.03 permanent uncounted 2AD6957754E6 \
+VENDOR_STRING=endri.taka@amd.com,MEsim,software,permanent,_213366197_0_0_100 \
+HOSTID=c8a3e8809f79 ISSUER="Xilinx Inc" START=13-Mar-2025 \
+TS_OK
+#
+# ----- REMOVE LINES BELOW HERE --------------------------
