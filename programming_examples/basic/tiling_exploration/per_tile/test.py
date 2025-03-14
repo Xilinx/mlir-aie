@@ -9,7 +9,7 @@ import argparse
 import numpy as np
 
 from aie.helpers.taplib import TensorTiler2D
-from aie.utils.xrt import setup_aie, execute as execute_on_aie
+from aie.utils.xrt import setup_aie, execute
 
 
 def main(opts):
@@ -33,7 +33,7 @@ def main(opts):
         data_size,
         dtype,
     )
-    aie_output = execute_on_aie(app)
+    aie_output = execute(app)
     aie_output = aie_output.reshape((opts.tensor_height, opts.tensor_width))
 
     # Copy output results and verify they are correct

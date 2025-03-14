@@ -38,6 +38,7 @@ int main(int argc, const char *argv[]) {
   int n_iterations = vm["iters"].as<int>();
   int n_warmup_iterations = vm["warmup"].as<int>();
 
+  // Declaring design constants
   constexpr bool VERIFY = true;
   constexpr int IN_SIZE = 4096;
   constexpr int OUT_SIZE = IN_SIZE;
@@ -175,6 +176,11 @@ int main(int argc, const char *argv[]) {
 
   // TODO - Mac count to guide gflops
   float macs = 0;
+
+  std::cout << std::endl
+            << "Number of iterations: " << n_iterations
+            << " (warmup iterations: " << n_warmup_iterations << ")"
+            << std::endl;
 
   std::cout << std::endl
             << "Avg NPU time: " << npu_time_total / n_iterations << "us."

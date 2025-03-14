@@ -51,5 +51,8 @@ run-10-warmup: ${targetname}.exe build/final.xclbin build/insts.txt
 run_py: build/final.xclbin build/insts.txt
 	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
+run-10-py: build/final.xclbin build/insts.txt
+	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --iters 10
+
 clean:
 	rm -rf build _build ${targetname}.exe

@@ -6,6 +6,7 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
+import argparse
 import sys
 
 from aie.dialects.aie import *
@@ -16,15 +17,22 @@ from aie.helpers.dialects.ext.scf import _for as range_
 import aie.utils.trace as trace_utils
 
 
-def passthroughKernel(dev, vector_size, trace_size):
-    N = vector_size
+def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
+    in1_dtype = np.uint8
+    out_dtype = np.uint8
+
+    N = in1_size // in1_dtype(0).nbytes
     lineWidthInBytes = N // 4  # chop input in 4 sub-tensors
+
+    assert (
+        out_size == in1_size
+    ), "Output buffer size must be equal to input buffer size."
 
     @device(dev)
     def device_body():
         # define types
-        vector_ty = np.ndarray[(N,), np.dtype[np.uint8]]
-        line_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
+        vector_ty = np.ndarray[(N,), np.dtype[in1_dtype]]
+        line_ty = np.ndarray[(lineWidthInBytes,), np.dtype[in1_dtype]]
 
         # AIE Core Function declarations
         passThroughLine = external_func(
@@ -36,7 +44,7 @@ def passthroughKernel(dev, vector_size, trace_size):
         ComputeTile2 = tile(0, 2)
 
         # Set up a packet-switched flow from core to shim for tracing information
-        tiles_to_trace = [ComputeTile2]
+        tiles_to_trace = [ComputeTile2, ShimTile]
         if trace_size > 0:
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
@@ -56,8 +64,6 @@ def passthroughKernel(dev, vector_size, trace_size):
                 of_in.release(ObjectFifoPort.Consume, 1)
                 of_out.release(ObjectFifoPort.Produce, 1)
 
-        #    print(ctx.module.operation.verify())
-
         @runtime_sequence(vector_ty, vector_ty, vector_ty)
         def sequence(inTensor, outTensor, notUsed):
             if trace_size > 0:
@@ -65,8 +71,6 @@ def passthroughKernel(dev, vector_size, trace_size):
                     tiles_to_trace=tiles_to_trace,
                     shim=ShimTile,
                     trace_size=trace_size,
-                    trace_offset=N,
-                    ddr_id=1,
                 )
 
             in_task = shim_dma_single_bd_task(
@@ -82,21 +86,47 @@ def passthroughKernel(dev, vector_size, trace_size):
             trace_utils.gen_trace_done_aie2(ShimTile)
 
 
-try:
-    device_name = str(sys.argv[1])
-    if device_name == "npu":
-        dev = AIEDevice.npu1_1col
-    elif device_name == "npu2":
-        dev = AIEDevice.npu2
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-    vector_size = int(sys.argv[2])
-    if vector_size % 64 != 0 or vector_size < 512:
-        print("Vector size must be a multiple of 64 and greater than or equal to 512")
-        raise ValueError
-    trace_size = 0 if (len(sys.argv) != 4) else int(sys.argv[3])
-except ValueError:
-    print("Argument has inappropriate value")
+if len(sys.argv) < 4:
+    raise ValueError("[ERROR] Need at least 4 arguments (dev, in1_size, out_size)")
+
+
+p = argparse.ArgumentParser()
+p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
+p.add_argument(
+    "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
+)
+p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
+p.add_argument(
+    "-t",
+    "--trace_size",
+    required=False,
+    dest="trace_size",
+    default=0,
+    help="Trace buffer size",
+)
+opts = p.parse_args(sys.argv[1:])
+
+if opts.device == "npu":
+    dev = AIEDevice.npu1_1col
+elif opts.device == "npu2":
+    dev = AIEDevice.npu2
+else:
+    raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+in1_size = int(opts.in1_size)
+if in1_size % 64 != 0 or in1_size < 512:
+    print(
+        "In1 buffer size ("
+        + str(in1_size)
+        + ") must be a multiple of 64 and greater than or equal to 512"
+    )
+    raise ValueError
+out_size = int(opts.out_size)
+trace_size = int(opts.trace_size)
+
 with mlir_mod_ctx() as ctx:
-    passthroughKernel(dev, vector_size, trace_size)
-    print(ctx.module)
+    my_passthrough_kernel(dev, in1_size, out_size, trace_size)
+    res = ctx.module.operation.verify()
+    if res == True:
+        print(ctx.module)
+    else:
+        print(res)

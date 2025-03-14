@@ -25,7 +25,8 @@ else()
     set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
 endif ()
 
-set(PASSTHROUGH_SIZE 4096 CACHE STRING "size")
+set(IN1_SIZE 4096 CACHE STRING "in1 buffer size")
+set(OUT_SIZE 4096 CACHE STRING "out buffer size")
 set(TARGET_NAME test CACHE STRING "Target to be built")
 
 SET (ProjectName ${TARGET_NAME})
@@ -46,8 +47,9 @@ add_executable(${currentTarget}
 )
 
 target_compile_definitions(${currentTarget} PUBLIC 
-        PASSTHROUGH_SIZE=${PASSTHROUGH_SIZE}
-        DISABLE_ABI_CHECK=1 
+    IN1_SIZE=${IN1_SIZE}
+    OUT_SIZE=${OUT_SIZE}
+    DISABLE_ABI_CHECK=1 
         )
 
 target_include_directories (${currentTarget} PUBLIC 

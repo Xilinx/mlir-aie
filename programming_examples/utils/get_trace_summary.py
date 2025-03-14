@@ -26,7 +26,7 @@ cycles = trace_utils.get_cycles_summary(opts.filename)
 
 print("Total number of full kernel invocations is " + str(len(cycles)))
 print(
-    "First/Min/Avg/Max is "
+    "First/Min/Avg/Max cycles is "
     + str(cycles[0])
     + "/ "
     + str(min(cycles))
