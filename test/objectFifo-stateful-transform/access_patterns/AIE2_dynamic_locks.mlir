@@ -37,11 +37,11 @@
 
 // The setup for flows, locks, and buffers can be the same in the dynamic case:
 // CHECK:     %[[fifo_buff_0:.*]] = aie.buffer(%[[tile23]]) {sym_name = "fifo_buff_0"} : memref<i64>
-// CHECK:     %[[fifo_prod_lock:.*]] = aie.lock(%[[tile23]], 0) {init = 1 : i32, sym_name = "fifo_prod_lock"}
-// CHECK:     %[[fifo_cons_lock:.*]] = aie.lock(%[[tile23]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock"}
+// CHECK:     %[[fifo_prod_lock:.*]] = aie.lock(%[[tile23]], 0) {init = 1 : i32, sym_name = "fifo_prod_lock_0"}
+// CHECK:     %[[fifo_cons_lock:.*]] = aie.lock(%[[tile23]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
 // CHECK:     %[[fifo_cons_buff_0:.*]] = aie.buffer(%[[tile43]]) {sym_name = "fifo_cons_buff_0"} : memref<i64>
-// CHECK:     %[[fifo_cons_prod_lock:.*]] = aie.lock(%[[tile43]], 0) {init = 1 : i32, sym_name = "fifo_cons_prod_lock"}
-// CHECK:     %[[fifo_cons_cons_lock:.*]] = aie.lock(%[[tile43]], 1) {init = 0 : i32, sym_name = "fifo_cons_cons_lock"}
+// CHECK:     %[[fifo_cons_prod_lock:.*]] = aie.lock(%[[tile43]], 0) {init = 1 : i32, sym_name = "fifo_cons_prod_lock_0"}
+// CHECK:     %[[fifo_cons_cons_lock:.*]] = aie.lock(%[[tile43]], 1) {init = 0 : i32, sym_name = "fifo_cons_cons_lock_0"}
 // CHECK:     aie.flow(%[[tile23]], DMA : 0, %[[tile43]], DMA : 0)
 
 // CHECK:     %[[ssa8:.*]] = aie.core(%[[tile23]]) {
