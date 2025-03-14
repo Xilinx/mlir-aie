@@ -27,7 +27,8 @@ def runtimeSeq():
     def device_body():
         @runtime_sequence()
         def sequence0():
-            npu_write32(0xffff, 0xeeee)
+            npu_write32(0xFFFF, 0xEEEE)
+
         @runtime_sequence(sym_name="seq1")
         def sequence1():
             npu_write32(0x1111, 0x2222)

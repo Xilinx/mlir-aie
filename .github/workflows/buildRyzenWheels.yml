@@ -4,11 +4,6 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
-      ENABLE_RTTI:
-        description: 'Run the build with rtti enabled'
-        type: boolean
-        required: false
-        default: true
       AIE_COMMIT:
         description: 'AIE commit to build'
         type: string
@@ -50,9 +45,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python_version: [
-          "3.10", "3.12", "3.13",
-        ]
+        include:
+          - python_version: "3.10"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.10"
+            ENABLE_RTTI: OFF
+
+          - python_version: "3.12"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.12"
+            ENABLE_RTTI: OFF
+
+          - python_version: "3.13"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.13"
+            ENABLE_RTTI: OFF
 
     steps:
       - name: Free disk space
@@ -99,18 +109,25 @@ jobs:
             pip install -r python/requirements_ml.txt
             HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
 
+            export ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}
+
+            NO_RTTI=""  # Set a default value
+            NO_RTTI_UNDERSCORE=""  # Set a default value
+            if [ x"$ENABLE_RTTI" == x"OFF" ]; then
+              NO_RTTI="-no-rtti"
+              NO_RTTI_UNDERSCORE="_no_rtti"
+            fi
             VERSION=$(utils/clone-llvm.sh --get-wheel-version)
-            pip -q download mlir==$VERSION \
+            pip -q download mlir$NO_RTTI==$VERSION \
               -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
-            unzip -q mlir-*.whl
+            unzip -q mlir*.whl
             # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
             # That means wheels have file with time stamps in the future which makes ninja loop
             # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
-            find mlir -exec touch -a -m -t 201108231405.14 {} \;
+            find mlir$NO_RTTI_UNDERSCORE -exec touch -a -m -t 201108231405.14 {} \;
 
-            export ENABLE_RTTI=${{ inputs.ENABLE_RTTI }}
             export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
-            export MLIR_INSTALL_ABS_PATH=$PWD/mlir
+            export MLIR_INSTALL_ABS_PATH=$PWD/mlir$NO_RTTI_UNDERSCORE
             export MLIR_AIE_SOURCE_DIR=$PWD
             export WHEELHOUSE_DIR=$PWD/wheelhouse
             export CMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx
@@ -118,7 +135,8 @@ jobs:
             if [ x"${{ inputs.AIE_COMMIT }}" == x"" ]; then
               export AIE_PROJECT_COMMIT=$MLIR_VERSION
             else
-              export AIE_PROJECT_COMMIT="${{ inputs.AIE_COMMIT }}"
+              MLIR_VERSION = "${{ inputs.AIE_COMMIT }}"
+              export AIE_PROJECT_COMMIT=${MLIR_VERSION:0:7}
             fi
             export AIE_VITIS_COMPONENTS='AIE2;AIE2P'
             export DATETIME=$(date +"%Y%m%d%H")
@@ -138,7 +156,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           path: wheelhouse/repaired_wheel/mlir_aie*whl
-          name: mlir_aie-${{ matrix.python_version }}
+          name: mlir_aie_rtti_${{ matrix.ENABLE_RTTI }}-${{ matrix.python_version }}
 
       - name: Release current commit
         if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'

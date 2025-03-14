@@ -11,14 +11,17 @@
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
-
-device = npu
-targetname = passthrough_kernel
 VPATH := ${srcdir}/../../../aie_kernels/generic
-data_size = 4096
-trace_size = 8192
-PASSTHROUGH_SIZE = ${data_size}
 
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+targetname = passthrough_kernel
+in1_size = 4096 # in bytes
+out_size = 4096 # in bytes, should always be equal to in1_size
+trace_size = 8192
+CHESS ?= false
+
+colshift ?= $(if $(filter 1,$(NPU2)),0,1)
+data_size = in1_size
 aie_py_src=${targetname}.py
 use_alt?=0
 
@@ -30,51 +33,41 @@ endif
 
 all: build/final_${data_size}.xclbin
 
-build/aie2_lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
+build/%.cc.o: %.cc
 	mkdir -p ${@D}
-	python3 $< ${device} ${data_size} 0 > $@
-
-build/aie2_trace_lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${device} ${data_size} ${trace_size} > $@
-
-build/passThrough.cc.o: passThrough.cc
-	mkdir -p ${@D}
-ifeq ($(device),npu)
+ifeq ($(devicename),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
-else ifeq ($(device),npu2)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+else ifeq ($(devicename),npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
 else
 	echo "Device type not supported"
 endif
-	
+
+build/aie2_lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
+	mkdir -p ${@D}
+	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} > $@
+
+build/aie2_trace_lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
+	mkdir -p ${@D}
+	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} -t ${trace_size} > $@
+
 build/final_${data_size}.xclbin: build/aie2_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
-ifeq ($(device),npu)
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
-else
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
-		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
-endif
 
 build/final_trace_${data_size}.xclbin: build/aie2_trace_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
-ifeq ($(device),npu)
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
-else
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
-		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
-endif
 
 
 ${targetname}_${data_size}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname} -DPASSTHROUGH_SIZE=${data_size}
+	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}  -DIN1_SIZE=${in1_size} -DOUT_SIZE=${out_size}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -85,24 +78,21 @@ endif
 run: ${targetname}_${data_size}.exe build/final_${data_size}.xclbin build/insts_${data_size}.txt
 	${powershell} ./$< -x build/final_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE 
 
-#run-g: ${targetname}.exe build/final_${data_size}.xclbin build/insts.txt
-#	${powershell} ./$< -x build/final_${data_size}.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
-
 run_py: build/final_${data_size}.xclbin build/insts_${data_size}.txt
-	${powershell} python3 ${srcdir}/test.py -s ${data_size} -x build/final_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test.py -x build/final_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -i1s ${in1_size} -os ${out_size}
 
 trace: ${targetname}_${data_size}.exe build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt 
 	${powershell} ./$< -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir --colshift 1 > trace_passthrough_kernel.json
+	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir --colshift ${colshift} > trace_passthrough_kernel.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_passthrough_kernel.json
 
 trace_py: build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt
-	${powershell} python3 ${srcdir}/test.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size} -s ${data_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir --colshift 1 > trace_passthrough_kernel.json
+	${powershell} python3 ${srcdir}/test.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -os ${out_size}
+	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir --colshift ${colshift} > trace_passthrough_kernel.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_passthrough_kernel.json
 
 clean_trace:
 	rm -rf tmpTrace trace.txt parse*json trace*json
 
-clean:
+clean: clean_trace
 	rm -rf build _build ${targetname}*.exe

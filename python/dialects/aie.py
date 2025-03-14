@@ -245,10 +245,11 @@ Device = DeviceOp
 
 class Core(CoreOp):
     # Until https://github.com/llvm/llvm-project/pull/73620 gets figured out.
-    def __init__(self, tile, link_with=None, dynamic_objfifo_lowering=None):
+    def __init__(self, tile, link_with=None, dynamic_objfifo_lowering=None, stack_size=None):
         super().__init__(
             result=T.index(),
             tile=tile,
+            stack_size=stack_size,
             link_with=link_with,
             dynamic_objfifo_lowering=dynamic_objfifo_lowering,
         )
@@ -267,6 +268,7 @@ class buffer(BufferOp):
         tile,
         datatype: MemRefType | type[np.ndarray],
         name: str | None = None,
+        address=None,
         initial_value: np.ndarray | None = None,
         use_write_rtp: bool = False,
         loc=None,
@@ -285,6 +287,7 @@ class buffer(BufferOp):
             buffer=self.type,
             tile=tile,
             sym_name=name,
+            address=address,
             initial_value=initial_value,
             loc=loc,
             ip=ip,
