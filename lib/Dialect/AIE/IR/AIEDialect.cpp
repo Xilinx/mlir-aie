@@ -17,7 +17,6 @@
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
 
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 
@@ -1214,6 +1213,9 @@ LogicalResult TileOp::verify() {
       found = true;
     }
   }
+
+  if (isShimTile() && getAllocationScheme())
+    return emitOpError("Shim tiles cannot have an allocation scheme");
 
   return success();
 }
