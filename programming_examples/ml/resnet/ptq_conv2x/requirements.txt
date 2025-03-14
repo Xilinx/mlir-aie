@@ -1,0 +1,4 @@
+brevitas
+torchvision
+tqdm
+opencv-python
