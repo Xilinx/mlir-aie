@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-dma-to-npu -split-input-file %s 2>&1 | FileCheck %s
+// RUN: not aie-opt --aie-dma-to-npu --split-input-file %s 2>&1 | FileCheck %s
 // CHECK: Only ShimTiles support burst length.
 module {
   aie.device(npu1_4col) {
@@ -52,7 +52,7 @@ module {
 }
 
 // -----
-// CHECK: Requested burst length is not supported by the target.Supported burst lengths: 64 128 256 512
+// CHECK: Requested burst length is not supported by the target. Supported burst lengths: 64 128 256 512
 
 module {
   aie.device(npu2) {
@@ -68,7 +68,7 @@ module {
 }
 
 // -----
-// CHECK: Requested burst length is not supported by the target.Supported burst lengths: 64 128 256
+// CHECK: Requested burst length is not supported by the target. Supported burst lengths: 64 128 256
 // CHECK-NOT: 512
 // CHECK: burst_length = 512
 
