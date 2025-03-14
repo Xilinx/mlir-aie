@@ -24,9 +24,9 @@ Prerequisite: Please bring your laptop so that you can SSH into our Ryzen™ AI-
 | Time | Topic | Presenter | Slides or Code |
 |------|-------|-----------|----------------|
 | 08:00am | Intro to spatial compute and explicit data movement | Kristof | [Programming Guide](../../programming_guide/) |
-| 08:15am | "Hello World" from Ryzen™ AI | Joe | [AI Engine Basic Building Blocks](../../programming_guide/section-1/) |
+| 08:15am | "Hello World" from Ryzen™ AI | Andra | [AI Engine Basic Building Blocks](../../programming_guide/section-1/) |
 | 08:35am | Exercise 1: Build and run your first program | All | [Passthrough](../../programming_examples/basic/passthrough_kernel/) |
-| 08:50am | Data movement on Ryzen™ AI with objectFIFOs | Joe | [Data Movement](../../programming_guide/section-2/) |
+| 08:50am | Data movement on Ryzen™ AI with objectFIFOs | Andra | [Data Movement](../../programming_guide/section-2/) |
 | 09:10am | Exercise 2: Explore AIE DMA capabilities | All | [DMA Transpose](../../programming_examples/basic/dma_transpose/) |
 | 09:20am | Your First Program | Kristof | [My First Program](../../programming_guide/section-3) |
 | 09:50am | Exercise 3: Vector-scalar mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
@@ -42,5 +42,7 @@ Prerequisite: Please bring your laptop so that you can SSH into our Ryzen™ AI-
 ## Organizers
 
 *Kristof Denolf* is a Fellow in AMD's Research and Advanced Development group where he is working on energy-efficient computer vision and video processing applications to shape future AMD devices. He earned an M.Eng. in electronics from the Katholieke Hogeschool Brugge-Oostende (1998), now part of KULeuven, an M.Sc. in electronic system design from Leeds Beckett University (2000), and a Ph.D. from the Technical University Eindhoven (2007). He has over 25 years of combined research and industry experience at IMEC, Philips, Barco, Apple, Xilinx, and AMD. His main research interests are all aspects of the cost-efficient and dataflow-oriented design of video, vision, and graphics systems.
+
+*Andra Bisca* is a Sr. Software Development Engineer in AMD's Research and Advanced Development group where she is working on MLIR compiler development for AMD's open-sourced compiler flow targeting AI Engines. She earned a Master's in Computer Science from École polytechnique fédérale de Lausanne in Switzerland (2022). Her main areas of industry experience and contribution are in the development of efficient data movement abstractions based in MLIR and up-leveled to Python for underlying spatial hardware architectures.
 
 *Additional Organizers to Follow*
