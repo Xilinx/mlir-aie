@@ -342,7 +342,8 @@ public:
            model->getKind() < TK_AIE1_Last;
   }
 
-  std::vector<std::pair<uint32_t, uint32_t>> getBurstEncodingsAndLengths() const override;
+  std::vector<std::pair<uint32_t, uint32_t>>
+  getBurstEncodingsAndLengths() const override;
 };
 
 class AIE2TargetModel : public AIETargetModel {

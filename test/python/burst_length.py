@@ -16,6 +16,7 @@ from util import construct_and_print_module
 
 # RUN: %python %s | FileCheck %s
 
+
 @construct_and_print_module
 def my_vector_scalar_memcpy(module):
     N = 4096

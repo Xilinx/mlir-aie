@@ -347,11 +347,10 @@ checkBurstLength(const xilinx::AIE::AIETargetModel &targetModel,
                  uint32_t requestedBurstLength) {
   if (requestedBurstLength != 0) {
     auto bel = targetModel.getBurstEncodingsAndLengths();
-    auto pair = std::find_if(
-        bel.begin(), bel.end(),
-        [requestedBurstLength](const std::pair<uint32_t, uint32_t> &p) {
-          return p.second == requestedBurstLength;
-        });
+    auto pair = std::find_if(bel.begin(), bel.end(),
+                             [=](const std::pair<uint32_t, uint32_t> &p) {
+                               return p.second == requestedBurstLength;
+                             });
 
     if (pair == bel.end()) {
       std::string errorMessage =
@@ -662,9 +661,10 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
     const AIE::AIETargetModel &targetModel =
         AIE::getTargetModel(getOperation());
 
-    // This is a layering violation on the DMABDOps, but they are never verified otherwise
-    // Because DMAConfigureTaskOps are not yet merged into the AIE dialect.
-    // The normal DMABDOp verify operation will skip over any BD inside a DMAConfigureTaskOp
+    // This is a layering violation on the DMABDOps, but they are never verified
+    // otherwise Because DMAConfigureTaskOps are not yet merged into the AIE
+    // dialect. The normal DMABDOp verify operation will skip over any BD inside
+    // a DMAConfigureTaskOp
     LogicalResult result = success();
     block.walk([&](AIE::DMABDOp bd) {
       if (bd.getBurstLength() != 0 &&

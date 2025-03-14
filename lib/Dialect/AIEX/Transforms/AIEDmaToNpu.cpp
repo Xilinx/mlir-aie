@@ -535,7 +535,7 @@ uint32_t getBurstLengthEncoding(const AIE::AIETargetModel &tm,
   // Note that if we are given a burst size, we are checking its existence in
   // the pass verification already, so we can safely assume it exists.
   return std::find_if(bel.begin(), bel.end(),
-                      [burstLengthRequested](auto p) {
+                      [=](auto p) {
                         return p.second == burstLengthRequested;
                       })
       ->first;
@@ -566,7 +566,8 @@ public:
       bd_addr = (op.getColumn() << tm.getColumnShift()) |
                 (op.getRow() << tm.getRowShift()) | (0x1D000 + bd_id * 0x20);
 
-      auto burstLengthEncoding = getBurstLengthEncoding(tm, op.getBurstLength());
+      auto burstLengthEncoding =
+          getBurstLengthEncoding(tm, op.getBurstLength());
 
       // DMA_BDX_0
       words[0] = op.getBufferLength();
