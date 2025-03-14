@@ -19,7 +19,7 @@ device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = relu
 in1_size = 131072 # in bytes
 out_size = 131072 # in bytes, should always be equal to in1_size
-trace_size = 8192
+# trace_size = 8192
 
 aie_py_src=${targetname}.py
 use_alt?=0
@@ -43,9 +43,9 @@ build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${device} ${in1_size} ${out_size} 0 > $@
 
-build/aie_trace.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${device} ${in1_size} ${out_size} ${trace_size} > $@
+# build/aie_trace.mlir: ${srcdir}/${aie_py_src}
+# 	mkdir -p ${@D}
+# 	python3 $< ${device} ${in1_size} ${out_size} ${trace_size} > $@
 
 build/final.xclbin: build/aie.mlir build/relu.o
 	mkdir -p ${@D}
@@ -53,11 +53,11 @@ build/final.xclbin: build/aie.mlir build/relu.o
 	--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
-build/final_trace.xclbin: build/aie_trace.mlir build/relu.o
-	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
-	--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
+# build/final_trace.xclbin: build/aie_trace.mlir build/relu.o
+# 	mkdir -p ${@D}
+# 	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
+# 	--no-xchesscc --no-xbridge \
+# 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -73,10 +73,10 @@ endif
 run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
-trace: ${targetname}.exe build/final_trace.xclbin
-	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > trace_relu.json
-	${srcdir}/../../utils/get_trace_summary.py --filename trace_relu.json
+# trace: ${targetname}.exe build/final_trace.xclbin
+# 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
+# 	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > trace_relu.json
+# 	${srcdir}/../../utils/get_trace_summary.py --filename trace_relu.json
 
 clean:
 	rm -rf build _build ${targetname}.exe
