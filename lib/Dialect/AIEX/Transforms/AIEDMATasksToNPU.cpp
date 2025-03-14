@@ -408,7 +408,8 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         /*lock_acq_val=*/0, /*lock_ackq_id=*/0, /*d0_zero_before=*/padBefore[0],
         /*d1_zero_before=*/padBefore[1], /*d2_zero_before=*/padBefore[2],
         /*d0_zero_after=*/padAfter[0], /*d1_zero_after=*/padAfter[1],
-        /*d2_zero_after=*/padAfter[2]);
+        /*d2_zero_after=*/padAfter[2],
+        /*burst_length=*/bd_op.getBurstLength());
     return setAddressForSingleBD(builder, bd_op, tile);
   }
 

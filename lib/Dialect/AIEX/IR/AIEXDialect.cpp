@@ -658,6 +658,25 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
           "entry block.");
       return failure();
     }
+
+    const AIE::AIETargetModel &targetModel =
+        AIE::getTargetModel(getOperation());
+
+    // This is a layering violation on the DMABDOps, but they are never verified otherwise
+    // Because DMAConfigureTaskOps are not yet merged into the AIE dialect.
+    // The normal DMABDOp verify operation will skip over any BD inside a DMAConfigureTaskOp
+    LogicalResult result = success();
+    block.walk([&](AIE::DMABDOp bd) {
+      if (bd.getBurstLength() != 0 &&
+          !targetModel.isShimNOCTile(getTileID().col, getTileID().row)) {
+        bd.emitOpError("Burst length is only supported in Shim NOC tiles that "
+                       "are connected to the memory-mapped NOC.");
+        result = failure();
+      }
+    });
+    if (failed(result)) {
+      return result;
+    }
   }
   return success();
 }
