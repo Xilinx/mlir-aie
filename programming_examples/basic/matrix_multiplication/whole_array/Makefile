@@ -44,7 +44,7 @@ endif
 ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
 ifeq (${use_iron}, 1)
-$(error Cannot specify both alt design and IRON)
+$(error Cannot specify both placed design and IRON)
 endif
 endif
 

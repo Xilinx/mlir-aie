@@ -1,4 +1,4 @@
-# passthrough_pykernel/passthrough_pykernel_alt.py -*- Python -*-
+# passthrough_pykernel/passthrough_pykernel_placed.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.

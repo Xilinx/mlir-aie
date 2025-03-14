@@ -1,4 +1,4 @@
-# dma_transpose/dma_transpose_alt.py -*- Python -*-
+# dma_transpose/dma_transpose_placed.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.

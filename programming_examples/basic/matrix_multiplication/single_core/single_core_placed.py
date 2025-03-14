@@ -5,7 +5,7 @@
 #
 # (c) Copyright 2024 AMD Inc.
 
-# This alternative implementation uses configure_task instructions instead of
+# This placed implementation uses configure_task instructions instead of
 # dma_memcpy_nd in the runtime sequence configuration. It is otherwise
 # identical.
 import argparse

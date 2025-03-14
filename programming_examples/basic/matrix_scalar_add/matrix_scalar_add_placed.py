@@ -1,4 +1,4 @@
-# matrix_scalar_add/matrix_scalar_add_alt.py -*- Python -*-
+# matrix_scalar_add/matrix_scalar_add_placed.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.

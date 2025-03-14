@@ -1,4 +1,4 @@
-# vector_reduce_min/vector_reduce_min_alt.py -*- Python -*-
+# vector_reduce_min/vector_reduce_min_placed.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
