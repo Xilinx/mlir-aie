@@ -16,7 +16,7 @@ all: build/final.xclbin
 
 device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = relu
-trace_size = 8192
+# trace_size = 8192
 
 aie_py_src=relu.py
 use_alt?=0
@@ -41,9 +41,9 @@ build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${device} > $@
 
-build/aie_trace.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${device} ${trace_size} > $@
+# build/aie_trace.mlir: ${srcdir}/${aie_py_src}
+# 	mkdir -p ${@D}
+# 	python3 $< ${device} ${trace_size} > $@
 
 build/final.xclbin: build/aie.mlir build/relu.o
 	mkdir -p ${@D}
@@ -51,11 +51,11 @@ build/final.xclbin: build/aie.mlir build/relu.o
 	--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
-build/final_trace.xclbin: build/aie_trace.mlir build/relu.o
-	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
-	--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
+# build/final_trace.xclbin: build/aie_trace.mlir build/relu.o
+# 	mkdir -p ${@D}
+# 	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
+# 	--no-xchesscc --no-xbridge \
+# 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
