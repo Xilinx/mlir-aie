@@ -8,4 +8,5 @@
 // RUN: make -f %S/Makefile clean
 // RUN: env use_alt=1 make -f %S/Makefile 
 // RUN: %run_on_npu make -f %S/Makefile run
+// RUN: make -f %S/Makefile clean
   

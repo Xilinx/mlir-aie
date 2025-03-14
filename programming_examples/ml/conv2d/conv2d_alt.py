@@ -125,7 +125,7 @@ def conv2dk1(
 
                 if trace_size > 0:
                     trace_utils.configure_packet_tracing_aie2(
-                        tiles_to_trace, ShimTile, trace_size, N_in_bytes
+                        tiles_to_trace, ShimTile, trace_size, N_in_bytes, ddr_id=2
                     )
 
                 rtp2[0] = 10

@@ -98,15 +98,12 @@ def parse_args(args):
     return p.parse_args(args)
 
 
-# def write_out_trace(trace_buffer, trace_size, trace_file):
-#     try:
-#         with open(trace_file, "wt") as f:
-#             f.write(trace_buffer)
-#     except Exception as e:
-#         print(e)
-#         sys.exit(1)
-
-
+#
+# Create new device and kernel based on xclbin
+#
+# If you want to setup XRT buffers as well, look at xrt.py/setup_aie
+# to setup your environment
+#
 def init_xrt_load_kernel(opts):
     # Get a device handle
     device = xrt.device(0)
