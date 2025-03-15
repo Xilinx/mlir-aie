@@ -32,14 +32,23 @@ def parse_args():
     #         help='Labels for traces', required=False)
     return parser.parse_args(sys.argv[1:])
 
+
 def check_for_valid_trace(filename, toks):
-    print("len(toks): ",str(len(toks)))
-    print("toks[0]:",toks[0])
+    print("len(toks): ", str(len(toks)))
+    print("toks[0]:", toks[0])
     if len(toks) < 2 or toks[0] == "00000000":
-        print("[ERROR] Empty trace file. Valid trace was not written to", filename, file=sys.stderr)
-        print("See https://github.com/Xilinx/mlir-aie/tree/main/programming_guide/section-4/section-4b#Additional-Debug-Hints for additional trace debug tips.", file=sys.stderr)
+        print(
+            "[ERROR] Empty trace file. Valid trace was not written to",
+            filename,
+            file=sys.stderr,
+        )
+        print(
+            "See https://github.com/Xilinx/mlir-aie/tree/main/programming_guide/section-4/section-4b#Additional-Debug-Hints for additional trace debug tips.",
+            file=sys.stderr,
+        )
         return False
     return True
+
 
 def check_odd_word_parity(word):
     val = 0
@@ -421,17 +430,25 @@ def convert_commands_to_json(trace_events, commands, pid_events):
                     + str(NUM_EVENTS)
                     + "\n"
                 )
-            
+
             if loc in pid_events[tt]:
                 pid = pid_events[tt][loc][NUM_EVENTS]
             else:
-                print("[ERROR] tile in",loc,"not found in trace packet data file (e.g trace.txt).", file=sys.stderr)
+                print(
+                    "[ERROR] tile in",
+                    loc,
+                    "not found in trace packet data file (e.g trace.txt).",
+                    file=sys.stderr,
+                )
                 tiles = []
                 for tt_tmp in range(len(commands)):
                     for keys in pid_events[tt_tmp]:
                         tiles.append(keys)
                 print("Defined tiles in design are at:", tiles, file=sys.stderr)
-                print("Consider changing --colshift value if you think this is an error.", file=sys.stderr)
+                print(
+                    "Consider changing --colshift value if you think this is an error.",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
 
             active_events = dict()
