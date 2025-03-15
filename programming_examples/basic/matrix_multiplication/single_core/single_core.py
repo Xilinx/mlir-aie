@@ -241,11 +241,12 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
 
                 if enable_tracing:
                     trace_utils.configure_packet_tracing_aie2(
-                        tiles_to_trace,
-                        shim_tile,
-                        trace_size,
-                        C_sz_in_bytes,
-                        events=[
+                        tiles_to_trace=tiles_to_trace,
+                        shim=shim_tile,
+                        trace_size=trace_size,
+                        trace_offset=C_sz_in_bytes,
+                        ddr_id=2,
+                        coretile_events=[
                             # captures input A (PORT_RUNNING_0, at port number 1, master for inputs)
                             trace_utils.PortEvent(
                                 trace_utils.CoreEvent.PORT_RUNNING_0,
