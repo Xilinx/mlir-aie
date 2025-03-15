@@ -502,6 +502,8 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     operation should issue a token which can be received and read for synchronization purposes.
     This `issue_token` attribute is set to `false` by default for `MM2S` for backward compatibility
     and **is always set to true for** `S2MM` channels.
+    The burst length attribute specifies the burst length in bytes for the DMA operation. A value
+    of 0 indicates that the burst length is not specified and the maximal burst length is used.
 
     #### `metadata` -- Specifying Tile, Channel, Direction and Linking a `dma_memcpy_nd` to its Other Half
 
@@ -574,7 +576,8 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
         DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_before,
         DefaultValuedOptionalAttr<I64Attr, "0">:$d0_zero_after,
         DefaultValuedOptionalAttr<I64Attr, "0">:$d1_zero_after,
-        DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_after
+        DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_after,
+        DefaultValuedOptionalAttr<I64Attr, "0">:$burst_length
   );
 
   let assemblyFormat = [{
@@ -851,7 +854,8 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
         I32Attr:$d2_zero_before,
         I32Attr:$d0_zero_after,
         I32Attr:$d1_zero_after,
-        I32Attr:$d2_zero_after
+        I32Attr:$d2_zero_after,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$burst_length
   );
   let results = (outs );
   let assemblyFormat = [{ attr-dict }];

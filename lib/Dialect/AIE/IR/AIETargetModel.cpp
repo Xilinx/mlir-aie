@@ -10,7 +10,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
-#include "llvm/ADT/SmallSet.h"
+#include <cstdint>
+#include <utility>
 
 using namespace llvm;
 
@@ -287,6 +288,12 @@ bool AIE1TargetModel::isLegalTileConnection(int col, int row,
       return true;
   }
   return false;
+}
+
+std::vector<std::pair<uint32_t, uint32_t>>
+AIE1TargetModel::getBurstEncodingsAndLengths() const {
+  return {std::pair(0x00000000, 64), std::pair(0x40000000, 128),
+          std::pair(0x80000000, 256)};
 }
 
 ///
@@ -649,6 +656,12 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
   return false;
 }
 
+std::vector<std::pair<uint32_t, uint32_t>>
+AIE2TargetModel::getBurstEncodingsAndLengths() const {
+  return {std::pair(0x00000000, 64), std::pair(0x40000000, 128),
+          std::pair(0x80000000, 256)};
+}
+
 void AIETargetModel::validate() const {
   // Every tile in a shimtile row must be a shimtile, and can only be one type
   // of shim tile.
@@ -708,6 +721,12 @@ void AIETargetModel::validate() const {
 }
 
 AIEArch NPU2TargetModel::getTargetArch() const { return AIEArch::AIE2p; }
+
+std::vector<std::pair<uint32_t, uint32_t>>
+NPU2TargetModel::getBurstEncodingsAndLengths() const {
+  return {std::pair(0x00000000, 64), std::pair(0x40000000, 128),
+          std::pair(0x80000000, 256), std::pair(0xC0000000, 512)};
+}
 
 } // namespace AIE
 } // namespace xilinx
