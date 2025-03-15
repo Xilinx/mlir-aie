@@ -796,6 +796,8 @@ when lowered further. The `issue_token` attribute specifies whether the executio
 operation should issue a token which can be received and read for synchronization purposes.
 This `issue_token` attribute is set to `false` by default for `MM2S` for backward compatibility
 and **is always set to true for** `S2MM` channels.
+The burst length attribute specifies the burst length in bytes for the DMA operation. A value
+of 0 indicates that the burst length is not specified and the maximal burst length is used.
 
 #### `metadata` -- Specifying Tile, Channel, Direction and Linking a `dma_memcpy_nd` to its Other Half
 
@@ -872,6 +874,7 @@ Interfaces: `MyOffsetSizeAndStrideOpInterface`
 <tr><td><code>d0_zero_after</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>d1_zero_after</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>d2_zero_after</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
+<tr><td><code>burst_length</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 </table>
 
 #### Operands:
@@ -1119,6 +1122,7 @@ writebd operator
 <tr><td><code>d0_zero_after</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>d1_zero_after</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>d2_zero_after</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>burst_length</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
 
