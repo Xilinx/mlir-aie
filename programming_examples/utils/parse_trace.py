@@ -32,6 +32,14 @@ def parse_args():
     #         help='Labels for traces', required=False)
     return parser.parse_args(sys.argv[1:])
 
+def check_for_valid_trace(filename, toks):
+    print("len(toks): ",str(len(toks)))
+    print("toks[0]:",toks[0])
+    if len(toks) < 2 or toks[0] == "00000000":
+        print("[ERROR] Empty trace file. Valid trace was not written to", filename, file=sys.stderr)
+        print("See https://github.com/Xilinx/mlir-aie/tree/main/programming_guide/section-4/section-4b#Additional-Debug-Hints for additional trace debug tips.", file=sys.stderr)
+        return False
+    return True
 
 def check_odd_word_parity(word):
     val = 0
@@ -413,7 +421,18 @@ def convert_commands_to_json(trace_events, commands, pid_events):
                     + str(NUM_EVENTS)
                     + "\n"
                 )
-            pid = pid_events[tt][loc][NUM_EVENTS]
+            
+            if loc in pid_events[tt]:
+                pid = pid_events[tt][loc][NUM_EVENTS]
+            else:
+                print("[ERROR] tile in",loc,"not found in trace packet data file (e.g trace.txt).", file=sys.stderr)
+                tiles = []
+                for tt_tmp in range(len(commands)):
+                    for keys in pid_events[tt_tmp]:
+                        tiles.append(keys)
+                print("Defined tiles in design are at:", tiles, file=sys.stderr)
+                print("Consider changing --colshift value if you think this is an error.", file=sys.stderr)
+                sys.exit(1)
 
             active_events = dict()
             for i in range(16):  # TODO we only have 8 events at a time though right?
@@ -942,6 +961,9 @@ with open(opts.filename, "r") as f:
         print("\nDEBUG: toks")
         print(toks)
         print("\n\n")
+
+    if not check_for_valid_trace(opts.filename, toks):
+        sys.exit(1)
 
     # De-interleave core and memory trace
     # [core_toks, mem_toks] = core_trace_and_mem_trace_de_interleave(toks)
