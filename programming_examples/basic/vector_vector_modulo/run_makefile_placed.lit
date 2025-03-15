@@ -1,0 +1,11 @@
+// (c) Copyright 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, peano 
+//
+// RUN: mkdir -p test_placed
+// RUN: cd test_placed
+// RUN: make -f %S/Makefile clean
+// RUN: env use_placed=1 make -f %S/Makefile 
+// RUN: %run_on_npu make -f %S/Makefile run
+  

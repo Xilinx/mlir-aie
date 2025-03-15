@@ -16,7 +16,7 @@ This IRON design flow example, called "Vector Scalar Multiplication", demonstrat
 
 1. `vector_scalar_mul.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
 
-1. `vector_scalar_mul_alt.py`: An alternate version of the design in `vector_scalar_mul.py`, that is expressed in a lower-level version of IRON.
+1. `vector_scalar_mul_placed.py`: An alternative version of the design in `vector_scalar_mul.py`, that is expressed in a lower-level version of IRON.
 
 1. `scale.cc`: A C++ implementation of scalar and vectorized vector scalar multiply operations for AIE cores. Found [here](../../../aie_kernels/aie2/scale.cc).
 
@@ -38,7 +38,7 @@ It is important to note that the Shim Tile and Compute Tile DMAs move data concu
 
 ## Design Component Details
 
-### AIE Array Structural Design in `vector_scalar_mul_alt.py`
+### AIE Array Structural Design in `vector_scalar_mul_placed.py`
 
 This design performs a memcpy operation on a vector of input data. The AIE design is described in a Python module as follows:
 
@@ -81,9 +81,9 @@ To compile the design:
 make
 ```
 
-To compile the alternative design:
+To compile the placed design:
 ```shell
-env use_alt=1 make
+env use_placed=1 make
 ```
 
 To compile the C++ testbench:

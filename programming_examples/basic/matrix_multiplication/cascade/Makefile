@@ -22,10 +22,10 @@ n_aie_cols?=4
 kernels=mm_${m}x${k}x${n}
 aieargs+=-m $m -k $k -n $n --n-aie-cols ${n_aie_cols}
 target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
-use_alt?=0
+use_placed?=0
 
-ifeq (${use_alt}, 1)
-aie_py_src=${targetname}_alt.py
+ifeq (${use_placed}, 1)
+aie_py_src=${targetname}_placed.py
 endif
 
 include ${srcdir}/../makefile-common

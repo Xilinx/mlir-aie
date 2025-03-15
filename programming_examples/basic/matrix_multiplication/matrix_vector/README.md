@@ -15,7 +15,7 @@ In this design, one or multiple AI Engine compute cores (spread across hardware 
 > This design relies on the same basic concepts as the [whole-array matrix-matrix multiplication design](../whole_array/README.md), and it is structured very similarly to that design. Please refer to the in-depth explanation of that design along with the below outlined differences for a better understanding of this design.
 
 The orignal implementation of the design is found at [matrix_vector.py](./matrix_vector.py). An alternative version of the design, featuring different runtime operations,
-is found at [matrix_vector_alt.py](./matrix_vector_alt.py). A version written in a higher-level form of IRON is found at [matrix_vector_iron.py](./matrix_vector_iron.py).
+is found at [matrix_vector_placed.py](./matrix_vector_placed.py). A version written in a higher-level form of IRON is found at [matrix_vector_iron.py](./matrix_vector_iron.py).
 
 ## Differences from the [Whole-Array Matrix-Matrix Multiplication Design](../whole_array/README.md)
 
@@ -34,11 +34,11 @@ make matrix_vector.exe
 make run
 ```
 
-To compile and run the alternative design:
+To compile and run the placed design:
 ```shell
-env use_alt=1 make
-env use_alt=1 make matrix_vector.exe
-env use_alt=1 make run
+env use_placed=1 make
+env use_placed=1 make matrix_vector.exe
+env use_placed=1 make run
 ```
 
 To compile and run the higher-level IRON design:
