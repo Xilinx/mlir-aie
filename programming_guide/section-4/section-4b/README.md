@@ -34,17 +34,17 @@ Enabling trace support can be done with the following steps:
 Enabling tracing means (1a) configuring the trace units for a given tile and then (1b) routing the generated events packets through the stream switches to the shim DMA where we can write them to a buffer in DDR for post-runtime processing.
 
 ### <u>(1a) Configure trace units for an AIE tile</u>
-The first necessary component for trace configuration is setting the right values for the trace control registers for each tile that we want to enable tracing for. In addition, the generated trace packets will need to be routed to shimDMA and then written to an inout buffers so the packet data can be written to DDR. We have abstracted these two steps with the python wrapper function `configure_packet_tracing_aie2` which is in [python/utils/test.py](../../../python/utils/test.py) and is described in more detail the [README](../../../python/utils) under `python/utils`. An example of how this function is used is shown below for quick reference
+The first necessary component for trace configuration is setting the right values for the trace control registers for each tile that we want to enable tracing for. In addition, the generated trace packets will need to be routed to a shimDMA and then written to an inout buffers so the packet data can be written to DDR. We have abstracted these two steps with the python wrapper function `configure_packet_tracing_aie2` which is in [python/utils/test.py](../../../python/utils/test.py) and is described in more detail in the [README](../../../python/utils) under `python/utils`. An example of how this function is used is shown below for quick reference:
 ```python
     trace_utils.configure_packet_tracing_aie2(tiles_to_trace, ShimTile, opts.trace_size)
 ```
-The arguments for this example are
+The arguments for this example are:
 * *tiles_to_trace* - array of tiles we want to trace (including mem tiles and shim tiles)
 * *ShimTile* - shim tile that the trace is routed to for writing to DDR
 * *opts.trace_size* - the trace buffer size in bytes
 
 This block is defined within the sequence definition for `@runtime_sequence` where we define the shimDMA data movement to the inout buffers.
-> **Note** This convenience python wrapper abtracts a number of sub-steps for configuring the trace unit in each tile and the shim dma for writing to DDR. This uses packet switched routing to move the trace packets as opposed to circuit switched routing. More details on these sub-steps can be found in the [README](../../../python/utils) under `python/utils`.
+> **Note** This convenience python wrapper abtracts a number of sub-steps for configuring the trace unit in each tile and the shimDMA for writing to DDR. This uses packet switched routing to move the trace packets as opposed to circuit switched routing. More details on these sub-steps can be found in the [README](../../../python/utils) under `python/utils`.
 
 Configuring the trace units with `configure_packet_tracing_aie2` should be declared at the beginning of the `@runtime_sequence` so the trace mechanisms are in place prior to any data being transferred from/ to DDR. At the end of the `@runtime_sequence` we add the following convenience python function to end the trace collection.
 ```python
@@ -53,16 +53,15 @@ Configuring the trace units with `configure_packet_tracing_aie2` should be decla
 This is necessary so the trace units flush intermediate trace packets.
 
 ### <u>(1b) Define trace routes from tiles to shimDMA</u>
-Once the trace units and shimDMA are configured, we need to define how the trace packets are routed from the tiles to the shim tile. This is done by declaring packet switched flows using with the convenince function `configure_packet_tracing_flow` defined in [python/utils/test.py](../../../python/utils/test.py) and is described in more detail the [README](../../../python/utils) under `python/utils`. This function is declared in the main body of our design as shown below:
+Once the trace units and shimDMA are configured, we need to define how the trace packets are routed from the tiles to the Shim tile. This is done by declaring packet switched flows using the convenince function `configure_packet_tracing_flow` defined in [python/utils/test.py](../../../python/utils/test.py) and described in more detail in the [README](../../../python/utils) under `python/utils`. This function is declared in the main body of our design as shown below:
 ```python
     trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 ```
-The arguments for this example are
+The arguments for this example are:
 * *tiles_to_trace* - array of compute tiles we want to trace
 * *ShimTile* - shim tile that the trace is going out to
 
-> **Note** The synchronization of this function with the previous is `configure_packet_tracing_aie2` is important because we track the flow IDs and bd numbers of each configured trace. Do not mix and match these with circuit switched routing as they are intended to work together as pair. 
-
+> **Note** The synchronization of this function with the previous `configure_packet_tracing_aie2` is important because we track the flow IDs and bd numbers of each configured trace. Do not mix and match these with circuit switched routing as they are intended to work together as pair. 
 
 ## <u>2. Configure host code to read trace data and write it to a text file</u>
 
@@ -97,7 +96,7 @@ In some designs, we have also used a pattern where we share an XRT buffer object
 
 When using the convenience python wrappers, where 1 input, 1 output and 2 inputs, 1 output patterns are supported, we choose to map the trace data to `inout4(7)`. More details are described in [python/utils/xrt.py](../../../python/utils/xrt.py) including the option to map trace to a different XRT buffer object with a specified offset. 
 
-Once [aie2.py](./aie2.py) is configured to output trace data to the 5th inout buffers, we turn our attention to the host code to read the DDR data and write it to a file.
+Once [aie2.py](./aie2.py) is configured to output trace data to the 5th inout buffer, we turn our attention to the host code to read the DDR data and write it to a file.
 
 > **NOTE** In our example design ([aie2.py](./aie2.py)), we provide a [Makefile](./Makefile) target `run` for standard build and `trace` for trace-enabled build. The trace-enabled build passes the trace buffer size as an argument to [aie2.py](./aie2.py) which conditionally enables the trace `flow` and calls `configure_packet_tracing_aie2` as long as `trace_size` is > 0. This is also true for the [Vector Scalar Multiply example](../../../programming_examples/basic/vector_scalar_mul).
 
@@ -231,17 +230,17 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
     * For designs with packet-routing flows, check for correctly matching packet flow IDs. The packet flow ID must match the configured ID value in Trace Control 1 register or else the packets don't get routed. Using the convenience python wrappers should again automatically handle this correctly. However, if your design uses its own packet-routing flows, the default flow IDs may conflict with the trace ones (to be improved in future release)
 
 ## <u>Exercises</u>
-1. Let's give tracing a try. In this directory, we're been examining a simplified version of the `vector ccalar multiply` example. Run `make trace`. This compiles the design, generates a trace data file, and run `prase_trace.py` to generate the `trace_4b.json` waveform file.
+1. Let's give tracing a try. In this directory, we will be examining a simplified version of the `vector scalar multiply` example. Run `make trace`. This compiles the design, generates a trace data file, and runs `prase_trace.py` to generate the `trace_4b.json` waveform file.
 
-    > **NOTE** In this example, `make`, `make run` and `make trace` will all build a structural design with tracing enabled to keep things simple. But only `make trace` will enable tracing in the host code and call `parse_trace.py`. In contrast, the reference `vector scalar multiply example` has a more robust `Makefile` where `make` and `make run` builds the structural design with tracing disabled.
+    > **NOTE** In this example, `make`, `make run` and `make trace` will all build a structural design with tracing enabled to keep things simple. But only `make trace` will enable tracing in the host code and call `parse_trace.py`. In contrast, the reference `vector scalar multiply example` has a more robust `Makefile` where `make` and `make run` build the structural design with tracing disabled.
 
-    Open this waveform json in http://ui.perfetto.dev. If you zoom into the region of interest with the keyboard shortcut key W and S to zoom in and out respectively and A and D to pan left and right. You should seem a wave like the following:
+    Open this waveform json in http://ui.perfetto.dev. If you zoom into the region of interest with the keyboard shortcut keys W and S to zoom in and out respectively and A and D to pan left and right. You should see a wave like the following:
 
     <img src="../../assets/trace_vector_scalar_mul1.png" title="AIE-ML Vector Unit." height=250>
 
     Based on this wave, You can mouse over each chunk of continguous data for `PortRunning0` (input dma port) and `PortRunning1` (output dma port). What is the chunk size? <img src="../../../mlir_tutorials/images/answer1.jpg" title="1024" height=25> How many input and output chunks are there? <img src="../../../mlir_tutorials/images/answer1.jpg" title="4 inputs and 4 outputs (last output might be truncated in viewer)" height=25> This should match iteration loop bounds in our example design.
 
-    Here, there are a few common events in our waveform that's further described below.
+    There are a few common events in our waveform that are described below:
     * `INSTR_EVENT_0` - The event marking the beginning of our kernel. See [vector_scalar_mul.cc](./vector_scalar_mul.cc) where we added the function `event0()` before the loop. This is generally a handy thing to do to attach an event to the beginning of our kernel.
     * `INSTR_EVENT_1` - The event marking the end of our kernel. See [vector_scalar_mul.cc](./vector_scalar_mul.cc) where we added the function `event1()` after the loop. Much like event0, attaching event1 to the end of our kernel is also helpful.
     * `INSTR_VECTOR` - Vector instructions like vector MAC or vector load/store. Here, we are running a scalar implementation so there are no vector events.
@@ -255,9 +254,9 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
         )
         ```
     * `PORT_RUNNING_1` - Mapped to Port 1 which is by default configured to the MM2S0 output (DMA from local memory to stream). This is usually the first output.
-    * `LOCK_STALL` - Any locks stalls
-    * `INSTR_LOCK_ACQUIRE_REQ` - Any lock acquire requests
-    * `INSTR_LOCK_RELEASE_REQ` - Any lock release requests
+    * `LOCK_STALL` - Any locks stalls.
+    * `INSTR_LOCK_ACQUIRE_REQ` - Any lock acquire requests.
+    * `INSTR_LOCK_RELEASE_REQ` - Any lock release requests.
 
     We will look at more exercises with Trace and performance measurement in the next [section](../section-4c).
 
