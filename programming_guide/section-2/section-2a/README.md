@@ -183,7 +183,7 @@ The closer-to-metal API variants of the `acquire()` and `release()` functions of
 def acquire(self, port, num_elem)
 def release(self, port, num_elem)
 ```
-The following code snippet shows how the same example as above is written at a lower level of abstraction with explicitly placed enpoints.
+The following code snippet shows how the same example as above is written at a lower level of abstraction with explicitly placed endpoints.
 ```python
 A = tile(1, 3)
 B = tile(2, 4)
@@ -235,7 +235,7 @@ def core_fn(of_in, of_out, test_func, test_func2):
 # Create workers to perform the tasks
 my_worker = Worker(core_fn, [of0.prod(), of0.cons(), test_fn, test_fn2])
 ```
-The following code snippet shows how the same example as above is written at a lower level of abstraction with explicitly placed enpoints:
+The following code snippet shows how the same example as above is written at a lower level of abstraction with explicitly placed endpoints:
 ```python
 A = tile(1, 3)
 of0 = object_fifo("objfifo0", A, A, 3, np.ndarray[(256,), np.dtype[np.int32]])
