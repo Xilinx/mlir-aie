@@ -43,7 +43,7 @@ def my_reduce_max(dev, in1_size, out_size, trace_size):
         ComputeTile2 = tile(0, 2)
 
         # Set up a packet-switched flow from core to shim for tracing information
-        tiles_to_trace = [ComputeTile2, ShimTile]
+        tiles_to_trace = [ComputeTile2]
         if trace_size > 0:
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
