@@ -34,8 +34,9 @@ def parse_args():
 
 
 def check_for_valid_trace(filename, toks):
-    print("len(toks): ", str(len(toks)))
-    print("toks[0]:", toks[0])
+    if DEBUG:
+        print("len(toks): ", str(len(toks)))
+        print("toks[0]:", toks[0])
     if len(toks) < 2 or toks[0] == "00000000":
         print(
             "[ERROR] Empty trace file. Valid trace was not written to",
