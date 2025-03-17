@@ -779,7 +779,9 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
         2. the transfer length;
         3. the sizes and strides for n-d tensor addressing (described below);
         4. the "bd_id" with which to associate the buffer descriptor (most often left empty);
-        5. the number of zeros to pad before and after every dimension of an n-d tensor (described below).
+        5. the number of zeros to pad before and after every dimension of an n-d tensor (described below);
+        6. the burst length to use for the DMA operation. This option is only available for data movement between the host memory and Shim NOC tiles.
+          The default value of 0 is interpreted as the maximum available burst length in the architecture.
 
     `offset`, `len`, `size`s and `stride`s are all denominated in element width; e.g., transferring the whole of
     `memref<512xi32>` means `len == 512`, and also while transferring the whole of `memref<512xi16>`, `len == 512`.
@@ -890,6 +892,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
         OptionalAttr<AIEI32Attr>:$bd_id,
         OptionalAttr<PacketInfoAttr>:$packet,
+        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
         // should never be assigned by user...
         OptionalAttr<AIEI32Attr>:$next_bd_id
   );

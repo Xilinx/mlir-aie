@@ -15,7 +15,10 @@
 
 #include "llvm/ADT/DenseSet.h"
 
+#include <cstdint>
 #include <iostream>
+#include <utility>
+#include <vector>
 
 namespace xilinx::AIE {
 
@@ -267,6 +270,11 @@ public:
   // This is used to compute the control address of a tile from it's row
   // location.
   virtual uint32_t getRowShift() const = 0;
+
+  // Returns the list of possible burst encodings (first) and
+  // their corresponding lengths in bytes (second).
+  virtual std::vector<std::pair<uint32_t, uint32_t>>
+  getBurstEncodingsAndLengths() const = 0;
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -336,6 +344,9 @@ public:
     return model->getKind() >= TK_AIE1_VC1902 &&
            model->getKind() < TK_AIE1_Last;
   }
+
+  std::vector<std::pair<uint32_t, uint32_t>>
+  getBurstEncodingsAndLengths() const override;
 };
 
 class AIE2TargetModel : public AIETargetModel {
@@ -422,6 +433,9 @@ public:
     return model->getKind() >= TK_AIE2_VE2302 &&
            model->getKind() < TK_AIE2_Last;
   }
+
+  std::vector<std::pair<uint32_t, uint32_t>>
+  getBurstEncodingsAndLengths() const override;
 };
 
 class VC1902TargetModel : public AIE1TargetModel {
@@ -619,6 +633,9 @@ public:
   static bool classof(const AIETargetModel *model) {
     return model->getKind() == TK_AIE2_NPU2;
   }
+
+  std::vector<std::pair<uint32_t, uint32_t>>
+  getBurstEncodingsAndLengths() const override;
 };
 
 } // namespace xilinx::AIE

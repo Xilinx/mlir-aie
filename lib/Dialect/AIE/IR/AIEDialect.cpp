@@ -10,6 +10,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/DialectImplementation.h"
@@ -17,7 +18,6 @@
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
 
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 
@@ -1960,6 +1960,11 @@ LogicalResult DMABDOp::verify() {
 
   if (!getLen() && !getBuffer().getType().hasStaticShape())
     return emitOpError() << "buffer with dynamic shape requires static length.";
+
+  if (getBurstLength() != 0 &&
+      !targetModel.isShimNOCTile(parentTileId.col, parentTileId.row))
+    return emitOpError("Burst length is only supported in Shim NOC tiles that "
+                       "are connected to the memory-mapped NOC.");
 
   return success();
 }
