@@ -12,9 +12,15 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+
+ifeq ($(device),npu2)
+VPATH :=${srcdir}/../../../aie_kernels/aie2p
+else 
+VPATH :=${srcdir}/../../../aie_kernels/aie2
+endif
+
 targetname = softmax
 trace_size = 8192
 
@@ -27,19 +33,6 @@ endif
 
 all: build/final.xclbin build/insts.txt
 
-build/dut.cc: ${srcdir}/bf16_softmax.mlir
-	mkdir -p ${@D}
-	cd ${@D} &&	aie-opt $< -affine-super-vectorize="virtual-vector-size=16 test-fastest-varying=0 vectorize-reductions=true" --convert-vector-to-aievec="aie-target=aie2" -lower-affine | aie-translate -aie2=true --aievec-to-cpp -o ${@F}
-
-build/dut.o: build/dut.cc
-ifeq ($(device),npu)
-	cd ${@D} &&	${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I../../../../aie_runtime_lib/AIE2 -c ${<F} -o ${@F}
-else ifeq ($(device),npu2)
-	cd ${@D} &&	${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -I../../../../aie_runtime_lib/AIE2P -c ${<F} -o ${@F}
-else
-	echo "Device type not supported"
-endif
-
 build/lut_based_ops.o: ../../../aie_runtime_lib/AIE2/lut_based_ops.cpp
 	mkdir -p ${@D}
 ifeq ($(device),npu)
@@ -50,7 +43,7 @@ else
 	echo "Device type not supported"
 endif
 
-build/softmax.o: bf16_softmax.cc
+build/softmax.o: ${VPATH}/softmax.cc
 	mkdir -p ${@D}
 ifeq ($(device),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -I../../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
@@ -60,7 +53,8 @@ else
 	echo "Device type not supported"
 endif
 
-build/kernels.a: build/softmax.o 
+
+build/kernels.a: build/softmax.o build/lut_based_ops.o
 	ar rvs $@ $+
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
