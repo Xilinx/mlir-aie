@@ -33,7 +33,7 @@ build/final_${data_str}.xclbin: build/aie_${data_str}.mlir
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts_${data_str}.txt $(<:%=../%)
 
-run: build/final_${data_str}.xclbin build/insts_${data_str}.txt
+run_py: build/final_${data_str}.xclbin build/insts_${data_str}.txt
 	${powershell} python3 ${srcdir}/test.py -x build/final_${data_str}.xclbin -i build/insts_${data_str}.txt -k MLIR_AIE --tensor-height ${tensor_height} --tensor-width ${tensor_width} --tile-height ${tile_height} --tile-width ${tile_width}
 
 generate_access_map: ${srcdir}/${aie_py_src}

@@ -2,7 +2,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 Advanced Micro Devices, Inc.
+# (c) Copyright 2024 Xilinx Inc.
 
 # parameters
 # -DBOOST_ROOT: Path to Boost install
@@ -23,8 +23,10 @@ else()
     set(BOOST_ROOT C:/Technical/thirdParty/boost_1_83_0 CACHE STRING "Path to Boost install")
     set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT cloned repo")
     set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
-endif()
+endif ()
 
+set(IN1_SIZE 4096 CACHE STRING "in1 buffer size")
+set(OUT_SIZE 4096 CACHE STRING "out buffer size")
 set(TARGET_NAME test CACHE STRING "Target to be built")
 
 SET (ProjectName ${TARGET_NAME})
@@ -44,10 +46,14 @@ add_executable(${currentTarget}
     test.cpp
 )
 
-target_compile_definitions(${currentTarget} PUBLIC DISABLE_ABI_CHECK=1)
+target_compile_definitions(${currentTarget} PUBLIC 
+    IN1_SIZE=${IN1_SIZE}
+    OUT_SIZE=${OUT_SIZE}
+    DISABLE_ABI_CHECK=1 
+        )
 
 target_include_directories (${currentTarget} PUBLIC 
-    ../../utils
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../utils
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib
     ${XRT_INC_DIR}
     ${Boost_INCLUDE_DIRS}

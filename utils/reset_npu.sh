@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eux
 
-NUMBER=$(lspci -D | grep "\[AMD\] Device 1502" | cut -d ' ' -f1)
+NUMBER=$(lspci -D | grep "\[AMD\] AMD IPU Device" | cut -d ' ' -f1)
 
 if [ x"$NUMBER" != x"" ]; then
   sudo modprobe -r amdxdna
