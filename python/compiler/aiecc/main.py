@@ -1128,7 +1128,7 @@ class FlowRunner:
                         npu_insts_module.operation
                     )
                     with open(opts.insts_name, "wb") as f:
-                        f.write(struct.pack('I'*len(npu_insts), *npu_insts))
+                        f.write(struct.pack("I" * len(npu_insts), *npu_insts))
 
             # fmt: off
             if opts.unified:
