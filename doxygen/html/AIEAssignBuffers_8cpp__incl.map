@@ -1,13 +1,11 @@
 <map id="lib/Dialect/AIE/Transforms/AIEAssignBuffers.cpp" name="lib/Dialect/AIE/Transforms/AIEAssignBuffers.cpp">
-<area shape="rect" id="Node000001" title=" " alt="" coords="1995,5,2184,45"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="1899,5,2088,45"/>
 <area shape="rect" id="Node000002" href="$AIEDialect_8h.html" title=" " alt="" coords="1641,269,1775,309"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="1995,44,1928,61,1857,89,1823,107,1790,129,1761,154,1736,183,1719,219,1712,256,1706,255,1714,217,1731,180,1757,150,1787,125,1820,103,1855,84,1926,56,1994,39"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="1938,48,1888,69,1833,98,1780,136,1756,158,1736,183,1719,219,1712,256,1707,255,1714,217,1731,180,1752,155,1776,132,1830,94,1886,64,1935,43"/>
 <area shape="rect" id="Node000027" href="$AIEPasses_8h.html" title=" " alt="" coords="1897,93,2090,133"/>
-<area shape="poly" id="edge28_Node000001_Node000027" title=" " alt="" coords="2070,48,2027,86,2023,82,2066,44"/>
+<area shape="poly" id="edge28_Node000001_Node000027" title=" " alt="" coords="1996,46,1996,79,1991,79,1991,46"/>
 <area shape="rect" id="Node000034" title=" " alt="" coords="2114,101,2259,126"/>
-<area shape="poly" id="edge39_Node000001_Node000034" title=" " alt="" coords="2113,44,2165,89,2161,93,2109,48"/>
-<area shape="rect" id="Node000035" title=" " alt="" coords="2283,101,2418,126"/>
-<area shape="poly" id="edge40_Node000001_Node000035" title=" " alt="" coords="2148,43,2304,94,2302,99,2146,48"/>
+<area shape="poly" id="edge39_Node000001_Node000034" title=" " alt="" coords="2037,43,2149,93,2147,98,2035,48"/>
 <area shape="rect" id="Node000003" href="$AIEEnums_8h.html" title=" " alt="" coords="2223,445,2321,471"/>
 <area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="1776,287,1855,291,1950,301,2052,321,2102,336,2151,355,2198,388,2251,434,2248,438,2195,393,2148,360,2101,341,2051,327,1949,306,1854,296,1776,293"/>
 <area shape="rect" id="Node000005" title=" " alt="" coords="2054,526,2181,551"/>

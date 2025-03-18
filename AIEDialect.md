@@ -2069,7 +2069,8 @@ Syntax:
 operation ::= `aie.tile` `(` $col `,` $row `)` attr-dict
 ```
 
-This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile.
+This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile. 
+Optionally, we can specify the memory allocation scheme for the tile (basic-sequential or bank-aware).
 
 A tile encompasses core module (CoreOp), memory module (MemOp), stream switch (SwitchboxOp),
 memory buffer (BufferOp), and lock (LockOp).
@@ -2077,7 +2078,7 @@ memory buffer (BufferOp), and lock (LockOp).
 A tile is a logical abstraction. We use a tile to establish ownership of a hardware entity.
 
 Note that row 0 of the Tile array is different from other rows, since it models the shim interface between
-the AIE array proper and the PL.  The South-West/Lower Right most core exists in Tile(0,1)
+the AIE array proper and the PL. The South-West/Lower Right most core exists in Tile(0,1).
 
 Traits: `AlwaysSpeculatableImplTrait`
 
@@ -2091,6 +2092,7 @@ Effects: `MemoryEffects::Effect{}`
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>allocation_scheme</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 </table>
 
 #### Results:
