@@ -20,16 +20,16 @@
 // CHECK:           %[[VAL_0:.*]] = aie.tile(2, 0)
 // CHECK:           %[[VAL_1:.*]] = aie.tile(2, 1)
 // CHECK:           %[[VAL_2:.*]] = aie.tile(2, 2)
-// CHECK:           %[[VAL_3:.*]] = aie.lock(%[[VAL_0]], 0) {init = 1 : i32, sym_name = "from_memTile_cons_prod_lock"}
-// CHECK:           %[[VAL_4:.*]] = aie.lock(%[[VAL_0]], 1) {init = 0 : i32, sym_name = "from_memTile_cons_cons_lock"}
+// CHECK:           %[[VAL_3:.*]] = aie.lock(%[[VAL_0]], 0) {init = 1 : i32, sym_name = "from_memTile_cons_prod_lock_0"}
+// CHECK:           %[[VAL_4:.*]] = aie.lock(%[[VAL_0]], 1) {init = 0 : i32, sym_name = "from_memTile_cons_cons_lock_0"}
 // CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "from_memTile_buff_0"} : memref<48xi32>
 // CHECK:           %[[VAL_6:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "from_memTile_buff_1"} : memref<48xi32>
-// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_1]], 0) {init = 2 : i32, sym_name = "from_memTile_prod_lock"}
-// CHECK:           %[[VAL_8:.*]] = aie.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "from_memTile_cons_lock"}
+// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_1]], 0) {init = 2 : i32, sym_name = "from_memTile_prod_lock_0"}
+// CHECK:           %[[VAL_8:.*]] = aie.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "from_memTile_cons_lock_0"}
 // CHECK:           %[[VAL_9:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "to_memTile_buff_0"} : memref<16xi32>
 // CHECK:           %[[VAL_10:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "to_memTile_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_11:.*]] = aie.lock(%[[VAL_2]], 0) {init = 2 : i32, sym_name = "to_memTile_prod_lock"}
-// CHECK:           %[[VAL_12:.*]] = aie.lock(%[[VAL_2]], 1) {init = 0 : i32, sym_name = "to_memTile_cons_lock"}
+// CHECK:           %[[VAL_11:.*]] = aie.lock(%[[VAL_2]], 0) {init = 2 : i32, sym_name = "to_memTile_prod_lock_0"}
+// CHECK:           %[[VAL_12:.*]] = aie.lock(%[[VAL_2]], 1) {init = 0 : i32, sym_name = "to_memTile_cons_lock_0"}
 // CHECK:           aie.flow(%[[VAL_2]], DMA : 0, %[[VAL_1]], DMA : 0)
 // CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_0]], DMA : 0)
 // CHECK:           %[[VAL_13:.*]] = aie.external_buffer {sym_name = "ext_buff_in"} : memref<48xi32>

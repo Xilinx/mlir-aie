@@ -16,12 +16,12 @@
 // CHECK:               memref.global "public" @of_1 : memref<16xi32>
 // CHECK:               %{{.*}}tile_0_2 = aie.tile(0, 2)
 // CHECK:               %{{.*}}tile_0_3 = aie.tile(0, 3)
-// CHECK:               %of_2_buff_0 = aie.buffer(%{{.*}}tile_0_2) {sym_name = "of_2_buff_0"} : memref<16xi32> 
-// CHECK:               %of_2_prod_lock = aie.lock(%{{.*}}tile_0_2, 0) {init = 1 : i32, sym_name = "of_2_prod_lock"}
-// CHECK:               %of_2_cons_lock = aie.lock(%{{.*}}tile_0_2, 1) {init = 0 : i32, sym_name = "of_2_cons_lock"}
-// CHECK:               %of_1_buff_0 = aie.buffer(%{{.*}}tile_0_3) {sym_name = "of_1_buff_0"} : memref<16xi32> 
-// CHECK:               %of_1_prod_lock = aie.lock(%{{.*}}tile_0_3, 0) {init = 1 : i32, sym_name = "of_1_prod_lock"}
-// CHECK:               %of_1_cons_lock = aie.lock(%{{.*}}tile_0_3, 1) {init = 0 : i32, sym_name = "of_1_cons_lock"}
+// CHECK:               %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "of_2_buff_0"} : memref<16xi32> 
+// CHECK:               %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_0_2, 0) {init = 1 : i32, sym_name = "of_2_prod_lock_0"}
+// CHECK:               %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_0_2, 1) {init = 0 : i32, sym_name = "of_2_cons_lock_0"}
+// CHECK:               %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_0_3) {sym_name = "of_1_buff_0"} : memref<16xi32> 
+// CHECK:               %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_0_3, 0) {init = 1 : i32, sym_name = "of_1_prod_lock_0"}
+// CHECK:               %[[VAL_5:.*]] = aie.lock(%{{.*}}tile_0_3, 1) {init = 0 : i32, sym_name = "of_1_cons_lock_0"}
 // CHECK:               func.func @some_work(%arg0: memref<16xi32>, %arg1: memref<16xi32>, %arg2: index, %arg3: index) {
 // CHECK:                 return
 // CHECK:               }
@@ -32,23 +32,23 @@
 // CHECK:                 %c13 = arith.constant 13 : index
 // CHECK:                 scf.for %arg0 = %c0 to %c12 step %c1 {
 // CHECK:                   scf.for %arg1 = %c0 to %c13 step %c1 {
-// CHECK:                     aie.use_lock(%of_1_cons_lock, AcquireGreaterEqual, 1)
+// CHECK:                     aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, 1)
 // CHECK:                     scf.for %arg2 = %c0 to %c13 step %c1 {
-// CHECK:                       aie.use_lock(%of_2_prod_lock, AcquireGreaterEqual, 1)
-// CHECK:                       func.call @some_work(%of_1_buff_0, %of_2_buff_0, %arg0, %arg1) : (memref<16xi32>, memref<16xi32>, index, index) -> ()
-// CHECK:                       aie.use_lock(%of_2_cons_lock, Release, 1)
+// CHECK:                       aie.use_lock(%[[VAL_1]], AcquireGreaterEqual, 1)
+// CHECK:                       func.call @some_work(%[[VAL_3]], %[[VAL_0]], %arg0, %arg1) : (memref<16xi32>, memref<16xi32>, index, index) -> ()
+// CHECK:                       aie.use_lock(%[[VAL_2]], Release, 1)
 // CHECK:                     }
-// CHECK:                     aie.use_lock(%of_1_prod_lock, Release, 1)
+// CHECK:                     aie.use_lock(%[[VAL_4]], Release, 1)
 // CHECK:                   }
 // CHECK:                 }
 // CHECK:                 scf.for %arg0 = %c0 to %c13 step %c1 {
-// CHECK:                   aie.use_lock(%of_1_cons_lock, AcquireGreaterEqual, 1)
+// CHECK:                   aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, 1)
 // CHECK:                   scf.for %arg1 = %c0 to %c13 step %c1 {
-// CHECK:                     aie.use_lock(%of_2_prod_lock, AcquireGreaterEqual, 1)
-// CHECK:                     func.call @some_work(%of_1_buff_0, %of_2_buff_0, %c0, %arg0) : (memref<16xi32>, memref<16xi32>, index, index) -> ()
-// CHECK:                     aie.use_lock(%of_2_cons_lock, Release, 1)
+// CHECK:                     aie.use_lock(%[[VAL_1]], AcquireGreaterEqual, 1)
+// CHECK:                     func.call @some_work(%[[VAL_3]], %[[VAL_0]], %c0, %arg0) : (memref<16xi32>, memref<16xi32>, index, index) -> ()
+// CHECK:                     aie.use_lock(%[[VAL_2]], Release, 1)
 // CHECK:                   }
-// CHECK:                   aie.use_lock(%of_1_prod_lock, Release, 1)
+// CHECK:                   aie.use_lock(%[[VAL_4]], Release, 1)
 // CHECK:                 }
 // CHECK:                 aie.end
 // CHECK:               }

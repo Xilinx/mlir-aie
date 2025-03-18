@@ -36,6 +36,7 @@ npu_dma_memcpy_nd(metadata, bd_id, mem, offsets=None, sizes=None, strides=None)
 - **`offsets`** (optional): Start points for data transfer in each dimension. There is a maximum of four offset dimensions.
 - **`sizes`**: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
 - **`strides`** (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
+- **`burst_length`** (optional): The configuration of the burst length for the DMA task. If `0`, defaults to the highest available value.
 
 The strides and sizes express data transformations analogously to those described in [Section 2C](../section-2c).
 
@@ -159,6 +160,7 @@ def shim_dma_single_bd_task(
 - **`sizes`**: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
 - **`strides`** (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
 - **`issue_token`** (optional): If a token is issued, one may call `dma_await_task` on the returned task. Default is `False`.
+- **`burst_length`** (optional): The configuration of the burst length for the DMA task. If `0`, defaults to the highest available value.
 
 The strides and strides express data transformations analogously to those described in [Section 2C](../section-2c).
 

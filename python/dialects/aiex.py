@@ -24,7 +24,15 @@ from .aie import (
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint, Attribute, AttrBuilder
+from ..ir import (
+    DictAttr,
+    IntegerAttr,
+    UnitAttr,
+    Type,
+    InsertionPoint,
+    Attribute,
+    AttrBuilder,
+)
 
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
@@ -50,7 +58,27 @@ def dma_wait(*args: ObjectFifoCreateOp | str):
 
 
 class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
-    """Specialize NpuDmaMemcpyNdOp class constructor to take python integers"""
+    """
+    Enables data transfers between the AIE Engine array and external memory.
+
+    Args:
+        metadata: This is a reference to the object FIFO or the string name of an object FIFO that records a Shim Tile and one of its DMA channels allocated for the host-side memory transfer. In order to associate the memcpy operation with an object FIFO, this metadata string needs to match the object FIFO name string.
+        bd_id: Identifier integer for the particular Buffer Descriptor control registers used for this memcpy. A buffer descriptor contains all information needed for a DMA transfer described in the parameters below.
+        mem: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to.
+        tap (optional): A TensorAccessPattern is an alternative method of specifying offset/sizes/strides for determining an access pattern over the mem buffer.
+        offsets (optional): Start points for data transfer in each dimension. There is a maximum of four offset dimensions.
+        sizes: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
+        strides (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
+        burst_length (optional): The configuration of the burst length for the DMA task. If 0, defaults to the highest available value.
+
+    Example:
+
+        npu_dma_memcpy_nd(of_in, 0, input_buffer, sizes=[1, 1, 1, 30])
+
+        The example above describes a linear transfer of 30 data elements, or 120 Bytes, from the input_buffer in host memory into an object FIFO with matching 
+        metadata labeled "of_in".
+        The size dimensions are expressed right to left where the right is dimension 0 and the left dimension 3. Higher dimensions not used should be set to 1.
+    """
 
     def __init__(
         self,
@@ -62,6 +90,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         sizes: MixedValues | None = None,
         strides: MixedValues | None = None,
         issue_token: bool | None = None,
+        burst_length: int = 0,
     ):
         if tap and not (offsets is None and sizes is None and strides is None):
             raise ValueError(
@@ -100,6 +129,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
             metadata,
             bd_id,
             issue_token=issue_token,
+            burst_length=burst_length,
         )
 
 
@@ -864,6 +894,7 @@ def shim_dma_bd(
     sizes: MixedValues | None = None,
     strides: MixedValues | None = None,
     transfer_len: int | None = None,
+    burst_length: int = 0,
 ):
     if tap and not (offset is None and sizes is None and strides is None):
         raise ValueError(
@@ -888,7 +919,13 @@ def shim_dma_bd(
         transfer_len = np.prod(sizes[-3:])
 
     dimensions = list(zip(sizes, strides))
-    dma_bd(mem, offset=offset, len=transfer_len, dimensions=dimensions)
+    dma_bd(
+        mem,
+        offset=offset,
+        len=transfer_len,
+        dimensions=dimensions,
+        burst_length=burst_length,
+    )
 
 
 def shim_dma_single_bd_task(
@@ -900,7 +937,29 @@ def shim_dma_single_bd_task(
     strides: MixedValues | None = None,
     transfer_len: int | None = None,
     issue_token: bool = False,
+    burst_length: int = 0,
 ):
+    """_summary_
+    Enables data transfers between the AIE Engine array and external memory.
+    DMA tasks operations do not require to specify a BD number and are capable of chaining BD operations.
+
+    Args:
+        alloc: The alloc argument associates the DMA task with an ObjectFIFO. This argument is called alloc becuase the shim-side end of a data transfer (specifically a channel on a shim tile) is referenced through a so-called "shim DMA allocation". When an ObjectFIFO is created with a Shim Tile endpoint, an allocation with the same name as the ObjectFIFO is automatically generated.
+        mem: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to.
+        tap (optional): A TensorAccessPattern is an alternative method of specifying offset/sizes/strides for determining an access pattern over the mem buffer.
+        offset (optional): Starting point for the data transfer. Default values is 0.
+        sizes: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
+        strides (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
+        issue_token (optional): If a token is issued, one may call dma_await_task on the returned task. Default is False.
+        burst_length (optional): The configuration of the burst length for the DMA task. If 0, defaults to the highest available value.
+
+    Example:
+        out_task = shim_dma_single_bd_task(of_out, C, sizes=[1, 1, 1, N], issue_token=True)
+
+        The example above describes a linear transfer of N data elements from the C buffer in host memory into an object FIFO with matching metadata labeled "of_out".
+        The sizes dimensions are expressed right to left where the right is dimension 0 and the left dimension 3.
+        Higher dimensions not used should be set to 1.
+    """
     if tap and not (offset is None and sizes is None and strides is None):
         raise ValueError(
             "shim_dma_single_bd_task can take either a TensorAccessPattern OR (sizes and/or strides and/or offsets), but not both."
@@ -914,7 +973,7 @@ def shim_dma_single_bd_task(
         offset = int(tap.offset)
 
     repeat_count = 0
-    if sizes[0] > 1:
+    if sizes and sizes[0] > 1:
         repeat_count = sizes[0] - 1
     task = dma_configure_task_for(
         alloc, repeat_count=repeat_count, issue_token=issue_token
@@ -927,6 +986,7 @@ def shim_dma_single_bd_task(
                 sizes=sizes,
                 strides=strides,
                 transfer_len=transfer_len,
+                burst_length=burst_length,
             )
             EndOp()
     return task
