@@ -76,16 +76,21 @@ xclbin_target?=build/final_${target_suffix}.xclbin
 trace_xclbin_target?=build/trace_${target_suffix}.xclbin
 insts_target?=build/insts_${target_suffix}.txt
 aie_py_src?=${targetname}.py
+device?=npu
 
 runargs?=-v 2 --warmup 1 --iters 1
-aieargs+=-M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
+aieargs+=-device ${device} -M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
 
 CHESS?=false
 
 # default sequential buffer allocation, if not already defined
 buffer_aloc_flag?=basic-sequential
 
+ifeq ($(device),npu2)
+kernels_dir=${srcdir}/../../../../aie_kernels/aie2p
+else 
 kernels_dir=${srcdir}/../../../../aie_kernels/aie2
+endif
 
 .PHONY: all
 all: ${xclbin_target} ${targetname}.exe
