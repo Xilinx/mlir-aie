@@ -352,10 +352,10 @@ void registerAIETranslations() {
           return r;
         if (outputBinary) {
           output.write(reinterpret_cast<const char *>(instructions.data()),
-                      instructions.size() * sizeof(uint32_t));
+                       instructions.size() * sizeof(uint32_t));
         } else {
-            for (auto w : instructions)
-              output << llvm::format("%08X\n", w);
+          for (auto w : instructions)
+            output << llvm::format("%08X\n", w);
         }
         return success();
       },
@@ -365,7 +365,7 @@ void registerAIETranslations() {
       [](ModuleOp module, raw_ostream &output) {
         std::vector<uint32_t> instructions;
         auto r = AIETranslateControlPacketsToUI32Vec(module, instructions,
-                                                      sequenceName);
+                                                     sequenceName);
         if (failed(r))
           return r;
         if (outputBinary) {
