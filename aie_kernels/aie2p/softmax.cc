@@ -14,8 +14,6 @@
 
 #define SM_VEC_LEN 16   // 32
 #define log2e 1.4453125 // 1.44269504089
-#define SM_VEC_LEN 16   // 32
-#define log2e 1.4453125 // 1.44269504089
 
 using namespace aie;
 
@@ -30,15 +28,8 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
   auto it_exp_out = aie::begin_vector<16>((bfloat16 *)output_vector);
   auto it_scale = aie::cbegin_restrict_vector<16>((bfloat16 *)output_vector);
   auto it_soft_out = aie::begin_restrict_vector<16>((bfloat16 *)output_vector);
-  auto it_exp_in = aie::cbegin_vector<16>((bfloat16 *)input_vector);
-  auto it_exp_out = aie::begin_vector<16>((bfloat16 *)output_vector);
-  auto it_scale = aie::cbegin_restrict_vector<16>((bfloat16 *)output_vector);
-  auto it_soft_out = aie::begin_restrict_vector<16>((bfloat16 *)output_vector);
 
   bfloat16 col_sum_inv;
-  aie::vector<bfloat16, 16> in_elems, va;
-  aie::accum<accfloat, 16> out_vals;
-  int col_iters = num_elems >> 4;
   aie::vector<bfloat16, 16> in_elems, va;
   aie::accum<accfloat, 16> out_vals;
   int col_iters = num_elems >> 4;
@@ -51,45 +42,40 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
   aie::vector<float, SM_VEC_LEN> input_fp32;
   aie::vector<bfloat16, SM_VEC_LEN> log2e_vec =
       aie::broadcast<bfloat16, SM_VEC_LEN>(log2e);
-  aie::vector<bfloat16, SM_VEC_LEN> log2e_vec =
-      aie::broadcast<bfloat16, SM_VEC_LEN>(log2e);
 
   const int elem_iters = num_elems / SM_VEC_LEN;
   aie::vector<bfloat16, SM_VEC_LEN> input_bf16;
   aie::accum<accfloat, SM_VEC_LEN> exp_val_accum;
   exp_val_accum = aie::zeros<accfloat, SM_VEC_LEN>();
   for (int i = 0; i < elem_iters; i++) {
-    for (int i = 0; i < elem_iters; i++) {
-      input_bf16 = *it_exp_in++;
-      aie::accum<accfloat, 16> exp_in;
-      exp_in = aie::mul(input_bf16, log2e_vec);
-      exp_val = aie::exp2<bfloat16>(exp_in.to_vector<float>());
-      exp_val_accum = add(exp_val_accum, exp_val);
-      *it_exp_out++ = exp_val;
-    }
-    aie::vector<float, SM_VEC_LEN> reduce = exp_val_accum.to_vector<float>();
-    accum_exp_val = aie::reduce_add(reduce);
-    /////////////////////
+    input_bf16 = *it_exp_in++;
+    aie::accum<accfloat, 16> exp_in;
+    exp_in = aie::mul(input_bf16, log2e_vec);
+    exp_val = aie::exp2<bfloat16>(exp_in.to_vector<float>());
+    exp_val_accum = add(exp_val_accum, exp_val);
+    *it_exp_out++ = exp_val;
+  }
+  aie::vector<float, SM_VEC_LEN> reduce = exp_val_accum.to_vector<float>();
+  accum_exp_val = aie::reduce_add(reduce);
+  /////////////////////
 
-    col_sum_inv = (bfloat16)aie::inv(accum_exp_val);
-    for (int c = 0; c < col_iters; c++) {
-      col_sum_inv = (bfloat16)aie::inv(accum_exp_val);
-      for (int c = 0; c < col_iters; c++) {
-        in_elems = *it_scale++;
-        out_vals = aie::mul(in_elems, col_sum_inv);
-        *it_soft_out++ = out_vals.to_vector<bfloat16>();
-      }
+  col_sum_inv = (bfloat16)aie::inv(accum_exp_val);
+  for (int c = 0; c < col_iters; c++) {
+    in_elems = *it_scale++;
+    out_vals = aie::mul(in_elems, col_sum_inv);
+    *it_soft_out++ = out_vals.to_vector<bfloat16>();
+  }
 
-      event1();
+  event1();
 
-      return;
-    }
+  return;
+}
 
-    extern "C" {
+extern "C" {
 
-    void softmax_bf16(bfloat16 *restrict input, bfloat16 *restrict output,
-                      const int32_t input_size) {
-      softmax_simple_bf16(input, output, input_size);
-    }
+void softmax_bf16(bfloat16 *restrict input, bfloat16 *restrict output,
+                  const int32_t input_size) {
+  softmax_simple_bf16(input, output, input_size);
+}
 
-    } // extern "C"
+} // extern "C"
