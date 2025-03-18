@@ -68,7 +68,7 @@ build/final.xclbin: build/aie2.mlir build/conv2dk1_i8.o
 	mkdir -p ${@D} 
 	cd ${@D} && aiecc.py -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
+		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
 
 build/final_trace.xclbin: build/aie2_trace.mlir build/conv2dk1_i8.o 
 	mkdir -p ${@D} 
@@ -77,7 +77,7 @@ build/final_trace.xclbin: build/aie2_trace.mlir build/conv2dk1_i8.o
 		--xclbin-name=${@F} --npu-insts-name=insts_trace.txt $(<:%=../%)
 
 run_py: build/final.xclbin
-	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -wd ${width} -ht ${height} -ic ${in_channels} -oc ${out_channels}
+	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -wd ${width} -ht ${height} -ic ${in_channels} -oc ${out_channels}
 
 trace_py: build/final_trace.xclbin
 	${powershell} python3 ${srcdir}/test.py -x build/final_trace.xclbin -i build/insts_trace.txt -k MLIR_AIE -wd ${width} -ht ${height} -ic ${in_channels} -oc ${out_channels} -t ${trace_size}
@@ -86,5 +86,5 @@ trace_py: build/final_trace.xclbin
 
 clean:
 	rm -rf build *.elf* *.lst *.bif aie2.mlir.prj log* *.xclbin sim \
-		chess* *.o insts.txt \
+		chess* *.o insts.bin \
 		*.log aie_partition.json *.bin BOOT.BIN _x test.exe
