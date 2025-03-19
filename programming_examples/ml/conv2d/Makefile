@@ -74,13 +74,13 @@ build/final_trace.xclbin: build/aie2_trace.mlir build/conv2dk1_i8.o
 	mkdir -p ${@D} 
 	cd ${@D} && aiecc.py -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts_trace.txt $(<:%=../%)
+		--xclbin-name=${@F} --npu-insts-name=insts_trace.bin $(<:%=../%)
 
 run_py: build/final.xclbin
 	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -wd ${width} -ht ${height} -ic ${in_channels} -oc ${out_channels}
 
 trace_py: build/final_trace.xclbin
-	${powershell} python3 ${srcdir}/test.py -x build/final_trace.xclbin -i build/insts_trace.txt -k MLIR_AIE -wd ${width} -ht ${height} -ic ${in_channels} -oc ${out_channels} -t ${trace_size}
+	${powershell} python3 ${srcdir}/test.py -x build/final_trace.xclbin -i build/insts_trace.bin -k MLIR_AIE -wd ${width} -ht ${height} -ic ${in_channels} -oc ${out_channels} -t ${trace_size}
 	${srcdir}/../../utils/parse_trace.py --filename log/trace_conv2d.txt --mlir build/aie2_trace.mlir --colshift ${colshift} > log/trace_conv2d.json
 	${srcdir}/../../utils/get_trace_summary.py --filename log/trace_conv2d.json
 
