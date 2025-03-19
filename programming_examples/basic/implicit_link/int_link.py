@@ -53,7 +53,7 @@ def explicit_link():
             ComputeTile3 = tile(col, 3)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, [ComputeTile2, ComputeTile3], [1,3,2], line_ty, [], [0, op_size])
+            of_in = object_fifo("in", ShimTile, [ComputeTile2, ComputeTile3], [2, 2, 2], line_ty, [], [0, op_size])
 
             of_out1 = object_fifo("out1", ComputeTile2, MemTile, 2, op_ty)
             of_out2 = object_fifo("out2", ComputeTile3, MemTile, 2, op_ty)

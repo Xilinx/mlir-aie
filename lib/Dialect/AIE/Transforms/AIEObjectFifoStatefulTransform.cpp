@@ -1635,7 +1635,7 @@ struct AIEObjectFifoStatefulTransformPass
       for (auto consumerTile : createOp.getConsumerTiles()) {
         auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
 
-        if (createOp.getConsumerTiles().size() == 1) {
+        if (createOp.getConsumerTiles().size() == 1) { // May fail existing tests
           consumerDepth = createOp.size();
         } else if (isa<ArrayAttr>(createOp.getElemNumber())) {
           // +1 to account for 1st depth (producer)
