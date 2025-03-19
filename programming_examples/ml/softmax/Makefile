@@ -33,16 +33,13 @@ endif
 
 all: build/final.xclbin build/insts.txt
 
+ifeq ($(device),npu)
 build/lut_based_ops.o: ../../../aie_runtime_lib/AIE2/lut_based_ops.cpp
 	mkdir -p ${@D}
-ifeq ($(device),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -c $(<:%=../%) -o ${@F}
-else ifeq ($(device),npu2)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -I. -c $(<:%=../%) -o ${@F}
-else
-	echo "Device type not supported"
 endif
 
+	
 build/softmax.o: ${VPATH}/softmax.cc
 	mkdir -p ${@D}
 ifeq ($(device),npu)
@@ -53,9 +50,15 @@ else
 	echo "Device type not supported"
 endif
 
-
+ifeq ($(device),npu)
 build/kernels.a: build/softmax.o build/lut_based_ops.o
 	ar rvs $@ $+
+else ifeq ($(device),npu2)
+build/kernels.a: build/softmax.o
+	ar rvs $@ $+
+else
+	echo "Device type not supported"
+endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
