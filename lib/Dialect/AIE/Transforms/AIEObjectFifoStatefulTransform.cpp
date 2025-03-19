@@ -1451,7 +1451,13 @@ struct AIEObjectFifoStatefulTransformPass
     return {memTile_col, memTile_row};
   }
 
-  void implicit_link(DeviceOp device, ObjectFifoCreateOp createOp, OpBuilder &builder, DMAChannelAnalysis dmaAnalysis, std::vector<ObjectFifoCreateOp> &createdFifoOps, std::vector<ObjectFifoCreateOp> &fifosNeedToRemove) {
+  // Replace any symbol in the code within a scope
+  void replaceSymbols(StringAttr originalSymbol, StringAttr newSymbol, Operation *scope) {
+    if (auto res = SymbolTable::replaceAllSymbolUses(originalSymbol, newSymbol, scope); res.failed())
+      llvm_unreachable("unreachable");
+  }
+
+  void implicit_link(MLIRContext *ctx, DeviceOp device, ObjectFifoCreateOp createOp, OpBuilder &builder, DMAChannelAnalysis dmaAnalysis, std::vector<ObjectFifoCreateOp> &createdFifoOps, std::vector<ObjectFifoCreateOp> &fifosNeedToRemove) {
     // Currently allowed, producerTile is ShimTile and there is a list of consumerTiles : Distribute
     // Step 1: Figure out which MemTile to use
     llvm::SmallVector<Value, 4> consumerTiles(createOp.getConsumerTiles().begin(), createOp.getConsumerTiles().end());
@@ -1525,10 +1531,7 @@ struct AIEObjectFifoStatefulTransformPass
       (createOp.getRepeatCount().has_value() ? createOp.getRepeatCount().value() : 0)
     );
 
-    // Step 4: Remove the existing previous objectFifo
-    fifosNeedToRemove.push_back(createOp);
-
-    // Step 5: Replacements of objectFifos with new split ones
+    // Step 4: Replacements of objectFifos with new split ones
     for (auto consumer : consumerFifos) {
       replaceSplitFifo(createOp, consumer, consumer.getConsumerTiles()[0].getDefiningOp<TileOp>());
     }
@@ -1536,6 +1539,22 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto producer : producerFifos) {
       replaceSplitFifo(createOp, producer, producer.getProducerTileOp());
     }
+
+    // replaceSplitFifos doesn't replace the symbols in runtime sequence
+    // Replace symbols in runtime sequence
+    if (!createOp.getSrcOffsets()->empty()) {
+      for (auto consumer : consumerFifos) { // For join
+      replaceSymbols(StringAttr::get(ctx, createOp.getName()), StringAttr::get(ctx, consumer.getName()), device);
+      }
+    } 
+    if (!createOp.getDstOffsets()->empty()) {
+      for (auto producer : producerFifos) { // For distribute
+      replaceSymbols(StringAttr::get(ctx, createOp.getName()), StringAttr::get(ctx, producer.getName()), device);
+      }
+    }
+
+    // Step 5: Remove the existing previous objectFifo
+    fifosNeedToRemove.push_back(createOp);
   }
 
   void runOnOperation() override {
@@ -1594,7 +1613,7 @@ struct AIEObjectFifoStatefulTransformPass
           // Call implicit_link function here
           if(createOp.getConsumerTiles().size() > 1)
             builder.setInsertionPointAfter(createOp);
-            implicit_link(device, createOp, builder, dmaAnalysis, createdFifoOps, fifosNeedToRemove);
+            implicit_link(ctx, device, createOp, builder, dmaAnalysis, createdFifoOps, fifosNeedToRemove);
         }
       }
     }
