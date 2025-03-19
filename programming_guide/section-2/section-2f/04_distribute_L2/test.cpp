@@ -39,7 +39,7 @@ void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
   }
 }
 
-std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
+std::vector<uint32_t> load_instr_binary(std::string instr_path) {
   std::ifstream instr_file(instr_path);
   std::string line;
   std::vector<uint32_t> instr_v;
@@ -87,7 +87,7 @@ int main(int argc, const char *argv[]) {
   check_arg_file_exists(vm, "instr");
 
   std::vector<uint32_t> instr_v =
-      load_instr_sequence(vm["instr"].as<std::string>());
+      load_instr_binary(vm["instr"].as<std::string>());
 
   int verbosity = vm["verbosity"].as<int>();
   if (verbosity >= 1)
