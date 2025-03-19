@@ -14,10 +14,10 @@ mlirFileName = aieWithTrace_1core
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 aie_py_src=conv2d_fused_relu.py
-use_alt?=0
+use_placed?=0
 
-ifeq (${use_alt}, 1)
-aie_py_src=conv2d_fused_relu_alt.py
+ifeq (${use_placed}, 1)
+aie_py_src=conv2d_fused_relu_placed.py
 endif
 
 all: build/conv2dk1.o build/final.xclbin

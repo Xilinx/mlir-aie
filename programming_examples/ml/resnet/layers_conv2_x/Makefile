@@ -17,10 +17,10 @@ mlirFileName = aie
 VPATH := ${srcdir}/../../../../aie_kernels/aie2
 
 aie_py_src=resnet.py
-use_alt?=0
+use_placed?=0
 
-ifeq (${use_alt}, 1)
-aie_py_src=resnet_alt.py
+ifeq (${use_placed}, 1)
+aie_py_src=resnet_placed.py
 endif
 
 all: build/conv2dk1_i8.o build/conv2dk1_skip_init.o build/conv2dk3.o build/conv2dk1_skip.o build/conv2dk1_ui8.o build/final.xclbin
