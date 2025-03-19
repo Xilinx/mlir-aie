@@ -38,20 +38,6 @@ void print_matrix(float *buf, int n_rows, int n_cols) {
   }
 }
 
-void check_arg_file_exists(po::variables_map &vm_in,
-                                       std::string name) {
-  if (!vm_in.count(name)) {
-    throw std::runtime_error("Error: no " + name + " file was provided\n");
-  } else {
-    std::ifstream test(vm_in[name].as<std::string>());
-    if (!test) {
-      throw std::runtime_error("The " + name + " file " +
-                               vm_in[name].as<std::string>() +
-                               " does not exist.\n");
-    }
-  }
-}
-
 std::vector<uint32_t> load_instr_binary(std::string instr_path) {
   // Open file in binary mode
   std::ifstream instr_file(instr_path, std::ios::binary);
