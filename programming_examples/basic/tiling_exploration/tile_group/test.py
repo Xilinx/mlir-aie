@@ -71,7 +71,7 @@ def get_arg_parser():
         "-i",
         "--instr",
         dest="instr",
-        default="instr.txt",
+        default="instr.bin",
         help="path of file containing userspace instructions sent to the NPU",
     )
     p.add_argument("--tensor-height", required=True, help="Tensor height", type=int)
