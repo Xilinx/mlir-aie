@@ -1551,7 +1551,10 @@ struct AIEObjectFifoStatefulTransformPass
     int consumerIndex = 0;
     for (auto consumerTile : createOp.getConsumerTiles()) {
       auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
-      // auto datatype = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
+      auto consumerElemType = llvm::cast<MemRefType>(datatype.getElementType());
+      int consumerElemSize = consumerElemType.getNumElements() / createOp.getConsumerTiles().size();
+      auto consumerMemRefType = MemRefType::get({consumerElemSize}, consumerElemType.getElementType());
+      auto consumerDatatype = AIEObjectFifoType::get(consumerMemRefType);
       // // Are in lists
       auto consumerObjFifoSize = builder.getIntegerAttr(
           builder.getI32Type(), createOp.size(consumerIndex + 1));
@@ -1564,7 +1567,7 @@ struct AIEObjectFifoStatefulTransformPass
       BDDimLayoutArrayArrayAttr fromStreamDims = BDDimLayoutArrayArrayAttr::get(
           builder.getContext(), singletonFromStreamDims);
       ObjectFifoCreateOp consumerFifo = createObjectFifo(
-          builder, datatype, consumerFifoName, memTile, consumerTileOp,
+          builder, consumerDatatype, consumerFifoName, memTile, consumerTileOp,
           consumerObjFifoSize, emptyDims, fromStreamDims);
       if (createOp.getDisableSynchronization())
         consumerFifo.setDisableSynchronization(true);
