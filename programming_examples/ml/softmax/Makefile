@@ -12,6 +12,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
+aie2_runtime_dir = ${AIEOPT_DIR}/aie_runtime_lib/AIE2
 
 device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
@@ -34,18 +35,18 @@ endif
 all: build/final.xclbin build/insts.txt
 
 ifeq ($(device),npu)
-build/lut_based_ops.o: ../../../aie_runtime_lib/AIE2/lut_based_ops.cpp
+build/lut_based_ops.o: ${aie2_runtime_dir}/lut_based_ops.cpp
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -c $(<:%=../%) -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -c $< -o ${@F}
 endif
 
 	
 build/softmax.o: ${VPATH}/softmax.cc
 	mkdir -p ${@D}
 ifeq ($(device),npu)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -I../../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -I${aie2_runtime_dir} -c $< -o ${@F}
 else ifeq ($(device),npu2)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -I. -I../../../../aie_runtime_lib/AIE2P -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
 else
 	echo "Device type not supported"
 endif
