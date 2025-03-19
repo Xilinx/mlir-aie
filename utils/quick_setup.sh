@@ -34,7 +34,8 @@ else
   echo "Environment is WSL"
 fi
 # Check if the current environment is NPU2
-if echo "$NPU" | grep -qi "npu4"; then
+# npu4 => Strix, npu6 => Kracken
+if echo "$NPU" | grep -qiE "npu4|npu6"; then
     export NPU2=1
 else
     export NPU2=0
