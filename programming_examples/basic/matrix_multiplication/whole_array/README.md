@@ -42,15 +42,15 @@ make whole_array.exe
 make run
 ```
 
-To compile and run the alternative design with tiling:
+To compile and run the placed design with tiling:
 
 ```shell
-env use_alt=1 make
-env use_alt=1 make whole_array.exe
-env use_alt=1 make run
+env use_placed=1 make
+env use_placed=1 make whole_array.exe
+env use_placed=1 make run
 ```
 
-To compile and run the alternative design with higher-level IRON:
+To compile and run the placed design with higher-level IRON:
 
 ```shell
 env use_iron=1 make
@@ -60,8 +60,8 @@ env use_iron=1 make run
 
 ## Detailed Design Explanation
 
-The configuration of the AI Engine array is described in the [`whole_array.py`](./whole_array.py) file. There are two alternative versions of this design:
-* [`whole_array_alt.py`](./whole_array_alt.py): This design integrates some data visualization tools for runtime data movement, which can be viewed using the accompanying [notebook](./mat_mul_whole_array_visualization.ipynb). It also features the use of alternative instructions in the runtime sequence but is intended to be functionally equivalent to the orginal design.
+The configuration of the AI Engine array is described in the [`whole_array.py`](./whole_array.py) file. There are two placed versions of this design:
+* [`whole_array_placed.py`](./whole_array_placed.py): This design integrates some data visualization tools for runtime data movement, which can be viewed using the accompanying [notebook](./mat_mul_whole_array_visualization.ipynb). It also features the use of placed instructions in the runtime sequence but is intended to be functionally equivalent to the orginal design.
 * [`whole_array_iron.py`](./whole_array_iron.py): This design uses a higher-level version of IRON but is also intended to be functionally equivalent. Note that this design does not support tracing at this time.
 
 It is linked against a compute microkernel which is implemented in C++.
@@ -181,7 +181,7 @@ make run
 
 ##### Tiling to Vector Intrinsic Size
 
-The `memA_fifos` and `memB_fifos` receive sub-matrices of size `m`&times;`k` and `k`&times;`n`, respectively. The FIFOs translate those matrices from a row-major format (or, alternatively, column-major for `B` if `b_col_maj` is set) into the `r`&times;`s`-sized and `s`&times;`t`-sized blocks required by the hardware's vector instrinsics before sending them into the compute cores memory.
+The `memA_fifos` and `memB_fifos` receive sub-matrices of size `m`&times;`k` and `k`&times;`n`, respectively. The FIFOs translate those matrices from a row-major format (or, placedly, column-major for `B` if `b_col_maj` is set) into the `r`&times;`s`-sized and `s`&times;`t`-sized blocks required by the hardware's vector instrinsics before sending them into the compute cores memory.
 
 For matrix A (`memA_fifos`), this transformation is expressed using the following wraps and strides as a list of tuples `(wrap, stride)`, given as arguments to the `object_fifo()` operation:
 (Note that `//` denotes integer floor-division in Python.)

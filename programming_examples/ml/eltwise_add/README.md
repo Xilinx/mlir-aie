@@ -17,7 +17,7 @@ This design implements a `bfloat16` based element wise addition between two vect
 
 1. `eltwise_add.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
 
-1. `eltwise_add_alt.py`: An alternate version of the design in `eltwise_add.py`, that is expressed in a lower-level version of IRON.
+1. `eltwise_add_placed.py`: An alternative version of the design in `eltwise_add.py`, that is expressed in a lower-level version of IRON.
 
 1. `add.cc`: A C++ implementation of a vectorized vector addition operation for AIE cores. The code uses the AIE API, which is a C++ header-only library providing types and operations that get translated into efficient low-level intrinsics, and whose documentation can be found [here](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html).  The source can be found [here](../../../aie_kernels/aie2/add.cc).
 
@@ -33,10 +33,10 @@ To compile the design and C++ testbench:
 make
 ```
 
-To compile for the alternative design:
+To compile for the placed design:
 
 ```shell
-env use_alt=1 make
+env use_placed=1 make
 ```
 
 To run the design:
@@ -46,5 +46,5 @@ make run
 
 To generate a [trace file](../../../programming_guide/section-4/section-4b/README.md):
 ```shell
-env use_alt=1 make trace
+env use_placed=1 make trace
 ```

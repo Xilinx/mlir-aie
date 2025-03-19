@@ -22,13 +22,13 @@ Finally, the overall structural design shows how complete designs are a combinat
 
 There are two versions of this design:
 * [matrix_scalar_add.py](./matrix_scalar_add.py)
-* [matrix_scalar_add_alt.py](./matrix_scalar_add_alt.py): This version of the design supports VCK500 and is written in a lower-level version of IRON.
+* [matrix_scalar_add_placed.py](./matrix_scalar_add_placed.py): This version of the design supports VCK500 and is written in a lower-level version of IRON.
 
 ## Functionality
 
 A single AIE core performs a very simple `+` operation where the kernel loads data from its local memory, increments the value by `1` and stores it back to the local memory. The DMA in the Shim tile is programmed to bring the bottom left `8x16` portion of a larger `16x128` matrix into the tile to perform the operation. This reference design can be run on either a RyzenAI NPU or a VCK5000.
 
-In the [alternative design](./matrix_scalar_add_alt.py), where placement is explicit, the kernel executes on AIE tile (`col`, 2) - this is actually the first core in a column, as the shim tile is on row 0, and the mem tile is on row 1. Input data is brought to the local memory of the tile from Shim tile (`col`, 0). The value of `col` is dependent on whether the application is targeting NPU or VCK5000. 
+In the [placed design](./matrix_scalar_add_placed.py), where placement is explicit, the kernel executes on AIE tile (`col`, 2) - this is actually the first core in a column, as the shim tile is on row 0, and the mem tile is on row 1. Input data is brought to the local memory of the tile from Shim tile (`col`, 0). The value of `col` is dependent on whether the application is targeting NPU or VCK5000. 
 
 
 ## Usage
@@ -41,10 +41,10 @@ make
 make matrix_scalar_add
 ```
 
-To build with the alternate design for NPU:
+To build with the placed design for NPU:
 ```shell
-env use_alt=1 make
-env use_alt=1 make matrix_scalar_add
+env use_placed=1 make
+env use_placed=1 make matrix_scalar_add
 ```
 
 To run the design:
@@ -57,7 +57,7 @@ make run
 
 To compile the design and C++ testbench:
 ```shell
-env use_alt=1 make vck5000
+env use_placed=1 make vck5000
 ```
 
 To run the design:

@@ -26,7 +26,7 @@ n?=64
 kernels=mm_${m}x${k}x${n}
 aieargs+=-m $m -k $k -n $n
 target_suffix=${M}x${K}x${N}_${m}x${k}x${n}
-use_alt?=0
+use_placed?=0
 use_iron?=0
 
 # set this flag to 1 for linear buffer allocation
@@ -39,10 +39,10 @@ else
 buffer_aloc_flag=bank-aware
 endif
 
-ifeq (${use_alt}, 1)
-aie_py_src=${targetname}_alt.py
+ifeq (${use_placed}, 1)
+aie_py_src=${targetname}_placed.py
 ifeq (${use_iron}, 1)
-$(error Cannot specify both alternative design and IRON)
+$(error Cannot specify both placed design and IRON)
 endif
 endif
 

@@ -23,10 +23,10 @@ CHESS ?= false
 colshift ?= $(if $(filter 1,$(NPU2)),0,1)
 data_size = in1_size
 aie_py_src=${targetname}.py
-use_alt?=0
+use_placed?=0
 
-ifeq (${use_alt}, 1)
-aie_py_src=${targetname}_alt.py
+ifeq (${use_placed}, 1)
+aie_py_src=${targetname}_placed.py
 endif
 
 .PHONY: all template clean
