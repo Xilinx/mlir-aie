@@ -24,8 +24,7 @@ if len(sys.argv) > 1:
     assert N % line_size == 0
 
 if len(sys.argv) > 2:
-    
-    
+
     if sys.argv[2] == "npu":
         dev = AIEDevice.npu1_1col
     elif sys.argv[2] == "xcvc1902":
@@ -53,12 +52,20 @@ def explicit_link():
             ComputeTile3 = tile(col, 3)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, [ComputeTile2, ComputeTile3], [2, 2, 2], line_ty, [], [0, op_size])
+            of_in = object_fifo(
+                "in",
+                ShimTile,
+                [ComputeTile2, ComputeTile3],
+                [2, 2, 2],
+                line_ty,
+                [],
+                [0, op_size],
+            )
 
             of_out1 = object_fifo("out1", ComputeTile2, MemTile, 2, op_ty)
             of_out2 = object_fifo("out2", ComputeTile3, MemTile, 2, op_ty)
             of_out = object_fifo("out", MemTile, ShimTile, 2, line_ty)
-            object_fifo_link([of_out1, of_out2], of_out, [0,op_size], [])
+            object_fifo_link([of_out1, of_out2], of_out, [0, op_size], [])
 
             # Set up compute tiles
 

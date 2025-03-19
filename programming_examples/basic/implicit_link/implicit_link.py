@@ -51,11 +51,29 @@ def implicit_link():
             ComputeTile3 = tile(col, 3)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, {ComputeTile2, ComputeTile3}, 2, [line_ty, op_ty], [], [0, op_size])  #Number of objects     # 2 changes: array of datatypes, srcOffsets and dstOffsets
-            of_out = object_fifo("out", {ComputeTile2, ComputeTile3}, ShimTile, 2, [op_ty, line_ty], [0, op_size], [])
+            of_in = object_fifo(
+                "in",
+                ShimTile,
+                {ComputeTile2, ComputeTile3},
+                2,
+                [line_ty, op_ty],
+                [],
+                [0, op_size],
+            )  # Number of objects     # 2 changes: array of datatypes, srcOffsets and dstOffsets
+            of_out = object_fifo(
+                "out",
+                {ComputeTile2, ComputeTile3},
+                ShimTile,
+                2,
+                [op_ty, line_ty],
+                [0, op_size],
+                [],
+            )
 
             # Set up compute tiles
-            def compute_core(tile):                             # Now uses only of_in and of_out in both computeTiles but needs differentiation inside
+            def compute_core(
+                tile,
+            ):  # Now uses only of_in and of_out in both computeTiles but needs differentiation inside
                 @core(tile)
                 def core_body():
                     for _ in range_(sys.maxsize):

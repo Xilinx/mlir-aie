@@ -398,7 +398,7 @@ class object_fifo(ObjectFifoCreateOp):
         producerTile,
         consumerTiles,
         depth,
-        datatype: MemRefType | type[np.ndarray] | List[MemRefType | type[np.ndarray]], 
+        datatype: MemRefType | type[np.ndarray] | List[MemRefType | type[np.ndarray]],
         srcOffsets=None,
         dstOffsets=None,
         dimensionsToStream=None,
