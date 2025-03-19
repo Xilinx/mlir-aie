@@ -1,4 +1,4 @@
-//===- simple.mlir ---------------------------------------------*- MLIR -*-===//
+//===- generate_pdi.mlir ---------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,14 +8,24 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: %PYTHON aiecc.py -v --aie-generate-pdi --pdi-name=MlirAie.pdi --npu-insts-name=insts.txt %s | FileCheck %s
+// REQUIRES: chess
+// REQUIRES: peano
+
+// RUN: %python aiecc.py -v --xchesscc --xbridge --aie-generate-pdi --pdi-name=MlirAie0.pdi %s | FileCheck %s --check-prefix=XCHESSCC
+// RUN: %python aiecc.py -v --no-xchesscc --no-xbridge --aie-generate-pdi --pdi-name=MlirAie1.pdi %s | FileCheck %s --check-prefix=PEANO
+
 // RUN: ls | grep MlirAie.pdi | FileCheck %s --check-prefix=CHECK-FILE
 
-// Note that llc determines the architecture from the llvm IR.
-// CHECK: bootgen
-// CHECK: copy{{.*}} to MlirAie.pdi
-// CHECK-NOT: xclbinutil
-// CHECK-FILE: MlirAie.pdi
+// XCHESSCC: bootgen
+// XCHESSCC: copy{{.*}} to MlirAie0.pdi
+// XCHESSCC-NOT: xclbinutil
+
+// PEANO: bootgen
+// PEANO: copy{{.*}} to MlirAie1.pdi
+// PEANO-NOT: xclbinutil
+
+// CHECK-FILE: MlirAie0.pdi
+// CHECK-FILE: MlirAie1.pdi
 
 module {
   aie.device(npu1_4col) {
