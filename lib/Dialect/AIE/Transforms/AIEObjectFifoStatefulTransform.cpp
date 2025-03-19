@@ -1700,15 +1700,14 @@ struct AIEObjectFifoStatefulTransformPass
                            createdFifoOps.end());
     }
     // Remove the objectFifos which are replaced with implciit link
-    // if (!fifosNeedToRemove.empty()) {
-    //   for (auto fifo : fifosNeedToRemove) {
-    //     auto it = std::find(createFifoOps.begin(), createFifoOps.end(),
-    //     fifo); if (it != createFifoOps.end()) {
-    //         createFifoOps.erase(it); //If I erase it right away, it will have
-    //         dependencies which are left dangling
-    //     }
-    //   }
-    // }
+    if (!fifosNeedToRemove.empty()) {
+      for (auto fifo : fifosNeedToRemove) {
+        auto it = std::find(createFifoOps.begin(), createFifoOps.end(), fifo);
+        if (it != createFifoOps.end()) {
+          createFifoOps.erase(it);
+        }
+      }
+    }
 
     verifyObjectFifoLinks(device);
     //===------------------------------------------------------------------===//
