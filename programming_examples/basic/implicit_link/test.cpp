@@ -178,7 +178,8 @@ int main(int argc, const char *argv[]) {
   for (uint32_t i = 0; i < N; i++) {
     uint32_t ref = (i + 2);
     if (*(bufOut + i) != ref) {
-      std::cout<<"Mismatched: "<< i <<": "<<*(bufOut + i) <<", "<<ref<<std::endl;
+      std::cout << "Mismatched: " << i << ": " << *(bufOut + i) << ", " << ref
+                << std::endl;
       errors++;
     }
   }
