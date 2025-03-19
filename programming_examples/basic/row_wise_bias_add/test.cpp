@@ -38,8 +38,7 @@ void print_matrix(float *buf, int n_rows, int n_cols) {
   }
 }
 
-void check_arg_file_exists(po::variables_map &vm_in,
-                                       std::string name) {
+void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
   if (!vm_in.count(name)) {
     throw std::runtime_error("Error: no " + name + " file was provided\n");
   } else {
