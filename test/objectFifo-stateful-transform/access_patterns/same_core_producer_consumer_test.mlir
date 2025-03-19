@@ -18,8 +18,8 @@
 // CHECK:           %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "of_buff_0"} : memref<16xi32>
 // CHECK:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "of_buff_1"} : memref<16xi32>
 // CHECK:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "of_buff_2"} : memref<16xi32>
-// CHECK:           %[[VAL_4:.*]] = aie.lock(%[[VAL_0]], 0) {init = 3 : i32, sym_name = "of_prod_lock"}
-// CHECK:           %[[VAL_5:.*]] = aie.lock(%[[VAL_0]], 1) {init = 0 : i32, sym_name = "of_cons_lock"}
+// CHECK:           %[[VAL_4:.*]] = aie.lock(%[[VAL_0]], 0) {init = 3 : i32, sym_name = "of_prod_lock_0"}
+// CHECK:           %[[VAL_5:.*]] = aie.lock(%[[VAL_0]], 1) {init = 0 : i32, sym_name = "of_cons_lock_0"}
 // CHECK:           func.func @some_work(%[[VAL_6:.*]]: memref<16xi32>) {
 // CHECK:             return
 // CHECK:           }

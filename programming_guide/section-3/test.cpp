@@ -35,6 +35,7 @@ int main(int argc, const char *argv[]) {
   test_utils::parse_options(argc, argv, desc, vm);
   int verbosity = vm["verbosity"].as<int>();
 
+  // Declaring design constants
   constexpr bool VERIFY = true;
   constexpr int IN_SIZE = 4096;
   constexpr int OUT_SIZE = IN_SIZE;

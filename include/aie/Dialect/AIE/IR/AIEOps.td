@@ -73,12 +73,14 @@ def AIE_TileOp: AIE_Op<"tile", [
   ]>, Results<(outs Index:$result)> {
   let arguments = (
     ins ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$col,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$row
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$row,
+        OptionalAttr<StrAttr>:$allocation_scheme
   );
 
   let summary = "Declare an AIE tile";
   let description = [{
-    This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile.
+    This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile. 
+    Optionally, we can specify the memory allocation scheme for the tile (basic-sequential or bank-aware).
 
     A tile encompasses core module (CoreOp), memory module (MemOp), stream switch (SwitchboxOp),
     memory buffer (BufferOp), and lock (LockOp).
@@ -86,7 +88,7 @@ def AIE_TileOp: AIE_Op<"tile", [
     A tile is a logical abstraction. We use a tile to establish ownership of a hardware entity.
 
     Note that row 0 of the Tile array is different from other rows, since it models the shim interface between
-    the AIE array proper and the PL.  The South-West/Lower Right most core exists in Tile(0,1)
+    the AIE array proper and the PL. The South-West/Lower Right most core exists in Tile(0,1).
   }];
 
   let extraClassDeclaration = [{
@@ -146,6 +148,15 @@ def AIE_TileOp: AIE_Op<"tile", [
                                   std::to_string(getRow()));
     }
   }];
+
+  let builders = [
+    OpBuilder<(ins "int32_t":$col, "int32_t":$row), [{
+      build($_builder, $_state, col, row, nullptr);
+    }]>,
+    OpBuilder<(ins "mlir::Type":$type, "int32_t":$col, "int32_t":$row), [{
+      build($_builder, $_state, type, col, row, nullptr);
+    }]>
+  ];
 }
 
 def AIE_EndOp: AIE_Op<"end", [Terminator]> {
@@ -779,7 +790,9 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
         2. the transfer length;
         3. the sizes and strides for n-d tensor addressing (described below);
         4. the "bd_id" with which to associate the buffer descriptor (most often left empty);
-        5. the number of zeros to pad before and after every dimension of an n-d tensor (described below).
+        5. the number of zeros to pad before and after every dimension of an n-d tensor (described below);
+        6. the burst length to use for the DMA operation. This option is only available for data movement between the host memory and Shim NOC tiles.
+          The default value of 0 is interpreted as the maximum available burst length in the architecture.
 
     `offset`, `len`, `size`s and `stride`s are all denominated in element width; e.g., transferring the whole of
     `memref<512xi32>` means `len == 512`, and also while transferring the whole of `memref<512xi16>`, `len == 512`.
@@ -890,6 +903,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
         OptionalAttr<AIEI32Attr>:$bd_id,
         OptionalAttr<PacketInfoAttr>:$packet,
+        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
         // should never be assigned by user...
         OptionalAttr<AIEI32Attr>:$next_bd_id
   );

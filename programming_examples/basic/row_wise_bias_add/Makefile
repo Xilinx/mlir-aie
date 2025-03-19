@@ -39,10 +39,10 @@ m=96
 n=32
 
 aie_py_src=row_wise_bias_add.py
-use_alt?=0
+use_placed?=0
 
-ifeq (${use_alt}, 1)
-aie_py_src=row_wise_bias_add_alt.py
+ifeq (${use_placed}, 1)
+aie_py_src=row_wise_bias_add_placed.py
 endif
 
 .PHONY: all

@@ -47,8 +47,8 @@
 // CHECK:     %[[fifo1_cons_buff_1:.*]] = aie.buffer(%[[t2]]) {sym_name = "fifo1_cons_buff_1"} : memref<1xi32>
 // CHECK:     %[[fifo1_cons_buff_2:.*]] = aie.buffer(%[[t2]]) {sym_name = "fifo1_cons_buff_2"} : memref<1xi32>
 // CHECK:     %[[fifo1_cons_buff_3:.*]] = aie.buffer(%[[t2]]) {sym_name = "fifo1_cons_buff_3"} : memref<1xi32>
-// CHECK:     %[[fifo1_cons_prod_lock:.*]] = aie.lock(%[[t2]], 0) {init = 4 : i32, sym_name = "fifo1_cons_prod_lock"}
-// CHECK:     %[[fifo1_cons_cons_lock:.*]] = aie.lock(%[[t2]], 1) {init = 0 : i32, sym_name = "fifo1_cons_cons_lock"}
+// CHECK:     %[[fifo1_cons_prod_lock:.*]] = aie.lock(%[[t2]], 0) {init = 4 : i32, sym_name = "fifo1_cons_prod_lock_0"}
+// CHECK:     %[[fifo1_cons_cons_lock:.*]] = aie.lock(%[[t2]], 1) {init = 0 : i32, sym_name = "fifo1_cons_cons_lock_0"}
 
 // The consume buffers are used at the receiving end of a stream to notify the
 // sender to send more objects once they have been consumed. In this case,
@@ -58,8 +58,8 @@
 // CHECK:     %[[fifo0_cons_buff_2:.*]] = aie.buffer(%[[t1]]) {sym_name = "fifo0_cons_buff_2"} : memref<1xi32>
 // CHECK:     %[[fifo0_cons_buff_3:.*]] = aie.buffer(%[[t1]]) {sym_name = "fifo0_cons_buff_3"} : memref<1xi32>
 
-// CHECK:     %[[fifo0_cons_prod_lock:.*]] = aie.lock(%[[t1]], 0) {init = 4 : i32, sym_name = "fifo0_cons_prod_lock"}
-// CHECK:     %[[fifo0_cons_cons_lock:.*]] = aie.lock(%[[t1]], 1) {init = 0 : i32, sym_name = "fifo0_cons_cons_lock"}
+// CHECK:     %[[fifo0_cons_prod_lock:.*]] = aie.lock(%[[t1]], 0) {init = 4 : i32, sym_name = "fifo0_cons_prod_lock_0"}
+// CHECK:     %[[fifo0_cons_cons_lock:.*]] = aie.lock(%[[t1]], 1) {init = 0 : i32, sym_name = "fifo0_cons_cons_lock_0"}
 
 // The objectFifo lowering creates two buffers (for ping-pong) on the producer
 // side to which elements are written.
@@ -68,11 +68,11 @@
 
 // Whenever the prod lock can be acquired, the core can proceed to put another
 // object into the fifo, i.e. there is space in the queue.
-// CHECK:     %[[fifo0_prod_lock:.*]] = aie.lock(%[[t0]], 0) {init = 2 : i32, sym_name = "fifo0_prod_lock"}
+// CHECK:     %[[fifo0_prod_lock:.*]] = aie.lock(%[[t0]], 0) {init = 2 : i32, sym_name = "fifo0_prod_lock_0"}
 
 // Whenever the cons lock can be acquired, there is an object available in the
 // queue to be consumed.
-// CHECK:     %[[fifo0_cons_lock:.*]] = aie.lock(%[[t0]], 1) {init = 0 : i32, sym_name = "fifo0_cons_lock"}
+// CHECK:     %[[fifo0_cons_lock:.*]] = aie.lock(%[[t0]], 1) {init = 0 : i32, sym_name = "fifo0_cons_lock_0"}
 
 // CHECK:     %[[buf83:.*]] = aie.buffer(%[[t2]]) {sym_name = "buf83"} : memref<1xi32>
 

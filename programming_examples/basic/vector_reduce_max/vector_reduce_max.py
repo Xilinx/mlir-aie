@@ -6,6 +6,7 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
+import argparse
 import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
@@ -13,19 +14,20 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 
 
-def my_reduce_max():
-    N = 1024
+def my_reduce_max(dev, in1_size, out_size, trace_size):
+    if trace_size != 0:
+        raise NotImplementedError("Trace not supported yet.")
 
-    if sys.argv[1] == "npu":
-        dev = NPU1Col1()
-    elif sys.argv[1] == "npu2":
-        dev = NPU2()
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+    in1_dtype = np.int32
+    out_dtype = np.int32
+
+    tensor_size = in1_size // in1_dtype(0).nbytes
+
+    assert out_size == 4, "Output buffer must be size 4 (4 bytes = 1 integer)."
 
     # Define tensor types
-    in_ty = np.ndarray[(N,), np.dtype[np.int32]]
-    out_ty = np.ndarray[(1,), np.dtype[np.int32]]
+    in_ty = np.ndarray[(tensor_size,), np.dtype[in1_dtype]]
+    out_ty = np.ndarray[(1,), np.dtype[out_dtype]]
 
     # AIE-array data movement with object fifos
     of_in = ObjectFifo(in_ty, name="in")
@@ -40,7 +42,7 @@ def my_reduce_max():
     def core_body(of_in, of_out, reduce_add_vector):
         elem_out = of_out.acquire(1)
         elem_in = of_in.acquire(1)
-        reduce_add_vector(elem_in, elem_out, N)
+        reduce_add_vector(elem_in, elem_out, tensor_size)
         of_in.release(1)
         of_out.release(1)
 
@@ -58,4 +60,38 @@ def my_reduce_max():
     return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
-print(my_reduce_max())
+p = argparse.ArgumentParser()
+p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
+p.add_argument(
+    "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
+)
+p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
+p.add_argument(
+    "-t",
+    "--trace_size",
+    required=False,
+    dest="trace_size",
+    default=0,
+    help="Trace buffer size",
+)
+opts = p.parse_args(sys.argv[1:])
+
+if opts.device == "npu":
+    dev = NPU1Col1()
+elif opts.device == "npu2":
+    dev = NPU2()
+else:
+    raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
+
+in1_size = int(opts.in1_size)
+if in1_size % 64 != 0 or in1_size < 512:
+    print(
+        "In1 buffer size ("
+        + str(in1_size)
+        + ") must be a multiple of 64 and greater than or equal to 512"
+    )
+    raise ValueError
+out_size = int(opts.out_size)
+trace_size = int(opts.trace_size)
+
+print(my_reduce_max(dev, in1_size, out_size, trace_size))

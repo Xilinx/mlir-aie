@@ -16,19 +16,19 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = vector_scalar_mul
-# in1_size = 4096
 in1_size = 8192 # in bytes
 in2_size = 4 # in bytes, should always be 4 (1x int32)
 out_size = 8192 # in bytes, should always be equal to in1_size
 trace_size = 8192
 CHESS ?= false
 
+colshift ?= $(if $(filter 1,$(NPU2)),0,1)
 data_size = in1_size
 aie_py_src=${targetname}.py
-use_alt?=0
+use_placed?=0
 
-ifeq (${use_alt}, 1)
-aie_py_src=${targetname}_alt.py
+ifeq (${use_placed}, 1)
+aie_py_src=${targetname}_placed.py
 endif
 
 all: build/final_${data_size}.xclbin build/insts_${data_size}.txt
@@ -53,11 +53,11 @@ endif
 
 build/aie_${data_size}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${devicename} ${in1_size} ${in2_size} ${out_size} 0 > $@
+	python3 $< -d ${devicename} -i1s ${in1_size} -i2s ${in2_size} -os ${out_size} > $@
 
 build/aie_trace_${data_size}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${devicename} ${in1_size} ${in2_size} ${out_size} ${trace_size} > $@
+	python3 $< -d ${devicename} -i1s ${in1_size} -i2s ${in2_size} -os ${out_size} -t ${trace_size} > $@
 
 #build/insts_${data_size}.txt: build/final_${data_size}.xclbin
 build/final_${data_size}.xclbin: build/aie_${data_size}.mlir build/scale.o
@@ -101,13 +101,12 @@ run_py: build/final_${data_size}.xclbin build/insts_${data_size}.txt
 
 trace: ${targetname}_${data_size}.exe build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt 
 	${powershell} ./$< -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift 1 > trace_vector_scalar_mul.json
+	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift ${colshift} > trace_vector_scalar_mul.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_vector_scalar_mul.json
 
 trace_py: build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt
-	#${powershell} python3 ${srcdir}/test_orig.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -i2s ${in2_size} -os ${out_size} --size 4096
 	${powershell} python3 ${srcdir}/test.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -i2s ${in2_size} -os ${out_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift 1 > trace_vector_scalar_mul.json
+	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift ${colshift} > trace_vector_scalar_mul.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_vector_scalar_mul.json
 
 

@@ -6,6 +6,7 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
+import argparse
 import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
@@ -14,18 +15,26 @@ from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
 
 
-def my_vector_scalar(dev, in1_size, in2_size, out_size, trace_size):
+def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
     if trace_size != 0:
         raise NotImplementedError("Trace not supported yet.")
-    N_in_bytes = in1_size
-    N = N_in_bytes // 2
-    N_div_n = 4  # chop input vector into 4 sub-vectors
-    n = N // N_div_n
+
+    in1_dtype = np.int16
+    in2_dtype = np.int32
+    out_dtype = np.int16
+
+    tensor_size = in1_size // in1_dtype(0).nbytes
+    num_sub_vectors = 4
+    tile_size = tensor_size // num_sub_vectors
+
+    assert in2_size == 4, "2nd input buffer must be size 4 (4 bytes = 1 integer)."
+    assert out_size == in1_size, "Output buffer size must match input buffer size."
+
     vectorized = True
 
     # Define tensor types
-    tensor_ty = np.ndarray[(N,), np.dtype[np.int16]]
-    tile_ty = np.ndarray[(n,), np.dtype[np.int16]]
+    tensor_ty = np.ndarray[(tensor_size,), np.dtype[in1_dtype]]
+    tile_ty = np.ndarray[(tile_size,), np.dtype[in1_dtype]]
     scalar_ty = np.ndarray[(1,), np.dtype[np.int32]]
 
     # Create a handle to an externally-defined kernel
@@ -46,10 +55,10 @@ def my_vector_scalar(dev, in1_size, in2_size, out_size, trace_size):
         elem_factor = of_factor.acquire(1)
 
         # Number of sub-vector "tile" iterations
-        for _ in range_(N_div_n):
+        for _ in range_(num_sub_vectors):
             elem_in = of_in.acquire(1)
             elem_out = of_out.acquire(1)
-            scale_fn(elem_in, elem_out, elem_factor, n)
+            scale_fn(elem_in, elem_out, elem_factor, tile_size)
             of_in.release(1)
             of_out.release(1)
         of_factor.release(1)
@@ -71,29 +80,41 @@ def my_vector_scalar(dev, in1_size, in2_size, out_size, trace_size):
     return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
-try:
-    if len(sys.argv) < 5:
-        raise ValueError(
-            "[ERROR] Need at least 4 arguments (dev, in1_size, in2_size, out_size)"
-        )
+p = argparse.ArgumentParser()
+p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
+p.add_argument(
+    "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
+)
+p.add_argument(
+    "-i2s", "--in2_size", required=True, dest="in2_size", help="Input 2 size"
+)
+p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
+p.add_argument(
+    "-t",
+    "--trace_size",
+    required=False,
+    dest="trace_size",
+    default=0,
+    help="Trace buffer size",
+)
+opts = p.parse_args(sys.argv[1:])
 
-    device_name = str(sys.argv[1])
-    if device_name == "npu":
-        dev = NPU1Col1()
-    elif device_name == "npu2":
-        dev = NPU2()
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-    in1_size = int(sys.argv[2])
-    if in1_size % 128 != 0 or in1_size < 1024:
-        print(
-            "In1 buffer size must be a multiple of 128 (so len is multiple of 64) and greater than or equal to 1024 (so len >= 512)"
-        )
-        raise ValueError
-    in2_size = int(sys.argv[3])
-    out_size = int(sys.argv[4])
-    trace_size = 0 if (len(sys.argv) != 6) else int(sys.argv[5])
-except ValueError:
-    print("Argument has inappropriate value")
-module = my_vector_scalar(dev, in1_size, in2_size, out_size, trace_size)
+if opts.device == "npu":
+    dev = NPU1Col1()
+elif opts.device == "npu2":
+    dev = NPU2()
+else:
+    raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
+
+in1_size = int(opts.in1_size)
+if in1_size % 128 != 0 or in1_size < 1024:
+    print(
+        "In1 buffer size must be a multiple of 128 (so len is multiple of 64) and greater than or equal to 1024 (so len >= 512)"
+    )
+    raise ValueError
+in2_size = int(opts.in2_size)
+out_size = int(opts.out_size)
+trace_size = int(opts.trace_size)
+
+module = my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size)
 print(module)
