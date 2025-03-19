@@ -18,7 +18,7 @@ The implicit copy is performed using the ObjectFifo `forward()` function that sp
 
 There are two versions of this design:
 * [passthrough_dmas.py](./passthrough_dmas.py)
-* [passthrough_dmas_alt.py](./passthrough_dmas_alt.py): This version of the design supports VCK500 and is written in a lower-level version of IRON. Instead of `forward()`, this version explicitly uses an `object_fifo_link` operation which is described in more depth in [Section-2b](../../../programming_guide/section-2/section-2b/03_Link_Distribute_Join/README.md#object-fifo-link) of the programming guide.
+* [passthrough_dmas_placed.py](./passthrough_dmas_placed.py): This version of the design supports VCK500 and is written in a lower-level version of IRON. Instead of `forward()`, this version explicitly uses an `object_fifo_link` operation which is described in more depth in [Section-2b](../../../programming_guide/section-2/section-2b/03_Link_Distribute_Join/README.md#object-fifo-link) of the programming guide.
 
 
 To compile and run the design for NPU:
@@ -27,8 +27,8 @@ make
 make run
 ```
 
-To compile and run the alternative design for NPU:
+To compile and run the placed design for NPU:
 ```shell
-env use_alt=1 make
+env use_placed=1 make
 make run
 ```

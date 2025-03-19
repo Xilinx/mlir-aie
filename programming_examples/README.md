@@ -14,7 +14,7 @@ These programming examples are provided so that application programmers can lear
 
 Each IRON example has one or more implementations:
 * `<example_name>.py` - These designs are generally written using a higher-level version of IRON
-* `<example_name>_alt.py` - These designs are generally written using a lower-level verion of IRON
+* `<example_name>_placed.py` - These designs are generally written using a lower-level verion of IRON
 
 They are organized into the following directories:
 

@@ -29,11 +29,11 @@ endif
 
 colshift ?= $(if $(filter 1,$(NPU2)),0,1)
 aie_py_src = ${targetname}.py
-aie_py_placed_src = ${targetname}_alt.py
-use_alt ?= 0
+aie_py_placed_src = ${targetname}_placed.py
+use_placed ?= 0
 
-ifeq (${use_alt}, 1)
-aie_py_src=${targetname}_alt.py
+ifeq (${use_placed}, 1)
+aie_py_src=${targetname}_placed.py
 endif
 
 all: build/conv2dk1_i8.o build/final.xclbin
