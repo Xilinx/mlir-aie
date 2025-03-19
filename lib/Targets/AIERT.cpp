@@ -17,12 +17,10 @@ extern "C" {
 #include "xaiengine/xaie_core.h"
 #include "xaiengine/xaie_dma.h"
 #include "xaiengine/xaie_elfloader.h"
-#include "xaiengine/xaie_interrupt.h"
 #include "xaiengine/xaie_locks.h"
 #include "xaiengine/xaie_mem.h"
 #include "xaiengine/xaie_plif.h"
 #include "xaiengine/xaie_ss.h"
-#include "xaiengine/xaie_txn.h"
 #include "xaiengine/xaiegbl.h"
 #include "xaiengine/xaiegbl_defs.h"
 }
@@ -156,26 +154,12 @@ LogicalResult AIERTControl::configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
          "expected both use_lock(acquire) and use_lock(release) with bd");
 
   if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
-    // check if buffer is allocated on the same memtile, the west, or the east
-    // one
-    int increaseValue = 0;
-    auto lockRow = lock.rowIndex();
-    auto lockCol = lock.colIndex();
-    bool isWestLock =
-        targetModel.isWest(tileLoc.Col, tileLoc.Row, lockCol, lockRow);
-    bool isEastLock =
-        targetModel.isEast(tileLoc.Col, tileLoc.Row, lockCol, lockRow);
-    if (isWestLock) {
-      increaseValue = MEM_TILE_LOCK_ID_INCR_WEST;
-    } else if (isEastLock) {
-      increaseValue = MEM_TILE_LOCK_ID_INCR_EAST;
-    } else {
-      increaseValue = MEM_TILE_LOCK_ID_INCR;
-    }
-    if (acqLockId)
-      acqLockId.value() += increaseValue;
-    if (relLockId)
-      relLockId.value() += increaseValue;
+    auto lockOffset = targetModel.getLockLocalBaseIndex(
+        tileLoc.Col, tileLoc.Row, lock.colIndex(), lock.rowIndex());
+    if (lockOffset && acqLockId)
+      acqLockId.value() += lockOffset.value();
+    if (lockOffset && relLockId)
+      relLockId.value() += lockOffset.value();
   }
 
   // no RelEn in the arch spec even though the API requires you to set it?
@@ -227,21 +211,11 @@ LogicalResult AIERTControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
       return bufferOp.emitError("buffer must have address assigned");
     baseAddr = bufferOp.getAddress().value();
     if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
-      // check if buffer is allocated on the same memtile, the west, or the east
-      // one
-      auto bufferRow = bufferOp.getTileOp().getRow();
-      auto bufferCol = bufferOp.getTileOp().getCol();
-      bool isWestBuff =
-          targetModel.isWest(tileLoc.Col, tileLoc.Row, bufferCol, bufferRow);
-      bool isEastBuff =
-          targetModel.isEast(tileLoc.Col, tileLoc.Row, bufferCol, bufferRow);
-      if (isWestBuff) {
-        baseAddr += BASE_ADDR_A_INCR_WEST;
-      } else if (isEastBuff) {
-        baseAddr += BASE_ADDR_A_INCR_EAST;
-      } else {
-        baseAddr += BASE_ADDR_A_INCR;
-      }
+      auto addrOffset = targetModel.getMemLocalBaseAddress(
+          tileLoc.Col, tileLoc.Row, bufferOp.getTileOp().getCol(),
+          bufferOp.getTileOp().getRow());
+      if (addrOffset)
+        baseAddr += addrOffset.value();
     }
   }
 

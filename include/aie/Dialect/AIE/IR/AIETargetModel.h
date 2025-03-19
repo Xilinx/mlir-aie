@@ -195,12 +195,29 @@ public:
   virtual bool isLegalMemAffinity(int coreCol, int coreRow, int memCol,
                                   int memRow) const = 0;
 
-  /// Return the base address in the local address map of different memories.
+  /// Return the base address in the local address map for a core.
   virtual uint32_t getMemInternalBaseAddress(TileID src) const = 0;
+  /// Return the base address in the local address map for a core.
   virtual uint32_t getMemSouthBaseAddress() const = 0;
+  /// Return the base address in the local address map for a core.
   virtual uint32_t getMemWestBaseAddress() const = 0;
+  /// Return the base address in the local address map for a core.
   virtual uint32_t getMemNorthBaseAddress() const = 0;
+  /// Return the base address in the local address map for a core.
   virtual uint32_t getMemEastBaseAddress() const = 0;
+
+  /// Return the lock base index (or offset) in the local tile when accessing a
+  /// neighbor's lock or an empty optional if an invalid neighbor is given
+  /// Takes into account differences between Memory and Core tiles
+  std::optional<uint32_t> getLockLocalBaseIndex(int localCol, int localRow,
+                                                int lockCol, int lockRow) const;
+
+  /// Return the memory base address (or offset) in the local tile when
+  /// accessing a neighbor's memory or an empty optional if an invalid neighbor
+  /// is given
+  /// Takes into account differences between Memory and Core tiles
+  std::optional<uint32_t> getMemLocalBaseAddress(int localCol, int localRow,
+                                                 int memCol, int memRow) const;
 
   /// Return the size (in bytes) of the local data memory of a core.
   virtual uint32_t getLocalMemorySize() const = 0;
