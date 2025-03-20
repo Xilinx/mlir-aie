@@ -337,12 +337,8 @@ Functions</h2></td></tr>
 <tr class="separator:aa3f1eb13929e54fc959a9bfd8cb4c3db"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:afcdfc34925509dab0ad2274fdd92fdeb" id="r_afcdfc34925509dab0ad2274fdd92fdeb"><td class="memItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#afcdfc34925509dab0ad2274fdd92fdeb">AIETranslateGraphXPE</a> (mlir::ModuleOp module, llvm::raw_ostream &amp;)</td></tr>
 <tr class="separator:afcdfc34925509dab0ad2274fdd92fdeb"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a8e7e5dffbdc9faa6d87184fff735b34c" id="r_a8e7e5dffbdc9faa6d87184fff735b34c"><td class="memItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a8e7e5dffbdc9faa6d87184fff735b34c">AIETranslateNpuToBinary</a> (mlir::ModuleOp module, llvm::raw_ostream &amp;output, llvm::StringRef sequenceName=&quot;&quot;)</td></tr>
-<tr class="separator:a8e7e5dffbdc9faa6d87184fff735b34c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a981c7661cfb4a47a266070b3fc6d55f7" id="r_a981c7661cfb4a47a266070b3fc6d55f7"><td class="memItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a981c7661cfb4a47a266070b3fc6d55f7">AIETranslateNpuToBinary</a> (mlir::ModuleOp, std::vector&lt; uint32_t &gt; &amp;, llvm::StringRef sequenceName=&quot;&quot;)</td></tr>
 <tr class="separator:a981c7661cfb4a47a266070b3fc6d55f7"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a15496c5385f3fd0d2ffe4cf3ce16ae5b" id="r_a15496c5385f3fd0d2ffe4cf3ce16ae5b"><td class="memItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a15496c5385f3fd0d2ffe4cf3ce16ae5b">AIETranslateControlPacketsToUI32Vec</a> (mlir::ModuleOp module, llvm::raw_ostream &amp;output, llvm::StringRef sequenceName=&quot;&quot;)</td></tr>
-<tr class="separator:a15496c5385f3fd0d2ffe4cf3ce16ae5b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aefcc988ab637b3d10f95b1c7fa46d720" id="r_aefcc988ab637b3d10f95b1c7fa46d720"><td class="memItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#aefcc988ab637b3d10f95b1c7fa46d720">AIETranslateControlPacketsToUI32Vec</a> (mlir::ModuleOp, std::vector&lt; uint32_t &gt; &amp;, llvm::StringRef sequenceName=&quot;&quot;)</td></tr>
 <tr class="separator:aefcc988ab637b3d10f95b1c7fa46d720"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8b8e377c1dd7b1d3ddca4c4ae78e56a8" id="r_a8b8e377c1dd7b1d3ddca4c4ae78e56a8"><td class="memItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a8b8e377c1dd7b1d3ddca4c4ae78e56a8">AIETranslateToLdScript</a> (mlir::ModuleOp module, llvm::raw_ostream &amp;output, int tileCol, int tileRow)</td></tr>
@@ -1033,44 +1029,8 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="a15496c5385f3fd0d2ffe4cf3ce16ae5b" name="a15496c5385f3fd0d2ffe4cf3ce16ae5b"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a15496c5385f3fd0d2ffe4cf3ce16ae5b">&#9670;&#160;</a></span>AIETranslateControlPacketsToUI32Vec() <span class="overload">[1/2]</span></h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">mlir::LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec </td>
-          <td>(</td>
-          <td class="paramtype">mlir::ModuleOp&#160;</td>
-          <td class="paramname"><em>module</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">llvm::raw_ostream &amp;&#160;</td>
-          <td class="paramname"><em>output</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">llvm::StringRef&#160;</td>
-          <td class="paramname"><em>sequenceName</em> = <code>&quot;&quot;</code>&#160;</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td>)</td>
-          <td></td><td></td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p class="reference">Referenced by <a class="el" href="Translation_8cpp_source.html#l00108">aieTranslateControlPacketsToUI32Vec()</a>.</p>
-
-</div>
-</div>
 <a id="aefcc988ab637b3d10f95b1c7fa46d720" name="aefcc988ab637b3d10f95b1c7fa46d720"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aefcc988ab637b3d10f95b1c7fa46d720">&#9670;&#160;</a></span>AIETranslateControlPacketsToUI32Vec() <span class="overload">[2/2]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#aefcc988ab637b3d10f95b1c7fa46d720">&#9670;&#160;</a></span>AIETranslateControlPacketsToUI32Vec()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -1100,6 +1060,8 @@ Variables</h2></td></tr>
         </tr>
       </table>
 </div><div class="memdoc">
+
+<p class="reference">Referenced by <a class="el" href="Translation_8cpp_source.html#l00108">aieTranslateControlPacketsToUI32Vec()</a>.</p>
 
 </div>
 </div>
@@ -1137,44 +1099,8 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="a8e7e5dffbdc9faa6d87184fff735b34c" name="a8e7e5dffbdc9faa6d87184fff735b34c"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a8e7e5dffbdc9faa6d87184fff735b34c">&#9670;&#160;</a></span>AIETranslateNpuToBinary() <span class="overload">[1/2]</span></h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">mlir::LogicalResult xilinx::AIE::AIETranslateNpuToBinary </td>
-          <td>(</td>
-          <td class="paramtype">mlir::ModuleOp&#160;</td>
-          <td class="paramname"><em>module</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">llvm::raw_ostream &amp;&#160;</td>
-          <td class="paramname"><em>output</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">llvm::StringRef&#160;</td>
-          <td class="paramname"><em>sequenceName</em> = <code>&quot;&quot;</code>&#160;</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td>)</td>
-          <td></td><td></td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p class="reference">Referenced by <a class="el" href="Translation_8cpp_source.html#l00095">aieTranslateNpuToBinary()</a>.</p>
-
-</div>
-</div>
 <a id="a981c7661cfb4a47a266070b3fc6d55f7" name="a981c7661cfb4a47a266070b3fc6d55f7"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a981c7661cfb4a47a266070b3fc6d55f7">&#9670;&#160;</a></span>AIETranslateNpuToBinary() <span class="overload">[2/2]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a981c7661cfb4a47a266070b3fc6d55f7">&#9670;&#160;</a></span>AIETranslateNpuToBinary()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -1204,6 +1130,8 @@ Variables</h2></td></tr>
         </tr>
       </table>
 </div><div class="memdoc">
+
+<p class="reference">Referenced by <a class="el" href="Translation_8cpp_source.html#l00095">aieTranslateNpuToBinary()</a>.</p>
 
 </div>
 </div>
@@ -4143,7 +4071,7 @@ Variables</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00030">30</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="Translation_8cpp_source.html#l00152">aieLLVMLink()</a>, <a class="el" href="Translation_8cpp_source.html#l00041">aieTranslateAIEVecToCpp()</a>, <a class="el" href="Translation_8cpp_source.html#l00108">aieTranslateControlPacketsToUI32Vec()</a>, <a class="el" href="Translation_8cpp_source.html#l00052">aieTranslateModuleToLLVMIR()</a>, <a class="el" href="Translation_8cpp_source.html#l00095">aieTranslateNpuToBinary()</a>, <a class="el" href="Translation_8cpp_source.html#l00141">aieTranslateToBCF()</a>, <a class="el" href="Translation_8cpp_source.html#l00130">aieTranslateToHSA()</a>, <a class="el" href="Translation_8cpp_source.html#l00119">aieTranslateToXAIEV2()</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00109">operator&lt;&lt;()</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00171">operator&lt;&lt;()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00039">operator&lt;&lt;()</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00102">operator&lt;&lt;()</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00146">operator&lt;&lt;()</a>, and <a class="el" href="AIETokenAnalysis_8cpp_source.html#l00224">xilinx::AIEX::TokenAnalysis::print()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="Translation_8cpp_source.html#l00152">aieLLVMLink()</a>, <a class="el" href="Translation_8cpp_source.html#l00041">aieTranslateAIEVecToCpp()</a>, <a class="el" href="Translation_8cpp_source.html#l00052">aieTranslateModuleToLLVMIR()</a>, <a class="el" href="Translation_8cpp_source.html#l00141">aieTranslateToBCF()</a>, <a class="el" href="Translation_8cpp_source.html#l00130">aieTranslateToHSA()</a>, <a class="el" href="Translation_8cpp_source.html#l00119">aieTranslateToXAIEV2()</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00109">operator&lt;&lt;()</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00171">operator&lt;&lt;()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00039">operator&lt;&lt;()</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00102">operator&lt;&lt;()</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00146">operator&lt;&lt;()</a>, and <a class="el" href="AIETokenAnalysis_8cpp_source.html#l00224">xilinx::AIEX::TokenAnalysis::print()</a>.</p>
 
 </div>
 </div>
@@ -4608,7 +4536,7 @@ Variables</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Mar 20 2025 16:03:24 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Mar 20 2025 16:12:18 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

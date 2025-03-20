@@ -246,7 +246,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span>} <span class="comment">// namespace</span></div>
 <div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span> </div>
 <div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span>LogicalResult</div>
-<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span><a class="code hl_function" href="namespacexilinx_1_1AIE.html#a8e7e5dffbdc9faa6d87184fff735b34c">xilinx::AIE::AIETranslateNpuToBinary</a>(ModuleOp module,</div>
+<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span><a class="code hl_function" href="namespacexilinx_1_1AIE.html#a981c7661cfb4a47a266070b3fc6d55f7">xilinx::AIE::AIETranslateNpuToBinary</a>(ModuleOp module,</div>
 <div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span>                                     std::vector&lt;uint32_t&gt; &amp;instructions,</div>
 <div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span>                                     StringRef sequenceName) {</div>
 <div class="line"><a id="l00192" name="l00192"></a><span class="lineno">  192</span> </div>
@@ -302,71 +302,47 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00242" name="l00242"></a><span class="lineno">  242</span>  <span class="keywordflow">return</span> success();</div>
 <div class="line"><a id="l00243" name="l00243"></a><span class="lineno">  243</span>}</div>
 <div class="line"><a id="l00244" name="l00244"></a><span class="lineno">  244</span> </div>
-<div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span>LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a8e7e5dffbdc9faa6d87184fff735b34c">xilinx::AIE::AIETranslateNpuToBinary</a>(ModuleOp module,</div>
-<div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span>                                                   raw_ostream &amp;output,</div>
-<div class="line"><a id="l00247" name="l00247"></a><span class="lineno">  247</span>                                                   StringRef sequenceName) {</div>
-<div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>  std::vector&lt;uint32_t&gt; instructions;</div>
-<div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>  <span class="keyword">auto</span> r = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a8e7e5dffbdc9faa6d87184fff735b34c">AIETranslateNpuToBinary</a>(module, instructions, sequenceName);</div>
-<div class="line"><a id="l00250" name="l00250"></a><span class="lineno">  250</span>  <span class="keywordflow">if</span> (failed(r))</div>
-<div class="line"><a id="l00251" name="l00251"></a><span class="lineno">  251</span>    <span class="keywordflow">return</span> r;</div>
-<div class="line"><a id="l00252" name="l00252"></a><span class="lineno">  252</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> w : instructions)</div>
-<div class="line"><a id="l00253" name="l00253"></a><span class="lineno">  253</span>    output &lt;&lt; <a class="code hl_namespace" href="namespacellvm.html">llvm</a>::format(<span class="stringliteral">&quot;%08X\n&quot;</span>, w);</div>
-<div class="line"><a id="l00254" name="l00254"></a><span class="lineno">  254</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00255" name="l00255"></a><span class="lineno">  255</span>}</div>
-<div class="line"><a id="l00256" name="l00256"></a><span class="lineno">  256</span> </div>
-<div class="line"><a id="l00257" name="l00257"></a><span class="lineno">  257</span>LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a15496c5385f3fd0d2ffe4cf3ce16ae5b">xilinx::AIE::AIETranslateControlPacketsToUI32Vec</a>(</div>
-<div class="line"><a id="l00258" name="l00258"></a><span class="lineno">  258</span>    ModuleOp module, std::vector&lt;uint32_t&gt; &amp;instructions,</div>
-<div class="line"><a id="l00259" name="l00259"></a><span class="lineno">  259</span>    StringRef sequenceName) {</div>
-<div class="line"><a id="l00260" name="l00260"></a><span class="lineno">  260</span>  DeviceOp deviceOp = *<span class="keyword">module</span>.getOps&lt;DeviceOp&gt;().begin();</div>
-<div class="line"><a id="l00261" name="l00261"></a><span class="lineno">  261</span>  <span class="keyword">auto</span> sequenceOps = deviceOp.getOps&lt;AIEX::RuntimeSequenceOp&gt;();</div>
-<div class="line"><a id="l00262" name="l00262"></a><span class="lineno">  262</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> seq : sequenceOps) {</div>
-<div class="line"><a id="l00263" name="l00263"></a><span class="lineno">  263</span>    <span class="keywordflow">if</span> (sequenceName.size() &amp;&amp; sequenceName != seq.getSymName())</div>
-<div class="line"><a id="l00264" name="l00264"></a><span class="lineno">  264</span>      <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l00265" name="l00265"></a><span class="lineno">  265</span>    Block &amp;entry = seq.getBody().front();</div>
-<div class="line"><a id="l00266" name="l00266"></a><span class="lineno">  266</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;o : entry) {</div>
-<div class="line"><a id="l00267" name="l00267"></a><span class="lineno">  267</span>      llvm::TypeSwitch&lt;Operation *&gt;(&amp;o).Case&lt;NpuControlPacketOp&gt;([&amp;](<span class="keyword">auto</span> op) {</div>
-<div class="line"><a id="l00268" name="l00268"></a><span class="lineno">  268</span>        uint32_t size = 0;</div>
-<div class="line"><a id="l00269" name="l00269"></a><span class="lineno">  269</span>        <span class="keyword">auto</span> data = op.getData();</div>
-<div class="line"><a id="l00270" name="l00270"></a><span class="lineno">  270</span>        <span class="keyword">auto</span> length = op.getLength();</div>
-<div class="line"><a id="l00271" name="l00271"></a><span class="lineno">  271</span>        <span class="keywordflow">if</span> (data)</div>
-<div class="line"><a id="l00272" name="l00272"></a><span class="lineno">  272</span>          size = data-&gt;size();</div>
-<div class="line"><a id="l00273" name="l00273"></a><span class="lineno">  273</span>        <span class="keyword">auto</span> words = reserveAndGetTail(instructions, 1 + size);</div>
-<div class="line"><a id="l00274" name="l00274"></a><span class="lineno">  274</span>        <span class="keywordflow">if</span> (!data &amp;&amp; length)</div>
-<div class="line"><a id="l00275" name="l00275"></a><span class="lineno">  275</span>          size = *length;</div>
-<div class="line"><a id="l00276" name="l00276"></a><span class="lineno">  276</span>        <span class="keyword">auto</span> parity = [](uint32_t n) {</div>
-<div class="line"><a id="l00277" name="l00277"></a><span class="lineno">  277</span>          uint32_t p = 0;</div>
-<div class="line"><a id="l00278" name="l00278"></a><span class="lineno">  278</span>          <span class="keywordflow">while</span> (n) {</div>
-<div class="line"><a id="l00279" name="l00279"></a><span class="lineno">  279</span>            p += n &amp; 1;</div>
-<div class="line"><a id="l00280" name="l00280"></a><span class="lineno">  280</span>            n &gt;&gt;= 1;</div>
-<div class="line"><a id="l00281" name="l00281"></a><span class="lineno">  281</span>          }</div>
-<div class="line"><a id="l00282" name="l00282"></a><span class="lineno">  282</span>          <span class="keywordflow">return</span> (p % 2) == 0;</div>
-<div class="line"><a id="l00283" name="l00283"></a><span class="lineno">  283</span>        };</div>
-<div class="line"><a id="l00284" name="l00284"></a><span class="lineno">  284</span>        uint32_t addr = op.getAddress() &amp; 0xFFFFF;</div>
-<div class="line"><a id="l00285" name="l00285"></a><span class="lineno">  285</span>        uint32_t beats = size - 1;</div>
-<div class="line"><a id="l00286" name="l00286"></a><span class="lineno">  286</span>        uint32_t opc = op.getOpcode();</div>
-<div class="line"><a id="l00287" name="l00287"></a><span class="lineno">  287</span>        uint32_t <span class="keywordtype">id</span> = op.getStreamId();</div>
-<div class="line"><a id="l00288" name="l00288"></a><span class="lineno">  288</span>        uint32_t hdr = <span class="keywordtype">id</span> &lt;&lt; 24 | opc &lt;&lt; 22 | beats &lt;&lt; 20 | addr;</div>
-<div class="line"><a id="l00289" name="l00289"></a><span class="lineno">  289</span>        words[0] = hdr | (0x1 &amp; parity(hdr)) &lt;&lt; 31;</div>
-<div class="line"><a id="l00290" name="l00290"></a><span class="lineno">  290</span>        <span class="keywordflow">if</span> (opc == 0x0 || opc == 0x2)</div>
-<div class="line"><a id="l00291" name="l00291"></a><span class="lineno">  291</span>          <span class="keywordflow">for</span> (<span class="keywordtype">unsigned</span> i = 0; i &lt; size; i++)</div>
-<div class="line"><a id="l00292" name="l00292"></a><span class="lineno">  292</span>            words[i + 1] = data.value()[i];</div>
-<div class="line"><a id="l00293" name="l00293"></a><span class="lineno">  293</span>      });</div>
-<div class="line"><a id="l00294" name="l00294"></a><span class="lineno">  294</span>    }</div>
-<div class="line"><a id="l00295" name="l00295"></a><span class="lineno">  295</span>  }</div>
-<div class="line"><a id="l00296" name="l00296"></a><span class="lineno">  296</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00297" name="l00297"></a><span class="lineno">  297</span>}</div>
-<div class="line"><a id="l00298" name="l00298"></a><span class="lineno">  298</span> </div>
-<div class="line"><a id="l00299" name="l00299"></a><span class="lineno">  299</span>LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a15496c5385f3fd0d2ffe4cf3ce16ae5b">xilinx::AIE::AIETranslateControlPacketsToUI32Vec</a>(</div>
-<div class="line"><a id="l00300" name="l00300"></a><span class="lineno">  300</span>    ModuleOp module, raw_ostream &amp;output, StringRef sequenceName) {</div>
-<div class="line"><a id="l00301" name="l00301"></a><span class="lineno">  301</span>  std::vector&lt;uint32_t&gt; instructions;</div>
-<div class="line"><a id="l00302" name="l00302"></a><span class="lineno">  302</span>  <span class="keyword">auto</span> r =</div>
-<div class="line"><a id="l00303" name="l00303"></a><span class="lineno">  303</span>      <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a15496c5385f3fd0d2ffe4cf3ce16ae5b">AIETranslateControlPacketsToUI32Vec</a>(module, instructions, sequenceName);</div>
-<div class="line"><a id="l00304" name="l00304"></a><span class="lineno">  304</span>  <span class="keywordflow">if</span> (failed(r))</div>
-<div class="line"><a id="l00305" name="l00305"></a><span class="lineno">  305</span>    <span class="keywordflow">return</span> r;</div>
-<div class="line"><a id="l00306" name="l00306"></a><span class="lineno">  306</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> w : instructions)</div>
-<div class="line"><a id="l00307" name="l00307"></a><span class="lineno">  307</span>    output &lt;&lt; <a class="code hl_namespace" href="namespacellvm.html">llvm</a>::format(<span class="stringliteral">&quot;%08X\n&quot;</span>, w);</div>
-<div class="line"><a id="l00308" name="l00308"></a><span class="lineno">  308</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00309" name="l00309"></a><span class="lineno">  309</span>}</div>
+<div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span>LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#aefcc988ab637b3d10f95b1c7fa46d720">xilinx::AIE::AIETranslateControlPacketsToUI32Vec</a>(</div>
+<div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span>    ModuleOp module, std::vector&lt;uint32_t&gt; &amp;instructions,</div>
+<div class="line"><a id="l00247" name="l00247"></a><span class="lineno">  247</span>    StringRef sequenceName) {</div>
+<div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>  DeviceOp deviceOp = *<span class="keyword">module</span>.getOps&lt;DeviceOp&gt;().begin();</div>
+<div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>  <span class="keyword">auto</span> sequenceOps = deviceOp.getOps&lt;AIEX::RuntimeSequenceOp&gt;();</div>
+<div class="line"><a id="l00250" name="l00250"></a><span class="lineno">  250</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> seq : sequenceOps) {</div>
+<div class="line"><a id="l00251" name="l00251"></a><span class="lineno">  251</span>    <span class="keywordflow">if</span> (sequenceName.size() &amp;&amp; sequenceName != seq.getSymName())</div>
+<div class="line"><a id="l00252" name="l00252"></a><span class="lineno">  252</span>      <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00253" name="l00253"></a><span class="lineno">  253</span>    Block &amp;entry = seq.getBody().front();</div>
+<div class="line"><a id="l00254" name="l00254"></a><span class="lineno">  254</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;o : entry) {</div>
+<div class="line"><a id="l00255" name="l00255"></a><span class="lineno">  255</span>      llvm::TypeSwitch&lt;Operation *&gt;(&amp;o).Case&lt;NpuControlPacketOp&gt;([&amp;](<span class="keyword">auto</span> op) {</div>
+<div class="line"><a id="l00256" name="l00256"></a><span class="lineno">  256</span>        uint32_t size = 0;</div>
+<div class="line"><a id="l00257" name="l00257"></a><span class="lineno">  257</span>        <span class="keyword">auto</span> data = op.getData();</div>
+<div class="line"><a id="l00258" name="l00258"></a><span class="lineno">  258</span>        <span class="keyword">auto</span> length = op.getLength();</div>
+<div class="line"><a id="l00259" name="l00259"></a><span class="lineno">  259</span>        <span class="keywordflow">if</span> (data)</div>
+<div class="line"><a id="l00260" name="l00260"></a><span class="lineno">  260</span>          size = data-&gt;size();</div>
+<div class="line"><a id="l00261" name="l00261"></a><span class="lineno">  261</span>        <span class="keyword">auto</span> words = reserveAndGetTail(instructions, 1 + size);</div>
+<div class="line"><a id="l00262" name="l00262"></a><span class="lineno">  262</span>        <span class="keywordflow">if</span> (!data &amp;&amp; length)</div>
+<div class="line"><a id="l00263" name="l00263"></a><span class="lineno">  263</span>          size = *length;</div>
+<div class="line"><a id="l00264" name="l00264"></a><span class="lineno">  264</span>        <span class="keyword">auto</span> parity = [](uint32_t n) {</div>
+<div class="line"><a id="l00265" name="l00265"></a><span class="lineno">  265</span>          uint32_t p = 0;</div>
+<div class="line"><a id="l00266" name="l00266"></a><span class="lineno">  266</span>          <span class="keywordflow">while</span> (n) {</div>
+<div class="line"><a id="l00267" name="l00267"></a><span class="lineno">  267</span>            p += n &amp; 1;</div>
+<div class="line"><a id="l00268" name="l00268"></a><span class="lineno">  268</span>            n &gt;&gt;= 1;</div>
+<div class="line"><a id="l00269" name="l00269"></a><span class="lineno">  269</span>          }</div>
+<div class="line"><a id="l00270" name="l00270"></a><span class="lineno">  270</span>          <span class="keywordflow">return</span> (p % 2) == 0;</div>
+<div class="line"><a id="l00271" name="l00271"></a><span class="lineno">  271</span>        };</div>
+<div class="line"><a id="l00272" name="l00272"></a><span class="lineno">  272</span>        uint32_t addr = op.getAddress() &amp; 0xFFFFF;</div>
+<div class="line"><a id="l00273" name="l00273"></a><span class="lineno">  273</span>        uint32_t beats = size - 1;</div>
+<div class="line"><a id="l00274" name="l00274"></a><span class="lineno">  274</span>        uint32_t opc = op.getOpcode();</div>
+<div class="line"><a id="l00275" name="l00275"></a><span class="lineno">  275</span>        uint32_t <span class="keywordtype">id</span> = op.getStreamId();</div>
+<div class="line"><a id="l00276" name="l00276"></a><span class="lineno">  276</span>        uint32_t hdr = <span class="keywordtype">id</span> &lt;&lt; 24 | opc &lt;&lt; 22 | beats &lt;&lt; 20 | addr;</div>
+<div class="line"><a id="l00277" name="l00277"></a><span class="lineno">  277</span>        words[0] = hdr | (0x1 &amp; parity(hdr)) &lt;&lt; 31;</div>
+<div class="line"><a id="l00278" name="l00278"></a><span class="lineno">  278</span>        <span class="keywordflow">if</span> (opc == 0x0 || opc == 0x2)</div>
+<div class="line"><a id="l00279" name="l00279"></a><span class="lineno">  279</span>          <span class="keywordflow">for</span> (<span class="keywordtype">unsigned</span> i = 0; i &lt; size; i++)</div>
+<div class="line"><a id="l00280" name="l00280"></a><span class="lineno">  280</span>            words[i + 1] = data.value()[i];</div>
+<div class="line"><a id="l00281" name="l00281"></a><span class="lineno">  281</span>      });</div>
+<div class="line"><a id="l00282" name="l00282"></a><span class="lineno">  282</span>    }</div>
+<div class="line"><a id="l00283" name="l00283"></a><span class="lineno">  283</span>  }</div>
+<div class="line"><a id="l00284" name="l00284"></a><span class="lineno">  284</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00285" name="l00285"></a><span class="lineno">  285</span>}</div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIETargetNPU_8cpp_html_a2f971bf2a84e61e41310fda769b30f5a"><div class="ttname"><a href="AIETargetNPU_8cpp.html#a2f971bf2a84e61e41310fda769b30f5a">TXN_OPC_MASKWRITE</a></div><div class="ttdeci">#define TXN_OPC_MASKWRITE</div><div class="ttdef"><b>Definition</b> <a href="AIETargetNPU_8cpp_source.html#l00032">AIETargetNPU.cpp:32</a></div></div>
 <div class="ttc" id="aAIETargetNPU_8cpp_html_a5a9df22824f2baea91b0bd0af1f280c7"><div class="ttname"><a href="AIETargetNPU_8cpp.html#a5a9df22824f2baea91b0bd0af1f280c7">TXN_OPC_TCT</a></div><div class="ttdeci">#define TXN_OPC_TCT</div><div class="ttdef"><b>Definition</b> <a href="AIETargetNPU_8cpp_source.html#l00033">AIETargetNPU.cpp:33</a></div></div>
@@ -381,20 +357,19 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html_ad211b18c915a01ab1c3a1b731cafabea"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html#ad211b18c915a01ab1c3a1b731cafabea">xilinx::AIE::AIETargetModel::columns</a></div><div class="ttdeci">virtual int columns() const =0</div><div class="ttdoc">Return the number of columns in the device.</div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html_ae3dbb309666278a8166c8e9f29e5f0e1"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae3dbb309666278a8166c8e9f29e5f0e1">xilinx::AIE::AIETargetModel::getNumMemTileRows</a></div><div class="ttdeci">virtual uint32_t getNumMemTileRows() const =0</div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html_af656587d8e0fb2cdf6a313aa7d52d986"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html#af656587d8e0fb2cdf6a313aa7d52d986">xilinx::AIE::AIETargetModel::getRowShift</a></div><div class="ttdeci">virtual uint32_t getRowShift() const =0</div></div>
-<div class="ttc" id="anamespacellvm_html"><div class="ttname"><a href="namespacellvm.html">llvm</a></div><div class="ttdef"><b>Definition</b> <a href="AIEDialect_8h_source.html#l00296">AIEDialect.h:296</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIEX_html"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html">xilinx::AIEX</a></div><div class="ttdef"><b>Definition</b> <a href="AIETokenAnalysis_8h_source.html#l00028">AIETokenAnalysis.h:28</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00021">AIEToConfiguration.h:21</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_a15496c5385f3fd0d2ffe4cf3ce16ae5b"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a15496c5385f3fd0d2ffe4cf3ce16ae5b">xilinx::AIE::AIETranslateControlPacketsToUI32Vec</a></div><div class="ttdeci">mlir::LogicalResult AIETranslateControlPacketsToUI32Vec(mlir::ModuleOp module, llvm::raw_ostream &amp;output, llvm::StringRef sequenceName=&quot;&quot;)</div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a1e6006c1b4fccd997eba880457892eec"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">xilinx::AIE::row</a></div><div class="ttdeci">int row</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00055">AIETargetModel.h:55</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a2e68be9ae4fa95fd84120dc8154599e6"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">xilinx::AIE::col</a></div><div class="ttdeci">int col</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00055">AIETargetModel.h:55</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_a8e7e5dffbdc9faa6d87184fff735b34c"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a8e7e5dffbdc9faa6d87184fff735b34c">xilinx::AIE::AIETranslateNpuToBinary</a></div><div class="ttdeci">mlir::LogicalResult AIETranslateNpuToBinary(mlir::ModuleOp module, llvm::raw_ostream &amp;output, llvm::StringRef sequenceName=&quot;&quot;)</div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_a981c7661cfb4a47a266070b3fc6d55f7"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a981c7661cfb4a47a266070b3fc6d55f7">xilinx::AIE::AIETranslateNpuToBinary</a></div><div class="ttdeci">mlir::LogicalResult AIETranslateNpuToBinary(mlir::ModuleOp, std::vector&lt; uint32_t &gt; &amp;, llvm::StringRef sequenceName=&quot;&quot;)</div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a98d14c817daebc58ad822d608bc73313"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">xilinx::AIE::getTargetModel</a></div><div class="ttdeci">const AIETargetModel &amp; getTargetModel(mlir::Operation *op)</div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_aefcc988ab637b3d10f95b1c7fa46d720"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#aefcc988ab637b3d10f95b1c7fa46d720">xilinx::AIE::AIETranslateControlPacketsToUI32Vec</a></div><div class="ttdeci">mlir::LogicalResult AIETranslateControlPacketsToUI32Vec(mlir::ModuleOp, std::vector&lt; uint32_t &gt; &amp;, llvm::StringRef sequenceName=&quot;&quot;)</div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00021">AIEToConfiguration.h:21</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Mar 20 2025 16:03:24 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Mar 20 2025 16:12:18 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
