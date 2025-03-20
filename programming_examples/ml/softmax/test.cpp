@@ -93,7 +93,7 @@ int main(int argc, const char *argv[]) {
 
   size_t OUT_SIZE = INOUT1_SIZE + trace_size;
 
-  srand(time(NULL));
+  srand(42);
 
   // Load instruction sequence
   std::vector<uint32_t> instr_v =
