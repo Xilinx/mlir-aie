@@ -32,13 +32,13 @@ constexpr int OUT_SIZE = 64 * 64;
 int main(int argc, const char *argv[]) {
   // AIE design's data streams
   std::vector<uint32_t> instr2_v =
-      test_utils::load_instr_binary("aie2_run_seq.txt");
+      test_utils::load_instr_binary("aie2_run_seq.bin");
   // AIE configuration as control packet streams
   std::vector<uint32_t> instr3_cfg_v =
-      test_utils::load_instr_binary("ctrlpkt_dma_seq.txt");
+      test_utils::load_instr_binary("ctrlpkt_dma_seq.bin");
   // AIE configuration control packets' raw data
   std::vector<uint32_t> ctrlPackets =
-      test_utils::load_instr_binary("ctrlpkt.txt");
+      test_utils::load_instr_binary("ctrlpkt.bin");
 
   // Start the XRT test code
   // Get a device handle
