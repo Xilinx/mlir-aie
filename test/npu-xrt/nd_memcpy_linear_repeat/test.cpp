@@ -20,7 +20,7 @@
 #endif
 
 #ifndef INSTS_TXT
-#define INSTS_TXT "insts.txt"
+#define INSTS_TXT "insts.bin"
 #endif
 
 #ifndef KERNEL_NAME
