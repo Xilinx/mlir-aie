@@ -691,6 +691,7 @@ def configure_shimtile_dma_tracing_aie2(
     enable_packet=0,
     packet_id=0,
     packet_type=PacketType.CORE,
+    shim_burst_length=64,
 ):
 
     dev = shim.parent.attributes["device"]
@@ -723,6 +724,7 @@ def configure_shimtile_dma_tracing_aie2(
         d2_stride=0,
         d2_zero_after=0,
         d2_zero_before=0,
+        burst_length=shim_burst_length,
         iteration_current=0,
         iteration_size=0,
         iteration_stride=0,
@@ -780,6 +782,7 @@ def configure_coretile_packet_tracing_aie2(
         CoreEvent.INSTR_LOCK_RELEASE_REQ,
         CoreEvent.LOCK_STALL,
     ],
+    shim_burst_length=64,
 ):
     configure_coretile_tracing_aie2(
         tile=tile,
@@ -802,6 +805,7 @@ def configure_coretile_packet_tracing_aie2(
         enable_packet=1,
         packet_id=flow_id,
         packet_type=PacketType.CORE,
+        shim_burst_length=shim_burst_length,
     )
 
 
@@ -837,6 +841,7 @@ def configure_memtile_packet_tracing_aie2(
         # MemTilePortEvent(MemTileEvent.PORT_RUNNING_6, 17, False),  # slave(17/ trace)
         # MemTilePortEvent(MemTileEvent.PORT_RUNNING_7, 8, True),  # masteer(9/ south1)
     ],
+    shim_burst_length=64,
 ):
     configure_memtile_tracing_aie2(
         tile=tile,
@@ -859,6 +864,7 @@ def configure_memtile_packet_tracing_aie2(
         1,
         flow_id,
         PacketType.MEMTILE,
+        shim_burst_length=shim_burst_length,
     )
 
 
@@ -889,6 +895,7 @@ def configure_shimtile_packet_tracing_aie2(
         ShimTileEvent.DMA_S2MM_0_STREAM_STARVATION,
         ShimTileEvent.DMA_S2MM_1_STREAM_STARVATION,
     ],
+    shim_burst_length=64,
 ):
     configure_shimtile_tracing_aie2(
         tile=tile,
@@ -911,6 +918,7 @@ def configure_shimtile_packet_tracing_aie2(
         1,
         flow_id,
         PacketType.SHIMTILE,
+        shim_burst_length=shim_burst_length,
     )
 
 
@@ -987,6 +995,8 @@ def gen_trace_done_aie2(
 # * `coretile_events` - which 8 events do we use for all coretiles in array
 # * `memtile_events` - which 8 events do we use for all memtiles in array
 # * `shimtile_events` - which 8 events do we use for all shimtiles in array
+# * `shim_burst_length` - burst size for shim dma. Default is 64B but can be
+# *                        be set to 64B, 128B, 256B, and 512B
 def configure_packet_tracing_aie2(
     tiles_to_trace,
     shim,
@@ -1028,6 +1038,7 @@ def configure_packet_tracing_aie2(
         ShimTileEvent.DMA_S2MM_0_STREAM_STARVATION,
         ShimTileEvent.DMA_S2MM_1_STREAM_STARVATION,
     ],
+    shim_burst_length=64,
 ):
     start_core_broadcast_event = CoreEvent(107 + start_broadcast_num)
     stop_core_broadcast_event = CoreEvent(107 + stop_broadcast_num)
@@ -1051,6 +1062,7 @@ def configure_packet_tracing_aie2(
                     start=start_user_event,
                     stop=stop_user_event,
                     events=shimtile_events,
+                    shim_burst_length=shim_burst_length,
                 )
             else:
                 configure_shimtile_packet_tracing_aie2(
@@ -1065,6 +1077,7 @@ def configure_packet_tracing_aie2(
                     start=start_shimtile_broadcast_event,
                     stop=stop_shimtile_broadcast_event,
                     events=shimtile_events,
+                    shim_burst_length=shim_burst_length,
                 )
         elif isMemTile(tiles_to_trace[i]):
             configure_memtile_packet_tracing_aie2(
@@ -1079,6 +1092,7 @@ def configure_packet_tracing_aie2(
                 start=start_memtile_broadcast_event,
                 stop=stop_memtile_broadcast_event,
                 events=memtile_events,
+                shim_burst_length=shim_burst_length,
             )
         elif isCoreTile(tiles_to_trace[i]):
             configure_coretile_packet_tracing_aie2(
@@ -1093,6 +1107,7 @@ def configure_packet_tracing_aie2(
                 start=start_core_broadcast_event,
                 stop=stop_core_broadcast_event,
                 events=coretile_events,
+                shim_burst_length=shim_burst_length,
             )
         else:
             raise ValueError(
