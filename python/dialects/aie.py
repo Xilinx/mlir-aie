@@ -400,7 +400,9 @@ class object_fifo(ObjectFifoCreateOp):
         producerTile,
         consumerTiles,
         depth,
-        datatype: MemRefType | type[np.ndarray],
+        datatype: MemRefType | type[np.ndarray] | List[MemRefType | type[np.ndarray]],
+        srcOffsets=None,
+        dstOffsets=None,
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
         initValues=None,
@@ -409,9 +411,16 @@ class object_fifo(ObjectFifoCreateOp):
         padDimensions=None,
         disable_synchronization=None,
     ):
-        self.datatype = try_convert_np_type_to_mlir_type(datatype)
+        if isinstance(datatype, list):
+            self.datatype = [try_convert_np_type_to_mlir_type(dt) for dt in datatype]
+        else:
+            self.datatype = try_convert_np_type_to_mlir_type(datatype)
         if not isinstance(consumerTiles, List):
             consumerTiles = [consumerTiles]
+        if srcOffsets is None:
+            srcOffsets = []
+        if dstOffsets is None:
+            dstOffsets = []
         if dimensionsFromStreamPerConsumer is None:
             dimensionsFromStreamPerConsumer = []
         if dimensionsToStream is None:
@@ -431,6 +440,8 @@ class object_fifo(ObjectFifoCreateOp):
             consumerTiles=consumerTiles,
             elemNumber=depth,
             elemType=of_Ty,
+            srcOffsets=srcOffsets,
+            dstOffsets=dstOffsets,
             dimensionsToStream=dimensionsToStream,
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
             via_DMA=via_DMA,
