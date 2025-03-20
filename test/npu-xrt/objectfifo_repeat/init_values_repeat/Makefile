@@ -24,7 +24,7 @@ build/aie.mlir: ${srcdir}/aie2.py
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-npu-insts --npu-insts-name=insts.txt $(<:%=../%)
+				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -37,8 +37,8 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: ${targetname}.exe build/final.xclbin build/insts.txt
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -l ${LENGTH}
+run: ${targetname}.exe build/final.xclbin build/insts.bin
+	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -l ${LENGTH}
 
 clean:
 	rm -rf build _build inst ${targetname}.exe

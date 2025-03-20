@@ -26,7 +26,7 @@ using INOUT_DATATYPE = int32_t;
 int main(int argc, const char *argv[]) {
     std::vector<uint32_t> instr_v;
 
-    instr_v = test_utils::load_instr_sequence("insts.txt");
+    instr_v = test_utils::load_instr_binary("insts.bin");
 
     int INOUT_SIZE = 128;
 

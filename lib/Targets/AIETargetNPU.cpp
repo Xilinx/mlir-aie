@@ -242,18 +242,6 @@ xilinx::AIE::AIETranslateNpuToBinary(ModuleOp module,
   return success();
 }
 
-LogicalResult xilinx::AIE::AIETranslateNpuToBinary(ModuleOp module,
-                                                   raw_ostream &output,
-                                                   StringRef sequenceName) {
-  std::vector<uint32_t> instructions;
-  auto r = AIETranslateNpuToBinary(module, instructions, sequenceName);
-  if (failed(r))
-    return r;
-  for (auto w : instructions)
-    output << llvm::format("%08X\n", w);
-  return success();
-}
-
 LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     ModuleOp module, std::vector<uint32_t> &instructions,
     StringRef sequenceName) {
@@ -293,17 +281,5 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
       });
     }
   }
-  return success();
-}
-
-LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
-    ModuleOp module, raw_ostream &output, StringRef sequenceName) {
-  std::vector<uint32_t> instructions;
-  auto r =
-      AIETranslateControlPacketsToUI32Vec(module, instructions, sequenceName);
-  if (failed(r))
-    return r;
-  for (auto w : instructions)
-    output << llvm::format("%08X\n", w);
   return success();
 }

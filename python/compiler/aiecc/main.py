@@ -22,6 +22,7 @@ import tempfile
 from textwrap import dedent
 import time
 import uuid
+import struct
 
 from aie.extras.runtime.passes import Pipeline
 from aie.extras.util import find_ops
@@ -1135,9 +1136,8 @@ class FlowRunner:
                     npu_insts = aiedialect.translate_npu_to_binary(
                         npu_insts_module.operation
                     )
-                    with open(opts.insts_name, "w") as f:
-                        for inst in npu_insts:
-                            f.write(f"{inst}\n")
+                    with open(opts.insts_name, "wb") as f:
+                        f.write(struct.pack("I" * len(npu_insts), *npu_insts))
 
             # fmt: off
             if opts.unified:

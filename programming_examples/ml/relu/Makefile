@@ -51,13 +51,13 @@ build/final.xclbin: build/aie.mlir build/relu.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 	--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
+		--xclbin-name=${@F} --npu-insts-name=insts.bin ${<F}
 
 build/final_trace.xclbin: build/aie_trace.mlir build/relu.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 	--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
+		--xclbin-name=${@F} --npu-insts-name=insts.bin ${<F}
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -71,10 +71,10 @@ else
 endif
 
 run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
+	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
 
 trace: ${targetname}.exe build/final_trace.xclbin
-	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
+	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
 	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > trace_relu.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_relu.json
 

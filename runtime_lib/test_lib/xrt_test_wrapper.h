@@ -58,7 +58,7 @@ int setup_and_run_aie(int IN1_VOLUME, int IN2_VOLUME, int OUT_VOLUME,
   srand(time(NULL));
 
   // Load instruction sequence
-  std::vector<uint32_t> instr_v = test_utils::load_instr_sequence(myargs.instr);
+  std::vector<uint32_t> instr_v = test_utils::load_instr_binary(myargs.instr);
   if (myargs.verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
@@ -234,7 +234,7 @@ int setup_and_run_aie(int IN1_VOLUME, int OUT_VOLUME, struct args myargs) {
   srand(time(NULL));
 
   // Load instruction sequence
-  std::vector<uint32_t> instr_v = test_utils::load_instr_sequence(myargs.instr);
+  std::vector<uint32_t> instr_v = test_utils::load_instr_binary(myargs.instr);
   if (myargs.verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 

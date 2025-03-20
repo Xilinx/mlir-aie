@@ -23,7 +23,7 @@ ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
 endif
 
-all: build/final.xclbin build/insts.txt
+all: build/final.xclbin build/insts.bin
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
@@ -43,7 +43,7 @@ build/final.xclbin: build/aie.mlir build/reduce_add.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     	--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
-				--aie-generate-npu-insts --npu-insts-name=insts.txt $(<:%=../%)
+				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -57,7 +57,7 @@ else
 endif
 
 run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
+	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
 
 trace:
 	../../utils/parse_eventIR.py --filename trace.txt --mlir build/aie.mlir --colshift 1 > parse_eventIR_vs.json

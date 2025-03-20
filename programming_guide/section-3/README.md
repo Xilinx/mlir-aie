@@ -12,7 +12,7 @@
 
 <img align="right" width="500" height="250" src="../assets/binaryArtifacts.svg">
 
-This section creates the first program that will run on the AIE-array. As shown in the figure on the right, we will have to create both binaries for the AIE-array (device) and CPU (host) parts. For the AIE-array, a structural description and kernel code is compiled into the AIE-array binaries: an XCLBIN file ("final.xclbin") and an instruction sequence ("inst.txt"). The host code ("test.exe") loads these AIE-array binaries and contains the test functionality.
+This section creates the first program that will run on the AIE-array. As shown in the figure on the right, we will have to create both binaries for the AIE-array (device) and CPU (host) parts. For the AIE-array, a structural description and kernel code is compiled into the AIE-array binaries: an XCLBIN file ("final.xclbin") and an instruction sequence ("insts.bin"). The host code ("test.exe") loads these AIE-array binaries and contains the test functionality.
 
 For the AIE-array structural description we will combine what you learned in [section-1](../section-1) for defining a basic structural design in Python with the data movement part from [section-2](../section-2).
 
