@@ -219,35 +219,45 @@ LogicalResult AIERTControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
                             qOs, cache, secure);
   }
 
-  // StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
-  int baseAddr = 0;
-  if (!targetModel.isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
+  // get address from BufferOp (core,mem) or ExternalBufferOp (shim)
+  uint64_t baseAddr = 0;
+  if (targetModel.isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
+    auto bufferOp =
+        cast<AIE::ExternalBufferOp>(bdOp.getBuffer().getDefiningOp());
+    // external buffers aren't required to have an address here because the
+    // address might get patched later or the default of zero might be a valid
+    // address.
+    if (bufferOp.getAddress())
+      baseAddr = bufferOp.getAddress().value();
+  } else {
     auto bufferOp = cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp());
     if (!bufferOp.getAddress())
       return bufferOp.emitError("buffer must have address assigned");
     baseAddr = bufferOp.getAddress().value();
-    if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
-      // check if buffer is allocated on the same memtile, the west, or the east
-      // one
-      auto bufferRow = bufferOp.getTileOp().getRow();
-      auto bufferCol = bufferOp.getTileOp().getCol();
-      bool isWestBuff =
-          targetModel.isWest(tileLoc.Col, tileLoc.Row, bufferCol, bufferRow);
-      bool isEastBuff =
-          targetModel.isEast(tileLoc.Col, tileLoc.Row, bufferCol, bufferRow);
-      if (isWestBuff) {
-        baseAddr += BASE_ADDR_A_INCR_WEST;
-      } else if (isEastBuff) {
-        baseAddr += BASE_ADDR_A_INCR_EAST;
-      } else {
-        baseAddr += BASE_ADDR_A_INCR;
-      }
+  }
+
+  if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
+    // check if buffer is allocated on the same memtile, the west, or the east
+    // one
+    auto bufferOp = cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp());
+    auto bufferRow = bufferOp.getTileOp().getRow();
+    auto bufferCol = bufferOp.getTileOp().getCol();
+    bool isWestBuff =
+        targetModel.isWest(tileLoc.Col, tileLoc.Row, bufferCol, bufferRow);
+    bool isEastBuff =
+        targetModel.isEast(tileLoc.Col, tileLoc.Row, bufferCol, bufferRow);
+    if (isWestBuff) {
+      baseAddr += BASE_ADDR_A_INCR_WEST;
+    } else if (isEastBuff) {
+      baseAddr += BASE_ADDR_A_INCR_EAST;
+    } else {
+      baseAddr += BASE_ADDR_A_INCR;
     }
   }
 
   std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDimensions();
-  int lenInBytes = bdOp.getLenInBytes();
-  int basePlusOffsetInBytes = baseAddr + bdOp.getOffsetInBytes();
+  uint64_t lenInBytes = bdOp.getLenInBytes();
+  uint64_t basePlusOffsetInBytes = baseAddr + bdOp.getOffsetInBytes();
   if (!dims) {
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAddrLen, &dmaTileBd,
                             basePlusOffsetInBytes, lenInBytes);

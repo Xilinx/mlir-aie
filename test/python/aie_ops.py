@@ -116,9 +116,11 @@ def bufferOp():
 
 # CHECK-LABEL: externalBufferOp
 # CHECK: %[[VAL_0:.*]] = aie.external_buffer : memref<12xi32>
+# CHECK: %[[VAL_1:.*]] = aie.external_buffer {address = 209934011881080 : i64} : memref<13xi8>
 @construct_and_print_module
 def externalBufferOp():
     b = external_buffer(T.memref(12, T.i32()))
+    c = external_buffer(T.memref(13, T.i8()), address=0xBEEF12345678)
 
 
 # CHECK-LABEL: objFifo
