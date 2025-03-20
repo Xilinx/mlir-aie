@@ -166,19 +166,28 @@ def color_threshold(dev, width, height):
 
                 inOOB_L2L1_2.release(ObjectFifoPort.Consume, 1)
                 outOOB_L1L2_2.release(ObjectFifoPort.Produce, 1)
-
+        
+        lock5 = lock(5)
+        
         # Compute tile 5
         @core(ComputeTile5, "threshold.cc.o")
         def core_body():
             for _ in range_(sys.maxsize):
-                elemIn = inOOB_L2L1_3.acquire(ObjectFifoPort.Consume, 1)
-                elemOut = outOOB_L1L2_3.acquire(ObjectFifoPort.Produce, 1)
-
+                # Acquire a lock, blocking until RTPs written in sequence
+                lockAcquire(lock5)
+                
                 # RTPs written from the instruction stream must be read right before the kernel
                 # after the ObjectFIFO acquires
                 thresholdValue = arith.trunci(T.i16(), rtpComputeTile5[0])
                 maxValue = arith.trunci(T.i16(), rtpComputeTile5[1])
                 thresholdType = arith.trunci(T.i8(), rtpComputeTile5[2])
+
+                # Release the lock, so that we block on the next iteration for new RTPs
+                lockRelease(lock5)
+                
+                elemIn = inOOB_L2L1_3.acquire(ObjectFifoPort.Consume, 1)
+                elemOut = outOOB_L1L2_3.acquire(ObjectFifoPort.Produce, 1)
+                
                 thresholdLine(
                     elemIn,
                     elemOut,
@@ -202,18 +211,22 @@ def color_threshold(dev, width, height):
             rtpComputeTile2[0] = 50
             rtpComputeTile2[1] = 255
             rtpComputeTile2[2] = 0
+            # Set lock so acquire succeeds
 
             rtpComputeTile3[0] = 50
             rtpComputeTile3[1] = 255
             rtpComputeTile3[2] = 0
-
+            # Set lock so acquire succeeds
+            
             rtpComputeTile4[0] = 50
             rtpComputeTile4[1] = 255
             rtpComputeTile4[2] = 0
+            # Set lock so acquire succeeds
 
             rtpComputeTile5[0] = 50
             rtpComputeTile5[1] = 255
             rtpComputeTile5[2] = 0
+            # Set lock so acquire succeeds
 
             in_task = shim_dma_single_bd_task(
                 inOOB_L3L2, inTensor, sizes=[1, 1, 1, tensorSize], issue_token=True
