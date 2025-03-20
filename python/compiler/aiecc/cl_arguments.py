@@ -58,7 +58,7 @@ def parse_args(args=None):
     parser.add_argument(
         "--no-xbridge",
         dest="xbridge",
-        default=not aie_link_with_xchesscc,
+        default=aie_link_with_xchesscc,
         action="store_false",
         help="Link using peano",
     )
@@ -86,7 +86,7 @@ def parse_args(args=None):
     parser.add_argument(
         "--no-xchesscc",
         dest="xchesscc",
-        default=not aie_compile_with_xchesscc,
+        default=aie_compile_with_xchesscc,
         action="store_false",
         help="Compile using peano",
     )
@@ -106,7 +106,7 @@ def parse_args(args=None):
     parser.add_argument(
         "--no-compile",
         dest="compile",
-        default=aie_disable_compile,
+        default=not aie_disable_compile,
         action="store_false",
         help="Disable compiling of AIE code",
     )
@@ -126,7 +126,7 @@ def parse_args(args=None):
     parser.add_argument(
         "--no-compile-host",
         dest="compile_host",
-        default=host_disable_compile,
+        default=not host_disable_compile,
         action="store_false",
         help="Disable compiling of the host program",
     )
@@ -140,7 +140,7 @@ def parse_args(args=None):
     parser.add_argument(
         "--no-link",
         dest="link",
-        default=aie_disable_link,
+        default=not aie_disable_link,
         action="store_false",
         help="Disable linking of AIE code",
     )
@@ -201,7 +201,7 @@ def parse_args(args=None):
     parser.add_argument(
         "--no-unified",
         dest="unified",
-        default=not aie_unified_compile,
+        default=aie_unified_compile,
         action="store_false",
         help="Compile cores independently in separate processes",
     )
@@ -247,7 +247,13 @@ def parse_args(args=None):
         default=False,
         action="store_const",
         const=True,
-        help="Generate txn binary for configuration",
+        help="Generate transaction binary mlir for configuration",
+    )
+    parser.add_argument(
+        "--txn-name",
+        dest="txn_name",
+        default="transaction.mlir",
+        help="Output filename for transaction binary mlir",
     )
     parser.add_argument(
         "--aie-generate-ctrlpkt",

@@ -208,7 +208,7 @@ mem_topology = {
 }
 
 
-def emit_partition(mlir_module_str, pdi_name, kernel_id="0x901"):
+def emit_partition(mlir_module_str, kernel_id="0x901"):
     with Context(), Location.unknown():
         module = Module.parse(mlir_module_str)
     device = find_ops(
@@ -243,7 +243,7 @@ def emit_partition(mlir_module_str, pdi_name, kernel_id="0x901"):
             "PDIs": [
                 {
                     "uuid": str(pdi_uuid),
-                    "file_name": pdi_name,
+                    "file_name": "./design.pdi",
                     "cdo_groups": [
                         {
                             "name": "DPU",
@@ -601,6 +601,10 @@ class FlowRunner:
                 self.prepend_tmp("txn.mlir"),
                 self.opts.verbose,
             )
+            tmp = self.prepend_tmp("txn.mlir")
+            if opts.verbose:
+                print(f"copy {tmp} to {opts.txn_name}")
+            shutil.copy(tmp, opts.txn_name)
 
     async def process_ctrlpkt(self, module_str):
         with Context(), Location.unknown():
@@ -617,7 +621,7 @@ class FlowRunner:
 
         await write_file_async(
             emit_design_bif(self.tmpdirname),
-            self.prepend_tmp(opts.pdi_name + ".bif"),
+            self.prepend_tmp("design.bif"),
         )
 
         await self.do_call(
@@ -627,12 +631,17 @@ class FlowRunner:
                 "-arch",
                 "versal",
                 "-image",
-                self.prepend_tmp(opts.pdi_name + ".bif"),
+                self.prepend_tmp("design.bif"),
                 "-o",
-                self.prepend_tmp(opts.pdi_name),
+                self.prepend_tmp('design.pdi'),
                 "-w",
             ],
         )
+        if opts.pdi:
+            tmp = self.prepend_tmp("design.pdi")
+            if opts.verbose:
+                print(f"copy {tmp} to {opts.pdi_name}")
+            shutil.copy(tmp, opts.pdi_name)
 
     # generate an xclbin. The inputs are self.mlir_module_str and the cdo
     # binaries from the process_cdo step.
@@ -659,7 +668,7 @@ class FlowRunner:
         processes.append(
             write_file_async(
                 json.dumps(
-                    emit_partition(self.mlir_module_str, opts.pdi_name, opts.kernel_id),
+                    emit_partition(self.mlir_module_str, opts.kernel_id),
                     indent=2,
                 ),
                 self.prepend_tmp("aie_partition.json"),

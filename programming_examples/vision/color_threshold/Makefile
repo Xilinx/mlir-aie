@@ -22,10 +22,10 @@ COLORTHRESHOLD_HEIGHT = 1080
 targetname = color_threshold
 
 aie_py_src=${targetname}.py
-use_alt?=0
+use_placed?=0
 
-ifeq (${use_alt}, 1)
-aie_py_src=${targetname}_alt.py
+ifeq (${use_placed}, 1)
+aie_py_src=${targetname}_placed.py
 endif
 
 all: build/final_${COLORTHRESHOLD_WIDTH}.xclbin

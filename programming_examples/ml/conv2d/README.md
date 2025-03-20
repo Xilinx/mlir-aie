@@ -23,11 +23,11 @@ The process of applying the filter to different regions of the input tensor is o
 .
 +-- act_layout.png       # Figure describing input/output data layout.
 +-- conv2d.py            # A Python script that defines the AIE array structural design using MLIR-AIE operations.
-+-- conv2d_alt.py        # A Python script that defines the AIE array structural design using MLIR-AIE operations using a lower-level version of IRON
++-- conv2d_placed.py        # A Python script that defines the AIE array structural design using MLIR-AIE operations using a lower-level version of IRON
 +-- Makefile             # Contains instructions for building and compiling software projects.
 +-- README.md            # This file.
 +-- run_makefile.lit     # For LLVM Integrated Tester (LIT) of the design.
-+-- run_makefile_alt.lit # For LLVM Integrated Tester (LIT) of the alternate design.
++-- run_makefile_placed.lit # For LLVM Integrated Tester (LIT) of the placed design.
 +-- test.py              # Python code testbench for the design example.
 ```
 
@@ -83,7 +83,7 @@ make
 
 To compile the design using the lower-level IRON version (currently needed for trace):
 ```shell
-env use_alt=1 make
+env use_placed=1 make
 ```
 
 To run the design:
