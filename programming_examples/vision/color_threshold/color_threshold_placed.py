@@ -167,7 +167,7 @@ def color_threshold(dev, width, height):
                 inOOB_L2L1_2.release(ObjectFifoPort.Consume, 1)
                 outOOB_L1L2_2.release(ObjectFifoPort.Produce, 1)
         
-        lock5 = lock(5)
+        lock5 = lock(ComputeTile5, 5)
         
         # Compute tile 5
         @core(ComputeTile5, "threshold.cc.o")
