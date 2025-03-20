@@ -1327,10 +1327,10 @@ def AIE_BufferOp: AIE_Op<"buffer", [
 
   let arguments = (
     ins Index:$tile,
-    OptionalAttr<StrAttr>:$sym_name,
-    OptionalAttr<AIEI32Attr>:$address,
-    OptionalAttr<ElementsAttr>:$initial_value,
-    OptionalAttr<AIEI32Attr>:$mem_bank
+        OptionalAttr<StrAttr>:$sym_name,
+        OptionalAttr<AIEI32Attr>:$address,
+        OptionalAttr<ElementsAttr>:$initial_value,
+        OptionalAttr<AIEI32Attr>:$mem_bank
   );
 
   let results = (outs AnyMemRef:$buffer);
@@ -1395,7 +1395,10 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", [
     This operation represents an external buffer.
   }];
 
-  let arguments = (ins OptionalAttr<StrAttr>:$sym_name);
+  let arguments = (
+    ins OptionalAttr<StrAttr>:$sym_name,
+        OptionalAttr<AIEI64Attr>:$address
+  );
 
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{ attr-dict `:` type($buffer) }];
