@@ -30,9 +30,9 @@ int main(int argc, const char *argv[]) {
   std::vector<uint32_t> instr_v =
       test_utils::load_instr_binary("aie2_run_seq.bin");
   std::vector<uint32_t> ctrlpkt_instr_v =
-      test_utils::load_instr_binary("ctrlpkt_dma_seq.bin");
+      test_utils::load_instr_binary("ctrlpkt_dma_seq.txt");
   std::vector<uint32_t> ctrlPackets =
-      test_utils::load_instr_binary("ctrlpkt.bin");
+      test_utils::load_instr_binary("ctrlpkt.txt");
 
   // Start the XRT test code
   // Get a device handle

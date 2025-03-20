@@ -35,10 +35,10 @@ int main(int argc, const char *argv[]) {
       test_utils::load_instr_binary("aie2_run_seq.bin");
   // AIE configuration as control packet streams
   std::vector<uint32_t> instr3_cfg_v =
-      test_utils::load_instr_binary("ctrlpkt_dma_seq.bin");
+      test_utils::load_instr_sequence("ctrlpkt_dma_seq.txt");
   // AIE configuration control packets' raw data
   std::vector<uint32_t> ctrlPackets =
-      test_utils::load_instr_binary("ctrlpkt.bin");
+      test_utils::load_instr_sequence("ctrlpkt.txt");
 
   // Start the XRT test code
   // Get a device handle
