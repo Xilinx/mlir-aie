@@ -271,7 +271,7 @@ public:
   // Returns the list of possible burst encodings (first) and
   // their corresponding lengths in bytes (second).
   virtual std::vector<std::pair<uint32_t, uint32_t>>
-  getBurstEncodingsAndLengths() const = 0;
+  getShimBurstEncodingsAndLengths() const = 0;
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -343,7 +343,7 @@ public:
   }
 
   std::vector<std::pair<uint32_t, uint32_t>>
-  getBurstEncodingsAndLengths() const override;
+  getShimBurstEncodingsAndLengths() const override;
 };
 
 class AIE2TargetModel : public AIETargetModel {
@@ -432,7 +432,7 @@ public:
   }
 
   std::vector<std::pair<uint32_t, uint32_t>>
-  getBurstEncodingsAndLengths() const override;
+  getShimBurstEncodingsAndLengths() const override;
 };
 
 class VC1902TargetModel : public AIE1TargetModel {
@@ -632,7 +632,7 @@ public:
   }
 
   std::vector<std::pair<uint32_t, uint32_t>>
-  getBurstEncodingsAndLengths() const override;
+  getShimBurstEncodingsAndLengths() const override;
 };
 
 } // namespace xilinx::AIE
