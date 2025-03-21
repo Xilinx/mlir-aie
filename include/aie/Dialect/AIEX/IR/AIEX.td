@@ -953,6 +953,22 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
   }];
 }
 
+// NPU Load PDI operation
+def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
+  let summary = "load pdi operator";
+  let arguments = (
+    ins I32Attr:$id,
+        Optional<AnyMemRef>:$data,
+        OptionalAttr<I32Attr>:$size,
+        OptionalAttr<UI64Attr>:$address
+  );
+  let results = (outs );
+  let assemblyFormat = [{ (`(` $data^ `)`)? attr-dict ( `:` type($data)^ )? }];
+  let description = [{
+    load pdi operator
+  }];
+}
+
 def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"RuntimeSequenceOp">, TileElement]>, Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task on a Channel and Direction on a Tile";
   let description = [{
