@@ -14,7 +14,7 @@
 // RUN: %python aiecc.py -v --xchesscc --xbridge --aie-generate-pdi --pdi-name=MlirAie0.pdi %s | FileCheck %s --check-prefix=XCHESSCC
 // RUN: %python aiecc.py -v --no-xchesscc --no-xbridge --aie-generate-pdi --pdi-name=MlirAie1.pdi %s | FileCheck %s --check-prefix=PEANO
 
-// RUN: ls | grep MlirAie.pdi | FileCheck %s --check-prefix=CHECK-FILE
+// RUN: ls | grep MlirAie | FileCheck %s --check-prefix=CHECK-FILE
 
 // XCHESSCC: bootgen
 // XCHESSCC: copy{{.*}} to MlirAie0.pdi
