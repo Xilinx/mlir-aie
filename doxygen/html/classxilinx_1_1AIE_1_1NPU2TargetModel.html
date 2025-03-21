@@ -108,8 +108,8 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a33e2d85d7879226fcd9d221b1c805b0c" id="r_a33e2d85d7879226fcd9d221b1c805b0c"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1NPU2TargetModel.html#a33e2d85d7879226fcd9d221b1c805b0c">isShimPLTile</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) const override</td></tr>
 <tr class="memdesc:a33e2d85d7879226fcd9d221b1c805b0c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return true if the given tile is a Shim PL interface tile.  <br /></td></tr>
 <tr class="separator:a33e2d85d7879226fcd9d221b1c805b0c"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a6f1e62e3ff8ea39a55f4c957dcc32324" id="r_a6f1e62e3ff8ea39a55f4c957dcc32324"><td class="memItemLeft" align="right" valign="top">std::vector&lt; std::pair&lt; uint32_t, uint32_t &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1NPU2TargetModel.html#a6f1e62e3ff8ea39a55f4c957dcc32324">getBurstEncodingsAndLengths</a> () const override</td></tr>
-<tr class="separator:a6f1e62e3ff8ea39a55f4c957dcc32324"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ab167ca85ec5dde5f5fa49253e2454a74" id="r_ab167ca85ec5dde5f5fa49253e2454a74"><td class="memItemLeft" align="right" valign="top">std::vector&lt; std::pair&lt; uint32_t, uint32_t &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1NPU2TargetModel.html#ab167ca85ec5dde5f5fa49253e2454a74">getShimBurstEncodingsAndLengths</a> () const override</td></tr>
+<tr class="separator:ab167ca85ec5dde5f5fa49253e2454a74"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="inherit_header pub_methods_classxilinx_1_1AIE_1_1BaseNPUTargetModel"><td colspan="2" onclick="javascript:toggleInherit('pub_methods_classxilinx_1_1AIE_1_1BaseNPUTargetModel')"><img src="closed.png" alt="-"/>&#160;Public Member Functions inherited from <a class="el" href="classxilinx_1_1AIE_1_1BaseNPUTargetModel.html">xilinx::AIE::BaseNPUTargetModel</a></td></tr>
 <tr class="memitem:aa394ab37169f7d8acd2ee44c5b4d2aa3 inherit pub_methods_classxilinx_1_1AIE_1_1BaseNPUTargetModel" id="r_aa394ab37169f7d8acd2ee44c5b4d2aa3"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1BaseNPUTargetModel.html#aa394ab37169f7d8acd2ee44c5b4d2aa3">BaseNPUTargetModel</a> (<a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a3e5bc5dad74026589bd3327ea063e0bb">TargetModelKind</a> k)</td></tr>
 <tr class="separator:aa394ab37169f7d8acd2ee44c5b4d2aa3 inherit pub_methods_classxilinx_1_1AIE_1_1BaseNPUTargetModel"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -378,8 +378,8 @@ Additional Inherited Members</h2></td></tr>
 
 </div>
 </div>
-<a id="a6f1e62e3ff8ea39a55f4c957dcc32324" name="a6f1e62e3ff8ea39a55f4c957dcc32324"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a6f1e62e3ff8ea39a55f4c957dcc32324">&#9670;&#160;</a></span>getBurstEncodingsAndLengths()</h2>
+<a id="ab167ca85ec5dde5f5fa49253e2454a74" name="ab167ca85ec5dde5f5fa49253e2454a74"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ab167ca85ec5dde5f5fa49253e2454a74">&#9670;&#160;</a></span>getShimBurstEncodingsAndLengths()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -388,7 +388,7 @@ Additional Inherited Members</h2></td></tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">std::vector&lt; std::pair&lt; uint32_t, uint32_t &gt; &gt; xilinx::AIE::NPU2TargetModel::getBurstEncodingsAndLengths </td>
+          <td class="memname">std::vector&lt; std::pair&lt; uint32_t, uint32_t &gt; &gt; xilinx::AIE::NPU2TargetModel::getShimBurstEncodingsAndLengths </td>
           <td>(</td>
           <td class="paramname"></td><td>)</td>
           <td> const</td>
@@ -401,9 +401,9 @@ Additional Inherited Members</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p>Reimplemented from <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#a37d2202b03c7ec75e273debfca75f316">xilinx::AIE::AIE2TargetModel</a>.</p>
+<p>Reimplemented from <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#a234822ee497e1a90683010b502221ae7">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00726">726</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00724">724</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 </div>
 </div>
@@ -434,7 +434,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Reimplemented from <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#a5cf282c134a7caa57f9f80c866008902">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00723">723</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00721">721</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 </div>
 </div>
@@ -533,7 +533,7 @@ Additional Inherited Members</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Mar 20 2025 16:52:25 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Mar 21 2025 21:56:07 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
