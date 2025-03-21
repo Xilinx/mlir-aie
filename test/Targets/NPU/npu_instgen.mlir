@@ -17,8 +17,8 @@ module {
       // TXN header 1.0
       // CHECK: 06030001
       // CHECK: 00000105
-      // CHECK: 00000006
-      // CHECK: 000000A0
+      // CHECK: 00000007
+      // CHECK: 000000B0
 
       // CHECK: 00000000
       // CHECK: 06400DEF
@@ -68,6 +68,12 @@ module {
       // CHECK: 00030401
       // CHECK: 05010200
       aiex.npu.sync { column = 3 : i32, row = 4 : i32, direction = 1 : i32, channel = 5 : i32, column_num = 1 : i32, row_num = 2 : i32 }
+
+      // CHECK: 00020008
+      // CHECK: 00000400
+      // CHECK: 12345678
+      // CHECK: 00000ABC
+      aiex.npu.load_pdi { address = 0xabc12345678 : ui64, id = 2 : i32, size = 1024 : i32 }
     }
   }
 }
