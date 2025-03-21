@@ -209,14 +209,14 @@ LogicalResult AIERTControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
 
   if (targetModel.isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
     // write them out like this so they show up with names in debug prints
-    size_t smid = 0;
-    size_t burstLen = 16; // (10):BLEN=16 (256Byte) (corresponds to
-                          // 0x800000000 from target)
-    size_t qOs = 0;
-    size_t cache = 0;
-    size_t secure = 0;
-    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAxi, &dmaTileBd, smid, burstLen,
-                            qOs, cache, secure);
+    uint8_t smid = 0;
+    uint32_t burstLen =
+        getShimBurstLengthBytes(targetModel, bdOp.getBurstLength());
+    uint8_t qOs = 0;
+    uint8_t cache = 0;
+    uint8_t secure = 0;
+    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAxi, &dmaTileBd, smid,
+                            burstLen / 16, qOs, cache, secure);
   }
 
   // get address from BufferOp (core,mem) or ExternalBufferOp (shim)
