@@ -17,7 +17,7 @@ from aie.iron.controlflow import range_
 
 def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
     if trace_size != 0:
-        raise NotImplementedError("Trace not supported yet.")
+        raise NotImplementedError("Trace not supported in non-placed design yet.")
 
     in1_dtype = np.int16
     in2_dtype = np.int32

@@ -16,7 +16,7 @@ from aie.iron.device import NPU1Col1, NPU2
 
 def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
     if trace_size != 0:
-        raise NotImplementedError("Trace not supported yet.")
+        raise NotImplementedError("Trace not supported in non-placed design yet.")
 
     in1_dtype = np.uint8
     out_dtype = np.uint8

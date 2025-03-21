@@ -5,6 +5,7 @@
 #
 # (c) Copyright 2024 AMD Inc.
 from ml_dtypes import bfloat16
+import argparse
 import numpy as np
 import sys
 
@@ -15,8 +16,15 @@ from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
 
 
-def my_relu(dev, trace_size):
-    N = 65536
+def my_relu(dev, in1_size, out_size, trace_size):
+    if trace_size != 0:
+        raise NotImplementedError("Trace not supported in non-placed design yet.")
+
+    in1_dtype = bfloat16
+    out_dtype = bfloat16
+    
+    # N = 65536
+    N = in1_size // in1_dtype(0).nbytes
 
     # Tile sizes and types
     n = 1024
@@ -25,16 +33,16 @@ def my_relu(dev, trace_size):
     n_cores = 2
     tiles = N_div_n // n_cores
 
-    tensor_ty = np.ndarray[(N,), np.dtype[bfloat16]]
-    tile_ty = np.ndarray[(n,), np.dtype[bfloat16]]
+    tensor_ty = np.ndarray[(N,), np.dtype[in1_dtype]]
+    tile_ty = np.ndarray[(n,), np.dtype[in1_dtype]]
 
     # Type used in the tile memory
-    A_ty = np.ndarray[(n,), np.dtype[bfloat16]]
-    C_ty = np.ndarray[(n,), np.dtype[bfloat16]]
+    A_ty = np.ndarray[(n,), np.dtype[in1_dtype]]
+    C_ty = np.ndarray[(n,), np.dtype[out_dtype]]
 
     # Type used in the memory tile which aggregates across the 4 cores
-    A_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
-    C_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
+    A_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[in1_dtype]]
+    C_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[out_dtype]]
 
     # AIE Core Function declarations
     relu = Kernel("bf16_relu", "relu.o", [tile_ty, tile_ty])
@@ -97,18 +105,31 @@ def my_relu(dev, trace_size):
     # Place components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())
 
+p = argparse.ArgumentParser()
+p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
+p.add_argument(
+    "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
+)
+p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
+p.add_argument(
+    "-t",
+    "--trace_size",
+    required=False,
+    dest="trace_size",
+    default=0,
+    help="Trace buffer size",
+)
+opts = p.parse_args(sys.argv[1:])
 
-try:
-    device_name = str(sys.argv[1])
-    if device_name == "npu":
-        dev = NPU1Col1()
-    elif device_name == "npu2":
-        dev = NPU2()
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
-    trace_size = 0 if (len(sys.argv) != 3) else int(sys.argv[2])
-except ValueError:
-    print("Argument is not an integer")
+if opts.device == "npu":
+    dev = NPU1Col1()
+elif opts.device == "npu2":
+    dev = NPU2()
+else:
+    raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
 
-module = my_relu(dev, trace_size)
-print(module)
+in1_size = int(opts.in1_size)
+out_size = int(opts.out_size)
+trace_size = int(opts.trace_size)
+
+print(my_relu(dev, in1_size, out_size, trace_size))
