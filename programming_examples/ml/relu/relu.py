@@ -22,7 +22,7 @@ def my_relu(dev, in1_size, out_size, trace_size):
 
     in1_dtype = bfloat16
     out_dtype = bfloat16
-    
+
     # N = 65536
     N = in1_size // in1_dtype(0).nbytes
 
@@ -104,6 +104,7 @@ def my_relu(dev, in1_size, out_size, trace_size):
 
     # Place components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())
+
 
 p = argparse.ArgumentParser()
 p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")

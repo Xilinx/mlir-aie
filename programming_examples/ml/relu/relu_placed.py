@@ -23,7 +23,7 @@ def my_relu(dev, in1_size, out_size, trace_size):
     in1_dtype = bfloat16
     out_dtype = bfloat16
 
-    N = in1_size //  in1_dtype(0).nbytes
+    N = in1_size // in1_dtype(0).nbytes
 
     # Tile sizes
     n = 1024
@@ -175,4 +175,3 @@ with mlir_mod_ctx() as ctx:
         print(ctx.module)
     else:
         print(res)
-
