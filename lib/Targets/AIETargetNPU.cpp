@@ -30,6 +30,7 @@ using namespace xilinx::AIEX;
 #define TXN_OPC_WRITE 0x0
 #define TXN_OPC_BLOCKWRITE 0x1
 #define TXN_OPC_MASKWRITE 0x3
+#define TXN_OPC_LOADPDI 0x8
 #define TXN_OPC_TCT 0x80
 #define TXN_OPC_DDR_PATCH 0x81
 
@@ -111,6 +112,23 @@ void appendMaskWrite32(std::vector<uint32_t> &instructions,
   }
   words[2] = op.getValue(); // Value
   words[3] = op.getMask();
+}
+
+void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
+
+  auto words = reserveAndGetTail(instructions, 4);
+
+  // XAIE_IO_LOADPDI
+  words[0] = TXN_OPC_LOADPDI;
+  words[0] |= op.getId() << 16;
+  std::optional<uint32_t> size = op.getSize();
+  if (size)
+    words[1] = *size;
+  std::optional<uint64_t> address = op.getAddress();
+  if (address) {
+    words[2] = *address;
+    words[3] = *address >> 32;
+  }
 }
 
 void appendAddressPatch(std::vector<uint32_t> &instructions,
@@ -228,6 +246,10 @@ xilinx::AIE::AIETranslateNpuToBinary(ModuleOp module,
           .Case<NpuMaskWrite32Op>([&](auto op) {
             count++;
             appendMaskWrite32(instructions, op);
+          })
+          .Case<NpuLoadPdiOp>([&](auto op) {
+            count++;
+            appendLoadPdi(instructions, op);
           })
           .Case<NpuAddressPatchOp>([&](auto op) {
             count++;
