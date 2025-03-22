@@ -27,7 +27,7 @@ dtype_map = {
 
 def main():
     argparser = argparse.ArgumentParser(
-        prog="AIE Matrix Multiplication MLIR Design (Whole Array)",
+        prog="AIE Matrix Multiplication MLIR Design (Single Core)",
         description="Emits MLIR code for a matrix multiplication design of the given input size",
     )
     argparser.add_argument("--dev", type=str, choices=["npu", "npu2"], default="npu")
@@ -87,9 +87,9 @@ def my_matmul(dev, M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
             t = 4
     else:
         if dtype_in_str == "bf16":
-            r = 4
+            r = 8
             s = 8
-            t = 4
+            t = 8
         elif dtype_in_str == "i8":
             r = 8
             s = 8
@@ -99,7 +99,6 @@ def my_matmul(dev, M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
             s = 4
             t = 8
         
-
     assert m % r == 0
     assert k % s == 0
     assert n % t == 0

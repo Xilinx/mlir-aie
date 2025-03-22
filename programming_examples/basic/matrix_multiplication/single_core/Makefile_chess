@@ -15,12 +15,12 @@ kernels=mm
 
 # M, K, N: final GEMM dimensions
 M?=512
-K?=736
+K?=512
 N?=512
 
 # m, k, n: single AIE core GEMM dimensions
 m?=64
-k?=184
+k?=64
 n?=64
 
 kernels=mm_${m}x${k}x${n}
@@ -63,8 +63,5 @@ build/mm_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
 ifeq (${devicename}, npu)
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 ${opt_flag_arg} -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
 else ifeq (${devicename}, npu2)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBIT_WIDTH=8 ${opt_flag_arg} -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16 -DBIT_WIDTH=8 ${opt_flag_arg} -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
 endif
-
-# enable this for AIE2P if you want to emulate bfloat16 with bfp16
-# -DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16
