@@ -134,26 +134,26 @@ void test() {
   }
 
   // AIEDevice::npu2_1col, npu2_2col, npu2_4col
-  llvm::SmallVector<AIE::AIEDevice> npu2_devs = {
-    AIE::AIEDevice::npu2_1col, AIE::AIEDevice::npu2_2col,
-    AIE::AIEDevice::npu2_4col};
-for (auto dev : npu2_devs) {
-  if (!llvm::isa<AIE::AIE2TargetModel>(AIE::getTargetModel(dev))) {
-    throw std::runtime_error("Failed npu2_col isa<AIE2TargetModel>");
-  }
-  if (!llvm::isa<AIE::VirtualizedNPU2TargetModel>(AIE::getTargetModel(dev))) {
-    throw std::runtime_error(
-        "Failed npu2_col isa<VirtualizedNPU2TargetModel>");
-  }
-  if (!llvm::isa<AIE::BaseNPUTargetModel>(AIE::getTargetModel(dev))) {
-    throw std::runtime_error("Failed npu2_col isa<BaseNPUTargetModel>");
-  }
-  if (llvm::isa<AIE::AIE1TargetModel, AIE::VC1902TargetModel,
-                AIE::VE2302TargetModel, AIE::VE2802TargetModel,
-                AIE::NPUTargetModel, AIE::VirtualizedNPUTargetModel,
-                AIE::NPU2TargetModel>(
-          AIE::getTargetModel(dev))) {
-    throw std::runtime_error("Failed npu2_col !isa<>");
+  llvm::SmallVector<AIE::AIEDevice> npu2_devs = {AIE::AIEDevice::npu2_1col,
+                                                 AIE::AIEDevice::npu2_2col,
+                                                 AIE::AIEDevice::npu2_4col};
+  for (auto dev : npu2_devs) {
+    if (!llvm::isa<AIE::AIE2TargetModel>(AIE::getTargetModel(dev))) {
+      throw std::runtime_error("Failed npu2_col isa<AIE2TargetModel>");
+    }
+    if (!llvm::isa<AIE::VirtualizedNPU2TargetModel>(AIE::getTargetModel(dev))) {
+      throw std::runtime_error(
+          "Failed npu2_col isa<VirtualizedNPU2TargetModel>");
+    }
+    if (!llvm::isa<AIE::BaseNPUTargetModel>(AIE::getTargetModel(dev))) {
+      throw std::runtime_error("Failed npu2_col isa<BaseNPUTargetModel>");
+    }
+    if (llvm::isa<AIE::AIE1TargetModel, AIE::VC1902TargetModel,
+                  AIE::VE2302TargetModel, AIE::VE2802TargetModel,
+                  AIE::NPUTargetModel, AIE::VirtualizedNPUTargetModel,
+                  AIE::NPU2TargetModel>(AIE::getTargetModel(dev))) {
+      throw std::runtime_error("Failed npu2_col !isa<>");
+    }
   }
 }
 
