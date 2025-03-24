@@ -29,7 +29,7 @@ void test() {
   if (llvm::isa<AIE::AIE2TargetModel, AIE::VE2302TargetModel,
                 AIE::VE2802TargetModel, AIE::BaseNPUTargetModel,
                 AIE::NPUTargetModel, AIE::VirtualizedNPUTargetModel,
-                AIE::NPU2TargetModel>(
+                AIE::NPU2TargetModel, AIE::VirtualizedNPU2TargetModel>(
           AIE::getTargetModel(AIE::AIEDevice::xcvc1902))) {
     throw std::runtime_error("Failed xcvc1902 !isa<>");
   }
@@ -46,7 +46,7 @@ void test() {
   if (llvm::isa<AIE::AIE1TargetModel, AIE::VC1902TargetModel,
                 AIE::VE2802TargetModel, AIE::BaseNPUTargetModel,
                 AIE::NPUTargetModel, AIE::VirtualizedNPUTargetModel,
-                AIE::NPU2TargetModel>(
+                AIE::NPU2TargetModel, AIE::VirtualizedNPU2TargetModel>(
           AIE::getTargetModel(AIE::AIEDevice::xcve2302))) {
     throw std::runtime_error("Failed xcve2302 !isa<>");
   }
@@ -63,7 +63,7 @@ void test() {
   if (llvm::isa<AIE::AIE1TargetModel, AIE::VC1902TargetModel,
                 AIE::VE2302TargetModel, AIE::BaseNPUTargetModel,
                 AIE::NPUTargetModel, AIE::VirtualizedNPUTargetModel,
-                AIE::NPU2TargetModel>(
+                AIE::NPU2TargetModel, AIE::VirtualizedNPU2TargetModel>(
           AIE::getTargetModel(AIE::AIEDevice::xcve2802))) {
     throw std::runtime_error("Failed xcve2802 !isa<>");
   }
@@ -83,7 +83,8 @@ void test() {
   }
   if (llvm::isa<AIE::AIE1TargetModel, AIE::VC1902TargetModel,
                 AIE::VE2302TargetModel, AIE::VE2802TargetModel,
-                AIE::VirtualizedNPUTargetModel, AIE::NPU2TargetModel>(
+                AIE::VirtualizedNPUTargetModel, AIE::NPU2TargetModel,
+                AIE::VirtualizedNPU2TargetModel>(
           AIE::getTargetModel(AIE::AIEDevice::npu1))) {
     throw std::runtime_error("Failed npu1 !isa<>");
   }
@@ -126,10 +127,35 @@ void test() {
   }
   if (llvm::isa<AIE::AIE1TargetModel, AIE::VC1902TargetModel,
                 AIE::VE2302TargetModel, AIE::VE2802TargetModel,
-                AIE::VirtualizedNPUTargetModel, AIE::NPUTargetModel>(
+                AIE::VirtualizedNPUTargetModel, AIE::NPUTargetModel,
+                AIE::VirtualizedNPU2TargetModel>(
           AIE::getTargetModel(AIE::AIEDevice::npu2))) {
     throw std::runtime_error("Failed npu2 !isa<>");
   }
+
+  // AIEDevice::npu2_1col, npu2_2col, npu2_4col
+  llvm::SmallVector<AIE::AIEDevice> npu2_devs = {
+    AIE::AIEDevice::npu2_1col, AIE::AIEDevice::npu2_2col,
+    AIE::AIEDevice::npu2_4col};
+for (auto dev : npu2_devs) {
+  if (!llvm::isa<AIE::AIE2TargetModel>(AIE::getTargetModel(dev))) {
+    throw std::runtime_error("Failed npu2_col isa<AIE2TargetModel>");
+  }
+  if (!llvm::isa<AIE::VirtualizedNPU2TargetModel>(AIE::getTargetModel(dev))) {
+    throw std::runtime_error(
+        "Failed npu2_col isa<VirtualizedNPU2TargetModel>");
+  }
+  if (!llvm::isa<AIE::BaseNPUTargetModel>(AIE::getTargetModel(dev))) {
+    throw std::runtime_error("Failed npu2_col isa<BaseNPUTargetModel>");
+  }
+  if (llvm::isa<AIE::AIE1TargetModel, AIE::VC1902TargetModel,
+                AIE::VE2302TargetModel, AIE::VE2802TargetModel,
+                AIE::NPUTargetModel, AIE::VirtualizedNPUTargetModel,
+                AIE::NPU2TargetModel>(
+          AIE::getTargetModel(dev))) {
+    throw std::runtime_error("Failed npu2_col !isa<>");
+  }
+}
 }
 
 int main() {

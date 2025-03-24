@@ -88,6 +88,34 @@ N Columns and 6 Rows
   0..N
 ```
 
+```aie.device(npu2) {}```
+This device is present in Ryzen Strix, Strix Halo and Krackan Point SOCs.
+8 Columns and 6 Rows
+```
+5 CCCCCCCC
+4 CCCCCCCC
+3 CCCCCCCC
+2 CCCCCCCC
+1 MMMMMMMM
+0 PDDDDDDD
+  01234567
+```
+
+```aie.device(npu2_1col) {}```
+```aie.device(npu2_2col) {}```
+```aie.device(npu2_4col) {}```
+These devices represent a physical partition of an npu2 device, including a number of columns with a DMA shim tile.
+N Columns and 6 Rows
+```
+5 CCCCCCCC
+4 CCCCCCCC
+3 CCCCCCCC
+2 CCCCCCCC
+1 MMMMMMMM
+0 PDDDDDDD
+  0..N
+```
+
 -----
 
 <p align="center">Copyright&copy; 2024 AMD/Xilinx</p>
