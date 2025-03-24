@@ -84,7 +84,7 @@ N Columns and 6 Rows
 3 CCCC
 2 CCCC
 1 MMMM
-0 DDDD
+0 PDDD
   0..N
 ```
 
@@ -97,7 +97,7 @@ This device is present in Ryzen Strix, Strix Halo and Krackan Point SOCs.
 3 CCCCCCCC
 2 CCCCCCCC
 1 MMMMMMMM
-0 PDDDDDDD
+0 DDDDDDDD
   01234567
 ```
 
@@ -112,8 +112,8 @@ N Columns and 6 Rows
 3 CCCCCCCC
 2 CCCCCCCC
 1 MMMMMMMM
-0 PDDDDDDD
-  0..N
+0 DDDDDDDD
+  0......N
 ```
 
 -----
