@@ -156,7 +156,6 @@ for (auto dev : npu2_devs) {
     throw std::runtime_error("Failed npu2_col !isa<>");
   }
 }
-}
 
 int main() {
   test();
