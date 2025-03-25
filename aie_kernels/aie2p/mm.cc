@@ -239,12 +239,12 @@ matmul_vectorized_8x8x8_bf16_f32(const bfloat16 *__restrict pA,
                                  float *__restrict pC) {
 
   // After extensive experimentation, the 4x8x4 aie::mmul size was found to be
-  // optimal for AIE2P, in combination with the 4x4 mmul expanded kernel
+  // optimal for AIE2P, in combination with the 2x2 mmul expanded kernel
   constexpr int r = 8;
   constexpr int s = 8;
   constexpr int t = 8;
 
-  // Since the kernel has been expanded 4 times for both A ('m' dimension) and B
+  // Since the kernel has been expanded 2 times for both A ('m' dimension) and B
   // ('n' dimension), the following assertions veirify this even division for
   // the single AIE MatMul dimensionality Notice that 'k' dimension is not
   // spatially expanded.

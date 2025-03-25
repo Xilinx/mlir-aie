@@ -19,9 +19,9 @@ K?=512
 N?=512
 
 # m, k, n: single AIE core GEMM dimensions
-m?=64
-k?=64
-n?=64
+m?=32
+k?=32
+n?=32
 
 kernels=mm_${m}x${k}x${n}
 aieargs+=-m $m -k $k -n $n
