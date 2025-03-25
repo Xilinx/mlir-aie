@@ -15,10 +15,7 @@
 
 #include "llvm/ADT/DenseSet.h"
 
-#include <cstdint>
 #include <iostream>
-#include <utility>
-#include <vector>
 
 namespace xilinx::AIE {
 
@@ -228,6 +225,14 @@ public:
   /// Return the number of lock objects
   virtual uint32_t getNumLocks(int col, int row) const = 0;
 
+  /// Return the maximum value that can be stored in a lock register
+  virtual uint32_t getMaxLockValue() const = 0;
+
+  // Return the lock address for the lock ID in the local memory for a given
+  // tile or a nullopt if invalid arguments are given.
+  virtual std::optional<uint32_t> getLocalLockAddress(uint32_t lockId,
+                                                      TileID tile) const = 0;
+
   /// Return the number of buffer descriptors supported by the DMA in the given
   /// tile.
   virtual uint32_t getNumBDs(int col, int row) const = 0;
@@ -330,6 +335,9 @@ public:
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
   uint32_t getAccumulatorCascadeSize() const override { return 384; }
   uint32_t getNumLocks(int col, int row) const override { return 16; }
+  uint32_t getMaxLockValue() const override { return 1; }
+  std::optional<uint32_t> getLocalLockAddress(uint32_t lockId,
+                                              TileID tile) const override;
   uint32_t getNumBDs(int col, int row) const override { return 16; }
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
                              int channel) const override {
@@ -404,6 +412,11 @@ public:
   uint32_t getNumLocks(int col, int row) const override {
     return isMemTile(col, row) ? 64 : 16;
   }
+
+  uint32_t getMaxLockValue() const override { return 0x3F; }
+
+  std::optional<uint32_t> getLocalLockAddress(uint32_t lockId,
+                                              TileID tile) const override;
 
   uint32_t getNumBDs(int col, int row) const override {
     return isMemTile(col, row) ? 48 : 16;

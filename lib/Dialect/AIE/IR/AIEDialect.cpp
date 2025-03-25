@@ -213,9 +213,10 @@ struct UsesAreAccessible {
       if (llvm::isa_and_nonnull<DeviceOp, ModuleOp>(user->getParentOp())) {
         continue;
       }
-      // If any parent prescribes that accessibility checks be skipped,
-      // skip the check for that user.
-      if (user->getParentWithTrait<SkipAccessibilityCheckTrait>()) {
+      // If any parent or the user itself prescribe that accessibility checks be
+      // skipped, skip the check for that user.
+      if (user->getParentWithTrait<SkipAccessibilityCheckTrait>() ||
+          user->hasTrait<SkipAccessibilityCheckTrait>()) {
         continue;
       }
       TileElement element = llvm::dyn_cast<TileElement>(user);

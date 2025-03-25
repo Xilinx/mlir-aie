@@ -296,6 +296,14 @@ AIE1TargetModel::getBurstEncodingsAndLengths() const {
           std::pair(0x80000000, 256)};
 }
 
+std::optional<uint32_t>
+AIE1TargetModel::getLocalLockAddress(uint32_t lockId, TileID tile) const {
+  // This function is currently not supported for AIE1.
+  // In order to be implemented for this target model, the interface
+  // would need to change given the different way locks are written to in AIE1.
+  return std::nullopt;
+}
+
 ///
 /// AIE2 TargetModel
 ///
@@ -660,6 +668,27 @@ std::vector<std::pair<uint32_t, uint32_t>>
 AIE2TargetModel::getBurstEncodingsAndLengths() const {
   return {std::pair(0x00000000, 64), std::pair(0x40000000, 128),
           std::pair(0x80000000, 256)};
+}
+
+std::optional<uint32_t>
+AIE2TargetModel::getLocalLockAddress(uint32_t lockId, TileID tile) const {
+  auto computeTileBaseAddress = 0x0001F000;
+  auto memTileBaseAddress = 0x000C0000;
+  auto shimTileBaseAddress = 0x00014000;
+  auto lockAddrOffset = 0x10;
+
+  if (isCoreTile(tile.col, tile.row) &&
+      lockId < getNumLocks(tile.col, tile.row))
+    return computeTileBaseAddress + lockAddrOffset * lockId;
+
+  if (isMemTile(tile.col, tile.row) && lockId < getNumLocks(tile.col, tile.row))
+    return memTileBaseAddress + lockAddrOffset * lockId;
+
+  if (isShimNOCorPLTile(tile.col, tile.row) &&
+      lockId < getNumLocks(tile.col, tile.row))
+    return shimTileBaseAddress + lockAddrOffset * lockId;
+
+  return std::nullopt;
 }
 
 void AIETargetModel::validate() const {
