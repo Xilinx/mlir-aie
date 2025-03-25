@@ -3,14 +3,14 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 import argparse
 from ml_dtypes import bfloat16
 import numpy as np
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col4
+from aie.iron.device import NPU1Col4, NPU2
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 
@@ -25,9 +25,10 @@ dtype_map = {
 
 def main():
     argparser = argparse.ArgumentParser(
-        prog="AIE Matrix Multiplication MLIR Design (Whole Array)",
+        prog="AIE Matrix Multiplication MLIR Design (Single Core)",
         description="Emits MLIR code for a matrix multiplication design of the given input size",
     )
+    argparser.add_argument("--dev", type=str, choices=["npu", "npu2"], default="npu")
     argparser.add_argument("-M", type=int, default=256)
     argparser.add_argument("-K", type=int, default=256)
     argparser.add_argument("-N", type=int, default=256)
@@ -52,6 +53,7 @@ def main():
     )
     args = argparser.parse_args()
     maybe_module = my_matmul(
+        args.dev,
         args.M,
         args.K,
         args.N,
@@ -77,25 +79,39 @@ def ceildiv(a, b):
 
 
 def my_matmul(
-    M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size, generate_taps=False
+    dev, M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size, generate_taps=False
 ):
 
     assert M % m == 0
     assert K % k == 0
     assert N % n == 0
 
-    if dtype_in_str == "bf16":
-        r = 4
-        s = 8
-        t = 4
-    elif dtype_in_str == "i8":
-        r = 4
-        s = 8
-        t = 8
-    elif dtype_in_str == "i16":
-        r = 4
-        s = 4
-        t = 4
+    if dev == "npu":
+        if dtype_in_str == "bf16":
+            r = 4
+            s = 8
+            t = 4
+        elif dtype_in_str == "i8":
+            r = 4
+            s = 8
+            t = 8
+        elif dtype_in_str == "i16":
+            r = 4
+            s = 4
+            t = 4
+    else:
+        if dtype_in_str == "bf16":
+            r = 8
+            s = 8
+            t = 8
+        elif dtype_in_str == "i8":
+            r = 8
+            s = 8
+            t = 8
+        elif dtype_in_str == "i16":
+            r = 4
+            s = 4
+            t = 8
 
     assert m % r == 0
     assert k % s == 0
@@ -253,7 +269,11 @@ def my_matmul(
         )
 
     # Create the program from the device type and runtime
-    my_program = Program(NPU1Col4(), rt)
+    if dev == "npu":
+        dev_ty = NPU1Col4()
+    else:
+        dev_ty = NPU2()
+    my_program = Program(dev_ty, rt)
 
     # Place components (assign them resources on the device) and generate an MLIR module
     module = my_program.resolve_program(SequentialPlacer())

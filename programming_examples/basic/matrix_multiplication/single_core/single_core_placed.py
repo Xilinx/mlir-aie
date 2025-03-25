@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 AMD Inc.
+# (c) Copyright 2025 AMD Inc.
 
 # This placed implementation uses configure_task instructions instead of
 # dma_memcpy_nd in the runtime sequence configuration. It is otherwise
@@ -30,9 +30,10 @@ dtype_map = {
 
 def main():
     argparser = argparse.ArgumentParser(
-        prog="AIE Matrix Multiplication MLIR Design (Whole Array)",
+        prog="AIE Matrix Multiplication MLIR Design (Single Core)",
         description="Emits MLIR code for a matrix multiplication design of the given input size",
     )
+    argparser.add_argument("--dev", type=str, choices=["npu", "npu2"], default="npu")
     argparser.add_argument("-M", type=int, default=256)
     argparser.add_argument("-K", type=int, default=256)
     argparser.add_argument("-N", type=int, default=256)
@@ -58,6 +59,7 @@ def main():
     args = argparser.parse_args()
     with mlir_mod_ctx() as ctx:
         maybe_taps = my_matmul(
+            args.dev,
             args.M,
             args.K,
             args.N,
@@ -80,25 +82,39 @@ def ceildiv(a, b):
 
 
 def my_matmul(
-    M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size, generate_taps=False
+    dev, M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size, generate_taps=False
 ):
 
     assert M % m == 0
     assert K % k == 0
     assert N % n == 0
 
-    if dtype_in_str == "bf16":
-        r = 4
-        s = 8
-        t = 4
-    elif dtype_in_str == "i8":
-        r = 4
-        s = 8
-        t = 8
-    elif dtype_in_str == "i16":
-        r = 4
-        s = 4
-        t = 4
+    if dev == "npu":
+        if dtype_in_str == "bf16":
+            r = 4
+            s = 8
+            t = 4
+        elif dtype_in_str == "i8":
+            r = 4
+            s = 8
+            t = 8
+        elif dtype_in_str == "i16":
+            r = 4
+            s = 4
+            t = 4
+    else:
+        if dtype_in_str == "bf16":
+            r = 8
+            s = 8
+            t = 8
+        elif dtype_in_str == "i8":
+            r = 8
+            s = 8
+            t = 8
+        elif dtype_in_str == "i16":
+            r = 4
+            s = 4
+            t = 8
 
     assert m % r == 0
     assert k % s == 0
@@ -140,7 +156,13 @@ def my_matmul(
     B_taps = []
     C_taps = []
 
-    @device(AIEDevice.npu1_1col)
+
+    if dev == "npu":
+        dev_ty = AIEDevice.npu1_1col
+    else:
+        dev_ty = AIEDevice.npu2
+
+    @device(dev_ty)
     def device_body():
         a_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
         b_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
@@ -263,8 +285,9 @@ def my_matmul(
                     tiles_to_trace, shim_tile, trace_size, C_sz_in_bytes
                 )
 
-            # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
-            rows_per_block = 4
+            # only do 2 tile rows at a time before synchronizing, so we can reuse BDs.
+            # This example uses only to prevent exhaustion of BD IDs
+            rows_per_block = 2
 
             # These lists will hold handles to the DMA tasks we configure
             # on the shim. We can later use these handles to start those
@@ -298,7 +321,7 @@ def my_matmul(
                         break
 
                     # -- C --
-                    # Configure a task on the same channel wehere the
+                    # Configure a task on the same channel where the
                     # objectFifo "outC" expects its data to be streamed in
                     # from. Repeat count is how often to repeat this task,
                     # hence for 1 iteration, repeat count is 0. The highest
