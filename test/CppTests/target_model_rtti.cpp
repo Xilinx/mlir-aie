@@ -133,10 +133,12 @@ void test() {
     throw std::runtime_error("Failed npu2 !isa<>");
   }
 
-  // AIEDevice::npu2_1col, npu2_2col, npu2_4col
+  // AIEDevice::npu2_1col, npu2_2col, npu2_3col, npu2_4col, npu2_6col
   llvm::SmallVector<AIE::AIEDevice> npu2_devs = {AIE::AIEDevice::npu2_1col,
                                                  AIE::AIEDevice::npu2_2col,
-                                                 AIE::AIEDevice::npu2_4col};
+                                                 AIE::AIEDevice::npu2_3col,
+                                                 AIE::AIEDevice::npu2_4col,
+                                                 AIE::AIEDevice::npu2_6col};
   for (auto dev : npu2_devs) {
     if (!llvm::isa<AIE::AIE2TargetModel>(AIE::getTargetModel(dev))) {
       throw std::runtime_error("Failed npu2_col isa<AIE2TargetModel>");
