@@ -79,7 +79,7 @@ insts_target?=build/insts_${target_suffix}.txt
 aie_py_src?=${targetname}.py
 
 runargs?=-v 2 --warmup 1 --iters 1
-aieargs+= --dev ${devicename} -M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
+aieargs+=--dev ${devicename} -M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
 
 CHESS?=false
 
@@ -87,13 +87,11 @@ CHESS?=false
 buffer_aloc_flag?=basic-sequential
 
 ifeq ($(devicename),npu2)
-kernels_dir=${srcdir}/../../../../aie_kernels/aie2p
 col_shift?=0
 else 
-kernels_dir=${srcdir}/../../../../aie_kernels/aie2
+#shift first column in Phoenix/Hawk, because deosn't have shimTile 
 col_shift?=1
 endif
-
 
 .PHONY: all
 all: ${xclbin_target} ${targetname}.exe

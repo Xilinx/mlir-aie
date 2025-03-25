@@ -4,12 +4,13 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# Copyright (C) 2025, Advanced Micro Devices, Inc.
 # 
 ##===----------------------------------------------------------------------===##
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=whole_array
 targetname=whole_array
+
 
 # M, K, N: final GEMM dimensions
 M?=512
@@ -53,6 +54,12 @@ aie_py_src=${targetname}_iron.py
 endif
 
 include ${srcdir}/../makefile-common
+
+ifeq ($(devicename),npu2)
+kernels_dir=${srcdir}/../../../../aie_kernels/aie2p
+else 
+kernels_dir=${srcdir}/../../../../aie_kernels/aie2
+endif
 
 build/mm_b_row_maj_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
 	mkdir -p ${@D}

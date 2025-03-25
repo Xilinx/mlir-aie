@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# Copyright (C) 2025, Advanced Micro Devices, Inc.
 # 
 ##===----------------------------------------------------------------------===##
 
@@ -49,7 +49,14 @@ endif
 ifeq (${use_iron}, 1)
 aie_py_src=${targetname}_iron.py
 endif
+
 include ${srcdir}/../makefile-common
+
+ifeq ($(devicename),npu2)
+kernels_dir=${srcdir}/../../../../aie_kernels/aie2p
+else 
+kernels_dir=${srcdir}/../../../../aie_kernels/aie2
+endif
 
 build/mm_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
 	mkdir -p ${@D}
