@@ -106,7 +106,8 @@ void test() {
     }
     if (llvm::isa<AIE::AIE1TargetModel, AIE::VC1902TargetModel,
                   AIE::VE2302TargetModel, AIE::VE2802TargetModel,
-                  AIE::NPUTargetModel, AIE::NPU2TargetModel>(
+                  AIE::NPUTargetModel, AIE::NPU2TargetModel,
+                  AIE::VirtualizedNPU2TargetModel>(
             AIE::getTargetModel(dev))) {
       throw std::runtime_error("Failed npu1_col !isa<>");
     }
