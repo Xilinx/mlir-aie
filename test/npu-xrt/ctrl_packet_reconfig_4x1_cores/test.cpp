@@ -28,7 +28,7 @@ constexpr int OUT_SIZE = 4 * 64 * 64;
 
 int main(int argc, const char *argv[]) {
   std::vector<uint32_t> instr_v =
-      test_utils::load_instr_sequence("aie2_run_seq.txt");
+      test_utils::load_instr_binary("aie2_run_seq.bin");
   std::vector<uint32_t> ctrlpkt_instr_v =
       test_utils::load_instr_sequence("ctrlpkt_dma_seq.txt");
   std::vector<uint32_t> ctrlPackets =

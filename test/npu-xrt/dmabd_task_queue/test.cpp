@@ -24,6 +24,8 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include "test_utils.h"
+
 constexpr int A_VOLUME = 5;
 constexpr int B_VOLUME = 96;
 constexpr int C_VOLUME = 96;
@@ -39,34 +41,6 @@ constexpr int D_SIZE = (D_VOLUME * sizeof(IN_DATATYPE));
 constexpr bool VERIFY = true;
 
 namespace po = boost::program_options;
-
-void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
-  if (!vm_in.count(name)) {
-    throw std::runtime_error("Error: no " + name + " file was provided\n");
-  } else {
-    std::ifstream test(vm_in[name].as<std::string>());
-    if (!test) {
-      throw std::runtime_error("The " + name + " file " +
-                               vm_in[name].as<std::string>() +
-                               " does not exist.\n");
-    }
-  }
-}
-
-std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
-  std::ifstream instr_file(instr_path);
-  std::string line;
-  std::vector<uint32_t> instr_v;
-  while (std::getline(instr_file, line)) {
-    std::istringstream iss(line);
-    uint32_t a;
-    if (!(iss >> std::hex >> a)) {
-      throw std::runtime_error("Unable to parse instruction file\n");
-    }
-    instr_v.push_back(a);
-  }
-  return instr_v;
-}
 
 void parse_options(int argc, const char *argv[], po::options_description &desc,
                    po::variables_map &vm) {
@@ -84,8 +58,8 @@ void parse_options(int argc, const char *argv[], po::options_description &desc,
     std::exit(1);
   }
 
-  check_arg_file_exists(vm, "xclbin");
-  check_arg_file_exists(vm, "instr");
+  test_utils::check_arg_file_exists(vm, "xclbin");
+  test_utils::check_arg_file_exists(vm, "instr");
 }
 
 void add_default_options(po::options_description &desc) {
@@ -112,7 +86,7 @@ int main(int argc, const char *argv[]) {
   srand(time(NULL));
 
   std::vector<uint32_t> instr_v =
-      load_instr_sequence(vm["instr"].as<std::string>());
+      test_utils::load_instr_binary(vm["instr"].as<std::string>());
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 

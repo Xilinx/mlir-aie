@@ -39,17 +39,27 @@ void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
   }
 }
 
-std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
-  std::ifstream instr_file(instr_path);
-  std::string line;
-  std::vector<uint32_t> instr_v;
-  while (std::getline(instr_file, line)) {
-    std::istringstream iss(line);
-    uint32_t a;
-    if (!(iss >> std::hex >> a)) {
-      throw std::runtime_error("Unable to parse instruction file\n");
-    }
-    instr_v.push_back(a);
+std::vector<uint32_t> load_instr_binary(std::string instr_path) {
+  // Open file in binary mode
+  std::ifstream instr_file(instr_path, std::ios::binary);
+  if (!instr_file.is_open()) {
+    throw std::runtime_error("Unable to open instruction file\n");
+  }
+
+  // Get the size of the file
+  instr_file.seekg(0, std::ios::end);
+  std::streamsize size = instr_file.tellg();
+  instr_file.seekg(0, std::ios::beg);
+
+  // Check that the file size is a multiple of 4 bytes (size of uint32_t)
+  if (size % 4 != 0) {
+    throw std::runtime_error("File size is not a multiple of 4 bytes\n");
+  }
+
+  // Allocate vector and read the binary data
+  std::vector<uint32_t> instr_v(size / 4);
+  if (!instr_file.read(reinterpret_cast<char *>(instr_v.data()), size)) {
+    throw std::runtime_error("Failed to read instruction file\n");
   }
   return instr_v;
 }
@@ -87,7 +97,7 @@ int main(int argc, const char *argv[]) {
   check_arg_file_exists(vm, "instr");
 
   std::vector<uint32_t> instr_v =
-      load_instr_sequence(vm["instr"].as<std::string>());
+      load_instr_binary(vm["instr"].as<std::string>());
 
   int verbosity = vm["verbosity"].as<int>();
   if (verbosity >= 1)

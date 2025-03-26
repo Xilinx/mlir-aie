@@ -23,6 +23,8 @@
 #include <ostream>
 #include <stdfloat>
 
+#include "test_utils.h"
+
 namespace matmul_common {
 
 namespace po = boost::program_options;
@@ -30,19 +32,6 @@ namespace po = boost::program_options;
 // --------------------------------------------------------------------------
 // Command Line Argument Handling
 // --------------------------------------------------------------------------
-
-void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
-  if (!vm_in.count(name)) {
-    throw std::runtime_error("Error: no " + name + " file was provided\n");
-  } else {
-    std::ifstream test(vm_in[name].as<std::string>());
-    if (!test) {
-      throw std::runtime_error("The " + name + " file " +
-                               vm_in[name].as<std::string>() +
-                               " does not exist.\n");
-    }
-  }
-}
 
 void add_default_options(po::options_description &desc) {
   desc.add_options()("help,h", "produce help message")(
@@ -84,27 +73,8 @@ void parse_options(int argc, const char *argv[], po::options_description &desc,
     std::exit(1);
   }
 
-  check_arg_file_exists(vm, "xclbin");
-  check_arg_file_exists(vm, "instr");
-}
-
-// --------------------------------------------------------------------------
-// AIE Specifics
-// --------------------------------------------------------------------------
-
-std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
-  std::ifstream instr_file(instr_path);
-  std::string line;
-  std::vector<uint32_t> instr_v;
-  while (std::getline(instr_file, line)) {
-    std::istringstream iss(line);
-    uint32_t a;
-    if (!(iss >> std::hex >> a)) {
-      throw std::runtime_error("Unable to parse instruction file\n");
-    }
-    instr_v.push_back(a);
-  }
-  return instr_v;
+  test_utils::check_arg_file_exists(vm, "xclbin");
+  test_utils::check_arg_file_exists(vm, "instr");
 }
 
 // --------------------------------------------------------------------------

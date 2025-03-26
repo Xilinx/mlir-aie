@@ -1,22 +1,22 @@
-//===- npu_instgen.mlir ----------------------------------------*- MLIR -*-===//
+//===- npu2_instgen.mlir ---------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2023-2025 Advanced Micro Devices, Inc. or its affiliates
+// (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 //
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-translate --aie-npu-to-binary %s | FileCheck %s
 module {
-  aie.device(npu1) {
+  aie.device(npu2) {
     memref.global "private" constant @write_data : memref<8xi32> = dense<[100, 101, 102, 103, 104 ,105, 106, 107]>
     aiex.runtime_sequence(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
 
       // TXN header 0.1
-      // CHECK: 06030100
-      // CHECK: 00000105
+      // CHECK: 06040100
+      // CHECK: 00000108
       // CHECK: 00000006
       // CHECK: 000000CC
 

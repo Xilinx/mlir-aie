@@ -116,7 +116,9 @@ For your design of interest, for instance from [programming_examples](../program
 
 1. Continue to the [IRON AIE Application Programming Guide](programming_guide)
 
-1. Some MLIR-AIE documentation is available on the [website](https://xilinx.github.io/mlir-aie/)
+1. Additional MLIR-AIE documentation is available on the [website](https://xilinx.github.io/mlir-aie/)
+
+1. AIE API header library documentation for single-core AIE programming in C++ is avaiable [here](https://xilinx.github.io/aie_api/topics.html)
 
 ## Optional: Install AIETools
 

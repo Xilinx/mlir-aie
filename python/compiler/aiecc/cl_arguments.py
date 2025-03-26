@@ -230,7 +230,7 @@ def parse_args(args=None):
     parser.add_argument(
         "--npu-insts-name",
         dest="insts_name",
-        default="npu_insts.txt",
+        default="npu_insts.bin",
         help="Output instructions filename for NPU target",
     )
     parser.add_argument(

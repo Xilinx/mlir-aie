@@ -49,11 +49,15 @@ struct SkipAccessibilityCheckTrait
     : mlir::OpTrait::TraitBase<ConcreteType, SkipAccessibilityCheckTrait> {};
 
 class TileOp;
-} // namespace xilinx::AIE
 
-namespace xilinx::AIE {
+uint32_t getShimBurstLengthBytes(const AIE::AIETargetModel &tm,
+                                 uint32_t burstLength);
+uint32_t getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
+                                    uint32_t burstLength);
+
 mlir::LogicalResult
 verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
+
 } // namespace xilinx::AIE
 
 /// Include the generated interface declarations.
@@ -247,16 +251,16 @@ parseObjectFifoProducerTile(mlir::OpAsmParser &parser,
 
 void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
                                  mlir::Operation *op, mlir::Value tile,
-                                 mlir::Attribute dimensions);
+                                 BDDimLayoutArrayAttr dimensions);
 
 mlir::ParseResult parseObjectFifoConsumerTiles(
     mlir::OpAsmParser &parser,
-    llvm::SmallVector<mlir::OpAsmParser::UnresolvedOperand> &tiles,
+    llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &tiles,
     BDDimLayoutArrayArrayAttr &dimensions);
 
 void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
                                   mlir::Operation *op, mlir::OperandRange tiles,
-                                  mlir::Attribute dimensions);
+                                  BDDimLayoutArrayArrayAttr dimensions);
 
 int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 

@@ -20,7 +20,7 @@
 #endif
 
 #ifndef INSTS_TXT
-#define INSTS_TXT "insts.txt"
+#define INSTS_TXT "insts.bin"
 #endif
 
 #ifndef KERNEL_NAME
@@ -41,7 +41,7 @@
 
 int main(int argc, const char *argv[]) {
 
-  std::vector<uint32_t> instr_v = test_utils::load_instr_sequence(INSTS_TXT);
+  std::vector<uint32_t> instr_v = test_utils::load_instr_binary(INSTS_TXT);
   assert(instr_v.size() > 0);
 
   // Get a device handle

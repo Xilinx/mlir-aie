@@ -377,12 +377,14 @@ class external_buffer(MemRef):
         cls,
         datatype: MemRefType | type[np.ndarray],
         name: str | None = None,
+        address=None,
         loc=None,
         ip=None,
     ):
         my_buffer = ExternalBufferOp(
             buffer=try_convert_np_type_to_mlir_type(datatype),
             sym_name=name,
+            address=address,
             loc=loc,
             ip=ip,
         )

@@ -704,6 +704,21 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
 #endif
 
   // Realize the routes in MLIR
+
+  // Update tiles map if any new tile op declaration is needed for constructing
+  // the flow.
+  for (const auto &swMap : mastersets) {
+    if (llvm::none_of(
+            tiles,
+            [&swMap](
+                std::pair<xilinx::AIE::TileID, Operation *> &tileMapEntry) {
+              return tileMapEntry.second == swMap.first.first;
+            })) {
+      auto newTileOp = dyn_cast<TileOp>(swMap.first.first);
+      tiles[{newTileOp.colIndex(), newTileOp.rowIndex()}] = newTileOp;
+    }
+  }
+
   for (auto map : tiles) {
     Operation *tileOp = map.second;
     auto tile = dyn_cast<TileOp>(tileOp);
