@@ -156,7 +156,6 @@ def my_matmul(
     B_taps = []
     C_taps = []
 
-
     if dev == "npu":
         dev_ty = AIEDevice.npu1_1col
     else:

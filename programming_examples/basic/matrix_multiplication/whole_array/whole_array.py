@@ -138,15 +138,15 @@ def my_matmul(
             s = 4
             t = 8
 
-    
     # npu is a 4 row x 4 col array
     if dev == "npu" and n_aie_cols > 4:
         raise AssertionError("Invalid configuration: NPU (Phoenix/Hawk) has 4 columns")
-        
     # npu2 is a 4 row x 8 col array
     if dev == "npu2" and n_aie_cols > 8:
-        raise AssertionError("Invalid configuration: NPU2 (Strix/Kracken) has 8 columns")
-    
+        raise AssertionError(
+            "Invalid configuration: NPU2 (Strix/Kracken) has 8 columns"
+        )
+
     # Input matrix A:
     # Conceptually, we divide input A into (m * n_rows, k)-sized blocks. These
     # blocks are _broadcast_ across AIE core columns, then _distributed_ across
@@ -186,15 +186,15 @@ def my_matmul(
     n_tiles_per_core = (M // m) * (N // n) // n_aie_cores
 
     # When using more AIE columns than n_aie_rows (4) (applicable to NPU2),
-    # restrict the number of shim/mem tiles to n_aie_rows, 
+    # restrict the number of shim/mem tiles to n_aie_rows,
     # since we have only n_aie_rows row tiles for matrix A
     if n_aie_cols > n_aie_rows:
         n_shim_mem_A = n_aie_rows
     # When using n_aie_rows (4) or less AIE columns (both NPU and NPU2),
-    # the number of shim/mem tiles are equal to n_aie_cols. 
+    # the number of shim/mem tiles are equal to n_aie_cols.
     # We use the distribute pattern in object FIFO (see linking for A below),
     # since we have n_aie_rows (4) row tiles for matrix A
-    else: 
+    else:
         n_shim_mem_A = n_aie_cols
 
     # Integer division when n_aie_cols < 4, otherwise set to 1
@@ -260,8 +260,10 @@ def my_matmul(
         for i in range(n_shim_mem_A):
             A_l3l2_fifos[i] = object_fifo(
                 f"A_L3L2_{i}",
-                shim_tiles[2*i] if n_aie_cols == 8 else shim_tiles[i], # alternate columns in full 4x8 NPU2 case
-                mem_tiles[2*i] if n_aie_cols == 8 else mem_tiles[i],
+                (
+                    shim_tiles[2 * i] if n_aie_cols == 8 else shim_tiles[i]
+                ),  # alternate columns in full 4x8 NPU2 case
+                mem_tiles[2 * i] if n_aie_cols == 8 else mem_tiles[i],
                 fifo_depth,
                 A_l2_ty,
             )
@@ -270,7 +272,11 @@ def my_matmul(
         for row in range(n_aie_rows):
             A_l2l1_fifos[row] = object_fifo(
                 f"A_L2L1_{row}",
-                mem_tiles[2*row] if n_aie_cols == 8 else mem_tiles[row // n_A_tiles_per_shim],
+                (
+                    mem_tiles[2 * row]
+                    if n_aie_cols == 8
+                    else mem_tiles[row // n_A_tiles_per_shim]
+                ),
                 core_tiles[row][0:n_aie_cols],  # broadcast along one row
                 fifo_depth,
                 A_l1_ty,
@@ -300,7 +306,6 @@ def my_matmul(
                 [],
                 of_offsets,
             )
-        
 
         # Input B
         for col in range(n_aie_cols):
@@ -339,7 +344,6 @@ def my_matmul(
             )
             # B_l3_l2 and B_l2_l1 object FIFO linking
             object_fifo_link(B_l3l2_fifos[col], B_l2l1_fifos[col])
-
 
         # Output C
         for col in range(n_aie_cols):

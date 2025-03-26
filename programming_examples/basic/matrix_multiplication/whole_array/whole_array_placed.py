@@ -137,14 +137,15 @@ def my_matmul(
             s = 4
             t = 8
 
-     # npu is a 4 row x 4 col array
+    # npu is a 4 row x 4 col array
     if dev == "npu" and n_aie_cols > 4:
         raise AssertionError("Invalid configuration: NPU (Phoenix/Hawk) has 4 columns")
-        
     # npu2 is a 4 row x 8 col array
     if dev == "npu2" and n_aie_cols > 8:
-        raise AssertionError("Invalid configuration: NPU2 (Strix/Kracken) has 8 columns")
-    
+        raise AssertionError(
+            "Invalid configuration: NPU2 (Strix/Kracken) has 8 columns"
+        )
+
     # Input matrix A:
     # Conceptually, we divide input A into (m * n_rows, k)-sized blocks. These
     # blocks are _broadcast_ across AIE core columns, then _distributed_ across
@@ -184,18 +185,18 @@ def my_matmul(
     n_tiles_per_core = (M // m) * (N // n) // n_aie_cores
 
     # When using more AIE columns than n_aie_rows (4) (applicable to NPU2),
-    # restrict the number of shim/mem tiles to n_aie_rows, 
+    # restrict the number of shim/mem tiles to n_aie_rows,
     # since we have only n_aie_rows row tiles for matrix A
     if n_aie_cols > n_aie_rows:
         n_shim_mem_A = n_aie_rows
     # When using n_aie_rows (4) or less AIE columns (both NPU and NPU2),
-    # the number of shim/mem tiles are equal to n_aie_cols. 
+    # the number of shim/mem tiles are equal to n_aie_cols.
     # We use the distribute pattern in object FIFO (see linking for A below),
     # since we have n_aie_rows (4) row tiles for matrix A
-    else: 
+    else:
         n_shim_mem_A = n_aie_cols
 
-     # Integer division when n_aie_cols < 4, otherwise set to 1
+    # Integer division when n_aie_cols < 4, otherwise set to 1
     n_A_tiles_per_shim = n_aie_rows // n_aie_cols if n_aie_cols < 4 else 1
 
     if dev == "npu":

@@ -66,7 +66,9 @@ def ceildiv(a, b):
     return (a + b - 1) // b
 
 
-def my_matmul(dev, M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, trace_size):
+def my_matmul(
+    dev, M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, trace_size
+):
 
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols

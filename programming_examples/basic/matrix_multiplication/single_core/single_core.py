@@ -98,7 +98,6 @@ def my_matmul(dev, M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
             r = 4
             s = 4
             t = 8
-        
     assert m % r == 0
     assert k % s == 0
     assert n % t == 0
