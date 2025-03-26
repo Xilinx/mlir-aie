@@ -285,8 +285,8 @@ def my_matmul(
                     tiles_to_trace, shim_tile, trace_size, C_sz_in_bytes
                 )
 
-            # only do 2 tile rows at a time before synchronizing, so we can reuse BDs.
-            # This example uses only to prevent exhaustion of BD IDs
+            # This example uses only does 2 tile rows to prevent exhaustion of BDs.
+            # In general, we do 2-4 at a time to reuse BDs.
             rows_per_block = 2
 
             # These lists will hold handles to the DMA tasks we configure
