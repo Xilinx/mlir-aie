@@ -1605,7 +1605,7 @@ struct AIEObjectFifoStatefulTransformPass
           (createOp.getRepeatCount().has_value()
                ? createOp.getRepeatCount().value()
                : 0));
-    if(isJoin)
+    if (isJoin)
       builder.create<ObjectFifoLinkOp>(
           builder.getUnknownLoc(), builder.getArrayAttr(producerFifoAttrs),
           builder.getArrayAttr(consumerFifoAttrs),
