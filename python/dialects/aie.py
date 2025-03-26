@@ -377,12 +377,14 @@ class external_buffer(MemRef):
         cls,
         datatype: MemRefType | type[np.ndarray],
         name: str | None = None,
+        address=None,
         loc=None,
         ip=None,
     ):
         my_buffer = ExternalBufferOp(
             buffer=try_convert_np_type_to_mlir_type(datatype),
             sym_name=name,
+            address=address,
             loc=loc,
             ip=ip,
         )
@@ -918,13 +920,11 @@ class TileOp(TileOp):
         )
 
 
-def tile(col, row, *, loc=None, ip=None):
-    return TileOp(col=col, row=row, loc=loc, ip=ip)
+def tile(col, row, *, loc=None, ip=None, allocation_scheme=None):
+    return TileOp(col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme)
 
 
 # BDChainOp
-
-_orig_bd_chain = bd_chain
 
 
 def bd_chain(*inputs: T.Type | type[np.ndarray]):

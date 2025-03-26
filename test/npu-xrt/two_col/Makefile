@@ -9,11 +9,11 @@ threshold.o: threshold.cc
 	
 final.xclbin: aie.mlir threshold.o
 	aiecc.py -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
-		--xclbin-name=$@ --npu-insts-name=insts.txt $<
+		--xclbin-name=$@ --npu-insts-name=insts.bin $<
 
 clean:
 	rm -rf *.elf* *.bif aie.mlir.prj *.xclbin sim \
-		chess* *.o* insts.txt \
+		chess* *.o* insts.bin \
 		*.log aie_partition.json *.bin BOOT.BIN _x test.exe
 
 test.exe: test.cpp

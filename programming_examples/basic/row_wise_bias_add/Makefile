@@ -29,7 +29,7 @@ CXX=g++-13 -ggdb
 
 mlir_target?=build/aie.mlir
 xclbin_target?=build/final.xclbin
-insts_target?=build/insts.txt
+insts_target?=build/insts.bin
 host_target?=build/test
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
@@ -39,10 +39,10 @@ m=96
 n=32
 
 aie_py_src=row_wise_bias_add.py
-use_alt?=0
+use_placed?=0
 
-ifeq (${use_alt}, 1)
-aie_py_src=row_wise_bias_add_alt.py
+ifeq (${use_placed}, 1)
+aie_py_src=row_wise_bias_add_placed.py
 endif
 
 .PHONY: all

@@ -17,10 +17,10 @@ mlirFileName = aie
 VPATH := ${srcdir}/../../../../aie_kernels/aie2
 
 aie_py_src=resnet.py
-use_alt?=0
+use_placed?=0
 
-ifeq (${use_alt}, 1)
-aie_py_src=resnet_alt.py
+ifeq (${use_placed}, 1)
+aie_py_src=resnet_placed.py
 endif
 
 all: build/conv2dk1_i8.o build/conv2dk1_skip_init.o build/conv2dk3.o build/conv2dk1_skip.o build/conv2dk1_ui8.o build/final.xclbin
@@ -53,10 +53,10 @@ build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1_i8.o build/conv2dk
 	mkdir -p ${@D}
 	cd ${@D} &&	aiecc.py --alloc-scheme=basic-sequential --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
+		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
 
 clean:
 	rm -rf build log
 
 run_py: build/final.xclbin
-	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE

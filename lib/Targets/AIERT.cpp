@@ -193,35 +193,49 @@ LogicalResult AIERTControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
 
   if (targetModel.isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
     // write them out like this so they show up with names in debug prints
-    size_t smid = 0;
-    size_t burstLen = 16; // (10):BLEN=16 (256Byte) (corresponds to
-                          // 0x800000000 from target)
-    size_t qOs = 0;
-    size_t cache = 0;
-    size_t secure = 0;
-    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAxi, &dmaTileBd, smid, burstLen,
-                            qOs, cache, secure);
+    uint8_t smid = 0;
+    uint32_t burstLen =
+        getShimBurstLengthBytes(targetModel, bdOp.getBurstLength());
+    uint8_t qOs = 0;
+    uint8_t cache = 0;
+    uint8_t secure = 0;
+    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAxi, &dmaTileBd, smid,
+                            burstLen / 16, qOs, cache, secure);
   }
 
-  // StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
-  int baseAddr = 0;
-  if (!targetModel.isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
+  // get address from BufferOp (core,mem) or ExternalBufferOp (shim)
+  uint64_t baseAddr = 0;
+  if (targetModel.isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
+    auto bufferOp =
+        cast<AIE::ExternalBufferOp>(bdOp.getBuffer().getDefiningOp());
+    // external buffers aren't required to have an address here because the
+    // address might get patched later or the default of zero might be a valid
+    // address.
+    if (bufferOp.getAddress())
+      baseAddr = bufferOp.getAddress().value();
+  } else {
     auto bufferOp = cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp());
     if (!bufferOp.getAddress())
       return bufferOp.emitError("buffer must have address assigned");
     baseAddr = bufferOp.getAddress().value();
-    if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
-      auto addrOffset = targetModel.getMemLocalBaseAddress(
-          tileLoc.Col, tileLoc.Row, bufferOp.getTileOp().getCol(),
-          bufferOp.getTileOp().getRow());
-      if (addrOffset)
-        baseAddr += addrOffset.value();
-    }
+  }
+
+  if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
+    // check if buffer is allocated on the same memtile, the west, or the east
+    // one
+    auto bufferOp = cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp());
+    auto bufferRow = bufferOp.getTileOp().getRow();
+    auto bufferCol = bufferOp.getTileOp().getCol();
+    auto addrOffset = targetModel.getMemLocalBaseAddress(
+      bufferCol, bufferRow, bufferOp.getTileOp().getCol(),
+      bufferOp.getTileOp().getRow());
+  if (addrOffset)
+    baseAddr += addrOffset.value();
   }
 
   std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDimensions();
-  int lenInBytes = bdOp.getLenInBytes();
-  int basePlusOffsetInBytes = baseAddr + bdOp.getOffsetInBytes();
+  uint64_t lenInBytes = bdOp.getLenInBytes();
+  uint64_t basePlusOffsetInBytes = baseAddr + bdOp.getOffsetInBytes();
   if (!dims) {
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAddrLen, &dmaTileBd,
                             basePlusOffsetInBytes, lenInBytes);

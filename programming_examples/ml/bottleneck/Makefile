@@ -12,10 +12,10 @@ include ${srcdir}/../../makefile-common
 mlirFileName = aie
 
 aie_py_src=bottleneck.py
-use_alt?=0
+use_placed?=0
 
-ifeq (${use_alt}, 1)
-aie_py_src=bottleneck_alt.py
+ifeq (${use_placed}, 1)
+aie_py_src=bottleneck_placed.py
 endif
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
@@ -43,12 +43,12 @@ build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1.o build/conv2dk3.o
 	cd ${@D} && aiecc.py -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--alloc-scheme=basic-sequential \
 		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%) 
+		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%) 
 
 clean:
 	rm -rf build *.elf* *.lst *.bif ${mlirFileName}.mlir.prj log .xclbin sim \
-		chess* *.o insts.txt \
+		chess* *.o insts.bin \
 		*.log aie_partition.json *.bin BOOT.BIN _x test.exe
 
 run_py: build/final.xclbin
-	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE

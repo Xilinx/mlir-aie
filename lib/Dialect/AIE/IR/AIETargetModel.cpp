@@ -291,9 +291,8 @@ bool AIE1TargetModel::isLegalTileConnection(int col, int row,
 }
 
 std::vector<std::pair<uint32_t, uint32_t>>
-AIE1TargetModel::getBurstEncodingsAndLengths() const {
-  return {std::pair(0x00000000, 64), std::pair(0x40000000, 128),
-          std::pair(0x80000000, 256)};
+AIE1TargetModel::getShimBurstEncodingsAndLengths() const {
+  return {std::pair(0, 64), std::pair(1, 128), std::pair(2, 256)};
 }
 
 std::optional<uint32_t>
@@ -665,9 +664,8 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
 }
 
 std::vector<std::pair<uint32_t, uint32_t>>
-AIE2TargetModel::getBurstEncodingsAndLengths() const {
-  return {std::pair(0x00000000, 64), std::pair(0x40000000, 128),
-          std::pair(0x80000000, 256)};
+AIE2TargetModel::getShimBurstEncodingsAndLengths() const {
+  return {std::pair(0, 64), std::pair(1, 128), std::pair(2, 256)};
 }
 
 std::optional<uint32_t>
@@ -804,9 +802,9 @@ AIETargetModel::getMemLocalBaseAddress(int localCol, int localRow, int memCol,
 AIEArch NPU2TargetModel::getTargetArch() const { return AIEArch::AIE2p; }
 
 std::vector<std::pair<uint32_t, uint32_t>>
-NPU2TargetModel::getBurstEncodingsAndLengths() const {
-  return {std::pair(0x00000000, 64), std::pair(0x40000000, 128),
-          std::pair(0x80000000, 256), std::pair(0xC0000000, 512)};
+NPU2TargetModel::getShimBurstEncodingsAndLengths() const {
+  return {std::pair(0, 64), std::pair(1, 128), std::pair(2, 256),
+          std::pair(3, 512)};
 }
 
 } // namespace AIE

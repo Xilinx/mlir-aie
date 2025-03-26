@@ -34,16 +34,9 @@ mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
                                              llvm::raw_ostream &);
 mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
                                          llvm::raw_ostream &);
-mlir::LogicalResult AIETranslateNpuToBinary(mlir::ModuleOp module,
-                                            llvm::raw_ostream &output,
-                                            llvm::StringRef sequenceName = "");
 mlir::LogicalResult AIETranslateNpuToBinary(mlir::ModuleOp,
                                             std::vector<uint32_t> &,
                                             llvm::StringRef sequenceName = "");
-mlir::LogicalResult
-AIETranslateControlPacketsToUI32Vec(mlir::ModuleOp module,
-                                    llvm::raw_ostream &output,
-                                    llvm::StringRef sequenceName = "");
 mlir::LogicalResult
 AIETranslateControlPacketsToUI32Vec(mlir::ModuleOp, std::vector<uint32_t> &,
                                     llvm::StringRef sequenceName = "");

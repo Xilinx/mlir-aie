@@ -14,10 +14,10 @@ mlirFileName = aieWithTrace_1core
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 aie_py_src=conv2d_fused_relu.py
-use_alt?=0
+use_placed?=0
 
-ifeq (${use_alt}, 1)
-aie_py_src=conv2d_fused_relu_alt.py
+ifeq (${use_placed}, 1)
+aie_py_src=conv2d_fused_relu_placed.py
 endif
 
 all: build/conv2dk1.o build/final.xclbin
@@ -34,12 +34,12 @@ build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%) 
+		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%) 
 
 clean:
 	rm -rf build *.elf* *.lst *.bif ${mlirFileName}.mlir.prj log* *.xclbin sim \
-		chess* *.o insts.txt \
+		chess* *.o insts.bin \
 		*.log aie_partition.json *.bin BOOT.BIN _x test.exe
 
 run_py: build/final.xclbin
-	${powershell} python3  ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
+	${powershell} python3  ${srcdir}/test.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
