@@ -58,14 +58,14 @@ def implicit_link():
                 2,
                 [line_ty, op_ty],
                 [0, op_size],
-            ) 
+            )
             of_out = object_fifo(
                 "out",
                 {ComputeTile2, ComputeTile3},
                 ShimTile,
                 2,
                 [op_ty, line_ty],
-                [0, op_size]
+                [0, op_size],
             )
 
             # Set up compute tiles

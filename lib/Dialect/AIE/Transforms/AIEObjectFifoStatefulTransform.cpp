@@ -1590,32 +1590,30 @@ struct AIEObjectFifoStatefulTransformPass
     }
     bool isDistribute = false;
     bool isJoin = false;
-    if(producerFifo.size() > 1 && consumerFifos.size() == 1)
+    if (producerFifos.size() > 1 && consumerFifos.size() == 1 &&
+        createOp.getOffsets().has_value())
       isJoin = true;
-    else if(consumerFifos.size() > 1 && producerFifo.size() == 1)
+    else if (consumerFifos.size() > 1 && producerFifos.size() == 1 &&
+             createOp.getOffsets().has_value())
       isDistribute = true;
     
     if(isDistribute)
       builder.create<ObjectFifoLinkOp>(
-        builder.getUnknownLoc(), builder.getArrayAttr(producerFifoAttrs),
-        builder.getArrayAttr(consumerFifoAttrs),
-        createOp.getOffsets().has_value() ? createOp.getOffsets().value()
-                                             : builder.getI64ArrayAttr({}),
-        builder.getI64ArrayAttr({}), isJoin, isDistribute,
-        (createOp.getRepeatCount().has_value()
-             ? createOp.getRepeatCount().value()
-             : 0));
+          builder.getUnknownLoc(), builder.getArrayAttr(producerFifoAttrs),
+          builder.getArrayAttr(consumerFifoAttrs), builder.getI64ArrayAttr({}),
+          createOp.getOffsets().value(), isJoin, isDistribute,
+          (createOp.getRepeatCount().has_value()
+               ? createOp.getRepeatCount().value()
+               : 0));
     if(isJoin)
-    builder.create<ObjectFifoLinkOp>(
-      builder.getUnknownLoc(), builder.getArrayAttr(producerFifoAttrs),
-      builder.getArrayAttr(consumerFifoAttrs),
-      builder.getI64ArrayAttr({}),
-      createOp.getOffsets().has_value() ? createOp.getOffsets().value()
-                                           : builder.getI64ArrayAttr({}),
-      isJoin, isDistribute,
-      (createOp.getRepeatCount().has_value()
-           ? createOp.getRepeatCount().value()
-           : 0));
+      builder.create<ObjectFifoLinkOp>(
+          builder.getUnknownLoc(), builder.getArrayAttr(producerFifoAttrs),
+          builder.getArrayAttr(consumerFifoAttrs),
+          createOp.getOffsets().value(), builder.getI64ArrayAttr({}), isJoin,
+          isDistribute,
+          (createOp.getRepeatCount().has_value()
+               ? createOp.getRepeatCount().value()
+               : 0));
     // Step 4: Replacements of objectFifos with new split ones
     for (auto consumer : consumerFifos) {
       replaceSplitFifo(createOp, consumer,
@@ -1634,7 +1632,7 @@ struct AIEObjectFifoStatefulTransformPass
                        StringAttr::get(ctx, consumer.getName()), device);
       }
     }
-    if (!createOp.getOffsets()->empty()) {
+    if (isDistribute) {
       for (auto producer : producerFifos) { // For distribute
         replaceSymbols(StringAttr::get(ctx, createOp.getName()),
                        StringAttr::get(ctx, producer.getName()), device);
