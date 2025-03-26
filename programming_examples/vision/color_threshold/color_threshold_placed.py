@@ -39,6 +39,12 @@ def color_threshold(dev, width, height):
         ComputeTile4 = tile(0, 4)
         ComputeTile5 = tile(0, 5)
 
+        # Lock declarations
+        lock2 = lock(ComputeTile2, init=0)
+        lock3 = lock(ComputeTile3, init=0)
+        lock4 = lock(ComputeTile4, init=0)
+        lock5 = lock(ComputeTile5, init=0)
+
         # AIE-array data movement with object fifos
 
         # Input RGBA broadcast + memtile for skip
@@ -100,14 +106,16 @@ def color_threshold(dev, width, height):
         @core(ComputeTile2, "threshold.cc.o")
         def core_body():
             for _ in range_(sys.maxsize):
-                elemIn = inOOB_L2L1_0.acquire(ObjectFifoPort.Consume, 1)
-                elemOut = outOOB_L1L2_0.acquire(ObjectFifoPort.Produce, 1)
-
-                # RTPs written from the instruction stream must be read right before the kernel
-                # after the ObjectFIFO acquires
+                # RTPs written from the instruction steam need to be synchronized with the runtime sequence
+                # This may be done explicitely through the usage of locks or implicitely though the usage of ObjectFIFO acquire
+                use_lock(lock2, LockAction.Acquire, value=1)
                 thresholdValue = arith.trunci(T.i16(), rtpComputeTile2[0])
                 maxValue = arith.trunci(T.i16(), rtpComputeTile2[1])
                 thresholdType = arith.trunci(T.i8(), rtpComputeTile2[2])
+
+                elemIn = inOOB_L2L1_0.acquire(ObjectFifoPort.Consume, 1)
+                elemOut = outOOB_L1L2_0.acquire(ObjectFifoPort.Produce, 1)
+
                 thresholdLine(
                     elemIn,
                     elemOut,
@@ -124,13 +132,16 @@ def color_threshold(dev, width, height):
         @core(ComputeTile3, "threshold.cc.o")
         def core_body():
             for _ in range_(sys.maxsize):
-                elemIn = inOOB_L2L1_1.acquire(ObjectFifoPort.Consume, 1)
-                elemOut = outOOB_L1L2_1.acquire(ObjectFifoPort.Produce, 1)
-                # RTPs written from the instruction stream must be read right before the kernel
-                # after the ObjectFIFO acquires
+                # RTPs written from the instruction steam need to be synchronized with the runtime sequence
+                # This may be done explicitely through the usage of locks or implicitely though the usage of ObjectFIFO acquire
+                use_lock(lock3, LockAction.Acquire, value=1)
                 thresholdValue = arith.trunci(T.i16(), rtpComputeTile3[0])
                 maxValue = arith.trunci(T.i16(), rtpComputeTile3[1])
                 thresholdType = arith.trunci(T.i8(), rtpComputeTile3[2])
+
+                elemIn = inOOB_L2L1_1.acquire(ObjectFifoPort.Consume, 1)
+                elemOut = outOOB_L1L2_1.acquire(ObjectFifoPort.Produce, 1)
+            
                 thresholdLine(
                     elemIn,
                     elemOut,
@@ -147,14 +158,16 @@ def color_threshold(dev, width, height):
         @core(ComputeTile4, "threshold.cc.o")
         def core_body():
             for _ in range_(sys.maxsize):
-                elemIn = inOOB_L2L1_2.acquire(ObjectFifoPort.Consume, 1)
-                elemOut = outOOB_L1L2_2.acquire(ObjectFifoPort.Produce, 1)
-
-                # RTPs written from the instruction stream must be read right before the kernel
-                # after the ObjectFIFO acquires
+                # RTPs written from the instruction steam need to be synchronized with the runtime sequence
+                # This may be done explicitely through the usage of locks or implicitely though the usage of ObjectFIFO acquire
+                use_lock(lock4, LockAction.Acquire, value=1)
                 thresholdValue = arith.trunci(T.i16(), rtpComputeTile4[0])
                 maxValue = arith.trunci(T.i16(), rtpComputeTile4[1])
                 thresholdType = arith.trunci(T.i8(), rtpComputeTile4[2])
+
+                elemIn = inOOB_L2L1_2.acquire(ObjectFifoPort.Consume, 1)
+                elemOut = outOOB_L1L2_2.acquire(ObjectFifoPort.Produce, 1)
+
                 thresholdLine(
                     elemIn,
                     elemOut,
@@ -171,14 +184,16 @@ def color_threshold(dev, width, height):
         @core(ComputeTile5, "threshold.cc.o")
         def core_body():
             for _ in range_(sys.maxsize):
-                elemIn = inOOB_L2L1_3.acquire(ObjectFifoPort.Consume, 1)
-                elemOut = outOOB_L1L2_3.acquire(ObjectFifoPort.Produce, 1)
-
-                # RTPs written from the instruction stream must be read right before the kernel
-                # after the ObjectFIFO acquires
+                # RTPs written from the instruction steam need to be synchronized with the runtime sequence
+                # This may be done explicitely through the usage of locks or implicitely though the usage of ObjectFIFO acquire
+                use_lock(lock5, LockAction.Acquire, value=1)
                 thresholdValue = arith.trunci(T.i16(), rtpComputeTile5[0])
                 maxValue = arith.trunci(T.i16(), rtpComputeTile5[1])
                 thresholdType = arith.trunci(T.i8(), rtpComputeTile5[2])
+
+                elemIn = inOOB_L2L1_3.acquire(ObjectFifoPort.Consume, 1)
+                elemOut = outOOB_L1L2_3.acquire(ObjectFifoPort.Produce, 1)
+
                 thresholdLine(
                     elemIn,
                     elemOut,
@@ -202,18 +217,22 @@ def color_threshold(dev, width, height):
             rtpComputeTile2[0] = 50
             rtpComputeTile2[1] = 255
             rtpComputeTile2[2] = 0
+            set_lock(lock2, 1)
 
             rtpComputeTile3[0] = 50
             rtpComputeTile3[1] = 255
             rtpComputeTile3[2] = 0
+            set_lock(lock3, 1)
 
             rtpComputeTile4[0] = 50
             rtpComputeTile4[1] = 255
             rtpComputeTile4[2] = 0
+            set_lock(lock4, 1)
 
             rtpComputeTile5[0] = 50
             rtpComputeTile5[1] = 255
             rtpComputeTile5[2] = 0
+            set_lock(lock5, 1)
 
             in_task = shim_dma_single_bd_task(
                 inOOB_L3L2, inTensor, sizes=[1, 1, 1, tensorSize], issue_token=True
