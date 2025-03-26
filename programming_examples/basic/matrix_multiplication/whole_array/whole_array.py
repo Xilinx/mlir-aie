@@ -261,7 +261,7 @@ def my_matmul(
             A_l3l2_fifos[i] = object_fifo(
                 f"A_L3L2_{i}",
                 shim_tiles[2*i] if n_aie_cols == 8 else shim_tiles[i], # alternate columns in full 4x8 NPU2 case
-                mem_tiles[2*i] if n_aie_cols == 8 else mem_tiles[i],   # to aid with routing 
+                mem_tiles[2*i] if n_aie_cols == 8 else mem_tiles[i],
                 fifo_depth,
                 A_l2_ty,
             )
@@ -304,7 +304,6 @@ def my_matmul(
 
         # Input B
         for col in range(n_aie_cols):
-
             # L3 -> L2 data movement
             B_l3l2_fifos[col] = object_fifo(
                 f"B_L3L2_{col}",
@@ -313,7 +312,6 @@ def my_matmul(
                 fifo_depth,
                 B_l2_ty,
             )
-
             # L2 -> L1 data movement
             B_l2l1_fifos[col] = object_fifo(
                 f"B_L2L1_{col}",
@@ -339,7 +337,6 @@ def my_matmul(
                     ]
                 ),
             )
-
             # B_l3_l2 and B_l2_l1 object FIFO linking
             object_fifo_link(B_l3l2_fifos[col], B_l2l1_fifos[col])
 
