@@ -1596,8 +1596,8 @@ struct AIEObjectFifoStatefulTransformPass
     else if (consumerFifos.size() > 1 && producerFifos.size() == 1 &&
              createOp.getOffsets().has_value())
       isDistribute = true;
-    
-    if(isDistribute)
+
+    if (isDistribute)
       builder.create<ObjectFifoLinkOp>(
           builder.getUnknownLoc(), builder.getArrayAttr(producerFifoAttrs),
           builder.getArrayAttr(consumerFifoAttrs), builder.getI64ArrayAttr({}),
