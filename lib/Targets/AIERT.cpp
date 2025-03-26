@@ -17,10 +17,12 @@ extern "C" {
 #include "xaiengine/xaie_core.h"
 #include "xaiengine/xaie_dma.h"
 #include "xaiengine/xaie_elfloader.h"
+#include "xaiengine/xaie_interrupt.h"
 #include "xaiengine/xaie_locks.h"
 #include "xaiengine/xaie_mem.h"
 #include "xaiengine/xaie_plif.h"
 #include "xaiengine/xaie_ss.h"
+#include "xaiengine/xaie_txn.h"
 #include "xaiengine/xaiegbl.h"
 #include "xaiengine/xaiegbl_defs.h"
 }
@@ -227,10 +229,9 @@ LogicalResult AIERTControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
     auto bufferRow = bufferOp.getTileOp().getRow();
     auto bufferCol = bufferOp.getTileOp().getCol();
     auto addrOffset = targetModel.getMemLocalBaseAddress(
-      bufferCol, bufferRow, bufferOp.getTileOp().getCol(),
-      bufferOp.getTileOp().getRow());
-  if (addrOffset)
-    baseAddr += addrOffset.value();
+        tileLoc.Col, tileLoc.Row, bufferCol, bufferRow);
+    if (addrOffset)
+      baseAddr += addrOffset.value();
   }
 
   std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDimensions();
