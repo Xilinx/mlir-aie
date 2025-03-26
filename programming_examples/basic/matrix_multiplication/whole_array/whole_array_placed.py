@@ -254,14 +254,15 @@ def my_matmul(
         C_l1l2_fifos = [[None] * n_aie_cols for _ in range(n_aie_rows)]
         C_l2l3_fifos = [None] * n_aie_cols
 
-        
         # Input A
         # L3 -> L2 data movement
         for i in range(n_shim_mem_A):
             A_l3l2_fifos[i] = object_fifo(
                 f"A_L3L2_{i}",
-                shim_tiles[2*i] if n_aie_cols == 8 else shim_tiles[i], # alternate columns in full 4x8 NPU2 case
-                mem_tiles[2*i] if n_aie_cols == 8 else mem_tiles[i],
+                (
+                    shim_tiles[2 * i] if n_aie_cols == 8 else shim_tiles[i]
+                ),  # alternate columns in full 4x8 NPU2 case
+                mem_tiles[2 * i] if n_aie_cols == 8 else mem_tiles[i],
                 fifo_depth,
                 A_l2_ty,
             )
@@ -270,7 +271,11 @@ def my_matmul(
         for row in range(n_aie_rows):
             A_l2l1_fifos[row] = object_fifo(
                 f"A_L2L1_{row}",
-                mem_tiles[2*row] if n_aie_cols == 8 else mem_tiles[row // n_A_tiles_per_shim],
+                (
+                    mem_tiles[2 * row]
+                    if n_aie_cols == 8
+                    else mem_tiles[row // n_A_tiles_per_shim]
+                ),
                 core_tiles[row][0:n_aie_cols],  # broadcast along one row
                 fifo_depth,
                 A_l1_ty,
