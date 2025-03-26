@@ -1253,12 +1253,17 @@ def AIE_LockOp: AIE_Op<"lock", [
 def AIE_UseLockOp: AIE_Op<"use_lock", []> {
   let summary = "acquire/release lock op";
   let description = [{
-    This operation uses a lock. In AIE1, a lock can be acquired with a value
-    or released with a value. This should be understood as a "blocking"
-    operation. In AIE2, locks are counting semaphores without an inherent
-    acquired/release characteristic. This lock must appear in a parent op where
-    the tile can be determined (A CoreOp, a ShimDMAOp, a MemOp, or a
-    MemTileDMAOp).
+    This operation uses a lock.
+    AIE1 locks are binary locks while AIE2 locks are counting semaphores
+    without an inherent acquire/release characteristic.
+    This operation must appear in a parent op where the tile can be determined
+    (A CoreOp, a ShimDMAOp, a MemOp, or a MemTileDMAOp).
+    The behavior of this operation is dependent on `action`:
+    - Acquire: blocks execution until the lock is set to `value`.
+    - AcquireGreaterEqual (only AIE2): blocks execution until the lock is set to `value` or greater.
+      Then, the value of the lock is decremented by `value`.
+    - Release: In AIE1, set the lock to `value`.
+      In AIE2, increment the lock by `value`.
   }];
 
   let arguments = (
