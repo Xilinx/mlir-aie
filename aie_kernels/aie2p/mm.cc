@@ -157,7 +157,6 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
   event1();
 }
 
-
 // int16 MatMul kernel definion with int16 outputs.
 template <unsigned m, unsigned k, unsigned n>
 static inline void matmul_vectorized_4x4x8_i16_i16(const int16 *__restrict pA,
@@ -227,8 +226,8 @@ matmul_vectorized_8x8x8_bf16_bf16(const bfloat16 *__restrict pA,
   static_assert(k % s == 0);       // 'k' dimension
   static_assert(n % (2 * t) == 0); // 'n' dimension
 
-  return matmul_vectorized_2x2_mmul<bfloat16, bfloat16, (m / r), (k / s), (n / t), r,
-                               s, t>(pA, pB, pC);
+  return matmul_vectorized_2x2_mmul<bfloat16, bfloat16, (m / r), (k / s),
+                                    (n / t), r, s, t>(pA, pB, pC);
 }
 
 // bf16 MatMul kernel definion with fp32 outputs.
@@ -252,8 +251,8 @@ matmul_vectorized_8x8x8_bf16_f32(const bfloat16 *__restrict pA,
   static_assert(k % s == 0);       // 'k' dimension
   static_assert(n % (2 * t) == 0); // 'n' dimension
 
-  return matmul_vectorized_2x2_mmul<bfloat16, float, (m / r), (k / s), (n / t), r, s,
-                               t>(pA, pB, pC);
+  return matmul_vectorized_2x2_mmul<bfloat16, float, (m / r), (k / s), (n / t),
+                                    r, s, t>(pA, pB, pC);
 }
 
 // int8 MatMul kernel definion with int8 outputs.
