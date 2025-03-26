@@ -1552,8 +1552,10 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto consumerTile : createOp.getConsumerTiles()) {
       auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
       auto consumerElemType = llvm::cast<MemRefType>(datatype.getElementType());
-      int consumerElemSize = consumerElemType.getNumElements() / createOp.getConsumerTiles().size();
-      auto consumerMemRefType = MemRefType::get({consumerElemSize}, consumerElemType.getElementType());
+      int consumerElemSize = consumerElemType.getNumElements() /
+                             createOp.getConsumerTiles().size();
+      auto consumerMemRefType = MemRefType::get(
+          {consumerElemSize}, consumerElemType.getElementType());
       auto consumerDatatype = AIEObjectFifoType::get(consumerMemRefType);
       // // Are in lists
       auto consumerObjFifoSize = builder.getIntegerAttr(
@@ -1586,19 +1588,34 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto fifo : consumerFifos) {
       consumerFifoAttrs.push_back(SymbolRefAttr::get(fifo));
     }
-
-    builder.create<ObjectFifoLinkOp>(
+    bool isDistribute = false;
+    bool isJoin = false;
+    if(producerFifo.size() > 1 && consumerFifos.size() == 1)
+      isJoin = true;
+    else if(consumerFifos.size() > 1 && producerFifo.size() == 1)
+      isDistribute = true;
+    
+    if(isDistribute)
+      builder.create<ObjectFifoLinkOp>(
         builder.getUnknownLoc(), builder.getArrayAttr(producerFifoAttrs),
         builder.getArrayAttr(consumerFifoAttrs),
-        createOp.getSrcOffsets().has_value() ? createOp.getSrcOffsets().value()
+        createOp.getOffsets().has_value() ? createOp.getOffsets().value()
                                              : builder.getI64ArrayAttr({}),
-        createOp.getDstOffsets().has_value() ? createOp.getDstOffsets().value()
-                                             : builder.getI64ArrayAttr({}),
-        (producerFifo.size() > 1), (consumerFifos.size() > 1),
+        builder.getI64ArrayAttr({}), isJoin, isDistribute,
         (createOp.getRepeatCount().has_value()
              ? createOp.getRepeatCount().value()
              : 0));
-
+    if(isJoin)
+    builder.create<ObjectFifoLinkOp>(
+      builder.getUnknownLoc(), builder.getArrayAttr(producerFifoAttrs),
+      builder.getArrayAttr(consumerFifoAttrs),
+      builder.getI64ArrayAttr({}),
+      createOp.getOffsets().has_value() ? createOp.getOffsets().value()
+                                           : builder.getI64ArrayAttr({}),
+      isJoin, isDistribute,
+      (createOp.getRepeatCount().has_value()
+           ? createOp.getRepeatCount().value()
+           : 0));
     // Step 4: Replacements of objectFifos with new split ones
     for (auto consumer : consumerFifos) {
       replaceSplitFifo(createOp, consumer,
@@ -1611,13 +1628,13 @@ struct AIEObjectFifoStatefulTransformPass
 
     // replaceSplitFifos doesn't replace the symbols in runtime sequence
     // Replace symbols in runtime sequence
-    if (!createOp.getSrcOffsets()->empty()) {
+    if (isJoin) {
       for (auto consumer : consumerFifos) { // For join
         replaceSymbols(StringAttr::get(ctx, createOp.getName()),
                        StringAttr::get(ctx, consumer.getName()), device);
       }
     }
-    if (!createOp.getDstOffsets()->empty()) {
+    if (!createOp.getOffsets()->empty()) {
       for (auto producer : producerFifos) { // For distribute
         replaceSymbols(StringAttr::get(ctx, createOp.getName()),
                        StringAttr::get(ctx, producer.getName()), device);
@@ -1666,29 +1683,9 @@ struct AIEObjectFifoStatefulTransformPass
             return;
           }
         }
-        // Check if srcOffsets and dstOffsets are available, then it is eligible
+        // Check if Offsets are available, then it is eligible
         // for calling implicit_link function
-        if (!createOp.getSrcOffsets()->empty() ||
-            !createOp.getDstOffsets()->empty()) {
-          // Check if srcOffsets and producerTiles are lists and have the same
-          // number of elements
-          if (!createOp.getSrcOffsets()->empty()) {
-            if (createOp.getSrcOffsets()->size() != 1) {
-              createOp.emitOpError("srcOffsets and producerTiles must be lists "
-                                   "of the same size");
-              return;
-            }
-          }
-          // Check if dstOffsets and consumerTiles are lists and have the same
-          // number of elements
-          if (!createOp.getDstOffsets()->empty()) {
-            if (createOp.getDstOffsets()->size() !=
-                createOp.getConsumerTiles().size()) {
-              createOp.emitOpError("dstOffsets and consumerTiles must be lists "
-                                   "of the same size");
-              return;
-            }
-          }
+        if (!createOp.getOffsets()->empty()) {
           // Call implicit_link function here
           if (createOp.getConsumerTiles().size() > 1)
             builder.setInsertionPointAfter(createOp);

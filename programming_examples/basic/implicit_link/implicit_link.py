@@ -57,17 +57,15 @@ def implicit_link():
                 {ComputeTile2, ComputeTile3},
                 2,
                 [line_ty, op_ty],
-                [],
                 [0, op_size],
-            )  # Number of objects     # 2 changes: array of datatypes, srcOffsets and dstOffsets
+            ) 
             of_out = object_fifo(
                 "out",
                 {ComputeTile2, ComputeTile3},
                 ShimTile,
                 2,
                 [op_ty, line_ty],
-                [0, op_size],
-                [],
+                [0, op_size]
             )
 
             # Set up compute tiles

@@ -58,7 +58,6 @@ def explicit_link():
                 [ComputeTile2, ComputeTile3],
                 [2, 2, 2],
                 line_ty,
-                [],
                 [0, op_size],
             )
 
