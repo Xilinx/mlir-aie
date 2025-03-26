@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt -split-input-file --aiex-lower-set-lock %s 2>&1 | Filecheck %s
+// RUN: not aie-opt -split-input-file --aiex-lower-set-lock %s 2>&1 | FileCheck %s
 
 module @test_invalid_lock_value {
   aie.device(npu2) {

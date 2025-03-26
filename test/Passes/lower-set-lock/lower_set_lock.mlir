@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aiex-lower-set-lock %s | Filecheck %s
+// RUN: aie-opt --aiex-lower-set-lock %s | FileCheck %s
 
 module @test_simple_lock_set {
   aie.device(npu2) {
