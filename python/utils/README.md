@@ -65,6 +65,7 @@ Trace utilities are designed to take the low level tile cofigurations need to co
         * `enable_packet` - enables putting event data into packets
         * `packet_id` - packet id or flow id used to route the packets through the stream switch
         * `packet_type` - packet type is an arbitrary field but we use it to describe the tile type the packets are coming from
+        * `shim_burst_length` - burst size for shim dma. Default is 256B but can be as low as 64B which may be helpful for small trace designs
 
 * `configure_timer_ctrl_coretile_aie2`, `configure_timer_ctrl_memtile_aie2`,`configure_timer_ctrl_shimtile_aie`
     * Configures timer in each tile type to reset based on an `event`
@@ -132,6 +133,7 @@ Trace utilities are designed to take the low level tile cofigurations need to co
         * `coretile_events` - which 8 events do we use for all coretiles in array
         * `memtile_events` - which 8 events do we use for all memtiles in array
         * `shimtile_events` - which 8 events do we use for all shimtiles in array
+        * `shim_burst_length` - burst size for shim dma. Default is 256B but can be as low as 64B which may be helpful for small trace designs
 
         An example use case would be:
         ```python

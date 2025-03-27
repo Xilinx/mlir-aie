@@ -73,12 +73,14 @@ def AIE_TileOp: AIE_Op<"tile", [
   ]>, Results<(outs Index:$result)> {
   let arguments = (
     ins ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$col,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$row
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$row,
+        OptionalAttr<StrAttr>:$allocation_scheme
   );
 
   let summary = "Declare an AIE tile";
   let description = [{
-    This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile.
+    This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile. 
+    Optionally, we can specify the memory allocation scheme for the tile (basic-sequential or bank-aware).
 
     A tile encompasses core module (CoreOp), memory module (MemOp), stream switch (SwitchboxOp),
     memory buffer (BufferOp), and lock (LockOp).
@@ -86,7 +88,7 @@ def AIE_TileOp: AIE_Op<"tile", [
     A tile is a logical abstraction. We use a tile to establish ownership of a hardware entity.
 
     Note that row 0 of the Tile array is different from other rows, since it models the shim interface between
-    the AIE array proper and the PL.  The South-West/Lower Right most core exists in Tile(0,1)
+    the AIE array proper and the PL. The South-West/Lower Right most core exists in Tile(0,1).
   }];
 
   let extraClassDeclaration = [{
@@ -146,6 +148,15 @@ def AIE_TileOp: AIE_Op<"tile", [
                                   std::to_string(getRow()));
     }
   }];
+
+  let builders = [
+    OpBuilder<(ins "int32_t":$col, "int32_t":$row), [{
+      build($_builder, $_state, col, row, nullptr);
+    }]>,
+    OpBuilder<(ins "mlir::Type":$type, "int32_t":$col, "int32_t":$row), [{
+      build($_builder, $_state, type, col, row, nullptr);
+    }]>
+  ];
 }
 
 def AIE_EndOp: AIE_Op<"end", [Terminator]> {
@@ -1316,10 +1327,10 @@ def AIE_BufferOp: AIE_Op<"buffer", [
 
   let arguments = (
     ins Index:$tile,
-    OptionalAttr<StrAttr>:$sym_name,
-    OptionalAttr<AIEI32Attr>:$address,
-    OptionalAttr<ElementsAttr>:$initial_value,
-    OptionalAttr<AIEI32Attr>:$mem_bank
+        OptionalAttr<StrAttr>:$sym_name,
+        OptionalAttr<AIEI32Attr>:$address,
+        OptionalAttr<ElementsAttr>:$initial_value,
+        OptionalAttr<AIEI32Attr>:$mem_bank
   );
 
   let results = (outs AnyMemRef:$buffer);
@@ -1384,7 +1395,10 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", [
     This operation represents an external buffer.
   }];
 
-  let arguments = (ins OptionalAttr<StrAttr>:$sym_name);
+  let arguments = (
+    ins OptionalAttr<StrAttr>:$sym_name,
+        OptionalAttr<AIEI64Attr>:$address
+  );
 
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{ attr-dict `:` type($buffer) }];

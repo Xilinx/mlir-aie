@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # 
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# Copyright (C) 2025, Advanced Micro Devices, Inc.
 # 
 ##===----------------------------------------------------------------------===##
 
@@ -20,13 +20,13 @@ m=32
 k=32
 
 kernels=mv_${m}x${k}
-use_alt?=0
+use_placed?=0
 use_iron?=0
 
-ifeq (${use_alt}, 1)
-aie_py_src=${targetname}_alt.py
+ifeq (${use_placed}, 1)
+aie_py_src=${targetname}_placed.py
 ifeq (${use_iron}, 1)
-$(error Cannot specify both alternative design and IRON)
+$(error Cannot specify both placed design and IRON)
 endif
 endif
 
@@ -38,7 +38,12 @@ endif
 SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 include ${SELF_DIR}../makefile-common
 
+kernels_dir=${srcdir}/../../../../aie_kernels/aie2
+
 build/mv_${m}x${k}.o: ${kernels_dir}/mv.cc
 	mkdir -p ${@D}
+ifeq (${devicename}, npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -DDIM_M=${m} -DDIM_K=${k} -c $< -o ${@F}
-
+else ifeq (${devicename}, npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DBIT_WIDTH=8 -DDIM_M=${m} -DDIM_K=${k} -c $< -o ${@F}
+endif

@@ -6,7 +6,9 @@
 
 [![Compile across platforms](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml)
 
-![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/Xilinx/mlir-aie)
+[![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/Xilinx/mlir-aie)](https://github.com/Xilinx/mlir-aie/pulls)
+
+[![GitHub Issues](https://img.shields.io/github/issues/Xilinx/mlir-aie/bug)](https://github.com/Xilinx/mlir-aie/issues?q=is%3Aopen+is%3Aissue+label%3Abug)
 
 ![](https://mlir.llvm.org//mlir-logo.png)
 
@@ -116,7 +118,9 @@ For your design of interest, for instance from [programming_examples](../program
 
 1. Continue to the [IRON AIE Application Programming Guide](programming_guide)
 
-1. Some MLIR-AIE documentation is available on the [website](https://xilinx.github.io/mlir-aie/)
+1. Additional MLIR-AIE documentation is available on the [website](https://xilinx.github.io/mlir-aie/)
+
+1. AIE API header library documentation for single-core AIE programming in C++ is avaiable [here](https://xilinx.github.io/aie_api/topics.html)
 
 ## Optional: Install AIETools
 

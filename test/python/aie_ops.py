@@ -37,6 +37,13 @@ def tileOp():
     t = tile(col=0, row=0)
 
 
+# CHECK-LABEL: tileOpAllocationScheme
+# CHECK: aie.tile(2, 2) {allocation_scheme = "basic-sequential"}
+@construct_and_print_module
+def tileOpAllocationScheme():
+    t = tile(col=2, row=2, allocation_scheme="basic-sequential")
+
+
 # CHECK-LABEL: coreOp
 # CHECK: %[[VAL1:.*]] = aie.tile(1, 1)
 # CHECK: %[[VAL2:.*]] = aie.core(%[[VAL1]]) {
@@ -49,6 +56,7 @@ def coreOp():
     bb = Block.create_at_start(c.body)
     with InsertionPoint(bb):
         end()
+
 
 # CHECK-LABEL: coreOpParameters
 # CHECK: %[[VAL1:.*]] = aie.tile(1, 1)
@@ -108,9 +116,11 @@ def bufferOp():
 
 # CHECK-LABEL: externalBufferOp
 # CHECK: %[[VAL_0:.*]] = aie.external_buffer : memref<12xi32>
+# CHECK: %[[VAL_1:.*]] = aie.external_buffer {address = 209934011881080 : i64} : memref<13xi8>
 @construct_and_print_module
 def externalBufferOp():
     b = external_buffer(T.memref(12, T.i32()))
+    c = external_buffer(T.memref(13, T.i8()), address=0xBEEF12345678)
 
 
 # CHECK-LABEL: objFifo

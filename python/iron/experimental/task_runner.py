@@ -23,7 +23,7 @@ from .array import array
 
 
 class TaskRunner:
-    _INSTS = "npu_insts.txt"
+    _INSTS = "npu_insts.bin"
     _XCLBIN = "final.xclbin"
 
     def __init__(

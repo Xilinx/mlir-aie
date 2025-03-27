@@ -187,7 +187,7 @@ def test_add_256_using_dma_op_no_double_buffering(ctx: MLIRContext, workdir: Pat
 
             aie.end()
 
-    INSTS = "npu_insts.txt"
+    INSTS = "npu_insts.bin"
     XCLBIN = "final.xclbin"
     aiecc_run(ctx.module, aiecc_args(XCLBIN, INSTS))
     app = setup_aie(

@@ -346,7 +346,7 @@ static std::optional<std::string>
 checkBurstLength(const xilinx::AIE::AIETargetModel &targetModel,
                  uint32_t requestedBurstLength) {
   if (requestedBurstLength != 0) {
-    auto bel = targetModel.getBurstEncodingsAndLengths();
+    auto bel = targetModel.getShimBurstEncodingsAndLengths();
     auto pair = std::find_if(bel.begin(), bel.end(),
                              [=](const std::pair<uint32_t, uint32_t> &p) {
                                return p.second == requestedBurstLength;

@@ -10,16 +10,14 @@ import numpy as np
 import pyxrt as xrt
 import sys
 
+import aie.utils.xrt as xrt_utils
 import aie.utils.test as test_utils
 
 
 def main(opts):
 
     # Load instruction sequence
-    with open(opts.instr, "r") as f:
-        instr_text = f.read().split("\n")
-        instr_text = [l for l in instr_text if l != ""]
-        instr_v = np.array([int(i, 16) for i in instr_text], dtype=np.uint32)
+    instr_v = xrt_utils.read_insts(opts.instr)
 
     # ------------------------------------------------------------
     # Configure this to match your design's buffer size and type

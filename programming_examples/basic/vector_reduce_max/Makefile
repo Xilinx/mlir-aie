@@ -22,10 +22,10 @@ trace_size = 1024
 
 colshift ?= $(if $(filter 1,$(NPU2)),0,1)
 aie_py_src=${targetname}.py
-use_alt?=0
+use_placed?=0
 
-ifeq (${use_alt}, 1)
-aie_py_src=${targetname}_alt.py
+ifeq (${use_placed}, 1)
+aie_py_src=${targetname}_placed.py
 endif
 
 .PHONY: all template clean
@@ -52,13 +52,13 @@ build/final.xclbin: build/aie2.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
-		--aie-generate-npu-insts --npu-insts-name=insts.txt $(<:%=../%)
+		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 
 build/final_trace.xclbin: build/aie2_trace.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
-		--aie-generate-npu-insts --npu-insts-name=insts.txt $(<:%=../%)
+		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -71,19 +71,19 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: ${targetname}.exe build/final.xclbin build/insts.txt
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE 
+run: ${targetname}.exe build/final.xclbin build/insts.bin
+	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE 
 
-run_py: build/final.xclbin build/insts.txt
-	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -i1s ${in1_size} -os ${out_size}
+run_py: build/final.xclbin build/insts.bin
+	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -i1s ${in1_size} -os ${out_size}
 
-trace: ${targetname}.exe build/final_trace.xclbin build/insts.txt 
-	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
+trace: ${targetname}.exe build/final_trace.xclbin build/insts.bin 
+	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
 	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace.mlir --colshift ${colshift} > trace_vector_reduce_max.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_vector_reduce_max.json
 
-trace_py: build/final_trace.xclbin build/insts.txt
-	${powershell} python3 ${srcdir}/test.py -x build/final_trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -os ${out_size}
+trace_py: build/final_trace.xclbin build/insts.bin
+	${powershell} python3 ${srcdir}/test.py -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -os ${out_size}
 	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace.mlir --colshift ${colshift} > trace_vector_reduce_max.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_vector_reduce_max.json
 

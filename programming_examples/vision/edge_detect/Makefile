@@ -25,10 +25,10 @@ EDGEDETECT_HEIGHT = 1080
 targetname = edge_detect
 
 aie_py_src=${targetname}.py
-use_alt?=0
+use_placed?=0
 
-ifeq (${use_alt}, 1)
-aie_py_src=${targetname}_alt.py
+ifeq (${use_placed}, 1)
+aie_py_src=${targetname}_placed.py
 endif
 
 all: build/final_${EDGEDETECT_WIDTH}.xclbin
@@ -57,7 +57,7 @@ build/final_${EDGEDETECT_WIDTH}.xclbin: build/aie2_lineBased_8b_${EDGEDETECT_WID
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
 		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
+		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -71,7 +71,7 @@ else
 endif
 
 run: ${targetname}.exe build/final_${EDGEDETECT_WIDTH}.xclbin
-	${powershell} ./$< -x build/final_${EDGEDETECT_WIDTH}.xclbin -i build/insts.txt -k MLIR_AIE
+	${powershell} ./$< -x build/final_${EDGEDETECT_WIDTH}.xclbin -i build/insts.bin -k MLIR_AIE
 
 clean:
 	rm -rf build _build ${targetname}.exe ${targetname}Out_test.jpg

@@ -19,10 +19,10 @@ data_size = 4096
 PASSTHROUGH_SIZE = ${data_size}
 
 aie_py_src=${targetname}.py
-use_alt?=0
+use_placed?=0
 
-ifeq (${use_alt}, 1)
-aie_py_src=${targetname}_alt.py
+ifeq (${use_placed}, 1)
+aie_py_src=${targetname}_placed.py
 endif
 
 .PHONY: all template clean
@@ -37,7 +37,7 @@ build/final_${data_size}.xclbin: build/aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
+		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.bin $(<:%=../%)
 
 ${targetname}_${data_size}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -50,11 +50,11 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: ${targetname}_${data_size}.exe build/final_${data_size}.xclbin build/insts_${data_size}.txt
-	${powershell} ./$< -x build/final_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE 
+run: ${targetname}_${data_size}.exe build/final_${data_size}.xclbin build/insts_${data_size}.bin
+	${powershell} ./$< -x build/final_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE 
 
-run_py: build/final_${data_size}.xclbin build/insts_${data_size}.txt
-	${powershell} python3 ${srcdir}/test.py -s ${data_size} -x build/final_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE
+run_py: build/final_${data_size}.xclbin build/insts_${data_size}.bin
+	${powershell} python3 ${srcdir}/test.py -s ${data_size} -x build/final_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE
 
 clean:
 	rm -rf build _build ${targetname}*.exe

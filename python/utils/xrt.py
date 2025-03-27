@@ -9,6 +9,7 @@ import numpy as np
 import copy
 import time
 import pyxrt as xrt
+import os
 
 
 #
@@ -125,8 +126,9 @@ insts_cache = {}
 
 
 # Read instruction stream from text file and reformat it to be passed into the
-# instructoin buffer for the xrt.kernel call
-def read_insts(insts_path):
+# instruction buffer for the xrt.kernel call
+def read_insts_sequence(insts_path):
+    """Reads instructions from a text file (hex numbers, one per line)."""
     global insts_cache
     if insts_path in insts_cache:
         # Speed up things if we re-configure the array a lot: Don't re-parse
@@ -138,6 +140,40 @@ def read_insts(insts_path):
         insts_v = np.array([int(c, 16) for c in insts_text], dtype=np.uint32)
         insts_cache[insts_path] = insts_v
     return insts_v
+
+
+# Read instruction stream from bin file and reformat it to be passed into the
+# instruction buffer for the xrt.kernel call
+def read_insts_binary(insts_path):
+    """Reads instructions from a binary file."""
+    global insts_cache
+    if insts_path in insts_cache:
+        # Speed up things if we re-configure the array a lot: Don't re-parse
+        # the insts.bin each time
+        return insts_cache[insts_path]
+    with open(insts_path, "rb") as f:
+        data = f.read()
+    # Interpret the binary data as an array of uint32 values.
+    insts_v = np.frombuffer(data, dtype=np.uint32)
+    insts_cache[insts_path] = insts_v
+    return insts_v
+
+
+def read_insts(insts_path):
+    """
+    Reads instructions from the given file.
+    If the file extension is .bin, uses binary read.
+    If the file extension is .txt, uses sequence (text) read.
+    """
+    _, ext = os.path.splitext(insts_path)
+    ext = ext.lower()
+
+    if ext == ".bin":
+        return read_insts_binary(insts_path)
+    elif ext == ".txt":
+        return read_insts_sequence(insts_path)
+    else:
+        raise ValueError("Unsupported file extension: expected .bin or .txt")
 
 
 # Sets up the AIE application with support for up to 2 input buffers, 1 output
