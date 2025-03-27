@@ -107,8 +107,7 @@ void test() {
     if (llvm::isa<AIE::AIE1TargetModel, AIE::VC1902TargetModel,
                   AIE::VE2302TargetModel, AIE::VE2802TargetModel,
                   AIE::NPUTargetModel, AIE::NPU2TargetModel,
-                  AIE::VirtualizedNPU2TargetModel>(
-            AIE::getTargetModel(dev))) {
+                  AIE::VirtualizedNPU2TargetModel>(AIE::getTargetModel(dev))) {
       throw std::runtime_error("Failed npu1_col !isa<>");
     }
   }
@@ -135,12 +134,10 @@ void test() {
   }
 
   // AIEDevice::npu2_1col, npu2_2col, npu2_3col, npu2_4col, npu2_6col
-  llvm::SmallVector<AIE::AIEDevice> npu2_devs = {AIE::AIEDevice::npu2_1col,
-                                                 AIE::AIEDevice::npu2_2col,
-                                                 AIE::AIEDevice::npu2_3col,
-                                                 AIE::AIEDevice::npu2_4col,
-                                                 AIE::AIEDevice::npu2_5col,
-                                                 AIE::AIEDevice::npu2_6col};
+  llvm::SmallVector<AIE::AIEDevice> npu2_devs = {
+      AIE::AIEDevice::npu2_1col, AIE::AIEDevice::npu2_2col,
+      AIE::AIEDevice::npu2_3col, AIE::AIEDevice::npu2_4col,
+      AIE::AIEDevice::npu2_5col, AIE::AIEDevice::npu2_6col};
   for (auto dev : npu2_devs) {
     if (!llvm::isa<AIE::AIE2TargetModel>(AIE::getTargetModel(dev))) {
       throw std::runtime_error("Failed npu2_col isa<AIE2TargetModel>");
