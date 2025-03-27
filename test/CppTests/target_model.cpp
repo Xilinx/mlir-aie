@@ -191,7 +191,8 @@ void test() {
     throw std::runtime_error("Failed npu2 rows");
   }
 
-  // AIEDevice::npu2_1col, npu2_2col, npu2_3col, npu2_4col, npu2_5col, npu2_6col, npu2_7col
+  // AIEDevice::npu2_1col, npu2_2col, npu2_3col, npu2_4col, npu2_5col,
+  // npu2_6col, npu2_7col
   llvm::DenseMap<AIE::AIEDevice, int> npu2_devs;
   npu2_devs[AIE::AIEDevice::npu2_1col] = 1;
   npu2_devs[AIE::AIEDevice::npu2_2col] = 2;
