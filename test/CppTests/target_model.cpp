@@ -197,6 +197,7 @@ void test() {
   npu2_devs[AIE::AIEDevice::npu2_2col] = 2;
   npu2_devs[AIE::AIEDevice::npu2_3col] = 3;
   npu2_devs[AIE::AIEDevice::npu2_4col] = 4;
+  npu2_devs[AIE::AIEDevice::npu2_5col] = 5;
   npu2_devs[AIE::AIEDevice::npu2_6col] = 6;
   for (auto &[dev, cols] : npu2_devs) {
     if (!AIE::getTargetModel(dev).hasProperty(

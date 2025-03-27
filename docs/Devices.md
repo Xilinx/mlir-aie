@@ -105,6 +105,7 @@ This device is present in Ryzen Strix, Strix Halo and Krackan Point SOCs.
 ```aie.device(npu2_2col) {}```
 ```aie.device(npu2_3col) {}```
 ```aie.device(npu2_4col) {}```
+```aie.device(npu2_5col) {}```
 ```aie.device(npu2_6col) {}```
 These devices represent a physical partition of an npu2 device, including a number of columns with a DMA shim tile.
 N Columns and 6 Rows

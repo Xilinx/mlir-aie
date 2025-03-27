@@ -157,6 +157,7 @@ static VirtualizedNPU2TargetModel NPU2model1col(1);
 static VirtualizedNPU2TargetModel NPU2model2col(2);
 static VirtualizedNPU2TargetModel NPU2model3col(3);
 static VirtualizedNPU2TargetModel NPU2model4col(4);
+static VirtualizedNPU2TargetModel NPU2model5col(5);
 static VirtualizedNPU2TargetModel NPU2model6col(6);
 
 const AIETargetModel &getTargetModel(Operation *op) {
@@ -198,6 +199,8 @@ const AIETargetModel &getTargetModel(AIEDevice device) {
     return NPU2model3col;
   case AIEDevice::npu2_4col:
     return NPU2model4col;
+  case AIEDevice::npu2_5col:
+    return NPU2model5col;
   case AIEDevice::npu2_6col:
     return NPU2model6col;
   }

@@ -139,6 +139,7 @@ void test() {
                                                  AIE::AIEDevice::npu2_2col,
                                                  AIE::AIEDevice::npu2_3col,
                                                  AIE::AIEDevice::npu2_4col,
+                                                 AIE::AIEDevice::npu2_5col,
                                                  AIE::AIEDevice::npu2_6col};
   for (auto dev : npu2_devs) {
     if (!llvm::isa<AIE::AIE2TargetModel>(AIE::getTargetModel(dev))) {
