@@ -106,8 +106,8 @@ def color_threshold(dev, width, height):
         @core(ComputeTile2, "threshold.cc.o")
         def core_body():
             for _ in range_(sys.maxsize):
-                # RTPs written from the instruction steam need to be synchronized with the runtime sequence
-                # This may be done explicitely through the usage of locks or implicitely though the usage of ObjectFIFO acquire
+                # RTPs written from the instruction stream must be synchronized with the runtime sequence
+                # This may be done explicitly through the usage of locks or implicitly though the usage of ObjectFIFO acquire
                 use_lock(lock2, LockAction.Acquire, value=1)
                 thresholdValue = arith.trunci(T.i16(), rtpComputeTile2[0])
                 maxValue = arith.trunci(T.i16(), rtpComputeTile2[1])
@@ -132,8 +132,8 @@ def color_threshold(dev, width, height):
         @core(ComputeTile3, "threshold.cc.o")
         def core_body():
             for _ in range_(sys.maxsize):
-                # RTPs written from the instruction steam need to be synchronized with the runtime sequence
-                # This may be done explicitely through the usage of locks or implicitely though the usage of ObjectFIFO acquire
+                # RTPs written from the instruction stream must be synchronized with the runtime sequence
+                # This may be done explicitly through the usage of locks or implicitly though the usage of ObjectFIFO acquire
                 use_lock(lock3, LockAction.Acquire, value=1)
                 thresholdValue = arith.trunci(T.i16(), rtpComputeTile3[0])
                 maxValue = arith.trunci(T.i16(), rtpComputeTile3[1])
@@ -158,8 +158,8 @@ def color_threshold(dev, width, height):
         @core(ComputeTile4, "threshold.cc.o")
         def core_body():
             for _ in range_(sys.maxsize):
-                # RTPs written from the instruction steam need to be synchronized with the runtime sequence
-                # This may be done explicitely through the usage of locks or implicitely though the usage of ObjectFIFO acquire
+                # RTPs written from the instruction stream must be synchronized with the runtime sequence
+                # This may be done explicitly through the usage of locks or implicitly though the usage of ObjectFIFO acquire
                 use_lock(lock4, LockAction.Acquire, value=1)
                 thresholdValue = arith.trunci(T.i16(), rtpComputeTile4[0])
                 maxValue = arith.trunci(T.i16(), rtpComputeTile4[1])
@@ -184,8 +184,8 @@ def color_threshold(dev, width, height):
         @core(ComputeTile5, "threshold.cc.o")
         def core_body():
             for _ in range_(sys.maxsize):
-                # RTPs written from the instruction steam need to be synchronized with the runtime sequence
-                # This may be done explicitely through the usage of locks or implicitely though the usage of ObjectFIFO acquire
+                # RTPs written from the instruction stream must be synchronized with the runtime sequence
+                # This may be done explicitly through the usage of locks or implicitly though the usage of ObjectFIFO acquire
                 use_lock(lock5, LockAction.Acquire, value=1)
                 thresholdValue = arith.trunci(T.i16(), rtpComputeTile5[0])
                 maxValue = arith.trunci(T.i16(), rtpComputeTile5[1])

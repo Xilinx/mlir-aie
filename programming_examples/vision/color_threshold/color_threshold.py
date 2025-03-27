@@ -7,7 +7,7 @@
 import numpy as np
 import sys
 
-from aie.iron import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker, WorkerRuntimeBarrier
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 
@@ -61,16 +61,21 @@ def color_threshold(dev, width, height):
             )
         )
 
-    # Task for the core to perform
-    def core_fn(of_in, of_out, my_rtp, threshold_fn):
-        elemIn = of_in.acquire(1)
-        elemOut = of_out.acquire(1)
+    # Create a barrier to synchronize individual workers with the runtime sequence
+    barrier = WorkerRuntimeBarrier()
 
-        # RTPs written from the instruction stream must be read right before the kernel
-        # after the ObjectFIFO acquires
+    # Task for the core to perform
+    def core_fn(of_in, of_out, my_rtp, threshold_fn, barrier):
+        # RTPs written from the instruction stream must be synchronized with the runtime sequence
+        # This may be done explicitly through the usage of a barrier or implicitly though the usage of ObjectFIFO acquire
+        barrier.wait_for_value(1)
         thresholdValue = arith.trunci(T.i16(), my_rtp[0])
         maxValue = arith.trunci(T.i16(), my_rtp[1])
         thresholdType = arith.trunci(T.i8(), my_rtp[2])
+
+        elemIn = of_in.acquire(1)
+        elemOut = of_out.acquire(1)
+
         threshold_fn(
             elemIn,
             elemOut,
@@ -88,7 +93,7 @@ def color_threshold(dev, width, height):
         workers.append(
             Worker(
                 core_fn,
-                [in00B_L2L1s[i].cons(), outOOB_L1L2s[i].prod(), rtps[i], thresholdLine],
+                [in00B_L2L1s[i].cons(), outOOB_L1L2s[i].prod(), rtps[i], thresholdLine, barrier],
             )
         )
 
@@ -104,6 +109,8 @@ def color_threshold(dev, width, height):
                 rtp[2] = 0
 
         rt.inline_ops(set_rtps, rtps)
+
+        rt.set_barrier(barrier, 1)
 
         # Start workers
         rt.start(*workers)
