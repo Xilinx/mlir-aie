@@ -191,7 +191,7 @@ void test() {
     throw std::runtime_error("Failed npu2 rows");
   }
 
-  // AIEDevice::npu2_1col, npu2_2col, npu2_3col, npu2_4col, npu2_6col
+  // AIEDevice::npu2_1col, npu2_2col, npu2_3col, npu2_4col, npu2_5col, npu2_6col, npu2_7col
   llvm::DenseMap<AIE::AIEDevice, int> npu2_devs;
   npu2_devs[AIE::AIEDevice::npu2_1col] = 1;
   npu2_devs[AIE::AIEDevice::npu2_2col] = 2;
@@ -199,6 +199,7 @@ void test() {
   npu2_devs[AIE::AIEDevice::npu2_4col] = 4;
   npu2_devs[AIE::AIEDevice::npu2_5col] = 5;
   npu2_devs[AIE::AIEDevice::npu2_6col] = 6;
+  npu2_devs[AIE::AIEDevice::npu2_7col] = 7;
   for (auto &[dev, cols] : npu2_devs) {
     if (!AIE::getTargetModel(dev).hasProperty(
             AIE::AIETargetModel::UsesSemaphoreLocks)) {

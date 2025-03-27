@@ -76,6 +76,7 @@ public:
     TK_AIE2_NPU2_4Col,
     TK_AIE2_NPU2_5Col,
     TK_AIE2_NPU2_6Col,
+    TK_AIE2_NPU2_7Col,
     TK_AIE2_NPU2_Last,
     TK_AIE2_Last = TK_AIE2_NPU2_Last,
   };
