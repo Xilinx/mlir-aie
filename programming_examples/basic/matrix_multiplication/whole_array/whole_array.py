@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 AMD Inc.
+# (c) Copyright 2025 AMD Inc.
 import argparse
 from ml_dtypes import bfloat16
 import numpy as np
@@ -30,13 +30,14 @@ def main():
         prog="AIE Matrix Multiplication MLIR Design (Whole Array)",
         description="Emits MLIR code for a matrix multiplication design of the given input size",
     )
+    argparser.add_argument("--dev", type=str, choices=["npu", "npu2"], default="npu")
     argparser.add_argument("-M", type=int, default=512)
     argparser.add_argument("-K", type=int, default=512)
     argparser.add_argument("-N", type=int, default=512)
     argparser.add_argument("-m", type=int, default=64)
     argparser.add_argument("-k", type=int, default=64)
     argparser.add_argument("-n", type=int, default=32)
-    argparser.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4], default=4)
+    argparser.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4, 8], default=4)
     argparser.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
     argparser.add_argument(
         "--dtype_in", type=str, choices=["bf16", "i8", "i16"], default="i16"
@@ -57,6 +58,7 @@ def main():
     args = argparser.parse_args()
     with mlir_mod_ctx() as ctx:
         maybe_taps = my_matmul(
+            args.dev,
             args.M,
             args.K,
             args.N,
@@ -82,6 +84,7 @@ def ceildiv(a, b):
 
 
 def my_matmul(
+    dev,
     M,
     K,
     N,
@@ -108,18 +111,41 @@ def my_matmul(
         np.dtype(dtype_out).itemsize >= np.dtype(dtype_in).itemsize
     ), f"Output dtype ({dtype_out}) must be equal or larger to input dtype ({dtype_in})"
 
-    if dtype_in_str == "bf16":
-        r = 4
-        s = 8
-        t = 4
-    elif dtype_in_str == "i8":
-        r = 4
-        s = 8
-        t = 8
-    elif dtype_in_str == "i16":
-        r = 4
-        s = 4
-        t = 4
+    if dev == "npu":
+        if dtype_in_str == "bf16":
+            r = 4
+            s = 8
+            t = 4
+        elif dtype_in_str == "i8":
+            r = 4
+            s = 8
+            t = 8
+        elif dtype_in_str == "i16":
+            r = 4
+            s = 4
+            t = 4
+    else:
+        if dtype_in_str == "bf16":
+            r = 8
+            s = 8
+            t = 8
+        elif dtype_in_str == "i8":
+            r = 8
+            s = 8
+            t = 8
+        elif dtype_in_str == "i16":
+            r = 4
+            s = 4
+            t = 8
+
+    # npu is a 4 row x 4 col array
+    if dev == "npu" and n_aie_cols > 4:
+        raise AssertionError("Invalid configuration: NPU (Phoenix/Hawk) has 4 columns")
+    # npu2 is a 4 row x 8 col array
+    if dev == "npu2" and n_aie_cols > 8:
+        raise AssertionError(
+            "Invalid configuration: NPU2 (Strix/Kracken) has 8 columns"
+        )
 
     # Input matrix A:
     # Conceptually, we divide input A into (m * n_rows, k)-sized blocks. These
@@ -159,23 +185,37 @@ def my_matmul(
 
     n_tiles_per_core = (M // m) * (N // n) // n_aie_cores
 
-    n_A_tiles_per_shim = n_aie_rows // n_aie_cols
+    # When using more AIE columns than n_aie_rows (4) (applicable to NPU2),
+    # restrict the number of shim/mem tiles to n_aie_rows,
+    # since we have only n_aie_rows row tiles for matrix A
+    if n_aie_cols > n_aie_rows:
+        n_shim_mem_A = n_aie_rows
+    # When using n_aie_rows (4) or less AIE columns (both NPU and NPU2),
+    # the number of shim/mem tiles are equal to n_aie_cols.
+    # We use the distribute pattern in object FIFO (see linking for A below),
+    # since we have n_aie_rows (4) row tiles for matrix A
+    else:
+        n_shim_mem_A = n_aie_cols
 
-    dev = None
-    if n_aie_cols == 1:
-        dev = AIEDevice.npu1_1col
-    elif n_aie_cols == 2:
-        dev = AIEDevice.npu1_2col
-    elif n_aie_cols == 4:
-        dev = AIEDevice.npu1_4col
+    # Integer division when n_aie_cols < 4, otherwise set to 1
+    n_A_tiles_per_shim = n_aie_rows // n_aie_cols if n_aie_cols < 4 else 1
 
+    if dev == "npu":
+        if n_aie_cols == 1:
+            dev_ty = AIEDevice.npu1_1col
+        elif n_aie_cols == 2:
+            dev_ty = AIEDevice.npu1_2col
+        elif n_aie_cols == 4:
+            dev_ty = AIEDevice.npu1_4col
+    else:
+        dev_ty = AIEDevice.npu2
     # These will hold TensorAccessPattern objects that represent the runtime
     # npu_dma_memcpy_nd operations of this design. They are only used if generate_taps is true
     A_taps = []
     B_taps = []
     C_taps = []
 
-    @device(dev)
+    @device(dev_ty)
     def device_body():
         A_l2_ty = np.ndarray[(m * k * n_A_tiles_per_shim,), np.dtype[dtype_in]]
         B_l2_ty = np.ndarray[(k * n,), np.dtype[dtype_in]]
@@ -205,7 +245,7 @@ def my_matmul(
         core_tiles = tiles[2:]
 
         # AIE-array data movement with object fifos
-        A_l3l2_fifos = [None] * n_aie_cols
+        A_l3l2_fifos = [None] * n_shim_mem_A
         A_l2l1_fifos = [None] * n_aie_rows
 
         B_l3l2_fifos = [None] * n_aie_cols
@@ -215,10 +255,27 @@ def my_matmul(
         C_l2l3_fifos = [None] * n_aie_cols
 
         # Input A
+        # L3 -> L2 data movement
+        for i in range(n_shim_mem_A):
+            A_l3l2_fifos[i] = object_fifo(
+                f"A_L3L2_{i}",
+                (
+                    shim_tiles[2 * i] if n_aie_cols == 8 else shim_tiles[i]
+                ),  # alternate columns in full 4x8 NPU2 case
+                mem_tiles[2 * i] if n_aie_cols == 8 else mem_tiles[i],
+                fifo_depth,
+                A_l2_ty,
+            )
+
+        # L2 -> L1 data movement
         for row in range(n_aie_rows):
             A_l2l1_fifos[row] = object_fifo(
                 f"A_L2L1_{row}",
-                mem_tiles[row // n_A_tiles_per_shim],
+                (
+                    mem_tiles[2 * row]
+                    if n_aie_cols == 8
+                    else mem_tiles[row // n_A_tiles_per_shim]
+                ),
                 core_tiles[row][0:n_aie_cols],  # broadcast along one row
                 fifo_depth,
                 A_l1_ty,
@@ -229,34 +286,29 @@ def my_matmul(
                     (s, 1),
                 ],
             )
-        for col in range(n_aie_cols):
-            A_l3l2_fifos[col] = object_fifo(
-                f"A_L3L2_{col}",
-                shim_tiles[col],
-                mem_tiles[col],
-                fifo_depth,
-                A_l2_ty,
-            )
-            # If n_cols == n_rows, n_A_tiles_per_shim is 1 and
-            # this simply links a_l3l2_fifos[col] to a_l2l1_fifos[row] directly,
-            # where col == row.
-            # If n_cols < n_rows, each column receives multiple rows of
+
+        # A_l3_l2 and A_l2_l1 object FIFO linking
+        for i in range(n_shim_mem_A):
+            # If n_shim_mem_A == n_rows, n_A_tiles_per_shim is 1 and
+            # this simply links a_l3l2_fifos[i] to a_l2l1_fifos[i] directly,
+            # If n_shim_mem_A < n_rows, each column receives multiple rows of
             # tiles; distribute it along rows of AIE cores.
-            start_row = col * n_A_tiles_per_shim
+            start_row = i * n_A_tiles_per_shim
             stop_row = start_row + n_A_tiles_per_shim
             if stop_row - start_row > 1:
-                of_offsets = [m * k * i for i in range(stop_row - start_row)]
+                of_offsets = [m * k * j for j in range(stop_row - start_row)]
             else:
                 of_offsets = []
             object_fifo_link(
-                A_l3l2_fifos[col],
-                [A_l2l1_fifos[row] for row in range(start_row, stop_row)],
+                A_l3l2_fifos[i],
+                [A_l2l1_fifos[j] for j in range(start_row, stop_row)],
                 [],
                 of_offsets,
             )
 
         # Input B
         for col in range(n_aie_cols):
+            # L3 -> L2 data movement
             B_l3l2_fifos[col] = object_fifo(
                 f"B_L3L2_{col}",
                 shim_tiles[col],
@@ -264,6 +316,7 @@ def my_matmul(
                 fifo_depth,
                 B_l2_ty,
             )
+            # L2 -> L1 data movement
             B_l2l1_fifos[col] = object_fifo(
                 f"B_L2L1_{col}",
                 mem_tiles[col],
@@ -288,6 +341,7 @@ def my_matmul(
                     ]
                 ),
             )
+            # B_l3_l2 and B_l2_l1 object FIFO linking
             object_fifo_link(B_l3l2_fifos[col], B_l2l1_fifos[col])
 
         # Output C
@@ -363,7 +417,7 @@ def my_matmul(
         )
         def sequence(A, B, C):
             # We are limited in the number of BDs. After synchronizing, we can reuse BDs.
-            # We only transfer 6 rows of tiles at once before starting a new transfer block.
+            # We only transfer 4 rows of tiles at once before starting a new transfer block.
             tb_max_n_rows = (
                 4  # tb = transfer block; block of transfers before sync call
             )
@@ -415,14 +469,15 @@ def my_matmul(
                         # Use the calculated sizes/strides/offsets to record the data movement
                         # caused by the above call to npu_dma_memcpy_nd.
                         # This line does not change MLIR output at all.
-                        C_taps.append(
-                            TensorAccessPattern(
-                                (M, N),
-                                offset=C_offset,
-                                sizes=C_sizes,
-                                strides=C_strides,
+                        if generate_taps:
+                            C_taps.append(
+                                TensorAccessPattern(
+                                    (M, N),
+                                    offset=C_offset,
+                                    sizes=C_sizes,
+                                    strides=C_strides,
+                                )
                             )
-                        )
 
                         for tile_row in range(tb_n_rows):
 
@@ -458,25 +513,29 @@ def my_matmul(
                                 k,
                             ]
                             A_strides = [0, k, K, 1]
-                            npu_dma_memcpy_nd(
-                                metadata=A_l3l2_fifos[col],
-                                bd_id=bd_id_base + 2 * tile_row + 1,
-                                mem=A,
-                                offsets=[0, 0, 0, A_offset],
-                                sizes=A_sizes,
-                                strides=A_strides,
-                            )
-                            # Use the calculated sizes/strides/offsets to record the data movement
-                            # caused by the above call to npu_dma_memcpy_nd.
-                            # This line does not change MLIR output at all.
-                            A_taps.append(
-                                TensorAccessPattern(
-                                    (M, K),
-                                    offset=A_offset,
+
+                            # always equal to n_aie_rows since we have n_aie_rows row tiles for matrix A
+                            if col < n_aie_rows:
+                                npu_dma_memcpy_nd(
+                                    metadata=A_l3l2_fifos[col],
+                                    bd_id=bd_id_base + 2 * tile_row + 1,
+                                    mem=A,
+                                    offsets=[0, 0, 0, A_offset],
                                     sizes=A_sizes,
                                     strides=A_strides,
                                 )
-                            )
+                            # # Use the calculated sizes/strides/offsets to record the data movement
+                            # # caused by the above call to npu_dma_memcpy_nd.
+                            # # This line does not change MLIR output at all.
+                            if generate_taps:
+                                A_taps.append(
+                                    TensorAccessPattern(
+                                        (M, K),
+                                        offset=A_offset,
+                                        sizes=A_sizes,
+                                        strides=A_strides,
+                                    )
+                                )
 
                             # B input transfer:
                             # Transfer the first a (n)-wide block of columns of B,
@@ -512,17 +571,18 @@ def my_matmul(
                                 sizes=B_sizes,
                                 strides=B_strides,
                             )
-                            # Use the calculated sizes/strides/offsets to record the data movement
-                            # caused by the above call to npu_dma_memcpy_nd.
-                            # This line does not change MLIR output at all.
-                            B_taps.append(
-                                TensorAccessPattern(
-                                    (K, N),
-                                    offset=B_col_offset,
-                                    sizes=B_sizes,
-                                    strides=B_strides,
+                            # # Use the calculated sizes/strides/offsets to record the data movement
+                            # # caused by the above call to npu_dma_memcpy_nd.
+                            # # This line does not change MLIR output at all.
+                            if generate_taps:
+                                B_taps.append(
+                                    TensorAccessPattern(
+                                        (K, N),
+                                        offset=B_col_offset,
+                                        sizes=B_sizes,
+                                        strides=B_strides,
+                                    )
                                 )
-                            )
                     if tb > 0 or (tb == 0 and pingpong > 0):
                         dma_wait(*C_l2l3_fifos)
             dma_wait(*C_l2l3_fifos)
