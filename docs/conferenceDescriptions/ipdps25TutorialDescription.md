@@ -13,11 +13,14 @@ This tutorial will cover the following key topics:
 
 ## Agenda
 
-Tutorial repeated on two dates.
-
-Date: June 3rd and 4th, 2025 (exact times to follow)
+Tutorial repeated on two dates.  
+Dates: June 3rd and 4th, 2025 (exact times to follow)  
 Location: Milano, Italy  
-Prerequisite: Please bring your laptop so that you can SSH into our Ryzen™ AI-enabled miniPCs for the hands-on exercises.
+
+Prerequisites:
+- Please bring your laptop so that you can SSH into our Ryzen™ AI-enabled miniPCs for the hands-on exercises.
+- Knowledge in basic computer architecture, basic programming (Python), basic algorithms is required.
+- Knowledge of vision pipelines and ML is not necessary but a plus.
 
 ### Contents and Timeline (tentative)
 
@@ -31,11 +34,11 @@ Prerequisite: Please bring your laptop so that you can SSH into our Ryzen™ AI-
 | 09:20am | Your First Program | Kristof | [My First Program](../../programming_guide/section-3) |
 | 09:50am | Exercise 3: Vector-scalar mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
 | 10:00am | Coffee Break | | |
-| 10:30am | Tracing and performance analysis | Kristof | [Timers](../../programming_guide/section-4/section-4a/) and [Tracing](../../programming_guide/section-4/section-4b/) |
+| 10:30am | Tracing and performance analysis | Gagan | [Timers](../../programming_guide/section-4/section-4a/) and [Tracing](../../programming_guide/section-4/section-4b/) |
 | 10:50am | Exercise 4: Tracing vector-scalar mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
 | 11:00am | Vectorizing on AIE | Kristof | [Kernel Vectorization](../../programming_guide/section-4/section-4c/) |
 | 11:20am | Exercise 5: Tracing vectorized vector-scalar | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
-| 11:30pm | Dataflow and larger designs | Joe | [Example Vector Designs](../../programming_guide/section-5/) and [Large Example Designs](../../programming_guide/section-6/) |
+| 11:30pm | Dataflow and larger designs | Gagan | [Example Vector Designs](../../programming_guide/section-5/) and [Large Example Designs](../../programming_guide/section-6/) |
 | 11:40pm | Exercise 6: More examples | All | [Programming Examples](../../programming_examples/) |
 | 11:50pm | Close Tutorial | All | |
 
@@ -45,4 +48,4 @@ Prerequisite: Please bring your laptop so that you can SSH into our Ryzen™ AI-
 
 *Andra Bisca* is a Sr. Software Development Engineer in AMD's Research and Advanced Development group where she is working on MLIR compiler development for AMD's open-sourced compiler flow targeting AI Engines. She earned a Master's in Computer Science from École polytechnique fédérale de Lausanne in Switzerland (2022). Her main areas of industry experience and contribution are in the development of efficient data movement abstractions based in MLIR and up-leveled to Python for underlying spatial hardware architectures.
 
-*Additional Organizers to Follow*
+*Gagandeep Singh* is a Member of the Technical Staff (MTS) in AMD's Research and Advanced Development group, focusing on application acceleration, design space exploration, and performance modeling. Prior to joining AMD, he was a Postdoctoral Researcher at ETH Zürich in SAFARI Research Group. He received his Ph.D. from TU Eindhoven in collaboration with IBM Research Zürich in 2021. In 2017, Gagan received a joint M.Sc. degree with distinction in Integrated Circuit Design from TUM, Germany, and NTU, Singapore. Gagan was also an R&D Software Developer at Oracle, India. He has published numerous research papers in prestigious conferences and journals, including ISCA, MICRO, IEEE Micro, Genome Biology, and Bioinformatics. He is deeply passionate about AI, healthcare and life sciences, and computer architecture.
