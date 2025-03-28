@@ -74,11 +74,11 @@ struct AIEDialectFoldInterface : DialectFoldInterface {
 //  pair. An object of this class is invalidated if, for any symbol_name, a
 //  ShimDMAAllocationOp that uses it changes, as the cache is not updated in
 //  this case.
-namespace xilinx::AIE {
+
 // Return the first ShimDMAAllocationOp nested inside the DeviceOp 'dev' that
 // uses the symbol 'sym_name'
-std::optional<AIE::ShimDMAAllocationOp>
-ShimDMAllocationGetter::get(DeviceOp dev, StringRef sym_name) {
+std::optional<xilinx::AIE::ShimDMAAllocationOp>
+xilinx::AIE::ShimDMAllocationGetter::get(DeviceOp dev, StringRef sym_name) {
   auto key = std::make_pair(dev, sym_name);
   auto it = allocGetter.find(key);
   if (it != allocGetter.end()) {
@@ -100,8 +100,9 @@ ShimDMAllocationGetter::get(DeviceOp dev, StringRef sym_name) {
 // can be slow when the symbol is used in many places. This version of the
 // function is only called when the cache does not have a ShimDMAAllocationOp
 // stored from a previous lookup.
-std::optional<AIE::ShimDMAAllocationOp>
-ShimDMAllocationGetter::cachelessGet(DeviceOp dev, mlir::StringRef sym_name) {
+std::optional<xilinx::AIE::ShimDMAAllocationOp>
+xilinx::AIE::ShimDMAllocationGetter::cachelessGet(DeviceOp dev,
+                                                  mlir::StringRef sym_name) {
   auto *sym = dev.lookupSymbol(sym_name);
   if (!sym)
     return std::nullopt;
@@ -111,11 +112,46 @@ ShimDMAllocationGetter::cachelessGet(DeviceOp dev, mlir::StringRef sym_name) {
       return infoOp;
   return std::nullopt;
 }
-} // namespace xilinx::AIE
 
-namespace xilinx::AIE {
+// Helper methods to retrieve the encoding associated to a burst length,
+// or to find the highest available burst length if the requested one is 0
+// (default value).
 
-LogicalResult myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
+static std::pair<uint32_t, uint32_t>
+getShimBurstLength(const xilinx::AIE::AIETargetModel &tm,
+                   uint32_t burstLength) {
+
+  std::vector<std::pair<uint32_t, uint32_t>> bel =
+      tm.getShimBurstEncodingsAndLengths();
+
+  // If we have the default burst length (no burst length was specified),
+  // use the highest one available on our target model
+  if (burstLength == 0) {
+    return *std::max_element(
+        bel.begin(), bel.end(),
+        [](auto pair1, auto pair2) { return pair1.second < pair2.second; });
+  }
+
+  // Note that if we are given a burst size, we are checking its existence in
+  // the pass verification already, so we can safely assume it exists.
+  return *std::find_if(bel.begin(), bel.end(),
+                       [=](auto p) { return p.second == burstLength; });
+}
+
+uint32_t xilinx::AIE::getShimBurstLengthBytes(const AIE::AIETargetModel &tm,
+                                              uint32_t burstLength) {
+
+  return getShimBurstLength(tm, burstLength).second;
+}
+
+uint32_t xilinx::AIE::getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
+                                                 uint32_t burstLength) {
+
+  return getShimBurstLength(tm, burstLength).first;
+}
+
+LogicalResult
+xilinx::AIE::myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
   std::array<unsigned, 3> maxRanks = op.getArrayAttrMaxRanks();
   if (!(op.getMixedOffsets().size() == 1 && maxRanks[0] == 1) && // NOLINT
       op.getMixedOffsets().size() != op.getMixedSizes().size())
@@ -153,8 +189,15 @@ static VirtualizedNPUTargetModel NPUmodel2col(2);
 static VirtualizedNPUTargetModel NPUmodel3col(3);
 static VirtualizedNPUTargetModel NPUmodel4col(4);
 static NPU2TargetModel NPU2model;
+static VirtualizedNPU2TargetModel NPU2model1col(1);
+static VirtualizedNPU2TargetModel NPU2model2col(2);
+static VirtualizedNPU2TargetModel NPU2model3col(3);
+static VirtualizedNPU2TargetModel NPU2model4col(4);
+static VirtualizedNPU2TargetModel NPU2model5col(5);
+static VirtualizedNPU2TargetModel NPU2model6col(6);
+static VirtualizedNPU2TargetModel NPU2model7col(7);
 
-const AIETargetModel &getTargetModel(Operation *op) {
+const AIETargetModel &xilinx::AIE::getTargetModel(Operation *op) {
   if (auto t = dyn_cast<AIETarget>(op))
     return t.getTargetModel();
   if (auto t = op->getParentOfType<AIETarget>())
@@ -165,7 +208,7 @@ const AIETargetModel &getTargetModel(Operation *op) {
   return VC1902model;
 }
 
-const AIETargetModel &getTargetModel(AIEDevice device) {
+const AIETargetModel &xilinx::AIE::getTargetModel(AIEDevice device) {
   switch (device) {
   case AIEDevice::xcvc1902:
     return VC1902model;
@@ -185,6 +228,20 @@ const AIETargetModel &getTargetModel(AIEDevice device) {
     return NPUmodel4col;
   case AIEDevice::npu2:
     return NPU2model;
+  case AIEDevice::npu2_1col:
+    return NPU2model1col;
+  case AIEDevice::npu2_2col:
+    return NPU2model2col;
+  case AIEDevice::npu2_3col:
+    return NPU2model3col;
+  case AIEDevice::npu2_4col:
+    return NPU2model4col;
+  case AIEDevice::npu2_5col:
+    return NPU2model5col;
+  case AIEDevice::npu2_6col:
+    return NPU2model6col;
+  case AIEDevice::npu2_7col:
+    return NPU2model7col;
   }
   return VC1902model;
 }
@@ -200,6 +257,8 @@ static TileElement getParentTileElement(Operation *op) {
   }
   return llvm::dyn_cast<TileElement>(parent);
 }
+
+namespace {
 
 struct UsesAreAccessible {
   static LogicalResult verifyTrait(Operation *op) {
@@ -243,7 +302,9 @@ struct UsesAreAccessible {
   }
 };
 
-namespace detail {
+} // namespace
+
+namespace xilinx::AIE::detail {
 /// This class represents the internal storage of the AIE `ObjectFifoType`.
 struct AIEObjectFifoTypeStorage : TypeStorage {
   /// The `KeyTy` is a required type that provides an interface for the storage
@@ -271,27 +332,26 @@ struct AIEObjectFifoTypeStorage : TypeStorage {
 
   MemRefType elementType;
 };
-} // namespace detail
+} // namespace xilinx::AIE::detail
 
-AIEObjectFifoType AIEObjectFifoType::get(MemRefType elementType) {
+AIEObjectFifoType xilinx::AIE::AIEObjectFifoType::get(MemRefType elementType) {
   // Call into a helper 'get' method in 'TypeBase' to get an uniqued instance
   // of this type.
   MLIRContext *ctx = elementType.getContext();
   return Base::get(ctx, elementType);
 }
 
-LogicalResult
-AIEObjectFifoType::verify(function_ref<InFlightDiagnostic()> emitError,
-                          MemRefType elementType) {
+LogicalResult xilinx::AIE::AIEObjectFifoType::verify(
+    function_ref<InFlightDiagnostic()> emitError, MemRefType elementType) {
   return success();
 }
 
-mlir::MemRefType AIEObjectFifoType::getElementType() {
+mlir::MemRefType xilinx::AIE::AIEObjectFifoType::getElementType() {
   // 'getImpl' returns a pointer to the internal storage instance.
   return getImpl()->elementType;
 }
 
-namespace detail {
+namespace xilinx::AIE::detail {
 /// This class represents the internal storage of the AIE
 /// `ObjectFifoSubviewType`.
 struct AIEObjectFifoSubviewTypeStorage : TypeStorage {
@@ -321,9 +381,10 @@ struct AIEObjectFifoSubviewTypeStorage : TypeStorage {
 
   MemRefType elementType;
 };
-} // namespace detail
+} // namespace xilinx::AIE::detail
 
-AIEObjectFifoSubviewType AIEObjectFifoSubviewType::get(MemRefType elementType) {
+AIEObjectFifoSubviewType
+xilinx::AIE::AIEObjectFifoSubviewType::get(MemRefType elementType) {
   // Call into a helper 'get' method in 'TypeBase' to get a uniqued instance
   // of this type.
   MLIRContext *ctx = elementType.getContext();
@@ -331,13 +392,12 @@ AIEObjectFifoSubviewType AIEObjectFifoSubviewType::get(MemRefType elementType) {
 }
 
 /// This method is used to verify the construction invariants.
-LogicalResult
-AIEObjectFifoSubviewType::verify(function_ref<InFlightDiagnostic()> emitError,
-                                 MemRefType elementType) {
+LogicalResult xilinx::AIE::AIEObjectFifoSubviewType::verify(
+    function_ref<InFlightDiagnostic()> emitError, MemRefType elementType) {
   return success();
 }
 
-MemRefType AIEObjectFifoSubviewType::getElementType() {
+MemRefType xilinx::AIE::AIEObjectFifoSubviewType::getElementType() {
   return getImpl()->elementType;
 }
 
@@ -447,8 +507,6 @@ void AIEDialect::initialize() {
       >();
   addInterfaces<AIEInlinerInterface, AIEDialectFoldInterface>();
 }
-
-} // namespace xilinx::AIE
 
 // Check that the operation only contains terminators in
 // TerminatorOpTypes.
@@ -578,11 +636,9 @@ TileOp ObjectFifoCreateOp::getProducerTileOp() {
   return cast<TileOp>(getProducerTile().getDefiningOp());
 }
 
-namespace xilinx::AIE {
-
-ParseResult parseObjectFifoProducerTile(OpAsmParser &parser,
-                                        OpAsmParser::UnresolvedOperand &operand,
-                                        BDDimLayoutArrayAttr &dimensions) {
+ParseResult xilinx::AIE::parseObjectFifoProducerTile(
+    OpAsmParser &parser, OpAsmParser::UnresolvedOperand &operand,
+    BDDimLayoutArrayAttr &dimensions) {
   std::vector<BDDimLayoutAttr> emptyDims = {};
   if (parser.parseOperand(operand))
     return failure();
@@ -598,9 +654,9 @@ ParseResult parseObjectFifoProducerTile(OpAsmParser &parser,
   return success();
 }
 
-void printObjectFifoProducerTile(OpAsmPrinter &printer, Operation *op,
-                                 Value operand,
-                                 BDDimLayoutArrayAttr dimensions) {
+void xilinx::AIE::printObjectFifoProducerTile(OpAsmPrinter &printer,
+                                              Operation *op, Value operand,
+                                              BDDimLayoutArrayAttr dimensions) {
   printer << operand;
   if (!dimensions.empty()) {
     printer << " dimensionsToStream ";
@@ -608,7 +664,7 @@ void printObjectFifoProducerTile(OpAsmPrinter &printer, Operation *op,
   }
 }
 
-ParseResult parseObjectFifoConsumerTiles(
+ParseResult xilinx::AIE::parseObjectFifoConsumerTiles(
     OpAsmParser &parser, SmallVectorImpl<OpAsmParser::UnresolvedOperand> &tiles,
     BDDimLayoutArrayArrayAttr &dimensions) {
   // parseCommaSeparatedList doesn't handle the missing case for "none",
@@ -644,9 +700,9 @@ ParseResult parseObjectFifoConsumerTiles(
   return success();
 }
 
-void printObjectFifoConsumerTiles(OpAsmPrinter &printer, Operation *op,
-                                  OperandRange tiles,
-                                  BDDimLayoutArrayArrayAttr dimsPerTileAttr) {
+void xilinx::AIE::printObjectFifoConsumerTiles(
+    OpAsmPrinter &printer, Operation *op, OperandRange tiles,
+    BDDimLayoutArrayArrayAttr dimsPerTileAttr) {
   size_t tileIdx = 0;
   for (auto tile : tiles) {
     printer << tile;
@@ -714,8 +770,6 @@ static ParseResult parseObjectFifoInitValues(OpAsmParser &parser,
 
   return success();
 }
-
-} // namespace xilinx::AIE
 
 //===----------------------------------------------------------------------===//
 // ObjectFifoLinkOp
@@ -1882,10 +1936,9 @@ LogicalResult DMABDOp::verify() {
         return emitOpError()
                << "Invalid step size; must be a positive integer.";
       if (dim.getStride() > buffer.getNumElements())
-        return emitOpError()
-               << "Step size " << std::to_string(dim.getStride()) << " "
-               << "exceeds memref size "
-               << std::to_string(buffer.getNumElements());
+        return emitOpError() << "Step size " << std::to_string(dim.getStride())
+                             << " exceeds memref size "
+                             << std::to_string(buffer.getNumElements());
       if (dim.getSize() >= (1UL << 9) + 1)
         return emitOpError() << "Size may not exceed 1023.";
       if (dim.getStride() >= (1UL << 19))
@@ -2319,8 +2372,6 @@ LogicalResult UseLockOp::verify() {
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIE/IR/AIEOps.cpp.inc"
 
-namespace xilinx::AIE {
-
 size_t SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &targetModel = getTargetModel(*this);
@@ -2335,7 +2386,7 @@ size_t SwitchboxOp::getNumDestConnections(WireBundle bundle) {
                                                     tile.getRow(), bundle);
 }
 
-WireBundle getConnectingBundle(WireBundle dir) {
+WireBundle xilinx::AIE::getConnectingBundle(WireBundle dir) {
   switch (dir) {
   case WireBundle::North:
     return WireBundle::South;
@@ -2349,8 +2400,6 @@ WireBundle getConnectingBundle(WireBundle dir) {
     return dir;
   }
 }
-
-} // namespace xilinx::AIE
 
 //===----------------------------------------------------------------------===//
 // BDChainOp

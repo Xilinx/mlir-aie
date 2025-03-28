@@ -515,32 +515,6 @@ public:
   }
 };
 
-// Helper method to retrieve the encoding associated to a burst length,
-// or to find the highest available burst length if the requested one is 0
-// (default value).
-uint32_t getBurstLengthEncoding(const AIE::AIETargetModel &tm,
-                                uint32_t burstLengthRequested) {
-  auto bel = tm.getBurstEncodingsAndLengths();
-
-  // If we have the default burst length (no burst length was specified),
-  // use the highest one available on our target model
-  if (burstLengthRequested == 0) {
-    return std::max_element(bel.begin(), bel.end(),
-                            [](auto pair1, auto pair2) {
-                              return pair1.second < pair2.second;
-                            })
-        ->first;
-  }
-
-  // Note that if we are given a burst size, we are checking its existence in
-  // the pass verification already, so we can safely assume it exists.
-  return std::find_if(bel.begin(), bel.end(),
-                      [=](auto p) {
-                        return p.second == burstLengthRequested;
-                      })
-      ->first;
-}
-
 struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -566,9 +540,6 @@ public:
       bd_addr = (op.getColumn() << tm.getColumnShift()) |
                 (op.getRow() << tm.getRowShift()) | (0x1D000 + bd_id * 0x20);
 
-      auto burstLengthEncoding =
-          getBurstLengthEncoding(tm, op.getBurstLength());
-
       // DMA_BDX_0
       words[0] = op.getBufferLength();
 
@@ -588,7 +559,8 @@ public:
       words[3] |= op.getD0Stride() & 0xfffff;
 
       // DMA_BDX_4
-      words[4] = burstLengthEncoding; // burst length;
+      words[4] = (getShimBurstLengthEncoding(tm, op.getBurstLength()) & 0x3)
+                 << 30;
       words[4] |= (op.getD1Size() & 0x3ff) << 20;
       words[4] |= op.getD1Stride() & 0xfffff;
 
