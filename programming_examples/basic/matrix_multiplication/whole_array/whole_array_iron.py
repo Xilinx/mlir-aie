@@ -10,7 +10,15 @@ import numpy as np
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, NPU1Col2, NPU1Col4, NPU2Col1, NPU2Col2, NPU2Col4, Tile
+from aie.iron.device import (
+    NPU1Col1,
+    NPU1Col2,
+    NPU1Col4,
+    NPU2Col1,
+    NPU2Col2,
+    NPU2Col4,
+    Tile,
+)
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 
