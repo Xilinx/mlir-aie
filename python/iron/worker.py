@@ -166,7 +166,6 @@ class Worker(ObjectFifoEndpoint):
         self.current_core_placement.set(None)
 
 
-# TODO: Complete this
 class WorkerRuntimeBarrier:
     """A barrier allowing individual workers to synchronize with the runtime sequence."""
 
@@ -192,14 +191,11 @@ class WorkerRuntimeBarrier:
         use_lock(self.worker_locks[-1], LockAction.Acquire, value=value)
 
     def _add_worker_lock(self, lock):
+        """Register an additional lock in the barrier."""
         self.worker_locks.append(lock)
 
     def _set_barrier_value(self, value: int):
-        """Set the value of the barrier.
-
-        Args:
-            value (int): The value to set.
-        """
+        """Set the value of the barrier."""
         for lock in self.worker_locks:
             set_lock_value(lock, value)
 
