@@ -13,11 +13,14 @@ This tutorial will cover the following key topics:
 
 ## Agenda
 
-Tutorial repeated on two dates.
-
-Date: June 3rd and 4th, 2025 (exact times to follow)
+Tutorial repeated on two dates.  
+Dates: June 3rd and 4th, 2025 (exact times to follow)  
 Location: Milano, Italy  
-Prerequisite: Please bring your laptop so that you can SSH into our Ryzen™ AI-enabled miniPCs for the hands-on exercises.
+
+Prerequisites:
+- Please bring your laptop so that you can SSH into our Ryzen™ AI-enabled miniPCs for the hands-on exercises.
+- Knowledge in basic computer architecture, basic programming (Python), basic algorithms is required.
+- Knowledge of vision pipelines and ML is not necessary but a plus.
 
 ### Contents and Timeline (tentative)
 
@@ -31,11 +34,11 @@ Prerequisite: Please bring your laptop so that you can SSH into our Ryzen™ AI-
 | 09:20am | Your First Program | Kristof | [My First Program](../../programming_guide/section-3) |
 | 09:50am | Exercise 3: Vector-scalar mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
 | 10:00am | Coffee Break | | |
-| 10:30am | Tracing and performance analysis | Kristof | [Timers](../../programming_guide/section-4/section-4a/) and [Tracing](../../programming_guide/section-4/section-4b/) |
+| 10:30am | Tracing and performance analysis | Gagan | [Timers](../../programming_guide/section-4/section-4a/) and [Tracing](../../programming_guide/section-4/section-4b/) |
 | 10:50am | Exercise 4: Tracing vector-scalar mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
 | 11:00am | Vectorizing on AIE | Kristof | [Kernel Vectorization](../../programming_guide/section-4/section-4c/) |
 | 11:20am | Exercise 5: Tracing vectorized vector-scalar | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
-| 11:30pm | Dataflow and larger designs | Joe | [Example Vector Designs](../../programming_guide/section-5/) and [Large Example Designs](../../programming_guide/section-6/) |
+| 11:30pm | Dataflow and larger designs | Gagan | [Example Vector Designs](../../programming_guide/section-5/) and [Large Example Designs](../../programming_guide/section-6/) |
 | 11:40pm | Exercise 6: More examples | All | [Programming Examples](../../programming_examples/) |
 | 11:50pm | Close Tutorial | All | |
 
