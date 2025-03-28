@@ -84,8 +84,40 @@ N Columns and 6 Rows
 3 CCCC
 2 CCCC
 1 MMMM
-0 DDDD
+0 PDDD
   0..N
+```
+
+```aie.device(npu2) {}```
+This NPU device is present in Ryzen AI: Strix, Strix Halo and Kracken Point SOCs.
+8 Columns and 6 Rows
+```
+5 CCCCCCCC
+4 CCCCCCCC
+3 CCCCCCCC
+2 CCCCCCCC
+1 MMMMMMMM
+0 DDDDDDDD
+  01234567
+```
+
+```aie.device(npu2_1col) {}```
+```aie.device(npu2_2col) {}```
+```aie.device(npu2_3col) {}```
+```aie.device(npu2_4col) {}```
+```aie.device(npu2_5col) {}```
+```aie.device(npu2_6col) {}```
+```aie.device(npu2_7col) {}```
+These devices represent a physical partition of an npu2 device, including a number of columns with a DMA shim tile.
+N Columns and 6 Rows
+```
+5 CCCCCCC
+4 CCCCCCC
+3 CCCCCCC
+2 CCCCCCC
+1 MMMMMMM
+0 DDDDDDD
+  0.....N
 ```
 
 -----
