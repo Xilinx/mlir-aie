@@ -10,7 +10,7 @@ import numpy as np
 import sys
 
 from aie.iron import ObjectFifo, Program, Runtime
-from aie.iron.device import NPU1Col1, NPU2, AnyComputeTile
+from aie.iron.device import NPU1Col1, NPU2Col1, AnyComputeTile
 from aie.iron.placers import SequentialPlacer
 from aie.helpers.taplib import TensorTiler2D
 
@@ -18,7 +18,7 @@ if len(sys.argv) > 3:
     if sys.argv[1] == "npu":
         dev = NPU1Col1()
     elif sys.argv[1] == "npu2":
-        dev = NPU2()
+        dev = NPU2Col1()
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 

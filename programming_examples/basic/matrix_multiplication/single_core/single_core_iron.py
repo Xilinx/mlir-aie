@@ -10,7 +10,7 @@ import numpy as np
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col4, NPU2
+from aie.iron.device import NPU1Col4, NPU2Col4
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 
@@ -272,7 +272,7 @@ def my_matmul(
     if dev == "npu":
         dev_ty = NPU1Col4()
     else:
-        dev_ty = NPU2()
+        dev_ty = NPU2Col4()
     my_program = Program(dev_ty, rt)
 
     # Place components (assign them resources on the device) and generate an MLIR module

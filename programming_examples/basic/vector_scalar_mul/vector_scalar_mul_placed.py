@@ -128,7 +128,7 @@ opts = p.parse_args(sys.argv[1:])
 if opts.device == "npu":
     dev = AIEDevice.npu1_1col
 elif opts.device == "npu2":
-    dev = AIEDevice.npu2
+    dev = AIEDevice.npu2_1col
 else:
     raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 in1_size = int(opts.in1_size)
