@@ -1,0 +1,9 @@
+<map id="xilinx::AIE::VirtualizedNPU2TargetModel" name="xilinx::AIE::VirtualizedNPU2TargetModel">
+<area shape="rect" id="Node000001" title=" " alt="" coords="25,240,190,280"/>
+<area shape="rect" id="Node000002" href="$classxilinx_1_1AIE_1_1BaseNPUTargetModel.html" title=" " alt="" coords="10,152,205,192"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="110,206,110,240,105,240,105,206"/>
+<area shape="rect" id="Node000003" href="$classxilinx_1_1AIE_1_1AIE2TargetModel.html" title=" " alt="" coords="5,79,209,104"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="110,118,110,152,105,152,105,118"/>
+<area shape="rect" id="Node000004" href="$classxilinx_1_1AIE_1_1AIETargetModel.html" title=" " alt="" coords="9,5,205,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="110,44,110,79,105,79,105,44"/>
+</map>
