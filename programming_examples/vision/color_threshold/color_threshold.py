@@ -7,7 +7,15 @@
 import numpy as np
 import sys
 
-from aie.iron import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker, WorkerRuntimeBarrier
+from aie.iron import (
+    GlobalBuffer,
+    Kernel,
+    ObjectFifo,
+    Program,
+    Runtime,
+    Worker,
+    WorkerRuntimeBarrier,
+)
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 
@@ -61,13 +69,16 @@ def color_threshold(dev, width, height):
             )
         )
 
-    # Create a barrier to synchronize individual workers with the runtime sequence
-    barrier = WorkerRuntimeBarrier()
+    # Create barriers to synchronize individual workers with the runtime sequence
+    workerBarriers = []
+    for i in range(4):
+        workerBarriers.append(WorkerRuntimeBarrier())
 
     # Task for the core to perform
     def core_fn(of_in, of_out, my_rtp, threshold_fn, barrier):
         # RTPs written from the instruction stream must be synchronized with the runtime sequence
-        # This may be done explicitly through the usage of a barrier or implicitly though the usage of ObjectFIFO acquire
+        # This may be done through the usage of a barrier
+        # Note that barriers only allow to synchronize an individual worker with the runtime sequence and not the other way around
         barrier.wait_for_value(1)
         thresholdValue = arith.trunci(T.i16(), my_rtp[0])
         maxValue = arith.trunci(T.i16(), my_rtp[1])
@@ -93,7 +104,13 @@ def color_threshold(dev, width, height):
         workers.append(
             Worker(
                 core_fn,
-                [in00B_L2L1s[i].cons(), outOOB_L1L2s[i].prod(), rtps[i], thresholdLine, barrier],
+                [
+                    in00B_L2L1s[i].cons(),
+                    outOOB_L1L2s[i].prod(),
+                    rtps[i],
+                    thresholdLine,
+                    workerBarriers[i],
+                ],
             )
         )
 
@@ -110,7 +127,8 @@ def color_threshold(dev, width, height):
 
         rt.inline_ops(set_rtps, rtps)
 
-        rt.set_barrier(barrier, 1)
+        for i in range(4):
+            rt.set_barrier(workerBarriers[i], 1)
 
         # Start workers
         rt.start(*workers)

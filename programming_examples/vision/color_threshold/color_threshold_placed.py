@@ -107,7 +107,7 @@ def color_threshold(dev, width, height):
         def core_body():
             for _ in range_(sys.maxsize):
                 # RTPs written from the instruction stream must be synchronized with the runtime sequence
-                # This may be done explicitly through the usage of locks or implicitly though the usage of ObjectFIFO acquire
+                # This may be done through the usage of locks
                 use_lock(lock2, LockAction.Acquire, value=1)
                 thresholdValue = arith.trunci(T.i16(), rtpComputeTile2[0])
                 maxValue = arith.trunci(T.i16(), rtpComputeTile2[1])
@@ -133,7 +133,7 @@ def color_threshold(dev, width, height):
         def core_body():
             for _ in range_(sys.maxsize):
                 # RTPs written from the instruction stream must be synchronized with the runtime sequence
-                # This may be done explicitly through the usage of locks or implicitly though the usage of ObjectFIFO acquire
+                # This may be done through the usage of locks
                 use_lock(lock3, LockAction.Acquire, value=1)
                 thresholdValue = arith.trunci(T.i16(), rtpComputeTile3[0])
                 maxValue = arith.trunci(T.i16(), rtpComputeTile3[1])
@@ -159,7 +159,7 @@ def color_threshold(dev, width, height):
         def core_body():
             for _ in range_(sys.maxsize):
                 # RTPs written from the instruction stream must be synchronized with the runtime sequence
-                # This may be done explicitly through the usage of locks or implicitly though the usage of ObjectFIFO acquire
+                # This may be done explicitly through the usage of locks
                 use_lock(lock4, LockAction.Acquire, value=1)
                 thresholdValue = arith.trunci(T.i16(), rtpComputeTile4[0])
                 maxValue = arith.trunci(T.i16(), rtpComputeTile4[1])
@@ -185,7 +185,7 @@ def color_threshold(dev, width, height):
         def core_body():
             for _ in range_(sys.maxsize):
                 # RTPs written from the instruction stream must be synchronized with the runtime sequence
-                # This may be done explicitly through the usage of locks or implicitly though the usage of ObjectFIFO acquire
+                # This may be done explicitly through the usage of locks
                 use_lock(lock5, LockAction.Acquire, value=1)
                 thresholdValue = arith.trunci(T.i16(), rtpComputeTile5[0])
                 maxValue = arith.trunci(T.i16(), rtpComputeTile5[1])
