@@ -22,6 +22,7 @@ if len(sys.argv) > 2:
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
+
 def my_eltwise_exp():
 
     N = 65536
