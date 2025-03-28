@@ -185,6 +185,10 @@ class WorkerRuntimeBarrier:
         # Here this is assuming that the we are currently placing the last added lock
         # And therefore that wait_for_value operations are placed just after their corresponding Worker...
         # This is a pretty bad assumption, think about an alternative way to solve this
+        if len(self.worker_locks) == 0:
+            raise ValueError(
+                "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
+            )
         use_lock(self.worker_locks[-1], LockAction.Acquire, value=value)
 
     def _add_worker_lock(self, lock):
