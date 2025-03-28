@@ -7,7 +7,15 @@
 import numpy as np
 import sys
 
-from aie.iron import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import (
+    GlobalBuffer,
+    Kernel,
+    ObjectFifo,
+    Program,
+    Runtime,
+    Worker,
+    WorkerRuntimeBarrier,
+)
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
@@ -75,16 +83,19 @@ def conv2dk1(
         use_write_rtp=True,
     )
 
+    rtp_barrier = WorkerRuntimeBarrier()
+
     # Task for the core to perform
-    def core_fn(of_wts, of_act, of_out, my_rtp, conv2dk1_i8):
+    def core_fn(of_wts, of_act, of_out, my_rtp, conv2dk1_i8, barrier):
         y_dim = height
         x_dim = width
         ci = in_channels
         co = out_channels
 
-        elemWts = of_wts.acquire(1)
+        barrier.wait_for_value(1)
         scale = my_rtp[0]
-        # scale = memref.load(rtpComputeTile2, [0])
+
+        elemWts = of_wts.acquire(1)
 
         for _ in range_(y_dim):
             elemIn = of_act.acquire(1)
@@ -104,6 +115,7 @@ def conv2dk1(
             of_out_02_L2.prod(),
             rtp,
             conv2dk1_i8_kernel,
+            rtp_barrier,
         ],
     )
 
@@ -115,6 +127,8 @@ def conv2dk1(
             my_rtp[0] = 10
 
         rt.inline_ops(set_rtps, [rtp])
+
+        rt.set_barrier(rtp_barrier, 1)
 
         # Start worker
         rt.start(worker)

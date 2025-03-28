@@ -7,7 +7,7 @@
 import numpy as np
 import sys
 
-from aie.iron import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker, WorkerRuntimeBarrier
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1
 from aie.iron.controlflow import range_
@@ -81,17 +81,19 @@ def conv2dk1():
         np.ndarray[(16,), np.dtype[np.int32]], name="rtp", use_write_rtp=True
     )
 
+    rtp_barrier = WorkerRuntimeBarrier()
+
     # Task for a core to perform
-    def conv2d_fn(of_wts, of_act, of_out, my_rtp, conv2dk1_i8):
+    def conv2d_fn(of_wts, of_act, of_out, my_rtp, conv2dk1_i8, barrier):
         y_dim = 32
         x_dim = 32
         ci = 64
         co = 64
 
-        elemWts = of_wts.acquire(1)
-
+        barrier.wait_for_value(1)
         scale = my_rtp[0]
-        # scale = memref.load(rtpComputeTile2, [0])
+
+        elemWts = of_wts.acquire(1)
 
         for _ in range_(y_dim):
             elemIn = of_act.acquire(1)
@@ -110,6 +112,7 @@ def conv2dk1():
             of_out_02_L2.prod(),
             rtp,
             conv2dk1_i8_kernel,
+            rtp_barrier,
         ],
     )
 
@@ -122,6 +125,8 @@ def conv2dk1():
             my_rtp[0] = 1
 
         rt.inline_ops(set_rtps, [rtp])
+
+        rt.set_barrier(rtp_barrier, 1)
 
         # Start workers
         rt.start(worker_conv2d)

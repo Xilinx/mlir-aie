@@ -21,10 +21,10 @@ from ...helpers.taplib import TensorAccessPattern
 from ..dataflow import ObjectFifoHandle
 from ..device import PlacementTile, AnyShimTile
 from ..resolvable import Resolvable
+from ..worker import Worker, WorkerRuntimeBarrier, _BarrierSetOp
 from .dmatask import DMATask
 from .data import RuntimeData
 from .endpoint import RuntimeEndpoint
-from ..worker import Worker
 from .taskgroup import RuntimeTaskGroup
 from .task import (
     RuntimeTask,
@@ -220,6 +220,16 @@ class Runtime(Resolvable):
         """
         # TODO: should filter args based on some criteria??
         self._tasks.append(InlineOpRuntimeTask(inline_func, inline_args))
+
+    def set_barrier(self, barrier: WorkerRuntimeBarrier, value: int):
+        """Set the value of a worker barrier.
+        This should be called within a Runtime.sequence() context.
+
+        Args:
+            barrier (WorkerRuntimeBarrier): The WorkerRuntimeBarrier to set.
+            value (int): The value to set the barrier to.
+        """
+        self._tasks.append(_BarrierSetOp(barrier, value))
 
     @property
     def workers(self) -> list[Worker]:

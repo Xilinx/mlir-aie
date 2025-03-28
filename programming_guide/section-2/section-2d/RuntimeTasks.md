@@ -138,6 +138,30 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
 
     rt.inline_ops(set_rtps, rtps)
 ```
+The propagation of data to these global buffers is not instantaneous and may lead to workers reading runtime parameters before they are available. To solve this, it is possible to instantiate barriers that allow individual workers to synchronize with the runtime sequence:
+```python
+workerBarriers = []
+for i in range(4):
+    workerBarriers.append(WorkerRuntimeBarrier())
+
+...
+
+def core_fn(of_in, of_out, rtp, barrier):
+    barrier.wait_for_value(1)
+    runtime_parameter = rtp
+
+...
+
+rt = Runtime()
+with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
+
+    ...
+
+    rt.inline_ops(set_rtps, rtps)
+    
+    for i in range(4):
+        rt.set_barrier(workerBarriers[i], 1)
+```
 
 #### **Runtime Task Groups**
 

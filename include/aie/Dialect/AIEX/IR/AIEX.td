@@ -1051,4 +1051,35 @@ def AIE_DMAStartBdChainForOp: AIEX_Op<"dma_start_bd_chain_for", [HasParent<"Runt
   }];
 }
 
+def AIEX_SetLockOp: AIEX_Op<"set_lock", [HasParent<"RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
+  let summary = "Set the value of a lock";
+  let description = [{
+    This operation sets the value of `lock` inside of a RuntimeSequenceOp.
+    The operation is non blocking and does not offer any synchronization guarantees.
+    Should be used in combination with blocking operations.
+
+    Example:
+    ```
+      %tile22 = aie.tile(2, 2)
+      %lock22_0 = aie.lock(%tile22, 0)
+      ...
+      aiex.set_lock(%lock22_0, 5)
+    ```
+  }];
+  let arguments = (
+    ins Index:$lock,
+        I32Attr:$value
+  );
+  let assemblyFormat = [{ `(` $lock `,` $value `)` attr-dict }];
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    AIE::LockOp getLockOp();
+  }];
+
+  let extraClassDefinition = [{
+    AIE::LockOp SetLockOp::getLockOp() { return cast<AIE::LockOp>(getLock().getDefiningOp()); }
+  }];
+}
+
 #endif // AIEX_OPS

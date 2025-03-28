@@ -73,6 +73,8 @@ def conv2dk1():
             ComputeTile2 = tile(0, 2)
             compute_tile2_col, compute_tile2_row = 0, 2
 
+            lock2 = lock(ComputeTile2, init=0)
+
             if enableTrace:
                 flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
 
@@ -109,10 +111,10 @@ def conv2dk1():
                 co = 64
 
                 for _ in range_(0xFFFFFFFF):
-                    elemWts = of_inOF_wts_0_L3L2.acquire(ObjectFifoPort.Consume, 1)
-
+                    use_lock(lock2, LockAction.Acquire, value=1)
                     scale = rtp2[0]
-                    # scale = memref.load(rtpComputeTile2, [0])
+
+                    elemWts = of_inOF_wts_0_L3L2.acquire(ObjectFifoPort.Consume, 1)
 
                     for _ in range_(y_dim):
                         elemIn = of_act_L2_02.acquire(ObjectFifoPort.Consume, 1)
@@ -207,6 +209,8 @@ def conv2dk1():
                     npu_write32(column=0, row=0, address=0x1D20C, value=trace_bd_id)
 
                 rtp2[0] = 1
+
+                set_lock(lock2, 1)
 
                 in_act_task = shim_dma_single_bd_task(
                     of_inOF_act_L3L2, I, sizes=[1, 1, 1, tensorSize]

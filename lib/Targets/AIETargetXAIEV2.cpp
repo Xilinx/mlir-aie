@@ -121,12 +121,10 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
 
         // Memtile DMAs can access neighboring tiles.
         if (targetModel.isMemTile(col, row)) {
-          if (targetModel.isWest(col, row, bufferCol, bufferRow))
-            BaseAddrA += 0x0;
-          else if (targetModel.isInternal(col, row, bufferCol, bufferRow))
-            BaseAddrA += targetModel.getMemTileSize() * 1;
-          else if (targetModel.isEast(col, row, bufferCol, bufferRow))
-            BaseAddrA += targetModel.getMemTileSize() * 2;
+          auto addrOffset = targetModel.getMemLocalBaseAddress(
+              col, row, bufferCol, bufferRow);
+          if (addrOffset)
+            BaseAddrA += addrOffset.value();
         }
       }
 
@@ -155,12 +153,10 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       int lockID = lock.getLockIDValue();
       // Memtile DMAs can access neighboring tiles.
       if (targetModel.isMemTile(col, row)) {
-        if (targetModel.isWest(col, row, lockCol, lockRow))
-          lockID += 0;
-        else if (targetModel.isInternal(col, row, lockCol, lockRow))
-          lockID += targetModel.getNumLocks(lockCol, lockRow) * 1;
-        else if (targetModel.isEast(col, row, lockCol, lockRow))
-          lockID += targetModel.getNumLocks(lockCol, lockRow) * 2;
+        auto lockOffset =
+            targetModel.getLockLocalBaseIndex(col, row, lockCol, lockRow);
+        if (lockOffset)
+          lockID += lockOffset.value();
       }
 
       if (op.acquire() || op.acquireGE()) {
