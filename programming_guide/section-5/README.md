@@ -56,7 +56,7 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 
 ## Exercises
 
-1. Can you modify the [passthrough](../../programming_examples/basic/passthrough_kernel/) design to copy more (or less) data? <img src="../../mlir_tutorials/images/answer1.jpg" title="Check the Makefile...PASSTHROUGH_SIZE" height=25>
+1. Can you modify the [passthrough](../../programming_examples/basic/passthrough_kernel/) design to copy more (or less) data? <img src="../../mlir_tutorials/images/answer1.jpg" title="Check the Makefile...in1_size and out_size" height=25>
 
 1. Take a look at the testbench in our [Vector Exp](../../programming_examples/basic/vector_exp/) example [test.cpp](../../programming_examples/basic/vector_exp/test.cpp). Take note of the data type and the size of the test vector. What do you notice? <img src="../../mlir_tutorials/images/answer1.jpg" title="We are testing 65536 values or 2^16, therefore testing all possible bfloat16 values through the approximation." height=25>
 

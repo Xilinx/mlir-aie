@@ -36,7 +36,9 @@ void scale_vectorized(T *a, T *c, int32_t factor, const int32_t N) {
   const int F = N / vec_factor;
   T fac = factor;
   for (int i = 0; i < F; i++)
-    chess_prepare_for_pipelining chess_loop_range(16, ) {
+    chess_prepare_for_pipelining     // compiler pragma
+    chess_loop_range(16, )           // compiler pragma
+    {
       aie::vector<T, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
       pA1 += vec_factor;
       aie::accum<acc32, vec_factor> cout = aie::mul(A0, fac);
@@ -57,7 +59,9 @@ void scale_vectorized<int32_t>(int32_t *a, int32_t *c, int32_t factor,
   int32_t *__restrict pC1 = c;
   const int F = N / vec_factor;
   for (int i = 0; i < F; i++)
-    chess_prepare_for_pipelining chess_loop_range(16, ) {
+    chess_prepare_for_pipelining     // compiler pragma
+    chess_loop_range(16, )           // compiler pragma
+    {
       aie::vector<int32_t, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
       pA1 += vec_factor;
       aie::accum<acc64, vec_factor> cout = aie::mul(A0, factor);
