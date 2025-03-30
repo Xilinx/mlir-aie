@@ -23,7 +23,7 @@
 # python3 GEMM_sweep.py --in_ab_type=i8 --out_c_type=i8 --b_col_maj=0 --m=96 --k=96 --n=112 --cont_coeff=4
 
 # # i8/i8 optimized mtk = 4k, ktn = 4k, B col-maj
-# python3 GEMM_sweep.py --in_ab_type=i8 --out_c_type=i8 --b_col_maj=1 --m=96 --k=96 --n=112 --cont_coeff=4
+python3 GEMM_sweep.py --in_ab_type=i8 --out_c_type=i8 --b_col_maj=1 --m=96 --k=96 --n=112 --cont_coeff=4
 
 
 
@@ -42,10 +42,10 @@
 
 ############## i16/i32 #################
 # i16/i32 optimized mtk = 4k, B row-maj
-python3 GEMM_sweep.py --in_ab_type=i16 --out_c_type=i32 --b_col_maj=0 --m=48 --k=100 --n=56 --cont_coeff=4
+# python3 GEMM_sweep.py --in_ab_type=i16 --out_c_type=i32 --b_col_maj=0 --m=48 --k=100 --n=56 --cont_coeff=4
 
-# i8/i8 optimized mtk = 4k, ktn = 4k, B col-maj
-python3 GEMM_sweep.py --in_ab_type=i16 --out_c_type=i32 --b_col_maj=1 --m=48 --k=100 --n=56 --cont_coeff=4
+# # i8/i8 optimized mtk = 4k, ktn = 4k, B col-maj
+# python3 GEMM_sweep.py --in_ab_type=i16 --out_c_type=i32 --b_col_maj=1 --m=48 --k=100 --n=56 --cont_coeff=4
 
 
 # ############### contiguous mtk, ktn #################

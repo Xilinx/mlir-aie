@@ -21,7 +21,7 @@ m ?= 32
 M ?= 4096
 k ?= 128
 K ?= 4096
-n ?= 32
+n ?= 128
 N ?= 4096
 
 npu_cols ?= 4
@@ -29,7 +29,7 @@ npu_cols ?= 4
 
 # set this flag to 1 for both row-major
 # else, 0 for B in col-major
-both_row?=0
+both_row?=1
 
 ifeq (${both_row}, 1)
 data_layout_DDR=A_row_B_row

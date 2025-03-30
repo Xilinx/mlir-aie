@@ -47,23 +47,23 @@ def my_passthrough(m, M, k, K, n, N, npu_cols, data_layout_DDR):
             
             # declares OFs in for A buffers
             of_ins_A = [
-                object_fifo(f"inA{i}", ShimTiles[i], MemTiles[i], 2, mem_tile_A_ty) 
+                object_fifo(f"inA{i}", ShimTiles[i], MemTiles[i], 1, mem_tile_A_ty) 
                 for i in range(npu_cols)
             ]
 
             # declares OFs in for B buffers
             of_ins_B = [
-                object_fifo(f"inB{i}", ShimTiles[i], MemTiles[i], 2, mem_tile_B_ty) 
+                object_fifo(f"inB{i}", ShimTiles[i], MemTiles[i], 1, mem_tile_B_ty) 
                 for i in range(npu_cols)
             ]
 
             of_outs_A = [
-                object_fifo(f"outA{i}", MemTiles[i], ShimTiles[i], 2, mem_tile_A_ty) 
+                object_fifo(f"outA{i}", MemTiles[i], ShimTiles[i], 1, mem_tile_A_ty) 
                 for i in range(npu_cols)
             ]
 
             of_outs_B = [
-                object_fifo(f"outB{i}", MemTiles[i], ShimTiles[i], 2, mem_tile_B_ty) 
+                object_fifo(f"outB{i}", MemTiles[i], ShimTiles[i], 1, mem_tile_B_ty) 
                 for i in range(npu_cols)
             ]
 
@@ -97,7 +97,6 @@ def my_passthrough(m, M, k, K, n, N, npu_cols, data_layout_DDR):
 
                 for i in range(npu_cols):
 
-                    
                     # A is always in row-major
                     sizes_A_row_maj = [M//m//npu_cols, K//k, m, k]
                     strides_A_row_maj = [m*K*npu_cols, k, K, 1]
@@ -126,30 +125,37 @@ def my_passthrough(m, M, k, K, n, N, npu_cols, data_layout_DDR):
                     # row-major
                     sizes_B_row_maj = [N//n//npu_cols, K//k, k, n]
                     strides_B_row_maj = [n*npu_cols, k*N, N, 1]
+                    offsets_B_row_maj = [0, 0, 0, n*i]
 
                     # col-major
                     sizes_B_col_maj = [N//n//npu_cols, K//k, n, k]
                     strides_B_col_maj = [K*n*npu_cols, k, K, 1]
+                    offsets_B_col_maj = [0, 0, 0, K*n*i] 
 
+                    
                     npu_dma_memcpy_nd(
                         metadata=of_ins_B[i],
                         bd_id=1,
                         mem=B,
-                        offsets=([0, 0, 0, K*n*i]),
+                        offsets=(offsets_B_row_maj if data_layout_DDR=="A_row_B_row" else
+                                offsets_B_col_maj),
                         sizes=(sizes_B_row_maj if data_layout_DDR=="A_row_B_row" else
                                 sizes_B_col_maj),
                         strides=(strides_B_row_maj if data_layout_DDR=="A_row_B_row" else
                                 strides_B_col_maj),
                     )
 
-                    
+                    # offset for outputs (writing)
+                    write_off_B_row_maj = [0, 0, 0, M*K + n*i]
+                    write_off_B_col_maj = [0, 0, 0, M*K + K*n*i]
 
                     # outputs B
                     npu_dma_memcpy_nd(
                         metadata=of_outs_B[i], 
                         bd_id=3, 
                         mem=C,
-                        offsets=([0, 0, 0, M*K + K*n*i]),   # A writes in first M*K and B after that
+                        offsets=(write_off_B_row_maj if data_layout_DDR=="A_row_B_row" else
+                                write_off_B_col_maj),   # A writes in first M*K and B after that
                         sizes=(sizes_B_row_maj if data_layout_DDR=="A_row_B_row" else
                                 sizes_B_col_maj),
                         strides=(strides_B_row_maj if data_layout_DDR=="A_row_B_row" else
