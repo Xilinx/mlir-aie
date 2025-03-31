@@ -67,6 +67,13 @@ public:
     TK_AIE2_NPU1_4Col,
     TK_AIE2_NPU1_Last,
     TK_AIE2_NPU2 = TK_AIE2_NPU1_Last,
+    TK_AIE2_NPU2_1Col,
+    TK_AIE2_NPU2_2Col,
+    TK_AIE2_NPU2_3Col,
+    TK_AIE2_NPU2_4Col,
+    TK_AIE2_NPU2_5Col,
+    TK_AIE2_NPU2_6Col,
+    TK_AIE2_NPU2_7Col,
     TK_AIE2_NPU2_Last,
     TK_AIE2_Last = TK_AIE2_NPU2_Last,
   };
@@ -618,7 +625,7 @@ public:
   }
 };
 
-// A sub-portion of the NPU
+// A sub-portion of the Phoenix NPU
 class VirtualizedNPUTargetModel : public BaseNPUTargetModel {
   int cols;
 
@@ -644,7 +651,7 @@ public:
   }
 };
 
-// The full Strix. NPU
+// The full Strix NPU
 class NPU2TargetModel : public BaseNPUTargetModel {
 public:
   NPU2TargetModel() : BaseNPUTargetModel(TK_AIE2_NPU2) {}
@@ -663,6 +670,32 @@ public:
 
   std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const override;
+};
+
+// A sub-portion of the Strix NPU
+class VirtualizedNPU2TargetModel : public BaseNPUTargetModel {
+  int cols;
+
+public:
+  VirtualizedNPU2TargetModel(int _cols)
+      : BaseNPUTargetModel(static_cast<TargetModelKind>(
+            static_cast<std::underlying_type_t<TargetModelKind>>(TK_AIE2_NPU2) +
+            _cols)),
+        cols(_cols) {
+    // Device properties initialization
+    addModelProperty(AIETargetModel::IsVirtualized);
+  }
+
+  uint32_t getAddressGenGranularity() const override { return 32; }
+
+  int columns() const override { return cols; }
+
+  bool isShimNOCTile(int col, int row) const override { return row == 0; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() >= TK_AIE2_NPU2_1Col &&
+           model->getKind() < TK_AIE2_NPU2_Last;
+  }
 };
 
 } // namespace xilinx::AIE

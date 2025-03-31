@@ -189,6 +189,13 @@ static VirtualizedNPUTargetModel NPUmodel2col(2);
 static VirtualizedNPUTargetModel NPUmodel3col(3);
 static VirtualizedNPUTargetModel NPUmodel4col(4);
 static NPU2TargetModel NPU2model;
+static VirtualizedNPU2TargetModel NPU2model1col(1);
+static VirtualizedNPU2TargetModel NPU2model2col(2);
+static VirtualizedNPU2TargetModel NPU2model3col(3);
+static VirtualizedNPU2TargetModel NPU2model4col(4);
+static VirtualizedNPU2TargetModel NPU2model5col(5);
+static VirtualizedNPU2TargetModel NPU2model6col(6);
+static VirtualizedNPU2TargetModel NPU2model7col(7);
 
 const AIETargetModel &xilinx::AIE::getTargetModel(Operation *op) {
   if (auto t = dyn_cast<AIETarget>(op))
@@ -221,6 +228,20 @@ const AIETargetModel &xilinx::AIE::getTargetModel(AIEDevice device) {
     return NPUmodel4col;
   case AIEDevice::npu2:
     return NPU2model;
+  case AIEDevice::npu2_1col:
+    return NPU2model1col;
+  case AIEDevice::npu2_2col:
+    return NPU2model2col;
+  case AIEDevice::npu2_3col:
+    return NPU2model3col;
+  case AIEDevice::npu2_4col:
+    return NPU2model4col;
+  case AIEDevice::npu2_5col:
+    return NPU2model5col;
+  case AIEDevice::npu2_6col:
+    return NPU2model6col;
+  case AIEDevice::npu2_7col:
+    return NPU2model7col;
   }
   return VC1902model;
 }
