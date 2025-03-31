@@ -305,7 +305,7 @@ static inline void matmul_vectorized_8x8x8_i8_i16(const int8 *__restrict pA,
 
 // int8 MatMul kernel definion with int32 outputs.
 template <unsigned m, unsigned k, unsigned n>
-static inline void matmul_vectorized_8x8x8_i8_i32(const int8 *__restrict pA,
+static inline void matmul_vectorized_4x8x8_i8_i32(const int8 *__restrict pA,
                                                   const int8 *__restrict pB,
                                                   int32 *__restrict pC) {
 
