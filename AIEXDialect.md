@@ -1271,6 +1271,45 @@ The SelectOp in the above example will select the tiles %herd[0][0], %herd[1][0]
 
 
 
+### `aiex.set_lock` (::xilinx::AIEX::SetLockOp)
+
+_Set the value of a lock_
+
+Syntax:
+
+```
+operation ::= `aiex.set_lock` `(` $lock `,` $value `)` attr-dict
+```
+
+This operation sets the value of `lock` inside of a RuntimeSequenceOp.
+The operation is non blocking and does not offer any synchronization guarantees.
+Should be used in combination with blocking operations.
+
+Example:
+```
+  %tile22 = aie.tile(2, 2)
+  %lock22_0 = aie.lock(%tile22, 0)
+  ...
+  aiex.set_lock(%lock22_0, 5)
+```
+
+Traits: `HasParent<RuntimeSequenceOp>`, `SkipAccessibilityCheckTrait`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lock` | index |
+
+
+
 ### `aiex.token` (::xilinx::AIEX::TokenOp)
 
 _Declare a token (a logical lock)_

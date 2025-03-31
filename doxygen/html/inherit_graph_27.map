@@ -1,5 +1,5 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="Node000000" href="$classAIERoutePathfinderFlowsBase.html" title=" " alt="" coords="5,5,221,31"/>
-<area shape="rect" id="Node000001" href="$structxilinx_1_1AIE_1_1AIEPathfinderPass.html" title="Overall Flow: rewrite switchboxes to assign unassigned connections, ensure this can be done concurren..." alt="" coords="269,5,480,31"/>
-<area shape="poly" id="edge25_Node000000_Node000001" title=" " alt="" coords="235,15,269,15,269,21,235,21"/>
+<area shape="rect" id="Node000000" href="$classAIEObjectFifoStatefulTransformBase.html" title=" " alt="" coords="5,5,263,31"/>
+<area shape="rect" id="Node000001" href="$structAIEObjectFifoStatefulTransformPass.html" title=" " alt="" coords="311,5,565,31"/>
+<area shape="poly" id="edge25_Node000000_Node000001" title=" " alt="" coords="276,15,310,15,310,21,276,21"/>
 </map>

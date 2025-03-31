@@ -1,5 +1,5 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="Node000000" href="$classAIEVectorOptBase.html" title=" " alt="" coords="5,5,144,31"/>
-<area shape="rect" id="Node000001" href="$structAIEVectorOptPass.html" title=" " alt="" coords="192,5,328,31"/>
-<area shape="poly" id="edge28_Node000000_Node000001" title=" " alt="" coords="157,15,192,15,192,21,157,21"/>
+<area shape="rect" id="Node000000" href="$classAIEVectorizeBase.html" title=" " alt="" coords="5,5,140,31"/>
+<area shape="rect" id="Node000001" href="$structAIEVectorize.html" title=" " alt="" coords="188,5,291,31"/>
+<area shape="poly" id="edge28_Node000000_Node000001" title=" " alt="" coords="154,15,188,15,188,21,154,21"/>
 </map>

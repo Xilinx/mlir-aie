@@ -86,6 +86,10 @@ This pass replaces AIE.multicast operation with the equivalent number of AIE.flo
 operations. The lowered AIE.flow operations have the same source port but different
 destinations.
 
+### `-aie-lower-set-lock`
+
+_Lowers all aiex.set_lock operations to npu.write32Op_
+
 ### `-aie-materialize-bd-chains`
 
 _Concretize aie.bd_chain ops at aiex.start_task use sites_

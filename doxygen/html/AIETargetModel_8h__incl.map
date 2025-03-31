@@ -1,17 +1,11 @@
 <map id="include/aie/Dialect/AIE/IR/AIETargetModel.h" name="include/aie/Dialect/AIE/IR/AIETargetModel.h">
-<area shape="rect" id="Node000001" title=" " alt="" coords="520,5,701,45"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="335,5,516,45"/>
 <area shape="rect" id="Node000002" href="$AIEEnums_8h.html" title=" " alt="" coords="186,93,321,133"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="533,48,334,95,333,90,532,43"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="389,48,304,90,302,85,386,43"/>
 <area shape="rect" id="Node000006" title=" " alt="" coords="345,101,505,126"/>
-<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="571,48,464,97,461,92,569,43"/>
-<area shape="rect" id="Node000007" title=" " alt="" coords="529,101,596,126"/>
-<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="602,47,578,90,574,87,598,44"/>
-<area shape="rect" id="Node000008" title=" " alt="" coords="620,101,700,126"/>
-<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="624,44,649,87,644,90,619,47"/>
-<area shape="rect" id="Node000009" title=" " alt="" coords="725,101,785,126"/>
-<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="644,43,725,91,723,96,641,48"/>
-<area shape="rect" id="Node000010" title=" " alt="" coords="809,101,871,126"/>
-<area shape="poly" id="edge9_Node000001_Node000010" title=" " alt="" coords="667,43,798,91,803,93,801,98,796,96,665,48"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="428,46,428,87,423,87,423,46"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="529,101,609,126"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="458,43,540,91,537,96,456,48"/>
 <area shape="rect" id="Node000003" title=" " alt="" coords="5,189,165,214"/>
 <area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="218,136,121,185,119,180,215,131"/>
 <area shape="rect" id="Node000004" title=" " alt="" coords="190,189,317,214"/>

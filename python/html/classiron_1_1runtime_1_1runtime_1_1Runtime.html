@@ -124,6 +124,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a374badc82bbd7649468f72f637818399"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a77189d41cb28ba32bbf24cf23085c839" id="r_a77189d41cb28ba32bbf24cf23085c839"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a77189d41cb28ba32bbf24cf23085c839">inline_ops</a> (self, Callable inline_func, list inline_args)</td></tr>
 <tr class="separator:a77189d41cb28ba32bbf24cf23085c839"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aeb89d96ce109977a224b651413444fc6" id="r_aeb89d96ce109977a224b651413444fc6"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#aeb89d96ce109977a224b651413444fc6">set_barrier</a> (self, <a class="el" href="classiron_1_1worker_1_1WorkerRuntimeBarrier.html">WorkerRuntimeBarrier</a> barrier, int value)</td></tr>
+<tr class="separator:aeb89d96ce109977a224b651413444fc6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3e917dfd0851b02e6b31d23451acb40b" id="r_a3e917dfd0851b02e6b31d23451acb40b"><td class="memItemLeft" align="right" valign="top">list[<a class="el" href="classiron_1_1worker_1_1Worker.html">Worker</a>]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a3e917dfd0851b02e6b31d23451acb40b">workers</a> (self)</td></tr>
 <tr class="separator:a3e917dfd0851b02e6b31d23451acb40b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a449b06586ba0966ad2e869a8ba0f7105" id="r_a449b06586ba0966ad2e869a8ba0f7105"><td class="memItemLeft" align="right" valign="top">list[<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html">ObjectFifoHandle</a>]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a449b06586ba0966ad2e869a8ba0f7105">fifos</a> (self)</td></tr>
@@ -481,6 +483,46 @@ Raises:
 
 Yields:
     _type_: Handles to the buffers matching the input types.
+</pre> 
+</div>
+</div>
+<a id="aeb89d96ce109977a224b651413444fc6" name="aeb89d96ce109977a224b651413444fc6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aeb89d96ce109977a224b651413444fc6">&#9670;&#160;</a></span>set_barrier()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.runtime.runtime.Runtime.set_barrier </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="classiron_1_1worker_1_1WorkerRuntimeBarrier.html">WorkerRuntimeBarrier</a>&#160;</td>
+          <td class="paramname"><em>barrier</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>value</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Set the value of a worker barrier.
+This should be called within a Runtime.sequence() context.
+
+Args:
+    barrier (WorkerRuntimeBarrier): The WorkerRuntimeBarrier to set.
+    value (int): The value to set the barrier to.
 </pre> 
 </div>
 </div>
