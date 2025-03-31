@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate -aie-npu-to-binary -aie-output-binary=true %s -o ./roundtrip_npu1_4col_cfg.bin
+// RUN: aie-translate -aie-npu-to-binary %s -o ./roundtrip_npu1_4col_cfg.bin
 // RUN: %python txn2mlir.py -f ./roundtrip_npu1_4col_cfg.bin | FileCheck %s
 
 // CHECK: aie.device(npu1_4col)
