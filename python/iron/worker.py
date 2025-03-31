@@ -10,13 +10,15 @@ import sys
 from typing import Callable
 
 from .. import ir  # type: ignore
-from ..dialects.aie import core
+from ..dialects.aie import core, lock, use_lock
+from ..dialects.aiex import set_lock_value, LockAction
 from ..helpers.dialects.ext.scf import _for as range_
 from .device import PlacementTile, AnyComputeTile, Tile
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .kernel import Kernel
 from .globalbuffer import GlobalBuffer
+from .resolvable import Resolvable
 
 
 class Worker(ObjectFifoEndpoint):
@@ -75,6 +77,7 @@ class Worker(ObjectFifoEndpoint):
         bin_names = set()
         self._fifos = []
         self._buffers = []
+        self._barriers = []
 
         # Check arguments to the core. Some information is saved for resolution.
         for arg in self.fn_args:
@@ -92,6 +95,8 @@ class Worker(ObjectFifoEndpoint):
                     "must give an ObjectFifoHandle obtained through "
                     "ObjectFifo.prod() or ObjectFifo.cons()"
                 )
+            elif isinstance(arg, WorkerRuntimeBarrier):
+                self._barriers.append(arg)
             # We assume other arguments are metaprogramming (e.g, Python args)
             # This could allow some errors to sink through, but we allow it for now.
             # TODO: this could be cleaned up through creation of a MetaArgs struct, so you
@@ -141,6 +146,12 @@ class Worker(ObjectFifoEndpoint):
         my_tile = self._tile.op
         my_link = self.link_with
 
+        # Create the necessary locks for the core operation to synchronize with the runtime sequence
+        # and register them in the corresponding barriers.
+        for barrier in self._barriers:
+            l = lock(my_tile)
+            barrier._add_worker_lock(l)
+
         # Set the current_core_placement context variable to the current placement.
         # If there are objects within a core_fn that that need a placement, they can
         # query this value, e.g., Worker.current_core_placement.get()
@@ -153,3 +164,52 @@ class Worker(ObjectFifoEndpoint):
 
         # Once we are done resolving the core, remove the placement context information
         self.current_core_placement.set(None)
+
+
+class WorkerRuntimeBarrier:
+    """A barrier allowing individual workers to synchronize with the runtime sequence."""
+
+    def __init__(self, initial_value: int = 0):
+        self.initial_value = initial_value
+        self.worker_locks = []
+
+    def wait_for_value(self, value: int):
+        """
+        Should be called from inside a core function.
+        Wait for the barrier to be set to `value`.
+
+        Args:
+            value (int): The value to wait for.
+        """
+        # Here this is assuming that the we are currently placing the last added lock
+        # And therefore that wait_for_value operations are placed just after their corresponding Worker...
+        # This is a pretty bad assumption, think about an alternative way to solve this
+        if len(self.worker_locks) == 0:
+            raise ValueError(
+                "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
+            )
+        use_lock(self.worker_locks[-1], LockAction.Acquire, value=value)
+
+    def _add_worker_lock(self, lock):
+        """Register an additional lock in the barrier."""
+        self.worker_locks.append(lock)
+
+    def _set_barrier_value(self, value: int):
+        """Set the value of the barrier."""
+        for lock in self.worker_locks:
+            set_lock_value(lock, value)
+
+
+class _BarrierSetOp(Resolvable):
+    """A resolvable instance of a WorkerRuntimeBarrier. This should not be used directly."""
+
+    def __init__(self, barrier: WorkerRuntimeBarrier, value: int):
+        self.barrier: WorkerRuntimeBarrier = barrier
+        self.value: int = value
+
+    def resolve(
+        self,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
+    ) -> None:
+        self.barrier._set_barrier_value(self.value)
