@@ -210,10 +210,10 @@ def AIECtrlPacketInferTiles : Pass<"aie-ctrl-packet-infer-tiles", "AIE::DeviceOp
   ];
 }
 
-def AIEXLowerSetLock : Pass<"aiex-lower-set-lock", "AIE::DeviceOp"> {
+def AIELowerSetLock : Pass<"aie-lower-set-lock", "AIE::DeviceOp"> {
   let summary = "Lowers all aiex.set_lock operations to npu.write32Op";
 
-  let constructor = "xilinx::AIEX::createAIEXLowerSetLockPass()";
+  let constructor = "xilinx::AIEX::createAIELowerSetLockPass()";
   let dependentDialects = [
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",

@@ -1,14 +1,14 @@
-//===- lower_set_lock.mlir ------------------------------------------------*- MLIR -*-===//
+//===- lower_set_lock.mlir -------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2025 Xilinx Inc.
+// Copyright (C) 2025, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aiex-lower-set-lock %s | FileCheck %s
+// RUN: aie-opt --aie-lower-set-lock %s | FileCheck %s
 
 module @test_simple_lock_set {
   aie.device(npu2) {

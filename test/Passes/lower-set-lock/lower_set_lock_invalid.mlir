@@ -1,14 +1,14 @@
-//===- lower_set_lock_invalid.mlir ------------------------------------------------*- MLIR -*-===//
+//===- lower_set_lock_invalid.mlir -----------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2025 Xilinx Inc.
+// Copyright (C) 2025, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt -split-input-file --aiex-lower-set-lock %s 2>&1 | FileCheck %s
+// RUN: not aie-opt -split-input-file --aie-lower-set-lock %s 2>&1 | FileCheck %s
 
 module @test_invalid_lock_value {
   aie.device(npu2) {
