@@ -154,7 +154,7 @@ void registerAIETranslations() {
       llvm::cl::desc("Enable cores in CDO"));
 
   static llvm::cl::opt<bool> outputBinary(
-      "aie-output-binary", llvm::cl::init(false),
+      "aie-output-binary", llvm::cl::init(true),
       llvm::cl::desc(
           "Select binary (true) or text (false) output for supported "
           "translations. e.g. aie-npu-to-binary, aie-ctrlpkt-to-bin"));
