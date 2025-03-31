@@ -10,7 +10,7 @@
 
 # Vector Scalar Multiplication:
 
-This IRON design flow example, called "Vector Scalar Multiplication", demonstrates a simple AIE implementation for vectorized vector scalar multiply on a vector of integers. In this design, a single AIE core performs the vector scalar multiply operation on a vector with a default length `4096`. The kernel is configured to work on `1024` element-sized subvectors, and is invoked multiple times to complete the full scaling. The example consists of two primary design files: `aie2.py` and `scale.cc`, and a testbench `test.cpp` or `test.py`.
+This IRON design flow example, called "Vector Scalar Multiplication", demonstrates a simple AIE implementation for vectorized vector scalar multiply on a vector of integers. In this design, a single AIE core performs the vector scalar multiply operation on a vector with a default length `4096`. The kernel is configured to work on `1024` element-sized subvectors, and is invoked multiple times to complete the full scaling. The example consists of two primary design files: `vector_scalar_mul.py` and `scale.cc`, and a testbench `test.cpp` or `test.py`.
 
 ## Source Files Overview
 
@@ -70,7 +70,7 @@ This design performs a memcpy operation on a vector of input data. The AIE desig
 
 1. **Vectorized Scaling:** The `scale_vectorized()` function processes multiple data elements simultaneously, taking advantage of AIE vector datapath capabilities to load, multiply and store data elements.
 
-1. **C-style Wrapper Functions:** `vector_scalar_mul_aie_scalar()` and `vector_scalar_mul_aie()` are two C-style wrapper functions to call the templated `scale_vectorized()` and `scale_scalar()` implementations inside the AIE design implemented in `aie2.py`. The functions are provided for `int32_t`.
+1. **C-style Wrapper Functions:** `vector_scalar_mul_aie_scalar()` and `vector_scalar_mul_aie()` are two C-style wrapper functions to call the templated `scale_vectorized()` and `scale_scalar()` implementations inside the AIE design implemented in `vector_scalar_mul.py`. The functions are provided for `int32_t`.
 
 ## Usage
 
