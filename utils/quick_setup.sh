@@ -22,8 +22,8 @@ if [[ $WSL_DISTRO_NAME == "" ]]; then
     echo "XRT is not installed"
     return 1
   fi
-  NPU=`/opt/xilinx/xrt/bin/xrt-smi examine | grep RyzenAI`
-  if [[ $NPU == *"RyzenAI"* ]]; then
+  NPU=`/opt/xilinx/xrt/bin/xrt-smi examine | grep NPU`
+  if [[ $NPU == *"NPU"* ]]; then
     echo "Ryzen AI NPU found:"
     echo $NPU
   else
