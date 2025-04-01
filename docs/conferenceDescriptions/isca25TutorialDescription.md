@@ -19,7 +19,7 @@ Start time: 8 am
 
 Location: Tokyo, Japan  
 
-Prerequisites:
+### Prerequisites:
 - Please bring your laptop so that you can SSH into our Ryzen™ AI-enabled miniPCs for the hands-on exercises.
 - Knowledge in basic computer architecture, basic programming (Python), basic algorithms is required.
 - Knowledge of vision pipelines and ML is not necessary but a plus.
