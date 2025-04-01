@@ -166,7 +166,6 @@ def my_matmul(
             # AIE-array data movement with object fifos
             # Input A
             inA = object_fifo("inA", shim_tile, mem_tile, 2, a_ty)
-
             memA = object_fifo(
                 "memA",
                 mem_tile,
@@ -184,7 +183,6 @@ def my_matmul(
                     else []
                 ),
             )
-
             object_fifo_link(inA, memA)
 
             # Input B
