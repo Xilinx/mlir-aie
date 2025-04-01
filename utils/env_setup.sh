@@ -37,6 +37,15 @@ if [[ $PEANO_INSTALL_DIR == "" ]]; then
   export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
 fi
 
+NPU=`xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Kracken"`
+# Check if the current environment is NPU2
+# npu4 => Strix, npu6 => Kracken
+if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Kracken"; then
+    export NPU2=1
+else
+    export NPU2=0
+fi
+
 export PATH=${MLIR_AIE_INSTALL_DIR}/bin:${PATH} 
 export PYTHONPATH=${MLIR_AIE_INSTALL_DIR}/python:${PYTHONPATH}
 export LD_LIBRARY_PATH=${MLIR_AIE_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}

@@ -22,9 +22,9 @@ if [[ $WSL_DISTRO_NAME == "" ]]; then
     echo "XRT is not installed"
     return 1
   fi
-  NPU=`/opt/xilinx/xrt/bin/xrt-smi examine | grep RyzenAI`
-  if [[ $NPU == *"RyzenAI"* ]]; then
-    echo "Ryzen AI NPU found:"
+  NPU=`xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Kracken"`
+  if [[ $NPU == *"NPU Phoenix"* || $NPU == *"NPU Strix"* || $NPU == *"NPU Strix Halo"* || $NPU == *"NPU Kracken"* ]]; then
+    echo "AMD XDNA NPU found: "
     echo $NPU
   else
     echo "NPU not found. Is the amdxdna driver installed?"
@@ -35,7 +35,7 @@ else
 fi
 # Check if the current environment is NPU2
 # npu4 => Strix, npu6 => Kracken
-if echo "$NPU" | grep -qiE "npu4|npu6"; then
+if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Kracken"; then
     export NPU2=1
 else
     export NPU2=0
