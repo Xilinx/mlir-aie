@@ -198,4 +198,4 @@ MLIR Tutorials
 
 -----
 
-<p align="center">Copyright&copy; 2019-2023 Advanced Micro Devices, Inc</p>
+<p align="center">Copyright&copy; 2019-2024 Advanced Micro Devices, Inc</p>
