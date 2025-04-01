@@ -37,6 +37,10 @@ if [[ $PEANO_INSTALL_DIR == "" ]]; then
   export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
 fi
 
+XRTSMI=`which xrt-smi`
+if ! test -f "$XRTSMI"; then 
+  source /opt/xilinx/xrt/setup.sh
+fi
 NPU=`/opt/xilinx/xrt/bin/xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Kracken"`
 # Check if the current environment is NPU2
 # npu4 => Strix, npu6 => Kracken
