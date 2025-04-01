@@ -37,7 +37,7 @@ if [[ $PEANO_INSTALL_DIR == "" ]]; then
   export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
 fi
 
-NPU=`xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Kracken"`
+NPU=`/opt/xilinx/xrt/bin/xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Kracken"`
 # Check if the current environment is NPU2
 # npu4 => Strix, npu6 => Kracken
 if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Kracken"; then
