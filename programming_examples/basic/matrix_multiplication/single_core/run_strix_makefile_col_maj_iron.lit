@@ -6,5 +6,5 @@
 // RUN: mkdir -p test_b_col_maj_stx_iron_s
 // RUN: cd test_b_col_maj_stx_iron_s
 // RUN: make -f %S/Makefile clean
-// RUN: env use_iron=1 make -f %S/Makefile devicename=npu2
-// RUN: %run_on_2npu env use_iron=1 make -f %S/Makefile run devicename=npu2
+// RUN: env use_iron=1 b_col_maj=1 make -f %S/Makefile devicename=npu2
+// RUN: %run_on_2npu env use_iron=1 b_col_maj=1 make -f %S/Makefile run devicename=npu2
