@@ -14,7 +14,9 @@ This tutorial will cover the following key topics:
 ## Agenda
 
 Date: Sunday June 22rd 2025
+
 Start time: 8 am
+
 Location: Tokyo, Japan  
 
 Prerequisites:
