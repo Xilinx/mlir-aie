@@ -11,6 +11,7 @@
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=single_core
 targetname=single_core
+# targetname=single_core_no_inter_runtime
 kernels=mm
 
 # M, K, N: final GEMM dimensions

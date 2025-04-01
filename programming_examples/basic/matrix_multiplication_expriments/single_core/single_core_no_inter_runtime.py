@@ -46,7 +46,6 @@ def main():
         choices=["bf16", "i8", "i16", "f32", "i32"],
         default="i32",
     )
-    argparser.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
     argparser.add_argument("--trace_size", type=int, default=0)
     args = argparser.parse_args()
     my_matmul(
@@ -59,7 +58,6 @@ def main():
         args.n,
         args.dtype_in,
         args.dtype_out,
-        args.b_col_maj,
         args.trace_size,
     )
 
@@ -68,9 +66,7 @@ def ceildiv(a, b):
     return (a + b - 1) // b
 
 
-def my_matmul(
-    dev, M, K, N, m, k, n, dtype_in_str, dtype_out_str, b_col_maj, trace_size
-):
+def my_matmul(dev, M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
 
     assert M % m == 0
     assert K % k == 0
@@ -129,6 +125,12 @@ def my_matmul(
     N_div_n = N // n
     tiles = M_div_m * N_div_n
 
+    # Matrix B: KxN, submatrices b: kxn
+    k_x_N = k * N
+
+    # Output Matrix C: MxN
+    m_x_N = m * N
+
     with mlir_mod_ctx() as ctx:
 
         C_sz_in_bytes = C_sz * np.dtype(dtype_out).itemsize
@@ -147,13 +149,8 @@ def my_matmul(
             # AIE Core Function declarations
             func_type = "" if vectorized else "scalar_"
             zero = external_func(f"zero_{func_type}{dtype_out_str}", inputs=[c_ty])
-            matmul_func_name = (
-                f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}"
-                if not b_col_maj
-                else f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}_b_col_maj"
-            )
             matmul = external_func(
-                matmul_func_name,
+                f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}",
                 inputs=[a_ty, b_ty, c_ty],
             )
 
@@ -187,33 +184,23 @@ def my_matmul(
 
             # Input B
             inB = object_fifo("inB", shim_tile, mem_tile, 2, b_ty)
-
-            B_transformations = []
-            if vectorized:
-                if not b_col_maj:
-                    B_transformations = [
-                        (k // s, s * n),
-                        (n // t, t),
-                        (s, n),
-                        (t, 1),
-                    ]
-                else:
-                    B_transformations = [
-                        (n // t, t * k),
-                        (k // s, s),
-                        (t, k),
-                        (s, 1),
-                    ]
-
             memB = object_fifo(
                 "memB",
                 mem_tile,
                 compute_tile2,
                 2,
                 b_ty,
-                B_transformations,
+                (
+                    [
+                        (k // s, s * n),
+                        (n // t, t),
+                        (s, n),
+                        (t, 1),
+                    ]
+                    if vectorized
+                    else []
+                ),
             )
-
             object_fifo_link(inB, memB)
 
             # Output C
@@ -307,61 +294,47 @@ def my_matmul(
                         ],
                     )
 
-                # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
-                rows_per_block = 4
+                # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
+                rows_per_block = 5
                 for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
-                    # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
-                    # that's what this loop is for
-                    for pingpong in [0, 1]:
-                        C_row_offset = (
-                            tile_row_block * rows_per_block * m * N
-                            + pingpong * rows_per_block // 2 * m * N
+
+                    C_row_offset = tile_row_block * rows_per_block * m * N
+
+                    num_tile_rows = min(
+                        [rows_per_block, M_div_m - tile_row_block * rows_per_block]
+                    )
+
+                    bd_id_base = 0
+
+                    npu_dma_memcpy_nd(
+                        metadata=outC,
+                        bd_id=bd_id_base,
+                        mem=C,
+                        offsets=[0, 0, 0, C_row_offset],
+                        sizes=[num_tile_rows, N_div_n, m, n],
+                        strides=[m_x_N, n, N, 1],
+                    )
+
+                    for tile_row in range(num_tile_rows):
+                        A_row_offset = (
+                            (tile_row_block * rows_per_block + tile_row) * m * K
                         )
-                        row_base = (
-                            tile_row_block * rows_per_block
-                            + pingpong * rows_per_block // 2
-                        )
-                        bd_id_base = 8 * pingpong
-                        num_tile_rows = min([rows_per_block // 2, M_div_m - row_base])
-                        if num_tile_rows <= 0:
-                            # At the very last iteration, we may not need a 'pong' iteration
-                            break
                         npu_dma_memcpy_nd(
-                            metadata=outC,
-                            bd_id=bd_id_base,
-                            mem=C,
-                            offsets=[0, 0, 0, C_row_offset],
-                            sizes=[num_tile_rows, N // n, m, n],
-                            strides=[m * N, n, N, 1],
+                            metadata=inA,
+                            bd_id=bd_id_base + 2 * tile_row + 1,
+                            mem=A,
+                            offsets=[0, 0, 0, A_row_offset],
+                            sizes=[N_div_n, K_div_k, m, k],
+                            strides=[0, k, K, 1],
                         )
-                        for tile_row in range(num_tile_rows):
-                            A_row_offset = (row_base + tile_row) * m * K
-                            npu_dma_memcpy_nd(
-                                metadata=inA,
-                                bd_id=bd_id_base + 2 * tile_row + 1,
-                                mem=A,
-                                offsets=[0, 0, 0, A_row_offset],
-                                sizes=[N // n, K // k, m, k],
-                                strides=[0, k, K, 1],
-                            )
-
-                            if not b_col_maj:
-                                B_sizes = [N // n, K // k, k, n]
-                                B_strides = [n, k * N, N, 1]
-                            else:
-                                B_sizes = [N // n, K // k, n, k]
-                                B_strides = [n * K, k, K, 1]
-
-                            npu_dma_memcpy_nd(
-                                metadata=inB,
-                                bd_id=bd_id_base + 2 * tile_row + 2,
-                                mem=B,
-                                sizes=B_sizes,
-                                strides=B_strides,
-                            )
-                        if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
-                            dma_wait(outC)
-                dma_wait(outC)
+                        npu_dma_memcpy_nd(
+                            metadata=inB,
+                            bd_id=bd_id_base + 2 * tile_row + 2,
+                            mem=B,
+                            sizes=[N_div_n, K_div_k, k, n],
+                            strides=[n, k_x_N, N, 1],
+                        )
+                    dma_wait(outC)
 
     print(ctx.module)
 

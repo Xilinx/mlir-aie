@@ -19,11 +19,11 @@ device_name ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 all: build/final.xclbin build/insts.bin
 
 targetname = DDR_bandwidth_test
-m ?= 32
+m ?= 64
 M ?= 8192
 k ?= 512
 K ?= 8192
-n ?= 512
+n ?= 64
 N ?= 8192
 
 npu_cols ?= 8
@@ -31,7 +31,7 @@ npu_cols ?= 8
 
 # set this flag to 1 for both row-major
 # else, 0 for B in col-major
-both_row?=1
+both_row?=0
 
 ifeq (${both_row}, 1)
 data_layout_DDR=A_row_B_row
