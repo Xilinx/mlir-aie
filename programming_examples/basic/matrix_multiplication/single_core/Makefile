@@ -19,9 +19,9 @@ K?=512
 N?=512
 
 # m, k, n: single AIE core GEMM dimensions
-m?=32
-k?=32
-n?=32
+m?=64
+k?=64
+n?=64
 
 b_col_maj?=0
 

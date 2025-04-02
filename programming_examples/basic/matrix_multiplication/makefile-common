@@ -34,8 +34,8 @@ current_dir := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 include ${current_dir}../../makefile-common
 
 
-dtype_in?=i16
-dtype_out?=i32
+dtype_in?=i8
+dtype_out?=i16
 trace_size?=65536
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
