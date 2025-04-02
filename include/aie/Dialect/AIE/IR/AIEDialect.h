@@ -15,17 +15,11 @@
 
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/Types.h"
 
 namespace xilinx::AIE {
 
@@ -95,58 +89,8 @@ void registerAIETranslations();
 /////////////////////// Custom Types for the Dialect ///////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-namespace xilinx::AIE {
-namespace detail {
-struct AIEObjectFifoTypeStorage;
-}
-
-/// This class defines the AIE ObjectFifo type.
-class AIEObjectFifoType
-    : public mlir::Type::TypeBase<AIEObjectFifoType, mlir::Type,
-                                  detail::AIEObjectFifoTypeStorage> {
-public:
-  /// Inherit some necessary constructors from 'TypeBase'.
-  using Base::Base;
-
-  /// Create an instance of a `ObjectFifoType` with the given element type.
-  static AIEObjectFifoType get(mlir::MemRefType elementType);
-
-  /// This method is used to verify the construction invariants.
-  static mlir::LogicalResult
-  verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-         mlir::MemRefType elementType);
-
-  static constexpr llvm::StringLiteral name = "objectfifo";
-  /// Returns the element type of this ObjectFifoType.
-  mlir::MemRefType getElementType();
-};
-
-namespace detail {
-struct AIEObjectFifoSubviewTypeStorage;
-}
-
-/// This class defines the AIE ObjectFifoSubview type.
-class AIEObjectFifoSubviewType
-    : public mlir::Type::TypeBase<AIEObjectFifoSubviewType, mlir::Type,
-                                  detail::AIEObjectFifoSubviewTypeStorage> {
-public:
-  /// Inherit some necessary constructors from 'TypeBase'.
-  using Base::Base;
-
-  /// Create an instance of a `SubviewType` with the given element type.
-  static AIEObjectFifoSubviewType get(mlir::MemRefType elementType);
-
-  /// This method is used to verify the construction invariants.
-  static mlir::LogicalResult
-  verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-         mlir::MemRefType elementType);
-
-  static constexpr llvm::StringLiteral name = "objectfifosubview";
-  /// Returns the element type of this SubviewType.
-  mlir::MemRefType getElementType();
-};
-
-} // namespace xilinx::AIE
+#define GET_TYPEDEF_CLASSES
+#include "aie/Dialect/AIE/IR/AIETypes.h.inc"
 
 ////////////////////////////////////////////////////////////////////////////////
 // Custom Attributes ///////////////////////////////////////////////////////////
@@ -170,7 +114,7 @@ WireBundle getConnectingBundle(WireBundle dir);
     return ss.str();                                                           \
   }
 
-typedef struct Port {
+using Port = struct Port {
   WireBundle bundle;
   int channel;
 
@@ -221,25 +165,25 @@ typedef struct Port {
     return os;
   }
 
-} Port;
+};
 
-typedef struct Connect {
+using Connect = struct Connect {
   Port src;
   Port dst;
 
   bool operator==(const Connect &rhs) const {
     return std::tie(src, dst) == std::tie(rhs.src, rhs.dst);
   }
-} Connect;
+};
 
-typedef struct DMAChannel {
+using DMAChannel = struct DMAChannel {
   DMAChannelDir direction;
   int channel;
 
   bool operator==(const DMAChannel &rhs) const {
     return std::tie(direction, channel) == std::tie(rhs.direction, rhs.channel);
   }
-} DMAChannel;
+};
 
 const AIETargetModel &getTargetModel(mlir::Operation *op);
 const AIETargetModel &getTargetModel(AIEDevice device);
