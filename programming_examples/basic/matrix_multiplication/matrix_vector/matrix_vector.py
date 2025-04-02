@@ -46,7 +46,7 @@ def my_matmul(dev):
         if dev == "npu":
             dev_ty = AIEDevice.npu1_4col
         else:
-            dev_ty = AIEDevice.npu2
+            dev_ty = AIEDevice.npu2_4col
 
         @device(dev_ty)
         def device_body():

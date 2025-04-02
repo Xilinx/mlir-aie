@@ -10,7 +10,7 @@ import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, NPU2
+from aie.iron.device import NPU1Col1, NPU2Col1
 
 
 def my_reduce_min():
@@ -22,7 +22,7 @@ def my_reduce_min():
     if sys.argv[1] == "npu":
         dev = NPU1Col1()
     elif sys.argv[1] == "npu2":
-        dev = NPU2()
+        dev = NPU2Col1()
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 

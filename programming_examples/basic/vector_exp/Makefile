@@ -13,6 +13,8 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 include ${srcdir}/../../makefile-common
 
 targetname = vector_exp
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+col = 0
 
 aie_py_src=${targetname}.py
 use_placed?=0
@@ -27,7 +29,11 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 build/exp.o: bf16_exp.cc
 	mkdir -p ${@D}
+ifeq ($(devicename),npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -I${srcdir}/../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
+else
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I${srcdir}/../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
+endif
 
 build/lut_based_ops.o: ${srcdir}/../../../aie_runtime_lib/AIE2/lut_based_ops.cpp
 	mkdir -p ${@D}
@@ -38,12 +44,12 @@ build/kernels.a: build/exp.o build/lut_based_ops.o
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< > $@
+	python3 $< ${devicename} ${col} > $@
 
 build/final.xclbin: build/aie.mlir build/kernels.a
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-				--no-xchesscc --no-xbridge \
+				--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp

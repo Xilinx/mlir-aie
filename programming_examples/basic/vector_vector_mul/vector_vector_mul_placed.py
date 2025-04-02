@@ -27,7 +27,7 @@ def my_vector_mul():
     if sys.argv[1] == "npu":
         dev = AIEDevice.npu1_1col
     elif sys.argv[1] == "npu2":
-        dev = AIEDevice.npu2
+        dev = AIEDevice.npu2_1col
     elif sys.argv[1] == "xcvc1902":
         dev = AIEDevice.xcvc1902
     else:
