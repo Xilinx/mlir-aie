@@ -3,8 +3,8 @@
 //
 // REQUIRES: ryzen_ai, peano 
 //
-// RUN: mkdir -p test_b_col_maj
-// RUN: cd test_b_col_maj
+// RUN: mkdir -p test_b_col_maj_s
+// RUN: cd test_b_col_maj_s
 // RUN: make -f %S/Makefile clean
 // RUN: env b_col_maj=1 make -f %S/Makefile 
 // RUN: %run_on_npu env b_col_maj=1 make -f %S/Makefile run

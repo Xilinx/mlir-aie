@@ -167,12 +167,6 @@ def my_matmul(
     assert k % s == 0
     assert n % t == 0
 
-    if b_col_maj:
-        # These assertions are probably too broad.
-        assert m % 32 == 0
-        assert k % 32 == 0
-        assert n % 32 == 0
-
     # If you get errors during CDO generation due to running out of program
     # memory, it may be because too much code is generated due to ObjectFIFO
     # loop unrollings. Reducing the depth to 1 here will work around that at
