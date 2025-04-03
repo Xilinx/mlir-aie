@@ -149,12 +149,12 @@ if config.xrt_lib_dir:
                 run_on_npu = (
                     f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )
-                print ("Running tests on NPU1 with command line: ", run_on_npu)
+                print("Running tests on NPU1 with command line: ", run_on_npu)
             elif model in ["npu4", "Strix"]:
                 run_on_2npu = (
                     f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )
-                print ("Running tests on NPU4 with command line: ", run_on_2npu)
+                print("Running tests on NPU4 with command line: ", run_on_2npu)
             else:
                 print("WARNING: xrt-smi reported unknown NPU model '{model}'.")
             break
