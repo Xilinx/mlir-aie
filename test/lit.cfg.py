@@ -68,10 +68,6 @@ llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
 # for peano clang
 llvm_config.with_environment("XILINX_VITIS_AIETOOLS", config.vitis_aietools_dir)
 
-run_on_npu = "echo"
-run_on_2npu = "echo"
-xrt_flags = ""
-
 # Not using run_on_board anymore, need more specific per-platform commands
 config.substitutions.append(("%run_on_board", "echo"))
 
@@ -137,6 +133,9 @@ else:
     config.substitutions.append(("%link_against_hsa%", ""))
     config.substitutions.append(("%HSA_DIR%", ""))
 
+run_on_npu = "echo"
+run_on_2npu = "echo"
+xrt_flags = ""
 
 if config.xrt_lib_dir:
     print("xrt found at", os.path.dirname(config.xrt_lib_dir))
@@ -152,27 +151,33 @@ if config.xrt_lib_dir:
             [xrtsmi, "examine"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
         result = result.stdout.decode("utf-8").split("\n")
-        # Starting with Linux 6.8 the format is like "[0000:66:00.1]  :  RyzenAI-npu1"
-        # Starting with Linux 6.10 the format is like "|[0000:41:00.1]  ||RyzenAI-npu1  |"
-        p = re.compile(r"[\|]?(\[.+:.+:.+\]).+(Phoenix|RyzenAI-(npu\d))")
+        # Older format is "|[0000:41:00.1]  ||RyzenAI-npu1  |"
+        # Newer format is "|[0000:41:00.1]  |NPU Phoenix  |"
+        p = re.compile(r"[\|]?(\[.+:.+:.+\]).+\|(RyzenAI-(npu\d)|NPU (\w+))\W*\|")
         for l in result:
             m = p.match(l)
             if not m:
                 continue
             print("Found Ryzen AI device:", m.group(1))
             model = "unknown"
-            if len(m.groups()) == 3:
+            if m.group(3):
                 model = str(m.group(3))
-            print("\tmodel:", model)
+            if m.group(4):
+                model = str(m.group(4))
+            print(f"\tmodel: '{model}'")
             config.available_features.add("ryzen_ai")
-            if model == "npu1":
+            if model in ["npu1", "Phoenix"]:
                 run_on_npu = (
                     f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )
-            if model == "npu4":
+                print("Running tests on NPU1 with command line: ", run_on_npu)
+            elif model in ["npu4", "Strix"]:
                 run_on_2npu = (
                     f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )
+                print("Running tests on NPU4 with command line: ", run_on_2npu)
+            else:
+                print("WARNING: xrt-smi reported unknown NPU model '{model}'.")
             break
     except:
         print("Failed to run xrt-smi")
@@ -183,7 +188,6 @@ else:
 config.substitutions.append(("%run_on_npu", run_on_npu))
 config.substitutions.append(("%run_on_2npu", run_on_2npu))
 config.substitutions.append(("%xrt_flags", xrt_flags))
-config.substitutions.append(("%XRT_DIR", config.xrt_dir))
 
 VitisSysrootFlag = ""
 if "x86_64" in config.aieHostTarget:
