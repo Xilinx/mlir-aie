@@ -33,13 +33,29 @@
  * below). This expansion helps with accumulator registers usage, which leads in
  * attaining high kernel efficiency (SIMD utilization).
  *
- * Data within each tile (rxs, sxt and rxt) are assumed to be in col-major
- * order. Also, the entire tiles themselves are stored in col-major order, as
- * shown in the example below for matrix A:
+ *
+ * For matrix A and C, data within each tile (rxs and rxt) are assumed to
+ * be in row-major order. Also, the entire tiles themselves are stored in
+ * row-major order, as shown in the example below for matrix A:
  *
  *      <-s->
  *    _  ________________________
- * 	  r |  1 |  y | ...
+ * 	  r |  1 |  2 |  3 | ...
+ * 	  _ |____|____|____|
+ * 	    |  x | x+1| x+2| ...
+ * 	    |____|____|____|
+ * 	    |.
+ * 	    |.
+ * 	    |.
+ *
+ *
+ * However, for matrix B, the data within each tile (sxt) are
+ * assumed to be in col-major order. Also, the entire tiles themselves are
+ * stored in col-major order, as shown below:
+ *
+ *      <-t->
+ *    _  ________________________
+ * 	  s |  1 |  y | ...
  * 	  _ |____|____|
  * 	    |  2 | y+1| ...
  * 	    |____|____|
@@ -49,6 +65,7 @@
  * 	    | .    .
  * 	    | .    .
  */
+
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t>
 static inline void
