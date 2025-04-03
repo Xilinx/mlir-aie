@@ -121,7 +121,7 @@ In this example, the vectorization strategy was relatively straight forward. Ins
 1. Now let's turn vectorization back on by changing `vectorized=True`. But we're also going to disable any pragma guided optimization first to see its effect. In the [scale.cc](../../../aie_kernels/aie2/scale.cc), comment out the line after the `for loop` that says `chess_prepare_for_pipelining chess_loop_range(16, )`. **NOTE** Be sure you're editing the general template and not the `int32_t` template specialization. The general version should be the first one. Then rerun the compilation (`make clean; make use_placed=1 trace`). Measure the delta between `event 0` and `event 1` again. What value do you see now? <img src="../../../mlir_tutorials/images/answer1.jpg" title="~495 cycles" height=25>
 
 
-    That's quite an improvement, ~20X reduction in compute latency. However, there's more optimization that can be had with vetor code and that involves compilation pragmas. 
+    That's quite an improvement, ~20X reduction in compute latency. However, there's more optimization that can be had with vector code and that involves compilation pragmas. 
 
 1. Go back to [scale.cc](../../../aie_kernels/aie2/scale.cc) and uncomment the line with `chess_prepare_for_pipelining chess_loop_range(16, )` to enable those pragmas. Then rerun the compilation (`make clean; make use_placed=1 trace`). Measure the delta between `event 0` and `event 1` again. What value do you see now? <img src="../../../mlir_tutorials/images/answer1.jpg" title="72 cycles" height=25>
 
