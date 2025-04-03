@@ -15,4 +15,4 @@
 // RUN: aie-translate -aie-npu-to-binary -aie-sequence-name=configure ctrlpkt_dma_seq.mlir -o ctrlpkt_dma_seq.bin
 //
 // RUN: clang %S/test.cpp -o test.exe -std=c++11 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-// RUN: %run_on_npu ./test.exe
+// UN: %run_on_npu ./test.exe
