@@ -63,7 +63,7 @@ run: ${targetname}.exe build/final.xclbin
 
 generate_access_map: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< --generate-access-map ${devicename} ${M} ${K} 
+	python3 $< ${devicename} ${M} ${K} --generate-access-map
 
 clean:
 	rm -rf build _build inst ${targetname}.exe
