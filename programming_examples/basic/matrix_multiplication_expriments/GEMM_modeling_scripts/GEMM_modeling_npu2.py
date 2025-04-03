@@ -30,12 +30,12 @@ in_b_type = args.in_b_type
 out_c_type = args.out_c_type
 
 # Give the single AIE core GEMM dimensions
-m = 100
-k = 60
-n = 100
+m = 160
+k = 40
+n = 128
 
 # give the expected AIE single core kernel efficiency
-expected_kernel_efficiency = 0.65
+expected_kernel_efficiency = 0.50
 
 
 # Give the desired M, K, N GEMM sizes
@@ -44,11 +44,18 @@ K = 4000
 N = 4000
 
 # Give the DDR BW in GB/s
-DDR_BW = 50
+DDR_BW = 28
 
 
 # Give the AIE frequency in GHz
 AIE_freq = 1.8
+
+
+# Number of AIE cols and rows.
+# Start with full array for Strix
+aie_rows = 4
+aie_cols = 8
+
 
 if in_a_type == "int8":
     in_a_bytes = 1
@@ -88,12 +95,6 @@ elif out_c_type == "fp32":
 
 # do the checks with DMA BW for only A and B (later).
 # For C is not important at all because if K is big, then there is time to overlap
-
-
-# Number of AIE cols and rows.
-# Start with full array for Strix
-aie_rows = 4
-aie_cols = 8
 
 
 # number of Bytes we need to read and write to DDR for matrices A, B and C

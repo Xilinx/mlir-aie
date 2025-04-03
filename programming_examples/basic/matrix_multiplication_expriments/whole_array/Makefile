@@ -9,28 +9,46 @@
 ##===----------------------------------------------------------------------===##
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=whole_array
-targetname=whole_array
+targetname=whole_array_optimized
 
 
-# M, K, N: final GEMM dimensions
-M?=512
-K?=512
-N?=512
+M?=4032
+K?=4320
+N?=4608
 
 # m, k, n: single AIE core GEMM dimensions
-m?=32
-k?=32
-n?=32
+m?=112
+k?=48
+n?=96
 
-n_aie_cols?=4
-b_col_maj?=0
+# mtk block for A buffer
+mtk=720
+
+# ktn block for B buffer
+ktn=720
+
+# is it col-major?
+b_col_maj?=1
+
+# data types
+dtype_in?=i8
+dtype_out?=i16
+
+
+# iterations
+warmup=5
+iters=5
+
+runargs=-v 2 --warmup ${warmup} --iters ${iters}
+
+n_aie_rows?=4
+n_aie_cols?=8
+
 
 kernels=mm_${m}x${k}x${n}
-aieargs+=-m $m -k $k -n $n --n-aie-cols ${n_aie_cols} --b-col-maj ${b_col_maj}
+aieargs+=-m $m -k $k -n $n -mtk ${mtk} -ktn ${ktn} --n-aie-cols ${n_aie_cols} --n-aie-rows ${n_aie_rows} --b-col-maj ${b_col_maj}
 runargs+=--b_col_maj ${b_col_maj}
-target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
-use_placed?=0
-use_iron?=0
+target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_rows}rx${n_aie_cols}c
 
 # set this flag to 1 for linear buffer allocation
 # else, 0 for bank-aware
@@ -42,16 +60,6 @@ else
 buffer_aloc_flag=bank-aware
 endif
 
-ifeq (${use_placed}, 1)
-aie_py_src=${targetname}_placed.py
-ifeq (${use_iron}, 1)
-$(error Cannot specify both placed design and IRON)
-endif
-endif
-
-ifeq (${use_iron}, 1)
-aie_py_src=${targetname}_iron.py
-endif
 
 include ${srcdir}/../makefile-common
 
@@ -72,9 +80,9 @@ endif
 build/mm_b_col_maj_${m}x${k}x${n}.o: ${kernels_dir}/mm_b_col_maj.cc
 	mkdir -p ${@D}
 ifeq (${devicename}, npu)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
 else ifeq (${devicename}, npu2)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DBIT_WIDTH=8 -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DBIT_WIDTH=8 -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
 endif
 
 ifneq (${b_col_maj}, 1)

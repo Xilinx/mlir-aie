@@ -14,16 +14,26 @@ targetname=single_core
 kernels=mm
 
 # M, K, N: final GEMM dimensions
-M?=400
-K?=544
-N?=480
+M?=640
+K?=320
+N?=256
 
 # m, k, n: single AIE core GEMM dimensions
-m?=40
-k?=136
-n?=48
+m?=160
+k?=24
+n?=144
+
+# data types
+dtype_in?=i8
+dtype_out?=i8
 
 b_col_maj?=1
+
+# iterations
+warmup=5
+iters=5
+
+runargs=-v 2 --warmup ${warmup} --iters ${iters}
 
 kernels=mm_${m}x${k}x${n}
 aieargs+=-m $m -k $k -n $n --b-col-maj ${b_col_maj}
