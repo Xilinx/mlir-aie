@@ -54,6 +54,7 @@ elif sys.argv[1] == "npu2":
 else:
     raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
+
 def resnet_conv_x():
 
     with mlir_mod_ctx() as ctx:
