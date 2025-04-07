@@ -12,32 +12,32 @@ subdir=whole_array
 targetname=whole_array_optimized
 
 # M, K, N: final GEMM dimensions
-M?=4032
-K?=2880
+M?=4096
+K?=4416
 N?=4096
 
 # m, k, n: single AIE core GEMM dimensions
-m?=144
-k?=32
-n?=128
+m?=64
+k?=184
+n?=64
 
 # mtk block for A buffer
-mtk=576
+mtk=736
 
 # ktn block for B buffer
-ktn=576
+ktn=736
 
 # is it col-major?
 b_col_maj?=1
 
 # data types
 dtype_in?=i8
-dtype_out?=i8
+dtype_out?=i16
 
 
 # iterations
 warmup=5
-iters=40
+iters=100
 
 runargs=-v 2 --warmup ${warmup} --iters ${iters}
 

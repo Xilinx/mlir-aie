@@ -30,12 +30,12 @@ in_b_type = args.in_b_type
 out_c_type = args.out_c_type
 
 # Give the single AIE core GEMM dimensions
-m = 160
-k = 40
-n = 128
+m = 64
+k = 184
+n = 64
 
 # give the expected AIE single core kernel efficiency
-expected_kernel_efficiency = 0.50
+expected_kernel_efficiency = 0.75
 
 
 # Give the desired M, K, N GEMM sizes
@@ -44,7 +44,11 @@ K = 4000
 N = 4000
 
 # Give the DDR BW in GB/s
-DDR_BW = 28
+# DDR_BW = 50
+DDR_BW = 26.5
+# DDR_BW = 17.6
+# DDR_BW = 11.7
+# DDR_BW = 19
 
 
 # Give the AIE frequency in GHz

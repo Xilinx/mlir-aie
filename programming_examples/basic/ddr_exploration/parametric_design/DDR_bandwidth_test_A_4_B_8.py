@@ -16,7 +16,7 @@ from aie.helpers.dialects.ext.scf import _for as range_
 from aie.helpers.taplib import TensorAccessPattern
 
 
-# npu_cols represent the number of npu columns used by the test
+# npu_cols represent the number of npu colums
 
 
 def my_passthrough(dev, m, M, k, K, n, N, npu_cols, data_layout_DDR):
@@ -33,6 +33,9 @@ def my_passthrough(dev, m, M, k, K, n, N, npu_cols, data_layout_DDR):
     mem_tile_A_ty = np.ndarray[(m, k), np.dtype[np.int8]]
 
     mem_tile_B_ty = np.ndarray[(k, n), np.dtype[np.int8]]
+
+    # Rows for matrix A
+    A_rows = 4
 
     with mlir_mod_ctx() as ctx:
 
@@ -51,21 +54,37 @@ def my_passthrough(dev, m, M, k, K, n, N, npu_cols, data_layout_DDR):
             MemTiles = [tile(i, 1) for i in range(npu_cols)]
 
             # declares OFs in for A buffers
-            of_ins_A = [
-                object_fifo(f"inA{i}", ShimTiles[i], MemTiles[i], 1, mem_tile_A_ty)
-                for i in range(npu_cols)
-            ]
+            of_ins_A = [None] * A_rows
 
-            # declares OFs in for B buffers
+            for i in range(A_rows):
+                of_ins_A[i] = object_fifo(
+                    f"inA{i}",
+                    (
+                        ShimTiles[2 * i] if npu_cols == 8 else ShimTiles[i]
+                    ),  # alternate columns in full 4x8 NPU2 case
+                    MemTiles[2 * i] if npu_cols == 8 else MemTiles[i],
+                    1,
+                    mem_tile_A_ty,
+                )
+
+            # declares OFs in for B buffers, each for one column
             of_ins_B = [
                 object_fifo(f"inB{i}", ShimTiles[i], MemTiles[i], 1, mem_tile_B_ty)
                 for i in range(npu_cols)
             ]
 
-            of_outs_A = [
-                object_fifo(f"outA{i}", MemTiles[i], ShimTiles[i], 1, mem_tile_A_ty)
-                for i in range(npu_cols)
-            ]
+            of_outs_A = [None] * A_rows
+
+            for i in range(A_rows):
+                of_outs_A[i] = object_fifo(
+                    f"outA{i}",
+                    MemTiles[2 * i] if npu_cols == 8 else MemTiles[i],
+                    (
+                        ShimTiles[2 * i] if npu_cols == 8 else ShimTiles[i]
+                    ),  # alternate columns in full 4x8 NPU2 case
+                    1,
+                    mem_tile_A_ty,
+                )
 
             of_outs_B = [
                 object_fifo(f"outB{i}", MemTiles[i], ShimTiles[i], 1, mem_tile_B_ty)
@@ -73,11 +92,12 @@ def my_passthrough(dev, m, M, k, K, n, N, npu_cols, data_layout_DDR):
             ]
 
             # link OFs in with OFs out
-            for i in range(npu_cols):
 
+            for i in range(A_rows):
                 # link A
                 object_fifo_link(of_ins_A[i], of_outs_A[i])
 
+            for i in range(npu_cols):
                 # link B
                 object_fifo_link(of_ins_B[i], of_outs_B[i])
 
@@ -100,26 +120,27 @@ def my_passthrough(dev, m, M, k, K, n, N, npu_cols, data_layout_DDR):
                     sizes_A_row_maj = [M // m // npu_cols, K // k, m, k]
                     strides_A_row_maj = [m * K * npu_cols, k, K, 1]
 
-                    # inputs A
-                    npu_dma_memcpy_nd(
-                        metadata=of_ins_A[i],
-                        bd_id=0,  # bd_id = 0 for each column
-                        mem=A,
-                        offsets=([0, 0, 0, m * K * i]),
-                        sizes=(sizes_A_row_maj),
-                        strides=(strides_A_row_maj),
-                        # burst_length=512, # this might be needed. Phoenix_max = 256, Strix/Kracken_max = 512
-                    )
+                    if i < A_rows:
+                        # inputs A
+                        npu_dma_memcpy_nd(
+                            metadata=of_ins_A[i],
+                            bd_id=0,  # bd_id = 0 for each column
+                            mem=A,
+                            offsets=([0, 0, 0, m * K * i]),
+                            sizes=(sizes_A_row_maj),
+                            strides=(strides_A_row_maj),
+                            # burst_length=512, # this might be needed. Phoenix_max = 256, Strix/Kracken_max = 512
+                        )
 
-                    # outputs A
-                    npu_dma_memcpy_nd(
-                        metadata=of_outs_A[i],
-                        bd_id=2,
-                        mem=C,
-                        offsets=([0, 0, 0, m * K * i]),
-                        sizes=(sizes_A_row_maj),
-                        strides=(strides_A_row_maj),
-                    )
+                        # outputs A
+                        npu_dma_memcpy_nd(
+                            metadata=of_outs_A[i],
+                            bd_id=2,
+                            mem=C,
+                            offsets=([0, 0, 0, m * K * i]),
+                            sizes=(sizes_A_row_maj),
+                            strides=(strides_A_row_maj),
+                        )
 
                     # inputs B
                     # row-major

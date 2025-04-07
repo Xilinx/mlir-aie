@@ -14,24 +14,24 @@ targetname=single_core
 kernels=mm
 
 # M, K, N: final GEMM dimensions
-M?=640
-K?=320
-N?=256
+M?=4032
+K?=4368
+N?=3840
 
 # m, k, n: single AIE core GEMM dimensions
-m?=160
-k?=24
-n?=144
+m?=112
+k?=48
+n?=96
 
 # data types
 dtype_in?=i8
-dtype_out?=i8
+dtype_out?=i16
 
 b_col_maj?=1
 
 # iterations
 warmup=5
-iters=5
+iters=100
 
 runargs=-v 2 --warmup ${warmup} --iters ${iters}
 
@@ -39,7 +39,6 @@ kernels=mm_${m}x${k}x${n}
 aieargs+=-m $m -k $k -n $n --b-col-maj ${b_col_maj}
 runargs+=--b_col_maj ${b_col_maj}
 target_suffix=${M}x${K}x${N}_${m}x${k}x${n}
-use_placed?=0
 
 # set this flag to 1 for linear buffer allocation
 # else, 0 for bank-aware

@@ -37,7 +37,7 @@ dtype_out?=i16
 
 # iterations
 warmup=5
-iters=5
+iters=200
 
 runargs=-v 2 --warmup ${warmup} --iters ${iters}
 
