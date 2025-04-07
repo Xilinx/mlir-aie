@@ -77,7 +77,7 @@ jobs:
 
       - name: Run commands
         run: |
-
+          sudo prlimit -lunlimited --pid $$
           pip cache purge
           source /opt/xilinx/xrt/setup.sh
           python -m venv aie-venv
@@ -147,7 +147,7 @@ jobs:
 
       - name: Run commands
         run: |
-
+          sudo prlimit -lunlimited --pid $$
           pip cache purge
           source /opt/xilinx/xrt/setup.sh
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH

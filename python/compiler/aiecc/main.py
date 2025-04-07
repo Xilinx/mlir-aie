@@ -102,7 +102,8 @@ NPU_LOWERING_PIPELINE = Pipeline().Nested(
     .add_pass("aie-substitute-shim-dma-allocations")
     .add_pass("aie-assign-runtime-sequence-bd-ids")
     .add_pass("aie-dma-tasks-to-npu")
-    .add_pass("aie-dma-to-npu"),
+    .add_pass("aie-dma-to-npu")
+    .add_pass("aie-lower-set-lock"),
 )
 
 

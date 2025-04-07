@@ -6,7 +6,15 @@
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 import numpy as np
 
-from aie.iron import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import (
+    GlobalBuffer,
+    Kernel,
+    ObjectFifo,
+    Program,
+    Runtime,
+    Worker,
+    WorkerRuntimeBarrier,
+)
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import AnyMemTile, NPU1Col1, Tile
 from aie.iron.controlflow import range_
@@ -116,6 +124,8 @@ def bottleneck4AIEs():
         use_write_rtp=True,
     )
 
+    rtp_barrier = WorkerRuntimeBarrier()
+
     # AIE-array data movement with object fifos
     of_inOF_act_L3L2 = ObjectFifo(tensorLayer1In_ty, name="inOF_act_L3L2")
     of_skip_buf = of_inOF_act_L3L2.cons(4).forward(
@@ -148,10 +158,11 @@ def bottleneck4AIEs():
     workers = []
 
     # 1x1 conv2d
-    def worker_conv2dk1_fn(of_wts, of_act_in, of_act_out, conv2dk1_kernel, rtp_buff):
-        # acquire weights once
-        element0Weights = of_wts.acquire(1)
+    def worker_conv2dk1_fn(of_wts, of_act_in, of_act_out, conv2dk1_kernel, rtp_buff, barrier):
+        # acquire weights amd rtps once
+        barrier.wait_for_value(1)
         scale = rtp_buff[0]
+        element0Weights = of_wts.acquire(1)
         for _ in range_(tensorInH):
             element0ActivactionsIn = of_act_in.acquire(1)
             element0ActivactionsOut = of_act_out.acquire(1)
@@ -176,6 +187,7 @@ def bottleneck4AIEs():
             of_act_2_3_5.prod(),
             conv2dk1,
             rtp2,
+            rtp_barrier,
         ],
     )
     workers.append(worker)
@@ -274,12 +286,20 @@ def bottleneck4AIEs():
 
     # # 1x1 conv2d and add skip
     def worker_conv2dk1_skip_fn(
-        of_wts, of_act_in0, of_act_in1, of_skip, of_out, conv2dk1_skip_fn, rtp_buff
+        of_wts,
+        of_act_in0,
+        of_act_in1,
+        of_skip,
+        of_out,
+        conv2dk1_skip_fn,
+        rtp_buff,
+        barrier,
     ):
         # acquire weights and rtps once
-        element0Weights = of_wts.acquire(1)
+        barrier.wait_for_value(1)
         scale = rtp_buff[0]
         skipScale = rtp_buff[1]
+        element0Weights = of_wts.acquire(1)
 
         for _ in range_(tensorInH):
             element0ActivactionsIn = of_act_in0.acquire(1)
@@ -315,6 +335,7 @@ def bottleneck4AIEs():
             outOFL2L3.prod(),
             conv2dk1_skip,
             rtp4,
+            rtp_barrier,
         ],
         placement=Tile(0, 4),
     )
@@ -335,6 +356,8 @@ def bottleneck4AIEs():
             p4[1] = 0  # skip_scale
 
         rt.inline_ops(runtime_ops, [rtp2, rtp4])
+
+        rt.set_barrier(rtp_barrier, 1)
 
         # TODO: the order of operations here is a little misleading,
         # as workers are started immediately

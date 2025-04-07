@@ -295,6 +295,14 @@ AIE1TargetModel::getShimBurstEncodingsAndLengths() const {
   return {std::pair(0, 64), std::pair(1, 128), std::pair(2, 256)};
 }
 
+std::optional<uint32_t>
+AIE1TargetModel::getLocalLockAddress(uint32_t lockId, TileID tile) const {
+  // This function is currently not supported for AIE1.
+  // In order to be implemented for this target model, the interface
+  // would need to change given the different way locks are written to in AIE1.
+  return std::nullopt;
+}
+
 ///
 /// AIE2 TargetModel
 ///
@@ -660,6 +668,27 @@ AIE2TargetModel::getShimBurstEncodingsAndLengths() const {
   return {std::pair(0, 64), std::pair(1, 128), std::pair(2, 256)};
 }
 
+std::optional<uint32_t>
+AIE2TargetModel::getLocalLockAddress(uint32_t lockId, TileID tile) const {
+  auto computeTileBaseAddress = 0x0001F000;
+  auto memTileBaseAddress = 0x000C0000;
+  auto shimTileBaseAddress = 0x00014000;
+  auto lockAddrOffset = 0x10;
+
+  if (isCoreTile(tile.col, tile.row) &&
+      lockId < getNumLocks(tile.col, tile.row))
+    return computeTileBaseAddress + lockAddrOffset * lockId;
+
+  if (isMemTile(tile.col, tile.row) && lockId < getNumLocks(tile.col, tile.row))
+    return memTileBaseAddress + lockAddrOffset * lockId;
+
+  if (isShimNOCorPLTile(tile.col, tile.row) &&
+      lockId < getNumLocks(tile.col, tile.row))
+    return shimTileBaseAddress + lockAddrOffset * lockId;
+
+  return std::nullopt;
+}
+
 void AIETargetModel::validate() const {
   // Every tile in a shimtile row must be a shimtile, and can only be one type
   // of shim tile.
@@ -716,6 +745,58 @@ void AIETargetModel::validate() const {
     for (int j = 0; j < columns(); j++)
       assert(getNumSourceSwitchboxConnections(j, i, WireBundle::FIFO) ==
              getNumDestSwitchboxConnections(j, i, WireBundle::FIFO));
+}
+
+std::optional<uint32_t>
+AIETargetModel::getLockLocalBaseIndex(int localCol, int localRow, int lockCol,
+                                      int lockRow) const {
+  if (isCoreTile(localCol, localRow)) {
+    if (isMemSouth(localCol, localRow, lockCol, lockRow))
+      return 0;
+    if (isMemWest(localCol, localRow, lockCol, lockRow))
+      return getNumLocks(localCol, localRow);
+    if (isMemNorth(localCol, localRow, lockCol, lockRow))
+      return getNumLocks(localCol, localRow) * 2;
+    if (isMemEast(localCol, localRow, lockCol, lockRow))
+      return getNumLocks(localCol, localRow) * 3;
+  }
+
+  if (isMemTile(localCol, localRow)) {
+    if (isWest(localCol, localRow, lockCol, lockRow))
+      return 0;
+    if (isInternal(localCol, localRow, lockCol, lockRow))
+      return getNumLocks(localCol, localRow);
+    if (isEast(localCol, localRow, lockCol, lockRow))
+      return getNumLocks(localCol, localRow) * 2;
+  }
+
+  return std::nullopt;
+}
+
+std::optional<uint32_t>
+AIETargetModel::getMemLocalBaseAddress(int localCol, int localRow, int memCol,
+                                       int memRow) const {
+  if (isCoreTile(localCol, localRow)) {
+    if (isMemSouth(localCol, localRow, memCol, memRow))
+      return getMemSouthBaseAddress();
+    if (isMemWest(localCol, localRow, memCol, memRow))
+      return getMemWestBaseAddress();
+    if (isMemNorth(localCol, localRow, memCol, memRow))
+      return getMemNorthBaseAddress();
+    if (isMemEast(localCol, localRow, memCol, memRow))
+      return getMemEastBaseAddress();
+  }
+
+  if (isMemTile(localCol, localRow)) {
+    if (isWest(localCol, localRow, memCol, memRow))
+      return 0;
+    if (isInternal(localCol, localRow, memCol, memRow))
+      return getMemTileSize();
+    if (isEast(localCol, localRow, memCol, memRow))
+      return getMemTileSize() * 2;
+  }
+
+  return std::nullopt;
 }
 
 AIEArch NPU2TargetModel::getTargetArch() const { return AIEArch::AIE2p; }
