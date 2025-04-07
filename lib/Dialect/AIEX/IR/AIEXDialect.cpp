@@ -774,15 +774,3 @@ LogicalResult AIEX::SetLockOp::verify() {
 
   return success();
 }
-
-//===----------------------------------------------------------------------===//
-// BFP16 Type
-//===----------------------------------------------------------------------===//
-LogicalResult AIEX::bfp16Type::verify(::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError, unsigned block_size) {
-  //TODO: Complete this (need to add values in targetModel too)
-  if (block_size != 1) {
-    return emitError() << "bfp16 type only supports block size of 1";
-  }
-
-  return success();
-}
