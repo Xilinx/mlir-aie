@@ -8,10 +8,18 @@ import numpy as np
 
 from aie.iron import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col3, Tile
+from aie.iron.device import NPU1Col3, NPU2Col3, Tile
 from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.helpers.taplib import TensorAccessPattern
+
+if len(sys.argv) > 1:
+    if sys.argv[1] == "npu":
+        dev = NPU1Col3()
+    elif sys.argv[1] == "npu2":
+        dev = NPU2Col3()
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
 # tracing definitions
 trace_sz_in_bytes = 8192
@@ -583,7 +591,7 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
     rt.drain(outOFL2L3.cons(), outputToL3, placement=Tile(1, 0), wait=True)
 
 # Place components (assign them resources on the device) and generate an MLIR module
-module = Program(NPU1Col3(), rt).resolve_program(SequentialPlacer())
+module = Program(dev, rt).resolve_program(SequentialPlacer())
 
 # Print the generated MLIR
 print(module)

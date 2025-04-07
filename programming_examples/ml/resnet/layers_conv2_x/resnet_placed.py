@@ -44,11 +44,21 @@ totalWeights_rest = (
 totalWeights_complete = totalWeights_init + repeat * totalWeights_rest
 
 
+if len(sys.argv) != 2:
+    raise ValueError("[ERROR] Need 1 command line argument (Device name)")
+
+if sys.argv[1] == "npu":
+    dev = AIEDevice.npu1_3col
+elif sys.argv[1] == "npu2":
+    dev = AIEDevice.npu2_3col
+else:
+    raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+
 def resnet_conv_x():
 
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu1_3col)
+        @device(dev)
         def deviceBody():
 
             # define types

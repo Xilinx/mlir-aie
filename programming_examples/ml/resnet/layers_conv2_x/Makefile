@@ -12,22 +12,25 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../../makefile-common
 
+targetname = resnet
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+
 mlirFileName = aie
 
-VPATH := ${srcdir}/../../../../aie_kernels/aie2
-
-aie_py_src=resnet.py
+aie_py_src=${targetname}.py
 use_placed?=0
 
 ifeq (${use_placed}, 1)
-aie_py_src=resnet_placed.py
+aie_py_src=${targetname}_placed.py
 endif
+
+VPATH := ${srcdir}/../../../../aie_kernels/aie2
 
 all: build/conv2dk1_i8.o build/conv2dk1_skip_init.o build/conv2dk3.o build/conv2dk1_skip.o build/conv2dk1_ui8.o build/final.xclbin
 
 build/${mlirFileName}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< > $@
+	python3 $< ${devicename} > $@
 
 build/conv2dk1_i8.o: conv2dk1.cc
 	mkdir -p ${@D}
