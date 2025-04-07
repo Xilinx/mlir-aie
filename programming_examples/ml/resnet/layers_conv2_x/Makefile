@@ -34,23 +34,43 @@ build/${mlirFileName}.mlir: ${srcdir}/${aie_py_src}
 
 build/conv2dk1_i8.o: conv2dk1.cc
 	mkdir -p ${@D}
+ifeq (${devicename}, npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DINT8_ACT -c $< -o ${@F}
+else ifeq (${devicename}, npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DINT8_ACT -c $< -o ${@F}
+endif
 
 build/conv2dk3.o: conv2dk3.cc
 	mkdir -p ${@D}
+ifeq (${devicename}, npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DUINT8_ACT -c $< -o ${@F}
+else ifeq (${devicename}, npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DUINT8_ACT -c $< -o ${@F}
+endif
 
 build/conv2dk1_skip_init.o: conv2dk1_skip_init.cc
 	mkdir -p ${@D}
+ifeq (${devicename}, npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DINT8_ACT -c $< -o ${@F}
+else ifeq (${devicename}, npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DINT8_ACT -c $< -o ${@F}
+endif
 
 build/conv2dk1_ui8.o: conv2dk1.cc
 	mkdir -p ${@D}
+ifeq (${devicename}, npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DUINT8_ACT -c $< -o ${@F}
+else ifeq (${devicename}, npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DUINT8_ACT -c $< -o ${@F}
+endif
 
 build/conv2dk1_skip.o: conv2dk1_skip.cc
 	mkdir -p ${@D}
+ifeq (${devicename}, npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DUINT8_ACT -c $< -o ${@F}
+else ifeq (${devicename}, npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DUINT8_ACT -c $< -o ${@F}
+endif
 
 build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1_i8.o build/conv2dk1_skip_init.o build/conv2dk3.o build/conv2dk1_skip.o build/conv2dk1_ui8.o
 	mkdir -p ${@D}

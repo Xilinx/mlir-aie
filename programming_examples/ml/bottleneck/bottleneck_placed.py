@@ -41,11 +41,20 @@ totalWeights = (
     + tensorL3InC * tensorL3OutC
 )
 
+if len(sys.argv) != 2:
+    raise ValueError("[ERROR] Need 1 command line argument (Device name)")
+
+if sys.argv[1] == "npu":
+    dev = AIEDevice.npu1_1col
+elif sys.argv[1] == "npu2":
+    dev = AIEDevice.npu2_1col
+else:
+    raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
 def bottleneck4AIEs():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu1_1col)
+        @device(dev)
         def deviceBody():
 
             # define types
