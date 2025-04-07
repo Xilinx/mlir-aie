@@ -27,7 +27,7 @@ def AIE_ObjectFifoType : TypeDef<AIE_Dialect, "AIEObjectFifo", []> {
 
   let assemblyFormat = "`<` $memref `>`";
 
-  // This is for compatibility with code previous to tablegen types in mlir
+  // This is for compatibility with code prior to tablegenerated types in the project
   let extraClassDeclaration = [{
     static AIEObjectFifoType get(mlir::MemRefType elementType)
     {
@@ -51,7 +51,7 @@ def AIE_ObjectFifoSubviewType : TypeDef<AIE_Dialect, "AIEObjectFifoSubview", []>
 
   let assemblyFormat = "`<` $memref `>`";
 
-  // This is for compatibility with code previous to tablegen types in mlir
+  // This is for compatibility with code prior to tablegenerated types in the project
   let extraClassDeclaration = [{
     static AIEObjectFifoSubviewType get(mlir::MemRefType elementType)
     {
