@@ -51,6 +51,7 @@ elif sys.argv[1] == "npu2":
 else:
     raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
+
 def bottleneck4AIEs():
     with mlir_mod_ctx() as ctx:
 
