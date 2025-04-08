@@ -549,8 +549,11 @@ def my_matmul(
                             A_offset = A_block_offset + A_row_offset
 
                             # sizes and strides in mtk representation
-                            A_sizes = [N // n // n_aie_cols, K // mtk, m, mtk]
-                            A_strides = [0, mtk, K, 1]
+                            # A_sizes = [N // n // n_aie_cols, K // mtk, m, mtk]
+                            # A_strides = [0, mtk, K, 1]
+
+                            A_sizes = [1, 1, 1, (N // n // n_aie_cols) * K * m]
+                            A_strides = [0, 0, 0, 1]
 
                             # always equal to n_aie_rows since we have n_aie_rows row tiles for matrix A
                             if col < n_aie_rows:
@@ -583,13 +586,16 @@ def my_matmul(
                             #      ----------------
                             B_col_offset = col * n if not b_col_maj else col * n * K
 
-                            if b_col_maj:
-                                # ktn representation in col-maj
-                                B_sizes = [N // n // n_aie_cols, K // ktn, n, ktn]
-                                B_strides = [n * n_aie_cols * K, ktn, K, 1]
-                            else:
-                                B_sizes = [N // n // n_aie_cols, K // k, k, n]
-                                B_strides = [n * n_aie_cols, k * N, N, 1]
+                            # if b_col_maj:
+                            #     # ktn representation in col-maj
+                            #     B_sizes = [N // n // n_aie_cols, K // ktn, n, ktn]
+                            #     B_strides = [n * n_aie_cols * K, ktn, K, 1]
+                            # else:
+                            #     B_sizes = [N // n // n_aie_cols, K // k, k, n]
+                            #     B_strides = [n * n_aie_cols, k * N, N, 1]
+
+                            B_sizes = [1, 1, 1, (N // n_aie_cols) * K]
+                            B_strides = [0, 0, 0, 1]
 
                             npu_dma_memcpy_nd(
                                 metadata=B_l3l2_fifos[col],

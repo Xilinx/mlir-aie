@@ -522,38 +522,38 @@ def my_matmul(
 
                         for tile_row in range(tb_n_rows):
 
-                            # A input transfer:
-                            #
-                            # The smallest transfer unit is a (m*n_A_tiles_per_shim)-sized sub-tile of the input matrix.
-                            # Transfer one such tile for every column, contiguously.
-                            # Repeat this transfer with identical tiles a total of (N//n//n_aie_cols) times.
-                            # Each shim transfers the tiles for separate rows. For example, shim 0 may transfer the
-                            # tiles marked 0 below, and shim 1 may transfer the tiles marked 1.
-                            #             K
-                            #      ----------------
-                            #     |0000000000000000|    (repeated N//n//n_aie_cols times)
-                            #     |0000000000000000|
-                            #     |1111111111111111|
-                            # M   |1111111111111111|
-                            #     |                |
-                            #     |                |
-                            #     |                |
-                            #     |                |
-                            #      ----------------
-                            A_block_offset = (
-                                (row_base + tile_row) * n_aie_rows * m * K
-                            )  # base address for this transfer block for all BDs
-                            A_row_offset = (
-                                col * m * K
-                            )  # base address for the shim in this column
-                            A_offset = A_block_offset + A_row_offset
-
-                            # sizes and strides in mtk representation
-                            A_sizes = [N // n // n_aie_cols, K // mtk, m, mtk]
-                            A_strides = [0, mtk, K, 1]
-
                             # always equal to n_aie_rows since we have n_aie_rows row tiles for matrix A
                             if col < n_aie_rows:
+                                # A input transfer:
+                                #
+                                # The smallest transfer unit is a (m*n_A_tiles_per_shim)-sized sub-tile of the input matrix.
+                                # Transfer one such tile for every column, contiguously.
+                                # Repeat this transfer with identical tiles a total of (N//n//n_aie_cols) times.
+                                # Each shim transfers the tiles for separate rows. For example, shim 0 may transfer the
+                                # tiles marked 0 below, and shim 1 may transfer the tiles marked 1.
+                                #             K
+                                #      ----------------
+                                #     |0000000000000000|    (repeated N//n//n_aie_cols times)
+                                #     |0000000000000000|
+                                #     |1111111111111111|
+                                # M   |1111111111111111|
+                                #     |                |
+                                #     |                |
+                                #     |                |
+                                #     |                |
+                                #      ----------------
+                                A_block_offset = (
+                                    (row_base + tile_row) * n_aie_rows * m * K
+                                )  # base address for this transfer block for all BDs
+                                A_row_offset = (
+                                    col * m * K
+                                )  # base address for the shim in this column
+                                A_offset = A_block_offset + A_row_offset
+
+                                # sizes and strides in mtk representation
+                                A_sizes = [N // n // n_aie_cols, K // mtk, m, mtk]
+                                A_strides = [0, mtk, K, 1]
+
                                 npu_dma_memcpy_nd(
                                     metadata=A_l3l2_fifos[col],
                                     bd_id=bd_id_base + 2 * tile_row + 1,

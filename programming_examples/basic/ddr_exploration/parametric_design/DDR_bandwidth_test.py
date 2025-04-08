@@ -108,7 +108,8 @@ def my_passthrough(dev, m, M, k, K, n, N, npu_cols, data_layout_DDR):
                         offsets=([0, 0, 0, m * K * i]),
                         sizes=(sizes_A_row_maj),
                         strides=(strides_A_row_maj),
-                        # burst_length=512, # this might be needed. Phoenix_max = 256, Strix/Kracken_max = 512
+                        # burst_length=64,
+                        # this might be needed. Phoenix_max = 256, Strix/Kracken_max = 512
                     )
 
                     # outputs A
@@ -119,6 +120,7 @@ def my_passthrough(dev, m, M, k, K, n, N, npu_cols, data_layout_DDR):
                         offsets=([0, 0, 0, m * K * i]),
                         sizes=(sizes_A_row_maj),
                         strides=(strides_A_row_maj),
+                        # burst_length=64,
                     )
 
                     # inputs B
@@ -151,6 +153,7 @@ def my_passthrough(dev, m, M, k, K, n, N, npu_cols, data_layout_DDR):
                             if data_layout_DDR == "A_row_B_row"
                             else strides_B_col_maj
                         ),
+                        # burst_length=64,
                     )
 
                     write_off_B_row_maj = [0, 0, 0, M * K + n * i]
@@ -176,6 +179,7 @@ def my_passthrough(dev, m, M, k, K, n, N, npu_cols, data_layout_DDR):
                             if data_layout_DDR == "A_row_B_row"
                             else strides_B_col_maj
                         ),
+                        # burst_length=64,
                     )
 
                 # wait for the outputs after BD programming

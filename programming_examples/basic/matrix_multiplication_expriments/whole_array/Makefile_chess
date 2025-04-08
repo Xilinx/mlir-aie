@@ -10,22 +10,23 @@
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=whole_array
 targetname=whole_array_optimized
+# targetname=whole_array_linear_BDs
 
 # M, K, N: final GEMM dimensions
-M?=4096
-K?=4416
-N?=4096
+M?=4032
+K?=4032
+N?=3840
 
 # m, k, n: single AIE core GEMM dimensions
-m?=64
-k?=184
-n?=64
+m?=112
+k?=48
+n?=96
 
 # mtk block for A buffer
-mtk=736
+mtk=576
 
 # ktn block for B buffer
-ktn=736
+ktn=576
 
 # is it col-major?
 b_col_maj?=1
