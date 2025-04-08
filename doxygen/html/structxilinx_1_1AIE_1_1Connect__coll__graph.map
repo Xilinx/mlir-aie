@@ -1,9 +1,0 @@
-<map id="xilinx::AIE::Connect" name="xilinx::AIE::Connect">
-<area shape="rect" id="Node000001" title=" " alt="" coords="25,196,173,221"/>
-<area shape="rect" id="Node000002" href="$structxilinx_1_1AIE_1_1Port.html" title=" " alt="" coords="39,93,160,119"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="102,133,102,196,97,196,97,133"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="5,5,103,31"/>
-<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="61,44,70,68,88,91,84,94,65,71,56,45"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="127,5,165,31"/>
-<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="136,44,108,94,103,92,131,41"/>
-</map>

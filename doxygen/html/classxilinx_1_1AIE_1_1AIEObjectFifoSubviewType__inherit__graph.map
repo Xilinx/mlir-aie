@@ -1,5 +1,0 @@
-<map id="xilinx::AIE::AIEObjectFifoSubviewType" name="xilinx::AIE::AIEObjectFifoSubviewType">
-<area shape="rect" id="Node000001" title="This class defines the AIE ObjectFifoSubview type." alt="" coords="284,20,467,60"/>
-<area shape="rect" id="Node000002" href="$classmlir_1_1Type_1_1TypeBase.html" title=" " alt="" coords="5,5,236,75"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="250,37,284,37,284,43,250,43"/>
-</map>

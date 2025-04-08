@@ -1,7 +1,0 @@
-<map id="xilinx::AIE::AIEObjectFifoType" name="xilinx::AIE::AIEObjectFifoType">
-<area shape="rect" id="Node000001" title="This class defines the AIE ObjectFifo type." alt="" coords="301,63,513,89"/>
-<area shape="rect" id="Node000002" href="$classmlir_1_1Type_1_1TypeBase.html" title=" " alt="" coords="5,5,212,75"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="226,51,302,61,301,66,225,57"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="58,99,159,125"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="172,102,301,86,302,91,173,107"/>
-</map>

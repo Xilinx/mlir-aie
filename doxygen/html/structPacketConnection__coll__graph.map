@@ -1,16 +1,13 @@
 <map id="PacketConnection" name="PacketConnection">
-<area shape="rect" id="Node000001" title=" " alt="" coords="167,295,304,320"/>
-<area shape="rect" id="Node000002" href="$structPortConnection.html" title=" " alt="" coords="113,207,235,232"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="173,245,178,269,189,283,205,292,202,297,186,287,173,272,167,247"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="5,108,103,133"/>
-<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="81,140,161,205,158,209,78,144"/>
-<area shape="rect" id="Node000004" href="$structxilinx_1_1AIE_1_1Port.html" title=" " alt="" coords="127,108,248,133"/>
-<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="186,147,178,207,173,206,181,147"/>
-<area shape="rect" id="Node000005" title=" " alt="" coords="83,5,180,31"/>
-<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="129,44,129,64,135,83,146,96,161,106,158,110,142,100,130,85,124,65,124,44"/>
-<area shape="rect" id="Node000006" title=" " alt="" coords="241,5,280,31"/>
-<area shape="poly" id="edge5_Node000004_Node000006" title=" " alt="" coords="232,40,215,56,200,83,192,109,187,107,195,81,211,53,228,36"/>
-<area shape="rect" id="Node000007" href="$structMaskValue.html" title=" " alt="" coords="251,157,345,183"/>
-<area shape="poly" id="edge7_Node000007_Node000006" title=" " alt="" coords="269,44,298,156,292,158,264,45"/>
-<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="301,197,296,234,282,272,270,286,257,297,254,293,266,282,277,269,291,233,295,197"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="116,196,253,221"/>
+<area shape="rect" id="Node000002" href="$structPortConnection.html" title=" " alt="" coords="57,108,179,133"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="116,147,117,160,122,171,134,184,150,194,147,198,130,188,117,173,112,161,111,148"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,5,103,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="71,41,113,107,108,109,66,44"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="127,5,175,31"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="146,45,124,109,119,107,141,43"/>
+<area shape="rect" id="Node000005" href="$structMaskValue.html" title=" " alt="" coords="206,108,299,133"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="243,147,225,174,201,198,197,194,221,170,239,144"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="233,5,272,31"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="255,45,255,108,250,108,250,45"/>
 </map>

@@ -167,7 +167,7 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:af7dd84f0c2aa427ea296da7adb8463bb" id="r_af7dd84f0c2aa427ea296da7adb8463bb"><td class="memItemLeft" align="right" valign="top">uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#af7dd84f0c2aa427ea296da7adb8463bb">getNumBDs</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) const override</td></tr>
 <tr class="memdesc:af7dd84f0c2aa427ea296da7adb8463bb"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return the number of buffer descriptors supported by the DMA in the given tile.  <br /></td></tr>
 <tr class="separator:af7dd84f0c2aa427ea296da7adb8463bb"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a5170af85fe1fc9149d10467893c711a8" id="r_a5170af85fe1fc9149d10467893c711a8"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#a5170af85fe1fc9149d10467893c711a8">isBdChannelAccessible</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, uint32_t bd_id, int channel) const override</td></tr>
+<tr class="memitem:a5170af85fe1fc9149d10467893c711a8" id="r_a5170af85fe1fc9149d10467893c711a8"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#a5170af85fe1fc9149d10467893c711a8">isBdChannelAccessible</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, uint32_t bd_id, int <a class="el" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a>) const override</td></tr>
 <tr class="memdesc:a5170af85fe1fc9149d10467893c711a8"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return true iff buffer descriptor <code>bd_id</code> on tile (<code>col</code>, <code>row</code>) can be submitted on channel <code>channel</code>.  <br /></td></tr>
 <tr class="separator:a5170af85fe1fc9149d10467893c711a8"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:adf3b6a11431dfecc2bdd711e24a5b124" id="r_adf3b6a11431dfecc2bdd711e24a5b124"><td class="memItemLeft" align="right" valign="top">uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#adf3b6a11431dfecc2bdd711e24a5b124">getMemTileSize</a> () const override</td></tr>
@@ -1386,7 +1386,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00432">432</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::col</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a78ddfb308023713b1b668cf3c7c6988d">xilinx::AIE::AIETargetModel::isMemTile()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::row</a>.</p>
+<p class="reference">References <a class="el" href="AIEDialect_8h_source.html#l00119">xilinx::AIE::channel</a>, <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::col</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a78ddfb308023713b1b668cf3c7c6988d">xilinx::AIE::AIETargetModel::isMemTile()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::row</a>.</p>
 
 </div>
 </div>
@@ -1751,7 +1751,7 @@ Additional Inherited Members</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Apr 3 2025 22:28:09 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Apr 8 2025 05:11:16 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

@@ -1253,7 +1253,7 @@ Interfaces: `Symbol`
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>elemNumber</code></td><td>::mlir::Attribute</td><td>32-bit signless integer attribute whose minimum value is 0 or array attribute</td></tr>
-<tr><td><code>elemType</code></td><td>::mlir::TypeAttr</td><td>type attribute of AIE objectFifo type</td></tr>
+<tr><td><code>elemType</code></td><td>::mlir::TypeAttr</td><td>type attribute of </td></tr>
 <tr><td><code>dimensionsToStream</code></td><td>::xilinx::AIE::BDDimLayoutArrayAttr</td><td></td></tr>
 <tr><td><code>dimensionsFromStreamPerConsumer</code></td><td>::xilinx::AIE::BDDimLayoutArrayArrayAttr</td><td></td></tr>
 <tr><td><code>via_DMA</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
@@ -1281,7 +1281,7 @@ _Acquire operation to lock and return objects of an ObjectFifo_
 Syntax:
 
 ```
-operation ::= `aie.objectfifo.acquire` attr-dict $objFifo_name `(` $port `,` $size `)` `:` type($subview)
+operation ::= `aie.objectfifo.acquire` attr-dict $objFifo_name `(` $port `,` $size `)` `:` qualified(type($subview))
 ```
 
 The `aie.objectFifo.acquire` operation first acquires the locks of the next given number
@@ -1318,7 +1318,7 @@ port and returns a subview of the acquired objects.
 
 | Result | Description |
 | :----: | ----------- |
-| `subview` | AIE ObjectFifoSubview type |
+| `subview` |  |
 
 
 
@@ -1512,7 +1512,7 @@ _ObjectFifoSubview type accessor method_
 Syntax:
 
 ```
-operation ::= `aie.objectfifo.subview.access` $subview `[` $index `]` attr-dict `:` type($subview) `->` type($output)
+operation ::= `aie.objectfifo.subview.access` $subview `[` $index `]` attr-dict `:` qualified(type($subview)) `->` qualified(type($output))
 ```
 
 Access the Nth element of a value of `ObjectFifoSubview` type.
@@ -1537,7 +1537,7 @@ the `objectFifo` if other acquire operations took place beforehand.
 
 | Operand | Description |
 | :-----: | ----------- |
-| `subview` | AIE ObjectFifoSubview type |
+| `subview` |  |
 
 #### Results:
 
@@ -2321,13 +2321,43 @@ Syntax:
 | pkt_type | `uint16_t` |  |
 | pkt_id | `uint16_t` |  |
 
-## Type constraints
+## Types
 
-### AIE ObjectFifoSubview type
+### AIEObjectFifoSubviewType
 
+Syntax:
 
-### AIE objectFifo type
+```
+!aie.objectfifosubview<
+  ::mlir::MemRefType   # memref
+>
+```
 
+An Object FIFO subview represents a subview of an object FIFO.
+
+#### Parameters:
+
+| Parameter | C++ type | Description |
+| :-------: | :-------: | ----------- |
+| memref | `::mlir::MemRefType` | memref of any type values |
+
+### AIEObjectFifoType
+
+Syntax:
+
+```
+!aie.objectfifo<
+  ::mlir::MemRefType   # memref
+>
+```
+
+An object FIFO represents the data movement connection between a source and one or multiple destinations.
+
+#### Parameters:
+
+| Parameter | C++ type | Description |
+| :-------: | :-------: | ----------- |
+| memref | `::mlir::MemRefType` | memref of any type values |
 
 ## Enums
 

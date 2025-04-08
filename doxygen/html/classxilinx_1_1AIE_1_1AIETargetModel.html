@@ -245,7 +245,7 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a2cae24b5c0c46c7efcc751e95527ecff" id="r_a2cae24b5c0c46c7efcc751e95527ecff"><td class="memItemLeft" align="right" valign="top">virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a2cae24b5c0c46c7efcc751e95527ecff">getNumBDs</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) const =0</td></tr>
 <tr class="memdesc:a2cae24b5c0c46c7efcc751e95527ecff"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return the number of buffer descriptors supported by the DMA in the given tile.  <br /></td></tr>
 <tr class="separator:a2cae24b5c0c46c7efcc751e95527ecff"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a6f3cadede12bb82de32843522fa2b9f1" id="r_a6f3cadede12bb82de32843522fa2b9f1"><td class="memItemLeft" align="right" valign="top">virtual bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a6f3cadede12bb82de32843522fa2b9f1">isBdChannelAccessible</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, uint32_t bd_id, int channel) const =0</td></tr>
+<tr class="memitem:a6f3cadede12bb82de32843522fa2b9f1" id="r_a6f3cadede12bb82de32843522fa2b9f1"><td class="memItemLeft" align="right" valign="top">virtual bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a6f3cadede12bb82de32843522fa2b9f1">isBdChannelAccessible</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, uint32_t bd_id, int <a class="el" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a>) const =0</td></tr>
 <tr class="memdesc:a6f3cadede12bb82de32843522fa2b9f1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return true iff buffer descriptor <code>bd_id</code> on tile (<code>col</code>, <code>row</code>) can be submitted on channel <code>channel</code>.  <br /></td></tr>
 <tr class="separator:a6f3cadede12bb82de32843522fa2b9f1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae3dbb309666278a8166c8e9f29e5f0e1" id="r_ae3dbb309666278a8166c8e9f29e5f0e1"><td class="memItemLeft" align="right" valign="top">virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae3dbb309666278a8166c8e9f29e5f0e1">getNumMemTileRows</a> () const =0</td></tr>
@@ -521,7 +521,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#a39ce04de8e216213e0e6ac2fb5391f0c">xilinx::AIE::AIE2TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VC1902TargetModel.html#ac235ca0ccf4872920019d351716a16eb">xilinx::AIE::VC1902TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VirtualizedNPUTargetModel.html#a20b19004e83bec915a3c4934e06d9775">xilinx::AIE::VirtualizedNPUTargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1VirtualizedNPU2TargetModel.html#a1d70ca6039ee197caa892ab87aeb914a">xilinx::AIE::VirtualizedNPU2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00031">aieGetTargetModelAddressGenGranularity()</a>, and <a class="el" href="AIEXDialect_8cpp_source.html#l00083">xilinx::AIEX::getHardwareStridesWraps()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00031">aieGetTargetModelAddressGenGranularity()</a>, and <a class="el" href="AIEXDialect_8cpp_source.html#l00089">xilinx::AIEX::getHardwareStridesWraps()</a>.</p>
 
 </div>
 </div>
@@ -550,7 +550,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#a8ddb185f2f7a3cbb32eed705a56e9483">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#aa0bfbc97f3fedfcbf35ecaabf6a9b0f2">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00161">aieTargetModelGetColumnShift()</a>, and <a class="el" href="AIEXDialect_8cpp_source.html#l00043">xilinx::AIEX::getBufferDescriptorAddressRegisterAddress()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00161">aieTargetModelGetColumnShift()</a>, and <a class="el" href="AIEXDialect_8cpp_source.html#l00049">xilinx::AIEX::getBufferDescriptorAddressRegisterAddress()</a>.</p>
 
 </div>
 </div>
@@ -1191,7 +1191,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#af5d15a5a10871efab42ebf25461383c4">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#af7dd84f0c2aa427ea296da7adb8463bb">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00140">aieTargetModelGetNumBDs()</a>, <a class="el" href="AIEXDialect_8cpp_source.html#l00043">xilinx::AIEX::getBufferDescriptorAddressRegisterAddress()</a>, <a class="el" href="AIEAssignBufferDescriptorIDs_8cpp_source.html#l00027">BdIdGenerator::nextBdId()</a>, and <a class="el" href="AIEAssignBufferDescriptorIDs_8cpp_source.html#l00056">AIEAssignBufferDescriptorIDsPass::runOnOperation()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00140">aieTargetModelGetNumBDs()</a>, <a class="el" href="AIEXDialect_8cpp_source.html#l00049">xilinx::AIEX::getBufferDescriptorAddressRegisterAddress()</a>, <a class="el" href="AIEAssignBufferDescriptorIDs_8cpp_source.html#l00027">BdIdGenerator::nextBdId()</a>, and <a class="el" href="AIEAssignBufferDescriptorIDs_8cpp_source.html#l00056">AIEAssignBufferDescriptorIDsPass::runOnOperation()</a>.</p>
 
 </div>
 </div>
@@ -1487,7 +1487,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#a6bdcd84ee37d627331fa13e4fc4838ac">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#a01c3c0ec6f586e2155d2014a6ae96a5a">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00165">aieTargetModelGetRowShift()</a>, and <a class="el" href="AIEXDialect_8cpp_source.html#l00043">xilinx::AIEX::getBufferDescriptorAddressRegisterAddress()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00165">aieTargetModelGetRowShift()</a>, and <a class="el" href="AIEXDialect_8cpp_source.html#l00049">xilinx::AIEX::getBufferDescriptorAddressRegisterAddress()</a>.</p>
 
 </div>
 </div>
@@ -1898,7 +1898,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#aded73bb148c711a4f945984654feabf7">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#a09446164f93560e3400a7fdecaf048d2">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEPathFinder_8cpp_source.html#l00189">xilinx::AIE::Pathfinder::initialize()</a>, <a class="el" href="AIEDialect_8cpp_source.html#l01341">isLegalTileConnection()</a>, and <a class="el" href="AIEDialect_8cpp_source.html#l01331">isLegalTileConnection()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEPathFinder_8cpp_source.html#l00189">xilinx::AIE::Pathfinder::initialize()</a>, <a class="el" href="AIEDialect_8cpp_source.html#l01156">isLegalTileConnection()</a>, and <a class="el" href="AIEDialect_8cpp_source.html#l01146">isLegalTileConnection()</a>.</p>
 
 </div>
 </div>
@@ -2544,7 +2544,7 @@ Public Member Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Apr 3 2025 22:28:09 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Apr 8 2025 05:11:16 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

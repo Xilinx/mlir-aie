@@ -1,5 +1,0 @@
-<map id="xilinx::AIE::detail::AIEObjectFifoSubviewTypeStorage" name="xilinx::AIE::detail::AIEObjectFifoSubviewTypeStorage">
-<area shape="rect" id="Node000001" title="This class represents the internal storage of the AIE ObjectFifoSubviewType." alt="" coords="5,79,208,133"/>
-<area shape="rect" id="Node000002" href="$classTypeStorage.html" title=" " alt="" coords="55,5,158,31"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="109,44,109,79,104,79,104,44"/>
-</map>

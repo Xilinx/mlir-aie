@@ -1,7 +1,0 @@
-<map id="xilinx::AIE::Port" name="xilinx::AIE::Port">
-<area shape="rect" id="Node000001" title=" " alt="" coords="39,93,160,119"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,103,31"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="61,44,70,68,88,91,84,94,65,71,56,45"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="127,5,165,31"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="136,44,108,94,103,92,131,41"/>
-</map>

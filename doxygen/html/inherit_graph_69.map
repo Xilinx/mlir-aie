@@ -1,25 +1,3 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="Node000000" href="$classPassWrapper.html" title=" " alt="" coords="5,252,112,277"/>
-<area shape="rect" id="Node000001" href="$structAIEVecConvOpTransformationPass.html" title=" " alt="" coords="173,5,417,31"/>
-<area shape="poly" id="edge141_Node000000_Node000001" title=" " alt="" coords="61,238,71,194,89,140,117,85,136,61,158,40,177,29,180,33,162,44,140,65,122,88,94,142,76,195,66,239"/>
-<area shape="rect" id="Node000002" href="$structAIEVecTransformationPass.html" title=" " alt="" coords="199,55,392,80"/>
-<area shape="poly" id="edge142_Node000000_Node000002" title=" " alt="" coords="65,238,77,203,97,163,123,122,159,89,197,71,199,76,161,94,127,126,101,165,82,205,70,239"/>
-<area shape="rect" id="Node000003" href="$structCanonicalizeVectorForAIEVecPass.html" title=" " alt="" coords="176,104,415,129"/>
-<area shape="poly" id="edge143_Node000000_Node000003" title=" " alt="" coords="70,239,105,187,130,160,159,138,183,127,186,132,161,143,133,164,109,190,75,242"/>
-<area shape="rect" id="Node000004" href="$structDynamicSizeNoImplicitBroadcastPass.html" title=" " alt="" coords="161,153,429,179"/>
-<area shape="poly" id="edge144_Node000000_Node000004" title=" " alt="" coords="81,240,116,212,159,188,192,176,194,181,161,192,119,217,85,245"/>
-<area shape="rect" id="Node000005" href="$structExtendUPDOpsPass.html" title=" " alt="" coords="221,203,370,228"/>
-<area shape="poly" id="edge145_Node000000_Node000005" title=" " alt="" coords="120,246,159,237,220,225,221,230,161,242,121,251"/>
-<area shape="rect" id="Node000006" href="$structHoistCastOpToDataSourcePass.html" title=" " alt="" coords="185,252,406,277"/>
-<area shape="poly" id="edge146_Node000000_Node000006" title=" " alt="" coords="126,262,184,262,184,267,126,267"/>
-<area shape="rect" id="Node000007" href="$structLowerVectorToAIEVec.html" title="Lower incoming vector operations into their corresponding AIE vector intrinsics." alt="" coords="215,301,375,327"/>
-<area shape="poly" id="edge147_Node000000_Node000007" title=" " alt="" coords="125,278,161,286,224,299,223,304,159,291,123,283"/>
-<area shape="rect" id="Node000008" href="$structRedundantLoadStoreOptimizationPass.html" title=" " alt="" coords="160,351,431,376"/>
-<area shape="poly" id="edge148_Node000000_Node000008" title=" " alt="" coords="85,285,120,312,161,336,199,348,197,353,159,340,117,316,82,289"/>
-<area shape="rect" id="Node000009" href="$structReorderOperationsPass.html" title=" " alt="" coords="209,400,382,425"/>
-<area shape="poly" id="edge149_Node000000_Node000009" title=" " alt="" coords="75,288,110,338,134,364,161,385,184,396,209,403,208,408,182,401,159,390,130,368,106,342,71,291"/>
-<area shape="rect" id="Node000010" href="$structSimplifyUPDOpsPass.html" title=" " alt="" coords="217,449,374,475"/>
-<area shape="poly" id="edge150_Node000000_Node000010" title=" " alt="" coords="70,290,82,323,101,363,128,402,162,434,188,448,217,456,216,461,186,453,158,439,124,406,97,366,77,325,65,291"/>
-<area shape="rect" id="Node000011" href="$structVectorBroadcastLoweringPass.html" title=" " alt="" coords="187,499,403,524"/>
-<area shape="poly" id="edge151_Node000000_Node000011" title=" " alt="" coords="67,290,76,334,94,387,122,440,140,464,162,484,188,499,186,503,158,488,136,467,117,443,89,389,71,335,61,292"/>
+<area shape="rect" id="Node000000" href="$structPortConnection.html" title=" " alt="" coords="5,5,127,31"/>
 </map>

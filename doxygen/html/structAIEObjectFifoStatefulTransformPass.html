@@ -102,7 +102,7 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a7d13bff13cd7243c9726cb83ee026859" id="r_a7d13bff13cd7243c9726cb83ee026859"><td class="memItemLeft" align="right" valign="top">std::optional&lt; ObjectFifoLinkOp &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a7d13bff13cd7243c9726cb83ee026859">getOptionalLinkOp</a> (ObjectFifoCreateOp op)</td></tr>
 <tr class="memdesc:a7d13bff13cd7243c9726cb83ee026859"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp, if it belongs to one.  <br /></td></tr>
 <tr class="separator:a7d13bff13cd7243c9726cb83ee026859"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:af4f498858514208dae2719461115c271" id="r_af4f498858514208dae2719461115c271"><td class="memItemLeft" align="right" valign="top">ObjectFifoCreateOp&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#af4f498858514208dae2719461115c271">createObjectFifo</a> (OpBuilder &amp;builder, <a class="el" href="classxilinx_1_1AIE_1_1AIEObjectFifoType.html">AIEObjectFifoType</a> datatype, std::string name, Value prodTile, Value consTile, Attribute depth, BDDimLayoutArrayAttr dimensionsToStream, BDDimLayoutArrayArrayAttr dimensionsFromStreamPerConsumer)</td></tr>
+<tr class="memitem:af4f498858514208dae2719461115c271" id="r_af4f498858514208dae2719461115c271"><td class="memItemLeft" align="right" valign="top">ObjectFifoCreateOp&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#af4f498858514208dae2719461115c271">createObjectFifo</a> (OpBuilder &amp;builder, AIEObjectFifoType datatype, std::string name, Value prodTile, Value consTile, Attribute depth, BDDimLayoutArrayAttr dimensionsToStream, BDDimLayoutArrayArrayAttr dimensionsFromStreamPerConsumer)</td></tr>
 <tr class="separator:af4f498858514208dae2719461115c271"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a68f8be9e4c948fe02e3f1b88f4f6fcf4" id="r_a68f8be9e4c948fe02e3f1b88f4f6fcf4"><td class="memItemLeft" align="right" valign="top">std::vector&lt; LockOp &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a68f8be9e4c948fe02e3f1b88f4f6fcf4">createObjectFifoLocks</a> (OpBuilder &amp;builder, <a class="el" href="classLockAnalysis.html">LockAnalysis</a> &amp;lockAnalysis, ObjectFifoCreateOp op, int numElem, int joinDistribFactor, TileOp creation_tile, int repeatCount)</td></tr>
 <tr class="memdesc:a68f8be9e4c948fe02e3f1b88f4f6fcf4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to create objectFifo locks based on target architecture.  <br /></td></tr>
@@ -776,7 +776,7 @@ template&lt;typename MyOp &gt; </div>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype"><a class="el" href="classxilinx_1_1AIE_1_1AIEObjectFifoType.html">AIEObjectFifoType</a>&#160;</td>
+          <td class="paramtype">AIEObjectFifoType&#160;</td>
           <td class="paramname"><em>datatype</em>, </td>
         </tr>
         <tr>
@@ -1549,7 +1549,7 @@ template&lt;typename MyOp &gt; </div>
 
 <p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01444">1444</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEDialect_8h_source.html#l00237">xilinx::AIE::DMAChannel::channel</a>, <a class="el" href="AIEDialect_8h_source.html#l00236">xilinx::AIE::DMAChannel::direction</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00106">DMAChannelAnalysis::getDMAChannelIndex()</a>, and <a class="el" href="AIEPathFinder_8h_source.html#l00100">xilinx::AIE::port</a>.</p>
+<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00106">DMAChannelAnalysis::getDMAChannelIndex()</a>, and <a class="el" href="AIEPathFinder_8h_source.html#l00100">xilinx::AIE::port</a>.</p>
 
 </div>
 </div>
@@ -1839,7 +1839,7 @@ template&lt;typename MyOp &gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Apr 3 2025 22:28:09 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Apr 8 2025 05:11:16 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
