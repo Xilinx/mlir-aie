@@ -9,10 +9,10 @@
 
 ############### i8/i16 #################
 # i8/i16 optimized mtk = 4k, B row-maj
-# python3 GEMM_sweep.py --in_ab_type=i8 --out_c_type=i16 --b_col_maj=0 --m=80 --k=88 --n=96 --cont_coeff=4
+python3 GEMM_sweep.py --in_ab_type=i8 --out_c_type=i16 --b_col_maj=0 --m=80 --k=88 --n=96 --cont_coeff=4
 
-# # i8/i16 optimized mtk = 4k, ktn = 4k, B col-maj
-# python3 GEMM_sweep.py --in_ab_type=i8 --out_c_type=i16 --b_col_maj=1 --m=80 --k=88 --n=96 --cont_coeff=4
+# i8/i16 optimized mtk = 4k, ktn = 4k, B col-maj
+python3 GEMM_sweep.py --in_ab_type=i8 --out_c_type=i16 --b_col_maj=1 --m=80 --k=88 --n=96 --cont_coeff=4
 
 # # i8/i16 baseline mtk = k, B row-maj
 # python3 GEMM_sweep.py --in_ab_type=i8 --out_c_type=i16 --b_col_maj=0 --m=64 --k=184 --n=64 --cont_coeff=1
@@ -23,7 +23,7 @@
 # python3 GEMM_sweep.py --in_ab_type=i8 --out_c_type=i8 --b_col_maj=0 --m=96 --k=96 --n=112 --cont_coeff=4
 
 # # i8/i8 optimized mtk = 4k, ktn = 4k, B col-maj
-python3 GEMM_sweep.py --in_ab_type=i8 --out_c_type=i8 --b_col_maj=1 --m=96 --k=96 --n=112 --cont_coeff=4
+# python3 GEMM_sweep.py --in_ab_type=i8 --out_c_type=i8 --b_col_maj=1 --m=96 --k=96 --n=112 --cont_coeff=4
 
 
 

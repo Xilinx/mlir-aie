@@ -61,14 +61,14 @@ def extract_arith_intensity_and_gops(df):
 def main():
 
     in_ab_type = "i8"
-    out_c_type = "i8"
+    out_c_type = "i16"
 
     
-    kernel_eff_B_row = 0.81
-    kernel_eff_B_col = 0.79
+    kernel_eff_B_row = 0.70
+    kernel_eff_B_col = 0.69
 
-    csvfile_B_row_maj = './sweep_results/GEMM_sweep_kernel_96x96x112_i8_i8_mtk_384_B_row_maj.csv'
-    csvfile_B_col_maj = './sweep_results/GEMM_sweep_kernel_96x96x112_i8_i8_mtk_384_ktn_384_B_col_maj.csv'
+    csvfile_B_row_maj = './sweep_results/GEMM_sweep_kernel_80x88x96_i8_i16_mtk_352_B_row_maj.csv'
+    csvfile_B_col_maj = './sweep_results/GEMM_sweep_kernel_80x88x96_i8_i16_mtk_352_ktn_352_B_col_maj.csv'
 
     # Read the CSV file and convert to DataFrame
     df_B_row_maj = pd.read_csv(csvfile_B_row_maj)
@@ -135,12 +135,12 @@ def main():
     plt.plot(arith_inten_list_B_col_maj, avg_gops_list_B_col_maj, marker='*', linestyle='', color='g', label='B col-maj')
     plt.xlabel('Arithmetic Intensity (OPs/Byte)')
     plt.ylabel('Average GOPs')
-    plt.title('Phoenix GEMM sweep int8/int8')
+    plt.title('Phoenix GEMM sweep int8/int16')
     # Display the legend
     plt.legend()
 
     
-    plot_file_name = './sweep_results/GEMM_sweep_kernel_96x96x112_i8_i8_mtk_384_ktn_384_both_row_col.png'
+    plot_file_name = './sweep_results/GEMM_sweep_kernel_80x88x96_i8_i16_mtk_352_ktn_352_both_row_col.png'
     plt.savefig(plot_file_name)
 
 

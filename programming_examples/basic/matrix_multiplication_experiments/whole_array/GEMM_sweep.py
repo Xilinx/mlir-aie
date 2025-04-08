@@ -83,12 +83,12 @@ def main():
     # Specify starting point, step and max below
     # 4 rows for phoenix
     M_min = 4 * m
-    M_step = 4 * M_min
+    M_step = 2 * M_min
     M_max = 8000
 
     # 4 columns for phoenix
     N_min = 4 * n
-    N_step = 4 * N_min
+    N_step = 2 * N_min
     N_max = 8000
 
     K_min = mtk
