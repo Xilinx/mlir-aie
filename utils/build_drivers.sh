@@ -31,7 +31,7 @@ fi
 
 echo "Cloning the XDNA driver repository..."
 # Clone the XDNA driver repository and initialize submodules
-XDNA_SHA=7c1d273ef9946848a9f236f1216cfda10d9465cb
+XDNA_SHA=deceb066418f2d53fe172a595f59413a731ccee8
 git clone https://github.com/amd/xdna-driver.git
 export XDNA_SRC_DIR=$(realpath xdna-driver)
 cd xdna-driver
@@ -70,10 +70,12 @@ echo "Installing new XRT packages..."
 cd "$XDNA_SRC_DIR/xrt/build/Release"
 case "$UBUNTU_VERSION" in
     "24.04")
-        sudo apt reinstall ./xrt_202510.2.19.0_24.04-amd64-npu.deb
+        sudo apt reinstall ./xrt_202510.2.19.0_24.04-amd64-base.deb
+        sudo apt reinstall ./xrt_202510.2.19.0_24.04-amd64-base-dev.deb
         ;;
     "24.10")
-        sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-npu.deb
+        sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-base.deb
+        sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-base-dev.deb
         ;;
     *)
         echo "Error: Unsupported Ubuntu version ($UBUNTU_VERSION). Supported versions: 24.04, 24.10"
