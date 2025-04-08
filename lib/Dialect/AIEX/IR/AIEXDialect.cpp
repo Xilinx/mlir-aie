@@ -10,20 +10,22 @@
 
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
+#include "mlir/IR/DialectImplementation.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
 
-#include <algorithm>
-#include <cstdint>
+#include "llvm/ADT/TypeSwitch.h"
+
 #include <numeric>
-#include <optional>
-#include <string>
 
 using namespace mlir;
 using namespace xilinx;
 
 #include "aie/Dialect/AIEX/IR/AIEXDialect.cpp.inc"
+
+#define GET_TYPEDEF_CLASSES
+#include "aie/Dialect/AIEX/IR/AIEXTypes.cpp.inc"
 
 namespace xilinx::AIEX {
 
@@ -32,6 +34,10 @@ void AIEXDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
+      >();
+  addTypes<
+#define GET_TYPEDEF_LIST
+#include "aie/Dialect/AIEX/IR/AIEXTypes.cpp.inc"
       >();
 }
 

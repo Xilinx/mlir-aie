@@ -5,10 +5,23 @@
 #
 # (c) Copyright 2021 Xilinx Inc.
 
-add_mlir_dialect(AIE aie)
 # Use a simplified version AIEDocs.td to generate the AIEDialect.md ending up as
 # https://xilinx.github.io/mlir-aie/AIEDialect.html
 add_mlir_doc(AIEDocs AIEDialect ./ -gen-dialect-doc)
+
+# Add AIE dialect
+set(LLVM_TARGET_DEFINITIONS AIE.td)
+mlir_tablegen(AIEDialect.h.inc -gen-dialect-decls -dialect=aie)
+mlir_tablegen(AIEDialect.cpp.inc -gen-dialect-defs -dialect=aie)
+add_public_tablegen_target(MLIRAIEIncGen)
+add_dependencies(aie-headers MLIRAIEIncGen)
+
+# Add AIE Types
+set(LLVM_TARGET_DEFINITIONS AIETypes.td)
+mlir_tablegen(AIETypes.h.inc -gen-typedef-decls -typedefs-dialect=aie)
+mlir_tablegen(AIETypes.cpp.inc -gen-typedef-defs -typedefs-dialect=aie)
+add_public_tablegen_target(MLIRAIETypesIncGen)
+add_dependencies(aie-headers MLIRAIETypesIncGen)
 
 # Add AIE interfaces
 set(LLVM_TARGET_DEFINITIONS AIEInterfaces.td)

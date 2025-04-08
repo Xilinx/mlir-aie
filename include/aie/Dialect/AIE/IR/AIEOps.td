@@ -1885,7 +1885,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
   let results = (outs AIE_ObjectFifoSubviewType:$subview);
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name `(` $port `,` $size `)` `:` type($subview)
+    attr-dict $objFifo_name `(` $port `,` $size `)` `:` qualified(type($subview))
   }];
 
   let hasVerifier = 1;
@@ -1955,7 +1955,7 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
   let results = (outs AnyMemRef:$output);
 
   let assemblyFormat = [{
-    $subview `[` $index `]` attr-dict `:` type($subview) `->` type($output)
+    $subview `[` $index `]` attr-dict `:` qualified(type($subview)) `->` qualified(type($output))
   }];
 
   // Allow building an AIE_ObjectFifoSubviewAccessOp with just a subview value and an index.
