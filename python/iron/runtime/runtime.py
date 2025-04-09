@@ -54,7 +54,10 @@ class Runtime(Resolvable):
         self._fifos = set()
         self._workers = []
         self._open_task_groups = []
-        self._trace_size = 0
+        self._trace_size = None
+        self._trace_offset = None
+        self._trace_workers = None
+        self.ddr_id = None
 
     @contextmanager
     def sequence(self, *input_types: type[np.ndarray]):
@@ -225,9 +228,18 @@ class Runtime(Resolvable):
         # TODO: should filter args based on some criteria??
         self._tasks.append(InlineOpRuntimeTask(inline_func, inline_args))
 
-    def enable_trace(self, trace_size: int):
+    def enable_trace(
+        self,
+        trace_size: int = None,
+        trace_offset: int = None,
+        workers: [] = None,
+        ddr_id: int = None,
+    ):
         """Enable trace."""
         self._trace_size = trace_size
+        self._trace_offset = trace_offset
+        self._trace_workers = workers
+        self._ddr_id = ddr_id
 
     def set_barrier(self, barrier: WorkerRuntimeBarrier, value: int):
         """Set the value of a worker barrier.
@@ -249,7 +261,10 @@ class Runtime(Resolvable):
         """The ObjectFifoHandles associated with the Runtime by calls to fill() and drain()"""
         return self._fifos.copy()
 
-    def get_first_shimtile(self):
+    def get_first_cons_shimtile(self):
+        """Find the first consumer side of an objfifo that is in the 0th row
+        and uses it as the trace shim tile
+        """
         for of_handle in self._fifos:
             if not of_handle._is_prod:
                 endpoint_tile = of_handle._object_fifo._cons[0]._endpoint._tile
@@ -268,20 +283,28 @@ class Runtime(Resolvable):
         @runtime_sequence(*rt_dtypes)
         def sequence(*args):
 
-            tiles_to_trace = []
-            for w in self._workers:
-                if w.trace > 0:
-                    # tiles_to_trace.append(f"Tile({w.tile.col}, {w.tile.row})")
-                    tiles_to_trace.append(w.tile.op)
-            # trace_shim_tile = tile(0,0)
-            trace_shim_tile = self.get_first_shimtile()
-            if self._trace_size > 0:
+            if self._trace_size is not None:
+                tiles_to_trace = []
+                if self._trace_workers is not None:
+                    for w in self._trace_workers:
+                        tiles_to_trace.append(w.tile.op)
+                else:
+                    for w in self._workers:
+                        if w.trace is not None:
+                            tiles_to_trace.append(w.tile.op)
+
+                trace_shim_tile = self.get_first_cons_shimtile()
+
                 # print("config_trace")
                 trace_utils.configure_packet_tracing_aie2(
                     # tiles_to_trace=[ tiles_to_trace[0] ],
                     tiles_to_trace=tiles_to_trace,
                     shim=trace_shim_tile,
                     trace_size=self._trace_size,
+                    trace_offset=(
+                        self._trace_offset if self._trace_offset is not None else 0
+                    ),
+                    ddr_id=self._ddr_id if self._ddr_id is not None else 4,
                 )
 
             for rt_data, rt_data_val in zip(self._rt_data, args):
@@ -318,6 +341,5 @@ class Runtime(Resolvable):
                             fn(*args)
                     task_group_actions[task.task_group] = None
 
-            if self._trace_size > 0:
-                # print("gen_trace_done")
+            if self._trace_size is not None:
                 trace_utils.gen_trace_done_aie2(trace_shim_tile)

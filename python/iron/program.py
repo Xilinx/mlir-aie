@@ -99,14 +99,15 @@ class Program:
 
                 # Scan workers and build list of tiles to trace
                 tiles_to_trace = []
-                for w in self._rt.workers:
-                    if w.trace > 0:
-                        # tiles_to_trace.append(f"Tile({w.tile.col}, {w.tile.row})")
+                if self._rt._trace_workers is not None:
+                    for w in self._rt._trace_workers:
                         tiles_to_trace.append(w.tile.op)
-                if self._rt._trace_size > 0:
-                    # print("configure tracing flow")
-                    # trace_shim_tile = tile(0,0) # TODO Need to decide how to choose shim tile to use
-                    trace_shim_tile = self._rt.get_first_shimtile()
+                else:
+                    for w in self._rt._workers:
+                        if w.trace is not None:
+                            tiles_to_trace.append(w.tile.op)
+                if self._rt._trace_size is not None:
+                    trace_shim_tile = self._rt.get_first_cons_shimtile()
                     trace_utils.configure_packet_tracing_flow(
                         tiles_to_trace, trace_shim_tile
                     )

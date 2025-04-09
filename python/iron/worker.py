@@ -40,8 +40,8 @@ class Worker(ObjectFifoEndpoint):
         while_true: bool = True,
         stack_size: int = None,
         allocation_scheme: str = None,
-        trace: int = 0,
-        # trace_events: list = [],
+        trace: int = None,
+        trace_events: list = None,
     ):
         """Construct a Worker
 
@@ -65,6 +65,7 @@ class Worker(ObjectFifoEndpoint):
         if allocation_scheme:
             self._tile.allocation_scheme = allocation_scheme
         self.trace = trace
+        self.trace_events = trace_events
 
         # If no core_fn is given, make a simple while(true) loop.
         if core_fn is None:
