@@ -46,7 +46,7 @@ def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
 
     # Create a worker to perform the task
     my_worker = Worker(
-        core_fn, 
+        core_fn,
         [of_in.cons(), of_out.prod(), passthrough_fn],
         trace=enable_trace,
     )

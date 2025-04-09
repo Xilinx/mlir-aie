@@ -47,7 +47,7 @@ def my_reduce_max(dev, in1_size, out_size, trace_size):
 
     # Define a worker to run the task on a core
     worker = Worker(
-        core_body, 
+        core_body,
         fn_args=[of_in.cons(), of_out.prod(), reduce_add_vector],
         trace=enable_trace,
     )
