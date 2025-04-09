@@ -1,4 +1,4 @@
-# single_buffer.py -*- Python -*-
+# aie2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -8,7 +8,7 @@
 import numpy as np
 import sys
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import Program, Runtime, Worker, ObjectFifo
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1
 from aie.iron.controlflow import range_
@@ -23,7 +23,6 @@ data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 of_in = ObjectFifo(data_ty, name="in")
 of_out = ObjectFifo(data_ty, name="out")
 
-
 # Task for the core to perform
 def core_fn(of_in, of_out):
     elem_in = of_in.acquire(1)
@@ -32,7 +31,6 @@ def core_fn(of_in, of_out):
         elem_out[i] = elem_in[i]
     of_in.release(1)
     of_out.release(1)
-
 
 # Create a worker to perform the task
 my_worker = Worker(core_fn, [of_in.cons(), of_out.prod()])

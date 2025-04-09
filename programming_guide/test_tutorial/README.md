@@ -49,9 +49,9 @@ We will now look at a code [example](./aie2.py) of IRON 0.9 and observe the diff
 ## <u>Exercises</u>
 1. Familiarize yourself with [exercise_1](./exercise_1/aie2.py). The code contains a single Worker which has an already instantiated local buffer that it sends out to external memory. Run `make run` to run the program and verify the output.
 
-2. Modify the code in [exercise_1](./exercise_1/aie2.py) so that the Worker receives its input data from external memory instead of using the local buffer, i.e. a passthrough.
+2. Run `make clean`. Modify the code in [exercise_1](./exercise_1/aie2.py) so that the Worker receives its input data from external memory instead of using the local buffer, i.e. a passthrough.
 
-3. Modify the code in [exercise_1](./exercise_1/aie2.py) so that data is routed from external memory through a Mem tile and back only using ObjectFifos and without using Workers. For this, you will require the `forward()` function defined in [objectfifo.py](../../python/iron/dataflow/objectfifo.py).
+3. Run `make clean`. Modify the code in [exercise_1](./exercise_1/aie2.py) so that data is routed from external memory through a Mem tile and back only using ObjectFifos and without using Workers. For this, you will require the `forward()` function defined in [objectfifo.py](../../python/iron/dataflow/objectfifo.py).
 
 IRON 0.9 designs can be scaled to use multiple Workers easily: 
 ```python
