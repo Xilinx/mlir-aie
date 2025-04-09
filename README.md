@@ -80,7 +80,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
     build-essential clang clang-14 lld lld-14 cmake python3-venv python3-pip
     ```
 
-1. Install opencv which is needed for some programming examples:
+1. (Optional) Install opencv which is needed for vision programming examples:
 
    ```bash
    sudo apt install libopencv-dev python3-opencv
@@ -106,9 +106,9 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    For release v0.9:
    ```bash
    # Install IRON library and mlir-aie from a wheel
-   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/v0.9/
+   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/v0.9
 
-   # Install Peano from llvm-aie wheel
+   # Install Peano from a llvm-aie wheel
    python3 -m pip install https://github.com/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-19.0.0.2025040301+fd6a2c4d-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
    ```
 
@@ -133,7 +133,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
    ```
 
-1. (Optional) Install ML Python packages:
+1. (Optional) Install ML Python packages for ml programming examples:
    ```bash
    # Install Torch for ML examples
    python3 -m pip install -r python/requirements_ml.txt
