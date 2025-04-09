@@ -15,15 +15,14 @@ from aie.iron.device import NPU1Col1, NPU2
 
 
 def my_reduce_max(dev, in1_size, out_size, trace_size):
-    if trace_size != 0:
-        raise NotImplementedError("Trace not supported yet.")
-
     in1_dtype = np.int32
     out_dtype = np.int32
 
     tensor_size = in1_size // in1_dtype(0).nbytes
 
     assert out_size == 4, "Output buffer must be size 4 (4 bytes = 1 integer)."
+
+    enable_trace = 1 if trace_size > 0 else 0
 
     # Define tensor types
     in_ty = np.ndarray[(tensor_size,), np.dtype[in1_dtype]]
@@ -47,11 +46,16 @@ def my_reduce_max(dev, in1_size, out_size, trace_size):
         of_out.release(1)
 
     # Define a worker to run the task on a core
-    worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod(), reduce_add_vector])
+    worker = Worker(
+        core_body, 
+        fn_args=[of_in.cons(), of_out.prod(), reduce_add_vector],
+        trace=enable_trace,
+    )
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(in_ty, out_ty) as (a_in, c_out):
+        rt.enable_trace(trace_size)
         rt.start(worker)
         rt.fill(of_in.prod(), a_in)
         rt.drain(of_out.cons(), c_out, wait=True)
