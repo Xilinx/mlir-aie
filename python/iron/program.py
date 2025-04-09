@@ -8,6 +8,7 @@
 
 from ..extras.context import mlir_mod_ctx  # type: ignore
 from ..helpers.dialects.ext.func import FuncBase
+
 # from ..dialects.aie import device
 from ..dialects.aie import device, tile
 
@@ -18,6 +19,7 @@ from .resolvable import Resolvable
 
 # import aie.utils.trace as trace_utils
 from ..utils import trace as trace_utils
+
 
 class Program:
     def __init__(
@@ -92,7 +94,7 @@ class Program:
 
                 # Generate trace routes
                 # TODO Need to iterate over all tiles or workers & fifos to make list of tiles to trace
-                #      Alternatively, we merge the mechanism for packet routed objfifos so we use unique 
+                #      Alternatively, we merge the mechanism for packet routed objfifos so we use unique
                 #      route IDs for trace as well
 
                 # Scan workers and build list of tiles to trace
@@ -105,7 +107,9 @@ class Program:
                     # print("configure tracing flow")
                     # trace_shim_tile = tile(0,0) # TODO Need to decide how to choose shim tile to use
                     trace_shim_tile = self._rt.get_first_shimtile()
-                    trace_utils.configure_packet_tracing_flow(tiles_to_trace, trace_shim_tile)
+                    trace_utils.configure_packet_tracing_flow(
+                        tiles_to_trace, trace_shim_tile
+                    )
 
                 # In/Out Sequence
                 self._rt.resolve()

@@ -226,8 +226,7 @@ class Runtime(Resolvable):
         self._tasks.append(InlineOpRuntimeTask(inline_func, inline_args))
 
     def enable_trace(self, trace_size: int):
-        """Enable trace.
-        """
+        """Enable trace."""
         self._trace_size = trace_size
 
     def set_barrier(self, barrier: WorkerRuntimeBarrier, value: int):
@@ -285,7 +284,6 @@ class Runtime(Resolvable):
                     trace_size=self._trace_size,
                 )
 
-
             for rt_data, rt_data_val in zip(self._rt_data, args):
                 rt_data.op = rt_data_val
 
@@ -323,4 +321,3 @@ class Runtime(Resolvable):
             if self._trace_size > 0:
                 # print("gen_trace_done")
                 trace_utils.gen_trace_done_aie2(trace_shim_tile)
-

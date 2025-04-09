@@ -14,7 +14,8 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
 
-from aie.dialects.aie import tile # TODO
+from aie.dialects.aie import tile  # TODO
+
 
 def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
     in1_dtype = np.int16
@@ -65,7 +66,9 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
 
     # Create a worker to run the task on a compute tile
     worker = Worker(
-        core_body, fn_args=[of_in.cons(), of_factor.cons(), of_out.prod(), scale], trace=enable_trace
+        core_body,
+        fn_args=[of_in.cons(), of_factor.cons(), of_out.prod(), scale],
+        trace=enable_trace,
     )
 
     # Runtime operations to move data to/from the AIE-array
