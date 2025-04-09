@@ -66,6 +66,10 @@ for _ in range(n_workers):
     workers.append(
         Worker(core_fn, [...])
     )
+
+rt = Runtime()
+with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
+    rt.start(*workers)
 ```
 Complex data movement patterns such as broadcast, split or join are supported using the `ObjectFifo`. In particular the `ObjectFifoHandles`, which can be either producer or consumer handles, are used to determine a broadcast pattern with multiple consumers:
 ```python
@@ -99,6 +103,7 @@ n_workers = 4
 line_size = 256
 line_type = np.ndarray[(line_size,), np.dtype[np.int32]]
 tile_size = line_size // n_workers
+tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
 
 # Dataflow with ObjectFifos
 of_offsets = [tile_size * worker for worker in range(n_workers)]
@@ -129,6 +134,7 @@ n_workers = 4
 line_size = 256
 line_type = np.ndarray[(line_size,), np.dtype[np.int32]]
 tile_size = line_size // n_workers
+tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
 
 # Dataflow with ObjectFifos
 of_offsets = [tile_size * worker for worker in range(n_workers)]
