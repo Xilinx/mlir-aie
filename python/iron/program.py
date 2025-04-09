@@ -18,6 +18,7 @@ from .resolvable import Resolvable
 # import aie.utils.trace as trace_utils
 from ..utils import trace as trace_utils
 
+
 class Program:
     def __init__(
         self,
