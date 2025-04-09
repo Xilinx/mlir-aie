@@ -40,7 +40,7 @@ class Worker(ObjectFifoEndpoint):
         while_true: bool = True,
         stack_size: int = None,
         allocation_scheme: str = None,
-        trace: int = None,
+        trace: int = 0,
         # trace_events: list = [],
     ):
         """Construct a Worker
