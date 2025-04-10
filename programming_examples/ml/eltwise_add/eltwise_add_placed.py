@@ -139,11 +139,11 @@ def my_eltwise_add(dev, trace_size):
 
             if trace_size > 0:
                 trace_utils.configure_packet_tracing_aie2(
-                    tiles_to_trace=tiles_to_trace, 
-                    shim=ShimTile, 
-                    trace_size=trace_size, 
+                    tiles_to_trace=tiles_to_trace,
+                    shim=ShimTile,
+                    trace_size=trace_size,
                     trace_offset=N_in_bytes,
-                    ddr_id=2
+                    ddr_id=2,
                 )
 
             a_task = shim_dma_single_bd_task(
