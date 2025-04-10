@@ -14,6 +14,7 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
 
+
 def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
     in1_dtype = np.int32
     in2_dtype = np.int32
@@ -45,7 +46,6 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
     # Output data movement
     of_out = ObjectFifo(tile_ty, name="out")
 
-
     # Task for the core to perform
     def core_fn(of_in, of_factor, of_out, scale_scalar):
         elem_factor = of_factor.acquire(1)
@@ -57,9 +57,10 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
             of_out.release(1)
         of_factor.release(1)
 
-
     # Create a worker to perform the task
-    my_worker = Worker(core_fn, [of_in.cons(), of_factor.cons(), of_out.prod(), scale_fn])
+    my_worker = Worker(
+        core_fn, [of_in.cons(), of_factor.cons(), of_out.prod(), scale_fn]
+    )
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
