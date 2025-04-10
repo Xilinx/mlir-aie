@@ -21,10 +21,14 @@
 
 if [ "$#" -ge 1 ]; then
     export MLIR_AIE_INSTALL_DIR=`realpath $1`
+else
+    export MLIR_AIE_INSTALL_DIR="$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie"
 fi
 
 if [ "$#" -ge 2 ]; then
     export PEANO_INSTALL_DIR=`realpath $2`
+else
+    export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
 fi
 
 if [[ $MLIR_AIE_INSTALL_DIR == "" ]]; then
@@ -53,3 +57,7 @@ fi
 export PATH=${MLIR_AIE_INSTALL_DIR}/bin:${PATH} 
 export PYTHONPATH=${MLIR_AIE_INSTALL_DIR}/python:${PYTHONPATH}
 export LD_LIBRARY_PATH=${MLIR_AIE_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}
+
+echo "PATH              : $PATH"
+echo "LD_LIBRARY_PATH   : $LD_LIBRARY_PATH"
+echo "PYTHONPATH        : $PYTHONPATH"

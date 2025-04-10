@@ -12,6 +12,7 @@
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Target/LLVMIR/Dialect/All.h"
 #include "aie/version.h"
+
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/InitAllTranslations.h"
 #include "mlir/Support/LogicalResult.h"
@@ -19,6 +20,9 @@
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
+
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 
 using namespace mlir;
 
