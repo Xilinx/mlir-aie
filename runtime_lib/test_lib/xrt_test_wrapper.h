@@ -79,6 +79,9 @@ int setup_and_run_aie(int IN1_VOLUME, int IN2_VOLUME, int OUT_VOLUME,
   auto bo_out = xrt::bo(device, OUT_VOLUME * sizeof(T3), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(5));
 
+  // Placeholder dummy buffer objects because 0 causes seg faults
+  auto bo_tmp1 = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(6));
+
   // Workaround so we declare a really small trace buffer when one is not used
   int tmp_trace_size = (myargs.trace_size > 0) ? myargs.trace_size : 1;
   auto bo_trace = xrt::bo(device, tmp_trace_size, XRT_BO_FLAGS_HOST_ONLY,
@@ -136,7 +139,7 @@ int setup_and_run_aie(int IN1_VOLUME, int IN2_VOLUME, int OUT_VOLUME,
     auto start = std::chrono::high_resolution_clock::now();
     unsigned int opcode = 3;
     auto run = kernel(opcode, bo_instr, instr_v.size(), bo_in1, bo_in2, bo_out,
-                      0, bo_trace);
+                      bo_tmp1, bo_trace);
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
@@ -252,6 +255,11 @@ int setup_and_run_aie(int IN1_VOLUME, int OUT_VOLUME, struct args myargs) {
                         kernel.group_id(3));
   auto bo_out = xrt::bo(device, OUT_VOLUME * sizeof(T3), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(4));
+
+  // Placeholder dummy buffer objects because 0 causes seg faults
+  auto bo_tmp1 = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
+  auto bo_tmp2 = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(6));
+
   // Workaround so we declare a really small trace buffer when one is not used
   int tmp_trace_size = (myargs.trace_size > 0) ? myargs.trace_size : 1;
   auto bo_trace = xrt::bo(device, tmp_trace_size, XRT_BO_FLAGS_HOST_ONLY,
@@ -267,6 +275,7 @@ int setup_and_run_aie(int IN1_VOLUME, int OUT_VOLUME, struct args myargs) {
   // Initialize buffer objects
   T1 *bufIn1 = bo_in1.map<T1 *>();
   T3 *bufOut = bo_out.map<T3 *>();
+
   char *bufTrace = bo_trace.map<char *>();
 
   init_bufIn1(bufIn1, IN1_VOLUME);
@@ -306,7 +315,8 @@ int setup_and_run_aie(int IN1_VOLUME, int OUT_VOLUME, struct args myargs) {
     auto start = std::chrono::high_resolution_clock::now();
     unsigned int opcode = 3;
     // auto run = kernel(opcode, bo_instr, instr_v.size(), bo_in1, bo_out);
-    auto run = kernel(opcode, bo_instr, instr_v.size(), bo_in1, bo_out, 0, 0,
+    // auto run = kernel(opcode, bo_instr, instr_v.size(), bo_in1, bo_out, 0, 0,
+    auto run = kernel(opcode, bo_instr, instr_v.size(), bo_in1, bo_out, bo_tmp1, bo_tmp2,
                       bo_trace);
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
