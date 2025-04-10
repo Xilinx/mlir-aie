@@ -207,14 +207,14 @@ def my_matmul(
         elif n_aie_cols == 4:
             dev_ty = NPU1Col4()
     else:
-        if n_aie_cols == 1:
-            dev_ty = NPU2Col1()
-        elif n_aie_cols == 2:
-            dev_ty = NPU2Col2()
-        elif n_aie_cols == 4:
-            dev_ty = NPU2Col4()
-        else:
-            dev_ty = NPU2()
+        # if n_aie_cols == 1:
+        #     dev_ty = NPU2Col1()
+        # elif n_aie_cols == 2:
+        #     dev_ty = NPU2Col2()
+        # elif n_aie_cols == 4:
+        #     dev_ty = NPU2Col4()
+        # else:
+        dev_ty = NPU2()
 
     # These will hold TensorAccessPattern objects that represent the runtime
     # npu_dma_memcpy_nd operations of this design. They are only used if generate_taps is true
