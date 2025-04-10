@@ -10,12 +10,13 @@
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=whole_array
 targetname=whole_array_optimized
-# targetname=whole_array_linear_BDs
+# targetname=whole_array_optimized_repeat_A
 
 # M, K, N: final GEMM dimensions
-M?=4032
-K?=4032
-N?=3840
+# Note: K=mtk for repeat count to work
+M?=896
+K?=576
+N?=768
 
 # m, k, n: single AIE core GEMM dimensions
 m?=112
@@ -38,7 +39,7 @@ dtype_out?=i16
 
 # iterations
 warmup=5
-iters=100
+iters=10
 
 runargs=-v 2 --warmup ${warmup} --iters ${iters}
 
