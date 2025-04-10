@@ -20,7 +20,6 @@ in1_size = 131072 # in bytes
 in2_size = 131072 # in bytes, should always be euqal to in1_size
 out_size = 131072 # in bytes, should always be equal to in1_size
 trace_size = 8192
-CHESS ?= false
 
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
 data_size = in1_size
@@ -36,17 +35,9 @@ all: build/final_${data_size}.xclbin build/insts_${data_size}.bin
 build/%.o: %.cc
 	mkdir -p ${@D}
 ifeq ($(devicename),npu)
-ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}; 
-else 
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}; 
-endif
 else ifeq ($(devicename),npu2)
-ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -c $< -o ${@F}; 
-else 
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}; 
-endif
 else
 	echo "Device type not supported"
 endif
@@ -61,25 +52,15 @@ build/aie_trace_${data_size}.mlir: ${srcdir}/${aie_py_src}
 
 build/final_${data_size}.xclbin: build/aie_${data_size}.mlir build/add.o
 	mkdir -p ${@D}
-ifeq ($(CHESS), true)
-	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-npu-insts --npu-insts-name=insts_${data_size}.bin $(<:%=../%)
-else
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     	  --no-xchesscc --no-xbridge \
 				--aie-generate-npu-insts --npu-insts-name=insts_${data_size}.bin $(<:%=../%)
-endif
 
 build/final_trace_${data_size}.xclbin: build/aie_trace_${data_size}.mlir build/add.o
 	mkdir -p ${@D}
-ifeq ($(CHESS), true)
-	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-npu-insts --npu-insts-name=insts_${data_size}.bin $(<:%=../%)
-else
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
 				--aie-generate-npu-insts --npu-insts-name=insts_${data_size}.bin $(<:%=../%)
-endif
 
 ${targetname}_${data_size}.exe: ${srcdir}/test.cpp
 	rm -rf _build
