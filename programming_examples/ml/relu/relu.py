@@ -107,7 +107,6 @@ def relu(dev, in1_size, out_size, trace_size):
     return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
-
 if len(sys.argv) < 4:
     raise ValueError("[ERROR] Need at least 4 arguments (dev, in1_size, out_size)")
 
