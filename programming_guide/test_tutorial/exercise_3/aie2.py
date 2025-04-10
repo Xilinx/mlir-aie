@@ -8,10 +8,14 @@
 import numpy as np
 import sys
 
-from aie.iron import Program, Runtime, Worker, ObjectFifo
+from aie.iron import Program, Runtime, Worker, ObjectFifo, GlobalBuffer
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1
 from aie.iron.controlflow import range_
+
+from aie.extras.dialects.ext import arith
+from aie.helpers.util import np_ndarray_type_get_shape
+from aie.dialects.aie import T
 
 dev = NPU1Col1()
 
@@ -20,26 +24,39 @@ data_size = 48
 data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 
 # Dataflow with ObjectFifos
-of_in = ObjectFifo(data_ty, name="in")
 of_out = ObjectFifo(data_ty, name="out")
 
+# Runtime parameters
+rtps = []
+rtps.append(
+    GlobalBuffer(
+        data_ty,
+        name=f"rtp",
+        use_write_rtp=True,
+    )
+)
+
 # Task for the core to perform
-def core_fn(of_in, of_out):
-    elem_in = of_in.acquire(1)
+def core_fn(rtp, of_out):
     elem_out = of_out.acquire(1)
     for i in range_(data_size):
-        elem_out[i] = elem_in[i]
-    of_in.release(1)
+        elem_out[i] = rtp[i]
     of_out.release(1)
 
 # Create a worker to perform the task
-my_worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
+my_worker = Worker(core_fn, [rtps[0], of_out.prod()])
 
 # To/from AIE-array runtime data movement
 rt = Runtime()
-with rt.sequence(data_ty, data_ty, data_ty) as (a_in, _, c_out):
+with rt.sequence(data_ty, data_ty, data_ty) as (_, _, c_out):
+    # Set runtime parameters
+    def set_rtps(*args):
+        for rtp in args:
+            for i in range(data_size): # note difference with range_ in the Worker
+                rtp[i] = 1
+
+    rt.inline_ops(set_rtps, rtps)
     rt.start(my_worker)
-    rt.fill(of_in.prod(), a_in)
     rt.drain(of_out.cons(), c_out, wait=True)
 
 # Create the program from the device type and runtime
