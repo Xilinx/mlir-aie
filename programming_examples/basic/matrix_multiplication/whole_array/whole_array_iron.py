@@ -17,6 +17,7 @@ from aie.iron.device import (
     NPU2Col1,
     NPU2Col2,
     NPU2Col4,
+    NPU2,
     Tile,
 )
 from aie.iron.controlflow import range_
@@ -212,6 +213,8 @@ def my_matmul(
             dev_ty = NPU2Col2()
         elif n_aie_cols == 4:
             dev_ty = NPU2Col4()
+        else:
+            dev_ty = NPU2()
 
     # These will hold TensorAccessPattern objects that represent the runtime
     # npu_dma_memcpy_nd operations of this design. They are only used if generate_taps is true
