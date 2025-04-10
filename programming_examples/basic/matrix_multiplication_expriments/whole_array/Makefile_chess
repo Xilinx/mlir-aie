@@ -9,8 +9,8 @@
 ##===----------------------------------------------------------------------===##
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=whole_array
-targetname=whole_array_optimized
-# targetname=whole_array_optimized_repeat_A
+# targetname=whole_array_optimized
+targetname=whole_array_optimized_repeat_A
 
 # M, K, N: final GEMM dimensions
 # Note: K=mtk for repeat count to work
