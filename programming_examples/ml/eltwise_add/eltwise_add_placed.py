@@ -6,6 +6,7 @@
 # (c) Copyright 2023 AMD Inc.
 from ml_dtypes import bfloat16
 import numpy as np
+import argparse
 import sys
 
 from aie.dialects.aie import *
@@ -18,33 +19,37 @@ from aie.helpers.util import np_ndarray_type_get_shape
 import aie.utils.trace as trace_utils
 
 
-def my_eltwise_add(dev, trace_size):
+def my_eltwise_add(dev, in1_size, in2_size, out_size, trace_size):
+    in1_dtype = bfloat16
+    in2_dtype = bfloat16
+    out_dtype = bfloat16
 
-    word_size_in = 2
-    N = 65536
-    N_in_bytes = N * word_size_in
+    tensor_size = in1_size // in1_dtype(0).nbytes
 
     # Tile sizes
-    n = 1024
-    N_div_n = N // n
+    tile_size = 1024
+    tensor_div_tile = tensor_size // tile_size
 
     n_cores = 2
-    tiles = N_div_n // n_cores
+    tiles = tensor_div_tile // n_cores
     buffer_depth = 2
+
+    assert in2_size == in1_size, "input2 buffer size must match input1 buffer size."
+    assert out_size == in1_size, "Output buffer size must match input1 buffer size."
 
     @device(dev)
     def device_body():
-        tile_ty = np.ndarray[(n,), np.dtype[bfloat16]]
+        tile_ty = np.ndarray[(tile_size,), np.dtype[out_dtype]]
 
         # Type used in the tile memory
-        A_ty = np.ndarray[(n,), np.dtype[bfloat16]]
-        B_ty = np.ndarray[(n,), np.dtype[bfloat16]]
-        C_ty = np.ndarray[(n,), np.dtype[bfloat16]]
+        A_ty = np.ndarray[(tile_size,), np.dtype[in1_dtype]]
+        B_ty = np.ndarray[(tile_size,), np.dtype[in2_dtype]]
+        C_ty = np.ndarray[(tile_size,), np.dtype[out_dtype]]
 
         # Type used in the memory tile which aggregates across the 2 cores
-        A_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
-        B_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
-        C_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
+        A_memTile_ty = np.ndarray[(tile_size * n_cores,), np.dtype[in1_dtype]]
+        B_memTile_ty = np.ndarray[(tile_size * n_cores,), np.dtype[in2_dtype]]
+        C_memTile_ty = np.ndarray[(tile_size * n_cores,), np.dtype[out_dtype]]
 
         # AIE Core Function declarations
 
@@ -60,11 +65,6 @@ def my_eltwise_add(dev, trace_size):
 
         MemTile = tile(0, 1)
         cores = [tile(0, 2 + i) for i in range(n_cores)]
-
-        # Set up a packet-switched flow from core to shim for tracing information
-        tiles_to_trace = [cores[0]]
-        if trace_size > 0:
-            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
         inA_fifos = []
         inB_fifos = []
@@ -116,12 +116,13 @@ def my_eltwise_add(dev, trace_size):
             of_offsets = []
         object_fifo_link(outC_fifos, outC, of_offsets, [])
 
+
         # Set up compute tiles
         for i in range(n_cores):
             # Compute tile i
             @core(cores[i], "add.o")
             def core_body():
-                for _ in range_(0xFFFFFFFF):
+                for _ in range_(sys.maxsize):
                     for _ in range_(tiles):
                         elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)
                         elem_in_a = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
@@ -131,31 +132,38 @@ def my_eltwise_add(dev, trace_size):
                         inB_fifos[i].release(ObjectFifoPort.Consume, 1)
                         outC_fifos[i].release(ObjectFifoPort.Produce, 1)
 
+        # Set up a packet-switched flow from core to shim for tracing information
+        tiles_to_trace = [cores[0],cores[1]]
+        if trace_size > 0:
+            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+
         # To/from AIE-array data movement
-        tensor_ty = np.ndarray[(N,), np.dtype[bfloat16]]
+        tensor_ty = np.ndarray[(tensor_size,), np.dtype[out_dtype]]
 
         @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
         def sequence(A, B, C):
 
             if trace_size > 0:
                 trace_utils.configure_packet_tracing_aie2(
-                    tiles_to_trace, ShimTile, trace_size, N_in_bytes
+                    tiles_to_trace=tiles_to_trace, 
+                    shim=ShimTile,
+                    trace_size=trace_size,
                 )
 
             a_task = shim_dma_single_bd_task(
                 inA,
                 A,
-                sizes=[1, 1, 1, N],
+                sizes=[1, 1, 1, tensor_size],
                 issue_token=True,
             )
             b_task = shim_dma_single_bd_task(
                 inB,
                 B,
-                sizes=[1, 1, 1, N],
+                sizes=[1, 1, 1, tensor_size],
                 issue_token=True,
             )
             c_task = shim_dma_single_bd_task(
-                outC, C, sizes=[1, 1, 1, N], issue_token=True
+                outC, C, sizes=[1, 1, 1, tensor_size], issue_token=True
             )
 
             dma_start_task(a_task, b_task, c_task)
@@ -164,19 +172,44 @@ def my_eltwise_add(dev, trace_size):
             trace_utils.gen_trace_done_aie2(ShimTile)
 
 
-try:
-    device_name = str(sys.argv[1])
-    if device_name == "npu":
-        dev = AIEDevice.npu1_1col
-    elif device_name == "npu2":
-        dev = AIEDevice.npu2
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
-    trace_size = 0 if (len(sys.argv) != 3) else int(sys.argv[2])
-except ValueError:
-    print("Argument is not an integer")
+if len(sys.argv) < 5:
+    raise ValueError(
+        "[ERROR] Need at least 4 arguments (dev, in1_size, in2_size, out_size)"
+    )
+
+
+p = argparse.ArgumentParser()
+p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
+p.add_argument(
+    "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
+)
+p.add_argument(
+    "-i2s", "--in2_size", required=True, dest="in2_size", help="Input 2 size"
+)
+p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
+p.add_argument(
+    "-t",
+    "--trace_size",
+    required=False,
+    dest="trace_size",
+    default=0,
+    help="Trace buffer size",
+)
+opts = p.parse_args(sys.argv[1:])
+
+if opts.device == "npu":
+    dev = AIEDevice.npu1_1col
+elif opts.device == "npu2":
+    dev = AIEDevice.npu2
+else:
+    raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+in1_size = int(opts.in1_size)
+in2_size = int(opts.in2_size)
+out_size = int(opts.out_size)
+trace_size = int(opts.trace_size)
+
 with mlir_mod_ctx() as ctx:
-    my_eltwise_add(dev, trace_size)
+    my_eltwise_add(dev, in1_size, in2_size, out_size, trace_size)
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)
