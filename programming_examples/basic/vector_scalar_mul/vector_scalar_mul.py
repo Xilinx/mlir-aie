@@ -14,11 +14,10 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
 
+from aie.dialects.aie import tile  # TODO
+
 
 def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
-    if trace_size != 0:
-        raise NotImplementedError("Trace not supported yet.")
-
     in1_dtype = np.int16
     in2_dtype = np.int32
     out_dtype = np.int16
@@ -29,6 +28,8 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
 
     assert in2_size == 4, "2nd input buffer must be size 4 (4 bytes = 1 integer)."
     assert out_size == in1_size, "Output buffer size must match input buffer size."
+
+    enable_trace = 1 if trace_size > 0 else 0
 
     vectorized = True
 
@@ -65,12 +66,16 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
 
     # Create a worker to run the task on a compute tile
     worker = Worker(
-        core_body, fn_args=[of_in.cons(), of_factor.cons(), of_out.prod(), scale]
+        core_body,
+        fn_args=[of_in.cons(), of_factor.cons(), of_out.prod(), scale],
+        trace=enable_trace,
     )
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (A, F, C):
+        rt.enable_trace(trace_size)
+
         rt.start(worker)
         rt.fill(of_in.prod(), A)
         rt.fill(of_factor.prod(), F)

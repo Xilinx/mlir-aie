@@ -20,7 +20,7 @@ in1_size = 4096 # in bytes
 out_size = 4 # in bytes, should always be equal to in1_size
 trace_size = 1024
 
-colshift ?= $(if $(filter 1,$(NPU2)),0,1)
+colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src=${targetname}.py
 use_placed?=0
 
@@ -79,11 +79,6 @@ run_py: build/final.xclbin build/insts.bin
 
 trace: ${targetname}.exe build/final_trace.xclbin build/insts.bin 
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace.mlir --colshift ${colshift} > trace_vector_reduce_max.json
-	${srcdir}/../../utils/get_trace_summary.py --filename trace_vector_reduce_max.json
-
-trace_py: build/final_trace.xclbin build/insts.bin
-	${powershell} python3 ${srcdir}/test.py -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -os ${out_size}
 	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace.mlir --colshift ${colshift} > trace_vector_reduce_max.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_vector_reduce_max.json
 

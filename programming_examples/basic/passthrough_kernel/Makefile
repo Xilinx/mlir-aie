@@ -20,7 +20,7 @@ out_size = 4096 # in bytes, should always be equal to in1_size
 trace_size = 8192
 CHESS ?= false
 
-colshift ?= $(if $(filter 1,$(NPU2)),0,1)
+colshift ?= $(if $(filter npu,$(devicename)),1,0)
 data_size = in1_size
 aie_py_src=${targetname}.py
 use_placed?=0

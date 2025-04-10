@@ -15,11 +15,10 @@ from aie.iron.device import NPU1Col1, NPU2
 
 
 def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
-    if trace_size != 0:
-        raise NotImplementedError("Trace not supported yet.")
-
     in1_dtype = np.uint8
     out_dtype = np.uint8
+
+    enable_trace = 1 if trace_size > 0 else 0
 
     # Define tensor types
     line_size = in1_size // in1_dtype(0).nbytes
@@ -46,11 +45,16 @@ def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
         of_out.release(1)
 
     # Create a worker to perform the task
-    my_worker = Worker(core_fn, [of_in.cons(), of_out.prod(), passthrough_fn])
+    my_worker = Worker(
+        core_fn,
+        [of_in.cons(), of_out.prod(), passthrough_fn],
+        trace=enable_trace,
+    )
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
+        rt.enable_trace(trace_size)
         rt.start(my_worker)
         rt.fill(of_in.prod(), a_in)
         rt.drain(of_out.cons(), b_out, wait=True)
