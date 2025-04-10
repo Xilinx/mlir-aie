@@ -47,7 +47,7 @@ void initialize_bufOut(DATATYPE_OUT *bufOut, int SIZE) {
 }
 
 // Functional correctness verifyer
-int verify_vector_scalar_mul(DATATYPE_IN1 *bufIn1, DATATYPE_IN2 *bufIn2,
+int verify_eltwise_add(DATATYPE_IN1 *bufIn1, DATATYPE_IN2 *bufIn2,
                              DATATYPE_OUT *bufOut, int SIZE, int verbosity) {
   int errors = 0;
 
@@ -81,7 +81,7 @@ int main(int argc, const char *argv[]) {
 
   int res = setup_and_run_aie<DATATYPE_IN1, DATATYPE_IN2, DATATYPE_OUT,
                               initialize_bufIn1, initialize_bufIn2,
-                              initialize_bufOut, verify_vector_scalar_mul>(
+                              initialize_bufOut, verify_eltwise_add>(
       IN1_VOLUME, IN2_VOLUME, OUT_VOLUME, myargs);
   return res;
 }

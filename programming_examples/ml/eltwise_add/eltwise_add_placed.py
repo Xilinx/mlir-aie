@@ -133,7 +133,7 @@ def my_eltwise_add(dev, in1_size, in2_size, out_size, trace_size):
                         outC_fifos[i].release(ObjectFifoPort.Produce, 1)
 
         # Set up a packet-switched flow from core to shim for tracing information
-        tiles_to_trace = [cores[0],cores[1]]
+        tiles_to_trace = [cores[0], cores[1]]
         if trace_size > 0:
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
