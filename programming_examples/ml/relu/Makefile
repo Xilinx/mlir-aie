@@ -42,11 +42,11 @@ endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${devicename} ${in1_size} ${out_size} 0 > $@
+	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} > $@
 
 build/aie_trace.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${devicename} ${in1_size} ${out_size} ${trace_size} > $@
+	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} -t ${trace_size} > $@
 
 build/final.xclbin: build/aie.mlir build/relu.o
 	mkdir -p ${@D}
@@ -76,8 +76,8 @@ run: ${targetname}.exe build/final.xclbin
 
 trace: ${targetname}.exe build/final_trace.xclbin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift ${colshift} > trace_relu.json
-	${srcdir}/../../utils/get_trace_summary.py --filename trace_relu.json
+	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift ${colshift} > trace_${targetname}.json
+	${srcdir}/../../utils/get_trace_summary.py --filename trace_${targetname}.json
 
 clean:
 	rm -rf build _build ${targetname}.exe
