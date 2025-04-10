@@ -16,7 +16,10 @@ from aie.helpers.util import np_ndarray_type_get_shape
 
 
 def my_eltwise_add(dev, trace_size):
+
+    word_size_in = 2
     N = 65536
+    N_in_bytes = N * word_size_in
 
     # Tile sizes
     n = 1024
@@ -109,6 +112,7 @@ def my_eltwise_add(dev, trace_size):
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (A, B, C):
+        rt.enable_trace(trace_size=trace_size, trace_offset=N_in_bytes,workers=workers, ddr_id=2)
         rt.start(*workers)
         rt.fill(inA.prod(), A)
         rt.fill(inB.prod(), B)
