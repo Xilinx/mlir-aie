@@ -5,6 +5,7 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 import numpy as np
+import sys
 
 from aie.iron import (
     GlobalBuffer,

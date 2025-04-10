@@ -17,7 +17,7 @@ from aie.iron import (
     WorkerRuntimeBarrier,
 )
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.iron.device import NPU1Col1, NPU2
 
 from aie.extras.dialects.ext import arith
 from aie.helpers.util import np_ndarray_type_get_shape
