@@ -14,8 +14,6 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
 
-from aie.dialects.aie import tile  # TODO
-
 
 def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
     in1_dtype = np.int16
@@ -75,7 +73,6 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
     rt = Runtime()
     with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (A, F, C):
         rt.enable_trace(trace_size)
-
         rt.start(worker)
         rt.fill(of_in.prod(), A)
         rt.fill(of_factor.prod(), F)
