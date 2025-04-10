@@ -23,6 +23,12 @@ trace_size = 8192
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src=${targetname}.py
 
+use_placed?=0
+
+ifeq (${use_placed}, 1)
+aie_py_src=${targetname}_placed.py
+endif
+
 all: build/final.xclbin build/insts.bin
 
 build/scale.o: ${srcdir}/vector_scalar_mul.cc
