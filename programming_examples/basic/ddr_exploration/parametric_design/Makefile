@@ -20,11 +20,11 @@ all: build/final.xclbin build/insts.bin
 
 targetname = DDR_bandwidth_test
 m ?= 32
-M ?= 4096
-k ?= 700
-K ?= 3500
-n ?= 700
-N ?= 5600
+M ?= 8192
+k ?= 512
+K ?= 8192
+n ?= 512
+N ?= 8192
 npu_cols ?= 8
 
 
