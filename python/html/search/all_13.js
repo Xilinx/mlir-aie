@@ -23,5 +23,7 @@ var searchData=
   ['tile_20',['tile',['../classiron_1_1device_1_1tile_1_1Tile.html',1,'iron.device.tile.Tile'],['../classiron_1_1runtime_1_1endpoint_1_1RuntimeEndpoint.html#ac4ba26dacbeae15227be94efcc3ddc55',1,'iron.runtime.endpoint.RuntimeEndpoint.tile'],['../classiron_1_1placeable_1_1Placeable.html#a13bda709bf9b8fbd6ac31f83efc0ad32',1,'iron.placeable.Placeable.tile()']]],
   ['tile_2epy_21',['tile.py',['../tile_8py.html',1,'']]],
   ['tiles_22',['tiles',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#ae14c7290250bde522bcfdde7a5685e06',1,'iron::dataflow::objectfifo::ObjectFifo']]],
-  ['transformation_5fdims_23',['transformation_dims',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#a03111d13caa805af17a246b208e6e892',1,'taplib::tap::TensorAccessPattern']]]
+  ['trace_23',['trace',['../classiron_1_1worker_1_1Worker.html#a10a553d64267f4b1337e7050a08226f0',1,'iron::worker::Worker']]],
+  ['trace_5fevents_24',['trace_events',['../classiron_1_1worker_1_1Worker.html#a7de61d33d6e9e3bbc13a091738882a16',1,'iron::worker::Worker']]],
+  ['transformation_5fdims_25',['transformation_dims',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#a03111d13caa805af17a246b208e6e892',1,'taplib::tap::TensorAccessPattern']]]
 ];

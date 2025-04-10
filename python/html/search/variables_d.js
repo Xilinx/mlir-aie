@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['worker_5flocks_0',['worker_locks',['../classiron_1_1worker_1_1WorkerRuntimeBarrier.html#aa2278632b0686a6336de4a34c0a2c353',1,'iron::worker::WorkerRuntimeBarrier']]]
+  ['value_0',['value',['../classiron_1_1worker_1_1__BarrierSetOp.html#a0e13bb6ac03092234cf11a7bcd68317f',1,'iron::worker::_BarrierSetOp']]]
 ];
