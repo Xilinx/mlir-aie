@@ -16,14 +16,14 @@ from aie.iron import (
     WorkerRuntimeBarrier,
 )
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import AnyMemTile, NPU1Col1, NPU2Col1, Tile
+from aie.iron.device import AnyMemTile, NPU1Col1, NPU2, Tile
 from aie.iron.controlflow import range_
 
 if len(sys.argv) > 1:
     if sys.argv[1] == "npu":
         dev = NPU1Col1()
     elif sys.argv[1] == "npu2":
-        dev = NPU2Col1()
+        dev = NPU2()
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 

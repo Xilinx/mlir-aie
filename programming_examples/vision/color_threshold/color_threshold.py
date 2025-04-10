@@ -146,7 +146,7 @@ try:
     if device_name == "npu":
         dev = NPU1Col1()
     elif device_name == "npu2":
-        dev = NPU2Col1()
+        dev = NPU2()
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
     width = 512 if (len(sys.argv) != 4) else int(sys.argv[2])

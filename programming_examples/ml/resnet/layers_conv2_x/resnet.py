@@ -8,7 +8,7 @@ import numpy as np
 
 from aie.iron import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col3, NPU2Col3, Tile
+from aie.iron.device import NPU1Col3, NPU2, Tile
 from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.helpers.taplib import TensorAccessPattern
@@ -17,7 +17,7 @@ if len(sys.argv) > 1:
     if sys.argv[1] == "npu":
         dev = NPU1Col3()
     elif sys.argv[1] == "npu2":
-        dev = NPU2Col3()
+        dev = NPU2()
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
