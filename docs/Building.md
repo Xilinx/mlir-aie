@@ -1,6 +1,6 @@
 # Building the MLIR-AIE Codebase on Linux
 
-These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 24.04** or **Ubuntu 24.10** install. It is possible to use **Ubunut 22.04** however you must follow the documentation on the [xdna-driver](https://github.com/amd/xdna-driver) repository to configure the Linux kernel, driver and runtime for deployment. 
+These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 24.04** or **Ubuntu 24.10** install. It is possible to use **Ubuntu 22.04** however you must follow the documentation on the [xdna-driver](https://github.com/amd/xdna-driver) repository to configure the Linux kernel, driver and runtime for deployment. 
 
 ## Initial Setup
 
