@@ -20,6 +20,7 @@ in1_size = 131072 # in bytes
 in2_size = 131072 # in bytes, should always be euqal to in1_size
 out_size = 131072 # in bytes, should always be equal to in1_size
 trace_size = 8192
+CHESS ?= false
 
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
 data_size = in1_size
