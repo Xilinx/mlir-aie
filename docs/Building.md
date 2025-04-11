@@ -130,7 +130,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 1. Use scripted mlir-aie build process. This script downloads llvm/mlir from wheels before building.
    ```bash
-   utils/build-mlir-aie-from-wheels.sh
+   bash ./utils/build-mlir-aie-from-wheels.sh
    ```
 
 1. Setup environment and add tools to PATHs
