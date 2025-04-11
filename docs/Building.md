@@ -160,6 +160,10 @@ For your design of interest, for instance from [programming_examples](../program
 
 1. AIE API header library documentation for single-core AIE programming in C++ is avaiable [here](https://xilinx.github.io/aie_api/topics.html)
 
+## Contributing:
+
+Interested in contributing MLIR-AIE? [Information for developers](./CONTRIBUTING.md)
+
 ## Troubleshooting:
 
 ### Update BIOS:
@@ -170,8 +174,6 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 > **NOTE:** Some manufacturers only provide Windows executables to update the BIOS, please do this before installing Ubuntu.
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
-
-Interested in contributing MLIR-AIE? [Information for developers](./CONTRIBUTING.md)
 
 -----
 
