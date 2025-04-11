@@ -72,7 +72,7 @@ try:
     if device_name == "npu":
         dev = AIEDevice.npu1_1col
     elif device_name == "npu2":
-        dev = AIEDevice.npu2_1col
+        dev = AIEDevice.npu2
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 except ValueError:
