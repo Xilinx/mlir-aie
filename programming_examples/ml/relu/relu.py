@@ -11,7 +11,7 @@ import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, NPU2
+from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
 
@@ -130,7 +130,7 @@ opts = p.parse_args(sys.argv[1:])
 if opts.device == "npu":
     dev = NPU1Col1()
 elif opts.device == "npu2":
-    dev = NPU2()
+    dev = NPU2Col1()
 else:
     raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 in1_size = int(opts.in1_size)

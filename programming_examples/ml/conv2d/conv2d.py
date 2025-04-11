@@ -17,7 +17,7 @@ from aie.iron import (
     WorkerRuntimeBarrier,
 )
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, NPU2
+from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
 
 
@@ -147,7 +147,7 @@ try:
     if device_name == "npu":
         dev = NPU1Col1()
     elif device_name == "npu2":
-        dev = NPU2()
+        dev = NPU2Col1()
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
     width = int(sys.argv[2])

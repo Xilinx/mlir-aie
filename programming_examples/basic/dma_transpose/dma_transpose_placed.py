@@ -19,7 +19,7 @@ if len(sys.argv) > 3:
     if sys.argv[1] == "npu":
         dev = AIEDevice.npu1_1col
     elif sys.argv[1] == "npu2":
-        dev = AIEDevice.npu2
+        dev = AIEDevice.npu2_1col
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 else:

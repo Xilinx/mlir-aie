@@ -11,7 +11,7 @@ import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, NPU2
+from aie.iron.device import NPU1Col1, NPU2Col1
 
 
 def my_reduce_max(dev, in1_size, out_size, trace_size):
@@ -83,7 +83,7 @@ opts = p.parse_args(sys.argv[1:])
 if opts.device == "npu":
     dev = NPU1Col1()
 elif opts.device == "npu2":
-    dev = NPU2()
+    dev = NPU2Col1()
 else:
     raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
 
