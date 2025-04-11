@@ -227,13 +227,7 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 [Device Descriptions](Devices.md)
 
-[Getting Started on a Versal™ board](Building.md)
-
-[Running on a Versal™ board](Platform.md)
-
-[Detailed Getting Started and Running on Linux Ryzen™ AI](buildHostLin.md)
-
-[Detailed Getting Started and Running on Windows Ryzen™ AI](buildHostWin.md)
+[Building mlir-aie from source](Building.md)
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
 
