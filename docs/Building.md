@@ -100,7 +100,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
     build-essential clang clang-14 lld lld-14 cmake python3-venv python3-pip
     ```
 
-## Install IRON for AMD Ryzen™ AI AIE Application Development
+## Build and Install mlir-aie and IRON
 
 1. Clone [the mlir-aie repository](https://github.com/Xilinx/mlir-aie.git):
    ```bash
@@ -154,9 +154,7 @@ For your design of interest, for instance from [programming_examples](../program
     make run
     ```
 
-## Learn more about NPU programming with IRON
-
-1. Continue to the [IRON AIE Application Programming Guide](programming_guide)
+## Learn more
 
 1. Additional MLIR-AIE documentation is available on the [website](https://xilinx.github.io/mlir-aie/)
 
