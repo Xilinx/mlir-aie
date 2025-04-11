@@ -165,4 +165,4 @@ Following the [platform build steps](Platform.md) will create such a sysroot bas
 
 -----
 
-<p align="center">Copyright&copy; 2019-2023 AMD/Xilinx</p>
+<p align="center">Copyright&copy; 2019-2025 AMD/Xilinx</p>
