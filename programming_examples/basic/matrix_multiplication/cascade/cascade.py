@@ -138,6 +138,8 @@ def my_matmul(
             dev_ty = AIEDevice.npu2_2col
         elif n_aie_cols == 4:
             dev_ty = AIEDevice.npu2_4col
+        else: 
+            dev_ty = AIEDevice.npu2
 
     @device(dev_ty)
     def device_body():
