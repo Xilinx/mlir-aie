@@ -7,31 +7,43 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 import sys
+import argparse
+
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 
+from aie.utils import tensor
+import aie.iron as iron
 
-def my_vector_add():
-    N = 256
+# For the JIT to work, we need to parse the arguments before the JIT is called.
+parser = argparse.ArgumentParser()
+parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose output')
+parser.add_argument('-d', '--device', choices=["npu", "npu2", "xcvc1902"], default="npu", help="Target device")
+parser.add_argument('-c', '--column', type=int, default=0, help="Column index (default: 0)")
+parser.add_argument('-n', '--num-elements', type=int, default=32, help="Number of elements (default: 32)")
+args = parser.parse_args()
+
+device_map = {
+    "npu": AIEDevice.npu1_1col,
+    "npu2": AIEDevice.npu2_1col,
+    "xcvc1902": AIEDevice.xcvc1902,
+}
+dev = device_map[args.device]
+column_id = args.column
+num_elements = args.num_elements
+data_type = np.int32
+
+@iron.jit(debug=True, verify=True)
+def vector_vector_add():
+    
+    N = num_elements
     n = 16
     N_div_n = N // n
 
     buffer_depth = 2
-
-    if len(sys.argv) != 3:
-        raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
-
-    if sys.argv[1] == "npu":
-        dev = AIEDevice.npu1_1col
-    elif sys.argv[1] == "npu2":
-        dev = AIEDevice.npu2
-    elif sys.argv[1] == "xcvc1902":
-        dev = AIEDevice.xcvc1902
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
     @device(dev)
     def device_body():
@@ -41,8 +53,8 @@ def my_vector_add():
         # AIE Core Function declarations
 
         # Tile declarations
-        ShimTile = tile(int(sys.argv[2]), 0)
-        ComputeTile2 = tile(int(sys.argv[2]), 2)
+        ShimTile = tile(column_id, 0)
+        ComputeTile2 = tile(column_id, 2)
 
         # AIE-array data movement with object fifos
         of_in1 = object_fifo("in1", ShimTile, ComputeTile2, buffer_depth, tile_ty)
@@ -80,11 +92,40 @@ def my_vector_add():
             dma_await_task(out_task)
             dma_free_task(in1_task, in2_task)
 
+def main():
 
-with mlir_mod_ctx() as ctx:
-    my_vector_add()
-    res = ctx.module.operation.verify()
-    if res == True:
-        print(ctx.module)
+    input0 = tensor.random((num_elements,),
+                          low=0, high=num_elements,
+                          dtype=data_type,
+                          device="npu")
+    input1 = tensor.random((num_elements,),
+                          low=0, high=num_elements,
+                          dtype=data_type,
+                          device="npu")
+    output = tensor.zerolike(input0)        
+
+    vector_vector_add(input0, input1, output)
+    
+    
+    e = np.equal(input0.numpy() + input1.numpy(), output.numpy())
+    errors = np.size(e) - np.count_nonzero(e)
+    
+    if args.verbose:
+        print(f"{'input0':>4} + {'input1':>4} = {'output':>4}")
+        print("-" * 34)
+        count = input0.numel()
+        for idx, (a, b, c) in enumerate(zip(input0[:count], input1[:count], output[:count])):
+            print(f"{idx:2}: {a:4} + {b:4} = {c:4}")
+
+
+    if not errors:
+        print("\nPASS!\n")
+        exit(0)
     else:
-        print(res)
+        print("\nError count: ", errors)
+        print("\nFailed.\n")
+        exit(-1)
+ 
+
+if __name__ == "__main__":
+    main()
