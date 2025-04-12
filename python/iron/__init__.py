@@ -5,3 +5,4 @@ from .program import Program
 from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime
 from .dataflow import ObjectFifo
+from .jit import jit
