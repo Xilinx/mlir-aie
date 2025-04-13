@@ -27,7 +27,7 @@ tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
 
 # Define runtime tensor access pattern (tap) from tiler
 tiler = TensorTiler2D.simple_tiler(
-    (data_height, data_width), (tile_height, tile_width)
+    # TODO
 )
 
 i = 0

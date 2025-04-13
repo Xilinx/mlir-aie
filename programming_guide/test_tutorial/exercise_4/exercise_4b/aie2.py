@@ -28,8 +28,8 @@ tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
 # Define runtime tensor access pattern (tap)
 tensor_dims = (data_height, data_width)
 offset = 0
-sizes = [1, 2, 3, 8]
-strides = [0, 8, 16, 1]
+sizes = [1, TODO, TODO, TODO]   # last dimension is reserved for repeat count
+strides = [0, TODO, TODO, TODO] # last dimension is reserved for repeat count
 tap = TensorAccessPattern(tensor_dims, offset, sizes, strides)
 
 tap.visualize(show_arrows=True, file_path="plot.png")
