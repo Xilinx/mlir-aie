@@ -65,8 +65,8 @@ def vector_vector_add():
 
     @device(dev)
     def device_body():
-        tensor_ty = np.ndarray[(N,), np.dtype[np.int32]]
-        tile_ty = np.ndarray[(n,), np.dtype[np.int32]]
+        tensor_ty = np.ndarray[(N,), np.dtype[data_type]]
+        tile_ty = np.ndarray[(n,), np.dtype[data_type]]
 
         # AIE Core Function declarations
 
