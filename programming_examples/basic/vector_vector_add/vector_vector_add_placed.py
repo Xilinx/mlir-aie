@@ -18,7 +18,8 @@ from aie.helpers.dialects.ext.scf import _for as range_
 from aie.utils import tensor
 import aie.iron as iron
 
-# For the JIT to work, we need to parse the arguments before the JIT is called.
+# The JIT-compiled kernel relies on inputs from the command line.
+# Because of that, we need to parse the arguments before the JIT is invoked.
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "-v", "--verbose", action="store_true", help="Enable verbose output"
