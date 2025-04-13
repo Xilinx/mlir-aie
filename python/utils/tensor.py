@@ -7,8 +7,15 @@
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
 import numpy as np
-import pyxrt as xrt
 import ctypes
+
+try:
+    import pyxrt as xrt
+except ImportError:
+    print("pyxrt not available; skipping module.")
+    import sys
+
+    sys.exit(0)
 
 
 class Tensor:
