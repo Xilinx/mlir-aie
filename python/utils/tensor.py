@@ -9,7 +9,6 @@
 import numpy as np
 import pyxrt as xrt
 import ctypes
-import torch
 
 
 class Tensor:
@@ -87,10 +86,6 @@ class Tensor:
     def numpy(self):
         self.__sync_from_device()
         return self.data
-
-    def to_torch(self, device="cuda"):
-        self.__sync_from_device()
-        return torch.from_numpy(self.data).to(device)
 
     def numel(self):
         return int(np.prod(self.shape))
