@@ -1,0 +1,10 @@
+// (c) Copyright 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, peano 
+//
+// RUN: dev=$(if [ "$NPU2" = "1" ]; then echo npu2; else echo npu; fi); \
+// RUN: %run_on_npu python3 %S/vector_vector_add_placed.py --device=$dev --column=0 > %t.mlir
+// RUN: %run_on_2npu python3 %S/vector_vector_add_placed.py --device=$dev --column=0 > %t.mlir
+
+  
