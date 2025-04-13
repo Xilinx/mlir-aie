@@ -11,12 +11,10 @@ import shutil
 import os
 import sys
 
+
 def compile_mlir_to_binary(
-    mlir_path: str,
-    inst_filename: str,
-    xclbin_filename: str,
-    debug: bool = False
-): 
+    mlir_path: str, inst_filename: str, xclbin_filename: str, debug: bool = False
+):
     """
     Compile an MLIR file to instruction and xclbin files using aiecc.py.
 

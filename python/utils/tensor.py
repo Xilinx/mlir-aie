@@ -11,10 +11,11 @@ import pyxrt as xrt
 import ctypes
 import torch
 
+
 class Tensor:
     def __repr__(self):
         return f"Tensor(shape={self.shape}, dtype={self.dtype}, device='{self.device}')\n{self.data}"
- 
+
     def __init__(self, shape_or_data, dtype=np.uint32, device="npu"):
         if device != "npu" and device != "cpu":
             raise ValueError("Unsupported device: {}".format(device))
@@ -34,7 +35,7 @@ class Tensor:
         self.len_bytes = np.prod(self.shape) * np.dtype(self.dtype).itemsize
         device_index = 0
         self.xrt_device = xrt.device(device_index)
-        
+
         # Ideally, we use xrt::ext::bo host-only BO but there are no bindings for that currenty.
         # Eventually, xrt:ext::bo uses the 0 magic number that shall be fixed in the future.
         # https://github.com/Xilinx/XRT/blob/9b114f18c4fcf4e3558291aa2d78f6d97c406365/src/runtime_src/core/common/api/xrt_bo.cpp#L1626
@@ -73,26 +74,27 @@ class Tensor:
             return self
         else:
             raise ValueError(f"Unknown device '{target_device}'")
-                
+
     def __sync_to_device(self):
         return self.bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
     def __sync_from_device(self):
         return self.bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
-    
+
     def buffer_object(self):
         return self.bo
-    
+
     def numpy(self):
         self.__sync_from_device()
         return self.data
-    def to_torch(self, device='cuda'):
+
+    def to_torch(self, device="cuda"):
         self.__sync_from_device()
         return torch.from_numpy(self.data).to(device)
-    
+
     def numel(self):
         return int(np.prod(self.shape))
-            
+
     @classmethod
     def ones(cls, shape, dtype=np.uint32, device="cpu", **kwargs):
         t = cls(shape, dtype, device, **kwargs)
@@ -135,6 +137,7 @@ class Tensor:
             return ctypes.c_float
         else:
             raise NotImplementedError(f"Unsupported dtype: {dtype}")
+
     @classmethod
     def arange(cls, start, stop=None, step=1, dtype=np.uint32, device="cpu", **kwargs):
         if stop is None:
@@ -163,12 +166,14 @@ class Tensor:
         del self.bo
         self.bo = None
 
+
 def tensor(data):
     return Tensor(data)
+
 
 ones = Tensor.ones
 zeros = Tensor.zeros
 random = Tensor.random
 randomints = Tensor.randomints
 arange = Tensor.arange
-zerolike = Tensor.zerolike    
+zerolike = Tensor.zerolike

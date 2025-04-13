@@ -20,10 +20,26 @@ import aie.iron as iron
 
 # For the JIT to work, we need to parse the arguments before the JIT is called.
 parser = argparse.ArgumentParser()
-parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose output')
-parser.add_argument('-d', '--device', choices=["npu", "npu2", "xcvc1902"], default="npu", help="Target device")
-parser.add_argument('-c', '--column', type=int, default=0, help="Column index (default: 0)")
-parser.add_argument('-n', '--num-elements', type=int, default=32, help="Number of elements (default: 32)")
+parser.add_argument(
+    "-v", "--verbose", action="store_true", help="Enable verbose output"
+)
+parser.add_argument(
+    "-d",
+    "--device",
+    choices=["npu", "npu2", "xcvc1902"],
+    default="npu",
+    help="Target device",
+)
+parser.add_argument(
+    "-c", "--column", type=int, default=0, help="Column index (default: 0)"
+)
+parser.add_argument(
+    "-n",
+    "--num-elements",
+    type=int,
+    default=32,
+    help="Number of elements (default: 32)",
+)
 args = parser.parse_args()
 
 device_map = {
@@ -36,9 +52,10 @@ column_id = args.column
 num_elements = args.num_elements
 data_type = np.int32
 
+
 @iron.jit(debug=True, verify=True)
 def vector_vector_add():
-    
+
     N = num_elements
     n = 16
     N_div_n = N // n
@@ -92,31 +109,30 @@ def vector_vector_add():
             dma_await_task(out_task)
             dma_free_task(in1_task, in2_task)
 
+
 def main():
 
-    input0 = tensor.random((num_elements,),
-                          low=0, high=num_elements,
-                          dtype=data_type,
-                          device="npu")
-    input1 = tensor.random((num_elements,),
-                          low=0, high=num_elements,
-                          dtype=data_type,
-                          device="npu")
-    output = tensor.zerolike(input0)        
+    input0 = tensor.random(
+        (num_elements,), low=0, high=num_elements, dtype=data_type, device="npu"
+    )
+    input1 = tensor.random(
+        (num_elements,), low=0, high=num_elements, dtype=data_type, device="npu"
+    )
+    output = tensor.zerolike(input0)
 
     vector_vector_add(input0, input1, output)
-    
-    
+
     e = np.equal(input0.numpy() + input1.numpy(), output.numpy())
     errors = np.size(e) - np.count_nonzero(e)
-    
+
     if args.verbose:
         print(f"{'input0':>4} + {'input1':>4} = {'output':>4}")
         print("-" * 34)
         count = input0.numel()
-        for idx, (a, b, c) in enumerate(zip(input0[:count], input1[:count], output[:count])):
+        for idx, (a, b, c) in enumerate(
+            zip(input0[:count], input1[:count], output[:count])
+        ):
             print(f"{idx:2}: {a:4} + {b:4} = {c:4}")
-
 
     if not errors:
         print("\nPASS!\n")
@@ -125,7 +141,7 @@ def main():
         print("\nError count: ", errors)
         print("\nFailed.\n")
         exit(-1)
- 
+
 
 if __name__ == "__main__":
     main()
