@@ -40,6 +40,8 @@ class Worker(ObjectFifoEndpoint):
         while_true: bool = True,
         stack_size: int = None,
         allocation_scheme: str = None,
+        trace: int = None,
+        trace_events: list = None,
     ):
         """Construct a Worker
 
@@ -51,6 +53,7 @@ class Worker(ObjectFifoEndpoint):
             stack_size (int, optional): The stack_size in bytes to be allocated for the worker. Defaults to 1024 bytes.
             allocation_scheme (str, optional): The memory allocation scheme to use for the Worker, either 'basic-sequential' or 'bank-aware'. If None, defaults to bank-aware.
                 Will override any allocation scheme set on the tile given as placement.
+            trace (int, optional): If >0, enable tracing for this worker.
 
         Raises:
             ValueError: Parameters are validated.
@@ -61,6 +64,8 @@ class Worker(ObjectFifoEndpoint):
         self.allocation_scheme = allocation_scheme
         if allocation_scheme:
             self._tile.allocation_scheme = allocation_scheme
+        self.trace = trace
+        self.trace_events = trace_events
 
         # If no core_fn is given, make a simple while(true) loop.
         if core_fn is None:

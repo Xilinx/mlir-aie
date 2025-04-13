@@ -62,7 +62,7 @@ def my_eltwise_add(dev, trace_size):
         cores = [tile(0, 2 + i) for i in range(n_cores)]
 
         # Set up a packet-switched flow from core to shim for tracing information
-        tiles_to_trace = [cores[0]]
+        tiles_to_trace = [cores[0], cores[1]]
         if trace_size > 0:
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
@@ -139,7 +139,11 @@ def my_eltwise_add(dev, trace_size):
 
             if trace_size > 0:
                 trace_utils.configure_packet_tracing_aie2(
-                    tiles_to_trace, ShimTile, trace_size, N_in_bytes
+                    tiles_to_trace=tiles_to_trace,
+                    shim=ShimTile,
+                    trace_size=trace_size,
+                    trace_offset=N_in_bytes,
+                    ddr_id=2,
                 )
 
             a_task = shim_dma_single_bd_task(

@@ -57,7 +57,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    >  Devices present
    >  BDF             :  Name             
    > ------------------------------------
-   >  [0000:66:00.1]  :  RyzenAI-npu1
+   >  [0000:66:00.1]  :  NPU Strix
    >  ```
 
 ### Install IRON and MLIR-AIE Prerequisites
@@ -65,11 +65,12 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 1. Install the following packages needed for MLIR-AIE:
 
     ```bash
+    # Python versions 3.10, 3.12 and 3.13 are currently supported by our wheels
     sudo apt install \
     build-essential clang clang-14 lld lld-14 cmake python3-venv python3-pip
     ```
 
-1. Install opencv which is needed for some programming examples:
+1. (Optional) Install opencv which is needed for vision programming examples:
 
    ```bash
    sudo apt install libopencv-dev python3-opencv
@@ -83,9 +84,69 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    cd mlir-aie
    ```
 
-1. Install IRON library, mlir-aie and llvm-aie compilers from whls:
+1. Setup a virtual environment:
    ```bash
-   source utils/quick_setup.sh
+   python3 -m venv ironenv
+   source ironenv/bin/activate
+   python3 -m pip install --upgrade pip
+   ```
+
+1. Install IRON library, mlir-aie and llvm-aie compilers from whls:
+
+   For release v0.9:
+   ```bash
+   # Install IRON library and mlir-aie from a wheel
+   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/v0.9
+
+   # Install Peano from a llvm-aie wheel
+   python3 -m pip install https://github.com/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-19.0.0.2025040301+fd6a2c4d-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+   ```
+
+   For daily latest:
+   ```bash
+   # Install IRON library and mlir-aie from a wheel
+   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels
+
+   # Install Peano from llvm-aie wheel
+   python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+   ```
+
+1. Install required Python packages:
+   ```bash
+   # Install basic Python requirements 
+   python3 -m pip install -r python/requirements.txt
+
+   # This installs the pre-commit hooks defined in .pre-commit-config.yaml
+   pre-commit install
+
+   # Install MLIR Python Extras 
+   HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
+   ```
+
+1. (Optional) Install ML Python packages for ml programming examples:
+   ```bash
+   # Install Torch for ML examples
+   python3 -m pip install -r python/requirements_ml.txt
+   ```
+
+1. (Optional) Install Jupyter Notebook Python packages:
+   ```bash
+   # This creates an ipykernel (for use in notebooks) using the ironenv venv
+   python3 -m ipykernel install --user --name ironenv
+    
+   # The install generally captures in the $PYTHONPATH by the `env_setup.sh` script.
+   # However, jupyter notebooks don't always get access to the PYTHONPATH (e.g. if they are run with
+   # vscode) so we save the ${MLIR_AIE_INSTALL_DIR}/python in a .pth file in the site packages dir of the
+   # ironenv venv; this allows the iron ipykernel to find the install dir regardless of if PYTHONPATH is
+   # available or not.
+   MLIR_AIE_INSTALL=`$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie` \
+   venv_site_packages=`python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])'` \
+   echo ${MLIR_AIE_INSTALL}/python > $venv_site_packages/mlir-aie.pth
+   ```
+
+1. Setup environment and add tools to PATHs
+   ```bash
+   source utils/env_setup.sh
    ```
 
 ## Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU
@@ -166,13 +227,7 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 [Device Descriptions](Devices.md)
 
-[Getting Started on a Versal™ board](Building.md)
-
-[Running on a Versal™ board](Platform.md)
-
-[Detailed Getting Started and Running on Linux Ryzen™ AI](buildHostLin.md)
-
-[Detailed Getting Started and Running on Windows Ryzen™ AI](buildHostWin.md)
+[Building mlir-aie from source](Building.md)
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
 

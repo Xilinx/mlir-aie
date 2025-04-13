@@ -8,12 +8,17 @@
 
 from ..extras.context import mlir_mod_ctx  # type: ignore
 from ..helpers.dialects.ext.func import FuncBase
-from ..dialects.aie import device
+
+# from ..dialects.aie import device
+from ..dialects.aie import device, tile
 
 from .device import Device
 from .runtime import Runtime
 from .placers import Placer
 from .resolvable import Resolvable
+
+# import aie.utils.trace as trace_utils
+from ..utils import trace as trace_utils
 
 
 class Program:
@@ -86,6 +91,26 @@ class Program:
                 # Generate core programs
                 for w in self._rt.workers:
                     w.resolve()
+
+                # Generate trace routes
+                # TODO Need to iterate over all tiles or workers & fifos to make list of tiles to trace
+                #      Alternatively, we merge the mechanism for packet routed objfifos so we use unique
+                #      route IDs for trace as well
+
+                # Scan workers and build list of tiles to trace
+                tiles_to_trace = []
+                if self._rt._trace_workers is not None:
+                    for w in self._rt._trace_workers:
+                        tiles_to_trace.append(w.tile.op)
+                else:
+                    for w in self._rt._workers:
+                        if w.trace is not None:
+                            tiles_to_trace.append(w.tile.op)
+                if self._rt._trace_size is not None:
+                    trace_shim_tile = self._rt.get_first_cons_shimtile()
+                    trace_utils.configure_packet_tracing_flow(
+                        tiles_to_trace, trace_shim_tile
+                    )
 
                 # In/Out Sequence
                 self._rt.resolve()
