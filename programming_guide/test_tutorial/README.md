@@ -254,7 +254,12 @@ Offsets are currently not represented at the Object FIFO level and as such the d
 To better support DMA on-the-fly data transformations **at runtime** IRON 0.9 introduces [taplib](../../python/helpers/taplib/) which provides the building blocks for `Tensor Access Pattern`s (`taps`). Unlike the dimensions of the `ObjectFifo` the sizes and strides are grouped together, however, the dimensions should still be given from highest to lowest.
 
 ```python
-tap = TensorAccessPattern(tensor_dims=(2, 3), offset=0, sizes=[1, 2], strides=[0, 1])
+tap = TensorAccessPattern(
+    tensor_dims=(2, 3),
+    offset=0,
+    sizes=[size_1, size_0],
+    strides=[stride_1, stride_0],
+)
 ```
 `taps` additionally have an offset and as such the `tensor_dims` may be smaller than the size of the original tensor.
 
