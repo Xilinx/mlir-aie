@@ -1,5 +1,7 @@
 # <ins>Hands-on Tutorial for IRON 0.9</ins>
 
+**These exercises are set to run on Strix (NPU2) devices. If you wish to run them on a different architecture, you can change the device at the top of the python source files.**
+
 ## <ins>Key Components: ObjectFifos, Workers, Runtime</ins>
 
 IRON 0.9 introduces an unplaced layer to the IRON [API](../../python/iron/). As an example, below are the placed and unplaced versions of the AIE Object FIFOs and compute code:
@@ -53,7 +55,7 @@ We will now look at a code [example](./aie2.py) of IRON 0.9 and observe the diff
 
 2. Run `make clean`. Modify the code in [exercise_1](./exercise_1/aie2.py) so that the Worker receives its input data from external memory instead of using the local buffer, i.e. a passthrough.
 
-3. Run `make clean`. Modify the code in [exercise_1](./exercise_1/aie2.py) so that data is routed from external memory through a Mem tile and back only using ObjectFifos and without using Workers. For this, you will require the `forward()` function defined in [objectfifo.py](../../python/iron/dataflow/objectfifo.py).
+3. Run `make clean`. Modify the code in [exercise_1](./exercise_1/aie2.py) so that data is routed from external memory through a Mem tile and back only using ObjectFifos and without using Workers. For this, you will require the `forward()` function described in [Section 2b - Implicit Copy](../section-2/section-2b/03_Implicit_Copy/README.md) of the programming guide.
 
 ## <ins>Complex Data Movement Patterns: Broadcast, Split, Join</ins>
 
