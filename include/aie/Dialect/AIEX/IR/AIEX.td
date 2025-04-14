@@ -19,6 +19,8 @@ include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/DataLayoutInterfaces.td"
+include "mlir/IR/BuiltinTypeInterfaces.td"
 include "mlir/IR/CommonAttrConstraints.td"
 
 def AIEX_Dialect : Dialect {
@@ -34,8 +36,40 @@ def AIEX_Dialect : Dialect {
   let extraClassDeclaration = [{
   }];
 
+  let useDefaultTypePrinterParser = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// AIEX Types
+//===----------------------------------------------------------------------===//
+def AIEX_BfpType : TypeDef<AIEX_Dialect, "bfp16", [
+    MemRefElementTypeInterface
+  ]> {
+  let summary = "AIEX bfp16 type";
+  let mnemonic = "bfp16";
+  let description = [{
+    TODO: Complete the description.
+    This is a type representing a bfp16. It is meant to eventually be lowered 
+    into a standard type further down the pipeline.
+    It the meantime, it can be used for bfp16 related dataflow adapations.
+  }];
+
+  let parameters = (
+    ins "unsigned":$block_size
+  );
+
+  let assemblyFormat = "`<` $block_size `>`";
+
+  // Indicate that our type will add additional verification to the parameters.
+  // Since this new type needs information about the targetModel to be verified, 
+  // checks are done in both the bfp lowering pass and the verifier.
+  // TODO: Find a cleaner way to manage the checks that does not duplicate them.
+  let genVerifyDecl = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// AIEX Operations
+//===----------------------------------------------------------------------===//
 
 class AIEX_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIEX_Dialect, mnemonic, traits>;
