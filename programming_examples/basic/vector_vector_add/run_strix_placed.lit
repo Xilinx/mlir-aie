@@ -3,5 +3,4 @@
 //
 // REQUIRES: ryzen_ai, peano 
 //
-// RUN: dev=$(if [ "$NPU2" = "1" ]; then echo npu2; else echo npu; fi); \
-// RUN: %run_on_2npu python3 %S/vector_vector_add_placed.py --device=$dev --column=0
+// RUN: %run_on_2npu python3 %S/vector_vector_add_placed.py --device=npu2 --column=0
