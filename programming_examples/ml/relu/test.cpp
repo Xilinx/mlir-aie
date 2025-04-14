@@ -9,16 +9,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "xrt_test_wrapper.h"
-
-#include <bits/stdc++.h>
-#include <boost/program_options.hpp>
-#include <cmath>
 #include <cstdint>
-#include <fstream>
-#include <iostream>
-#include <sstream>
-#include <stdfloat>
-#include <vector>
+
+// #include <bits/stdc++.h>
+// #include <boost/program_options.hpp>
+// #include <cmath>
+// #include <cstdint>
+// #include <fstream>
+// #include <iostream>
+// #include <sstream>
+// #include <stdfloat>
+// #include <vector>
 
 //*****************************************************************************
 // Modify this section to customize buffer datatypes, initialization functions,
