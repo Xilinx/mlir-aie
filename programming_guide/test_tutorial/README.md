@@ -243,11 +243,50 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
 
 ## <ins>Advanced Topic: Data Layout Transformations</ins>
 
-`ObjectFifos` can express DMA on-the-fly data transformations via their `dims_to_stream` and `default_dims_from_stream_per_cons` inputs:
+`ObjectFifo`s can express DMA on-the-fly data transformations via their `dims_to_stream` and `default_dims_from_stream_per_cons` inputs. These inputs are structured as a list of pairs where each pair is expressed as (size, stride) for a dimension of the DMA transformation. The dimensions should be given from highest to lowest.
 
-To better support DMA on-the-fly data transformations **at runtime** IRON 0.9 introduces [taplib](../../python/helpers/taplib/) which provides the building blocks for `Tensor Access Pattern`s (`taps`):
+```python
+dims = [(size_2, stride_2), (size_1, stride_1), (size_0, stride_0)]
+of_out = ObjectFifo(data_ty, name="out", dims_to_stream=dims)
+```
+Offsets are currently not represented at the Object FIFO level and as such the dimensions should be applicable over the full size of the objects.
 
-`taplib` additionally introduces the `TensorTiler2D` class which can generate `taps` for common tiling patterns:
+To better support DMA on-the-fly data transformations **at runtime** IRON 0.9 introduces [taplib](../../python/helpers/taplib/) which provides the building blocks for `Tensor Access Pattern`s (`taps`). Unlike the dimensions of the `ObjectFifo` the sizes and strides are grouped together, however, the dimensions should still be given from highest to lowest.
+
+```python
+tap = TensorAccessPattern(tensor_dims=(2, 3), offset=0, sizes=[1, 2], strides=[0, 1])
+```
+`taps` additionally have an offset and as such the `tensor_dims` may be smaller than the size of the original tensor.
+
+The `TensorAccessPattern` can be visualized in two ways:
+- as a heatmap showing the order that elements are accessed
+- as a heatmap showing the number of times each element in the tensor is accessed by the `TensorAccessPattern`
+
+```python
+tap.visualize(show_arrows=True, plot_access_count=True)
+```
+
+`taps` can be grouped in a `TensorAccessSequence` where each `tap` represents a different tile (from the tiling pattern):
+
+```python
+t0 = TensorAccessPattern((8, 8), offset=0, sizes=[1, 1, 4, 4], strides=[0, 0, 8, 1])
+t1 = TensorAccessPattern((8, 8), offset=4, sizes=[1, 1, 4, 4], strides=[0, 0, 8, 1])
+t2 = TensorAccessPattern((8, 8), offset=32, sizes=[1, 1, 4, 4], strides=[0, 0, 8, 1])
+
+taps = TensorAccessSequence.from_taps([t0, t1, t2])
+```
+The `taps` can then be accessed in the sequence as an array:
+```python
+for t in taps:
+```
+
+`taplib` additionally introduces the `TensorTiler2D` class which can generate `taps` for common tiling patterns. The tiler returns the generated `taps` as a `TensorAccessSequence`.
+
+```python
+tensor_dims = (8, 8)
+tile_dims = (4, 4)
+simple_tiler = TensorTiler2D.simple_tiler(tensor_dims, tile_dims)
+```
 
 More on `taplib` in [tiling_exploration](../../programming_examples/basic/tiling_exploration/README.md).
 
