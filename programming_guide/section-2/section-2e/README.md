@@ -57,7 +57,7 @@ of_offsets = [tile_size * worker for worker in range(n_workers)]
 
 of_in = ObjectFifo(data_ty, name="in")
 of_ins = (
-    of_in
+    of_ins
     .cons()
     .split(
         of_offsets,
