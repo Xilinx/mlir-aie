@@ -11,7 +11,7 @@ import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
 
@@ -120,7 +120,7 @@ def my_eltwise_add(dev, in1_size, in2_size, out_size, trace_size):
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (A, B, C):
-        rt.enable_trace(trace_size, workers=[workers[0]])
+        rt.enable_trace(trace_size, workers=workers)
         rt.start(*workers)
         rt.fill(inA.prod(), A)
         rt.fill(inB.prod(), B)
