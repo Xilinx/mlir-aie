@@ -10,14 +10,14 @@ import sys
 
 from aie.iron import Program, Runtime, Worker, ObjectFifo, GlobalBuffer
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1
+from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
 
 from aie.extras.dialects.ext import arith
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.dialects.aie import T
 
-dev = NPU1Col1()
+dev = NPU2()
 
 # Define tensor types
 data_size = 48
