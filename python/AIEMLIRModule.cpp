@@ -20,6 +20,12 @@
 
 #include <nanobind/nanobind.h>
 
+#include <cstdlib>
+#include <stdexcept>
+#include <string>
+#include <unicodeobject.h>
+#include <vector>
+
 using namespace mlir::python;
 namespace nb = nanobind;
 using namespace nb::literals;
