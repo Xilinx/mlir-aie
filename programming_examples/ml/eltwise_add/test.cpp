@@ -38,7 +38,7 @@ void initialize_bufIn1(DATATYPE_IN1 *bufIn1, int SIZE) {
 void initialize_bufIn2(DATATYPE_IN2 *bufIn2, int SIZE) {
   for (int i = 0; i < SIZE; i++)
     bufIn2[i] = test_utils::random_bfloat16_t((std::bfloat16_t)1.0,
-                                              (std::bfloat16_t)-0.5);                                              
+                                              (std::bfloat16_t)-0.5);
 }
 
 // Initialize Output buffer
@@ -48,7 +48,7 @@ void initialize_bufOut(DATATYPE_OUT *bufOut, int SIZE) {
 
 // Functional correctness verifyer
 int verify_eltwise_add(DATATYPE_IN1 *bufIn1, DATATYPE_IN2 *bufIn2,
-                             DATATYPE_OUT *bufOut, int SIZE, int verbosity) {
+                       DATATYPE_OUT *bufOut, int SIZE, int verbosity) {
   int errors = 0;
 
   for (int i = 0; i < SIZE; i++) {
@@ -56,12 +56,13 @@ int verify_eltwise_add(DATATYPE_IN1 *bufIn1, DATATYPE_IN2 *bufIn2,
     DATATYPE_OUT test = bufOut[i];
     if (!test_utils::nearly_equal(ref, test, 0.00390625)) {
       if (verbosity >= 1)
-        std::cout << "Error in output " << i << ": " << test << " != " << ref << " from "
-                  << bufIn1[i] << " + " << bufIn2[i] << std::endl;
+        std::cout << "Error in output " << i << ": " << test << " != " << ref
+                  << " from " << bufIn1[i] << " + " << bufIn2[i] << std::endl;
       errors++;
     } else {
       if (verbosity >= 1)
-        std::cout << "Correct output " << i << ": " << test << " == " << ref << std::endl;
+        std::cout << "Correct output " << i << ": " << test << " == " << ref
+                  << std::endl;
     }
   }
   return errors;

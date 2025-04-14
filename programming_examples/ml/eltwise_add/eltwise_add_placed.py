@@ -116,7 +116,6 @@ def my_eltwise_add(dev, in1_size, in2_size, out_size, trace_size):
             of_offsets = []
         object_fifo_link(outC_fifos, outC, of_offsets, [])
 
-
         # Set up compute tiles
         for i in range(n_cores):
             # Compute tile i
@@ -145,7 +144,7 @@ def my_eltwise_add(dev, in1_size, in2_size, out_size, trace_size):
 
             if trace_size > 0:
                 trace_utils.configure_packet_tracing_aie2(
-                    tiles_to_trace=tiles_to_trace, 
+                    tiles_to_trace=tiles_to_trace,
                     shim=ShimTile,
                     trace_size=trace_size,
                 )

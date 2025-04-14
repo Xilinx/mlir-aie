@@ -129,6 +129,7 @@ def my_eltwise_add(dev, in1_size, in2_size, out_size, trace_size):
     # Place components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())
 
+
 p = argparse.ArgumentParser()
 p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
 p.add_argument(
@@ -162,4 +163,3 @@ trace_size = int(opts.trace_size)
 
 module = my_eltwise_add(dev, in1_size, in2_size, out_size, trace_size)
 print(module)
-
