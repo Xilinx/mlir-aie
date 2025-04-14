@@ -26,7 +26,7 @@ data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
 
 # Define runtime tensor access pattern (tap)
-tensor_dims = (tile_height, tile_width)
+tensor_dims = (data_height, data_width)
 tap1 = TensorAccessPattern(tensor_dims, offset=0, sizes=[1, 1, 3, 8], strides=[0, 0, 16, 1])
 tap2 = TensorAccessPattern(tensor_dims, offset=8, sizes=[1, 1, 3, 8], strides=[0, 0, 16, 1])
 
