@@ -10,15 +10,7 @@ import os
 import tempfile
 import hashlib
 import numpy as np
-
-try:
-    import pyxrt as xrt
-except ImportError:
-    print("pyxrt not available; skipping module.")
-    import sys
-
-    sys.exit(0)
-
+import pyxrt as xrt
 
 from aie.extras.context import mlir_mod_ctx
 from ..utils.compile import compile_mlir_to_binary

@@ -8,14 +8,7 @@
 
 import numpy as np
 import ctypes
-
-try:
-    import pyxrt as xrt
-except ImportError:
-    print("pyxrt not available; skipping module.")
-    import sys
-
-    sys.exit(0)
+import pyxrt as xrt
 
 
 class Tensor:
