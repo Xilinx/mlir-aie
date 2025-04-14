@@ -48,3 +48,15 @@ MlirType aieObjectFifoSubviewTypeGet(MlirType type) {
   return wrap(xilinx::AIE::AIEObjectFifoSubviewType::get(
       llvm::cast<mlir::MemRefType>(unwrap(type))));
 }
+
+//===---------------------------------------------------------------------===//
+// Bfp16Type
+//===---------------------------------------------------------------------===//
+
+bool aieTypeIsbfp16Type(MlirType type) {
+  return llvm::isa<xilinx::AIEX::bfp16Type>(unwrap(type));
+}
+
+MlirType aiebfp16TypeGet(MlirContext context, uint32_t blockSize) {
+  return wrap(xilinx::AIEX::bfp16Type::get(unwrap(context), blockSize));
+}

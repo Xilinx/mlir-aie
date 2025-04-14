@@ -32,6 +32,13 @@ MLIR_CAPI_EXPORTED MlirType aieObjectFifoTypeGet(MlirType type);
 MLIR_CAPI_EXPORTED bool aieTypeIsObjectFifoSubviewType(MlirType type);
 MLIR_CAPI_EXPORTED MlirType aieObjectFifoSubviewTypeGet(MlirType type);
 
+//===---------------------------------------------------------------------===//
+// Bfp16Type
+//===---------------------------------------------------------------------===//
+
+MLIR_CAPI_EXPORTED bool aieTypeIsbfp16Type(MlirType type);
+MLIR_CAPI_EXPORTED MlirType aiebfp16TypeGet(MlirContext context, uint32_t blockSize);
+
 #ifdef __cplusplus
 }
 #endif

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import numpy as np
+
 from .ir import Operation, DialectRegistry, Type
 
 __all__ = [
@@ -51,6 +53,17 @@ class ObjectFifoSubviewType:
     def get(type: Type) -> ObjectFifoSubviewType:
         """
         Create an ObjectFifoSubviewType type
+        """
+
+    @staticmethod
+    def isinstance(other: Type) -> bool: ...
+
+class bfp16Type(np.generic):
+    """Custom Block Floating Point 16-bit type."""
+    @staticmethod
+    def get(ctx) -> bfp16Type:
+        """
+        Create a block floating point type
         """
 
     @staticmethod

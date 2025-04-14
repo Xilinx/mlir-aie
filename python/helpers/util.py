@@ -3,6 +3,8 @@ import numpy as np
 import sys
 from typing import Sequence, get_args, get_origin, TypeVar
 
+from aie._mlir_libs import _aie as CustomTypes
+
 from ..extras import types as T
 from ..ir import (
     F32Type,
@@ -16,6 +18,8 @@ from ..ir import (
 )
 from ml_dtypes import bfloat16
 
+# Custom types
+bfp16 = lambda: CustomTypes.bfp16Type.get()
 
 _np_dtype_to_mlir_type_ctor = defaultdict(
     lambda: None,
@@ -35,8 +39,10 @@ _np_dtype_to_mlir_type_ctor = defaultdict(
         np.float16: T.f16,
         np.float32: T.f32,
         np.float64: T.f64,
-        # Block floating point types
         bfloat16: T.bf16,
+        # Block floating point types
+        CustomTypes.bfp16Type: bfp16,
+
         # Index Types
         # this is technically wrong i guess but numpy by default casts python scalars to this
         # so to support passing lists of ints we map to index type
@@ -61,6 +67,7 @@ NpuDType = (
     | np.longlong
     | np.uintp
     | bfloat16
+    | CustomTypes.bfp16Type
 )
 
 _mlir_type_ctor_to_np_dtype = lambda: {

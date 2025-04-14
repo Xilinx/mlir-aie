@@ -20,12 +20,6 @@
 
 #include <nanobind/nanobind.h>
 
-#include <cstdlib>
-#include <stdexcept>
-#include <string>
-#include <unicodeobject.h>
-#include <vector>
-
 using namespace mlir::python;
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -66,6 +60,14 @@ NB_MODULE(_aie, m) {
           },
           "Get an instance of ObjectFifoSubviewType with given element type.",
           "self"_a, "type"_a = nb::none());
+
+  nanobind_adaptors::mlir_type_subclass(m, "bfp16Type", aieTypeIsbfp16Type)
+      .def_classmethod(
+          "get",
+          [](const nb::object &cls, MlirContext ctx) {
+            return cls(aiebfp16TypeGet(ctx, 8));
+          },
+          "Get an instance of BFP16Type.", "self"_a, "type"_a = nb::none());
 
   auto stealCStr = [](MlirStringRef mlirString) {
     if (!mlirString.data || mlirString.length == 0)
