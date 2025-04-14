@@ -166,8 +166,8 @@ DEFINE_C_API_PTR_METHODS(AieRtControl, xilinx::AIE::AIERTControl)
 
 AieRtControl getAieRtControl(AieTargetModel tm) {
   // unwrap the target model
-  const BaseNPUTargetModel &targetModel =
-      *reinterpret_cast<const BaseNPUTargetModel *>(tm.d);
+  const AIETargetModel &targetModel =
+      *reinterpret_cast<const AIETargetModel *>(tm.d);
   AIERTControl *ctl = new AIERTControl(targetModel);
   return wrap(ctl);
 }

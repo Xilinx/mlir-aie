@@ -183,6 +183,8 @@ For your design of interest, for instance from [programming_examples](../program
 
 1. AIE API header library documentation for single-core AIE programming in C++ is avaiable [here](https://xilinx.github.io/aie_api/topics.html)
 
+1. If you are a university researcher or student and interested in trying these tools on our Ryzen™ AI AUP Cloud systems, please contact the [AMD University Program](mailto:aup@amd.com)
+
 ## Optional: Install AIETools
 
 > You may skip the Vitis™ installation step if you intend to only target AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P) using our open-source single-core compiler [Peano](https://github.com/Xilinx/llvm-aie). Compiling with `xchesscc` is not supported without installing AMD Vitis™ AIE Essentials. 
@@ -233,15 +235,9 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 # Detailed Getting Started Guides and Documentation: 
 
-[Getting Started on a Versal™ board](docs/Building.md)
-
-[Running on a Versal™ board](docs/Platform.md)
-
-[Getting Started and Running on Windows Ryzen™ AI](docs/buildHostWin.md)
-
-[Getting Started and Running on Linux Ryzen™ AI](docs/buildHostLin.md)
-
 [IRON AIE Application Programming Guide](programming_guide)
+
+[Building mlir-aie tools from source](docs/Building.md)
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
 

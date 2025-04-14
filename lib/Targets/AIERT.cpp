@@ -54,8 +54,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 
 namespace xilinx::AIE {
 
-AIERTControl::AIERTControl(const AIE::BaseNPUTargetModel &tm)
-    : targetModel(tm) {
+AIERTControl::AIERTControl(const AIE::AIETargetModel &tm) : targetModel(tm) {
   // The first column in the NPU lacks a shim tile.  AIE-RT exposes some of
   // the internals about how this is modeled in a somewhat awkward way.
   size_t partitionStartCol =
