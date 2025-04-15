@@ -15,7 +15,6 @@ from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 
-from aie.utils import tensor
 import aie.iron as iron
 
 # The JIT-compiled kernel relies on inputs from the command line.
@@ -113,13 +112,9 @@ def vector_vector_add():
 
 def main():
 
-    input0 = tensor.random(
-        (num_elements,), low=0, high=num_elements, dtype=data_type, device="npu"
-    )
-    input1 = tensor.random(
-        (num_elements,), low=0, high=num_elements, dtype=data_type, device="npu"
-    )
-    output = tensor.zerolike(input0)
+    input0 = iron.rand((num_elements,), dtype=data_type, device="npu")
+    input1 = iron.rand((num_elements,), dtype=data_type, device="npu")
+    output = iron.zeros_like(input0)
 
     vector_vector_add(input0, input1, output)
 
