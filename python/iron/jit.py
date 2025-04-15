@@ -17,6 +17,9 @@ from ..utils.compile import compile_mlir_to_binary
 from ..utils.xrt import read_insts_binary
 
 
+# The `iron.jit` decorator below caches compiled kenrels inside the `IRON_CACHE_DIR` directory.
+# Kernels are cached based on their hash value of the MLIR module string. If during compliation,
+# we hit in the cache, the `iron.jit` will load the xclbin and instruction binary files from the cache.
 IRON_CACHE_DIR = os.path.expanduser("~/.iron/cache")
 
 

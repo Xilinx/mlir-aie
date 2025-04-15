@@ -114,15 +114,21 @@ def vector_vector_add():
 
 def main():
 
+    # Construct two input random tensors and an output zeroed tensor
+    # The three tensor are in memory accessible to the NPU
     input0 = iron.rand((num_elements,), dtype=data_type, device="npu")
     input1 = iron.rand((num_elements,), dtype=data_type, device="npu")
     output = iron.zeros_like(input0)
 
+    # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
+    # to the kernel will use the same compiled kernel and loaded code objects
     vector_vector_add(input0, input1, output)
 
+    # Check the correctness of the result
     e = np.equal(input0.numpy() + input1.numpy(), output.numpy())
     errors = np.size(e) - np.count_nonzero(e)
 
+    # Optionally, print the results
     if args.verbose:
         print(f"{'input0':>4} + {'input1':>4} = {'output':>4}")
         print("-" * 34)
@@ -132,6 +138,8 @@ def main():
         ):
             print(f"{idx:2}: {a:4} + {b:4} = {c:4}")
 
+    # If the result is correct, exit with a success code.
+    # Otherwise, exit with a failure code
     if not errors:
         print("\nPASS!\n")
         exit(0)
