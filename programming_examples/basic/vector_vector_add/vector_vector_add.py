@@ -7,32 +7,61 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 import sys
+import argparse
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1, XCVC1902
 from aie.iron.controlflow import range_
 
+import aie.iron as iron
 
-def my_vector_add():
-    N = 256
+# The JIT-compiled kernel relies on inputs from the command line.
+# Because of that, we need to parse the arguments before the JIT is invoked.
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "-v", "--verbose", action="store_true", help="Enable verbose output"
+)
+parser.add_argument(
+    "-d",
+    "--device",
+    choices=["npu", "npu2", "xcvc1902"],
+    default="npu",
+    help="Target device",
+)
+parser.add_argument(
+    "-c", "--column", type=int, default=0, help="Column index (default: 0)"
+)
+parser.add_argument(
+    "-n",
+    "--num-elements",
+    type=int,
+    default=32,
+    help="Number of elements (default: 32)",
+)
+args = parser.parse_args()
+
+device_map = {
+    "npu": NPU1Col1(),
+    "npu2": NPU2Col1(),
+    # "xcvc1902": XCVC1902(),
+    # Commented out because of the error:
+    # TypeError: Can't instantiate abstract class XCVC1902 without an
+    # implementation for abstract methods 'get_compute_tiles',
+    # 'get_mem_tiles', 'get_shim_tiles'
+}
+dev = device_map[args.device]
+num_elements = args.num_elements
+data_type = np.int32
+
+
+@iron.jit(is_placed=False)
+def vector_vector_add():
     n = 16
-    N_div_n = N // n
-
-    if len(sys.argv) != 3:
-        raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
-
-    if sys.argv[1] == "npu":
-        dev = NPU1Col1()
-    elif sys.argv[1] == "npu2":
-        dev = NPU2Col1()
-    elif sys.argv[1] == "xcvc1902":
-        dev = XCVC1902()
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+    N_div_n = num_elements // n
 
     # Define tensor types
-    tensor_ty = np.ndarray[(N,), np.dtype[np.int32]]
+    tensor_ty = np.ndarray[(num_elements,), np.dtype[np.int32]]
     tile_ty = np.ndarray[(n,), np.dtype[np.int32]]
 
     # AIE-array data movement with object fifos
@@ -68,5 +97,34 @@ def my_vector_add():
     return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
-module = my_vector_add()
-print(module)
+def main():
+
+    input0 = iron.rand((num_elements,), dtype=data_type, device="npu")
+    input1 = iron.rand((num_elements,), dtype=data_type, device="npu")
+    output = iron.zeros_like(input0)
+
+    vector_vector_add(input0, input1, output)
+
+    e = np.equal(input0.numpy() + input1.numpy(), output.numpy())
+    errors = np.size(e) - np.count_nonzero(e)
+
+    if args.verbose:
+        print(f"{'input0':>4} + {'input1':>4} = {'output':>4}")
+        print("-" * 34)
+        count = input0.numel()
+        for idx, (a, b, c) in enumerate(
+            zip(input0[:count], input1[:count], output[:count])
+        ):
+            print(f"{idx:2}: {a:4} + {b:4} = {c:4}")
+
+    if not errors:
+        print("\nPASS!\n")
+        exit(0)
+    else:
+        print("\nError count: ", errors)
+        print("\nFailed.\n")
+        exit(-1)
+
+
+if __name__ == "__main__":
+    main()

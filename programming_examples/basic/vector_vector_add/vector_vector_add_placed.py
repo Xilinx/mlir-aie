@@ -53,7 +53,7 @@ num_elements = args.num_elements
 data_type = np.int32
 
 
-@iron.jit(debug=True, verify=True)
+@iron.jit()
 def vector_vector_add():
 
     n = 16
