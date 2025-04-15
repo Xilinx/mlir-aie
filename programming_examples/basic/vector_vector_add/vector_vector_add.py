@@ -64,8 +64,8 @@ def vector_vector_add():
     N_div_n = num_elements // n
 
     # Define tensor types
-    tensor_ty = np.ndarray[(num_elements,), np.dtype[np.int32]]
-    tile_ty = np.ndarray[(n,), np.dtype[np.int32]]
+    tensor_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
+    tile_ty = np.ndarray[(n,), np.dtype[data_type]]
 
     # AIE-array data movement with object fifos
     of_in1 = ObjectFifo(tile_ty, name="in1")
