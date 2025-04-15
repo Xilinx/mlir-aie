@@ -116,24 +116,26 @@ class NPUKernel_Error(Exception):
     pass
 
 
-def jit(*, debug=False, verify=False, use_cache=True):
+def jit(*, is_placed=True, use_cache=True):
     """
     Decorator to compile an IRON kernel into a binary to run on the NPU.
 
     Parameters:
-    - debug (bool): Enable debugging information in the compiled kernel.
-    - verify (bool): Verify the generated MLIR output.
+    - is_placed (bool): Whether the kernel is using explicit or implicit placement Defaults to True.
     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
     """
 
     def decorator(fn):
-        with mlir_mod_ctx() as ctx:
-            fn()
-            if verify:
+
+        if is_placed:
+            with mlir_mod_ctx() as ctx:
+                fn()
                 assert (
                     ctx.module.operation.verify()
                 ), f"Verification failed for '{fn.__name__}'"
-            mlir_module = ctx.module
+                mlir_module = ctx.module
+        else:
+            mlir_module = fn()
 
         # Hash of the IR string
         module_hash = hash_module(mlir_module)
