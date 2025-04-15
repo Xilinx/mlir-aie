@@ -56,15 +56,14 @@ data_type = np.int32
 @iron.jit(debug=True, verify=True)
 def vector_vector_add():
 
-    N = num_elements
     n = 16
-    N_div_n = N // n
+    N_div_n = num_elements // n
 
     buffer_depth = 2
 
     @device(dev)
     def device_body():
-        tensor_ty = np.ndarray[(N,), np.dtype[data_type]]
+        tensor_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
         tile_ty = np.ndarray[(n,), np.dtype[data_type]]
 
         # AIE Core Function declarations
@@ -99,10 +98,10 @@ def vector_vector_add():
         # To/from AIE-array data movement
         @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
         def sequence(A, B, C):
-            in1_task = shim_dma_single_bd_task(of_in1, A, sizes=[1, 1, 1, N])
-            in2_task = shim_dma_single_bd_task(of_in2, B, sizes=[1, 1, 1, N])
+            in1_task = shim_dma_single_bd_task(of_in1, A, sizes=[1, 1, 1, num_elements])
+            in2_task = shim_dma_single_bd_task(of_in2, B, sizes=[1, 1, 1, num_elements])
             out_task = shim_dma_single_bd_task(
-                of_out, C, sizes=[1, 1, 1, N], issue_token=True
+                of_out, C, sizes=[1, 1, 1, num_elements], issue_token=True
             )
 
             dma_start_task(in1_task, in2_task, out_task)
