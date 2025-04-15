@@ -7,7 +7,6 @@
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
 import os
-import tempfile
 import hashlib
 import numpy as np
 import pyxrt as xrt

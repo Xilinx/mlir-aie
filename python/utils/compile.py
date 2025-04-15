@@ -7,7 +7,6 @@
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
 import subprocess
-import shutil
 import os
 import sys
 
