@@ -13,9 +13,10 @@ var searchData=
   ['anycomputetile_10',['AnyComputeTile',['../classiron_1_1device_1_1tile_1_1AnyComputeTile.html',1,'iron::device::tile']]],
   ['anymemtile_11',['AnyMemTile',['../classiron_1_1device_1_1tile_1_1AnyMemTile.html',1,'iron::device::tile']]],
   ['anyshimtile_12',['AnyShimTile',['../classiron_1_1device_1_1tile_1_1AnyShimTile.html',1,'iron::device::tile']]],
-  ['arr_5ftype_13',['arr_type',['../classiron_1_1runtime_1_1data_1_1RuntimeData.html#a2ee9c4ee18ed6ce13ddc946ed5d3d357',1,'iron::runtime::data::RuntimeData']]],
-  ['array_14',['array',['../classiron_1_1experimental_1_1array_1_1array.html',1,'iron::experimental::array']]],
-  ['array_2epy_15',['array.py',['../array_8py.html',1,'']]],
-  ['asarray_16',['asarray',['../namespaceiron_1_1experimental_1_1array.html#aede5167fbdb66f0c2c97547f778b6efc',1,'iron::experimental::array']]],
-  ['asnumpy_17',['asnumpy',['../classiron_1_1experimental_1_1array_1_1array.html#acd48c986e81bd772280538edec51b794',1,'iron::experimental::array::array']]]
+  ['arange_13',['arange',['../classiron_1_1tensor_1_1Tensor.html#a4e199b33ae831b645e85792b13ea206b',1,'iron.tensor.Tensor.arange()'],['../namespaceiron_1_1tensor.html#a1edd7e95f73f6d524723cded3668bb5f',1,'iron.tensor.arange']]],
+  ['arr_5ftype_14',['arr_type',['../classiron_1_1runtime_1_1data_1_1RuntimeData.html#a2ee9c4ee18ed6ce13ddc946ed5d3d357',1,'iron::runtime::data::RuntimeData']]],
+  ['array_15',['array',['../classiron_1_1experimental_1_1array_1_1array.html',1,'iron::experimental::array']]],
+  ['array_2epy_16',['array.py',['../array_8py.html',1,'']]],
+  ['asarray_17',['asarray',['../namespaceiron_1_1experimental_1_1array.html#aede5167fbdb66f0c2c97547f778b6efc',1,'iron::experimental::array']]],
+  ['asnumpy_18',['asnumpy',['../classiron_1_1experimental_1_1array_1_1array.html#acd48c986e81bd772280538edec51b794',1,'iron::experimental::array::array']]]
 ];

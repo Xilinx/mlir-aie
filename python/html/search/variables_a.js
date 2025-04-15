@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['rows_0',['rows',['../classiron_1_1device_1_1device_1_1NPUBase.html#a0ff0f773c6ee5c8ce9c6dfa693239567',1,'iron::device::device::NPUBase']]]
+  ['ones_0',['ones',['../namespaceiron_1_1tensor.html#a7b461d9c0d7f0fd01bd64a144cf378f4',1,'iron::tensor']]]
 ];

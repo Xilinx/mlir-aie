@@ -1,4 +1,5 @@
 var searchData=
 [
-  ['link_5fwith_0',['link_with',['../classiron_1_1worker_1_1Worker.html#a52f37b6b676fa722bff16fa2a152e996',1,'iron::worker::Worker']]]
+  ['initial_5fvalue_0',['initial_value',['../classiron_1_1worker_1_1WorkerRuntimeBarrier.html#a12e97eb033a09a86975721371dc2ab99',1,'iron::worker::WorkerRuntimeBarrier']]],
+  ['iron_5fcache_5fdir_1',['IRON_CACHE_DIR',['../namespaceiron_1_1jit.html#ad4996a91797d3c476d40857dd3b3d113',1,'iron::jit']]]
 ];

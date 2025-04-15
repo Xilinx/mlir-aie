@@ -1,3 +1,9 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="Node000000" href="$classtaplib_1_1tensortiler2d_1_1TensorTiler2D.html" title=" " alt="" coords="5,5,197,45"/>
+<area shape="rect" id="Node000000" title=" " alt="" coords="5,5,95,31"/>
+<area shape="rect" id="Node000001" href="$classiron_1_1placers_1_1Placer.html" title=" " alt="" coords="143,31,285,56"/>
+<area shape="poly" id="edge28_Node000000_Node000001" title=" " alt="" coords="109,24,143,30,142,35,108,30"/>
+<area shape="rect" id="Node000002" href="$classiron_1_1placers_1_1SequentialPlacer.html" title=" " alt="" coords="333,31,544,56"/>
+<area shape="poly" id="edge29_Node000001_Node000002" title=" " alt="" coords="299,41,333,41,333,46,299,46"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="9,55,91,80"/>
+<area shape="poly" id="edge30_Node000003_Node000001" title=" " alt="" coords="105,57,142,51,143,56,105,62"/>
 </map>
