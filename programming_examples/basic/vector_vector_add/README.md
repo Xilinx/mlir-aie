@@ -10,9 +10,9 @@
 
 # <ins>Vector Vector Add</ins>
 
-A simple binary operator, which uses a single AIE core to add two vectors together.  The overall vector size in this design is `256` and it processed by the core in smaller sub tiles of size `16`.  It shows how simple it can be to just feed data into the AIEs using the `ObjectFifo` abstraction, and drain the results back to external memory.  This reference design can be run on either a Ryzen™ AI NPU or a VCK5000.
+A simple binary operator, which uses a single AIE core to add two vectors together.The input vectors are processed by the core in smaller sub tiles of size `16`. The input vector size is configurable via command line arguments but must be multiple of `16`.  The example shows how simple it can be to just feed data into the AIEs using the `ObjectFifo` abstraction, and drain the results back to external memory. This reference design can be run on Ryzen™ AI NPU.
 
-Both input vectors are brought into a Compute tile from a Shim tile. In the placed design, the value of `col` is dependent on whether the application is targeting NPU or VCK5000. The AIE tile performs the summation operations and the Shim tile brings the data back out to external memory.
+Both input vectors are brought into a Compute tile from a Shim tile. In the placed design, the value of `col` is dependent on whether the application is targeting NPU. The AIE tile performs the summation operations and the Shim tile brings the data back out to external memory.
 
 ## Source Files Overview
 
@@ -26,26 +26,26 @@ Both input vectors are brought into a Compute tile from a Shim tile. In the plac
 To run the design on Strix:
 
 ```shell
-python3 programming_examples/basic/vector_vector_add/vector_vector_add.py --device npu2
+python3 vector_vector_add.py --device npu2
 ```
 
 and on Phoenix:
 
 ```shell
-python3 programming_examples/basic/vector_vector_add/vector_vector_add.py --device npu
+python3 vector_vector_add.py --device npu
 ```
 
 
 To run the placed design on Strix:
 
 ```shell
-python3 programming_examples/basic/vector_vector_add/vector_vector_add_placed.py --device npu2
+python3 vector_vector_add_placed.py --device npu2
 ```
 
 and on Phoenix:
 
 ```shell
-python3 programming_examples/basic/vector_vector_add/vector_vector_add_placed.py --device npu
+python3 vector_vector_add_placed.py --device npu
 ```
 
 

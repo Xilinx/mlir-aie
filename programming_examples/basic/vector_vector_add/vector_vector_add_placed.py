@@ -42,6 +42,9 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
+if args.num_elements % 16 != 0:
+    raise ValueError("num_elements must be a multiple of 16.")
+
 device_map = {
     "npu": AIEDevice.npu1_1col,
     "npu2": AIEDevice.npu2_1col,
