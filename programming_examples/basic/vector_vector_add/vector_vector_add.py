@@ -25,7 +25,7 @@ parser.add_argument(
 parser.add_argument(
     "-d",
     "--device",
-    choices=["npu", "npu2", "xcvc1902"],
+    choices=["npu", "npu2"],
     default="npu",
     help="Target device",
 )
@@ -47,11 +47,6 @@ if args.num_elements % 16 != 0:
 device_map = {
     "npu": NPU1Col1(),
     "npu2": NPU2Col1(),
-    # "xcvc1902": XCVC1902(),
-    # Commented out because of the error:
-    # TypeError: Can't instantiate abstract class XCVC1902 without an
-    # implementation for abstract methods 'get_compute_tiles',
-    # 'get_mem_tiles', 'get_shim_tiles'
 }
 dev = device_map[args.device]
 num_elements = args.num_elements
