@@ -12,6 +12,14 @@ import pyxrt as xrt
 
 
 class Tensor:
+    """
+    Tensor object backed by NPU or CPU memory.
+
+    The class provides commom tensor operations such as creation,
+    filling with values, and accessing data.
+
+    """
+
     def __repr__(self):
         """
         Return a string representation of the tensor.

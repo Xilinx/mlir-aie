@@ -21,9 +21,22 @@ IRON_CACHE_DIR = os.path.expanduser("~/.iron/cache")
 
 
 class NPUKernel:
+    """
+    NPUKernel class wrapper for NPU kernels.
+    """
+
     def __init__(
         self, xclbin_path, insts_path, device_index=0, kernel_name="PP_FD_PRE"
     ):
+        """
+        Initialize the NPUKernel object.
+        Parameters:
+            xclbin_path (str): Path to the XCLBIN file containing the kernel.
+            insts_path (str): Path to the instruction binary file for the kernel.
+            device_index (int, optional): Index of the device. Defaults to 0.
+            kernel_name (str, optional): Name of the kernel. Defaults to "PP_FD_PRE".
+        """
+
         self.__device = xrt.device(device_index)
 
         # Find kernel by name in the xclbin
@@ -66,6 +79,12 @@ class NPUKernel:
 
     # Blocking call.
     def __call__(self, *args):
+        """
+        Allows the kernel to be called as a function with the provided arguments.
+
+        Parameters:
+            args (IRON Tensors): Arguments to pass to the kernel.
+        """
 
         opcode = 3
         kernel_args = []
@@ -82,15 +101,31 @@ class NPUKernel:
             raise Exception(f"Kernel returned {r}")
 
     def __del__(self):
+        """
+        Destructor to clean up resources and delete the kernel and device objects.
+        """
         del self.__kernel
         del self.__device
 
 
 class NPUKernel_Error(Exception):
+    """
+    Error raised when a NPU kernel encounters an error during execution.
+    """
+
     pass
 
 
 def jit(*, debug=False, verify=False, use_cache=True):
+    """
+    Decorator to compile an IRON kernel into a binary to run on the NPU.
+
+    Parameters:
+    - debug (bool): Enable debugging information in the compiled kernel.
+    - verify (bool): Verify the generated MLIR output.
+    - use_cache (bool): Use cached MLIR module if available. Defaults to True.
+    """
+
     def decorator(fn):
         with mlir_mod_ctx() as ctx:
             fn()
@@ -126,17 +161,15 @@ def jit(*, debug=False, verify=False, use_cache=True):
                 xclbin_filename=xclbin_filename,
             )
 
-        kernel = load_kernel(xclbin_path, inst_path)
-        return kernel
+        kernel_name = "MLIR_AIE"
+        return NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)
 
     return decorator
 
 
 def hash_module(module):
+    """
+    Hash the MLIR module to create a unique identifier.
+    """
     mlir_str = str(module)
     return hashlib.sha256(mlir_str.encode("utf-8")).hexdigest()[:16]
-
-
-def load_kernel(binary_path, inst_path):
-    kernel_name = "MLIR_AIE"
-    return NPUKernel(binary_path, inst_path, kernel_name=kernel_name)
