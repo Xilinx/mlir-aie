@@ -1,43 +1,17 @@
-# <ins>Hands-on Tutorial for IRON 0.9</ins>
+# <ins>IRON Mini Tutorial</ins>
 
 **These exercises are set to run on Strix (NPU2) devices. If you wish to run them on a different architecture, you can change the device at the top of the python source files.**
 
 ## <ins>Key Components: ObjectFifos, Workers, Runtime</ins>
 
-IRON 0.9 introduces an unplaced layer to the IRON [API](../../python/iron/). As an example, below are the placed and unplaced versions of the AIE Object FIFOs and compute code:
+IRON 1.0 introduces an unplaced layer to the [IRON API](../../python/iron/). As an example, below are the unplaced versions of the AIE compute code and the Object FIFO data movement primitive:
 
-Placed Object FIFO: 
-```python
-line_size = 256
-line_type = np.ndarray[(line_size,), np.dtype[np.int32]]
-
-A = tile(1, 3)
-B = tile(2, 4)
-of_in = object_fifo("in", A, B, 2, line_type)
-```
-Unplaced Object FIFO:
-```python
-# Define tensor types
-line_size = 256
-line_type = np.ndarray[(line_size,), np.dtype[np.int32]]
-
-# Dataflow with ObjectFifos
-of_in = ObjectFifo(line_type, name="in") # default_depth is 2
-```
-More on the Object FIFO in [Section 2a](../section-2/section-2a/README.md) of the programming guide.
-
-Placed compute code: 
-```python
-ComputeTile1 = tile(1, 3)
-buff_in = buffer(ComputeTile1, data_ty, name="buff")
-
-@core(ComputeTile1)
-def core_body():
-    for i in range_(data_size):
-        buff_in[i] = buff_in[i] + 1
-```
 Unplaced compute code:
 ```python
+# Define tensor types
+data_size = 256
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+
 buff = GlobalBuffer(data_ty, name="buff")
 
 def core_fn(buff_in):
@@ -47,8 +21,20 @@ def core_fn(buff_in):
 # Create a worker to perform the task
 my_worker = Worker(core_fn, [buff]) # enforced placement: placement=Tile(1, 3)
 ```
+More on the Worker in [Section 1](../section-1/README.md) of the programming guide.
 
-We will now look at a code [example](./aie2.py) of IRON 0.9 and observe the different parts of the design.
+Unplaced Object FIFO:
+```python
+# Define tensor types
+data_size = 256
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+
+# Dataflow with ObjectFifos
+of_in = ObjectFifo(data_ty, name="in") # default_depth is 2
+```
+More on the Object FIFO in [Section 2a](../section-2/section-2a/README.md) of the programming guide.
+
+The IRON code [example](./aie2.py) in this mini tutorial details the different parts of an IRON design. More information on the Runtime in particular can be found in [Section 2d](../section-2/section-2d/README.md) of the programming guide.
 
 ## <u>Exercises</u>
 1. Familiarize yourself with [exercise_1](./exercise_1/aie2.py). The code contains a single Worker which has an already instantiated local buffer that it sends out to external memory. Run `make run` to run the program and verify the output.
@@ -59,9 +45,13 @@ We will now look at a code [example](./aie2.py) of IRON 0.9 and observe the diff
 
 ## <ins>Complex Data Movement Patterns: Broadcast, Split, Join</ins>
 
-IRON 0.9 designs can be scaled to use multiple Workers easily: 
+IRON 1.0 designs can be scaled to use multiple Workers easily: 
 ```python
 n_workers = 4
+
+# Define tensor types
+data_size = 256
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 
 def core_fn(...):
     # ...kernel code...
@@ -77,16 +67,20 @@ rt = Runtime()
 with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
     rt.start(*workers)
 ```
-Complex data movement patterns such as broadcast, split or join are supported using the `ObjectFifo`. In particular the `ObjectFifoHandles`, which can be either producer or consumer handles, are used to determine a broadcast pattern with multiple consumers:
+More on programming for multiple workers in [Section 2e](../section-2/section-2e/README.md) of the programming guide.
+
+Complex data movement patterns such as broadcast, split or join are supported using the `ObjectFifo`. In particular the `ObjectFifoHandles`, which can be either producer or consumer handles, are used to determine a broadcast pattern with multiple consumers.
+
+Broadcast - further documentation on the broadcast available in [Section 2b - Broadcast](../section-2/section-2b/02_Broadcast/) of the programming guide.
 ```python
 n_workers = 4
 
 # Define tensor types
-line_size = 256
-line_type = np.ndarray[(line_size,), np.dtype[np.int32]]
+data_size = 256
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 
 # Dataflow with ObjectFifos
-of_in = ObjectFifo(line_type, name="in")
+of_in = ObjectFifo(data_ty, name="in")
 
 def core_fn(of_in):
     # ...kernel code...
@@ -99,16 +93,16 @@ for _ in range(n_workers):
     )
 ```
 
-The `split` and `join` methods are used to create multiple output and input `ObjectFifos` respectively.
+The `split()` and `join()` methods are used to create multiple output and input `ObjectFifos` respectively.
     
-Split:
+Split - further documentation on the `split()` available in [Section 2b - Implicit Copy](../section-2/section-2b/03_Implicit_Copy/) of the programming guide.
 ```python
 n_workers = 4
 
 # Define tensor types
-line_size = 256
-line_type = np.ndarray[(line_size,), np.dtype[np.int32]]
-tile_size = line_size // n_workers
+data_size = 256
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+tile_size = data_size // n_workers
 tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
 
 # Dataflow with ObjectFifos
@@ -132,14 +126,14 @@ for worker in range(n_workers):
     )
 ```
 
-Join:
+Join - further documentation on the `join()` available in [Section 2b - Implicit Copy](../section-2/section-2b/03_Implicit_Copy/) of the programming guide.
 ```python
 n_workers = 4
 
 # Define tensor types
-line_size = 256
-line_type = np.ndarray[(line_size,), np.dtype[np.int32]]
-tile_size = line_size // n_workers
+data_size = 256
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+tile_size = data_size // n_workers
 tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
 
 # Dataflow with ObjectFifos
@@ -162,15 +156,20 @@ for worker in range(n_workers):
         Worker(core_fn, [of_outs[worker].prod()])
     )
 ```
+More on the Object FIFO data movement patterns in [Section 2b](../section-2/section-2b/README.md) of the programming guide.
 
 ## <u>Exercises</u>
 4. Familiarize yourself with [exercise_2](./exercise_2/aie2.py). Modify the code in [exercise_2](./exercise_2/aie2.py) so that the input data is split between three workers and their outputs are joined before the final result is sent to external memory.
 
 ## <ins>Runtime Parameters and Barriers</ins>
 
-IRON 0.9 also supports the use of Runtime Parameters which are set and propagated to the Workers at runtime.
+IRON 1.0 also supports the use of Runtime Parameters which are set and propagated to the Workers at runtime.
 ```python
 n_workers = 4
+
+# Define tensor types
+data_size = 256
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 
 # Runtime parameters
 rtps = []
@@ -205,9 +204,13 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
 
     rt.inline_ops(set_rtps, rtps)
 ```
-To ensure that RTPs are not read prematurely, IRON 0.9 introduces `WorkerRuntimeBarriers` which can be used to synchronize a Worker with the runtime sequence:
+To ensure that RTPs are not read prematurely, IRON 1.0 introduces `WorkerRuntimeBarriers` which can be used to synchronize a Worker with the runtime sequence:
 ```python
 n_workers = 4
+
+# Define tensor types
+data_size = 256
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 
 # Runtime parameters
 # ...
@@ -237,6 +240,7 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
     for worker in range(n_workers):
         rt.set_barrier(workerBarriers[worker], 1)
 ```
+More on the runtime parameters and barriers in [Section 2d](../section-2/section-2d/RuntimeTasks.md) of the programming guide.
 
 ## <u>Exercises</u>
 5. Familiarize yourself with [exercise_3](./exercise_3/aie2.py). Run `make run`. 
@@ -253,7 +257,9 @@ of_out = ObjectFifo(data_ty, name="out", dims_to_stream=dims)
 ```
 Offsets are currently not represented at the Object FIFO level and as such the dimensions should be applicable over the full size of the objects.
 
-To better support DMA on-the-fly data transformations **at runtime** IRON 0.9 introduces [taplib](../../python/helpers/taplib/) which provides the building blocks for `Tensor Access Pattern`s (`taps`). Unlike the dimensions of the `ObjectFifo` the sizes and strides are grouped together, however, the dimensions should still be given from highest to lowest.
+More on the Object FIFO data layout transformations in [Section 2c](../section-2/section-2c/README.md) of the programming guide.
+
+To better support DMA on-the-fly data transformations **at runtime** IRON 1.0 introduces [taplib](../../python/helpers/taplib/) which provides the building blocks for `Tensor Access Pattern`s (`taps`). Unlike the dimensions of the `ObjectFifo` the sizes and strides are grouped together, however, the dimensions should still be given from highest to lowest.
 
 ```python
 tap = TensorAccessPattern(
