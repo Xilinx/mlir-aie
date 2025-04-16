@@ -2,7 +2,7 @@
 
 **These exercises are set to run on Strix (NPU2) devices. If you wish to run them on a different architecture, you can change the device at the top of the python source files.**
 
-## <ins>Key Components: ObjectFifos, Workers, Runtime</ins>
+## <ins>Key Components: Workers, ObjectFifos, Runtime</ins>
 
 IRON 1.0 introduces an unplaced layer to the [IRON API](../../python/iron/). As an example, below are the unplaced versions of the AIE compute code and the Object FIFO data movement primitive:
 
@@ -69,7 +69,7 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
 ```
 More on programming for multiple workers in [Section 2e](../section-2/section-2e/README.md) of the programming guide.
 
-Complex data movement patterns such as broadcast, split or join are supported using the `ObjectFifo`. In particular the `ObjectFifoHandles`, which can be either producer or consumer handles, are used to determine a broadcast pattern with multiple consumers.
+Complex data movement patterns such as broadcast, split or join are supported using the `ObjectFifo`, and in particular the `ObjectFifoHandle`s, which can be either producer or consumer handles. These are used to determine a broadcast pattern with multiple consumers.
 
 Broadcast - further documentation on the broadcast available in [Section 2b - Broadcast](../section-2/section-2b/02_Broadcast/) of the programming guide.
 ```python
@@ -89,7 +89,7 @@ def core_fn(of_in):
 workers = []
 for _ in range(n_workers):
     workers.append(
-        Worker(core_fn, [of_in.cons()])
+        Worker(core_fn, [of_in.cons()]) # each call to of_in.cons() returns a new ObjectFifoHandle
     )
 ```
 
@@ -257,6 +257,16 @@ of_out = ObjectFifo(data_ty, name="out", dims_to_stream=dims)
 ```
 Offsets are currently not represented at the Object FIFO level and as such the dimensions should be applicable over the full size of the objects.
 
+Data layout transformations can be viewed as a way to specify to the hardware which location in the data to access next and as such it is possible to model the access pattern using a series of nested loops. For example, the transformation using the strides and sizes from above can be expressed as:
+```c
+int *buffer;
+for(int i = 0; i < size_2; i++)
+    for(int j = 0; j < size_1; j++)
+        for(int k = 0; k < size_0; k++)
+            // access/store element at/to buffer[  i * stride_2
+            //                                   + j * stride_1
+            //                                   + k * stride_0]
+```
 More on the Object FIFO data layout transformations in [Section 2c](../section-2/section-2c/README.md) of the programming guide.
 
 To better support DMA on-the-fly data transformations **at runtime** IRON 1.0 introduces [taplib](../../python/helpers/taplib/) which provides the building blocks for `Tensor Access Pattern`s (`taps`). Unlike the dimensions of the `ObjectFifo` the sizes and strides are grouped together, however, the dimensions should still be given from highest to lowest.
