@@ -30,12 +30,12 @@ in_b_type = args.in_b_type
 out_c_type = args.out_c_type
 
 # Give the single AIE core GEMM dimensions
-m = 64
-k = 64
+m = 72
+k = 48
 n = 64
 
 # give the expected AIE single core kernel efficiency
-expected_kernel_efficiency = 0.50
+expected_kernel_efficiency = 0.65
 
 
 # Give the desired M, K, N GEMM sizes
@@ -44,7 +44,7 @@ K = 4000
 N = 4000
 
 # Give the DDR BW in GB/s
-DDR_BW = 30
+DDR_BW = 50
 # DDR_BW = 26.5
 # DDR_BW = 17.6
 # DDR_BW = 11.7
@@ -75,7 +75,7 @@ elif in_a_type == "bf16":
 
     in_a_bytes = 2
     # 512 GOPs is for bf16 for each core
-    theoretical_GOPs_per_core = 512
+    theoretical_GOPs_per_core = 2*180
 
 if in_b_type == "int8":
     in_b_bytes = 1

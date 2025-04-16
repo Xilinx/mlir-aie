@@ -19,6 +19,7 @@ device_name ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 all: build/final.xclbin build/insts.bin
 
 targetname = DDR_bandwidth_test
+# targetname = DDR_bandwidth_test_linear
 m ?= 32
 M ?= 8192
 k ?= 512

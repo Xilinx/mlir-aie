@@ -38,13 +38,13 @@ if in_a_type == "int8" and in_b_type == "int8" and out_c_type == "int32":
     k_min = 64
     n_min = 64
 if in_a_type == "int8" and in_b_type == "int8" and out_c_type == "int16":
-    m_min = 112
-    k_min = 24
-    n_min = 96
+    m_min = 80
+    k_min = 48
+    n_min = 80
 elif in_a_type == "int8" and in_b_type == "int8" and out_c_type == "int8":
-    m_min = 144
-    k_min = 24
-    n_min = 144
+    m_min = 128
+    k_min = 32
+    n_min = 112
 elif in_a_type == "bf16" and in_b_type == "bf16" and out_c_type == "bf16":
     m_min = 80
     k_min = 40
@@ -54,15 +54,15 @@ elif in_a_type == "bf16" and in_b_type == "bf16" and out_c_type == "fp32":
     k_min = 40
     n_min = 64
 elif in_a_type == "int16" and in_b_type == "int16" and out_c_type == "int32":
-    m_min = 48
-    k_min = 96
-    n_min = 48
+    m_min = 64
+    k_min = 32
+    n_min = 64
 
 # provide an expected kernel efficiency to help the
 # model achieve optimal overlap
 # typically, around 0.9, but might be more or less
 # depending on the kernel
-expected_kernel_efficiency = 0.40
+expected_kernel_efficiency = 0.50
 
 if in_a_type == "int8":
     in_a_bytes = 1
