@@ -9,19 +9,20 @@
 ##===----------------------------------------------------------------------===##
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=whole_array
-targetname=whole_array_optimized
+# targetname=whole_array_optimized
+targetname=whole_array_optimized_BD_expansion
 # targetname=whole_array_optimized_repeat_A
 
 # M, K, N: final GEMM dimensions
 # Note: K=mtk for repeat count to work
-M?=7680
+M?=4032
 K?=2400
-N?=3840
+N?=3584
 
 # m, k, n: single AIE core GEMM dimensions
-m?=96
-k?=40
-n?=80
+m?=72
+k?=48
+n?=64
 
 # mtk block for A buffer
 mtk=480
@@ -33,8 +34,8 @@ ktn=480
 b_col_maj?=1
 
 # data types
-dtype_in?=bf16
-dtype_out?=bf16
+dtype_in?=i16
+dtype_out?=i32
 
 
 # iterations

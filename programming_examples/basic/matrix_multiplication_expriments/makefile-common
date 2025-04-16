@@ -158,7 +158,7 @@ parse_trace:
 
 .PHONY: clean
 clean: clean_trace
-	rm -rf build _build ${targetname}.exe
+	rm -rf build _build *.exe
 
 .PHONY: clean_trace
 clean_trace:

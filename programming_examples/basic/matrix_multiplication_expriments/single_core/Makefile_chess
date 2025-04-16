@@ -13,8 +13,6 @@ subdir=single_core
 # targetname=single_core
 targetname=single_core_BD_expansion
 
-kernels=mm
-
 # M, K, N: final GEMM dimensions
 M?=512
 K?=512
@@ -26,7 +24,7 @@ k?=32
 n?=32
 
 # data types
-dtype_in?=i16
+dtype_in?=i8
 dtype_out?=i32
 
 b_col_maj?=0

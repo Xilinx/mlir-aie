@@ -68,4 +68,4 @@ run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE --m ${m} --M ${M} --k ${k} --K ${K} --n ${n} --N ${N}
 
 clean:
-	rm -rf build _build inst ${targetname}.exe
+	rm -rf build _build inst *.exe
