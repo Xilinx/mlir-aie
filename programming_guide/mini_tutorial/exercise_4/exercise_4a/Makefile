@@ -47,4 +47,4 @@ run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
 
 clean:
-	rm -rf build _build ${targetname}.exe
+	rm -rf build _build ${targetname}.exe plot.png

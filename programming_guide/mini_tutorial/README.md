@@ -257,13 +257,10 @@ More on the runtime parameters and barriers in [Section 2d](../section-2/section
 
 ## <ins>Advanced Topic: Data Layout Transformations</ins>
 
-`ObjectFifo`s can express DMA on-the-fly data transformations via their `dims_to_stream` and `default_dims_from_stream_per_cons` inputs. These inputs are structured as a list of pairs where each pair is expressed as (size, stride) for a dimension of the DMA transformation. The dimensions should be given from highest to lowest.
-
+AIE array DMAs can perform on-the-fly data transformations. Transformations on each dimension are expressed as a (size, stride) pair. Dimensions are given from highest to lowest:
 ```python
-dims = [(size_2, stride_2), (size_1, stride_1), (size_0, stride_0)]
-of_out = ObjectFifo(data_ty, name="out", dims_to_stream=dims)
+[(size_2, stride_2), (size_1, stride_1), (size_0, stride_0)]
 ```
-Offsets are currently not represented at the Object FIFO level and as such the dimensions should be applicable over the full size of the objects.
 
 Data layout transformations can be viewed as a way to specify to the hardware which location in the data to access next and as such it is possible to model the access pattern using a series of nested loops. For example, the transformation using the strides and sizes from above can be expressed as:
 ```c
@@ -275,10 +272,8 @@ for(int i = 0; i < size_2; i++)
             //                                   + j * stride_1
             //                                   + k * stride_0]
 ```
-More on the Object FIFO data layout transformations in [Section 2c](../section-2/section-2c/README.md) of the programming guide.
 
-To better support DMA on-the-fly data transformations **at runtime** IRON 1.0 introduces [taplib](../../python/helpers/taplib/) which provides the building blocks for `Tensor Access Pattern`s (`taps`). Unlike the dimensions of the `ObjectFifo` the sizes and strides are grouped together, however, the dimensions should still be given from highest to lowest.
-
+To better support DMA on-the-fly data transformations **at runtime** IRON 1.0 introduces [taplib](../../python/helpers/taplib/) which provides the building blocks for `Tensor Access Pattern`s (`taps`). The sizes and strides are grouped together and the dimensions should be given from highest to lowest:
 ```python
 tap = TensorAccessPattern(
     tensor_dims=(2, 3),
@@ -298,7 +293,6 @@ tap.visualize(show_arrows=True, plot_access_count=True)
 ```
 
 `taps` can be grouped in a `TensorAccessSequence` where each `tap` represents a different tile (from the tiling pattern):
-
 ```python
 t0 = TensorAccessPattern((8, 8), offset=0, sizes=[1, 1, 4, 4], strides=[0, 0, 8, 1])
 t1 = TensorAccessPattern((8, 8), offset=4, sizes=[1, 1, 4, 4], strides=[0, 0, 8, 1])
@@ -311,21 +305,28 @@ The `taps` can then be accessed in the sequence as an array:
 for t in taps:
 ```
 
-`taplib` additionally introduces the `TensorTiler2D` class which can generate `taps` for common tiling patterns. The tiler returns the generated `taps` as a `TensorAccessSequence`.
-
+`taplib` additionally introduces the `TensorTiler2D` class which can generate `taps` for common tiling patterns. The tiler returns the generated `taps` as a `TensorAccessSequence`:
 ```python
 tensor_dims = (8, 8)
 tile_dims = (4, 4)
 simple_tiler = TensorTiler2D.simple_tiler(tensor_dims, tile_dims)
 ```
-
 More on `taplib` in [tiling_exploration](../../programming_examples/basic/tiling_exploration/README.md).
 
+`ObjectFifo`s can express DMA on-the-fly data transformations via their `dims_to_stream` and `default_dims_from_stream_per_cons` inputs. These inputs are structured as a list of pairs where each pair is expressed as (size, stride) for a dimension of the DMA transformation. The dimensions should be given from highest to lowest:
+```python
+dims = [(size_2, stride_2), (size_1, stride_1), (size_0, stride_0)]
+of_out = ObjectFifo(data_ty, name="out", dims_to_stream=dims)
+```
+Offsets are currently not represented at the Object FIFO level and as such the dimensions should be applicable over the full size of the objects.
+
+More on the Object FIFO data layout transformations in [Section 2c](../section-2/section-2c/README.md) of the programming guide.
+
 ## <u>Exercises</u>
-11. Familiarize yourself with [exercise_4a](./exercise_4/exercise_4a/aie2.py). Complete the missing sizes and strides such that the DMA transformation of `of_out` matches the one shown in [plot.png](./exercise_4/exercise_4a/plot.png). Run `make run` to verify your answer.
+11. Familiarize yourself with [exercise_4a](./exercise_4/exercise_4a/aie2.py). Complete the missing sizes and strides such that the DMA transformation performed on the input data at runtime matches the one shown in [ref_plot.png](./exercise_4/exercise_4a/ref_plot.png). Run `make run` to verify your answer.
 
-12. Familiarize yourself with [exercise_4b](./exercise_4/exercise_4b/aie2.py). Complete the missing sizes and strides such that the DMA transformation performed on the input data at runtime matches the one in [exercise_4a](./exercise_4/exercise_4a/aie2.py). Run `make run` to verify your answer.
+12. Familiarize yourself with [exercise_4b](./exercise_4/exercise_4b/aie2.py). Observe how the `taps` in the `TensorAccessSequence` differ slightly from the one in [exercise_4a](./exercise_4/exercise_4a/aie2.py). Run `make run` and observe the two generated plots.
 
-13. Familiarize yourself with [exercise_4c](./exercise_4/exercise_4c/aie2.py). Observe how the `taps` in the `TensorAccessSequence` differ slightly from the one in [exercise_4b](./exercise_4/exercise_4b/aie2.py). Run `make run` and observe the two generated plots.
+13. Familiarize yourself with [exercise_4c](./exercise_4/exercise_4c/aie2.py). Complete the missing inputs in the `TensorTiler2D` to match the `TensorAccessPatterns` from the previous exercises. For this, you will require the `simple_tiler()` constructor defined in [tensortiler2d.py](../../python/helpers/taplib/tensortiler2d.py). Run `make run` to verify your answer. You can also observe the two generated plots.
 
-14. Familiarize yourself with [exercise_4d](./exercise_4/exercise_4d/aie2.py). Complete the missing inputs in the `TensorTiler2D` to match the `TensorAccessPatterns` from the previous exercises. For this, you will require the `simple_tiler()` constructor defined in [tensortiler2d.py](../../python/helpers/taplib/tensortiler2d.py). Run `make run` to verify your answer. You can also observe the two generated plots.
+14. Familiarize yourself with [exercise_4d](./exercise_4/exercise_4d/aie2.py). Complete the missing sizes and strides such that the DMA transformation of `of_out` matches the one in [exercise_4a](./exercise_4/exercise_4a/aie2.py). Run `make run` to verify your answer.

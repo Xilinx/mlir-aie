@@ -11,7 +11,7 @@ from aie.iron import Program, Runtime, Worker, ObjectFifo
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorAccessPattern
+from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
 
 dev = NPU2()
 
@@ -27,12 +27,16 @@ tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
 
 # Define runtime tensor access pattern (tap)
 tensor_dims = (data_height, data_width)
-offset = 0
-sizes = [1, TODO, TODO, TODO]   # last dimension is reserved for repeat count
-strides = [0, TODO, TODO, TODO] # last dimension is reserved for repeat count
-tap = TensorAccessPattern(tensor_dims, offset, sizes, strides)
+tap1 = TensorAccessPattern(tensor_dims, offset=0, sizes=[1, 1, 3, 8], strides=[0, 0, 16, 1])
+tap2 = TensorAccessPattern(tensor_dims, offset=8, sizes=[1, 1, 3, 8], strides=[0, 0, 16, 1])
 
-tap.visualize(show_arrows=True, file_path="plot.png")
+# Create a TensorTileSequence from a list of taps
+taps = TensorAccessSequence.from_taps([tap1, tap2])
+
+i = 0
+for t in taps:
+    t.visualize(show_arrows=True, file_path=f"plot{i}.png")
+    i += 1
 
 # Dataflow with ObjectFifos
 of_in = ObjectFifo(tile_ty, name="in")
@@ -54,7 +58,8 @@ my_worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
 rt = Runtime()
 with rt.sequence(data_ty, data_ty, data_ty) as (a_in, _, c_out):
     rt.start(my_worker)
-    rt.fill(of_in.prod(), a_in, tap)
+    for t in taps:
+        rt.fill(of_in.prod(), a_in, t)
     rt.drain(of_out.cons(), c_out, wait=True)
 
 # Create the program from the device type and runtime

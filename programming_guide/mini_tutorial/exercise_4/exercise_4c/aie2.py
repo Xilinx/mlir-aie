@@ -11,7 +11,7 @@ from aie.iron import Program, Runtime, Worker, ObjectFifo
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
+from aie.helpers.taplib import TensorTiler2D
 
 dev = NPU2()
 
@@ -25,16 +25,13 @@ tile_size = tile_height * tile_width
 data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
 
-# Define runtime tensor access pattern (tap)
-tensor_dims = (data_height, data_width)
-tap1 = TensorAccessPattern(tensor_dims, offset=0, sizes=[1, 1, 3, 8], strides=[0, 0, 16, 1])
-tap2 = TensorAccessPattern(tensor_dims, offset=8, sizes=[1, 1, 3, 8], strides=[0, 0, 16, 1])
-
-# Create a TensorTileSequence from a list of taps
-taps = TensorAccessSequence.from_taps([tap1, tap2])
+# Define runtime tensor access pattern (tap) from tiler
+tiler = TensorTiler2D.simple_tiler(
+    # TODO
+)
 
 i = 0
-for t in taps:
+for t in tiler:
     t.visualize(show_arrows=True, file_path=f"plot{i}.png")
     i += 1
 
@@ -58,7 +55,7 @@ my_worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
 rt = Runtime()
 with rt.sequence(data_ty, data_ty, data_ty) as (a_in, _, c_out):
     rt.start(my_worker)
-    for t in taps:
+    for t in tiler:
         rt.fill(of_in.prod(), a_in, t)
     rt.drain(of_out.cons(), c_out, wait=True)
 
