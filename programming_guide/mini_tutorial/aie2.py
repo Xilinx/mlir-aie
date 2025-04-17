@@ -32,6 +32,7 @@ data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 of_in = ObjectFifo(data_ty, name="in")
 of_out = ObjectFifo(data_ty, name="out")
 
+
 # Task for the core to perform
 def core_fn(of_in, of_out):
     elem_in = of_in.acquire(1)
@@ -40,6 +41,7 @@ def core_fn(of_in, of_out):
         elem_out[i] = elem_in[i]
     of_in.release(1)
     of_out.release(1)
+
 
 # Create a worker to perform the task
 # The Worker takes as input a task and the input arguments it should run it with.

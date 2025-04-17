@@ -9,7 +9,7 @@ import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, NPU2
+from aie.iron.device import NPU1Col1, NPU2Col1
 
 
 def passThroughAIE2(dev, width, height):
@@ -58,7 +58,7 @@ try:
     if device_name == "npu":
         dev = NPU1Col1()
     elif device_name == "npu2":
-        dev = NPU2()
+        dev = NPU2Col1()
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
     width = 512 if (len(sys.argv) != 4) else int(sys.argv[2])

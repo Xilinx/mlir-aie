@@ -28,8 +28,8 @@ tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
 # Define runtime tensor access pattern (tap)
 tensor_dims = (data_height, data_width)
 offset = 0
-sizes = [1, TODO, TODO, TODO]   # last dimension is reserved for repeat count
-strides = [0, TODO, TODO, TODO] # last dimension is reserved for repeat count
+sizes = [1, TODO, TODO, TODO]  # last dimension is reserved for repeat count
+strides = [0, TODO, TODO, TODO]  # last dimension is reserved for repeat count
 tap = TensorAccessPattern(tensor_dims, offset, sizes, strides)
 
 tap.visualize(show_arrows=True, file_path="plot.png")
@@ -37,6 +37,7 @@ tap.visualize(show_arrows=True, file_path="plot.png")
 # Dataflow with ObjectFifos
 of_in = ObjectFifo(tile_ty, name="in")
 of_out = ObjectFifo(tile_ty, name="out")
+
 
 # Task for the core to perform
 def core_fn(of_in, of_out):
@@ -46,6 +47,7 @@ def core_fn(of_in, of_out):
         elem_out[i] = elem_in[i]
     of_in.release(1)
     of_out.release(1)
+
 
 # Create a worker to perform the task
 my_worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
