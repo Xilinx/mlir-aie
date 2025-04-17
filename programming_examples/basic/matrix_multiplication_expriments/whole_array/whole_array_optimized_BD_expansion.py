@@ -481,10 +481,10 @@ def my_matmul(
                 # This is for the last block, when it's less than 5
                 tb_n_rows = min([tb_max_n_rows, M // m // n_aie_rows - row_base])
 
-                for col in range(n_aie_cols):
+                # First, submit up to 5 BDs (tb_max_n_rows) for each A and B
+                for tile_row in range(tb_n_rows):
 
-                    # First, submit up to 5 BDs (num_tile_rows) for each A and B
-                    for tile_row in range(tb_n_rows):
+                    for col in range(n_aie_cols):
 
                         # always equal to n_aie_rows since we have n_aie_rows row tiles for matrix A
                         if col < n_aie_rows:
@@ -565,7 +565,7 @@ def my_matmul(
                         )
 
                 # Second, submit a BD for each row of C and wait
-                # max 11 BDs used at a time
+                # max 11 BDs used at a time (queue gets full)
                 for tile_row in range(tb_n_rows):
 
                     for col in range(n_aie_cols):

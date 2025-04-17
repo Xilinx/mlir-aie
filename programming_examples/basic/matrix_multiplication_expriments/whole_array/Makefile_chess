@@ -16,26 +16,26 @@ targetname=whole_array_optimized_BD_expansion
 # M, K, N: final GEMM dimensions
 # Note: K=mtk for repeat count to work
 M?=4032
-K?=2400
-N?=3584
+K?=4608
+N?=4608
 
 # m, k, n: single AIE core GEMM dimensions
-m?=72
+m?=112
 k?=48
-n?=64
+n?=96
 
 # mtk block for A buffer
-mtk=480
+mtk=768
 
 # ktn block for B buffer
-ktn=480
+ktn=768
 
 # is it col-major?
 b_col_maj?=1
 
 # data types
-dtype_in?=i16
-dtype_out?=i32
+dtype_in?=i8
+dtype_out?=i16
 
 
 # iterations

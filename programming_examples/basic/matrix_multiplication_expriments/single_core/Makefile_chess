@@ -14,7 +14,7 @@ subdir=single_core
 targetname=single_core_BD_expansion
 
 # M, K, N: final GEMM dimensions
-M?=512
+M?=544
 K?=512
 N?=512
 

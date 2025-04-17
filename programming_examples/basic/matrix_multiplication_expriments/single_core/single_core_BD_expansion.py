@@ -307,25 +307,83 @@ def my_matmul(
                         ],
                     )
 
-                # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
-                rows_per_block = 5
-                for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
+                # max number of rows tiles to submit each BD for A and B at a time
+                # Note: each BD represents one row tile of A, i.e., m
+                max_rows = 5
 
-                    # This is for the last block, when it's less than 5
-                    num_tile_rows = min(
-                        [rows_per_block, M_div_m - tile_row_block * rows_per_block]
+                # total row tiles for computation
+                total_row_tiles = M_div_m
+
+                # Initial row tiles in case where total tiles are less than max_rows
+                initial_row_tiles = (
+                    total_row_tiles if total_row_tiles < max_rows else max_rows
+                )
+
+                # First, submit the initial row tiles for each A and B (up to max_rows BDs)
+                for i in range(initial_row_tiles):
+
+                    A_row_offset = i * m * K
+
+                    npu_dma_memcpy_nd(
+                        metadata=inA,
+                        bd_id=2 * i + 1,
+                        mem=A,
+                        offsets=[0, 0, 0, A_row_offset],
+                        sizes=[N // n, K // k, m, k],
+                        strides=[0, k, K, 1],
                     )
 
-                    # First, submit up to 5 BDs (num_tile_rows) for each A and B
-                    for tile_row in range(num_tile_rows):
+                    if not b_col_maj:
+                        B_sizes = [N // n, K // k, k, n]
+                        B_strides = [n, k * N, N, 1]
+                    else:
+                        B_sizes = [N // n, K // k, n, k]
+                        B_strides = [n * K, k, K, 1]
 
-                        A_row_offset = (
-                            (tile_row_block * rows_per_block + tile_row) * m * K
-                        )
+                    npu_dma_memcpy_nd(
+                        metadata=inB,
+                        bd_id=2 * i + 2,
+                        mem=B,
+                        sizes=B_sizes,
+                        strides=B_strides,
+                    )
+
+                # Second, submit each row for C and then reconfigure BDs for A and B
+                # when you know that each row is done
+
+                # Remaining A row tiles that need BD reconfiguration
+                remaining_A_row_tiles = total_row_tiles - max_rows
+
+                # modulo counter for A and B, BD IDs
+                mod_cnt = 0
+
+                # specific A row, start from the max_rows,
+                # since initially we submitted max_rows
+                A_row = max_rows
+
+                for i in range(total_row_tiles):
+
+                    C_row_offset = i * m * N
+
+                    npu_dma_memcpy_nd(
+                        metadata=outC,
+                        bd_id=0,
+                        mem=C,
+                        offsets=[0, 0, 0, C_row_offset],
+                        sizes=[1, N // n, m, n],
+                        strides=[0, n, N, 1],
+                    )
+
+                    # Wait the first time for C to finish,
+                    # so we know that one row of A has also finished.
+                    # Then we can reconfigure the specific BD for A and B
+                    if i > 0 and remaining_A_row_tiles > 0:
+
+                        A_row_offset = A_row * m * K
 
                         npu_dma_memcpy_nd(
                             metadata=inA,
-                            bd_id=2 * tile_row + 1,
+                            bd_id=2 * mod_cnt + 1,
                             mem=A,
                             offsets=[0, 0, 0, A_row_offset],
                             sizes=[N // n, K // k, m, k],
@@ -341,29 +399,78 @@ def my_matmul(
 
                         npu_dma_memcpy_nd(
                             metadata=inB,
-                            bd_id=2 * tile_row + 2,
+                            bd_id=2 * mod_cnt + 2,
                             mem=B,
                             sizes=B_sizes,
                             strides=B_strides,
                         )
 
-                    # Second, submit a BD for each row of C and wait
-                    # max 11 BDs used at a time
-                    for tile_row in range(num_tile_rows):
+                        # increase A row, modulo counter for BD IDs
+                        # and decrease the remaining row tiles for A
+                        A_row += 1
+                        mod_cnt = (mod_cnt + 1) % max_rows
+                        remaining_A_row_tiles -= 1
 
-                        C_row_offset = (
-                            (tile_row_block * rows_per_block + tile_row) * m * N
-                        )
+                    # syncronize for each row of C
+                    dma_wait(outC)
 
-                        npu_dma_memcpy_nd(
-                            metadata=outC,
-                            bd_id=0,
-                            mem=C,
-                            offsets=[0, 0, 0, C_row_offset],
-                            sizes=[1, N // n, m, n],
-                            strides=[0, n, N, 1],
-                        )
-                        dma_wait(outC)
+                # # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
+                # rows_per_block = 5
+                # for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
+
+                #     # This is for the last block, when it's less than 5
+                #     num_tile_rows = min(
+                #         [rows_per_block, M_div_m - tile_row_block * rows_per_block]
+                #     )
+
+                #     # First, submit up to 5 BDs (num_tile_rows) for each A and B
+                #     for tile_row in range(num_tile_rows):
+
+                #         A_row_offset = (
+                #             (tile_row_block * rows_per_block + tile_row) * m * K
+                #         )
+
+                #         npu_dma_memcpy_nd(
+                #             metadata=inA,
+                #             bd_id=2 * tile_row + 1,
+                #             mem=A,
+                #             offsets=[0, 0, 0, A_row_offset],
+                #             sizes=[N // n, K // k, m, k],
+                #             strides=[0, k, K, 1],
+                #         )
+
+                #         if not b_col_maj:
+                #             B_sizes = [N // n, K // k, k, n]
+                #             B_strides = [n, k * N, N, 1]
+                #         else:
+                #             B_sizes = [N // n, K // k, n, k]
+                #             B_strides = [n * K, k, K, 1]
+
+                #         npu_dma_memcpy_nd(
+                #             metadata=inB,
+                #             bd_id=2 * tile_row + 2,
+                #             mem=B,
+                #             sizes=B_sizes,
+                #             strides=B_strides,
+                #         )
+
+                #     # Second, submit a BD for each row of C and wait
+                #     # max 11 BDs used at a time
+                #     for tile_row in range(num_tile_rows):
+
+                #         C_row_offset = (
+                #             (tile_row_block * rows_per_block + tile_row) * m * N
+                #         )
+
+                #         npu_dma_memcpy_nd(
+                #             metadata=outC,
+                #             bd_id=0,
+                #             mem=C,
+                #             offsets=[0, 0, 0, C_row_offset],
+                #             sizes=[1, N // n, m, n],
+                #             strides=[0, n, N, 1],
+                #         )
+                #         dma_wait(outC)
 
     print(ctx.module)
 
