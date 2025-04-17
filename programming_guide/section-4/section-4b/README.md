@@ -229,7 +229,8 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
     * If you're sharing a buffer object for both output and trace, ensure the offset for the trace configuration is the right size (based on output buffer size). Check both size and datatype. Offsets are usually in terms of bytes.
     * Check that the correct tile is being routed to the correct shim DMA. It's not uncommon in a multi core design to route the wrong tile if you're routing these manually, espeically if the tile names might be very similar. Using the convenience python wrappers should automatically handle this correctly.
     * For designs with packet-routing flows, check for correctly matching packet flow IDs. The packet flow ID must match the configured ID value in Trace Control 1 register or else the packets don't get routed. Using the convenience python wrappers should again automatically handle this correctly. However, if your design uses its own packet-routing flows, the default flow IDs may conflict with the trace ones (to be improved in future release)
-    
+    * At the moment, there is a ongoing bug where you may see intermittent seg faults or functional errors for some designs when trace is enabled. The current workaround is to allocate XRT buffer size much larger than the trace size (currently 4x). This may need to be bigger still as this size was experimentally determined.
+     
 ## <u>Exercises</u>
 1. Let's give tracing a try. In this directory, we will be examining a simplified version of the `vector scalar multiply` example. Run `make trace`. This compiles the design, generates a trace data file, and runs `prase_trace.py` to generate the `trace_4b.json` waveform file.
 
