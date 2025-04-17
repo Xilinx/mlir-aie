@@ -25,10 +25,9 @@ of_out = ObjectFifo(data_ty, name="out")
 buff = GlobalBuffer(
     data_ty,
     name="buff",
-    initial_value=np.array(
-        range(data_size), dtype=np.int32
-    ),
+    initial_value=np.array(range(data_size), dtype=np.int32),
 )
+
 
 # Task for the core to perform
 def core_fn(buff_in, of_out):
@@ -36,6 +35,7 @@ def core_fn(buff_in, of_out):
     for i in range_(data_size):
         elem_out[i] = buff_in[i]
     of_out.release(1)
+
 
 # Create a worker to perform the task
 my_worker = Worker(core_fn, [buff, of_out.prod()])

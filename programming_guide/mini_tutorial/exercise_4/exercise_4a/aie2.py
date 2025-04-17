@@ -21,15 +21,16 @@ data_size = data_height * data_width
 data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 
 # Dataflow with ObjectFifos
-size_2      = TODO
-stride_2    = TODO
-size_1      = TODO
-stride_1    = TODO
-size_0      = TODO
-stride_0    = TODO
+size_2 = TODO
+stride_2 = TODO
+size_1 = TODO
+stride_1 = TODO
+size_0 = TODO
+stride_0 = TODO
 dims = [(size_2, stride_2), (size_1, stride_1), (size_0, stride_0)]
 of_in = ObjectFifo(data_ty, name="in")
 of_out = ObjectFifo(data_ty, name="out", dims_to_stream=dims)
+
 
 # Task for the core to perform
 def core_fn(of_in, of_out):
@@ -39,6 +40,7 @@ def core_fn(of_in, of_out):
         elem_out[i] = elem_in[i]
     of_in.release(1)
     of_out.release(1)
+
 
 # Create a worker to perform the task
 my_worker = Worker(core_fn, [of_in.cons(), of_out.prod()])

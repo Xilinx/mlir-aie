@@ -36,12 +36,14 @@ rtps.append(
     )
 )
 
+
 # Task for the core to perform
 def core_fn(rtp, of_out):
     elem_out = of_out.acquire(1)
     for i in range_(data_size):
         elem_out[i] = rtp[i]
     of_out.release(1)
+
 
 # Create a worker to perform the task
 my_worker = Worker(core_fn, [rtps[0], of_out.prod()])
@@ -52,7 +54,7 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, c_out):
     # Set runtime parameters
     def set_rtps(*args):
         for rtp in args:
-            for i in range(data_size): # note difference with range_ in the Worker
+            for i in range(data_size):  # note difference with range_ in the Worker
                 rtp[i] = 1
 
     rt.inline_ops(set_rtps, rtps)

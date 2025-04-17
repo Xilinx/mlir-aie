@@ -27,8 +27,12 @@ tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
 
 # Define runtime tensor access pattern (tap)
 tensor_dims = (data_height, data_width)
-tap1 = TensorAccessPattern(tensor_dims, offset=0, sizes=[1, 1, 3, 8], strides=[0, 0, 16, 1])
-tap2 = TensorAccessPattern(tensor_dims, offset=8, sizes=[1, 1, 3, 8], strides=[0, 0, 16, 1])
+tap1 = TensorAccessPattern(
+    tensor_dims, offset=0, sizes=[1, 1, 3, 8], strides=[0, 0, 16, 1]
+)
+tap2 = TensorAccessPattern(
+    tensor_dims, offset=8, sizes=[1, 1, 3, 8], strides=[0, 0, 16, 1]
+)
 
 # Create a TensorTileSequence from a list of taps
 taps = TensorAccessSequence.from_taps([tap1, tap2])
@@ -42,6 +46,7 @@ for t in taps:
 of_in = ObjectFifo(tile_ty, name="in")
 of_out = ObjectFifo(tile_ty, name="out")
 
+
 # Task for the core to perform
 def core_fn(of_in, of_out):
     elem_in = of_in.acquire(1)
@@ -50,6 +55,7 @@ def core_fn(of_in, of_out):
         elem_out[i] = elem_in[i]
     of_in.release(1)
     of_out.release(1)
+
 
 # Create a worker to perform the task
 my_worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
