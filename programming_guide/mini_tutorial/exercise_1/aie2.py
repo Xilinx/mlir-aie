@@ -26,7 +26,7 @@ buff = GlobalBuffer(
     data_ty,
     name="buff",
     initial_value=np.array(
-        np.ones((data_size,)), dtype=np.int32
+        range(data_size), dtype=np.int32
     ),
 )
 

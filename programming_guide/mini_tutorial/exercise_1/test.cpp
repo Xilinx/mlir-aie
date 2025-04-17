@@ -157,7 +157,7 @@ int main(int argc, const char *argv[]) {
   uint32_t *bufInA = bo_inA.map<uint32_t *>();
   std::vector<uint32_t> srcVecA;
   for (int i = 0; i < IN_SIZE; i++)
-    srcVecA.push_back(1);
+    srcVecA.push_back(i);
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
   void *bufInstr = bo_instr.map<void *>();
@@ -178,8 +178,8 @@ int main(int argc, const char *argv[]) {
 
   int errors = 0;
 
-  for (uint32_t i = 0; i < 48; i++) {
-    uint32_t ref = 1;
+  for (uint32_t i = 0; i < OUT_SIZE; i++) {
+    uint32_t ref = i;
     if (*(bufOut + i) != ref) {
       std::cout << "Error in output " << *(bufOut + i) << " != " << ref
                 << std::endl;
