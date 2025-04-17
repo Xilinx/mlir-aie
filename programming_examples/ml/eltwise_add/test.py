@@ -45,7 +45,7 @@ def main(opts):
     out_data = np.zeros([out_volume], dtype=out_dtype)
 
     # Define reference data
-    ref = np.arange(1, in1_volume + 1, dtype=out_dtype) * 2 
+    ref = np.arange(1, in1_volume + 1, dtype=out_dtype) * 2
 
     # --------------------------------------------------------------------------
 
