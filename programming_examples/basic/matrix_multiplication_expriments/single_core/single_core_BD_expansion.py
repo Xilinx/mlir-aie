@@ -359,7 +359,7 @@ def my_matmul(
 
                 # specific A row, start from the max_rows,
                 # since initially we submitted max_rows
-                A_row = max_rows
+                current_A_row = max_rows
 
                 for i in range(total_row_tiles):
 
@@ -379,7 +379,7 @@ def my_matmul(
                     # Then we can reconfigure the specific BD for A and B
                     if i > 0 and remaining_A_row_tiles > 0:
 
-                        A_row_offset = A_row * m * K
+                        A_row_offset = current_A_row * m * K
 
                         npu_dma_memcpy_nd(
                             metadata=inA,
@@ -407,7 +407,7 @@ def my_matmul(
 
                         # increase A row, modulo counter for BD IDs
                         # and decrease the remaining row tiles for A
-                        A_row += 1
+                        current_A_row += 1
                         mod_cnt = (mod_cnt + 1) % max_rows
                         remaining_A_row_tiles -= 1
 

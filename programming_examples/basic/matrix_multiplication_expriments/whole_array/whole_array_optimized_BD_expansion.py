@@ -469,49 +469,120 @@ def my_matmul(
             np.ndarray[(M * N,), np.dtype[dtype_out]],
         )
         def sequence(A, B, C):
-            # We are limited in the number of BDs. After synchronizing, we can reuse BDs.
-            # We only transfer 5 rows of tiles at once before starting a new transfer block.
-            tb_max_n_rows = (
-                5  # tb = transfer block; block of transfers before sync call
+
+            # max number of rows tiles to submit each BD for A and B at a time
+            # Note: each BD represents one row tile of A, i.e., m
+            max_rows = 5
+
+            # total row tiles for computation
+            total_row_tiles = M // m // n_aie_rows
+
+            # Initial row tiles in case where total tiles are less than max_rows
+            initial_row_tiles = (
+                total_row_tiles if total_row_tiles < max_rows else max_rows
             )
-            for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
 
-                row_base = tb * tb_max_n_rows
+            # First, submit the initial row tiles for each A and B (up to max_rows BDs)
+            for i in range(initial_row_tiles):
 
-                # This is for the last block, when it's less than 5
-                tb_n_rows = min([tb_max_n_rows, M // m // n_aie_rows - row_base])
+                for col in range(n_aie_cols):
 
-                # First, submit up to 5 BDs (tb_max_n_rows) for each A and B
-                for tile_row in range(tb_n_rows):
+                    # A input transfer equal to n_aie_rows
+                    # since we have n_aie_rows row tiles for matrix A
+                    if col < n_aie_rows:
+
+                        A_block_offset = i * (
+                            n_aie_rows * m * K
+                        )  # base address for this transfer block for all BDs
+
+                        A_row_offset = (
+                            col * m * K
+                        )  # base address for the shim in this column
+
+                        A_offset = A_block_offset + A_row_offset
+
+                        # sizes and strides in mtk representation
+                        A_sizes = [N // n // n_aie_cols, K // mtk, m, mtk]
+                        A_strides = [0, mtk, K, 1]
+
+                        npu_dma_memcpy_nd(
+                            metadata=A_l3l2_fifos[col],
+                            bd_id=2 * i + 1,
+                            mem=A,
+                            offsets=[0, 0, 0, A_offset],
+                            sizes=A_sizes,
+                            strides=A_strides,
+                        )
+
+                    B_col_offset = col * n if not b_col_maj else col * n * K
+
+                    if b_col_maj:
+                        # ktn representation in col-maj
+                        B_sizes = [N // n // n_aie_cols, K // ktn, n, ktn]
+                        B_strides = [n * n_aie_cols * K, ktn, K, 1]
+                    else:
+                        B_sizes = [N // n // n_aie_cols, K // k, k, n]
+                        B_strides = [n * n_aie_cols, k * N, N, 1]
+
+                    npu_dma_memcpy_nd(
+                        metadata=B_l3l2_fifos[col],
+                        bd_id=2 * i + 2,
+                        mem=B,
+                        offsets=[0, 0, 0, B_col_offset],
+                        sizes=B_sizes,
+                        strides=B_strides,
+                    )
+
+            # Second, submit each row for C and then reconfigure BDs for A and B
+            # when you know that each row is done
+
+            # Remaining A row tiles that need BD reconfiguration
+            remaining_A_row_tiles = total_row_tiles - max_rows
+
+            # modulo counter for A and B, BD IDs
+            mod_cnt = 0
+
+            # specific A row, start from the max_rows,
+            # since initially we submitted max_rows
+            current_A_row = max_rows
+
+            for i in range(total_row_tiles):
+
+                for col in range(n_aie_cols):
+
+                    C_row_offset = i * (n_aie_rows * m * N)
+                    C_col_offset = col * n
+                    C_offset = C_col_offset + C_row_offset
+
+                    C_sizes = [1, N // n // n_aie_cols, m * n_aie_rows, n]
+                    C_strides = [0, n * n_aie_cols, N, 1]
+
+                    npu_dma_memcpy_nd(
+                        metadata=C_l2l3_fifos[col],
+                        bd_id=0,
+                        mem=C,
+                        offsets=[0, 0, 0, C_offset],
+                        sizes=C_sizes,
+                        strides=C_strides,
+                    )
+
+                # Wait the first time for C to finish,
+                # so we know that one row of A has also finished.
+                # Then we can reconfigure the specific BD for A and B
+                if i > 0 and remaining_A_row_tiles > 0:
 
                     for col in range(n_aie_cols):
 
-                        # always equal to n_aie_rows since we have n_aie_rows row tiles for matrix A
                         if col < n_aie_rows:
-                            # A input transfer:
-                            #
-                            # The smallest transfer unit is a (m*n_A_tiles_per_shim)-sized sub-tile of the input matrix.
-                            # Transfer one such tile for every column, contiguously.
-                            # Repeat this transfer with identical tiles a total of (N//n//n_aie_cols) times.
-                            # Each shim transfers the tiles for separate rows. For example, shim 0 may transfer the
-                            # tiles marked 0 below, and shim 1 may transfer the tiles marked 1.
-                            #             K
-                            #      ----------------
-                            #     |0000000000000000|    (repeated N//n//n_aie_cols times)
-                            #     |0000000000000000|
-                            #     |1111111111111111|
-                            # M   |1111111111111111|
-                            #     |                |
-                            #     |                |
-                            #     |                |
-                            #     |                |
-                            #      ----------------
-                            A_block_offset = (
-                                (row_base + tile_row) * n_aie_rows * m * K
+
+                            A_block_offset = current_A_row * (
+                                n_aie_rows * m * K
                             )  # base address for this transfer block for all BDs
+
                             A_row_offset = (
                                 col * m * K
                             )  # base address for the shim in this column
+
                             A_offset = A_block_offset + A_row_offset
 
                             # sizes and strides in mtk representation
@@ -520,31 +591,13 @@ def my_matmul(
 
                             npu_dma_memcpy_nd(
                                 metadata=A_l3l2_fifos[col],
-                                bd_id=2 * tile_row + 1,
+                                bd_id=2 * mod_cnt + 1,
                                 mem=A,
                                 offsets=[0, 0, 0, A_offset],
                                 sizes=A_sizes,
                                 strides=A_strides,
                             )
 
-                        # B input transfer:
-                        # Transfer the first a (n)-wide block of columns of B,
-                        # Then transfer the (n_aie_columns)-th such block, and so on.
-                        # Each shim will start at a different column offset.
-                        # For example, shim 0 may transfer the tiles marked 0 below,
-                        # and shim 1 may transfer the tiles marked 1.
-                        #
-                        #             N
-                        #      ----------------
-                        #     |0011    0011    |
-                        #     |0011    0011    |
-                        #     |0011    0011    |
-                        # K   |0011    0011    |
-                        #     |0011    0011    |
-                        #     |0011    0011    |
-                        #     |0011    0011    |
-                        #     |0011    0011    |
-                        #      ----------------
                         B_col_offset = col * n if not b_col_maj else col * n * K
 
                         if b_col_maj:
@@ -557,53 +610,157 @@ def my_matmul(
 
                         npu_dma_memcpy_nd(
                             metadata=B_l3l2_fifos[col],
-                            bd_id=2 * tile_row + 2,
+                            bd_id=2 * mod_cnt + 2,
                             mem=B,
                             offsets=[0, 0, 0, B_col_offset],
                             sizes=B_sizes,
                             strides=B_strides,
                         )
 
-                # Second, submit a BD for each row of C and wait
-                # max 11 BDs used at a time (queue gets full)
-                for tile_row in range(tb_n_rows):
+                    # increase A row, modulo counter for BD IDs
+                    # and decrease the remaining row tiles for A
+                    current_A_row += 1
+                    mod_cnt = (mod_cnt + 1) % max_rows
+                    remaining_A_row_tiles -= 1
 
-                    for col in range(n_aie_cols):
-                        # C Output Transfer:
-                        # The smallest transfer unit is a (m*n_aie_rows)-x-(n)-sized sub-tile of the matrix.
-                        # Transfer one such tile for every (n_aie_cols)-th column, evenly spaced,
-                        # then repeat that (tb_n_rows) times for the next contiguous blocks of rows.
-                        # Each shim will start at a different column offset, transferring interleaved
-                        # columns. For example, shim 0 may transfer the blocks marked 0 below, and shim 1
-                        # may transfer the blocks marked 1.
-                        #
-                        #             N
-                        #      ----------------
-                        #     |0011    0011    |
-                        #     |0011    0011    |
-                        #     |0011    0011    |
-                        # M   |0011    0011    |
-                        #     |                |
-                        #     |                |
-                        #     |                |
-                        #     |                |
-                        #      ----------------
-                        C_row_offset = (row_base + tile_row) * m * n_aie_rows * N
-                        C_col_offset = col * n
-                        C_offset = C_col_offset + C_row_offset
-                        C_sizes = [1, N // n // n_aie_cols, m * n_aie_rows, n]
-                        C_strides = [0, n * n_aie_cols, N, 1]
+                # syncronize for each row of C
+                dma_wait(*C_l2l3_fifos)
 
-                        npu_dma_memcpy_nd(
-                            metadata=C_l2l3_fifos[col],
-                            bd_id=0,
-                            mem=C,
-                            offsets=[0, 0, 0, C_offset],
-                            sizes=C_sizes,
-                            strides=C_strides,
-                        )
+            # # We are limited in the number of BDs. After synchronizing, we can reuse BDs.
+            # # We only transfer 5 rows of tiles at once before starting a new transfer block.
+            # tb_max_n_rows = (
+            #     5  # tb = transfer block; block of transfers before sync call
+            # )
+            # for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
 
-                    dma_wait(*C_l2l3_fifos)
+            #     row_base = tb * tb_max_n_rows
+
+            #     # This is for the last block, when it's less than 5
+            #     tb_n_rows = min([tb_max_n_rows, M // m // n_aie_rows - row_base])
+
+            #     # First, submit up to 5 BDs (tb_max_n_rows) for each A and B
+            #     for tile_row in range(tb_n_rows):
+
+            #         for col in range(n_aie_cols):
+
+            #             # always equal to n_aie_rows since we have n_aie_rows row tiles for matrix A
+            #             if col < n_aie_rows:
+            #                 # A input transfer:
+            #                 #
+            #                 # The smallest transfer unit is a (m*n_A_tiles_per_shim)-sized sub-tile of the input matrix.
+            #                 # Transfer one such tile for every column, contiguously.
+            #                 # Repeat this transfer with identical tiles a total of (N//n//n_aie_cols) times.
+            #                 # Each shim transfers the tiles for separate rows. For example, shim 0 may transfer the
+            #                 # tiles marked 0 below, and shim 1 may transfer the tiles marked 1.
+            #                 #             K
+            #                 #      ----------------
+            #                 #     |0000000000000000|    (repeated N//n//n_aie_cols times)
+            #                 #     |0000000000000000|
+            #                 #     |1111111111111111|
+            #                 # M   |1111111111111111|
+            #                 #     |                |
+            #                 #     |                |
+            #                 #     |                |
+            #                 #     |                |
+            #                 #      ----------------
+            #                 A_block_offset = (
+            #                     (row_base + tile_row) * n_aie_rows * m * K
+            #                 )  # base address for this transfer block for all BDs
+            #                 A_row_offset = (
+            #                     col * m * K
+            #                 )  # base address for the shim in this column
+            #                 A_offset = A_block_offset + A_row_offset
+
+            #                 # sizes and strides in mtk representation
+            #                 A_sizes = [N // n // n_aie_cols, K // mtk, m, mtk]
+            #                 A_strides = [0, mtk, K, 1]
+
+            #                 npu_dma_memcpy_nd(
+            #                     metadata=A_l3l2_fifos[col],
+            #                     bd_id=2 * tile_row + 1,
+            #                     mem=A,
+            #                     offsets=[0, 0, 0, A_offset],
+            #                     sizes=A_sizes,
+            #                     strides=A_strides,
+            #                 )
+
+            #             # B input transfer:
+            #             # Transfer the first a (n)-wide block of columns of B,
+            #             # Then transfer the (n_aie_columns)-th such block, and so on.
+            #             # Each shim will start at a different column offset.
+            #             # For example, shim 0 may transfer the tiles marked 0 below,
+            #             # and shim 1 may transfer the tiles marked 1.
+            #             #
+            #             #             N
+            #             #      ----------------
+            #             #     |0011    0011    |
+            #             #     |0011    0011    |
+            #             #     |0011    0011    |
+            #             # K   |0011    0011    |
+            #             #     |0011    0011    |
+            #             #     |0011    0011    |
+            #             #     |0011    0011    |
+            #             #     |0011    0011    |
+            #             #      ----------------
+            #             B_col_offset = col * n if not b_col_maj else col * n * K
+
+            #             if b_col_maj:
+            #                 # ktn representation in col-maj
+            #                 B_sizes = [N // n // n_aie_cols, K // ktn, n, ktn]
+            #                 B_strides = [n * n_aie_cols * K, ktn, K, 1]
+            #             else:
+            #                 B_sizes = [N // n // n_aie_cols, K // k, k, n]
+            #                 B_strides = [n * n_aie_cols, k * N, N, 1]
+
+            #             npu_dma_memcpy_nd(
+            #                 metadata=B_l3l2_fifos[col],
+            #                 bd_id=2 * tile_row + 2,
+            #                 mem=B,
+            #                 offsets=[0, 0, 0, B_col_offset],
+            #                 sizes=B_sizes,
+            #                 strides=B_strides,
+            #             )
+
+            #     # Second, submit a BD for each row of C and wait
+            #     # max 11 BDs used at a time (queue gets full)
+            #     for tile_row in range(tb_n_rows):
+
+            #         for col in range(n_aie_cols):
+            #             # C Output Transfer:
+            #             # The smallest transfer unit is a (m*n_aie_rows)-x-(n)-sized sub-tile of the matrix.
+            #             # Transfer one such tile for every (n_aie_cols)-th column, evenly spaced,
+            #             # then repeat that (tb_n_rows) times for the next contiguous blocks of rows.
+            #             # Each shim will start at a different column offset, transferring interleaved
+            #             # columns. For example, shim 0 may transfer the blocks marked 0 below, and shim 1
+            #             # may transfer the blocks marked 1.
+            #             #
+            #             #             N
+            #             #      ----------------
+            #             #     |0011    0011    |
+            #             #     |0011    0011    |
+            #             #     |0011    0011    |
+            #             # M   |0011    0011    |
+            #             #     |                |
+            #             #     |                |
+            #             #     |                |
+            #             #     |                |
+            #             #      ----------------
+            #             C_row_offset = (row_base + tile_row) * n_aie_rows * m * N
+            #             C_col_offset = col * n
+            #             C_offset = C_col_offset + C_row_offset
+            #             C_sizes = [1, N // n // n_aie_cols, m * n_aie_rows, n]
+            #             C_strides = [0, n * n_aie_cols, N, 1]
+
+            #             npu_dma_memcpy_nd(
+            #                 metadata=C_l2l3_fifos[col],
+            #                 bd_id=0,
+            #                 mem=C,
+            #                 offsets=[0, 0, 0, C_offset],
+            #                 sizes=C_sizes,
+            #                 strides=C_strides,
+            #             )
+
+            #         dma_wait(*C_l2l3_fifos)
 
 
 if __name__ == "__main__":

@@ -14,9 +14,9 @@ subdir=single_core
 targetname=single_core_BD_expansion
 
 # M, K, N: final GEMM dimensions
-M?=544
-K?=512
-N?=512
+M?=640
+K?=32
+N?=32
 
 # m, k, n: single AIE core GEMM dimensions
 m?=32
