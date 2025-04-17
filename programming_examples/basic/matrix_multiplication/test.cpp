@@ -92,7 +92,7 @@ int main(int argc, const char *argv[]) {
   size_t B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
   size_t C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
 
-  size_t OUT_SIZE = C_SIZE + trace_size;
+  //size_t OUT_SIZE = C_SIZE + trace_size;
 
   std::vector<uint32_t> instr_v =
       test_utils::load_instr_binary(vm["instr"].as<std::string>());
@@ -149,7 +149,14 @@ int main(int argc, const char *argv[]) {
   auto bo_b =
       xrt::bo(device, B_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
   auto bo_out =
-      xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
+      xrt::bo(device, C_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
+
+  auto bo_tmp1 = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(6));
+
+  // Workaround so we declare a really small trace buffer when one is not used
+  int tmp_trace_size = (trace_size > 0) ? trace_size : 1;
+  auto bo_trace = xrt::bo(device, tmp_trace_size*4, XRT_BO_FLAGS_HOST_ONLY,
+                          kernel.group_id(7));
 
   if (verbosity >= 1) {
     std::cout << "Writing data into buffer objects.\n";
@@ -178,7 +185,11 @@ int main(int argc, const char *argv[]) {
   // Initialize outputs; bufOut is results matrix plus tracing info
   char *bufOut = bo_out.map<char *>();
   std::vector<C_DATATYPE> CVec(C_VOLUME);
-  memset(bufOut, 0, OUT_SIZE);
+  memset(bufOut, 0, C_SIZE);
+
+  char *bufTrace = bo_trace.map<char *>();
+  if (trace_size > 0)
+    memset(bufTrace, 0, trace_size);
 
   if (verbosity >= 2) {
     std::cout << "DTYPE_IN  = " XSTR(DTYPE_IN) "\n";
@@ -199,6 +210,8 @@ int main(int argc, const char *argv[]) {
   bo_a.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_b.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  if (trace_size > 0)
+    bo_trace.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   unsigned num_iter = n_iterations + n_warmup_iterations;
   float npu_time_total = 0;
@@ -215,7 +228,7 @@ int main(int argc, const char *argv[]) {
     }
     auto start = std::chrono::high_resolution_clock::now();
     unsigned int opcode = 3;
-    auto run = kernel(opcode, bo_instr, instr_v.size(), bo_a, bo_b, bo_out);
+    auto run = kernel(opcode, bo_instr, instr_v.size(), bo_a, bo_b, bo_out, bo_tmp1, bo_trace);
     ert_cmd_state r = run.wait();
     if (r != ERT_CMD_STATE_COMPLETED) {
       std::cout << "Kernel did not complete. Returned status: " << r << "\n";
@@ -223,6 +236,8 @@ int main(int argc, const char *argv[]) {
     }
     auto stop = std::chrono::high_resolution_clock::now();
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    if (trace_size > 0)
+      bo_trace.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
     if (iter < n_warmup_iterations) {
       /* Warmup iterations do not count towards average runtime. */
@@ -273,8 +288,10 @@ int main(int argc, const char *argv[]) {
 
   // Only write out trace of last iteration.
   if (trace_size > 0) {
-    memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
-    matmul_common::write_out_trace(((char *)bufOut) + C_SIZE, trace_size,
+    // memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
+    // matmul_common::write_out_trace(((char *)bufOut) + C_SIZE, trace_size,
+    //                                vm["trace_file"].as<std::string>());
+    matmul_common::write_out_trace((char *)bufTrace, trace_size,
                                    vm["trace_file"].as<std::string>());
   }
 
