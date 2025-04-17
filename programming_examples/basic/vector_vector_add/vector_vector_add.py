@@ -7,33 +7,60 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 import sys
+import argparse
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1, XCVC1902
 from aie.iron.controlflow import range_
 
+import aie.iron as iron
 
-def my_vector_add():
-    N = 256
+# The JIT-compiled kernel relies on inputs from the command line.
+# Because of that, we need to parse the arguments before the JIT is invoked.
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "-v", "--verbose", action="store_true", help="Enable verbose output"
+)
+parser.add_argument(
+    "-d",
+    "--device",
+    choices=["npu", "npu2"],
+    default="npu",
+    help="Target device",
+)
+parser.add_argument(
+    "-c", "--column", type=int, default=0, help="Column index (default: 0)"
+)
+parser.add_argument(
+    "-n",
+    "--num-elements",
+    type=int,
+    default=32,
+    help="Number of elements (default: 32)",
+)
+args = parser.parse_args()
+
+if args.num_elements % 16 != 0:
+    raise ValueError("num_elements must be a multiple of 16.")
+
+device_map = {
+    "npu": NPU1Col1(),
+    "npu2": NPU2Col1(),
+}
+dev = device_map[args.device]
+num_elements = args.num_elements
+data_type = np.int32
+
+
+@iron.jit(is_placed=False)
+def vector_vector_add():
     n = 16
-    N_div_n = N // n
-
-    if len(sys.argv) != 3:
-        raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
-
-    if sys.argv[1] == "npu":
-        dev = NPU1Col1()
-    elif sys.argv[1] == "npu2":
-        dev = NPU2Col1()
-    elif sys.argv[1] == "xcvc1902":
-        dev = XCVC1902()
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+    N_div_n = num_elements // n
 
     # Define tensor types
-    tensor_ty = np.ndarray[(N,), np.dtype[np.int32]]
-    tile_ty = np.ndarray[(n,), np.dtype[np.int32]]
+    tensor_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
+    tile_ty = np.ndarray[(n,), np.dtype[data_type]]
 
     # AIE-array data movement with object fifos
     of_in1 = ObjectFifo(tile_ty, name="in1")
@@ -68,5 +95,42 @@ def my_vector_add():
     return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
-module = my_vector_add()
-print(module)
+def main():
+
+    # Construct two input random tensors and an output zeroed tensor
+    # The three tensor are in memory accessible to the NPU
+    input0 = iron.rand((num_elements,), dtype=data_type, device="npu")
+    input1 = iron.rand((num_elements,), dtype=data_type, device="npu")
+    output = iron.zeros_like(input0)
+
+    # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
+    # to the kernel will use the same compiled kernel and loaded code objects
+    vector_vector_add(input0, input1, output)
+
+    # Check the correctness of the result
+    e = np.equal(input0.numpy() + input1.numpy(), output.numpy())
+    errors = np.size(e) - np.count_nonzero(e)
+
+    # Optionally, print the results
+    if args.verbose:
+        print(f"{'input0':>4} + {'input1':>4} = {'output':>4}")
+        print("-" * 34)
+        count = input0.numel()
+        for idx, (a, b, c) in enumerate(
+            zip(input0[:count], input1[:count], output[:count])
+        ):
+            print(f"{idx:2}: {a:4} + {b:4} = {c:4}")
+
+    # If the result is correct, exit with a success code.
+    # Otherwise, exit with a failure code
+    if not errors:
+        print("\nPASS!\n")
+        exit(0)
+    else:
+        print("\nError count: ", errors)
+        print("\nFailed.\n")
+        exit(-1)
+
+
+if __name__ == "__main__":
+    main()
