@@ -69,11 +69,6 @@ int setup_and_run_aie(int IN1_VOLUME, int IN2_VOLUME, int OUT_VOLUME,
   test_utils::init_xrt_load_kernel(device, kernel, myargs.verbosity,
                                    myargs.xclbin, myargs.kernel);
 
-  std::cout << "IN1_VOLUME: " << IN1_VOLUME << ", sizeof(T1): " << sizeof(T1) << std::endl;
-  std::cout << "IN2_VOLUME: " << IN2_VOLUME << ", sizeof(T2): " << sizeof(T2) << std::endl;
-  std::cout << "OUT_VOLUME: " << OUT_VOLUME << ", sizeof(T3): " << sizeof(T3) << std::endl;
-  std::cout << "myargs.trace_size: " << myargs.trace_size << std::endl;
-
   // set up the buffer objects
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
@@ -89,7 +84,7 @@ int setup_and_run_aie(int IN1_VOLUME, int IN2_VOLUME, int OUT_VOLUME,
 
   // Workaround so we declare a really small trace buffer when one is not used
   // Second workaround for driver issue. Allocate large trace buffer *4
-  int tmp_trace_size = (myargs.trace_size > 0) ? myargs.trace_size*4 : 1;
+  int tmp_trace_size = (myargs.trace_size > 0) ? myargs.trace_size * 4 : 1;
   auto bo_trace = xrt::bo(device, tmp_trace_size, XRT_BO_FLAGS_HOST_ONLY,
                           kernel.group_id(7));
 
@@ -150,8 +145,8 @@ int setup_and_run_aie(int IN1_VOLUME, int IN2_VOLUME, int OUT_VOLUME,
     unsigned int opcode = 3;
     auto run = kernel(opcode, bo_instr, instr_v.size(), bo_in1, bo_in2, bo_out,
                       bo_tmp1, bo_trace);
-    //run.wait();
-    run.wait2(); // to throw exception
+    run.wait();
+    // run.wait2(); // to throw exception
     auto stop = std::chrono::high_resolution_clock::now();
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     if (myargs.trace_size > 0)
@@ -273,7 +268,7 @@ int setup_and_run_aie(int IN1_VOLUME, int OUT_VOLUME, struct args myargs) {
 
   // Workaround so we declare a really small trace buffer when one is not used
   // Second workaround for driver issue. Allocate large trace buffer *4
-  int tmp_trace_size = (myargs.trace_size > 0) ? myargs.trace_size*4 : 1;
+  int tmp_trace_size = (myargs.trace_size > 0) ? myargs.trace_size * 4 : 1;
   auto bo_trace = xrt::bo(device, tmp_trace_size, XRT_BO_FLAGS_HOST_ONLY,
                           kernel.group_id(7));
 
@@ -330,8 +325,8 @@ int setup_and_run_aie(int IN1_VOLUME, int OUT_VOLUME, struct args myargs) {
     // auto run = kernel(opcode, bo_instr, instr_v.size(), bo_in1, bo_out, 0, 0,
     auto run = kernel(opcode, bo_instr, instr_v.size(), bo_in1, bo_out, bo_tmp1,
                       bo_tmp2, bo_trace);
-    //run.wait();
-    run.wait2();
+    run.wait();
+    // run.wait2();
     auto stop = std::chrono::high_resolution_clock::now();
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     if (myargs.trace_size > 0)

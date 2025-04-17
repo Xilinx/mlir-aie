@@ -92,7 +92,7 @@ int main(int argc, const char *argv[]) {
   size_t B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
   size_t C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
 
-  //size_t OUT_SIZE = C_SIZE + trace_size;
+  // size_t OUT_SIZE = C_SIZE + trace_size;
 
   std::vector<uint32_t> instr_v =
       test_utils::load_instr_binary(vm["instr"].as<std::string>());
@@ -155,7 +155,7 @@ int main(int argc, const char *argv[]) {
 
   // Workaround so we declare a really small trace buffer when one is not used
   int tmp_trace_size = (trace_size > 0) ? trace_size : 1;
-  auto bo_trace = xrt::bo(device, tmp_trace_size*4, XRT_BO_FLAGS_HOST_ONLY,
+  auto bo_trace = xrt::bo(device, tmp_trace_size * 4, XRT_BO_FLAGS_HOST_ONLY,
                           kernel.group_id(7));
 
   if (verbosity >= 1) {
@@ -228,7 +228,8 @@ int main(int argc, const char *argv[]) {
     }
     auto start = std::chrono::high_resolution_clock::now();
     unsigned int opcode = 3;
-    auto run = kernel(opcode, bo_instr, instr_v.size(), bo_a, bo_b, bo_out, bo_tmp1, bo_trace);
+    auto run = kernel(opcode, bo_instr, instr_v.size(), bo_a, bo_b, bo_out,
+                      bo_tmp1, bo_trace);
     ert_cmd_state r = run.wait();
     if (r != ERT_CMD_STATE_COMPLETED) {
       std::cout << "Kernel did not complete. Returned status: " << r << "\n";
