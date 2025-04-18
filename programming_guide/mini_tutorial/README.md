@@ -246,7 +246,7 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
     for worker in range(n_workers):
         rt.set_barrier(workerBarriers[worker], 1)
 ```
-More on the runtime parameters and barriers in [Section 2d](../section-2/section-2d/RuntimeTasks.md) of the programming guide.
+More on the runtime parameters and barriers in [Section 2d](../section-2/section-2d/RuntimeTasks.md) of the programming guide and in the [worker.py](../../python/iron/worker.py).
 
 ## <u>Exercises</u>
 8. Familiarize yourself with [exercise_3](./exercise_3/aie2.py). Run `make run`. 
