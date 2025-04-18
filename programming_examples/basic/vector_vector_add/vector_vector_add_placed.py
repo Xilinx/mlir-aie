@@ -9,8 +9,8 @@
 import argparse
 import sys
 import numpy as np
+import aie.iron as iron
 
-from aie import iron
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.helpers.dialects.ext.scf import _for as range_
