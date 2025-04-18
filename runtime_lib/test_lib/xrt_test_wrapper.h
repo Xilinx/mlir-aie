@@ -146,7 +146,6 @@ int setup_and_run_aie(int IN1_VOLUME, int IN2_VOLUME, int OUT_VOLUME,
     auto run = kernel(opcode, bo_instr, instr_v.size(), bo_in1, bo_in2, bo_out,
                       bo_tmp1, bo_trace);
     run.wait();
-    // run.wait2(); // to throw exception
     auto stop = std::chrono::high_resolution_clock::now();
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     if (myargs.trace_size > 0)
@@ -326,7 +325,6 @@ int setup_and_run_aie(int IN1_VOLUME, int OUT_VOLUME, struct args myargs) {
     auto run = kernel(opcode, bo_instr, instr_v.size(), bo_in1, bo_out, bo_tmp1,
                       bo_tmp2, bo_trace);
     run.wait();
-    // run.wait2();
     auto stop = std::chrono::high_resolution_clock::now();
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     if (myargs.trace_size > 0)

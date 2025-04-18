@@ -92,8 +92,6 @@ int main(int argc, const char *argv[]) {
   size_t B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
   size_t C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
 
-  // size_t OUT_SIZE = C_SIZE + trace_size;
-
   std::vector<uint32_t> instr_v =
       test_utils::load_instr_binary(vm["instr"].as<std::string>());
 
@@ -289,9 +287,6 @@ int main(int argc, const char *argv[]) {
 
   // Only write out trace of last iteration.
   if (trace_size > 0) {
-    // memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
-    // matmul_common::write_out_trace(((char *)bufOut) + C_SIZE, trace_size,
-    //                                vm["trace_file"].as<std::string>());
     matmul_common::write_out_trace((char *)bufTrace, trace_size,
                                    vm["trace_file"].as<std::string>());
   }
