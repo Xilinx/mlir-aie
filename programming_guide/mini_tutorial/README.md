@@ -34,18 +34,18 @@ of_in = ObjectFifo(data_ty, name="in") # default_depth is 2
 ```
 More on the Object FIFO in [Section 2a](../section-2/section-2a/README.md) of the programming guide and in the [objectfifo.py](../../python/iron/dataflow/objectfifo.py).
 
-The IRON code [example](./aie2.py) in this mini tutorial details the different parts of an IRON design. More information on the Runtime in particular can be found in [Section 2d](../section-2/section-2d/README.md) of the programming guide.
+The IRON code [example](./aie2p.py) in this mini tutorial details the different parts of an IRON design. More information on the Runtime in particular can be found in [Section 2d](../section-2/section-2d/README.md) of the programming guide.
 
 ## <u>Exercises</u>
-1. Familiarize yourself with [exercise_1](./exercise_1/aie2.py). The code contains a single Worker which has an already instantiated local buffer that it sends out to external memory. Run `make run` to run the program and verify the output.
+1. Familiarize yourself with [exercise_1](./exercise_1/exercise_1.py). The code contains a single Worker which has an already instantiated local buffer that it sends out to external memory. Run `python3 exercise_1.py` to run the program and verify the output.
 
-2. Run `make clean`. Modify the code in [exercise_1](./exercise_1/aie2.py) so that the Worker receives its input data from external memory instead of using the local buffer, i.e. a passthrough.
+2. Modify the code in [exercise_1](./exercise_1/exercise_1.py) so that the Worker receives its input data from external memory instead of using the local buffer, i.e. a passthrough.
 
-3. Run `make clean`. Modify the code in [exercise_1](./exercise_1/aie2.py) so that data is routed from external memory through a Mem tile and back only using ObjectFifos and without using Workers. For this, you will require the `forward()` function described in [Section 2b - Implicit Copy](../section-2/section-2b/03_Implicit_Copy/README.md) of the programming guide. Don't forget to `fill()` the input Object FIFO with data at runtime as described in [Section 2d](../section-2/section-2d/RuntimeTasks.md).
+3. Modify the code in [exercise_1](./exercise_1/exercise_1.py) so that data is routed from external memory through a Mem tile and back only using ObjectFifos and without using Workers. For this, you will require the `forward()` function described in [Section 2b - Implicit Copy](../section-2/section-2b/03_Implicit_Copy/README.md) of the programming guide. Don't forget to `fill()` the input Object FIFO with data at runtime as described in [Section 2d](../section-2/section-2d/RuntimeTasks.md).
 
-4. Run `make clean`. Modify the code in [exercise_1](./exercise_1/aie2.py) so that data is first routed from external memory through a Mem tile to a Worker, which performs the passthrough, then send the data back out.
+4. Modify the code in [exercise_1](./exercise_1/exercise_1.py) so that data is first routed from external memory through a Mem tile to a Worker, which performs the passthrough, then send the data back out.
 
-5. Run `make clean`. Modify the code in [exercise_1](./exercise_1/aie2.py) such that the output of the Worker is routed through a Mem tile.
+5. Modify the code in [exercise_1](./exercise_1/exercise_1.py) such that the output of the Worker is routed through a Mem tile.
 
 ## <ins>Complex Data Movement Patterns: Broadcast, Split, Join</ins>
 
@@ -163,9 +163,9 @@ for worker in range(n_workers):
 More on the Object FIFO data movement patterns in [Section 2b](../section-2/section-2b/README.md) of the programming guide.
 
 ## <u>Exercises</u>
-6. Familiarize yourself with [exercise_2](./exercise_2/aie2.py). Modify the code in [exercise_2](./exercise_2/aie2.py) so that the input data is split between three workers and their outputs are joined before the final result is sent to external memory.
+6. Familiarize yourself with [exercise_2](./exercise_2/exercise_2.py). Modify the code in [exercise_2](./exercise_2/exercise_2.py) so that the input data is split between three workers and their outputs are joined before the final result is sent to external memory.
 
-7. Run `make clean`. Modify the code in [exercise_2](./exercise_2/aie2.py) such that the data sizes for each worker are uneven, for example: tile_sizes = [8, 24, 16].
+7. Modify the code in [exercise_2](./exercise_2/exercise_2.py) such that the data sizes for each worker are uneven, for example: tile_sizes = [8, 24, 16].
 
 ## <ins>Runtime Parameters and Barriers</ins>
 
@@ -249,9 +249,9 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
 More on the runtime parameters and barriers in [Section 2d](../section-2/section-2d/RuntimeTasks.md) of the programming guide and in the [worker.py](../../python/iron/worker.py).
 
 ## <u>Exercises</u>
-8. Familiarize yourself with [exercise_3](./exercise_3/aie2.py). Run `make run`. 
+8. Familiarize yourself with [exercise_3](./exercise_3/exercise_3.py). Modify line 90 by setting: `USE_INPUT_VEC = False`. Run `python3 exercise_3.py`. 
 
-9. The design fails because the Worker reads the RTP before the runtime sets it. Modify the code in [exercise_3](./exercise_3/aie2.py) such that the Worker uses a `WorkerRuntimeBarrier` to wait for the RTP to be set.
+9. The design fails because the Worker reads the RTP before the runtime sets it. Modify the code in [exercise_3](./exercise_3/exercise_3.py) such that the Worker uses a `WorkerRuntimeBarrier` to wait for the RTP to be set.
 
 ## <ins>Advanced Topic: Data Layout Transformations</ins>
 
@@ -271,7 +271,7 @@ for(int i = 0; i < size_2; i++)
             //                                   + k * stride_0]
 ```
 
-To better support DMA on-the-fly data transformations **at runtime** IRON provides [taplib](../../python/helpers/taplib/) which provides the building blocks for `Tensor Access Pattern`s (`taps`). The sizes and strides are grouped together and the dimensions should be given from highest to lowest:
+To better support DMA on-the-fly data transformations **at runtime** IRON provides [taplib](../../python/helpers/taplib/) which provides the building blocks for `Tensor Access Pattern`s (`taps`). The sizes and strides are grouped together and the dimensions should be given from highest to lowest (up to 4 dimensions):
 ```python
 tap = TensorAccessPattern(
     tensor_dims=(2, 3),
@@ -281,6 +281,15 @@ tap = TensorAccessPattern(
 )
 ```
 `taps` additionally have an offset and as such the `tensor_dims` may be smaller than the size of the original tensor.
+
+A `TensorAccessPattern` can be applied to the `fill()` and `drain()` runtime operations:
+```python
+rt = Runtime()
+with rt.sequence(data_ty, data_ty) as (a_in, c_out):
+    rt.start(my_worker)
+    rt.fill(of_in.prod(), a_in, tap)
+    rt.drain(of_out.cons(), c_out, tap, wait=True)
+```
 
 The `TensorAccessPattern` can be visualized in two ways:
 - as a heatmap showing the order that elements are accessed
@@ -323,10 +332,10 @@ Offsets are currently not represented at the Object FIFO level and as such the d
 More on the Object FIFO data layout transformations in [Section 2c](../section-2/section-2c/README.md) of the programming guide.
 
 ## <u>Exercises</u>
-10. Familiarize yourself with [exercise_4a](./exercise_4/exercise_4a/aie2.py). Use a `tap` such that the data transformation performed on the input data at runtime matches the one shown in [ref_plot.png](./exercise_4/exercise_4a/ref_plot.png). Don't forget to add the `tap` to the runtime `fill()` operation. Before running the example, comment out the corresponding `TODO`s in [test.cpp](./exercise_4/exercise_4a/test.cpp). Run `make run` to verify your answer.
+10. Familiarize yourself with [exercise_4a](./exercise_4/exercise_4a/exercise_4a.py). Use a `tap` such that the data transformation performed on the input data at runtime matches the one shown in [ref_plot.png](./exercise_4/exercise_4a/ref_plot.png). Don't forget to add the `tap` to the runtime `fill()` operation. Before running the example modify line 80 to `USE_REF_VEC = False`. Run `python3 exercise_4a.py` to verify your answer.
 
-11. Run `make clean`. Replace the `tap` you added in [exercise_4a](./exercise_4/exercise_4a/aie2.py) with one generated by a `TensorTiler2D`. For this, you will require the `simple_tiler()` constructor defined in [tensortiler2d.py](../../python/helpers/taplib/tensortiler2d.py). Run `make run` to verify your answer. You can also observe the two generated plots.
+11. Replace the `tap` you added in [exercise_4a](./exercise_4/exercise_4a/exercise_4a.py) with one generated by a `TensorTiler2D`. For this, you will require the `simple_tiler()` constructor defined in [tensortiler2d.py](../../python/helpers/taplib/tensortiler2d.py). Run `python3 exercise_4a.py` to verify your answer. You can also observe the two generated plots.
 
-12. Familiarize yourself with [exercise_4b](./exercise_4/exercise_4b/aie2.py). Observe how the `taps` in the `TensorAccessSequence` differ slightly from the one in [exercise_4a](./exercise_4/exercise_4a/aie2.py). Run `make run` and observe the two generated plots.
+12. Familiarize yourself with [exercise_4b](./exercise_4/exercise_4b/exercise_4b.py). Observe how the `taps` in the `TensorAccessSequence` differ slightly from the one in [exercise_4a](./exercise_4/exercise_4a/exercise_4a.py). Run `python3 exercise_4b.py` and observe the two generated plots.
 
-13. In [exercise_4a](./exercise_4/exercise_4a/aie2.py), instead of applying the data transformations on the input data at runtime apply them directly on `of_out`. Run `make run` to verify your answer.
+13. In [exercise_4a](./exercise_4/exercise_4a/exercise_4a.py), instead of applying the data transformations on the input data at runtime apply them directly on `of_out`. Run `python3 exercise_4a.py` to verify your answer.
