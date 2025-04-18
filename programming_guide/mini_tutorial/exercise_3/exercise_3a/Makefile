@@ -8,7 +8,7 @@
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-include ${srcdir}/../../../programming_examples/makefile-common
+include ${srcdir}/../../../../programming_examples/makefile-common
 
 targetname = aie2
 
