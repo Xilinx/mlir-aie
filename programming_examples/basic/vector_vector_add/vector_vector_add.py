@@ -41,26 +41,55 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-if args.num_elements % 16 != 0:
-    raise ValueError("num_elements must be a multiple of 16.")
-
 device_map = {
     "npu": NPU1Col1(),
     "npu2": NPU2Col1(),
 }
-dev = device_map[args.device]
-num_elements = args.num_elements
-data_type = np.int32
+device = device_map[args.device]
+
+# Construct two input random tensors and an output zeroed tensor
+# The three tensor are in memory accessible to the NPU
+input0 = iron.rand((args.num_elements,), dtype=np.int32, device=args.device)
+input1 = iron.rand((args.num_elements,), dtype=np.int32, device=args.device)
+output = iron.zeros_like(input0)
 
 
 @iron.jit(is_placed=False)
-def vector_vector_add():
+def vector_vector_add(
+    # input0, input1, output
+):
+    if input0.shape != input1.shape:
+        raise ValueError(
+            f"Input shapes are not the equal ({input0.shape} != {input1.shape})."
+        )
+    if input0.dtype != input1.dtype:
+        raise ValueError(
+            f"Input data types are not the same ({input0.dtype} != {input1.dtype})."
+        )
+
+    if input0.shape != output.shape:
+        raise ValueError(
+            f"Input and output shapes are not the equal ({input0.shape} != {output.shape})."
+        )
+    if input0.dtype != output.dtype:
+        raise ValueError(
+            f"Input and output data types are not the same ({input0.dtype} != {output.dtype})."
+        )
+
+    if len(np.shape(input0)) != 1:
+        raise ValueError("Function only supports vectors.")
+    num_elements = np.size(input0)
     n = 16
+    if num_elements % n != 0:
+        raise ValueError(
+            f"Number of elements ({num_elements}) must be a multiple of {n}."
+        )
     N_div_n = num_elements // n
+    dtype = input0.dtype
 
     # Define tensor types
-    tensor_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
-    tile_ty = np.ndarray[(n,), np.dtype[data_type]]
+    tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
+    tile_ty = np.ndarray[(n,), np.dtype[dtype]]
 
     # AIE-array data movement with object fifos
     of_in1 = ObjectFifo(tile_ty, name="in1")
@@ -92,16 +121,10 @@ def vector_vector_add():
         rt.drain(of_out.cons(), C, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(device, rt).resolve_program(SequentialPlacer())
 
 
 def main():
-
-    # Construct two input random tensors and an output zeroed tensor
-    # The three tensor are in memory accessible to the NPU
-    input0 = iron.rand((num_elements,), dtype=data_type, device="npu")
-    input1 = iron.rand((num_elements,), dtype=data_type, device="npu")
-    output = iron.zeros_like(input0)
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
