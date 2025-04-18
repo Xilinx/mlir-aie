@@ -398,9 +398,9 @@ class object_fifo(ObjectFifoCreateOp):
         self,
         name,
         producerTile,
-        consumerTileConfigs, # should be a list (or a single dict) of consumer configs
+        consumerTileConfigs,  # should be a list (or a single dict) of consumer configs
         depth,  # FIFO depth for the producer side
-        datatype: MemRefType | type[np.ndarray], # FIFO datatype for the producer side
+        datatype: MemRefType | type[np.ndarray],  # FIFO datatype for the producer side
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
         initValues=None,
@@ -418,7 +418,14 @@ class object_fifo(ObjectFifoCreateOp):
                 processed_configs.append(cfg)
             else:
                 # Assume cfg is a TileOp; set default offset, depth, and datatype.
-                processed_configs.append({"tile": cfg, "offset": 0, "num_objects": depth, "datatype": datatype})
+                processed_configs.append(
+                    {
+                        "tile": cfg,
+                        "offset": 0,
+                        "num_objects": depth,
+                        "datatype": datatype,
+                    }
+                )
         consumerTileConfigs = processed_configs
         # Extract depths (num_objects), datatypes, and tile identifiers from each config
         self.consumerConfigs = consumerTileConfigs
@@ -435,7 +442,8 @@ class object_fifo(ObjectFifoCreateOp):
         consumer_offsets = [cfg.get("offset", 0) for cfg in consumerTileConfigs]
         consumer_depths = [cfg.get("num_objects", depth) for cfg in consumerTileConfigs]
         consumer_datatypes = [
-            try_convert_np_type_to_mlir_type(cfg.get("datatype", datatype)) for cfg in consumerTileConfigs
+            try_convert_np_type_to_mlir_type(cfg.get("datatype", datatype))
+            for cfg in consumerTileConfigs
         ]
         consumerTilesList = [cfg.get("tile") for cfg in consumerTileConfigs]
 
@@ -449,8 +457,10 @@ class object_fifo(ObjectFifoCreateOp):
         all_datatypes = [producer_datatype] + consumer_datatypes
 
         # Create the overall FIFO type from the combined datatypes.
-        of_Ty = TypeAttr.get(ObjectFifoType.get(producer_datatype)) # Should be all_datatypes
-        self.datatype = producer_datatype # For the acquire and release functions
+        of_Ty = TypeAttr.get(
+            ObjectFifoType.get(producer_datatype)
+        )  # Should be all_datatypes
+        self.datatype = producer_datatype  # For the acquire and release functions
         if dimensionsFromStreamPerConsumer is None:
             dimensionsFromStreamPerConsumer = []
         if dimensionsToStream is None:
@@ -469,7 +479,7 @@ class object_fifo(ObjectFifoCreateOp):
             consumerTiles=consumerTilesList,
             elemNumber=all_depths,  # Combined list of depths: producer then consumers
             elemType=of_Ty,
-            offsets=all_offsets,    # New: combined offsets list
+            offsets=all_offsets,  # New: combined offsets list
             dimensionsToStream=dimensionsToStream,
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
             via_DMA=via_DMA,
