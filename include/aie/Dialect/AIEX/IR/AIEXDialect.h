@@ -12,7 +12,6 @@
 #define MLIR_AIEX_DIALECT_H
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include <optional>
 
 // Include dialect declarations such as parseAttributes, parseType
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h.inc"
@@ -20,6 +19,9 @@
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEX.h.inc"
+
+#define GET_TYPEDEF_CLASSES
+#include "aie/Dialect/AIEX/IR/AIEXTypes.h.inc"
 
 namespace xilinx {
 namespace AIEX {

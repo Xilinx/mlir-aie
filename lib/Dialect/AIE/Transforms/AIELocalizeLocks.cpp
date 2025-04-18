@@ -47,24 +47,17 @@ struct AIELocalizeLocksPass : AIELocalizeLocksBase<AIELocalizeLocksPass> {
       for (auto tile : accessibleTiles) {
         int dstCol = tile.colIndex();
         int dstRow = tile.rowIndex();
-        int cardinalMemOffset = 0;
 
         const auto &targetModel = getTargetModel(tile);
-        int numLocks = targetModel.getNumLocks(dstCol, dstRow);
         for (auto user : tile.getResult().getUsers())
           if (auto lock = dyn_cast<LockOp>(user)) {
-            if (targetModel.isMemSouth(col, row, dstCol, dstRow))
-              cardinalMemOffset = 0;
-            else if (targetModel.isMemWest(col, row, dstCol, dstRow))
-              cardinalMemOffset = numLocks;
-            else if (targetModel.isMemNorth(col, row, dstCol, dstRow))
-              cardinalMemOffset = 2 * numLocks;
-            else if (targetModel.isMemEast(col, row, dstCol, dstRow))
-              cardinalMemOffset = 3 * numLocks;
-            else
+            auto lockIndexOffset =
+                targetModel.getLockLocalBaseIndex(col, row, dstCol, dstRow);
+            if (!lockIndexOffset)
               llvm_unreachable("Found illegal lock user!");
 
-            int localLockIndex = cardinalMemOffset + lock.getLockIDValue();
+            int localLockIndex =
+                lockIndexOffset.value() + lock.getLockIDValue();
 
             OpBuilder builder =
                 OpBuilder::atBlockBegin(&coreOp.getBody().front());

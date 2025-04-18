@@ -24,9 +24,15 @@ kernels=mv_${m}x${k}
 SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 include ${SELF_DIR}../makefile-common
 
+kernels_dir=${srcdir}/../../../../aie_kernels/aie2
+
 CHESS=true
 
 build/mv_${m}x${k}.o: ${kernels_dir}/mv.cc
 	mkdir -p ${@D}
+ifeq (${devicename}, npu)
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -DDIM_M=${m} -DDIM_K=${k} -c $< -o ${@F}
+else ifeq (${devicename}, npu2)
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBIT_WIDTH=8 -DDIM_M=${m} -DDIM_K=${k} -c $< -o ${@F}
+endif
 

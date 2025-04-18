@@ -1026,3 +1026,6 @@ def dma_start_task(*args: DMAConfigureTaskForOp):
         )
     for dma_task in args:
         _orig_dma_start_task(dma_task)
+
+def set_lock_value(lock: aie.LockOp, value: int):
+    return set_lock(lock, value)

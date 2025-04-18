@@ -137,8 +137,8 @@ translateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
   assert(llvm::range_size(devOps) == 1 &&
          "only exactly 1 device op supported.");
   DeviceOp targetOp = *devOps.begin();
-  const BaseNPUTargetModel &targetModel =
-      (const BaseNPUTargetModel &)targetOp.getTargetModel();
+  const AIETargetModel &targetModel =
+      (const AIETargetModel &)targetOp.getTargetModel();
 
   // things like XAIE_MEM_TILE_ROW_START and the missing
   // shim dma on tile (0,0) are hard-coded assumptions about NPU...

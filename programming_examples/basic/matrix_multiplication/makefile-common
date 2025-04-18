@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# Copyright (C) 2025, Advanced Micro Devices, Inc.
 # 
 ##===----------------------------------------------------------------------===##
 
@@ -35,9 +35,10 @@ include ${current_dir}../../makefile-common
 
 
 dtype_in?=i16
-dtype_out?=i16
+dtype_out?=i32
 trace_size?=65536
 
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
 ifeq ($(dtype_in),bf16)
 	dtype_in_cpp=std::bfloat16_t
@@ -78,14 +79,19 @@ insts_target?=build/insts_${target_suffix}.txt
 aie_py_src?=${targetname}.py
 
 runargs?=-v 2 --warmup 1 --iters 1
-aieargs+=-M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
+aieargs+=--dev ${devicename} -M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
 
 CHESS?=false
 
 # default sequential buffer allocation, if not already defined
 buffer_aloc_flag?=basic-sequential
 
-kernels_dir=${srcdir}/../../../../aie_kernels/aie2
+ifeq ($(devicename),npu2)
+col_shift?=0
+else 
+#shift first column in Phoenix/Hawk, because deosn't have shimTile 
+col_shift?=1
+endif
 
 .PHONY: all
 all: ${xclbin_target} ${targetname}.exe
@@ -143,13 +149,13 @@ run: ${targetname}.exe ${xclbin_target}
 trace: ${targetname}.exe ${trace_xclbin_target} ${insts_target}
 	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
 	${powershell} ./$< -x ${trace_xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N ${runargs} -t ${trace_size}
-	../../../utils/parse_trace.py --filename trace.txt --mlir ${trace_mlir_target} --colshift 1 > trace_mm.json
+	${srcdir}/../../../utils/parse_trace.py --filename trace.txt --mlir ${trace_mlir_target} --colshift ${col_shift} > trace_mm.json
 
 #	${powershell} ./$< -x ${trace_xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N -v 1 --warmup 0 --iters 1 -t ${trace_size}
 
 .PHONY: parse_trace
 parse_trace:
-	../../../utils/parse_trace.py --filename trace.txt --mlir ${trace_mlir_target} --colshift 1 > trace_mm.json
+	${srcdir}/../../../utils/parse_trace.py --filename trace.txt --mlir ${trace_mlir_target} --colshift 1 > trace_mm.json
 
 .PHONY: clean
 clean: clean_trace

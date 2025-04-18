@@ -54,8 +54,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 
 namespace xilinx::AIE {
 
-AIERTControl::AIERTControl(const AIE::BaseNPUTargetModel &tm)
-    : targetModel(tm) {
+AIERTControl::AIERTControl(const AIE::AIETargetModel &tm) : targetModel(tm) {
   // The first column in the NPU lacks a shim tile.  AIE-RT exposes some of
   // the internals about how this is modeled in a somewhat awkward way.
   size_t partitionStartCol =
@@ -156,26 +155,12 @@ LogicalResult AIERTControl::configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
          "expected both use_lock(acquire) and use_lock(release) with bd");
 
   if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
-    // check if buffer is allocated on the same memtile, the west, or the east
-    // one
-    int increaseValue = 0;
-    auto lockRow = lock.rowIndex();
-    auto lockCol = lock.colIndex();
-    bool isWestLock =
-        targetModel.isWest(tileLoc.Col, tileLoc.Row, lockCol, lockRow);
-    bool isEastLock =
-        targetModel.isEast(tileLoc.Col, tileLoc.Row, lockCol, lockRow);
-    if (isWestLock) {
-      increaseValue = MEM_TILE_LOCK_ID_INCR_WEST;
-    } else if (isEastLock) {
-      increaseValue = MEM_TILE_LOCK_ID_INCR_EAST;
-    } else {
-      increaseValue = MEM_TILE_LOCK_ID_INCR;
-    }
-    if (acqLockId)
-      acqLockId.value() += increaseValue;
-    if (relLockId)
-      relLockId.value() += increaseValue;
+    auto lockOffset = targetModel.getLockLocalBaseIndex(
+        tileLoc.Col, tileLoc.Row, lock.colIndex(), lock.rowIndex());
+    if (lockOffset && acqLockId)
+      acqLockId.value() += lockOffset.value();
+    if (lockOffset && relLockId)
+      relLockId.value() += lockOffset.value();
   }
 
   // no RelEn in the arch spec even though the API requires you to set it?
@@ -242,17 +227,10 @@ LogicalResult AIERTControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
     auto bufferOp = cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp());
     auto bufferRow = bufferOp.getTileOp().getRow();
     auto bufferCol = bufferOp.getTileOp().getCol();
-    bool isWestBuff =
-        targetModel.isWest(tileLoc.Col, tileLoc.Row, bufferCol, bufferRow);
-    bool isEastBuff =
-        targetModel.isEast(tileLoc.Col, tileLoc.Row, bufferCol, bufferRow);
-    if (isWestBuff) {
-      baseAddr += BASE_ADDR_A_INCR_WEST;
-    } else if (isEastBuff) {
-      baseAddr += BASE_ADDR_A_INCR_EAST;
-    } else {
-      baseAddr += BASE_ADDR_A_INCR;
-    }
+    auto addrOffset = targetModel.getMemLocalBaseAddress(
+        tileLoc.Col, tileLoc.Row, bufferCol, bufferRow);
+    if (addrOffset)
+      baseAddr += addrOffset.value();
   }
 
   std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDimensions();

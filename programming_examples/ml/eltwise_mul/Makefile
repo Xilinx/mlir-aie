@@ -14,10 +14,11 @@ include ${srcdir}/../../makefile-common
 
 all: build/final.xclbin
 
-device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = eltwise_mul
 trace_size = 8192
 
+colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src=${targetname}.py
 use_placed?=0
 
@@ -29,9 +30,9 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 build/%.o: %.cc
 	mkdir -p ${@D}
-ifeq ($(device),npu)
+ifeq ($(devicename),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
-else ifeq ($(device),npu2)
+else ifeq ($(devicename),npu2)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
 else
 	echo "Device type not supported"
@@ -39,11 +40,11 @@ endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${device} 0 > $@
+	python3 $< ${devicename} 0 > $@
 
 build/aie_trace.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${device} ${trace_size} > $@
+	python3 $< ${devicename} ${trace_size} > $@
 
 build/final.xclbin: build/aie.mlir build/mul.o
 	mkdir -p ${@D}
@@ -74,7 +75,7 @@ run: ${targetname}.exe build/final.xclbin
 
 trace: ${targetname}.exe build/final_trace.xclbin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > trace_eltwise_mul.json
+	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift ${colshift} > trace_eltwise_mul.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_eltwise_mul.json
 
 clean:

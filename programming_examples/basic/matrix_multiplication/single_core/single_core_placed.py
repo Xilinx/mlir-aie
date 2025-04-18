@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 AMD Inc.
+# (c) Copyright 2025 AMD Inc.
 
 # This placed implementation uses configure_task instructions instead of
 # dma_memcpy_nd in the runtime sequence configuration. It is otherwise
@@ -30,9 +30,10 @@ dtype_map = {
 
 def main():
     argparser = argparse.ArgumentParser(
-        prog="AIE Matrix Multiplication MLIR Design (Whole Array)",
+        prog="AIE Matrix Multiplication MLIR Design (Single Core)",
         description="Emits MLIR code for a matrix multiplication design of the given input size",
     )
+    argparser.add_argument("--dev", type=str, choices=["npu", "npu2"], default="npu")
     argparser.add_argument("-M", type=int, default=256)
     argparser.add_argument("-K", type=int, default=256)
     argparser.add_argument("-N", type=int, default=256)
@@ -48,6 +49,7 @@ def main():
         choices=["bf16", "i8", "i16", "f32", "i32"],
         default="i32",
     )
+    argparser.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
     argparser.add_argument("--trace_size", type=int, default=0)
     argparser.add_argument(
         "--generate-taps",
@@ -58,6 +60,7 @@ def main():
     args = argparser.parse_args()
     with mlir_mod_ctx() as ctx:
         maybe_taps = my_matmul(
+            args.dev,
             args.M,
             args.K,
             args.N,
@@ -66,6 +69,7 @@ def main():
             args.n,
             args.dtype_in,
             args.dtype_out,
+            args.b_col_maj,
             args.trace_size,
             args.generate_taps,
         )
@@ -80,25 +84,50 @@ def ceildiv(a, b):
 
 
 def my_matmul(
-    M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size, generate_taps=False
+    dev,
+    M,
+    K,
+    N,
+    m,
+    k,
+    n,
+    dtype_in_str,
+    dtype_out_str,
+    b_col_maj,
+    trace_size,
+    generate_taps=False,
 ):
 
     assert M % m == 0
     assert K % k == 0
     assert N % n == 0
 
-    if dtype_in_str == "bf16":
-        r = 4
-        s = 8
-        t = 4
-    elif dtype_in_str == "i8":
-        r = 4
-        s = 8
-        t = 8
-    elif dtype_in_str == "i16":
-        r = 4
-        s = 4
-        t = 4
+    if dev == "npu":
+        if dtype_in_str == "bf16":
+            r = 4
+            s = 8
+            t = 4
+        elif dtype_in_str == "i8":
+            r = 4
+            s = 8
+            t = 8
+        elif dtype_in_str == "i16":
+            r = 4
+            s = 4
+            t = 4
+    else:
+        if dtype_in_str == "bf16":
+            r = 8
+            s = 8
+            t = 8
+        elif dtype_in_str == "i8":
+            r = 8
+            s = 8
+            t = 8
+        elif dtype_in_str == "i16":
+            r = 4
+            s = 4
+            t = 8
 
     assert m % r == 0
     assert k % s == 0
@@ -140,7 +169,12 @@ def my_matmul(
     B_taps = []
     C_taps = []
 
-    @device(AIEDevice.npu1_1col)
+    if dev == "npu":
+        dev_ty = AIEDevice.npu1_1col
+    else:
+        dev_ty = AIEDevice.npu2
+
+    @device(dev_ty)
     def device_body():
         a_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
         b_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
@@ -149,8 +183,13 @@ def my_matmul(
         # AIE Core Function declarations
         func_type = "" if vectorized else "scalar_"
         zero = external_func(f"zero_{func_type}{dtype_out_str}", inputs=[c_ty])
+        matmul_func_name = (
+            f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}"
+            if not b_col_maj
+            else f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}_b_col_maj"
+        )
         matmul = external_func(
-            f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}",
+            matmul_func_name,
             inputs=[a_ty, b_ty, c_ty],
         )
 
@@ -184,22 +223,31 @@ def my_matmul(
 
         # Input B
         inB = object_fifo("inB", shim_tile, mem_tile, 2, b_ty)
+
+        B_transformations = []
+        if vectorized:
+            if not b_col_maj:
+                B_transformations = [
+                    (k // s, s * n),
+                    (n // t, t),
+                    (s, n),
+                    (t, 1),
+                ]
+            else:
+                B_transformations = [
+                    (n // t, t * k),
+                    (k // s, s),
+                    (t, k),
+                    (s, 1),
+                ]
+
         memB = object_fifo(
             "memB",
             mem_tile,
             compute_tile2,
             2,
             b_ty,
-            (
-                [
-                    (k // s, s * n),
-                    (n // t, t),
-                    (s, n),
-                    (t, 1),
-                ]
-                if vectorized
-                else []
-            ),
+            B_transformations,
         )
         object_fifo_link(inB, memB)
 
@@ -226,7 +274,7 @@ def my_matmul(
 
         # Set up a packet-switched flow from core to shim for tracing information
         tiles_to_trace = [compute_tile2]
-        if trace_size > 0:
+        if enable_tracing:
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, shim_tile)
 
         # Set up compute tiles
@@ -260,11 +308,14 @@ def my_matmul(
 
             if enable_tracing:
                 trace_utils.configure_packet_tracing_aie2(
-                    tiles_to_trace, shim_tile, trace_size, C_sz_in_bytes
+                    tiles_to_trace,
+                    shim_tile,
+                    trace_size,
                 )
 
-            # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
-            rows_per_block = 4
+            # This example uses only does 2 tile rows to prevent exhaustion of BDs.
+            # In general, we do 2-4 at a time to reuse BDs.
+            rows_per_block = 2
 
             # These lists will hold handles to the DMA tasks we configure
             # on the shim. We can later use these handles to start those
@@ -277,9 +328,12 @@ def my_matmul(
                 (M, K), (m, k), (1, K_div_k), pattern_repeat=N_div_n
             )
             # There is only one access pattern for B - it tiles the entire matrix in (k x n) tiles.
-            b_tap = TensorTiler2D.group_tiler(
-                (K, N), (k, n), (K_div_k, N_div_n), tile_group_col_major=True
-            )[0]
+            if b_col_maj:
+                b_tap = TensorTiler2D.group_tiler((K, N), (k, n), (K_div_k, N_div_n))[0]
+            else:
+                b_tap = TensorTiler2D.group_tiler(
+                    (K, N), (k, n), (K_div_k, N_div_n), tile_group_col_major=True
+                )[0]
             C_taps = TensorTiler2D.group_tiler(
                 (M, N), (m, n), (rows_per_block // 2, N_div_n)
             )
@@ -298,7 +352,7 @@ def my_matmul(
                         break
 
                     # -- C --
-                    # Configure a task on the same channel wehere the
+                    # Configure a task on the same channel where the
                     # objectFifo "outC" expects its data to be streamed in
                     # from. Repeat count is how often to repeat this task,
                     # hence for 1 iteration, repeat count is 0. The highest
@@ -339,6 +393,8 @@ def my_matmul(
                         dma_free_task(b_tasks[-2])
 
             dma_await_task(c_tasks[-1])
+
+            trace_utils.gen_trace_done_aie2(shim_tile)
 
     if generate_taps:
         # If generate taps is true, return a representation of tensor access patterns

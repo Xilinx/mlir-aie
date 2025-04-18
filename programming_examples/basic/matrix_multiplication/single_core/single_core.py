@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 AMD Inc.
+# (c) Copyright 2025 AMD Inc.
 import argparse
 from ml_dtypes import bfloat16
 import numpy as np
@@ -27,9 +27,10 @@ dtype_map = {
 
 def main():
     argparser = argparse.ArgumentParser(
-        prog="AIE Matrix Multiplication MLIR Design (Whole Array)",
+        prog="AIE Matrix Multiplication MLIR Design (Single Core)",
         description="Emits MLIR code for a matrix multiplication design of the given input size",
     )
+    argparser.add_argument("--dev", type=str, choices=["npu", "npu2"], default="npu")
     argparser.add_argument("-M", type=int, default=256)
     argparser.add_argument("-K", type=int, default=256)
     argparser.add_argument("-N", type=int, default=256)
@@ -45,9 +46,11 @@ def main():
         choices=["bf16", "i8", "i16", "f32", "i32"],
         default="i32",
     )
+    argparser.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
     argparser.add_argument("--trace_size", type=int, default=0)
     args = argparser.parse_args()
     my_matmul(
+        args.dev,
         args.M,
         args.K,
         args.N,
@@ -56,6 +59,7 @@ def main():
         args.n,
         args.dtype_in,
         args.dtype_out,
+        args.b_col_maj,
         args.trace_size,
     )
 
@@ -64,24 +68,40 @@ def ceildiv(a, b):
     return (a + b - 1) // b
 
 
-def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
+def my_matmul(
+    dev, M, K, N, m, k, n, dtype_in_str, dtype_out_str, b_col_maj, trace_size
+):
 
     assert M % m == 0
     assert K % k == 0
     assert N % n == 0
 
-    if dtype_in_str == "bf16":
-        r = 4
-        s = 8
-        t = 4
-    elif dtype_in_str == "i8":
-        r = 4
-        s = 8
-        t = 8
-    elif dtype_in_str == "i16":
-        r = 4
-        s = 4
-        t = 4
+    if dev == "npu":
+        if dtype_in_str == "bf16":
+            r = 4
+            s = 8
+            t = 4
+        elif dtype_in_str == "i8":
+            r = 4
+            s = 8
+            t = 8
+        elif dtype_in_str == "i16":
+            r = 4
+            s = 4
+            t = 4
+    else:
+        if dtype_in_str == "bf16":
+            r = 8
+            s = 8
+            t = 8
+        elif dtype_in_str == "i8":
+            r = 8
+            s = 8
+            t = 8
+        elif dtype_in_str == "i16":
+            r = 4
+            s = 4
+            t = 8
 
     assert m % r == 0
     assert k % s == 0
@@ -109,17 +129,16 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
     N_div_n = N // n
     tiles = M_div_m * N_div_n
 
-    # Matrix B: KxN, submatrices b: kxn
-    k_x_N = k * N
-
-    # Output Matrix C: MxN
-    m_x_N = m * N
-
     with mlir_mod_ctx() as ctx:
 
         C_sz_in_bytes = C_sz * np.dtype(dtype_out).itemsize
 
-        @device(AIEDevice.npu1_1col)
+        if dev == "npu":
+            dev_ty = AIEDevice.npu1_1col
+        else:
+            dev_ty = AIEDevice.npu2
+
+        @device(dev_ty)
         def device_body():
             a_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
             b_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
@@ -128,8 +147,13 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
             # AIE Core Function declarations
             func_type = "" if vectorized else "scalar_"
             zero = external_func(f"zero_{func_type}{dtype_out_str}", inputs=[c_ty])
+            matmul_func_name = (
+                f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}"
+                if not b_col_maj
+                else f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}_b_col_maj"
+            )
             matmul = external_func(
-                f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}",
+                matmul_func_name,
                 inputs=[a_ty, b_ty, c_ty],
             )
 
@@ -163,23 +187,33 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
 
             # Input B
             inB = object_fifo("inB", shim_tile, mem_tile, 2, b_ty)
+
+            B_transformations = []
+            if vectorized:
+                if not b_col_maj:
+                    B_transformations = [
+                        (k // s, s * n),
+                        (n // t, t),
+                        (s, n),
+                        (t, 1),
+                    ]
+                else:
+                    B_transformations = [
+                        (n // t, t * k),
+                        (k // s, s),
+                        (t, k),
+                        (s, 1),
+                    ]
+
             memB = object_fifo(
                 "memB",
                 mem_tile,
                 compute_tile2,
                 2,
                 b_ty,
-                (
-                    [
-                        (k // s, s * n),
-                        (n // t, t),
-                        (s, n),
-                        (t, 1),
-                    ]
-                    if vectorized
-                    else []
-                ),
+                B_transformations,
             )
+
             object_fifo_link(inB, memB)
 
             # Output C
@@ -244,8 +278,6 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
                         tiles_to_trace=tiles_to_trace,
                         shim=shim_tile,
                         trace_size=trace_size,
-                        trace_offset=C_sz_in_bytes,
-                        ddr_id=2,
                         coretile_events=[
                             # captures input A (PORT_RUNNING_0, at port number 1, master for inputs)
                             trace_utils.PortEvent(
@@ -297,8 +329,8 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
                             bd_id=bd_id_base,
                             mem=C,
                             offsets=[0, 0, 0, C_row_offset],
-                            sizes=[num_tile_rows, N_div_n, m, n],
-                            strides=[m_x_N, n, N, 1],
+                            sizes=[num_tile_rows, N // n, m, n],
+                            strides=[m * N, n, N, 1],
                         )
                         for tile_row in range(num_tile_rows):
                             A_row_offset = (row_base + tile_row) * m * K
@@ -307,15 +339,23 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str, trace_size):
                                 bd_id=bd_id_base + 2 * tile_row + 1,
                                 mem=A,
                                 offsets=[0, 0, 0, A_row_offset],
-                                sizes=[N_div_n, K_div_k, m, k],
+                                sizes=[N // n, K // k, m, k],
                                 strides=[0, k, K, 1],
                             )
+
+                            if not b_col_maj:
+                                B_sizes = [N // n, K // k, k, n]
+                                B_strides = [n, k * N, N, 1]
+                            else:
+                                B_sizes = [N // n, K // k, n, k]
+                                B_strides = [n * K, k, K, 1]
+
                             npu_dma_memcpy_nd(
                                 metadata=inB,
                                 bd_id=bd_id_base + 2 * tile_row + 2,
                                 mem=B,
-                                sizes=[N_div_n, K_div_k, k, n],
-                                strides=[n, k_x_N, N, 1],
+                                sizes=B_sizes,
+                                strides=B_strides,
                             )
                         if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
                             dma_wait(outC)

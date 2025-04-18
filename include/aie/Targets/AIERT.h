@@ -182,20 +182,14 @@ static_assert(XAIE_OK == 0);
 #define NUM_LOCKS 16
 #define EVEN_BD_NUM_START 0
 #define ODD_BD_NUM_START 24
-#define MEM_TILE_LOCK_ID_INCR_WEST 0
-#define MEM_TILE_LOCK_ID_INCR 64
-#define MEM_TILE_LOCK_ID_INCR_EAST 128
-#define BASE_ADDR_A_INCR_WEST 0x00000
-#define BASE_ADDR_A_INCR 0x80000
-#define BASE_ADDR_A_INCR_EAST 0x100000
 
 namespace xilinx::AIE {
 struct AIERTControl {
   XAie_Config configPtr;
   XAie_DevInst devInst;
-  const BaseNPUTargetModel &targetModel;
+  const AIETargetModel &targetModel;
 
-  AIERTControl(const xilinx::AIE::BaseNPUTargetModel &tm);
+  AIERTControl(const xilinx::AIE::AIETargetModel &tm);
 
   mlir::LogicalResult setIOBackend(bool aieSim, bool xaieDebug);
   mlir::LogicalResult configureBdInBlock(XAie_DmaDesc &dmaTileBd,

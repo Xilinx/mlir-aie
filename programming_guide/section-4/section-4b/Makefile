@@ -20,8 +20,14 @@ in2_size = 4 # in bytes, should always be 4 (1x int32)
 out_size = 16384 # in bytes, should always be equal to in1_size
 trace_size = 8192
 
-colshift ?= $(if $(filter 1,$(NPU2)),0,1)
+colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src=${targetname}.py
+
+use_placed?=0
+
+ifeq (${use_placed}, 1)
+aie_py_src=${targetname}_placed.py
+endif
 
 all: build/final.xclbin build/insts.bin
 

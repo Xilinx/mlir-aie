@@ -41,11 +41,21 @@ totalWeights = (
     + tensorL3InC * tensorL3OutC
 )
 
+if len(sys.argv) != 2:
+    raise ValueError("[ERROR] Need 1 command line argument (Device name)")
+
+if sys.argv[1] == "npu":
+    dev = AIEDevice.npu1_1col
+elif sys.argv[1] == "npu2":
+    dev = AIEDevice.npu2
+else:
+    raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+
 
 def bottleneck4AIEs():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu1_1col)
+        @device(dev)
         def deviceBody():
 
             # define types
@@ -136,6 +146,9 @@ def bottleneck4AIEs():
             ComputeTile3 = tile(0, 3)
             ComputeTile4 = tile(0, 4)
             ComputeTile5 = tile(0, 5)
+
+            lock2 = lock(ComputeTile2, init=0)
+            lock4 = lock(ComputeTile4, init=0)
 
             if enableTrace:
                 flow(ComputeTile4, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
@@ -232,9 +245,10 @@ def bottleneck4AIEs():
             @core(ComputeTile2, "conv2dk1.o")
             def core_body():
                 for _ in range_(sys.maxsize):
+                    use_lock(lock2, LockAction.Acquire, value=1)
+                    scale = rtpComputeTile2[0]
                     # acquire weights once
                     element0Weights = of_wts_buf_00.acquire(ObjectFifoPort.Consume, 1)
-                    scale = rtpComputeTile2[0]
                     for _ in range_(tensorInH):
                         element0ActivactionsIn = of_inOF_act_L3L2.acquire(
                             ObjectFifoPort.Consume, 1
@@ -426,9 +440,10 @@ def bottleneck4AIEs():
                 for _ in range_(sys.maxsize):
 
                     # acquire weights and rtps once
-                    element0Weights = wts_buf_02.acquire(ObjectFifoPort.Consume, 1)
+                    use_lock(lock4, LockAction.Acquire, value=1)
                     scale = rtpComputeTile4[0]
                     skipScale = rtpComputeTile4[1]
+                    element0Weights = wts_buf_02.acquire(ObjectFifoPort.Consume, 1)
 
                     for _ in range_(tensorInH):
                         element0ActivactionsIn = act_3_4.acquire(
@@ -550,6 +565,9 @@ def bottleneck4AIEs():
                 # scale: conv1x1 with the same scale as the input so we match the scaling factor of output after conv1x1 and the initial input
                 rtpComputeTile4[0] = 1
                 rtpComputeTile4[1] = 0  # skip_scale
+
+                set_lock(lock2, 1)
+                set_lock(lock4, 1)
 
                 in_act_task = shim_dma_single_bd_task(
                     of_inOF_act_L3L2, inputFromL3, sizes=[1, 1, 1, activationsIn]

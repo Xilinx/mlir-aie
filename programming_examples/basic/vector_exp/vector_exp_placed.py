@@ -6,6 +6,7 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
+import sys
 from ml_dtypes import bfloat16
 
 from aie.dialects.aie import *  # primary mlir-aie dialect definitions
@@ -31,8 +32,20 @@ def my_eltwise_exp():
     tiles = N_div_n // n_cores
     buffer_depth = 2
 
+    if len(sys.argv) != 3:
+        raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
+
+    if sys.argv[1] == "npu":
+        dev = AIEDevice.npu1_1col
+    elif sys.argv[1] == "npu2":
+        dev = AIEDevice.npu2
+    elif sys.argv[1] == "xcvc1902":
+        dev = AIEDevice.xcvc1902
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+
     # Device declaration - aie2 device NPU (aka Ryzen AI)
-    @device(AIEDevice.npu1_1col)
+    @device(dev)
     def device_body():
 
         tile_ty = np.ndarray[(n,), np.dtype[bfloat16]]
