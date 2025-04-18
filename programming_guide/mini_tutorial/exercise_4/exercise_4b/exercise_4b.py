@@ -6,13 +6,15 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 
+import os
+import glob
 import numpy as np
 
 from aie.iron import Program, Runtime, Worker, ObjectFifo
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorAccessPattern
+from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
 
 import aie.iron as iron
 
@@ -31,7 +33,24 @@ tile_ty = np.ndarray[(tile_size,), np.dtype[element_type]]
 
 
 @iron.jit(is_placed=False)
-def exercise_4a():
+def exercise_4b():
+    # Define runtime tensor access pattern (tap)
+    tensor_dims = (data_height, data_width)
+    tap1 = TensorAccessPattern(
+        tensor_dims, offset=0, sizes=[1, 1, 3, 8], strides=[0, 0, 16, 1]
+    )
+    tap2 = TensorAccessPattern(
+        tensor_dims, offset=8, sizes=[1, 1, 3, 8], strides=[0, 0, 16, 1]
+    )
+
+    # Create a TensorTileSequence from a list of taps
+    taps = TensorAccessSequence.from_taps([tap1, tap2])
+
+    i = 0
+    for t in taps:
+        t.visualize(show_arrows=True, file_path=f"plot{i}.png")
+        i += 1
+
     # Dataflow with ObjectFifos
     of_in = ObjectFifo(tile_ty, name="in")
     of_out = ObjectFifo(tile_ty, name="out")
@@ -52,7 +71,8 @@ def exercise_4a():
     rt = Runtime()
     with rt.sequence(data_ty, data_ty) as (a_in, c_out):
         rt.start(my_worker)
-        rt.fill(of_in.prod(), a_in)
+        for t in taps:
+            rt.fill(of_in.prod(), a_in, t)
         rt.drain(of_out.cons(), c_out, wait=True)
 
     # Create the program from the device type and runtime
@@ -63,10 +83,16 @@ def exercise_4a():
 
 
 def main():
+    # Delete existing plot*.png files
+    for file in glob.glob("plot*.png"):
+        try:
+            os.remove(file)
+        except OSError as e:
+            print(f"Error deleting {file}: {e}")
 
     # Construct an input tensor and an output zeroed tensor
     # The two tensors are in memory accessible to the NPU
-    input0 = iron.zeros(data_size, dtype=element_type, device="npu")
+    input0 = iron.arange(data_size, dtype=element_type, device="npu")
     output = iron.zeros(data_size, dtype=element_type, device="npu")
 
     # Generate reference pattern
@@ -74,7 +100,7 @@ def main():
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    exercise_4a(input0, output)
+    exercise_4b(input0, output)
 
     # Check the correctness of the result
     USE_REF_VEC = True  # Set to False to switch to output for user testing
