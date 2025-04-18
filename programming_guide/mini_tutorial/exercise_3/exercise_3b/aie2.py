@@ -9,7 +9,14 @@
 import numpy as np
 import sys
 
-from aie.iron import Program, Runtime, Worker, ObjectFifo, GlobalBuffer, WorkerRuntimeBarrier
+from aie.iron import (
+    Program,
+    Runtime,
+    Worker,
+    ObjectFifo,
+    GlobalBuffer,
+    WorkerRuntimeBarrier,
+)
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1
 from aie.iron.controlflow import range_
