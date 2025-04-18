@@ -4,70 +4,54 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-import numpy as np
-import sys
+# (c) Copyright 2024-2025 Advanced Micro Devices, Inc. or its affiliates
+
 import argparse
+import sys
+import numpy as np
 
-
+from aie import iron
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 
-import aie.iron as iron
 
-# The JIT-compiled kernel relies on inputs from the command line.
-# Because of that, we need to parse the arguments before the JIT is invoked.
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "-v", "--verbose", action="store_true", help="Enable verbose output"
-)
-parser.add_argument(
-    "-d",
-    "--device",
-    choices=["npu", "npu2", "xcvc1902"],
-    default="npu",
-    help="Target device",
-)
-parser.add_argument(
-    "-c", "--column", type=int, default=0, help="Column index (default: 0)"
-)
-parser.add_argument(
-    "-n",
-    "--num-elements",
-    type=int,
-    default=32,
-    help="Number of elements (default: 32)",
-)
-args = parser.parse_args()
-
-if args.num_elements % 16 != 0:
-    raise ValueError("num_elements must be a multiple of 16.")
-
-device_map = {
-    "npu": AIEDevice.npu1_1col,
-    "npu2": AIEDevice.npu2_1col,
-    "xcvc1902": AIEDevice.xcvc1902,
-}
-dev = device_map[args.device]
-column_id = args.column
-num_elements = args.num_elements
-data_type = np.int32
-
-
-@iron.jit()
-def vector_vector_add():
-
+@iron.jit
+def vector_vector_add(dev, column_id, input0, input1, output):
+    if input0.shape != input1.shape:
+        raise ValueError(
+            f"Input shapes are not the equal ({input0.shape} != {input1.shape})."
+        )
+    if input0.shape != output.shape:
+        raise ValueError(
+            f"Input and output shapes are not the equal ({input0.shape} != {output.shape})."
+        )
+    if len(np.shape(input0)) != 1:
+        raise ValueError("Function only supports vectors.")
+    num_elements = np.size(input0)
     n = 16
+    if num_elements % n != 0:
+        raise ValueError(
+            f"Number of elements ({num_elements}) must be a multiple of {n}."
+        )
     N_div_n = num_elements // n
+
+    if input0.dtype != input1.dtype:
+        raise ValueError(
+            f"Input data types are not the same ({input0.dtype} != {input1.dtype})."
+        )
+    if input0.dtype != output.dtype:
+        raise ValueError(
+            f"Input and output data types are not the same ({input0.dtype} != {output.dtype})."
+        )
+    dtype = input0.dtype
 
     buffer_depth = 2
 
     @device(dev)
     def device_body():
-        tensor_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
-        tile_ty = np.ndarray[(n,), np.dtype[data_type]]
+        tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
+        tile_ty = np.ndarray[(n,), np.dtype[dtype]]
 
         # AIE Core Function declarations
 
@@ -113,16 +97,44 @@ def vector_vector_add():
 
 
 def main():
+    device_map = {
+        "npu": AIEDevice.npu1_1col,
+        "npu2": AIEDevice.npu2_1col,
+        "xcvc1902": AIEDevice.xcvc1902,
+    }
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose output"
+    )
+    parser.add_argument(
+        "-d",
+        "--device",
+        choices=["npu", "npu2", "xcvc1902"],
+        default="npu",
+        help="Target device",
+    )
+    parser.add_argument(
+        "-c", "--column", type=int, default=0, help="Column index (default: 0)"
+    )
+    parser.add_argument(
+        "-n",
+        "--num-elements",
+        type=int,
+        default=32,
+        help="Number of elements (default: 32)",
+    )
+    args = parser.parse_args()
 
     # Construct two input random tensors and an output zeroed tensor
     # The three tensor are in memory accessible to the NPU
-    input0 = iron.rand((num_elements,), dtype=data_type, device="npu")
-    input1 = iron.rand((num_elements,), dtype=data_type, device="npu")
+    input0 = iron.rand((args.num_elements,), dtype=np.int32, device=args.device)
+    input1 = iron.rand((args.num_elements,), dtype=np.int32, device=args.device)
     output = iron.zeros_like(input0)
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    vector_vector_add(input0, input1, output)
+    vector_vector_add(device_map[args.device], args.column, input0, input1, output)
 
     # Check the correctness of the result
     e = np.equal(input0.numpy() + input1.numpy(), output.numpy())
@@ -142,11 +154,11 @@ def main():
     # Otherwise, exit with a failure code
     if not errors:
         print("\nPASS!\n")
-        exit(0)
+        sys.exit(0)
     else:
         print("\nError count: ", errors)
         print("\nFailed.\n")
-        exit(-1)
+        sys.exit(-1)
 
 
 if __name__ == "__main__":
