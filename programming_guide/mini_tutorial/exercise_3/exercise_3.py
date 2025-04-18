@@ -87,14 +87,16 @@ def main():
     exercise_3(output)
 
     # Check the correctness of the result
-    e = np.equal(input0.numpy(), output.numpy())
+    USE_INPUT_VEC = True  # Set to False to switch to output for user testing
+    test_source = input0 if USE_INPUT_VEC else output
+    e = np.equal(input0.numpy(), test_source.numpy())
     errors = np.size(e) - np.count_nonzero(e)
 
     # Print the results
     print(f"{'input0':>4} = {'output':>4}")
     print("-" * 34)
     count = input0.numel()
-    for idx, (a, c) in enumerate(zip(input0[:count], output[:count])):
+    for idx, (a, c) in enumerate(zip(input0[:count], test_source[:count])):
         print(f"{idx:2}: {a:4} = {c:4}")
 
     # If the result is correct, exit with a success code.
