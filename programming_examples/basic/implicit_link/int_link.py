@@ -50,15 +50,17 @@ def explicit_link():
             MemTile = tile(col, 1)
             ComputeTile2 = tile(col, 2)
             ComputeTile3 = tile(col, 3)
-
+            tile_config = [
+                {"tile": ComputeTile2, "num_objects": 2, "offset": 0}, #, "datatype": op_ty
+                {"tile": ComputeTile3, "num_objects": 2, "offset": op_size}, #, "datatype": op_ty
+            ]
             # AIE-array data movement with object fifos
             of_in = object_fifo(
                 "in",
                 ShimTile,
-                [ComputeTile2, ComputeTile3],
-                [2, 2, 2],
+                tile_config,
+                2,
                 line_ty,
-                [0, op_size],
             )
 
             of_out1 = object_fifo("out1", ComputeTile2, MemTile, 2, op_ty)

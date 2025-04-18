@@ -1577,8 +1577,8 @@ struct AIEObjectFifoStatefulTransformPass
       createdFifoOps.push_back(consumerFifo);
       consumerIndex++;
     }
-    // Step 3: Create the link// Convert producerFifo and consumerFifos to
-    // SymbolRefAttr
+    // Step 3: Create the link
+    // Convert producerFifo and consumerFifos to SymbolRefAttr
     SmallVector<Attribute, 4> producerFifoAttrs;
     for (auto fifo : producerFifos) {
       producerFifoAttrs.push_back(SymbolRefAttr::get(fifo));

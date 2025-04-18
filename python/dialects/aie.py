@@ -398,10 +398,9 @@ class object_fifo(ObjectFifoCreateOp):
         self,
         name,
         producerTile,
-        consumerTiles,
-        depth,
-        datatype: MemRefType | type[np.ndarray] | List[MemRefType | type[np.ndarray]],
-        offsets=None,
+        consumerTileConfigs, # should be a list (or a single dict) of consumer configs
+        depth,  # FIFO depth for the producer side
+        datatype: MemRefType | type[np.ndarray], # FIFO datatype for the producer side
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
         initValues=None,
@@ -410,19 +409,52 @@ class object_fifo(ObjectFifoCreateOp):
         padDimensions=None,
         disable_synchronization=None,
     ):
-        if isinstance(datatype, list):
-            self.datatype = [try_convert_np_type_to_mlir_type(dt) for dt in datatype]
-        else:
-            self.datatype = try_convert_np_type_to_mlir_type(datatype)
-        if not isinstance(consumerTiles, List):
-            consumerTiles = [consumerTiles]
-        if offsets is None:
-            offsets = []
+        if not isinstance(consumerTileConfigs, list):
+            consumerTileConfigs = [consumerTileConfigs]
+        # Ensure each entry is a dict; if not, create one with default values.
+        processed_configs = []
+        for cfg in consumerTileConfigs:
+            if isinstance(cfg, dict):
+                processed_configs.append(cfg)
+            else:
+                # Assume cfg is a TileOp; set default offset, depth, and datatype.
+                processed_configs.append({"tile": cfg, "offset": 0, "num_objects": depth, "datatype": datatype})
+        consumerTileConfigs = processed_configs
+        # Extract depths (num_objects), datatypes, and tile identifiers from each config
+        self.consumerConfigs = consumerTileConfigs
+
+        # depths = [cfg.get("num_objects", 0) for cfg in consumerTileConfigs]
+        # datatypes = [
+        #     try_convert_np_type_to_mlir_type(cfg["datatype"]) for cfg in consumerTileConfigs
+        # ]
+        # consumerTilesList = [cfg["tile"] for cfg in consumerTileConfigs]
+        # self.datatype = try_convert_np_type_to_mlir_type(datatype)
+        # fifo_types = [self.datatype] + consumer_datatypes
+        # of_Ty = TypeAttr.get(ObjectFifoType.get(fifo_types))
+        # Separate consumer parameters from the given dictionaries.
+        consumer_offsets = [cfg.get("offset", 0) for cfg in consumerTileConfigs]
+        consumer_depths = [cfg.get("num_objects", depth) for cfg in consumerTileConfigs]
+        consumer_datatypes = [
+            try_convert_np_type_to_mlir_type(cfg.get("datatype", datatype)) for cfg in consumerTileConfigs
+        ]
+        consumerTilesList = [cfg.get("tile") for cfg in consumerTileConfigs]
+
+        # Process the producer's datatype.
+        producer_datatype = try_convert_np_type_to_mlir_type(datatype)
+        # For the producer, no need for offset
+
+        # Combine producer's and consumers' parameters into separate lists.
+        all_offsets = consumer_offsets
+        all_depths = [depth] + consumer_depths
+        all_datatypes = [producer_datatype] + consumer_datatypes
+
+        # Create the overall FIFO type from the combined datatypes.
+        of_Ty = TypeAttr.get(ObjectFifoType.get(producer_datatype)) # Should be all_datatypes
+        self.datatype = producer_datatype # For the acquire and release functions
         if dimensionsFromStreamPerConsumer is None:
             dimensionsFromStreamPerConsumer = []
         if dimensionsToStream is None:
             dimensionsToStream = []
-        of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
         if initValues is not None:
             values = []
             for e in initValues:
@@ -434,10 +466,10 @@ class object_fifo(ObjectFifoCreateOp):
         super().__init__(
             sym_name=name,
             producerTile=producerTile,
-            consumerTiles=consumerTiles,
-            elemNumber=depth,
+            consumerTiles=consumerTilesList,
+            elemNumber=all_depths,  # Combined list of depths: producer then consumers
             elemType=of_Ty,
-            offsets=offsets,
+            offsets=all_offsets,    # New: combined offsets list
             dimensionsToStream=dimensionsToStream,
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
             via_DMA=via_DMA,
