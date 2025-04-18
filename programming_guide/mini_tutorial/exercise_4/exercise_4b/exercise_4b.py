@@ -95,22 +95,15 @@ def main():
     input0 = iron.arange(data_size, dtype=element_type, device="npu")
     output = iron.zeros(data_size, dtype=element_type, device="npu")
 
-    # Generate reference pattern
-    ref_vec = [k * 8 + j * 16 + i for k in range(2) for j in range(3) for i in range(8)]
-
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
     exercise_4b(input0, output)
 
     # Check the correctness of the result
-    USE_REF_VEC = True  # Set to False to switch to output for user testing
-
-    test_source = ref_vec if USE_REF_VEC else output
     errors = 0
-
     for index, (actual, ref) in enumerate(
         zip(
-            test_source,
+            output,
             [k * 8 + j * 16 + i for k in range(2) for j in range(3) for i in range(8)],
         )
     ):

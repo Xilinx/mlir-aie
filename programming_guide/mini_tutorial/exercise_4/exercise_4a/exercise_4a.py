@@ -66,7 +66,7 @@ def main():
 
     # Construct an input tensor and an output zeroed tensor
     # The two tensors are in memory accessible to the NPU
-    input0 = iron.zeros(data_size, dtype=element_type, device="npu")
+    input0 = iron.arange(data_size, dtype=element_type, device="npu")
     output = iron.zeros(data_size, dtype=element_type, device="npu")
 
     # Generate reference pattern
