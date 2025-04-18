@@ -1553,11 +1553,12 @@ struct AIEObjectFifoStatefulTransformPass
     int consumerIndex = 0;
     auto consumerDatatype = datatype;
     if (dataTypesList.has_value()) {
-      if (!dataTypesList->empty() && dataTypesList->size() != numberOfConsumerTiles) {
-      createOp.emitOpError("Mismatch between the number of data types (")
-        << dataTypesList->size() << ") and the number of consumer tiles ("
-        << numberOfConsumerTiles << ").";
-      return;
+      if (!dataTypesList->empty() &&
+          dataTypesList->size() != numberOfConsumerTiles) {
+        createOp.emitOpError("Mismatch between the number of data types (")
+            << dataTypesList->size() << ") and the number of consumer tiles ("
+            << numberOfConsumerTiles << ").";
+        return;
       }
     } 
     for (auto consumerTile : createOp.getConsumerTiles()) {
