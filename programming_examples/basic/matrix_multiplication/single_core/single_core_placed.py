@@ -311,8 +311,6 @@ def my_matmul(
                     tiles_to_trace,
                     shim_tile,
                     trace_size,
-                    trace_offset=C_sz_in_bytes,
-                    ddr_id=2,
                 )
 
             # This example uses only does 2 tile rows to prevent exhaustion of BDs.

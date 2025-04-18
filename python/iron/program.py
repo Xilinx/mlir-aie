@@ -8,8 +8,6 @@
 
 from ..extras.context import mlir_mod_ctx  # type: ignore
 from ..helpers.dialects.ext.func import FuncBase
-
-# from ..dialects.aie import device
 from ..dialects.aie import device, tile
 
 from .device import Device

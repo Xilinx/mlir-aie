@@ -8,3 +8,5 @@
 // RUN: make -f %S/Makefile clean
 // RUN: env use_iron=1 make -f %S/Makefile 
 // RUN: %run_on_npu env use_iron=1 make -f %S/Makefile run
+// RUN: make -f %S/Makefile clean
+// RUN: %run_on_npu env use_iron=1 make -f %S/Makefile trace
