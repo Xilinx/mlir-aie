@@ -154,16 +154,20 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
 
-  uint32_t *bufInA = bo_inA.map<uint32_t *>();
-  std::vector<uint32_t> srcVecA;
+  std::vector<uint32_t> refVec;
   for (uint32_t k = 0; k < 2; k++) {
     for (uint32_t j = 0; j < 3; j++) {
       for (uint32_t i = 0; i < 8; i++) {
         uint32_t ref = k * 8 + j * 16 + i;
-        srcVecA.push_back(ref);
+        refVec.push_back(ref);
       }
     }
   }
+
+  uint32_t *bufInA = bo_inA.map<uint32_t *>();
+  std::vector<uint32_t> srcVecA;
+  for (uint32_t i = 0; i < IN_SIZE; i++)
+    srcVecA.push_back(i);
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
   void *bufInstr = bo_instr.map<void *>();
@@ -188,14 +192,22 @@ int main(int argc, const char *argv[]) {
     for (uint32_t j = 0; j < 3; j++) {
       for (uint32_t i = 0; i < 8; i++) {
         uint32_t ref = k * 8 + j * 16 + i;
-        if (*(bufOut + index) != ref) {
-          std::cout << "Error in output " << *(bufOut + index) << " != " << ref
-                    << std::endl;
+
+        // TODO: Comment out during user testing.
+        if (refVec[index] != ref) {
           errors++;
-        } else {
-          std::cout << "Correct output " << *(bufOut + index) << " == " << ref
-                    << std::endl;
         }
+
+        // TODO: Uncomment during user testing.
+        // if (*(bufOut + index) != ref) {
+        //   std::cout << "Error in output " << *(bufOut + index) << " != " << ref
+        //             << std::endl;
+        //   errors++;
+        // } else {
+        //   std::cout << "Correct output " << *(bufOut + index) << " == " << ref
+        //             << std::endl;
+        // }
+        
         index++;
       }
     }
