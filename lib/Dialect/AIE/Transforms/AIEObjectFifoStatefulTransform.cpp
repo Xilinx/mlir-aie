@@ -1551,7 +1551,7 @@ struct AIEObjectFifoStatefulTransformPass
     auto numberOfConsumerTiles = createOp.getConsumerTiles().size();
     std::vector<ObjectFifoCreateOp> consumerFifos;
     int consumerIndex = 0;
-    auto consumerDatatype = datatype; 
+    auto consumerDatatype = datatype;
     if (dataTypesList.has_value()) {
       if (!dataTypesList->empty() && dataTypesList->size() != numberOfConsumerTiles) {
       createOp.emitOpError("Mismatch between the number of data types (")
