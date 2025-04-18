@@ -7,6 +7,7 @@
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
 import os
+import functools
 import hashlib
 import numpy as np
 import pyxrt as xrt
@@ -17,7 +18,7 @@ from ..utils.xrt import read_insts_binary
 
 
 # The `iron.jit` decorator below caches compiled kenrels inside the `IRON_CACHE_DIR` directory.
-# Kernels are cached based on their hash value of the MLIR module string. If during compliation,
+# Kernels are cached based on their hash value of the MLIR module string. If during compilation,
 # we hit in the cache, the `iron.jit` will load the xclbin and instruction binary files from the cache.
 IRON_CACHE_DIR = os.path.expanduser("~/.iron/cache")
 
@@ -118,7 +119,7 @@ class NPUKernel_Error(Exception):
     pass
 
 
-def jit(*, is_placed=True, use_cache=True):
+def jit(function=None, is_placed=True, use_cache=True):
     """
     Decorator to compile an IRON kernel into a binary to run on the NPU.
 
@@ -129,44 +130,51 @@ def jit(*, is_placed=True, use_cache=True):
 
     def decorator(fn):
 
-        if is_placed:
-            with mlir_mod_ctx() as ctx:
-                fn()
-                assert (
-                    ctx.module.operation.verify()
-                ), f"Verification failed for '{fn.__name__}'"
-                mlir_module = ctx.module
-        else:
-            mlir_module = fn()
+        @functools.wraps(fn)
+        def wrapped_function(*args, **kwargs):
+            if is_placed:
+                with mlir_mod_ctx() as ctx:
+                    fn(*args, **kwargs)
+                    assert (
+                        ctx.module.operation.verify()
+                    ), f"Verification failed for '{fn.__name__}'"
+                    mlir_module = ctx.module
+            else:
+                mlir_module = fn(*args, **kwargs)
 
-        # Hash of the IR string
-        module_hash = hash_module(mlir_module)
-        kernel_dir = os.path.join(IRON_CACHE_DIR, f"{module_hash}")
-        mlir_path = os.path.join(kernel_dir, "aie.mlir")
+            # Hash of the IR string
+            module_hash = hash_module(mlir_module)
+            kernel_dir = os.path.join(IRON_CACHE_DIR, f"{module_hash}")
+            mlir_path = os.path.join(kernel_dir, "aie.mlir")
 
-        # Ensure cache directory exists
-        os.makedirs(kernel_dir, exist_ok=True)
+            # Ensure cache directory exists
+            os.makedirs(kernel_dir, exist_ok=True)
 
-        # Write MLIR to file if not already cached
-        inst_filename = "insts.bin"
-        xclbin_filename = "final.xclbin"
-        xclbin_path = os.path.join(kernel_dir, xclbin_filename)
-        inst_path = os.path.join(kernel_dir, inst_filename)
+            # Write MLIR to file if not already cached
+            inst_filename = "insts.bin"
+            xclbin_filename = "final.xclbin"
+            xclbin_path = os.path.join(kernel_dir, xclbin_filename)
+            inst_path = os.path.join(kernel_dir, inst_filename)
 
-        xclbin_exists = os.path.exists(xclbin_path)
-        inst_exists = os.path.exists(inst_path)
+            xclbin_exists = os.path.exists(xclbin_path)
+            inst_exists = os.path.exists(inst_path)
 
-        if not use_cache or not xclbin_exists or not inst_exists:
-            with open(mlir_path, "w", encoding="utf-8") as f:
-                print(mlir_module, file=f)
-            compile_mlir_to_binary(
-                mlir_path=mlir_path,
-                inst_filename=inst_filename,
-                xclbin_filename=xclbin_filename,
-            )
+            if not use_cache or not xclbin_exists or not inst_exists:
+                with open(mlir_path, "w", encoding="utf-8") as f:
+                    print(mlir_module, file=f)
+                compile_mlir_to_binary(
+                    mlir_path=mlir_path,
+                    inst_filename=inst_filename,
+                    xclbin_filename=xclbin_filename,
+                )
 
-        kernel_name = "MLIR_AIE"
-        return NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)
+            kernel_name = "MLIR_AIE"
+            return NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)
+
+        return wrapped_function
+
+    if function:
+        return decorator(function)
 
     return decorator
 
