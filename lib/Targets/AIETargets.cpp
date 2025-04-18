@@ -21,6 +21,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/Target/LLVMIR/Export.h"
@@ -154,7 +155,7 @@ void registerAIETranslations() {
       llvm::cl::desc("Enable cores in CDO"));
 
   static llvm::cl::opt<bool> outputBinary(
-      "aie-output-binary", llvm::cl::init(false),
+      "aie-output-binary", llvm::cl::init(true),
       llvm::cl::desc(
           "Select binary (true) or text (false) output for supported "
           "translations. e.g. aie-npu-to-binary, aie-ctrlpkt-to-bin"));

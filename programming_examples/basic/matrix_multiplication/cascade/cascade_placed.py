@@ -28,6 +28,7 @@ def main():
         prog="AIE Matrix Multiplication MLIR Design (Whole Array)",
         description="Emits MLIR code for a matrix multiplication design of the given input size",
     )
+    argparser.add_argument("--dev", type=str, choices=["npu", "npu2"], default="npu")
     argparser.add_argument("-M", type=int, default=512)
     argparser.add_argument("-K", type=int, default=512)
     argparser.add_argument("-N", type=int, default=512)
@@ -51,6 +52,7 @@ def main():
     args = argparser.parse_args()
     with mlir_mod_ctx() as ctx:
         maybe_taps = my_matmul(
+            args.dev,
             args.M,
             args.K,
             args.N,
@@ -75,6 +77,7 @@ def ceildiv(a, b):
 
 
 def my_matmul(
+    dev,
     M,
     K,
     N,
@@ -142,13 +145,15 @@ def my_matmul(
 
     n_A_tiles_per_shim = n_aie_rows // n_aie_cols
 
-    dev = None
-    if n_aie_cols == 1:
-        dev = AIEDevice.npu1_1col
-    elif n_aie_cols == 2:
-        dev = AIEDevice.npu1_2col
-    elif n_aie_cols == 4:
-        dev = AIEDevice.npu1_4col
+    if dev == "npu":
+        if n_aie_cols == 1:
+            dev_ty = AIEDevice.npu1_1col
+        elif n_aie_cols == 2:
+            dev_ty = AIEDevice.npu1_2col
+        elif n_aie_cols == 4:
+            dev_ty = AIEDevice.npu1_4col
+    else:
+        dev_ty = AIEDevice.npu2
 
     # These will hold TensorAccessPattern objects that represent the runtime
     # npu_dma_memcpy_nd operations of this design. They are only used if generate_taps is true
@@ -156,7 +161,7 @@ def my_matmul(
     B_taps = []
     C_taps = []
 
-    @device(dev)
+    @device(dev_ty)
     def device_body():
         A_l2_ty = np.ndarray[(m * k * n_A_tiles_per_shim,), np.dtype[dtype_in]]
         B_l2_ty = np.ndarray[(k * n * n_aie_rows,), np.dtype[dtype_in]]

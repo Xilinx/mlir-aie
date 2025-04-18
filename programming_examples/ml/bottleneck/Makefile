@@ -9,13 +9,16 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
+targetname = bottleneck
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+
 mlirFileName = aie
 
-aie_py_src=bottleneck.py
+aie_py_src=${targetname}.py
 use_placed?=0
 
 ifeq (${use_placed}, 1)
-aie_py_src=bottleneck_placed.py
+aie_py_src=${targetname}_placed.py
 endif
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
@@ -24,19 +27,31 @@ all: build/conv2dk1.o build/conv2dk3.o build/conv2dk1_skip.o build/final.xclbin
 
 build/${mlirFileName}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< > $@
+	python3 $< ${devicename} > $@
 
 build/conv2dk1.o: conv2dk1.cc
 	mkdir -p ${@D}
+ifeq (${devicename}, npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DINT8_ACT -c $< -o ${@F}
+else ifeq (${devicename}, npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -DINT8_ACT -c $< -o ${@F}
+endif
 
 build/conv2dk3.o: conv2dk3.cc
 	mkdir -p ${@D}
+ifeq (${devicename}, npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DUINT8_ACT -c $< -o ${@F}
+else ifeq (${devicename}, npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -DUINT8_ACT -c $< -o ${@F}
+endif
 
 build/conv2dk1_skip.o: conv2dk1_skip.cc
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DINT8_ACT -c $< -o$ ${@F} 
+ifeq (${devicename}, npu)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DINT8_ACT -c $< -o ${@F}
+else ifeq (${devicename}, npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -DINT8_ACT -c $< -o ${@F}
+endif 
 
 build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1.o build/conv2dk3.o build/conv2dk1_skip.o  
 	mkdir -p ${@D}

@@ -1264,12 +1264,17 @@ def AIE_LockOp: AIE_Op<"lock", [
 def AIE_UseLockOp: AIE_Op<"use_lock", []> {
   let summary = "acquire/release lock op";
   let description = [{
-    This operation uses a lock. In AIE1, a lock can be acquired with a value
-    or released with a value. This should be understood as a "blocking"
-    operation. In AIE2, locks are counting semaphores without an inherent
-    acquired/release characteristic. This lock must appear in a parent op where
-    the tile can be determined (A CoreOp, a ShimDMAOp, a MemOp, or a
-    MemTileDMAOp).
+    This operation uses a lock.
+    AIE1 locks are binary locks while AIE2 locks are counting semaphores
+    without an inherent acquire/release characteristic.
+    This operation must appear in a parent op where the tile can be determined
+    (A CoreOp, a ShimDMAOp, a MemOp, or a MemTileDMAOp).
+    The behavior of this operation is dependent on `action`:
+    - Acquire: blocks execution until the lock is set to `value`.
+    - AcquireGreaterEqual (only AIE2): blocks execution until the lock is set to `value` or greater.
+      Then, the value of the lock is decremented by `value`.
+    - Release: In AIE1, set the lock to `value`.
+      In AIE2, increment the lock by `value`.
   }];
 
   let arguments = (
@@ -1889,7 +1894,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
   let results = (outs AIE_ObjectFifoSubviewType:$subview);
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name `(` $port `,` $size `)` `:` type($subview)
+    attr-dict $objFifo_name `(` $port `,` $size `)` `:` qualified(type($subview))
   }];
 
   let hasVerifier = 1;
@@ -1959,7 +1964,7 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
   let results = (outs AnyMemRef:$output);
 
   let assemblyFormat = [{
-    $subview `[` $index `]` attr-dict `:` type($subview) `->` type($output)
+    $subview `[` $index `]` attr-dict `:` qualified(type($subview)) `->` qualified(type($output))
   }];
 
   // Allow building an AIE_ObjectFifoSubviewAccessOp with just a subview value and an index.

@@ -10,20 +10,22 @@
 
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
+#include "mlir/IR/DialectImplementation.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
 
-#include <algorithm>
-#include <cstdint>
+#include "llvm/ADT/TypeSwitch.h"
+
 #include <numeric>
-#include <optional>
-#include <string>
 
 using namespace mlir;
 using namespace xilinx;
 
 #include "aie/Dialect/AIEX/IR/AIEXDialect.cpp.inc"
+
+#define GET_TYPEDEF_CLASSES
+#include "aie/Dialect/AIEX/IR/AIEXTypes.cpp.inc"
 
 namespace xilinx::AIEX {
 
@@ -32,6 +34,10 @@ void AIEXDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
+      >();
+  addTypes<
+#define GET_TYPEDEF_LIST
+#include "aie/Dialect/AIEX/IR/AIEXTypes.cpp.inc"
       >();
 }
 
@@ -728,4 +734,43 @@ uint32_t AIEX::NpuControlPacketOp::getColumnFromAddr() {
   uint32_t addr = getAddress();
   uint32_t colInt = (addr >> targetModel.getColumnShift()) & 0x1f;
   return colInt;
+}
+
+//===----------------------------------------------------------------------===//
+// SetLockOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::SetLockOp::verify() {
+  const auto &targetModel = AIE::getTargetModel(*this);
+
+  if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
+    return emitOpError("SetLockOp is not supported on AIE1.");
+
+  if (getValue() > targetModel.getMaxLockValue())
+    return emitOpError("Lock value exceeds the maximum value of " +
+                       std::to_string(targetModel.getMaxLockValue()));
+
+  auto lockOp = getLockOp();
+  auto lockIDOpt = getLockOp().getLockID();
+  // Note that the lockID may not be assigned initially, so lets wait until it
+  // is to verify the lockID dependent conditions
+  if (!lockIDOpt) {
+    return success();
+  }
+
+  auto col = lockOp.colIndex();
+  auto row = lockOp.rowIndex();
+  uint32_t lockID = lockOp.getLockIDValue();
+
+  if (lockID >= targetModel.getNumLocks(col, row)) {
+    return emitOpError("Lock ID out of range for given tile. Max ID: " +
+                       std::to_string(targetModel.getNumLocks(col, row) - 1));
+  }
+
+  if (!targetModel.getLocalLockAddress(lockID, lockOp.getTileID())) {
+    return emitOpError("Invalid lock ID and tile combination when trying to "
+                       "retrieve the local lock address.");
+  }
+
+  return success();
 }

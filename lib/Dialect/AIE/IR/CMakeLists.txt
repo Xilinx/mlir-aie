@@ -15,6 +15,7 @@ add_mlir_dialect_library(AIE
   MLIRAIEAttrDefsIncGen
   MLIRAIEEnumsIncGen
   MLIRAIEIncGen
+  MLIRAIETypesIncGen
   MLIRAIEInterfacesIncGen
   MLIRAIEOpsIncGen
 

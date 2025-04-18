@@ -15,10 +15,7 @@
 
 #include "llvm/ADT/DenseSet.h"
 
-#include <cstdint>
 #include <iostream>
-#include <utility>
-#include <vector>
 
 namespace xilinx::AIE {
 
@@ -70,6 +67,13 @@ public:
     TK_AIE2_NPU1_4Col,
     TK_AIE2_NPU1_Last,
     TK_AIE2_NPU2 = TK_AIE2_NPU1_Last,
+    TK_AIE2_NPU2_1Col,
+    TK_AIE2_NPU2_2Col,
+    TK_AIE2_NPU2_3Col,
+    TK_AIE2_NPU2_4Col,
+    TK_AIE2_NPU2_5Col,
+    TK_AIE2_NPU2_6Col,
+    TK_AIE2_NPU2_7Col,
     TK_AIE2_NPU2_Last,
     TK_AIE2_Last = TK_AIE2_NPU2_Last,
   };
@@ -195,12 +199,29 @@ public:
   virtual bool isLegalMemAffinity(int coreCol, int coreRow, int memCol,
                                   int memRow) const = 0;
 
-  /// Return the base address in the local address map of different memories.
+  /// Return the base address in the local address map for a core.
   virtual uint32_t getMemInternalBaseAddress(TileID src) const = 0;
+  /// Return the base address in the local address map for a core.
   virtual uint32_t getMemSouthBaseAddress() const = 0;
+  /// Return the base address in the local address map for a core.
   virtual uint32_t getMemWestBaseAddress() const = 0;
+  /// Return the base address in the local address map for a core.
   virtual uint32_t getMemNorthBaseAddress() const = 0;
+  /// Return the base address in the local address map for a core.
   virtual uint32_t getMemEastBaseAddress() const = 0;
+
+  /// Return the lock base index (or offset) in the local tile when accessing a
+  /// neighbor's lock or an empty optional if an invalid neighbor is given
+  /// Takes into account differences between Memory and Core tiles
+  std::optional<uint32_t> getLockLocalBaseIndex(int localCol, int localRow,
+                                                int lockCol, int lockRow) const;
+
+  /// Return the memory base address (or offset) in the local tile when
+  /// accessing a neighbor's memory or an empty optional if an invalid neighbor
+  /// is given
+  /// Takes into account differences between Memory and Core tiles
+  std::optional<uint32_t> getMemLocalBaseAddress(int localCol, int localRow,
+                                                 int memCol, int memRow) const;
 
   /// Return the size (in bytes) of the local data memory of a core.
   virtual uint32_t getLocalMemorySize() const = 0;
@@ -210,6 +231,14 @@ public:
 
   /// Return the number of lock objects
   virtual uint32_t getNumLocks(int col, int row) const = 0;
+
+  /// Return the maximum value that can be stored in a lock register
+  virtual uint32_t getMaxLockValue() const = 0;
+
+  // Return the lock address for the lock ID in the local memory for a given
+  // tile or a nullopt if invalid arguments are given.
+  virtual std::optional<uint32_t> getLocalLockAddress(uint32_t lockId,
+                                                      TileID tile) const = 0;
 
   /// Return the number of buffer descriptors supported by the DMA in the given
   /// tile.
@@ -313,6 +342,9 @@ public:
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
   uint32_t getAccumulatorCascadeSize() const override { return 384; }
   uint32_t getNumLocks(int col, int row) const override { return 16; }
+  uint32_t getMaxLockValue() const override { return 1; }
+  std::optional<uint32_t> getLocalLockAddress(uint32_t lockId,
+                                              TileID tile) const override;
   uint32_t getNumBDs(int col, int row) const override { return 16; }
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
                              int channel) const override {
@@ -387,6 +419,11 @@ public:
   uint32_t getNumLocks(int col, int row) const override {
     return isMemTile(col, row) ? 64 : 16;
   }
+
+  uint32_t getMaxLockValue() const override { return 0x3F; }
+
+  std::optional<uint32_t> getLocalLockAddress(uint32_t lockId,
+                                              TileID tile) const override;
 
   uint32_t getNumBDs(int col, int row) const override {
     return isMemTile(col, row) ? 48 : 16;
@@ -537,9 +574,9 @@ public:
   }
 };
 
-class BaseNPUTargetModel : public AIE2TargetModel {
+class BaseNPU1TargetModel : public AIE2TargetModel {
 public:
-  BaseNPUTargetModel(TargetModelKind k) : AIE2TargetModel(k) {
+  BaseNPU1TargetModel(TargetModelKind k) : AIE2TargetModel(k) {
     // Device properties initialization
     addModelProperty(AIETargetModel::IsNPU);
   }
@@ -563,14 +600,14 @@ public:
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU1 &&
-           model->getKind() < TK_AIE2_NPU2_Last;
+           model->getKind() < TK_AIE2_NPU1_Last;
   }
 };
 
 // The full Phoenix NPU
-class NPUTargetModel : public BaseNPUTargetModel {
+class NPU1TargetModel : public BaseNPU1TargetModel {
 public:
-  NPUTargetModel() : BaseNPUTargetModel(TK_AIE2_NPU1) {}
+  NPU1TargetModel() : BaseNPU1TargetModel(TK_AIE2_NPU1) {}
 
   int columns() const override { return 5; }
 
@@ -588,21 +625,19 @@ public:
   }
 };
 
-// A sub-portion of the NPU
-class VirtualizedNPUTargetModel : public BaseNPUTargetModel {
+// A sub-portion of the Phoenix NPU
+class VirtualizedNPU1TargetModel : public BaseNPU1TargetModel {
   int cols;
 
 public:
-  VirtualizedNPUTargetModel(int _cols)
-      : BaseNPUTargetModel(static_cast<TargetModelKind>(
+  VirtualizedNPU1TargetModel(int _cols)
+      : BaseNPU1TargetModel(static_cast<TargetModelKind>(
             static_cast<std::underlying_type_t<TargetModelKind>>(TK_AIE2_NPU1) +
             _cols)),
         cols(_cols) {
     // Device properties initialization
     addModelProperty(AIETargetModel::IsVirtualized);
   }
-
-  uint32_t getAddressGenGranularity() const override { return 32; }
 
   int columns() const override { return cols; }
 
@@ -614,25 +649,75 @@ public:
   }
 };
 
-// The full Strix. NPU
-class NPU2TargetModel : public BaseNPUTargetModel {
+class BaseNPU2TargetModel : public AIE2TargetModel {
 public:
-  NPU2TargetModel() : BaseNPUTargetModel(TK_AIE2_NPU2) {}
+  BaseNPU2TargetModel(TargetModelKind k) : AIE2TargetModel(k) {
+    // Device properties initialization
+    addModelProperty(AIETargetModel::IsNPU);
+  }
 
   AIEArch getTargetArch() const override;
 
-  int columns() const override { return 8; }
+  int rows() const override {
+    return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
+  }
+
+  bool isCoreTile(int col, int row) const override { return row > 1; }
+  bool isMemTile(int col, int row) const override { return row == 1; }
+
+  bool isShimPLTile(int col, int row) const override {
+    return false; // No PL tiles
+  }
 
   bool isShimNOCTile(int col, int row) const override { return row == 0; }
 
-  bool isShimPLTile(int col, int row) const override { return false; }
+  bool isShimNOCorPLTile(int col, int row) const override {
+    return isShimNOCTile(col, row);
+  }
+
+  uint32_t getNumMemTileRows() const override { return 1; }
+
+  std::vector<std::pair<uint32_t, uint32_t>>
+  getShimBurstEncodingsAndLengths() const override;
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() >= TK_AIE2_NPU2 &&
+           model->getKind() < TK_AIE2_NPU2_Last;
+  }
+};
+
+// The full Strix NPU
+class NPU2TargetModel : public BaseNPU2TargetModel {
+public:
+  NPU2TargetModel() : BaseNPU2TargetModel(TK_AIE2_NPU2) {}
+
+  int columns() const override { return 8; }
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() == TK_AIE2_NPU2;
   }
+};
 
-  std::vector<std::pair<uint32_t, uint32_t>>
-  getShimBurstEncodingsAndLengths() const override;
+// A sub-portion of the Strix NPU
+class VirtualizedNPU2TargetModel : public BaseNPU2TargetModel {
+  int cols;
+
+public:
+  VirtualizedNPU2TargetModel(int _cols)
+      : BaseNPU2TargetModel(static_cast<TargetModelKind>(
+            static_cast<std::underlying_type_t<TargetModelKind>>(TK_AIE2_NPU2) +
+            _cols)),
+        cols(_cols) {
+    // Device properties initialization
+    addModelProperty(AIETargetModel::IsVirtualized);
+  }
+
+  int columns() const override { return cols; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() >= TK_AIE2_NPU2_1Col &&
+           model->getKind() < TK_AIE2_NPU2_Last;
+  }
 };
 
 } // namespace xilinx::AIE

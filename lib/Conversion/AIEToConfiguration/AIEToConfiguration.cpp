@@ -447,8 +447,8 @@ static LogicalResult convertAIEToConfiguration(AIE::DeviceOp device,
                                                StringRef clElfDir,
                                                OutputType outputType) {
 
-  const BaseNPUTargetModel &targetModel =
-      (const BaseNPUTargetModel &)device.getTargetModel();
+  const AIETargetModel &targetModel =
+      (const AIETargetModel &)device.getTargetModel();
 
   if (!targetModel.hasProperty(AIETargetModel::IsNPU))
     return failure();

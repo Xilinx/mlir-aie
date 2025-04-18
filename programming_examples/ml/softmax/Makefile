@@ -14,9 +14,9 @@ include ${srcdir}/../../makefile-common
 
 aie2_runtime_dir = ${AIEOPT_DIR}/aie_runtime_lib/AIE2
 
-device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
-ifeq ($(device),npu2)
+ifeq ($(devicename),npu2)
 VPATH :=${srcdir}/../../../aie_kernels/aie2p
 else 
 VPATH :=${srcdir}/../../../aie_kernels/aie2
@@ -25,6 +25,7 @@ endif
 targetname = softmax
 trace_size = 8192
 
+colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src=${targetname}.py
 use_placed?=0
 
@@ -34,7 +35,7 @@ endif
 
 all: build/final.xclbin build/insts.bin
 
-ifeq ($(device),npu)
+ifeq ($(devicename),npu)
 build/lut_based_ops.o: ${aie2_runtime_dir}/lut_based_ops.cpp
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -c $< -o ${@F}
@@ -43,18 +44,18 @@ endif
 	
 build/softmax.o: ${VPATH}/softmax.cc
 	mkdir -p ${@D}
-ifeq ($(device),npu)
+ifeq ($(devicename),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -I${aie2_runtime_dir} -c $< -o ${@F}
-else ifeq ($(device),npu2)
+else ifeq ($(devicename),npu2)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
 else
 	echo "Device type not supported"
 endif
 
-ifeq ($(device),npu)
+ifeq ($(devicename),npu)
 build/kernels.a: build/softmax.o build/lut_based_ops.o
 	ar rvs $@ $+
-else ifeq ($(device),npu2)
+else ifeq ($(devicename),npu2)
 build/kernels.a: build/softmax.o
 	ar rvs $@ $+
 else
@@ -63,11 +64,11 @@ endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${device} > $@
+	python3 $< ${devicename} > $@
 
 build/aie_trace.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${device} ${trace_size} > $@
+	python3 $< ${devicename} ${trace_size} > $@
 
 
 build/final.xclbin: build/aie.mlir build/kernels.a
@@ -101,7 +102,7 @@ profile: ${targetname}.exe build/final.xclbin
 
 trace: ${targetname}.exe build/final_trace.xclbin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > trace_softmax.json
+	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift ${colshift} > trace_softmax.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_softmax.json
 
 clean: 

@@ -19,14 +19,13 @@
 #include "mlir-c/Support.h"
 #include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Support.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Support/FileUtilities.h"
-#include "mlir/Support/LogicalResult.h"
 #include "mlir/Target/LLVMIR/Export.h"
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <cstdlib>
@@ -167,8 +166,8 @@ DEFINE_C_API_PTR_METHODS(AieRtControl, xilinx::AIE::AIERTControl)
 
 AieRtControl getAieRtControl(AieTargetModel tm) {
   // unwrap the target model
-  const BaseNPUTargetModel &targetModel =
-      *reinterpret_cast<const BaseNPUTargetModel *>(tm.d);
+  const AIETargetModel &targetModel =
+      *reinterpret_cast<const AIETargetModel *>(tm.d);
   AIERTControl *ctl = new AIERTControl(targetModel);
   return wrap(ctl);
 }
