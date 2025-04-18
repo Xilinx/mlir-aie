@@ -1564,8 +1564,10 @@ struct AIEObjectFifoStatefulTransformPass
       auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
       if (dataTypesList.has_value()) {
         auto arrayAttr = dataTypesList.value();
-        auto dataTypeValue = arrayAttr[consumerIndex].dyn_cast<mlir::TypeAttr>();;
-        auto type = dataTypeValue.getValue(); 
+        auto dataTypeValue =
+            arrayAttr[consumerIndex].dyn_cast<mlir::TypeAttr>();
+        ;
+        auto type = dataTypeValue.getValue();
         consumerDatatype = type.cast<AIEObjectFifoType>();
       }
       // // Are in lists
