@@ -60,6 +60,7 @@ module @AIE2_delayed_release {
         func.func @step2(%buf : memref<4xi32>) -> () {
             %i1 = arith.constant 1 : index
             // For the next step, we only need one element (this could be a subroutine that acquires 1, not knowing that we already acquired 2)
+            // expected-error@+1 {{op must be called from inside a CoreOp}}
             %subview1 = aie.objectfifo.acquire @fifo (Consume, 1) : !aie.objectfifosubview<memref<i32>>
             %subview1_obj = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
             %v1 = memref.load %subview1_obj[] : memref<i32>
@@ -70,6 +71,7 @@ module @AIE2_delayed_release {
         func.func @step3(%buf : memref<4xi32>) -> () {
             %i2 = arith.constant 2 : index
             // Actually, give us the two from before and one more for three objects total (consumer lock should increase by one)
+            // expected-error@+1 {{op must be called from inside a CoreOp}}
             %subview2 = aie.objectfifo.acquire @fifo (Consume, 3) : !aie.objectfifosubview<memref<i32>>
             %subview2_obj = aie.objectfifo.subview.access %subview2[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
             %v2 = memref.load %subview2_obj[] : memref<i32>
@@ -80,6 +82,7 @@ module @AIE2_delayed_release {
         func.func @step4(%buf : memref<4xi32>) -> () {
             %i3 = arith.constant 3 : index
             // Now let's just work on one element (consumer lock should not change value)
+            // expected-error@+1 {{op must be called from inside a CoreOp}}
             %subview3 = aie.objectfifo.acquire @fifo (Consume, 1) : !aie.objectfifosubview<memref<i32>>
             %subview3_obj = aie.objectfifo.subview.access %subview3[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
             %v3 = memref.load %subview3_obj[] : memref<i32>

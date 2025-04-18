@@ -278,8 +278,6 @@ def my_matmul(
                         tiles_to_trace=tiles_to_trace,
                         shim=shim_tile,
                         trace_size=trace_size,
-                        trace_offset=C_sz_in_bytes,
-                        ddr_id=2,
                         coretile_events=[
                             # captures input A (PORT_RUNNING_0, at port number 1, master for inputs)
                             trace_utils.PortEvent(

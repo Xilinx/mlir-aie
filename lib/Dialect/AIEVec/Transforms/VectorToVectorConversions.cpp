@@ -483,7 +483,7 @@ struct FlattenMultDimTransferWritePattern
     // map.
     if (!adaptor.getPermutationMap().isMinorIdentity() || adaptor.getMask())
       return failure();
-    VectorType vectorTy = cast<VectorType>(adaptor.getVector().getType());
+    VectorType vectorTy = cast<VectorType>(adaptor.getValueToStore().getType());
     if (vectorTy.getRank() < 2)
       return failure();
     // Work only on bufferized reads
@@ -500,7 +500,7 @@ struct FlattenMultDimTransferWritePattern
     AffineMap layout = memRefTy.getLayout().getAffineMap();
     auto newVector = rewriter
                          .create<vector::ShapeCastOp>(
-                             writeOp.getLoc(), newVectorTy, adaptor.getVector())
+                             writeOp.getLoc(), newVectorTy, adaptor.getValueToStore())
                          .getResult();
     auto newIndices =
         collapseInnerMostDimIndices(rewriter, writeOp.getLoc(), vecShape.size(),
@@ -638,7 +638,7 @@ struct ConvertLeadingUnitDimInsertToReshapePattern
 
   LogicalResult matchAndRewrite(vector::InsertOp insOp,
                                 PatternRewriter &rewriter) const override {
-    auto insSrcTy = dyn_cast<VectorType>(insOp.getSourceType());
+    auto insSrcTy = dyn_cast<VectorType>(insOp.getValueToStoreType());
     if (!insSrcTy)
       return failure();
 
@@ -667,7 +667,7 @@ struct ConvertLeadingUnitDimInsertToReshapePattern
       return failure();
 
     rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(
-        insOp, insOp.getDestVectorType(), insOp.getSource());
+        insOp, insOp.getDestVectorType(), insOp.getValueToStore());
     return success();
   }
 };

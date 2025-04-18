@@ -244,6 +244,7 @@ def my_matmul(
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(A_ty, B_ty, C_ty) as (A, B, C):
+        rt.enable_trace(trace_size, workers=[worker])
         rt.start(worker)
 
         tgs = []
