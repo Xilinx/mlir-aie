@@ -8,7 +8,6 @@
 
 import numpy as np
 import sys
-import argparse
 
 from aie.iron import Program, Runtime, Worker, ObjectFifo, GlobalBuffer
 from aie.iron.placers import SequentialPlacer
@@ -22,7 +21,7 @@ dev = NPU2()
 # Define tensor types
 num_elements = 48
 data_type = np.int32
-tile_ty = np.ndarray[(num_elements,), np.dtype[np.int32]]
+tile_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
 
 @iron.jit(is_placed=False)
 def exercise_1():
@@ -32,7 +31,7 @@ def exercise_1():
     buff = GlobalBuffer(
         tile_ty,
         name="buff",
-        initial_value=np.array(range(num_elements), dtype=np.int32),
+        initial_value=np.array(range(num_elements), dtype=data_type),
     )
 
 
@@ -49,7 +48,7 @@ def exercise_1():
 
     # To/from AIE-array runtime data movement
     rt = Runtime()
-    with rt.sequence(tile_ty, tile_ty) as (_, c_out):
+    with rt.sequence(tile_ty) as (c_out):
         rt.start(my_worker)
         rt.drain(of_out.cons(), c_out, wait=True)
 
@@ -68,7 +67,7 @@ def main():
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    exercise_1(input0, output)
+    exercise_1(output)
 
     # Check the correctness of the result
     e = np.equal(input0.numpy(), output.numpy())
