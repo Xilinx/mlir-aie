@@ -1560,7 +1560,7 @@ struct AIEObjectFifoStatefulTransformPass
             << numberOfConsumerTiles << ").";
         return;
       }
-    } 
+    }
     for (auto consumerTile : createOp.getConsumerTiles()) {
       auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
       if (dataTypesList.has_value()) {
