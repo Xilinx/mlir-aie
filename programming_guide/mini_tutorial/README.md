@@ -49,7 +49,7 @@ The IRON code [example](./aie2.py) in this mini tutorial details the different p
 
 ## <ins>Complex Data Movement Patterns: Broadcast, Split, Join</ins>
 
-IRON 1.0 designs can be scaled to use multiple Workers easily: 
+IRON designs can be scaled to use multiple Workers easily: 
 ```python
 n_workers = 4
 
@@ -169,7 +169,7 @@ More on the Object FIFO data movement patterns in [Section 2b](../section-2/sect
 
 ## <ins>Runtime Parameters and Barriers</ins>
 
-IRON 1.0 also supports the use of Runtime Parameters which are set and propagated to the Workers at runtime.
+IRON supports Runtime Parameters which are set and propagated to the Workers at runtime.
 ```python
 n_workers = 4
 
@@ -210,7 +210,7 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
 
     rt.inline_ops(set_rtps, rtps)
 ```
-To ensure that RTPs are not read prematurely, IRON 1.0 introduces `WorkerRuntimeBarriers` which can be used to synchronize a Worker with the runtime sequence:
+To ensure that RTPs are not read prematurely, `WorkerRuntimeBarriers` can be used to synchronize a Worker with the runtime sequence:
 ```python
 n_workers = 4
 
@@ -273,7 +273,7 @@ for(int i = 0; i < size_2; i++)
             //                                   + k * stride_0]
 ```
 
-To better support DMA on-the-fly data transformations **at runtime** IRON 1.0 introduces [taplib](../../python/helpers/taplib/) which provides the building blocks for `Tensor Access Pattern`s (`taps`). The sizes and strides are grouped together and the dimensions should be given from highest to lowest:
+To better support DMA on-the-fly data transformations **at runtime** IRON provides [taplib](../../python/helpers/taplib/) which provides the building blocks for `Tensor Access Pattern`s (`taps`). The sizes and strides are grouped together and the dimensions should be given from highest to lowest:
 ```python
 tap = TensorAccessPattern(
     tensor_dims=(2, 3),
