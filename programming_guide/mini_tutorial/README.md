@@ -305,12 +305,14 @@ The `taps` can then be accessed in the sequence as an array:
 for t in taps:
 ```
 
-`taplib` additionally introduces the `TensorTiler2D` class which can generate `taps` for common tiling patterns. The tiler returns the generated `taps` as a `TensorAccessSequence`:
+Deducing the sizes and strides for the `tap` can be challenging for the user. `taplib` introduces the `TensorTiler2D` class to try and address this challenge. Tilers are an explorative feature which is designed to generate `taps` for common tiling patterns. The tiler returns the generated `taps` as a `TensorAccessSequence`:
 ```python
 tensor_dims = (8, 8)
 tile_dims = (4, 4)
 simple_tiler = TensorTiler2D.simple_tiler(tensor_dims, tile_dims)
 ```
+The simple tiler above takes a very straighforward approach to tiling and makes a vertical split of the data based on the given dimensions. More tilers are available in [tensortiler2d.py](../../python/helpers/taplib/tensortiler2d.py).
+
 More on `taplib` in [tiling_exploration](../../programming_examples/basic/tiling_exploration/README.md).
 
 `ObjectFifo`s can express DMA on-the-fly data transformations via their `dims_to_stream` and `default_dims_from_stream_per_cons` inputs. These inputs are structured as a list of pairs where each pair is expressed as (size, stride) for a dimension of the DMA transformation. The dimensions should be given from highest to lowest:
