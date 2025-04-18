@@ -26,15 +26,6 @@ tile_size = tile_height * tile_width
 data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
 
-# Define runtime tensor access pattern (tap)
-tensor_dims = (data_height, data_width)
-offset = 0
-sizes = [1, TODO, TODO, TODO]  # last dimension is reserved for repeat count
-strides = [0, TODO, TODO, TODO]  # last dimension is reserved for repeat count
-tap = TensorAccessPattern(tensor_dims, offset, sizes, strides)
-
-tap.visualize(show_arrows=True, file_path="plot.png")
-
 # Dataflow with ObjectFifos
 of_in = ObjectFifo(tile_ty, name="in")
 of_out = ObjectFifo(tile_ty, name="out")
@@ -57,7 +48,7 @@ my_worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
 rt = Runtime()
 with rt.sequence(data_ty, data_ty, data_ty) as (a_in, _, c_out):
     rt.start(my_worker)
-    rt.fill(of_in.prod(), a_in, tap)
+    rt.fill(of_in.prod(), a_in)
     rt.drain(of_out.cons(), c_out, wait=True)
 
 # Create the program from the device type and runtime

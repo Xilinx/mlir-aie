@@ -156,8 +156,14 @@ int main(int argc, const char *argv[]) {
 
   uint32_t *bufInA = bo_inA.map<uint32_t *>();
   std::vector<uint32_t> srcVecA;
-  for (int i = 0; i < IN_SIZE; i++)
-    srcVecA.push_back(i);
+  for (uint32_t k = 0; k < 2; k++) {
+    for (uint32_t j = 0; j < 3; j++) {
+      for (uint32_t i = 0; i < 8; i++) {
+        uint32_t ref = k * 8 + j * 16 + i;
+        srcVecA.push_back(ref);
+      }
+    }
+  }
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
   void *bufInstr = bo_instr.map<void *>();
