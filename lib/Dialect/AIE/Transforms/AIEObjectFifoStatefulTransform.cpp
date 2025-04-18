@@ -1547,19 +1547,30 @@ struct AIEObjectFifoStatefulTransformPass
     createdFifoOps.push_back(producerFifo);
 
     // Create objectFifos from memTile to each consumerTile
+    auto dataTypesList = createOp.getAllDatatypes();
+    auto numberOfConsumerTiles = createOp.getConsumerTiles().size();
     std::vector<ObjectFifoCreateOp> consumerFifos;
     int consumerIndex = 0;
+    auto consumerDatatype = datatype; 
+    if (dataTypesList.has_value()) {
+      if (!dataTypesList->empty() && dataTypesList->size() != numberOfConsumerTiles) {
+      createOp.emitOpError("Mismatch between the number of data types (")
+        << dataTypesList->size() << ") and the number of consumer tiles ("
+        << numberOfConsumerTiles << ").";
+      return;
+      }
+    } 
     for (auto consumerTile : createOp.getConsumerTiles()) {
       auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
-      auto consumerElemType = llvm::cast<MemRefType>(datatype.getElementType());
-      int consumerElemSize = consumerElemType.getNumElements() /
-                             createOp.getConsumerTiles().size();
-      auto consumerMemRefType = MemRefType::get(
-          {consumerElemSize}, consumerElemType.getElementType());
-      auto consumerDatatype = AIEObjectFifoType::get(consumerMemRefType);
+      if (dataTypesList.has_value()) {
+        auto arrayAttr = dataTypesList.value();
+        auto dataTypeValue = arrayAttr[consumerIndex].dyn_cast<mlir::TypeAttr>();;
+        auto type = dataTypeValue.getValue(); 
+        consumerDatatype = type.cast<AIEObjectFifoType>();
+      }
       // // Are in lists
       auto consumerObjFifoSize = builder.getIntegerAttr(
-          builder.getI32Type(), createOp.size(consumerIndex + 1));
+          builder.getI32Type(), createOp.size(consumerIndex));
       std::string consumerFifoName = createOp.name().str() + "_from_memTile_" +
                                      std::to_string(consumerIndex);
       BDDimLayoutArrayAttr singletonFromStreamDims = BDDimLayoutArrayAttr::get(

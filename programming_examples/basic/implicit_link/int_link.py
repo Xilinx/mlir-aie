@@ -55,12 +55,14 @@ def explicit_link():
                     "tile": ComputeTile2,
                     "num_objects": 2,
                     "offset": 0,
-                },  # , "datatype": op_ty
+                    "datatype": op_ty,
+                },
                 {
                     "tile": ComputeTile3,
                     "num_objects": 2,
                     "offset": op_size,
-                },  # , "datatype": op_ty
+                    "datatype": op_ty,
+                },
             ]
             # AIE-array data movement with object fifos
             of_in = object_fifo(
