@@ -3,4 +3,4 @@
 //
 // REQUIRES: ryzen_ai, peano 
 //
-// RUN: %run_on_2npu python3 exercise_4b.py
+// RUN: %run_on_2npu python3 %S/exercise_4b.py
