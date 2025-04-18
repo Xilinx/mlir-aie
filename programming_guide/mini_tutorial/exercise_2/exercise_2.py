@@ -23,12 +23,12 @@ num_elements = 48
 data_type = np.int32
 tile_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
 
+
 @iron.jit(is_placed=False)
 def exercise_2():
     # Dataflow with ObjectFifos
     of_in = ObjectFifo(tile_ty, name="in")
     of_out = ObjectFifo(tile_ty, name="out")
-
 
     # Task for the core to perform
     def core_fn(of_in, of_out):
@@ -38,7 +38,6 @@ def exercise_2():
             elem_out[i] = elem_in[i]
         of_in.release(1)
         of_out.release(1)
-
 
     # Create a worker to perform the task
     my_worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
@@ -55,6 +54,7 @@ def exercise_2():
 
     # Place components (assign them resources on the device) and generate an MLIR module
     return my_program.resolve_program(SequentialPlacer())
+
 
 def main():
 
@@ -75,9 +75,7 @@ def main():
     print(f"{'input0':>4} = {'output':>4}")
     print("-" * 34)
     count = input0.numel()
-    for idx, (a, c) in enumerate(
-        zip(input0[:count], output[:count])
-    ):
+    for idx, (a, c) in enumerate(zip(input0[:count], output[:count])):
         print(f"{idx:2}: {a:4} = {c:4}")
 
     # If the result is correct, exit with a success code.

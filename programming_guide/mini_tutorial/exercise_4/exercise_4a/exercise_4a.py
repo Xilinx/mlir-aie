@@ -29,12 +29,12 @@ element_type = np.int32
 data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
 tile_ty = np.ndarray[(tile_size,), np.dtype[element_type]]
 
+
 @iron.jit(is_placed=False)
 def exercise_4a():
     # Dataflow with ObjectFifos
     of_in = ObjectFifo(tile_ty, name="in")
     of_out = ObjectFifo(tile_ty, name="out")
-
 
     # Task for the core to perform
     def core_fn(of_in, of_out):
@@ -44,7 +44,6 @@ def exercise_4a():
             elem_out[i] = elem_in[i]
         of_in.release(1)
         of_out.release(1)
-
 
     # Create a worker to perform the task
     my_worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
@@ -62,6 +61,7 @@ def exercise_4a():
     # Place components (assign them resources on the device) and generate an MLIR module
     return my_program.resolve_program(SequentialPlacer())
 
+
 def main():
 
     # Construct an input tensor and an output zeroed tensor
@@ -70,7 +70,9 @@ def main():
     output = iron.zeros(data_size, dtype=element_type, device="npu")
 
     # Generate input test pattern
-    input0[:] = [k * 8 + j * 16 + i for k in range(2) for j in range(3) for i in range(8)]
+    input0[:] = [
+        k * 8 + j * 16 + i for k in range(2) for j in range(3) for i in range(8)
+    ]
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
@@ -78,7 +80,9 @@ def main():
 
     # Check the correctness of the result
     errors = 0
-    for index, ref in enumerate(k * 8 + j * 16 + i for k in range(2) for j in range(3) for i in range(8)):
+    for index, ref in enumerate(
+        k * 8 + j * 16 + i for k in range(2) for j in range(3) for i in range(8)
+    ):
         actual = output[index]
         if actual != ref:
             print(f"Error in output {actual} != {ref}")
