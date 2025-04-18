@@ -190,16 +190,8 @@ Traits: `HasParent<DeviceOp>`
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>inputDir</code></td><td>xilinx::AIE::CascadeDirAttr</td><td><details><summary>Directions for cascade</summary>{{% markdown %}}Enum cases:
-* South (`South`)
-* West (`West`)
-* North (`North`)
-* East (`East`){{% /markdown %}}</details></td></tr>
-<tr><td><code>outputDir</code></td><td>xilinx::AIE::CascadeDirAttr</td><td><details><summary>Directions for cascade</summary>{{% markdown %}}Enum cases:
-* South (`South`)
-* West (`West`)
-* North (`North`)
-* East (`East`){{% /markdown %}}</details></td></tr>
+<tr><td><code>inputDir</code></td><td>xilinx::AIE::CascadeDirAttr</td><td>Directions for cascade</td></tr>
+<tr><td><code>outputDir</code></td><td>xilinx::AIE::CascadeDirAttr</td><td>Directions for cascade</td></tr>
 </table>
 
 #### Operands:
@@ -241,31 +233,9 @@ Traits: `HasParent<SwitchboxOp, ShimMuxOp>`
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>source_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
-* Core (`Core`)
-* DMA (`DMA`)
-* FIFO (`FIFO`)
-* South (`South`)
-* West (`West`)
-* North (`North`)
-* East (`East`)
-* PLIO (`PLIO`)
-* NOC (`NOC`)
-* Trace (`Trace`)
-* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
+<tr><td><code>source_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td>Bundle of wires</td></tr>
 <tr><td><code>source_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
-<tr><td><code>dest_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
-* Core (`Core`)
-* DMA (`DMA`)
-* FIFO (`FIFO`)
-* South (`South`)
-* West (`West`)
-* North (`North`)
-* East (`East`)
-* PLIO (`PLIO`)
-* NOC (`NOC`)
-* Trace (`Trace`)
-* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
+<tr><td><code>dest_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td>Bundle of wires</td></tr>
 <tr><td><code>dest_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 </table>
 
@@ -398,23 +368,7 @@ Interfaces: `AIETarget`
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>device</code></td><td>xilinx::AIE::AIEDeviceAttr</td><td><details><summary>AIE Device</summary>{{% markdown %}}Enum cases:
-* xcvc1902 (`xcvc1902`)
-* xcve2302 (`xcve2302`)
-* xcve2802 (`xcve2802`)
-* npu1 (`npu1`)
-* npu1_1col (`npu1_1col`)
-* npu1_2col (`npu1_2col`)
-* npu1_3col (`npu1_3col`)
-* npu1_4col (`npu1_4col`)
-* npu2 (`npu2`)
-* npu2_1col (`npu2_1col`)
-* npu2_2col (`npu2_2col`)
-* npu2_3col (`npu2_3col`)
-* npu2_4col (`npu2_4col`)
-* npu2_5col (`npu2_5col`)
-* npu2_6col (`npu2_6col`)
-* npu2_7col (`npu2_7col`){{% /markdown %}}</details></td></tr>
+<tr><td><code>device</code></td><td>xilinx::AIE::AIEDeviceAttr</td><td>AIE Device</td></tr>
 </table>
 
 
@@ -439,9 +393,7 @@ Interfaces: `InferTypeOpInterface`, `OpAsmOpInterface`
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>channel_dir</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td><details><summary>DMA Channel direction</summary>{{% markdown %}}Enum cases:
-* S2MM (`S2MM`)
-* MM2S (`MM2S`){{% /markdown %}}</details></td></tr>
+<tr><td><code>channel_dir</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td>DMA Channel direction</td></tr>
 <tr><td><code>channel_index</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>loop</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
@@ -669,9 +621,7 @@ Interfaces: `InferTypeOpInterface`
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>channel_dir</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td><details><summary>DMA Channel direction</summary>{{% markdown %}}Enum cases:
-* S2MM (`S2MM`)
-* MM2S (`MM2S`){{% /markdown %}}</details></td></tr>
+<tr><td><code>channel_dir</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td>DMA Channel direction</td></tr>
 <tr><td><code>channel_index</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
@@ -798,31 +748,9 @@ Example:
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>source_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
-* Core (`Core`)
-* DMA (`DMA`)
-* FIFO (`FIFO`)
-* South (`South`)
-* West (`West`)
-* North (`North`)
-* East (`East`)
-* PLIO (`PLIO`)
-* NOC (`NOC`)
-* Trace (`Trace`)
-* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
+<tr><td><code>source_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td>Bundle of wires</td></tr>
 <tr><td><code>source_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
-<tr><td><code>dest_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
-* Core (`Core`)
-* DMA (`DMA`)
-* FIFO (`FIFO`)
-* South (`South`)
-* West (`West`)
-* North (`North`)
-* East (`East`)
-* PLIO (`PLIO`)
-* NOC (`NOC`)
-* Trace (`Trace`)
-* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
+<tr><td><code>dest_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td>Bundle of wires</td></tr>
 <tr><td><code>dest_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 </table>
 
@@ -983,18 +911,7 @@ Interfaces: `InferTypeOpInterface`
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>dest_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
-* Core (`Core`)
-* DMA (`DMA`)
-* FIFO (`FIFO`)
-* South (`South`)
-* West (`West`)
-* North (`North`)
-* East (`East`)
-* PLIO (`PLIO`)
-* NOC (`NOC`)
-* Trace (`Trace`)
-* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
+<tr><td><code>dest_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td>Bundle of wires</td></tr>
 <tr><td><code>dest_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>keep_pkt_header</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
@@ -1307,9 +1224,7 @@ port and returns a subview of the acquired objects.
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>port</code></td><td>xilinx::AIE::ObjectFifoPortAttr</td><td><details><summary>Ports of an object FIFO</summary>{{% markdown %}}Enum cases:
-* Produce (`Produce`)
-* Consume (`Consume`){{% /markdown %}}</details></td></tr>
+<tr><td><code>port</code></td><td>xilinx::AIE::ObjectFifoPortAttr</td><td>Ports of an object FIFO</td></tr>
 <tr><td><code>objFifo_name</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 <tr><td><code>size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 1</td></tr>
 </table>
@@ -1453,9 +1368,7 @@ If the input patterns are cyclo-static then they must be of the same size.
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>port</code></td><td>xilinx::AIE::ObjectFifoPortAttr</td><td><details><summary>Ports of an object FIFO</summary>{{% markdown %}}Enum cases:
-* Produce (`Produce`)
-* Consume (`Consume`){{% /markdown %}}</details></td></tr>
+<tr><td><code>port</code></td><td>xilinx::AIE::ObjectFifoPortAttr</td><td>Ports of an object FIFO</td></tr>
 <tr><td><code>objFifo_name</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 <tr><td><code>callee</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 </table>
@@ -1496,9 +1409,7 @@ This operation releases the lock of the next object in the `objectFifo` named `@
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>port</code></td><td>xilinx::AIE::ObjectFifoPortAttr</td><td><details><summary>Ports of an object FIFO</summary>{{% markdown %}}Enum cases:
-* Produce (`Produce`)
-* Consume (`Consume`){{% /markdown %}}</details></td></tr>
+<tr><td><code>port</code></td><td>xilinx::AIE::ObjectFifoPortAttr</td><td>Ports of an object FIFO</td></tr>
 <tr><td><code>objFifo_name</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 <tr><td><code>size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 1</td></tr>
 </table>
@@ -1569,18 +1480,7 @@ Traits: `HasParent<PacketFlowOp>`
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
-* Core (`Core`)
-* DMA (`DMA`)
-* FIFO (`FIFO`)
-* South (`South`)
-* West (`West`)
-* North (`North`)
-* East (`East`)
-* PLIO (`PLIO`)
-* NOC (`NOC`)
-* Trace (`Trace`)
-* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
+<tr><td><code>bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td>Bundle of wires</td></tr>
 <tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 </table>
 
@@ -1658,18 +1558,7 @@ Traits: `SingleBlockImplicitTerminator<EndOp>`, `SingleBlock`
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>source_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
-* Core (`Core`)
-* DMA (`DMA`)
-* FIFO (`FIFO`)
-* South (`South`)
-* West (`West`)
-* North (`North`)
-* East (`East`)
-* PLIO (`PLIO`)
-* NOC (`NOC`)
-* Trace (`Trace`)
-* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
+<tr><td><code>source_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td>Bundle of wires</td></tr>
 <tr><td><code>source_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 </table>
 
@@ -1696,18 +1585,7 @@ Traits: `HasParent<PacketFlowOp>`
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
-* Core (`Core`)
-* DMA (`DMA`)
-* FIFO (`FIFO`)
-* South (`South`)
-* West (`West`)
-* North (`North`)
-* East (`East`)
-* PLIO (`PLIO`)
-* NOC (`NOC`)
-* Trace (`Trace`)
-* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
+<tr><td><code>bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td>Bundle of wires</td></tr>
 <tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 </table>
 
@@ -1937,9 +1815,7 @@ Traits: `HasParent<DeviceOp>`
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>sym_name</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
-<tr><td><code>channel_dir</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td><details><summary>DMA Channel direction</summary>{{% markdown %}}Enum cases:
-* S2MM (`S2MM`)
-* MM2S (`MM2S`){{% /markdown %}}</details></td></tr>
+<tr><td><code>channel_dir</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td>DMA Channel direction</td></tr>
 <tr><td><code>channel_index</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>plio</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
@@ -2137,14 +2013,9 @@ The behavior of this operation is dependent on `action`:
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>action</code></td><td>xilinx::AIE::LockActionAttr</td><td><details><summary>lock acquire/release</summary>{{% markdown %}}Enum cases:
-* Acquire (`Acquire`)
-* AcquireGreaterEqual (`AcquireGreaterEqual`)
-* Release (`Release`){{% /markdown %}}</details></td></tr>
+<tr><td><code>action</code></td><td>xilinx::AIE::LockActionAttr</td><td>lock acquire/release</td></tr>
 <tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>blocking</code></td><td>xilinx::AIE::LockBlockingAttr</td><td><details><summary>lock operation is blocking</summary>{{% markdown %}}Enum cases:
-* NonBlocking (`NonBlocking`)
-* Blocking (`Blocking`){{% /markdown %}}</details></td></tr>
+<tr><td><code>blocking</code></td><td>xilinx::AIE::LockBlockingAttr</td><td>lock operation is blocking</td></tr>
 <tr><td><code>acq_en</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
 
@@ -2174,30 +2045,8 @@ represented by an [aie.tile](#aietile-aietileop) operation.
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>source_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
-* Core (`Core`)
-* DMA (`DMA`)
-* FIFO (`FIFO`)
-* South (`South`)
-* West (`West`)
-* North (`North`)
-* East (`East`)
-* PLIO (`PLIO`)
-* NOC (`NOC`)
-* Trace (`Trace`)
-* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
-<tr><td><code>dest_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
-* Core (`Core`)
-* DMA (`DMA`)
-* FIFO (`FIFO`)
-* South (`South`)
-* West (`West`)
-* North (`North`)
-* East (`East`)
-* PLIO (`PLIO`)
-* NOC (`NOC`)
-* Trace (`Trace`)
-* TileControl (`TileControl`){{% /markdown %}}</details></td></tr>
+<tr><td><code>source_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td>Bundle of wires</td></tr>
+<tr><td><code>dest_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td>Bundle of wires</td></tr>
 </table>
 
 #### Operands:
