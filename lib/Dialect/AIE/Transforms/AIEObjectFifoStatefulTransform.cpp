@@ -1551,26 +1551,27 @@ struct AIEObjectFifoStatefulTransformPass
     auto numberOfConsumerTiles = createOp.getConsumerTiles().size();
     std::vector<ObjectFifoCreateOp> consumerFifos;
     int consumerIndex = 0;
-    auto consumerDatatype = datatype; 
+    auto consumerDatatype = datatype;
     if (dataTypesList.has_value()) {
-      if (!dataTypesList->empty() && dataTypesList->size() != numberOfConsumerTiles) {
-      createOp.emitOpError("Mismatch between the number of data types (")
-        << dataTypesList->size() << ") and the number of consumer tiles ("
-        << numberOfConsumerTiles << ").";
-      return;
+      if (!dataTypesList->empty() &&
+          dataTypesList->size() != numberOfConsumerTiles) {
+        createOp.emitOpError("Mismatch between the number of data types (")
+            << dataTypesList->size() << ") and the number of consumer tiles ("
+            << numberOfConsumerTiles << ").";
+        return;
       }
-    } 
+    }
     for (auto consumerTile : createOp.getConsumerTiles()) {
       auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
       if (dataTypesList.has_value()) {
         auto arrayAttr = dataTypesList.value();
-        auto dataTypeValue = arrayAttr[consumerIndex].dyn_cast<mlir::TypeAttr>();;
-        auto type = dataTypeValue.getValue(); 
-        consumerDatatype = type.cast<AIEObjectFifoType>();
+        auto dataTypeValue = dyn_cast<mlir::TypeAttr>(arrayAttr[consumerIndex]);
+        auto type = dataTypeValue.getValue();
+        consumerDatatype = llvm::cast<AIEObjectFifoType>(type);
       }
-      // // Are in lists
+      // Still accepts lists
       auto consumerObjFifoSize = builder.getIntegerAttr(
-          builder.getI32Type(), createOp.size(consumerIndex));
+          builder.getI32Type(), createOp.size(consumerIndex + 1));
       std::string consumerFifoName = createOp.name().str() + "_from_memTile_" +
                                      std::to_string(consumerIndex);
       BDDimLayoutArrayAttr singletonFromStreamDims = BDDimLayoutArrayAttr::get(
