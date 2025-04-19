@@ -28,8 +28,11 @@ data_type = np.int32
 tile_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
 
 
-# JIT decoratior for IRON
+# JIT decorator for IRON
 # Decorator to compile an IRON kernel into a binary to run on the NPU.
+# Parameters:
+#     - is_placed (bool): Whether the kernel is using explicit or deferred placement API. Defaults to True.
+#     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit(is_placed=False)
 def aie2p():
     # Dataflow with ObjectFifos
@@ -51,20 +54,18 @@ def aie2p():
         of_out.release(1)
 
     # Create a worker to perform the task
-    # The Worker takes as input a task and the input arguments it should run it with.
-    # The same task can be duplicated in multiple Workers, typically with different input arguments.
+    # The arguments to a Worker are a task and then a list of arguments (inputs and outputs) for that task.
+    # The same task can be assigned to multiple Workers, typically with different input arguments.
     my_worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
 
     # To/from AIE-array runtime data movement
     # The arguments of the runtime sequence describe buffers that will be available on the host side;
-    # the body of the sequence contains tasks which describe how those buffers are moved into the AIE-array.
-    # Runtime sequence tasks are submitted to and executed by a dedicated command processor in order.
-    # Tasks which are set to 'wait' will block the dedicated command processor until a token associated
+    # the body of the sequence contains commands which describe how those buffers are moved into the AIE-array.
+    # Runtime sequence commands are submitted to and executed by a dedicated command processor in order.
+    # Commands that are set to 'wait' will block the dedicated command processor until a token associated
     # with their completion is generated.
-    # The host processor waits for the full runtime sequence to complete before reading the buffers.
-
-    # Note: The blocking instruction submitted to the dedicated command processor will be satisfied by
-    # any token, not necessarily the one emitted by the task that generated the instruction.
+    # The command processor waits for the runtime sequence to complete before returning by interrupting 
+    # the host processor.
 
     # Note: The task to start the workers currently only registers the workers as part of the Program, but
     # does not launch the Workers themselves. This means that this task can be added in the sequence at
