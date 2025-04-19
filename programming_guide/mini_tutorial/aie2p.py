@@ -64,7 +64,7 @@ def aie2p():
     # Runtime sequence commands are submitted to and executed by a dedicated command processor in order.
     # Commands that are set to 'wait' will block the dedicated command processor until a token associated
     # with their completion is generated.
-    # The command processor waits for the runtime sequence to complete before returning by interrupting 
+    # The command processor waits for the runtime sequence to complete before returning by interrupting
     # the host processor.
 
     # Note: The task to start the workers currently only registers the workers as part of the Program, but
