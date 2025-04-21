@@ -169,7 +169,9 @@ def jit(function=None, is_placed=True, use_cache=True):
                 )
 
             kernel_name = "MLIR_AIE"
-            return NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)(*args, **kwargs)
+            return NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)(
+                *args, **kwargs
+            )
 
         return wrapped_function
 

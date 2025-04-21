@@ -48,7 +48,7 @@ def vector_vector_add(config, input0, input1, output):
 
     buffer_depth = 2
 
-    @device(config['device'])
+    @device(config["device"])
     def device_body():
         tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
         tile_ty = np.ndarray[(n,), np.dtype[dtype]]
@@ -56,8 +56,8 @@ def vector_vector_add(config, input0, input1, output):
         # AIE Core Function declarations
 
         # Tile declarations
-        ShimTile = tile(config['column_id'], 0)
-        ComputeTile2 = tile(config['column_id'], 2)
+        ShimTile = tile(config["column_id"], 0)
+        ComputeTile2 = tile(config["column_id"], 2)
 
         # AIE-array data movement with object fifos
         of_in1 = object_fifo("in1", ShimTile, ComputeTile2, buffer_depth, tile_ty)
