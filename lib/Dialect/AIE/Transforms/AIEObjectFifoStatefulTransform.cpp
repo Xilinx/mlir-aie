@@ -1559,13 +1559,6 @@ struct AIEObjectFifoStatefulTransformPass
             << dataTypesList->size() << ") and the number of consumer tiles ("
             << numberOfConsumerTiles << ").";
         return;
-        if (!dataTypesList->empty() &&
-            dataTypesList->size() != numberOfConsumerTiles) {
-          createOp.emitOpError("Mismatch between the number of data types (")
-              << dataTypesList->size() << ") and the number of consumer tiles ("
-              << numberOfConsumerTiles << ").";
-          return;
-        }
       }
     }
     for (auto consumerTile : createOp.getConsumerTiles()) {
@@ -1687,25 +1680,27 @@ struct AIEObjectFifoStatefulTransformPass
       auto producerTile = createOp.getProducerTileOp();
       auto consumerTiles = createOp.getConsumerTiles();
 
-      // Check if producerTile is ShimTile and there is a list of consumerTiles
       // Scope for implicit link
-      if (producerTile.isShimTile() && consumerTiles.size() > 1) {
-        // Check if all consumerTiles are ComputeTiles
-        for (auto consumerTile : consumerTiles) {
-          auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
-          const auto &targetModel = getTargetModel(consumerTileOp);
-          if (!targetModel.isCoreTile(consumerTileOp.getCol(),
-                                      consumerTileOp.getRow())) {
-            createOp.emitOpError("All consumer tiles must be ComputeTiles");
-            return;
+      // Check if producerTile is ShimTile and there is a list of consumerTiles
+      // : distribute Check if offsets are not equal to 0 : if not broadcast //
+      // Should this be equal also? for calling implicit_link function
+      if (auto offsets = createOp.getOffsets()) {
+        bool allOffsetsZero = true;
+        if (!offsets->empty() &&
+            offsets->getValue().size() == consumerTiles.size()) {
+          for (auto offset : createOp.getOffsets().value()) {
+            if (auto intAttr = dyn_cast<IntegerAttr>(offset)) {
+              if (intAttr && intAttr.getInt() != 0) {
+                allOffsetsZero = false;
+                break;
+              }
+            }
           }
         }
-        // Check if Offsets are available, then it is eligible
-        // for calling implicit_link function
-        if (!createOp.getOffsets()->empty()) {
-          // Call implicit_link function here
-          if (createOp.getConsumerTiles().size() > 1)
-            builder.setInsertionPointAfter(createOp);
+        // Call implicit_link function here
+        if (!allOffsetsZero && producerTile.isShimTile() &&
+            consumerTiles.size() > 1) {
+          builder.setInsertionPointAfter(createOp);
           implicit_link(ctx, device, createOp, builder, dmaAnalysis,
                         createdFifoOps, fifosNeedToRemove);
         }
@@ -1716,7 +1711,7 @@ struct AIEObjectFifoStatefulTransformPass
       createFifoOps.insert(createFifoOps.end(), createdFifoOps.begin(),
                            createdFifoOps.end());
     }
-    // Remove the objectFifos which are replaced with implciit link
+    // Remove the objectFifos which are replaced with implicit link
     if (!fifosNeedToRemove.empty()) {
       for (auto fifo : fifosNeedToRemove) {
         auto it = std::find(createFifoOps.begin(), createFifoOps.end(), fifo);
@@ -1725,6 +1720,9 @@ struct AIEObjectFifoStatefulTransformPass
         }
       }
     }
+    // Ensure vectors are cleared to avoid stale data in subsequent iterations
+    createdFifoOps.clear();
+    fifosNeedToRemove.clear();
 
     verifyObjectFifoLinks(device);
     //===------------------------------------------------------------------===//
