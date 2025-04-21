@@ -18,7 +18,7 @@ from aie.iron.controlflow import range_
 
 
 @iron.jit(is_placed=False)
-def vector_vector_add(device, input0, input1, output):
+def vector_vector_add(config, input0, input1, output):
     if input0.shape != input1.shape:
         raise ValueError(
             f"Input shapes are not the equal ({input0.shape} != {input1.shape})."
@@ -81,7 +81,7 @@ def vector_vector_add(device, input0, input1, output):
         rt.drain(of_out.cons(), C, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(device, rt).resolve_program(SequentialPlacer())
+    return Program(config['device'], rt).resolve_program(SequentialPlacer())
 
 
 def main():
@@ -118,7 +118,7 @@ def main():
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    vector_vector_add(device_map[args.device], input0, input1, output)
+    vector_vector_add({'device': device_map[args.device]}, input0, input1, output)
 
     # Check the correctness of the result
     e = np.equal(input0.numpy() + input1.numpy(), output.numpy())
