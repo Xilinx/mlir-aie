@@ -81,7 +81,7 @@ def vector_vector_add(config, input0, input1, output):
         rt.drain(of_out.cons(), C, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(config['device'], rt).resolve_program(SequentialPlacer())
+    return Program(config["device"], rt).resolve_program(SequentialPlacer())
 
 
 def main():
@@ -112,13 +112,17 @@ def main():
 
     # Construct two input random tensors and an output zeroed tensor
     # The three tensor are in memory accessible to the NPU
-    input0 = iron.randint(0, 100, (args.num_elements,), dtype=np.int32, device=args.device)
-    input1 = iron.randint(0, 100, (args.num_elements,), dtype=np.int32, device=args.device)
+    input0 = iron.randint(
+        0, 100, (args.num_elements,), dtype=np.int32, device=args.device
+    )
+    input1 = iron.randint(
+        0, 100, (args.num_elements,), dtype=np.int32, device=args.device
+    )
     output = iron.zeros_like(input0)
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    vector_vector_add({'device': device_map[args.device]}, input0, input1, output)
+    vector_vector_add({"device": device_map[args.device]}, input0, input1, output)
 
     # Check the correctness of the result
     e = np.equal(input0.numpy() + input1.numpy(), output.numpy())
