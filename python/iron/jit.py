@@ -81,7 +81,7 @@ class NPUKernel:
         self.__insts_buffer_bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
     # Blocking call.
-    def __call__(self, *args):
+    def __call__(self, config, *args):
         """
         Allows the kernel to be called as a function with the provided arguments.
 
@@ -101,7 +101,7 @@ class NPUKernel:
         h = self.__kernel(opcode, self.__insts_buffer_bo, self.__n_insts, *kernel_args)
         r = h.wait()
         if r != xrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
-            raise Exception(f"Kernel returned {r}")
+            raise NPUKernel_Error(f"Kernel returned {r}")
 
     def __del__(self):
         """
@@ -169,7 +169,7 @@ def jit(function=None, is_placed=True, use_cache=True):
                 )
 
             kernel_name = "MLIR_AIE"
-            return NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)
+            return NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)(*args, **kwargs)
 
         return wrapped_function
 
