@@ -128,55 +128,51 @@ def jit(function=None, is_placed=True, use_cache=True):
     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
     """
 
-    def decorator(fn):
+    if function is None:
+        return functools.partial(jit, is_placed=is_placed, use_cache=use_cache)
 
-        @functools.wraps(fn)
-        def wrapped_function(*args, **kwargs):
-            if is_placed:
-                with mlir_mod_ctx() as ctx:
-                    fn(*args, **kwargs)
-                    assert (
-                        ctx.module.operation.verify()
-                    ), f"Verification failed for '{fn.__name__}'"
-                    mlir_module = ctx.module
-            else:
-                mlir_module = fn(*args, **kwargs)
+    @functools.wraps(function)
+    def decorator(*args, **kwargs):
+        if is_placed:
+            with mlir_mod_ctx() as ctx:
+                function(*args, **kwargs)
+                assert (
+                    ctx.module.operation.verify()
+                ), f"Verification failed for '{function.__name__}'"
+                mlir_module = ctx.module
+        else:
+            mlir_module = function(*args, **kwargs)
 
-            # Hash of the IR string
-            module_hash = hash_module(mlir_module)
-            kernel_dir = os.path.join(IRON_CACHE_DIR, f"{module_hash}")
-            mlir_path = os.path.join(kernel_dir, "aie.mlir")
+        # Hash of the IR string
+        module_hash = hash_module(mlir_module)
+        kernel_dir = os.path.join(IRON_CACHE_DIR, f"{module_hash}")
+        mlir_path = os.path.join(kernel_dir, "aie.mlir")
 
-            # Ensure cache directory exists
-            os.makedirs(kernel_dir, exist_ok=True)
+        # Ensure cache directory exists
+        os.makedirs(kernel_dir, exist_ok=True)
 
-            # Write MLIR to file if not already cached
-            inst_filename = "insts.bin"
-            xclbin_filename = "final.xclbin"
-            xclbin_path = os.path.join(kernel_dir, xclbin_filename)
-            inst_path = os.path.join(kernel_dir, inst_filename)
+        # Write MLIR to file if not already cached
+        inst_filename = "insts.bin"
+        xclbin_filename = "final.xclbin"
+        xclbin_path = os.path.join(kernel_dir, xclbin_filename)
+        inst_path = os.path.join(kernel_dir, inst_filename)
 
-            xclbin_exists = os.path.exists(xclbin_path)
-            inst_exists = os.path.exists(inst_path)
+        xclbin_exists = os.path.exists(xclbin_path)
+        inst_exists = os.path.exists(inst_path)
 
-            if not use_cache or not xclbin_exists or not inst_exists:
-                with open(mlir_path, "w", encoding="utf-8") as f:
-                    print(mlir_module, file=f)
-                compile_mlir_to_binary(
-                    mlir_path=mlir_path,
-                    inst_filename=inst_filename,
-                    xclbin_filename=xclbin_filename,
-                )
-
-            kernel_name = "MLIR_AIE"
-            return NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)(
-                *args, **kwargs
+        if not use_cache or not xclbin_exists or not inst_exists:
+            with open(mlir_path, "w", encoding="utf-8") as f:
+                print(mlir_module, file=f)
+            compile_mlir_to_binary(
+                mlir_path=mlir_path,
+                inst_filename=inst_filename,
+                xclbin_filename=xclbin_filename,
             )
 
-        return wrapped_function
-
-    if function:
-        return decorator(function)
+        kernel_name = "MLIR_AIE"
+        return NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)(
+            *args, **kwargs
+        )
 
     return decorator
 
