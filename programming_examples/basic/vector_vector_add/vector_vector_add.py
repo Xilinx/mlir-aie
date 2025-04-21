@@ -112,8 +112,8 @@ def main():
 
     # Construct two input random tensors and an output zeroed tensor
     # The three tensor are in memory accessible to the NPU
-    input0 = iron.rand((args.num_elements,), dtype=np.int32, device=args.device)
-    input1 = iron.rand((args.num_elements,), dtype=np.int32, device=args.device)
+    input0 = iron.randint(0, 100, (args.num_elements,), dtype=np.int32, device=args.device)
+    input1 = iron.randint(0, 100, (args.num_elements,), dtype=np.int32, device=args.device)
     output = iron.zeros_like(input0)
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
