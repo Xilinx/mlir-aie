@@ -169,4 +169,3 @@ jobs:
           removeArtifacts: false
           allowUpdates: true
           replacesArtifacts: true
-          makeLatest: true
