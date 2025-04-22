@@ -308,169 +308,162 @@ def my_matmul(
                     )
 
                 # max number of rows tiles to submit each BD for A and B at a time
-                # Note: each BD represents one row tile of A, i.e., m*K
-                max_rows = 5
+                # Each BD represents:
+                # 1) one row tile for A, i.e., m * K,
+                # 2) one col tile for B, i.e., n * K,
+                # 3) one out tile for C, i.e., m * n
+                max_BDs_per_A_B = 5
 
-                # total row tiles for computation
-                total_row_tiles = M_div_m
+                # Number of total row tiles
+                total_row_tiles = M // m
 
-                # Initial row tiles in case where total tiles are less than max_rows
-                initial_row_tiles = (
-                    total_row_tiles if total_row_tiles < max_rows else max_rows
-                )
+                # Number of total col tiles
+                total_col_tiles = N // n
 
-                # First, submit the initial row tiles for each A and B (up to max_rows BDs)
-                for i in range(initial_row_tiles):
+                # keep track of the row and col indices
+                # for A and B
+                row_index = 0
+                col_index = 0
 
-                    A_row_offset = i * m * K
+                # counter for initial BD assignment
+                initial_BD_cnt = 0
 
-                    npu_dma_memcpy_nd(
-                        metadata=inA,
-                        bd_id=2 * i + 1,
-                        mem=A,
-                        offsets=[0, 0, 0, A_row_offset],
-                        sizes=[N // n, K // k, m, k],
-                        strides=[0, k, K, 1],
-                    )
+                # flag to indicate when loop should break (see below)
+                should_break = False
 
-                    if not b_col_maj:
-                        B_sizes = [N // n, K // k, k, n]
-                        B_strides = [n, k * N, N, 1]
-                    else:
-                        B_sizes = [N // n, K // k, n, k]
-                        B_strides = [n * K, k, K, 1]
-
-                    npu_dma_memcpy_nd(
-                        metadata=inB,
-                        bd_id=2 * i + 2,
-                        mem=B,
-                        sizes=B_sizes,
-                        strides=B_strides,
-                    )
-
-                # Second, submit each row for C and then reconfigure BDs for A and B
-                # when you know that each row is done
-
-                # Remaining A row tiles that need BD reconfiguration
-                remaining_A_row_tiles = total_row_tiles - max_rows
-
-                # modulo counter for A and B, BD IDs
-                mod_cnt = 0
-
-                # specific A row, start from the max_rows,
-                # since initially we submitted max_rows
-                current_A_row = max_rows
-
+                # First, submit the initial BDs for each A and B
                 for i in range(total_row_tiles):
 
-                    C_row_offset = i * m * N
+                    # if col tiles have finished,
+                    # start submitting the next row (thus col_index = 0)
+                    col_index = 0
 
-                    npu_dma_memcpy_nd(
-                        metadata=outC,
-                        bd_id=0,
-                        mem=C,
-                        offsets=[0, 0, 0, C_row_offset],
-                        sizes=[1, N // n, m, n],
-                        strides=[0, n, N, 1],
-                    )
+                    for j in range(total_col_tiles):
 
-                    # Wait the first time for C to finish,
-                    # so we know that one row of A has also finished.
-                    # Then we can reconfigure the specific BD for A and B
-                    if i > 0 and remaining_A_row_tiles > 0:
-
-                        A_row_offset = current_A_row * m * K
+                        A_row_offset = row_index * m * K
 
                         npu_dma_memcpy_nd(
                             metadata=inA,
-                            bd_id=2 * mod_cnt + 1,
+                            bd_id=2 * initial_BD_cnt + 1,
                             mem=A,
                             offsets=[0, 0, 0, A_row_offset],
-                            sizes=[N // n, K // k, m, k],
+                            sizes=[1, K // k, m, k],
                             strides=[0, k, K, 1],
                         )
 
                         if not b_col_maj:
-                            B_sizes = [N // n, K // k, k, n]
-                            B_strides = [n, k * N, N, 1]
+                            B_col_offset = col_index * n
+                            B_sizes = [1, K // k, k, n]
+                            B_strides = [0, k * N, N, 1]
                         else:
-                            B_sizes = [N // n, K // k, n, k]
-                            B_strides = [n * K, k, K, 1]
+                            B_col_offset = col_index * K * n
+                            B_sizes = [1, K // k, n, k]
+                            B_strides = [0, k, K, 1]
 
                         npu_dma_memcpy_nd(
                             metadata=inB,
-                            bd_id=2 * mod_cnt + 2,
+                            bd_id=2 * initial_BD_cnt + 2,
                             mem=B,
+                            offsets=[0, 0, 0, B_col_offset],
                             sizes=B_sizes,
                             strides=B_strides,
                         )
 
-                        # increase A row, modulo counter for BD IDs
-                        # and decrease the remaining row tiles for A
-                        current_A_row += 1
-                        mod_cnt = (mod_cnt + 1) % max_rows
-                        remaining_A_row_tiles -= 1
+                        # break innermost loop when max BDs reached
+                        # or total tiles reached
+                        if (initial_BD_cnt == max_BDs_per_A_B - 1) or (
+                            initial_BD_cnt == total_row_tiles * total_col_tiles - 1
+                        ):
+                            should_break = True
+                            break
 
-                    # syncronize for each row of C
-                    dma_wait(outC)
+                        col_index += 1
+                        initial_BD_cnt += 1
 
-                # # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
-                # rows_per_block = 5
-                # for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
+                    # break also outermost loop when max BDs reached
+                    if should_break:
+                        break
 
-                #     # This is for the last block, when it's less than 5
-                #     num_tile_rows = min(
-                #         [rows_per_block, M_div_m - tile_row_block * rows_per_block]
-                #     )
+                    row_index += 1
 
-                #     # First, submit up to 5 BDs (num_tile_rows) for each A and B
-                #     for tile_row in range(num_tile_rows):
+                # The two loops above will finish either by break or by very low number of row and col tiles.
+                # In both cases, the row_index and col_index variables store the already processed indices.
+                # We increase the indices to point to the next row and col tiles.
 
-                #         A_row_offset = (
-                #             (tile_row_block * rows_per_block + tile_row) * m * K
-                #         )
+                # Always increase the col index to point to the next tile
+                col_index += 1
 
-                #         npu_dma_memcpy_nd(
-                #             metadata=inA,
-                #             bd_id=2 * tile_row + 1,
-                #             mem=A,
-                #             offsets=[0, 0, 0, A_row_offset],
-                #             sizes=[N // n, K // k, m, k],
-                #             strides=[0, k, K, 1],
-                #         )
+                # Increase the row index in case we reached all the col tiles
+                if col_index == total_col_tiles:
+                    col_index = 0
+                    row_index += 1
 
-                #         if not b_col_maj:
-                #             B_sizes = [N // n, K // k, k, n]
-                #             B_strides = [n, k * N, N, 1]
-                #         else:
-                #             B_sizes = [N // n, K // k, n, k]
-                #             B_strides = [n * K, k, K, 1]
+                # modulo counter for A and B, BD IDs
+                mod_BD_ID_cnt = 0
 
-                #         npu_dma_memcpy_nd(
-                #             metadata=inB,
-                #             bd_id=2 * tile_row + 2,
-                #             mem=B,
-                #             sizes=B_sizes,
-                #             strides=B_strides,
-                #         )
+                # Second, submit each (m*n) tile for C and then reconfigure BDs for A and B
+                # when you know that each tile is done
+                for i in range(total_row_tiles):
+                    for j in range(total_col_tiles):
 
-                #     # Second, submit a BD for each row of C and wait
-                #     # max 11 BDs used at a time
-                #     for tile_row in range(num_tile_rows):
+                        # i, j for C offsets
+                        # row_index and col_index are used for A and B reconfiguration only
+                        C_row_offset = i * m * N
+                        C_col_offset = j * n
 
-                #         C_row_offset = (
-                #             (tile_row_block * rows_per_block + tile_row) * m * N
-                #         )
+                        C_offset = C_row_offset + C_col_offset
 
-                #         npu_dma_memcpy_nd(
-                #             metadata=outC,
-                #             bd_id=0,
-                #             mem=C,
-                #             offsets=[0, 0, 0, C_row_offset],
-                #             sizes=[1, N // n, m, n],
-                #             strides=[0, n, N, 1],
-                #         )
-                #         dma_wait(outC)
+                        npu_dma_memcpy_nd(
+                            metadata=outC,
+                            bd_id=0,
+                            mem=C,
+                            offsets=[0, 0, 0, C_offset],
+                            sizes=[1, 1, m, n],
+                            strides=[0, 0, N, 1],
+                        )
+
+                        # There are A and B need to be reconfigured when we haven't finished processing the rows
+                        # exclude the first time only, i.e., i=0, j=0, so we know we can reconfigure
+                        if (i > 0 or j > 0) and (row_index < total_row_tiles):
+
+                            A_row_offset = row_index * m * K
+
+                            npu_dma_memcpy_nd(
+                                metadata=inA,
+                                bd_id=2 * mod_BD_ID_cnt + 1,
+                                mem=A,
+                                offsets=[0, 0, 0, A_row_offset],
+                                sizes=[1, K // k, m, k],
+                                strides=[0, k, K, 1],
+                            )
+
+                            if not b_col_maj:
+                                B_col_offset = col_index * n
+                                B_sizes = [1, K // k, k, n]
+                                B_strides = [0, k * N, N, 1]
+                            else:
+                                B_col_offset = col_index * K * n
+                                B_sizes = [1, K // k, n, k]
+                                B_strides = [0, k, K, 1]
+
+                            npu_dma_memcpy_nd(
+                                metadata=inB,
+                                bd_id=2 * mod_BD_ID_cnt + 2,
+                                mem=B,
+                                offsets=[0, 0, 0, B_col_offset],
+                                sizes=B_sizes,
+                                strides=B_strides,
+                            )
+
+                            mod_BD_ID_cnt = (mod_BD_ID_cnt + 1) % max_BDs_per_A_B
+
+                            col_index += 1
+                            if col_index == total_col_tiles:
+                                col_index = 0
+                                row_index += 1
+
+                        # syncronize for each (m*n) C tile
+                        dma_wait(outC)
 
     print(ctx.module)
 

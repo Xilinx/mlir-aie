@@ -11,12 +11,13 @@
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=single_core
 # targetname=single_core
-targetname=single_core_BD_expansion
+# targetname=single_core_BD_expansion
+targetname=single_core_BD_expansion_m_n
 
 # M, K, N: final GEMM dimensions
-M?=640
-K?=32
-N?=32
+M?=96
+K?=1024
+N?=224
 
 # m, k, n: single AIE core GEMM dimensions
 m?=32
