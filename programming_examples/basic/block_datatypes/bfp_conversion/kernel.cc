@@ -8,12 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef _CLANGD
-#define __AIENGINE__ 2
-#define __AIE_ARCH__ 21
-#define __AIEARCH__ 21
-#endif
-
 #include <aie_api/aie.hpp>
 
 extern "C" {

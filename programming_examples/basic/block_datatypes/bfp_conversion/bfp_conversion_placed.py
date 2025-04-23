@@ -1,4 +1,4 @@
-# matrix_multiply_bfp16.py -*- Python -*-
+# bfp_conversion_placed.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -19,7 +19,7 @@ from aie.extras.context import mlir_mod_ctx
 # Note that bfp16's smallest supported operation is a matrix multiplication of two 8x8 matrices. This corresponds to 8 bfps of 8 elements each.
 
 
-def matrix_multiply_bfp16():
+def bfp_conversion():
     # We are just doing one operation in total => tensor and tile sizes are equal
     N_in = 64
     N_out = 8
@@ -122,7 +122,7 @@ def matrix_multiply_bfp16():
 
 
 with mlir_mod_ctx() as ctx:
-    matrix_multiply_bfp16()
+    bfp_conversion()
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)

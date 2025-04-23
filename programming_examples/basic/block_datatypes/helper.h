@@ -203,7 +203,7 @@ inline void bfp16ebs8ToFloat(int size, uint8_t *array, float *returnArray,
 }
 
 // Helper function to perform a matrix multiplication of two square matrices.
-// Only meant for verification purposes
+// All three matrices should be of size size x size.
 template <typename T>
 inline void matrixMultiply(T *aIn, T *bIn, T *cOut, int size) {
   for (int i = 0; i < size * size; ++i) {

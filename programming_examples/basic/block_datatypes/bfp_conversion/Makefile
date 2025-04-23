@@ -12,13 +12,13 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../../makefile-common
 
-targetname = matrix_multiply
+targetname = bfp_conversion
 use_chess?=0
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 col = 0
 
 aie_py_src=${targetname}.py
-use_placed?=1
+use_placed?=0
 
 ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
@@ -32,7 +32,7 @@ ifeq ($(devicename),npu2)
 ifeq ($(use_chess),1)
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -c $< -o ${@F}
 else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ -w -O3 -std=c++20 --target=aie2p-none-unknown-elf -g0 -I ${AIEOPT_DIR}/include -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
 endif
 else
 	echo "Device type not supported in this example"
