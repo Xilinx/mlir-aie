@@ -9,12 +9,15 @@
 ##===----------------------------------------------------------------------===##
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=whole_array
-targetname=whole_array_optimized
+# targetname=whole_array_optimized
+# targetname=whole_array_optimized_BD_expansion_m_n
+targetname=whole_array_optimized_BD_expansion
 
 
-M?=4096
-K?=4096
-N?=4096
+# M, K, N: final GEMM dimensions
+M?=8192
+K?=8192
+N?=512
 
 # m, k, n: single AIE core GEMM dimensions
 m?=64

@@ -15,9 +15,9 @@ subdir=single_core
 targetname=single_core_BD_expansion_m_n
 
 # M, K, N: final GEMM dimensions
-M?=96
+M?=128
 K?=1024
-N?=224
+N?=32
 
 # m, k, n: single AIE core GEMM dimensions
 m?=32
@@ -28,7 +28,7 @@ n?=32
 dtype_in?=i8
 dtype_out?=i32
 
-b_col_maj?=0
+b_col_maj?=1
 
 # iterations
 warmup=5

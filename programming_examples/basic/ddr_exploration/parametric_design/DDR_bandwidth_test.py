@@ -37,7 +37,7 @@ def my_passthrough(dev, m, M, k, K, n, N, npu_cols, data_layout_DDR):
     with mlir_mod_ctx() as ctx:
 
         if dev == "npu":
-            dev_ty = AIEDevice.npu1
+            dev_ty = AIEDevice.npu1_4col
         elif dev == "npu2":
             dev_ty = AIEDevice.npu2
         else:

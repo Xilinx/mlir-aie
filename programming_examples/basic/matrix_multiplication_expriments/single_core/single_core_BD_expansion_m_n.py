@@ -322,8 +322,8 @@ def my_matmul(
 
                 # keep track of the row and col indices
                 # for A and B
-                row_index = 0
-                col_index = 0
+                A_row_index = 0
+                B_col_index = 0
 
                 # counter for initial BD assignment
                 initial_BD_cnt = 0
@@ -335,12 +335,12 @@ def my_matmul(
                 for i in range(total_row_tiles):
 
                     # if col tiles have finished,
-                    # start submitting the next row (thus col_index = 0)
-                    col_index = 0
+                    # start submitting the next row (thus B_col_index = 0)
+                    B_col_index = 0
 
                     for j in range(total_col_tiles):
 
-                        A_row_offset = row_index * m * K
+                        A_row_offset = A_row_index * m * K
 
                         npu_dma_memcpy_nd(
                             metadata=inA,
@@ -352,11 +352,11 @@ def my_matmul(
                         )
 
                         if not b_col_maj:
-                            B_col_offset = col_index * n
+                            B_col_offset = B_col_index * n
                             B_sizes = [1, K // k, k, n]
                             B_strides = [0, k * N, N, 1]
                         else:
-                            B_col_offset = col_index * K * n
+                            B_col_offset = B_col_index * K * n
                             B_sizes = [1, K // k, n, k]
                             B_strides = [0, k, K, 1]
 
@@ -377,26 +377,26 @@ def my_matmul(
                             should_break = True
                             break
 
-                        col_index += 1
+                        B_col_index += 1
                         initial_BD_cnt += 1
 
                     # break also outermost loop when max BDs reached
                     if should_break:
                         break
 
-                    row_index += 1
+                    A_row_index += 1
 
                 # The two loops above will finish either by break or by very low number of row and col tiles.
-                # In both cases, the row_index and col_index variables store the already processed indices.
+                # In both cases, the A_row_index and B_col_index variables store the already processed indices.
                 # We increase the indices to point to the next row and col tiles.
 
                 # Always increase the col index to point to the next tile
-                col_index += 1
+                B_col_index += 1
 
                 # Increase the row index in case we reached all the col tiles
-                if col_index == total_col_tiles:
-                    col_index = 0
-                    row_index += 1
+                if B_col_index == total_col_tiles:
+                    B_col_index = 0
+                    A_row_index += 1
 
                 # modulo counter for A and B, BD IDs
                 mod_BD_ID_cnt = 0
@@ -407,7 +407,7 @@ def my_matmul(
                     for j in range(total_col_tiles):
 
                         # i, j for C offsets
-                        # row_index and col_index are used for A and B reconfiguration only
+                        # A_row_index and B_col_index are used for A and B reconfiguration only
                         C_row_offset = i * m * N
                         C_col_offset = j * n
 
@@ -424,9 +424,9 @@ def my_matmul(
 
                         # There are A and B need to be reconfigured when we haven't finished processing the rows
                         # exclude the first time only, i.e., i=0, j=0, so we know we can reconfigure
-                        if (i > 0 or j > 0) and (row_index < total_row_tiles):
+                        if (i > 0 or j > 0) and (A_row_index < total_row_tiles):
 
-                            A_row_offset = row_index * m * K
+                            A_row_offset = A_row_index * m * K
 
                             npu_dma_memcpy_nd(
                                 metadata=inA,
@@ -438,11 +438,11 @@ def my_matmul(
                             )
 
                             if not b_col_maj:
-                                B_col_offset = col_index * n
+                                B_col_offset = B_col_index * n
                                 B_sizes = [1, K // k, k, n]
                                 B_strides = [0, k * N, N, 1]
                             else:
-                                B_col_offset = col_index * K * n
+                                B_col_offset = B_col_index * K * n
                                 B_sizes = [1, K // k, n, k]
                                 B_strides = [0, k, K, 1]
 
@@ -457,10 +457,10 @@ def my_matmul(
 
                             mod_BD_ID_cnt = (mod_BD_ID_cnt + 1) % max_BDs_per_A_B
 
-                            col_index += 1
-                            if col_index == total_col_tiles:
-                                col_index = 0
-                                row_index += 1
+                            B_col_index += 1
+                            if B_col_index == total_col_tiles:
+                                B_col_index = 0
+                                A_row_index += 1
 
                         # syncronize for each (m*n) C tile
                         dma_wait(outC)
