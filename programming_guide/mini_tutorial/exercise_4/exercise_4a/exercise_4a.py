@@ -6,6 +6,7 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 
+import sys
 import numpy as np
 
 from aie.iron import Program, Runtime, Worker, ObjectFifo

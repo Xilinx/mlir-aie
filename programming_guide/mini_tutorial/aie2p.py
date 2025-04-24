@@ -16,10 +16,6 @@ from aie.iron.controlflow import range_
 
 import aie.iron as iron
 
-# The device on which the Program will be executed. Should match available hardware architecture.
-# You can see a list of available devices in python/iron/device/__init__.py
-dev = NPU2()
-
 # Define tensor types
 # These represent the size and datatype of the data tensors on which we do compute or move
 # with the ObjectFifo primitive.
@@ -34,7 +30,7 @@ tile_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
 #     - is_placed (bool): Whether the kernel is using explicit or deferred placement API. Defaults to True.
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit(is_placed=False)
-def aie2p():
+def aie2p(input0, output):
     # Dataflow with ObjectFifos
     # ObjectFifos represent a dataflow connection between endpoints in the AIE array.
     # The IRON placement step relies on ObjectFifoHandles to infer the endpoints of ObjectFifos.
@@ -77,7 +73,7 @@ def aie2p():
         rt.drain(of_out.cons(), c_out, wait=True)
 
     # Create the program from the device type and runtime
-    my_program = Program(dev, rt)
+    my_program = Program(iron.get_current_device(), rt)
 
     # Place components (assign them resources on the device) and generate an MLIR module
     # The placer will use available information, such as the ObjectFifoHandles, to place the components.
@@ -94,6 +90,10 @@ def main():
     # The two tensors are in memory accessible to the NPU
     input0 = iron.arange(num_elements, dtype=data_type, device="npu")
     output = iron.zeros_like(input0)
+
+    # The device on which the Program will be executed. Should match available hardware architecture.
+    # You can see a list of available devices in python/iron/device/__init__.py
+    iron.set_current_device(NPU2())
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
@@ -114,11 +114,11 @@ def main():
     # Otherwise, exit with a failure code
     if not errors:
         print("\nPASS!\n")
-        exit(0)
+        sys.exit(0)
     else:
         print("\nError count: ", errors)
         print("\nfailed.\n")
-        exit(1)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

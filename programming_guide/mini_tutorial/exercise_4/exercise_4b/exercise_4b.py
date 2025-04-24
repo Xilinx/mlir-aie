@@ -8,6 +8,7 @@
 
 import os
 import glob
+import sys
 import numpy as np
 
 from aie.iron import Program, Runtime, Worker, ObjectFifo
