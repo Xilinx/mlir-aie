@@ -29,10 +29,10 @@ else
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 endif
 
-ifeq ($(vectorized), true)
-VECTORIZED_FLAGS := -DINT8_ACT
+ifeq ($(vectorized),true)
+VECTORIZED_FLAGS = -DINT8_ACT
 else
-VECTORIZED_FLAGS := -DINT8_ACT -DINT8_ACT
+VECTORIZED_FLAGS = -DSCALAR -DINT8_ACT
 endif
 
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
