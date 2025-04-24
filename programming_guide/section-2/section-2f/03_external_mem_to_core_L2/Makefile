@@ -10,6 +10,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../../../programming_examples/makefile-common
 
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = ext_to_core_L2
 
 aie_py_src=${targetname}.py
@@ -21,7 +22,7 @@ endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< > $@
+	python3 $< ${devicename} > $@
 
 .PHONY: inst/insts.bin
 inst/insts.bin: ${srcdir}/${aie_py_src}
