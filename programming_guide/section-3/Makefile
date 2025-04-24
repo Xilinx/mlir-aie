@@ -17,13 +17,13 @@ devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
 build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
-	python3 $< -d ${devicename} > $@
+	python3 $< ${devicename} > $@
 	
 build/scale.o: ${srcdir}/vector_scalar_mul.cc
 	mkdir -p ${@D}
 ifeq ($(devicenmae),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
-else ifeq($(devicename),npu2)
+else ifeq ($(devicename),npu2)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
 else
 	echo "Device type not supported"
