@@ -44,7 +44,6 @@ def join_L2():
         elem_out = of_out.acquire(1)
         of_out.release(1)
 
-
     # Create a worker to perform the task
     workers = []
     for worker in range(n_workers):
