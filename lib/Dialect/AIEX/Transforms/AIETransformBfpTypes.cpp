@@ -1,5 +1,4 @@
-//===- AIETransformBfp16Type.cpp --------------------------------------*-
-// C++ -*-===//
+//===- AIETransformBfpTypes.cpp --------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -25,7 +24,7 @@
 #include "llvm/IR/Type.h"
 #include "llvm/Support/raw_ostream.h"
 
-#define DEBUG_TYPE "transform-bfp16-type"
+#define DEBUG_TYPE "transform-bfp-types"
 
 using namespace mlir;
 using namespace xilinx;
@@ -34,30 +33,37 @@ using namespace xilinx::AIEX;
 
 using namespace mlir;
 
-class Bfp16ToI8TypeConverter : public mlir::TypeConverter {
+class BfpToIntegerConverter : public mlir::TypeConverter {
 public:
-  Bfp16ToI8TypeConverter(const AIETargetModel &targetModel) {
+  BfpToIntegerConverter(const AIETargetModel &targetModel) {
     addTypeAttributeConversion([&](Type type, Attribute attr) {
-      return AttributeConversionResult(TypeAttr::get(convertType(type)));
+      auto newType = convertType(type);
+      if (!newType) {
+        llvm::errs() << "Failed to convert type: " << type << "\n";
+        return AttributeConversionResult::abort();
+      }
+      return AttributeConversionResult(TypeAttr::get(newType));
     });
 
     // Leave other types unchanged
     // Note that the most recently added conversions will be invoked first and
     // therefore this is just a default option that has to be put first
-    addConversion([](Type type) { return type; });
+    addConversion([](Type type) -> std::optional<Type> { return type; });
 
     // Add a conversion for bfp16Type to an integer type
-    addConversion([&](bfp16Type bfp16Type) -> IntegerType {
+    addConversion([&](bfp16Type bfp16Type) -> std::optional<IntegerType> {
       if (targetModel.getBfpMantissaSizeInBits() == 0) {
-        llvm::errs()
-            << "Block Floating Point is unsupported in the specified model\n";
-        return mlir::IntegerType::get(bfp16Type.getContext(), 0);
+        llvm::errs() << "Bfp is unsupported in the specified model\n";
+        // Note that returning a nullopt here will stop the conversion while
+        // returning a std::nullopt will allow the converter to keep trying the
+        // remaining conversions (thus reaching the default one)
+        return nullptr;
       }
 
       if (!targetModel.checkBfpBlockSize(bfp16Type.getBlockSize())) {
         llvm::errs() << "Block size " << bfp16Type.getBlockSize()
                      << " is not supported in the specified model\n";
-        return mlir::IntegerType::get(bfp16Type.getContext(), 0);
+        return nullptr;
       }
 
       return mlir::IntegerType::get(
@@ -67,35 +73,42 @@ public:
     });
 
     // Add a conversion for MemRefType
-    addConversion([&](MemRefType memRefType) {
+    addConversion([&](MemRefType memRefType) -> std::optional<MemRefType> {
       auto newElementType = convertType(memRefType.getElementType());
+      if (!newElementType) {
+        llvm::errs() << "Failed to convert memref element type\n";
+        return nullptr;
+      }
       return MemRefType::get(memRefType.getShape(), newElementType,
                              memRefType.getLayout(),
                              memRefType.getMemorySpace());
     });
 
     // Add a conversion for ObjectFifoType
-    addConversion([&](AIEObjectFifoType objectFifoType) {
+    addConversion([&](AIEObjectFifoType objectFifoType)
+                      -> std::optional<AIEObjectFifoType> {
       auto newElementType = convertType(objectFifoType.getElementType());
       if (!newElementType) {
         llvm::errs() << "Failed to convert ObjectFifoType element type\n";
-        return objectFifoType;
+        return nullptr;
       }
 
       if (auto newMemRef = dyn_cast<MemRefType>(newElementType))
         return AIEObjectFifoType::get(objectFifoType.getContext(), newMemRef);
 
-      llvm::errs() << "ObjectFifoType element type is not a MemRefType\n";
-      return objectFifoType;
+      llvm::errs()
+          << "ObjectFifoType converted element type is not a MemRefType\n";
+      return nullptr;
     });
 
     // Add a conversion for ObjectFifoSubviewType
-    addConversion([&](AIEObjectFifoSubviewType objectFifoSubviewType) {
+    addConversion([&](AIEObjectFifoSubviewType objectFifoSubviewType)
+                      -> std::optional<AIEObjectFifoSubviewType> {
       auto newElementType = convertType(objectFifoSubviewType.getElementType());
       if (!newElementType) {
         llvm::errs()
             << "Failed to convert ObjectFifoSubviewType element type\n";
-        return objectFifoSubviewType;
+        return nullptr;
       }
 
       if (auto newMemRef = dyn_cast<MemRefType>(newElementType))
@@ -104,34 +117,37 @@ public:
 
       llvm::errs()
           << "ObjectFifoSubviewType element type is not a MemRefType\n";
-      return objectFifoSubviewType;
+      return nullptr;
     });
 
     // Add a conversion for FunctionType
-    addConversion([&](FunctionType funcType) {
+    addConversion([&](FunctionType funcType) -> std::optional<FunctionType> {
       llvm::SmallVector<Type> newInputTypes;
       auto check = convertTypes(funcType.getInputs(), newInputTypes);
       if (check.failed()) {
         llvm::errs() << "Failed to convert function input types\n";
-        return funcType;
+        return nullptr;
       }
 
       llvm::SmallVector<Type> newOutputTypes;
       check = convertTypes(funcType.getResults(), newOutputTypes);
       if (check.failed()) {
         llvm::errs() << "Failed to convert function output types\n";
-        return funcType;
+        return nullptr;
       }
 
       return FunctionType::get(funcType.getContext(), newInputTypes,
                                newOutputTypes);
     });
+
+    // TODO: Add conversions for other types as needed (llvm arrays?)
   }
 };
 
-class Bfp16ToI8ConversionPattern : public ConversionPattern {
+class BfpToIntegerConversionPattern : public ConversionPattern {
 public:
-  Bfp16ToI8ConversionPattern(TypeConverter &typeConverter, MLIRContext *context)
+  BfpToIntegerConversionPattern(TypeConverter &typeConverter,
+                                MLIRContext *context)
       : ConversionPattern(typeConverter, MatchAnyOpTypeTag(), 1, context) {}
 
   LogicalResult
@@ -143,28 +159,24 @@ public:
     // later
 
     // Operation results
-    std::for_each(
-        op->getResults().begin(), op->getResults().end(), [&](Value result) {
-          auto conversion = typeConverter->convertType(result.getType());
-          if (!conversion) {
-            llvm::errs() << "Failed to convert result type: "
-                         << result.getType();
-            return;
-          }
-          result.setType(conversion);
-        });
+    for (auto result : op->getResults()) {
+      auto conversion = typeConverter->convertType(result.getType());
+      if (!conversion) {
+        return op->emitError()
+               << "Failed to convert result type: " << result.getType();
+      }
+      result.setType(conversion);
+    }
 
     // Operation operands
-    std::for_each(
-        op->getOperands().begin(), op->getOperands().end(), [&](Value operand) {
-          auto conversion = typeConverter->convertType(operand.getType());
-          if (!conversion) {
-            llvm::errs() << "Failed to convert operand type: "
-                         << operand.getType();
-            return;
-          }
-          operand.setType(conversion);
-        });
+    for (auto operand : op->getOperands()) {
+      auto conversion = typeConverter->convertType(operand.getType());
+      if (!conversion) {
+        return op->emitError()
+               << "Failed to convert operand type: " << operand.getType();
+      }
+      operand.setType(conversion);
+    }
 
     // Operation attributes
     // Note: For some reason, the attribute list looks like it is immutable and
@@ -177,13 +189,8 @@ public:
         auto conversion = typeConverter->convertTypeAttribute(
             typeAttr.getValue(), attr.getValue());
         if (!conversion) {
-          llvm::errs() << "Failed to convert attribute: " << typeAttr.getValue()
-                       << "\n"
-                       << "Attribute type: "
-                       << typeAttr.getValue().getAbstractType().getName()
-                       << "\n";
-          newAttrs.push_back(attr);
-          continue;
+          return op->emitError()
+                 << "Failed attribute type conversion: " << typeAttr.getValue();
         }
         newAttrs.push_back(NamedAttribute(attr.getName(), conversion.value()));
       } else {
@@ -196,21 +203,21 @@ public:
   }
 };
 
-class AIETransformBfp16TypePass
-    : public AIETransformBfp16TypeBase<AIETransformBfp16TypePass> {
+class AIETransformBfpTypesPass
+    : public AIETransformBfpTypesBase<AIETransformBfpTypesPass> {
 public:
   void runOnOperation() override {
     DeviceOp device = getOperation();
     MLIRContext *context = device.getContext();
 
     // Create the type converter
-    Bfp16ToI8TypeConverter typeConverter(device.getTargetModel());
+    BfpToIntegerConverter typeConverter(device.getTargetModel());
 
     // Set up an empty conversion target, since we have to iterate over all ops
     ConversionTarget target(*context);
 
     RewritePatternSet patterns(context);
-    patterns.add<Bfp16ToI8ConversionPattern>(typeConverter, context);
+    patterns.add<BfpToIntegerConversionPattern>(typeConverter, context);
 
     // Apply the conversion
     if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
@@ -220,6 +227,6 @@ public:
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
-xilinx::AIEX::createAIETransformBfp16TypePass() {
-  return std::make_unique<AIETransformBfp16TypePass>();
+xilinx::AIEX::createAIETransformBfpTypesPass() {
+  return std::make_unique<AIETransformBfpTypesPass>();
 }
