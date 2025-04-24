@@ -61,11 +61,15 @@ class SequentialPlacer(Placer):
         object_fifos: list[ObjectFifoHandle],
     ):
         shims = device.get_shim_tiles()
+        shim_channels = {}
 
         mems = device.get_mem_tiles()
+        mem_channels = {}
 
         computes = device.get_compute_tiles()
         compute_idx = 0
+        compute_channels = {}
+
 
         # If some workers are already taken, remove them from the available set
         for worker in workers:
@@ -102,14 +106,31 @@ class SequentialPlacer(Placer):
             for ofe in of_endpoints:
                 # Place "closest" to the compute endpoints
                 if ofe.tile == AnyMemTile:
-                    memtile = self._find_col_match(common_col, mems)
+                    memtile = self._find_col_match(common_col, mems, device)
                     ofe.place(memtile)
+                    if not memtile in mem_channels:
+                        mem_channels[memtile] = 0
+                    mem_channels[memtile] += 1
+                    if mem_channels[memtile] >= 6:
+                        mems.remove(memtile)
+
                 elif ofe.tile == AnyComputeTile:
-                    computetile = self._find_col_match(common_col, computes)
+                    computetile = self._find_col_match(common_col, computes, device)
                     ofe.place(computetile)
+                    if not computetile in compute_channels:
+                        compute_channels[computetile] = 0
+                    compute_channels[computetile] += 1
+                    if compute_channels[computetile] >= 2:
+                        computes.remove(computetile)
+
                 elif ofe.tile == AnyShimTile:
-                    shimtile = self._find_col_match(common_col, shims)
+                    shimtile = self._find_col_match(common_col, shims, device)
                     ofe.place(shimtile)
+                    if not shimtile in shim_channels:
+                        shim_channels[shimtile] = 0
+                    shim_channels[shimtile] += 1
+                    if shim_channels[shimtile] >= 2:
+                        shims.remove(shimtile)
 
     def _get_common_col(self, tiles: list[Tile]) -> int:
         """
@@ -122,11 +143,13 @@ class SequentialPlacer(Placer):
         avg_col = round(statistics.mean(cols))
         return avg_col
 
-    def _find_col_match(self, col: int, tiles: list[Tile]) -> Tile:
+    def _find_col_match(self, col: int, tiles: list[Tile], device : Device) -> Tile:
         """
         A utility function that sequentially searches a list of tiles to find one with a matching column.
         """
-        for t in tiles:
-            if t.col == col:
-                return t
+        while col < device.cols:
+            for t in tiles:
+                if t.col == col:
+                    return t
+            col += 1
         raise ValueError(f"Failed to find a tile matching column {col}")
