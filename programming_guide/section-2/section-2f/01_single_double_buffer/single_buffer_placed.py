@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 AMD Inc.
+import sys
 import numpy as np
 from aie.dialects.aie import *
 from aie.dialects.aiex import *

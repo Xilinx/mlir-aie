@@ -4,17 +4,25 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 AMD Inc.
+import sys
 import numpy as np
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.extras.context import mlir_mod_ctx
 
+if len(sys.argv) > 1:
+    if sys.argv[1] == "npu":
+        dev = AIEDevice.npu1_1col
+    elif sys.argv[1] == "npu2":
+        dev = AIEDevice.npu2_1col
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
 def external_mem_to_core():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu1_1col)
+        @device(dev)
         def device_body():
             tile_ty = np.ndarray[(24,), np.dtype[np.int32]]
 
