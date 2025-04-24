@@ -10,6 +10,14 @@ config = {}
 
 
 def set_current_device(device):
+    """Sets the current device.
+
+    Args:
+        device: Device to set as the current device.
+
+    Returns:
+        The previously set device.
+    """
     global config
     previous_device = config.get("device")
     config["device"] = device
@@ -17,5 +25,10 @@ def set_current_device(device):
 
 
 def get_current_device():
+    """Gets the current device.
+
+    Returns:
+        The currently set device.
+    """
     global config
     return config["device"]
