@@ -17,7 +17,7 @@ from aie.helpers.dialects.ext.scf import _for as range_
 
 
 @iron.jit
-def vector_vector_add(config, input0, input1, output):
+def vector_vector_add(input0, input1, output):
     if input0.shape != input1.shape:
         raise ValueError(
             f"Input shapes are not the equal ({input0.shape} != {input1.shape})."
@@ -48,7 +48,7 @@ def vector_vector_add(config, input0, input1, output):
 
     buffer_depth = 2
 
-    @device(config["device"])
+    @device(iron.get_current_device())
     def device_body():
         tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
         tile_ty = np.ndarray[(n,), np.dtype[dtype]]
@@ -56,8 +56,8 @@ def vector_vector_add(config, input0, input1, output):
         # AIE Core Function declarations
 
         # Tile declarations
-        ShimTile = tile(config["column_id"], 0)
-        ComputeTile2 = tile(config["column_id"], 2)
+        ShimTile = tile(0, 0)
+        ComputeTile2 = tile(0, 2)
 
         # AIE-array data movement with object fifos
         of_in1 = object_fifo("in1", ShimTile, ComputeTile2, buffer_depth, tile_ty)
@@ -115,9 +115,6 @@ def main():
         help="Target device",
     )
     parser.add_argument(
-        "-c", "--column", type=int, default=0, help="Column index (default: 0)"
-    )
-    parser.add_argument(
         "-n",
         "--num-elements",
         type=int,
@@ -132,14 +129,11 @@ def main():
     input1 = iron.randint(0, 100, (args.num_elements,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input0)
 
+    iron.set_current_device(device_map[args.device])
+
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    vector_vector_add(
-        {"device": device_map[args.device], "column_id": args.column},
-        input0,
-        input1,
-        output,
-    )
+    vector_vector_add(input0, input1, output)
 
     # Check the correctness of the result
     e = np.equal(input0.numpy() + input1.numpy(), output.numpy())
