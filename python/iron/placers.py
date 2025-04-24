@@ -70,7 +70,6 @@ class SequentialPlacer(Placer):
         compute_idx = 0
         compute_channels = {}
 
-
         # If some workers are already taken, remove them from the available set
         for worker in workers:
             # This worker has already been placed
