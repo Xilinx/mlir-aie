@@ -29,6 +29,12 @@ else
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 endif
 
+ifeq ($(vectorized), true)
+VECTORIZED_FLAGS := -DINT8_ACT
+else
+VECTORIZED_FLAGS := -DINT8_ACT -DINT8_ACT
+endif
+
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src = ${targetname}.py
 aie_py_placed_src = ${targetname}_placed.py
@@ -43,32 +49,16 @@ all: build/conv2dk1_i8.o build/final.xclbin
 build/conv2dk1_i8.o: conv2dk1_i8.cc
 	mkdir -p ${@D}
 ifeq ($(devicename),npu)
-ifeq ($(vectorized), true)
 ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DINT8_ACT -c $< -o ${@F};
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} ${VECTORIZED_FLAGS} -c $< -o ${@F};
 else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DINT8_ACT -c $< -o ${@F}
-endif
-else
-ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DSCALAR -DINT8_ACT -c $< -o ${@F};
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DSCALAR -DINT8_ACT -c $< -o ${@F}
-endif
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} ${VECTORIZED_FLAGS} -c $< -o ${@F}
 endif
 else ifeq ($(devicename),npu2)
-ifeq ($(vectorized), true)
 ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DINT8_ACT -c $< -o ${@F};
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} ${VECTORIZED_FLAGS} -c $< -o ${@F};
 else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -DINT8_ACT -c $< -o ${@F}
-endif
-else
-ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DSCALAR -DINT8_ACT -c $< -o ${@F};
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -DSCALAR -DINT8_ACT -c $< -o ${@F}
-endif
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} ${VECTORIZED_FLAGS} -c $< -o ${@F}
 endif
 else
 	echo "Device type not supported"
