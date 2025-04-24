@@ -111,7 +111,8 @@ class SequentialPlacer(Placer):
                     if not memtile in mem_channels:
                         mem_channels[memtile] = 0
                     mem_channels[memtile] += 1
-                    if mem_channels[memtile] >= 6:
+                    max_memtile_channels = device.get_num_source_connections()
+                    if mem_channels[memtile] >= max_memtile_channels:
                         mems.remove(memtile)
 
                 elif ofe.tile == AnyComputeTile:
@@ -129,7 +130,8 @@ class SequentialPlacer(Placer):
                     if not shimtile in shim_channels:
                         shim_channels[shimtile] = 0
                     shim_channels[shimtile] += 1
-                    if shim_channels[shimtile] >= 2:
+                    max_shimtile_channels = 2
+                    if shim_channels[shimtile] >= max_shimtile_channels:
                         shims.remove(shimtile)
 
     def _get_common_col(self, tiles: list[Tile]) -> int:

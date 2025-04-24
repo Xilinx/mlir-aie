@@ -311,8 +311,14 @@ NB_MODULE(_aie, m) {
            [](PyAieTargetModel &self) {
              return aieTargetModelGetMemTileSize(self.get());
            })
-      // .def("get_num_dest_switchbox_connections", int col, int row)
-      // .def("get_num_source_switchbox_connections", int col, int row)
+      .def("get_num_dest_switchbox_connections",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelGetNumDestSwitchboxConnections(self.get(), col, row);
+           })
+      .def("get_num_source_switchbox_connections",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelGetNumSourceSwitchboxConnections(self.get(), col, row);
+           })
       // .def("get_num_dest_shim_mux_connections", int col, int row)
       // .def("get_num_source_shim_mux_connections", int col, int row)
       // .def("is_legal_memtile_connection")

@@ -116,6 +116,24 @@ class Device(Resolvable):
         # TODO: should this be shaped?
         ...
 
+    @abstractmethod
+    def get_num_source_connections(self, t: Tile) -> int:
+        """Returns number of DMA source ports for the given tile on the device.
+
+        Returns:
+            int: Number of DMA source ports.
+        """
+        ...
+
+    @abstractmethod
+    def get_num_dest_connections(self, t: Tile) -> int:
+        """Returns number of DMA dest ports for the given tile on the device.
+
+        Returns:
+            int: Number of DMA dest ports.
+        """
+        ...
+
     def resolve_tile(
         self,
         tile: Tile,
@@ -163,6 +181,16 @@ class NPUBase(Device):
             for row in range(1 + mem_tile_rows, self.rows):
                 compute_tiles.append(Tile(col, row))
         return compute_tiles
+    
+    def get_num_source_connections(self, t: Tile) -> int:
+        col = t.col
+        row = t.row
+        return get_target_model(self._device).get_num_source_switchbox_connections(col, row)
+
+    def get_num_dest_connections(self, t: Tile) -> int:
+        col = t.col
+        row = t.row
+        return get_target_model(self._device).get_num_dest_switchbox_connections(col, row)
 
 
 def create_class(class_name, device):
