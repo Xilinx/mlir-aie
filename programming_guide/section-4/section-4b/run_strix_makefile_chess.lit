@@ -1,0 +1,14 @@
+// (c) Copyright 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, chess
+//
+// RUN: mkdir -p test_chess_strix
+// RUN: cd test_chess_strix
+// RUN: make -f %S/Makefile clean
+// RUN: env CHESS=true make -f %S/Makefile devicename=npu2  
+// RUN: %run_on_2npu make -f %S/Makefile run devicename=npu2 
+// RUN: %run_on_2npu make -f %S/Makefile run_py devicename=npu2 
+// RUN: make -f %S/Makefile clean
+// RUN: env CHESS=true %run_on_2npu make -f %S/Makefile trace devicename=npu2 
+// RUN: env CHESS=true %run_on_2npu make -f %S/Makefile trace_py devicename=npu2 
