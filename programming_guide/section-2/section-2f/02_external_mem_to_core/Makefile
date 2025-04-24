@@ -20,6 +20,8 @@ ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
 endif
 
+all: build/final.xclbin
+
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${devicename} > $@
