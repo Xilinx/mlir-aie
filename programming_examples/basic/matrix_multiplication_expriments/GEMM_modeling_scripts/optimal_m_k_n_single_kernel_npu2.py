@@ -36,7 +36,7 @@ out_c_type = args.out_c_type
 # model achieve optimal overlap
 # typically, around 0.9, but might be more or less
 # depending on the kernel
-expected_kernel_efficiency = 0.90
+expected_kernel_efficiency = 0.75
 
 if in_a_type == "int8":
     in_a_bytes = 1
@@ -105,9 +105,9 @@ df = DataFrame(
     ]
 )
 
-m_min = 64
-k_min = 64
-n_min = 64
+m_min = 16
+k_min = 16
+n_min = 16
 
 
 # check if desired intial sizes divisible by the AIE API size
