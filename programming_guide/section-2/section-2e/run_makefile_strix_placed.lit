@@ -5,3 +5,4 @@
  //
  // RUN: make -f %S/Makefile clean
  // RUN: make -f %S/Makefile placed devicename=npu2
+ 
