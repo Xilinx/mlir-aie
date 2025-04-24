@@ -51,8 +51,7 @@ def compute_repeat():
 
             # Tile declarations
             ShimTile = tile(col, 0)
-            ComputeTile = tile(col, 2)
-            ComputeTile2 = tile(col, 3)
+            ComputeTile = tile(col, 3)
 
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile, ComputeTile, 1, tensor_ty)
