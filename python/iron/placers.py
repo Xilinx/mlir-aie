@@ -70,7 +70,6 @@ class SequentialPlacer(Placer):
         compute_idx = 0
         compute_channels = {}
 
-
         # If some workers are already taken, remove them from the available set
         for worker in workers:
             # This worker has already been placed
@@ -145,7 +144,7 @@ class SequentialPlacer(Placer):
         avg_col = round(statistics.mean(cols))
         return avg_col
 
-    def _find_col_match(self, col: int, tiles: list[Tile], device : Device) -> Tile:
+    def _find_col_match(self, col: int, tiles: list[Tile], device: Device) -> Tile:
         """
         A utility function that sequentially searches a list of tiles to find one with a matching column.
         """
