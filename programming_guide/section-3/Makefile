@@ -21,7 +21,7 @@ build/aie.mlir: ${srcdir}/aie2.py
 	
 build/scale.o: ${srcdir}/vector_scalar_mul.cc
 	mkdir -p ${@D}
-ifeq ($(devicenmae),npu)
+ifeq ($(devicename),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
 else ifeq ($(devicename),npu2)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
