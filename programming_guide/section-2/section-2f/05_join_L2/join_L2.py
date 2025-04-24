@@ -21,6 +21,7 @@ if len(sys.argv) > 1:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 n_workers = 3
 
+
 def join_L2():
     # Define tensor types
     data_ty = np.ndarray[(48,), np.dtype[np.int32]]
