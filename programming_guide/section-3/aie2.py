@@ -6,7 +6,6 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
-import argparse
 import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
@@ -14,15 +13,13 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
 
-p = argparse.ArgumentParser()
-p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
-opts = p.parse_args(sys.argv[1:])
-if opts.device == "npu":
-    dev = NPU1Col1()
-elif opts.device == "npu2":
-    dev = NPU2Col1()
-else:
-    raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
+if len(sys.argv) > 1:
+    if sys.argv[1] == "npu":
+        dev = NPU1Col1()
+    elif sys.argv[1] == "npu2":
+        dev = NPU2Col1()
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
 tensor_size = 4096
 tile_size = tensor_size // 4
