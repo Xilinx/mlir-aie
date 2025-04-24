@@ -23,7 +23,7 @@ tile_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
 
 
 @iron.jit(is_placed=False)
-def exercise_1(input0, output):
+def exercise_1(output):
     # Dataflow with ObjectFifos
     of_out = ObjectFifo(tile_ty, name="out")
 
@@ -67,7 +67,7 @@ def main():
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    exercise_1(input0, output)
+    exercise_1(output)
 
     # Check the correctness of the result
     e = np.equal(input0.numpy(), output.numpy())
