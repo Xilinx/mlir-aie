@@ -19,6 +19,7 @@ if len(sys.argv) > 1:
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
+
 def distribute_join_L2():
     with mlir_mod_ctx() as ctx:
 

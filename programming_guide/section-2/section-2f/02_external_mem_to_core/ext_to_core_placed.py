@@ -19,6 +19,7 @@ if len(sys.argv) > 1:
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
+
 def external_mem_to_core():
     with mlir_mod_ctx() as ctx:
 

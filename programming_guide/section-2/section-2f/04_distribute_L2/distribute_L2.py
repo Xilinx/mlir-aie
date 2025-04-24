@@ -22,6 +22,7 @@ if len(sys.argv) > 1:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 n_workers = 3
 
+
 def distribute_L2():
     # Define tensor types
     data_ty = np.ndarray[(48,), np.dtype[np.int32]]
@@ -39,12 +40,10 @@ def distribute_L2():
         names=[f"in{worker}" for worker in range(n_workers)],
     )
 
-
     # Task for the core to perform
     def core_fn(of_in):
         elem_in = of_in.acquire(1)
         of_in.release(1)
-
 
     # Create a worker to perform the task
     workers = []
@@ -66,6 +65,7 @@ def distribute_L2():
 
     # Create the program from the device type and runtime
     return Program(dev, rt).resolve_program(SequentialPlacer())
+
 
 module = distribute_L2()
 res = module.operation.verify()
