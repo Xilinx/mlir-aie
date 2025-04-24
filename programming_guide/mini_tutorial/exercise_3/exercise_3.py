@@ -6,8 +6,8 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 
-import numpy as np
 import sys
+import numpy as np
 
 from aie.iron import Program, Runtime, Worker, ObjectFifo, GlobalBuffer
 from aie.iron.placers import SequentialPlacer
@@ -20,14 +20,13 @@ from aie.dialects.aie import T
 
 import aie.iron as iron
 
-# Define tensor types
-num_elements = 48
-data_type = np.int32
-tile_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
-
 
 @iron.jit(is_placed=False)
 def exercise_3(output):
+    num_elements = output.numel()
+    data_type = output.dtype
+    tile_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
+
     # Dataflow with ObjectFifos
     of_out = ObjectFifo(tile_ty, name="out")
 
@@ -74,6 +73,9 @@ def exercise_3(output):
 
 
 def main():
+    # Define tensor shapes and data types
+    num_elements = 48
+    data_type = np.int32
 
     # Construct an input tensor and an output zeroed tensor
     # The two tensors are in memory accessible to the NPU

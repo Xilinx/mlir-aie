@@ -19,20 +19,23 @@ from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
 
 import aie.iron as iron
 
-# Define tensor types
+# Define tensor shape
 data_height = 3
 data_width = 16
-tile_height = 3
-tile_width = 8
-data_size = data_height * data_width
-tile_size = tile_height * tile_width
-element_type = np.int32
-data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
-tile_ty = np.ndarray[(tile_size,), np.dtype[element_type]]
 
 
 @iron.jit(is_placed=False)
 def exercise_4b(input0, output):
+    # Define tile size
+    tile_height = 3
+    tile_width = 8
+    tile_size = tile_height * tile_width
+
+    data_size = input0.numel()
+    element_type = input0.dtype
+    data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
+    tile_ty = np.ndarray[(tile_size,), np.dtype[element_type]]
+
     # Define runtime tensor access pattern (tap)
     tensor_dims = (data_height, data_width)
     tap1 = TensorAccessPattern(
@@ -82,6 +85,10 @@ def exercise_4b(input0, output):
 
 
 def main():
+    # Define tensor shapes and data types
+    data_size = data_height * data_width
+    element_type = np.int32
+
     # Delete existing plot*.png files
     for file in glob.glob("plot*.png"):
         try:
