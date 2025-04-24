@@ -81,7 +81,7 @@ class NPUKernel:
         self.__insts_buffer_bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
     # Blocking call.
-    def __call__(self, config, *args):
+    def __call__(self, *args):
         """
         Allows the kernel to be called as a function with the provided arguments.
 
