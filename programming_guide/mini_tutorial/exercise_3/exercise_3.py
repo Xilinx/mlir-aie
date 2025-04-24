@@ -20,8 +20,6 @@ from aie.dialects.aie import T
 
 import aie.iron as iron
 
-dev = NPU2()
-
 # Define tensor types
 num_elements = 48
 data_type = np.int32
@@ -29,7 +27,7 @@ tile_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
 
 
 @iron.jit(is_placed=False)
-def exercise_3():
+def exercise_3(output):
     # Dataflow with ObjectFifos
     of_out = ObjectFifo(tile_ty, name="out")
 
@@ -69,7 +67,7 @@ def exercise_3():
         rt.drain(of_out.cons(), c_out, wait=True)
 
     # Create the program from the device type and runtime
-    my_program = Program(dev, rt)
+    my_program = Program(iron.get_current_device(), rt)
 
     # Place components (assign them resources on the device) and generate an MLIR module
     return my_program.resolve_program(SequentialPlacer())
@@ -81,6 +79,8 @@ def main():
     # The two tensors are in memory accessible to the NPU
     input0 = iron.arange(num_elements, dtype=data_type, device="npu")
     output = iron.zeros_like(input0)
+
+    iron.set_current_device(NPU2())
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
@@ -103,11 +103,11 @@ def main():
     # Otherwise, exit with a failure code
     if not errors:
         print("\nPASS!\n")
-        exit(0)
+        sys.exit(0)
     else:
         print("\nError count: ", errors)
         print("\nfailed.\n")
-        exit(1)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
