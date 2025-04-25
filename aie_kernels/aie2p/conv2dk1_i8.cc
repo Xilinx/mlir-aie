@@ -98,7 +98,7 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 
   using MMUL8x8x8 = aie::mmul<MMUL_M, MMUL_K, MMUL_N, int8, int8>;
   ::aie::set_saturation(aie::saturation_mode::saturate); // Needed to saturate properly to uint8
-  ::aie::set_rounding(aie::rounding_mode::rnd_sym_inf); // Needed to saturate
+  ::aie::set_rounding(aie::rounding_mode::symmetric_inf); // Needed to saturate
                                                           // properly to uint8
 
   int8_t *restrict out_ptr = output;
