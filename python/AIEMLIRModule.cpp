@@ -312,12 +312,12 @@ NB_MODULE(_aie, m) {
              return aieTargetModelGetMemTileSize(self.get());
            })
       .def("get_num_dest_switchbox_connections",
-           [](PyAieTargetModel &self, int col, int row) {
-             return aieTargetModelGetNumDestSwitchboxConnections(self.get(), col, row);
+           [](PyAieTargetModel &self, int col, int row, uint32_t bundle) {
+             return aieTargetModelGetNumDestSwitchboxConnections(self.get(), col, row, bundle);
            })
       .def("get_num_source_switchbox_connections",
-           [](PyAieTargetModel &self, int col, int row) {
-             return aieTargetModelGetNumSourceSwitchboxConnections(self.get(), col, row);
+           [](PyAieTargetModel &self, int col, int row, uint32_t bundle) {
+             return aieTargetModelGetNumSourceSwitchboxConnections(self.get(), col, row, bundle);
            })
       // .def("get_num_dest_shim_mux_connections", int col, int row)
       // .def("get_num_source_shim_mux_connections", int col, int row)

@@ -110,7 +110,10 @@ class SequentialPlacer(Placer):
                     if not memtile in mem_channels:
                         mem_channels[memtile] = 0
                     mem_channels[memtile] += 1
-                    max_memtile_channels = device.get_num_source_connections()
+                    if of._is_prod:
+                        max_memtile_channels = device.get_num_source_connections(memtile)
+                    else :
+                        max_memtile_channels = device.get_num_dest_connections(memtile)
                     if mem_channels[memtile] >= max_memtile_channels:
                         mems.remove(memtile)
 
@@ -120,7 +123,11 @@ class SequentialPlacer(Placer):
                     if not computetile in compute_channels:
                         compute_channels[computetile] = 0
                     compute_channels[computetile] += 1
-                    if compute_channels[computetile] >= 2:
+                    if of._is_prod:
+                        max_computetile_channels = device.get_num_source_connections(computetile)
+                    else :
+                        max_computetile_channels = device.get_num_dest_connections(computetile)
+                    if compute_channels[computetile] >= max_computetile_channels:
                         computes.remove(computetile)
 
                 elif ofe.tile == AnyShimTile:

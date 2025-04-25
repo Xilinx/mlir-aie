@@ -8,6 +8,7 @@
 
 from abc import abstractmethod
 from ... import ir  # type: ignore
+from ...dialects._aie_enum_gen import WireBundle  # type: ignore
 from ...dialects.aie import AIEDevice, tile, TileOp, get_target_model  # type: ignore
 from ..resolvable import Resolvable
 from .tile import Tile
@@ -185,12 +186,14 @@ class NPUBase(Device):
     def get_num_source_connections(self, t: Tile) -> int:
         col = t.col
         row = t.row
-        return get_target_model(self._device).get_num_source_switchbox_connections(col, row)
+        bundle = WireBundle.DMA
+        return get_target_model(self._device).get_num_source_switchbox_connections(col, row, bundle)
 
     def get_num_dest_connections(self, t: Tile) -> int:
         col = t.col
         row = t.row
-        return get_target_model(self._device).get_num_dest_switchbox_connections(col, row)
+        bundle = WireBundle.DMA
+        return get_target_model(self._device).get_num_dest_switchbox_connections(col, row, bundle)
 
 
 def create_class(class_name, device):
