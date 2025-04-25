@@ -26,7 +26,7 @@ module {
       %c8 = arith.constant 8 : index
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %c1_32 = arith.constant 1 : i32
+      %c1_32 = arith.constant 41 : i32
   
       scf.for %steps = %c0 to %c8 step %c1 {
         %subview0 = aie.objectfifo.acquire @objFifo_in1(Consume, 1) : !aie.objectfifosubview<memref<8xi32>>
