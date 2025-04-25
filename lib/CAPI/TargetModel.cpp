@@ -162,9 +162,12 @@ uint32_t aieTargetModelGetNumDestSwitchboxConnections(
       .getNumDestSwitchboxConnections(col, row, wireBundle);
 }
 
-uint32_t aieTargetModelGetNumSourceSwitchboxConnections(AieTargetModel targetModel, int col, int row, uint32_t bundle) {
-  xilinx::AIE::WireBundle wireBundle = static_cast<xilinx::AIE::WireBundle>(bundle);
-  return unwrap(targetModel).getNumSourceSwitchboxConnections(col, row, wireBundle);
+uint32_t aieTargetModelGetNumSourceSwitchboxConnections(
+    AieTargetModel targetModel, int col, int row, uint32_t bundle) {
+  xilinx::AIE::WireBundle wireBundle =
+      static_cast<xilinx::AIE::WireBundle>(bundle);
+  return unwrap(targetModel)
+      .getNumSourceSwitchboxConnections(col, row, wireBundle);
 }
 
 bool aieTargetModelIsNPU(AieTargetModel targetModel) {
