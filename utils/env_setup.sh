@@ -38,13 +38,13 @@ else
 fi
 
 # If force install or an install dir isn't passed
-if [[ $FORCE_INSTALL -eq 1 || -z "$(pip show mlir_aie | grep ^Location:)" ]]; then
+if [[ $FORCE_INSTALL -eq 1 || ( "$#" -lt 1 && -z "$(pip show mlir_aie | grep ^Location:)" ) ]]; then
   python3 -m pip install -I mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels
   export MLIR_AIE_INSTALL_DIR="$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie"
 fi
 
 # If force install or an install dir isn't passed
-if [[ $FORCE_INSTALL -eq 1 || -z "$(pip show llvm-aie | grep ^Location:)" ]]; then
+if [[ $FORCE_INSTALL -eq 1 || ( "$#" -lt 2 && -z "$(pip show llvm-aie | grep ^Location:)" ) ]]; then
   python3 -m pip install -I llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
   export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
 fi

@@ -7,6 +7,7 @@
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
 import os
+import functools
 import hashlib
 import numpy as np
 import pyxrt as xrt
@@ -17,7 +18,7 @@ from ..utils.xrt import read_insts_binary
 
 
 # The `iron.jit` decorator below caches compiled kenrels inside the `IRON_CACHE_DIR` directory.
-# Kernels are cached based on their hash value of the MLIR module string. If during compliation,
+# Kernels are cached based on their hash value of the MLIR module string. If during compilation,
 # we hit in the cache, the `iron.jit` will load the xclbin and instruction binary files from the cache.
 IRON_CACHE_DIR = os.path.expanduser("~/.iron/cache")
 
@@ -100,7 +101,7 @@ class NPUKernel:
         h = self.__kernel(opcode, self.__insts_buffer_bo, self.__n_insts, *kernel_args)
         r = h.wait()
         if r != xrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
-            raise Exception(f"Kernel returned {r}")
+            raise NPUKernel_Error(f"Kernel returned {r}")
 
     def __del__(self):
         """
@@ -118,7 +119,7 @@ class NPUKernel_Error(Exception):
     pass
 
 
-def jit(*, is_placed=True, use_cache=True):
+def jit(function=None, is_placed=True, use_cache=True):
     """
     Decorator to compile an IRON kernel into a binary to run on the NPU.
 
@@ -127,17 +128,20 @@ def jit(*, is_placed=True, use_cache=True):
     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
     """
 
-    def decorator(fn):
+    if function is None:
+        return functools.partial(jit, is_placed=is_placed, use_cache=use_cache)
 
+    @functools.wraps(function)
+    def decorator(*args, **kwargs):
         if is_placed:
             with mlir_mod_ctx() as ctx:
-                fn()
+                function(*args, **kwargs)
                 assert (
                     ctx.module.operation.verify()
-                ), f"Verification failed for '{fn.__name__}'"
+                ), f"Verification failed for '{function.__name__}'"
                 mlir_module = ctx.module
         else:
-            mlir_module = fn()
+            mlir_module = function(*args, **kwargs)
 
         # Hash of the IR string
         module_hash = hash_module(mlir_module)
@@ -166,7 +170,9 @@ def jit(*, is_placed=True, use_cache=True):
             )
 
         kernel_name = "MLIR_AIE"
-        return NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)
+        return NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)(
+            *args, **kwargs
+        )
 
     return decorator
 
