@@ -4,18 +4,16 @@
 #
 # (c) Copyright 2025 AMD Inc.
 
-# RUN: %python %s | FileCheck %s
+# RUN: %run_on_npu %pytest %s
+# RUN: %run_on_2npu %pytest %s
 
+import pytest
+import aie.iron as iron
 from aie.iron.device import NPU2
 
-import aie.iron as iron
 
-# CHECK: NPU2
-def main():
-    iron.set_current_device(NPU2())
-    device = iron.get_current_device()
-    print(device)
-
-if __name__ == "__main__":
-    main()
-  
+def test_set_current_device():
+    device = NPU2()
+    iron.set_current_device(device)
+    current_device = iron.get_current_device()
+    assert current_device == device
