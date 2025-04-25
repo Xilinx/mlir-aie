@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(NPUDEVICE) {
+  aie.device(npu1_4col) {
     func.func private @matmul_scalar_put_4x1x4_4x4x4_i32_i32(memref<1x4x4x4xi32, 2 : i32>, memref<4x1x4x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>)
     func.func private @matmul_scalar_put_get_4x1x4_4x4x4_i32_i32(memref<1x4x4x4xi32, 2 : i32>, memref<4x1x4x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>)
     func.func private @matmul_scalar_get_4x1x4_4x4x4_i32_i32(memref<1x4x4x4xi32, 2 : i32>, memref<4x1x4x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>)

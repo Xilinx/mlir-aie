@@ -1,5 +1,5 @@
 module {
-  aie.device(NPUDEVICE) {
+  aie.device(npu1_4col) {
     func.func private @matmul_scalar_2x2x2_4x8x4_i32_i32(memref<2x2x4x8xi32, 2 : i32>, memref<2x2x8x4xi32, 2 : i32>, memref<2x2x4x4xi32, 2 : i32>)
     // <trace>
     func.func private @event_0()
