@@ -13,8 +13,8 @@ from .device import NPU1Col4, NPU2
 
 def detect_npu_device():
     """Detects the current device in the system.
-       This assumes XRT and XDNA driver is installed 
-       and the system has NPU hardware. 
+       This assumes XRT and XDNA driver is installed
+       and the system has NPU hardware.
 
     Returns:
         The current system device.
