@@ -52,6 +52,21 @@ using TileID = struct TileID {
   int col, row;
 };
 
+using BfpType = struct BfpType {
+  uint32_t blockSize;
+  uint32_t mantissaBits;
+  uint32_t exponentBits;
+  uint32_t subtileShiftBits;
+
+  bool operator==(const BfpType &rhs) const {
+    return std::tie(blockSize, mantissaBits, exponentBits, subtileShiftBits) ==
+           std::tie(rhs.blockSize, rhs.mantissaBits, rhs.exponentBits,
+                    rhs.subtileShiftBits);
+  }
+
+  bool operator!=(const BfpType &rhs) const { return !(*this == rhs); }
+};
+
 class AIETargetModel {
 
 public:
@@ -302,14 +317,9 @@ public:
   virtual std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const = 0;
 
-  // Returns true if the target model supports the given bfp block size.
-  virtual bool checkBfpBlockSize(uint32_t bfpBlockSize) const = 0;
-
-  // Returns the size of the bfp mantissa in bits or 0 if unsupported.
-  virtual uint32_t getBfpMantissaSizeInBits() const = 0;
-
-  // Returns the size of the bfp exponent in bits or 0 if unsupported.
-  virtual uint32_t getBfpExponentSizeInBits() const = 0;
+  // Returns a bfpType with the corresponding caracteristics or std::nullopt if
+  // unsupported.
+  virtual std::optional<BfpType> getBfpType(std::string bfpName) const = 0;
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -386,11 +396,9 @@ public:
   std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const override;
 
-  bool checkBfpBlockSize(uint32_t bfpBlockSize) const override { return false; }
-
-  uint32_t getBfpMantissaSizeInBits() const override { return 0; };
-
-  uint32_t getBfpExponentSizeInBits() const override { return 0; };
+  std::optional<BfpType> getBfpType(std::string bfpName) const override {
+    return std::nullopt;
+  }
 };
 
 class AIE2TargetModel : public AIETargetModel {
@@ -486,11 +494,9 @@ public:
   std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const override;
 
-  bool checkBfpBlockSize(uint32_t bfpBlockSize) const override { return false; }
-
-  uint32_t getBfpMantissaSizeInBits() const override { return 0; };
-
-  uint32_t getBfpExponentSizeInBits() const override { return 0; };
+  std::optional<BfpType> getBfpType(std::string bfpName) const override {
+    return std::nullopt;
+  }
 };
 
 class VC1902TargetModel : public AIE1TargetModel {
@@ -692,13 +698,7 @@ public:
   std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const override;
 
-  bool checkBfpBlockSize(uint32_t bfpBlockSize) const override {
-    return bfpBlockSize == 8 || bfpBlockSize == 16;
-  }
-
-  uint32_t getBfpMantissaSizeInBits() const override { return 8; };
-
-  uint32_t getBfpExponentSizeInBits() const override { return 8; };
+  std::optional<BfpType> getBfpType(std::string bfpName) const override;
 };
 
 // A sub-portion of the Strix NPU

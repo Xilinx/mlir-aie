@@ -50,26 +50,23 @@ public:
     // therefore this is just a default option that has to be put first
     addConversion([](Type type) -> std::optional<Type> { return type; });
 
-    // Add a conversion for bfp16Type to an integer type
-    addConversion([&](bfp16Type bfp16Type) -> std::optional<IntegerType> {
-      if (targetModel.getBfpMantissaSizeInBits() == 0) {
-        llvm::errs() << "Bfp is unsupported in the specified model\n";
+    // Add a conversion for bfpTypes to an integer type
+    addConversion([&](blockFloatType blockType) -> std::optional<IntegerType> {
+      auto bfpType = targetModel.getBfpType(blockType.getBlockType().str());
+      if (!bfpType) {
+        llvm::errs() << "Block type " << blockType.getBlockType()
+                     << " is not supported in the specified model\n";
         // Note that returning a nullopt here will stop the conversion while
         // returning a std::nullopt will allow the converter to keep trying the
         // remaining conversions (thus reaching the default one)
         return nullptr;
       }
 
-      if (!targetModel.checkBfpBlockSize(bfp16Type.getBlockSize())) {
-        llvm::errs() << "Block size " << bfp16Type.getBlockSize()
-                     << " is not supported in the specified model\n";
-        return nullptr;
-      }
-
       return mlir::IntegerType::get(
-          bfp16Type.getContext(),
-          bfp16Type.getBlockSize() * targetModel.getBfpMantissaSizeInBits() +
-              targetModel.getBfpExponentSizeInBits());
+          blockType.getContext(),
+          bfpType->blockSize *
+                  (bfpType->mantissaBits + bfpType->subtileShiftBits) +
+              bfpType->exponentBits);
     });
 
     // Add a conversion for MemRefType
@@ -190,7 +187,7 @@ public:
             typeAttr.getValue(), attr.getValue());
         if (!conversion) {
           return op->emitError()
-                 << "Failed attribute type conversion: " << typeAttr.getValue();
+                 << "Failed to convert attribute type: " << typeAttr.getValue();
         }
         newAttrs.push_back(NamedAttribute(attr.getName(), conversion.value()));
       } else {

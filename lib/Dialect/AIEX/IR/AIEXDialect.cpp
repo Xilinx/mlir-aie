@@ -10,8 +10,8 @@
 
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
-#include "mlir/IR/DialectImplementation.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/DialectImplementation.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
 
@@ -770,25 +770,6 @@ LogicalResult AIEX::SetLockOp::verify() {
   if (!targetModel.getLocalLockAddress(lockID, lockOp.getTileID())) {
     return emitOpError("Invalid lock ID and tile combination when trying to "
                        "retrieve the local lock address.");
-  }
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// BFP16 Type
-//===----------------------------------------------------------------------===//
-LogicalResult AIEX::bfp16Type::verify(
-    llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-    unsigned block_size) {
-
-  // Unfortunately this values have to be hardcoded since we do not have access
-  // to the TargetModel from here. Note that there are additional checks that
-  // had to be moved into the bfp conversion pass instead (valid targetModel for
-  // example).
-  if (block_size != 8 && block_size != 16) {
-    return emitError() << "Block size " << block_size
-                       << " is not supported for bfp16 type.";
   }
 
   return success();

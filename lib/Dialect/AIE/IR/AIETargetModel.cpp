@@ -11,6 +11,8 @@
 
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include <cstdint>
+#include <string>
+#include <unordered_map>
 #include <utility>
 
 using namespace llvm;
@@ -805,6 +807,18 @@ std::vector<std::pair<uint32_t, uint32_t>>
 NPU2TargetModel::getShimBurstEncodingsAndLengths() const {
   return {std::pair(0, 64), std::pair(1, 128), std::pair(2, 256),
           std::pair(3, 512)};
+}
+
+std::optional<BfpType> NPU2TargetModel::getBfpType(std::string bfpName) const {
+  std::unordered_map<std::string, BfpType> bfpMap = {
+      {"bfp16ebs8", {8, 8, 8, 0}},
+      {"bfp16ebs16", {16, 8, 8, 0}}
+  };
+
+  auto it = bfpMap.find(bfpName);
+  if (it != bfpMap.end())
+    return it->second;
+  return std::nullopt;
 }
 
 } // namespace AIE

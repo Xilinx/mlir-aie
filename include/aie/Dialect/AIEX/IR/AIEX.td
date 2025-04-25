@@ -42,29 +42,28 @@ def AIEX_Dialect : Dialect {
 //===----------------------------------------------------------------------===//
 // AIEX Types
 //===----------------------------------------------------------------------===//
-def AIEX_BfpType : TypeDef<AIEX_Dialect, "bfp16", [
+def AIEX_BlockFloatingPointType : TypeDef<AIEX_Dialect, "blockFloat", [
     MemRefElementTypeInterface
   ]> {
-  let summary = "AIEX bfp16 type";
-  let mnemonic = "bfp16";
+  let summary = "AIEX type representing a block floating point type.";
+  let mnemonic = "bfp";
   let description = [{
-    TODO: Complete the description.
-    This is a type representing a bfp16. It is meant to eventually be lowered 
-    into a standard type further down the pipeline.
-    It the meantime, it can be used for bfp16 related dataflow adapations.
+    This is a type representing a block floating point.
+    It is meant to eventually be lowered into a standard type further down the pipeline.
+    It the meantime, it can be used for blocked fp related dataflow adaptations.
+    Available types are bfp16ebs8 and bfp16ebs16.
   }];
 
   let parameters = (
-    ins "unsigned":$block_size
+    ins StringRefParameter<"">:$block_type
   );
 
-  let assemblyFormat = "`<` $block_size `>`";
+  let assemblyFormat = "`<` $block_type `>`";
 
-  // Indicate that our type will add additional verification to the parameters.
-  // Since this new type needs information about the targetModel to be verified, 
-  // checks are done in both the bfp lowering pass and the verifier.
-  // TODO: Find a cleaner way to manage the checks that does not duplicate them.
-  let genVerifyDecl = 1;
+  // Indicate that our type will not add additional verification to the parameters.
+  // Since this type needs information about the targetModel to be verified, 
+  // checks are done in the bfp lowering pass instead of the verifier.
+  let genVerifyDecl = 0;
 }
 
 //===----------------------------------------------------------------------===//
