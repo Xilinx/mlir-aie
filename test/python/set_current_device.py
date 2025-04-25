@@ -15,7 +15,7 @@ import aie.iron as iron
 def main():
     iron.set_current_device(NPU2())
     device = iron.get_current_device()
-    print(device)
+    print(type(device).__name__)
 
 
 if __name__ == "__main__":
