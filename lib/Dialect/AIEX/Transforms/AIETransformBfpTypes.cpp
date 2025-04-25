@@ -144,8 +144,9 @@ public:
 class BfpToIntegerConversionPattern : public ConversionPattern {
 public:
   BfpToIntegerConversionPattern(TypeConverter &typeConverter,
-                                MLIRContext *context)
-      : ConversionPattern(typeConverter, MatchAnyOpTypeTag(), 1, context) {}
+                                MLIRContext *context, bool &conversionFailed)
+      : ConversionPattern(typeConverter, MatchAnyOpTypeTag(), 1, context),
+        conversionFailed(conversionFailed) {}
 
   LogicalResult
   matchAndRewrite(Operation *op, ArrayRef<Value> operands,
@@ -159,6 +160,7 @@ public:
     for (auto result : op->getResults()) {
       auto conversion = typeConverter->convertType(result.getType());
       if (!conversion) {
+        conversionFailed = true;
         return op->emitError()
                << "Failed to convert result type: " << result.getType();
       }
@@ -169,6 +171,7 @@ public:
     for (auto operand : op->getOperands()) {
       auto conversion = typeConverter->convertType(operand.getType());
       if (!conversion) {
+        conversionFailed = true;
         return op->emitError()
                << "Failed to convert operand type: " << operand.getType();
       }
@@ -186,6 +189,7 @@ public:
         auto conversion = typeConverter->convertTypeAttribute(
             typeAttr.getValue(), attr.getValue());
         if (!conversion) {
+          conversionFailed = true;
           return op->emitError()
                  << "Failed to convert attribute type: " << typeAttr.getValue();
         }
@@ -198,6 +202,9 @@ public:
 
     return success();
   }
+
+private:
+  bool &conversionFailed;
 };
 
 class AIETransformBfpTypesPass
@@ -213,9 +220,12 @@ public:
     ConversionTarget target(*context);
 
     RewritePatternSet patterns(context);
-    patterns.add<BfpToIntegerConversionPattern>(typeConverter, context);
+    bool conversionFailed = false;
+    patterns.add<BfpToIntegerConversionPattern>(typeConverter, context,
+                                                conversionFailed);
 
-    if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
+    if (failed(applyPartialConversion(device, target, std::move(patterns))) ||
+        conversionFailed) {
       signalPassFailure();
     }
   }

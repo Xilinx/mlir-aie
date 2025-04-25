@@ -1,4 +1,4 @@
-//===- bfp.mlir ----------------------------------------------*- MLIR -*-===//
+//===- bfp-invalid.mlir ----------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-transform-bfp-types %s -split-input-file 2>&1 | FileCheck %s
+// RUN: not aie-opt --aie-transform-bfp-types -split-input-file %s 2>&1 | FileCheck %s
 
 // CHECK: Block type bfp16ebs16 is not supported in the specified model
 
