@@ -707,6 +707,8 @@ public:
   std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const override;
 
+  std::optional<BfpType> getBfpType(std::string bfpName) const override;
+
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU2 &&
            model->getKind() < TK_AIE2_NPU2_Last;

@@ -809,7 +809,7 @@ BaseNPU2TargetModel::getShimBurstEncodingsAndLengths() const {
           std::pair(3, 512)};
 }
 
-std::optional<BfpType> NPU2TargetModel::getBfpType(std::string bfpName) const {
+std::optional<BfpType> BaseNPU2TargetModel::getBfpType(std::string bfpName) const {
   std::unordered_map<std::string, BfpType> bfpMap = {
       {"bfp16ebs8", {8, 8, 8, 0}},
       {"bfp16ebs16", {16, 8, 8, 0}}
