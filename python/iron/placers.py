@@ -60,15 +60,22 @@ class SequentialPlacer(Placer):
         workers: list[Worker],
         object_fifos: list[ObjectFifoHandle],
     ):
-        shims = device.get_shim_tiles()
-        shim_channels = {}
+        shims_in = device.get_shim_tiles()
+        shims_out = device.get_shim_tiles()
+        shim_in_channels = {}
+        shim_out_channels = {}
 
-        mems = device.get_mem_tiles()
-        mem_channels = {}
+        mems_in = device.get_mem_tiles()
+        mems_out = device.get_mem_tiles()
+        mem_in_channels = {}
+        mem_out_channels = {}
 
         computes = device.get_compute_tiles()
+        computes_in = device.get_compute_tiles()
+        computes_out = device.get_compute_tiles()
         compute_idx = 0
-        compute_channels = {}
+        compute_in_channels = {}
+        compute_out_channels = {}
 
         # If some workers are already taken, remove them from the available set
         for worker in workers:
@@ -105,40 +112,57 @@ class SequentialPlacer(Placer):
             for ofe in of_endpoints:
                 # Place "closest" to the compute endpoints
                 if ofe.tile == AnyMemTile:
-                    memtile = self._find_col_match(common_col, mems, device)
-                    ofe.place(memtile)
-                    if not memtile in mem_channels:
-                        mem_channels[memtile] = 0
-                    mem_channels[memtile] += 1
                     if of._is_prod:
-                        max_memtile_channels = device.get_num_source_connections(memtile)
+                        memtile = self._find_col_match(common_col, mems_out, device)
+                        ofe.place(memtile)
+                        if not memtile in mem_out_channels:
+                            mem_out_channels[memtile] = 0
+                        mem_out_channels[memtile] += 1
+                        max_memtile_out_channels = device.get_num_source_connections(memtile)
+                        if mem_out_channels[memtile] >= max_memtile_out_channels:
+                            mems_out.remove(memtile)
                     else :
-                        max_memtile_channels = device.get_num_dest_connections(memtile)
-                    if mem_channels[memtile] >= max_memtile_channels:
-                        mems.remove(memtile)
+                        memtile = self._find_col_match(common_col, mems_in, device)
+                        ofe.place(memtile)
+                        if not memtile in mem_in_channels:
+                            mem_in_channels[memtile] = 0
+                        mem_in_channels[memtile] += 1
+                        max_memtile_in_channels = device.get_num_dest_connections(memtile)
+                        if mem_in_channels[memtile] >= max_memtile_in_channels:
+                            mems_in.remove(memtile)
 
                 elif ofe.tile == AnyComputeTile:
                     computetile = self._find_col_match(common_col, computes, device)
                     ofe.place(computetile)
-                    if not computetile in compute_channels:
-                        compute_channels[computetile] = 0
-                    compute_channels[computetile] += 1
+                    if not computetile in compute_in_channels:
+                        compute_in_channels[computetile] = 0
+                    compute_in_channels[computetile] += 1
                     if of._is_prod:
                         max_computetile_channels = device.get_num_source_connections(computetile)
                     else :
                         max_computetile_channels = device.get_num_dest_connections(computetile)
-                    if compute_channels[computetile] >= max_computetile_channels:
+                    if compute_in_channels[computetile] >= max_computetile_channels:
                         computes.remove(computetile)
 
                 elif ofe.tile == AnyShimTile:
-                    shimtile = self._find_col_match(common_col, shims, device)
-                    ofe.place(shimtile)
-                    if not shimtile in shim_channels:
-                        shim_channels[shimtile] = 0
-                    shim_channels[shimtile] += 1
-                    max_shimtile_channels = 2
-                    if shim_channels[shimtile] >= max_shimtile_channels:
-                        shims.remove(shimtile)
+                    if of._is_prod:
+                        shimtile = self._find_col_match(common_col, shims_out, device)
+                        ofe.place(shimtile)
+                        if not shimtile in shim_out_channels:
+                            shim_out_channels[shimtile] = 0
+                        shim_out_channels[shimtile] += 1
+                        max_shimtile_out_channels = 2
+                        if shim_out_channels[shimtile] >= max_shimtile_out_channels:
+                            shims_out.remove(shimtile)
+                    else:
+                        shimtile = self._find_col_match(common_col, shims_in, device)
+                        ofe.place(shimtile)
+                        if not shimtile in shim_in_channels:
+                            shim_in_channels[shimtile] = 0
+                        shim_in_channels[shimtile] += 1
+                        max_shimtile_in_channels = 2
+                        if shim_in_channels[shimtile] >= max_shimtile_in_channels:
+                            shims_in.remove(shimtile)
 
     def _get_common_col(self, tiles: list[Tile]) -> int:
         """
