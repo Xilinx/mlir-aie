@@ -17,5 +17,6 @@ def main():
     device = iron.get_current_device()
     print(device)
 
+
 if __name__ == "__main__":
     main()
