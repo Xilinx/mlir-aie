@@ -180,9 +180,6 @@ int main(int argc, const char *argv[]) {
   // Check output
   // ------------------------------------------------------
 
-  // TODO: Decide how to compare the results, right now calculating with fp and
-  // quantizing into bfp again
-
   // Calculate the expected output with fp
   float expectedResult[numberFloats];
   float matrixSize = std::sqrt(numberFloats);
@@ -191,14 +188,6 @@ int main(int argc, const char *argv[]) {
     return 1;
   }
   matrixMultiply(floatA, floatB, expectedResult, matrixSize);
-
-  // for (int i = 0; i < numberFloats; i++) {
-  //   if (i % 9 == 0) {
-  //     std::cout << "Block " << i / 9 << "\n";
-  //   }
-  //   std::cout << "Afloat: " << floatA[i] << " Abfloat: " << bfloatA[i]
-  //             << std::endl;
-  // }
 
   float outputTransformed[numberFloats];
   bfp16ebs8ToFloat(bfpBytesSize, bufOut, outputTransformed, 0);
@@ -209,7 +198,7 @@ int main(int argc, const char *argv[]) {
     if (i % 8 == 0) {
       std::cout << "Block " << i / 8 << "\n";
     }
-    if (!test_utils::nearly_equal(outputTransformed[i], expectedResult[i], 0.5, 3.5)) {
+    if (!test_utils::nearly_equal(outputTransformed[i], expectedResult[i], 0.25, 3.5)) {
       std::cout << "Error in output " << outputTransformed[i]
                 << " != " << expectedResult[i] << std::endl;
       errors++;

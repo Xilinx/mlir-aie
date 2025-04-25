@@ -125,10 +125,6 @@ int main(int argc, const char *argv[]) {
     return generateRandomFloatingPoint(rng, -5, 5);
   });
 
-  for (int i = 0; i < numberFloats; i++) {
-    std::cout << "Afloat: " << floatA[i] << std::endl;
-  }
-
   // Create a temporal copy of the array to be used in quantization
   float floatAScratch[numberFloats];
   std::ranges::copy(floatA, floatAScratch);

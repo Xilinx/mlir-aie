@@ -18,18 +18,23 @@ from ..ir import (
 )
 from ml_dtypes import bfloat16
 
+
 # Custom types
 class bfp16ebs8(np.generic):
     """Custom type to be used in IRON that is translated to a generic blockFloatType"""
+
     @staticmethod
     def get():
         return CustomTypes.blockFloatType.get("bfp16ebs8")
 
+
 class bfp16ebs16(np.generic):
     """Custom type to be used in IRON that is translated to a generic blockFloatType"""
+
     @staticmethod
     def get():
         return CustomTypes.blockFloatType.get("bfp16ebs16")
+
 
 _np_dtype_to_mlir_type_ctor = defaultdict(
     lambda: None,
@@ -53,7 +58,6 @@ _np_dtype_to_mlir_type_ctor = defaultdict(
         # Block floating point types
         bfp16ebs8: bfp16ebs8.get,
         bfp16ebs16: bfp16ebs16.get,
-
         # Index Types
         # this is technically wrong i guess but numpy by default casts python scalars to this
         # so to support passing lists of ints we map to index type
