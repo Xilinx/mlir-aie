@@ -8,3 +8,5 @@
 // RUN: make -f %S/Makefile clean
 // RUN: env dtype_in=i8 dtype_out=i8 m=64 k=128 n=64 M=512 K=512 N=512 make -f %S/Makefile 
 // RUN: %run_on_npu env dtype_in=i8 dtype_out=i8 m=64 k=128 n=64 M=512 K=512 N=512 make -f %S/Makefile run
+// RUN: make -f %S/Makefile clean
+// RUN: %run_on_npu env dtype_in=i8 dtype_out=i8 m=64 k=128 n=64 M=512 K=512 N=512 make -f %S/Makefile trace

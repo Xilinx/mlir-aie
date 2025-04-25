@@ -103,7 +103,7 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, c_out):
 
 #### **Inline Operations into a Runtime Sequence**
 
-In some cases it may be desirable to insert a Python function that generates arbitrary MLIR operations into the runtime sequence. One such example is when users want to set runtime parameters, which will be loaded into the local memory modules of the Workers at runtime, or to setup tracing in the design.
+In some cases it may be desirable to insert a Python function that generates arbitrary MLIR operations into the runtime sequence. One such example is when users want to set runtime parameters, which will be loaded into the local memory modules of the Workers at runtime.
 
 To inline operations into the runtime sequence, users can use the `inline_ops()` operation. It is shown below and defined in [runtime.py](../../../python/iron/runtime/runtime.py):
 ```python
@@ -138,7 +138,13 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
 
     rt.inline_ops(set_rtps, rtps)
 ```
-The propagation of data to these global buffers is not instantaneous and may lead to workers reading runtime parameters before they are available. To solve this, it is possible to instantiate barriers that allow individual workers to synchronize with the runtime sequence:
+The propagation of data to these global buffers is not instantaneous and may lead to workers reading runtime parameters before they are available. To solve this, it is possible to instantiate `WorkerRuntimeBarrier`s defined in [worker.py](../../../python/iron/worker.py):
+```python
+class WorkerRuntimeBarrier:
+    def __init__(self, initial_value: int = 0)
+```
+
+These barriers allow individual workers to synchronize with the runtime sequence:
 ```python
 workerBarriers = []
 for i in range(4):
@@ -162,6 +168,9 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
     for i in range(4):
         rt.set_barrier(workerBarriers[i], 1)
 ```
+Currently, a `WorkerRuntimeBarrier` may take any value between 0 and 63. This is due to the fact that these barriers leverage the lock mechansim of the architecture under-the-hood.
+
+> **NOTE:**  Similar to the `GlobalBuffer` it is possible to create a single barrier and pass it as input to multiple workers. At lower stages of compiler abstraction this will result in a different lock being employed for each worker.
 
 #### **Runtime Task Groups**
 

@@ -9,7 +9,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = conv2d
 mlirFileName = aie
 
@@ -21,13 +21,13 @@ out_channels = 64
 vectorized ?= true
 trace_size = 16384
 
-ifeq ($(device),npu2)
+ifeq ($(devicename),npu2)
 VPATH := ${srcdir}/../../../aie_kernels/aie2p
 else
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 endif
 
-colshift ?= $(if $(filter 1,$(NPU2)),0,1)
+colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src = ${targetname}.py
 aie_py_placed_src = ${targetname}_placed.py
 use_placed ?= 0
@@ -40,13 +40,13 @@ all: build/conv2dk1_i8.o build/final.xclbin
 
 build/conv2dk1_i8.o: conv2dk1_i8.cc
 	mkdir -p ${@D}
-ifeq ($(device),npu)
+ifeq ($(devicename),npu)
 ifeq ($(vectorized), true)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DINT8_ACT -c $< -o ${@F}
 else
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DSCALAR -DINT8_ACT -c $< -o ${@F}
 endif
-else ifeq ($(device),npu2)
+else ifeq ($(devicename),npu2)
 ifeq ($(vectorized), true)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -DINT8_ACT -c $< -o ${@F}
 else
@@ -58,11 +58,11 @@ endif
 
 build/aie2.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${device} ${width} ${height} ${in_channels} ${out_channels} 0 > $@
+	python3 $< ${devicename} ${width} ${height} ${in_channels} ${out_channels} 0 > $@
 
 build/aie2_trace.mlir: ${srcdir}/${aie_py_placed_src}
 	mkdir -p ${@D}
-	python3 $< ${device} ${width} ${height} ${in_channels} ${out_channels} ${trace_size} > $@
+	python3 $< ${devicename} ${width} ${height} ${in_channels} ${out_channels} ${trace_size} > $@
 
 build/final.xclbin: build/aie2.mlir build/conv2dk1_i8.o 
 	mkdir -p ${@D} 

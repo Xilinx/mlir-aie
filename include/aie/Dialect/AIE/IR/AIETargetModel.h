@@ -601,9 +601,9 @@ public:
   }
 };
 
-class BaseNPUTargetModel : public AIE2TargetModel {
+class BaseNPU1TargetModel : public AIE2TargetModel {
 public:
-  BaseNPUTargetModel(TargetModelKind k) : AIE2TargetModel(k) {
+  BaseNPU1TargetModel(TargetModelKind k) : AIE2TargetModel(k) {
     // Device properties initialization
     addModelProperty(AIETargetModel::IsNPU);
   }
@@ -627,14 +627,14 @@ public:
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU1 &&
-           model->getKind() < TK_AIE2_NPU2_Last;
+           model->getKind() < TK_AIE2_NPU1_Last;
   }
 };
 
 // The full Phoenix NPU
-class NPUTargetModel : public BaseNPUTargetModel {
+class NPU1TargetModel : public BaseNPU1TargetModel {
 public:
-  NPUTargetModel() : BaseNPUTargetModel(TK_AIE2_NPU1) {}
+  NPU1TargetModel() : BaseNPU1TargetModel(TK_AIE2_NPU1) {}
 
   int columns() const override { return 5; }
 
@@ -653,20 +653,18 @@ public:
 };
 
 // A sub-portion of the Phoenix NPU
-class VirtualizedNPUTargetModel : public BaseNPUTargetModel {
+class VirtualizedNPU1TargetModel : public BaseNPU1TargetModel {
   int cols;
 
 public:
-  VirtualizedNPUTargetModel(int _cols)
-      : BaseNPUTargetModel(static_cast<TargetModelKind>(
+  VirtualizedNPU1TargetModel(int _cols)
+      : BaseNPU1TargetModel(static_cast<TargetModelKind>(
             static_cast<std::underlying_type_t<TargetModelKind>>(TK_AIE2_NPU1) +
             _cols)),
         cols(_cols) {
     // Device properties initialization
     addModelProperty(AIETargetModel::IsVirtualized);
   }
-
-  uint32_t getAddressGenGranularity() const override { return 32; }
 
   int columns() const override { return cols; }
 
@@ -678,36 +676,62 @@ public:
   }
 };
 
-// The full Strix NPU
-class NPU2TargetModel : public BaseNPUTargetModel {
+class BaseNPU2TargetModel : public AIE2TargetModel {
 public:
-  NPU2TargetModel() : BaseNPUTargetModel(TK_AIE2_NPU2) {}
+  BaseNPU2TargetModel(TargetModelKind k) : AIE2TargetModel(k) {
+    // Device properties initialization
+    addModelProperty(AIETargetModel::IsNPU);
+  }
 
   AIEArch getTargetArch() const override;
 
-  int columns() const override { return 8; }
+  int rows() const override {
+    return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
+  }
+
+  bool isCoreTile(int col, int row) const override { return row > 1; }
+  bool isMemTile(int col, int row) const override { return row == 1; }
+
+  bool isShimPLTile(int col, int row) const override {
+    return false; // No PL tiles
+  }
 
   bool isShimNOCTile(int col, int row) const override { return row == 0; }
 
-  bool isShimPLTile(int col, int row) const override { return false; }
-
-  static bool classof(const AIETargetModel *model) {
-    return model->getKind() == TK_AIE2_NPU2;
+  bool isShimNOCorPLTile(int col, int row) const override {
+    return isShimNOCTile(col, row);
   }
+
+  uint32_t getNumMemTileRows() const override { return 1; }
 
   std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const override;
 
-  std::optional<BfpType> getBfpType(std::string bfpName) const override;
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() >= TK_AIE2_NPU2 &&
+           model->getKind() < TK_AIE2_NPU2_Last;
+  }
+};
+
+// The full Strix NPU
+class NPU2TargetModel : public BaseNPU2TargetModel {
+public:
+  NPU2TargetModel() : BaseNPU2TargetModel(TK_AIE2_NPU2) {}
+
+  int columns() const override { return 8; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() == TK_AIE2_NPU2;
+  }
 };
 
 // A sub-portion of the Strix NPU
-class VirtualizedNPU2TargetModel : public BaseNPUTargetModel {
+class VirtualizedNPU2TargetModel : public BaseNPU2TargetModel {
   int cols;
 
 public:
   VirtualizedNPU2TargetModel(int _cols)
-      : BaseNPUTargetModel(static_cast<TargetModelKind>(
+      : BaseNPU2TargetModel(static_cast<TargetModelKind>(
             static_cast<std::underlying_type_t<TargetModelKind>>(TK_AIE2_NPU2) +
             _cols)),
         cols(_cols) {
@@ -715,11 +739,7 @@ public:
     addModelProperty(AIETargetModel::IsVirtualized);
   }
 
-  uint32_t getAddressGenGranularity() const override { return 32; }
-
   int columns() const override { return cols; }
-
-  bool isShimNOCTile(int col, int row) const override { return row == 0; }
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU2_1Col &&

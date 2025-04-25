@@ -15,12 +15,13 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 all: build/final.xclbin
 
-device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = relu
 in1_size = 131072 # in bytes
 out_size = 131072 # in bytes, should always be equal to in1_size
 trace_size = 8192
 
+colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src=${targetname}.py
 use_placed?=0
 
@@ -31,9 +32,9 @@ endif
 
 build/%.o: %.cc
 	mkdir -p ${@D}
-ifeq ($(device),npu)
+ifeq ($(devicename),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
-else ifeq ($(device),npu2)
+else ifeq ($(devicename),npu2)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
 else
 	echo "Device type not supported"
@@ -41,11 +42,11 @@ endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${device} ${in1_size} ${out_size} 0 > $@
+	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} > $@
 
 build/aie_trace.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${device} ${in1_size} ${out_size} ${trace_size} > $@
+	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} -t ${trace_size} > $@
 
 build/final.xclbin: build/aie.mlir build/relu.o
 	mkdir -p ${@D}
@@ -75,8 +76,8 @@ run: ${targetname}.exe build/final.xclbin
 
 trace: ${targetname}.exe build/final_trace.xclbin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > trace_relu.json
-	${srcdir}/../../utils/get_trace_summary.py --filename trace_relu.json
+	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift ${colshift} > trace_${targetname}.json
+	${srcdir}/../../utils/get_trace_summary.py --filename trace_${targetname}.json
 
 clean:
 	rm -rf build _build ${targetname}.exe

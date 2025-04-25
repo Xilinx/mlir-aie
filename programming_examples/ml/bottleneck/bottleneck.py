@@ -5,6 +5,7 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 import numpy as np
+import sys
 
 from aie.iron import (
     GlobalBuffer,
@@ -16,8 +17,16 @@ from aie.iron import (
     WorkerRuntimeBarrier,
 )
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import AnyMemTile, NPU1Col1, Tile
+from aie.iron.device import AnyMemTile, NPU1Col1, NPU2, Tile
 from aie.iron.controlflow import range_
+
+if len(sys.argv) > 1:
+    if sys.argv[1] == "npu":
+        dev = NPU1Col1()
+    elif sys.argv[1] == "npu2":
+        dev = NPU2()
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
 # Define bottleneck layer sizes
 
@@ -368,7 +377,7 @@ def bottleneck4AIEs():
         rt.drain(outOFL2L3.cons(), outputToL3, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
 module = bottleneck4AIEs()
