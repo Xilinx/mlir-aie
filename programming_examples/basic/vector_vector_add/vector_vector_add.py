@@ -4,63 +4,52 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-import numpy as np
-import sys
+# (c) Copyright 2024-2025 Advanced Micro Devices, Inc. or its affiliates
+
 import argparse
+import sys
+import numpy as np
+import aie.iron as iron
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, NPU2Col1, XCVC1902
+from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
-
-import aie.iron as iron
-
-# The JIT-compiled kernel relies on inputs from the command line.
-# Because of that, we need to parse the arguments before the JIT is invoked.
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "-v", "--verbose", action="store_true", help="Enable verbose output"
-)
-parser.add_argument(
-    "-d",
-    "--device",
-    choices=["npu", "npu2"],
-    default="npu",
-    help="Target device",
-)
-parser.add_argument(
-    "-c", "--column", type=int, default=0, help="Column index (default: 0)"
-)
-parser.add_argument(
-    "-n",
-    "--num-elements",
-    type=int,
-    default=32,
-    help="Number of elements (default: 32)",
-)
-args = parser.parse_args()
-
-if args.num_elements % 16 != 0:
-    raise ValueError("num_elements must be a multiple of 16.")
-
-device_map = {
-    "npu": NPU1Col1(),
-    "npu2": NPU2Col1(),
-}
-dev = device_map[args.device]
-num_elements = args.num_elements
-data_type = np.int32
 
 
 @iron.jit(is_placed=False)
-def vector_vector_add():
+def vector_vector_add(input0, input1, output):
+    if input0.shape != input1.shape:
+        raise ValueError(
+            f"Input shapes are not the equal ({input0.shape} != {input1.shape})."
+        )
+    if input0.shape != output.shape:
+        raise ValueError(
+            f"Input and output shapes are not the equal ({input0.shape} != {output.shape})."
+        )
+    if len(np.shape(input0)) != 1:
+        raise ValueError("Function only supports vectors.")
+    num_elements = np.size(input0)
     n = 16
+    if num_elements % n != 0:
+        raise ValueError(
+            f"Number of elements ({num_elements}) must be a multiple of {n}."
+        )
     N_div_n = num_elements // n
 
+    if input0.dtype != input1.dtype:
+        raise ValueError(
+            f"Input data types are not the same ({input0.dtype} != {input1.dtype})."
+        )
+    if input0.dtype != output.dtype:
+        raise ValueError(
+            f"Input and output data types are not the same ({input0.dtype} != {output.dtype})."
+        )
+    dtype = input0.dtype
+
     # Define tensor types
-    tensor_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
-    tile_ty = np.ndarray[(n,), np.dtype[data_type]]
+    tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
+    tile_ty = np.ndarray[(n,), np.dtype[dtype]]
 
     # AIE-array data movement with object fifos
     of_in1 = ObjectFifo(tile_ty, name="in1")
@@ -92,16 +81,42 @@ def vector_vector_add():
         rt.drain(of_out.cons(), C, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
 
 
 def main():
+    device_map = {
+        "npu": NPU1Col1(),
+        "npu2": NPU2Col1(),
+    }
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose output"
+    )
+    parser.add_argument(
+        "-d",
+        "--device",
+        choices=["npu", "npu2"],
+        default="npu",
+        help="Target device",
+    )
+    parser.add_argument(
+        "-n",
+        "--num-elements",
+        type=int,
+        default=32,
+        help="Number of elements (default: 32)",
+    )
+    args = parser.parse_args()
 
     # Construct two input random tensors and an output zeroed tensor
     # The three tensor are in memory accessible to the NPU
-    input0 = iron.rand((num_elements,), dtype=data_type, device="npu")
-    input1 = iron.rand((num_elements,), dtype=data_type, device="npu")
+    input0 = iron.randint(0, 100, (args.num_elements,), dtype=np.int32, device="npu")
+    input1 = iron.randint(0, 100, (args.num_elements,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input0)
+
+    iron.set_current_device(device_map[args.device])
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
@@ -125,11 +140,11 @@ def main():
     # Otherwise, exit with a failure code
     if not errors:
         print("\nPASS!\n")
-        exit(0)
+        sys.exit(0)
     else:
         print("\nError count: ", errors)
         print("\nFailed.\n")
-        exit(-1)
+        sys.exit(-1)
 
 
 if __name__ == "__main__":
