@@ -7,7 +7,6 @@
 # RUN: %run_on_npu %pytest %s
 # RUN: %run_on_2npu %pytest %s
 
-import pytest
 import aie.iron as iron
 from aie.iron.device import NPU2
 
