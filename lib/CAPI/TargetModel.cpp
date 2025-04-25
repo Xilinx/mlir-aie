@@ -154,9 +154,12 @@ uint32_t aieTargetModelGetNumBanks(AieTargetModel targetModel, int col,
   return unwrap(targetModel).getNumBanks(col, row);
 }
 
-uint32_t aieTargetModelGetNumDestSwitchboxConnections(AieTargetModel targetModel, int col, int row, uint32_t bundle) {
-  xilinx::AIE::WireBundle wireBundle = static_cast<xilinx::AIE::WireBundle>(bundle);
-  return unwrap(targetModel).getNumDestSwitchboxConnections(col, row, wireBundle);
+uint32_t aieTargetModelGetNumDestSwitchboxConnections(
+    AieTargetModel targetModel, int col, int row, uint32_t bundle) {
+  xilinx::AIE::WireBundle wireBundle =
+      static_cast<xilinx::AIE::WireBundle>(bundle);
+  return unwrap(targetModel)
+      .getNumDestSwitchboxConnections(col, row, wireBundle);
 }
 
 uint32_t aieTargetModelGetNumSourceSwitchboxConnections(AieTargetModel targetModel, int col, int row, uint32_t bundle) {
