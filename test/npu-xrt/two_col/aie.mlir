@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 module {
-  aie.device(NPUDEVICE) {
+  aie.device(npu1_2col) {
     %0 = aie.tile(0, 0)
     %1 = aie.tile(0, 1)
     %2 = aie.tile(0, 2)
