@@ -9,7 +9,7 @@ import sys
 
 from aie.iron import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker, WorkerRuntimeBarrier
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1
+from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
 
 width = 32
@@ -37,7 +37,7 @@ trace_size = 16384
 traceSizeInInt32s = trace_size // 4
 
 
-def conv2dk1():
+def conv2dk1(dev):
     # Define types
     actIn_ty = np.ndarray[(actIn,), np.dtype[np.int8]]
     bufIn_ty = np.ndarray[(bufIn,), np.dtype[np.int8]]
@@ -137,7 +137,19 @@ def conv2dk1():
         rt.drain(of_outOFL2L3.cons(), O, wait=True)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
-print(conv2dk1())
+try:
+    device_name = str(sys.argv[1])
+    if device_name == "npu":
+        dev = NPU1Col1()
+    elif device_name == "npu2":
+        dev = NPU2Col1()
+    else:
+        raise ValueError(f"[ERROR] Device name {sys.argv[1]} is unknown")
+except ValueError:
+    print("Argument has inappropriate value")
+
+module = conv2dk1(dev)
+print(module)

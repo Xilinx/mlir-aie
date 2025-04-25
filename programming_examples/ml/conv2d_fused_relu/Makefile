@@ -9,6 +9,9 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
+CHESS ?= false
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+
 mlirFileName = aieWithTrace_1core
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
@@ -24,17 +27,35 @@ all: build/conv2dk1.o build/final.xclbin
 
 build/${mlirFileName}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< > $@
+	python3 $< ${devicename} > $@
 
 build/conv2dk1.o: conv2dk1.cc
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DINT8_ACT -c $< -o$ ${@F} 
+ifeq ($(devicename),npu)
+ifeq ($(CHESS), true)
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DINT8_ACT -c $< -o ${@F};
+else
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DINT8_ACT -c $< -o ${@F}
+endif
+else ifeq ($(devicename),npu2)
+ifeq ($(CHESS), true)
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DINT8_ACT -c $< -o ${@F};
+else
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -DINT8_ACT -c $< -o ${@F}
+endif
+else
+	echo "Device type not supported"
+endif
 
 build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1.o  
 	mkdir -p ${@D}
+ifeq ($(CHESS), true)
 	cd ${@D} && aiecc.py -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
-		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%) 
+		 --xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
+else
+	cd ${@D} && aiecc.py -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
+		--no-xchesscc --no-xbridge --xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
+endif
 
 clean:
 	rm -rf build *.elf* *.lst *.bif ${mlirFileName}.mlir.prj log* *.xclbin sim \
