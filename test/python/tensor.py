@@ -5,6 +5,7 @@
 # (c) Copyright 2025 AMD Inc.
 
 # RUN: %run_on_npu %pytest %s
+# RUN: %run_on_2npu %pytest %s
 
 import pytest
 import numpy as np
