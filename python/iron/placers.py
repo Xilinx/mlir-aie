@@ -118,16 +118,20 @@ class SequentialPlacer(Placer):
                         if not memtile in mem_out_channels:
                             mem_out_channels[memtile] = 0
                         mem_out_channels[memtile] += 1
-                        max_memtile_out_channels = device.get_num_source_connections(memtile)
+                        max_memtile_out_channels = device.get_num_source_connections(
+                            memtile
+                        )
                         if mem_out_channels[memtile] >= max_memtile_out_channels:
                             mems_out.remove(memtile)
-                    else :
+                    else:
                         memtile = self._find_col_match(common_col, mems_in, device)
                         ofe.place(memtile)
                         if not memtile in mem_in_channels:
                             mem_in_channels[memtile] = 0
                         mem_in_channels[memtile] += 1
-                        max_memtile_in_channels = device.get_num_dest_connections(memtile)
+                        max_memtile_in_channels = device.get_num_dest_connections(
+                            memtile
+                        )
                         if mem_in_channels[memtile] >= max_memtile_in_channels:
                             mems_in.remove(memtile)
 
@@ -138,9 +142,13 @@ class SequentialPlacer(Placer):
                         compute_in_channels[computetile] = 0
                     compute_in_channels[computetile] += 1
                     if of._is_prod:
-                        max_computetile_channels = device.get_num_source_connections(computetile)
-                    else :
-                        max_computetile_channels = device.get_num_dest_connections(computetile)
+                        max_computetile_channels = device.get_num_source_connections(
+                            computetile
+                        )
+                    else:
+                        max_computetile_channels = device.get_num_dest_connections(
+                            computetile
+                        )
                     if compute_in_channels[computetile] >= max_computetile_channels:
                         computes.remove(computetile)
 
@@ -179,9 +187,12 @@ class SequentialPlacer(Placer):
         """
         A utility function that sequentially searches a list of tiles to find one with a matching column.
         """
-        while col < device.cols:
+        new_col = col
+        while new_col < device.cols:
             for t in tiles:
-                if t.col == col:
+                if t.col == new_col:
                     return t
-            col += 1
-        raise ValueError(f"Failed to find a tile matching column {col}")
+            new_col += 1
+        raise ValueError(
+            f"Failed to find a tile matching column {col}: tried until column {new_col}. Try using a device with more columns."
+        )
