@@ -10,6 +10,7 @@ from util import construct_and_print_module
 
 # RUN: %python %s | FileCheck %s
 
+
 @construct_and_print_module
 def shim_three_in(module):
     N = 4096
@@ -23,18 +24,14 @@ def shim_three_in(module):
     n_inputs = 3
     of_ins = []
     for i in range(n_inputs):
-        of_ins.append(
-            ObjectFifo(n_ty, name=f"in_{i}")
-        )
+        of_ins.append(ObjectFifo(n_ty, name=f"in_{i}"))
 
     def core_fn(of_in):
         pass
 
     workers = []
     for i in range(n_inputs):
-        workers.append(
-            Worker(core_fn, [of_ins[i].cons()])
-        )
+        workers.append(Worker(core_fn, [of_ins[i].cons()]))
 
     rt = Runtime()
     with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
@@ -85,17 +82,16 @@ def mem_eight_in_three_out(module):
     n_ty = np.ndarray[(n,), np.dtype[np.int32]]
     N_ty = np.ndarray[(N,), np.dtype[np.int32]]
 
-    # CHECK: %mem_tile_1_1 = aie.tile(1, 1) 
-    # CHECK: %mem_tile_0_1 = aie.tile(0, 1) 
-    # CHECK: %shim_noc_tile_0_0 = aie.tile(0, 0) 
-    # CHECK: %shim_noc_tile_1_0 = aie.tile(1, 0) 
+    # CHECK: %mem_tile_1_1 = aie.tile(1, 1)
+    # CHECK: %mem_tile_0_1 = aie.tile(0, 1)
+    # CHECK: %shim_noc_tile_0_0 = aie.tile(0, 0)
+    # CHECK: %shim_noc_tile_1_0 = aie.tile(1, 0)
 
     n_join_inputs = 6
     of_offsets = [
-        np.prod((np_ndarray_type_get_shape(n_ty))) * i
-        for i in range(n_join_inputs)
+        np.prod((np_ndarray_type_get_shape(n_ty))) * i for i in range(n_join_inputs)
     ]
-    
+
     of_out_A = ObjectFifo(N_ty, name="out_A")
     of_joins = of_out_A.prod().join(
         of_offsets,
@@ -112,15 +108,9 @@ def mem_eight_in_three_out(module):
 
     workers = []
     for i in range(n_join_inputs):
-        workers.append(
-            Worker(core_fn, [of_joins[i].prod()])
-        )
-    workers.append(
-        Worker(core_fn, [of_mem_in_6.prod()])
-    )
-    workers.append(
-        Worker(core_fn, [of_mem_in_7.prod()])
-    )
+        workers.append(Worker(core_fn, [of_joins[i].prod()]))
+    workers.append(Worker(core_fn, [of_mem_in_6.prod()]))
+    workers.append(Worker(core_fn, [of_mem_in_7.prod()]))
 
     rt = Runtime()
     with rt.sequence(N_ty, n_ty, n_ty) as (A, B, C):
