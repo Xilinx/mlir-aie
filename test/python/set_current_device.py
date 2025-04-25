@@ -10,7 +10,7 @@ from aie.iron.device import NPU2
 
 import aie.iron as iron
 
-# CHECK NPU2
+# CHECK: NPU2
 def main():
     iron.set_current_device(NPU2())
     device = iron.get_current_device()
