@@ -1,4 +1,4 @@
-#===- test.py -------------------------------------------------*- Python -*-===#
+# ===- test.py -------------------------------------------------*- Python -*-===#
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,7 @@
 #
 # Copyright (C) 2025, Advanced Micro Devices, Inc.
 #
-#===----------------------------------------------------------------------===#
+# ===----------------------------------------------------------------------===#
 
 # This gets launched from run.lit, so disable it with a bogus requires line
 # REQUIRES: dont_run
@@ -22,21 +22,36 @@ import struct
 IN_SIZE = 64
 OUT_SIZE = 64
 
+
 def check_file_exists(filepath):
     if not os.path.isfile(filepath):
         raise FileNotFoundError(f"File not found: {filepath}")
+
 
 def load_instr_binary(filepath):
     with open(filepath, "rb") as f:
         return list(struct.unpack(f"{os.path.getsize(filepath)//4}I", f.read()))
 
+
 def main():
     # Argument parsing
     parser = argparse.ArgumentParser(description="PyXRT Test Script")
     parser.add_argument("-x", "--xclbin", required=True, help="The input xclbin path")
-    parser.add_argument("-k", "--kernel", required=True, help="The kernel name in the XCLBIN (e.g., PP_PRE_FD)")
-    parser.add_argument("-v", "--verbosity", type=int, default=0, help="The verbosity of the output")
-    parser.add_argument("-i", "--instr", required=True, help="Path of file containing userspace instructions to be sent to the LX6")
+    parser.add_argument(
+        "-k",
+        "--kernel",
+        required=True,
+        help="The kernel name in the XCLBIN (e.g., PP_PRE_FD)",
+    )
+    parser.add_argument(
+        "-v", "--verbosity", type=int, default=0, help="The verbosity of the output"
+    )
+    parser.add_argument(
+        "-i",
+        "--instr",
+        required=True,
+        help="Path of file containing userspace instructions to be sent to the LX6",
+    )
     args = parser.parse_args()
 
     # Check if files exist
@@ -133,6 +148,7 @@ def main():
     else:
         print("\nfailed.\n")
         return 1
+
 
 if __name__ == "__main__":
     main()
