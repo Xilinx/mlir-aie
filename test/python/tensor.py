@@ -10,6 +10,7 @@ import pytest
 import numpy as np
 import aie.iron as iron
 
+
 @pytest.mark.parametrize("dtype", [np.float32, np.int32])
 def test_tensor_creation(dtype):
     t = iron.tensor((2, 2), dtype=dtype, device="npu")
