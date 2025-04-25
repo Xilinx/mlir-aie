@@ -13,7 +13,6 @@ import numpy as np
 
 from aie.iron import Program, Runtime, Worker, ObjectFifo
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
 
@@ -100,8 +99,6 @@ def main():
     # The two tensors are in memory accessible to the NPU
     input0 = iron.arange(data_size, dtype=element_type, device="npu")
     output = iron.zeros(data_size, dtype=element_type, device="npu")
-
-    iron.set_current_device(NPU2())
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects

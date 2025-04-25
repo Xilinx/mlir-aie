@@ -6,7 +6,63 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
+import subprocess
+
+from .device import NPU1Col4, NPU2
+
+
+def detect_npu_device():
+    """Detects the current device in the system.
+       This assumes XRT and XDNA driver is installed
+       and the system has NPU hardware.
+
+    Returns:
+        The current system device.
+    """
+    try:
+        # Run `xrt-smi examine` and capture output
+        result = subprocess.run(
+            ["/opt/xilinx/xrt/bin/xrt-smi", "examine"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        output = result.stdout
+
+        # Match strings for NPU2 or NPU1
+        # Set's generic "whole array" devices, this is overkill...
+        if any(
+            keyword.lower() in output.lower()
+            for keyword in [
+                "NPU Strix",
+                "NPU Strix Halo",
+                "NPU Kracken",
+                "RyzenAI-npu4",
+                "RyzenAI-npu6",
+            ]
+        ):
+            return NPU2()
+        elif any(
+            keyword.lower() in output.lower()
+            for keyword in [
+                "NPU Phoenix",
+                "RyzenAI-npu1",
+            ]
+        ):
+            return NPU1Col4()
+        else:
+            raise RuntimeError("No supported NPU device found.")
+
+    except FileNotFoundError:
+        raise RuntimeError("xrt-smi not found. Make sure XRT is installed.")
+    except subprocess.CalledProcessError:
+        raise RuntimeError("Failed to run xrt-smi examine.")
+
+
 config = {}
+
+config["device"] = detect_npu_device()
 
 
 def set_current_device(device):

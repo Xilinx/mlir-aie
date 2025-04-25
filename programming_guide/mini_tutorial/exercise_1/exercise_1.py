@@ -11,7 +11,6 @@ import numpy as np
 
 from aie.iron import Program, Runtime, Worker, ObjectFifo, GlobalBuffer
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
 
 import aie.iron as iron
@@ -64,8 +63,6 @@ def main():
     # The two tensors are in memory accessible to the NPU
     input0 = iron.arange(num_elements, dtype=data_type, device="npu")
     output = iron.zeros_like(input0)
-
-    iron.set_current_device(NPU2())
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects

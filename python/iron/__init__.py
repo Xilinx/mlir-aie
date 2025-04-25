@@ -12,7 +12,7 @@ try:
     # imports the .jit module.
     import pyxrt
     from .jit import jit
-    from .config import set_current_device, get_current_device
+    from .config import set_current_device, get_current_device, detect_npu_device
 
     from .tensor import (
         tensor,

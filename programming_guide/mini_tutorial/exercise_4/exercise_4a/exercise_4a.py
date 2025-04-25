@@ -11,7 +11,6 @@ import numpy as np
 
 from aie.iron import Program, Runtime, Worker, ObjectFifo
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern
 
@@ -75,8 +74,6 @@ def main():
 
     # Generate reference pattern
     ref_vec = [k * 8 + j * 16 + i for k in range(2) for j in range(3) for i in range(8)]
-
-    iron.set_current_device(NPU2())
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
