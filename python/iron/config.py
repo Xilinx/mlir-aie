@@ -10,6 +10,7 @@ import subprocess
 
 from .device import NPU1Col4, NPU2
 
+
 def detect_npu_device():
     try:
         # Run `xrt-smi examine` and capture output
