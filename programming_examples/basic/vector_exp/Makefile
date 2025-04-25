@@ -12,6 +12,8 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
+aie_runtime_dir = ${AIEOPT_DIR}/aie_runtime_lib
+
 targetname = vector_exp
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 col = 0
@@ -25,19 +27,29 @@ endif
 
 all: build/final.xclbin build/insts.bin
 
-VPATH := ${srcdir}/../../../aie_kernels/aie2
+VPATH :=${srcdir}/../../../aie_kernels/aie2
 
-build/exp.o: bf16_exp.cc
-	mkdir -p ${@D}
-ifeq ($(devicename),npu2)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -I${srcdir}/../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I${srcdir}/../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
+ifeq ($(devicename),npu)
+aie_runtime_dir := ${AIEOPT_DIR}/aie_runtime_lib/AIE2
+else 
+aie_runtime_dir := ${AIEOPT_DIR}/aie_runtime_lib/AIE2P
 endif
 
-build/lut_based_ops.o: ${srcdir}/../../../aie_runtime_lib/AIE2/lut_based_ops.cpp
+build/lut_based_ops.o: ${aie_runtime_dir}/lut_based_ops.cpp
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -c $< -o ${@F}
+ifeq ($(devicename),npu)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
+else
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
+endif
+
+build/exp.o: ${VPATH}/bf16_exp.cc
+	mkdir -p ${@D}
+ifeq ($(devicename),npu)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I${aie_runtime_dir} -c $< -o ${@F}
+else
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -I${aie_runtime_dir} -c $< -o ${@F}
+endif
 
 build/kernels.a: build/exp.o build/lut_based_ops.o
 	ar rvs $@ $+
