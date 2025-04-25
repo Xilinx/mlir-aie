@@ -7,7 +7,7 @@
 export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 
 
 XRT_DIR=/opt/xilinx/xrt
-source $XRT_DIR/setup.sh
+source $XRT_DIR/setup.sh >& /dev/null
 
 # Execute the commands and its arguments
 "$@"

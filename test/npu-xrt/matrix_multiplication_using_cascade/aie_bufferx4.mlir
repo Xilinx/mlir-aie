@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(NPUDEVICE) {
     // <trace>
     func.func private @flush_trace()
     func.func private @event_0()

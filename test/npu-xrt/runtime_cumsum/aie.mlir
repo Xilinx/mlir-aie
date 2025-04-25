@@ -31,7 +31,7 @@
 //└───────────────────────────────────────┘
 
 module {
-    aie.device(npu1_1col) {
+    aie.device(NPUDEVICE) {
 
         // AIE Core Function declarations
         func.func private @sum(memref<16xi32>, memref<16xi32>)
