@@ -313,7 +313,8 @@ NB_MODULE(_aie, m) {
            })
       .def("get_num_dest_switchbox_connections",
            [](PyAieTargetModel &self, int col, int row, uint32_t bundle) {
-             return aieTargetModelGetNumDestSwitchboxConnections(self.get(), col, row, bundle);
+             return aieTargetModelGetNumDestSwitchboxConnections(
+                 self.get(), col, row, bundle);
            })
       .def("get_num_source_switchbox_connections",
            [](PyAieTargetModel &self, int col, int row, uint32_t bundle) {
