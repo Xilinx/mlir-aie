@@ -19,7 +19,17 @@ from ..ir import (
 from ml_dtypes import bfloat16
 
 # Custom types
-bfp16 = lambda: CustomTypes.bfp16Type.get()
+class bfp16ebs8(np.generic):
+    """Custom type to be used in IRON that is translated to a generic blockFloatType"""
+    @staticmethod
+    def get():
+        return CustomTypes.blockFloatType.get("bfp16ebs8")
+
+class bfp16ebs16(np.generic):
+    """Custom type to be used in IRON that is translated to a generic blockFloatType"""
+    @staticmethod
+    def get():
+        return CustomTypes.blockFloatType.get("bfp16ebs16")
 
 _np_dtype_to_mlir_type_ctor = defaultdict(
     lambda: None,
@@ -41,7 +51,8 @@ _np_dtype_to_mlir_type_ctor = defaultdict(
         np.float64: T.f64,
         bfloat16: T.bf16,
         # Block floating point types
-        CustomTypes.bfp16Type: bfp16,
+        bfp16ebs8: bfp16ebs8.get,
+        bfp16ebs16: bfp16ebs16.get,
 
         # Index Types
         # this is technically wrong i guess but numpy by default casts python scalars to this
@@ -67,7 +78,8 @@ NpuDType = (
     | np.longlong
     | np.uintp
     | bfloat16
-    | CustomTypes.bfp16Type
+    | bfp16ebs8
+    | bfp16ebs16
 )
 
 _mlir_type_ctor_to_np_dtype = lambda: {

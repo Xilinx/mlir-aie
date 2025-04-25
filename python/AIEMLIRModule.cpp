@@ -67,13 +67,16 @@ NB_MODULE(_aie, m) {
           "Get an instance of ObjectFifoSubviewType with given element type.",
           "self"_a, "type"_a = nb::none());
 
-  nanobind_adaptors::mlir_type_subclass(m, "bfp16Type", aieTypeIsbfp16Type)
+  nanobind_adaptors::mlir_type_subclass(m, "blockFloatType",
+                                        aieTypeIsBlockFloatType)
       .def_classmethod(
           "get",
-          [](const nb::object &cls, MlirContext ctx) {
-            return cls(aiebfp16TypeGet(ctx, 8));
+          [](const nb::object &cls, const std::string &subtype,
+             MlirContext ctx) {
+            return cls(aieBlockFloatTypeGet(ctx, subtype));
           },
-          "Get an instance of BFP16Type.", "self"_a, "type"_a = nb::none());
+          "Get an instance of BlockFloat type with the specified subtype.",
+          "self"_a, "subtype"_a, "ctx"_a = nb::none());
 
   auto stealCStr = [](MlirStringRef mlirString) {
     if (!mlirString.data || mlirString.length == 0)

@@ -14,11 +14,6 @@ from aie.dialects.aiex import *
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.extras.context import mlir_mod_ctx
 
-# The idea here is to receive bf16 data from host memory and then convert it to bfp16 in core 2. We return the data as bfp16 to host memory.
-# Only one single computation per core is performed (tensor size equals tile size).
-# Note that bfp16's smallest supported operation is a matrix multiplication of two 8x8 matrices. This corresponds to 8 bfps of 8 elements each.
-
-
 def bfp_conversion():
     # We are just doing one operation in total => tensor and tile sizes are equal
     N_in = 64
@@ -36,8 +31,8 @@ def bfp_conversion():
         tensor_bf16_ty = np.ndarray[(N_in,), np.dtype[bfloat16]]
         tile_bf16_ty = np.ndarray[(n_in,), np.dtype[bfloat16]]
         
-        tensor_bfp16_ty = np.ndarray[(N_out,), np.dtype[bfp16Type]]
-        tile_bfp16_ty = np.ndarray[(n_out,), np.dtype[bfp16Type]]
+        tensor_bfp16_ty = np.ndarray[(N_out,), np.dtype[bfp16ebs8]]
+        tile_bfp16_ty = np.ndarray[(n_out,), np.dtype[bfp16ebs8]]
 
         # AIE Core Function declarations
         conversion_func = external_func(

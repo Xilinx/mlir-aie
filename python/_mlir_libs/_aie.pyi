@@ -58,10 +58,11 @@ class ObjectFifoSubviewType:
     @staticmethod
     def isinstance(other: Type) -> bool: ...
 
-class bfp16Type(np.generic):
-    """Custom Block Floating Point 16-bit type."""
+class blockFloatType:
+    """Custom Block Floating Point type."""
+
     @staticmethod
-    def get(ctx) -> bfp16Type:
+    def get(subtype) -> blockFloatType:
         """
         Create a block floating point type
         """

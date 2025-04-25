@@ -8,6 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <utility>
+
 #include "aie-c/Dialects.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
@@ -50,13 +52,14 @@ MlirType aieObjectFifoSubviewTypeGet(MlirType type) {
 }
 
 //===---------------------------------------------------------------------===//
-// Bfp16Type
+// BlockFloatType
 //===---------------------------------------------------------------------===//
 
-bool aieTypeIsbfp16Type(MlirType type) {
-  return llvm::isa<xilinx::AIEX::bfp16Type>(unwrap(type));
+bool aieTypeIsBlockFloatType(MlirType type) {
+  return llvm::isa<xilinx::AIEX::blockFloatType>(unwrap(type));
 }
 
-MlirType aiebfp16TypeGet(MlirContext context, uint32_t blockSize) {
-  return wrap(xilinx::AIEX::bfp16Type::get(unwrap(context), blockSize));
+// Remove the nullptr from here and add it to tablegen
+MlirType aieBlockFloatTypeGet(MlirContext ctx, const std::string& blockType) {
+  return wrap(xilinx::AIEX::blockFloatType::get(unwrap(ctx), blockType));
 }

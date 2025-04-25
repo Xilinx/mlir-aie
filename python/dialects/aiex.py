@@ -24,7 +24,7 @@ from .aie import (
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from .._mlir_libs._aie import bfp16Type
+from ..helpers.util import bfp16ebs8, bfp16ebs16
 from ..ir import (
     DictAttr,
     IntegerAttr,
