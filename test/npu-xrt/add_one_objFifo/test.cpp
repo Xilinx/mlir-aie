@@ -147,7 +147,7 @@ int main(int argc, const char *argv[]) {
   int errors = 0;
 
   for (uint32_t i = 0; i < 64; i++) {
-    uint32_t ref = i + 2;
+    uint32_t ref = i + 42;
     if (*(bufOut + i) != ref) {
       std::cout << "Error in output " << *(bufOut + i) << " != " << ref
                 << std::endl;
