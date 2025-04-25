@@ -6,10 +6,12 @@ from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2, AnyComputeTile
 from aie.helpers.util import np_ndarray_type_get_shape
+from util import construct_and_print_module
 
 # RUN: %python %s | FileCheck %s
 
-def shim_three_in():
+@construct_and_print_module
+def shim_three_in(module):
     N = 4096
     n = 1024
 
@@ -41,13 +43,12 @@ def shim_three_in():
         rt.fill(of_ins[1].prod(), B)
         rt.fill(of_ins[2].prod(), C)
 
-    return Program(NPU2(), rt).resolve_program(SequentialPlacer())
-
-module = shim_three_in()
-print(module)
+    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    return module
 
 
-def shim_two_in_one_out():
+@construct_and_print_module
+def shim_two_in_one_out(module):
     N = 4096
     n = 1024
 
@@ -72,23 +73,22 @@ def shim_two_in_one_out():
         rt.fill(of_in_B.prod(), B)
         rt.drain(of_out_C.cons(), C, wait=True)
 
-    return Program(NPU2(), rt).resolve_program(SequentialPlacer())
-
-module2 = shim_two_in_one_out()
-print(module2)
+    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    return module
 
 
-def mem_eight_in_three_out():
+@construct_and_print_module
+def mem_eight_in_three_out(module):
     N = 6000
     n = N // 6
 
     n_ty = np.ndarray[(n,), np.dtype[np.int32]]
     N_ty = np.ndarray[(N,), np.dtype[np.int32]]
 
-    # CHECK: %mem_tile_0_1 = aie.tile(0, 1)
-    # CHECK: %shim_noc_tile_0_0 = aie.tile(0, 0)
-    # CHECK: %mem_tile_1_1 = aie.tile(1, 1)
-    # CHECK: %shim_noc_tile_1_0 = aie.tile(1, 0)
+    # CHECK: %mem_tile_1_1 = aie.tile(1, 1) 
+    # CHECK: %mem_tile_0_1 = aie.tile(0, 1) 
+    # CHECK: %shim_noc_tile_0_0 = aie.tile(0, 0) 
+    # CHECK: %shim_noc_tile_1_0 = aie.tile(1, 0) 
 
     n_join_inputs = 6
     of_offsets = [
@@ -129,7 +129,5 @@ def mem_eight_in_three_out():
         rt.drain(of_out_B.cons(), B, wait=True)
         rt.drain(of_out_C.cons(), C, wait=True)
 
-    return Program(NPU2(), rt).resolve_program(SequentialPlacer())
-
-module3 = mem_eight_in_three_out()
-print(module3)
+    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    return module
