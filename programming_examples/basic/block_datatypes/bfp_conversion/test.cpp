@@ -198,7 +198,11 @@ int main(int argc, const char *argv[]) {
     if (i % 8 == 0) {
       std::cout << "Block " << i / 8 << "\n";
     }
-    if (!test_utils::nearly_equal(outputTransformed[i], expectedResult[i], 0.25, 3.5)) {
+    // Note that this nearly equal function parameters are handpicked for this
+    // particular example and do not reflect how the general case should be
+    // handled for any bfp type.
+    if (!test_utils::nearly_equal(outputTransformed[i], expectedResult[i], 0.25,
+                                  3.5)) {
       std::cout << "Error in output " << outputTransformed[i]
                 << " != " << expectedResult[i] << std::endl;
       errors++;

@@ -45,9 +45,9 @@ public:
       return AttributeConversionResult(TypeAttr::get(newType));
     });
 
+    // Note that the most recently added conversions will be invoked first
+
     // Leave other types unchanged
-    // Note that the most recently added conversions will be invoked first and
-    // therefore this is just a default option that has to be put first
     addConversion([](Type type) -> std::optional<Type> { return type; });
 
     // Add a conversion for bfpTypes to an integer type
@@ -58,7 +58,7 @@ public:
                      << " is not supported in the specified model\n";
         // Note that returning a nullopt here will stop the conversion while
         // returning a std::nullopt will allow the converter to keep trying the
-        // remaining conversions (thus reaching the default one)
+        // remaining conversions (thus reaching the default one in this case)
         return nullptr;
       }
 
@@ -137,7 +137,7 @@ public:
                                newOutputTypes);
     });
 
-    // TODO: Add conversions for other types as needed (llvm arrays?)
+    // Add conversions for other types as needed (llvm arrays?)
   }
 };
 
@@ -151,9 +151,9 @@ public:
   matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
 
-    // TODO: For now, the logic is simply to replace all bfp operations by an
-    // integer of the appropriate width. Other considerations will be dealt with
-    // later
+    // The objective is to replace all bfp operations by an integer of the
+    // appropriate width. This pass currently does not have any other
+    // functionality.
 
     // Operation results
     for (auto result : op->getResults()) {
@@ -207,7 +207,6 @@ public:
     DeviceOp device = getOperation();
     MLIRContext *context = device.getContext();
 
-    // Create the type converter
     BfpToIntegerConverter typeConverter(device.getTargetModel());
 
     // Set up an empty conversion target, since we have to iterate over all ops
@@ -216,7 +215,6 @@ public:
     RewritePatternSet patterns(context);
     patterns.add<BfpToIntegerConversionPattern>(typeConverter, context);
 
-    // Apply the conversion
     if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
       signalPassFailure();
     }

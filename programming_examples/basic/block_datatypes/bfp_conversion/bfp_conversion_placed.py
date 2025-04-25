@@ -70,7 +70,6 @@ def bfp_conversion():
                 elem_out1 = of_intermediate1.acquire(ObjectFifoPort.Produce, 1)
                 elem_out2 = of_intermediate2.acquire(ObjectFifoPort.Produce, 1)
 
-                # Kernel call
                 conversion_func(elem_in1, elem_in2, elem_out1, elem_out2)
 
                 of_in1.release(ObjectFifoPort.Consume, 1)
@@ -86,7 +85,6 @@ def bfp_conversion():
                 elem_in2 = of_intermediate2.acquire(ObjectFifoPort.Consume, 1)
                 elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
 
-                # Kernel call
                 multiplication_func(elem_in1, elem_in2, elem_out)
 
                 of_intermediate1.release(ObjectFifoPort.Consume, 1)
@@ -98,13 +96,11 @@ def bfp_conversion():
         def sequence(A, B, C):
             # The first matrix is accepted as is
             in1_task = shim_dma_single_bd_task(of_in1, A, sizes=[1, 1, 1, N_in])
-            # Note that taking advantage of bfp implies transposing before converting to bfp!
+            # Note that properly aligning dot products and bfps implies transposing before converting to bfp!
             # Otherwise, the dot products inside the matrix multiplication will not properly group the blocks
             # The second matrix must be transposed for the multiplication, before the conversion to bfp
             # To perform the transposition at this level, we would need a granularity aligned with 4 bytes.
             # Unfortunately, this is not possible with bf16. Can be done instead inside the core for this simple example.
-            # tap = TensorAccessPattern([8, 8], 0, [8, 8], [1, 8])
-            # tap.visualize(file_path="tap.png")
             in2_task = shim_dma_single_bd_task(of_in2, B, sizes=[1, 1, 1, N_in])
 
             out_task = shim_dma_single_bd_task(

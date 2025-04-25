@@ -19,6 +19,7 @@ from aie.iron.controlflow import range_
 
 
 def bfp_conversion():
+    # We are just doing one operation in total => tensor and tile sizes are equal
     N_in = 64
     N_out = 8
     n_in = 64
@@ -41,6 +42,7 @@ def bfp_conversion():
     of_intermediate2 = ObjectFifo(tile_bfp16_ty, name="intermediate2")
     of_out = ObjectFifo(tile_bfp16_ty, name="out")
 
+    # Define kernels
     conversion_kernel = Kernel(
         "bf16_to_bfp_conversion",
         "kernel.o",
@@ -53,6 +55,7 @@ def bfp_conversion():
         [tile_bfp16_ty, tile_bfp16_ty, tile_bfp16_ty],
     )
 
+    # Define worker functions
     def conversion_core(
         of_in1, of_in2, of_intermediate1, of_intermediate2, conversion_kernel
     ):
@@ -62,7 +65,6 @@ def bfp_conversion():
             elem_out1 = of_intermediate1.acquire(1)
             elem_out2 = of_intermediate2.acquire(1)
 
-            # Kernel call
             conversion_kernel(elem_in1, elem_in2, elem_out1, elem_out2)
 
             of_in1.release(1)
@@ -78,13 +80,13 @@ def bfp_conversion():
             elem_in2 = of_intermediate2.acquire(1)
             elem_out = of_out.acquire(1)
 
-            # Kernel call
             multiplication_kernel(elem_in1, elem_in2, elem_out)
 
             of_intermediate1.release(1)
             of_intermediate2.release(1)
             of_out.release(1)
 
+    # Define workers
     workers = [
         Worker(
             conversion_core,
@@ -107,15 +109,18 @@ def bfp_conversion():
         )
     ]
 
-    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_bf16_ty, tensor_bf16_ty, tensor_bfp16_ty) as (A, B, C):
         rt.start(*workers)
         rt.fill(of_in1.prod(), A)
+        # Note that properly aligning dot products and bfps implies transposing before converting to bfp!
+        # Otherwise, the dot products inside the matrix multiplication will not properly group the blocks
+        # The second matrix must be transposed for the multiplication, before the conversion to bfp
+        # To perform the transposition at this level, we would need a granularity aligned with 4 bytes.
+        # Unfortunately, this is not possible with bf16. Can be done instead inside the core for this simple example.
         rt.fill(of_in2.prod(), B)
         rt.drain(of_out.cons(), C, wait=True)
 
-    # Place program components (assign them resources on the device) and generate an MLIR module
     return Program(NPU2(), rt).resolve_program(SequentialPlacer())
 
 

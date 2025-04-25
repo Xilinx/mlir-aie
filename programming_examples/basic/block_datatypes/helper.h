@@ -18,14 +18,14 @@ inline float generateRandomFloatingPoint(std::mt19937 &eng, double minExp,
   return mantissa * std::pow(2.0, exponent);
 }
 
-// mbits - mantisa bits
 // block - block size
 // size  - length of the input array
 // array - the array
+// returnArray - the array to be filled with the quantized values
 // rounding - 0 for zero, 1 for nearest (tie to even)
 // verbose - make some noise
 // Quantization of an array of floats to bfp16.
-// The input array is used as a scratchpad.
+// The input array will be used as a scratchpad!
 // The return array must be at least size * 1.125 and is structured as follows:
 // 1. The first byte is the shared exponent (max exponent of the block).
 // 2. The next *block* bytes are the quantized values.
@@ -36,7 +36,7 @@ inline void bfp16QuantFloat(int block, int size, float *array,
   unsigned int sign, exp, maxExp;
   unsigned int *p, mantissa, mask, value;
   int shift, maxShift;
-  int8_t valueInt8; //, exp_buf[exp_buf_size];
+  int8_t valueInt8;
 
   while (true) {
     // decide on the block (starting and ending point)

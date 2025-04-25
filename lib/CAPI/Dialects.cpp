@@ -59,7 +59,6 @@ bool aieTypeIsBlockFloatType(MlirType type) {
   return llvm::isa<xilinx::AIEX::blockFloatType>(unwrap(type));
 }
 
-// Remove the nullptr from here and add it to tablegen
 MlirType aieBlockFloatTypeGet(MlirContext ctx, const std::string& blockType) {
   return wrap(xilinx::AIEX::blockFloatType::get(unwrap(ctx), blockType));
 }

@@ -224,7 +224,6 @@ def AIETransformBfpTypes : Pass<"aie-transform-bfp-types", "AIE::DeviceOp"> {
   let summary = "Transform bfp types to standard builtin types";
 
   let description = [{
-      TODO: Complete description.
       Lowers bfp types to standard builtin types.
       Adapts operations as necessary to accomodate for bfp data movement.
   }];

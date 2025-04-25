@@ -12,9 +12,10 @@
 
 extern "C" {
 
-// Note that the naming for bfp vector types is somewhat confusing.
+// Note that bfp vector types are referenced differently in IRON and in the AIE API.
 // The v64bfp16ebs8 type is a vector of 8 bfp16ebs8 elements, which corresponds
-// to 64 floating points in total
+// to 64 floating points in total.
+// Meanwhile, IRON interprets 1 bfp16ebs8 as 8 floating points.
 void bfp16_matrix_multiplication(bfp16ebs8 *__restrict inA,
                                  bfp16ebs8 *__restrict inB,
                                  bfp16ebs8 *__restrict out) {
@@ -59,9 +60,6 @@ void bf16_to_bfp_conversion(bfloat16 *__restrict inA, bfloat16 *__restrict inB,
       mul_elem_64(vecBT, concat(broadcast_one_to_v32bfloat16(),
                                 broadcast_one_to_v32bfloat16()));
 
-  // This is doubling of the output array has to be done because we cannot
-  // concatenate the result. Unfortunately, vectors of size 128 are currently
-  // unsupported for bfp so no concatenation is possible.
   aie::block_vector_output_buffer_stream<bfp16ebs8, 64> outStreamA(outA);
   aie::block_vector_output_buffer_stream<bfp16ebs8, 64> outStreamB(outB);
   outStreamA << accA.to_vector<bfp16ebs8>();
