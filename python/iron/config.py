@@ -8,8 +8,7 @@
 
 import subprocess
 
-from iron.device import NPU1Col4, NPU2
-
+from .device import NPU1Col4, NPU2
 
 def detect_npu_device():
     try:
