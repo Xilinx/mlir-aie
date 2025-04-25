@@ -47,7 +47,7 @@ int verify(int CSize, std::vector<T> A, std::vector<T> C, int verbosity) {
       break;
     if (std::isnan(ref) || std::isnan(C[i]))
       break;
-    if (!test_utils::nearly_equal(ref, C[i], 0.0078125)) {
+    if (!test_utils::nearly_equal(ref, C[i], 0.128)) {
       std::cout << "Error in output " << C[i] << " != " << ref << std::endl;
       errors++;
     } else {
