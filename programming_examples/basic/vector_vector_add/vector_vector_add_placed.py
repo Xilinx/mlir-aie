@@ -4,45 +4,60 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-import numpy as np
+# (c) Copyright 2024-2025 Advanced Micro Devices, Inc. or its affiliates
+
+import argparse
 import sys
+import numpy as np
+import aie.iron as iron
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 
 
-def my_vector_add():
-    N = 256
+@iron.jit
+def vector_vector_add(input0, input1, output):
+    if input0.shape != input1.shape:
+        raise ValueError(
+            f"Input shapes are not the equal ({input0.shape} != {input1.shape})."
+        )
+    if input0.shape != output.shape:
+        raise ValueError(
+            f"Input and output shapes are not the equal ({input0.shape} != {output.shape})."
+        )
+    if len(np.shape(input0)) != 1:
+        raise ValueError("Function only supports vectors.")
+    num_elements = np.size(input0)
     n = 16
-    N_div_n = N // n
+    if num_elements % n != 0:
+        raise ValueError(
+            f"Number of elements ({num_elements}) must be a multiple of {n}."
+        )
+    N_div_n = num_elements // n
+
+    if input0.dtype != input1.dtype:
+        raise ValueError(
+            f"Input data types are not the same ({input0.dtype} != {input1.dtype})."
+        )
+    if input0.dtype != output.dtype:
+        raise ValueError(
+            f"Input and output data types are not the same ({input0.dtype} != {output.dtype})."
+        )
+    dtype = input0.dtype
 
     buffer_depth = 2
 
-    if len(sys.argv) != 3:
-        raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
-
-    if sys.argv[1] == "npu":
-        dev = AIEDevice.npu1_1col
-    elif sys.argv[1] == "npu2":
-        dev = AIEDevice.npu2
-    elif sys.argv[1] == "xcvc1902":
-        dev = AIEDevice.xcvc1902
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-
-    @device(dev)
+    @device(iron.get_current_device())
     def device_body():
-        tensor_ty = np.ndarray[(N,), np.dtype[np.int32]]
-        tile_ty = np.ndarray[(n,), np.dtype[np.int32]]
+        tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
+        tile_ty = np.ndarray[(n,), np.dtype[dtype]]
 
         # AIE Core Function declarations
 
         # Tile declarations
-        ShimTile = tile(int(sys.argv[2]), 0)
-        ComputeTile2 = tile(int(sys.argv[2]), 2)
+        ShimTile = tile(0, 0)
+        ComputeTile2 = tile(0, 2)
 
         # AIE-array data movement with object fifos
         of_in1 = object_fifo("in1", ShimTile, ComputeTile2, buffer_depth, tile_ty)
@@ -70,10 +85,10 @@ def my_vector_add():
         # To/from AIE-array data movement
         @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
         def sequence(A, B, C):
-            in1_task = shim_dma_single_bd_task(of_in1, A, sizes=[1, 1, 1, N])
-            in2_task = shim_dma_single_bd_task(of_in2, B, sizes=[1, 1, 1, N])
+            in1_task = shim_dma_single_bd_task(of_in1, A, sizes=[1, 1, 1, num_elements])
+            in2_task = shim_dma_single_bd_task(of_in2, B, sizes=[1, 1, 1, num_elements])
             out_task = shim_dma_single_bd_task(
-                of_out, C, sizes=[1, 1, 1, N], issue_token=True
+                of_out, C, sizes=[1, 1, 1, num_elements], issue_token=True
             )
 
             dma_start_task(in1_task, in2_task, out_task)
@@ -81,10 +96,69 @@ def my_vector_add():
             dma_free_task(in1_task, in2_task)
 
 
-with mlir_mod_ctx() as ctx:
-    my_vector_add()
-    res = ctx.module.operation.verify()
-    if res == True:
-        print(ctx.module)
+def main():
+    device_map = {
+        "npu": AIEDevice.npu1_1col,
+        "npu2": AIEDevice.npu2_1col,
+        "xcvc1902": AIEDevice.xcvc1902,
+    }
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose output"
+    )
+    parser.add_argument(
+        "-d",
+        "--device",
+        choices=["npu", "npu2", "xcvc1902"],
+        default="npu",
+        help="Target device",
+    )
+    parser.add_argument(
+        "-n",
+        "--num-elements",
+        type=int,
+        default=32,
+        help="Number of elements (default: 32)",
+    )
+    args = parser.parse_args()
+
+    # Construct two input random tensors and an output zeroed tensor
+    # The three tensor are in memory accessible to the NPU
+    input0 = iron.randint(0, 100, (args.num_elements,), dtype=np.int32, device="npu")
+    input1 = iron.randint(0, 100, (args.num_elements,), dtype=np.int32, device="npu")
+    output = iron.zeros_like(input0)
+
+    iron.set_current_device(device_map[args.device])
+
+    # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
+    # to the kernel will use the same compiled kernel and loaded code objects
+    vector_vector_add(input0, input1, output)
+
+    # Check the correctness of the result
+    e = np.equal(input0.numpy() + input1.numpy(), output.numpy())
+    errors = np.size(e) - np.count_nonzero(e)
+
+    # Optionally, print the results
+    if args.verbose:
+        print(f"{'input0':>4} + {'input1':>4} = {'output':>4}")
+        print("-" * 34)
+        count = input0.numel()
+        for idx, (a, b, c) in enumerate(
+            zip(input0[:count], input1[:count], output[:count])
+        ):
+            print(f"{idx:2}: {a:4} + {b:4} = {c:4}")
+
+    # If the result is correct, exit with a success code.
+    # Otherwise, exit with a failure code
+    if not errors:
+        print("\nPASS!\n")
+        sys.exit(0)
     else:
-        print(res)
+        print("\nError count: ", errors)
+        print("\nFailed.\n")
+        sys.exit(-1)
+
+
+if __name__ == "__main__":
+    main()

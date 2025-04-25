@@ -8,3 +8,5 @@
 // RUN: make -f %S/Makefile.chess clean
 // RUN: make -f %S/Makefile.chess devicename=npu2
 // RUN: %run_on_2npu make -f %S/Makefile.chess run devicename=npu2
+// RUN: make -f %S/Makefile.chess clean
+// RUN: %run_on_2npu make -f %S/Makefile.chess trace devicename=npu2

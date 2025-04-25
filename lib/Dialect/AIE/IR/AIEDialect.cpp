@@ -28,6 +28,9 @@ using namespace xilinx::AIE;
 // We implement the initialize() function further below
 #include "aie/Dialect/AIE/IR/AIEDialect.cpp.inc"
 
+#define GET_TYPEDEF_CLASSES
+#include "aie/Dialect/AIE/IR/AIETypes.cpp.inc" 
+
 namespace {
 
 struct AIEInlinerInterface : DialectInlinerInterface {
@@ -69,6 +72,22 @@ struct AIEDialectFoldInterface : DialectFoldInterface {
 };
 
 } // end anonymous namespace
+
+void AIEDialect::initialize() {
+  addTypes<
+#define GET_TYPEDEF_LIST
+#include "aie/Dialect/AIE/IR/AIETypes.cpp.inc"
+      >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "aie/Dialect/AIE/IR/AIEAttrs.cpp.inc"
+      >();
+  addOperations<
+#define GET_OP_LIST
+#include "aie/Dialect/AIE/IR/AIEOps.cpp.inc"
+      >();
+  addInterfaces<AIEInlinerInterface, AIEDialectFoldInterface>();
+}
 
 // Helper class to get a ShimDMAAllocationOp for a given <device, symbol name>
 //  pair. An object of this class is invalidated if, for any symbol_name, a
@@ -183,11 +202,11 @@ xilinx::AIE::myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
 static VC1902TargetModel VC1902model;
 static VE2302TargetModel VE2302model;
 static VE2802TargetModel VE2802model;
-static NPUTargetModel NPUmodel;
-static VirtualizedNPUTargetModel NPUmodel1col(1);
-static VirtualizedNPUTargetModel NPUmodel2col(2);
-static VirtualizedNPUTargetModel NPUmodel3col(3);
-static VirtualizedNPUTargetModel NPUmodel4col(4);
+static NPU1TargetModel NPUmodel;
+static VirtualizedNPU1TargetModel NPUmodel1col(1);
+static VirtualizedNPU1TargetModel NPUmodel2col(2);
+static VirtualizedNPU1TargetModel NPUmodel3col(3);
+static VirtualizedNPU1TargetModel NPUmodel4col(4);
 static NPU2TargetModel NPU2model;
 static VirtualizedNPU2TargetModel NPU2model1col(1);
 static VirtualizedNPU2TargetModel NPU2model2col(2);
@@ -304,210 +323,6 @@ struct UsesAreAccessible {
 };
 
 } // namespace
-
-namespace xilinx::AIE::detail {
-/// This class represents the internal storage of the AIE `ObjectFifoType`.
-struct AIEObjectFifoTypeStorage : TypeStorage {
-  /// The `KeyTy` is a required type that provides an interface for the storage
-  /// instance. This type will be used when uniquing an instance of the type
-  /// storage.
-  using KeyTy = MemRefType;
-
-  /// A constructor for the objectFifo type storage instance.
-  AIEObjectFifoTypeStorage(MemRefType elementType) : elementType(elementType) {}
-
-  /// Define the comparison function for the key type with the current storage
-  /// instance. This is used when constructing a new instance to ensure that we
-  /// haven't already uniqued an instance of the given key.
-  bool operator==(const KeyTy &key) const { return key == KeyTy(elementType); }
-
-  /// Define a construction method for creating a new instance of this storage.
-  /// This method takes an instance of a storage allocator, and an instance of a
-  /// `KeyTy`.
-  static AIEObjectFifoTypeStorage *construct(TypeStorageAllocator &allocator,
-                                             const KeyTy &key) {
-    // Allocate the storage instance and construct it.
-    return new (allocator.allocate<AIEObjectFifoTypeStorage>())
-        AIEObjectFifoTypeStorage(key);
-  }
-
-  MemRefType elementType;
-};
-} // namespace xilinx::AIE::detail
-
-AIEObjectFifoType xilinx::AIE::AIEObjectFifoType::get(MemRefType elementType) {
-  // Call into a helper 'get' method in 'TypeBase' to get an uniqued instance
-  // of this type.
-  MLIRContext *ctx = elementType.getContext();
-  return Base::get(ctx, elementType);
-}
-
-LogicalResult xilinx::AIE::AIEObjectFifoType::verify(
-    function_ref<InFlightDiagnostic()> emitError, MemRefType elementType) {
-  return success();
-}
-
-mlir::MemRefType xilinx::AIE::AIEObjectFifoType::getElementType() {
-  // 'getImpl' returns a pointer to the internal storage instance.
-  return getImpl()->elementType;
-}
-
-namespace xilinx::AIE::detail {
-/// This class represents the internal storage of the AIE
-/// `ObjectFifoSubviewType`.
-struct AIEObjectFifoSubviewTypeStorage : TypeStorage {
-  /// The `KeyTy` is a required type that provides an interface for the storage
-  /// instance. This type will be used when uniquing an instance of the type
-  /// storage.
-  using KeyTy = MemRefType;
-
-  /// A constructor for the subview type storage instance.
-  AIEObjectFifoSubviewTypeStorage(MemRefType elementType)
-      : elementType(elementType) {}
-
-  /// Define the comparison function for the key type with the current storage
-  /// instance. This is used when constructing a new instance to ensure that we
-  /// haven't already uniqued an instance of the given key.
-  bool operator==(const KeyTy &key) const { return key == elementType; }
-
-  /// Define a construction method for creating a new instance of this storage.
-  /// This method takes an instance of a storage allocator, and an instance of a
-  /// `KeyTy`.
-  static AIEObjectFifoSubviewTypeStorage *
-  construct(TypeStorageAllocator &allocator, const KeyTy &key) {
-    // Allocate the storage instance and construct it.
-    return new (allocator.allocate<AIEObjectFifoSubviewTypeStorage>())
-        AIEObjectFifoSubviewTypeStorage(key);
-  }
-
-  MemRefType elementType;
-};
-} // namespace xilinx::AIE::detail
-
-AIEObjectFifoSubviewType
-xilinx::AIE::AIEObjectFifoSubviewType::get(MemRefType elementType) {
-  // Call into a helper 'get' method in 'TypeBase' to get a uniqued instance
-  // of this type.
-  MLIRContext *ctx = elementType.getContext();
-  return Base::get(ctx, elementType);
-}
-
-/// This method is used to verify the construction invariants.
-LogicalResult xilinx::AIE::AIEObjectFifoSubviewType::verify(
-    function_ref<InFlightDiagnostic()> emitError, MemRefType elementType) {
-  return success();
-}
-
-MemRefType xilinx::AIE::AIEObjectFifoSubviewType::getElementType() {
-  return getImpl()->elementType;
-}
-
-/// Parse an instance of a type registered to the AIE dialect.
-/// Parse an AIE type in the following forms:
-///   AIE-type
-///         ::= `objectfifo` `<` type `>`
-///         ::= `objectfifosubview` `<` type `>`
-static OptionalParseResult aieTypeParser(DialectAsmParser &parser,
-                                         StringRef name, Type &result) {
-  if (name == "objectfifo") {
-    MemRefType elementType;
-    SMLoc typeLoc = parser.getCurrentLocation();
-    if (parser.parseLess() || parser.parseType(elementType) ||
-        parser.parseGreater())
-      return failure();
-
-    // Check that the type is a MemRef type.
-    if (!llvm::isa<MemRefType>(elementType)) {
-      parser.emitError(typeLoc, "element type for an objectFifo must be "
-                                "a MemRefType, got: ")
-          << elementType;
-      return failure();
-    }
-
-    return result = AIEObjectFifoType::get(elementType), success();
-  }
-
-  if (name == "objectfifosubview") {
-    if (parser.parseLess())
-      return failure();
-
-    // Parse the element type of the struct.
-    MemRefType elementType;
-    // Parse the current element type.
-    SMLoc typeLoc = parser.getCurrentLocation();
-    if (parser.parseType(elementType))
-      return failure();
-
-    // Check that the type is a MemRefType.
-    if (!llvm::isa<MemRefType>(elementType)) {
-      parser.emitError(typeLoc, "element type for a subview must be "
-                                "a MemRefType, got: ")
-          << elementType;
-      return failure();
-    }
-
-    // Parse: `>`
-    if (parser.parseGreater())
-      return failure();
-
-    return result = AIEObjectFifoSubviewType::get(elementType), success();
-  }
-
-  return {};
-}
-
-/// Parse a type defined by this dialect.
-/// Emits an error and returns failure if `name` does not
-/// refer to a type defined in this dialect.
-static ParseResult parse(Type &result, StringRef name,
-                         DialectAsmParser &parser) {
-
-  if (OptionalParseResult parseResult = aieTypeParser(parser, name, result);
-      parseResult.has_value())
-    return parseResult.value();
-
-  parser.emitError(parser.getNameLoc(), "unknown AIE dialect type: \"")
-      << name << "\"";
-  return failure();
-}
-
-/// Parse an instance of a type registered to the AIE dialect.
-Type AIEDialect::parseType(DialectAsmParser &parser) const {
-  StringRef name;
-  Type result;
-  if (parser.parseKeyword(&name) || parse(result, name, parser))
-    return {};
-  return result;
-}
-
-/// Print an instance of a type registered to the AIE dialect.
-void AIEDialect::printType(Type type, DialectAsmPrinter &printer) const {
-  if (llvm::isa<AIEObjectFifoType>(type)) {
-    auto objectFifoType = llvm::cast<AIEObjectFifoType>(type);
-    printer << "objectfifo<";
-    printer << objectFifoType.getElementType();
-    printer << '>';
-
-  } else if (llvm::isa<AIEObjectFifoSubviewType>(type)) {
-    auto subviewType = llvm::cast<AIEObjectFifoSubviewType>(type);
-    printer << "objectfifosubview<";
-    printer << subviewType.getElementType();
-    printer << '>';
-  }
-}
-
-void AIEDialect::initialize() {
-  addTypes<AIEObjectFifoType, AIEObjectFifoSubviewType>();
-  addAttributes<
-#define GET_ATTRDEF_LIST
-#include "aie/Dialect/AIE/IR/AIEAttrs.cpp.inc"
-      >();
-  addOperations<
-#define GET_OP_LIST
-#include "aie/Dialect/AIE/IR/AIEOps.cpp.inc"
-      >();
-  addInterfaces<AIEInlinerInterface, AIEDialectFoldInterface>();
-}
 
 // Check that the operation only contains terminators in
 // TerminatorOpTypes.

@@ -799,10 +799,10 @@ AIETargetModel::getMemLocalBaseAddress(int localCol, int localRow, int memCol,
   return std::nullopt;
 }
 
-AIEArch NPU2TargetModel::getTargetArch() const { return AIEArch::AIE2p; }
+AIEArch BaseNPU2TargetModel::getTargetArch() const { return AIEArch::AIE2p; }
 
 std::vector<std::pair<uint32_t, uint32_t>>
-NPU2TargetModel::getShimBurstEncodingsAndLengths() const {
+BaseNPU2TargetModel::getShimBurstEncodingsAndLengths() const {
   return {std::pair(0, 64), std::pair(1, 128), std::pair(2, 256),
           std::pair(3, 512)};
 }
