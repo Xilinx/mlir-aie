@@ -6,8 +6,8 @@
 // RUN: mkdir -p test_placed_strix
 // RUN: cd test_placed_strix
 // RUN: make -f %S/Makefile clean
-// RUN: env CHESS=true use_placed=1 %run_on_2npu make -f %S/Makefile 
-// RUN: env CHESS=true use_placed=1 %run_on_2npu make -f %S/Makefile run_py
+// RUN: env CHESS=true use_placed=1 make -f %S/Makefile devicename=npu2
+// RUN: env CHESS=true use_placed=1 %run_on_2npu make -f %S/Makefile run_py devicename=npu2
 // RUN: make -f %S/Makefile clean
-// RUN: env CHESS=true use_placed=1 %run_on_2npu make -f %S/Makefile trace_py
+// RUN: env CHESS=true use_placed=1 %run_on_2npu make -f %S/Makefile trace_py devicename=npu2
   
