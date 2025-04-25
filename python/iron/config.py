@@ -30,7 +30,7 @@ def detect_npu_device():
         )
         output = result.stdout
 
-        # Match strings for NPU2
+        # Match strings for NPU2 or NPU1
         # Set's generic "whole array" devices, this is overkill...
         if any(
             keyword.lower() in output.lower()
@@ -43,8 +43,16 @@ def detect_npu_device():
             ]
         ):
             return NPU2()
-        else:
+        elif any(
+            keyword.lower() in output.lower()
+            for keyword in [
+                "NPU Phoenix",
+                "RyzenAI-npu1",
+            ]
+        ):
             return NPU1Col4()
+        else:
+            raise RuntimeError("No supported NPU device found.")
 
     except FileNotFoundError:
         raise RuntimeError("xrt-smi not found. Make sure XRT is installed.")
