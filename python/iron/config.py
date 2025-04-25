@@ -12,6 +12,13 @@ from .device import NPU1Col4, NPU2
 
 
 def detect_npu_device():
+    """Detects the current device in the system.
+       This assumes XRT and XDNA driver is installed 
+       and the system has NPU hardware. 
+
+    Returns:
+        The current system device.
+    """
     try:
         # Run `xrt-smi examine` and capture output
         result = subprocess.run(
@@ -40,7 +47,7 @@ def detect_npu_device():
             return NPU1Col4()
 
     except FileNotFoundError:
-        raise RuntimeError("xrt-smi not found. Make sure XRT is installed and set up.")
+        raise RuntimeError("xrt-smi not found. Make sure XRT is installed.")
     except subprocess.CalledProcessError:
         raise RuntimeError("Failed to run xrt-smi examine.")
 
