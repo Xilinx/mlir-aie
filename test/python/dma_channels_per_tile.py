@@ -82,9 +82,9 @@ def mem_eight_in_three_out(module):
     n_ty = np.ndarray[(n,), np.dtype[np.int32]]
     N_ty = np.ndarray[(N,), np.dtype[np.int32]]
 
-    # CHECK: %mem_tile_1_1 = aie.tile(1, 1)
     # CHECK: %mem_tile_0_1 = aie.tile(0, 1)
     # CHECK: %shim_noc_tile_0_0 = aie.tile(0, 0)
+    # CHECK: %mem_tile_1_1 = aie.tile(1, 1)
     # CHECK: %shim_noc_tile_1_0 = aie.tile(1, 0)
 
     n_join_inputs = 6
