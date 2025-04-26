@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include <bits/stdc++.h>
-#include <boost/program_options.hpp>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -21,6 +20,7 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include "cxxopts.hpp"
 #include "test_utils.h"
 
 #ifndef DATATYPES_USING_DEFINED
@@ -29,7 +29,6 @@ using INOUT0_DATATYPE = std::bfloat16_t;
 using INOUT1_DATATYPE = std::bfloat16_t;
 #endif
 
-namespace po = boost::program_options;
 
 // ----------------------------------------------------------------------------
 // Verify results (specific to our design example)
