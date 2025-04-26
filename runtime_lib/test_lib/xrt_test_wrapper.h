@@ -1,12 +1,9 @@
-
 #include <fstream>
 #include <iostream>
 #include <sstream>
-
+#include "cxxopts.hpp"
 #include "test_utils.h"
 #include "xrt/xrt_bo.h"
-
-namespace po = boost::program_options;
 
 struct args {
   int verbosity;
@@ -24,13 +21,13 @@ struct args parse_args(int argc, const char *argv[]) {
   // ------------------------------------------------------
   // Parse program arguments
   // ------------------------------------------------------
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  test_utils::add_default_options(desc);
+  cxxopts::Options options("XRT Test Wrapper");
+  cxxopts::ParseResult vm;
+  test_utils::add_default_options(options);
 
   struct args myargs;
 
-  test_utils::parse_options(argc, argv, desc, vm);
+  test_utils::parse_options(argc, argv, options, vm);
   myargs.verbosity = vm["verbosity"].as<int>();
   myargs.do_verify = vm["verify"].as<bool>();
   myargs.n_iterations = vm["iters"].as<int>();
