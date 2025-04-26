@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include <bits/stdc++.h>
-#include <boost/program_options.hpp>
+#include <cxxopts.hpp>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -54,16 +54,13 @@ constexpr int verify_stochastic_n_samples = 1000;
 float abs_tol = matmul_common::get_abs_tol<C_DATATYPE>();
 float rel_tol = matmul_common::get_rel_tol<C_DATATYPE>();
 
-namespace po = boost::program_options;
-
 int main(int argc, const char *argv[]) {
-
   // Program arguments parsing
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  matmul_common::add_default_options(desc);
+  cxxopts::Options options("Matrix Matrix Multiplication Test");
+  cxxopts::ParseResult vm; 
+  matmul_common::add_default_options(options);
 
-  matmul_common::parse_options(argc, argv, desc, vm);
+  matmul_common::parse_options(argc, argv, options, vm);
   int verbosity = vm["verbosity"].as<int>();
   int do_verify = vm["verify"].as<bool>();
   int n_iterations = vm["iters"].as<int>();
@@ -77,8 +74,7 @@ int main(int argc, const char *argv[]) {
   int M = vm["M"].as<int>();
   int K = vm["K"].as<int>();
   int N = vm["N"].as<int>();
-  bool do_verify_stochastic =
-      (long long)M * N * K > verify_stochastic_threshold;
+  bool do_verify_stochastic = (long long)M * N * K > verify_stochastic_threshold;
 
   if (verbosity >= 1) {
     std::cout << "Matrix size " << M << "x" << K << "x" << N << std::endl;
