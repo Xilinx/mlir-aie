@@ -75,20 +75,20 @@ build/aie2_trace.mlir: ${srcdir}/${aie_py_placed_src}
 build/final.xclbin: build/aie2.mlir build/conv2dk1_i8.o
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		 --xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
 else
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge --xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
 endif
 
 build/final_trace.xclbin: build/aie2_trace.mlir build/conv2dk1_i8.o
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--xclbin-name=${@F} --npu-insts-name=insts_trace.bin $(<:%=../%)
 else
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge --xclbin-name=${@F} --npu-insts-name=insts_trace.bin $(<:%=../%)
 endif
 
