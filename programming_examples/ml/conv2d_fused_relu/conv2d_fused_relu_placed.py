@@ -17,11 +17,6 @@ height = 32
 in_channels = 64
 out_channels = 64
 
-if len(sys.argv) == 3:
-    width = int(sys.argv[1])
-    height = int(sys.argv[2])
-
-
 actIn = width * in_channels  # 32*64 = 2048
 bufIn = actIn * 2  # double buffer
 
@@ -246,4 +241,4 @@ if __name__ == "__main__":
     except ValueError:
         print("Argument has inappropriate value")
 
-    conv2dk1(dev)
+conv2dk1(dev)
