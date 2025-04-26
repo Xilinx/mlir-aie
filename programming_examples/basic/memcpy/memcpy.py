@@ -15,7 +15,7 @@ from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 
 N = 32768
-dev = AIEDevice.npu1_4col
+dev = AIEDevice.npu2
 cols = 4
 chs = 2
 line_size = 1024
