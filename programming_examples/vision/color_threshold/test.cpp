@@ -139,7 +139,7 @@ int main(int argc, const char *argv[]) {
     if (srcVec[i] <= 50) { // Obviously change this back to 100
       if (*(bufOut + i) != 0) {
         if (errors < max_errors)
-          std::cout << "Error: " << (uint32_t)(uint8_t)*(bufOut + i) << " at "
+          std::cout << "Error: " << (uint32_t)(uint8_t) * (bufOut + i) << " at "
                     << i << " should be zero "
                     << " : input " << std::dec << (uint32_t)(uint8_t)srcVec[i]
                     << std::endl;
@@ -155,7 +155,7 @@ int main(int argc, const char *argv[]) {
     } else {
       if (*(bufOut + i) != UINT8_MAX) {
         if (errors < max_errors)
-          std::cout << "Error: " << (uint32_t)(uint8_t)*(bufOut + i) << " at "
+          std::cout << "Error: " << (uint32_t)(uint8_t) * (bufOut + i) << " at "
                     << i << " should be UINT8_MAX "
                     << " : input " << std::dec << (uint32_t)(uint8_t)srcVec[i]
                     << std::endl;

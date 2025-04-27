@@ -29,7 +29,6 @@ using INOUT0_DATATYPE = std::bfloat16_t;
 using INOUT1_DATATYPE = std::bfloat16_t;
 #endif
 
-
 // ----------------------------------------------------------------------------
 // Verify results (specific to our design example)
 // ----------------------------------------------------------------------------

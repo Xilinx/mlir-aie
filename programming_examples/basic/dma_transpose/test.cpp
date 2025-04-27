@@ -21,6 +21,7 @@
 #include "xrt/xrt_kernel.h"
 
 #include "cxxopts.hpp"
+#include "test_utils.h"
 
 int main(int argc, const char *argv[]) {
   // Program arguments parsing

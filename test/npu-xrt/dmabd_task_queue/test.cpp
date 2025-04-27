@@ -19,11 +19,11 @@
 #include <sstream>
 #include <stdfloat>
 
+#include "cxxopts.hpp"
 #include "test_utils.h"
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
-#include "cxxopts.hpp"
 
 constexpr int A_VOLUME = 5;
 constexpr int B_VOLUME = 96;

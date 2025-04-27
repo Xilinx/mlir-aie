@@ -9,8 +9,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <bits/stdc++.h>
 #include "cxxopts.hpp"
+#include <bits/stdc++.h>
 #include <cstdint>
 #include <fstream>
 #include <iostream>

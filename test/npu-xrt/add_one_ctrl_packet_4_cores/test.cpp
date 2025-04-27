@@ -15,11 +15,11 @@
 #include <string>
 #include <vector>
 
+#include "cxxopts.hpp"
 #include "test_utils.h"
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
-#include "cxxopts.hpp"
 
 constexpr int CTRL_IN_SIZE = 64;
 constexpr int CTRL_OUT_SIZE = 64;

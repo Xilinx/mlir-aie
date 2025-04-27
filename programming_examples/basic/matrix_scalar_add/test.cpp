@@ -35,12 +35,15 @@ int main(int argc, const char *argv[]) {
   cxxopts::Options options("Matrix Scalar Add Test");
   cxxopts::ParseResult vm;
 
-  options.add_options()
-    ("help,h", "produce help message")
-    ("xclbin,x", "the input xclbin path", cxxopts::value<std::string>())
-    ("kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)", cxxopts::value<std::string>())
-    ("verbosity,v", "the verbosity of the output", cxxopts::value<int>()->default_value("0"))
-    ("instr,i", "path of file containing userspace instructions to be sent to the LX6", cxxopts::value<std::string>());
+  options.add_options()("help,h", "produce help message")(
+      "xclbin,x", "the input xclbin path", cxxopts::value<std::string>())(
+      "kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)",
+      cxxopts::value<std::string>())("verbosity,v",
+                                     "the verbosity of the output",
+                                     cxxopts::value<int>()->default_value("0"))(
+      "instr,i",
+      "path of file containing userspace instructions to be sent to the LX6",
+      cxxopts::value<std::string>());
 
   try {
     vm = options.parse(argc, argv);
@@ -56,7 +59,7 @@ int main(int argc, const char *argv[]) {
       std::cerr << "Usage:\n" << options.help() << "\n";
       return 1;
     }
-  } catch (const cxxopts::exceptions::parsing& e) {
+  } catch (const cxxopts::exceptions::parsing &e) {
     std::cerr << e.what() << "\n\n";
     std::cerr << "Usage:\n" << options.help() << "\n";
     return 1;

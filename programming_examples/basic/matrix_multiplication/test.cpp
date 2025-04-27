@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <bits/stdc++.h>
 #include "cxxopts.hpp"
+#include <bits/stdc++.h>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -57,7 +57,7 @@ float rel_tol = matmul_common::get_rel_tol<C_DATATYPE>();
 int main(int argc, const char *argv[]) {
   // Program arguments parsing
   cxxopts::Options options("Matrix Matrix Multiplication Test");
-  cxxopts::ParseResult vm; 
+  cxxopts::ParseResult vm;
   matmul_common::add_default_options(options);
 
   matmul_common::parse_options(argc, argv, options, vm);
@@ -74,7 +74,8 @@ int main(int argc, const char *argv[]) {
   int M = vm["M"].as<int>();
   int K = vm["K"].as<int>();
   int N = vm["N"].as<int>();
-  bool do_verify_stochastic = (long long)M * N * K > verify_stochastic_threshold;
+  bool do_verify_stochastic =
+      (long long)M * N * K > verify_stochastic_threshold;
 
   if (verbosity >= 1) {
     std::cout << "Matrix size " << M << "x" << K << "x" << N << std::endl;

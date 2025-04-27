@@ -28,13 +28,17 @@ int main(int argc, const char *argv[]) {
   cxxopts::Options options("Passthrough DMAs Test");
   cxxopts::ParseResult vm;
 
-  options.add_options()
-    ("help,h", "produce help message")
-    ("xclbin,x", "the input xclbin path", cxxopts::value<std::string>())
-    ("kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)", cxxopts::value<std::string>())
-    ("verbosity,v", "the verbosity of the output", cxxopts::value<int>()->default_value("0"))
-    ("instr,i", "path of file containing userspace instructions to be sent to the LX6", cxxopts::value<std::string>())
-    ("length,l", "the length of the transfer in int32_t", cxxopts::value<int>()->default_value("4096"));
+  options.add_options()("help,h", "produce help message")(
+      "xclbin,x", "the input xclbin path", cxxopts::value<std::string>())(
+      "kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)",
+      cxxopts::value<std::string>())("verbosity,v",
+                                     "the verbosity of the output",
+                                     cxxopts::value<int>()->default_value("0"))(
+      "instr,i",
+      "path of file containing userspace instructions to be sent to the LX6",
+      cxxopts::value<std::string>())(
+      "length,l", "the length of the transfer in int32_t",
+      cxxopts::value<int>()->default_value("4096"));
 
   try {
     vm = options.parse(argc, argv);
@@ -50,7 +54,7 @@ int main(int argc, const char *argv[]) {
       std::cerr << "Usage:\n" << options.help() << std::endl;
       return 1;
     }
-  } catch (const cxxopts::exceptions::parsing& e) {
+  } catch (const cxxopts::exceptions::parsing &e) {
     std::cerr << e.what() << "\n\n";
     std::cerr << "Usage:\n" << options.help() << std::endl;
     return 1;

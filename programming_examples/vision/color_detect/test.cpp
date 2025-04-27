@@ -20,8 +20,8 @@
 #include <opencv2/imgproc/imgproc.hpp>
 
 #include "OpenCVUtils.h"
-#include "test_utils.h"
 #include "cxxopts.hpp"
+#include "test_utils.h"
 
 double epsilon = 2.0;
 

@@ -13,9 +13,9 @@
 #include <iostream>
 #include <sstream>
 
+#include "cxxopts.hpp"
 #include "test_utils.h"
 #include "xrt/xrt_bo.h"
-#include "cxxopts.hpp"
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED

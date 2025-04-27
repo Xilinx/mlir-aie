@@ -20,8 +20,8 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-#include "test_utils.h"
 #include "cxxopts.hpp"
+#include "test_utils.h"
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
@@ -29,7 +29,6 @@ using INOUT0_DATATYPE = std::bfloat16_t;
 using INOUT1_DATATYPE = std::bfloat16_t;
 using INOUT2_DATATYPE = std::bfloat16_t;
 #endif
-
 
 // ----------------------------------------------------------------------------
 // Verify results (specific to our design example)

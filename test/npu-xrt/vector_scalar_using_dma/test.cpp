@@ -20,8 +20,8 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-#include "test_utils.h"
 #include "cxxopts.hpp"
+#include "test_utils.h"
 
 constexpr int IN_SIZE = 4096;
 constexpr int OUT_SIZE = 4096;
