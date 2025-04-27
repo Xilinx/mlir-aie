@@ -1,4 +1,6 @@
-/build*
+build*
+_build*
+*.exe
 /install*
 /my_install*
 /sandbox*
