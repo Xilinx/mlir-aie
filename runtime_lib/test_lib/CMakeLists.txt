@@ -47,7 +47,7 @@ set(BUILD_TEST_UTILS ${XRT_FOUND} AND NOT ${AIE_RUNTIME_TARGET} STREQUAL "x86_64
 # test_utils library
 if (${BUILD_TEST_UTILS})
   add_library(test_utils STATIC test_utils.cpp)
-  set_target_properties(test_utils PROPERTIES PUBLIC_HEADER test_utils.h)
+  set_target_properties(test_utils PROPERTIES PUBLIC_HEADER "test_utils.h;cxxopts.hpp")
   target_compile_options(test_utils PRIVATE -fPIC)
 
   target_include_directories(test_utils PRIVATE
