@@ -58,8 +58,7 @@ config.substitutions.append(
 config.substitutions.append(
     (
         "%test_utils_flags",
-        "-lboost_program_options -lboost_filesystem "
-        + f"-I{test_lib_path}/include -L{test_lib_path}/lib -ltest_utils",
+        f"-I{test_lib_path}/include -L{test_lib_path}/lib -ltest_utils",
     )
 )
 
