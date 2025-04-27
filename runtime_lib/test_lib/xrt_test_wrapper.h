@@ -1,9 +1,9 @@
-#include <fstream>
-#include <iostream>
-#include <sstream>
 #include "cxxopts.hpp"
 #include "test_utils.h"
 #include "xrt/xrt_bo.h"
+#include <fstream>
+#include <iostream>
+#include <sstream>
 
 struct args {
   int verbosity;

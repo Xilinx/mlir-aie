@@ -20,31 +20,40 @@ namespace test_utils {
 // Command Line Argument Handling
 // --------------------------------------------------------------------------
 
-void check_arg_file_exists(const cxxopts::ParseResult& result, std::string name) {
-    if (!result.count(name)) {
-        throw std::runtime_error("Missing required argument: " + name);
-    }
-    std::string path = result[name].as<std::string>();
-    if (!std::filesystem::exists(path)) {
-        throw std::runtime_error("File does not exist: " + path);
-    }
+void check_arg_file_exists(const cxxopts::ParseResult &result,
+                           std::string name) {
+  if (!result.count(name)) {
+    throw std::runtime_error("Missing required argument: " + name);
+  }
+  std::string path = result[name].as<std::string>();
+  if (!std::filesystem::exists(path)) {
+    throw std::runtime_error("File does not exist: " + path);
+  }
 }
 
-void add_default_options(cxxopts::Options& options) {
- options.add_options()
-    ("help,h", "produce help message")
-    ("xclbin,x", "the input xclbin path", cxxopts::value<std::string>())
-    ("kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)", cxxopts::value<std::string>())
-    ("verbosity,v", "the verbosity of the output", cxxopts::value<int>()->default_value("0"))
-    ("instr,i", "path of file containing userspace instructions sent to the NPU", cxxopts::value<std::string>())
-    ("verify", "whether to verify the AIE computed output", cxxopts::value<bool>()->default_value("true"))
-    ("iters", "number of iterations", cxxopts::value<int>()->default_value("1"))
-    ("warmup", "number of warmup iterations", cxxopts::value<int>()->default_value("0"))
-    ("trace_sz,t", "trace size", cxxopts::value<int>()->default_value("0"))
-    ("trace_file", "where to store trace output", cxxopts::value<std::string>()->default_value("trace.txt"));}
+void add_default_options(cxxopts::Options &options) {
+  options.add_options()("help,h", "produce help message")(
+      "xclbin,x", "the input xclbin path", cxxopts::value<std::string>())(
+      "kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)",
+      cxxopts::value<std::string>())("verbosity,v",
+                                     "the verbosity of the output",
+                                     cxxopts::value<int>()->default_value("0"))(
+      "instr,i",
+      "path of file containing userspace instructions sent to the NPU",
+      cxxopts::value<std::string>())(
+      "verify", "whether to verify the AIE computed output",
+      cxxopts::value<bool>()->default_value("true"))(
+      "iters", "number of iterations",
+      cxxopts::value<int>()->default_value("1"))(
+      "warmup", "number of warmup iterations",
+      cxxopts::value<int>()->default_value("0"))(
+      "trace_sz,t", "trace size", cxxopts::value<int>()->default_value("0"))(
+      "trace_file", "where to store trace output",
+      cxxopts::value<std::string>()->default_value("trace.txt"));
+}
 
-void parse_options(int argc, const char *argv[], cxxopts::Options& options,
-                   cxxopts::ParseResult& vm) {
+void parse_options(int argc, const char *argv[], cxxopts::Options &options,
+                   cxxopts::ParseResult &vm) {
   try {
     vm = options.parse(argc, argv);
 
@@ -52,7 +61,7 @@ void parse_options(int argc, const char *argv[], cxxopts::Options& options,
       std::cout << options.help() << "\n";
       std::exit(1);
     }
-  } catch (const cxxopts::exceptions::parsing& e) {
+  } catch (const cxxopts::exceptions::parsing &e) {
     std::cerr << e.what() << "\n\n";
     std::cerr << "Usage:\n" << options.help() << "\n";
     std::exit(1);
@@ -83,8 +92,8 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
     instr_v.push_back(a);
   }
   return instr_v;
-    }
-    
+}
+
 std::vector<uint32_t> load_instr_binary(std::string instr_path) {
   // Open file in binary mode
   std::ifstream instr_file(instr_path, std::ios::binary);
@@ -100,7 +109,7 @@ std::vector<uint32_t> load_instr_binary(std::string instr_path) {
   // Check that the file size is a multiple of 4 bytes (size of uint32_t)
   if (size % 4 != 0) {
     throw std::runtime_error("File size is not a multiple of 4 bytes\n");
-}
+  }
 
   // Allocate vector and read the binary data
   std::vector<uint32_t> instr_v(size / 4);
@@ -134,24 +143,23 @@ void init_xrt_load_kernel(xrt::device &device, xrt::kernel &kernel,
       *std::find_if(xkernels.begin(), xkernels.end(),
                     [kernelNameInXclbin, verbosity](xrt::xclbin::kernel &k) {
                       auto name = k.get_name();
-    if (verbosity >= 1) {
+                      if (verbosity >= 1) {
                         std::cout << "Name: " << name << std::endl;
-    }
+                      }
                       return name.rfind(kernelNameInXclbin, 0) == 0;
                     });
   auto kernelName = xkernel.get_name();
-    
   // Register xclbin
   if (verbosity >= 1)
     std::cout << "Registering xclbin: " << xclbinFileName << "\n";
 
-    device.register_xclbin(xclbin);
-    
+  device.register_xclbin(xclbin);
+
   // Get a hardware context
   if (verbosity >= 1)
     std::cout << "Getting hardware context.\n";
-    xrt::hw_context context(device, xclbin.get_uuid());
-    
+  xrt::hw_context context(device, xclbin.get_uuid());
+
   // Get a kernel handle
   if (verbosity >= 1)
     std::cout << "Getting handle to kernel:" << kernelName << "\n";
@@ -188,8 +196,7 @@ bool nearly_equal(float a, float b, float epsilon, float abs_th)
 // --------------------------------------------------------------------------
 // Tracing
 // --------------------------------------------------------------------------
-void write_out_trace(char *traceOutPtr, size_t trace_size,
-                                 std::string path) {
+void write_out_trace(char *traceOutPtr, size_t trace_size, std::string path) {
   std::ofstream fout(path);
   uint32_t *traceOut = (uint32_t *)traceOutPtr;
   for (int i = 0; i < trace_size / sizeof(traceOut[0]); i++) {
@@ -197,4 +204,4 @@ void write_out_trace(char *traceOutPtr, size_t trace_size,
     fout << std::endl;
   }
 }
-}
+} // namespace test_utils
