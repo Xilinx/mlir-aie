@@ -16,7 +16,7 @@
 
 #include "test_utils.h"
 #include "xrt/xrt_bo.h"
-#include <cxxopts.hpp>
+#include "cxxopts.hpp"
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED

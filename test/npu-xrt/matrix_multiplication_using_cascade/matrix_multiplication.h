@@ -15,7 +15,7 @@
 #define MATRIX_MULTIPLICATION_H
 
 #include <cmath>
-#include <cxxopts.hpp>
+#include "cxxopts.hpp"
 
 namespace matmul_common {
 

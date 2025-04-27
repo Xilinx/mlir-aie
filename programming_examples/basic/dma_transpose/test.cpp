@@ -20,36 +20,41 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-#include "test_utils.h"
 #include "cxxopts.hpp"
+
 
 int main(int argc, const char *argv[]) {
   // Program arguments parsing
-  cxxopts::Options options("DMA Transpose Test", "Test the DMA Transpose kernel");
+  cxxopts::Options options("DMA Transpose Test",
+                           "Test the DMA Transpose kernel");
 
-  options.add_options()
-      ("help,h", "produce help message")
-      ("xclbin,x", "the input xclbin path", cxxopts::value<std::string>())
-      ("kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)", cxxopts::value<std::string>())
-      ("verbosity,v", "the verbosity of the output", cxxopts::value<int>()->default_value("0"))
-      ("instr,i", "path of file containing userspace instructions to be sent to the LX6", cxxopts::value<std::string>())
-      ("rows,M", "M, number of rows in the input matrix", cxxopts::value<int>()->default_value("64"))
-      ("cols,K", "K, number of columns in the input matrix", cxxopts::value<int>()->default_value("64"));
+  options.add_options()("help,h", "produce help message")(
+      "xclbin,x", "the input xclbin path", cxxopts::value<std::string>())(
+      "kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)",
+      cxxopts::value<std::string>())("verbosity,v",
+                                     "the verbosity of the output",
+                                     cxxopts::value<int>()->default_value("0"))(
+      "instr,i",
+      "path of file containing userspace instructions to be sent to the LX6",
+      cxxopts::value<std::string>())(
+      "rows,M", "M, number of rows in the input matrix",
+      cxxopts::value<int>()->default_value("64"))(
+      "cols,K", "K, number of columns in the input matrix",
+      cxxopts::value<int>()->default_value("64"));
 
-    auto vm = options.parse(argc, argv);
+  auto vm = options.parse(argc, argv);
 
-    if (vm.count("help")) {
-      std::cout << options.help() << std::endl;
-      return 1;
-    }
+  if (vm.count("help")) {
+    std::cout << options.help() << std::endl;
+    return 1;
+  }
 
-    // Check required options
-    if (!vm.count("xclbin") || !vm.count("kernel") || !vm.count("instr")) {
-      std::cerr << "Error: Required options missing\n\n";
-      std::cerr << "Usage:\n" << options.help() << std::endl;
-      return 1;
-    }
-
+  // Check required options
+  if (!vm.count("xclbin") || !vm.count("kernel") || !vm.count("instr")) {
+    std::cerr << "Error: Required options missing\n\n";
+    std::cerr << "Usage:\n" << options.help() << std::endl;
+    return 1;
+  }
 
   test_utils::check_arg_file_exists(vm, "xclbin");
   test_utils::check_arg_file_exists(vm, "instr");

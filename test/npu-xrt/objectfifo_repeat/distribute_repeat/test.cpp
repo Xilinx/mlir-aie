@@ -20,7 +20,7 @@
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
-#include <cxxopts.hpp>
+#include "cxxopts.hpp"
 
 int main(int argc, const char *argv[]) {
   // Program arguments parsing

@@ -21,7 +21,7 @@
 
 #include "OpenCVUtils.h"
 #include "test_utils.h"
-#include <cxxopts.hpp>
+#include "cxxopts.hpp"
 
 constexpr int channels = 4;
 constexpr uint64_t testImageWidth = PASSTHROUGH_WIDTH;

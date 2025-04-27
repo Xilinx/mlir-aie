@@ -21,7 +21,7 @@
 
 #include "OpenCVUtils.h"
 #include "test_utils.h"
-#include <cxxopts.hpp>
+#include "cxxopts.hpp"
 
 double epsilon = 2.0;
 

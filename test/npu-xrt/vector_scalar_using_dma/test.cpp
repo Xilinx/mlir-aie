@@ -21,7 +21,7 @@
 #include "xrt/xrt_kernel.h"
 
 #include "test_utils.h"
-#include <cxxopts.hpp>
+#include "cxxopts.hpp"
 
 constexpr int IN_SIZE = 4096;
 constexpr int OUT_SIZE = 4096;
