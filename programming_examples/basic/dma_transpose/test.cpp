@@ -22,7 +22,6 @@
 
 #include "cxxopts.hpp"
 
-
 int main(int argc, const char *argv[]) {
   // Program arguments parsing
   cxxopts::Options options("DMA Transpose Test",

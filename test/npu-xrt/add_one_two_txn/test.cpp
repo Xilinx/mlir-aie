@@ -15,12 +15,12 @@
 #include <string>
 #include <vector>
 
+#include "cxxopts.hpp"
 #include "experimental/xrt_kernel.h"
 #include "test_utils.h"
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
-#include "cxxopts.hpp"
 
 constexpr int IN_SIZE = 64;
 constexpr int OUT_SIZE = 64;
@@ -29,9 +29,9 @@ int main(int argc, const char *argv[]) {
   // Program arguments parsing
   cxxopts::Options options("add_one_two_txn");
   test_utils::add_default_options(options);
-  options.add_options()("instr0,i", "path to instructions for kernel0",
+  options.add_options()("instr0", "path to instructions for kernel0",
                         cxxopts::value<std::string>())(
-      "instr1,j", "path to instructions for kernel1",
+      "instr1", "path to instructions for kernel1",
       cxxopts::value<std::string>())("cfg,c", "txn binary path",
                                      cxxopts::value<std::string>());
 

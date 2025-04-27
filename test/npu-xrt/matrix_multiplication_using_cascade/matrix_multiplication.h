@@ -14,8 +14,8 @@
 #ifndef MATRIX_MULTIPLICATION_H
 #define MATRIX_MULTIPLICATION_H
 
-#include <cmath>
 #include "cxxopts.hpp"
+#include <cmath>
 
 namespace matmul_common {
 
@@ -38,12 +38,14 @@ void check_arg_file_exists(cxxopts::ParseResult &vm_in, std::string name) {
 
 void add_default_options(cxxopts::Options &options) {
   options.add_options()("help,h", "produce help message")(
-      "xclbin,x", "the input xclbin path")(
-      "kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", "the verbosity of the output",
-      cxxopts::value<int>()->default_value("0"))(
+      "xclbin,x", "the input xclbin path", cxxopts::value<std::string>())(
+      "kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)",
+      cxxopts::value<std::string>())("verbosity,v",
+                                     "the verbosity of the output",
+                                     cxxopts::value<int>()->default_value("0"))(
       "instr,i",
-      "path of file containing userspace instructions sent to the NPU")(
+      "path of file containing userspace instructions sent to the NPU",
+      cxxopts::value<std::string>())(
       "verify", "whether to verify the AIE computed output",
       cxxopts::value<bool>()->default_value("true"))(
       "iters", "number of iterations",
