@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <boost/program_options.hpp>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -16,43 +15,22 @@
 #include <string>
 #include <vector>
 
+#include "test_utils.h"
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
-
-#include "test_utils.h"
+#include <cxxopts.hpp>
 
 constexpr int IN_SIZE = 64;
 constexpr int OUT_SIZE = 64;
 
-namespace po = boost::program_options;
-
 int main(int argc, const char *argv[]) {
-
   // Program arguments parsing
-  po::options_description desc("Allowed options");
-  desc.add_options()("help,h", "produce help message")(
-      "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")("verbosity,v",
-                               po::value<int>()->default_value(0),
-                               "the verbosity of the output")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6");
-  po::variables_map vm;
+  cxxopts::Options options("add_one_two");
+  test_utils::add_default_options(options);
 
-  try {
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-      std::cout << desc << "\n";
-      return 1;
-    }
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-    std::cerr << "Usage:\n" << desc << "\n";
-    return 1;
-  }
+  cxxopts::ParseResult vm;
+  test_utils::parse_options(argc, argv, options, vm);
 
   test_utils::check_arg_file_exists(vm, "xclbin");
   test_utils::check_arg_file_exists(vm, "instr");

@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <boost/program_options.hpp>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -17,85 +16,35 @@
 #include <string>
 #include <vector>
 
+#include "test_utils.h"
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
-
-namespace po = boost::program_options;
-
-void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
-  if (!vm_in.count(name)) {
-    throw std::runtime_error("Error: no " + name + " file was provided\n");
-  } else {
-    std::ifstream test(vm_in[name].as<std::string>());
-    if (!test) {
-      throw std::runtime_error("The " + name + " file " +
-                               vm_in[name].as<std::string>() +
-                               " does not exist.\n");
-    }
-  }
-}
-
-std::vector<uint32_t> load_instr_binary(std::string instr_path) {
-  std::ifstream instr_file(instr_path);
-  std::string line;
-  std::vector<uint32_t> instr_v;
-  while (std::getline(instr_file, line)) {
-    std::istringstream iss(line);
-    uint32_t a;
-    if (!(iss >> std::hex >> a)) {
-      throw std::runtime_error("Unable to parse instruction file\n");
-    }
-    instr_v.push_back(a);
-  }
-  return instr_v;
-}
+#include <cxxopts.hpp>
 
 int main(int argc, const char *argv[]) {
   // Program arguments parsing
-  po::options_description desc("Allowed options");
+  cxxopts::Options options("dma_complex_dims");
+  test_utils::add_default_options(options);
+  options.add_options()("m", "m, number of rows in the small tile",
+                        cxxopts::value<int>()->default_value("32"))(
+      "k", "k, number of columns in the small tile",
+      cxxopts::value<int>()->default_value("64"))(
+      "K", "K, number of columns in the large tile",
+      cxxopts::value<int>()->default_value("256"))(
+      "r", "r, number of columns in the large tile",
+      cxxopts::value<int>()->default_value("8"))(
+      "s", "s, number of columns in the large tile",
+      cxxopts::value<int>()->default_value("8"));
 
-  desc.add_options()("help,h", "produce help message")(
-      "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")(
-      "kernel,k", po::value<std::string>()->required(),
-      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6")(
-      "m", po::value<int>()->default_value(32),
-      "m, number of rows in the small tile")(
-      "k", po::value<int>()->default_value(64),
-      "k, number of columns in the small tile")(
-      "K", po::value<int>()->default_value(256),
-      "K, number of columns in the large tile")(
-      "r", po::value<int>()->default_value(8),
-      "r, number of columns in the large tile")(
-      "s", po::value<int>()->default_value(8),
-      "s, number of columns in the large tile");
+  cxxopts::ParseResult vm;
+  test_utils::parse_options(argc, argv, options, vm);
 
-  po::variables_map vm;
-
-  try {
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-      std::cout << desc << std::endl;
-      return 1;
-    }
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-    std::cerr << "Usage:\n" << desc << std::endl;
-    return 1;
-  }
-
-  check_arg_file_exists(vm, "xclbin");
-  check_arg_file_exists(vm, "instr");
+  test_utils::check_arg_file_exists(vm, "xclbin");
+  test_utils::check_arg_file_exists(vm, "instr");
 
   std::vector<uint32_t> instr_v =
-      load_instr_binary(vm["instr"].as<std::string>());
+      test_utils::load_instr_binary(vm["instr"].as<std::string>());
 
   int verbosity = vm["verbosity"].as<int>();
   if (verbosity >= 1)

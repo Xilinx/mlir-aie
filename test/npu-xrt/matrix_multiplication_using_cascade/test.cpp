@@ -1,4 +1,3 @@
-
 //===- test.cpp -------------------------------------------000---*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -10,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include <bits/stdc++.h>
-#include <boost/program_options.hpp>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -21,13 +19,12 @@
 #include <sstream>
 #include <stdfloat>
 
+#include "matrix_multiplication.h"
+#include "test_utils.h"
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
-
-#include "test_utils.h"
-
-#include "matrix_multiplication.h"
+#include <cxxopts.hpp>
 
 constexpr int M = 16;
 constexpr int K = 16;
@@ -47,15 +44,12 @@ constexpr int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
 
 constexpr bool VERIFY = true;
 
-namespace po = boost::program_options;
-
 int main(int argc, const char *argv[]) {
-
   // Program arguments parsing
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  matmul_common::add_default_options(desc);
-  matmul_common::parse_options(argc, argv, desc, vm);
+  cxxopts::Options options("matrix_multiplication_using_cascade");
+  cxxopts::ParseResult vm;
+  matmul_common::add_default_options(options);
+  matmul_common::parse_options(argc, argv, options, vm);
   int verbosity = vm["verbosity"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
 

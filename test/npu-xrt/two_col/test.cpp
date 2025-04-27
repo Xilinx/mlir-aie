@@ -1,4 +1,3 @@
-#include <boost/program_options.hpp>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -7,11 +6,11 @@
 #include <string>
 #include <vector>
 
+#include "test_utils.h"
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
-
-#include "test_utils.h"
+#include <cxxopts.hpp>
 
 #define IMAGE_WIDTH_IN 128
 #define IMAGE_HEIGHT_IN 64
@@ -25,36 +24,14 @@
 constexpr int IN_SIZE = (IMAGE_AREA_IN * sizeof(uint8_t));
 constexpr int OUT_SIZE = (IMAGE_AREA_OUT * sizeof(uint8_t));
 
-namespace po = boost::program_options;
-
 int main(int argc, const char *argv[]) {
 
   // Program arguments parsing
-  po::options_description desc("Allowed options");
-  desc.add_options()("help,h", "produce help message")(
-      "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")(
-      "kernel,k", po::value<std::string>()->required(),
-      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6");
-  po::variables_map vm;
+  cxxopts::Options options("two_col");
+  test_utils::add_default_options(options);
 
-  try {
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-      std::cout << desc << "\n";
-      return 1;
-    }
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-    std::cerr << "Usage:\n" << desc << "\n";
-    return 1;
-  }
+  cxxopts::ParseResult vm;
+  test_utils::parse_options(argc, argv, options, vm);
 
   test_utils::check_arg_file_exists(vm, "xclbin");
   test_utils::check_arg_file_exists(vm, "instr");
@@ -151,24 +128,24 @@ int main(int argc, const char *argv[]) {
     if (srcVec[i] <= 50) { // Obviously change this back to 100
       if (*(bufOut + i) != 0) {
         if (errors < max_errors)
-          std::cout << "Error: " << (uint8_t) * (bufOut + i) << " at " << i
+          std::cout << "Error: " << (uint8_t)*(bufOut + i) << " at " << i
                     << " should be zero "
                     << " : input " << (uint8_t)srcVec[i] << std::endl;
         errors++;
       } else {
-        std::cout << "Wow:   " << (uint8_t) * (bufOut + i) << " at " << i
+        std::cout << "Wow:   " << (uint8_t)*(bufOut + i) << " at " << i
                   << " is correct "
                   << " : input " << (uint8_t)srcVec[i] << std::endl;
       }
     } else {
       if (*(bufOut + i) != UINT8_MAX) {
         if (errors < max_errors)
-          std::cout << "Error: " << (uint8_t) * (bufOut + i) << " at " << i
+          std::cout << "Error: " << (uint8_t)*(bufOut + i) << " at " << i
                     << " should be UINT8_MAX "
                     << " : input " << (uint8_t)srcVec[i] << std::endl;
         errors++;
       } else {
-        std::cout << "WowT:  " << (uint8_t) * (bufOut + i) << " at " << i
+        std::cout << "WowT:  " << (uint8_t)*(bufOut + i) << " at " << i
                   << " is correct "
                   << " : input " << (uint8_t)srcVec[i] << std::endl;
       }

@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <boost/program_options.hpp>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -17,43 +16,21 @@
 #include <string>
 #include <vector>
 
+#include "test_utils.h"
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
-
-#include "test_utils.h"
-
-namespace po = boost::program_options;
+#include <cxxopts.hpp>
 
 int main(int argc, const char *argv[]) {
   // Program arguments parsing
-  po::options_description desc("Allowed options");
-  desc.add_options()("help,h", "produce help message")(
-      "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")(
-      "kernel,k", po::value<std::string>()->required(),
-      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6")(
-      "length,l", po::value<int>()->default_value(4096),
-      "the length of the transfer in int32_t");
-  po::variables_map vm;
+  cxxopts::Options options("blockwrite_using_locks");
+  test_utils::add_default_options(options);
+  options.add_options()("length,l", "the length of the transfer in int32_t",
+                        cxxopts::value<int>()->default_value("4096"));
 
-  try {
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-      std::cout << desc << std::endl;
-      return 1;
-    }
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-    std::cerr << "Usage:\n" << desc << std::endl;
-    return 1;
-  }
+  cxxopts::ParseResult vm;
+  test_utils::parse_options(argc, argv, options, vm);
 
   test_utils::check_arg_file_exists(vm, "xclbin");
   test_utils::check_arg_file_exists(vm, "instr");

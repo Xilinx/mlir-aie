@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include <bits/stdc++.h>
-#include <boost/program_options.hpp>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -20,11 +19,11 @@
 #include <sstream>
 #include <stdfloat>
 
+#include "test_utils.h"
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
-
-#include "test_utils.h"
+#include <cxxopts.hpp>
 
 constexpr int A_VOLUME = 5;
 constexpr int B_VOLUME = 96;
@@ -40,47 +39,13 @@ constexpr int D_SIZE = (D_VOLUME * sizeof(IN_DATATYPE));
 
 constexpr bool VERIFY = true;
 
-namespace po = boost::program_options;
-
-void parse_options(int argc, const char *argv[], po::options_description &desc,
-                   po::variables_map &vm) {
-  try {
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-      std::cout << desc << "\n";
-      std::exit(1);
-    }
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-    std::cerr << "Usage:\n" << desc << "\n";
-    std::exit(1);
-  }
-
-  test_utils::check_arg_file_exists(vm, "xclbin");
-  test_utils::check_arg_file_exists(vm, "instr");
-}
-
-void add_default_options(po::options_description &desc) {
-  desc.add_options()("help,h", "produce help message")(
-      "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")(
-      "kernel,k", po::value<std::string>()->required(),
-      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6");
-}
-
 int main(int argc, const char *argv[]) {
-
   // Program arguments parsing
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  add_default_options(desc);
-  parse_options(argc, argv, desc, vm);
+  cxxopts::Options options("dmabd_task_queue");
+  test_utils::add_default_options(options);
+
+  cxxopts::ParseResult vm;
+  test_utils::parse_options(argc, argv, options, vm);
   int verbosity = vm["verbosity"].as<int>();
 
   srand(time(NULL));
