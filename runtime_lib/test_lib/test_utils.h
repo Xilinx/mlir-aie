@@ -13,7 +13,7 @@
 #ifndef _TEST_UTILS_H_
 #define _TEST_UTILS_H_
 
-#include <cxxopts.hpp>
+#include "cxxopts.hpp"
 #include <cfloat>
 #include <cmath>
 #include <cstdint>
@@ -32,12 +32,13 @@
 
 namespace test_utils {
 
-void check_arg_file_exists(const cxxopts::ParseResult& result, std::string name);
+void check_arg_file_exists(const cxxopts::ParseResult &result,
+                           std::string name);
 
-void add_default_options(cxxopts::Options& options);
+void add_default_options(cxxopts::Options &options);
 
-void parse_options(int argc, const char *argv[], cxxopts::Options& options,
-                   cxxopts::ParseResult& result);
+void parse_options(int argc, const char *argv[], cxxopts::Options &options,
+                   cxxopts::ParseResult &result);
 
 std::vector<uint32_t> load_instr_sequence(std::string instr_path);
 std::vector<uint32_t> load_instr_binary(std::string instr_path);
