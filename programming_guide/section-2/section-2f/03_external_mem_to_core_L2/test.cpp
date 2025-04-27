@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <boost/program_options.hpp>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -17,87 +16,25 @@
 #include <string>
 #include <vector>
 
+#include "test_utils.h"
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
+#include <cxxopts.hpp>
 
 constexpr int IN_SIZE = 48;
 constexpr int OUT_SIZE = 48;
 
-namespace po = boost::program_options;
-
-void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
-  if (!vm_in.count(name)) {
-    throw std::runtime_error("Error: no " + name + " file was provided\n");
-  } else {
-    std::ifstream test(vm_in[name].as<std::string>());
-    if (!test) {
-      throw std::runtime_error("The " + name + " file " +
-                               vm_in[name].as<std::string>() +
-                               " does not exist.\n");
-    }
-  }
-}
-
-std::vector<uint32_t> load_instr_binary(std::string instr_path) {
-  // Open file in binary mode
-  std::ifstream instr_file(instr_path, std::ios::binary);
-  if (!instr_file.is_open()) {
-    throw std::runtime_error("Unable to open instruction file\n");
-  }
-
-  // Get the size of the file
-  instr_file.seekg(0, std::ios::end);
-  std::streamsize size = instr_file.tellg();
-  instr_file.seekg(0, std::ios::beg);
-
-  // Check that the file size is a multiple of 4 bytes (size of uint32_t)
-  if (size % 4 != 0) {
-    throw std::runtime_error("File size is not a multiple of 4 bytes\n");
-  }
-
-  // Allocate vector and read the binary data
-  std::vector<uint32_t> instr_v(size / 4);
-  if (!instr_file.read(reinterpret_cast<char *>(instr_v.data()), size)) {
-    throw std::runtime_error("Failed to read instruction file\n");
-  }
-  return instr_v;
-}
-
 int main(int argc, const char *argv[]) {
 
   // Program arguments parsing
-  po::options_description desc("Allowed options");
-  desc.add_options()("help,h", "produce help message")(
-      "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")(
-      "kernel,k", po::value<std::string>()->required(),
-      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6");
-  po::variables_map vm;
-
-  try {
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-      std::cout << desc << "\n";
-      return 1;
-    }
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-    std::cerr << "Usage:\n" << desc << "\n";
-    return 1;
-  }
-
-  check_arg_file_exists(vm, "xclbin");
-  check_arg_file_exists(vm, "instr");
+  cxxopts::Options options("external_mem_to_core_L2");
+  test_utils::add_default_options(options);
+  cxxopts::ParseResult vm;
+  test_utils::parse_options(argc, argv, options, vm);
 
   std::vector<uint32_t> instr_v =
-      load_instr_binary(vm["instr"].as<std::string>());
+      test_utils::load_instr_binary(vm["instr"].as<std::string>());
 
   int verbosity = vm["verbosity"].as<int>();
   if (verbosity >= 1)

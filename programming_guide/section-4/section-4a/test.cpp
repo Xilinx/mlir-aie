@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <chrono>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -15,6 +16,7 @@
 
 #include "test_utils.h"
 #include "xrt/xrt_bo.h"
+#include <cxxopts.hpp>
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
@@ -23,16 +25,13 @@ using DATATYPE = std::uint32_t; // Configure this to match your buffer data type
 
 const int scaleFactor = 3;
 
-namespace po = boost::program_options;
-
 int main(int argc, const char *argv[]) {
-
   // Program arguments parsing
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  test_utils::add_default_options(desc);
+  cxxopts::Options options("section-4a");
+  test_utils::add_default_options(options);
 
-  test_utils::parse_options(argc, argv, desc, vm);
+  cxxopts::ParseResult vm;
+  test_utils::parse_options(argc, argv, options, vm);
   int verbosity = vm["verbosity"].as<int>();
   int do_verify = vm["verify"].as<bool>();
   int n_iterations = vm["iters"].as<int>();
@@ -127,7 +126,6 @@ int main(int argc, const char *argv[]) {
       continue;
     }
 
-    // Copy output results and verify they are correct
     // Copy output results and verify they are correct
     if (do_verify) {
       if (verbosity >= 1) {
