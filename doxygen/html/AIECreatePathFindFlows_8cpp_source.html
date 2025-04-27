@@ -674,7 +674,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00603" name="l00603"></a><span class="lineno">  603</span>               &lt;&lt; <span class="stringliteral">&quot;master &quot;</span> &lt;&lt; tile &lt;&lt; <span class="stringliteral">&quot; &quot;</span> &lt;&lt; stringifyWireBundle(bundle)</div>
 <div class="line"><a id="l00604" name="l00604"></a><span class="lineno">  604</span>               &lt;&lt; <span class="stringliteral">&quot; : &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a> &lt;&lt; <span class="charliteral">&#39;\n&#39;</span>);</div>
 <div class="line"><a id="l00605" name="l00605"></a><span class="lineno">  605</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> value : values)</div>
-<div class="line"><a id="l00606" name="l00606"></a><span class="lineno">  606</span>      LLVM_DEBUG(<a class="code hl_namespace" href="namespacellvm.html">llvm</a>::dbgs() &lt;&lt; <span class="stringliteral">&quot;amsel: &quot;</span> &lt;&lt; value &lt;&lt; <span class="stringliteral">&#39;\n&#39;</span>);</div>
+<div class="line"><a id="l00606" name="l00606"></a><span class="lineno">  606</span>      LLVM_DEBUG(<a class="code hl_namespace" href="namespacellvm.html">llvm</a>::dbgs() &lt;&lt; <span class="stringliteral">&quot;amsel: &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">value</a> &lt;&lt; <span class="stringliteral">&#39;\n&#39;</span>);</div>
 <div class="line"><a id="l00607" name="l00607"></a><span class="lineno">  607</span>  }</div>
 <div class="line"><a id="l00608" name="l00608"></a><span class="lineno">  608</span><span class="preprocessor">#endif</span></div>
 <div class="line"><a id="l00609" name="l00609"></a><span class="lineno">  609</span> </div>
@@ -809,7 +809,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00738" name="l00738"></a><span class="lineno">  738</span>        <span class="keywordflow">continue</span>;</div>
 <div class="line"><a id="l00739" name="l00739"></a><span class="lineno">  739</span> </div>
 <div class="line"><a id="l00740" name="l00740"></a><span class="lineno">  740</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> value : map.second) {</div>
-<div class="line"><a id="l00741" name="l00741"></a><span class="lineno">  741</span>        amselOpNeededVector[value] = <span class="keyword">true</span>;</div>
+<div class="line"><a id="l00741" name="l00741"></a><span class="lineno">  741</span>        amselOpNeededVector[<a class="code hl_function" href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">value</a>] = <span class="keyword">true</span>;</div>
 <div class="line"><a id="l00742" name="l00742"></a><span class="lineno">  742</span>      }</div>
 <div class="line"><a id="l00743" name="l00743"></a><span class="lineno">  743</span>    }</div>
 <div class="line"><a id="l00744" name="l00744"></a><span class="lineno">  744</span>    <span class="comment">// Create all the amsel Ops</span></div>
@@ -1111,6 +1111,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1DynamicTileAnalysis_html_a709e528820ac768bfd16a087c1a83165"><div class="ttname"><a href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a709e528820ac768bfd16a087c1a83165">xilinx::AIE::DynamicTileAnalysis::getTile</a></div><div class="ttdeci">TileOp getTile(mlir::OpBuilder &amp;builder, int col, int row)</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8cpp_source.html#l00144">AIEPathFinder.cpp:144</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1DynamicTileAnalysis_html_ac0c541d3c53eb4044c6daae1f1d26bf1"><div class="ttname"><a href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#ac0c541d3c53eb4044c6daae1f1d26bf1">xilinx::AIE::DynamicTileAnalysis::processedFlows</a></div><div class="ttdeci">std::map&lt; PathEndPoint, bool &gt; processedFlows</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8h_source.html#l00237">AIEPathFinder.h:237</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1DynamicTileAnalysis_html_af90fd7cb6e42879d266fd643509506d8"><div class="ttname"><a href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#af90fd7cb6e42879d266fd643509506d8">xilinx::AIE::DynamicTileAnalysis::flowSolutions</a></div><div class="ttdeci">std::map&lt; PathEndPoint, SwitchSettings &gt; flowSolutions</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8h_source.html#l00236">AIEPathFinder.h:236</a></div></div>
+<div class="ttc" id="anamespacecxxopts_html_a6b58e451713ebbf12866c1cd8e0a66ab"><div class="ttname"><a href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">cxxopts::value</a></div><div class="ttdeci">std::shared_ptr&lt; Value &gt; value()</div><div class="ttdef"><b>Definition</b> <a href="cxxopts_8hpp_source.html#l01026">cxxopts.hpp:1026</a></div></div>
 <div class="ttc" id="anamespacellvm_html"><div class="ttname"><a href="namespacellvm.html">llvm</a></div><div class="ttdef"><b>Definition</b> <a href="AIEDialect_8h_source.html#l00244">AIEDialect.h:244</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00021">AIEToConfiguration.h:21</a></div></div>
@@ -1143,7 +1144,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Sat Apr 26 2025 21:27:04 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Sun Apr 27 2025 21:32:14 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

@@ -1,0 +1,11 @@
+<map id="cxxopts::exceptions::specification" name="cxxopts::exceptions::specification">
+<area shape="rect" id="Node000001" title=" " alt="" coords="367,37,517,77"/>
+<area shape="rect" id="Node000004" href="$classcxxopts_1_1exceptions_1_1invalid__option__format.html" title=" " alt="" coords="565,5,739,45"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="530,41,565,36,566,41,531,46"/>
+<area shape="rect" id="Node000005" href="$classcxxopts_1_1exceptions_1_1option__already__exists.html" title=" " alt="" coords="565,69,739,109"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="531,68,566,74,565,79,530,73"/>
+<area shape="rect" id="Node000002" href="$classcxxopts_1_1exceptions_1_1exception.html" title=" " alt="" coords="168,37,319,77"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="332,55,366,55,366,60,332,60"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,45,120,70"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="134,55,168,55,168,60,134,60"/>
+</map>

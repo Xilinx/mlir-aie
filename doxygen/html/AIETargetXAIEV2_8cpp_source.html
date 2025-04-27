@@ -645,9 +645,9 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00585" name="l00585"></a><span class="lineno">  585</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> switchboxOp : targetOp.getOps&lt;SwitchboxOp&gt;()) {</div>
 <div class="line"><a id="l00586" name="l00586"></a><span class="lineno">  586</span>    Region &amp;r = switchboxOp.getConnections();</div>
 <div class="line"><a id="l00587" name="l00587"></a><span class="lineno">  587</span>    Block &amp;b = r.front();</div>
-<div class="line"><a id="l00588" name="l00588"></a><span class="lineno">  588</span>    <span class="keywordtype">bool</span> isEmpty = b.getOps&lt;ConnectOp&gt;().empty() &amp;&amp;</div>
-<div class="line"><a id="l00589" name="l00589"></a><span class="lineno">  589</span>                   b.getOps&lt;MasterSetOp&gt;().empty() &amp;&amp;</div>
-<div class="line"><a id="l00590" name="l00590"></a><span class="lineno">  590</span>                   b.getOps&lt;PacketRulesOp&gt;().empty();</div>
+<div class="line"><a id="l00588" name="l00588"></a><span class="lineno">  588</span>    <span class="keywordtype">bool</span> isEmpty = b.getOps&lt;ConnectOp&gt;().<a class="code hl_function" href="namespacecxxopts.html#a3ffde9e4565bba175bd56c06c0f99162">empty</a>() &amp;&amp;</div>
+<div class="line"><a id="l00589" name="l00589"></a><span class="lineno">  589</span>                   b.getOps&lt;MasterSetOp&gt;().<a class="code hl_function" href="namespacecxxopts.html#a3ffde9e4565bba175bd56c06c0f99162">empty</a>() &amp;&amp;</div>
+<div class="line"><a id="l00590" name="l00590"></a><span class="lineno">  590</span>                   b.getOps&lt;PacketRulesOp&gt;().<a class="code hl_function" href="namespacecxxopts.html#a3ffde9e4565bba175bd56c06c0f99162">empty</a>();</div>
 <div class="line"><a id="l00591" name="l00591"></a><span class="lineno">  591</span>    <span class="keywordtype">bool</span> isParam = <span class="keyword">false</span>;</div>
 <div class="line"><a id="l00592" name="l00592"></a><span class="lineno">  592</span> </div>
 <div class="line"><a id="l00593" name="l00593"></a><span class="lineno">  593</span>    <span class="keywordflow">if</span> (isa&lt;TileOp&gt;(switchboxOp.getTile().getDefiningOp())) {</div>
@@ -756,7 +756,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00696" name="l00696"></a><span class="lineno">  696</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : targetOp.getOps&lt;ShimMuxOp&gt;()) {</div>
 <div class="line"><a id="l00697" name="l00697"></a><span class="lineno">  697</span>    Region &amp;r = op.getConnections();</div>
 <div class="line"><a id="l00698" name="l00698"></a><span class="lineno">  698</span>    Block &amp;b = r.front();</div>
-<div class="line"><a id="l00699" name="l00699"></a><span class="lineno">  699</span>    <span class="keywordtype">bool</span> isEmpty = b.getOps&lt;ConnectOp&gt;().empty();</div>
+<div class="line"><a id="l00699" name="l00699"></a><span class="lineno">  699</span>    <span class="keywordtype">bool</span> isEmpty = b.getOps&lt;ConnectOp&gt;().<a class="code hl_function" href="namespacecxxopts.html#a3ffde9e4565bba175bd56c06c0f99162">empty</a>();</div>
 <div class="line"><a id="l00700" name="l00700"></a><span class="lineno">  700</span> </div>
 <div class="line"><a id="l00701" name="l00701"></a><span class="lineno">  701</span>    <span class="keywordflow">if</span> (isa&lt;TileOp&gt;(op.getTile().getDefiningOp())) {</div>
 <div class="line"><a id="l00702" name="l00702"></a><span class="lineno">  702</span>      <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = op.colIndex();</div>
@@ -806,7 +806,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00746" name="l00746"></a><span class="lineno">  746</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> switchboxOp : targetOp.getOps&lt;ShimSwitchboxOp&gt;()) {</div>
 <div class="line"><a id="l00747" name="l00747"></a><span class="lineno">  747</span>    Region &amp;r = switchboxOp.getConnections();</div>
 <div class="line"><a id="l00748" name="l00748"></a><span class="lineno">  748</span>    Block &amp;b = r.front();</div>
-<div class="line"><a id="l00749" name="l00749"></a><span class="lineno">  749</span>    <span class="keywordtype">bool</span> isEmpty = b.getOps&lt;ConnectOp&gt;().empty();</div>
+<div class="line"><a id="l00749" name="l00749"></a><span class="lineno">  749</span>    <span class="keywordtype">bool</span> isEmpty = b.getOps&lt;ConnectOp&gt;().<a class="code hl_function" href="namespacecxxopts.html#a3ffde9e4565bba175bd56c06c0f99162">empty</a>();</div>
 <div class="line"><a id="l00750" name="l00750"></a><span class="lineno">  750</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = switchboxOp.getCol();</div>
 <div class="line"><a id="l00751" name="l00751"></a><span class="lineno">  751</span>    <span class="keywordflow">if</span> (!isEmpty)</div>
 <div class="line"><a id="l00752" name="l00752"></a><span class="lineno">  752</span>      output &lt;&lt; <span class="stringliteral">&quot;// Shim Switch column &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>;</div>
@@ -952,6 +952,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html_ad211b18c915a01ab1c3a1b731cafabea"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html#ad211b18c915a01ab1c3a1b731cafabea">xilinx::AIE::AIETargetModel::columns</a></div><div class="ttdeci">virtual int columns() const =0</div><div class="ttdoc">Return the number of columns in the device.</div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html_ae3dbb309666278a8166c8e9f29e5f0e1"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae3dbb309666278a8166c8e9f29e5f0e1">xilinx::AIE::AIETargetModel::getNumMemTileRows</a></div><div class="ttdeci">virtual uint32_t getNumMemTileRows() const =0</div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html_af656587d8e0fb2cdf6a313aa7d52d986"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html#af656587d8e0fb2cdf6a313aa7d52d986">xilinx::AIE::AIETargetModel::getRowShift</a></div><div class="ttdeci">virtual uint32_t getRowShift() const =0</div></div>
+<div class="ttc" id="anamespacecxxopts_html_a3ffde9e4565bba175bd56c06c0f99162"><div class="ttname"><a href="namespacecxxopts.html#a3ffde9e4565bba175bd56c06c0f99162">cxxopts::empty</a></div><div class="ttdeci">bool empty(const std::string &amp;s)</div><div class="ttdef"><b>Definition</b> <a href="cxxopts_8hpp_source.html#l00275">cxxopts.hpp:275</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIEX_html"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html">xilinx::AIEX</a></div><div class="ttdef"><b>Definition</b> <a href="AIETokenAnalysis_8h_source.html#l00028">AIETokenAnalysis.h:28</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00021">AIEToConfiguration.h:21</a></div></div>
@@ -970,7 +971,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Sat Apr 26 2025 21:27:05 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Sun Apr 27 2025 21:32:14 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

@@ -1,3 +1,11 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="Node000000" href="$structxilinx_1_1AIE_1_1MERegDMABD.html" title=" " alt="" coords="5,5,196,31"/>
+<area shape="rect" id="Node000000" title=" " alt="" coords="5,109,192,134"/>
+<area shape="rect" id="Node000001" href="$structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html" title="Options for the &quot;canonicalize&#45;vector&#45;for&#45;aievec&quot; pipeline." alt="" coords="245,5,445,45"/>
+<area shape="poly" id="edge61_Node000000_Node000001" title=" " alt="" coords="137,100,239,55,273,43,275,48,241,60,139,105"/>
+<area shape="rect" id="Node000002" href="$structxilinx_1_1aievec_1_1ConvertVectorToAIEVecOptions.html" title="Options for the &quot;convert&#45;vector&#45;to&#45;aievec&quot; pipeline." alt="" coords="240,69,449,109"/>
+<area shape="poly" id="edge62_Node000000_Node000002" title=" " alt="" coords="206,105,239,100,240,106,206,110"/>
+<area shape="rect" id="Node000003" href="$structxilinx_1_1aievec_1_1LowerVectorToAIEVecOptions.html" title="Options for the &quot;lower&#45;vector&#45;to&#45;aievec&quot; pipeline." alt="" coords="246,133,443,173"/>
+<area shape="poly" id="edge63_Node000000_Node000003" title=" " alt="" coords="206,133,246,138,245,143,205,138"/>
+<area shape="rect" id="Node000004" href="$structxilinx_1_1aievec_1_1OptimizeAIEVecOptions.html" title="Options for the &quot;optimize&#45;aievec&quot; pipeline." alt="" coords="257,197,433,237"/>
+<area shape="poly" id="edge64_Node000000_Node000004" title=" " alt="" coords="139,138,241,183,275,195,273,200,239,188,137,143"/>
 </map>

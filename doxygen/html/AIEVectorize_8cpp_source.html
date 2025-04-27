@@ -495,11 +495,11 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00435" name="l00435"></a><span class="lineno">  435</span>  <span class="comment">// associated with it, we extract that. Otherwise we use the index from</span></div>
 <div class="line"><a id="l00436" name="l00436"></a><span class="lineno">  436</span>  <span class="comment">// default map.</span></div>
 <div class="line"><a id="l00437" name="l00437"></a><span class="lineno">  437</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> idxAndValue : <a class="code hl_namespace" href="namespacellvm.html">llvm</a>::enumerate(indices)) {</div>
-<div class="line"><a id="l00438" name="l00438"></a><span class="lineno">  438</span>    <span class="keyword">auto</span> value = idxAndValue.value();</div>
+<div class="line"><a id="l00438" name="l00438"></a><span class="lineno">  438</span>    <span class="keyword">auto</span> <a class="code hl_function" href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">value</a> = idxAndValue.value();</div>
 <div class="line"><a id="l00439" name="l00439"></a><span class="lineno">  439</span>    <span class="comment">// If the access is a map via affine apply op (e.g., A[i+2], where the map</span></div>
 <div class="line"><a id="l00440" name="l00440"></a><span class="lineno">  440</span>    <span class="comment">// is d0 -&gt; d0+2), push in the map after replacing all the dims with unique</span></div>
 <div class="line"><a id="l00441" name="l00441"></a><span class="lineno">  441</span>    <span class="comment">// index identifiers (e.g., let the unique identifier for index i be k0).</span></div>
-<div class="line"><a id="l00442" name="l00442"></a><span class="lineno">  442</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> apOf = value.getDefiningOp&lt;affine::AffineApplyOp&gt;()) {</div>
+<div class="line"><a id="l00442" name="l00442"></a><span class="lineno">  442</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> apOf = <a class="code hl_function" href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">value</a>.getDefiningOp&lt;affine::AffineApplyOp&gt;()) {</div>
 <div class="line"><a id="l00443" name="l00443"></a><span class="lineno">  443</span>      AffineMap map = apOf.getAffineMap();</div>
 <div class="line"><a id="l00444" name="l00444"></a><span class="lineno">  444</span>      assert(map.getNumResults() == 1 &amp;&amp;</div>
 <div class="line"><a id="l00445" name="l00445"></a><span class="lineno">  445</span>             <span class="stringliteral">&quot;Failed to create linearized affineExpr for complicated index&quot;</span>);</div>
@@ -523,7 +523,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00463" name="l00463"></a><span class="lineno">  463</span>    }</div>
 <div class="line"><a id="l00464" name="l00464"></a><span class="lineno">  464</span>    <span class="comment">// If the index is an arith constant (e.g., A[3]), create an affine expr</span></div>
 <div class="line"><a id="l00465" name="l00465"></a><span class="lineno">  465</span>    <span class="comment">// from the constant value.</span></div>
-<div class="line"><a id="l00466" name="l00466"></a><span class="lineno">  466</span>    <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> cOp = value.getDefiningOp&lt;arith::ConstantOp&gt;()) {</div>
+<div class="line"><a id="l00466" name="l00466"></a><span class="lineno">  466</span>    <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> cOp = <a class="code hl_function" href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">value</a>.getDefiningOp&lt;arith::ConstantOp&gt;()) {</div>
 <div class="line"><a id="l00467" name="l00467"></a><span class="lineno">  467</span>      <span class="keyword">auto</span> idxVal = cast&lt;IntegerAttr&gt;(cOp.getValue()).getValue();</div>
 <div class="line"><a id="l00468" name="l00468"></a><span class="lineno">  468</span>      <span class="keywordtype">unsigned</span> idx = idxVal.getSExtValue();</div>
 <div class="line"><a id="l00469" name="l00469"></a><span class="lineno">  469</span>      exprVec.push_back(getAffineConstantExpr(idx, context));</div>
@@ -531,7 +531,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00471" name="l00471"></a><span class="lineno">  471</span>    <span class="comment">// Default: the readop index is simply the loop index (e.g., A[i]).</span></div>
 <div class="line"><a id="l00472" name="l00472"></a><span class="lineno">  472</span>    <span class="keywordflow">else</span> {</div>
 <div class="line"><a id="l00473" name="l00473"></a><span class="lineno">  473</span>      <span class="keywordflow">if</span> (!state-&gt;indexToExprDimMap.count(value))</div>
-<div class="line"><a id="l00474" name="l00474"></a><span class="lineno">  474</span>        state-&gt;indexToExprDimMap[value] =</div>
+<div class="line"><a id="l00474" name="l00474"></a><span class="lineno">  474</span>        state-&gt;indexToExprDimMap[<a class="code hl_function" href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">value</a>] =</div>
 <div class="line"><a id="l00475" name="l00475"></a><span class="lineno">  475</span>            getAffineDimExpr(state-&gt;indexToExprDimMap.size(), context);</div>
 <div class="line"><a id="l00476" name="l00476"></a><span class="lineno">  476</span>      exprVec.push_back(state-&gt;indexToExprDimMap[value]);</div>
 <div class="line"><a id="l00477" name="l00477"></a><span class="lineno">  477</span>    }</div>
@@ -1135,7 +1135,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l01075" name="l01075"></a><span class="lineno"> 1075</span>      <span class="comment">// If the transfer_read has some apply operations, then they also need to</span></div>
 <div class="line"><a id="l01076" name="l01076"></a><span class="lineno"> 1076</span>      <span class="comment">// be hoisted.</span></div>
 <div class="line"><a id="l01077" name="l01077"></a><span class="lineno"> 1077</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;value : indices) {</div>
-<div class="line"><a id="l01078" name="l01078"></a><span class="lineno"> 1078</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> apOf = value.getDefiningOp&lt;affine::AffineApplyOp&gt;()) {</div>
+<div class="line"><a id="l01078" name="l01078"></a><span class="lineno"> 1078</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> apOf = <a class="code hl_function" href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">value</a>.getDefiningOp&lt;affine::AffineApplyOp&gt;()) {</div>
 <div class="line"><a id="l01079" name="l01079"></a><span class="lineno"> 1079</span>          <span class="comment">// Skip hoisting if already above in lexicographical order</span></div>
 <div class="line"><a id="l01080" name="l01080"></a><span class="lineno"> 1080</span>          <span class="keywordflow">if</span> (apOf-&gt;getBlock() == readOp-&gt;getBlock() &amp;&amp;</div>
 <div class="line"><a id="l01081" name="l01081"></a><span class="lineno"> 1081</span>              apOf-&gt;isBeforeInBlock(updOp))</div>
@@ -3145,6 +3145,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1IntervalReuse_html_a919e52c217a938017557439e6e688b7f"><div class="ttname"><a href="classxilinx_1_1aievec_1_1IntervalReuse.html#a919e52c217a938017557439e6e688b7f">xilinx::aievec::IntervalReuse::getAccessExtent</a></div><div class="ttdeci">std::pair&lt; int32_t, int32_t &gt; getAccessExtent(mlir::Operation *op)</div><div class="ttdef"><b>Definition</b> <a href="IntervalReuse_8cpp_source.html#l00076">IntervalReuse.cpp:76</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1IntervalReuse_html_aec36ace20c7592d27476ed91e4ac7098"><div class="ttname"><a href="classxilinx_1_1aievec_1_1IntervalReuse.html#aec36ace20c7592d27476ed91e4ac7098">xilinx::aievec::IntervalReuse::getInterval</a></div><div class="ttdeci">std::pair&lt; int32_t, int32_t &gt; getInterval(mlir::Operation *op)</div><div class="ttdef"><b>Definition</b> <a href="IntervalReuse_8cpp_source.html#l00093">IntervalReuse.cpp:93</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1IntervalReuse_html_af643c2393fd6817a6e804d3718606641"><div class="ttname"><a href="classxilinx_1_1aievec_1_1IntervalReuse.html#af643c2393fd6817a6e804d3718606641">xilinx::aievec::IntervalReuse::markLHSOperandVec</a></div><div class="ttdeci">void markLHSOperandVec(mlir::Operation *op)</div><div class="ttdef"><b>Definition</b> <a href="IntervalReuse_8cpp_source.html#l00101">IntervalReuse.cpp:101</a></div></div>
+<div class="ttc" id="anamespacecxxopts_html_a6b58e451713ebbf12866c1cd8e0a66ab"><div class="ttname"><a href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">cxxopts::value</a></div><div class="ttdeci">std::shared_ptr&lt; Value &gt; value()</div><div class="ttdef"><b>Definition</b> <a href="cxxopts_8hpp_source.html#l01026">cxxopts.hpp:1026</a></div></div>
 <div class="ttc" id="anamespacellvm_html"><div class="ttname"><a href="namespacellvm.html">llvm</a></div><div class="ttdef"><b>Definition</b> <a href="AIEDialect_8h_source.html#l00244">AIEDialect.h:244</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html"><div class="ttname"><a href="namespacexilinx_1_1aievec.html">xilinx::aievec</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00025">AIEVecToLLVM.h:25</a></div></div>
@@ -3164,7 +3165,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Sat Apr 26 2025 21:27:05 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Sun Apr 27 2025 21:32:14 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

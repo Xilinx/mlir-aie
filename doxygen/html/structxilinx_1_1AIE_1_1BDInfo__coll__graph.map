@@ -1,6 +1,6 @@
 <map id="xilinx::AIE::BDInfo" name="xilinx::AIE::BDInfo">
 <area shape="rect" id="Node000001" title=" " alt="" coords="235,167,373,192"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,56,31"/>
+<area shape="rect" id="Node000002" href="$classbool.html" title=" " alt="" coords="5,5,56,31"/>
 <area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="28,44,26,68,26,94,32,119,46,141,58,149,76,157,124,167,235,175,234,181,123,172,74,162,55,154,42,145,27,121,21,94,20,67,23,44"/>
 <area shape="rect" id="Node000003" title=" " alt="" coords="141,5,179,31"/>
 <area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="156,44,152,93,157,119,169,141,194,155,235,165,234,170,192,160,165,145,152,120,147,93,151,44"/>

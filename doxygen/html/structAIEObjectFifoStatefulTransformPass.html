@@ -92,10 +92,10 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a4c045a509ccee79f718dd1d257581999" id="r_a4c045a509ccee79f718dd1d257581999"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a4c045a509ccee79f718dd1d257581999">isSharedMemory</a> (TileOp a, TileOp b, int *share_direction)</td></tr>
+<tr class="memitem:a4c045a509ccee79f718dd1d257581999" id="r_a4c045a509ccee79f718dd1d257581999"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classbool.html">bool</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a4c045a509ccee79f718dd1d257581999">isSharedMemory</a> (TileOp a, TileOp b, int *share_direction)</td></tr>
 <tr class="memdesc:a4c045a509ccee79f718dd1d257581999"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function that returns true if two tiles in the AIE array share a memory module.  <br /></td></tr>
 <tr class="separator:a4c045a509ccee79f718dd1d257581999"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:afb112f167934ca264f3d764b7285865e" id="r_afb112f167934ca264f3d764b7285865e"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#afb112f167934ca264f3d764b7285865e">requiresDMAs</a> (ObjectFifoCreateOp createOp, int &amp;share_direction)</td></tr>
+<tr class="memitem:afb112f167934ca264f3d764b7285865e" id="r_afb112f167934ca264f3d764b7285865e"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classbool.html">bool</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#afb112f167934ca264f3d764b7285865e">requiresDMAs</a> (ObjectFifoCreateOp createOp, int &amp;share_direction)</td></tr>
 <tr class="separator:afb112f167934ca264f3d764b7285865e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae7c3a4cf7d659d7c74274c8ff0eee944" id="r_ae7c3a4cf7d659d7c74274c8ff0eee944"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#ae7c3a4cf7d659d7c74274c8ff0eee944">checkAndApplyViaSharedMemAttribute</a> (ObjectFifoCreateOp createOp, int &amp;share_direction)</td></tr>
 <tr class="separator:ae7c3a4cf7d659d7c74274c8ff0eee944"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -118,7 +118,7 @@ Public Member Functions</h2></td></tr>
 <tr class="memdesc:a95bc7e5844e8ebc9885ef7a52dd7d59c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to create a Bd block.  <br /></td></tr>
 <tr class="separator:a95bc7e5844e8ebc9885ef7a52dd7d59c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa1c775ab517a8cb1486c4dee4784f975" id="r_aa1c775ab517a8cb1486c4dee4784f975"><td class="memTemplParams" colspan="2">template&lt;typename MyOp &gt; </td></tr>
-<tr class="memitem:aa1c775ab517a8cb1486c4dee4784f975"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#aa1c775ab517a8cb1486c4dee4784f975">createBdBlock</a> (OpBuilder &amp;builder, ObjectFifoCreateOp op, int lockMode, int acqNum, int relNum, MyOp buff, int offset, int len, DMAChannelDir channelDir, size_t lockIndex, Block *succ, BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDimensions, bool distribOrJoin=false)</td></tr>
+<tr class="memitem:aa1c775ab517a8cb1486c4dee4784f975"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#aa1c775ab517a8cb1486c4dee4784f975">createBdBlock</a> (OpBuilder &amp;builder, ObjectFifoCreateOp op, int lockMode, int acqNum, int relNum, MyOp buff, int offset, int len, DMAChannelDir channelDir, size_t lockIndex, Block *succ, BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDimensions, <a class="el" href="classbool.html">bool</a> distribOrJoin=false)</td></tr>
 <tr class="memdesc:aa1c775ab517a8cb1486c4dee4784f975"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to create a Bd block.  <br /></td></tr>
 <tr class="separator:aa1c775ab517a8cb1486c4dee4784f975"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a80d15e904d631bf80756036f27f3ff71" id="r_a80d15e904d631bf80756036f27f3ff71"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a80d15e904d631bf80756036f27f3ff71">createDMA</a> (DeviceOp &amp;device, OpBuilder &amp;builder, ObjectFifoCreateOp op, DMAChannelDir channelDir, int channelIndex, int lockMode, BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr pad_dims)</td></tr>
@@ -159,7 +159,7 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a18afcd7104ba20c5e354909ec3e74ac5" id="r_a18afcd7104ba20c5e354909ec3e74ac5"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a18afcd7104ba20c5e354909ec3e74ac5">findObjectFifoSize</a> (DeviceOp &amp;device, Value tile, ObjectFifoCreateOp objFifo)</td></tr>
 <tr class="memdesc:a18afcd7104ba20c5e354909ec3e74ac5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to find the size of an objectFifo after split based on the maximum number of elements (of the original objectFifo) acquired by a process running on given tile.  <br /></td></tr>
 <tr class="separator:a18afcd7104ba20c5e354909ec3e74ac5"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a190592067af667d3a6d041d1c6945a7a" id="r_a190592067af667d3a6d041d1c6945a7a"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a190592067af667d3a6d041d1c6945a7a">createObjectFifoAllocationInfo</a> (OpBuilder &amp;builder, MLIRContext *ctx, FlatSymbolRefAttr obj_fifo, int colIndex, DMAChannelDir channelDir, int channelIndex, bool plio)</td></tr>
+<tr class="memitem:a190592067af667d3a6d041d1c6945a7a" id="r_a190592067af667d3a6d041d1c6945a7a"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a190592067af667d3a6d041d1c6945a7a">createObjectFifoAllocationInfo</a> (OpBuilder &amp;builder, MLIRContext *ctx, FlatSymbolRefAttr obj_fifo, int colIndex, DMAChannelDir channelDir, int channelIndex, <a class="el" href="classbool.html">bool</a> plio)</td></tr>
 <tr class="memdesc:a190592067af667d3a6d041d1c6945a7a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to generate, from an objectFifo with a shimTile endpoint, a shimDMAAllocationOp containing the channelDir, channelIndex and shimTile col assigned by the objectFifo lowering.  <br /></td></tr>
 <tr class="separator:a190592067af667d3a6d041d1c6945a7a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a6de3e5eafa8cc99f7d8bcd71754167d7" id="r_a6de3e5eafa8cc99f7d8bcd71754167d7"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a6de3e5eafa8cc99f7d8bcd71754167d7">verifyObjectFifoLinks</a> (DeviceOp &amp;device)</td></tr>
@@ -574,7 +574,7 @@ template&lt;typename MyOp &gt; </div>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">bool&#160;</td>
+          <td class="paramtype"><a class="el" href="classbool.html">bool</a>&#160;</td>
           <td class="paramname"><em>distribOrJoin</em> = <code>false</code>&#160;</td>
         </tr>
         <tr>
@@ -880,7 +880,7 @@ template&lt;typename MyOp &gt; </div>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">bool&#160;</td>
+          <td class="paramtype"><a class="el" href="classbool.html">bool</a>&#160;</td>
           <td class="paramname"><em>plio</em>&#160;</td>
         </tr>
         <tr>
@@ -1393,7 +1393,7 @@ template&lt;typename MyOp &gt; </div>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">bool AIEObjectFifoStatefulTransformPass::isSharedMemory </td>
+          <td class="memname"><a class="el" href="classbool.html">bool</a> AIEObjectFifoStatefulTransformPass::isSharedMemory </td>
           <td>(</td>
           <td class="paramtype">TileOp&#160;</td>
           <td class="paramname"><em>a</em>, </td>
@@ -1494,7 +1494,7 @@ template&lt;typename MyOp &gt; </div>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">bool AIEObjectFifoStatefulTransformPass::requiresDMAs </td>
+          <td class="memname"><a class="el" href="classbool.html">bool</a> AIEObjectFifoStatefulTransformPass::requiresDMAs </td>
           <td>(</td>
           <td class="paramtype">ObjectFifoCreateOp&#160;</td>
           <td class="paramname"><em>createOp</em>, </td>
@@ -1839,7 +1839,7 @@ template&lt;typename MyOp &gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Sat Apr 26 2025 21:27:05 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Sun Apr 27 2025 21:32:14 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

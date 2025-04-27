@@ -2265,7 +2265,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l02199" name="l02199"></a><span class="lineno"> 2199</span><span class="comment">// Generate the memref store op</span></div>
 <div class="line"><a id="l02200" name="l02200"></a><span class="lineno"> 2200</span><span class="keyword">static</span> LogicalResult printOperation(CppEmitter &amp;emitter,</div>
 <div class="line"><a id="l02201" name="l02201"></a><span class="lineno"> 2201</span>                                    memref::StoreOp storeOp) {</div>
-<div class="line"><a id="l02202" name="l02202"></a><span class="lineno"> 2202</span>  Value value = storeOp.getValue();</div>
+<div class="line"><a id="l02202" name="l02202"></a><span class="lineno"> 2202</span>  Value <a class="code hl_function" href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">value</a> = storeOp.getValue();</div>
 <div class="line"><a id="l02203" name="l02203"></a><span class="lineno"> 2203</span>  Value memref = storeOp.getMemref();</div>
 <div class="line"><a id="l02204" name="l02204"></a><span class="lineno"> 2204</span> </div>
 <div class="line"><a id="l02205" name="l02205"></a><span class="lineno"> 2205</span>  <span class="comment">// If the value, or the memref being outputted is not already emitted,</span></div>
@@ -2354,14 +2354,14 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l02288" name="l02288"></a><span class="lineno"> 2288</span><span class="keyword">static</span> LogicalResult printOperation(CppEmitter &amp;emitter,</div>
 <div class="line"><a id="l02289" name="l02289"></a><span class="lineno"> 2289</span>                                    emitc::ConstantOp constantOp) {</div>
 <div class="line"><a id="l02290" name="l02290"></a><span class="lineno"> 2290</span>  Operation *operation = constantOp.getOperation();</div>
-<div class="line"><a id="l02291" name="l02291"></a><span class="lineno"> 2291</span>  Attribute value = constantOp.getValue();</div>
+<div class="line"><a id="l02291" name="l02291"></a><span class="lineno"> 2291</span>  Attribute <a class="code hl_function" href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">value</a> = constantOp.getValue();</div>
 <div class="line"><a id="l02292" name="l02292"></a><span class="lineno"> 2292</span>  <span class="keywordflow">return</span> printConstantOp(emitter, operation, value);</div>
 <div class="line"><a id="l02293" name="l02293"></a><span class="lineno"> 2293</span>}</div>
 <div class="line"><a id="l02294" name="l02294"></a><span class="lineno"> 2294</span> </div>
 <div class="line"><a id="l02295" name="l02295"></a><span class="lineno"> 2295</span><span class="keyword">static</span> LogicalResult printOperation(CppEmitter &amp;emitter,</div>
 <div class="line"><a id="l02296" name="l02296"></a><span class="lineno"> 2296</span>                                    arith::ConstantOp constantOp) {</div>
 <div class="line"><a id="l02297" name="l02297"></a><span class="lineno"> 2297</span>  Operation *operation = constantOp.getOperation();</div>
-<div class="line"><a id="l02298" name="l02298"></a><span class="lineno"> 2298</span>  Attribute value = constantOp.getValue();</div>
+<div class="line"><a id="l02298" name="l02298"></a><span class="lineno"> 2298</span>  Attribute <a class="code hl_function" href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">value</a> = constantOp.getValue();</div>
 <div class="line"><a id="l02299" name="l02299"></a><span class="lineno"> 2299</span>  <span class="keywordflow">return</span> printConstantOp(emitter, operation, value);</div>
 <div class="line"><a id="l02300" name="l02300"></a><span class="lineno"> 2300</span>}</div>
 <div class="line"><a id="l02301" name="l02301"></a><span class="lineno"> 2301</span> </div>
@@ -3543,6 +3543,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aAIEVecUtils_8h_html"><div class="ttname"><a href="AIEVecUtils_8h.html">AIEVecUtils.h</a></div></div>
 <div class="ttc" id="aTranslateAIEVecToCpp_8cpp_html_a2afe2cf9879564093d14c16300af263a"><div class="ttname"><a href="TranslateAIEVecToCpp_8cpp.html#a2afe2cf9879564093d14c16300af263a">interleaveCommaWithError</a></div><div class="ttdeci">LogicalResult interleaveCommaWithError(const Container &amp;c, raw_ostream &amp;os, UnaryFunctor eachFn)</div><div class="ttdef"><b>Definition</b> <a href="TranslateAIEVecToCpp_8cpp_source.html#l00083">TranslateAIEVecToCpp.cpp:83</a></div></div>
 <div class="ttc" id="aTranslateAIEVecToCpp_8cpp_html_a89eb0eaffb389b3a5df928ea204f23ce"><div class="ttname"><a href="TranslateAIEVecToCpp_8cpp.html#a89eb0eaffb389b3a5df928ea204f23ce">interleaveWithError</a></div><div class="ttdeci">LogicalResult interleaveWithError(ForwardIterator begin, ForwardIterator end, UnaryFunctor eachFn, NullaryFunctor betweenFn)</div><div class="ttdoc">Convenience functions to produce interleaved output with functions returning a LogicalResult.</div><div class="ttdef"><b>Definition</b> <a href="TranslateAIEVecToCpp_8cpp_source.html#l00060">TranslateAIEVecToCpp.cpp:60</a></div></div>
+<div class="ttc" id="anamespacecxxopts_html_a6b58e451713ebbf12866c1cd8e0a66ab"><div class="ttname"><a href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">cxxopts::value</a></div><div class="ttdeci">std::shared_ptr&lt; Value &gt; value()</div><div class="ttdef"><b>Definition</b> <a href="cxxopts_8hpp_source.html#l01026">cxxopts.hpp:1026</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a99b99b2f5e14ab0ccf4cd9c2ca6180da"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a99b99b2f5e14ab0ccf4cd9c2ca6180da">xilinx::AIE::src</a></div><div class="ttdeci">PathEndPoint src</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8h_source.html#l00128">AIEPathFinder.h:128</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_af6973de2c7d07d18ca25f11401849238"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">xilinx::AIE::os</a></div><div class="ttdeci">return os</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00027">AIETargetModel.h:27</a></div></div>
@@ -3555,7 +3556,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Sat Apr 26 2025 21:27:05 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Sun Apr 27 2025 21:32:14 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

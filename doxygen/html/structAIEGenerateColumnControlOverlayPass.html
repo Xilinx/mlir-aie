@@ -85,9 +85,9 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a751a001672d151eb1cca52fb3ac4bb2f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a60ebcae0ecd787ca0dc06d0f9c28cd4d" id="r_a60ebcae0ecd787ca0dc06d0f9c28cd4d"><td class="memItemLeft" align="right" valign="top">AIE::PacketFlowOp&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEGenerateColumnControlOverlayPass.html#a60ebcae0ecd787ca0dc06d0f9c28cd4d">createPacketFlowOp</a> (OpBuilder &amp;builder, int &amp;flowID, Value source, xilinx::AIE::WireBundle sourceBundle, uint32_t sourceChannel, Value dest, xilinx::AIE::WireBundle destBundle, uint32_t destChannel, mlir::BoolAttr keep_pkt_header=nullptr, mlir::BoolAttr ctrl_pkt_flow=nullptr)</td></tr>
 <tr class="separator:a60ebcae0ecd787ca0dc06d0f9c28cd4d"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a34bf3bfc9d9b51958cf10d928467ebf8" id="r_a34bf3bfc9d9b51958cf10d928467ebf8"><td class="memItemLeft" align="right" valign="top">SmallVector&lt; int &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEGenerateColumnControlOverlayPass.html#a34bf3bfc9d9b51958cf10d928467ebf8">getAvailableShimChans</a> (DeviceOp device, TileOp shimTile, WireBundle shimWireBundle, bool isShimMM2S)</td></tr>
+<tr class="memitem:a34bf3bfc9d9b51958cf10d928467ebf8" id="r_a34bf3bfc9d9b51958cf10d928467ebf8"><td class="memItemLeft" align="right" valign="top">SmallVector&lt; int &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEGenerateColumnControlOverlayPass.html#a34bf3bfc9d9b51958cf10d928467ebf8">getAvailableShimChans</a> (DeviceOp device, TileOp shimTile, WireBundle shimWireBundle, <a class="el" href="classbool.html">bool</a> isShimMM2S)</td></tr>
 <tr class="separator:a34bf3bfc9d9b51958cf10d928467ebf8"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aa20316b8bd4f0b8ccb1e95580945335a" id="r_aa20316b8bd4f0b8ccb1e95580945335a"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEGenerateColumnControlOverlayPass.html#aa20316b8bd4f0b8ccb1e95580945335a">generatePacketFlowsForControl</a> (OpBuilder builder, DeviceOp device, TileOp shimTile, WireBundle shimWireBundle, SmallVector&lt; AIE::TileOp &gt; ctrlTiles, WireBundle ctrlWireBundle, int coreOrMemChanId, DenseMap&lt; <a class="el" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a>, int &gt; tileIDMap, bool isShimMM2S)</td></tr>
+<tr class="memitem:aa20316b8bd4f0b8ccb1e95580945335a" id="r_aa20316b8bd4f0b8ccb1e95580945335a"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEGenerateColumnControlOverlayPass.html#aa20316b8bd4f0b8ccb1e95580945335a">generatePacketFlowsForControl</a> (OpBuilder builder, DeviceOp device, TileOp shimTile, WireBundle shimWireBundle, SmallVector&lt; AIE::TileOp &gt; ctrlTiles, WireBundle ctrlWireBundle, int coreOrMemChanId, DenseMap&lt; <a class="el" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a>, int &gt; tileIDMap, <a class="el" href="classbool.html">bool</a> isShimMM2S)</td></tr>
 <tr class="separator:aa20316b8bd4f0b8ccb1e95580945335a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aba61336c57fe3970b2088d21819d4134" id="r_aba61336c57fe3970b2088d21819d4134"><td class="memItemLeft" align="right" valign="top">AIE::PacketFlowOp&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEGenerateColumnControlOverlayPass.html#aba61336c57fe3970b2088d21819d4134">getPktFlowWithSameSrcOrDst</a> (DeviceOp device, TileOp srcTile, WireBundle srcBundle, int srcChan, TileOp destTile, WireBundle destBundle, int destChan)</td></tr>
 <tr class="separator:aba61336c57fe3970b2088d21819d4134"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -244,7 +244,7 @@ Public Member Functions</h2></td></tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">bool&#160;</td>
+          <td class="paramtype"><a class="el" href="classbool.html">bool</a>&#160;</td>
           <td class="paramname"><em>isShimMM2S</em>&#160;</td>
         </tr>
         <tr>
@@ -298,7 +298,7 @@ Public Member Functions</h2></td></tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">bool&#160;</td>
+          <td class="paramtype"><a class="el" href="classbool.html">bool</a>&#160;</td>
           <td class="paramname"><em>isShimMM2S</em>&#160;</td>
         </tr>
         <tr>
@@ -451,7 +451,7 @@ Public Member Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Sat Apr 26 2025 21:27:05 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Sun Apr 27 2025 21:32:14 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
