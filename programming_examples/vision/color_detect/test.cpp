@@ -21,6 +21,7 @@
 
 #include "OpenCVUtils.h"
 #include "test_utils.h"
+#include <cxxopts.hpp>
 
 double epsilon = 2.0;
 
@@ -29,8 +30,6 @@ constexpr int testImageHeight = COLORDETECT_HEIGHT;
 
 constexpr int testImageSize = testImageWidth * testImageHeight;
 constexpr int kernelSize = 3;
-
-namespace po = boost::program_options;
 
 void colorDetect(cv::Mat &inImage, cv::Mat &outImage) {
   cv::Mat imageHSV, imageHue, imageThreshold1u, imageThreshold1ul,
@@ -62,25 +61,17 @@ int main(int argc, const char *argv[]) {
    * Program arguments parsing
    ****************************************************************************
    */
-  po::options_description desc("Allowed options");
-  desc.add_options()("help,h", "produce help message")(
-      "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")("image,p", po::value<std::string>(),
-                               "the input image")(
-      "outfile,o",
-      po::value<std::string>()->default_value("colorDetectOut_test.jpg"),
-      "the output image")(
-      "kernel,k", po::value<std::string>()->required(),
-      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6")(
-      "live,l", "capture from webcam")("video,m", po::value<std::string>(),
-                                       "optional video input file name");
-  po::variables_map vm;
-
-  test_utils::parse_options(argc, argv, desc, vm);
+  cxxopts::Options options("color_detect");
+  test_utils::add_default_options(options);
+  options.add_options()("image,p", "the input image",
+                        cxxopts::value<std::string>())(
+      "outfile,o", "the output image",
+      cxxopts::value<std::string>()->default_value("colorDetectOut_test.jpg"))(
+      "live,l", "capture from webcam")("video,m",
+                                       "optional video input file name",
+                                       cxxopts::value<std::string>());
+  cxxopts::ParseResult vm;
+  test_utils::parse_options(argc, argv, options, vm);
 
   std::cout << "Running colorDetect for resolution: " << testImageWidth << "x"
             << testImageHeight << std::endl;

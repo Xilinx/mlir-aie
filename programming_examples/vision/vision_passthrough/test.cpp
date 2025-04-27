@@ -21,34 +21,24 @@
 
 #include "OpenCVUtils.h"
 #include "test_utils.h"
+#include <cxxopts.hpp>
 
 constexpr int channels = 4;
 constexpr uint64_t testImageWidth = PASSTHROUGH_WIDTH;
 constexpr uint64_t testImageHeight = PASSTHROUGH_HEIGHT;
 constexpr uint64_t testImageSize = testImageWidth * testImageHeight;
 
-namespace po = boost::program_options;
-
 int main(int argc, const char *argv[]) {
 
   // Program arguments parsing
-  po::options_description desc("Allowed options");
-  desc.add_options()("help,h", "produce help message")(
-      "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")("image,p", po::value<std::string>(),
-                               "the input image")(
-      "outfile,o",
-      po::value<std::string>()->default_value("passThroughOut_test.jpg"),
-      "the output image")(
-      "kernel,k", po::value<std::string>()->required(),
-      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6");
-  po::variables_map vm;
-
-  test_utils::parse_options(argc, argv, desc, vm);
+  cxxopts::Options options("vision_passthrough");
+  test_utils::add_default_options(options);
+  options.add_options()("image,p", "the input image",
+                        cxxopts::value<std::string>())(
+      "outfile,o", "the output image",
+      cxxopts::value<std::string>()->default_value("passThroughOut_test.jpg"));
+  cxxopts::ParseResult vm;
+  test_utils::parse_options(argc, argv, options, vm);
 
   // Read the input image or generate random one if no input file argument
   // provided

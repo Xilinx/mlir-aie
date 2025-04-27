@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <boost/program_options.hpp>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -45,8 +44,6 @@ constexpr int imageAreaOut = testImageWidth * testImageHeight;
 constexpr int IN_SIZE = (imageAreaIn * sizeof(uint8_t));
 constexpr int OUT_SIZE = (imageAreaOut * sizeof(uint8_t));
 
-namespace po = boost::program_options;
-
 int main(int argc, const char *argv[]) {
 
   /*
@@ -54,19 +51,10 @@ int main(int argc, const char *argv[]) {
    * Program arguments parsing
    ****************************************************************************
    */
-  po::options_description desc("Allowed options");
-  desc.add_options()("help,h", "produce help message")(
-      "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")(
-      "kernel,k", po::value<std::string>()->required(),
-      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6");
-  po::variables_map vm;
-
-  test_utils::parse_options(argc, argv, desc, vm);
+  cxxopts::Options options("color_threshold");
+  test_utils::add_default_options(options);
+  cxxopts::ParseResult vm;
+  test_utils::parse_options(argc, argv, options, vm);
 
   /*
    ****************************************************************************
@@ -151,7 +139,7 @@ int main(int argc, const char *argv[]) {
     if (srcVec[i] <= 50) { // Obviously change this back to 100
       if (*(bufOut + i) != 0) {
         if (errors < max_errors)
-          std::cout << "Error: " << (uint32_t)(uint8_t) * (bufOut + i) << " at "
+          std::cout << "Error: " << (uint32_t)(uint8_t)*(bufOut + i) << " at "
                     << i << " should be zero "
                     << " : input " << std::dec << (uint32_t)(uint8_t)srcVec[i]
                     << std::endl;
@@ -167,7 +155,7 @@ int main(int argc, const char *argv[]) {
     } else {
       if (*(bufOut + i) != UINT8_MAX) {
         if (errors < max_errors)
-          std::cout << "Error: " << (uint32_t)(uint8_t) * (bufOut + i) << " at "
+          std::cout << "Error: " << (uint32_t)(uint8_t)*(bufOut + i) << " at "
                     << i << " should be UINT8_MAX "
                     << " : input " << std::dec << (uint32_t)(uint8_t)srcVec[i]
                     << std::endl;
