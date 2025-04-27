@@ -56,9 +56,6 @@ int main(int argc, const char *argv[]) {
     return 1;
   }
 
-  test_utils::check_arg_file_exists(vm, "xclbin");
-  test_utils::check_arg_file_exists(vm, "instr");
-
   std::vector<uint32_t> instr_v =
       test_utils::load_instr_binary(vm["instr"].as<std::string>());
 

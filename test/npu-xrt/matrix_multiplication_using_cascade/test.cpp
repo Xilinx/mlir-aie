@@ -48,19 +48,13 @@ int main(int argc, const char *argv[]) {
   // Program arguments parsing
   cxxopts::Options options("matrix_multiplication_using_cascade");
   cxxopts::ParseResult vm;
-  std::cout << "reached line 51" << std::endl;
   matmul_common::add_default_options(options);
-  std::cout << "reached line 53" << std::endl;
   matmul_common::parse_options(argc, argv, options, vm);
-  std::cout << "reached line 55" << std::endl;
   int verbosity = vm["verbosity"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
 
-  std::cout << "reached line 56" << std::endl;
-
   srand(time(NULL));
 
-  std::cout << "reached line 59" << std::endl;
   std::vector<uint32_t> instr_v =
       test_utils::load_instr_binary(vm["instr"].as<std::string>());
   if (verbosity >= 1)

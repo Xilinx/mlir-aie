@@ -75,9 +75,6 @@ void parse_options(int argc, const char *argv[], cxxopts::Options &options,
       std::exit(1);
     }
 
-    test_utils::check_arg_file_exists(result, "xclbin");
-    test_utils::check_arg_file_exists(result, "instr");
-
   } catch (const cxxopts::exceptions::parsing &e) {
     std::cerr << e.what() << "\n\n";
     std::cerr << "Usage:\n" << options.help() << "\n";
