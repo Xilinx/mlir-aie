@@ -22,7 +22,7 @@ def parse_args():
 
 
 opts = parse_args()
-cycles = trace_utils.get_cycles_summary(opts.filename)
+cycles = trace_utils.get_cycles_summary(opts.input)
 
 print("Total number of full kernel invocations is " + str(len(cycles)))
 print(
