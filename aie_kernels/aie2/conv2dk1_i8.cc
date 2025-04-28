@@ -1,11 +1,11 @@
-//===- conv2dk1.cc -------------------------------------------------*- C++
+//===- conv2dk1_i8.cc -------------------------------------------------*- C++
 //-*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
+// Copyright (C) 2022-2025, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -135,7 +135,7 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
             aie::vector<int8, MMUL_KN> in_b = aie::load_v<MMUL_KN>(kernels);
             kernels += MMUL_KN; // wts ic0..7(oc0..7)
 
-            for (int x = 0; x < NUM_ACC; x++) { // 4 acc
+            for (int x = 0; x < NUM_ACC; x++) { // 8 acc
               aie::vector<int8, MMUL_MK> in_a = aie::load_v<MMUL_MK>(input);
               input += MMUL_MK; // act oc0..3(ic0..7)
               acc_tmp[x].mac(in_a, in_b);

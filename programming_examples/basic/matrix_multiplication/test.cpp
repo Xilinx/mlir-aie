@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "cxxopts.hpp"
 #include <bits/stdc++.h>
-#include <boost/program_options.hpp>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -54,16 +54,13 @@ constexpr int verify_stochastic_n_samples = 1000;
 float abs_tol = matmul_common::get_abs_tol<C_DATATYPE>();
 float rel_tol = matmul_common::get_rel_tol<C_DATATYPE>();
 
-namespace po = boost::program_options;
-
 int main(int argc, const char *argv[]) {
-
   // Program arguments parsing
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  matmul_common::add_default_options(desc);
+  cxxopts::Options options("Matrix Matrix Multiplication Test");
+  cxxopts::ParseResult vm;
+  matmul_common::add_default_options(options);
 
-  matmul_common::parse_options(argc, argv, desc, vm);
+  matmul_common::parse_options(argc, argv, options, vm);
   int verbosity = vm["verbosity"].as<int>();
   int do_verify = vm["verify"].as<bool>();
   int n_iterations = vm["iters"].as<int>();
