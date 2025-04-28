@@ -37,7 +37,7 @@ def detect_npu_device():
             for keyword in [
                 "NPU Strix",
                 "NPU Strix Halo",
-                "NPU Kracken",
+                "NPU Krackan",
                 "RyzenAI-npu4",
                 "RyzenAI-npu6",
             ]

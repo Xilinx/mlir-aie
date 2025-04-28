@@ -53,10 +53,10 @@ XRTSMI=`which xrt-smi`
 if ! test -f "$XRTSMI"; then 
   source /opt/xilinx/xrt/setup.sh
 fi
-NPU=`/opt/xilinx/xrt/bin/xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Kracken|RyzenAI-npu[146]"`
+NPU=`/opt/xilinx/xrt/bin/xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[146]"`
 # Check if the current environment is NPU2
-# npu4 => Strix, npu6 => Kracken
-if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Kracken|RyzenAI-npu[46]"; then
+# npu4 => Strix, npu6 => Krackan
+if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[46]"; then
     export NPU2=1
 else
     export NPU2=0
