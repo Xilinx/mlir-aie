@@ -140,7 +140,7 @@ def my_matmul(
     # npu2 is a 4 row x 8 col array
     if dev == "npu2" and n_aie_cols > 8:
         raise AssertionError(
-            "Invalid configuration: NPU2 (Strix/Krackan) has 8 columns"
+            "Invalid configuration: NPU2 (Strix/Strix Halo/Krackan) has 8 columns"
         )
 
     # Input matrix A:
