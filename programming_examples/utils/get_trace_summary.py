@@ -8,7 +8,7 @@ import trace_utils
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--filename", help="Trace file", required=True)
+    parser.add_argument("--input", help="Trace file", required=True)
     # parser.add_argument("--mlir", help="mlir source file", required=True)
     # parser.add_argument(
     #    "--colshift", help="column shift adjustment to source mlir", required=False

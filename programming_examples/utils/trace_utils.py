@@ -77,7 +77,7 @@ def trace_to_json(trace_file: str, mlir_file: str, output_name: str = "trace.jso
     command = [
         os.environ["MLIR_AIE_INSTALL_DIR"]
         + "/../../programming_examples/utils/parse_trace.py",
-        "--filename",
+        "--input",
         trace_file,
         "--mlir",
         mlir_file,
