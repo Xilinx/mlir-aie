@@ -592,9 +592,22 @@ static ParseResult parseObjectFifoInitValues(OpAsmParser &parser,
 //===----------------------------------------------------------------------===//
 
 LogicalResult ObjectFifoLinkOp::verify() {
-  if (isJoin() && isDistribute())
-    return emitError("ObjectFifoLinkOp does not support 'join' and "
-                     "'distribute' at the same time");
+  if (isJoin() && isDistribute()) {
+    if (getFifoIns().size() != getFifoOuts().size())
+      return emitError("ObjectFifoLinkOp only supports 'join' and "
+                       "'distribute' with same number of inputs and "
+                       "outputs");
+
+    if (getSrcOffsets().size() != getDstOffsets().size())
+      return emitError("ObjectFifoLinkOp only supports 'join' and "
+                       "'distribute' with equal number of offsets");
+
+    for (size_t i = 0; i < getSrcOffsets().size(); i++) {
+      if (getSrcOffsets()[i] != getDstOffsets()[i])
+        return emitError("ObjectFifoLinkOp only supports 'join' and "
+                         "'distribute' with equal offsets");
+    }             
+  }
 
   auto sharedTile = getOptionalSharedTile();
   if (!sharedTile)
@@ -608,7 +621,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
                        "unavailable on compute or shim tiles");
   }
 
-  if (isJoin()) {
+  if (isJoin() && !isDistribute()) {
     if (getFifoIns().size() != getSrcOffsets().size())
       return emitOpError("number of provided src offsets must be equal "
                          "to the number of input objectFifos");
@@ -616,7 +629,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (!getDstOffsets().empty())
       return emitOpError("dst offsets should be empty for join");
 
-  } else if (isDistribute()) {
+  } else if (isDistribute() && !isJoin()) {
     if (getFifoOuts().size() != getDstOffsets().size())
       return emitOpError("number of provided dst offsets must be equal "
                          "to the number of output objectFifos");
@@ -654,7 +667,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
       if (repeat_counts[0] != repeat)
         return emitError("repeat counts of output object FIFOs must be equal");
 
-  } else {
+  } else if (!isJoin() && !isDistribute()) {
     if (!getSrcOffsets().empty() && !getDstOffsets().empty())
       return emitOpError("all offsets should be empty if there is no "
                          "join or distribute");
