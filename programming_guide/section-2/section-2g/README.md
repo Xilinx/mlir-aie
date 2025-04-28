@@ -21,7 +21,7 @@
 
 -----
 
-Not all data movement patterns can be described with Object FIFOs. This **advanced** section goes into detail about how a user can express data movement using the Data Movement Accelerators (or `DMA`) on AIE tiles. To better understand the code and concepts introduced in this section it is recommended to first read the [Advanced Topic of Section - 2a on DMAs](../section-2a/README.md/#advanced-topic--data-movement-accelerators).
+Not all data movement patterns can be described with Object FIFOs. This **advanced** section goes into detail about how a user can express data movement using the Direct Memory Accesss (or `DMA`) on AIE tiles. To better understand the code and concepts introduced in this section it is recommended to first read the [Advanced Topic of Section - 2a on DMAs](../section-2a/README.md/#advanced-topic--data-movement-accelerators).
 
 **Please note that this part of the guide is described at the explicitly placed IRON level.**
 
