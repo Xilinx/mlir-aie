@@ -51,7 +51,7 @@ All steps in WSL Ubuntu terminal.
 
 1. Install AIETools under WSL Ubuntu
 
-    1. Option A -  Supporting AMD Ryzen™ AI with AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P): Install AMD Vitis™ AIE Essentials under WSL Ubuntu from [Ryzen AI Software 1.3 Early Accesss](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab).
+    1. Option A -  Supporting AMD Ryzen™ AI with AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P): Install AMD Vitis™ AIE Essentials under WSL Ubuntu from [Ryzen AI Software 1.3 Early Access](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab).
 
 
       > This is an early access lounge, you must register and be granted access at this time.
