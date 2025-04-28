@@ -18,6 +18,7 @@ targetname = memcpy
 length ?= 16384
 cols ?= 1
 chans ?= 1
+bypass ?= True
 
 aie_py_src=memcpy.py
 
@@ -35,7 +36,7 @@ endif
 
 build/${targetname}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< -d ${devicename} -l ${length} -co ${cols} -ch ${chans} > $@
+	python3 $< -d ${devicename} -l ${length} -co ${cols} -ch ${chans} -b ${bypass} > $@
 
 build/final.xclbin: build/${targetname}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}

@@ -16,7 +16,7 @@ from aie.iron.device import Tile, NPU1Col4, NPU2
 from aie.helpers.taplib.tap import TensorAccessPattern
 
 
-def my_memcpy(dev, size, num_columns, num_channels):
+def my_memcpy(dev, size, num_columns, num_channels, bypass):
     # Use int32 dtype as it is the addr generation granularity
     xfr_dtype = np.int32
 
@@ -34,40 +34,49 @@ def my_memcpy(dev, size, num_columns, num_channels):
         for i in range(num_columns)
         for j in range(num_channels)
     ]
-    of_outs = [
-        ObjectFifo(line_type, name=f"out{i}_{j}")
-        for i in range(num_columns)
-        for j in range(num_channels)
-    ]
+    if bypass:
+        of_outs = [
+            of_ins[i * num_channels + j]
+            .cons()
+            .forward(placement=Tile(i, 1))  # Explicitly placed until #2221)
+            for i in range(num_columns)
+            for j in range(num_channels)
+        ]
+    else:
+        of_outs = [
+            ObjectFifo(line_type, name=f"out{i}_{j}")
+            for i in range(num_columns)
+            for j in range(num_channels)
+        ]
 
-    # External, binary kernel definition
-    passthrough_fn = Kernel(
-        "passThroughLine",
-        "passThrough.cc.o",
-        [line_type, line_type, np.int32],
-    )
-
-    # Task for the core to perform
-    def core_fn(of_in, of_out, passThroughLine):
-        elemOut = of_out.acquire(1)
-        elemIn = of_in.acquire(1)
-        passThroughLine(elemIn, elemOut, line_size)
-        of_in.release(1)
-        of_out.release(1)
-
-    # Create a worker to perform the task
-    my_workers = [
-        Worker(
-            core_fn,
-            [
-                of_ins[i * num_channels + j].cons(),
-                of_outs[i * num_channels + j].prod(),
-                passthrough_fn,
-            ],
+        # External, binary kernel definition
+        passthrough_fn = Kernel(
+            "passThroughLine",
+            "passThrough.cc.o",
+            [line_type, line_type, np.int32],
         )
-        for i in range(num_columns)
-        for j in range(num_channels)
-    ]
+
+        # Task for the core to perform
+        def core_fn(of_in, of_out, passThroughLine):
+            elemOut = of_out.acquire(1)
+            elemIn = of_in.acquire(1)
+            passThroughLine(elemIn, elemOut, line_size)
+            of_in.release(1)
+            of_out.release(1)
+
+        # Create a worker to perform the task
+        my_workers = [
+            Worker(
+                core_fn,
+                [
+                    of_ins[i * num_channels + j].cons(),
+                    of_outs[i * num_channels + j].prod(),
+                    passthrough_fn,
+                ],
+            )
+            for i in range(num_columns)
+            for j in range(num_channels)
+        ]
 
     taps = [
         TensorAccessPattern(
@@ -83,14 +92,15 @@ def my_memcpy(dev, size, num_columns, num_channels):
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(transfer_type, transfer_type) as (a_in, b_out):
-        rt.start(*my_workers)
+        if not bypass:
+            rt.start(*my_workers)
         for i in range(num_columns):
             for j in range(num_channels):
                 rt.fill(
                     of_ins[i * num_channels + j].prod(),
                     a_in,
                     taps[i * num_channels + j],
-                    placement=Tile(i, 0), # Explicitly placed until #2221
+                    placement=Tile(i, 0),  # Explicitly placed until #2221
                 )
         for i in range(num_columns):
             for j in range(num_channels):
@@ -98,7 +108,7 @@ def my_memcpy(dev, size, num_columns, num_channels):
                     of_outs[i * num_channels + j].cons(),
                     b_out,
                     taps[i * num_channels + j],
-                    placement=Tile(i, 0), # Explicitly placed until #2221
+                    placement=Tile(i, 0),  # Explicitly placed until #2221
                     wait=True,
                 )
 
@@ -110,7 +120,12 @@ p = argparse.ArgumentParser()
 p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
 p.add_argument("-l", "--length", required=True, dest="length", help="Transfer size")
 p.add_argument("-co", "--columns", required=True, dest="cols", help="Number of columns")
-p.add_argument("-ch", "--channels", required=True, dest="chans", help="Number of columns")
+p.add_argument(
+    "-ch", "--channels", required=True, dest="chans", help="Number of channels"
+)
+p.add_argument(
+    "-b", "--bypass", required=True, dest="bypass", help="Use DMA-only bypass path"
+)
 opts = p.parse_args(sys.argv[1:])
 
 if opts.device == "npu":
@@ -143,4 +158,6 @@ if ((length % 1024) % columns % channels) != 0:
     )
     raise ValueError
 
-print(my_memcpy(dev, length, columns, channels))
+bypass = str(opts.bypass).lower() in ("yes", "true", "t", "1")
+
+print(my_memcpy(dev, length, columns, channels, bypass))
