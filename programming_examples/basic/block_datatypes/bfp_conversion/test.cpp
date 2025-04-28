@@ -22,6 +22,7 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include "cxxopts.hpp"
 #include "test_utils.h"
 
 #include "../helper.h"
@@ -35,18 +36,16 @@ using bfloat16_t = float;
 } // namespace std
 #endif
 
-namespace po = boost::program_options;
-
 int main(int argc, const char *argv[]) {
 
   // ------------------------------------------------------
   // Parse program arguments
   // ------------------------------------------------------
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  test_utils::add_default_options(desc);
+  cxxopts::Options options("BFP Conversion test");
+  cxxopts::ParseResult vm;
+  test_utils::add_default_options(options);
 
-  test_utils::parse_options(argc, argv, desc, vm);
+  test_utils::parse_options(argc, argv, options, vm);
   int verbosity = vm["verbosity"].as<int>();
   // int do_verify = vm["verify"].as<bool>();
   // int n_iterations = vm["iters"].as<int>();
