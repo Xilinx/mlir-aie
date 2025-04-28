@@ -13,7 +13,7 @@ import numpy as np
 import pyxrt as xrt
 
 from aie.extras.context import mlir_mod_ctx
-from ..utils.compile import compile_mlir_to_binary
+from ..utils.compile import compile_mlir_module_to_binary
 from ..utils.xrt import read_insts_binary
 
 
@@ -163,10 +163,10 @@ def jit(function=None, is_placed=True, use_cache=True):
         if not use_cache or not xclbin_exists or not inst_exists:
             with open(mlir_path, "w", encoding="utf-8") as f:
                 print(mlir_module, file=f)
-            compile_mlir_to_binary(
-                mlir_path=mlir_path,
-                inst_filename=inst_filename,
-                xclbin_filename=xclbin_filename,
+            compile_mlir_module_to_binary(
+                mlir_module=mlir_module,
+                inst_path=inst_path,
+                xclbin_path=xclbin_path,
             )
 
         kernel_name = "MLIR_AIE"
