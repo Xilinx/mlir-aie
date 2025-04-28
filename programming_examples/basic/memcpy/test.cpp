@@ -119,10 +119,8 @@ int main(int argc, const char *argv[]) {
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_inA = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(3));
-  auto bo_inB = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(4));
   auto bo_out = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(5));
+                        kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
@@ -143,11 +141,11 @@ int main(int argc, const char *argv[]) {
     std::cout << "Running Kernel." << std::endl;
   unsigned int opcode = 3;
   // Setup run to configure
-  auto cfg_run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+  auto cfg_run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out);
   cfg_run.wait();
   auto start = std::chrono::high_resolution_clock::now();
   // Test run
-  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out);
   run.wait();
   auto stop = std::chrono::high_resolution_clock::now();
   const float npu_time = std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count();
