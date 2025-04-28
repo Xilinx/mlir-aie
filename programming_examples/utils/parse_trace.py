@@ -20,11 +20,12 @@ NUM_EVENTS = 8  # number of events we can view per trace
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--filename", help="Trace file", required=True)
+    parser.add_argument("--input", help="Input trace file", required=True)
     parser.add_argument("--mlir", help="mlir source file", required=True)
     parser.add_argument(
         "--colshift", help="column shift adjustment to source mlir", required=False
     )
+    parser.add_argument("--output", help="Output json file",required=True)
     parser.add_argument("--debug", help="debug mode", required=False)
     # TODO tracelabels removed since we can have multiple sets of labels for each pkt_type & loc combination
     # parser.add_argument('--tracelabels',
@@ -33,11 +34,14 @@ def parse_args():
     return parser.parse_args(sys.argv[1:])
 
 
-def check_for_valid_trace(filename, toks):
+# Check for valid trace packets data
+# 1) if only 1 trace packet
+# 2) if first trace packet is all 0's
+def check_for_valid_trace(filename, trace_pkts, of):
     if DEBUG:
-        print("len(toks): ", str(len(toks)))
-        print("toks[0]:", toks[0])
-    if len(toks) < 2 or toks[0] == "00000000":
+        print("len(trace_pkts): ", str(len(trace_pkts)), file=of)
+        print("trace_pkts[0]:", trace_pkts[0], file=of)
+    if len(trace_pkts) < 2 or trace_pkts[0] == "00000000":
         print(
             "[ERROR] Empty trace file. Valid trace was not written to",
             filename,
@@ -75,12 +79,15 @@ def parse_pkt_hdr_in_stream(word):
     return hdr
 
 
-# toks_list:   list (idx = types of traces, currently 4, value = stream_dict)
+# Sorts list of trace packets into a list indexed by trace type (core, mem, shim, memtile)
+# and the value is dictionary tile location (key) and trace packets (value)
+#
+# trace_pkts_sorted:   list (idx = types of traces, currently 4, value = stream_dict)
 # stream_dict: dict (key = row,col, value = list of word streams)
-def core_trace_and_mem_trace_de_interleave(word_stream):
-    toks_list = list()
+def trace_pkts_de_interleave(word_stream):
+    trace_pkts_sorted = list()
     for t in range(NumTraceTypes):
-        toks_list.append(dict())
+        trace_pkts_sorted.append(dict())
 
     # core_streams = dict()   # pkt type 0
     # mem_stream = dict()     # pkt type 1
@@ -106,8 +113,8 @@ def core_trace_and_mem_trace_de_interleave(word_stream):
                 for tt in range(NumTraceTypes):
                     if pkt_hdr["type"] == tt:
                         curr_pkt_type = tt
-                        if toks_list[tt].get(curr_loc) == None:
-                            toks_list[tt][curr_loc] = list()
+                        if trace_pkts_sorted[tt].get(curr_loc) == None:
+                            trace_pkts_sorted[tt][curr_loc] = list()
                         valid_type_found = True
                 if not valid_type_found:
                     sys.exit("Error: Invalid packet type")
@@ -118,15 +125,17 @@ def core_trace_and_mem_trace_de_interleave(word_stream):
                 curr_vld
             ):  # ignores first 8 chunks of data is pkt hdr was invalid. TODO Is this right?
                 # or shoudl we require valid header in first chunk of data
-                toks_list[curr_pkt_type][curr_loc].append(
+                trace_pkts_sorted[curr_pkt_type][curr_loc].append(
                     word_stream[i]
-                )  # TODO assuem curr_pkt_type is valid
+                )  # TODO assume curr_pkt_type is valid
                 # for tt in range(NumTraceTypes):
                 #     if curr_pkt_type == tt:
                 #         toks_list[tt][curr_loc].append(word_stream[i])
-    return toks_list
+    return trace_pkts_sorted
 
 
+# Convert trace packets into byte streams
+#
 # toks_list is a list of toks dictionaries where each dictionary is a type (core, mem, shim, memtile)
 # each dictionary key is a tile location (row,col) whose value is a list of stream data
 def convert_to_byte_stream(toks_list):
@@ -162,6 +171,8 @@ def convert_to_byte_stream(toks_list):
     return byte_stream_list
 
 
+# Convert byte streams to equivalent packet commands
+#
 # byte_stream_list: list (idx = trace type, value = word_stream_dict)
 # word_stream_dict: dict (key = row,col, value = list of words)
 #
@@ -366,43 +377,60 @@ def lookupEventNameInStr(event, pid, pid_events):
     #         return "Mm2s1FinishedTask"
 
 
-# multiples is a list of events that are being activated
-def deactivate(
+# This function assert an end event for all active events if:
+# 1) the cycles from the last event is > 0
+# 2) active event is not in list of new events (multiples)
+#
+# if cycles > 0, deactivate all events
+# if cycles == 0, deactivate all events except this one
+#
+# multiples - list of new active events
+# active_events - list of existing active events
+# timer - current running time
+# cycles - # of cycles from last event
+# pid -
+# trace_type -
+# loc -
+# pid_events -
+def deactivate_events(
     multiples, active_events, timer, cycles, pid, trace_type, loc, pid_events
 ):
     for k in active_events.keys():  # an active event
         if cycles > 0 or (cycles == 0 and not k in multiples):
             # if not k in multiples: # active event it not in multiples list
             if active_events[k] > 0:
-                # trace_event = {'name':"Event"+str(k)}
-                # trace_event = {'name':events_to_name[k]}
-                # trace_event = {'name':lookupEventNameInStr(str(k), pid, pid_events)}
-                # trace_event = {'name':lookup_event_name_by_type(trace_type, str(k), pid_events)} # TODO remove
                 trace_event = {
                     "name": lookup_event_name_by_type(
                         trace_type, pid_events[trace_type][loc][k]
                     )
                 }  # TODO remove
-                # trace_event['args']['name'] = lookup_event_name_by_type(trace_type, pid_events[trace_type][loc][k])
-                #                trace_event['ts'] = active_events[k]
                 trace_event["ts"] = timer
                 trace_event["ph"] = "E"
-                # trace_event['pid'] = 0
                 trace_event["pid"] = pid
                 trace_event["tid"] = k
                 trace_event["args"] = {}
-                # trace_event['keys'] = multiples
-                # trace_event['active_events'] = active_events.keys()
-                # trace_event['opcode'] = "Deactivate" + str(multiples)
-
                 trace_events.append(trace_event)
             active_events[k] = 0
 
 
-# def update(t):
-#     for k in active_events.keys():
-#         if active_events[k]:
-#             active_events[k] = t
+# Assert a begin siganl for the current event unless the event is still active
+def activate_event(event, tt, loc, timer, pid, active_events, pid_events, trace_events):
+    try:
+        if active_events[event] == 0:
+            trace_event = {
+                "name": lookup_event_name_by_type(
+                    tt, pid_events[tt][loc][event]
+                )
+            }
+            trace_event["ts"] = timer
+            trace_event["ph"] = "B"
+            trace_event["pid"] = pid
+            trace_event["tid"] = event
+            trace_event["args"] = {}
+            trace_events.append(trace_event)
+            active_events[event] = 1
+    except KeyError:
+        pass
 
 
 # def convert_commands_to_json(trace_events, commands, pid, pid_events):
@@ -410,7 +438,7 @@ def deactivate(
 #
 # commands:  list (idx = trace type, value = byte_stream_dict)
 # byte_stream_dict: dict (key = row,col, value = list of commands)
-def convert_commands_to_json(trace_events, commands, pid_events):
+def convert_commands_to_json(trace_events, commands, pid_events, of):
     # for bsd in commands: # byte_stream_dict for each trace type. TODO how to get index of bsd?
     for tt in range(
         len(commands)
@@ -428,8 +456,8 @@ def convert_commands_to_json(trace_events, commands, pid_events):
                     + ", loc: "
                     + str(loc)
                     + ", NUM_EVENTS: "
-                    + str(NUM_EVENTS)
-                    + "\n"
+                    + str(NUM_EVENTS),
+                    file=of
                 )
 
             if loc in pid_events[tt]:
@@ -453,36 +481,20 @@ def convert_commands_to_json(trace_events, commands, pid_events):
                 sys.exit(1)
 
             active_events = dict()
-            for i in range(16):  # TODO we only have 8 events at a time though right?
+            for i in range(8): # 8 max events at a time
                 active_events[i] = 0
 
+            if DEBUG:
+                print("num commands:",len(command), file=of)
             for c in command:
-                # for c in flat_commands:
-                # print(c)
                 t = c["type"]
-                # if 'Start' in t:
-                # timer = c['timer_value'] # TODO Turn off timer for now to test sync among tiles/type
-                # elif 'Single' in t:
                 if "Single" in t:
                     event = c["event"]
                     cycles = int(c["cycles"])
-
-                    # timer = timer + 1 + int(c['cycles'])   # Timer at top
                     timer = timer + 1
-
-                    # if cycles > 0, deactivate all events
-                    # if cycles == 0, deactivate all events except this one
-
-                    # TODO NO? deactivate all active_events that is not this event
                     multiple_list = list()
-                    # for k in c.keys():
-                    #     if "event" in k:
-                    #         multiple_list.append(c[k]) # TODO overkill since there should only be one?
                     multiple_list.append(c["event"])
-                    # for k in active_events.keys():
-                    #     if cycles > 0 or (cycles == 0 and k != event):
-                    #         multiple_list.append(k)
-                    deactivate(
+                    deactivate_events(
                         multiple_list,
                         active_events,
                         timer,
@@ -492,51 +504,17 @@ def convert_commands_to_json(trace_events, commands, pid_events):
                         loc,
                         pid_events,
                     )
-
                     timer = timer + cycles
+                    activate_event(event, tt, loc, timer, pid, active_events, pid_events, trace_events)
 
-                    # If its already started, don't start it again ...
-                    try:
-                        if active_events[event] == 0:
-                            # trace_event = {'name':events_to_name[event]}
-                            # trace_event = {'name':lookupEventNameInStr(str(event), pid, pid_events)}
-                            # trace_event = {'name':lookupEventNameInStr(str(event), pid, pid_events)} # TODO
-                            trace_event = {
-                                "name": lookup_event_name_by_type(
-                                    tt, pid_events[tt][loc][event]
-                                )
-                            }
-                            trace_event["ts"] = timer
-                            trace_event["ph"] = "B"
-                            # trace_event['pid'] = 0
-                            trace_event["pid"] = pid
-                            trace_event["tid"] = event
-                            trace_event["args"] = {}
-                            # trace_event['opcode'] = "Single"
-                            trace_events.append(trace_event)
-                            #                active_events[event] = timer  + 1
-                            active_events[event] = 1
-                    except KeyError:
-                        pass
-                    # timer = timer + 1 + int(c['cycles'])
                 elif "Multiple" in t:
                     cycles = int(c["cycles"])
-
-                    # timer = timer + 1 + int(c['cycles'])
                     timer = timer + 1
-
-                    # if cycles > 0, deactivate all events
-                    # if cycles == 0, deactivate all events except this one
-
-                    # TODO NO? deactivate all active_events that is not this event
                     multiple_list = list()
                     for k in c.keys():
                         if "event" in k:
                             multiple_list.append(c[k])
-                    # for k in active_events.keys():
-                    #     if cycles > 0 or (cycles == 0 and k != event):
-                    #         multiple_list.append(k)
-                    deactivate(
+                    deactivate_events(
                         multiple_list,
                         active_events,
                         timer,
@@ -546,40 +524,33 @@ def convert_commands_to_json(trace_events, commands, pid_events):
                         loc,
                         pid_events,
                     )
-
                     timer = timer + cycles
 
                     for k in c.keys():
-                        if not "event" in k:
-                            continue
-                        # If its already started, don't start it again ...
-                        try:
-                            event = c[k]
-                            if active_events[event] == 0:
-                                # trace_event = {'name':events_to_name[event]}
-                                # trace_event = {'name':lookupEventNameInStr(str(event), pid, pid_events)} # TODO
-                                trace_event = {
-                                    "name": lookup_event_name_by_type(
-                                        tt, pid_events[tt][loc][event]
-                                    )
-                                }
-                                trace_event["ts"] = timer
-                                trace_event["ph"] = "B"
-                                # trace_event['pid'] = 0
-                                trace_event["pid"] = pid
-                                trace_event["tid"] = event
-                                trace_event["args"] = {}
-                                # trace_event['opcode'] = "Multiple" + str(list(c.keys()))
-                                trace_events.append(trace_event)
-                                #                    active_events[event] = timer  + 1
-                                active_events[event] = 1
-                        except KeyError:
-                            pass
-                    # timer = timer + 1 + int(c['cycles'])
+                        if "event" in k:
+                            activate_event(c[k], tt, loc, timer, pid, active_events, pid_events, trace_events)
 
                 elif "Repeat" in t:
-                    timer = timer + int(c["repeats"])
-            #        update(timer)
+                    if cycles == 0: # last event has cycles == 0 so we just extend it by the repaet count
+                        timer = timer + int(c["repeats"])
+                    else:
+                        deactivate_events(
+                            multiple_list,
+                            active_events,
+                            timer,
+                            cycles,
+                            pid,
+                            tt,
+                            loc,
+                            pid_events,
+                        )
+                        timer = timer + cycles
+                        if len(multiple_list) > 1:
+                            for k in c.keys():
+                                if "event" in k:
+                                    activate_event(c[k], tt, loc, timer, pid, active_events, pid_events, trace_events)
+                        else:
+                            activate_event(event, tt, loc, timer, pid, active_events, pid_events, trace_events)
 
 
 def process_name_metadata(trace_events, pid, trace_type, loc):
@@ -972,157 +943,88 @@ if DEBUG:
 # set colshift based on optional argument
 colshift = int(opts.colshift) if opts.colshift else 0
 
-with open(opts.filename, "r") as f:
-    toks = f.read().split("\n")
+try:
+    with open(opts.input, "r") as f:
+        # Create array of trace packets
+        trace_pkts = f.read().split("\n")
+except:
+    print("ERROR:",opts.input,"could not be opened. Check for valid trace source file.")
+    sys.exit(1)
 
-    if DEBUG:
-        print("\nDEBUG: toks")
-        print(toks)
-        print("\n\n")
-
-    if not check_for_valid_trace(opts.filename, toks):
-        sys.exit(1)
-
-    # De-interleave core and memory trace
-    # [core_toks, mem_toks] = core_trace_and_mem_trace_de_interleave(toks)
-
-    # TODO Change this to list of toks instead of a fixed set?
-    toks_list = core_trace_and_mem_trace_de_interleave(toks)
-
-    if DEBUG:
-        print("\nDEBUG: stream")
-        print(toks_list)
-        print("\n\n")
-
-    bs_0 = convert_to_byte_stream(toks_list)
-    # core_bs_0    = convert_to_byte_stream(core_toks)
-    # mem_bs_0     = convert_to_byte_stream(mem_toks)
-    # shim_bs_0   = convert_to_byte_stream(shim_toks)
-    # memtile_bs_0 = convert_to_byte_stream(memtile_toks)
-
-    if DEBUG:
-        print("\nDEBUG: byte stream")
-        print(bs_0)
-        print("\n\n")
-
-    # core_bs_1 = convert_to_byte_stream(core_toks[1])
-    # mem_bs_0 = convert_to_byte_stream(mem_toks[0])
-    # mem_bs_1 = convert_to_byte_stream(mem_toks[1])
-
-    commands_0 = convert_to_commands(bs_0, False)
-    # core_commands_0    = convert_to_commands(core_bs_0, False)
-    # mem_commands_0     = convert_to_commands(mem_bs_0, False)
-    # shim_commands_0   = convert_to_commands(shim_bs_0, False)
-    # memtile_commands_0 = convert_to_commands(memtile_bs_0, False)
-
-    # core_commands_1 = convert_to_commands(core_bs_1, False)
-    # mem_commands_0 = convert_to_commands(mem_bs_0, False)
-    # mem_commands_1 = convert_to_commands(mem_bs_1, False)
-
-if DEBUG:
-    print("\nDEBUG: commands_0")
-    print(commands_0)
-    print("\n\n")
-
-# pid_events track the labels associated with pkt_type/ trace and row,col
-#
-# pid_events: list(idx=pkt_type, value=labels_dict)
-# label_dict: dict(key=row,col, value=labels list)
-# labels_list: list(idx=label idx, value=label code), idx=len is pid
-#
 pid_events = list()
 
-if opts.mlir:
+try:
     with open(opts.mlir, "r") as mf:
         lines = mf.read().split("\n")
         pid_events = parse_mlir_trace_events(lines)
-# TODO need an else if mlir is not defined, some default or make it required?
-# else:
+except:
+    print("ERROR:",opts.mlir,"could not be opened. Check for valid MLIR file.")
+    exit(1)
 
+try:
+    of = open(opts.output, "w")
+except:
+    print("ERROR:",opts.mlir,"could not be opened. Check for valid output JSON file.")
+    exit(1)
 
-# flat_commands = flatten_repeat_command(commands)
+if DEBUG:
+    print("DEBUG mode enabled:", file=of)
+    print('pkt type 0: core tile', file=of)
+    print('pkt type 1: core mem tile', file=of)
+    print('pkt type 2: shim tile', file=of)
+    print('pkt type 3: mem tile', file=of)
+    print("", file=of)
+    print("DEBUG: trace_pkts", file=of)
+    print(trace_pkts, file=of)
+    print("", file=of)
 
-# events_to_name= list()
-# core_events = dict()
-# events_to_name.append(core_events)
+    print("DEBUG: pid events\n", file=of)
+    # print(pid_events, file=of)
+    for idx, dict_i in enumerate(pid_events):
+        print("pkt type",idx,":", file=of)
+        for key, value in dict_i.items():
+            print(key, value, file=of)
+    print("", file=of)
 
-# if opts.tracelabels:
-#     for i in range(8):
-#         events_to_name[0][i] = opts.tracelabels[i]
-# else:
-#     events_to_name[0][0] = "Instr_Vector"
-#     events_to_name[0][1] = "Tile Start"
-#     events_to_name[0][2] = "Tile End"
-#     events_to_name[0][3] = "Read A"
-#     events_to_name[0][4] = "Read B"
-#     events_to_name[0][5] = "Write C"
-#     events_to_name[0][6] = "Lock Stall"
-#     events_to_name[0][7] = "Lock Acquire"
+if not check_for_valid_trace(opts.input, trace_pkts, of):
+    sys.exit(1)
 
-# print (json.dumps(commands))
+trace_pkts_sorted = trace_pkts_de_interleave(trace_pkts)
+
+if DEBUG:
+    print("DEBUG: trace_pkts_sorted", file=of)
+    for idx, dict_i in enumerate(trace_pkts_sorted):
+        print("pkt type",idx,":", file=of)
+        for key, value in dict_i.items():
+            print(key, value, file=of)
+    print("", file=of)
+
+byte_streams = convert_to_byte_stream(trace_pkts_sorted)
+
+if DEBUG:
+    print("DEBUG: byte stream", file=of)
+    for idx, dict_i in enumerate(byte_streams):
+        print("pkt type",idx,":", file=of)
+        for key, value in dict_i.items():
+            print(key, value, file=of)
+    print("", file=of)
+
+commands_0 = convert_to_commands(byte_streams, False)
+
+if DEBUG:
+    print("DEBUG: commands_0", file=of)
+    for idx, dict_i in enumerate(commands_0):
+        print("pkt type",idx,":", file=of)
+        for key, commands in dict_i.items():
+            print(key, file=of)
+            for i in commands:
+                print("\t",i, file=of)
+    print("", file=of)
 
 trace_events = list()
-# Let's name the threads
-# active_events = dict()
-
-# for i in range(8):
-# for i in range(16):
-#     active_events[i]  = 0
-# name_dict = dict()
-# # {"name": "thread_name", "ph":"M","pid":0, "tid":0,"args":{"name":"Phil"}}
-# name_dict["name"] = "thread_name"
-# name_dict["ph"]   = "M"           # Metadate
-# name_dict["pid"]  = 0             # We only have one process, but we may want one per core
-# name_dict["tid"]  = i             # I have baked in 8 here, we need this to be informed by how many events are supported
-# name_dict["args"] = {"name":events_to_name[i]}
-# trace_events.append(name_dict)
-
-# timer = 0
-
-# {'type': 'Start', 'timer_value': 0}
-# {'type': 'Single2', 'event': 0, 'cycles': 1161}
-# {'type': 'Single0', 'event': 0, 'cycles': 0}
-# {'type': 'Repeat1', 'repeats': 34}
-# {'type': 'Single0', 'event': 0, 'cycles': 2}
-# {'type': 'Single0', 'event': 0, 'cycles': 0}
-# {'type': 'Repeat1', 'repeats': 24}
-# {'type': 'Multiple0', 'cycles': 0, 'event0': 0, 'event2': 2}
-# {'type': 'Single0', 'event': 0, 'cycles': 0}
-# {'type': 'Repeat0', 'repeats': 4}
-# {'type': 'Single1', 'event': 3, 'cycles': 117}
-# {'type': 'Single1', 'event': 0, 'cycles': 21}
-# {'type': 'Single0', 'event': 0, 'cycles': 0}
-# {'type': 'Repeat1', 'repeats': 21}
-# {'type': 'Multiple0', 'cycles': 0, 'event0': 0, 'event1': 1}
-# {'type': 'Repeat0', 'repeats': 8}
-# {'type': 'Single0', 'event': 1, 'cycles': 0}
-
-# ------------------------------------------------------------------------------
-# Convert commands to json
-# ------------------------------------------------------------------------------
-
-# for pid in range(4):
-# for pid in range(1):
-#     process_name_metadata(trace_events, pid)
-#     for tid in range(8):
-#         thread_name_metadata(trace_events, pid, tid, pid_events)
-
-# pid will be a product of number of trace types and trace tiles
 
 setup_trace_metadata(trace_events, pid_events)
 
-if DEBUG:
-    print("\nDEBUG: pid events\n")
-    print(pid_events)
-    print("\n\n")
+convert_commands_to_json(trace_events, commands_0, pid_events, of)
 
-# TODO Loop over cores/mem to call convert_commands_to_json
-convert_commands_to_json(trace_events, commands_0, pid_events)
-
-# convert_commands_to_json(trace_events, mem_commands_0, 1, pid_events)
-# convert_commands_to_json(trace_events, core_commands_1, 2, pid_events)
-# convert_commands_to_json(trace_events, mem_commands_1, 3, pid_events)
-
-# for t in trace_events:
-#     print(t)
-print(json.dumps(trace_events))
+print(json.dumps(trace_events).replace("\'","\"").replace(", {",",\n{"), file=of)
