@@ -10,8 +10,7 @@ import os
 import aie.compiler.aiecc.main as aiecc
 
 
-def compile_mlir_module_to_binary(
-    mlir_module: str, inst_path: str, xclbin_path: str):
+def compile_mlir_module_to_binary(mlir_module: str, inst_path: str, xclbin_path: str):
     """
     Compile an MLIR module to instruction and xclbin files using the aiecc module.
 
