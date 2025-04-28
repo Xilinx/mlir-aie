@@ -62,7 +62,7 @@ class object_fifo_link(ObjectFifoLinkOp):
         dstOffsets=[],
     )
 ```
-A link allows the user to specify a set of input Object FIFOs via the `fifoIns` input and a set of output ones via the `fifoOuts` input. Each Object FIFO may be specified either using its `name` or its Python object. Both inputs can be either a single Object FIFO or an array of them. It is required that there exists at least one shared tile between the consumer tiles of `fifoIns` and the producer tiles of `fifoOuts` for a link to be valid. This is because the implicit copy of data will be done using the Data Movement Accelerators (DMAs) of that tile.
+A link allows the user to specify a set of input Object FIFOs via the `fifoIns` input and a set of output ones via the `fifoOuts` input. Each Object FIFO may be specified either using its `name` or its Python object. Both inputs can be either a single Object FIFO or an array of them. It is required that there exists at least one shared tile between the consumer tiles of `fifoIns` and the producer tiles of `fifoOuts` for a link to be valid. This is because the implicit copy of data will be done using the Direct Memory Accesss (DMAs) of that tile.
 
 Below is an example of a link created between two FIFOs `of_in` and `of_out`, where tile B is the shared tile between them:
 ```python
