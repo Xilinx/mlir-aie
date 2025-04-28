@@ -8,32 +8,33 @@
 
 import os
 import glob
+import sys
 import numpy as np
 
 from aie.iron import Program, Runtime, Worker, ObjectFifo
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
 
 import aie.iron as iron
 
-dev = NPU2()
-
-# Define tensor types
+# Define tensor shape
 data_height = 3
 data_width = 16
-tile_height = 3
-tile_width = 8
-data_size = data_height * data_width
-tile_size = tile_height * tile_width
-element_type = np.int32
-data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
-tile_ty = np.ndarray[(tile_size,), np.dtype[element_type]]
 
 
 @iron.jit(is_placed=False)
-def exercise_4b():
+def exercise_4b(input0, output):
+    # Define tile size
+    tile_height = 3
+    tile_width = 8
+    tile_size = tile_height * tile_width
+
+    data_size = input0.numel()
+    element_type = input0.dtype
+    data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
+    tile_ty = np.ndarray[(tile_size,), np.dtype[element_type]]
+
     # Define runtime tensor access pattern (tap)
     tensor_dims = (data_height, data_width)
     tap1 = TensorAccessPattern(
@@ -76,13 +77,17 @@ def exercise_4b():
         rt.drain(of_out.cons(), c_out, wait=True)
 
     # Create the program from the device type and runtime
-    my_program = Program(dev, rt)
+    my_program = Program(iron.get_current_device(), rt)
 
     # Place components (assign them resources on the device) and generate an MLIR module
     return my_program.resolve_program(SequentialPlacer())
 
 
 def main():
+    # Define tensor shapes and data types
+    data_size = data_height * data_width
+    element_type = np.int32
+
     # Delete existing plot*.png files
     for file in glob.glob("plot*.png"):
         try:
@@ -117,11 +122,11 @@ def main():
     # Otherwise, exit with a failure code
     if not errors:
         print("\nPASS!\n")
-        exit(0)
+        sys.exit(0)
     else:
         print("\nError count: ", errors)
         print("\nfailed.\n")
-        exit(1)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

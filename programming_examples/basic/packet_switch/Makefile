@@ -41,7 +41,6 @@ CXXFLAGS += -c
 CXXFLAGS += -std=c++23
 CXXFLAGS += -ggdb
 CXXFLAGS += -I/opt/xilinx/xrt/include
-CXXFLAGS += -I/usr/include/boost
 CXXFLAGS += -I${HOME_DIR}/host
 CXXFLAGS += -I${HOME_DIR}/../../../runtime_lib/test_lib
 
@@ -49,13 +48,12 @@ LDFLAGS += -lm
 LDFLAGS += -L/opt/xilinx/xrt/lib
 LDFLAGS += -Wl,-rpath,/opt/xilinx/xrt/lib
 LDFLAGS += -lxrt_coreutil
-LDFLAGS += -lboost_program_options -lboost_filesystem
 
 .PHONY: all link bitstream host clean instructions
 all: ${XCLBIN_TARGET} ${INSTS_TARGET} ${HOST_C_TARGET}
 
 clean:
-	-@rm -rf build 
+	-@rm -rf build
 	-@rm -rf log
 	-@rm -rf ${HOST_C_TARGET}
 	-@rm -rf trace*
@@ -75,7 +73,7 @@ instructions: ${INSTS_TARGET}
 kernel: ${KERNEL_OBJS}
 
 
-link: ${MLIR_TARGET} 
+link: ${MLIR_TARGET}
 
 
 bitstream: ${XCLBIN_TARGET}
@@ -121,7 +119,7 @@ else
 endif
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-npu-insts --no-compile-host \
-		--npu-insts-name=${@:${BITSTREAM_O_DIR}/%=%} $(<:${HOME_DIR}/kernel/%=../../kernel/%) 
+		--npu-insts-name=${@:${BITSTREAM_O_DIR}/%=%} $(<:${HOME_DIR}/kernel/%=../../kernel/%)
 	cp $@ ./
 
 ${HOST_C_TARGET}: ${HOST_OBJS}
