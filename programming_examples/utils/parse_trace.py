@@ -25,7 +25,7 @@ def parse_args():
     parser.add_argument(
         "--colshift", help="column shift adjustment to source mlir", required=False
     )
-    parser.add_argument("--output", help="Output json file",required=True)
+    parser.add_argument("--output", help="Output json file", required=True)
     parser.add_argument("--debug", help="debug mode", required=False)
     # TODO tracelabels removed since we can have multiple sets of labels for each pkt_type & loc combination
     # parser.add_argument('--tracelabels',
@@ -418,9 +418,7 @@ def activate_event(event, tt, loc, timer, pid, active_events, pid_events, trace_
     try:
         if active_events[event] == 0:
             trace_event = {
-                "name": lookup_event_name_by_type(
-                    tt, pid_events[tt][loc][event]
-                )
+                "name": lookup_event_name_by_type(tt, pid_events[tt][loc][event])
             }
             trace_event["ts"] = timer
             trace_event["ph"] = "B"
@@ -457,7 +455,7 @@ def convert_commands_to_json(trace_events, commands, pid_events, of):
                     + str(loc)
                     + ", NUM_EVENTS: "
                     + str(NUM_EVENTS),
-                    file=of
+                    file=of,
                 )
 
             if loc in pid_events[tt]:
@@ -481,11 +479,11 @@ def convert_commands_to_json(trace_events, commands, pid_events, of):
                 sys.exit(1)
 
             active_events = dict()
-            for i in range(8): # 8 max events at a time
+            for i in range(8):  # 8 max events at a time
                 active_events[i] = 0
 
             if DEBUG:
-                print("num commands:",len(command), file=of)
+                print("num commands:", len(command), file=of)
             for c in command:
                 t = c["type"]
                 if "Single" in t:
@@ -505,7 +503,16 @@ def convert_commands_to_json(trace_events, commands, pid_events, of):
                         pid_events,
                     )
                     timer = timer + cycles
-                    activate_event(event, tt, loc, timer, pid, active_events, pid_events, trace_events)
+                    activate_event(
+                        event,
+                        tt,
+                        loc,
+                        timer,
+                        pid,
+                        active_events,
+                        pid_events,
+                        trace_events,
+                    )
 
                 elif "Multiple" in t:
                     cycles = int(c["cycles"])
@@ -528,10 +535,21 @@ def convert_commands_to_json(trace_events, commands, pid_events, of):
 
                     for k in c.keys():
                         if "event" in k:
-                            activate_event(c[k], tt, loc, timer, pid, active_events, pid_events, trace_events)
+                            activate_event(
+                                c[k],
+                                tt,
+                                loc,
+                                timer,
+                                pid,
+                                active_events,
+                                pid_events,
+                                trace_events,
+                            )
 
                 elif "Repeat" in t:
-                    if cycles == 0: # last event has cycles == 0 so we just extend it by the repaet count
+                    if (
+                        cycles == 0
+                    ):  # last event has cycles == 0 so we just extend it by the repaet count
                         timer = timer + int(c["repeats"])
                     else:
                         deactivate_events(
@@ -548,9 +566,27 @@ def convert_commands_to_json(trace_events, commands, pid_events, of):
                         if len(multiple_list) > 1:
                             for k in c.keys():
                                 if "event" in k:
-                                    activate_event(c[k], tt, loc, timer, pid, active_events, pid_events, trace_events)
+                                    activate_event(
+                                        c[k],
+                                        tt,
+                                        loc,
+                                        timer,
+                                        pid,
+                                        active_events,
+                                        pid_events,
+                                        trace_events,
+                                    )
                         else:
-                            activate_event(event, tt, loc, timer, pid, active_events, pid_events, trace_events)
+                            activate_event(
+                                event,
+                                tt,
+                                loc,
+                                timer,
+                                pid,
+                                active_events,
+                                pid_events,
+                                trace_events,
+                            )
 
 
 def process_name_metadata(trace_events, pid, trace_type, loc):
@@ -948,7 +984,9 @@ try:
         # Create array of trace packets
         trace_pkts = f.read().split("\n")
 except:
-    print("ERROR:",opts.input,"could not be opened. Check for valid trace source file.")
+    print(
+        "ERROR:", opts.input, "could not be opened. Check for valid trace source file."
+    )
     sys.exit(1)
 
 pid_events = list()
@@ -958,21 +996,21 @@ try:
         lines = mf.read().split("\n")
         pid_events = parse_mlir_trace_events(lines)
 except:
-    print("ERROR:",opts.mlir,"could not be opened. Check for valid MLIR file.")
+    print("ERROR:", opts.mlir, "could not be opened. Check for valid MLIR file.")
     exit(1)
 
 try:
     of = open(opts.output, "w")
 except:
-    print("ERROR:",opts.mlir,"could not be opened. Check for valid output JSON file.")
+    print("ERROR:", opts.mlir, "could not be opened. Check for valid output JSON file.")
     exit(1)
 
 if DEBUG:
     print("DEBUG mode enabled:", file=of)
-    print('pkt type 0: core tile', file=of)
-    print('pkt type 1: core mem tile', file=of)
-    print('pkt type 2: shim tile', file=of)
-    print('pkt type 3: mem tile', file=of)
+    print("pkt type 0: core tile", file=of)
+    print("pkt type 1: core mem tile", file=of)
+    print("pkt type 2: shim tile", file=of)
+    print("pkt type 3: mem tile", file=of)
     print("", file=of)
     print("DEBUG: trace_pkts", file=of)
     print(trace_pkts, file=of)
@@ -981,7 +1019,7 @@ if DEBUG:
     print("DEBUG: pid events\n", file=of)
     # print(pid_events, file=of)
     for idx, dict_i in enumerate(pid_events):
-        print("pkt type",idx,":", file=of)
+        print("pkt type", idx, ":", file=of)
         for key, value in dict_i.items():
             print(key, value, file=of)
     print("", file=of)
@@ -994,7 +1032,7 @@ trace_pkts_sorted = trace_pkts_de_interleave(trace_pkts)
 if DEBUG:
     print("DEBUG: trace_pkts_sorted", file=of)
     for idx, dict_i in enumerate(trace_pkts_sorted):
-        print("pkt type",idx,":", file=of)
+        print("pkt type", idx, ":", file=of)
         for key, value in dict_i.items():
             print(key, value, file=of)
     print("", file=of)
@@ -1004,7 +1042,7 @@ byte_streams = convert_to_byte_stream(trace_pkts_sorted)
 if DEBUG:
     print("DEBUG: byte stream", file=of)
     for idx, dict_i in enumerate(byte_streams):
-        print("pkt type",idx,":", file=of)
+        print("pkt type", idx, ":", file=of)
         for key, value in dict_i.items():
             print(key, value, file=of)
     print("", file=of)
@@ -1014,11 +1052,11 @@ commands_0 = convert_to_commands(byte_streams, False)
 if DEBUG:
     print("DEBUG: commands_0", file=of)
     for idx, dict_i in enumerate(commands_0):
-        print("pkt type",idx,":", file=of)
+        print("pkt type", idx, ":", file=of)
         for key, commands in dict_i.items():
             print(key, file=of)
             for i in commands:
-                print("\t",i, file=of)
+                print("\t", i, file=of)
     print("", file=of)
 
 trace_events = list()
@@ -1027,4 +1065,4 @@ setup_trace_metadata(trace_events, pid_events)
 
 convert_commands_to_json(trace_events, commands_0, pid_events, of)
 
-print(json.dumps(trace_events).replace("\'","\"").replace(", {",",\n{"), file=of)
+print(json.dumps(trace_events).replace("'", '"').replace(", {", ",\n{"), file=of)
