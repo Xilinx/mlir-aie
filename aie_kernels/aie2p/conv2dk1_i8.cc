@@ -1,11 +1,11 @@
-//===- conv2dk1.cc ----------------------------------------------*- C++ -*-===//
+//===- conv2dk1_i8.cc -------------------------------------------*- C++ -*-===//
 
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
+// Copyright (C) 2022-2025, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -97,8 +97,7 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
   constexpr int MMUL_MN = MMUL_M * MMUL_N;
 
   using MMUL8x8x8 = aie::mmul<MMUL_M, MMUL_K, MMUL_N, int8, int8>;
-  ::aie::set_saturation(
-      aie::saturation_mode::saturate); // Needed to saturate properly to uint8
+  ::aie::set_saturation(aie::saturation_mode::saturate); // Needed to saturate properly to uint8
   ::aie::set_rounding(aie::rounding_mode::symmetric_inf); // Needed to saturate
                                                           // properly to uint8
 
@@ -117,9 +116,7 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 
   // constexpr int iw_partial_rem = (input_width / MMUL_M) % NUM_ACC;
   // const int iw_partial_rem = (32 / MMUL_M) % NUM_ACC;
-
   assert((input_width / MMUL_M) % NUM_ACC == 0);
-
   const int iw_partial_rem = 0; // TODO - See restriction
 
   assert((input_channels / CHANNEL_FACTOR) > 2); // Assume IC >= 16
