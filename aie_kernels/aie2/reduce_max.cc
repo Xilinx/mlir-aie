@@ -13,8 +13,8 @@
 #include <stdlib.h>
 #include <type_traits>
 
-#include <aie_api/aie.hpp>
 #include "../optimization_pragmas.h"
+#include <aie_api/aie.hpp>
 
 void _reduce_max_vector(int32_t *restrict in, int32_t *restrict out,
                         const int32_t input_size) {
@@ -26,12 +26,11 @@ void _reduce_max_vector(int32_t *restrict in, int32_t *restrict out,
   v16int32 running_max = tiny;
   AIE_PREPARE_FOR_PIPELINE
   AIE_LOOP_MIN_ITERATION_COUNT(8)
-  for (int32_t i = 0; i < input_size; i += vector_size)
-    {
-      v16int32 next = *(v16int32 *)(in + i);
-      v16int32 test = max(running_max, next);
-      running_max = test;
-    }
+  for (int32_t i = 0; i < input_size; i += vector_size) {
+    v16int32 next = *(v16int32 *)(in + i);
+    v16int32 test = max(running_max, next);
+    running_max = test;
+  }
   after_vector = running_max;
   v16int32 first = shift_bytes(after_vector, after_vector, 32U);
   v16int32 second = max(after_vector, first);

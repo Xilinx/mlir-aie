@@ -24,12 +24,9 @@
 #define AIE_LOOP_RANGE(a, ...)                                                 \
   AIE_LOOP_MIN_ITERATION_COUNT(a)                                              \
   __VA_OPT__(AIE_LOOP_MAX_ITERATION_COUNT(__VA_ARGS__))
-#define AIE_LOOP_UNROLL(x)                                                     \
-  _Pragma(__STRINGIFY(clang loop unroll_count(x)))
-#define AIE_LOOP_UNROLL_FULL                                                   \
-  _Pragma("clang loop unroll(full)")
-#define AIE_LOOP_NO_UNROLL                                                     \
-  _Pragma("clang loop unroll(disable)")
+#define AIE_LOOP_UNROLL(x) _Pragma(__STRINGIFY(clang loop unroll_count(x)))
+#define AIE_LOOP_UNROLL_FULL _Pragma("clang loop unroll(full)")
+#define AIE_LOOP_NO_UNROLL _Pragma("clang loop unroll(disable)")
 #define AIE_LOOP_FLATTEN [[using chess: flatten_loop]]
 
 #endif

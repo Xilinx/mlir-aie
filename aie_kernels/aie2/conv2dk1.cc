@@ -15,8 +15,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <aie_api/aie.hpp>
 #include "../optimization_pragmas.h"
+#include <aie_api/aie.hpp>
 
 #define REL_WRITE 0
 #define REL_READ 1
@@ -161,19 +161,18 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, uint8_t *output,
     for (int oc = 0; oc < (output_channels / 8); oc++) {
       for (int iw_32c = 0; iw_32c < iw_32; iw_32c++) {
         AIE_PREPARE_FOR_PIPELINE
-        AIE_LOOP_MIN_ITERATION_COUNT(2)     
-        for (int ic = 0; ic < (input_channels / 8); ic++)
-          {
-            aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
-            kernels += 64; // wts ic0..7(oc0..7)
+        AIE_LOOP_MIN_ITERATION_COUNT(2)
+        for (int ic = 0; ic < (input_channels / 8); ic++) {
+          aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
+          kernels += 64; // wts ic0..7(oc0..7)
 
-            for (int x = 0; x < 8; x++) {
-              aie::vector<int8, 32> in_a = aie::load_v<32>(input);
-              input += 32; // act oc0..3(ic0..7)
-              acc_tmp[x].mac(in_a, in_b);
-            }
-            input += (iw * 8) - 256; // Move to next ic/8 position
+          for (int x = 0; x < 8; x++) {
+            aie::vector<int8, 32> in_a = aie::load_v<32>(input);
+            input += 32; // act oc0..3(ic0..7)
+            acc_tmp[x].mac(in_a, in_b);
           }
+          input += (iw * 8) - 256; // Move to next ic/8 position
+        }
         // input ptr just moves to next section
         for (int xx = 0; xx < 8; xx++) {
           aie::vector<uint8, 32> o1 = acc_tmp[xx].to_vector<uint8>(scaleT);
@@ -186,7 +185,7 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, uint8_t *output,
         kernels -=
             (input_channels / 8) * 64; // reset kernel back to beginning of ic/8
       }
-      input -= (iw_32) * 256; // 8*32, reset beginning of input ptr
+      input -= (iw_32)*256; // 8*32, reset beginning of input ptr
       kernels += (input_channels / 8) * 64; // move to next oc/8 weights
       out_ptr += (iw_32_rem *
                   32); // move to next oc/8 (skip remainder section if present)
@@ -201,19 +200,18 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, uint8_t *output,
 
     for (int oc = 0; oc < (ocs / 8); oc++) {
       AIE_PREPARE_FOR_PIPELINE
-      AIE_LOOP_MIN_ITERATION_COUNT(2)     
-      for (int ic = 0; ic < (ics / 8); ic++)
-        {
-          aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
-          kernels += 64; // wts ic0..7(oc0..7)
+      AIE_LOOP_MIN_ITERATION_COUNT(2)
+      for (int ic = 0; ic < (ics / 8); ic++) {
+        aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
+        kernels += 64; // wts ic0..7(oc0..7)
 
-          for (int x = 0; x < iw_32_rem; x++) {
-            aie::vector<int8, 32> in_a = aie::load_v<32>(input);
-            input += 32; // act oc0..3(ic0..7)
-            acc_tmp[x].mac(in_a, in_b);
-          }
-          input += (iw * 8) - (iw_32_rem * 32); // Move to next ic/8 position
+        for (int x = 0; x < iw_32_rem; x++) {
+          aie::vector<int8, 32> in_a = aie::load_v<32>(input);
+          input += 32; // act oc0..3(ic0..7)
+          acc_tmp[x].mac(in_a, in_b);
         }
+        input += (iw * 8) - (iw_32_rem * 32); // Move to next ic/8 position
+      }
       // input ptr just moves to next section
       for (int xx = 0; xx < iw_32_rem; xx++) {
         aie::vector<uint8, 32> o1 = acc_tmp[xx].to_vector<uint8>(scaleT);
@@ -287,19 +285,18 @@ void conv2dk1_ui8_vector(uint8_t *input, int8_t *kernels, uint8_t *output,
     for (int oc = 0; oc < (output_channels / 8); oc++) {
       for (int iw_32c = 0; iw_32c < iw_32; iw_32c++) {
         AIE_PREPARE_FOR_PIPELINE
-        AIE_LOOP_MIN_ITERATION_COUNT(2)     
-        for (int ic = 0; ic < (input_channels / 8); ic++)
-          {
-            aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
-            kernels += 64; // wts ic0..7(oc0..7)
+        AIE_LOOP_MIN_ITERATION_COUNT(2)
+        for (int ic = 0; ic < (input_channels / 8); ic++) {
+          aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
+          kernels += 64; // wts ic0..7(oc0..7)
 
-            for (int x = 0; x < 8; x++) {
-              aie::vector<uint8, 32> in_a = aie::load_v<32>(input);
-              input += 32; // act oc0..3(ic0..7)
-              acc_tmp[x].mac(in_a, in_b);
-            }
-            input += (iw * 8) - 256; // Move to next ic/8 position
+          for (int x = 0; x < 8; x++) {
+            aie::vector<uint8, 32> in_a = aie::load_v<32>(input);
+            input += 32; // act oc0..3(ic0..7)
+            acc_tmp[x].mac(in_a, in_b);
           }
+          input += (iw * 8) - 256; // Move to next ic/8 position
+        }
         // input ptr just moves to next section
         for (int xx = 0; xx < 8; xx++) {
           aie::vector<uint8, 32> o1 = acc_tmp[xx].to_vector<uint8>(scaleT);
@@ -312,7 +309,7 @@ void conv2dk1_ui8_vector(uint8_t *input, int8_t *kernels, uint8_t *output,
         kernels -=
             (input_channels / 8) * 64; // reset kernel back to beginning of ic/8
       }
-      input -= (iw_32) * 256; // 8*32, reset beginning of input ptr
+      input -= (iw_32)*256; // 8*32, reset beginning of input ptr
       kernels += (input_channels / 8) * 64; // move to next oc/8 weights
       out_ptr += (iw_32_rem *
                   32); // move to next oc/8 (skip remainder section if present)
@@ -327,19 +324,18 @@ void conv2dk1_ui8_vector(uint8_t *input, int8_t *kernels, uint8_t *output,
 
     for (int oc = 0; oc < (ocs / 8); oc++) {
       AIE_PREPARE_FOR_PIPELINE
-      AIE_LOOP_MIN_ITERATION_COUNT(2)     
-      for (int ic = 0; ic < (ics / 8); ic++)
-        {
-          aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
-          kernels += 64; // wts ic0..7(oc0..7)
+      AIE_LOOP_MIN_ITERATION_COUNT(2)
+      for (int ic = 0; ic < (ics / 8); ic++) {
+        aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
+        kernels += 64; // wts ic0..7(oc0..7)
 
-          for (int x = 0; x < iw_32_rem; x++) {
-            aie::vector<uint8, 32> in_a = aie::load_v<32>(input);
-            input += 32; // act oc0..3(ic0..7)
-            acc_tmp[x].mac(in_a, in_b);
-          }
-          input += (iw * 8) - (iw_32_rem * 32); // Move to next ic/8 position
+        for (int x = 0; x < iw_32_rem; x++) {
+          aie::vector<uint8, 32> in_a = aie::load_v<32>(input);
+          input += 32; // act oc0..3(ic0..7)
+          acc_tmp[x].mac(in_a, in_b);
         }
+        input += (iw * 8) - (iw_32_rem * 32); // Move to next ic/8 position
+      }
       // input ptr just moves to next section
       for (int xx = 0; xx < iw_32_rem; xx++) {
         aie::vector<uint8, 32> o1 = acc_tmp[xx].to_vector<uint8>(scaleT);

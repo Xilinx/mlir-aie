@@ -14,8 +14,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include <aie_api/aie.hpp>
 #include "../optimization_pragmas.h"
+#include <aie_api/aie.hpp>
 
 template <typename T, int N>
 __attribute__((noinline)) void passThrough_aie(T *restrict in, T *restrict out,
@@ -29,7 +29,9 @@ __attribute__((noinline)) void passThrough_aie(T *restrict in, T *restrict out,
   AIE_PREPARE_FOR_PIPELINE
   AIE_LOOP_MIN_ITERATION_COUNT(6)
   for (int j = 0; j < (height * width); j += N) // Nx samples per loop
-    { *outPtr++ = *inPtr++; }
+  {
+    *outPtr++ = *inPtr++;
+  }
 
   event1();
 }

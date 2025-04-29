@@ -18,8 +18,8 @@
 #define REL_WRITE 0
 #define REL_READ 1
 
-#include <aie_api/aie.hpp>
 #include "../optimization_pragmas.h"
+#include <aie_api/aie.hpp>
 
 #include "zero.cc"
 
@@ -79,90 +79,85 @@ matmul_vectorized_2x2_mmul_b_col_maj(const T_in *__restrict pA,
   event0();
 
   AIE_PREPARE_FOR_PIPELINE
-  AIE_LOOP_MIN_ITERATION_COUNT(4)                                
-  for (unsigned z = 0; z < rowA; z += 2)
-    {
-      T_out *__restrict pC1 = pC + (z * colB + 0) * MMUL::size_C;
-      T_out *__restrict pC2 = pC + ((z + 1) * colB + 0) * MMUL::size_C;
+  AIE_LOOP_MIN_ITERATION_COUNT(4)
+  for (unsigned z = 0; z < rowA; z += 2) {
+    T_out *__restrict pC1 = pC + (z * colB + 0) * MMUL::size_C;
+    T_out *__restrict pC2 = pC + ((z + 1) * colB + 0) * MMUL::size_C;
+
+#ifdef OPT_PERF_ENABLED
+    AIE_LOOP_FLATTEN
+#endif
+    for (unsigned j = 0; j < colB; j += 2) {
+      const T_in *__restrict pA1 = pA + (z * colA + 0) * MMUL::size_A;
+      const T_in *__restrict pA2 = pA + ((z + 1) * colA + 0) * MMUL::size_A;
+      const T_in *__restrict pB1 = pB + (j * colA) * MMUL::size_B;
+      const T_in *__restrict pB2 = pB + ((j + 1) * colA) * MMUL::size_B;
+
+      aie::vector<T_in, MMUL::size_A> A0 = aie::load_v<MMUL::size_A>(pA1);
+      pA1 += MMUL::size_A;
+      aie::vector<T_in, MMUL::size_A> A1 = aie::load_v<MMUL::size_A>(pA2);
+      pA2 += MMUL::size_A;
+      aie::vector<T_in, MMUL::size_B> B0 =
+          aie::transpose(aie::load_v<MMUL::size_B>(pB1), t, s);
+      pB1 += MMUL::size_B;
+      aie::vector<T_in, MMUL::size_B> B1 =
+          aie::transpose(aie::load_v<MMUL::size_B>(pB2), t, s);
+      pB2 += MMUL::size_B;
+
+      // Load partial results from C buffer for accumulation in-place. The
+      // zero.cc function handles the zeroing of data when a new
+      // accumulation is needed (after the 'K' reduction dimension)
+      aie::vector<T_out, MMUL::size_C> acc_C00 = aie::load_v<MMUL::size_C>(pC1);
+      aie::vector<T_out, MMUL::size_C> acc_C01 =
+          aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C);
+      aie::vector<T_out, MMUL::size_C> acc_C10 = aie::load_v<MMUL::size_C>(pC2);
+      aie::vector<T_out, MMUL::size_C> acc_C11 =
+          aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C);
+
+      MMUL C00(acc_C00);
+      MMUL C01(acc_C01);
+      MMUL C10(acc_C10);
+      MMUL C11(acc_C11);
+
+      C00.mac(A0, B0);
+      C01.mac(A0, B1);
+      C10.mac(A1, B0);
+      C11.mac(A1, B1);
 
 #ifdef OPT_PERF_ENABLED
       AIE_LOOP_FLATTEN
 #endif
-      for (unsigned j = 0; j < colB; j += 2)
-        {
-          const T_in *__restrict pA1 = pA + (z * colA + 0) * MMUL::size_A;
-          const T_in *__restrict pA2 = pA + ((z + 1) * colA + 0) * MMUL::size_A;
-          const T_in *__restrict pB1 = pB + (j * colA) * MMUL::size_B;
-          const T_in *__restrict pB2 = pB + ((j + 1) * colA) * MMUL::size_B;
+      for (unsigned i = 1; i < colA; ++i) {
+        A0 = aie::load_v<MMUL::size_A>(pA1);
+        pA1 += MMUL::size_A;
+        A1 = aie::load_v<MMUL::size_A>(pA2);
+        pA2 += MMUL::size_A;
+        B0 = aie::transpose(aie::load_v<MMUL::size_B>(pB1), t, s);
+        pB1 += MMUL::size_B;
+        B1 = aie::transpose(aie::load_v<MMUL::size_B>(pB2), t, s);
+        pB2 += MMUL::size_B;
 
-          aie::vector<T_in, MMUL::size_A> A0 = aie::load_v<MMUL::size_A>(pA1);
-          pA1 += MMUL::size_A;
-          aie::vector<T_in, MMUL::size_A> A1 = aie::load_v<MMUL::size_A>(pA2);
-          pA2 += MMUL::size_A;
-          aie::vector<T_in, MMUL::size_B> B0 =
-              aie::transpose(aie::load_v<MMUL::size_B>(pB1), t, s);
-          pB1 += MMUL::size_B;
-          aie::vector<T_in, MMUL::size_B> B1 =
-              aie::transpose(aie::load_v<MMUL::size_B>(pB2), t, s);
-          pB2 += MMUL::size_B;
+        C00.mac(A0, B0);
+        C01.mac(A0, B1);
+        C10.mac(A1, B0);
+        C11.mac(A1, B1);
+      }
 
-          // Load partial results from C buffer for accumulation in-place. The
-          // zero.cc function handles the zeroing of data when a new
-          // accumulation is needed (after the 'K' reduction dimension)
-          aie::vector<T_out, MMUL::size_C> acc_C00 =
-              aie::load_v<MMUL::size_C>(pC1);
-          aie::vector<T_out, MMUL::size_C> acc_C01 =
-              aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C);
-          aie::vector<T_out, MMUL::size_C> acc_C10 =
-              aie::load_v<MMUL::size_C>(pC2);
-          aie::vector<T_out, MMUL::size_C> acc_C11 =
-              aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C);
-
-          MMUL C00(acc_C00);
-          MMUL C01(acc_C01);
-          MMUL C10(acc_C10);
-          MMUL C11(acc_C11);
-
-          C00.mac(A0, B0);
-          C01.mac(A0, B1);
-          C10.mac(A1, B0);
-          C11.mac(A1, B1);
-
-#ifdef OPT_PERF_ENABLED
-          AIE_LOOP_FLATTEN
-#endif
-          for (unsigned i = 1; i < colA; ++i)
-            {
-              A0 = aie::load_v<MMUL::size_A>(pA1);
-              pA1 += MMUL::size_A;
-              A1 = aie::load_v<MMUL::size_A>(pA2);
-              pA2 += MMUL::size_A;
-              B0 = aie::transpose(aie::load_v<MMUL::size_B>(pB1), t, s);
-              pB1 += MMUL::size_B;
-              B1 = aie::transpose(aie::load_v<MMUL::size_B>(pB2), t, s);
-              pB2 += MMUL::size_B;
-
-              C00.mac(A0, B0);
-              C01.mac(A0, B1);
-              C10.mac(A1, B0);
-              C11.mac(A1, B1);
-            }
-
-          // TODO make shift right here to keep most significat bits
-          // when lowering the output
-          // example below shows how to shift right 10 bits
-          // #define SHIFT 10
-          // aie::store_v(pC1, C00.template to_vector<T_out>(SHIFT));
-          aie::store_v(pC1, C00.template to_vector<T_out>());
-          pC1 += MMUL::size_C;
-          aie::store_v(pC1, C01.template to_vector<T_out>());
-          pC1 += MMUL::size_C;
-          aie::store_v(pC2, C10.template to_vector<T_out>());
-          pC2 += MMUL::size_C;
-          aie::store_v(pC2, C11.template to_vector<T_out>());
-          pC2 += MMUL::size_C;
-        }
+      // TODO make shift right here to keep most significat bits
+      // when lowering the output
+      // example below shows how to shift right 10 bits
+      // #define SHIFT 10
+      // aie::store_v(pC1, C00.template to_vector<T_out>(SHIFT));
+      aie::store_v(pC1, C00.template to_vector<T_out>());
+      pC1 += MMUL::size_C;
+      aie::store_v(pC1, C01.template to_vector<T_out>());
+      pC1 += MMUL::size_C;
+      aie::store_v(pC2, C10.template to_vector<T_out>());
+      pC2 += MMUL::size_C;
+      aie::store_v(pC2, C11.template to_vector<T_out>());
+      pC2 += MMUL::size_C;
     }
+  }
 
   event1();
 }
