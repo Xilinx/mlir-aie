@@ -15,8 +15,8 @@
 #include <stdlib.h>
 #include <type_traits>
 
-#include <aie_api/aie.hpp>
 #include "../optimization_pragmas.h"
+#include <aie_api/aie.hpp>
 
 template <typename T_in, typename T_out, const int N>
 void eltwise_add(T_in *a, T_in *b, T_out *c) {
@@ -37,14 +37,14 @@ void eltwise_vadd(T_in *a, T_in *b, T_out *c) {
   AIE_PREPARE_FOR_PIPELINE
   AIE_LOOP_MIN_ITERATION_COUNT(16)
   for (int i = 0; i < F; i++) {
-      aie::vector<T_in, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
-      pA1 += vec_factor;
-      aie::vector<T_in, vec_factor> B0 = aie::load_v<vec_factor>(pB1);
-      pB1 += vec_factor;
-      aie::vector<T_out, vec_factor> cout = aie::add(A0, B0);
-      aie::store_v(pC1, cout);
-      pC1 += vec_factor;
-    }
+    aie::vector<T_in, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
+    pA1 += vec_factor;
+    aie::vector<T_in, vec_factor> B0 = aie::load_v<vec_factor>(pB1);
+    pB1 += vec_factor;
+    aie::vector<T_out, vec_factor> cout = aie::add(A0, B0);
+    aie::store_v(pC1, cout);
+    pC1 += vec_factor;
+  }
   event1();
 }
 

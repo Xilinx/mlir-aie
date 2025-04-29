@@ -17,8 +17,8 @@
 #define REL_WRITE 0
 #define REL_READ 1
 
-#include <aie_api/aie.hpp>
 #include "../optimization_pragmas.h"
+#include <aie_api/aie.hpp>
 
 template <typename T, int N>
 void bitwiseOR_aie_scalar(const T *in1, const T *in2, T *out,
@@ -34,19 +34,18 @@ void bitwiseOR_aie(const T *src1, const T *src2, T *dst, const int32_t width,
 
   AIE_PREPARE_FOR_PIPELINE
   AIE_LOOP_MIN_ITERATION_COUNT(14) // loop_range(14) - loop : 1 cycle
-  for (int j = 0; j < width * height; j += N)
-    {
-      ::aie::vector<T, N> in1 = ::aie::load_v<N>(src1);
-      src1 += N;
-      ::aie::vector<T, N> in2 = ::aie::load_v<N>(src2);
-      src2 += N;
-      ::aie::vector<T, N> out;
+  for (int j = 0; j < width * height; j += N) {
+    ::aie::vector<T, N> in1 = ::aie::load_v<N>(src1);
+    src1 += N;
+    ::aie::vector<T, N> in2 = ::aie::load_v<N>(src2);
+    src2 += N;
+    ::aie::vector<T, N> out;
 
-      out = ::aie::bit_or(in1, in2);
+    out = ::aie::bit_or(in1, in2);
 
-      ::aie::store_v(dst, out);
-      dst += N;
-    }
+    ::aie::store_v(dst, out);
+    dst += N;
+  }
 }
 
 extern "C" {
