@@ -42,6 +42,7 @@ def shim_three_in(module):
     module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
     return module
 
+
 # CHECK-LABEL: TEST: shim_two_in_one_out
 # CHECK: %[[shim_noc_tile_0_0:.+]] = aie.tile
 # CHECK-NOT: %[[shim_noc_tile_1_0:.+]] = aie.tile
