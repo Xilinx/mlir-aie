@@ -10,6 +10,7 @@ from util import construct_and_print_module
 
 # RUN: %python %s | FileCheck %s
 
+
 # CHECK-LABEL: TEST: shim_three_in
 # CHECK: %[[shim_noc_tile_0_0:.+]] = aie.tile
 # CHECK: %[[shim_noc_tile_1_0:.+]] = aie.tile
