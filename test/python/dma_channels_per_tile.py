@@ -92,8 +92,6 @@ def mem_eight_in_three_out(module):
         np.prod((np_ndarray_type_get_shape(n_ty))) * i for i in range(n_join_inputs)
     ]
 
-    
-
     of_out_A = ObjectFifo(N_ty, name="out_A")
     of_joins = of_out_A.prod().join(
         of_offsets,
