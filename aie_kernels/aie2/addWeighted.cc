@@ -20,6 +20,7 @@
 
 // #include <imgproc/xf_addweighted_aie.hpp> // NOTE: use of float2fix not
 //  supported in aie2
+#include "../optimization_pragmas.h"
 #include <aie_api/aie.hpp>
 
 const int32_t SRS_SHIFT = 14;

@@ -1195,176 +1195,179 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
       for (int ic = 0; ic < (input_channels / 8); ic++) {
         AIE_PREPARE_FOR_PIPELINE
         AIE_LOOP_MIN_ITERATION_COUNT(2) // 1 to 3
-        for (int i = kernel_height_start; i < kernel_height_end; i++)
+        for (int i = kernel_height_start; i < kernel_height_end; i++) {
           AIE_LOOP_RANGE(3, 3) // TODO Assume 3x3
-        AIE_LOOP_UNROLL_FULL
-        for (int j = 0; j < kernel_width; j++) {
-          // New weight every kernel_width
-          aie::vector<int8, 64> wtsVec = aie::load_v<64>(wtsLine[i]);
-          wtsLine[i] += 64;
-          // auto prev = prev_a[i].extract<32>(1);                  //
-          // prev = x0..x3(ci0..ci7)
-          auto prev = aie::load_v<32>((line[i] - 32));
-          auto curr = aie::load_v<32>((line[i]));
-          line[i] += 32;
-          auto next = aie::load_v<32>((line[i]));
-          // line[i] += 32;
-
-          auto tprev = aie::concat(zero32, prev);
-          auto tmp1 = aie::concat(curr, next);
-
-          // j = 0, 1, 2
-          int jr0 = (2 - j) >> 1;          // 1, 0, 0
-          int j0 = (j >> 1);               // 0, 0, 1
-          int j1 = j + 1;                  // 1, 2, 3
-          int j2 = j + 3 - ((j >> 1) * 4); // 3, 4, 1
-          int lineIncr = (j >> 1) * 32;    // 0, 0, 32
-
-          tmp1 = aie::shuffle_up_fill(tmp1, tprev,
-                                      jr0 * 8); // curr      = x3..x6(ci0..ci7)
-
-          tmp1 = aie::shuffle_down(tmp1,
-                                   j0 * 8); // curr      = x4..x7(ci0..ci7) to
-
           AIE_LOOP_UNROLL_FULL
-          for (int x = 0; x < iw_32_rem; x++) // remainder input width <
-                                              // 8 chess_unroll_loop()
-          {
-            // auto tmp1 = aie::concat(curr, next);
-            // auto tprev = aie::concat(zero32, prev);
-            // auto tmp2 = aie::shuffle_up_fill(
-            //     tmp1, tprev, 8); // curr      = x3..x6(ci0..ci7)
-            // auto tmp3 = aie::shuffle_down(
-            //     tmp2,
-            //     j * 8); // curr      = x3..x6(ci0..ci7) to
-            //     x5..x8(ci0..ci7)ss
-
-            // prev = curr;
-            // curr = next;
-            // next = aie::load_v<32>(line[i]);
-            // line[i] += 32; // next_prev = x4..x7(ci0..ci7)
-
-            // acc_tmp[x].mac(tmp3.extract<32>(0), wtsVec);
-            acc_tmp[x].mac(tmp1.extract<32>(0), wtsVec);
-
-            tmp1 = aie::shuffle_down(tmp1, j1 * 8);
-            tmp1.insert(1, aie::load_v<32>(line[i] + lineIncr));
+          for (int j = 0; j < kernel_width; j++) {
+            // New weight every kernel_width
+            aie::vector<int8, 64> wtsVec = aie::load_v<64>(wtsLine[i]);
+            wtsLine[i] += 64;
+            // auto prev = prev_a[i].extract<32>(1);                  //
+            // prev = x0..x3(ci0..ci7)
+            auto prev = aie::load_v<32>((line[i] - 32));
+            auto curr = aie::load_v<32>((line[i]));
             line[i] += 32;
-            tmp1 = aie::shuffle_down(tmp1, j2 * 8);
-          }
-          line[i] -=
-              (iw_32_rem + 1) * 32; // Reset line buffer ptr to beginning of
-          // (iw_32_rem + 2) * 32; // Reset line buffer ptr to beginning
-          // of line (after first 4)
-        } //  for(int j=0; j<kernel_width;j++)
-        wtsLine[i] += ((kernel_height - 1) * kernel_width *
-                       64);  // Move to next ic/8 position
-        line[i] += (iw * 8); // Increment to next ic/8 position (reset at
-                             // end of outermost loop)
-      } // for(int i=kernel_height_start; i<kernel_height_end; i++)
-      // For next 8 input channels, line buffer and weights are
-      // automatically incremented to the right offset
-    } // for(int ic=0; ic<(input_channels/8); ic++)
-    // Write output from accumulator
-    for (int x = 0; x < iw_32_rem; x++) {
-      aie::vector<uint8, 32> o1 = acc_tmp[x].to_vector<uint8>(scale);
-      aie::store_v(output, o1);
-      output += 32;
-      acc_tmp[x] = aie::zeros<acc32, 32>(); // Reset accumulators
-    }
-    // Reset line ptr to beginning of input
-    AIE_PREPARE_FOR_PIPELINE
-    AIE_LOOP_MIN_ITERATION_COUNT(2)
-    for (int i = kernel_height_start; i < kernel_height_end; i++) {
-      line[i] -= (input_channels / 8) * (iw * 8);
-    }
-    // Output ptr should be in the right place (next oc/8)
-    output += (iw * 8) - (iw_32_rem * 32); // 32 = 4*8, shift to next oc/8
-  } // for(int oc=0; oc<(output_channels/8); oc++)
-  // Reset weights and line buffers for right side
-  AIE_PREPARE_FOR_PIPELINE
-  AIE_LOOP_MIN_ITERATION_COUNT(2)
-  for (int i = kernel_height_start; i < kernel_height_end; i++) {
-    wtsLine[i] -= (output_channels / 8) * (input_channels / 8) * kernel_width *
-                  kernel_height * 64; // kernel_width*kernel_height*8*8
-    line[i] +=
-        iw_32_rem * 32; // shift to beginnign of right data, iw_32_rem*4*8
-  }
-  // shift back so we're aligned with beginning of first oc/8 (rightmost 4
-  // data)
-  output -= (output_channels / 8) * (iw * 8) - (iw_32_rem * 32);
+            auto next = aie::load_v<32>((line[i]));
+            // line[i] += 32;
 
-} // if (iw_32_rem > 0) {
+            auto tprev = aie::concat(zero32, prev);
+            auto tmp1 = aie::concat(curr, next);
 
-// --------------------------------------------------------------------
-// Right patterns
-// --------------------------------------------------------------------
-//
-// --------------------------------------------------------------------
-{
-  MMUL4x8x8 acc1 = aie::zeros<acc32, 32>();
-  for (int oc = 0; oc < (output_channels / 8); oc++) {
-    AIE_LOOP_MIN_ITERATION_COUNT9(2)
-    for (int ic = 0; ic < (input_channels / 8); ic++) {
+            // j = 0, 1, 2
+            int jr0 = (2 - j) >> 1;          // 1, 0, 0
+            int j0 = (j >> 1);               // 0, 0, 1
+            int j1 = j + 1;                  // 1, 2, 3
+            int j2 = j + 3 - ((j >> 1) * 4); // 3, 4, 1
+            int lineIncr = (j >> 1) * 32;    // 0, 0, 32
+
+            tmp1 =
+                aie::shuffle_up_fill(tmp1, tprev,
+                                     jr0 * 8); // curr      = x3..x6(ci0..ci7)
+
+            tmp1 = aie::shuffle_down(tmp1,
+                                     j0 * 8); // curr      = x4..x7(ci0..ci7) to
+
+            AIE_LOOP_UNROLL_FULL
+            for (int x = 0; x < iw_32_rem; x++) // remainder input width <
+                                                // 8 chess_unroll_loop()
+            {
+              // auto tmp1 = aie::concat(curr, next);
+              // auto tprev = aie::concat(zero32, prev);
+              // auto tmp2 = aie::shuffle_up_fill(
+              //     tmp1, tprev, 8); // curr      = x3..x6(ci0..ci7)
+              // auto tmp3 = aie::shuffle_down(
+              //     tmp2,
+              //     j * 8); // curr      = x3..x6(ci0..ci7) to
+              //     x5..x8(ci0..ci7)ss
+
+              // prev = curr;
+              // curr = next;
+              // next = aie::load_v<32>(line[i]);
+              // line[i] += 32; // next_prev = x4..x7(ci0..ci7)
+
+              // acc_tmp[x].mac(tmp3.extract<32>(0), wtsVec);
+              acc_tmp[x].mac(tmp1.extract<32>(0), wtsVec);
+
+              tmp1 = aie::shuffle_down(tmp1, j1 * 8);
+              tmp1.insert(1, aie::load_v<32>(line[i] + lineIncr));
+              line[i] += 32;
+              tmp1 = aie::shuffle_down(tmp1, j2 * 8);
+            }
+            line[i] -=
+                (iw_32_rem + 1) * 32; // Reset line buffer ptr to beginning of
+            // (iw_32_rem + 2) * 32; // Reset line buffer ptr to beginning
+            // of line (after first 4)
+          } //  for(int j=0; j<kernel_width;j++)
+          wtsLine[i] += ((kernel_height - 1) * kernel_width *
+                         64);  // Move to next ic/8 position
+          line[i] += (iw * 8); // Increment to next ic/8 position (reset at
+                               // end of outermost loop)
+        } // for(int i=kernel_height_start; i<kernel_height_end; i++)
+        // For next 8 input channels, line buffer and weights are
+        // automatically incremented to the right offset
+      } // for(int ic=0; ic<(input_channels/8); ic++)
+      // Write output from accumulator
+      for (int x = 0; x < iw_32_rem; x++) {
+        aie::vector<uint8, 32> o1 = acc_tmp[x].to_vector<uint8>(scale);
+        aie::store_v(output, o1);
+        output += 32;
+        acc_tmp[x] = aie::zeros<acc32, 32>(); // Reset accumulators
+      }
+      // Reset line ptr to beginning of input
       AIE_PREPARE_FOR_PIPELINE
       AIE_LOOP_MIN_ITERATION_COUNT(2)
-      // AIE_LOOP_UNROLL_FULL
       for (int i = kernel_height_start; i < kernel_height_end; i++) {
-        // Load next set of data for input A (matrix row), need stride
-        // info or line1/2/3 pointer
-        // TODO, did not store previous so need to load it again
-        // in_a   = aie::load_v<64>(line[i]-32);
-        auto tmp_a1 =
-            aie::load_v<32>(line[i] - 32);      // act 24..27 (ic0..7 for each)
-        auto tmp_a2 = aie::load_v<32>(line[i]); // act 28..31 (ic0..7 for each)
-        auto in_a = aie::concat(tmp_a1, tmp_a2);
-
-        aie::vector<uint8, 64> tmp_a;
-#ifdef BORDER_REPLICATE
-        tmp_a2 = aie::shuffle_down(tmp_a2, 24);
-        tmp_a.insert<32>(0, tmp_a2);
-#else
-        tmp_a = aie::zeros<uint8, 64>();
-#endif
-        // shift by 32-8 (fill 32 then shift up by 8)
-        in_a = aie::shuffle_down_fill(in_a, tmp_a, 24); // act 27..31 - - -
-
-        AIE_LOOP_RANGE(3, 3)
-        AIE_LOOP_UNROLL_FULL
-        for (int j = 0; j < kernel_width; j++) {
-          auto in_b = aie::load_v<64>(wtsLine[i]);
-          wtsLine[i] += 64; // wts ic0..7(oc0..7)
-          acc1.mac(in_a.extract<32>(0), in_b);
-          // Shift input A by 1 row (1x8) which is by 1 (the 8 is the
-          // ic=8)
-          in_a = aie::shuffle_down(in_a, 8);
-        }
-        wtsLine[i] += ((kernel_height - 1) * kernel_width *
-                       64); // Move to next ic/8 position
-        // No need to load next set of weights because next row of weights
-        // immediately follows
-        line[i] += (iw * 8); // Increment to next ic/8 position (reset at
-                             // end of outermost loop)
-      } // for(int i=kernel_height_start; i<kernel_height_end; i++)
-
-    } // for(int ic=0; ic<(input_channels/8); ic++) {
-
-    // Write output 4 outputs, 8 channels
-    aie::vector<uint8, 32> o1 = acc1.to_vector<uint8>(scale);
-    aie::store_v(output, o1);
-    output += iw * 8; // Shift to next oc/8
-
-    acc1 = aie::zeros<acc32, 32>();
-
+        line[i] -= (input_channels / 8) * (iw * 8);
+      }
+      // Output ptr should be in the right place (next oc/8)
+      output += (iw * 8) - (iw_32_rem * 32); // 32 = 4*8, shift to next oc/8
+    } // for(int oc=0; oc<(output_channels/8); oc++)
+    // Reset weights and line buffers for right side
     AIE_PREPARE_FOR_PIPELINE
     AIE_LOOP_MIN_ITERATION_COUNT(2)
     for (int i = kernel_height_start; i < kernel_height_end; i++) {
-      line[i] -= (input_channels / 8) *
-                 (iw * 8); // shift back to beginning of this section
+      wtsLine[i] -= (output_channels / 8) * (input_channels / 8) *
+                    kernel_width * kernel_height *
+                    64; // kernel_width*kernel_height*8*8
+      line[i] +=
+          iw_32_rem * 32; // shift to beginnign of right data, iw_32_rem*4*8
     }
-  } // for(int oc=0; oc<(output_channels/8); oc++) {
-}
-event1();
+    // shift back so we're aligned with beginning of first oc/8 (rightmost 4
+    // data)
+    output -= (output_channels / 8) * (iw * 8) - (iw_32_rem * 32);
+
+  } // if (iw_32_rem > 0) {
+
+  // --------------------------------------------------------------------
+  // Right patterns
+  // --------------------------------------------------------------------
+  //
+  // --------------------------------------------------------------------
+  {
+    MMUL4x8x8 acc1 = aie::zeros<acc32, 32>();
+    for (int oc = 0; oc < (output_channels / 8); oc++) {
+      AIE_LOOP_MIN_ITERATION_COUNT(2)
+      for (int ic = 0; ic < (input_channels / 8); ic++) {
+        AIE_PREPARE_FOR_PIPELINE
+        AIE_LOOP_MIN_ITERATION_COUNT(2)
+        // AIE_LOOP_UNROLL_FULL
+        for (int i = kernel_height_start; i < kernel_height_end; i++) {
+          // Load next set of data for input A (matrix row), need stride
+          // info or line1/2/3 pointer
+          // TODO, did not store previous so need to load it again
+          // in_a   = aie::load_v<64>(line[i]-32);
+          auto tmp_a1 =
+              aie::load_v<32>(line[i] - 32); // act 24..27 (ic0..7 for each)
+          auto tmp_a2 =
+              aie::load_v<32>(line[i]); // act 28..31 (ic0..7 for each)
+          auto in_a = aie::concat(tmp_a1, tmp_a2);
+
+          aie::vector<uint8, 64> tmp_a;
+#ifdef BORDER_REPLICATE
+          tmp_a2 = aie::shuffle_down(tmp_a2, 24);
+          tmp_a.insert<32>(0, tmp_a2);
+#else
+          tmp_a = aie::zeros<uint8, 64>();
+#endif
+          // shift by 32-8 (fill 32 then shift up by 8)
+          in_a = aie::shuffle_down_fill(in_a, tmp_a, 24); // act 27..31 - - -
+
+          AIE_LOOP_RANGE(3, 3)
+          AIE_LOOP_UNROLL_FULL
+          for (int j = 0; j < kernel_width; j++) {
+            auto in_b = aie::load_v<64>(wtsLine[i]);
+            wtsLine[i] += 64; // wts ic0..7(oc0..7)
+            acc1.mac(in_a.extract<32>(0), in_b);
+            // Shift input A by 1 row (1x8) which is by 1 (the 8 is the
+            // ic=8)
+            in_a = aie::shuffle_down(in_a, 8);
+          }
+          wtsLine[i] += ((kernel_height - 1) * kernel_width *
+                         64); // Move to next ic/8 position
+          // No need to load next set of weights because next row of weights
+          // immediately follows
+          line[i] += (iw * 8); // Increment to next ic/8 position (reset at
+                               // end of outermost loop)
+        } // for(int i=kernel_height_start; i<kernel_height_end; i++)
+
+      } // for(int ic=0; ic<(input_channels/8); ic++) {
+
+      // Write output 4 outputs, 8 channels
+      aie::vector<uint8, 32> o1 = acc1.to_vector<uint8>(scale);
+      aie::store_v(output, o1);
+      output += iw * 8; // Shift to next oc/8
+
+      acc1 = aie::zeros<acc32, 32>();
+
+      AIE_PREPARE_FOR_PIPELINE
+      AIE_LOOP_MIN_ITERATION_COUNT(2)
+      for (int i = kernel_height_start; i < kernel_height_end; i++) {
+        line[i] -= (input_channels / 8) *
+                   (iw * 8); // shift back to beginning of this section
+      }
+    } // for(int oc=0; oc<(output_channels/8); oc++) {
+  }
+  event1();
 }
 
 #endif // UINT8_ACT
