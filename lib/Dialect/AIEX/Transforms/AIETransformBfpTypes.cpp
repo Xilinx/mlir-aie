@@ -62,11 +62,10 @@ public:
         return nullptr;
       }
 
-      return mlir::IntegerType::get(
-          blockType.getContext(),
-          bfpType->blockSize *
-                  (bfpType->mantissaBits + bfpType->subtileShiftBits) +
-              bfpType->exponentBits);
+      return mlir::IntegerType::get(blockType.getContext(),
+                                    bfpType->blockSize * bfpType->mantissaBits +
+                                        bfpType->subtileShiftBits +
+                                        bfpType->exponentBits);
     });
 
     // Add a conversion for MemRefType
