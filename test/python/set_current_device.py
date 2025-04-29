@@ -4,8 +4,8 @@
 #
 # (c) Copyright 2025 AMD Inc.
 
-# RUN: %run_on_npu %pytest %s
-# RUN: %run_on_2npu %pytest %s
+# RUN: %run_on_npu1% %pytest %s
+# RUN: %run_on_npu2% %pytest %s
 
 import aie.iron as iron
 from aie.iron.device import NPU2

@@ -58,8 +58,7 @@ config.substitutions.append(
 config.substitutions.append(
     (
         "%test_utils_flags",
-        "-lboost_program_options -lboost_filesystem "
-        + f"-I{test_lib_path}/include -L{test_lib_path}/lib -ltest_utils",
+        f"-I{test_lib_path}/include -L{test_lib_path}/lib -ltest_utils",
     )
 )
 
@@ -133,8 +132,8 @@ else:
     config.substitutions.append(("%link_against_hsa%", ""))
     config.substitutions.append(("%HSA_DIR%", ""))
 
-run_on_npu = "echo"
-run_on_2npu = "echo"
+run_on_npu1 = "echo"
+run_on_npu2 = "echo"
 xrt_flags = ""
 
 if config.xrt_lib_dir:
@@ -166,16 +165,17 @@ if config.xrt_lib_dir:
                 model = str(m.group(4))
             print(f"\tmodel: '{model}'")
             config.available_features.add("ryzen_ai")
+            run_on_npu = (
+                f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
+            )
             if model in ["npu1", "Phoenix"]:
-                run_on_npu = (
-                    f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
-                )
-                print("Running tests on NPU1 with command line: ", run_on_npu)
-            elif model in ["npu4", "Strix"]:
-                run_on_2npu = (
-                    f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
-                )
-                print("Running tests on NPU4 with command line: ", run_on_2npu)
+                run_on_npu1 = run_on_npu
+                config.available_features.add("ryzen_ai_npu1")
+                print("Running tests on NPU with command line: ", run_on_npu1)
+            elif model in ["npu4", "Strix", "npu5", "Strix Halo", "npu6", "Krackan"]:
+                run_on_npu2 = run_on_npu
+                config.available_features.add("ryzen_ai_npu2")
+                print("Running tests on NPU with command line: ", run_on_npu2)
             else:
                 print("WARNING: xrt-smi reported unknown NPU model '{model}'.")
             break
@@ -185,8 +185,8 @@ if config.xrt_lib_dir:
 else:
     print("xrt not found")
 
-config.substitutions.append(("%run_on_npu", run_on_npu))
-config.substitutions.append(("%run_on_2npu", run_on_2npu))
+config.substitutions.append(("%run_on_npu1%", run_on_npu1))
+config.substitutions.append(("%run_on_npu2%", run_on_npu2))
 config.substitutions.append(("%xrt_flags", xrt_flags))
 
 VitisSysrootFlag = ""

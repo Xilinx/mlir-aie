@@ -16,7 +16,7 @@ of0 = object_fifo("objfifo0", A, B, 2, np.ndarray[(256,), np.dtype[np.int32]])
 of0.set_repeat_count(2) # the data in each object is sent to the consumer C twice
 ```
 
-This repetition is achieved using the Data Movement Accelerator (DMA) of the Object FIFO's producer tile. In particular, the DMA buffer descriptors rely on synchronization logic to ensure data is handled at the correct time, to avoid data corruption. To program the repeat pattern the synchronization logic associated to the buffer descriptors of the producer tile is generated in such a way as to send additional copies of the data. These data copies do not lead to additional memory being allocated as they are made at the DMA level, as is showcased by the red arrow in the figure below:
+This repetition is achieved using the Direct Memory Access (DMA) of the Object FIFO's producer tile. In particular, the DMA buffer descriptors rely on synchronization logic to ensure data is handled at the correct time, to avoid data corruption. To program the repeat pattern the synchronization logic associated to the buffer descriptors of the producer tile is generated in such a way as to send additional copies of the data. These data copies do not lead to additional memory being allocated as they are made at the DMA level, as is showcased by the red arrow in the figure below:
 
 <img src="./../../../assets/RepeatSharedTile.png" height="300">
 
@@ -42,7 +42,7 @@ of1.set_repeat_count(2) # the data in each object is sent to the consumer C twic
 
 <img src="./../../../assets/Repeat.png" height="150">
 
-In this case the repetition is achieved using the Data Movement Accelerator (DMA) of the Object FIFO link's shared tile.
+In this case the repetition is achieved using the Direct Memory Access (DMA) of the Object FIFO link's shared tile.
 
 In particular, the repeat functionality can be used in conjunction with the distribute pattern introduced in the previous section. Currently, the repeat value specified for each distribute destination must be the same to ensure functional correctness. Additionally, the syntax currently doesn't support both output Object FIFOs with repeat and without at the same time, in the same distribute pattern. The code below shows how the two output Object FIFOs of a distribute pattern can be set to each repeat three times:
 ```python
