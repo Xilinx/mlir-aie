@@ -13,7 +13,6 @@
 #include <stdlib.h>
 #include <type_traits>
 
-#include "../optimization_pragmas.h"
 #include <aie_api/aie.hpp>
 
 // Scalar scale template
@@ -29,18 +28,16 @@ void scale_scalar(T *a, T *c, T factor, const int32_t N) {
 // Vectorized scale template (general case)
 // Assume N is multiple of 16
 template <typename T>
-void scale_vectorized(T *__restrict a, T *__restrict c, int32_t factor,
-                      const int32_t N) {
+void scale_vectorized(T *a, T *c, int32_t factor, const int32_t N) {
   event0();
   constexpr int vec_factor = 32;
   T *__restrict pA1 = a;
   T *__restrict pC1 = c;
   const int F = N / vec_factor;
   T fac = factor;
-
-  AIE_LOOP_MIN_ITERATION_COUNT(16)
   for (int i = 0; i < F; i++)
-    chess_prepare_for_pipelining // compiler pragma
+    chess_prepare_for_pipelining     // compiler pragma
+    chess_loop_range(16, )           // compiler pragma
     {
       aie::vector<T, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
       pA1 += vec_factor;
@@ -54,17 +51,16 @@ void scale_vectorized(T *__restrict a, T *__restrict c, int32_t factor,
 // Vectorized scale template (int32_t case, acc64 used)
 // Assume N is multiple of 16
 template <>
-void scale_vectorized<int32_t>(int32_t *__restrict a, int32_t *__restrict c,
-                               int32_t factor, const int32_t N) {
+void scale_vectorized<int32_t>(int32_t *a, int32_t *c, int32_t factor,
+                               const int32_t N) {
   event0();
   constexpr int vec_factor = 32;
   int32_t *__restrict pA1 = a;
   int32_t *__restrict pC1 = c;
   const int F = N / vec_factor;
-
-  AIE_LOOP_MIN_ITERATION_COUNT(16)
   for (int i = 0; i < F; i++)
-    chess_prepare_for_pipelining // compiler pragma
+    chess_prepare_for_pipelining     // compiler pragma
+    chess_loop_range(16, )           // compiler pragma
     {
       aie::vector<int32_t, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
       pA1 += vec_factor;
