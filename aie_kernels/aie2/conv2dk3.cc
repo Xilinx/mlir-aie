@@ -968,7 +968,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
     MMUL4x8x8 acc1 = aie::zeros<acc32, 32>();
 
     for (int oc = 0; oc < (output_channels / 8); oc++) {
-      AIE_LOOP_MIN_ITERTION_COUNT(2)
+      AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int ic = 0; ic < (input_channels / 8); ic++) {
         AIE_PREPARE_FOR_PIPELINE
         AIE_LOOP_MIN_ITERATION_COUNT(2)
