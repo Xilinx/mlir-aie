@@ -19,6 +19,7 @@
 
 // clang-format off
 #include <aie_api/aie.hpp>
+#include "../optimization_pragmas.h"
 #include "lut_inv_8b.h"
 // clang-format on
 
@@ -86,8 +87,9 @@ __attribute__((noinline)) void rgba2hue_aie(uint8_t *rgba_in, uint8_t *hue_out,
   ::aie::vector<int16_t, 32> fourEightFive =
       aie::broadcast<int16_t, 32>(341); // 340 + 1
 
+  AIE_PREPARE_FOR_PIPELINE
   for (int j = 0; (j < (width * height) / 32); j += 1)
-    chess_prepare_for_pipelining {
+    {
       xf_extract_rgb(rgba_in, r, g, b);
 
       // Get rgbMin and rgbMax

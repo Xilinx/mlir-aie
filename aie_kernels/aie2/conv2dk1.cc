@@ -16,6 +16,7 @@
 #include <stdlib.h>
 
 #include <aie_api/aie.hpp>
+#include "../optimization_pragmas.h"
 
 #define REL_WRITE 0
 #define REL_READ 1
@@ -159,8 +160,10 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, uint8_t *output,
 
     for (int oc = 0; oc < (output_channels / 8); oc++) {
       for (int iw_32c = 0; iw_32c < iw_32; iw_32c++) {
+        AIE_PREPARE_FOR_PIPELINE
+        AIE_LOOP_MIN_ITERATION_COUNT(2)     
         for (int ic = 0; ic < (input_channels / 8); ic++)
-          chess_prepare_for_pipelining chess_loop_range(2, ) {
+          {
             aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
             kernels += 64; // wts ic0..7(oc0..7)
 
@@ -197,8 +200,10 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, uint8_t *output,
     const int ics = input_channels;
 
     for (int oc = 0; oc < (ocs / 8); oc++) {
+      AIE_PREPARE_FOR_PIPELINE
+      AIE_LOOP_MIN_ITERATION_COUNT(2)     
       for (int ic = 0; ic < (ics / 8); ic++)
-        chess_prepare_for_pipelining chess_loop_range(2, ) {
+        {
           aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
           kernels += 64; // wts ic0..7(oc0..7)
 
@@ -281,8 +286,10 @@ void conv2dk1_ui8_vector(uint8_t *input, int8_t *kernels, uint8_t *output,
 
     for (int oc = 0; oc < (output_channels / 8); oc++) {
       for (int iw_32c = 0; iw_32c < iw_32; iw_32c++) {
+        AIE_PREPARE_FOR_PIPELINE
+        AIE_LOOP_MIN_ITERATION_COUNT(2)     
         for (int ic = 0; ic < (input_channels / 8); ic++)
-          chess_prepare_for_pipelining chess_loop_range(2, ) {
+          {
             aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
             kernels += 64; // wts ic0..7(oc0..7)
 
@@ -319,8 +326,10 @@ void conv2dk1_ui8_vector(uint8_t *input, int8_t *kernels, uint8_t *output,
     const int ics = input_channels;
 
     for (int oc = 0; oc < (ocs / 8); oc++) {
+      AIE_PREPARE_FOR_PIPELINE
+      AIE_LOOP_MIN_ITERATION_COUNT(2)     
       for (int ic = 0; ic < (ics / 8); ic++)
-        chess_prepare_for_pipelining chess_loop_range(2, ) {
+        {
           aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
           kernels += 64; // wts ic0..7(oc0..7)
 

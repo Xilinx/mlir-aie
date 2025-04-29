@@ -19,6 +19,7 @@
 #define REL_READ 1
 
 #include <aie_api/aie.hpp>
+#include "../optimization_pragmas.h"
 
 #include "zero.cc"
 
@@ -73,9 +74,9 @@ void matvec_vectorized(T_in *__restrict a, T_in *__restrict b,
     aie::vector<T_in, 8> b_vec = aie::load_v<8>(b_ptr);
     T_out *__restrict c_ptr = c; // reset to the first row of C output on
                                  // each outer loop tieration
-
+    AIE_LOOP_MIN_ITERATION_COUNT(m/r)
     for (int row = 0; row < m; row += r)
-      chess_loop_range(m / r, ) {
+      {
         aie::accum<T_acc, r> c_acc_in;
         c_acc_in.from_vector(aie::load_v<r>(c_ptr));
 

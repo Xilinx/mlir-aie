@@ -16,6 +16,7 @@
 #include <stdlib.h>
 
 #include <aie_api/aie.hpp>
+#include "../optimization_pragmas.h"
 
 #define REL_WRITE 0
 #define REL_READ 1
@@ -129,8 +130,10 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 
     for (int oc = 0; oc < (output_channels / CHANNEL_FACTOR); oc++) {
       for (int iw_partialc = 0; iw_partialc < iw_partial; iw_partialc++) {
+        AIE_PREPARE_FOR_PIPELINE
+        AIE_LOOP_MIN_ITERATION_COUNT(2)
         for (int ic = 0; ic < (input_channels / CHANNEL_FACTOR); ic++)
-          chess_prepare_for_pipelining chess_loop_range(2, ) {
+          {
             aie::vector<int8, MMUL_KN> in_b = aie::load_v<MMUL_KN>(kernels);
             kernels += MMUL_KN; // wts ic0..7(oc0..7)
 
@@ -171,8 +174,10 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
     const int ics = input_channels;
 
     for (int oc = 0; oc < (ocs / CHANNEL_FACTOR); oc++) {
+      AIE_PREPARE_FOR_PIPELINE
+      AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int ic = 0; ic < (ics / CHANNEL_FACTOR); ic++)
-        chess_prepare_for_pipelining chess_loop_range(2, ) {
+        {
           aie::vector<int8, MMUL_KN> in_b = aie::load_v<MMUL_KN>(kernels);
           kernels += MMUL_KN; // wts ic0..7(oc0..7)
 

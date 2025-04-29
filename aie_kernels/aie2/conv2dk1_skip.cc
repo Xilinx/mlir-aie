@@ -19,6 +19,7 @@
 #define REL_READ 1
 
 #include <aie_api/aie.hpp>
+#include "../optimization_pragmas.h"
 
 #ifdef SCALAR
 
@@ -266,8 +267,10 @@ void conv2dk1_skip_i8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
         for (int i = 0; i < NUM_ACC; i++) {
           acc_tmp[i] = aie::zeros<acc32, 32>();
         }
+        AIE_PREPARE_FOR_PIPELINE
+        AIE_LOOP_MIN_ITERATION_COUNT(2)     
         for (int ic = 0; ic < (input_channels / 16); ic++)
-          chess_prepare_for_pipelining chess_loop_range(2, ) {
+          {
             aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
             kernels += 64; // wts ic0..7(oc0..7)
 
@@ -281,8 +284,10 @@ void conv2dk1_skip_i8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
                 (iw * 8) -
                 256; // Move to next ic/8 position. 256 = 32 input * 8 ic
           }
+        AIE_PREPARE_FOR_PIPELINE
+        AIE_LOOP_MIN_ITERATION_COUNT(2)     
         for (int ic = 0; ic < (input_channels / 16); ic++)
-          chess_prepare_for_pipelining chess_loop_range(2, ) {
+          {
             aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
             kernels += 64; // wts ic0..7(oc0..7)
 
@@ -510,8 +515,10 @@ void conv2dk1_skip_ui8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
         for (int i = 0; i < NUM_ACC; i++) {
           acc_tmp[i] = aie::zeros<acc32, 32>();
         }
+        AIE_PREPARE_FOR_PIPELINE
+        AIE_LOOP_MIN_ITERATION_COUNT(2)     
         for (int ic = 0; ic < (input_channels / 16); ic++)
-          chess_prepare_for_pipelining chess_loop_range(2, ) {
+          {
             aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
             kernels += 64; // wts ic0..7(oc0..7)
 
@@ -525,8 +532,10 @@ void conv2dk1_skip_ui8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
                 (iw * 8) -
                 256; // Move to next ic/8 position. 256 = 32 input * 8 ic
           }
+        AIE_PREPARE_FOR_PIPELINE
+        AIE_LOOP_MIN_ITERATION_COUNT(2)     
         for (int ic = 0; ic < (input_channels / 16); ic++)
-          chess_prepare_for_pipelining chess_loop_range(2, ) {
+          {
             aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
             kernels += 64; // wts ic0..7(oc0..7)
 

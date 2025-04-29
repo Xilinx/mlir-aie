@@ -19,6 +19,7 @@
 #define REL_READ 1
 
 #include <aie_api/aie.hpp>
+#include "../optimization_pragmas.h"
 
 #include "zero.cc"
 
@@ -77,15 +78,17 @@ matmul_vectorized_2x2_mmul_b_col_maj(const T_in *__restrict pA,
 
   event0();
 
+  AIE_PREPARE_FOR_PIPELINE
+  AIE_LOOP_MIN_ITERATION_COUNT(4)                                
   for (unsigned z = 0; z < rowA; z += 2)
-    chess_prepare_for_pipelining chess_loop_range(4, ) {
+    {
       T_out *__restrict pC1 = pC + (z * colB + 0) * MMUL::size_C;
       T_out *__restrict pC2 = pC + ((z + 1) * colB + 0) * MMUL::size_C;
 
-      for (unsigned j = 0; j < colB; j += 2)
 #ifdef OPT_PERF_ENABLED
-        chess_flatten_loop
+      AIE_LOOP_FLATTEN
 #endif
+      for (unsigned j = 0; j < colB; j += 2)
         {
           const T_in *__restrict pA1 = pA + (z * colA + 0) * MMUL::size_A;
           const T_in *__restrict pA2 = pA + ((z + 1) * colA + 0) * MMUL::size_A;
@@ -125,10 +128,10 @@ matmul_vectorized_2x2_mmul_b_col_maj(const T_in *__restrict pA,
           C10.mac(A1, B0);
           C11.mac(A1, B1);
 
-          for (unsigned i = 1; i < colA; ++i)
 #ifdef OPT_PERF_ENABLED
-            chess_flatten_loop
+          AIE_LOOP_FLATTEN
 #endif
+          for (unsigned i = 1; i < colA; ++i)
             {
               A0 = aie::load_v<MMUL::size_A>(pA1);
               pA1 += MMUL::size_A;

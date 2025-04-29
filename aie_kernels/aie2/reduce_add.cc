@@ -1,8 +1,20 @@
-#include <aie_api/aie.hpp>
+//===- reduce_add.cc --------------------------------------------*- C++ -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2023, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <type_traits>
+
+#include <aie_api/aie.hpp>
+#include "../optimization_pragmas.h"
 
 static void _reduce_add_scalar(int32_t *restrict in, int32_t *restrict out,
                                const int32_t input_size) {
@@ -23,8 +35,10 @@ static void _reduce_add_vector(int32_t *restrict in, int32_t *restrict out,
   const int32_t vector_size = 16;
   v16int32 after_vector;
   v16int32 running_total = zero;
+  AIE_PREPARE_FOR_PIPELINE
+  AIE_LOOP_MIN_ITERATION_COUNT(8)
   for (int32_t i = 0; i < input_size; i += vector_size)
-    chess_prepare_for_pipelining chess_loop_range(8, ) {
+    {
       v16int32 next = *(v16int32 *)(in + i);
       v16int32 test = add(running_total, next);
       running_total = test;

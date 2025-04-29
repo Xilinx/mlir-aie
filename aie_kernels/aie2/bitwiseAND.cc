@@ -18,6 +18,7 @@
 #define REL_READ 1
 
 #include <aie_api/aie.hpp>
+#include "../optimization_pragmas.h"
 
 template <typename T, int N>
 void bitwiseAND_aie_scalar(const T *in1, const T *in2, T *out,
@@ -31,9 +32,9 @@ template <typename T, int N>
 void bitwiseAND_aie(const T *src1, const T *src2, T *dst, const int32_t width,
                     const int32_t height) {
 
+  AIE_PREPARE_FOR_PIPELINE
+  AIE_LOOP_MIN_ITERATION_COUNT(14) // loop_range(14) - loop : 1 cycle
   for (int j = 0; j < width * height; j += N)
-    chess_prepare_for_pipelining chess_loop_range(
-        14, ) // loop_range(14) - loop : 1 cycle
     {
       ::aie::vector<T, N> in1 = ::aie::load_v<N>(src1);
       src1 += N;

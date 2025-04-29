@@ -1,11 +1,13 @@
 #include <lut_based_ops.h>
+#include "../optimization_pragmas.h"
 
 template <const int N>
 void exp_bf16_func(bfloat16 *restrict in, bfloat16 *restrict out) {
 
   int vec_size = 16;
-  for (int i = 0; i < N; i += vec_size)
-    chess_prepare_for_pipelining chess_loop_range(64, 64) {
+  AIE_PREPARE_FOR_PIPELINE
+  AIE_LOOP_MIN_RANGE(64,64)
+  for (int i = 0; i < N; i += vec_size) {
       v16bfloat16 vec_in = *(v16bfloat16 *)(in + i);
       v16accfloat acc_exp = getExpBf16(vec_in);
       v16bfloat16 bf16_exp = to_v16bfloat16(acc_exp);

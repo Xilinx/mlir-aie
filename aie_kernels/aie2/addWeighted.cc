@@ -55,9 +55,9 @@ void addweighted_aie(const T *src1, const T *src2, T *dst, const int32_t width,
     gamma_coeff[i] = gamma;
   }
   gamma_acc.template from_vector(gamma_coeff, 0);
+  AIE_PREPARE_FOR_PIPELINE
+  AIE_LOOP_MIN_ITERATION_COUNT(14) // loop_range(14) - loop : 1 cycle
   for (int j = 0; j < width * height; j += N) // 16 samples per loop
-    chess_prepare_for_pipelining chess_loop_range(
-        14, ) // loop_range(14) - loop : 1 cycle
     {
       ::aie::vector<T, N> data_buf1 = ::aie::load_v<N>(src1);
       src1 += N;

@@ -16,6 +16,7 @@
 #include <stdlib.h>
 
 #include <aie_api/aie.hpp>
+#include "../optimization_pragmas.h"
 
 #define REL_WRITE 0
 #define REL_READ 1
@@ -513,9 +514,10 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
 
     for (int oc = 0; oc < (output_channels / 8); oc++) {
       for (int ic = 0; ic < (input_channels / 8); ic++) {
-        for (int i = kernel_height_start; i < kernel_height_end; i++)
-          chess_prepare_for_pipelining chess_loop_range(2, )
-          // chess_unroll_loop()
+        AIE_PREPARE_FOR_PIPELINE
+        AIE_LOOP_MIN_ITERATION_COUNT(2)     
+        // AIE_LOOP_UNROLL_FULL
+        for (int i = kernel_height_start; i < kernel_height_end; i++)          
           {
             // aie::vector<int8, 32> tmp_a1, tmp_a2;
             // Load input data [a0 a1 a2 a3 a4 a5 a6 a7] where each position has
@@ -547,8 +549,8 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
             // For kernel width, we load 64 weights (8 ics x 8 ocs) and multiply
             // it with the act buffer. acc[32] += in_a[32] * wts[64] We then
             // shift the buffer left by 1 data position (8 channels).
+            // AIE_LOOP_UNROLL_FULL        
             for (int j = 0; j < kernel_width; j++)
-            // chess_unroll_loop()
             {
               auto in_b = aie::load_v<64>(wtsLine[i]);
               wtsLine[i] += 64; // wts ic0..7(oc0..7)
@@ -632,8 +634,8 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
               auto next = aie::load_v<32>((line[i]));
               line[i] += 32;
 
+              // AIE_LOOP_UNROLL_FULL
               for (int x = 0; x < 8; x++)
-              // chess_unroll_loop()
               {
                 auto tmp1 = aie::concat(curr, next);
                 auto tprev = aie::concat(zero32, prev);
@@ -710,8 +712,8 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
             auto next = aie::load_v<32>((line[i]));
             line[i] += 32;
 
+            // AIE_LOOP_UNROLL_FULL
             for (int x = 0; x < iw_32_rem; x++) // remainder input width < 8
-                                                // chess_unroll_loop()
             {
               auto tmp1 = aie::concat(curr, next);
               auto tprev = aie::concat(zero32, prev);
@@ -777,9 +779,10 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
     MMUL4x8x8 acc1 = aie::zeros<acc32, 32>();
     for (int oc = 0; oc < (output_channels / 8); oc++) {
       for (int ic = 0; ic < (input_channels / 8); ic++) {
-        for (int i = kernel_height_start; i < kernel_height_end; i++)
-          chess_prepare_for_pipelining chess_loop_range(2, )
-          // chess_unroll_loop()
+        AIE_PREPARE_FOR_PIPELINE
+        AIE_LOOP_MIN_ITERATION_COUNT(2)     
+        // AIE_LOOP_UNROLL_FULL
+        for (int i = kernel_height_start; i < kernel_height_end; i++)          
           {
             // Load next set of data for input A (matrix row), need stride info
             // or line1/2/3 pointer
@@ -799,8 +802,8 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
             // shift by 32-8 (fill 32 then shift up by 8)
             in_a = aie::shuffle_down_fill(in_a, tmp_a, 24); // act 27..31 - - -
 
+            // AIE_LOOP_UNROLL_FULL
             for (int j = 0; j < kernel_width; j++)
-            // chess_unroll_loop()
             {
               auto in_b = aie::load_v<64>(wtsLine[i]);
               wtsLine[i] += 64; // wts ic0..7(oc0..7)
@@ -971,11 +974,13 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
     MMUL4x8x8 acc1 = aie::zeros<acc32, 32>();
 
     for (int oc = 0; oc < (output_channels / 8); oc++) {
+      AIE_LOOP_MIN_ITERTION_COUNT(2)
       for (int ic = 0; ic < (input_channels / 8); ic++)
-        chess_loop_range(2, ) {
+        {
+          AIE_PREPARE_FOR_PIPELINE
+          AIE_LOOP_MIN_ITERATION_COUNT(2)       
+          // AIE_LOOP_UNROLL_FULL
           for (int i = kernel_height_start; i < kernel_height_end; i++)
-            chess_prepare_for_pipelining chess_loop_range(2, )
-            // chess_unroll_loop()
             {
               // Load input data [a0 a1 a2 a3 a4 a5 a6 a7] where each position
               // has data for 8 channels
@@ -1007,9 +1012,11 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
               // For kernel width, we load 64 weights (8 ics x 8 ocs) and
               // multiply it with the act buffer. acc[32] += in_a[32] * wts[64]
               // We then shift the buffer left by 1 data position (8 channels).
+              AIE_PREPARE_FOR_PIPELINE
+              AIE_LOOP_RANGE(3,3) // TODO Assume 3x3
+              AIE_LOOP_UNROLL_FULL
               for (int j = 0; j < kernel_width; j++)
-                chess_loop_range(3, 3) // TODO Assume 3x3
-                    chess_unroll_loop() {
+                {
                   auto in_b = aie::load_v<64>(wtsLine[i]);
                   wtsLine[i] += 64; // wts ic0..7(oc0..7)
                   acc1.mac(in_a.extract<32>(0), in_b);
@@ -1027,8 +1034,9 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
             } // for(int i=kernel_height_start; i<kernel_height_end; i++)
 
           // Reset weights and input pointer for next ic/8
+          AIE_LOOP_MIN_ITERATION_COUNT(2)
           for (int i = kernel_height_start; i < kernel_height_end; i++)
-            chess_loop_range(2, ) {
+            {
               wtsLine[i] += kernel_width * kernel_height *
                             64; // kernel_width*kernel_height*8*8
               line[i] +=
@@ -1045,8 +1053,9 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
       acc1 = aie::zeros<acc32, 32>();
 
       // Shift back to beginning of input
+      AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int i = kernel_height_start; i < kernel_height_end; i++)
-        chess_loop_range(2, ) { line[i] -= (input_channels / 8) * (iw * 8); }
+        { line[i] -= (input_channels / 8) * (iw * 8); }
 
     } // for(int oc=0; oc<(output_channels/8); oc++) {
 
@@ -1054,8 +1063,9 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
     // Reset wts to beginning of wts
     // Reset line to beginning of input, then add 4*8
     output -= (output_channels / 8) * (iw * 8) - 32;
+    AIE_LOOP_MIN_ITERATION_COUNT(2)
     for (int i = kernel_height_start; i < kernel_height_end; i++)
-      chess_loop_range(2, ) {
+      {
         wtsLine[i] -= (output_channels / 8) * (input_channels / 8) *
                       kernel_width * kernel_height *
                       64; // kernel_width*kernel_height*8*8
@@ -1080,14 +1090,17 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
 
     for (int oc = 0; oc < (output_channels / 8); oc++) {
       for (int iw_32c = 0; iw_32c < iw_32; iw_32c++) {
+        AIE_LOOP_MIN_ITERATION_COUNT(2)
         for (int ic = 0; ic < (input_channels / 8); ic++)
-          chess_loop_range(2, ) {
+          {
+            AIE_PREPARE_FOR_PIPELINE
+            AIE_LOOP_MIN_ITERATION_COUNT(2)
             for (int i = kernel_height_start; i < kernel_height_end; i++)
-              chess_prepare_for_pipelining chess_loop_range(2, ) { // 1 to 3
-
+              { // 1 to 3
+                AIE_LOOP_RANGE(3,3) // TODO Assume 3x3
+                AIE_LOOP_UNROLL_FULL
                 for (int j = 0; j < kernel_width; j++)
-                  chess_loop_range(3, 3) // TODO Assume 3x3
-                      chess_unroll_loop() {
+                  {
                     aie::vector<int8, 64> wtsVec = aie::load_v<64>(wtsLine[i]);
                     wtsLine[i] += 64;
 
@@ -1114,8 +1127,10 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                     int j2 = j + 3 - (j >> 1) * 4; // 3, 4, 1
                     int lineIncr = (j >> 1) * 32;  // 0, 0, 32
 
+                    AIE_LOOP_RANGE(8,8)
+                    AIE_LOOP_UNROLL_FULL
                     for (int x = 0; x < 8; x++)
-                      chess_unroll_loop() chess_loop_range(8, 8) {
+                      {
                         // auto tmp1 = aie::concat(curr, next);
                         // auto tprev = aie::concat(zero32, prev);
                         // auto tmp2 = aie::shuffle_up_fill(
@@ -1151,16 +1166,20 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
               } // for(int i=kernel_height_start; i<kernel_height_end; i++) { //
                 // 1 to 3
           }     // for(int ic=0; ic<(input_channels/8); ic++) {
+        AIE_LOOP_RANGE(8,8)
+        AIE_LOOP_UNROLL_FULL  
         for (int x = 0; x < 8; x++)
-          chess_unroll_loop() chess_loop_range(8, 8) {
+          {
             aie::vector<uint8, 32> o1 = acc_tmp[x].to_vector<uint8>(scale);
             aie::store_v(output, o1);
             output += 32;
             acc_tmp[x] = aie::zeros<acc32, 32>();
           }
         // For next 8 activations, reset line buffer and weights
+        AIE_PREPARE_FOR_PIPELINE
+        AIE_LOOP_MIN_ITERATION_COUNT(2)
         for (int i = kernel_height_start; i < kernel_height_end; i++)
-          chess_prepare_for_pipelining chess_loop_range(2, ) {
+          {
             line[i] -=
                 (input_channels / 8) * (iw * 8); // length of act to shift back
           }
@@ -1172,8 +1191,10 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
 
     // Reset weights and line buffers for last section of middle (or right side
     // it there is no last section)
+    AIE_PREPARE_FOR_PIPELINE
+    AIE_LOOP_MIN_ITERATION_COUNT(2)
     for (int i = kernel_height_start; i < kernel_height_end; i++)
-      chess_prepare_for_pipelining chess_loop_range(2, ) {
+      {
         wtsLine[i] -= (output_channels / 8) * (input_channels / 8) *
                       kernel_width * kernel_height *
                       64; // kernel_width*kernel_height*8*8
@@ -1188,13 +1209,16 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
   if (iw_32_rem > 0) {
 
     for (int oc = 0; oc < (output_channels / 8); oc++) {
+      AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int ic = 0; ic < (input_channels / 8); ic++)
-        chess_loop_range(2, ) {
+        {
+          AIE_PREPARE_FOR_PIPELINE
+          AIE_LOOP_MIN_ITERATION_COUNT(2)     // 1 to 3
           for (int i = kernel_height_start; i < kernel_height_end; i++)
-            chess_prepare_for_pipelining chess_loop_range(2, ) { // 1 to 3
+              AIE_LOOP_RANGE(3,3)     // TODO Assume 3x3
+              AIE_LOOP_UNROLL_FULL
               for (int j = 0; j < kernel_width; j++)
-                chess_loop_range(3, 3) // TODO Assume 3x3
-                    chess_unroll_loop() {
+                {
                   // New weight every kernel_width
                   aie::vector<int8, 64> wtsVec = aie::load_v<64>(wtsLine[i]);
                   wtsLine[i] += 64;
@@ -1222,9 +1246,10 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                   tmp1 = aie::shuffle_down(
                       tmp1, j0 * 8); // curr      = x4..x7(ci0..ci7) to
 
+                  AIE_LOOP_UNROLL_FULL
                   for (int x = 0; x < iw_32_rem; x++) // remainder input width <
                                                       // 8 chess_unroll_loop()
-                    chess_unroll_loop() {
+                    {
                       // auto tmp1 = aie::concat(curr, next);
                       // auto tprev = aie::concat(zero32, prev);
                       // auto tmp2 = aie::shuffle_up_fill(
@@ -1268,16 +1293,20 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
         acc_tmp[x] = aie::zeros<acc32, 32>(); // Reset accumulators
       }
       // Reset line ptr to beginning of input
+      AIE_PREPARE_FOR_PIPELINE
+      AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int i = kernel_height_start; i < kernel_height_end; i++)
-        chess_prepare_for_pipelining chess_loop_range(2, ) {
+        {
           line[i] -= (input_channels / 8) * (iw * 8);
         }
       // Output ptr should be in the right place (next oc/8)
       output += (iw * 8) - (iw_32_rem * 32); // 32 = 4*8, shift to next oc/8
     } // for(int oc=0; oc<(output_channels/8); oc++)
     // Reset weights and line buffers for right side
+    AIE_PREPARE_FOR_PIPELINE
+    AIE_LOOP_MIN_ITERATION_COUNT(2)
     for (int i = kernel_height_start; i < kernel_height_end; i++)
-      chess_prepare_for_pipelining chess_loop_range(2, ) {
+      {
         wtsLine[i] -= (output_channels / 8) * (input_channels / 8) *
                       kernel_width * kernel_height *
                       64; // kernel_width*kernel_height*8*8
@@ -1298,11 +1327,13 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
   {
     MMUL4x8x8 acc1 = aie::zeros<acc32, 32>();
     for (int oc = 0; oc < (output_channels / 8); oc++) {
+      AIE_LOOP_MIN_ITERATION_COUNT9(2)
       for (int ic = 0; ic < (input_channels / 8); ic++)
-        chess_loop_range(2, ) {
-          for (int i = kernel_height_start; i < kernel_height_end; i++)
-            chess_prepare_for_pipelining chess_loop_range(2, )
-            // chess_unroll_loop()
+        {
+          AIE_PREPARE_FOR_PIPELINE
+          AIE_LOOP_MIN_ITERATION_COUNT(2)
+          // AIE_LOOP_UNROLL_FULL
+          for (int i = kernel_height_start; i < kernel_height_end; i++)            
             {
               // Load next set of data for input A (matrix row), need stride
               // info or line1/2/3 pointer
@@ -1325,8 +1356,10 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
               in_a =
                   aie::shuffle_down_fill(in_a, tmp_a, 24); // act 27..31 - - -
 
+              AIE_LOOP_RANGE(3,3)
+              AIE_LOOP_UNROLL_FULL
               for (int j = 0; j < kernel_width; j++)
-                chess_loop_range(3, 3) chess_unroll_loop() {
+                {
                   auto in_b = aie::load_v<64>(wtsLine[i]);
                   wtsLine[i] += 64; // wts ic0..7(oc0..7)
                   acc1.mac(in_a.extract<32>(0), in_b);
@@ -1351,8 +1384,10 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
 
       acc1 = aie::zeros<acc32, 32>();
 
+      AIE_PREPARE_FOR_PIPELINE
+      AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int i = kernel_height_start; i < kernel_height_end; i++)
-        chess_prepare_for_pipelining chess_loop_range(2, ) {
+        {
           line[i] -= (input_channels / 8) *
                      (iw * 8); // shift back to beginning of this section
         }

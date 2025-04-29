@@ -18,6 +18,7 @@
 #define REL_READ 1
 
 #include <aie_api/aie.hpp>
+#include "../optimization_pragmas.h"
 
 const int32_t SRS_SHIFT = 15;
 __attribute__((inline)) void xf_extract_rgb(uint8_t *ptr_rgba,
@@ -59,8 +60,9 @@ __attribute__((noinline)) void rgba2gray_aie(uint8_t *rgba_in, uint8_t *y_out,
   ::aie::vector<uint8_t, 32> r, g, b;
   ::aie::vector<uint8_t, 32> y;
 
+  AIE_PREPARE_FOR_PIPELINE
   for (int j = 0; (j < (width * height) / 32); j += 1)
-    chess_prepare_for_pipelining {
+    {
       xf_extract_rgb(rgba_in, r, g, b);
 
       ::aie::accum<acc32, 32> acc;
