@@ -41,7 +41,7 @@ parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --colshift 1 --outp
 
 * **--filename** : Input trace packet text file. This is generated during the running of our python host code
 * **--mlir**     : MLIR source. This is needed to parse what events and tiles we are monitoring to generate labels for our waveform visualizer.
-* **--colshift** : runtime column shift. This specifies how much the actual design was shifted from the default position when it was scheduled and called. The reason we need this is becuase even if our design is configured for column 0, the actual loading and execution of the design may place it in column 1, 2, 3 etc. We account for this shift since the parser needs to match the actual column location of the generated trace data. Usually 1 is the right value. 
+* **--colshift** : runtime column shift. This specifies how much the actual design was shifted from the default position when it was scheduled and called. The reason we need this is becuase even if our design is configured for column 0, the actual loading and execution of the design may place it in column 1, 2, 3 etc. We account for this shift since the parser needs to match the actual column location of the generated trace data. For npu devices (phoenix), this is typically 1 while npu2 (strix) uses 0.
 
     **NOTE** - the underlying tools currently default to column 1 to avoid using column 0 on Ryzen AI since that column does not have a shimDMA and is therefore avoided at the moment.
 * **--output** : output json file
