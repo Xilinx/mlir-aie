@@ -25,24 +25,22 @@ using IN_DATATYPE = int8_t;
 using OUT_DATATYPE = int8_t;
 
 int main(int argc, const char *argv[]) {
-    std::vector<uint32_t> instr_v;
-    int app_id = 1;
-    if (argc > 1){
-        app_id = atoi(argv[1]);
-    }
-    else{
-        app_id = 0;
-    }
+  std::vector<uint32_t> instr_v;
+  int app_id = 1;
+  if (argc > 1) {
+    app_id = atoi(argv[1]);
+  } else {
+    app_id = 0;
+  }
 
-    if (app_id == 0){
-      instr_v = test_utils::load_instr_binary("insts_add.txt");
-    }
-    else{
-      instr_v = test_utils::load_instr_binary("insts_mul.txt");
-    }
+  if (app_id == 0) {
+    instr_v = test_utils::load_instr_binary("insts_add.txt");
+  } else {
+    instr_v = test_utils::load_instr_binary("insts_mul.txt");
+  }
 
-    int IN_SIZE = 256;
-    int OUT_SIZE = 256;
+  int IN_SIZE = 256;
+  int OUT_SIZE = 256;
 
   // Start the XRT test code
   // Get a device handle
@@ -80,8 +78,8 @@ int main(int argc, const char *argv[]) {
 
   IN_DATATYPE *bufInA = bo_inA.map<IN_DATATYPE *>();
   std::vector<IN_DATATYPE> srcVecA(IN_SIZE);
-  for (int i = 0; i < IN_SIZE; i++){
-      srcVecA[i] = i % 10;
+  for (int i = 0; i < IN_SIZE; i++) {
+    srcVecA[i] = i % 10;
   }
 
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(IN_DATATYPE)));
@@ -108,17 +106,18 @@ int main(int argc, const char *argv[]) {
 
   for (uint32_t i = 0; i < OUT_SIZE; i++) {
     uint32_t ref;
-    if(app_id == 1){
+    if (app_id == 1) {
       ref = srcVecA[i] * 2; // ref for the first input packet
-    }
-    else{
-        ref = srcVecA[i] + 2; // ref for the second input packet
+    } else {
+      ref = srcVecA[i] + 2; // ref for the second input packet
     }
     if (*(bufOut + i) != ref) {
-        if(errors < 10){
-            std::cout << "Error in output " << i << "; Input: " << srcVecA[i] << "; Output: " << *(bufOut + i) << " != reference:" << ref << std::endl;
-        }
-        errors++;
+      if (errors < 10) {
+        std::cout << "Error in output " << i << "; Input: " << srcVecA[i]
+                  << "; Output: " << *(bufOut + i) << " != reference:" << ref
+                  << std::endl;
+      }
+      errors++;
     }
   }
   if (!errors) {
