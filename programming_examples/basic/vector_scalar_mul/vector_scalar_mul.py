@@ -99,7 +99,7 @@ def vector_scalar_mul(input, factor, output, dummy_input0, trace):
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (A, F, C):
-        rt.enable_trace(trace.numel())
+        rt.enable_trace(trace.numel() * np.dtype(trace.dtype).itemsize)
         rt.start(worker)
         rt.fill(of_in.prod(), A)
         rt.fill(of_factor.prod(), F)
@@ -121,12 +121,17 @@ def main():
     output = iron.zeros_like(input)
     
     
-    trace = iron.zeros(1024, dtype=np.int32)
+    trace = iron.zeros(128, dtype=np.uint32)
+
     
     vector_scalar_mul(input, factor, output, dummy_input, trace)
     
     
-    print(trace)
+    with open("trace.txt", "w") as f:
+        for val in trace:
+            f.write(f"{val:08x}\n")
+
+
     
 if __name__ == "__main__":
     main()
