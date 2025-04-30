@@ -6,30 +6,49 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
+import subprocess
 import os
-import aie.compiler.aiecc.main as aiecc
+import sys
 
 
-def compile_mlir_module_to_binary(mlir_module: str, inst_path: str, xclbin_path: str):
+def compile_mlir_to_binary(
+    mlir_path: str, inst_filename: str, xclbin_filename: str, debug: bool = True
+):
     """
-    Compile an MLIR module to instruction and xclbin files using the aiecc module.
+    Compile an MLIR file to instruction and xclbin files using aiecc.py.
 
     Parameters:
-        mlir_module (str): MLIR module to compile.
-        inst_path (str): Path to the instruction binary file.
-        xclbin_path (str): Path to the xclbin file.
+        mlir_path (str): Path to the MLIR input file.
+        inst_filename (str): Name of the instruction binary file (e.g., 'inst.bin').
+        xclbin_filename (str): Name of the xclbin file (e.g., 'final.xclbin').
+        debug (bool): If True, print the commands being executed. Default is False.
     """
 
-    args = [
+    mlir_dir = os.path.dirname(os.path.abspath(mlir_path))
+
+    if debug:
+        print(f"Compiling {mlir_path} to {inst_filename} and {xclbin_filename}")
+        print(f"MLIR cache directory: {mlir_dir}")
+
+    cmd = [
+        "aiecc.py",
         "--aie-generate-xclbin",
         "--aie-generate-npu-insts",
         "--no-compile-host",
         "--no-xchesscc",
         "--no-xbridge",
-        f"--xclbin-name={xclbin_path}",
-        f"--npu-insts-name={inst_path}",
+        f"--xclbin-name={xclbin_filename}",
+        f"--npu-insts-name={inst_filename}",
+        "aie.mlir",
     ]
+
     try:
-        aiecc.run(mlir_module, args)
-    except Exception as e:
+        subprocess.run(
+            cmd,
+            cwd=mlir_dir,
+            check=True,
+            stdout=sys.stdout if debug else subprocess.DEVNULL,
+            stderr=sys.stderr if debug else subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError as e:
         raise RuntimeError(f"[aiecc] Compilation failed:\n{e}")
