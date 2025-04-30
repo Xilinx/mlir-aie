@@ -13,7 +13,7 @@ from .device import Device
 from .runtime import Runtime
 from .worker import Worker
 from .device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
-from .dataflow import ObjectFifoHandle
+from .dataflow import ObjectFifoHandle, ObjectFifoLink, ObjectFifoEndpoint
 
 
 class Placer(metaclass=ABCMeta):
@@ -62,20 +62,17 @@ class SequentialPlacer(Placer):
     ):
         shims_in = device.get_shim_tiles()
         shims_out = device.get_shim_tiles()
-        shim_in_channels = {}
-        shim_out_channels = {}
 
         mems_in = device.get_mem_tiles()
         mems_out = device.get_mem_tiles()
-        mem_in_channels = {}
-        mem_out_channels = {}
 
         computes = device.get_compute_tiles()
         computes_in = device.get_compute_tiles()
         computes_out = device.get_compute_tiles()
         compute_idx = 0
-        compute_in_channels = {}
-        compute_out_channels = {}
+
+        channels_in: dict[Tile, (ObjectFifoEndpoint, int)] = {}
+        channels_out: dict[Tile, (ObjectFifoEndpoint, int)] = {}
 
         # If some workers are already taken, remove them from the available set
         for worker in workers:
@@ -105,72 +102,69 @@ class SequentialPlacer(Placer):
 
         for of in object_fifos:
             of_endpoints = of.all_of_endpoints()
+            of_handle_endpoints = of._object_fifo._get_endpoint(is_prod=of._is_prod)
             of_compute_endpoints = [
                 of.tile for of in of_endpoints if of.tile in computes
             ]
             common_col = self._get_common_col(of_compute_endpoints)
-            for ofe in of_endpoints:
+            of_link_endpoints = [
+                of for of in of_endpoints if isinstance(of, ObjectFifoLink)
+            ]
+            for ofe in of_handle_endpoints:
                 # Place "closest" to the compute endpoints
+                # TODO Worker: already placed, count the used channel
                 if ofe.tile == AnyMemTile:
                     if of._is_prod:
-                        memtile = self._find_col_match(common_col, mems_out, device)
-                        ofe.place(memtile)
-                        if not memtile in mem_out_channels:
-                            mem_out_channels[memtile] = 0
-                        mem_out_channels[memtile] += 1
-                        max_memtile_out_channels = device.get_num_source_connections(
-                            memtile
+                        self._place_endpoint(
+                            ofe, mems_out, common_col, channels_out, device, output=True, link_channels=channels_in,
                         )
-                        if mem_out_channels[memtile] >= max_memtile_out_channels:
-                            mems_out.remove(memtile)
                     else:
-                        memtile = self._find_col_match(common_col, mems_in, device)
-                        ofe.place(memtile)
-                        if not memtile in mem_in_channels:
-                            mem_in_channels[memtile] = 0
-                        mem_in_channels[memtile] += 1
-                        max_memtile_in_channels = device.get_num_dest_connections(
-                            memtile
+                        self._place_endpoint(
+                            ofe, mems_in, common_col, channels_in, device, link_channels=channels_out,
                         )
-                        if mem_in_channels[memtile] >= max_memtile_in_channels:
-                            mems_in.remove(memtile)
 
                 elif ofe.tile == AnyComputeTile:
-                    computetile = self._find_col_match(common_col, computes, device)
-                    ofe.place(computetile)
-                    if not computetile in compute_in_channels:
-                        compute_in_channels[computetile] = 0
-                    compute_in_channels[computetile] += 1
                     if of._is_prod:
-                        max_computetile_channels = device.get_num_source_connections(
-                            computetile
+                        self._place_endpoint(
+                            ofe, computes_out, common_col, channels_out, device, output=True, link_channels=channels_in,
                         )
                     else:
-                        max_computetile_channels = device.get_num_dest_connections(
-                            computetile
+                        self._place_endpoint(
+                            ofe, computes_in, common_col, channels_in, device, link_channels=channels_out,
                         )
-                    if compute_in_channels[computetile] >= max_computetile_channels:
-                        computes.remove(computetile)
 
                 elif ofe.tile == AnyShimTile:
                     if of._is_prod:
-                        shimtile = self._find_col_match(common_col, shims_out, device)
-                        ofe.place(shimtile)
-                        if not shimtile in shim_out_channels:
-                            shim_out_channels[shimtile] = 0
-                        shim_out_channels[shimtile] += 1
-                        max_shimtile_out_channels = 2
-                        if shim_out_channels[shimtile] >= max_shimtile_out_channels:
-                            shims_out.remove(shimtile)
+                        self._place_endpoint(
+                            ofe, shims_out, common_col, channels_out, device, output=True
+                        )
                     else:
-                        shimtile = self._find_col_match(common_col, shims_in, device)
-                        ofe.place(shimtile)
-                        if not shimtile in shim_in_channels:
-                            shim_in_channels[shimtile] = 0
-                        shim_in_channels[shimtile] += 1
-                        max_shimtile_in_channels = 2
-                        if shim_in_channels[shimtile] >= max_shimtile_in_channels:
-                            shims_in.remove(shimtile)
+                        self._place_endpoint(
+                            ofe, shims_in, common_col, channels_in, device
+                        )
+
+            for ofe in of_link_endpoints:
+                # Place "closest" to the compute endpoints
+                # TODO Worker: already placed, count the used channel
+                if ofe.tile == AnyMemTile:
+                    if of._is_prod:
+                        self._place_endpoint(
+                            ofe, mems_out, common_col, channels_out, device, output=True, link_channels=channels_in,
+                        )
+                    else:
+                        self._place_endpoint(
+                            ofe, mems_in, common_col, channels_in, device, link_channels=channels_out,
+                        )
+
+                elif ofe.tile == AnyComputeTile:
+                    if of._is_prod:
+                        self._place_endpoint(
+                            ofe, computes_out, common_col, channels_out, device, output=True, link_channels=channels_in,
+                        )
+                    else:
+                        self._place_endpoint(
+                            ofe, computes_in, common_col, channels_in, device, link_channels=channels_out,
+                        )
 
     def _get_common_col(self, tiles: list[Tile]) -> int:
         """
@@ -196,3 +190,62 @@ class SequentialPlacer(Placer):
         raise ValueError(
             f"Failed to find a tile matching column {col}: tried until column {new_col}. Try using a device with more columns."
         )
+
+    def _place_endpoint(
+            self,
+            ofe : ObjectFifoEndpoint,
+            tiles: list[Tile],
+            common_col: int,
+            channels: dict[Tile, (ObjectFifoEndpoint, int)],
+            device: Device,
+            output = False,
+            link_channels = [],
+        ):
+        """
+        A utility function that sequentially searches a list of tiles to find one with a matching column.
+        """
+        num_required_channels = 1
+        if isinstance(ofe, ObjectFifoLink):
+            # Also account for channels on the other side of the DMA
+            if output:
+                num_required_channels = len(ofe._srcs)
+                link_required_channels = len(ofe._dsts)
+            else:
+                num_required_channels = len(ofe._dsts)
+                link_required_channels = len(ofe._srcs)
+
+        # Check if placing is possible
+        test_tiles = tiles.copy()
+        while True:
+            tile = self._find_col_match(common_col, test_tiles, device)
+            total_channels = num_required_channels
+            if tile in channels:
+                for _, c in channels[tile]:
+                    total_channels += c
+            max_tile_channels = device.get_num_connections(tile, output)
+            if (ofe.tile == AnyShimTile):
+                max_tile_channels = 2
+            if total_channels <= max_tile_channels:
+                if isinstance(ofe, ObjectFifoLink):
+                    if tile not in link_channels:
+                        link_channels[tile] = []
+                    total_link_channels = link_required_channels
+                    for _, c in link_channels[tile]:
+                        total_link_channels += c
+                    if total_link_channels <= device.get_num_connections(tile, not output):
+                        link_channels[tile].append((ofe, link_required_channels))
+                        break
+                else:
+                    break
+            test_tiles.remove(tile)
+        
+        ofe.place(tile)
+
+        if not tile in channels:
+            channels[tile] = []
+        channels[tile].append((ofe, num_required_channels))
+        used_channels = 0
+        for _, c in channels[tile]:
+            used_channels += c
+        if used_channels >= max_tile_channels:
+            tiles.remove(tile)
