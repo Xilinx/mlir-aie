@@ -8,11 +8,13 @@
 import numpy as np
 import argparse
 import sys
+import os
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import CoreFunction, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
+import aie.iron as iron
 
 import aie.utils.trace as trace_utils
 
@@ -26,16 +28,36 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
         in1_dtype = np.int32
         out_dtype = np.int32
 
-    in2_dtype = np.int32
 
-    tensor_size = in1_size // in1_dtype(0).nbytes
+@iron.jit(is_placed=False)
+def vector_scalar_mul(input, factor, output, dummy_input0, trace):
+
+    in1_dtype = input.dtype
+    in2_dtype = factor.dtype
+    out_dtype = output.dtype
+
+    tensor_size = input.numel()
     num_sub_vectors = 4
     tile_size = tensor_size // num_sub_vectors
 
-    assert in2_size == 4, "2nd input buffer must be size 4 (4 bytes = 1 integer)."
-    assert out_size == in1_size, "Output buffer size must match input buffer size."
+    if input.dtype != np.int16:
+        raise ValueError("Input must be of type int16")
 
-    enable_trace = 1 if trace_size > 0 else 0
+    if factor.dtype != np.int32:
+        raise ValueError("Factor must be of type int32")
+
+    if output.dtype != np.int16:
+        raise ValueError("Output must be of type int16")
+
+    if input.shape != output.shape:
+        raise ValueError(
+            f"Input and output shapes are not the equal ({input.shape} != {output.shape})."
+        )
+
+    if factor.numel() != 1:
+        raise ValueError(f"Factor must be a scalar, but has shape {factor.shape}.")
+
+    enable_trace = 1 if trace.numel() > 0 else 0
 
     vectorized = True
 
@@ -46,10 +68,13 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
 
     # Create a handle to an externally-defined kernel
     func_type = "vector" if vectorized else "scalar"
-    scale = Kernel(
-        f"vector_scalar_mul_{func_type}",
-        "scale.o",
-        [tile_ty, tile_ty, scalar_ty, np.int32],
+
+    kernels_path = os.path.join(os.path.dirname(__file__), "../../../aie_kernels/aie2")
+
+    scale = iron.CoreFunction(
+        f"vector_scalar_mul_int16_{func_type}",
+        source_file=os.path.join(kernels_path, "scale.cc"),
+        arg_types=[tile_ty, tile_ty, scalar_ty, np.int32],
     )
 
     # AIE-array data movement with object fifos
@@ -80,61 +105,28 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (A, F, C):
-        rt.enable_trace(trace_size),
+        rt.enable_trace(trace.numel())
         rt.start(worker)
         rt.fill(of_in.prod(), A)
         rt.fill(of_factor.prod(), F)
         rt.drain(of_out.cons(), C, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
 
 
-p = argparse.ArgumentParser()
-p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
-p.add_argument(
-    "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
-)
-p.add_argument(
-    "-i2s", "--in2_size", required=True, dest="in2_size", help="Input 2 size"
-)
-p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
-p.add_argument(
-    "-bw",
-    "--int_bit_width",
-    required=True,
-    dest="int_bit_width",
-    help="Integer Bit Width",
-)
-p.add_argument(
-    "-t",
-    "--trace_size",
-    required=False,
-    dest="trace_size",
-    default=0,
-    help="Trace buffer size",
-)
-opts = p.parse_args(sys.argv[1:])
+def main():
+    num_elements = 1024
 
-if opts.device == "npu":
-    dev = NPU1Col1()
-elif opts.device == "npu2":
-    dev = NPU2()
-else:
-    raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
+    input = iron.randint(0, 100, (num_elements,), dtype=np.int16, device="npu")
+    factor = iron.tensor([3], dtype=np.int32, device="npu")
+    dummy_input = iron.zeros_like(input)
+    output = iron.zeros_like(input)
+    trace = iron.zeros(1024, dtype=np.int32)
 
-in1_size = int(opts.in1_size)
-if in1_size % 128 != 0 or in1_size < 1024:
-    print(
-        "In1 buffer size must be a multiple of 128 (so len is multiple of 64) and greater than or equal to 1024 (so len >= 512)"
-    )
-    raise ValueError
-in2_size = int(opts.in2_size)
-out_size = int(opts.out_size)
-int_bit_width = int(opts.int_bit_width)
-trace_size = int(opts.trace_size)
+    vector_scalar_mul(input, factor, output, dummy_input, trace)
+    print(trace)
 
-module = my_vector_scalar_mul(
-    dev, in1_size, in2_size, out_size, int_bit_width, trace_size
-)
-print(module)
+
+if __name__ == "__main__":
+    main()
