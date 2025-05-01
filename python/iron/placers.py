@@ -128,7 +128,11 @@ class SequentialPlacer(Placer):
                         )
                     else:
                         self._place_endpoint(
-                            ofe, mems_in, common_col, channels_in, device,
+                            ofe,
+                            mems_in,
+                            common_col,
+                            channels_in,
+                            device,
                         )
 
                 elif ofe.tile == AnyComputeTile:
@@ -143,17 +147,22 @@ class SequentialPlacer(Placer):
                         )
                     else:
                         self._place_endpoint(
-                            ofe, computes_in, common_col, channels_in, device,
+                            ofe,
+                            computes_in,
+                            common_col,
+                            channels_in,
+                            device,
                         )
 
                 elif ofe.tile == AnyShimTile:
                     if ofh._is_prod:
                         self._place_endpoint(
-                            ofe, shims_out,
+                            ofe,
+                            shims_out,
                             common_col,
                             channels_out,
                             device,
-                            output=True
+                            output=True,
                         )
                     else:
                         self._place_endpoint(
@@ -177,7 +186,8 @@ class SequentialPlacer(Placer):
                         )
                     else:
                         self._place_endpoint(
-                            ofe, mems_in,
+                            ofe,
+                            mems_in,
                             common_col,
                             channels_in,
                             device,
@@ -188,7 +198,8 @@ class SequentialPlacer(Placer):
                 elif ofe.tile == AnyComputeTile:
                     if ofh._is_prod:
                         self._place_endpoint(
-                            ofe, computes_out,
+                            ofe,
+                            computes_out,
                             common_col,
                             channels_out,
                             device,
@@ -234,16 +245,16 @@ class SequentialPlacer(Placer):
         )
 
     def _place_endpoint(
-            self,
-            ofe : ObjectFifoEndpoint,
-            tiles: list[Tile],
-            common_col: int,
-            channels: dict[Tile, (ObjectFifoEndpoint, int)],
-            device: Device,
-            output = False,
-            link_tiles = [],
-            link_channels = [],
-        ):
+        self,
+        ofe: ObjectFifoEndpoint,
+        tiles: list[Tile],
+        common_col: int,
+        channels: dict[Tile, (ObjectFifoEndpoint, int)],
+        device: Device,
+        output=False,
+        link_tiles=[],
+        link_channels=[],
+    ):
         """
         A utility function that places a given endpoint based on available DMA channels.
         """
@@ -284,7 +295,7 @@ class SequentialPlacer(Placer):
                 else:
                     break
             test_tiles.remove(tile)
-        
+
         # If no error was signaled by _find_col_match(), placement is possible
         ofe.place(tile)
 

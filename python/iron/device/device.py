@@ -198,7 +198,7 @@ class NPUBase(Device):
         return get_target_model(self._device).get_num_dest_switchbox_connections(
             col, row, bundle
         )
-    
+
     def get_num_connections(self, tile: Tile, output: bool) -> int:
         if output:
             return self.get_num_source_connections(tile)
