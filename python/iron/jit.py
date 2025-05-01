@@ -93,6 +93,9 @@ class NPUKernel:
         kernel_args = []
 
         for tensor in args:
+            # Skip callable arguments since these are inlined in the kernel
+            if callable(tensor):
+                continue
             if not hasattr(tensor, "buffer_object"):
                 raise TypeError(
                     f"Expected Tensor with .buffer_object(), got {type(tensor)}"
