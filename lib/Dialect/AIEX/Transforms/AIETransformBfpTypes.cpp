@@ -51,12 +51,12 @@ public:
     addConversion([](Type type) -> std::optional<Type> { return type; });
 
     // Add a conversion for bfpTypes to an integer type
-    addConversion([&](blockFloatType blockType) -> std::optional<IntegerType> {
+    addConversion([&](BlockFloatType blockType) -> std::optional<IntegerType> {
       auto bfpType = targetModel.getBfpType(blockType.getBlockType().str());
       if (!bfpType) {
         llvm::errs() << "Block type " << blockType.getBlockType()
                      << " is not supported in the specified model\n";
-        // Note that returning a nullopt here will stop the conversion while
+        // Note that returning a nullptr here will stop the conversion while
         // returning a std::nullopt will allow the converter to keep trying the
         // remaining conversions (thus reaching the default one in this case)
         return nullptr;
@@ -178,7 +178,7 @@ public:
     }
 
     // Operation attributes
-    // Note: For some reason, the attribute list looks like it is immutable and
+    // Note that the attribute list is immutable and
     // needs to be recreated from scratch. Also note that type attributes cannot
     // access their type and must therefore be managed through
     // the convertTypeAttribute conversion instead

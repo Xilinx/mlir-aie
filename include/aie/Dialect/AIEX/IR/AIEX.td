@@ -42,7 +42,7 @@ def AIEX_Dialect : Dialect {
 //===----------------------------------------------------------------------===//
 // AIEX Types
 //===----------------------------------------------------------------------===//
-def AIEX_BlockFloatingPointType : TypeDef<AIEX_Dialect, "blockFloat", [
+def AIEX_BlockFloatingPointType : TypeDef<AIEX_Dialect, "BlockFloat", [
     MemRefElementTypeInterface
   ]> {
   let summary = "AIEX type representing a block floating point type.";

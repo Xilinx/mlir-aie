@@ -56,9 +56,9 @@ MlirType aieObjectFifoSubviewTypeGet(MlirType type) {
 //===---------------------------------------------------------------------===//
 
 bool aieTypeIsBlockFloatType(MlirType type) {
-  return llvm::isa<xilinx::AIEX::blockFloatType>(unwrap(type));
+  return llvm::isa<xilinx::AIEX::BlockFloatType>(unwrap(type));
 }
 
 MlirType aieBlockFloatTypeGet(MlirContext ctx, const std::string& blockType) {
-  return wrap(xilinx::AIEX::blockFloatType::get(unwrap(ctx), blockType));
+  return wrap(xilinx::AIEX::BlockFloatType::get(unwrap(ctx), blockType));
 }
