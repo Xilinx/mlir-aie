@@ -41,13 +41,13 @@ class Placer(metaclass=ABCMeta):
 
 
 class SequentialPlacer(Placer):
-    """SequentialPlacer is a simple implementation of a placer. The SequentialPlacer is to named
+    """SequentialPlacer is a simple implementation of a placer. The SequentialPlacer is so named
     because it will sequentially place workers to Compute Tiles. After workers are placed, Memory Tiles and
-    Shim Tiles are placed so as to match the column of the given compute tile.
+    Shim Tiles are placed as close to the column of the given compute tile as possible.
 
-    The SequentialPlacer does not do any validation of placement and can often yield invalid placements
-    that exceed resource limits for channels, memory, etc. For complex or resource sensitive designs,
-    a more complex placer or manual placement is required.
+    The SequentialPlacer only does validation of placement with respect to available DMA channels on the tiles. 
+    However, it can yield invalid placements that exceed other resource limits, such as memory, For complex or
+    resource sensitive designs, a more complex placer or manual placement is required.
     """
 
     def __init__(self):
@@ -260,7 +260,7 @@ class SequentialPlacer(Placer):
         """
         num_required_channels = 1
         if isinstance(ofe, ObjectFifoLink):
-            # Account for both input and output DMA channels
+            # If endpoint is a link, account for both input and output DMA channels
             if output:
                 num_required_channels = len(ofe._srcs)
                 link_required_channels = len(ofe._dsts)
@@ -284,7 +284,7 @@ class SequentialPlacer(Placer):
 
             if total_channels <= max_tile_channels:
                 if isinstance(ofe, ObjectFifoLink):
-                    # Also check for channels in the other direction
+                    # Also check for channels in the other link direction
                     total_link_channels = link_required_channels
                     if tile in link_channels:
                         for _, c in link_channels[tile]:
