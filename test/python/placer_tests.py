@@ -12,8 +12,8 @@ from util import construct_and_print_module
 
 
 # CHECK-LABEL: TEST: shim_three_in
-# CHECK: %[[shim_noc_tile_0_0:.+]] = aie.tile(0, 0)
-# CHECK: %[[shim_noc_tile_1_0:.+]] = aie.tile(1, 0)
+# CHECK: %[[shim_noc_tile_0_0:.+]] = aie.tile
+# CHECK: %[[shim_noc_tile_1_0:.+]] = aie.tile
 @construct_and_print_module
 def shim_three_in(module):
     N = 4096
@@ -75,10 +75,10 @@ def shim_two_in_one_out(module):
 
 
 # CHECK-LABEL: TEST: mem_eight_in_three_out
-# CHECK: %[[mem_tile_0_1:.+]] = aie.tile(0, 1)
-# CHECK: %[[shim_noc_tile_0_0:.+]] = aie.tile(0, 0)
-# CHECK: %[[mem_tile_1_1:.+]] = aie.tile(1, 1)
-# CHECK: %[[shim_noc_tile_1_0:.+]] = aie.tile(1, 0)
+# CHECK: %[[mem_tile_0_1:.+]] = aie.tile
+# CHECK: %[[shim_noc_tile_0_0:.+]] = aie.tile
+# CHECK: %[[mem_tile_1_1:.+]] = aie.tile
+# CHECK: %[[shim_noc_tile_1_0:.+]] = aie.tile
 @construct_and_print_module
 def mem_eight_in_three_out(module):
     N = 6000
