@@ -811,7 +811,7 @@ Interfaces: `MyOffsetSizeAndStrideOpInterface`
 
 | Operand | Description |
 | :-----: | ----------- |
-| `memref` | memref of any type values |
+| `memref` | ranked or unranked memref of any type values |
 | `offsets` | variadic of 64-bit signless integer |
 | `sizes` | variadic of 64-bit signless integer |
 | `strides` | variadic of 64-bit signless integer |
