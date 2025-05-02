@@ -1546,7 +1546,7 @@ struct AIEObjectFifoStatefulTransformPass
       }
       if (!memTile)
         memTile = builder.create<TileOp>(builder.getUnknownLoc(), memTileCol,
-                                        memTileRow);
+                                         memTileRow);
     }
 
     // Step 2: Split objectFifos
