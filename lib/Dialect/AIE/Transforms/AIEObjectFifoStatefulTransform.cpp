@@ -1589,7 +1589,8 @@ struct AIEObjectFifoStatefulTransformPass
       auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
       if (dataTypesList.has_value()) {
         auto consArrayAttr = dataTypesList.value();
-        auto dataTypeValue = dyn_cast<mlir::TypeAttr>(consArrayAttr[consumerIndex]);
+        auto dataTypeValue =
+            dyn_cast<mlir::TypeAttr>(consArrayAttr[consumerIndex]);
         auto type = dataTypeValue.getValue();
         consumerDatatype = llvm::cast<AIEObjectFifoType>(type);
       }
