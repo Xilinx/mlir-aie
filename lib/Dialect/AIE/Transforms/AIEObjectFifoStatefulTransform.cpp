@@ -1723,7 +1723,8 @@ struct AIEObjectFifoStatefulTransformPass
         }
         // Call implicit_link function here
         if (!allOffsetsZero && producerTile.isShimTile() &&
-            consumerTiles.size() > 1) { // Check if all computeTiles are consumerTiles
+            consumerTiles.size() >
+                1) { // Check if all computeTiles are consumerTiles
           builder.setInsertionPointAfter(createOp);
           implicit_link(ctx, device, createOp, builder, dmaAnalysis,
                         createdFifoOps, fifosNeedToRemove);
