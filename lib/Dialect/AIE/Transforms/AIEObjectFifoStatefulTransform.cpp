@@ -1512,11 +1512,18 @@ struct AIEObjectFifoStatefulTransformPass
 
     TileOp memTile;
     // Check if stage_through_tile is set by the user
-    if (createOp.getStageThroughTileRow().has_value() &&
-        createOp.getStageThroughTileCol().has_value()) {
-      int memTileRow = createOp.getStageThroughTileRow().value();
-      int memTileCol = createOp.getStageThroughTileCol().value();
-
+    if (createOp.getStageThroughTile().has_value()) {
+      auto memAttr = createOp.getStageThroughTile().value();
+      int memTileRow;
+      int memTileCol;
+      for (size_t i = 0; i < memAttr.size(); ++i) {
+        if (auto intAttr = dyn_cast<IntegerAttr>(memAttr[i])) {
+          if (i == 0)
+            memTileCol = intAttr.getInt();
+          else if (i == 1)
+            memTileRow = intAttr.getInt();
+        }
+      }
       // Iterate over all TileOps in the DeviceOp and find the one that matches
       for (auto tile : device.getOps<TileOp>()) {
         if (tile.colIndex() == memTileCol && tile.rowIndex() == memTileRow) {

@@ -72,7 +72,7 @@ def implicit_link():
                 2,
                 line_ty,
             )
-            # of_in.set_stage_through_tile(MemTile)
+            of_in.set_stage_through_tile(MemTile)
 
             of_out1 = object_fifo("out1", ComputeTile2, MemTile, 2, op_ty)
             of_out2 = object_fifo("out2", ComputeTile3, MemTile, 2, op_ty)

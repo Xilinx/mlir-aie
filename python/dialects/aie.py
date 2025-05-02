@@ -515,8 +515,9 @@ class object_fifo(ObjectFifoCreateOp):
     def set_stage_through_tile(self, tile_op):
         col = IntegerAttr.get(T.i32(), tile_op.col)
         row = IntegerAttr.get(T.i32(), tile_op.row)
-        self.attributes["stage_through_tile_row"] = row
-        self.attributes["stage_through_tile_col"] = col
+        # No TileOpAttr to simplify this further
+        tile_op_array = _i32ArrayAttr([col, row], None)
+        self.attributes["stage_through_tile"] = tile_op_array
 
 
 # Create an aie objectFifo_link between input and output objectFifos.
