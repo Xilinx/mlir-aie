@@ -1215,6 +1215,102 @@ TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
   return tile;
 }
 
+static LogicalResult FoldTileOp(TileOp op, PatternRewriter &rewriter) {
+
+  // if there are no users, remove
+  if (op.use_empty()) {
+    rewriter.eraseOp(op);
+    return success();
+  }
+  // if there is another TileOp with same row and column, replace
+  for (auto tile : op->getParentOfType<DeviceOp>().getOps<TileOp>()) {
+    if (tile == op)
+      continue;
+    if (tile.colIndex() < 0 || tile.rowIndex() < 0)
+      continue;
+    if (tile.colIndex() == op.colIndex() && tile.rowIndex() == op.rowIndex()) {
+      rewriter.replaceOp(op, tile.getResult());
+      return success();
+    }
+  }
+  return failure();
+}
+
+void TileOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
+                                         MLIRContext *context) {
+  patterns.add(FoldTileOp);
+}
+
+//===----------------------------------------------------------------------===//
+// Custom Printer and Parser for TileOp
+//===----------------------------------------------------------------------===//
+
+ParseResult TileOp::parse(OpAsmParser &parser, OperationState &result) {
+  IntegerAttr colAttr;
+  IntegerAttr rowAttr;
+  if (parser.parseLParen())
+    return failure();
+
+  if (!parser.parseOptionalQuestion()) {
+    // set colAttr to -1
+    colAttr = parser.getBuilder().getIntegerAttr(
+        parser.getBuilder().getIntegerType(32), -1);
+  } else if (parser.parseCustomAttributeWithFallback(
+                 colAttr, parser.getBuilder().getIntegerType(32))) {
+    return failure();
+  }
+  if (colAttr)
+    result.getOrAddProperties<TileOp::Properties>().col = colAttr;
+  if (parser.parseComma())
+    return failure();
+
+  if (!parser.parseOptionalQuestion()) {
+    // set colAttr to -1
+    rowAttr = parser.getBuilder().getIntegerAttr(
+        parser.getBuilder().getIntegerType(32), -1);
+  } else if (parser.parseCustomAttributeWithFallback(
+                 rowAttr, parser.getBuilder().getIntegerType(32))) {
+    return failure();
+  }
+  if (rowAttr)
+    result.getOrAddProperties<TileOp::Properties>().row = rowAttr;
+  if (parser.parseRParen())
+    return failure();
+  {
+    auto loc = parser.getCurrentLocation();
+    (void)loc;
+    if (parser.parseOptionalAttrDict(result.attributes))
+      return failure();
+    if (failed(verifyInherentAttrs(result.name, result.attributes, [&]() {
+          return parser.emitError(loc)
+                 << "'" << result.name.getStringRef() << "' op ";
+        })))
+      return failure();
+  }
+  Type odsBuildableType0 = parser.getBuilder().getIndexType();
+  result.addTypes(odsBuildableType0);
+  return success();
+}
+
+void TileOp::print(OpAsmPrinter &printer) {
+  printer << "(";
+  if (getColAttr().getInt() < 0)
+    printer << "?";
+  else
+    printer.printAttributeWithoutType(getColAttr());
+  printer << ",";
+  printer << ' ';
+  if (getRowAttr().getInt() < 0)
+    printer << "?";
+  else
+    printer.printAttributeWithoutType(getRowAttr());
+  printer << ")";
+  SmallVector<StringRef, 2> elidedAttrs;
+  elidedAttrs.push_back("col");
+  elidedAttrs.push_back("row");
+  printer.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
+}
+
 //===----------------------------------------------------------------------===//
 // ShimSwitchboxOp
 //===----------------------------------------------------------------------===//
