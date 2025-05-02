@@ -1,14 +1,6 @@
 # IRON API and MLIR-based AI Engine Toolchain
 
-[![Build and Test across Python versions](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml)
-
-[![Build and Test with AIE tools on Ryzen™ AI](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml)
-
-[![Compile across platforms](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml)
-
-[![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/Xilinx/mlir-aie)](https://github.com/Xilinx/mlir-aie/pulls)
-
-[![GitHub Issues](https://img.shields.io/github/issues/Xilinx/mlir-aie/bug)](https://github.com/Xilinx/mlir-aie/issues?q=is%3Aopen+is%3Aissue+label%3Abug)
+[![Build and Test across Python versions](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml) [![Build and Test with AIE tools on Ryzen™ AI](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml) [![Compile across platforms](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml) [![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/Xilinx/mlir-aie)](https://github.com/Xilinx/mlir-aie/pulls) [![GitHub Issues](https://img.shields.io/github/issues/Xilinx/mlir-aie/bug)](https://github.com/Xilinx/mlir-aie/issues?q=is%3Aopen+is%3Aissue+label%3Abug)
 
 ![GitHub Downloads (all assets, specific tag)](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels/total?color=blue)
 
