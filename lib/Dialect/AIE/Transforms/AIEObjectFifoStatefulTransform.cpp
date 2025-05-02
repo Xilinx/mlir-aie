@@ -1530,11 +1530,11 @@ struct AIEObjectFifoStatefulTransformPass
                              << "> does not match any TileOp in the device.";
         return;
       }
-    }
-    else{
+    } else {
       // if not, then compiler selects the MemTile.
       llvm::SmallVector<Value, 4> consumerTiles(
-          createOp.getConsumerTiles().begin(), createOp.getConsumerTiles().end());
+          createOp.getConsumerTiles().begin(),
+          createOp.getConsumerTiles().end());
       auto [memTileCol, memTileRow] = memtile_selection(
           consumerTiles); // should be extended to producerTiles list
       // Check if the selected memTile is already in the set of tiles
@@ -1546,7 +1546,7 @@ struct AIEObjectFifoStatefulTransformPass
       }
       if (!memTile)
         memTile = builder.create<TileOp>(builder.getUnknownLoc(), memTileCol,
-                                        memTileRow);
+                                         memTileRow);
     }
 
     // Step 2: Split objectFifos
@@ -1589,7 +1589,8 @@ struct AIEObjectFifoStatefulTransformPass
       auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
       if (dataTypesList.has_value()) {
         auto consArrayAttr = dataTypesList.value();
-        auto dataTypeValue = dyn_cast<mlir::TypeAttr>(consArrayAttr[consumerIndex]);
+        auto dataTypeValue =
+            dyn_cast<mlir::TypeAttr>(consArrayAttr[consumerIndex]);
         auto type = dataTypeValue.getValue();
         consumerDatatype = llvm::cast<AIEObjectFifoType>(type);
       }
@@ -1723,7 +1724,8 @@ struct AIEObjectFifoStatefulTransformPass
         }
         // Call implicit_link function here
         if (!allOffsetsZero && producerTile.isShimTile() &&
-            consumerTiles.size() > 1) { // Check if all computeTiles are consumerTiles
+            consumerTiles.size() >
+                1) { // Check if all computeTiles are consumerTiles
           builder.setInsertionPointAfter(createOp);
           implicit_link(ctx, device, createOp, builder, dmaAnalysis,
                         createdFifoOps, fifosNeedToRemove);
