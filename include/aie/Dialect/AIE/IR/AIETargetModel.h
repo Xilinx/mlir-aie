@@ -52,21 +52,6 @@ using TileID = struct TileID {
   int col, row;
 };
 
-using BfpType = struct BfpType {
-  uint32_t blockSize;
-  uint32_t mantissaBits;
-  uint32_t exponentBits;
-  uint32_t subtileShiftBits;
-
-  bool operator==(const BfpType &rhs) const {
-    return std::tie(blockSize, mantissaBits, exponentBits, subtileShiftBits) ==
-           std::tie(rhs.blockSize, rhs.mantissaBits, rhs.exponentBits,
-                    rhs.subtileShiftBits);
-  }
-
-  bool operator!=(const BfpType &rhs) const { return !(*this == rhs); }
-};
-
 class AIETargetModel {
 
 public:
@@ -317,9 +302,9 @@ public:
   virtual std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const = 0;
 
-  // Returns a bfpType with the corresponding caracteristics or std::nullopt if
-  // unsupported.
-  virtual std::optional<BfpType> getBfpType(std::string bfpName) const = 0;
+  // Returns true if the target model supports the given mlir type.
+  // This is currently only useful for block floating point types.
+  virtual bool isSupportedBlockFormat(std::string const &format) const;
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -395,10 +380,6 @@ public:
 
   std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const override;
-
-  std::optional<BfpType> getBfpType(std::string bfpName) const override {
-    return std::nullopt;
-  }
 };
 
 class AIE2TargetModel : public AIETargetModel {
@@ -493,10 +474,6 @@ public:
 
   std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const override;
-
-  std::optional<BfpType> getBfpType(std::string bfpName) const override {
-    return std::nullopt;
-  }
 };
 
 class VC1902TargetModel : public AIE1TargetModel {
@@ -707,7 +684,7 @@ public:
   std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const override;
 
-  std::optional<BfpType> getBfpType(std::string bfpName) const override;
+  bool isSupportedBlockFormat(std::string const &format) const override;
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU2 &&

@@ -11,8 +11,6 @@
 
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include <cstdint>
-#include <string>
-#include <unordered_map>
 #include <utility>
 
 using namespace llvm;
@@ -801,6 +799,10 @@ AIETargetModel::getMemLocalBaseAddress(int localCol, int localRow, int memCol,
   return std::nullopt;
 }
 
+bool AIETargetModel::isSupportedBlockFormat(std::string const &format) const {
+  return false;
+}
+
 AIEArch BaseNPU2TargetModel::getTargetArch() const { return AIEArch::AIE2p; }
 
 std::vector<std::pair<uint32_t, uint32_t>>
@@ -809,16 +811,10 @@ BaseNPU2TargetModel::getShimBurstEncodingsAndLengths() const {
           std::pair(3, 512)};
 }
 
-std::optional<BfpType> BaseNPU2TargetModel::getBfpType(std::string bfpName) const {
-  std::unordered_map<std::string, BfpType> bfpMap = {
-      {"bfp16ebs8", {8, 8, 8, 0}},
-      {"bfp16ebs16", {16, 8, 8, 0}}
-  };
-
-  auto it = bfpMap.find(bfpName);
-  if (it != bfpMap.end())
-    return it->second;
-  return std::nullopt;
+bool BaseNPU2TargetModel::isSupportedBlockFormat(
+    std::string const &format) const {
+  std::set<std::string> supportedTypes = {"bfp16ebs8", "bfp16ebs16"};
+  return static_cast<bool>(supportedTypes.find(format) != supportedTypes.end());
 }
 
 } // namespace AIE

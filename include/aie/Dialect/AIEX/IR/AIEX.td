@@ -60,10 +60,35 @@ def AIEX_BlockFloatingPointType : TypeDef<AIEX_Dialect, "BlockFloat", [
 
   let assemblyFormat = "`<` $block_type `>`";
 
-  // Indicate that our type will not add additional verification to the parameters.
-  // Since this type needs information about the targetModel to be verified, 
-  // checks are done in the bfp lowering pass instead of the verifier.
-  let genVerifyDecl = 0;
+  let extraClassDeclaration = [{
+    int getBlockSize() const;
+    int getMantissaBits() const;
+    int getExponentBits() const;
+    int getSubtileShiftBits() const;
+
+    using BlockFormat = struct BlockFormat {
+      int blockSize;
+      int mantissaBits;
+      int exponentBits;
+      int subtileShiftBits;
+    };
+
+    std::optional<BlockFormat> getBlockFormat() const;
+    static std::optional<BlockFormat> getBlockFormat(llvm::StringRef blockType);
+  }];
+
+  let extraClassDefinition = [{
+    int BlockFloatType::getBlockSize() const { return getBlockFormat().value().blockSize; }
+    int BlockFloatType::getMantissaBits() const { return getBlockFormat().value().mantissaBits; }
+    int BlockFloatType::getExponentBits() const { return getBlockFormat().value().exponentBits; }
+    int BlockFloatType::getSubtileShiftBits() const { return getBlockFormat().value().subtileShiftBits; }
+
+    std::optional<BlockFloatType::BlockFormat> BlockFloatType::getBlockFormat() const {
+      return getBlockFormat(getBlockType());
+    }
+  }];
+
+  let genVerifyDecl = 1;
 }
 
 //===----------------------------------------------------------------------===//
