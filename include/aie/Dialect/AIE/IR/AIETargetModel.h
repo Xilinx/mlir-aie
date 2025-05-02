@@ -302,8 +302,7 @@ public:
   virtual std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const = 0;
 
-  // Returns true if the target model supports the given mlir type.
-  // This is currently only useful for block floating point types.
+  // Returns true if the target model supports the given block format.
   virtual bool isSupportedBlockFormat(std::string const &format) const;
 };
 
