@@ -39,6 +39,34 @@ class Placer(metaclass=ABCMeta):
         """
         ...
 
+class NullPlacer(Placer):
+    """NullPlacer is a simple implementation of a placer. The NullPlacer does not do any placement.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def make_placement(
+        self,
+        device: Device,
+        rt: Runtime,
+        workers: list[Worker],
+        object_fifos: list[ObjectFifoHandle],
+    ):
+        for worker in workers:
+            if worker.tile == AnyComputeTile:
+                worker.place(Tile(-1, -1))
+                for buffer in worker.buffers:
+                    buffer.place(worker.tile)
+            for of in object_fifos:
+                of_endpoints = of.all_of_endpoints()
+                for ofe in of_endpoints:
+                    if ofe.tile == AnyMemTile:
+                        ofe.place(Tile(-1, 1))
+                    elif ofe.tile == AnyComputeTile:
+                        ofe.place(Tile(-1, -1))
+                    elif ofe.tile == AnyShimTile:
+                        ofe.place(Tile(-1, 0))
 
 class SequentialPlacer(Placer):
     """SequentialPlacer is a simple implementation of a placer. The SequentialPlacer is so named
