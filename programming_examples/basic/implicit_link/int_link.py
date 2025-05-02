@@ -123,17 +123,16 @@ def implicit_link():
 implicit_link()
 
 
-
 # Hierarchial data distribution using explicit link adn implicit link
-        # mem_in1 -> Shimtile  to Mem_01
-        # mem_in2 -> Mem_01  to compute_02
-        # mem_in3 -> Mem_01  to compute_03
-        # mem_in1 -> mem_in2 , mem_in3 // implicit_link
+# mem_in1 -> Shimtile  to Mem_01
+# mem_in2 -> Mem_01  to compute_02
+# mem_in3 -> Mem_01  to compute_03
+# mem_in1 -> mem_in2 , mem_in3 // implicit_link
 
-        # mem_out -> compute_03 to compute_04
-        # mem_out -> mem_in3 // explicit_link
+# mem_out -> compute_03 to compute_04
+# mem_out -> mem_in3 // explicit_link
 
-        # mem_out2 -> compute_02 to compute_05
-        # mem_out2 -> mem_in2 // explicit_link
+# mem_out2 -> compute_02 to compute_05
+# mem_out2 -> mem_in2 // explicit_link
 
 # Neighboring MemTiles data movement
