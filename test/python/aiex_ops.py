@@ -18,6 +18,7 @@ def getTileOp():
     two = arith.constant(2, index=True)
     GetTileOp(T.index(), four, two)
 
+
 # CHECK-LABEL: runtimeSeq
 # CHECK: aiex.runtime_sequence @sequence0()
 # CHECK: aiex.runtime_sequence @seq1()
@@ -33,6 +34,7 @@ def runtimeSeq():
         def sequence1():
             npu_write32(0x1111, 0x2222)
 
+
 # CHECK-LABEL: bfp16ebs8Binding
 # CHECK: !aie.objectfifo<memref<256x!aiex.bfp<"bfp16ebs8">>>
 @construct_and_print_module
@@ -43,6 +45,7 @@ def bfp16ebs8Binding():
         C = tile(1, 2)
 
         object_fifo("dummy", P, C, 1, datatype=np.ndarray[(256,), np.dtype[bfp16ebs8]])
+
 
 # CHECK-LABEL: bfp16ebs16Binding
 # CHECK: !aie.objectfifo<memref<256x!aiex.bfp<"bfp16ebs16">>>
