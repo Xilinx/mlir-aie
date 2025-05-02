@@ -15,7 +15,7 @@ include ${srcdir}/../../makefile-common
 all: build/final.xclbin
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
-targetname = elwise_mul_add
+targetname = scale_shift
 in1_size = 131072 # in bytes
 in2_size = 131072 # in bytes, should always be euqal to in1_size
 in3_size = 131072 # in bytes, should always be euqal to in1_size
@@ -25,11 +25,6 @@ trace_size = 8192
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
 data_size = in1_size
 aie_py_src=${targetname}.py
-use_placed?=0
-
-ifeq (${use_placed}, 1)
-aie_py_src=${targetname}_placed.py
-endif
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
@@ -45,7 +40,7 @@ endif
 
 build/aie_${data_size}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< -d ${devicename} -i1s ${in1_size} -i2s ${in2_size} -i3s ${in3_size} -os ${out_size} > $@
+	python3 $< -d ${devicename} -i1s ${in1_size} -i2s ${in2_size} -i3s ${in3_size} -os ${out_size} -t 0 > $@
 
 build/aie_trace_${data_size}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
@@ -55,13 +50,13 @@ build/combined.a: build/mul.o build/add.o
 	mkdir -p ${@D}
 	ar rvs $@ $< $(word 2,$^)
 
-build/final.xclbin: build/aie.mlir build/mul.o build/add.o build/combined.a
+build/final.xclbin: build/aie_${data_size}.mlir build/mul.o build/add.o build/combined.a
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.bin ${<F}
 
-build/final_trace.xclbin: build/aie_trace.mlir build/mul.o
+build/final_trace.xclbin: build/aie_trace_${data_size}.mlir build/mul.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \

@@ -19,7 +19,7 @@ from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
 
 
-def my_elwise_mul_add(dev, in1_size, in2_size, in3_size, out_size, trace_size):
+def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
     in1_dtype = bfloat16
     in2_dtype = bfloat16
     in3_dtype = bfloat16
@@ -54,10 +54,10 @@ def my_elwise_mul_add(dev, in1_size, in2_size, in3_size, out_size, trace_size):
     C_memTile_ty = np.ndarray[(tile_size * n_cores,), np.dtype[out_dtype]]
 
     # AIE Core Function declarations
-    elwise_mul_bf16 = Kernel(
+    mul_bf16 = Kernel(
         "eltwise_mul_bf16_vector", "combined.a", [tile_ty, tile_ty, tile_ty]
     )
-    elwise_add_bf16 = Kernel(
+    add_bf16 = Kernel(
         "eltwise_add_bf16_vector", "combined.a", [tile_ty, tile_ty, tile_ty]
     )
 
@@ -105,6 +105,7 @@ def my_elwise_mul_add(dev, in1_size, in2_size, in3_size, out_size, trace_size):
             GlobalBuffer(
                 np.ndarray[(1,), np.dtype[np.int32]],
                 name=f"rtp{i}",
+                initial_value=np.array([1], dtype=np.int32),
                 use_write_rtp=True,
             )
         )
@@ -115,17 +116,17 @@ def my_elwise_mul_add(dev, in1_size, in2_size, in3_size, out_size, trace_size):
         workerBarriers.append(WorkerRuntimeBarrier())
 
     # Task for the cores to perform
-    def core_fn(of_a, of_b, of_c, elwise_mul, elwise_add, my_rtp, barrier):
+    def core_fn(of_a, of_b, of_c, mul, add, my_rtp, barrier):
         barrier.wait_for_value(1)
-        kernelValue = arith.trunci(T.i8(), my_rtp[0])
+        kernelValue = my_rtp[0]
         for _ in range_(tiles):
             elem_out = of_c.acquire(1)
             elem_in_a = of_a.acquire(1)
             elem_in_b = of_b.acquire(1)
             if (kernelValue == 1):
-                elwise_mul(elem_in_a, elem_in_b, elem_out)
+                mul(elem_in_a, elem_in_b, elem_out)
             else:
-                elwise_add(elem_in_a, elem_in_b, elem_out)
+                add(elem_in_a, elem_in_b, elem_out)
             of_a.release(1)
             of_b.release(1)
             of_c.release(1)
@@ -140,8 +141,8 @@ def my_elwise_mul_add(dev, in1_size, in2_size, in3_size, out_size, trace_size):
                     inA_fifos[i].cons(),
                     inB_fifos[i].cons(),
                     outC_fifos[i].prod(),
-                    elwise_mul_bf16,
-                    elwise_add_bf16,
+                    mul_bf16,
+                    add_bf16,
                     rtps[i],
                     workerBarriers[i],
                 ],
@@ -219,6 +220,6 @@ in3_size = int(opts.in3_size)
 out_size = int(opts.out_size)
 trace_size = int(opts.trace_size)
 
-module = my_elwise_mul_add(dev, in1_size, in2_size, in3_size, out_size, trace_size)
+module = my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size)
 print(module)
 

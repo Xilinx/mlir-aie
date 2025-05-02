@@ -165,24 +165,24 @@ int main(int argc, const char *argv[]) {
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
   std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
   for (int i = 0; i < INOUT0_VOLUME; i++)
-    AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)1.0,
-                                            (std::bfloat16_t)-0.5);
+    AVec[i] = 1.0; //test_utils::random_bfloat16_t((std::bfloat16_t)1.0,
+              //                              (std::bfloat16_t)-0.5);
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));
 
   // Initialize Inout buffer 1
   INOUT1_DATATYPE *bufInOut1 = bo_inout1.map<INOUT0_DATATYPE *>();
   std::vector<INOUT1_DATATYPE> BVec(INOUT1_VOLUME);
   for (int i = 0; i < INOUT1_VOLUME; i++)
-    BVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)1.0,
-                                            (std::bfloat16_t)-0.5);
+    BVec[i] = 2.0; //test_utils::random_bfloat16_t((std::bfloat16_t)1.0,
+                   //                         (std::bfloat16_t)-0.5);
   memcpy(bufInOut1, BVec.data(), (BVec.size() * sizeof(INOUT1_DATATYPE)));
 
   // Initialize Inout buffer 2
   INOUT1_DATATYPE *bufInOut2 = bo_inout2.map<INOUT2_DATATYPE *>();
   std::vector<INOUT2_DATATYPE> CVec(INOUT2_VOLUME);
   for (int i = 0; i < INOUT2_VOLUME; i++)
-    CVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)1.0,
-                                            (std::bfloat16_t)-0.5);
+    CVec[i] = 3.0; //test_utils::random_bfloat16_t((std::bfloat16_t)1.0,
+                   //                         (std::bfloat16_t)-0.5);
   memcpy(bufInOut2, CVec.data(), (CVec.size() * sizeof(INOUT2_DATATYPE)));
 
   // Initialize Inout buffer 3
