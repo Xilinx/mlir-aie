@@ -1509,21 +1509,43 @@ struct AIEObjectFifoStatefulTransformPass
                      std::vector<ObjectFifoCreateOp> &fifosNeedToRemove) {
     // Currently allowed, producerTile is ShimTile and there is a list of
     // consumerTiles : Distribute Step 1: Figure out which MemTile to use
-    llvm::SmallVector<Value, 4> consumerTiles(
-        createOp.getConsumerTiles().begin(), createOp.getConsumerTiles().end());
-    auto [memTileCol, memTileRow] = memtile_selection(
-        consumerTiles); // should be extended to producerTiles list
-    // Check if the selected memTile is already in the set of tiles
+
     TileOp memTile;
-    for (auto tile : device.getOps<TileOp>()) {
-      if (tile.getCol() == memTileCol && tile.getRow() == memTileRow) {
-        memTile = tile;
-        break;
+    // Check if stage_through_tile is set by the user
+    if (createOp.getStageThroughTileRow().has_value() && createOp.getStageThroughTileCol().has_value()) {
+      int memTileRow = createOp.getStageThroughTileRow().value();
+      int memTileCol = createOp.getStageThroughTileCol().value();
+
+      // Iterate over all TileOps in the DeviceOp and find the one that matches
+      for (auto tile : device.getOps<TileOp>()) {
+        if (tile.colIndex() == memTileCol && tile.rowIndex() == memTileRow) {
+          memTile = tile;
+          break;
+        }
+      }
+
+      if (!memTile) {
+        createOp.emitError() << "TileAttr <" << memTileRow << "," << memTileCol << "> does not match any TileOp in the device.";
+        return;
       }
     }
-    if (!memTile)
-      memTile = builder.create<TileOp>(builder.getUnknownLoc(), memTileCol,
-                                       memTileRow);
+    else{
+      // if not, then compiler selects the MemTile.
+      llvm::SmallVector<Value, 4> consumerTiles(
+          createOp.getConsumerTiles().begin(), createOp.getConsumerTiles().end());
+      auto [memTileCol, memTileRow] = memtile_selection(
+          consumerTiles); // should be extended to producerTiles list
+      // Check if the selected memTile is already in the set of tiles
+      for (auto tile : device.getOps<TileOp>()) {
+        if (tile.getCol() == memTileCol && tile.getRow() == memTileRow) {
+          memTile = tile;
+          break;
+        }
+      }
+      if (!memTile)
+        memTile = builder.create<TileOp>(builder.getUnknownLoc(), memTileCol,
+                                        memTileRow);
+    }
 
     // Step 2: Split objectFifos
     // Create objectFifo from producerTile to memTile
@@ -1547,7 +1569,7 @@ struct AIEObjectFifoStatefulTransformPass
     createdFifoOps.push_back(producerFifo);
 
     // Create objectFifos from memTile to each consumerTile
-    auto dataTypesList = createOp.getAllDatatypes();
+    auto dataTypesList = createOp.getSliceTypes();
     auto numberOfConsumerTiles = createOp.getConsumerTiles().size();
     std::vector<ObjectFifoCreateOp> consumerFifos;
     int consumerIndex = 0;
@@ -1564,8 +1586,8 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto consumerTile : createOp.getConsumerTiles()) {
       auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
       if (dataTypesList.has_value()) {
-        auto arrayAttr = dataTypesList.value();
-        auto dataTypeValue = dyn_cast<mlir::TypeAttr>(arrayAttr[consumerIndex]);
+        auto consArrayAttr = dataTypesList.value();
+        auto dataTypeValue = dyn_cast<mlir::TypeAttr>(consArrayAttr[consumerIndex]);
         auto type = dataTypeValue.getValue();
         consumerDatatype = llvm::cast<AIEObjectFifoType>(type);
       }
@@ -1699,7 +1721,7 @@ struct AIEObjectFifoStatefulTransformPass
         }
         // Call implicit_link function here
         if (!allOffsetsZero && producerTile.isShimTile() &&
-            consumerTiles.size() > 1) {
+            consumerTiles.size() > 1) { // Check if all computeTiles are consumerTiles
           builder.setInsertionPointAfter(createOp);
           implicit_link(ctx, device, createOp, builder, dmaAnalysis,
                         createdFifoOps, fifosNeedToRemove);

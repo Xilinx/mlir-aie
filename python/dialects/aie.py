@@ -446,14 +446,14 @@ class object_fifo(ObjectFifoCreateOp):
         # Not sure, if I would like to combine datatypes or not. For now, they are separate.
         all_offsets = consumer_offsets
         all_depths = [depth] + consumer_depths
-        all_datatypes = [
+        sliceTypes = [
             TypeAttr.get(ObjectFifoType.get(dt)) for dt in consumer_datatypes
         ]
 
         # Create the overall FIFO type from the combined datatypes.
         of_Ty = TypeAttr.get(ObjectFifoType.get(producer_datatype))
         self.datatype = producer_datatype  # For the acquire and release functions
-        all_datatypes_attr = _arrayAttr(all_datatypes, None)
+        sliceTypesArray = _arrayAttr(sliceTypes, None)
         if dimensionsFromStreamPerConsumer is None:
             dimensionsFromStreamPerConsumer = []
         if dimensionsToStream is None:
@@ -473,7 +473,7 @@ class object_fifo(ObjectFifoCreateOp):
             elemNumber=all_depths,
             elemType=of_Ty,
             offsets=all_offsets,
-            allDatatypes=all_datatypes_attr,  # Need a new appropriate name
+            sliceTypes=sliceTypesArray, 
             dimensionsToStream=dimensionsToStream,
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
             via_DMA=via_DMA,
@@ -513,6 +513,12 @@ class object_fifo(ObjectFifoCreateOp):
     def set_repeat_count(self, num):
         int_num = IntegerAttr.get(T.i32(), num)
         self.attributes["repeat_count"] = int_num
+    
+    def set_stage_through_tile(self, tile_op):
+        col = IntegerAttr.get(T.i32(), tile_op.col)
+        row = IntegerAttr.get(T.i32(), tile_op.row)
+        self.attributes["stage_through_tile_row"] = row
+        self.attributes["stage_through_tile_col"] = col
 
 
 # Create an aie objectFifo_link between input and output objectFifos.

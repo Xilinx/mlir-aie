@@ -1694,7 +1694,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         AIE_ObjectFifo_Depth:$elemNumber,
         TypeAttrOf<AIE_ObjectFifoType>:$elemType,
         OptionalAttr<I64ArrayAttr>:$offsets,
-        OptionalAttr<ArrayAttr>:$allDatatypes,
+        OptionalAttr<ArrayAttr>:$sliceTypes,
         BDDimLayoutArrayAttr:$dimensionsToStream,
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
         DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
@@ -1707,6 +1707,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         OptionalAttr<AIEI32Attr>:$via_shared_mem,
         // repeat_count==1 means "do it once"
         OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
+        OptionalAttr<AIEI32Attr>:$stage_through_tile_row,
+        OptionalAttr<AIEI32Attr>:$stage_through_tile_col,
         InitValuesArrayAttr:$initValues,
         OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions
   );
