@@ -1526,7 +1526,8 @@ struct AIEObjectFifoStatefulTransformPass
       }
 
       if (!memTile) {
-        createOp.emitError() << "TileAttr <" << memTileRow << "," << memTileCol << "> does not match any TileOp in the device.";
+        createOp.emitError() << "TileAttr <" << memTileRow << "," << memTileCol
+                             << "> does not match any TileOp in the device.";
         return;
       }
     }
