@@ -13,6 +13,7 @@
 #include <iostream>
 #include <sstream>
 
+#include "cxxopts.hpp"
 #include "test_utils.h"
 #include "xrt/xrt_bo.h"
 
@@ -21,16 +22,13 @@
 using DATATYPE = std::uint32_t; // Configure this to match your buffer data type
 #endif
 
-namespace po = boost::program_options;
-
 int main(int argc, const char *argv[]) {
 
   // Program arguments parsing
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  test_utils::add_default_options(desc);
-
-  test_utils::parse_options(argc, argv, desc, vm);
+  cxxopts::Options options("single_double_buffer");
+  test_utils::add_default_options(options);
+  cxxopts::ParseResult vm;
+  test_utils::parse_options(argc, argv, options, vm);
   int verbosity = vm["verbosity"].as<int>();
 
   constexpr bool VERIFY = true;

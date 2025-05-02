@@ -150,7 +150,7 @@ if config.xrt_lib_dir:
                     f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )
                 print("Running tests on NPU1 with command line: ", run_on_npu)
-            elif model in ["npu4", "Strix"]:
+            elif model in ["npu4", "Strix", "npu5", "Strix Halo", "npu6", "Krackan"]:
                 run_on_2npu = (
                     f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )

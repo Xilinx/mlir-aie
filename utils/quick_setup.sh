@@ -22,8 +22,8 @@ if [[ $WSL_DISTRO_NAME == "" ]]; then
     echo "XRT is not installed"
     return 1
   fi
-  NPU=`/opt/xilinx/xrt/bin/xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Kracken|RyzenAI-npu[146]"`
-  if echo "$NPU" | grep -qE "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Kracken|RyzenAI-npu[146]"; then
+  NPU=`/opt/xilinx/xrt/bin/xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]"`
+  if echo "$NPU" | grep -qE "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]"; then
     echo "AMD XDNA NPU found: "
     echo $NPU
   else
@@ -34,8 +34,8 @@ else
   echo "Environment is WSL"
 fi
 # Check if the current environment is NPU2
-# npu4 => Strix, npu6 => Kracken
-if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Kracken|RyzenAI-npu[46]"; then
+# npu4 => Strix, npu5 => Strix Halo, npu6 => Krackan
+if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[456]"; then
     export NPU2=1
 else
     export NPU2=0

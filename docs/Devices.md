@@ -89,7 +89,7 @@ N Columns and 6 Rows
 ```
 
 ```aie.device(npu2) {}```
-This NPU device is present in Ryzen AI: Strix, Strix Halo and Kracken Point SOCs.
+This NPU device is present in Ryzen AI: Strix, Strix Halo and Krackan Point SOCs.
 8 Columns and 6 Rows
 ```
 5 CCCCCCCC
