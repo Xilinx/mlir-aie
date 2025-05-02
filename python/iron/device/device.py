@@ -155,12 +155,21 @@ class Device(Resolvable):
 
     def resolve_tile(
         self,
-        tile: Tile,
+        t: Tile,
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        self._tiles[tile.col][tile.row].resolve(loc, ip, tile.allocation_scheme)
-        tile.op = self._tiles[tile.col][tile.row].op
+        if (t.col < 0) or (t.row < 0):
+            t.op = tile(
+                t.col,
+                t.row,
+                loc=loc,
+                ip=ip,
+                allocation_scheme=t.allocation_scheme,
+            )
+        else:
+            self._tiles[t.col][t.row].resolve(loc, ip, t.allocation_scheme)
+            t.op = self._tiles[t.col][t.row].op
 
 
 class NPUBase(Device):
