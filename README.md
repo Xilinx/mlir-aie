@@ -1,4 +1,4 @@
-# IRON AI Engine API and MLIR-based Toolchain
+# IRON API and MLIR-based AI Engine Toolchain
 
 [![Build and Test across Python versions](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml)
 
