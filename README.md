@@ -10,6 +10,11 @@
 
 [![GitHub Issues](https://img.shields.io/github/issues/Xilinx/mlir-aie/bug)](https://github.com/Xilinx/mlir-aie/issues?q=is%3Aopen+is%3Aissue+label%3Abug)
 
+![GitHub Downloads (all assets, specific tag)](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels/total?color=blue)
+
+![GitHub Contributors](https://img.shields.io/github/contributors/Xilinx/mlir-aie)
+
+
 ![](https://mlir.llvm.org//mlir-logo.png)
 
 This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for AI Engine-enabled devices, such as [AMD Ryzen™ AI](https://www.amd.com/en/products/processors/consumer/ryzen-ai.html) and [Versal™](https://www.xilinx.com/products/technology/ai-engine.html).  This repository can be used to generate low-level configurations for the AI Engine portion of these devices. AI Engines are organized as a spatial array of tiles, where each tile contains AI Engine cores and/or memories. The spatial array is connected by stream switches that can be configured to route data between AI Engine tiles scheduled by their programmable Direct Memory Access channels (DMAs). This repository contains MLIR representations, with multiple levels of abstraction, to target AI Engine devices. This enables compilers and developers to program AI Engine cores, as well as describe data movements and array connectivity. A Python API is made available as a convenient interface for generating MLIR design descriptions. Backend code generation is also included, targeting the [aie-rt](https://github.com/Xilinx/aie-rt/tree/main-aie) library.
