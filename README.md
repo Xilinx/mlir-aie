@@ -10,7 +10,10 @@
 
 [![GitHub Issues](https://img.shields.io/github/issues/Xilinx/mlir-aie/bug)](https://github.com/Xilinx/mlir-aie/issues?q=is%3Aopen+is%3Aissue+label%3Abug)
 
-[![Total Downloads](https://img.shields.io/github/downloads/Xilinx/mlir-aie/total?color=blue)](https://github.com/Xilinx/mlir-aie/releases) 
+![GitHub Downloads (all assets, specific tag)](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels/total?color=blue)
+
+![GitHub Contributors](https://img.shields.io/github/contributors/Xilinx/mlir-aie)
+
 
 ![](https://mlir.llvm.org//mlir-logo.png)
 
