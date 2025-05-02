@@ -1512,7 +1512,8 @@ struct AIEObjectFifoStatefulTransformPass
 
     TileOp memTile;
     // Check if stage_through_tile is set by the user
-    if (createOp.getStageThroughTileRow().has_value() && createOp.getStageThroughTileCol().has_value()) {
+    if (createOp.getStageThroughTileRow().has_value() &&
+        createOp.getStageThroughTileCol().has_value()) {
       int memTileRow = createOp.getStageThroughTileRow().value();
       int memTileCol = createOp.getStageThroughTileCol().value();
 
