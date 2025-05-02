@@ -33,10 +33,10 @@ def runtimeSeq():
         def sequence1():
             npu_write32(0x1111, 0x2222)
 
-# CHECK-LABEL: bfp16ebs8Type
+# CHECK-LABEL: bfp16ebs8Binding
 # CHECK: !aie.objectfifo<memref<256x!aiex.bfp<"bfp16ebs8">>>
 @construct_and_print_module
-def bfp16ebs8BindingCheck():
+def bfp16ebs8Binding():
     @device(AIEDevice.npu1_4col)
     def device_body():
         P = tile(0, 0)
@@ -44,10 +44,10 @@ def bfp16ebs8BindingCheck():
 
         object_fifo("dummy", P, C, 1, datatype=np.ndarray[(256,), np.dtype[bfp16ebs8]])
 
-# CHECK-LABEL: bfp16ebs16Type
+# CHECK-LABEL: bfp16ebs16Binding
 # CHECK: !aie.objectfifo<memref<256x!aiex.bfp<"bfp16ebs16">>>
 @construct_and_print_module
-def bfp16ebs16BindingCheck():
+def bfp16ebs16Binding():
     @device(AIEDevice.npu1_4col)
     def device_body():
         P = tile(0, 0)
