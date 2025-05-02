@@ -1530,8 +1530,7 @@ struct AIEObjectFifoStatefulTransformPass
                              << "> does not match any TileOp in the device.";
         return;
       }
-    }
-    else{
+    } else {
       // if not, then compiler selects the MemTile.
       llvm::SmallVector<Value, 4> consumerTiles(
           createOp.getConsumerTiles().begin(), createOp.getConsumerTiles().end());
