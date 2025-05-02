@@ -1533,7 +1533,8 @@ struct AIEObjectFifoStatefulTransformPass
     } else {
       // if not, then compiler selects the MemTile.
       llvm::SmallVector<Value, 4> consumerTiles(
-          createOp.getConsumerTiles().begin(), createOp.getConsumerTiles().end());
+          createOp.getConsumerTiles().begin(),
+          createOp.getConsumerTiles().end());
       auto [memTileCol, memTileRow] = memtile_selection(
           consumerTiles); // should be extended to producerTiles list
       // Check if the selected memTile is already in the set of tiles
