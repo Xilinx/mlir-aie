@@ -66,6 +66,10 @@ export PATH=${MLIR_AIE_INSTALL_DIR}/bin:${PATH}
 export PYTHONPATH=${MLIR_AIE_INSTALL_DIR}/python:${PYTHONPATH}
 export LD_LIBRARY_PATH=${MLIR_AIE_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}
 
+echo ""
+echo "Note: Peano has not been added to PATH so that it does not conflict with"
+echo "      system clang/clang++. It can be found in: \$PEANO_INSTALL_DIR/bin"
+echo ""
 echo "PATH              : $PATH"
 echo "LD_LIBRARY_PATH   : $LD_LIBRARY_PATH"
 echo "PYTHONPATH        : $PYTHONPATH"
