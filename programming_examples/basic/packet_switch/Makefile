@@ -51,7 +51,7 @@ LDFLAGS += -Wl,-rpath,/opt/xilinx/xrt/lib
 LDFLAGS += -lxrt_coreutil
 
 .PHONY: all link bitstream host clean instructions
-all: ${XCLBIN_TARGET} ${INSTS_TARGET} ${HOST_C_TARGET}
+all: ${HOST_C_TARGET} ${XCLBIN_MLIR_SRCS} ${XCLBIN_TARGET} ${INSTS_TARGET} 
 
 clean:
 	-@rm -rf build
