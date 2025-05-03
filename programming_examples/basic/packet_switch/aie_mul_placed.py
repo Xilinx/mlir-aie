@@ -205,38 +205,23 @@ def my_passthrough_kernel(dev, in_out_size):
                 next_bd(block[7])
             with block[8]:
                 EndOp()
-# if len(sys.argv) < 3:
-#     raise ValueError("[ERROR] Need at least 3 arguments (dev, in_out_size)")
+if len(sys.argv) < 3:
+    raise ValueError("[ERROR] Need at least 2 arguments (dev)")
 
 
-# p = argparse.ArgumentParser()
-# p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
-# p.add_argument(
-#     "-in_os", "--in_out_size", required=True, dest="in_out_size", help="in_out_size"
-# )
+p = argparse.ArgumentParser()
+p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
+opts = p.parse_args(sys.argv[1:])
 
-# p.add_argument(
-#     "-t",
-#     "--trace_size",
-#     required=False,
-#     dest="trace_size",
-#     default=0,
-#     help="Trace buffer size",
-# )
-# opts = p.parse_args(sys.argv[1:])
-
-# if opts.device == "npu":
-#     dev = AIEDevice.npu1_1col
-# elif opts.device == "npu2":
-#     dev = AIEDevice.npu2
-# else:
-#     raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-# in_out_size = int(opts.in_out_size)
-
-# trace_size = int(opts.trace_size)
+if opts.device == "npu":
+    dev = AIEDevice.npu1_1col
+elif opts.device == "npu2":
+    dev = AIEDevice.npu2
+else:
+    raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
 with mlir_mod_ctx() as ctx:
-    my_passthrough_kernel(AIEDevice.npu2, in_out_size=256)
+    my_passthrough_kernel(dev, in_out_size=256)
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)
