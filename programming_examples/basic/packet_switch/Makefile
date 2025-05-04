@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2025, Advanced Micro Devices, Inc.
+#
 
 DEVICE ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 HOME_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
@@ -16,15 +17,11 @@ KERNEL_SRCS := $(wildcard ${HOME_DIR}/kernel/*.cc)
 KERNEL_OBJS := $(patsubst ${HOME_DIR}/kernel/%.cc, ${KERNEL_O_DIR}/%.o, $(KERNEL_SRCS))
 KERNEL_HEADERS := $(wildcard ${HOME_DIR}/kernel/*.h)
 
-
+# Bitstream MLIR sources (relative paths)
 BITSTREAM_O_DIR := build/bitstream
 
-XCLBIN_MLIR_SRCS += build/bitstream/aie_mul.mlir
-XCLBIN_MLIR_SRCS += build/bitstream/aie_add.mlir
-
-
-INSTS_TARGET := ${BITSTREAM_O_DIR}/insts_mul.txt
-INSTS_TARGET += ${BITSTREAM_O_DIR}/insts_add.txt
+XCLBIN_MLIR_SRCS := ${BITSTREAM_O_DIR}/aie_mul.mlir ${BITSTREAM_O_DIR}/aie_add.mlir
+INSTS_TARGET := ${BITSTREAM_O_DIR}/insts_mul.txt ${BITSTREAM_O_DIR}/insts_add.txt
 XCLBIN_TARGET := ${BITSTREAM_O_DIR}/final.xclbin
 
 # Host stuff
@@ -32,56 +29,32 @@ HOST_SRCDIR := ${HOME_DIR}/host
 HOST_O_DIR := build/host
 HOST_C_TARGET := packet_switch.exe
 
-HOST_HEADERS = $(wildcard ${HOST_SRCDIR}/*.hpp)
-HOST_SRCS = $(wildcard ${HOST_SRCDIR}/*.cpp)
-HOST_OBJS = $(patsubst $(HOST_SRCDIR)/%.cpp,$(HOST_O_DIR)/%.o,$(HOST_SRCS))
-HOST_OBJS += $(HOST_O_DIR)/test_utils.o
+HOST_HEADERS := $(wildcard ${HOST_SRCDIR}/*.hpp)
+HOST_SRCS := $(wildcard ${HOST_SRCDIR}/*.cpp)
+HOST_OBJS := $(patsubst ${HOST_SRCDIR}/%.cpp,$(HOST_O_DIR)/%.o,$(HOST_SRCS)) $(HOST_O_DIR)/test_utils.o
 
 CXX := g++-13
-CXXFLAGS += -c
-CXXFLAGS += -std=c++23
-CXXFLAGS += -ggdb
-CXXFLAGS += -I/opt/xilinx/xrt/include
-CXXFLAGS += -I${HOME_DIR}/host
-CXXFLAGS += -I${HOME_DIR}/../../../runtime_lib/test_lib
-
-LDFLAGS += -lm
-LDFLAGS += -L/opt/xilinx/xrt/lib
-LDFLAGS += -Wl,-rpath,/opt/xilinx/xrt/lib
-LDFLAGS += -lxrt_coreutil
+CXXFLAGS := -c -std=c++23 -ggdb \
+           -I/opt/xilinx/xrt/include \
+           -I${HOME_DIR}/host \
+           -I${HOME_DIR}/../../../runtime_lib/test_lib
+LDFLAGS := -lm -L/opt/xilinx/xrt/lib -Wl,-rpath,/opt/xilinx/xrt/lib -lxrt_coreutil
 
 .PHONY: all link bitstream host clean instructions
-all: ${HOST_C_TARGET} ${XCLBIN_MLIR_SRCS} ${XCLBIN_TARGET} ${INSTS_TARGET} 
+all: ${HOST_C_TARGET} ${XCLBIN_MLIR_SRCS} ${XCLBIN_TARGET} ${INSTS_TARGET}
 
 clean:
-	-@rm -rf build
-	-@rm -rf log
-	-@rm -rf ${HOST_C_TARGET}
-	-@rm -rf trace*
-	-@rm -rf *.xclbin
-	-@rm -rf *.txt
-
+	-@rm -rf build log ${HOST_C_TARGET} trace* *.xclbin *.txt
 
 test:
-	echo "test"
-	echo ${AIEOPT_DIR}
-
-
+	echo "test" && echo ${AIEOPT_DIR}
 
 instructions: ${INSTS_TARGET}
-
-
 kernel: ${KERNEL_OBJS}
-
-
-link: ${MLIR_TARGET}
-
-mlir:  ${XCLBIN_MLIR_SRCS}
+link: ${XCLBIN_TARGET}
+mlir: ${XCLBIN_MLIR_SRCS}
 bitstream: ${XCLBIN_TARGET}
-
-
 host: ${HOST_C_TARGET}
-
 
 # Build kernels
 ${KERNEL_O_DIR}/%.o: ${HOME_DIR}/kernel/%.cc ${KERNEL_HEADERS}
@@ -96,66 +69,52 @@ endif
 	mkdir -p ${BITSTREAM_O_DIR}
 	cp ${KERNEL_O_DIR}/*.o ${BITSTREAM_O_DIR}
 
-# # # Build python to mlir
-${BITSTREAM_O_DIR}/aie_add.mlir: ${HOME_DIR}/aie_add_placed.py
-	mkdir -p ${@D}
-	python3 $< -d ${DEVICE}  > $@
 # Build python to mlir
 ${BITSTREAM_O_DIR}/aie_mul.mlir: ${HOME_DIR}/aie_mul_placed.py
 	mkdir -p ${@D}
-	python3 $< -d ${DEVICE}  > $@
+	python3 $< -d ${DEVICE} > $@
+${BITSTREAM_O_DIR}/aie_add.mlir: ${HOME_DIR}/aie_add_placed.py
+	mkdir -p ${@D}
+	python3 $< -d ${DEVICE} > $@
 
 # Build xclbin
-${XCLBIN_TARGET}: ${HOME_DIR}/${XCLBIN_MLIR_SRCS} ${KERNEL_OBJS}
-
-	cd ${@D} && aiecc.py --aie-generate-xclbin  --no-compile-host \
+${XCLBIN_TARGET}: ${XCLBIN_MLIR_SRCS} ${KERNEL_OBJS}
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host \
 		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F}  $(<:${HOME_DIR}/kernel/%=../../kernel/%)
-
+		--xclbin-name=${@F} \
+		$(notdir ${XCLBIN_MLIR_SRCS}) $(notdir ${KERNEL_OBJS})
 	cp ${XCLBIN_TARGET} ./final.xclbin
 
-
-${BITSTREAM_O_DIR}/insts_mul.txt:  ${HOME_DIR}/build/bitstream/aie_mul.mlir
+# Generate instruction files
+${BITSTREAM_O_DIR}/insts_mul.txt: ${BITSTREAM_O_DIR}/aie_mul.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-npu-insts --no-compile-host --no-xchesscc --no-xbridge \
-		--npu-insts-name=${@:${BITSTREAM_O_DIR}/%=%} $(<:${HOME_DIR}/kernel/%=../../kernel/%)
+		--npu-insts-name=${@F} $(<:${BITSTREAM_O_DIR}/%=%) 
 	cp $@ ./
-${BITSTREAM_O_DIR}/insts_add.txt:  ${HOME_DIR}/build/bitstream/aie_add.mlir
+${BITSTREAM_O_DIR}/insts_add.txt: ${BITSTREAM_O_DIR}/aie_add.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-npu-insts --no-compile-host --no-xchesscc --no-xbridge \
-		--npu-insts-name=${@:${BITSTREAM_O_DIR}/%=%} $(<:${HOME_DIR}/kernel/%=../../kernel/%)
+		--npu-insts-name=${@F} $(<:${BITSTREAM_O_DIR}/%=%) 
 	cp $@ ./
 
+# Build host
 ${HOST_C_TARGET}: ${HOST_OBJS}
 	mkdir -p ${HOST_O_DIR}
 	echo ${HOST_OBJS}
-	$(CXX) -o "$@" $(+) $(LDFLAGS)
+	$(CXX) -o "$@" $(HOST_OBJS) $(LDFLAGS)
 
-$(HOST_O_DIR)/test.o: $(HOST_SRCDIR)/test.cpp $(HOST_HEADERS)
-	-@mkdir -p $(@D)
-	$(CXX) $(CXXFLAGS) -o "$@" "$<"
-
+$(HOST_O_DIR)/test.o: ${HOST_SRCDIR}/test.cpp ${HOST_HEADERS}
+	mkdir -p $(@D)
+	$(CXX) ${CXXFLAGS} -o "$@" "$<"
 
 $(HOST_O_DIR)/test_utils.o: ${HOME_DIR}/../../../runtime_lib/test_lib/test_utils.cpp
-	-@mkdir -p $(@D)
-	$(CXX) $(CXXFLAGS) -o "$@" "$<"
+	mkdir -p $(@D)
+	$(CXX) ${CXXFLAGS} -o "$@" "$<"
 
-.PHONY: run_mul
-run_mul: ${HOST_C_TARGET} ${XCLBIN_MLIR_SRCS} ${XCLBIN_TARGET} ${INSTS_TARGET}
-	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
-	./$< 1
-
-.PHONY: run_add
-run_add: ${HOST_C_TARGET} ${XCLBIN_MLIR_SRCS} ${XCLBIN_TARGET} ${INSTS_TARGET}
-	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
-	./$< 0
-
-.PHONY: run
-run: ${HOST_C_TARGET} ${XCLBIN_MLIR_SRCS} ${XCLBIN_TARGET} ${INSTS_TARGET} 
-	echo "run_mul"
-	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
-	./$< 1
-	echo "run_add"
-	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
-	./$< 0
-
+.PHONY: run_mul run_add run
+run_mul: all
+	./$(HOST_C_TARGET) 1
+run_add: all
+	./$(HOST_C_TARGET) 0
+run: run_mul run_add
