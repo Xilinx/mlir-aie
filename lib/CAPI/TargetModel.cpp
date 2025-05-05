@@ -179,11 +179,11 @@ uint32_t aieTargetModelGetNumDestShimMuxConnections(AieTargetModel targetModel,
 }
 
 uint32_t aieTargetModelGetNumSourceShimMuxConnections(
-  AieTargetModel targetModel, int col, int row, uint32_t bundle) {
-xilinx::AIE::WireBundle wireBundle =
-    static_cast<xilinx::AIE::WireBundle>(bundle);
-return unwrap(targetModel)
-    .getNumSourceShimMuxConnections(col, row, wireBundle);
+    AieTargetModel targetModel, int col, int row, uint32_t bundle) {
+  xilinx::AIE::WireBundle wireBundle =
+      static_cast<xilinx::AIE::WireBundle>(bundle);
+  return unwrap(targetModel)
+      .getNumSourceShimMuxConnections(col, row, wireBundle);
 }
 
 bool aieTargetModelIsNPU(AieTargetModel targetModel) {
