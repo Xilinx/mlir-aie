@@ -45,7 +45,7 @@ class SequentialPlacer(Placer):
     because it will sequentially place workers to Compute Tiles. After workers are placed, Memory Tiles and
     Shim Tiles are placed as close to the column of the given compute tile as possible.
 
-    The SequentialPlacer only does validation of placement with respect to available DMA channels on the tiles. 
+    The SequentialPlacer only does validation of placement with respect to available DMA channels on the tiles.
     However, it can yield invalid placements that exceed other resource limits, such as memory, For complex or
     resource sensitive designs, a more complex placer or manual placement is required.
     """
