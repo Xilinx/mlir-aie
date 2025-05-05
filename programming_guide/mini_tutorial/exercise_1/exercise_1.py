@@ -6,26 +6,22 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 
-import numpy as np
 import sys
+import numpy as np
 
 from aie.iron import Program, Runtime, Worker, ObjectFifo, GlobalBuffer
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
 
 import aie.iron as iron
 
-dev = NPU2()
-
-# Define tensor types
-num_elements = 48
-data_type = np.int32
-tile_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
-
 
 @iron.jit(is_placed=False)
-def exercise_1():
+def exercise_1(output):
+    num_elements = output.numel()
+    data_type = output.dtype
+    tile_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
+
     # Dataflow with ObjectFifos
     of_out = ObjectFifo(tile_ty, name="out")
 
@@ -52,13 +48,16 @@ def exercise_1():
         rt.drain(of_out.cons(), c_out, wait=True)
 
     # Create the program from the device type and runtime
-    my_program = Program(dev, rt)
+    my_program = Program(iron.get_current_device(), rt)
 
     # Place components (assign them resources on the device) and generate an MLIR module
     return my_program.resolve_program(SequentialPlacer())
 
 
 def main():
+    # Define tensor shapes and data types
+    num_elements = 48
+    data_type = np.int32
 
     # Construct an input tensor and an output zeroed tensor
     # The two tensors are in memory accessible to the NPU
@@ -84,11 +83,11 @@ def main():
     # Otherwise, exit with a failure code
     if not errors:
         print("\nPASS!\n")
-        exit(0)
+        sys.exit(0)
     else:
         print("\nError count: ", errors)
         print("\nfailed.\n")
-        exit(1)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

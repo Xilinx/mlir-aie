@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(npu1_1col) {
+  aie.device(NPUDEVICE) {
     memref.global "public" @out0 : memref<64xi32>
 
     %tile_0_0 = aie.tile(0, 0)

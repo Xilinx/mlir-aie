@@ -32,7 +32,7 @@ def conv2dk1(
 
         N_in_bytes = tensorOutSize  # Number of bytes of output data (1 byte/elem)
 
-        @device(AIEDevice.npu1_1col)
+        @device(dev)
         def device_body():
 
             actIn_ty = np.ndarray[(actIn,), np.dtype[np.int8]]
@@ -166,11 +166,9 @@ if __name__ == "__main__":
     try:
         device_name = str(sys.argv[1])
         if device_name == "npu":
-            # dev = NPU1Col1()
-            dev = 0  # placeholders
+            dev = AIEDevice.npu1_1col
         elif device_name == "npu2":
-            # dev = NPU2()
-            dev = 1  # placeholders
+            dev = AIEDevice.npu2_1col
         else:
             raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
         width = int(sys.argv[2])

@@ -54,7 +54,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 ### Install AIETools
 
-1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3 Early Accesss](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab). We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
+1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3 Early Access](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab). We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
 
    > This is an early access lounge, you must register and be granted access at this time.
 
@@ -97,7 +97,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
     ```bash
     # Python versions 3.10, 3.12 and 3.13 are currently supported by our wheels
     sudo apt install \
-    build-essential clang clang-14 lld lld-14 cmake python3-venv python3-pip
+    build-essential clang clang-14 lld lld-14 cmake ninja-build python3-venv python3-pip
     ```
 
 ## Build and Install mlir-aie and IRON

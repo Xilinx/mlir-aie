@@ -76,8 +76,8 @@ run: ${targetname}.exe build/final.xclbin
 
 trace: ${targetname}.exe build/final_trace.xclbin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift ${colshift} > trace_${targetname}.json
-	${srcdir}/../../utils/get_trace_summary.py --filename trace_${targetname}.json
+	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --colshift ${colshift} --output trace_${targetname}.json
+	${srcdir}/../../utils/get_trace_summary.py --input trace_${targetname}.json
 
 clean:
 	rm -rf build _build ${targetname}.exe
