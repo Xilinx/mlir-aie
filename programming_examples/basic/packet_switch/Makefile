@@ -21,7 +21,7 @@ KERNEL_HEADERS := $(wildcard ${HOME_DIR}/kernel/*.h)
 BITSTREAM_O_DIR := build/bitstream
 
 XCLBIN_MLIR_SRCS := ${BITSTREAM_O_DIR}/aie_mul.mlir ${BITSTREAM_O_DIR}/aie_add.mlir
-INSTS_TARGET := ${BITSTREAM_O_DIR}/insts_mul.txt ${BITSTREAM_O_DIR}/insts_add.txt
+INSTS_TARGET := ${BITSTREAM_O_DIR}/insts_mul.bin ${BITSTREAM_O_DIR}/insts_add.bin
 XCLBIN_TARGET := ${BITSTREAM_O_DIR}/final.xclbin
 
 # Host stuff
@@ -44,7 +44,7 @@ LDFLAGS := -lm -L/opt/xilinx/xrt/lib -Wl,-rpath,/opt/xilinx/xrt/lib -lxrt_coreut
 all: ${HOST_C_TARGET} ${XCLBIN_MLIR_SRCS} ${XCLBIN_TARGET} ${INSTS_TARGET}
 
 clean:
-	-@rm -rf build log ${HOST_C_TARGET} trace* *.xclbin *.txt
+	-@rm -rf build log ${HOST_C_TARGET} trace* *.xclbin *.bin
 
 test:
 	echo "test" && echo ${AIEOPT_DIR}
@@ -87,12 +87,12 @@ ${XCLBIN_TARGET}: ${XCLBIN_MLIR_SRCS} ${KERNEL_OBJS}
 	cp ${XCLBIN_TARGET} ./final.xclbin
 
 # Generate instruction files
-${BITSTREAM_O_DIR}/insts_mul.txt: ${BITSTREAM_O_DIR}/aie_mul.mlir
+${BITSTREAM_O_DIR}/insts_mul.bin: ${BITSTREAM_O_DIR}/aie_mul.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-npu-insts --no-compile-host --no-xchesscc --no-xbridge \
 		--npu-insts-name=${@F} $(<:${BITSTREAM_O_DIR}/%=%) 
 	cp $@ ./
-${BITSTREAM_O_DIR}/insts_add.txt: ${BITSTREAM_O_DIR}/aie_add.mlir
+${BITSTREAM_O_DIR}/insts_add.bin: ${BITSTREAM_O_DIR}/aie_add.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-npu-insts --no-compile-host --no-xchesscc --no-xbridge \
 		--npu-insts-name=${@F} $(<:${BITSTREAM_O_DIR}/%=%) 
