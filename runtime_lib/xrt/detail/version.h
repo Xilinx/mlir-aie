@@ -11,11 +11,14 @@ static const char xrt_build_version[] = "2.20.0";
 
 static const char xrt_build_version_branch[] = "master";
 
-static const char xrt_build_version_hash[] = "6771f4d86fa616b8908d86d0999ee802074a32d8";
+static const char xrt_build_version_hash[] =
+    "6771f4d86fa616b8908d86d0999ee802074a32d8";
 
-static const char xrt_build_version_hash_date[] = "Wed, 30 Apr 2025 16:34:04 -0700";
+static const char xrt_build_version_hash_date[] =
+    "Wed, 30 Apr 2025 16:34:04 -0700";
 
-static const char xrt_build_version_date_rfc[] = "Thu, 01 May 2025 15:25:03 -0700";
+static const char xrt_build_version_date_rfc[] =
+    "Thu, 01 May 2025 15:25:03 -0700";
 
 static const char xrt_build_version_date[] = "2025-05-01 15:25:03";
 
@@ -37,26 +40,27 @@ static const char xrt_modified_files[] = "";
 
 namespace xrt::version {
 
-inline void
-print(std::ostream & output)
-{
+inline void print(std::ostream &output) {
   output << "       XRT Build Version: " << xrt_build_version << std::endl;
-  output << "    Build Version Branch: " << xrt_build_version_branch << std::endl;
+  output << "    Build Version Branch: " << xrt_build_version_branch
+         << std::endl;
   output << "      Build Version Hash: " << xrt_build_version_hash << std::endl;
-  output << " Build Version Hash Date: " << xrt_build_version_hash_date << std::endl;
-  output << "      Build Version Date: " << xrt_build_version_date_rfc << std::endl;
+  output << " Build Version Hash Date: " << xrt_build_version_hash_date
+         << std::endl;
+  output << "      Build Version Date: " << xrt_build_version_date_rfc
+         << std::endl;
 
   std::string modified_files(xrt_modified_files);
   if (modified_files.empty())
     return;
 
-  const std::string& delimiters = ",";      // Our delimiter
+  const std::string &delimiters = ","; // Our delimiter
   std::string::size_type last_pos = 0;
   int running_index = 1;
   while (last_pos < modified_files.length() + 1) {
     if (running_index == 1)
       output << "  Current Modified Files: ";
-    else 
+    else
       output << "                          ";
 
     output << running_index++ << ") ";
@@ -67,13 +71,12 @@ print(std::ostream & output)
       pos = modified_files.length();
 
     output << modified_files.substr(last_pos, pos - last_pos) << std::endl;
-    
+
     last_pos = pos + 1;
   }
 }
 
-} // namespace xrt::version 
+} // namespace xrt::version
 #endif // __cplusplus
 
 #endif
-
