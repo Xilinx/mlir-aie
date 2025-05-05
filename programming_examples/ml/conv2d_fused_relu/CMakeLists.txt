@@ -20,6 +20,7 @@ if (NOT WSL)
     set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT cloned repo")
     set(XRT_LIB_DIR /opt/xilinx/xrt/lib CACHE STRING "Path to xrt_coreutil.lib")
 else()
+    set(BOOST_INCLUDE_DIRS C:/Technical/thirdParty/boost_1_83_0 CACHE STRING "Path to Boost install")
     set(OpenCV_DIR C:/Technical/thirdParty/opencv/build CACHE STRING "Path to OpenCV install")
     set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT cloned repo")
     set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
@@ -59,6 +60,7 @@ target_compile_definitions(${currentTarget} PUBLIC
 
 target_include_directories (${currentTarget} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../utils
+    ${BOOST_INCLUDE_DIRS}
     ${XRT_INC_DIR}
     ${OpenCV_INCLUDE_DIRS}
 )
