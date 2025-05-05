@@ -1,13 +1,21 @@
 # Windows Setup and Build Instructions
 
-These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU on Windows. The instructions were tested on a ASUS Vivobook Pro 15.
+These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU on Windows. The instructions were tested on a ASUS Vivobook Pro 15 among other Phoenix and Strix equipped machines.
 
-You will set up a Windows subsystem for Linux (WSL) Ubuntu install, which will be used for building NPU device code. For building the host (x86) code, you will use MS Visual Code Community.
+You will set up a Windows subsystem for Linux (WSL) Ubuntu install, which will be used for building NPU device code. For building the host (x86) code, you will use MS Visual Code Community but this can be invoked from within WSL so you should be able to compile and run code entirely within WSL. 
 
-- Rely on WSL Ubuntu 22.04 LTS for Vitis tool install and to build and run our mlir-aie tools
-- Rely on MS Visual Studio 17 2022 to natively build the host code (aka test.cpp)
+- Rely on WSL Ubuntu 22.04 LTS for tool install and to build and run our mlir-aie tools
+- Rely on MS Visual Studio 17 2022 to natively build the host code (aka test.cpp) but this can be invoked from within WSL
 
-## Initial Setup
+
+## Setup and Build Steps
+1. [BIOS Setup](#bios-setup) - Needed for WSL and NPU setup.
+1. [Prerequisites](#prerequisites) - Clone mlir-aie from within WSL, install dependent sw packages, Clone/unzip XRT and Boost source (no need to build), 
+1. [Prepare Host Side: Natively on Win11](#prepare-host-side:-natively-on-win11)
+1. [Setup up your environment](#set-up-your-environment)
+1. [Build a Design](#build-a-design)
+
+## BIOS Setup
 
 #### Update BIOS:
 
@@ -34,6 +42,7 @@ All steps in WSL Ubuntu terminal.
    ```
    git clone --recurse-submodules https://github.com/Xilinx/mlir-aie.git
    ````
+   However, in order to build the programming examples, you will need to clone mlir-aie under the main windows drive location such as `C:\Technical\mlir-aie`. This is needed because visual studio compiler has trouble finding directories within WSL.
 1. Prepare WSL2 with Ubuntu 22.04:
     - Install packages (after apt-get update):
       ```
@@ -68,13 +77,13 @@ All steps in WSL Ubuntu terminal.
             unzip vitis_aie_essentials*.whl
          ```
       - Get local license for AIE Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense) providing your machine's MAC address (`ip -brief link show eth0`). Be sure to select License Type of `Node` instead of `Floating`.
-      - copy license file (Xilinx.lic) to your preferred location (licenseFilePath) and update your setup configuration accordingly, for instance
+      - Copy license file (Xilinx.lic) to your preferred location (licenseFilePath) and update your setup configuration accordingly, for instance
         ```
         export XILINXD_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
         ip link add vmnic0 type dummy
         ip link set vmnic0 addr <yourMACaddress>
         ```
-      - Setup your environment using the following script for Vitis for aietools:
+      - Setup your environment using the following script for Vitis for aietools. You can add this script to you WSL ~/.bashrc to automate the setup.
          ```bash
          #!/bin/bash
           #################################################################################
@@ -89,7 +98,7 @@ All steps in WSL Ubuntu terminal.
 
       - Install Vitis in WSL Ubuntu. We will assume you use the default installation directory, `/tools/Xilinx`.
       - Get local license for AIE Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense) providing your machine's MAC address (`ip -brief link show eth0`). Be sure to select License Type of `Node` instead of `Floating`.
-      - copy license file (Xilinx.lic) to your preferred location (licenseFilePath) and update your setup configuration accordingly, for instance
+      - Copy license file (Xilinx.lic) to your preferred location (licenseFilePath) and update your setup configuration accordingly, for instance
         ```
         export XILINXD_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
         ip link add vmnic0 type dummy
@@ -123,12 +132,17 @@ All steps in WSL Ubuntu terminal.
 
    * [Optional] Build from source following regular get started instructions [https://xilinx.github.io/mlir-aie/Building.html](https://xilinx.github.io/mlir-aie/Building.html)
 
-1. After installing the updated Ryzen™ AI driver (see next subsection), use the gendef tool (from the mingw-w64-tools package) to create a .def file with the symbols:
+1. After installing the updated Ryzen™ AI driver (see next subsection), use the gendef tool (from the mingw-w64-tools package) to create a .def file with the symbols. This step is needed to create an XRT .dll file that we can link against when we compile. 
     ```
     mkdir /mnt/c/Technical/xrtNPUfromDLL; cd /mnt/c/Technical/xrtNPUfromDLL
     cp /mnt/c/Windows/System32/AMD/xrt_coreutil.dll .
     gendef xrt_coreutil.dll
     ```
+
+1. Clone XRT under `C:\Technical\XRT`. Copy this device.h file under 
+
+1. Download boost (currently tested against [1.83.0](https://archives.boost.io/release/1.83.0/source/boost_1_83_0.zip)) and extract in your windows folder `C:\Technical\thirdParty\`. You do not need to build this, we just needed the headers that XRT depends on.
+
 
 ### Prepare Host Side: Natively on Win11
 
