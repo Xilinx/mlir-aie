@@ -257,7 +257,6 @@ class SequentialPlacer(Placer):
         channels: dict[Tile, (ObjectFifoEndpoint, int)],
         tiles: list[Tile],
         device: Device,
-        is_shim: bool = False,
     ):
         """
         A utility function that updates given channel and tile lists.
@@ -265,18 +264,12 @@ class SequentialPlacer(Placer):
         if num_required_channels == 0:
             return
         if not tile in channels:
-            channels[tile] = [(ofe, num_required_channels)]
-        else:
-            channels[tile].append((ofe, num_required_channels))
+            channels[tile] = []
+        channels[tile].append((ofe, num_required_channels))
         used_channels = 0
         for _, c in channels[tile]:
             used_channels += c
         max_tile_channels = device.get_num_connections(tile, output)
-
-        # TODO temporary workaround: should be handled in the target model
-        if is_shim:
-            max_tile_channels = 2
-
         if used_channels >= max_tile_channels:
             tiles.remove(tile)
 
@@ -314,12 +307,6 @@ class SequentialPlacer(Placer):
                 for _, c in channels[tile]:
                     total_channels += c
             max_tile_channels = device.get_num_connections(tile, output)
-
-            # TODO temporary workaround: should be handled in the target model
-            if ofe.tile == AnyShimTile:
-                max_tile_channels = 2
-                is_shim = True
-
             if total_channels <= max_tile_channels:
                 if isinstance(ofe, ObjectFifoLink):
                     # Also check for channels in the other link direction
@@ -346,7 +333,6 @@ class SequentialPlacer(Placer):
             channels,
             tiles,
             device,
-            is_shim,
         )
 
         if isinstance(ofe, ObjectFifoLink):

@@ -118,8 +118,8 @@ class Device(Resolvable):
         ...
 
     @abstractmethod
-    def get_num_source_connections(self, t: Tile) -> int:
-        """Returns number of DMA source ports for the given tile on the device.
+    def get_num_source_switchbox_connections(self, t: Tile) -> int:
+        """Returns number of DMA source ports in the switchbox for the given tile on the device.
 
         Returns:
             int: Number of DMA source ports.
@@ -127,8 +127,26 @@ class Device(Resolvable):
         ...
 
     @abstractmethod
-    def get_num_dest_connections(self, t: Tile) -> int:
-        """Returns number of DMA dest ports for the given tile on the device.
+    def get_num_dest_switchbox_connections(self, t: Tile) -> int:
+        """Returns number of DMA dest ports in the switchbox for the given tile on the device.
+
+        Returns:
+            int: Number of DMA dest ports.
+        """
+        ...
+
+    @abstractmethod
+    def get_num_source_shim_mux_connections(self, t: Tile) -> int:
+        """Returns number of DMA source ports in the shim mux for the given tile on the device.
+
+        Returns:
+            int: Number of DMA source ports.
+        """
+        ...
+
+    @abstractmethod
+    def get_num_dest_shim_mux_connections(self, t: Tile) -> int:
+        """Returns number of DMA dest ports in the shim mux for the given tile on the device.
 
         Returns:
             int: Number of DMA dest ports.
@@ -183,7 +201,7 @@ class NPUBase(Device):
                 compute_tiles.append(Tile(col, row))
         return compute_tiles
 
-    def get_num_source_connections(self, t: Tile) -> int:
+    def get_num_source_switchbox_connections(self, t: Tile) -> int:
         col = t.col
         row = t.row
         bundle = WireBundle.DMA
@@ -191,7 +209,7 @@ class NPUBase(Device):
             col, row, bundle
         )
 
-    def get_num_dest_connections(self, t: Tile) -> int:
+    def get_num_dest_switchbox_connections(self, t: Tile) -> int:
         col = t.col
         row = t.row
         bundle = WireBundle.DMA
@@ -199,11 +217,32 @@ class NPUBase(Device):
             col, row, bundle
         )
 
+    def get_num_source_shim_mux_connections(self, t: Tile) -> int:
+        col = t.col
+        row = t.row
+        bundle = WireBundle.DMA
+        return get_target_model(self._device).get_num_source_shim_mux_connections(
+            col, row, bundle
+        )
+
+    def get_num_dest_shim_mux_connections(self, t: Tile) -> int:
+        col = t.col
+        row = t.row
+        bundle = WireBundle.DMA
+        return get_target_model(self._device).get_num_dest_shim_mux_connections(
+            col, row, bundle
+        )
+
     def get_num_connections(self, tile: Tile, output: bool) -> int:
+        if tile.row == 0:
+            if output:
+                return self.get_num_source_shim_mux_connections(tile)
+            else:
+                return self.get_num_dest_shim_mux_connections(tile)
         if output:
-            return self.get_num_source_connections(tile)
+            return self.get_num_source_switchbox_connections(tile)
         else:
-            return self.get_num_dest_connections(tile)
+            return self.get_num_dest_switchbox_connections(tile)
 
 
 def create_class(class_name, device):
