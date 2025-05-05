@@ -170,12 +170,12 @@ uint32_t aieTargetModelGetNumSourceSwitchboxConnections(
       .getNumSourceSwitchboxConnections(col, row, wireBundle);
 }
 
-uint32_t aieTargetModelGetNumDestShimMuxConnections(
-  AieTargetModel targetModel, int col, int row, uint32_t bundle) {
-xilinx::AIE::WireBundle wireBundle =
-    static_cast<xilinx::AIE::WireBundle>(bundle);
-return unwrap(targetModel)
-    .getNumDestShimMuxConnections(col, row, wireBundle);
+uint32_t aieTargetModelGetNumDestShimMuxConnections(AieTargetModel targetModel,
+                                                    int col, int row,
+                                                    uint32_t bundle) {
+  xilinx::AIE::WireBundle wireBundle =
+      static_cast<xilinx::AIE::WireBundle>(bundle);
+  return unwrap(targetModel).getNumDestShimMuxConnections(col, row, wireBundle);
 }
 
 uint32_t aieTargetModelGetNumSourceShimMuxConnections(
