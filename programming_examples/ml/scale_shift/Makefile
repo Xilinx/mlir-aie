@@ -46,17 +46,13 @@ build/aie_trace_${data_size}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< -d ${devicename} -i1s ${in1_size} -i2s ${in2_size} -i3s ${in3_size} -os ${out_size} -t ${trace_size} > $@
 
-build/combined.a: build/mul.o build/add.o
-	mkdir -p ${@D}
-	ar rvs $@ $< $(word 2,$^)
-
-build/final.xclbin: build/aie_${data_size}.mlir build/mul.o build/add.o build/combined.a
+build/final.xclbin: build/aie_${data_size}.mlir build/scale_shift.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.bin ${<F}
 
-build/final_trace.xclbin: build/aie_trace_${data_size}.mlir build/mul.o
+build/final_trace.xclbin: build/aie_trace_${data_size}.mlir build/scale_shift.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \

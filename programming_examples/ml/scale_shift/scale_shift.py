@@ -54,11 +54,8 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
     C_memTile_ty = np.ndarray[(tile_size * n_cores,), np.dtype[out_dtype]]
 
     # AIE Core Function declarations
-    mul_bf16 = Kernel(
-        "eltwise_mul_bf16_vector", "combined.a", [tile_ty, tile_ty, tile_ty]
-    )
-    add_bf16 = Kernel(
-        "eltwise_add_bf16_vector", "combined.a", [tile_ty, tile_ty, tile_ty]
+    scale_shift_bf16 = Kernel(
+        "eltwise_mul_add_bf16_vector", "scale_shift.o", [tile_ty, tile_ty, tile_ty, np.int32]
     )
 
     # AIE-array data movement with object fifos
@@ -116,17 +113,14 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
         workerBarriers.append(WorkerRuntimeBarrier())
 
     # Task for the cores to perform
-    def core_fn(of_a, of_b, of_c, mul, add, my_rtp, barrier):
+    def core_fn(of_a, of_b, of_c, mul_add, my_rtp, barrier):
         barrier.wait_for_value(1)
         kernelValue = my_rtp[0]
         for _ in range_(tiles):
             elem_out = of_c.acquire(1)
             elem_in_a = of_a.acquire(1)
             elem_in_b = of_b.acquire(1)
-            if (kernelValue == 1):
-                mul(elem_in_a, elem_in_b, elem_out)
-            else:
-                add(elem_in_a, elem_in_b, elem_out)
+            mul_add(elem_in_a, elem_in_b, elem_out, kernelValue)
             of_a.release(1)
             of_b.release(1)
             of_c.release(1)
@@ -141,8 +135,7 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
                     inA_fifos[i].cons(),
                     inB_fifos[i].cons(),
                     outC_fifos[i].prod(),
-                    mul_bf16,
-                    add_bf16,
+                    scale_shift_bf16,
                     rtps[i],
                     workerBarriers[i],
                 ],
@@ -153,7 +146,8 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, tensor_ty, tensor_ty, tensor_ty) as (A, B, C, D):
-        rt.enable_trace(trace_size, workers=workers)
+        if enable_trace:
+            rt.enable_trace(trace_size, workers=workers)
 
         rt.start(*workers)
 
@@ -174,8 +168,8 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
             for rtp in args:
                 rtp[0] = 0
         rt.inline_ops(set_rtps, rtps)
-        for i in range(n_cores):
-            rt.set_barrier(workerBarriers[i], 1)
+        # for i in range(n_cores):
+        #     rt.set_barrier(workerBarriers[i], 1)
 
         rt.fill(inA.prod(), D)
         rt.fill(inB.prod(), C)
