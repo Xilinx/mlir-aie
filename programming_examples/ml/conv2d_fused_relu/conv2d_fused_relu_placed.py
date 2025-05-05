@@ -17,11 +17,6 @@ height = 32
 in_channels = 64
 out_channels = 64
 
-if len(sys.argv) == 3:
-    width = int(sys.argv[1])
-    height = int(sys.argv[2])
-
-
 actIn = width * in_channels  # 32*64 = 2048
 bufIn = actIn * 2  # double buffer
 
@@ -37,10 +32,10 @@ trace_size = 16384
 traceSizeInInt32s = trace_size // 4
 
 
-def conv2dk1():
+def conv2dk1(dev):
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu1_1col)
+        @device(dev)
         def device_body():
 
             actIn_ty = np.ndarray[(actIn,), np.dtype[np.int8]]
@@ -234,4 +229,16 @@ def conv2dk1():
     print(ctx.module)
 
 
-conv2dk1()
+if __name__ == "__main__":
+    try:
+        device_name = str(sys.argv[1])
+        if device_name == "npu":
+            dev = AIEDevice.npu1_1col
+        elif device_name == "npu2":
+            dev = AIEDevice.npu2_1col
+        else:
+            raise ValueError(f"[ERROR] Device name {sys.argv[1]} is unknown")
+    except ValueError:
+        print("Argument has inappropriate value")
+
+conv2dk1(dev)

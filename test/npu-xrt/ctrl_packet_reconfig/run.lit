@@ -1,7 +1,7 @@
 // (c) Copyright 2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: ryzen_ai
+// REQUIRES: ryzen_ai_npu1
 //
 // RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %S/aie1.mlir -o aie1_overlay.mlir
 // RUN: %python aiecc.py --no-aiesim --aie-generate-xclbin --no-compile-host --xclbin-name=aie1.xclbin aie1_overlay.mlir
@@ -15,4 +15,4 @@
 // RUN: aie-translate -aie-npu-to-binary -aie-sequence-name=configure ctrlpkt_dma_seq.mlir -o ctrlpkt_dma_seq.bin
 //
 // RUN: clang %S/test.cpp -o test.exe -std=c++11 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-// RUN: %run_on_npu ./test.exe
+// RUN: %run_on_npu1% ./test.exe

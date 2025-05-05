@@ -10,7 +10,8 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../../../programming_examples/makefile-common
 
-targetname = distribute_and_join_L2
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+targetname ?= distribute_and_join_L2
 
 aie_py_src=${targetname}.py
 use_placed?=0
@@ -19,9 +20,11 @@ ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
 endif
 
+all: build/final.xclbin
+
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< > $@
+	python3 $< ${devicename} > $@
 
 .PHONY: inst/insts.bin
 inst/insts.bin: ${srcdir}/${aie_py_src}

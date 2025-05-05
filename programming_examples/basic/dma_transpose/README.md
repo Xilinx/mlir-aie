@@ -13,7 +13,7 @@
 This reference design can be run on a Ryzen™ AI NPU.
 
 In the [design](./dma_transpose_iron.py), a 2-D array in a row-major layout is read from external memory to a compute tile with a transposed layout,
-by using an implicit copy via the compute tile's Data Movement Accelerator (DMA). The data is read from and written to external memory through a shim tile.
+by using an implicit copy via the compute tile's Direct Memory Access (DMA). The data is read from and written to external memory through a shim tile.
 
 This data movement transformation can be visualized as a map which shows the order the data the data is streamed (e.g., in transposed layout):
 <p align="center">

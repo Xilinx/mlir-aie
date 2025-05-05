@@ -79,13 +79,13 @@ run: ${targetname}_${data_size}.exe build/final_${data_size}.xclbin build/insts_
 
 trace: ${targetname}_${data_size}.exe build/final_trace_${data_size}.xclbin build/insts_${data_size}.bin 
 	${powershell} ./$< -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift ${colshift} > trace_${targetname}.json
-	${srcdir}/../../utils/get_trace_summary.py --filename trace_${targetname}.json
+	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift ${colshift} --output trace_${targetname}.json
+	${srcdir}/../../utils/get_trace_summary.py --input trace_${targetname}.json
 
 trace_py: build/final_trace_${data_size}.xclbin build/insts_${data_size}.bin
 	${powershell} python3 ${srcdir}/test.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -i2s ${in2_size} -os ${out_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift ${colshift} > trace_${targetname}.json
-	${srcdir}/../../utils/get_trace_summary.py --filename trace_${targetname}.json
+	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift ${colshift} --output trace_${targetname}.json
+	${srcdir}/../../utils/get_trace_summary.py --input trace_${targetname}.json
 
 clean_trace:
 	rm -rf tmpTrace trace.txt parse*json trace*json

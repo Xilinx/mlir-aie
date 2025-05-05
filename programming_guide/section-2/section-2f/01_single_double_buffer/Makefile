@@ -12,6 +12,7 @@ include ${srcdir}/../../../../programming_examples/makefile-common
 
 all: build/final.xclbin build/insts.bin
 
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = single_buffer
 
 aie_py_src=${targetname}.py
@@ -23,7 +24,7 @@ endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< > $@
+	python3 $< ${devicename} > $@
 
 .PHONY: inst/insts.bin
 inst/insts.bin: ${srcdir}/${aie_py_src}
