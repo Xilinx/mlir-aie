@@ -329,7 +329,7 @@ NB_MODULE(_aie, m) {
       .def("get_num_source_shim_mux_connections",
            [](PyAieTargetModel &self, int col, int row, uint32_t bundle) {
              return aieTargetModelGetNumSourceShimMuxConnections(
-               self.get(), col, row, bundle);
+                 self.get(), col, row, bundle);
            })
       // .def("is_legal_memtile_connection")
       .def("is_npu",
