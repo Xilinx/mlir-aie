@@ -14,6 +14,7 @@ from util import construct_and_print_module
 # CHECK-LABEL: TEST: shim_three_in
 # CHECK: %[[shim_noc_tile_0_0:.+]] = aie.tile
 # CHECK: %[[shim_noc_tile_1_0:.+]] = aie.tile
+# CHECK-NOT: %[[shim_noc_tile_2_0:.+]] = aie.tile(2, 0)
 @construct_and_print_module
 def shim_three_in(module):
     N = 4096
@@ -69,6 +70,68 @@ def shim_two_in_one_out(module):
         rt.fill(of_in_A.prod(), A)
         rt.fill(of_in_B.prod(), B)
         rt.drain(of_out_C.cons(), C, wait=True)
+
+    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    return module
+
+
+# CHECK-LABEL: TEST: compute_three_in
+# CHECK: %[[tile_0_2:.+]] = aie.tile(0, 2)
+# CHECK-NOT: %[[tile_0_3:.+]] = aie.tile(0, 3)
+@construct_and_print_module
+def compute_three_in(module):
+    n = 1024
+
+    n_ty = np.ndarray[(n,), np.dtype[np.int32]]
+
+    of_0 = ObjectFifo(n_ty, name="of0")
+    of_1 = ObjectFifo(n_ty, name="of1")
+    of_2 = ObjectFifo(n_ty, name="iof2")
+
+    def core_fn(of_0, of_1, of_2):
+        pass
+
+    worker = Worker(core_fn, [of_0.cons(), of_1.cons(), of_2.cons()])
+
+    rt = Runtime()
+    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
+        rt.start(worker)
+        rt.fill(of_0.prod(), A)
+        rt.fill(of_1.prod(), B)
+        rt.fill(of_2.prod(), C)
+
+    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    return module
+
+
+# CHECK-LABEL: TEST: compute_one_in_two_links
+# CHECK: %[[tile_0_2:.+]] = aie.tile
+# CHECK: %[[tile_0_3:.+]] = aie.tile 
+@construct_and_print_module
+def compute_one_in_two_links(module):
+    n = 1024
+
+    n_ty = np.ndarray[(n,), np.dtype[np.int32]]
+
+    of_0 = ObjectFifo(n_ty, name="of0")
+    of_in1 = ObjectFifo(n_ty, name="in1")
+    of_in2 = ObjectFifo(n_ty, name="in2")
+    of_out1 = of_in1.cons().forward(obj_type=n_ty, name="out1", placement=AnyComputeTile)
+    of_out2 = of_in2.cons().forward(obj_type=n_ty, name="out_2", placement=AnyComputeTile)
+
+    def core_fn(of_in0):
+        pass
+
+    worker = Worker(core_fn, [of_0.cons()])
+
+    rt = Runtime()
+    with rt.sequence(n_ty, n_ty, n_ty, n_ty, n_ty) as (A, B, C, D, E):
+        rt.start(worker)
+        rt.fill(of_0.prod(), A)
+        rt.fill(of_in1.prod(), B)
+        rt.fill(of_in2.prod(), C)
+        rt.drain(of_out1.cons(), D, wait=True)
+        rt.drain(of_out2.cons(), E, wait=True)
 
     module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
     return module

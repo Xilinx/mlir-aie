@@ -92,13 +92,21 @@ class SequentialPlacer(Placer):
             if worker.tile == AnyComputeTile:
                 if compute_idx >= len(computes):
                     raise ValueError("Ran out of compute tiles for placement!")
-                # TODO Worker: already placed, count the used channel
-                # TODO: add placer_test with a worker that has three of inputs
                 worker.place(computes[compute_idx])
                 compute_idx += 1
 
             for buffer in worker.buffers:
                 buffer.place(worker.tile)
+
+            # Account for channels used by Workers, which are already placed
+            prod_fifos = [of for of in worker.fifos if of._is_prod]
+            cons_fifos = [of for of in worker.fifos if not of._is_prod]
+            self._update_channels(
+                worker, worker.tile, True, len(prod_fifos), channels_out, computes_out, device,
+            )
+            self._update_channels(
+                worker, worker.tile, False, len(cons_fifos), channels_in, computes_in, device,
+            )
 
         # Prepare to loop
         if len(computes) > 0:
@@ -107,15 +115,18 @@ class SequentialPlacer(Placer):
         for ofh in object_fifos:
             of_endpoints = ofh.all_of_endpoints()
             of_handle_endpoints = ofh._object_fifo._get_endpoint(is_prod=ofh._is_prod)
-            of_compute_endpoints = [
+            of_compute_endpoints_tiles = [
                 ofe.tile for ofe in of_endpoints if ofe.tile in computes
             ]
-            common_col = self._get_common_col(of_compute_endpoints)
+            common_col = self._get_common_col(of_compute_endpoints_tiles)
             of_link_endpoints = [
                 ofe for ofe in of_endpoints if isinstance(ofe, ObjectFifoLink)
             ]
             # Place "closest" to the compute endpoints
             for ofe in of_handle_endpoints:
+                if isinstance(ofe, Worker):
+                    continue 
+
                 if ofe.tile == AnyMemTile:
                     if ofh._is_prod:
                         self._place_endpoint(
@@ -130,25 +141,6 @@ class SequentialPlacer(Placer):
                         self._place_endpoint(
                             ofe,
                             mems_in,
-                            common_col,
-                            channels_in,
-                            device,
-                        )
-
-                elif ofe.tile == AnyComputeTile:
-                    if ofh._is_prod:
-                        self._place_endpoint(
-                            ofe,
-                            computes_out,
-                            common_col,
-                            channels_out,
-                            device,
-                            output=True,
-                        )
-                    else:
-                        self._place_endpoint(
-                            ofe,
-                            computes_in,
                             common_col,
                             channels_in,
                             device,
@@ -243,6 +235,37 @@ class SequentialPlacer(Placer):
         raise ValueError(
             f"Failed to find a tile matching column {col}: tried until column {new_col}. Try using a device with more columns."
         )
+    
+    def _update_channels(
+            self,
+            ofe: ObjectFifoEndpoint,
+            tile: Tile,
+            output: bool,
+            num_required_channels: int,
+            channels: dict[Tile, (ObjectFifoEndpoint, int)],
+            tiles: list[Tile],
+            device: Device,
+            is_shim: bool = False,
+    ):
+        """
+        A utility function that updates given channel and tile lists.
+        """
+        if num_required_channels == 0:
+            return
+        if not tile in channels:
+            channels[tile] = []
+        channels[tile].append((ofe, num_required_channels))
+        used_channels = 0
+        for _, c in channels[tile]:
+            used_channels += c
+        max_tile_channels = device.get_num_connections(tile, output)
+
+        # TODO temporary workaround: should be handled in the target model
+        if is_shim:
+            max_tile_channels = 2
+
+        if used_channels >= max_tile_channels:
+            tiles.remove(tile)
 
     def _place_endpoint(
         self,
@@ -258,6 +281,7 @@ class SequentialPlacer(Placer):
         """
         A utility function that places a given endpoint based on available DMA channels.
         """
+        is_shim = False
         num_required_channels = 1
         if isinstance(ofe, ObjectFifoLink):
             # If endpoint is a link, account for both input and output DMA channels
@@ -281,6 +305,7 @@ class SequentialPlacer(Placer):
             # TODO temporary workaround: should be handled in the target model
             if ofe.tile == AnyShimTile:
                 max_tile_channels = 2
+                is_shim = True
 
             if total_channels <= max_tile_channels:
                 if isinstance(ofe, ObjectFifoLink):
@@ -300,21 +325,17 @@ class SequentialPlacer(Placer):
         ofe.place(tile)
 
         # Account for channels that were used by this placement
-        if not tile in channels:
-            channels[tile] = []
-        channels[tile].append((ofe, num_required_channels))
-        used_channels = 0
-        for _, c in channels[tile]:
-            used_channels += c
-        if used_channels >= max_tile_channels:
-            tiles.remove(tile)
+        self._update_channels(
+            ofe, tile, output, num_required_channels, channels, tiles, device, is_shim,
+        )
 
         if isinstance(ofe, ObjectFifoLink):
-            if tile not in link_channels:
-                link_channels[tile] = []
-            link_channels[tile].append((ofe, link_required_channels))
-            used_link_channels = 0
-            for _, c in link_channels[tile]:
-                used_link_channels += c
-            if used_link_channels >= max_link_channels:
-                link_tiles.remove(tile)
+            self._update_channels(
+                ofe,
+                tile,
+                not output,
+                link_required_channels,
+                link_channels,
+                link_tiles,
+                device,
+            )
