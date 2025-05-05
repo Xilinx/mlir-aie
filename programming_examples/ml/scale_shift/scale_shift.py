@@ -12,7 +12,15 @@ import sys
 
 from aie.extras.dialects.ext import arith
 from aie.dialects.aie import T
-from aie.iron import Kernel, ObjectFifo, Program, GlobalBuffer, Runtime, Worker, WorkerRuntimeBarrier
+from aie.iron import (
+    Kernel,
+    ObjectFifo,
+    Program,
+    GlobalBuffer,
+    Runtime,
+    Worker,
+    WorkerRuntimeBarrier,
+)
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
@@ -55,7 +63,9 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
 
     # AIE Core Function declarations
     scale_shift_bf16 = Kernel(
-        "eltwise_mul_add_bf16_vector", "scale_shift.o", [tile_ty, tile_ty, tile_ty, np.int32]
+        "eltwise_mul_add_bf16_vector",
+        "scale_shift.o",
+        [tile_ty, tile_ty, tile_ty, np.int32],
     )
 
     # AIE-array data movement with object fifos
@@ -155,6 +165,7 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
         def set_rtps(*args):
             for rtp in args:
                 rtp[0] = 1
+
         rt.inline_ops(set_rtps, rtps)
         for i in range(n_cores):
             rt.set_barrier(workerBarriers[i], 1)
@@ -167,6 +178,7 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
         def set_rtps(*args):
             for rtp in args:
                 rtp[0] = 0
+
         rt.inline_ops(set_rtps, rtps)
         # for i in range(n_cores):
         #     rt.set_barrier(workerBarriers[i], 1)
@@ -216,4 +228,3 @@ trace_size = int(opts.trace_size)
 
 module = my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size)
 print(module)
-
