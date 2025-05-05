@@ -139,7 +139,7 @@ All steps in WSL Ubuntu terminal.
     gendef xrt_coreutil.dll
     ```
 
-1. Clone XRT under `C:\Technical\XRT`. Copy this device.h file under 
+1. Clone XRT under `C:\Technical\XRT`. Then copy [utils/setup_files/device.h](../utils/setup_files/device.h) to `C:\Technical\XRT\src\runtime_src\core\include\xrt\detail\device.h`. This file is needed for compiling and linking agianst XRT headers (it is generated during XRT build but is much faster to use this copy than rebuilding XRT).
 
 1. Download boost (currently tested against [1.83.0](https://archives.boost.io/release/1.83.0/source/boost_1_83_0.zip)) and extract in your windows folder `C:\Technical\thirdParty\`. You do not need to build this, we just needed the headers that XRT depends on.
 
@@ -192,27 +192,10 @@ source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/in
 
 ## Build a Design
 
-For your design of interest, for instance from [programming_examples](../programming_examples/), 2 steps are needed: (i) build the AIE desgin in WSL and then (ii) build the host code in powershell.
+For your design of interest, for instance from [programming_examples](../programming_examples/), 2 steps are needed: (i) build the AIE desgin in WSL and then (ii) build the host code in powershell. The host code build step can be invoked from within WSL, leveraging Makefile variables `$powershell` and `$getwslpath` from [programming_examples/makefile-common](../programming_examples/makefile-common). See [Makefile](../programming_examples/basic/vector_scalar_mul/Makefile) for an example of how it is used.
 
 ### Build device AIE part: WSL Ubuntu terminal
 1. Prepare your enviroment with the mlir-aie tools (built during Prerequisites part of this guide). See [Set up your environment](#set-up-your-environment) above.
 
-1. Goto the design of interest and run `make`.
+1. Goto the design of interest such as [vector_scalar_mul](../programming_examples/basic/vector_scalar_mul/) and run `make run`.
 
-### Build and run host part: PowerShell
-
-Note that your design of interest might need an adapted CMakelists.txt file. Also pay attention to accurately set the paths CMake parameters XRT_INC_DIR and XRT_LIB_DIR used in the CMakelists.txt, either in the file or as CMake command line parameters.
-
-1. Build: Goto the same design of interest folder where the AIE design just got build (see above)
-    ```
-    mkdir buildMSVS
-    cd buildMSVS
-    cmake .. -G "Visual Studio 17 2022"
-    cmake --build . --config Release
-    ```
-
-1. Run (program arguments are just an example for add_one design)
-   ```
-    cd Release
-    .\<testName>.exe -x ..\..\build\final.xclbin -k MLIR_AIE -i ..\..\build\insts.txt -v 1
-    ```
