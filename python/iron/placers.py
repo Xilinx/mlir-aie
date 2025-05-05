@@ -264,7 +264,7 @@ class SequentialPlacer(Placer):
         if num_required_channels == 0:
             return
         if not tile in channels:
-            channels[tile] = []
+            channels.update({tile: []})
         channels[tile].append((ofe, num_required_channels))
         used_channels = 0
         for _, c in channels[tile]:
