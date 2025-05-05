@@ -125,12 +125,12 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
     # Task for the cores to perform
     def core_fn(of_a, of_b, of_c, mul_add, my_rtp, barrier):
         barrier.wait_for_value(1)
-        kernelValue = my_rtp[0]
+        is_mul = my_rtp[0]
         for _ in range_(tiles):
             elem_out = of_c.acquire(1)
             elem_in_a = of_a.acquire(1)
             elem_in_b = of_b.acquire(1)
-            mul_add(elem_in_a, elem_in_b, elem_out, kernelValue)
+            mul_add(elem_in_a, elem_in_b, elem_out, is_mul)
             of_a.release(1)
             of_b.release(1)
             of_c.release(1)
@@ -180,8 +180,8 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
                 rtp[0] = 0
 
         rt.inline_ops(set_rtps, rtps)
-        # for i in range(n_cores):
-        #     rt.set_barrier(workerBarriers[i], 1)
+        for i in range(n_cores):
+            rt.set_barrier(workerBarriers[i], 1)
 
         rt.fill(inA.prod(), D)
         rt.fill(inB.prod(), C)

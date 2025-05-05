@@ -165,7 +165,7 @@ int main(int argc, const char *argv[]) {
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
   std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
   for (int i = 0; i < INOUT0_VOLUME; i++)
-    AVec[i] = 1.0; //test_utils::random_bfloat16_t((std::bfloat16_t)1.0,
+    AVec[i] = 4.0; //test_utils::random_bfloat16_t((std::bfloat16_t)1.0,
               //                              (std::bfloat16_t)-0.5);
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));
 
