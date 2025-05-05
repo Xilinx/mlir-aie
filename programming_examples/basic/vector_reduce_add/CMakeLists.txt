@@ -45,6 +45,7 @@ target_compile_definitions(${currentTarget} PUBLIC DISABLE_ABI_CHECK=1)
 target_include_directories (${currentTarget} PUBLIC
     ../../utils
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib
     ${BOOST_INCLUDE_DIRS}
     ${XRT_INC_DIR}
 )

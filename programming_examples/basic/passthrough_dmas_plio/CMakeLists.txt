@@ -51,6 +51,7 @@ target_include_directories (${currentTarget} PUBLIC
     ${BOOST_INCLUDE_DIRS}
     ${XRT_INC_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib
 )
 
 target_link_directories(${currentTarget} PUBLIC

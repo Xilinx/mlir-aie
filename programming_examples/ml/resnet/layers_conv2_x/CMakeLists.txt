@@ -60,6 +60,7 @@ target_compile_definitions(${currentTarget} PUBLIC
 
 target_include_directories (${currentTarget} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../utils
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../runtime_lib
     ${BOOST_INCLUDE_DIRS}
     ${XRT_INC_DIR}
     ${OpenCV_INCLUDE_DIRS}
