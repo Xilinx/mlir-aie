@@ -326,7 +326,7 @@ NB_MODULE(_aie, m) {
              return aieTargetModelGetNumDestShimMuxConnections(self.get(), col,
                                                                row, bundle);
            })
-      .def("get_num_source_shim_mux_connections", 
+      .def("get_num_source_shim_mux_connections",
            [](PyAieTargetModel &self, int col, int row, uint32_t bundle) {
              return aieTargetModelGetNumSourceShimMuxConnections(
                self.get(), col, row, bundle);
