@@ -1,10 +1,10 @@
-# passthrough_kernel/passthrough_kernel_placed.py -*- Python -*-
+# packet_switch/aie_add_placed.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 from curses import meta
 from operator import le, ne
 from re import I
@@ -24,19 +24,22 @@ import aie.utils.trace as trace_utils
 
 from aie.dialects import memref, vector
 
-def my_passthrough_kernel(dev, in_out_size):
-    in_out_ty = np.dtype[np.int8]
+# In this example, it calls low-level python->mlir translation api.
+# See example such as https://github.com/Xilinx/mlir-aie/blob/dfe7d1d532ba8c4ac88da72ee77bc2591bda8943/test/npu-xrt/dma_task_large_linear/aie2.py
+def packet_switch_kernel(dev, in_out_size):
+    in_out_ty = np.dtype[np.int8] # input data type
 
     @device(dev)
     def device_body():
         # define types
-        vector_ty = np.ndarray[(in_out_size,), in_out_ty]
+        vector_ty = np.ndarray[(in_out_size,), in_out_ty] # Size of input vector
         
         memref.global_("objFifo_in0", T.memref( in_out_size, T.i8() ), sym_visibility="public")            
         memref.global_("objFifo_out0", T.memref(in_out_size, T.i8()), sym_visibility="public")
-        memref.global_("objFifo_in1", T.memref( in_out_size, T.i8() ), sym_visibility="public") #DEBUG out
+        memref.global_("objFifo_in1", T.memref( in_out_size, T.i8() ), sym_visibility="public") 
         memref.global_("objFifo_out1", T.memref( in_out_size, T.i8()), sym_visibility="public" ) 
         
+        # Declare the kernel functions that will be linked to at compile stage
         add_func = external_func(
             "add", [vector_ty, vector_ty]
         )
@@ -53,6 +56,10 @@ def my_passthrough_kernel(dev, in_out_size):
         objFifo_core02_cons_buff_0 = buffer(tile=CT_0_2, datatype=vector_ty, name="objFifo_core02_cons_buff_0") 
         objFifo_core02_buff_0 = buffer(tile=CT_0_2, datatype=vector_ty,name="objFifo_core02_buff_0")
         
+        # Instead of using aie.objectfifo, it use aie.buffer(). 
+        # aie.buffer() is the underhood implementation of aie.objectfifo, which can be verified by running
+        # "aie-opt -aie-objectFifo-stateful-transform aie_add.mlir"
+        #TODO: use objectfifo once it also support packet_flow
         objFifo_core02_cons_prod_lock= lock(tile=CT_0_2, lock_id=0, init=1, sym_name="objFifo_core02_cons_prod_lock")
         objFifo_core02_cons_cons_lock = lock(tile=CT_0_2, lock_id=1, init=0, sym_name="objFifo_core02_cons_cons_lock")
         objFifo_core02_prod_lock = lock(tile=CT_0_2, lock_id=2, init=1, sym_name="objFifo_core02_prod_lock")
@@ -68,9 +75,10 @@ def my_passthrough_kernel(dev, in_out_size):
         objFifo_core03_cons_lock = aie.lock(CT_0_3, lock_id=3, init=0, sym_name="objFifo_core03_cons_lock")
         
         #TODO: probably another issue to change the packet id. Because when doing trace, it use packet_id 0 an so forth?
+        # Configure the packet flow path
         packetflow(pkt_id=0, source=ShimTile_0_0, source_port=WireBundle.DMA, source_channel=0,
                    dest=MemTile_0_1, dest_port=WireBundle.DMA, dest_channel=0,
-                   keep_pkt_header=True
+                   keep_pkt_header=True  # By keeping the pkt_header, the 4Byte(packet header) will not be dropped when Memtile receives
                    )
         packetflow(pkt_id=1, source=ShimTile_0_0, source_port=WireBundle.DMA, source_channel=0,
                     dest=MemTile_0_1, dest_port=WireBundle.DMA, dest_channel=0,
@@ -115,13 +123,14 @@ def my_passthrough_kernel(dev, in_out_size):
         
         @core(CT_0_3,"add_mul.o")
         def core_body():
-            for _  in range_(sys.maxsize):
+            for _  in range_(start=sys.maxsize): # Infinity loop.
                 use_lock(objFifo_core03_cons_cons_lock, LockAction.AcquireGreaterEqual,value=1 )
                 use_lock(objFifo_core03_prod_lock, LockAction.AcquireGreaterEqual, value=1)
                 mult_func(objFifo_core03_cons_buff_0, objFifo_core03_buff_0)
                 use_lock(objFifo_core03_cons_prod_lock, LockAction.Release, value=1)
                 use_lock(objFifo_core03_cons_lock, LockAction.Release, value=1)
         
+        # DMA logic for CT 0_3
         @mem(CT_0_3)
         def m(block):
             s0 = dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[2])
@@ -129,7 +138,7 @@ def my_passthrough_kernel(dev, in_out_size):
                 use_lock(objFifo_core03_cons_prod_lock, LockAction.AcquireGreaterEqual, value=1)
                 dma_bd(objFifo_core03_cons_buff_0, )
                 use_lock(objFifo_core03_cons_cons_lock, LockAction.Release, value=1)
-                next_bd(block[1])
+                next_bd(block[1]) # goto block[1]
             with block[2]:
                 s1 = dma_start(DMAChannelDir.MM2S, 0,dest=block[3], chain=block[4] )
             with block[3]:
@@ -165,7 +174,9 @@ def my_passthrough_kernel(dev, in_out_size):
         shim_dma_allocation("objFifo_out0",DMAChannelDir.S2MM, 0,0)
         shim_dma_allocation("objFifo_out1", DMAChannelDir.S2MM, 0,0)
         
-        vector_with_packet_ty = np.ndarray[(in_out_size+4,), in_out_ty]
+        # The extract 4 byte is for packet header.
+        vector_with_packet_ty = np.ndarray[(in_out_size+4,), in_out_ty]  
+        
         objFifo_in0_cons_buff_0 = buffer(MemTile_0_1, datatype=vector_with_packet_ty, name="objFifo_in0_cons_buff_0")
         objFifo_out0_buff_0 = buffer(tile=MemTile_0_1,datatype=vector_ty, name="objFifo_out0_buff_0")
         
@@ -174,18 +185,22 @@ def my_passthrough_kernel(dev, in_out_size):
         objFifo_out0_prod_lock = lock(MemTile_0_1, lock_id=2, init=1, sym_name="objFifo_out0_prod_lock")
         objFifo_out0_cons_lock  = lock(MemTile_0_1, lock_id=3, init=0, sym_name="objFifo_out0_cons_lock")
         
+        #MemTile dma logic
         @memtile_dma(MemTile_0_1)
         def m(block):
             s0 = dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[2])
             with block[1]:
                 use_lock(objFifo_in0_cons_prod_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(objFifo_in0_cons_buff_0)
+                dma_bd(objFifo_in0_cons_buff_0) # First 4 bye is the packet header becasue in packet_flow(pkt_id=0) configured "keep_pkt_header"
                 use_lock(objFifo_in0_cons_cons_lock, LockAction.Release, value=1)
-                next_bd(block[1])
+                next_bd(block[1]) # goto block[1]
             with block[2]:
                 s1 = dma_start(DMAChannelDir.MM2S, 0, dest=block[3], chain=block[4])
             with block[3]:
                 use_lock(objFifo_in0_cons_cons_lock, LockAction.AcquireGreaterEqual, value=1)
+                # Send the message to corresponding CT. This works because the packet header from Shimtile to Memtile
+                # This works because the packet header from Shimtile to Memtile is saved in the buffer and the 
+                # packet_flow from Memtile to ComputeTile uses the same packet_id (0 or 1) 
                 dma_bd(objFifo_in0_cons_buff_0)
                 use_lock(objFifo_in0_cons_prod_lock, LockAction.Release, value=1)
                 next_bd(block[3])
@@ -221,7 +236,7 @@ else:
     raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
 with mlir_mod_ctx() as ctx:
-    my_passthrough_kernel(dev, in_out_size=256)
+    packet_switch_kernel(dev, in_out_size=256)
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)

@@ -1,10 +1,10 @@
-# passthrough_kernel/passthrough_kernel_placed.py -*- Python -*-
+# packet_switch/aie_add_mul_placed.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 from curses import meta
 from operator import le, ne
 from re import I
@@ -24,13 +24,13 @@ import aie.utils.trace as trace_utils
 
 from aie.dialects import memref, vector
 
-def my_passthrough_kernel(dev, in_out_size):
+def packet_switch_kernel(dev, in_out_size):
     in_out_ty = np.dtype[np.int8]
 
     @device(dev)
     def device_body():
         # define types
-        vector_ty = np.ndarray[(in_out_size,), in_out_ty]
+        vector_ty = np.ndarray[(in_out_size,), in_out_ty] # Size of input vector
         
         memref.global_("objFifo_in0", T.memref( in_out_size, T.i8() ), sym_visibility="public")            
         memref.global_("objFifo_out0", T.memref(in_out_size, T.i8()), sym_visibility="public")
@@ -52,7 +52,11 @@ def my_passthrough_kernel(dev, in_out_size):
         # core_0_2
         objFifo_core02_cons_buff_0 = buffer(tile=CT_0_2, datatype=vector_ty, name="objFifo_core02_cons_buff_0") 
         objFifo_core02_buff_0 = buffer(tile=CT_0_2, datatype=vector_ty,name="objFifo_core02_buff_0")
-        
+    
+        # Instead of using aie.objectfifo, it use aie.buffer(). 
+        # aie.buffer() is the underhood implementation of aie.objectfifo, which can be verified by running
+        # "aie-opt -aie-objectFifo-stateful-transform aie_add.mlir"
+        #TODO: use objectfifo once it also support packet_flow
         objFifo_core02_cons_prod_lock= lock(tile=CT_0_2, lock_id=0, init=1, sym_name="objFifo_core02_cons_prod_lock")
         objFifo_core02_cons_cons_lock = lock(tile=CT_0_2, lock_id=1, init=0, sym_name="objFifo_core02_cons_cons_lock")
         objFifo_core02_prod_lock = lock(tile=CT_0_2, lock_id=2, init=1, sym_name="objFifo_core02_prod_lock")
@@ -174,18 +178,22 @@ def my_passthrough_kernel(dev, in_out_size):
         objFifo_out0_prod_lock = lock(MemTile_0_1, lock_id=2, init=1, sym_name="objFifo_out0_prod_lock")
         objFifo_out0_cons_lock  = lock(MemTile_0_1, lock_id=3, init=0, sym_name="objFifo_out0_cons_lock")
         
+        #MemTile dma logic
         @memtile_dma(MemTile_0_1)
         def m(block):
             s0 = dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[2])
             with block[1]:
                 use_lock(objFifo_in0_cons_prod_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(objFifo_in0_cons_buff_0)
+                dma_bd(objFifo_in0_cons_buff_0) # First 4 bye is the packet header becasue in packet_flow(pkt_id=0) configured "keep_pkt_header"
                 use_lock(objFifo_in0_cons_cons_lock, LockAction.Release, value=1)
-                next_bd(block[1])
+                next_bd(block[1]) # goto block[1]
             with block[2]:
                 s1 = dma_start(DMAChannelDir.MM2S, 0, dest=block[3], chain=block[4])
             with block[3]:
                 use_lock(objFifo_in0_cons_cons_lock, LockAction.AcquireGreaterEqual, value=1)
+                # Send the message to corresponding CT. This works because the packet header from Shimtile to Memtile
+                # This works because the packet header from Shimtile to Memtile is saved in the buffer and the 
+                # packet_flow from Memtile to ComputeTile uses the same packet_id (0 or 1) 
                 dma_bd(objFifo_in0_cons_buff_0)
                 use_lock(objFifo_in0_cons_prod_lock, LockAction.Release, value=1)
                 next_bd(block[3])
@@ -221,7 +229,7 @@ else:
     raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
 with mlir_mod_ctx() as ctx:
-    my_passthrough_kernel(dev, in_out_size=256)
+    packet_switch_kernel(dev, in_out_size=256)
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)
