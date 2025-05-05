@@ -23,7 +23,6 @@ if (NOT WSL)
     set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT cloned repo")
     set(XRT_LIB_DIR /opt/xilinx/xrt/lib CACHE STRING "Path to xrt_coreutil.lib")
 else()
-    set(BOOST_INCLUDE_DIRS C:/Technical/thirdParty/boost_1_83_0 CACHE STRING "Path to Boost install")
     set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT cloned repo")
     set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
 endif()
@@ -35,6 +34,7 @@ SET (currentTarget ${TARGET_NAME})
 
 if ( WSL )
 	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR})
+    add_compile_options(/Zc:__cplusplus)
 endif ()
 
 project(${ProjectName})
@@ -47,7 +47,6 @@ add_executable(${currentTarget}
 target_compile_definitions(${currentTarget} PUBLIC DISABLE_ABI_CHECK=1)
 
 target_include_directories (${currentTarget} PUBLIC
-    ${BOOST_INCLUDE_DIR}
     ${XRT_INC_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../runtime_lib/test_lib
     ${CMAKE_CURRENT_SOURCE_DIR}/../../runtime_lib

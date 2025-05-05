@@ -9,7 +9,7 @@ You will set up a Windows subsystem for Linux (WSL) Ubuntu install, which will b
 
 
 ## Setup and Build Steps
-1. [Prerequisites](#prerequisites) - Clone mlir-aie from within WSL, install dependent sw packages, Clone/unzip XRT and Boost source (no need to build), 
+1. [Prerequisites](#prerequisites) - Clone mlir-aie from within WSL, install dependent sw packages, Clone/unzip XRT (no need to build), 
 1. [Prepare Host Side: Natively on Win11](#prepare-host-side:-natively-on-win11)
 1. [Setup up your environment](#set-up-your-environment)
 1. [Build a Design](#build-a-design)
@@ -64,9 +64,6 @@ All steps in WSL Ubuntu terminal.
     ```
 
 1. Clone XRT under `C:\Technical\XRT`. 
-
-1. Download boost (currently tested against [1.83.0](https://archives.boost.io/release/1.83.0/source/boost_1_83_0.zip)) and extract in your windows folder `C:\Technical\thirdParty\`. You do not need to build this, we just needed the headers that XRT depends on.
-
 
 ### Prepare Host Side: Natively on Win11
 
