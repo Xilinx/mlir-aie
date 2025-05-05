@@ -106,7 +106,7 @@ def compute_three_in(module):
 
 # CHECK-LABEL: TEST: compute_one_in_two_links
 # CHECK: %[[tile_0_2:.+]] = aie.tile
-# CHECK: %[[tile_0_3:.+]] = aie.tile 
+# CHECK: %[[tile_0_3:.+]] = aie.tile
 @construct_and_print_module
 def compute_one_in_two_links(module):
     n = 1024
@@ -116,8 +116,12 @@ def compute_one_in_two_links(module):
     of_0 = ObjectFifo(n_ty, name="of0")
     of_in1 = ObjectFifo(n_ty, name="in1")
     of_in2 = ObjectFifo(n_ty, name="in2")
-    of_out1 = of_in1.cons().forward(obj_type=n_ty, name="out1", placement=AnyComputeTile)
-    of_out2 = of_in2.cons().forward(obj_type=n_ty, name="out_2", placement=AnyComputeTile)
+    of_out1 = of_in1.cons().forward(
+        obj_type=n_ty, name="out1", placement=AnyComputeTile
+    )
+    of_out2 = of_in2.cons().forward(
+        obj_type=n_ty, name="out_2", placement=AnyComputeTile
+    )
 
     def core_fn(of_in0):
         pass

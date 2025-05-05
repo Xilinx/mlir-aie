@@ -45,7 +45,7 @@ class SequentialPlacer(Placer):
     because it will sequentially place workers to Compute Tiles. After workers are placed, Memory Tiles and
     Shim Tiles are placed as close to the column of the given compute tile as possible.
 
-    The SequentialPlacer only does validation of placement with respect to available DMA channels on the tiles. 
+    The SequentialPlacer only does validation of placement with respect to available DMA channels on the tiles.
     However, it can yield invalid placements that exceed other resource limits, such as memory, For complex or
     resource sensitive designs, a more complex placer or manual placement is required.
     """
@@ -102,10 +102,22 @@ class SequentialPlacer(Placer):
             prod_fifos = [of for of in worker.fifos if of._is_prod]
             cons_fifos = [of for of in worker.fifos if not of._is_prod]
             self._update_channels(
-                worker, worker.tile, True, len(prod_fifos), channels_out, computes_out, device,
+                worker,
+                worker.tile,
+                True,
+                len(prod_fifos),
+                channels_out,
+                computes_out,
+                device,
             )
             self._update_channels(
-                worker, worker.tile, False, len(cons_fifos), channels_in, computes_in, device,
+                worker,
+                worker.tile,
+                False,
+                len(cons_fifos),
+                channels_in,
+                computes_in,
+                device,
             )
 
         # Prepare to loop
@@ -125,7 +137,7 @@ class SequentialPlacer(Placer):
             # Place "closest" to the compute endpoints
             for ofe in of_handle_endpoints:
                 if isinstance(ofe, Worker):
-                    continue 
+                    continue
 
                 if ofe.tile == AnyMemTile:
                     if ofh._is_prod:
@@ -235,17 +247,17 @@ class SequentialPlacer(Placer):
         raise ValueError(
             f"Failed to find a tile matching column {col}: tried until column {new_col}. Try using a device with more columns."
         )
-    
+
     def _update_channels(
-            self,
-            ofe: ObjectFifoEndpoint,
-            tile: Tile,
-            output: bool,
-            num_required_channels: int,
-            channels: dict[Tile, (ObjectFifoEndpoint, int)],
-            tiles: list[Tile],
-            device: Device,
-            is_shim: bool = False,
+        self,
+        ofe: ObjectFifoEndpoint,
+        tile: Tile,
+        output: bool,
+        num_required_channels: int,
+        channels: dict[Tile, (ObjectFifoEndpoint, int)],
+        tiles: list[Tile],
+        device: Device,
+        is_shim: bool = False,
     ):
         """
         A utility function that updates given channel and tile lists.
@@ -326,7 +338,14 @@ class SequentialPlacer(Placer):
 
         # Account for channels that were used by this placement
         self._update_channels(
-            ofe, tile, output, num_required_channels, channels, tiles, device, is_shim,
+            ofe,
+            tile,
+            output,
+            num_required_channels,
+            channels,
+            tiles,
+            device,
+            is_shim,
         )
 
         if isinstance(ofe, ObjectFifoLink):
