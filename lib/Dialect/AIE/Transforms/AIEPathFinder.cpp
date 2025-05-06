@@ -194,7 +194,7 @@ void Pathfinder::initialize(int maxCol, int maxRow,
     TileID coords = {col, row};
     SwitchboxConnect sb = {coords};
 
-    for (int i = 0, e = getMaxEnumValForWireBundle()+1; i < e; ++i) {
+    for (int i = 0, e = getMaxEnumValForWireBundle() + 1; i < e; ++i) {
       WireBundle bundle = symbolizeWireBundle(i).value();
       // get all ports into current switchbox
       int channels =
