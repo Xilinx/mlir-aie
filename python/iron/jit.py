@@ -171,14 +171,16 @@ def jit(function=None, is_placed=True, use_cache=True):
 
             # Move any object files to the kernel directory
             from .kernel import CoreFunction
+
             for obj_file in CoreFunction._object_files:
+                print(f"obj_file: {obj_file}")
                 if os.path.exists(obj_file):
                     dest_file = os.path.join(kernel_dir, os.path.basename(obj_file))
-                    shutil.move(obj_file, dest_file)
+                    shutil.copy(obj_file, dest_file)
                     if debug:
-                        print(f"Moved {obj_file} to {dest_file}")
+                        print(f"Copied {obj_file} to {dest_file}")
             if debug:
-                print("Finished moving object files")
+                print("Finished copying object files")
             # Compile the MLIR module
             compile_mlir_to_binary(
                 mlir_path=mlir_path,
