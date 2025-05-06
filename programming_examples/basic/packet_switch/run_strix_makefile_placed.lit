@@ -5,4 +5,4 @@
 //
 // RUN: make -f %S/Makefile clean
 // RUN: make -f %S/Makefile 
-// RUN: %run_on_2npu make -f %S/Makefile run
+// RUN: %run_on_2npu make -f %S/Makefile run DEVICE=npu2
