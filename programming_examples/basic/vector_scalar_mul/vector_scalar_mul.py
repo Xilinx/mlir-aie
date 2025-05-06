@@ -6,27 +6,12 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
-import argparse
-import sys
 import os
 
-from aie.iron import CoreFunction, ObjectFifo, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
 import aie.iron as iron
-
-import aie.utils.trace as trace_utils
-
-
-def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace_size):
-
-    if int_bit_width == 16:
-        in1_dtype = np.int16
-        out_dtype = np.int16
-    else:  # default is 32-bit
-        in1_dtype = np.int32
-        out_dtype = np.int32
 
 
 @iron.jit(is_placed=False)
@@ -119,12 +104,17 @@ def main():
     num_elements = 1024
 
     input = iron.randint(0, 100, (num_elements,), dtype=np.int16, device="npu")
+
     factor = iron.tensor([3], dtype=np.int32, device="npu")
+
     dummy_input = iron.zeros_like(input)
+
     output = iron.zeros_like(input)
+
     trace = iron.zeros(128, dtype=np.uint32)
 
     vector_scalar_mul(input, factor, output, dummy_input, trace)
+
     with open("trace.txt", "w") as f:
         for val in trace:
             f.write(f"{val:08x}\n")
