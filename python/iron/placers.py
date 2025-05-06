@@ -254,7 +254,7 @@ class SequentialPlacer(Placer):
         tile: Tile,
         output: bool,
         num_required_channels: int,
-        channels: dict[Tile, (ObjectFifoEndpoint, int)],
+        channels: dict[Tile, tuple[ObjectFifoEndpoint, int]],
         tiles: list[Tile],
         device: Device,
     ):
@@ -264,7 +264,7 @@ class SequentialPlacer(Placer):
         if num_required_channels == 0:
             return
         if not tile in channels:
-            channels.update({tile: []})
+            channels[tile] = []
         channels[tile].append((ofe, num_required_channels))
         used_channels = 0
         for _, c in channels[tile]:
@@ -278,7 +278,7 @@ class SequentialPlacer(Placer):
         ofe: ObjectFifoEndpoint,
         tiles: list[Tile],
         common_col: int,
-        channels: dict[Tile, (ObjectFifoEndpoint, int)],
+        channels: dict[Tile, tuple[ObjectFifoEndpoint, int]],
         device: Device,
         output=False,
         link_tiles=[],
