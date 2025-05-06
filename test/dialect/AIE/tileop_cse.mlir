@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --pass-pipeline="builtin.module(cse)" %s | FileCheck %s
+// RUN: aie-opt --canonicalize %s | FileCheck %s
 
 // CHECK: %[[TILE1:.*]] = aie.tile(1, 1)
 // CHECK-NOT: %[[TILE2:.*]] = aie.tile(1, 1)

@@ -1222,8 +1222,9 @@ static LogicalResult FoldTileOp(TileOp op, PatternRewriter &rewriter) {
     rewriter.eraseOp(op);
     return success();
   }
+
   // if there is another TileOp with same row and column, replace
-  for (auto tile : op->getParentOfType<DeviceOp>().getOps<TileOp>()) {
+  for (auto tile : op->getParentOp()->getRegion(0).getOps<TileOp>()) {
     if (tile == op)
       continue;
     if (tile.colIndex() < 0 || tile.rowIndex() < 0)
