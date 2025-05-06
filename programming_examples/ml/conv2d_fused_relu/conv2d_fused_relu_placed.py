@@ -98,7 +98,7 @@ def conv2dk1(dev):
             )
 
             # Compute tile 2
-            @core(ComputeTile2, "conv2dk1.o")
+            @core(ComputeTile2, "conv2dk1.o", stack_size=0x600)
             def core_body():
                 y_dim = 32
                 x_dim = 32
