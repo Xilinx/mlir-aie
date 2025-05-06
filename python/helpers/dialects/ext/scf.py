@@ -4,7 +4,8 @@ from ....ir import InsertionPoint, Value
 from ....dialects.linalg.opdsl.lang.emitter import _is_index_type
 from ....dialects.scf import IfOp, ForOp, yield_
 from ....extras.dialects.ext.arith import constant, index_cast
-from ....extras.util import get_user_code_loc 
+from ....extras.util import get_user_code_loc
+
 
 def _for(
     start,
@@ -50,6 +51,7 @@ def _for(
         if insert_yield:
             yield_([])
 
+
 def _if(cond, then_fn, else_fn=None, insert_yield: bool = True, *, loc=None, ip=None):
     """
     This is nearly identical to the convenience wrapper in scf, but with the added insert_yield parameter.
@@ -57,12 +59,12 @@ def _if(cond, then_fn, else_fn=None, insert_yield: bool = True, *, loc=None, ip=
     if loc is None:
         loc = get_user_code_loc()
     if_op = IfOp(cond, hasElse=(else_fn is not None), loc=loc, ip=ip)
-    
-    with InsertionPoint(if_op.then_region.blocks[0]):
+
+    with InsertionPoint(if_op.thenRegion.blocks[0]):
         then_fn()
-        yield_([]) 
-        
+        yield_([])
+
     if else_fn is not None:
-        with InsertionPoint(if_op.else_region.blocks[0]):
+        with InsertionPoint(if_op.elseRegion.blocks[0]):
             else_fn()
             yield_([])
