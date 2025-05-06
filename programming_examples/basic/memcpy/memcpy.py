@@ -14,7 +14,7 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import Tile, NPU1Col4, NPU2
 from aie.helpers.taplib.tap import TensorAccessPattern
-from aie.helpers.dialects.ext.scf import _if, yield_
+
 
 def my_memcpy(dev, size, num_columns, num_channels, bypass):
     # Use int32 dtype as it is the addr generation granularity
@@ -34,65 +34,50 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
         for i in range(num_columns)
         for j in range(num_channels)
     ]
-    of_outs = []
-    def lower_example_if():
-        # Create a condition (an i1 value)
-        cond = str(opts.bypass).lower() in ("yes", "true", "t", "1")  # or obtain it from elsewhere
-    
-        # Define the then branch.
-        def then_branch():
-            of_outs = [
-                of_ins[i * num_channels + j]
-                .cons()
-                .forward(placement=Tile(i, 1))  # Explicitly placed until #2221)
-                for i in range(num_columns)
-                for j in range(num_channels)
-            ]
-            yield_([])  # terminator
+    if bypass:
+        of_outs = [
+            of_ins[i * num_channels + j]
+            .cons()
+            .forward(placement=Tile(i, 1))  # Explicitly placed until #2221)
+            for i in range(num_columns)
+            for j in range(num_channels)
+        ]
+    else:
+        of_outs = [
+            ObjectFifo(line_type, name=f"out{i}_{j}")
+            for i in range(num_columns)
+            for j in range(num_channels)
+        ]
 
-        # Define the else branch.
-        def else_branch():
-            of_outs = [
-                ObjectFifo(line_type, name=f"out{i}_{j}")
-                for i in range(num_columns)
-                for j in range(num_channels)
-            ]
-        
+        # External, binary kernel definition
+        passthrough_fn = Kernel(
+            "passThroughLine",
+            "passThrough.cc.o",
+            [line_type, line_type, np.int32],
+        )
 
-            # External, binary kernel definition
-            passthrough_fn = Kernel(
-                "passThroughLine",
-                "passThrough.cc.o",
-                [line_type, line_type, np.int32],
+        # Task for the core to perform
+        def core_fn(of_in, of_out, passThroughLine):
+            elemOut = of_out.acquire(1)
+            elemIn = of_in.acquire(1)
+            passThroughLine(elemIn, elemOut, line_size)
+            of_in.release(1)
+            of_out.release(1)
+
+        # Create a worker to perform the task
+        my_workers = [
+            Worker(
+                core_fn,
+                [
+                    of_ins[i * num_channels + j].cons(),
+                    of_outs[i * num_channels + j].prod(),
+                    passthrough_fn,
+                ],
             )
+            for i in range(num_columns)
+            for j in range(num_channels)
+        ]
 
-            # Task for the core to perform
-            def core_fn(of_in, of_out, passThroughLine):
-                elemOut = of_out.acquire(1)
-                elemIn = of_in.acquire(1)
-                passThroughLine(elemIn, elemOut, line_size)
-                of_in.release(1)
-                of_out.release(1)
-
-            # Create a worker to perform the task
-            my_workers = [
-                Worker(
-                    core_fn,
-                    [
-                        of_ins[i * num_channels + j].cons(),
-                        of_outs[i * num_channels + j].prod(),
-                        passthrough_fn,
-                    ],
-                )
-                for i in range(num_columns)
-                for j in range(num_channels)
-            ]
-
-            yield_([])
-
-        # Create an SCF if operation; this Python helper converts into scf.if in MLIR.
-        _if(cond, then_branch, else_branch)
-    lower_example_if()
     taps = [
         TensorAccessPattern(
             (1, size),
