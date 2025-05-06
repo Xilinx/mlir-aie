@@ -45,18 +45,22 @@ def transform(input, output, func):
     of_out = ObjectFifo(tile_ty, name="out")
 
     # Define a task that will run on a compute tile
-    def core_body(of_in, of_out):
+
+    def core_body(of_in, of_out, func_to_apply):
         # Number of sub-vector "tile" iterations
-        for _ in range_(N_div_n):
+        for i in range_(N_div_n):
             elem_in = of_in.acquire(1)
             elem_out = of_out.acquire(1)
-            for i in range_(n):
-                elem_out[i] = func(elem_in[i])
+
+            if isinstance(func_to_apply, iron.CoreFunction):
+                func_to_apply(elem_in, elem_out, n)
+            else:
+                elem_out[i] = func_to_apply(elem_in[i])
             of_in.release(1)
             of_out.release(1)
 
     # Create a worker to run the task on a compute tile
-    worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod()])
+    worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod(), func])
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
