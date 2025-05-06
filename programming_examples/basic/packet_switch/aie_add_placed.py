@@ -151,7 +151,7 @@ def packet_switch_kernel(dev, in_out_size):
         
         shim_dma_allocation("objFifo_in0", DMAChannelDir.MM2S, 0, 0)
         @runtime_sequence(np.ndarray[(in_out_size,), in_out_ty],   np.ndarray[(in_out_size,), in_out_ty])
-        def sequenc(A,B):
+        def sequence(A,B):
             npu_dma_memcpy_nd(
                 metadata="objFifo_in0",
                 bd_id=0,
