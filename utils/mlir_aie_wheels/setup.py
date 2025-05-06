@@ -271,4 +271,8 @@ setup(
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
     python_requires=">=3.10",
+    install_requires=[
+        "rich",
+        "aiofiles"
+    ],
 )
