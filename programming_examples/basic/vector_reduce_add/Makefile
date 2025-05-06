@@ -49,7 +49,7 @@ build/final.xclbin: build/aie.mlir build/reduce_add.cc.o
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -61,7 +61,7 @@ run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
 
 trace:
-	../../utils/parse_eventIR.py --filename trace.txt --mlir build/aie.mlir --colshift $(colshift) > parse_eventIR_vs.json
+	../../utils/parse_trace.py --input trace.txt --mlir build/aie.mlir --colshift $(colshift) --output parse_eventIR_vs.json
 
 clean_trace:
 	rm -rf tmpTrace trace.txt
