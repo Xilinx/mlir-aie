@@ -245,4 +245,8 @@ setup(
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
     download_url=llvm_url,
+    install_requires=[
+        "rich",
+        "aiofiles"
+    ],
 )
