@@ -73,8 +73,8 @@ class SequentialPlacer(Placer):
         computes_out = device.get_compute_tiles()
         compute_idx = 0
 
-        channels_in: dict[Tile, (ObjectFifoEndpoint, int)] = {}
-        channels_out: dict[Tile, (ObjectFifoEndpoint, int)] = {}
+        channels_in: dict[Tile, tuple[ObjectFifoEndpoint, int]] = {}
+        channels_out: dict[Tile, tuple[ObjectFifoEndpoint, int]] = {}
 
         # If some workers are already taken, remove them from the available set
         for worker in workers:
