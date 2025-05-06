@@ -282,7 +282,7 @@ class SequentialPlacer(Placer):
         device: Device,
         output=False,
         link_tiles=[],
-        link_channels=[],
+        link_channels={},
     ):
         """
         A utility function that places a given endpoint based on available DMA channels.
