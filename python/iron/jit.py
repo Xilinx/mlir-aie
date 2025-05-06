@@ -11,9 +11,10 @@ import functools
 import hashlib
 import numpy as np
 import pyxrt as xrt
+import shutil
 
 from aie.extras.context import mlir_mod_ctx
-from ..utils.compile import compile_mlir_module_to_binary
+from ..utils.compile import compile_mlir_to_binary
 from ..utils.xrt import read_insts_binary
 
 
@@ -163,13 +164,26 @@ def jit(function=None, is_placed=True, use_cache=True):
         xclbin_exists = os.path.exists(xclbin_path)
         inst_exists = os.path.exists(inst_path)
 
+        debug = True
         if not use_cache or not xclbin_exists or not inst_exists:
             with open(mlir_path, "w", encoding="utf-8") as f:
                 print(mlir_module, file=f)
-            compile_mlir_module_to_binary(
-                mlir_module=mlir_module,
-                inst_path=inst_path,
-                xclbin_path=xclbin_path,
+
+            # Move any object files to the kernel directory
+            from .kernel import CoreFunction
+            for obj_file in CoreFunction._object_files:
+                if os.path.exists(obj_file):
+                    dest_file = os.path.join(kernel_dir, os.path.basename(obj_file))
+                    shutil.move(obj_file, dest_file)
+                    if debug:
+                        print(f"Moved {obj_file} to {dest_file}")
+            if debug:
+                print("Finished moving object files")
+            # Compile the MLIR module
+            compile_mlir_to_binary(
+                mlir_path=mlir_path,
+                inst_filename=inst_filename,
+                xclbin_filename=xclbin_filename,
             )
 
         kernel_name = "MLIR_AIE"
