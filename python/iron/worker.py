@@ -204,6 +204,14 @@ class WorkerRuntimeBarrier:
         for lock in self.worker_locks:
             set_lock_value(lock, value)
 
+    def release_rtp_lock(self, value: int):
+        """Set the value of the barrier inside the core."""
+        if len(self.worker_locks) == 0:
+            raise ValueError(
+                "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
+            )
+        use_lock(self.worker_locks[-1], LockAction.Release, value=value)
+
 
 class _BarrierSetOp(Resolvable):
     """A resolvable instance of a WorkerRuntimeBarrier. This should not be used directly."""
