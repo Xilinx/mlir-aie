@@ -46,7 +46,7 @@ int main(int argc, const char *argv[]) {
 
   // Load the xclbin
   // Skeleton xclbin containing only the control packet network
-  auto xclbin = xrt::xclbin("aie1.xclbin");
+  auto xclbin = xrt::xclbin(std::string("aie1.xclbin"));
 
   std::string Node = "MLIR_AIE";
 
