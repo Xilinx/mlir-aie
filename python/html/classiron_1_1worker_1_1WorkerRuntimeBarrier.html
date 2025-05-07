@@ -88,6 +88,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:aa802cc1123a5aad09cfd9171e11b0459"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a4317db75e75223a25e784147fa729799" id="r_a4317db75e75223a25e784147fa729799"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1worker_1_1WorkerRuntimeBarrier.html#a4317db75e75223a25e784147fa729799">wait_for_value</a> (self, int value)</td></tr>
 <tr class="separator:a4317db75e75223a25e784147fa729799"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a285aceb8d39e9a898c60da6d6b1d48e3" id="r_a285aceb8d39e9a898c60da6d6b1d48e3"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1worker_1_1WorkerRuntimeBarrier.html#a285aceb8d39e9a898c60da6d6b1d48e3">release_with_value</a> (self, int value)</td></tr>
+<tr class="separator:a285aceb8d39e9a898c60da6d6b1d48e3"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
 Public Attributes</h2></td></tr>
@@ -204,6 +206,38 @@ Protected Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 <pre class="fragment">Set the value of the barrier.</pre> 
+</div>
+</div>
+<a id="a285aceb8d39e9a898c60da6d6b1d48e3" name="a285aceb8d39e9a898c60da6d6b1d48e3"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a285aceb8d39e9a898c60da6d6b1d48e3">&#9670;&#160;</a></span>release_with_value()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.worker.WorkerRuntimeBarrier.release_with_value </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>value</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Release and decrement the barrier by `value` inside the core.
+
+Args:
+    value (int): The value to decrement by in Release.
+</pre> 
 </div>
 </div>
 <a id="a4317db75e75223a25e784147fa729799" name="a4317db75e75223a25e784147fa729799"></a>
