@@ -149,15 +149,14 @@ if config.xrt_lib_dir:
                 run_on_npu = (
                     f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )
-                print("Running tests on NPU1 with command line: ", run_on_npu)
-                # Add AIE2 to config.vitis_components
                 config.vitis_components.append("AIE2")
+                print("Running tests on NPU1 with command line: ", run_on_npu)
             elif model in ["npu4", "Strix", "npu5", "Strix Halo", "npu6", "Krackan"]:
                 run_on_2npu = (
                     f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )
-                print("Running tests on NPU4 with command line: ", run_on_2npu)
                 config.vitis_components.append("AIE2P")
+                print("Running tests on NPU4 with command line: ", run_on_2npu)
             else:
                 print("WARNING: xrt-smi reported unknown NPU model '{model}'.")
             break
