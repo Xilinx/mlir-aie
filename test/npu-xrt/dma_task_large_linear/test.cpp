@@ -16,7 +16,7 @@
 #include "test_utils.h"
 
 #ifndef XCLBIN
-#define XCLBIN "final.xclbin"
+#define XCLBIN std::string("final.xclbin")
 #endif
 
 #ifndef INSTS_TXT
