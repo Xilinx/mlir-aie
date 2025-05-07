@@ -247,6 +247,12 @@ MLIR_AIE_SOURCE_DIR = Path(
     )
 ).absolute()
 
+def parse_requirements(filename):
+    with open(filename) as f:
+        lines = f.read().splitlines()
+        # Remove comments and empty lines
+        return [line.strip() for line in lines if line.strip() and not line.startswith('#')]
+
 setup(
     version=version,
     author="",
@@ -271,8 +277,5 @@ setup(
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
     python_requires=">=3.10",
-    install_requires=[
-        "rich",
-        "aiofiles"
-    ],
+    install_requires=parse_requirements(Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"),
 )
