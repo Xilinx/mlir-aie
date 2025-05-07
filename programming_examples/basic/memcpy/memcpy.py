@@ -15,6 +15,13 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.device import Tile, NPU1Col4, NPU2
 from aie.helpers.taplib.tap import TensorAccessPattern
 
+#
+# Memcpy is designed to use every column's shimDMA in-out pairs
+# to fully saturate DDR bandwidth. It is a superset of passthrough_kernel
+# and passthrough_dmas. As such, it can be used as a microbenchmark or as
+# a template for multi-core unary operations.
+#
+
 
 def my_memcpy(dev, size, num_columns, num_channels, bypass):
     # Use int32 dtype as it is the addr generation granularity
@@ -81,6 +88,11 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
             for j in range(num_channels)
         ]
 
+    # Create a TensorAccessPattern for each channel
+    # to describe the data movement
+    # The pattern chops the data in equal chunks
+    # and moves them in parallel across the columns
+    # and channels.
     taps = [
         TensorAccessPattern(
             (1, size),
@@ -95,8 +107,10 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(transfer_type, transfer_type) as (a_in, b_out):
+        # Start the workers if not bypass
         if not bypass:
             rt.start(*my_workers)
+        # Fill the input objectFIFOs with data
         for i in range(num_columns):
             for j in range(num_channels):
                 rt.fill(
@@ -104,13 +118,14 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
                     a_in,
                     taps[i * num_channels + j],
                 )
+        # Drain the output objectFIFOs with data
         for i in range(num_columns):
             for j in range(num_channels):
                 rt.drain(
                     of_outs[i * num_channels + j].cons(),
                     b_out,
                     taps[i * num_channels + j],
-                    wait=True,
+                    wait=True, # wait for the transfer to complete and data to be available
                 )
 
     # Place components (assign them resources on the device) and generate an MLIR module
@@ -118,21 +133,31 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
 
 
 p = argparse.ArgumentParser()
+## Parse command line arguments
+
+## Device name is required to select the AIE device: npu or npu2
 p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
+## Transfer size is required to define the size of the data to be transferred
+## It must be a multiple of 1024 and divisible by the number of columns and 2 channels per column
 p.add_argument("-l", "--length", required=True, dest="length", help="Transfer size")
+## Number of columns is required to define the number of columns to be used
+## It must be less than or equal to 4 for npu and 8 for npu2
 p.add_argument("-co", "--columns", required=True, dest="cols", help="Number of columns")
+## Number of channels is required to define the number of channels to be used
+## It must be 1 or 2
 p.add_argument(
     "-ch", "--channels", required=True, dest="chans", help="Number of channels"
 )
+## Bypass is required to define if the bypass path should be used
 p.add_argument(
     "-b", "--bypass", required=True, dest="bypass", help="Use DMA-only bypass path"
 )
 opts = p.parse_args(sys.argv[1:])
 
 if opts.device == "npu":
-    dev = NPU1Col4()
+    dev = NPU1Col4() # Four columns of NPU1, the maximum available
 elif opts.device == "npu2":
-    dev = NPU2()
+    dev = NPU2() # Eight columns of NPU2, the maximum available
 else:
     raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
 
@@ -159,6 +184,11 @@ if ((length % 1024) % columns % channels) != 0:
     )
     raise ValueError
 
+## Bypass is a boolean value that indicates if the bypass path should be used
+## It must be one of the following: yes, true, t, 1
+## It is converted to a boolean value
 bypass = str(opts.bypass).lower() in ("yes", "true", "t", "1")
 
+## Call the my_memcpy function with the parsed arguments
+## and print the MLIR as a result
 print(my_memcpy(dev, length, columns, channels, bypass))

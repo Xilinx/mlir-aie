@@ -26,6 +26,15 @@ from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
 
+#
+# Scale Shift is a multi-core example that time-multiplexes the 
+# cores to perform first a scale, followed by a bias addition 
+# to shift: A * B + C = D, where each is a vector of bfloat16 
+# values. A "Runtime Parameter" rtp is used to switch between
+#  * and + in each core at runtime. WorkerRuntimeBarriers are 
+# used to synchronize between the runtime sequence and each Worker.
+#
+
 
 def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
     in1_dtype = bfloat16
@@ -39,6 +48,9 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
     tile_size = 1024
     tensor_div_tile = tensor_size // tile_size
 
+    # This example 2 cores to paralelize the scale and 
+    # shift operations one after another. 
+    # The number of cores can be changed to 1 or 4.
     n_cores = 2
     tiles = tensor_div_tile // n_cores
 
@@ -46,9 +58,14 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
     assert in3_size == in1_size, "input3 buffer size must match input1 buffer size."
     assert out_size == in1_size, "Output buffer size must match input1 buffer size."
 
+    # The trace size is the size of the trace buffer.
+    # The trace buffer is used to store the trace of the
+    # operations performed by the AIE array.
     enable_trace = 1 if trace_size > 0 else 0
 
+    # Type used in the external memory
     tensor_ty = np.ndarray[(tensor_size,), np.dtype[out_dtype]]
+    # Type used in the tile memory
     tile_ty = np.ndarray[(tile_size,), np.dtype[out_dtype]]
 
     # Type used in the tile memory
@@ -163,37 +180,58 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
         rt.start(*workers)
 
         # Set runtime parameters
+        # 1 == multiply
         def set_rtps(*args):
             for rtp in args:
                 rtp[0] = 1
-
         rt.inline_ops(set_rtps, rtps)
+
+        # Set the barriers to 1 to allow the worker to read the
+        # runtime parameters and start the computation
         for i in range(n_cores):
             rt.set_barrier(workerBarriers[i], 1)
 
+        # Fill the input objectFIFOs with data
         rt.fill(inA.prod(), A)
         rt.fill(inB.prod(), B)
+        # Drain the output objectFIFOs to the external memory
+        # Wait for the data to be drained before continuing
         rt.drain(outC.cons(), D, wait=True)
 
         # Set runtime parameters
+        # 0 == add
         def set_rtps(*args):
             for rtp in args:
                 rtp[0] = 0
-
         rt.inline_ops(set_rtps, rtps)
+
+        # Set the barriers to 1 to allow the worker to read the
+        # runtime parameters and start the computation
         for i in range(n_cores):
             rt.set_barrier(workerBarriers[i], 1)
 
+        # Fill the input objectFIFOs with data
+        # The input D is the output of the previous operation
         rt.fill(inA.prod(), D)
         rt.fill(inB.prod(), C)
-        rt.drain(outC.cons(), D, wait=True)
+        # Drain the output objectFIFOs to the external memory
+        # Wait for the data to be drained before continuing
+        rt.drain(outC.cons(), D, wait=True) 
 
     # Place components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
 p = argparse.ArgumentParser()
+## Parse command line arguments
+
+## The device name is used to select the device to use
+## The device name can be either npu or npu2
 p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
+## The input and output buffer sizes are used to set the size of the buffers
+## The input and output buffer sizes are in bytes
+## The input and output buffer sizes must be a multiple of the tile size
+## The input and output buffer sizes must match
 p.add_argument(
     "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
 )
@@ -204,6 +242,7 @@ p.add_argument(
     "-i3s", "--in3_size", required=True, dest="in3_size", help="Input 3 size"
 )
 p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
+## The trace size is used to set the size of the trace buffer
 p.add_argument(
     "-t",
     "--trace_size",
@@ -228,4 +267,5 @@ out_size = int(opts.out_size)
 trace_size = int(opts.trace_size)
 
 module = my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size)
+# Print the MLIR module to stdout
 print(module)
