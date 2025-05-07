@@ -204,6 +204,19 @@ class WorkerRuntimeBarrier:
         for lock in self.worker_locks:
             set_lock_value(lock, value)
 
+    def release_with_value(self, value: int):
+        """
+        Release and decrement the barrier by `value` inside the core.
+
+        Args:
+            value (int): The value to decrement by in Release.
+        """
+        if len(self.worker_locks) == 0:
+            raise ValueError(
+                "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
+            )
+        use_lock(self.worker_locks[-1], LockAction.Release, value=value)
+
 
 class _BarrierSetOp(Resolvable):
     """A resolvable instance of a WorkerRuntimeBarrier. This should not be used directly."""
