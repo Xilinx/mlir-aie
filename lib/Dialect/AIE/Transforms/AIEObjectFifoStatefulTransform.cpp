@@ -104,7 +104,6 @@ public:
   /// Given a tile and DMAChannelDir, returns next usable channel index for
   /// that tile.
   int getDMAChannelIndex(TileOp tileOp, DMAChannelDir dir) {
-    const auto &targetModel = getTargetModel(tileOp);
     int maxChannelNum = 0;
     if (dir == DMAChannelDir::MM2S)
       maxChannelNum = tileOp.getNumSourceConnections(WireBundle::DMA);
