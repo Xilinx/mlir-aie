@@ -106,14 +106,17 @@ public:
   int getDMAChannelIndex(TileOp tileOp, DMAChannelDir dir) {
     const auto &targetModel = getTargetModel(tileOp);
     int maxChannelNum = 0;
-    if (tileOp.isShimTile())
-      maxChannelNum = 2;
-    else {
-      if (dir == DMAChannelDir::MM2S)
-        maxChannelNum = targetModel.getNumSourceSwitchboxConnections(
+    if (dir == DMAChannelDir::MM2S) {
+      maxChannelNum = tileOp.isShimTile()
+          ? targetModel.getNumSourceShimMuxConnections(
+            tileOp.getCol(), tileOp.getRow(), WireBundle::DMA)
+          : targetModel.getNumSourceSwitchboxConnections(
             tileOp.getCol(), tileOp.getRow(), WireBundle::DMA);
-      else
-        maxChannelNum = targetModel.getNumDestSwitchboxConnections(
+    } else {
+      maxChannelNum = tileOp.isShimTile()
+          ? targetModel.getNumDestShimMuxConnections(
+            tileOp.getCol(), tileOp.getRow(), WireBundle::DMA)
+          : targetModel.getNumDestSwitchboxConnections(
             tileOp.getCol(), tileOp.getRow(), WireBundle::DMA);
     }
     for (int i = 0; i < maxChannelNum; i++)
