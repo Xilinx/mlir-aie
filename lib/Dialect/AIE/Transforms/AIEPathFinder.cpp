@@ -194,12 +194,8 @@ void Pathfinder::initialize(int maxCol, int maxRow,
     TileID coords = {col, row};
     SwitchboxConnect sb = {coords};
 
-    const std::vector<WireBundle> bundles = {
-        WireBundle::Core,  WireBundle::DMA,        WireBundle::FIFO,
-        WireBundle::South, WireBundle::West,       WireBundle::North,
-        WireBundle::East,  WireBundle::PLIO,       WireBundle::NOC,
-        WireBundle::Trace, WireBundle::TileControl};
-    for (WireBundle bundle : bundles) {
+    for (int i = 0, e = getMaxEnumValForWireBundle() + 1; i < e; ++i) {
+      WireBundle bundle = symbolizeWireBundle(i).value();
       // get all ports into current switchbox
       int channels =
           targetModel.getNumSourceSwitchboxConnections(col, row, bundle);

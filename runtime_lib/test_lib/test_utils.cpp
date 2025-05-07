@@ -14,14 +14,12 @@
 #include <cassert>
 #include <filesystem>
 
-namespace test_utils {
-
 // --------------------------------------------------------------------------
 // Command Line Argument Handling
 // --------------------------------------------------------------------------
 
-void check_arg_file_exists(const cxxopts::ParseResult &result,
-                           std::string name) {
+void test_utils::check_arg_file_exists(const cxxopts::ParseResult &result,
+                                       std::string name) {
   if (!result.count(name)) {
     throw std::runtime_error("Missing required argument: " + name);
   }
@@ -31,7 +29,7 @@ void check_arg_file_exists(const cxxopts::ParseResult &result,
   }
 }
 
-void add_default_options(cxxopts::Options &options) {
+void test_utils::add_default_options(cxxopts::Options &options) {
   options.add_options()("help,h", "produce help message")(
       "xclbin,x", "the input xclbin path", cxxopts::value<std::string>())(
       "kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)",
@@ -52,8 +50,9 @@ void add_default_options(cxxopts::Options &options) {
       cxxopts::value<std::string>()->default_value("trace.txt"));
 }
 
-void parse_options(int argc, const char *argv[], cxxopts::Options &options,
-                   cxxopts::ParseResult &vm) {
+void test_utils::parse_options(int argc, const char *argv[],
+                               cxxopts::Options &options,
+                               cxxopts::ParseResult &vm) {
   try {
     vm = options.parse(argc, argv);
 
@@ -79,7 +78,7 @@ void parse_options(int argc, const char *argv[], cxxopts::Options &options,
 // AIE Specifics
 // --------------------------------------------------------------------------
 
-std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
+std::vector<uint32_t> test_utils::load_instr_sequence(std::string instr_path) {
   std::ifstream instr_file(instr_path);
   std::string line;
   std::vector<uint32_t> instr_v;
@@ -94,7 +93,7 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
   return instr_v;
 }
 
-std::vector<uint32_t> load_instr_binary(std::string instr_path) {
+std::vector<uint32_t> test_utils::load_instr_binary(std::string instr_path) {
   // Open file in binary mode
   std::ifstream instr_file(instr_path, std::ios::binary);
   if (!instr_file.is_open()) {
@@ -122,9 +121,9 @@ std::vector<uint32_t> load_instr_binary(std::string instr_path) {
 // --------------------------------------------------------------------------
 // XRT
 // --------------------------------------------------------------------------
-void init_xrt_load_kernel(xrt::device &device, xrt::kernel &kernel,
-                          int verbosity, std::string xclbinFileName,
-                          std::string kernelNameInXclbin) {
+void test_utils::init_xrt_load_kernel(xrt::device &device, xrt::kernel &kernel,
+                                      int verbosity, std::string xclbinFileName,
+                                      std::string kernelNameInXclbin) {
   // Get a device handle
   unsigned int device_index = 0;
   device = xrt::device(device_index);
@@ -175,7 +174,7 @@ void init_xrt_load_kernel(xrt::device &device, xrt::kernel &kernel,
 // nearly_equal function adapted from Stack Overflow, License CC BY-SA 4.0
 // Original author: P-Gn
 // Source: https://stackoverflow.com/a/32334103
-bool nearly_equal(float a, float b, float epsilon, float abs_th)
+bool test_utils::nearly_equal(float a, float b, float epsilon, float abs_th)
 // those defaults are arbitrary and could be removed
 {
   assert(std::numeric_limits<float>::epsilon() <= epsilon);
@@ -196,7 +195,8 @@ bool nearly_equal(float a, float b, float epsilon, float abs_th)
 // --------------------------------------------------------------------------
 // Tracing
 // --------------------------------------------------------------------------
-void write_out_trace(char *traceOutPtr, size_t trace_size, std::string path) {
+void test_utils::write_out_trace(char *traceOutPtr, size_t trace_size,
+                                 std::string path) {
   std::ofstream fout(path);
   uint32_t *traceOut = (uint32_t *)traceOutPtr;
   for (int i = 0; i < trace_size / sizeof(traceOut[0]); i++) {
@@ -204,4 +204,3 @@ void write_out_trace(char *traceOutPtr, size_t trace_size, std::string path) {
     fout << std::endl;
   }
 }
-} // namespace test_utils
