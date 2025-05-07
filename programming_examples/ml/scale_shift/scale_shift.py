@@ -27,11 +27,11 @@ from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
 
 #
-# Scale Shift is a multi-core example that time-multiplexes the 
-# cores to perform first a scale, followed by a bias addition 
-# to shift: A * B + C = D, where each is a vector of bfloat16 
+# Scale Shift is a multi-core example that time-multiplexes the
+# cores to perform first a scale, followed by a bias addition
+# to shift: A * B + C = D, where each is a vector of bfloat16
 # values. A "Runtime Parameter" rtp is used to switch between
-#  * and + in each core at runtime. WorkerRuntimeBarriers are 
+#  * and + in each core at runtime. WorkerRuntimeBarriers are
 # used to synchronize between the runtime sequence and each Worker.
 #
 
@@ -48,8 +48,8 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
     tile_size = 1024
     tensor_div_tile = tensor_size // tile_size
 
-    # This example 2 cores to paralelize the scale and 
-    # shift operations one after another. 
+    # This example 2 cores to paralelize the scale and
+    # shift operations one after another.
     # The number of cores can be changed to 1 or 4.
     n_cores = 2
     tiles = tensor_div_tile // n_cores
@@ -184,6 +184,7 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
         def set_rtps(*args):
             for rtp in args:
                 rtp[0] = 1
+
         rt.inline_ops(set_rtps, rtps)
 
         # Set the barriers to 1 to allow the worker to read the
@@ -203,6 +204,7 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
         def set_rtps(*args):
             for rtp in args:
                 rtp[0] = 0
+
         rt.inline_ops(set_rtps, rtps)
 
         # Set the barriers to 1 to allow the worker to read the
@@ -216,7 +218,7 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
         rt.fill(inB.prod(), C)
         # Drain the output objectFIFOs to the external memory
         # Wait for the data to be drained before continuing
-        rt.drain(outC.cons(), D, wait=True) 
+        rt.drain(outC.cons(), D, wait=True)
 
     # Place components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())

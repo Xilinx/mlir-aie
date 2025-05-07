@@ -125,7 +125,7 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
                     of_outs[i * num_channels + j].cons(),
                     b_out,
                     taps[i * num_channels + j],
-                    wait=True, # wait for the transfer to complete and data to be available
+                    wait=True,  # wait for the transfer to complete and data to be available
                 )
 
     # Place components (assign them resources on the device) and generate an MLIR module
@@ -155,9 +155,9 @@ p.add_argument(
 opts = p.parse_args(sys.argv[1:])
 
 if opts.device == "npu":
-    dev = NPU1Col4() # Four columns of NPU1, the maximum available
+    dev = NPU1Col4()  # Four columns of NPU1, the maximum available
 elif opts.device == "npu2":
-    dev = NPU2() # Eight columns of NPU2, the maximum available
+    dev = NPU2()  # Eight columns of NPU2, the maximum available
 else:
     raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
 
