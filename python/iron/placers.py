@@ -8,7 +8,6 @@
 
 from abc import ABCMeta, abstractmethod
 import statistics
-from collections import defaultdict
 
 from .device import Device
 from .runtime import Runtime
@@ -77,8 +76,8 @@ class SequentialPlacer(Placer):
         # For each tile keep track of how many input and output endpoints there are
         # Note: defaultdict(list) automatically assigns an empty list as the default value for
         # keys that don’t exist
-        channels_in: dict[Tile, tuple[ObjectFifoEndpoint, int]] = defaultdict(list)
-        channels_out: dict[Tile, tuple[ObjectFifoEndpoint, int]] = defaultdict(list)
+        channels_in: dict[Tile, tuple[ObjectFifoEndpoint, int]] = {}
+        channels_out: dict[Tile, tuple[ObjectFifoEndpoint, int]] = {}
 
         # If some workers are already taken, remove them from the available set
         for worker in workers:
@@ -270,6 +269,8 @@ class SequentialPlacer(Placer):
         """
         if num_required_channels == 0:
             return
+        if tile not in channels:
+            channels[tile] = []
         channels[tile].append((ofe, num_required_channels))
         used_channels = 0
         for _, c in channels[tile]:
