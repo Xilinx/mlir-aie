@@ -32,7 +32,7 @@ template <typename T, int N>
 void bitwiseOR_aie(const T *src1, const T *src2, T *dst, const int32_t width,
                    const int32_t height) {
 
-  AIE_PREPARE_FOR_PIPELINE
+  AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_MIN_ITERATION_COUNT(14) // loop_range(14) - loop : 1 cycle
   for (int j = 0; j < width * height; j += N) {
     ::aie::vector<T, N> in1 = ::aie::load_v<N>(src1);

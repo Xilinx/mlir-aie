@@ -23,7 +23,7 @@ void relu(bfloat16 *restrict a, bfloat16 *restrict c, const int TILE_SIZE) {
   v32bfloat16 zeroes = broadcast_zero_bfloat16();
 
   event0();
-  AIE_PREPARE_FOR_PIPELINE
+  AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_RANGE(32, 32)
   for (size_t i = 0; i < TILE_SIZE; i += v_factor) {
     v32bfloat16 input = *(v32bfloat16 *)(a + i);

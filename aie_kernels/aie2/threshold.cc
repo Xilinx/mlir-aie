@@ -45,7 +45,7 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
 
   switch (thresholdType) {
   case XF_THRESHOLD_TYPE_TRUNC:
-    AIE_PREPARE_FOR_PIPELINE
+    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
@@ -59,7 +59,7 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
     }
     break;
   case XF_THRESHOLD_TYPE_BINARY:
-    AIE_PREPARE_FOR_PIPELINE
+    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
@@ -74,7 +74,7 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
     }
     break;
   case XF_THRESHOLD_TYPE_BINARY_INV:
-    AIE_PREPARE_FOR_PIPELINE
+    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
@@ -89,7 +89,7 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
     }
     break;
   case XF_THRESHOLD_TYPE_TOZERO:
-    AIE_PREPARE_FOR_PIPELINE
+    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
@@ -104,7 +104,7 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
     }
     break;
   case XF_THRESHOLD_TYPE_TOZERO_INV:
-    AIE_PREPARE_FOR_PIPELINE
+    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
@@ -119,7 +119,7 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
     }
     break;
   default:
-    AIE_PREPARE_FOR_PIPELINE
+    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
@@ -163,7 +163,7 @@ __attribute__((noinline)) void threshold4Ch_aie(
 
   switch (thresholdType) {
   case XF_THRESHOLD_TYPE_TRUNC:
-    AIE_PREPARE_FOR_PIPELINE
+    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
@@ -177,7 +177,7 @@ __attribute__((noinline)) void threshold4Ch_aie(
     }
     break;
   case XF_THRESHOLD_TYPE_BINARY:
-    AIE_PREPARE_FOR_PIPELINE
+    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
@@ -192,7 +192,7 @@ __attribute__((noinline)) void threshold4Ch_aie(
     }
     break;
   case XF_THRESHOLD_TYPE_BINARY_INV:
-    AIE_PREPARE_FOR_PIPELINE
+    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
@@ -207,7 +207,7 @@ __attribute__((noinline)) void threshold4Ch_aie(
     }
     break;
   case XF_THRESHOLD_TYPE_TOZERO:
-    AIE_PREPARE_FOR_PIPELINE
+    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
@@ -222,7 +222,7 @@ __attribute__((noinline)) void threshold4Ch_aie(
     }
     break;
   case XF_THRESHOLD_TYPE_TOZERO_INV:
-    AIE_PREPARE_FOR_PIPELINE
+    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
@@ -237,7 +237,7 @@ __attribute__((noinline)) void threshold4Ch_aie(
     }
     break;
   default:
-    AIE_PREPARE_FOR_PIPELINE
+    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop

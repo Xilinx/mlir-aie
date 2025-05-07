@@ -78,7 +78,7 @@ matmul_vectorized_2x2_mmul_b_col_maj(const T_in *__restrict pA,
 
   event0();
 
-  AIE_PREPARE_FOR_PIPELINE
+  AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_MIN_ITERATION_COUNT(4)
   for (unsigned z = 0; z < rowA; z += 2) {
     T_out *__restrict pC1 = pC + (z * colB + 0) * MMUL::size_C;

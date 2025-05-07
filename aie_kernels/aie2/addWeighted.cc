@@ -57,7 +57,7 @@ void addweighted_aie(const T *src1, const T *src2, T *dst, const int32_t width,
   }
   gamma_acc.template from_vector(gamma_coeff, 0);
   // loop_range(14) - loop : 1 cycle
-  AIE_PREPARE_FOR_PIPELINE
+  AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_MIN_ITERATION_COUNT(14)
   for (int j = 0; j < width * height; j += N) // 16 samples per loop
   {

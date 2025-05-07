@@ -514,7 +514,7 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
 
     for (int oc = 0; oc < (output_channels / 8); oc++) {
       for (int ic = 0; ic < (input_channels / 8); ic++) {
-        AIE_PREPARE_FOR_PIPELINE
+        AIE_PREPARE_FOR_PIPELINING
         AIE_LOOP_MIN_ITERATION_COUNT(2)
         // AIE_LOOP_UNROLL_FULL
         for (int i = kernel_height_start; i < kernel_height_end; i++) {
@@ -775,7 +775,7 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
     MMUL4x8x8 acc1 = aie::zeros<acc32, 32>();
     for (int oc = 0; oc < (output_channels / 8); oc++) {
       for (int ic = 0; ic < (input_channels / 8); ic++) {
-        AIE_PREPARE_FOR_PIPELINE
+        AIE_PREPARE_FOR_PIPELINING
         AIE_LOOP_MIN_ITERATION_COUNT(2)
         // AIE_LOOP_UNROLL_FULL
         for (int i = kernel_height_start; i < kernel_height_end; i++) {
@@ -970,7 +970,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
     for (int oc = 0; oc < (output_channels / 8); oc++) {
       AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int ic = 0; ic < (input_channels / 8); ic++) {
-        AIE_PREPARE_FOR_PIPELINE
+        AIE_PREPARE_FOR_PIPELINING
         AIE_LOOP_MIN_ITERATION_COUNT(2)
         // AIE_LOOP_UNROLL_FULL
         for (int i = kernel_height_start; i < kernel_height_end; i++) {
@@ -1003,7 +1003,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
           // For kernel width, we load 64 weights (8 ics x 8 ocs) and
           // multiply it with the act buffer. acc[32] += in_a[32] * wts[64]
           // We then shift the buffer left by 1 data position (8 channels).
-          AIE_PREPARE_FOR_PIPELINE
+          AIE_PREPARE_FOR_PIPELINING
           AIE_LOOP_RANGE(3, 3) // TODO Assume 3x3
           AIE_LOOP_UNROLL_FULL
           for (int j = 0; j < kernel_width; j++) {
@@ -1080,7 +1080,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
       for (int iw_32c = 0; iw_32c < iw_32; iw_32c++) {
         AIE_LOOP_MIN_ITERATION_COUNT(2)
         for (int ic = 0; ic < (input_channels / 8); ic++) {
-          AIE_PREPARE_FOR_PIPELINE
+          AIE_PREPARE_FOR_PIPELINING
           AIE_LOOP_MIN_ITERATION_COUNT(2)
           for (int i = kernel_height_start; i < kernel_height_end;
                i++) {            // 1 to 3
@@ -1160,7 +1160,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
           acc_tmp[x] = aie::zeros<acc32, 32>();
         }
         // For next 8 activations, reset line buffer and weights
-        AIE_PREPARE_FOR_PIPELINE
+        AIE_PREPARE_FOR_PIPELINING
         AIE_LOOP_MIN_ITERATION_COUNT(2)
         for (int i = kernel_height_start; i < kernel_height_end; i++) {
           line[i] -=
@@ -1174,7 +1174,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
 
     // Reset weights and line buffers for last section of middle (or right side
     // it there is no last section)
-    AIE_PREPARE_FOR_PIPELINE
+    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_MIN_ITERATION_COUNT(2)
     for (int i = kernel_height_start; i < kernel_height_end; i++) {
       wtsLine[i] -= (output_channels / 8) * (input_channels / 8) *
@@ -1193,7 +1193,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
     for (int oc = 0; oc < (output_channels / 8); oc++) {
       AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int ic = 0; ic < (input_channels / 8); ic++) {
-        AIE_PREPARE_FOR_PIPELINE
+        AIE_PREPARE_FOR_PIPELINING
         AIE_LOOP_MIN_ITERATION_COUNT(2) // 1 to 3
         for (int i = kernel_height_start; i < kernel_height_end; i++) {
           AIE_LOOP_RANGE(3, 3) // TODO Assume 3x3
@@ -1274,7 +1274,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
         acc_tmp[x] = aie::zeros<acc32, 32>(); // Reset accumulators
       }
       // Reset line ptr to beginning of input
-      AIE_PREPARE_FOR_PIPELINE
+      AIE_PREPARE_FOR_PIPELINING
       AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int i = kernel_height_start; i < kernel_height_end; i++) {
         line[i] -= (input_channels / 8) * (iw * 8);
@@ -1283,7 +1283,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
       output += (iw * 8) - (iw_32_rem * 32); // 32 = 4*8, shift to next oc/8
     } // for(int oc=0; oc<(output_channels/8); oc++)
     // Reset weights and line buffers for right side
-    AIE_PREPARE_FOR_PIPELINE
+    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_MIN_ITERATION_COUNT(2)
     for (int i = kernel_height_start; i < kernel_height_end; i++) {
       wtsLine[i] -= (output_channels / 8) * (input_channels / 8) *
@@ -1308,7 +1308,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
     for (int oc = 0; oc < (output_channels / 8); oc++) {
       AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int ic = 0; ic < (input_channels / 8); ic++) {
-        AIE_PREPARE_FOR_PIPELINE
+        AIE_PREPARE_FOR_PIPELINING
         AIE_LOOP_MIN_ITERATION_COUNT(2)
         // AIE_LOOP_UNROLL_FULL
         for (int i = kernel_height_start; i < kernel_height_end; i++) {
@@ -1359,7 +1359,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
 
       acc1 = aie::zeros<acc32, 32>();
 
-      AIE_PREPARE_FOR_PIPELINE
+      AIE_PREPARE_FOR_PIPELINING
       AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int i = kernel_height_start; i < kernel_height_end; i++) {
         line[i] -= (input_channels / 8) *

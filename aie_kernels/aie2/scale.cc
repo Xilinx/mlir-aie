@@ -38,7 +38,7 @@ void scale_vectorized(T *__restrict a, T *__restrict c, int32_t factor,
   const int F = N / vec_factor;
   T fac = factor;
 
-  AIE_PREPARE_FOR_PIPELINE
+  AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_MIN_ITERATION_COUNT(16)
   for (int i = 0; i < F; i++) {
     aie::vector<T, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
@@ -61,7 +61,7 @@ void scale_vectorized<int32_t>(int32_t *__restrict a, int32_t *__restrict c,
   int32_t *__restrict pC1 = c;
   const int F = N / vec_factor;
 
-  AIE_PREPARE_FOR_PIPELINE
+  AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_MIN_ITERATION_COUNT(16)
   for (int i = 0; i < F; i++) {
     aie::vector<int32_t, vec_factor> A0 = aie::load_v<vec_factor>(pA1);

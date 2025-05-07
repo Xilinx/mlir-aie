@@ -60,7 +60,7 @@ __attribute__((noinline)) void rgba2gray_aie(uint8_t *rgba_in, uint8_t *y_out,
   ::aie::vector<uint8_t, 32> r, g, b;
   ::aie::vector<uint8_t, 32> y;
 
-  AIE_PREPARE_FOR_PIPELINE
+  AIE_PREPARE_FOR_PIPELINING
   for (int j = 0; (j < (width * height) / 32); j += 1) {
     xf_extract_rgb(rgba_in, r, g, b);
 

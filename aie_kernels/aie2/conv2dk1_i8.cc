@@ -131,7 +131,7 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 
     for (int oc = 0; oc < (output_channels / CHANNEL_FACTOR); oc++) {
       for (int iw_partialc = 0; iw_partialc < iw_partial; iw_partialc++) {
-        AIE_PREPARE_FOR_PIPELINE
+        AIE_PREPARE_FOR_PIPELINING
         AIE_LOOP_MIN_ITERATION_COUNT(2)
         for (int ic = 0; ic < (input_channels / CHANNEL_FACTOR); ic++) {
           aie::vector<int8, MMUL_KN> in_b = aie::load_v<MMUL_KN>(kernels);
@@ -174,7 +174,7 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
     const int ics = input_channels;
 
     for (int oc = 0; oc < (ocs / CHANNEL_FACTOR); oc++) {
-      AIE_PREPARE_FOR_PIPELINE
+      AIE_PREPARE_FOR_PIPELINING
       AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int ic = 0; ic < (ics / CHANNEL_FACTOR); ic++) {
         aie::vector<int8, MMUL_KN> in_b = aie::load_v<MMUL_KN>(kernels);

@@ -24,7 +24,7 @@ void _reduce_max_vector(int32_t *restrict in, int32_t *restrict out,
   const int32_t vector_size = 16;
   v16int32 after_vector;
   v16int32 running_max = tiny;
-  AIE_PREPARE_FOR_PIPELINE
+  AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_MIN_ITERATION_COUNT(8)
   for (int32_t i = 0; i < input_size; i += vector_size) {
     v16int32 next = *(v16int32 *)(in + i);

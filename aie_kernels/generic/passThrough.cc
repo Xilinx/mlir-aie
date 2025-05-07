@@ -26,7 +26,7 @@ __attribute__((noinline)) void passThrough_aie(T *restrict in, T *restrict out,
   v64uint8 *restrict outPtr = (v64uint8 *)out;
   v64uint8 *restrict inPtr = (v64uint8 *)in;
 
-  AIE_PREPARE_FOR_PIPELINE
+  AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_MIN_ITERATION_COUNT(6)
   for (int j = 0; j < (height * width); j += N) // Nx samples per loop
   {
