@@ -11,7 +11,7 @@ from aie.iron import (
     Program,
 )
 from aie.iron.device import (
-    Tile, 
+    Tile,
     NPU2Col1,
 )
 from aie.iron.placers import SequentialPlacer
@@ -30,6 +30,7 @@ from aie.iron.placers import SequentialPlacer
 # CHECK:     }
 # CHECK:   }
 # CHECK: }
+
 
 def my_barrier():
     # Create barriers to synchronize individual workers with the runtime sequence
@@ -51,8 +52,9 @@ def my_barrier():
     with rt.sequence(external_type) as (x):
         rt.start(worker)
         rt.set_barrier(workerBarrier, 1)
-        
+
     # Place components (assign them resources on the device) and generate an MLIR module
     return print(Program(NPU2Col1(), rt).resolve_program(SequentialPlacer()))
+
 
 my_barrier()
