@@ -231,9 +231,10 @@ p = argparse.ArgumentParser()
 ## The device name can be either npu or npu2
 p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
 ## The input and output buffer sizes are used to set the size of the buffers
-## The input and output buffer sizes are in bytes
-## The input and output buffer sizes must be a multiple of the tile size
-## The input and output buffer sizes must match
+## The input and output buffer sizes:
+##     * are in bytes
+##     * must be a multiple of the tile size
+##     * must have matching sizes
 p.add_argument(
     "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
 )
