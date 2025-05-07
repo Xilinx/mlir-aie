@@ -132,6 +132,7 @@ def bd_dim_layout_array_array_attr_builder(tup_arrs: List[List[tuple]], context=
         context=context,
     )
 
+
 @register_attribute_builder("BDPadLayoutArrayAttr")
 def bd_pad_layout_array_attr_builder(
     tups: List[Union[Attribute, Tuple[int]]], context=None
