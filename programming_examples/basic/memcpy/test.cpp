@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "cxxopts.hpp" 
+#include "cxxopts.hpp"
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -148,10 +148,11 @@ int main(int argc, const char *argv[]) {
   auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out);
   run.wait();
   auto stop = std::chrono::high_resolution_clock::now();
-  const float npu_time = std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count();
-  
+  const float npu_time =
+      std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
+          .count();
+
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-  
   std::cout << std::endl;
   std::cout << "Latency (us): " << npu_time << std::endl;
   std::cout << std::endl;

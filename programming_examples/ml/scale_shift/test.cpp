@@ -35,8 +35,8 @@ using INOUT3_DATATYPE = std::bfloat16_t;
 // Verify results (specific to our design example)
 // ----------------------------------------------------------------------------
 template <typename T>
-int verify(int size, std::vector<T> A, std::vector<T> B, std::vector<T> C, std::vector<T> D, 
-           int verbosity) {
+int verify(int size, std::vector<T> A, std::vector<T> B, std::vector<T> C,
+           std::vector<T> D, int verbosity) {
   int errors = 0;
   for (uint32_t i = 0; i < size; i++) {
     T ref = A[i] * B[i] + C[i];
@@ -74,8 +74,8 @@ int main(int argc, const char *argv[]) {
   // ------------------------------------------------------
   // Configure this to match your design's buffer size
   // ------------------------------------------------------
-  int INOUT0_VOLUME = 65536; 
-  int INOUT1_VOLUME = INOUT0_VOLUME; 
+  int INOUT0_VOLUME = 65536;
+  int INOUT1_VOLUME = INOUT0_VOLUME;
   int INOUT2_VOLUME = INOUT0_VOLUME;
   int INOUT3_VOLUME = INOUT0_VOLUME;
 
@@ -165,24 +165,24 @@ int main(int argc, const char *argv[]) {
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
   std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
   for (int i = 0; i < INOUT0_VOLUME; i++)
-    AVec[i] = 4.0; //test_utils::random_bfloat16_t((std::bfloat16_t)1.0,
-              //                              (std::bfloat16_t)-0.5);
+    AVec[i] = 4.0; // test_utils::random_bfloat16_t((std::bfloat16_t)1.0,
+                   //                               (std::bfloat16_t)-0.5);
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));
 
   // Initialize Inout buffer 1
   INOUT1_DATATYPE *bufInOut1 = bo_inout1.map<INOUT0_DATATYPE *>();
   std::vector<INOUT1_DATATYPE> BVec(INOUT1_VOLUME);
   for (int i = 0; i < INOUT1_VOLUME; i++)
-    BVec[i] = 2.0; //test_utils::random_bfloat16_t((std::bfloat16_t)1.0,
-                   //                         (std::bfloat16_t)-0.5);
+    BVec[i] = 2.0; // test_utils::random_bfloat16_t((std::bfloat16_t)1.0,
+                   //                          (std::bfloat16_t)-0.5);
   memcpy(bufInOut1, BVec.data(), (BVec.size() * sizeof(INOUT1_DATATYPE)));
 
   // Initialize Inout buffer 2
   INOUT1_DATATYPE *bufInOut2 = bo_inout2.map<INOUT2_DATATYPE *>();
   std::vector<INOUT2_DATATYPE> CVec(INOUT2_VOLUME);
   for (int i = 0; i < INOUT2_VOLUME; i++)
-    CVec[i] = 3.0; //test_utils::random_bfloat16_t((std::bfloat16_t)1.0,
-                   //                         (std::bfloat16_t)-0.5);
+    CVec[i] = 3.0; // test_utils::random_bfloat16_t((std::bfloat16_t)1.0,
+                   //                          (std::bfloat16_t)-0.5);
   memcpy(bufInOut2, CVec.data(), (CVec.size() * sizeof(INOUT2_DATATYPE)));
 
   // Initialize Inout buffer 3
