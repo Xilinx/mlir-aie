@@ -73,8 +73,8 @@ class SequentialPlacer(Placer):
         computes_out = device.get_compute_tiles()
         compute_idx = 0
 
-        channels_in: dict[Tile, (ObjectFifoEndpoint, int)] = {}
-        channels_out: dict[Tile, (ObjectFifoEndpoint, int)] = {}
+        channels_in: dict[Tile, tuple[ObjectFifoEndpoint, int]] = {}
+        channels_out: dict[Tile, tuple[ObjectFifoEndpoint, int]] = {}
 
         # If some workers are already taken, remove them from the available set
         for worker in workers:
@@ -254,7 +254,7 @@ class SequentialPlacer(Placer):
         tile: Tile,
         output: bool,
         num_required_channels: int,
-        channels: dict[Tile, (ObjectFifoEndpoint, int)],
+        channels: dict[Tile, tuple[ObjectFifoEndpoint, int]],
         tiles: list[Tile],
         device: Device,
     ):
@@ -264,7 +264,7 @@ class SequentialPlacer(Placer):
         if num_required_channels == 0:
             return
         if not tile in channels:
-            channels.update({tile: []})
+            channels[tile] = []
         channels[tile].append((ofe, num_required_channels))
         used_channels = 0
         for _, c in channels[tile]:
@@ -278,11 +278,11 @@ class SequentialPlacer(Placer):
         ofe: ObjectFifoEndpoint,
         tiles: list[Tile],
         common_col: int,
-        channels: dict[Tile, (ObjectFifoEndpoint, int)],
+        channels: dict[Tile, tuple[ObjectFifoEndpoint, int]],
         device: Device,
         output=False,
         link_tiles=[],
-        link_channels=[],
+        link_channels={},
     ):
         """
         A utility function that places a given endpoint based on available DMA channels.
