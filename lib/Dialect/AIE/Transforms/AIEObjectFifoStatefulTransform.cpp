@@ -114,11 +114,12 @@ public:
               : targetModel.getNumSourceSwitchboxConnections(
                     tileOp.getCol(), tileOp.getRow(), WireBundle::DMA);
     } else {
-      maxChannelNum = tileOp.isShimTile()
-          ? targetModel.getNumDestShimMuxConnections(
-            tileOp.getCol(), tileOp.getRow(), WireBundle::DMA)
-          : targetModel.getNumDestSwitchboxConnections(
-            tileOp.getCol(), tileOp.getRow(), WireBundle::DMA);
+      maxChannelNum =
+          tileOp.isShimTile()
+              ? targetModel.getNumDestShimMuxConnections(
+                    tileOp.getCol(), tileOp.getRow(), WireBundle::DMA)
+              : targetModel.getNumDestSwitchboxConnections(
+                    tileOp.getCol(), tileOp.getRow(), WireBundle::DMA);
     }
     for (int i = 0; i < maxChannelNum; i++)
       if (int usageCnt = channelsPerTile[{tileOp.getResult(), dir, i}];
