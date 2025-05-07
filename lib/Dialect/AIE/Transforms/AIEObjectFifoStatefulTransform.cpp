@@ -107,11 +107,12 @@ public:
     const auto &targetModel = getTargetModel(tileOp);
     int maxChannelNum = 0;
     if (dir == DMAChannelDir::MM2S) {
-      maxChannelNum = tileOp.isShimTile()
-          ? targetModel.getNumSourceShimMuxConnections(
-            tileOp.getCol(), tileOp.getRow(), WireBundle::DMA)
-          : targetModel.getNumSourceSwitchboxConnections(
-            tileOp.getCol(), tileOp.getRow(), WireBundle::DMA);
+      maxChannelNum =
+          tileOp.isShimTile()
+              ? targetModel.getNumSourceShimMuxConnections(
+                    tileOp.getCol(), tileOp.getRow(), WireBundle::DMA)
+              : targetModel.getNumSourceSwitchboxConnections(
+                    tileOp.getCol(), tileOp.getRow(), WireBundle::DMA);
     } else {
       maxChannelNum = tileOp.isShimTile()
           ? targetModel.getNumDestShimMuxConnections(
