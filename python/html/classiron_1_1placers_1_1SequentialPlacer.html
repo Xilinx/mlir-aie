@@ -120,17 +120,21 @@ Public Member Functions</h2></td></tr>
 Protected Member Functions</h2></td></tr>
 <tr class="memitem:adb029a6ff6309c6385ddd41e82f02e31" id="r_adb029a6ff6309c6385ddd41e82f02e31"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1placers_1_1SequentialPlacer.html#adb029a6ff6309c6385ddd41e82f02e31">_get_common_col</a> (self, list[<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>] tiles)</td></tr>
 <tr class="separator:adb029a6ff6309c6385ddd41e82f02e31"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a87860b5ceb8b3fff6627e9bc7f9106b0" id="r_a87860b5ceb8b3fff6627e9bc7f9106b0"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1placers_1_1SequentialPlacer.html#a87860b5ceb8b3fff6627e9bc7f9106b0">_find_col_match</a> (self, int col, list[<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>] tiles)</td></tr>
-<tr class="separator:a87860b5ceb8b3fff6627e9bc7f9106b0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:adea9b6fed26d4e6258e0f403f3ee9324" id="r_adea9b6fed26d4e6258e0f403f3ee9324"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1placers_1_1SequentialPlacer.html#adea9b6fed26d4e6258e0f403f3ee9324">_find_col_match</a> (self, int col, list[<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>] tiles, <a class="el" href="classiron_1_1device_1_1device_1_1Device.html">Device</a> device)</td></tr>
+<tr class="separator:adea9b6fed26d4e6258e0f403f3ee9324"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aeededdcb6837376ffbedb7d845629dd4" id="r_aeededdcb6837376ffbedb7d845629dd4"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1placers_1_1SequentialPlacer.html#aeededdcb6837376ffbedb7d845629dd4">_update_channels</a> (self, ObjectFifoEndpoint ofe, <a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a> tile, bool output, int num_required_channels, dict[<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>, tuple[ObjectFifoEndpoint, int]] channels, list[<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>] tiles, <a class="el" href="classiron_1_1device_1_1device_1_1Device.html">Device</a> device)</td></tr>
+<tr class="separator:aeededdcb6837376ffbedb7d845629dd4"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a32333852f63953222c2e29e45611b7be" id="r_a32333852f63953222c2e29e45611b7be"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1placers_1_1SequentialPlacer.html#a32333852f63953222c2e29e45611b7be">_place_endpoint</a> (self, ObjectFifoEndpoint ofe, list[<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>] tiles, int common_col, dict[<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>, tuple[ObjectFifoEndpoint, int]] channels, <a class="el" href="classiron_1_1device_1_1device_1_1Device.html">Device</a> device, output=False, link_tiles=[], link_channels={})</td></tr>
+<tr class="separator:a32333852f63953222c2e29e45611b7be"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><pre class="fragment">SequentialPlacer is a simple implementation of a placer. The SequentialPlacer is to named
+<div class="textblock"><pre class="fragment">SequentialPlacer is a simple implementation of a placer. The SequentialPlacer is so named
 because it will sequentially place workers to Compute Tiles. After workers are placed, Memory Tiles and
-Shim Tiles are placed so as to match the column of the given compute tile.
+Shim Tiles are placed as close to the column of the given compute tile as possible.
 
-The SequentialPlacer does not do any validation of placement and can often yield invalid placements
-that exceed resource limits for channels, memory, etc. For complex or resource sensitive designs,
-a more complex placer or manual placement is required.
+The SequentialPlacer only does validation of placement with respect to available DMA channels on the tiles.
+However, it can yield invalid placements that exceed other resource limits, such as memory, For complex or
+resource sensitive designs, a more complex placer or manual placement is required.
 </pre> </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="a6762c80d7edaa86853004ac57d64c20c" name="a6762c80d7edaa86853004ac57d64c20c"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a6762c80d7edaa86853004ac57d64c20c">&#9670;&#160;</a></span>__init__()</h2>
@@ -151,8 +155,8 @@ a more complex placer or manual placement is required.
 </div>
 </div>
 <h2 class="groupheader">Member Function Documentation</h2>
-<a id="a87860b5ceb8b3fff6627e9bc7f9106b0" name="a87860b5ceb8b3fff6627e9bc7f9106b0"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a87860b5ceb8b3fff6627e9bc7f9106b0">&#9670;&#160;</a></span>_find_col_match()</h2>
+<a id="adea9b6fed26d4e6258e0f403f3ee9324" name="adea9b6fed26d4e6258e0f403f3ee9324"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#adea9b6fed26d4e6258e0f403f3ee9324">&#9670;&#160;</a></span>_find_col_match()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -176,7 +180,13 @@ a more complex placer or manual placement is required.
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">list[<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>]&#160;</td>
-          <td class="paramname"><em>tiles</em>&#160;</td>
+          <td class="paramname"><em>tiles</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="classiron_1_1device_1_1device_1_1Device.html">Device</a>&#160;</td>
+          <td class="paramname"><em>device</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -191,6 +201,7 @@ a more complex placer or manual placement is required.
 </table>
 </div><div class="memdoc">
 <pre class="fragment">A utility function that sequentially searches a list of tiles to find one with a matching column.
+The column is increased until a tile is found in the device, or an error is signaled.
 </pre> 
 </div>
 </div>
@@ -228,7 +239,164 @@ a more complex placer or manual placement is required.
 </table>
 </div><div class="memdoc">
 <pre class="fragment">A utility function that calculates a column that is "close" or "common"
-to a set of tiles. It is a simple heuristic using the average to represent "distance"
+to a set of tiles. It is a simple heuristic using the average to represent "distance".
+</pre> 
+</div>
+</div>
+<a id="a32333852f63953222c2e29e45611b7be" name="a32333852f63953222c2e29e45611b7be"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a32333852f63953222c2e29e45611b7be">&#9670;&#160;</a></span>_place_endpoint()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.placers.SequentialPlacer._place_endpoint </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">ObjectFifoEndpoint&#160;</td>
+          <td class="paramname"><em>ofe</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">list[<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>]&#160;</td>
+          <td class="paramname"><em>tiles</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>common_col</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">dict[<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>, tuple[ObjectFifoEndpoint, int]]&#160;</td>
+          <td class="paramname"><em>channels</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="classiron_1_1device_1_1device_1_1Device.html">Device</a>&#160;</td>
+          <td class="paramname"><em>device</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>output</em> = <code>False</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>link_tiles</em> = <code>[]</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>link_channels</em> = <code>{}</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">A utility function that places a given endpoint based on available DMA channels. If the endpoint is a
+link, both input and output channels should be accounted for. Calls _update_channels() to update channel
+dictionaries and tile lists.
+</pre> 
+</div>
+</div>
+<a id="aeededdcb6837376ffbedb7d845629dd4" name="aeededdcb6837376ffbedb7d845629dd4"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aeededdcb6837376ffbedb7d845629dd4">&#9670;&#160;</a></span>_update_channels()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.placers.SequentialPlacer._update_channels </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">ObjectFifoEndpoint&#160;</td>
+          <td class="paramname"><em>ofe</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>&#160;</td>
+          <td class="paramname"><em>tile</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>output</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>num_required_channels</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">dict[<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>, tuple[ObjectFifoEndpoint, int]]&#160;</td>
+          <td class="paramname"><em>channels</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">list[<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>]&#160;</td>
+          <td class="paramname"><em>tiles</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="classiron_1_1device_1_1device_1_1Device.html">Device</a>&#160;</td>
+          <td class="paramname"><em>device</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">A utility function that updates given channel and tile lists. It appends a new
+(endpoint, num_required_channels) entry to the channels dict for the given tile key, then
+verifies whether the total entries for that tile surpass the maximum number of available
+channels. If so, it removes the tile from the list of available tiles.
 </pre> 
 </div>
 </div>

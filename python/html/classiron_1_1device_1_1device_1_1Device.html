@@ -127,6 +127,14 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:ac13b8897f9dd1209c8198e950f113e4c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a36da3996a16bd9a1c4e42d2d09db5576" id="r_a36da3996a16bd9a1c4e42d2d09db5576"><td class="memItemLeft" align="right" valign="top">list[<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1device_1_1device_1_1Device.html#a36da3996a16bd9a1c4e42d2d09db5576">get_compute_tiles</a> (self)</td></tr>
 <tr class="separator:a36da3996a16bd9a1c4e42d2d09db5576"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:affa0426978e43c7e482a99378d57c839" id="r_affa0426978e43c7e482a99378d57c839"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1device_1_1device_1_1Device.html#affa0426978e43c7e482a99378d57c839">get_num_source_switchbox_connections</a> (self, <a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a> t)</td></tr>
+<tr class="separator:affa0426978e43c7e482a99378d57c839"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa9f97cd58eadebf9c339f72a709d4f8d" id="r_aa9f97cd58eadebf9c339f72a709d4f8d"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1device_1_1device_1_1Device.html#aa9f97cd58eadebf9c339f72a709d4f8d">get_num_dest_switchbox_connections</a> (self, <a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a> t)</td></tr>
+<tr class="separator:aa9f97cd58eadebf9c339f72a709d4f8d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a98ec648a6c354fef57367a7eecc86c41" id="r_a98ec648a6c354fef57367a7eecc86c41"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1device_1_1device_1_1Device.html#a98ec648a6c354fef57367a7eecc86c41">get_num_source_shim_mux_connections</a> (self, <a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a> t)</td></tr>
+<tr class="separator:a98ec648a6c354fef57367a7eecc86c41"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a210e8203e424e4989ef839e9379b3875" id="r_a210e8203e424e4989ef839e9379b3875"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1device_1_1device_1_1Device.html#a210e8203e424e4989ef839e9379b3875">get_num_dest_shim_mux_connections</a> (self, <a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a> t)</td></tr>
+<tr class="separator:a210e8203e424e4989ef839e9379b3875"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af7c24e2099a3743874c10ade0bf8c8e2" id="r_af7c24e2099a3743874c10ade0bf8c8e2"><td class="memItemLeft" align="right" valign="top">None&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1device_1_1device_1_1Device.html#af7c24e2099a3743874c10ade0bf8c8e2">resolve_tile</a> (self, <a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a> tile, ir.Location|None loc=None, ir.InsertionPoint|None ip=None)</td></tr>
 <tr class="separator:af7c24e2099a3743874c10ade0bf8c8e2"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="inherit_header pub_methods_classiron_1_1resolvable_1_1Resolvable"><td colspan="2" onclick="javascript:toggleInherit('pub_methods_classiron_1_1resolvable_1_1Resolvable')"><img src="closed.png" alt="-"/>&#160;Public Member Functions inherited from <a class="el" href="classiron_1_1resolvable_1_1Resolvable.html">iron.resolvable.Resolvable</a></td></tr>
@@ -241,6 +249,142 @@ Returns:
     list[Tile]: A list of mem tiles.
 </pre> 
 <p>Reimplemented in <a class="el" href="classiron_1_1device_1_1device_1_1NPUBase.html#a1609ae1db71624ec27284cf6fe6b9514">iron.device.device.NPUBase</a>.</p>
+
+</div>
+</div>
+<a id="a210e8203e424e4989ef839e9379b3875" name="a210e8203e424e4989ef839e9379b3875"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a210e8203e424e4989ef839e9379b3875">&#9670;&#160;</a></span>get_num_dest_shim_mux_connections()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"> int iron.device.device.Device.get_num_dest_shim_mux_connections </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>&#160;</td>
+          <td class="paramname"><em>t</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Returns number of DMA dest ports in the shim mux for the given tile on the device.
+
+Returns:
+    int: Number of DMA dest ports.
+</pre> 
+<p>Reimplemented in <a class="el" href="classiron_1_1device_1_1device_1_1NPUBase.html#a96f0c4957c306baf8acf74a0f7f25751">iron.device.device.NPUBase</a>.</p>
+
+</div>
+</div>
+<a id="aa9f97cd58eadebf9c339f72a709d4f8d" name="aa9f97cd58eadebf9c339f72a709d4f8d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aa9f97cd58eadebf9c339f72a709d4f8d">&#9670;&#160;</a></span>get_num_dest_switchbox_connections()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"> int iron.device.device.Device.get_num_dest_switchbox_connections </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>&#160;</td>
+          <td class="paramname"><em>t</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Returns number of DMA dest ports in the switchbox for the given tile on the device.
+
+Returns:
+    int: Number of DMA dest ports.
+</pre> 
+<p>Reimplemented in <a class="el" href="classiron_1_1device_1_1device_1_1NPUBase.html#a3bbe83f029644f2fd560a94642cc7a90">iron.device.device.NPUBase</a>.</p>
+
+</div>
+</div>
+<a id="a98ec648a6c354fef57367a7eecc86c41" name="a98ec648a6c354fef57367a7eecc86c41"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a98ec648a6c354fef57367a7eecc86c41">&#9670;&#160;</a></span>get_num_source_shim_mux_connections()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"> int iron.device.device.Device.get_num_source_shim_mux_connections </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>&#160;</td>
+          <td class="paramname"><em>t</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Returns number of DMA source ports in the shim mux for the given tile on the device.
+
+Returns:
+    int: Number of DMA source ports.
+</pre> 
+<p>Reimplemented in <a class="el" href="classiron_1_1device_1_1device_1_1NPUBase.html#a812251f21f28939fc379709b9dfd76b2">iron.device.device.NPUBase</a>.</p>
+
+</div>
+</div>
+<a id="affa0426978e43c7e482a99378d57c839" name="affa0426978e43c7e482a99378d57c839"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#affa0426978e43c7e482a99378d57c839">&#9670;&#160;</a></span>get_num_source_switchbox_connections()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"> int iron.device.device.Device.get_num_source_switchbox_connections </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>&#160;</td>
+          <td class="paramname"><em>t</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Returns number of DMA source ports in the switchbox for the given tile on the device.
+
+Returns:
+    int: Number of DMA source ports.
+</pre> 
+<p>Reimplemented in <a class="el" href="classiron_1_1device_1_1device_1_1NPUBase.html#a2a22dad4e678dbdf1b7dcec2829e636f">iron.device.device.NPUBase</a>.</p>
 
 </div>
 </div>
