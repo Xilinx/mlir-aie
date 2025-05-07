@@ -41,9 +41,7 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
     # through a MemTile
     if bypass:
         of_outs = [
-            of_ins[i * num_channels + j]
-            .cons()
-            .forward(placement=Tile(i, 1))  # Explicitly placed until #2221)
+            of_ins[i * num_channels + j].cons().forward()
             for i in range(num_columns)
             for j in range(num_channels)
         ]
@@ -105,7 +103,6 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
                     of_ins[i * num_channels + j].prod(),
                     a_in,
                     taps[i * num_channels + j],
-                    placement=Tile(i, 0),  # Explicitly placed until #2221
                 )
         for i in range(num_columns):
             for j in range(num_channels):
@@ -113,7 +110,6 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
                     of_outs[i * num_channels + j].cons(),
                     b_out,
                     taps[i * num_channels + j],
-                    placement=Tile(i, 0),  # Explicitly placed until #2221
                     wait=True,
                 )
 
