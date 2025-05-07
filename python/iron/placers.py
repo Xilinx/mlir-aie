@@ -8,6 +8,7 @@
 
 from abc import ABCMeta, abstractmethod
 import statistics
+from collections import defaultdict
 
 from .device import Device
 from .runtime import Runtime
@@ -73,8 +74,11 @@ class SequentialPlacer(Placer):
         computes_out = device.get_compute_tiles()
         compute_idx = 0
 
-        channels_in: dict[Tile, tuple[ObjectFifoEndpoint, int]] = {}
-        channels_out: dict[Tile, tuple[ObjectFifoEndpoint, int]] = {}
+        # For each tile keep track of how many input and output endpoints there are
+        # Note: defaultdict(list) automatically assigns an empty list as the default value for
+        # keys that don’t exist
+        channels_in: dict[Tile, tuple[ObjectFifoEndpoint, int]] = defaultdict(list)
+        channels_out: dict[Tile, tuple[ObjectFifoEndpoint, int]] = defaultdict(list)
 
         # If some workers are already taken, remove them from the available set
         for worker in workers:
@@ -225,7 +229,7 @@ class SequentialPlacer(Placer):
     def _get_common_col(self, tiles: list[Tile]) -> int:
         """
         A utility function that calculates a column that is "close" or "common"
-        to a set of tiles. It is a simple heuristic using the average to represent "distance"
+        to a set of tiles. It is a simple heuristic using the average to represent "distance".
         """
         cols = [t.col for t in tiles if isinstance(t, Tile)]
         if len(cols) == 0:
@@ -259,12 +263,13 @@ class SequentialPlacer(Placer):
         device: Device,
     ):
         """
-        A utility function that updates given channel and tile lists.
+        A utility function that updates given channel and tile lists. It appends a new
+        (endpoint, num_required_channels) entry to the channels dict for the given tile key, then
+        verifies whether the total entries for that tile surpass the maximum number of available
+        channels. If so, it removes the tile from the list of available tiles.
         """
         if num_required_channels == 0:
             return
-        if not tile in channels:
-            channels[tile] = []
         channels[tile].append((ofe, num_required_channels))
         used_channels = 0
         for _, c in channels[tile]:
@@ -285,7 +290,9 @@ class SequentialPlacer(Placer):
         link_channels={},
     ):
         """
-        A utility function that places a given endpoint based on available DMA channels.
+        A utility function that places a given endpoint based on available DMA channels. If the endpoint is a
+        link, both input and output channels should be accounted for. Calls _update_channels() to update channel
+        dictionaries and tile lists.
         """
         is_shim = False
         num_required_channels = 1
