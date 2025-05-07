@@ -171,12 +171,14 @@ if config.xrt_lib_dir:
             if model in ["npu1", "Phoenix"]:
                 run_on_npu1 = run_on_npu
                 config.available_features.add("ryzen_ai_npu1")
-                config.vitis_components.append("AIE2")
+                # TODO: many npu-xrt tests are not compatible without Vitis
+                # config.vitis_components.append("AIE2")
                 print("Running tests on NPU with command line: ", run_on_npu1)
             elif model in ["npu4", "Strix", "npu5", "Strix Halo", "npu6", "Krackan"]:
                 run_on_npu2 = run_on_npu
                 config.available_features.add("ryzen_ai_npu2")
-                config.vitis_components.append("AIE2P")
+                # TODO: many npu-xrt tests are not compatible without Vitis
+                # config.vitis_components.append("AIE2P")
                 print("Running tests on NPU with command line: ", run_on_npu2)
             else:
                 print("WARNING: xrt-smi reported unknown NPU model '{model}'.")
