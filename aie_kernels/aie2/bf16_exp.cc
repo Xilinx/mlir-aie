@@ -1,4 +1,4 @@
-#include "../optimization_pragmas.h"
+#include "../aie_kernel_utils.h"
 #include <lut_based_ops.h>
 
 template <const int N>

@@ -15,7 +15,7 @@
 #include <stdlib.h>
 #include <type_traits>
 
-#include "../optimization_pragmas.h"
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 template <typename T_in, typename T_out, const int N>

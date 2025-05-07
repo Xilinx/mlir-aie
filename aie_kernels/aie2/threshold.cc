@@ -28,7 +28,7 @@ enum _threshold_type {
 
 // #define THRESH_TYPE XF_THRESHOLD_TYPE_BINARY
 
-#include "../optimization_pragmas.h"
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 template <typename T, int N>

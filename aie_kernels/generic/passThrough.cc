@@ -14,7 +14,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include "../optimization_pragmas.h"
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 template <typename T, int N>

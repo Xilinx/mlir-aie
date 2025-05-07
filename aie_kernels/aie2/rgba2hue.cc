@@ -19,7 +19,7 @@
 
 // clang-format off
 #include <aie_api/aie.hpp>
-#include "../optimization_pragmas.h"
+#include "../aie_kernel_utils.h"
 #include "lut_inv_8b.h"
 // clang-format on
 

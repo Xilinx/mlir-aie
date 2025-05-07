@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <type_traits>
 
-#include "../optimization_pragmas.h"
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 void _reduce_min_vector(int32_t *restrict in, int32_t *restrict out,

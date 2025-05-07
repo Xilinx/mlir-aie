@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <type_traits>
 
-#include "../optimization_pragmas.h"
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 static void _reduce_add_scalar(int32_t *restrict in, int32_t *restrict out,
