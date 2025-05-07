@@ -53,8 +53,14 @@ that transposes each tile to a `16x4` tile.
 #### 2. Interleaving Shuffles
 
 - Interleaving shuffles take two 512b (X) registers as input and produce a 512b output.
-- Note that these shuffles interleave at 32-bit granularities since the first `4x16`->`16x4` shuffle has generated 4 consecutive column elements. The 32-bit (or T32_*) shuffle collapses the 4 consecutive column elements as one 32-bit element. This allows using a 2x16->16x2 mode that combines the elements across the two input registers to produce 8 consecutive column elements.
+- Note that these shuffles interleave at 32-bit granularities since the first `4x16`->`16x4` shuffle has generated 4 consecutive column elements. The 32-bit (or T32_*) shuffle collapses the 4 consecutive column elements as one 32-bit element. This allows using a 32-bit `2x16->16x2` mode that combines the elements across the two input registers to produce 8 consecutive column elements.
 - First we interleave `16x4` tiles into `8x8` tiles. Next, the `8x8` tiles are interleaved to create four `4x16` column-major tiles.
 - At the end we have a full `16x16` transposed column-major matrix.
 
+#### Extending to other tensor shapes 
+
+- The tree-based shuffle algorithm is generalizable across tensor shapes.
+- The specific shuffle modes need to change for different transpose shapes, but the approach of single register followed by hierarchical interleaving shuffles is similarly applicable.
+- For instance, an INT8 32x32 transpose will need 16 single-register INT8 `2x32->32x2` shuffles, followed by interleaving shuffles.
+- Full list of shuffle modes supported on AIE2p and AIE2 can be found at:  http://cervino-doc/aie2p/r1p13/intrinsics/group__intr__gpvectorop__interleave.html
 
