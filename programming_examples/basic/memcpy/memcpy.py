@@ -34,6 +34,11 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
         for i in range(num_columns)
         for j in range(num_channels)
     ]
+    # Bypass path is a special case
+    # where we don't need to create a Worker 
+    # and we can use the ObjectFifo directly
+    # to read and write the data with a `forward`  
+    # through a MemTile
     if bypass:
         of_outs = [
             of_ins[i * num_channels + j]

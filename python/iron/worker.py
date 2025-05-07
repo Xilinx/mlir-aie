@@ -204,8 +204,13 @@ class WorkerRuntimeBarrier:
         for lock in self.worker_locks:
             set_lock_value(lock, value)
 
-    def release_rtp_lock(self, value: int):
-        """Set the value of the barrier inside the core."""
+    def release_with_value(self, value: int):
+        """
+        Release and decrement the barrier by `value` inside the core.
+
+        Args:
+            value (int): The value to decrement by in Release.
+        """
         if len(self.worker_locks) == 0:
             raise ValueError(
                 "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."

@@ -134,7 +134,7 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
             of_a.release(1)
             of_b.release(1)
             of_c.release(1)
-        barrier.release_rtp_lock(1)
+        barrier.release_with_value(1)
 
     # Set up workers to perform the tasks
     workers = []
