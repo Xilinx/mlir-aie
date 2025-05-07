@@ -82,11 +82,13 @@ void eltwise_vmul_vadd(T_in *a, T_in *b, T_out *c, bool is_mul) {
 
 extern "C" {
 
-void eltwise_mul_add_bf16_scalar(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out, int32 is_mul) {
+void eltwise_mul_add_bf16_scalar(bfloat16 *a_in, bfloat16 *b_in,
+                                 bfloat16 *c_out, int32 is_mul) {
   eltwise_mul_add<bfloat16, bfloat16, 1024>(a_in, b_in, c_out, bool(is_mul));
 }
 
-void eltwise_mul_add_bf16_vector(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out, int32 is_mul) {
+void eltwise_mul_add_bf16_vector(bfloat16 *a_in, bfloat16 *b_in,
+                                 bfloat16 *c_out, int32 is_mul) {
   eltwise_vmul_vadd<bfloat16, bfloat16, 1024>(a_in, b_in, c_out, bool(is_mul));
 }
 
