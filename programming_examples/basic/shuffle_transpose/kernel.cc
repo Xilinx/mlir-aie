@@ -22,6 +22,8 @@
     iv4 = aie::load_v<64>((uint8_t *)in_ptr + (3 * stride) + offset);          \
   }
 
+// The third parameter to `shuffle` specifies the shuffle mode
+// shuffle mode: ${DataWidth}_${ShuffleType}_${hi|lo}
 #define TRANSPOSE_16x16_1B(iv1, iv2, iv3, iv4, tk_16_4_v1, tk_16_4_v2,         \
                            tk_16_4_v3, tk_16_4_v4, tk_8_8_v1_lo, tk_8_8_v1_hi, \
                            tk_8_8_v2_lo, tk_8_8_v2_hi, tk_4_16_v1_lo,          \
