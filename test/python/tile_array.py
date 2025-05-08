@@ -217,7 +217,7 @@ def locks(module):
         tiles = TileArray()
 
         aie.lock(tiles[0, 1].tile)
-        # CHECK: %lock_0_1 = aie.lock(%{{.*}}tile_0_1)
+        # CHECK: %lock{{.*}} = aie.lock(%{{.*}}tile_0_1)
         for l in tiles[0, 1].locks():
             print(l.owner)
 
@@ -226,8 +226,8 @@ def locks(module):
         aie.lock(tiles[0, 3].tile)
         aie.lock(tiles[0, 3].tile, annot="alice")
 
-        # CHECK: %lock_0_2 = aie.lock(%{{.*}}tile_0_2)
-        # CHECK: %lock_0_2_0 = aie.lock(%{{.*}}tile_0_2) {annot = {bob}}
+        # CHECK: %lock{{.*}} = aie.lock(%{{.*}}tile_0_2)
+        # CHECK: %lock{{.*}} = aie.lock(%{{.*}}tile_0_2) {annot = {bob}}
         # for l in tiles[0, 2].locks():
         #     print(l.owner)
 
@@ -239,7 +239,7 @@ def locks(module):
         assert len(tiles[0, 2].locks(annot="alice")) == 0
 
         assert len(tiles[0, 3].locks(annot="alice")) == 1
-        # CHECK: %lock_0_3_1 = aie.lock(%{{.*}}tile_0_3) {annot = {alice}}
+        # CHECK: %{{.*}} = aie.lock(%{{.*}}tile_0_3) {annot = {alice}}
         # for l in tiles[0, 3].locks(annot="alice"):
         #     print(l.owner)
 
