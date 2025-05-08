@@ -16,18 +16,6 @@
 #include "cxxopts.hpp"
 #include "test_utils.h"
 
-#ifndef XCLBIN
-#define XCLBIN "build/final.xclbin"
-#endif
-
-#ifndef INSTS_BIN
-#define INSTS_BIN "build/insts.bin"
-#endif
-
-#ifndef KERNEL_NAME
-#define KERNEL_NAME "MLIR_AIE"
-#endif
-
 /* This example performs a 16x16 INT8 transpose.
    M and N are set to 16 in Makefile.
    kernel.cc includes an AIE kernel that is specific to 16x16 */
@@ -68,9 +56,9 @@ int main(int argc, const char *argv[]) {
     std::cerr << "Usage:\n" << options.help() << std::endl;
     return 1;
   }
-  
+
   std::vector<uint32_t> instr_v =
-    test_utils::load_instr_binary(vm["instr"].as<std::string>());
+      test_utils::load_instr_binary(vm["instr"].as<std::string>());
   assert(instr_v.size() > 0);
 
   // Get a device handle
