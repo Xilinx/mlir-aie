@@ -270,12 +270,12 @@ def packetFlowOp():
 # CHECK-LABEL: dmaBDOp
 # CHECK: %[[VAL_0:.*]] = aie.tile(1, 3)
 # CHECK: %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<12xi32>
-# CHECK: %[[VAL_2:.*]] = aie.dma_bd(%[[VAL_1]] : memref<12xi8>) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
+# CHECK: aie.dma_bd(%[[VAL_1]] : memref<12xi32>) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
 @construct_and_print_module
 def dmaBDOp():
     t0 = tile(col=1, row=3)
     b = buffer(t0, np.ndarray[(12,), np.dtype[np.int32]])
-    dma_bd(b, packet=(0,4))
+    dma_bd(b,packet=(0,4))
 
 
 # CHECK-LABEL: test_module_context
