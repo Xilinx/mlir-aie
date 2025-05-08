@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# Copyright (C) 2025, Advanced Micro Devices, Inc.
 # 
 ##===----------------------------------------------------------------------===##
 
@@ -12,13 +12,6 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-# ---
-
-# The following environment variables that point to the Xilinx runtime (XRT)
-# should be set up by an environment setup script already.
-XILINX_XRT?=/opt/xilinx/xrt
-
-# ---
 
 XILINX_XRT_INCLUDE?=${XILINX_XRT}/include
 XILINX_XRT_LIB?=${XILINX_XRT}/lib
