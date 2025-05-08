@@ -119,7 +119,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
    For daily latest:
    ```bash
-   # Install IRON library and mlir-aie from a wheel. Also installs basic Python requirements together.
+   # Install IRON library and mlir-aie from a wheel (together with the basic Python requirements)
    python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels
 
    # Install Peano from llvm-aie wheel
