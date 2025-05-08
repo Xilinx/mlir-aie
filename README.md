@@ -112,14 +112,11 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
    # Install Peano from a llvm-aie wheel
    python3 -m pip install https://github.com/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-19.0.0.2025041501+b2a279c1-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
-
-   # Install basic Python requirements 
-   python3 -m pip install -r python/requirements.txt
    ```
 
    For daily latest:
    ```bash
-   # Install IRON library and mlir-aie from a wheel (together with the basic Python requirements)
+   # Install IRON library and mlir-aie from a wheel
    python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels
 
    # Install Peano from llvm-aie wheel
@@ -128,6 +125,9 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 1. Install required Python packages:
    ```bash
+   # Install basic Python requirements (still needed for release v1.0, but is no longer needed for latest wheels)
+   python3 -m pip install -r python/requirements.txt
+
    # This installs the pre-commit hooks defined in .pre-commit-config.yaml
    pre-commit install
 
