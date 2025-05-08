@@ -2,7 +2,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2024 AMD Inc.
+// (c) Copyright 2025 AMD Inc.
 
 #include <cassert>
 #include <cstring>
