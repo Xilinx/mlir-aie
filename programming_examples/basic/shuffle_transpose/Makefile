@@ -63,7 +63,7 @@ ${host_target}: ${srcdir}/test.cpp ${xclbin_target}
 
 .PHONY: run
 run: ${host_target}
-	./${host_target}
+	./${host_target} -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
 
 
 .PHONY: clean
