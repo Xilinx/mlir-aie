@@ -1,4 +1,4 @@
-9#
+9  #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -21,11 +21,9 @@ def shuffle_transpose(dev, M, N, m, n):
 
     # Define tensor types
     tensor_ty = np.ndarray[(m * n,), np.dtype[np.float32]]
-   
+
     # Define kernel functions
-    kernel_func = Kernel(
-        f"transpose_16x16", "kernel.o", [tensor_ty, tensor_ty]
-    )
+    kernel_func = Kernel(f"transpose_16x16", "kernel.o", [tensor_ty, tensor_ty])
 
     # Data flow with ObjectFifos
     in_fifo = ObjectFifo(tensor_ty, name="in_fifo")
@@ -40,7 +38,7 @@ def shuffle_transpose(dev, M, N, m, n):
                 kernel_func(elem_in, elem_out)
                 out_fifo.release(1)
                 in_fifo.release(1)
- 
+
     # A worker to perform the task
     my_worker = Worker(
         core_fn,

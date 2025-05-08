@@ -28,7 +28,6 @@
 /* This example performs a 16x16 INT8 transpose.
    kernel.cc includes an AIE kernel that is specific to 16x16 */
 
-
 #define IN_SIZE (M * N * sizeof(uint8_t))  // in bytes
 #define OUT_SIZE (M * N * sizeof(uint8_t)) // in bytes
 
@@ -104,7 +103,7 @@ int main(int argc, const char *argv[]) {
 
   uint8_t *buf_in = bo_in.map<uint8_t *>();
   for (int i = 0; i < IN_SIZE / sizeof(buf_in[0]); i++) {
-    buf_in[i] = (uint8_t) i;
+    buf_in[i] = (uint8_t)i;
   }
 
   uint8_t *buf_out = bo_out.map<uint8_t *>();
@@ -144,7 +143,6 @@ int main(int argc, const char *argv[]) {
     print_matrix(buf_out, M, N);
   }
 
-  
   if (memcmp(ref, buf_out, sizeof(ref)) == 0) {
     std::cout << "PASS!" << std::endl;
   } else {
