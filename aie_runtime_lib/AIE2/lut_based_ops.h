@@ -81,8 +81,8 @@ __attribute__((always_inline)) bfloat16 getInvBf16(float x) {
   return *inv_x;
 }
 
-extern float tanh_lut_ab[];
-extern float tanh_lut_cd[];
+alignas(aie::vector_decl_align) extern float tanh_lut_ab[128];
+alignas(aie::vector_decl_align) extern float tanh_lut_cd[128];
 
 __attribute__((always_inline)) v16bfloat16 getTanhBf16(v16bfloat16 vInput) {
   aie::vector<bfloat16, 16> input = vInput;
