@@ -21,6 +21,18 @@
 
 namespace xilinx {
 
+namespace AIE {
+
+class AIEDialect;
+
+} // namespace AIE
+
+namespace AIEX {
+
+class AIEXDialect;
+
+} // namespace AIEX
+
 namespace aievec {
 
 class AIEVecDialect;
