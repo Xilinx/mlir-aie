@@ -62,5 +62,5 @@ that transposes each tile to a `16x4` tile.
 - The tree-based shuffle algorithm is generalizable across tensor shapes.
 - The specific shuffle modes need to change for different transpose shapes, but the approach of single register followed by hierarchical interleaving shuffles is similarly applicable.
 - For instance, an INT8 32x32 transpose will need 16 single-register INT8 `2x32->32x2` shuffles, followed by interleaving shuffles.
-- Full list of shuffle modes supported on AIE2p and AIE2 can be found at:  http://cervino-doc/aie2p/r1p13/intrinsics/group__intr__gpvectorop__interleave.html
+- Full list of shuffle modes supported for AIE2p can be found at: https://github.com/Xilinx/llvm-aie/blob/aie-public/clang/lib/Headers/aie2p_enums.h 
 
