@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2021 Xilinx Inc.
+# (c) Copyright 2025, Advanced Micro Devices, Inc.
 
 # Stuff into the build area:
 add_custom_target(aie-runtime-libs ALL)
@@ -30,6 +31,10 @@ function(add_aie_runtime_libs arch)
     add_dependencies(aie-runtime-libs ${arch}_chess_intrinsic_wrapper)
   endif()
 
+endfunction()
+
+function(add_aie_runtime_header_libs arch) 
+  # Install headers and libraries compiled at runtime
   set(INSTALLS
       lut_based_ops.cpp
       lut_based_ops.h
@@ -50,7 +55,18 @@ function(add_aie_runtime_libs arch)
 
 endfunction()
 
-# Install headers and compile AIE runtime libs
-add_subdirectory(AIE)
-add_subdirectory(AIE2)
-add_subdirectory(AIE2P)
+# Install AIE runtime compiled libs
+add_aie_runtime_header_libs(AIE)
+add_aie_runtime_header_libs(AIE2)
+add_aie_runtime_header_libs(AIE2P)
+
+# Compile AIE runtime libs if component found
+if(AIETools_AIE_FOUND)
+  add_subdirectory(AIE)
+endif()
+if(AIETools_AIE2_FOUND)
+  add_subdirectory(AIE2)
+endif()
+if(AIETools_AIE2P_FOUND)
+  add_subdirectory(AIE2P)
+endif()
