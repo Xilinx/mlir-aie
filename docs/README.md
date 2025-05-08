@@ -102,6 +102,9 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
    # Install Peano from a llvm-aie wheel
    python3 -m pip install https://github.com/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-19.0.0.2025040301+fd6a2c4d-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+
+   # Install basic Python requirements 
+   python3 -m pip install -r python/requirements.txt
    ```
 
    For daily latest:
@@ -115,9 +118,6 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 1. Install required Python packages:
    ```bash
-   # Install basic Python requirements 
-   python3 -m pip install -r python/requirements.txt
-
    # This installs the pre-commit hooks defined in .pre-commit-config.yaml
    pre-commit install
 
