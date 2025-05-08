@@ -63,10 +63,6 @@ ${host_target}: ${srcdir}/test.cpp ${xclbin_target}
 run: ${host_target}
 	./${host_target}
 
-xclbin_sign=${XILINX_XRT}/amdxdna/setup_xclbin_firmware.sh 
-.PHONY: sign
-sign: ${xclbin_target}
-	${xclbin_sign} -dev Phoenix -xclbin $<
 
 .PHONY: clean
 clean:
