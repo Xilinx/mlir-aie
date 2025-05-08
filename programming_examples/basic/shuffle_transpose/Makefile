@@ -37,7 +37,7 @@ aie_py_src=shuffle_transpose.py
 .PHONY: all
 all: ${xclbin_target} ${host_target}
 
-build/kernel.o: ${srcdir}/kernel.cc
+build/kernel.o: ${srcdir}/aie_kernels/aie2/kernel.cc
 	mkdir -p ${@D}
 ifeq (${devicename}, npu2)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DDIM_m=$m -DDIM_n=$n -c $< -o ${@F}
