@@ -7,3 +7,6 @@
 
 add_aie_runtime_libs(AIE)
 
+if(AIETools_AIE_FOUND)
+    compile_aie_runtime_libs(AIE)
+endif()
