@@ -29,7 +29,12 @@ def mlir_aie_design():
         # Compute core declarations
         @core(ComputeTile1)
         def core_body():
-            local = buffer(ComputeTile1, data_ty, name="local")
+            local = buffer(
+                ComputeTile1,
+                data_ty,
+                name="local",
+                initial_value=np.array(range(data_size), dtype=np.int32),
+            )
             for i in range_(data_size):
                 local[i] = local[i] + 1
 

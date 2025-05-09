@@ -39,11 +39,16 @@ class Worker(ObjectFifoEndpoint):
         while_true: bool = True,
     )
 ```
-In our simple design there is only one Worker which will perform the `core_fn` routine. The compute routine iterates over a local data buffer, which is instantiated as all zeroes, and adds one to each entry. The compute routine in this case has no inputs. As we will see in the next section of the guide, computational tasks usually run on data that is brought into the AIE array from external memory and the output produced is sent back out. Note that in this example design the Worker is explicitly placed on a Compute tile with coordinates (0,2) in the AIE array.
+In our simple design there is only one Worker which will perform the `core_fn` routine. The compute routine iterates over a local data buffer and adds one to each entry. The compute routine in this case has no inputs. As we will see in the next section of the guide, computational tasks usually run on data that is brought into the AIE array from external memory and the output produced is sent back out. Note that in this example design the Worker is explicitly placed on a Compute tile with coordinates (0,2) in the AIE array.
 ```python
 # Task for the worker to perform
 def core_fn():
-    local = LocalBuffer(data_ty, name="local")
+def core_fn():
+    local = LocalBuffer(
+        data_ty,
+        name="local",
+        initial_value=np.array(range(data_size), dtype=np.int32),
+    )
     for i in range_(data_size):
         local[i] = local[i] + 1
 
@@ -112,7 +117,12 @@ Compute cores can be mapped to compute tiles. They can also be linked to externa
         # Compute core declarations
         @core(ComputeTile1)
         def core_body():
-            local = buffer(ComputeTile1, data_ty, name="local")
+            local = buffer(
+                ComputeTile1,
+                data_ty,
+                name="local",
+                initial_value=np.array(range(data_size), dtype=np.int32),
+            )
             for i in range_(data_size):
                 local[i] = local[i] + 1
 ```
