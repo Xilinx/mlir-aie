@@ -96,21 +96,21 @@ int main(int argc, const char *argv[]) {
   uint32_t M = vm["M"].as<int>();
   uint32_t N = vm["N"].as<int>();
 
-  unsigned int IN_SIZE = M * N * sizeof(uint8_t);  // in bytes
-  unsigned int OUT_SIZE = M * N * sizeof(uint8_t); // in bytes
+  unsigned int in_size = M * N * sizeof(uint8_t);  // in bytes
+  unsigned int out_size = M * N * sizeof(uint8_t); // in bytes
 
   auto bo_in =
-      xrt::bo(device, IN_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+      xrt::bo(device, in_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_out =
-      xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+      xrt::bo(device, out_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   uint8_t *buf_in = bo_in.map<uint8_t *>();
-  for (int i = 0; i < IN_SIZE / sizeof(buf_in[0]); i++) {
+  for (int i = 0; i < in_size / sizeof(buf_in[0]); i++) {
     buf_in[i] = (uint8_t)i;
   }
 
   uint8_t *buf_out = bo_out.map<uint8_t *>();
-  memset(buf_out, 0, OUT_SIZE);
+  memset(buf_out, 0, out_size);
 
   // Instruction buffer for DMA configuration
   void *buf_instr = bo_instr.map<void *>();
