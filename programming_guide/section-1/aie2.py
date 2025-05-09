@@ -30,7 +30,7 @@ def core_fn():
         local[i] = local[i] + 1
 
 # Create a worker to perform the task
-my_worker = Worker(core_fn, [], placement=Tile(0, 2), while_true=True)
+my_worker = Worker(core_fn, [], placement=Tile(0, 2), while_true=False)
 
 # Runtime operations to move data to/from the AIE-array
 rt = Runtime()
