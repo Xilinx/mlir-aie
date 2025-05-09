@@ -19,6 +19,7 @@ data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 # Dataflow configuration
 # described in a future section of the guide...
 
+
 # Task for the worker to perform
 def core_fn():
     local = LocalBuffer(
