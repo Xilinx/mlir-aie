@@ -43,7 +43,6 @@ In our simple design there is only one Worker which will perform the `core_fn` r
 ```python
 # Task for the worker to perform
 def core_fn():
-def core_fn():
     local = LocalBuffer(
         data_ty,
         name="local",
@@ -55,7 +54,7 @@ def core_fn():
 # Create a worker to perform the task
 my_worker = Worker(core_fn, [], placement=Tile(0, 2), while_true=False)
 ```
-> **NOTE:**  The Worker in the code above is instantiated with `while_true=False`. By default, this attribute is set to true, in which case the kernel code expressed by the task will be wrapped in a for loop that iterates until `sys.maxsize` with a step of one. This simulates a `while(true)` with the intention to loop over the code in the Worker infinitely. Depending on the task code, such as when creating a buffer variable with a unique name, this can cause compiler issues.
+> **NOTE:**  The Worker in the code above is instantiated with `while_true=False`. By default, this attribute is set to `True`, in which case the kernel code expressed by the task will be wrapped in a for loop that iterates until `sys.maxsize` with a step of one. This simulates a `while(True)` with the intention to loop over the code in the Worker infinitely. Depending on the task code, such as when creating a local buffer with a unique name, this can cause compiler issues.
 
 In the previous code snippet it was mentioned that the data movement between Workers needs to be configured. This does not include data movement to/from the AIE array which is handled inside the `Runtime` sequence. The programming guide has a dedicated [section](../section-2/section-2d/) for runtime data movement. In this example, as we do not look in-depth at data movement configuration, the runtime sequence will only start the Worker.
 ```python
