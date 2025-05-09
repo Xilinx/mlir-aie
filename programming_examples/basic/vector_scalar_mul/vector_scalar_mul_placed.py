@@ -98,10 +98,10 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
                         MemEvent.DMA_MM2S_0_START_TASK,
                         MemEvent.DMA_S2MM_1_START_TASK,
                         MemEvent.DMA_MM2S_1_START_TASK,
-                        MemEvent.DM_PARITY_ERROR_BANK_4,  # LOCK_SEL1_ACQ_GE
+                        MemEvent.LOCK_3_REL, 
                         MemEvent.DMA_MM2S_0_MEMORY_STARVATION,
-                        MemEvent.EDGE_DETECTION_EVENT_0,
-                        MemEvent.EDGE_DETECTION_EVENT_1,
+                        MemEvent.LOCK_SEL0_ACQ_GE,
+                        MemEvent.LOCK_SEL1_ACQ_EQ,
                     ],
                 )
                 # npu_maskwrite32( address=0x000001DE00,mask=0b1 ,value=0b1, row=2, column=0 )
