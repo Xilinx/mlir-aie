@@ -10,8 +10,8 @@
 
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
-#include "mlir/IR/DialectImplementation.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/DialectImplementation.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
 
@@ -771,6 +771,35 @@ LogicalResult AIEX::SetLockOp::verify() {
     return emitOpError("Invalid lock ID and tile combination when trying to "
                        "retrieve the local lock address.");
   }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// BlockFloatingPointType
+//===----------------------------------------------------------------------===//
+std::optional<AIEX::BlockFloatType::BlockFormat>
+AIEX::BlockFloatType::getBlockFormat(StringRef blockType) {
+  static const llvm::StringMap<AIEX::BlockFloatType::BlockFormat>
+      blockFormatsMap = {
+          {"bfp16ebs8", {8, 8, 8, 0}},
+          {"bfp16ebs16", {16, 8, 8, 0}},
+      };
+
+  auto it = blockFormatsMap.find(blockType);
+  if (it != blockFormatsMap.end()) {
+    return it->second;
+  }
+
+  return std::nullopt;
+}
+
+LogicalResult
+AIEX::BlockFloatType::verify(function_ref<InFlightDiagnostic()> emitError,
+                             StringRef block_type) {
+  if (!getBlockFormat(block_type))
+    return emitError() << "Invalid block type: " << block_type
+                       << ". Known types are: bfp16ebs8, bfp16ebs16.";
 
   return success();
 }

@@ -29,7 +29,7 @@ using namespace xilinx::AIE;
 #include "aie/Dialect/AIE/IR/AIEDialect.cpp.inc"
 
 #define GET_TYPEDEF_CLASSES
-#include "aie/Dialect/AIE/IR/AIETypes.cpp.inc" 
+#include "aie/Dialect/AIE/IR/AIETypes.cpp.inc"
 
 namespace {
 

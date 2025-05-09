@@ -19,6 +19,8 @@ include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/DataLayoutInterfaces.td"
+include "mlir/IR/BuiltinTypeInterfaces.td"
 include "mlir/IR/CommonAttrConstraints.td"
 
 def AIEX_Dialect : Dialect {
@@ -34,8 +36,64 @@ def AIEX_Dialect : Dialect {
   let extraClassDeclaration = [{
   }];
 
+  let useDefaultTypePrinterParser = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// AIEX Types
+//===----------------------------------------------------------------------===//
+def AIEX_BlockFloatingPointType : TypeDef<AIEX_Dialect, "BlockFloat", [
+    MemRefElementTypeInterface
+  ]> {
+  let summary = "AIEX type representing a block floating point type.";
+  let mnemonic = "bfp";
+  let description = [{
+    This is a type representing a block floating point.
+    It is meant to eventually be lowered into a standard type further down the pipeline.
+    It the meantime, it can be used for blocked fp related dataflow adaptations.
+    Available types are bfp16ebs8 and bfp16ebs16.
+  }];
+
+  let parameters = (
+    ins StringRefParameter<"">:$block_type
+  );
+
+  let assemblyFormat = "`<` $block_type `>`";
+
+  let extraClassDeclaration = [{
+    int getBlockSize() const;
+    int getMantissaBits() const;
+    int getExponentBits() const;
+    int getSubtileShiftBits() const;
+
+    using BlockFormat = struct BlockFormat {
+      int blockSize;
+      int mantissaBits;
+      int exponentBits;
+      int subtileShiftBits;
+    };
+
+    std::optional<BlockFormat> getBlockFormat() const;
+    static std::optional<BlockFormat> getBlockFormat(llvm::StringRef blockType);
+  }];
+
+  let extraClassDefinition = [{
+    int BlockFloatType::getBlockSize() const { return getBlockFormat().value().blockSize; }
+    int BlockFloatType::getMantissaBits() const { return getBlockFormat().value().mantissaBits; }
+    int BlockFloatType::getExponentBits() const { return getBlockFormat().value().exponentBits; }
+    int BlockFloatType::getSubtileShiftBits() const { return getBlockFormat().value().subtileShiftBits; }
+
+    std::optional<BlockFloatType::BlockFormat> BlockFloatType::getBlockFormat() const {
+      return getBlockFormat(getBlockType());
+    }
+  }];
+
+  let genVerifyDecl = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// AIEX Operations
+//===----------------------------------------------------------------------===//
 
 class AIEX_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIEX_Dialect, mnemonic, traits>;
