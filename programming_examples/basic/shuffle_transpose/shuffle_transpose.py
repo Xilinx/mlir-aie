@@ -1,4 +1,4 @@
-9  #
+#
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -6,6 +6,7 @@
 # (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 import sys
+import argparse
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
@@ -61,8 +62,20 @@ def shuffle_transpose(dev, M, N, m, n):
     return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("device", type=str, help="Device name, npu | npu2")
+    parser.add_argument("M", type=int, help="Number of rows")
+    parser.add_argument("N", type=int, help="Number of cols")
+    parser.add_argument("m", type=int, help="Tile rows")
+    parser.add_argument("n", type=int, help="Tile cols")
+
+    args = parser.parse_args()
+
 try:
-    device_name = str(sys.argv[1])
+    device_name = str(args.device)
     if device_name == "npu":
         dev = NPU1Col1()
     elif device_name == "npu2":
@@ -72,7 +85,5 @@ try:
 except ValueError:
     print("Argument has inappropriate value")
 
-module = shuffle_transpose(
-    dev, int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
-)
+module = shuffle_transpose(dev, int(args.M), int(args.N), int(args.m), int(args.n))
 print(module)
