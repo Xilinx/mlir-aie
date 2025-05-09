@@ -19,8 +19,10 @@ XILINX_XRT_LIB?=${XILINX_XRT}/lib
 XRT_FLAGS=-I${XILINX_XRT_INCLUDE} -L${XILINX_XRT_LIB}
 XRT_LIBS=-lxrt_coreutil
 CXX=g++-13 -ggdb
-UTILS_INCLUDE=-I../../../runtime_lib/test_lib/
-UTILS_LIB=../../../runtime_lib/test_lib/test_utils.cpp
+
+MAKEFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+UTILS_INCLUDE := -I$(CURDIR)/../../../runtime_lib/test_lib/
+UTILS_LIB=$(CURDIR)/../../../runtime_lib/test_lib/test_utils.cpp
 
 mlir_target?=build/aie.mlir
 xclbin_target?=build/final.xclbin
@@ -59,11 +61,11 @@ ${xclbin_target}: ${mlir_target} build/kernel.o
 
 ${host_target}: ${srcdir}/test.cpp ${xclbin_target}
 	mkdir -p ${@D}
-	${CXX} ${XRT_FLAGS} ${UTILS_INCLUDE} ${UTILS_LIB} -DM=$M -DN=$N -o $@ $< ${XRT_LIBS}
+	${CXX} ${XRT_FLAGS} ${UTILS_INCLUDE} ${UTILS_LIB} -o $@ $< ${XRT_LIBS}
 
 .PHONY: run
 run: ${host_target}
-	./${host_target} -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
+	./${host_target} -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -M ${M} -N ${N}
 
 
 .PHONY: clean
