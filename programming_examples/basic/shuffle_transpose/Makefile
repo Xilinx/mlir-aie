@@ -20,9 +20,8 @@ XRT_FLAGS=-I${XILINX_XRT_INCLUDE} -L${XILINX_XRT_LIB}
 XRT_LIBS=-lxrt_coreutil
 CXX=g++-13 -ggdb
 
-MAKEFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
-UTILS_INCLUDE := -I$(CURDIR)/../../../runtime_lib/test_lib/
-UTILS_LIB=$(CURDIR)/../../../runtime_lib/test_lib/test_utils.cpp
+UTILS_INCLUDE := -I$(srcdir)/../../../runtime_lib/test_lib/
+UTILS_LIB=$(srcdir)/../../../runtime_lib/test_lib/test_utils.cpp
 
 mlir_target?=build/aie.mlir
 xclbin_target?=build/final.xclbin

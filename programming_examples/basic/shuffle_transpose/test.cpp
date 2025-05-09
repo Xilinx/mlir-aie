@@ -20,7 +20,6 @@
    M and N are passed in as 16 in Makefile run cmd.
    kernel.cc includes an AIE kernel that is specific to 16x16 */
 
-
 void print_matrix(uint8_t *buf, int n_rows, int n_cols) {
   for (int row = 0; row < n_rows; row++) {
     for (int col = 0; col < n_cols; col++) {
@@ -49,7 +48,6 @@ int main(int argc, const char *argv[]) {
       cxxopts::value<int>()->default_value("64"))(
       "cols,N", "N, number of columns in the input matrix",
       cxxopts::value<int>()->default_value("64"));
-
 
   auto vm = options.parse(argc, argv);
 
@@ -100,7 +98,7 @@ int main(int argc, const char *argv[]) {
 
   unsigned int IN_SIZE = M * N * sizeof(uint8_t);  // in bytes
   unsigned int OUT_SIZE = M * N * sizeof(uint8_t); // in bytes
-  
+
   auto bo_in =
       xrt::bo(device, IN_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_out =
