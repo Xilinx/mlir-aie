@@ -18,9 +18,9 @@ Let's first look at a basic Python source file (named [aie2.py](./aie2.py)) for 
 
 At the top of this Python source, we include modules that define the IRON libraries `aie.iron` for high-level abstraction constructs, resource placement algorithms `aie.iron.placers` and target architecture `aie.iron.device`.
 ```python
-from aie.iron import Program, Runtime, Worker, GlobalBuffer
+from aie.iron import Program, Runtime, Worker, LocalBuffer
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col4, Tile
+from aie.iron.device import NPU1Col1, Tile
 ```
 Data movement inside the AIE-array is usually also declared at this step, however that part of design configuration has its own dedicated [section](../section-2/) and is not covered in detail here.
 ```python
@@ -39,18 +39,19 @@ class Worker(ObjectFifoEndpoint):
         while_true: bool = True,
     )
 ```
-In our simple design there is only one Worker which will perform the `core_fn` routine. The compute routine takes as input a data tensor, iterates over it and adds one to each entry. As we will see in the next section of the guide, computational tasks usually run on data that is brought into the AIE array from external memory and the output produced is sent back out. Note that in this example design the Worker is explicitly placed on a Compute tile with coordinates (0,2) in the AIE array.
+In our simple design there is only one Worker which will perform the `core_fn` routine. The compute routine iterates over a local data buffer, which is instantiated as all zeroes, and adds one to each entry. The compute routine in this case has no inputs. As we will see in the next section of the guide, computational tasks usually run on data that is brought into the AIE array from external memory and the output produced is sent back out. Note that in this example design the Worker is explicitly placed on a Compute tile with coordinates (0,2) in the AIE array.
 ```python
-buff = GlobalBuffer(data_ty, name="buff")
-
-# Task for the core to perform
-def core_fn(buff_in):
+# Task for the worker to perform
+def core_fn():
+    local = LocalBuffer(data_ty, name="local")
     for i in range_(data_size):
-        buff_in[i] = buff_in[i] + 1
+        local[i] = local[i] + 1
 
 # Create a worker to perform the task
-my_worker = Worker(core_fn, [buff], placement=Tile(0, 2))
+my_worker = Worker(core_fn, [], placement=Tile(0, 2), while_true=False)
 ```
+> **NOTE:**  The Worker in the code above is instantiated with `while_true=False`. By default, this attribute is set to true, in which case the kernel code expressed by the task will be wrapped in a for loop that iterates until `sys.maxsize` with a step of one. This simulates a `while(true)` with the intention to loop over the code in the Worker infinitely. Depending on the task code, such as when creating a buffer variable with a unique name, this can cause compiler issues.
+
 In the previous code snippet it was mentioned that the data movement between Workers needs to be configured. This does not include data movement to/from the AIE array which is handled inside the `Runtime` sequence. The programming guide has a dedicated [section](../section-2/section-2d/) for runtime data movement. In this example, as we do not look in-depth at data movement configuration, the runtime sequence will only start the Worker.
 ```python
 # Runtime operations to move data to/from the AIE-array
@@ -61,7 +62,7 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
 All the components are tied together into a `Program` which represents all design information needed to run the design on a device. It is also at this stage that the previously unplaced Workers are mapped onto AIE tiles using a `Placer`. Currently, only one placement algorithm is available in IRON, the `SequentialPlacer()` as is seen in the code snippet below. Other placers can be added with minimal effort and we encourage all users to experiment with these tools which can be found in [placers.py](../../python/iron/placers.py). Finally, the program is printed to produce the corresponding MLIR definitions from the IRON library and python language bindings.
 ```python
 # Create the program from the device type and runtime
-my_program = Program(NPU1Col4(), rt)
+my_program = Program(NPU1Col1(), rt)
 
 # Place components (assign them resources on the device) and generate an MLIR module
 module = my_program.resolve_program(SequentialPlacer())
@@ -147,11 +148,13 @@ Next to the compute tiles, an AIE-array also contains data movers for accessing 
 
 3. Run `make clean` again. Now change the error by renaming `sequenc` back to `sequence`, but place the Worker on a tile with coordinates (-1, 3), which is an invalid location. Run `make` again. What message do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="There is a partial placement error." height=25>
 
-4. Now let's take a look at the placed version of the code. Run `make placed` and look at the generated MLIR source under `build/aie_placed.mlir`.
+4. Run `make clean` again. Restore the Worker tile to its original coordinates. Remove the `while_true=False` attribute from the Worker and run `make` again. What do you observe? <img src="../../mlir_tutorials/images/answer1.jpg" title="The Worker task code is nested within a for loop." height=25>
 
-5. Run `make clean` to remove the generated files. Introduce the same error as above by changing the coordinates of `ComputeTile1` to (-1,3). Run `make placed` again. What message do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="There is no error." height=25>
+5. Now let's take a look at the placed version of the code. Run `make placed` and look at the generated MLIR source under `build/aie_placed.mlir`.
 
-6. No error is generated but our code is invalid. Take a look at the generated MLIR code under `build/aie_placed.mlir`. This generated output is invalid MLIR syntax and running our mlir-aie tools on this MLIR source will generate an error. We do, however, have some additional Python structural syntax checks that can be enabled if we use the function `ctx.module.operation.verify()`. This verifies that our Python-bound code has valid operation within the mlir-aie context. 
+6. Run `make clean` to remove the generated files. Introduce the same error as above by changing the coordinates of `ComputeTile1` to (-1,3). Run `make placed` again. What message do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="There is no error." height=25>
+
+7. No error is generated but our code is invalid. Take a look at the generated MLIR code under `build/aie_placed.mlir`. This generated output is invalid MLIR syntax and running our mlir-aie tools on this MLIR source will generate an error. We do, however, have some additional Python structural syntax checks that can be enabled if we use the function `ctx.module.operation.verify()`. This verifies that our Python-bound code has valid operation within the mlir-aie context. 
 
     Qualify the `print(ctx.module)` call with a check on `ctx.module.operation.verify()` using a code block like the following:
     ```python
