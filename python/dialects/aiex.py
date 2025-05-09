@@ -91,6 +91,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         strides: MixedValues | None = None,
         issue_token: bool | None = None,
         burst_length: int = 0,
+        packet: tuple[int]|None = None
     ):
         if tap and not (offsets is None and sizes is None and strides is None):
             raise ValueError(
@@ -130,6 +131,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
             bd_id,
             issue_token=issue_token,
             burst_length=burst_length,
+            packet=packet
         )
 
 
@@ -895,6 +897,7 @@ def shim_dma_bd(
     strides: MixedValues | None = None,
     transfer_len: int | None = None,
     burst_length: int = 0,
+    packet: tuple[int]|None = None
 ):
     if tap and not (offset is None and sizes is None and strides is None):
         raise ValueError(
@@ -925,6 +928,7 @@ def shim_dma_bd(
         len=transfer_len,
         dimensions=dimensions,
         burst_length=burst_length,
+        packet=packet
     )
 
 
@@ -938,6 +942,7 @@ def shim_dma_single_bd_task(
     transfer_len: int | None = None,
     issue_token: bool = False,
     burst_length: int = 0,
+    packet: tuple[int]|None = None
 ):
     """_summary_
     Enables data transfers between the AIE Engine array and external memory.
@@ -987,6 +992,7 @@ def shim_dma_single_bd_task(
                 strides=strides,
                 transfer_len=transfer_len,
                 burst_length=burst_length,
+                packet=packet
             )
             EndOp()
     return task

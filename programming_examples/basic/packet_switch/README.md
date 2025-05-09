@@ -27,9 +27,9 @@ During the compilation, only one xclbin is generated and is shared by both add a
 
 ## Source Files Overview
 
-1. `mlir/aie_add.mlir`: A MLIR file that describes the AIE design. The shim tile initializes the packet ID as 0 and therefore the packet will be sent to CT0 (doing add operation).
+1. `aie_add_placed.py`: A Python file that describes the AIE design. The shim tile initializes the packet ID as 0 and therefore the packet will be sent to CT0 (doing add operation).
 
-2. `mlir/aie_mul.mlir`: A MLIR file that describes the AIE design. The shim tile initializes the packet ID as 1 and therefore the packet will be sent to CT1 (doing multiply operation).
+2. `aie_mul_placed.py`: A Python file that describes the AIE design. The shim tile initializes the packet ID as 1 and therefore the packet will be sent to CT1 (doing multiply operation).
 
 3. `host/host.cpp`: This C++ code is a testbench for the design example targetting Ryzen™ AI (AIE-ML). It receives a flag 0 or 1 as an input argument to determine which operation to perform (0 to add and 1 to multiply).
 
