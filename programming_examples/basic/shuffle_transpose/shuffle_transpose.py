@@ -10,7 +10,7 @@ import argparse
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, NPU2
+from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorTiler2D
 
