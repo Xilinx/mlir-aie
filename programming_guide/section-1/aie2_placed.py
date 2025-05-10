@@ -31,7 +31,7 @@ def mlir_aie_design():
         def core_body():
             local = buffer(ComputeTile1, data_ty, name="local")
             for i in range_(data_size):
-                local[i] = local[i] + 1
+                local[i] = 0
 
 
 # Declares that subsequent code is in mlir-aie context
