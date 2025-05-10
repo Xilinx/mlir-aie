@@ -39,17 +39,13 @@ class Worker(ObjectFifoEndpoint):
         while_true: bool = True,
     )
 ```
-In our simple design there is only one Worker which will perform the `core_fn` routine. The compute routine iterates over a local data buffer and adds one to each entry. The compute routine in this case has no inputs. As we will see in the next section of the guide, computational tasks usually run on data that is brought into the AIE array from external memory and the output produced is sent back out. Note that in this example design the Worker is explicitly placed on a Compute tile with coordinates (0,2) in the AIE array.
+In our simple design there is only one Worker which will perform the `core_fn` routine. The compute routine iterates over a local data buffer and initializes each entry to zero. The compute routine in this case has no inputs. As we will see in the next section of the guide, computational tasks usually run on data that is brought into the AIE array from external memory and the output produced is sent back out. Note that in this example design the Worker is explicitly placed on a Compute tile with coordinates (0,2) in the AIE array.
 ```python
 # Task for the worker to perform
 def core_fn():
-    local = LocalBuffer(
-        data_ty,
-        name="local",
-        initial_value=np.array(range(data_size), dtype=np.int32),
-    )
+    local = LocalBuffer(data_ty, name="local")
     for i in range_(data_size):
-        local[i] = local[i] + 1
+        local[i] = 0
 
 # Create a worker to perform the task
 my_worker = Worker(core_fn, [], placement=Tile(0, 2), while_true=False)
@@ -108,7 +104,7 @@ The arguments for the tile declaration are the tile coordinates (column, row). W
         ComputeTile2 = tile(2, 3)
         ComputeTile3 = tile(2, 4)
 ```
-Compute cores can be mapped to compute tiles. They can also be linked to external kernel functions that can then be called from within the body of the core, however that is beyond the scope of this section and is explained further in the guide. In this example design the compute core declares a local data tensor, iterates over it and adds one to each entry.
+Compute cores can be mapped to compute tiles. They can also be linked to external kernel functions that can then be called from within the body of the core, however that is beyond the scope of this section and is explained further in the guide. In this example design the compute core declares a local data tensor, iterates over it and initializes each entry to zero.
 ```python
         data_size = 48
         data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
@@ -116,14 +112,9 @@ Compute cores can be mapped to compute tiles. They can also be linked to externa
         # Compute core declarations
         @core(ComputeTile1)
         def core_body():
-            local = buffer(
-                ComputeTile1,
-                data_ty,
-                name="local",
-                initial_value=np.array(range(data_size), dtype=np.int32),
-            )
+            local = buffer(ComputeTile1, data_ty, name="local")
             for i in range_(data_size):
-                local[i] = local[i] + 1
+                local[i] = 0
 ```
 Once we are done declaring our blocks (and connections) within our design function, we move onto the main body of our program where we call the function and output our design in MLIR. This is done by first declaring the MLIR context via the `with mlir_mod_ctx() as ctx:` line. This indicates that subsequent indented Python code is in the MLIR context, and we follow this by calling our previously defined design function `mlir_aie_design()`. This means all the code within the design function is understood to be in the MLIR context and contains the IRON custom Python binding definitions of the more detailed MLIR block definitions. The final line is `print(ctx.module)`, which takes the code defined in our MLIR context and prints it to stdout. This will then convert our Python-bound code to its MLIR equivalent and print it to stdout. 
 ```python

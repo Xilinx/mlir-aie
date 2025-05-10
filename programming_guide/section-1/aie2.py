@@ -22,13 +22,9 @@ data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 
 # Task for the worker to perform
 def core_fn():
-    local = LocalBuffer(
-        data_ty,
-        name="local",
-        initial_value=np.array(range(data_size), dtype=np.int32),
-    )
+    local = LocalBuffer(data_ty, name="local")
     for i in range_(data_size):
-        local[i] = local[i] + 1
+        local[i] = 0
 
 
 # Create a worker to perform the task
