@@ -106,11 +106,11 @@ ${HOST_C_TARGET}: ${HOST_OBJS}
 
 $(HOST_O_DIR)/test.o: ${HOST_SRCDIR}/test.cpp ${HOST_HEADERS}
 	mkdir -p $(@D)
-	$(CXX) ${CXXFLAGS} -o "$@" "$<"
+	$(CXX) $(CXXFLAGS) "$<" -o "$@"
 
 $(HOST_O_DIR)/test_utils.o: ${HOME_DIR}/../../../runtime_lib/test_lib/test_utils.cpp
 	mkdir -p $(@D)
-	$(CXX) ${CXXFLAGS} -o "$@" "$<"
+	$(CXX) $(CXXFLAGS) "$<" -o "$@"
 
 .PHONY: run_mul run_add run
 run_mul: all
