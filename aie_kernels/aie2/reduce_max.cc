@@ -60,6 +60,17 @@ void _reduce_max_scalar(int32_t *restrict in, int32_t *restrict out,
   return;
 }
 
+void _compute_max(int32_t *restrict in1, int32_t *restrict in2, int32_t *restrict out) {
+  event0();
+  if (*in1 > *in2)
+    *out = *in1;
+  else
+    *out = *in2;
+  event1();
+
+  return;
+}
+
 extern "C" {
 
 void reduce_max_vector(int32_t *a_in, int32_t *c_out, int32_t input_size) {
@@ -68,6 +79,10 @@ void reduce_max_vector(int32_t *a_in, int32_t *c_out, int32_t input_size) {
 
 void reduce_max_scalar(int32_t *a_in, int32_t *c_out, int32_t input_size) {
   _reduce_max_scalar(a_in, c_out, input_size);
+}
+
+void compute_max(int32_t *a_in, int32_t *b_in, int32_t *c_out) {
+  _compute_max(a_in, b_in, c_out);
 }
 
 } // extern "C"

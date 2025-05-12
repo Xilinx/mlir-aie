@@ -23,9 +23,14 @@ trace_size = 1024
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src=${targetname}.py
 use_placed?=0
+single_col?=0
 
-ifeq (${use_placed}, 1)
+ifeq (${use_placed}${single_col}, 11)
+aie_py_src=single_col_${targetname}_placed.py
+else ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
+else
+aie_py_src=${targetname}.py
 endif
 
 .PHONY: all template clean
