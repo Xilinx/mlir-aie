@@ -20,6 +20,7 @@
 
 // #include <imgproc/xf_addweighted_aie.hpp> // NOTE: use of float2fix not
 //  supported in aie2
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 const int32_t SRS_SHIFT = 14;
@@ -55,20 +56,21 @@ void addweighted_aie(const T *src1, const T *src2, T *dst, const int32_t width,
     gamma_coeff[i] = gamma;
   }
   gamma_acc.template from_vector(gamma_coeff, 0);
+  // loop_range(14) - loop : 1 cycle
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(14)
   for (int j = 0; j < width * height; j += N) // 16 samples per loop
-    chess_prepare_for_pipelining chess_loop_range(
-        14, ) // loop_range(14) - loop : 1 cycle
-    {
-      ::aie::vector<T, N> data_buf1 = ::aie::load_v<N>(src1);
-      src1 += N;
-      ::aie::vector<T, N> data_buf2 = ::aie::load_v<N>(src2);
-      src2 += N;
-      ::aie::accum<acc32, N> acc = ::aie::accumulate<N>(
-          gamma_acc, coeff, 0, data_buf1,
-          data_buf2); // weight[0] * data_buf1 + weight[1] * data_buf2
-      ::aie::store_v(dst, acc.template to_vector<T>(SRS_SHIFT));
-      dst += N;
-    }
+  {
+    ::aie::vector<T, N> data_buf1 = ::aie::load_v<N>(src1);
+    src1 += N;
+    ::aie::vector<T, N> data_buf2 = ::aie::load_v<N>(src2);
+    src2 += N;
+    ::aie::accum<acc32, N> acc = ::aie::accumulate<N>(
+        gamma_acc, coeff, 0, data_buf1,
+        data_buf2); // weight[0] * data_buf1 + weight[1] * data_buf2
+    ::aie::store_v(dst, acc.template to_vector<T>(SRS_SHIFT));
+    dst += N;
+  }
 }
 
 extern "C" {

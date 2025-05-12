@@ -28,6 +28,7 @@ enum _threshold_type {
 
 // #define THRESH_TYPE XF_THRESHOLD_TYPE_BINARY
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 template <typename T, int N>
@@ -44,80 +45,92 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
 
   switch (thresholdType) {
   case XF_THRESHOLD_TYPE_TRUNC:
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
-      chess_prepare_for_pipelining chess_loop_range(14, ) {
-        ::aie::vector<T, N> data_buf1 =
-            ::aie::load_v(img_in); // in:00++15|_________|_________|_________
-        img_in += N;
-        data_out = ::aie::min(constants[1], data_buf1);
-        ::aie::store_v(img_out, data_out);
-        img_out += N;
-      }
+    {
+      ::aie::vector<T, N> data_buf1 =
+          ::aie::load_v(img_in); // in:00++15|_________|_________|_________
+      img_in += N;
+      data_out = ::aie::min(constants[1], data_buf1);
+      ::aie::store_v(img_out, data_out);
+      img_out += N;
+    }
     break;
   case XF_THRESHOLD_TYPE_BINARY:
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
-      chess_prepare_for_pipelining chess_loop_range(14, ) {
-        ::aie::vector<T, N> data_buf1 =
-            ::aie::load_v(img_in); // in:00++15|_________|_________|_________
-        img_in += N;
-        temp_val = ::aie::lt(constants[1], data_buf1);
-        data_out = ::aie::select(constants[0], constants[2], temp_val);
-        ::aie::store_v(img_out, data_out);
-        img_out += N;
-      }
+    {
+      ::aie::vector<T, N> data_buf1 =
+          ::aie::load_v(img_in); // in:00++15|_________|_________|_________
+      img_in += N;
+      temp_val = ::aie::lt(constants[1], data_buf1);
+      data_out = ::aie::select(constants[0], constants[2], temp_val);
+      ::aie::store_v(img_out, data_out);
+      img_out += N;
+    }
     break;
   case XF_THRESHOLD_TYPE_BINARY_INV:
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
-      chess_prepare_for_pipelining chess_loop_range(14, ) {
-        ::aie::vector<T, N> data_buf1 =
-            ::aie::load_v(img_in); // in:00++15|_________|_________|_________
-        img_in += N;
-        temp_val = ::aie::lt(constants[1], data_buf1);
-        data_out = ::aie::select(constants[2], constants[0], temp_val);
-        ::aie::store_v(img_out, data_out);
-        img_out += N;
-      }
+    {
+      ::aie::vector<T, N> data_buf1 =
+          ::aie::load_v(img_in); // in:00++15|_________|_________|_________
+      img_in += N;
+      temp_val = ::aie::lt(constants[1], data_buf1);
+      data_out = ::aie::select(constants[2], constants[0], temp_val);
+      ::aie::store_v(img_out, data_out);
+      img_out += N;
+    }
     break;
   case XF_THRESHOLD_TYPE_TOZERO:
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
-      chess_prepare_for_pipelining chess_loop_range(14, ) {
-        ::aie::vector<T, N> data_buf1 =
-            ::aie::load_v(img_in); // in:00++15|_________|_________|_________
-        img_in += N;
-        temp_val = ::aie::lt(constants[1], data_buf1);
-        data_out = ::aie::select(constants[0], data_buf1, temp_val);
-        ::aie::store_v(img_out, data_out);
-        img_out += N;
-      }
+    {
+      ::aie::vector<T, N> data_buf1 =
+          ::aie::load_v(img_in); // in:00++15|_________|_________|_________
+      img_in += N;
+      temp_val = ::aie::lt(constants[1], data_buf1);
+      data_out = ::aie::select(constants[0], data_buf1, temp_val);
+      ::aie::store_v(img_out, data_out);
+      img_out += N;
+    }
     break;
   case XF_THRESHOLD_TYPE_TOZERO_INV:
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
-      chess_prepare_for_pipelining chess_loop_range(14, ) {
-        ::aie::vector<T, N> data_buf1 =
-            ::aie::load_v(img_in); // in:00++15|_________|_________|_________
-        img_in += N;
-        temp_val = ::aie::lt(constants[1], data_buf1);
-        data_out = ::aie::select(data_buf1, constants[0], temp_val);
-        ::aie::store_v(img_out, data_out);
-        img_out += N;
-      }
+    {
+      ::aie::vector<T, N> data_buf1 =
+          ::aie::load_v(img_in); // in:00++15|_________|_________|_________
+      img_in += N;
+      temp_val = ::aie::lt(constants[1], data_buf1);
+      data_out = ::aie::select(data_buf1, constants[0], temp_val);
+      ::aie::store_v(img_out, data_out);
+      img_out += N;
+    }
     break;
   default:
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
-      chess_prepare_for_pipelining chess_loop_range(14, ) {
-        ::aie::vector<T, N> data_buf1 =
-            ::aie::load_v(img_in); // in:00++15|_________|_________|_________
-        img_in += N;
-        data_out = ::aie::min(constants[1], data_buf1);
-        ::aie::store_v(img_out, data_out);
-        img_out += N;
-      }
+    {
+      ::aie::vector<T, N> data_buf1 =
+          ::aie::load_v(img_in); // in:00++15|_________|_________|_________
+      img_in += N;
+      data_out = ::aie::min(constants[1], data_buf1);
+      ::aie::store_v(img_out, data_out);
+      img_out += N;
+    }
   }
 }
 
@@ -150,80 +163,92 @@ __attribute__((noinline)) void threshold4Ch_aie(
 
   switch (thresholdType) {
   case XF_THRESHOLD_TYPE_TRUNC:
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
-      chess_prepare_for_pipelining chess_loop_range(14, ) {
-        ::aie::vector<T, N> data_buf1 =
-            ::aie::load_v(img_in); // in:00++15|_________|_________|_________
-        img_in += N;
-        data_out = ::aie::min(mask_thresh, data_buf1);
-        ::aie::store_v(img_out, data_out);
-        img_out += N;
-      }
+    {
+      ::aie::vector<T, N> data_buf1 =
+          ::aie::load_v(img_in); // in:00++15|_________|_________|_________
+      img_in += N;
+      data_out = ::aie::min(mask_thresh, data_buf1);
+      ::aie::store_v(img_out, data_out);
+      img_out += N;
+    }
     break;
   case XF_THRESHOLD_TYPE_BINARY:
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
-      chess_prepare_for_pipelining chess_loop_range(14, ) {
-        ::aie::vector<T, N> data_buf1 =
-            ::aie::load_v(img_in); // in:00++15|_________|_________|_________
-        img_in += N;
-        temp_val = ::aie::lt(mask_thresh, data_buf1);
-        data_out = ::aie::select(mask_zeros, mask_max, temp_val);
-        ::aie::store_v(img_out, data_out);
-        img_out += N;
-      }
+    {
+      ::aie::vector<T, N> data_buf1 =
+          ::aie::load_v(img_in); // in:00++15|_________|_________|_________
+      img_in += N;
+      temp_val = ::aie::lt(mask_thresh, data_buf1);
+      data_out = ::aie::select(mask_zeros, mask_max, temp_val);
+      ::aie::store_v(img_out, data_out);
+      img_out += N;
+    }
     break;
   case XF_THRESHOLD_TYPE_BINARY_INV:
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
-      chess_prepare_for_pipelining chess_loop_range(14, ) {
-        ::aie::vector<T, N> data_buf1 =
-            ::aie::load_v(img_in); // in:00++15|_________|_________|_________
-        img_in += N;
-        temp_val = ::aie::lt(mask_thresh, data_buf1);
-        data_out = ::aie::select(mask_max, mask_zeros, temp_val);
-        ::aie::store_v(img_out, data_out);
-        img_out += N;
-      }
+    {
+      ::aie::vector<T, N> data_buf1 =
+          ::aie::load_v(img_in); // in:00++15|_________|_________|_________
+      img_in += N;
+      temp_val = ::aie::lt(mask_thresh, data_buf1);
+      data_out = ::aie::select(mask_max, mask_zeros, temp_val);
+      ::aie::store_v(img_out, data_out);
+      img_out += N;
+    }
     break;
   case XF_THRESHOLD_TYPE_TOZERO:
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
-      chess_prepare_for_pipelining chess_loop_range(14, ) {
-        ::aie::vector<T, N> data_buf1 =
-            ::aie::load_v(img_in); // in:00++15|_________|_________|_________
-        img_in += N;
-        temp_val = ::aie::lt(mask_thresh, data_buf1);
-        data_out = ::aie::select(mask_zeros, data_buf1, temp_val);
-        ::aie::store_v(img_out, data_out);
-        img_out += N;
-      }
+    {
+      ::aie::vector<T, N> data_buf1 =
+          ::aie::load_v(img_in); // in:00++15|_________|_________|_________
+      img_in += N;
+      temp_val = ::aie::lt(mask_thresh, data_buf1);
+      data_out = ::aie::select(mask_zeros, data_buf1, temp_val);
+      ::aie::store_v(img_out, data_out);
+      img_out += N;
+    }
     break;
   case XF_THRESHOLD_TYPE_TOZERO_INV:
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
-      chess_prepare_for_pipelining chess_loop_range(14, ) {
-        ::aie::vector<T, N> data_buf1 =
-            ::aie::load_v(img_in); // in:00++15|_________|_________|_________
-        img_in += N;
-        temp_val = ::aie::lt(mask_thresh, data_buf1);
-        data_out = ::aie::select(data_buf1, mask_zeros, temp_val);
-        ::aie::store_v(img_out, data_out);
-        img_out += N;
-      }
+    {
+      ::aie::vector<T, N> data_buf1 =
+          ::aie::load_v(img_in); // in:00++15|_________|_________|_________
+      img_in += N;
+      temp_val = ::aie::lt(mask_thresh, data_buf1);
+      data_out = ::aie::select(data_buf1, mask_zeros, temp_val);
+      ::aie::store_v(img_out, data_out);
+      img_out += N;
+    }
     break;
   default:
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(14)
     for (int j = 0; j < (img_height * img_width);
          j += N) // 16x samples per loop
-      chess_prepare_for_pipelining chess_loop_range(14, ) {
-        ::aie::vector<T, N> data_buf1 =
-            ::aie::load_v(img_in); // in:00++15|_________|_________|_________
-        img_in += N;
-        data_out = ::aie::min(mask_thresh, data_buf1);
-        ::aie::store_v(img_out, data_out);
-        img_out += N;
-      }
+    {
+      ::aie::vector<T, N> data_buf1 =
+          ::aie::load_v(img_in); // in:00++15|_________|_________|_________
+      img_in += N;
+      data_out = ::aie::min(mask_thresh, data_buf1);
+      ::aie::store_v(img_out, data_out);
+      img_out += N;
+    }
   }
 }
 
