@@ -455,8 +455,7 @@ AIE2TargetModel::getDmaControlAddress(int col, int row, int channel,
     offset = 0x0001D200 + (channel * 0x8);
     if (direction == AIE::DMAChannelDir::MM2S)
       offset += 0x10;
-  }
-  if (isMemTile(col, row)) {
+  } else if (isMemTile(col, row)) {
     offset = 0x000A0600 + (channel * 0x8);
     if (direction == AIE::DMAChannelDir::MM2S)
       offset += 0x30;
