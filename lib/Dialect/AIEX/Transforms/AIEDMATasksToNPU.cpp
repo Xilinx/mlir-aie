@@ -401,8 +401,8 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         /*iteration_stride=*/iteration_stride,
         /* TODO: Next BD */
         /*next_bd=*/next_bd_id,
-        /*use_next_bd=*/use_next_bd,
         /*row=*/tile.getRow(),
+        /*use_next_bd=*/use_next_bd,
         /*valid_bd=*/1,
         /* TODO: Locks */
         /*lock_rel_val=*/0, /*lock_rel_id=*/0, /*lock_acq_enable=*/0,
