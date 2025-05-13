@@ -35,7 +35,6 @@ def my_reduce_max(dev, in1_size, out_size, trace_size, n_cores):
         in_ty = np.ndarray[(N,), np.dtype[in_dtype]]
         inA_ty = np.ndarray[(M,), np.dtype[in_dtype]]
         out_ty = np.ndarray[(O,), np.dtype[out_dtype]]
-        outC_ty = np.ndarray[(n_cores,), np.dtype[out_dtype]]
 
         # AIE Core Function declarations
         reduce_max_vector = external_func(
@@ -46,7 +45,6 @@ def my_reduce_max(dev, in1_size, out_size, trace_size, n_cores):
         # Tile declarations
         ShimTile = tile(0, 0)
         MemTile = tile(0, 1)
-        # ComputeTile = tile(1, 2)
 
         cores = [tile(0, 2 + i) for i in range(n_cores)]
 
@@ -87,37 +85,37 @@ def my_reduce_max(dev, in1_size, out_size, trace_size, n_cores):
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
         # Set up compute tiles
-
-        for i in range(n_cores - 1):
+        for i in range(n_cores):
             nextC_buffer = buffer(
                 tile=cores[i],
                 datatype=np.ndarray[(1,), np.dtype[out_dtype]],
                 name=f"elem_out_{i}",
             )
+            if i == n_cores - 1:
 
-            @core(cores[i], "reduce_max.cc.o")
-            def core_body():
-                for _ in range_(0xFFFFFFFF):
-                    elem_in = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
-                    reduce_max_vector(elem_in, nextC_buffer, M)
-                    inA_fifos[i].release(ObjectFifoPort.Consume, 1)
+                @core(cores[i], "reduce_max.cc.o")
+                def core_body():
+                    for _ in range_(0xFFFFFFFF):
+                        elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)
+                        elem_in = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
+                        reduce_max_vector(elem_in, elem_out, M)
+                        inA_fifos[i].release(ObjectFifoPort.Consume, 1)
+                        outC_fifos[i].release(ObjectFifoPort.Produce, 1)
 
-                    elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)
-                    elem_in = outC_fifos[i + 1].acquire(ObjectFifoPort.Consume, 1)
-                    elem_out = compute_max(elem_in, nextC_buffer, elem_out)
-                    outC_fifos[i + 1].release(ObjectFifoPort.Consume, 1)
-                    outC_fifos[i].release(ObjectFifoPort.Produce, 1)
+            else:
 
-        @core(cores[3], "reduce_max.cc.o")
-        def core_body():
-            for _ in range_(0xFFFFFFFF):
-                elem_out = outC_fifos[3].acquire(ObjectFifoPort.Produce, 1)
-                elem_in = inA_fifos[3].acquire(ObjectFifoPort.Consume, 1)
-                reduce_max_vector(elem_in, elem_out, M)
-                inA_fifos[3].release(ObjectFifoPort.Consume, 1)
-                outC_fifos[3].release(ObjectFifoPort.Produce, 1)
+                @core(cores[i], "reduce_max.cc.o")
+                def core_body():
+                    for _ in range_(0xFFFFFFFF):
+                        elem_in = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
+                        reduce_max_vector(elem_in, nextC_buffer, M)
+                        inA_fifos[i].release(ObjectFifoPort.Consume, 1)
 
-        # Compute tile 2
+                        elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)
+                        elem_in = outC_fifos[i + 1].acquire(ObjectFifoPort.Consume, 1)
+                        elem_out = compute_max(elem_in, nextC_buffer, elem_out)
+                        outC_fifos[i + 1].release(ObjectFifoPort.Consume, 1)
+                        outC_fifos[i].release(ObjectFifoPort.Produce, 1)
 
         # To/from AIE-array data movement
         @runtime_sequence(in_ty, out_ty)
