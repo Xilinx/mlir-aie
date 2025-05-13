@@ -77,6 +77,7 @@ def my_reduce_max(dev, in1_size, out_size, trace_size, n_cores):
             ]
         else:
             of_a_offsets = []
+
         object_fifo_link(of_in, inA_fifos, [], of_a_offsets)
 
         # Set up a packet-switched flow from core to shim for tracing information
@@ -86,11 +87,6 @@ def my_reduce_max(dev, in1_size, out_size, trace_size, n_cores):
 
         # Set up compute tiles
         for i in range(n_cores):
-            nextC_buffer = buffer(
-                tile=cores[i],
-                datatype=np.ndarray[(1,), np.dtype[out_dtype]],
-                name=f"elem_out_{i}",
-            )
             if i == n_cores - 1:
 
                 @core(cores[i], "reduce_max.cc.o")
@@ -103,6 +99,11 @@ def my_reduce_max(dev, in1_size, out_size, trace_size, n_cores):
                         outC_fifos[i].release(ObjectFifoPort.Produce, 1)
 
             else:
+                nextC_buffer = buffer(
+                    tile=cores[i],
+                    datatype=np.ndarray[(1,), np.dtype[out_dtype]],
+                    name=f"elem_out_{i}",
+                )
 
                 @core(cores[i], "reduce_max.cc.o")
                 def core_body():
