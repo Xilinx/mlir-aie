@@ -4,8 +4,6 @@
 // REQUIRES: ryzen_ai, peano 
 // RUN: mkdir test_stx
 // RUN: cd test_stx
-// RUN: mkdir test_stx
-// RUN: cd test_stx
 // RUN: make -f %S/Makefile clean
 // RUN: make -f %S/Makefile 
 // RUN: %run_on_2npu make -f %S/Makefile run DEVICE=npu2
