@@ -22,11 +22,11 @@ from aie.dialects.aie import (
     WireBundle,
     packetflow,
     get_target_model,
+    dma_bd
 )
 from aie.ir import InsertionPoint, Block
 from aie.extras.context import mlir_mod_ctx
 from aie.extras import types as T
-from aie.dialects._aie_ops_gen import dma_bd
 from util import construct_and_print_module
 
 
