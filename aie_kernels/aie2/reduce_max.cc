@@ -60,7 +60,8 @@ void _reduce_max_scalar(int32_t *restrict in, int32_t *restrict out,
   return;
 }
 
-void _compute_max(int32_t *restrict in1, int32_t *restrict in2, int32_t *restrict out) {
+void _compute_max(int32_t *restrict in1, int32_t *restrict in2,
+                  int32_t *restrict out) {
   event0();
   if (*in1 > *in2)
     *out = *in1;
