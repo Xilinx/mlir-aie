@@ -18,26 +18,27 @@
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
-
+#include <cstdint>
 #include "test_utils.h"
 
 using IN_DATATYPE = int8_t;
 using OUT_DATATYPE = int8_t;
 
+
 int main(int argc, const char *argv[]) {
+
   std::vector<uint32_t> instr_v;
   int app_id = 1;
-  if (argc > 1) {
-    app_id = atoi(argv[1]);
-  } else {
-    app_id = 0;
-  }
 
-  if (app_id == 0) {
-    instr_v = test_utils::load_instr_binary("insts_add.bin");
-  } else {
-    instr_v = test_utils::load_instr_binary("insts_mul.bin");
-  }
+  if (argc < 4) {
+    std::cerr << "Usage: " << argv[0] << " <app_id> <instruction_file> <bitstream_file>\n";
+    return 1;
+}
+  app_id = atoi(argv[1]);
+  std::string instruction_file = argv[2];
+  std::string bitstream_file = argv[3];
+
+  instr_v = test_utils::load_instr_binary(instruction_file);
 
   int IN_SIZE = 256;
   int OUT_SIZE = 256;
@@ -48,7 +49,7 @@ int main(int argc, const char *argv[]) {
   auto device = xrt::device(device_index);
 
   // Load the xclbin
-  auto xclbin = xrt::xclbin("final.xclbin");
+  auto xclbin = xrt::xclbin(bitstream_file);
 
   std::string Node = "MLIR_AIE";
 
