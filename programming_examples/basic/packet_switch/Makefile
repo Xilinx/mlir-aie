@@ -89,4 +89,4 @@ run: run_mul run_add
 
 .PHONY: clean
 clean:
-	-rm -r build
+	-rm -rf build
