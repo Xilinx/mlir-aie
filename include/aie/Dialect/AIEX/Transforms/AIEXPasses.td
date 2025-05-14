@@ -220,4 +220,19 @@ def AIELowerSetLock : Pass<"aie-lower-set-lock", "AIE::DeviceOp"> {
   ];
 }
 
+def AIETransformBfpTypes : Pass<"aie-transform-bfp-types", "AIE::DeviceOp"> {
+  let summary = "Transform bfp types to standard builtin types";
+
+  let description = [{
+      Lowers bfp types to standard builtin types.
+      Adapts operations as necessary to accomodate for bfp data movement.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIETransformBfpTypesPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 #endif

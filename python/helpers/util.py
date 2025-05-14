@@ -3,6 +3,8 @@ import numpy as np
 import sys
 from typing import Sequence, get_args, get_origin, TypeVar
 
+from aie._mlir_libs import _aie as CustomTypes
+
 from ..extras import types as T
 from ..ir import (
     F32Type,
@@ -15,6 +17,23 @@ from ..ir import (
     VectorType,
 )
 from ml_dtypes import bfloat16
+
+
+# Custom types
+class bfp16ebs8(np.generic):
+    """Custom type to be used in IRON that is translated to a generic blockFloatType"""
+
+    @staticmethod
+    def get():
+        return CustomTypes.blockFloatType.get("bfp16ebs8")
+
+
+class bfp16ebs16(np.generic):
+    """Custom type to be used in IRON that is translated to a generic blockFloatType"""
+
+    @staticmethod
+    def get():
+        return CustomTypes.blockFloatType.get("bfp16ebs16")
 
 
 _np_dtype_to_mlir_type_ctor = defaultdict(
@@ -35,8 +54,10 @@ _np_dtype_to_mlir_type_ctor = defaultdict(
         np.float16: T.f16,
         np.float32: T.f32,
         np.float64: T.f64,
-        # Block floating point types
         bfloat16: T.bf16,
+        # Block floating point types
+        bfp16ebs8: bfp16ebs8.get,
+        bfp16ebs16: bfp16ebs16.get,
         # Index Types
         # this is technically wrong i guess but numpy by default casts python scalars to this
         # so to support passing lists of ints we map to index type
@@ -61,6 +82,8 @@ NpuDType = (
     | np.longlong
     | np.uintp
     | bfloat16
+    | bfp16ebs8
+    | bfp16ebs16
 )
 
 _mlir_type_ctor_to_np_dtype = lambda: {
