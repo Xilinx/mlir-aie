@@ -26,8 +26,6 @@
 namespace xilinx {
 namespace AIEX {
 
-uint64_t getBufferDescriptorAddressRegisterAddress(
-    const AIE::AIETargetModel &tm, unsigned bd_id, unsigned col, unsigned row);
 void getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
                              mlir::BaseMemRefType referencedBufType,
                              llvm::SmallVector<int64_t, 4> inputSizes,
