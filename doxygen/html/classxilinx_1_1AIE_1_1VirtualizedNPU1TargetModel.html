@@ -193,6 +193,15 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a5170af85fe1fc9149d10467893c711a8 inherit pub_methods_classxilinx_1_1AIE_1_1AIE2TargetModel" id="r_a5170af85fe1fc9149d10467893c711a8"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classbool.html">bool</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#a5170af85fe1fc9149d10467893c711a8">isBdChannelAccessible</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, uint32_t bd_id, int <a class="el" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a>) const override</td></tr>
 <tr class="memdesc:a5170af85fe1fc9149d10467893c711a8 inherit pub_methods_classxilinx_1_1AIE_1_1AIE2TargetModel"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return true iff buffer descriptor <code>bd_id</code> on tile (<code>col</code>, <code>row</code>) can be submitted on channel <code>channel</code>.  <br /></td></tr>
 <tr class="separator:a5170af85fe1fc9149d10467893c711a8 inherit pub_methods_classxilinx_1_1AIE_1_1AIE2TargetModel"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa1ff8395d7a4e053970bc0980145c6d7 inherit pub_methods_classxilinx_1_1AIE_1_1AIE2TargetModel" id="r_aa1ff8395d7a4e053970bc0980145c6d7"><td class="memItemLeft" align="right" valign="top">uint64_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#aa1ff8395d7a4e053970bc0980145c6d7">getDmaBdAddress</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, uint32_t bd_id, int <a class="el" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a>, AIE::DMAChannelDir direction) const override</td></tr>
+<tr class="memdesc:aa1ff8395d7a4e053970bc0980145c6d7 inherit pub_methods_classxilinx_1_1AIE_1_1AIE2TargetModel"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return the array address of the dma buffer descriptor for the given col, row, buffer descriptor id, channel and direction.  <br /></td></tr>
+<tr class="separator:aa1ff8395d7a4e053970bc0980145c6d7 inherit pub_methods_classxilinx_1_1AIE_1_1AIE2TargetModel"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:afc782afba75abe4b298ae37920f7e703 inherit pub_methods_classxilinx_1_1AIE_1_1AIE2TargetModel" id="r_afc782afba75abe4b298ae37920f7e703"><td class="memItemLeft" align="right" valign="top">uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#afc782afba75abe4b298ae37920f7e703">getDmaBdAddressOffset</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) const override</td></tr>
+<tr class="memdesc:afc782afba75abe4b298ae37920f7e703 inherit pub_methods_classxilinx_1_1AIE_1_1AIE2TargetModel"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return the offset of the base address field within the shim dma buffer descriptor.  <br /></td></tr>
+<tr class="separator:afc782afba75abe4b298ae37920f7e703 inherit pub_methods_classxilinx_1_1AIE_1_1AIE2TargetModel"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:abcc8bb431f5b1d586c9984b408338976 inherit pub_methods_classxilinx_1_1AIE_1_1AIE2TargetModel" id="r_abcc8bb431f5b1d586c9984b408338976"><td class="memItemLeft" align="right" valign="top">uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#abcc8bb431f5b1d586c9984b408338976">getDmaControlAddress</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a>, AIE::DMAChannelDir direction) const override</td></tr>
+<tr class="memdesc:abcc8bb431f5b1d586c9984b408338976 inherit pub_methods_classxilinx_1_1AIE_1_1AIE2TargetModel"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return the array address of the dma task queue register for the given col, row, channel and direction.  <br /></td></tr>
+<tr class="separator:abcc8bb431f5b1d586c9984b408338976 inherit pub_methods_classxilinx_1_1AIE_1_1AIE2TargetModel"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:adf3b6a11431dfecc2bdd711e24a5b124 inherit pub_methods_classxilinx_1_1AIE_1_1AIE2TargetModel" id="r_adf3b6a11431dfecc2bdd711e24a5b124"><td class="memItemLeft" align="right" valign="top">uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#adf3b6a11431dfecc2bdd711e24a5b124">getMemTileSize</a> () const override</td></tr>
 <tr class="memdesc:adf3b6a11431dfecc2bdd711e24a5b124 inherit pub_methods_classxilinx_1_1AIE_1_1AIE2TargetModel"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return the size (in bytes) of a MemTile.  <br /></td></tr>
 <tr class="separator:adf3b6a11431dfecc2bdd711e24a5b124 inherit pub_methods_classxilinx_1_1AIE_1_1AIE2TargetModel"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -310,7 +319,7 @@ Additional Inherited Members</h2></td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock">
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00629">629</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00663">663</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="a05eaf19d0301234d6955077052fb5c77" name="a05eaf19d0301234d6955077052fb5c77"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a05eaf19d0301234d6955077052fb5c77">&#9670;&#160;</a></span>VirtualizedNPU1TargetModel()</h2>
@@ -336,9 +345,9 @@ Additional Inherited Members</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00633">633</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00667">667</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00284">xilinx::AIE::AIETargetModel::addModelProperty()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00090">xilinx::AIE::AIETargetModel::IsVirtualized</a>.</p>
+<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00301">xilinx::AIE::AIETargetModel::addModelProperty()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00090">xilinx::AIE::AIETargetModel::IsVirtualized</a>.</p>
 
 </div>
 </div>
@@ -367,7 +376,7 @@ Additional Inherited Members</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00646">646</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00680">680</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00101">xilinx::AIE::AIETargetModel::getKind()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00064">xilinx::AIE::AIETargetModel::TK_AIE2_NPU1_1Col</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00068">xilinx::AIE::AIETargetModel::TK_AIE2_NPU1_Last</a>.</p>
 
@@ -400,7 +409,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ad211b18c915a01ab1c3a1b731cafabea">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00642">642</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00676">676</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 </div>
 </div>
@@ -443,7 +452,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a90a0fc9b36e2b77e4be4f99987b3336e">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00644">644</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00678">678</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::row</a>.</p>
 
@@ -455,7 +464,7 @@ Additional Inherited Members</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed May 14 2025 22:06:40 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed May 14 2025 22:16:35 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

@@ -250,6 +250,15 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a6f3cadede12bb82de32843522fa2b9f1" id="r_a6f3cadede12bb82de32843522fa2b9f1"><td class="memItemLeft" align="right" valign="top">virtual <a class="el" href="classbool.html">bool</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a6f3cadede12bb82de32843522fa2b9f1">isBdChannelAccessible</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, uint32_t bd_id, int <a class="el" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a>) const =0</td></tr>
 <tr class="memdesc:a6f3cadede12bb82de32843522fa2b9f1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return true iff buffer descriptor <code>bd_id</code> on tile (<code>col</code>, <code>row</code>) can be submitted on channel <code>channel</code>.  <br /></td></tr>
 <tr class="separator:a6f3cadede12bb82de32843522fa2b9f1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a668ed6cb8d5024f4c78388b56d8c87a0" id="r_a668ed6cb8d5024f4c78388b56d8c87a0"><td class="memItemLeft" align="right" valign="top">virtual uint64_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a668ed6cb8d5024f4c78388b56d8c87a0">getDmaBdAddress</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, uint32_t bd_id, int <a class="el" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a>=-1, AIE::DMAChannelDir direction=AIE::DMAChannelDir::MM2S) const =0</td></tr>
+<tr class="memdesc:a668ed6cb8d5024f4c78388b56d8c87a0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return the array address of the dma buffer descriptor for the given col, row, buffer descriptor id, channel and direction.  <br /></td></tr>
+<tr class="separator:a668ed6cb8d5024f4c78388b56d8c87a0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a729ed6f03e901d4370bae42be1996dc5" id="r_a729ed6f03e901d4370bae42be1996dc5"><td class="memItemLeft" align="right" valign="top">virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a729ed6f03e901d4370bae42be1996dc5">getDmaBdAddressOffset</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) const =0</td></tr>
+<tr class="memdesc:a729ed6f03e901d4370bae42be1996dc5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return the offset of the base address field within the shim dma buffer descriptor.  <br /></td></tr>
+<tr class="separator:a729ed6f03e901d4370bae42be1996dc5"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a283376dddaecbdd539de6bac13d56401" id="r_a283376dddaecbdd539de6bac13d56401"><td class="memItemLeft" align="right" valign="top">virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a283376dddaecbdd539de6bac13d56401">getDmaControlAddress</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a>, AIE::DMAChannelDir direction) const =0</td></tr>
+<tr class="memdesc:a283376dddaecbdd539de6bac13d56401"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return the array address of the dma task queue register for the given col, row, channel and direction.  <br /></td></tr>
+<tr class="separator:a283376dddaecbdd539de6bac13d56401"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae3dbb309666278a8166c8e9f29e5f0e1" id="r_ae3dbb309666278a8166c8e9f29e5f0e1"><td class="memItemLeft" align="right" valign="top">virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae3dbb309666278a8166c8e9f29e5f0e1">getNumMemTileRows</a> () const =0</td></tr>
 <tr class="separator:ae3dbb309666278a8166c8e9f29e5f0e1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:afe68b1d7bd9a0e47dbbe503c901623d9" id="r_afe68b1d7bd9a0e47dbbe503c901623d9"><td class="memItemLeft" align="right" valign="top">virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#afe68b1d7bd9a0e47dbbe503c901623d9">getMemTileSize</a> () const =0</td></tr>
@@ -430,9 +439,9 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00284">284</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00301">301</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIETargetModel_8h_source.html#l00383">xilinx::AIE::AIE2TargetModel::AIE2TargetModel()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00579">xilinx::AIE::BaseNPU1TargetModel::BaseNPU1TargetModel()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00654">xilinx::AIE::BaseNPU2TargetModel::BaseNPU2TargetModel()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00633">xilinx::AIE::VirtualizedNPU1TargetModel::VirtualizedNPU1TargetModel()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00706">xilinx::AIE::VirtualizedNPU2TargetModel::VirtualizedNPU2TargetModel()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIETargetModel_8h_source.html#l00409">xilinx::AIE::AIE2TargetModel::AIE2TargetModel()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00613">xilinx::AIE::BaseNPU1TargetModel::BaseNPU1TargetModel()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00688">xilinx::AIE::BaseNPU2TargetModel::BaseNPU2TargetModel()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00667">xilinx::AIE::VirtualizedNPU1TargetModel::VirtualizedNPU1TargetModel()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00740">xilinx::AIE::VirtualizedNPU2TargetModel::VirtualizedNPU2TargetModel()</a>.</p>
 
 </div>
 </div>
@@ -463,7 +472,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1VC1902TargetModel.html#aa4bec2ea0f512a0a37f35f20cb44fff9">xilinx::AIE::VC1902TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VE2302TargetModel.html#a438711b25b6cba3903d6872b527f9b10">xilinx::AIE::VE2302TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VE2802TargetModel.html#ad27e7586091172683eccb5869db3a818">xilinx::AIE::VE2802TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1NPU1TargetModel.html#ae2a0dddcdebf13cd5b7ef7a80f7f8c4d">xilinx::AIE::NPU1TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VirtualizedNPU1TargetModel.html#ac2c765ff1c32ec51238536428c6affc4">xilinx::AIE::VirtualizedNPU1TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1NPU2TargetModel.html#af25accf71e9c1c35c3772d8602f196e4">xilinx::AIE::NPU2TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1VirtualizedNPU2TargetModel.html#a9e49aa560cb2031e952a48cf9bf412f6">xilinx::AIE::VirtualizedNPU2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00057">xilinx::AIE::AIERTControl::AIERTControl()</a>, <a class="el" href="TargetModel_8cpp_source.html#l00035">aieTargetModelColumns()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00111">xilinx::AIE::AIE1TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00384">xilinx::AIE::AIE2TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00167">xilinx::AIE::AIE1TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00455">xilinx::AIE::AIE2TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00097">getRowToShimChanMap()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00070">getTileToControllerIdMap()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00045">getTileToControllerIdMap6RowsOrLess()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00142">isValidTile()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00692">validate()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00057">xilinx::AIE::AIERTControl::AIERTControl()</a>, <a class="el" href="TargetModel_8cpp_source.html#l00035">aieTargetModelColumns()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00154">xilinx::AIE::AIE1TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00476">xilinx::AIE::AIE2TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00210">xilinx::AIE::AIE1TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00547">xilinx::AIE::AIE2TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00097">getRowToShimChanMap()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00070">getTileToControllerIdMap()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00045">getTileToControllerIdMap6RowsOrLess()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00142">isValidTile()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00784">validate()</a>.</p>
 
 </div>
 </div>
@@ -523,7 +532,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#a39ce04de8e216213e0e6ac2fb5391f0c">xilinx::AIE::AIE2TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1VC1902TargetModel.html#ac235ca0ccf4872920019d351716a16eb">xilinx::AIE::VC1902TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00031">aieGetTargetModelAddressGenGranularity()</a>, and <a class="el" href="AIEXDialect_8cpp_source.html#l00089">xilinx::AIEX::getHardwareStridesWraps()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00031">aieGetTargetModelAddressGenGranularity()</a>, and <a class="el" href="AIEXDialect_8cpp_source.html#l00082">xilinx::AIEX::getHardwareStridesWraps()</a>.</p>
 
 </div>
 </div>
@@ -552,7 +561,162 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#a8ddb185f2f7a3cbb32eed705a56e9483">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#aa0bfbc97f3fedfcbf35ecaabf6a9b0f2">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00057">xilinx::AIE::AIERTControl::AIERTControl()</a>, <a class="el" href="TargetModel_8cpp_source.html#l00193">aieTargetModelGetColumnShift()</a>, and <a class="el" href="AIEXDialect_8cpp_source.html#l00049">xilinx::AIEX::getBufferDescriptorAddressRegisterAddress()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00057">xilinx::AIE::AIERTControl::AIERTControl()</a>, and <a class="el" href="TargetModel_8cpp_source.html#l00193">aieTargetModelGetColumnShift()</a>.</p>
+
+</div>
+</div>
+<a id="a668ed6cb8d5024f4c78388b56d8c87a0" name="a668ed6cb8d5024f4c78388b56d8c87a0"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a668ed6cb8d5024f4c78388b56d8c87a0">&#9670;&#160;</a></span>getDmaBdAddress()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">virtual uint64_t xilinx::AIE::AIETargetModel::getDmaBdAddress </td>
+          <td>(</td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>col</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>row</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">uint32_t&#160;</td>
+          <td class="paramname"><em>bd_id</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>channel</em> = <code>-1</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">AIE::DMAChannelDir&#160;</td>
+          <td class="paramname"><em>direction</em> = <code>AIE::DMAChannelDir::MM2S</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">pure virtual</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Return the array address of the dma buffer descriptor for the given col, row, buffer descriptor id, channel and direction. </p>
+<p>Not all architecture variants will use channel and direction so these have default values. </p>
+
+<p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#a663d6391460ad585e5c8acd293bb8627">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#aa1ff8395d7a4e053970bc0980145c6d7">xilinx::AIE::AIE2TargetModel</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00179">AIEDMATasksToNPUPass::setAddressForSingleBD()</a>.</p>
+
+</div>
+</div>
+<a id="a729ed6f03e901d4370bae42be1996dc5" name="a729ed6f03e901d4370bae42be1996dc5"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a729ed6f03e901d4370bae42be1996dc5">&#9670;&#160;</a></span>getDmaBdAddressOffset()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">virtual uint32_t xilinx::AIE::AIETargetModel::getDmaBdAddressOffset </td>
+          <td>(</td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>col</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>row</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">pure virtual</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Return the offset of the base address field within the shim dma buffer descriptor. </p>
+
+<p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#aa30aee708fd9c96f0087ca2a01d5f0e0">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#afc782afba75abe4b298ae37920f7e703">xilinx::AIE::AIE2TargetModel</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00179">AIEDMATasksToNPUPass::setAddressForSingleBD()</a>.</p>
+
+</div>
+</div>
+<a id="a283376dddaecbdd539de6bac13d56401" name="a283376dddaecbdd539de6bac13d56401"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a283376dddaecbdd539de6bac13d56401">&#9670;&#160;</a></span>getDmaControlAddress()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">virtual uint32_t xilinx::AIE::AIETargetModel::getDmaControlAddress </td>
+          <td>(</td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>col</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>row</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>channel</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">AIE::DMAChannelDir&#160;</td>
+          <td class="paramname"><em>direction</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">pure virtual</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Return the array address of the dma task queue register for the given col, row, channel and direction. </p>
+
+<p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#a29d29fc4eac494a7a952cfadf2f0e8e8">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#abcc8bb431f5b1d586c9984b408338976">xilinx::AIE::AIE2TargetModel</a>.</p>
 
 </div>
 </div>
@@ -581,7 +745,7 @@ Public Member Functions</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00101">101</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIETargetModel_8h_source.html#l00372">xilinx::AIE::AIE1TargetModel::classof()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00466">xilinx::AIE::AIE2TargetModel::classof()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00500">xilinx::AIE::VC1902TargetModel::classof()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00534">xilinx::AIE::VE2302TargetModel::classof()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00572">xilinx::AIE::VE2802TargetModel::classof()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00601">xilinx::AIE::BaseNPU1TargetModel::classof()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00623">xilinx::AIE::NPU1TargetModel::classof()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00646">xilinx::AIE::VirtualizedNPU1TargetModel::classof()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00683">xilinx::AIE::BaseNPU2TargetModel::classof()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00696">xilinx::AIE::NPU2TargetModel::classof()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00717">xilinx::AIE::VirtualizedNPU2TargetModel::classof()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIETargetModel_8h_source.html#l00398">xilinx::AIE::AIE1TargetModel::classof()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00500">xilinx::AIE::AIE2TargetModel::classof()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00534">xilinx::AIE::VC1902TargetModel::classof()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00568">xilinx::AIE::VE2302TargetModel::classof()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00606">xilinx::AIE::VE2802TargetModel::classof()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00635">xilinx::AIE::BaseNPU1TargetModel::classof()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00657">xilinx::AIE::NPU1TargetModel::classof()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00680">xilinx::AIE::VirtualizedNPU1TargetModel::classof()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00717">xilinx::AIE::BaseNPU2TargetModel::classof()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00730">xilinx::AIE::NPU2TargetModel::classof()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00751">xilinx::AIE::VirtualizedNPU2TargetModel::classof()</a>.</p>
 
 </div>
 </div>
@@ -694,7 +858,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Return the lock base index (or offset) in the local tile when accessing a neighbor's lock or an empty optional if an invalid neighbor is given Takes into account differences between Memory and Core tiles. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00751">751</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00843">843</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a8c4ec93f7c39f76e6dbc79a9d952ee41">getNumLocks()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a4a1bdcccc73af43c9ab5f4c306819fba">isCoreTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00171">isEast()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00161">isInternal()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a5ef95632bca2efdb5dc7b3cfa70f5dec">isMemEast()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a24319458ca3795493bd25ce11ea9a747">isMemNorth()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a80738cbd40497b90fbf92d2a2da0ecf4">isMemSouth()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a78ddfb308023713b1b668cf3c7c6988d">isMemTile()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae8bf3235fffa05ac66779c74eba5b78c">isMemWest()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00166">isWest()</a>.</p>
 
@@ -788,7 +952,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#a559f19ebb05de57304b7ab9fb441ae77">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#aae274268b9efdfd62eb8030f99f934da">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00123">aieTargetModelGetMemEastBaseAddress()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00777">getMemLocalBaseAddress()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00123">aieTargetModelGetMemEastBaseAddress()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00869">getMemLocalBaseAddress()</a>.</p>
 
 </div>
 </div>
@@ -862,7 +1026,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Return the memory base address (or offset) in the local tile when accessing a neighbor's memory or an empty optional if an invalid neighbor is given Takes into account differences between Memory and Core tiles. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00777">777</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00869">869</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#adaca9b20c3b2b8b8975c905f5f3877a0">getMemEastBaseAddress()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#acbb548b0c54ad75e8d04bf14be71f587">getMemNorthBaseAddress()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a2cebef12915d657125c4a9adfc237ad5">getMemSouthBaseAddress()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#afe68b1d7bd9a0e47dbbe503c901623d9">getMemTileSize()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a87adbb0899c65c3635dda84f7b439ac5">getMemWestBaseAddress()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a4a1bdcccc73af43c9ab5f4c306819fba">isCoreTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00171">isEast()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00161">isInternal()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a5ef95632bca2efdb5dc7b3cfa70f5dec">isMemEast()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a24319458ca3795493bd25ce11ea9a747">isMemNorth()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a80738cbd40497b90fbf92d2a2da0ecf4">isMemSouth()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a78ddfb308023713b1b668cf3c7c6988d">isMemTile()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae8bf3235fffa05ac66779c74eba5b78c">isMemWest()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00166">isWest()</a>.</p>
 
@@ -927,7 +1091,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#acc0c62c9daa04441218a0bc3b5d749aa">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#a91f614c83e722d475713a2ee646e7919">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00119">aieTargetModelGetMemNorthBaseAddress()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00777">getMemLocalBaseAddress()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00119">aieTargetModelGetMemNorthBaseAddress()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00869">getMemLocalBaseAddress()</a>.</p>
 
 </div>
 </div>
@@ -988,7 +1152,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#abb7e0aa63e8caa607e51559fbc84f427">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#a02ff720c95db72206065740a1d59d9ea">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00115">aieTargetModelGetMemSouthBaseAddress()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00777">getMemLocalBaseAddress()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00115">aieTargetModelGetMemSouthBaseAddress()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00869">getMemLocalBaseAddress()</a>.</p>
 
 </div>
 </div>
@@ -1019,7 +1183,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#ab52770f98d8bae83a8c73eeb117facc0">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#adf3b6a11431dfecc2bdd711e24a5b124">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00148">aieTargetModelGetMemTileSize()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00777">getMemLocalBaseAddress()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00148">aieTargetModelGetMemTileSize()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00869">getMemLocalBaseAddress()</a>.</p>
 
 </div>
 </div>
@@ -1080,7 +1244,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#a0a65e5f630c72cef5c4279ba79d769f7">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#a021c741bc1f3a7a2736951421fe215b6">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00127">aieTargetModelGetMemWestBaseAddress()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00777">getMemLocalBaseAddress()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00127">aieTargetModelGetMemWestBaseAddress()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00869">getMemLocalBaseAddress()</a>.</p>
 
 </div>
 </div>
@@ -1107,9 +1271,9 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00283">283</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00300">300</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIETargetModel_8h_source.html#l00286">hasProperty()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIETargetModel_8h_source.html#l00303">hasProperty()</a>.</p>
 
 </div>
 </div>
@@ -1193,7 +1357,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#af5d15a5a10871efab42ebf25461383c4">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#af7dd84f0c2aa427ea296da7adb8463bb">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00140">aieTargetModelGetNumBDs()</a>, <a class="el" href="AIEXDialect_8cpp_source.html#l00049">xilinx::AIEX::getBufferDescriptorAddressRegisterAddress()</a>, <a class="el" href="AIEAssignBufferDescriptorIDs_8cpp_source.html#l00027">BdIdGenerator::nextBdId()</a>, and <a class="el" href="AIEAssignBufferDescriptorIDs_8cpp_source.html#l00056">AIEAssignBufferDescriptorIDsPass::runOnOperation()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00140">aieTargetModelGetNumBDs()</a>, <a class="el" href="AIEAssignBufferDescriptorIDs_8cpp_source.html#l00027">BdIdGenerator::nextBdId()</a>, and <a class="el" href="AIEAssignBufferDescriptorIDs_8cpp_source.html#l00056">AIEAssignBufferDescriptorIDsPass::runOnOperation()</a>.</p>
 
 </div>
 </div>
@@ -1291,7 +1455,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#a8bd5f52c10c638bdf5136d5942a2c55b">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#ae5b5a7efc2df02b095f70565110dbb0b">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00157">aieTargetModelGetNumDestSwitchboxConnections()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00189">xilinx::AIE::Pathfinder::initialize()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00692">validate()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00157">aieTargetModelGetNumDestSwitchboxConnections()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00189">xilinx::AIE::Pathfinder::initialize()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00784">validate()</a>.</p>
 
 </div>
 </div>
@@ -1333,7 +1497,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#aa346ec6fa2934e3aa1d8b6afd750a6ba">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#a145b7e79e8f62b1f932f020900404bf7">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00135">aieTargetModelGetNumLocks()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00751">getLockLocalBaseIndex()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00135">aieTargetModelGetNumLocks()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00843">getLockLocalBaseIndex()</a>.</p>
 
 </div>
 </div>
@@ -1362,7 +1526,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#a06fbc33ccc24203e26e15b8a1081e637">xilinx::AIE::AIE1TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VE2302TargetModel.html#a6b91d7889096fbb8d64af97f4c0778ed">xilinx::AIE::VE2302TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VE2802TargetModel.html#a6a39457d39773af518b5206aa1797cd9">xilinx::AIE::VE2802TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1BaseNPU1TargetModel.html#a364321f4efb638e3e8f4b819882c319d">xilinx::AIE::BaseNPU1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1BaseNPU2TargetModel.html#a6370911b767f522e782b5e52b1d5e682">xilinx::AIE::BaseNPU2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00057">xilinx::AIE::AIERTControl::AIERTControl()</a>, <a class="el" href="TargetModel_8cpp_source.html#l00144">aieTargetModelGetNumMemTileRows()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00692">validate()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00057">xilinx::AIE::AIERTControl::AIERTControl()</a>, <a class="el" href="TargetModel_8cpp_source.html#l00144">aieTargetModelGetNumMemTileRows()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00784">validate()</a>.</p>
 
 </div>
 </div>
@@ -1460,7 +1624,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#afc5e4392387a8e160e62e3bb128a0033">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#a22023fb1c9b05fc69e210ae4e839541a">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00165">aieTargetModelGetNumSourceSwitchboxConnections()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00189">xilinx::AIE::Pathfinder::initialize()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00692">validate()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00165">aieTargetModelGetNumSourceSwitchboxConnections()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00189">xilinx::AIE::Pathfinder::initialize()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00784">validate()</a>.</p>
 
 </div>
 </div>
@@ -1489,7 +1653,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#a6bdcd84ee37d627331fa13e4fc4838ac">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#a01c3c0ec6f586e2155d2014a6ae96a5a">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00057">xilinx::AIE::AIERTControl::AIERTControl()</a>, <a class="el" href="TargetModel_8cpp_source.html#l00197">aieTargetModelGetRowShift()</a>, and <a class="el" href="AIEXDialect_8cpp_source.html#l00049">xilinx::AIEX::getBufferDescriptorAddressRegisterAddress()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00057">xilinx::AIE::AIERTControl::AIERTControl()</a>, and <a class="el" href="TargetModel_8cpp_source.html#l00197">aieTargetModelGetRowShift()</a>.</p>
 
 </div>
 </div>
@@ -1575,9 +1739,9 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00286">286</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00303">303</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00283">getModelProperties()</a>.</p>
+<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00300">getModelProperties()</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00057">xilinx::AIE::AIERTControl::AIERTControl()</a>, <a class="el" href="TargetModel_8cpp_source.html#l00189">aieTargetModelIsNPU()</a>, and <a class="el" href="AIERT_8cpp_source.html#l00456">xilinx::AIE::AIERTControl::configureSwitches()</a>.</p>
 
@@ -1676,7 +1840,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#aab17b12e82ecd92806a7a0c42a26ad15">xilinx::AIE::AIE1TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VE2302TargetModel.html#a375d482a71ceeb57727c9df30790cefe">xilinx::AIE::VE2302TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VE2802TargetModel.html#a6b7873c4f699227148e8df55cf17b846">xilinx::AIE::VE2802TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1BaseNPU1TargetModel.html#a762f0c5dcbe9daa33ef84ca18fc16cad">xilinx::AIE::BaseNPU1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1BaseNPU2TargetModel.html#a4f2be2ec6b0d50c248ba33b1e35af283">xilinx::AIE::BaseNPU2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00043">aieTargetModelIsCoreTile()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00672">xilinx::AIE::AIE2TargetModel::getLocalLockAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00751">getLockLocalBaseIndex()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00777">getMemLocalBaseAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00573">xilinx::AIE::AIE2TargetModel::isLegalTileConnection()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00692">validate()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00043">aieTargetModelIsCoreTile()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00426">xilinx::AIE::AIE2TargetModel::getDmaBdAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00444">xilinx::AIE::AIE2TargetModel::getDmaBdAddressOffset()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00451">xilinx::AIE::AIE2TargetModel::getDmaControlAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00764">xilinx::AIE::AIE2TargetModel::getLocalLockAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00843">getLockLocalBaseIndex()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00869">getMemLocalBaseAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00665">xilinx::AIE::AIE2TargetModel::isLegalTileConnection()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00784">validate()</a>.</p>
 
 </div>
 </div>
@@ -1730,7 +1894,7 @@ Public Member Functions</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00171">171</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00074">aieTargetModelIsEast()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00751">getLockLocalBaseIndex()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00777">getMemLocalBaseAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00094">xilinx::AIE::AIE1TargetModel::isLegalMemAffinity()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00367">xilinx::AIE::AIE2TargetModel::isLegalMemAffinity()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00077">xilinx::AIE::AIE1TargetModel::isMemEast()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00074">aieTargetModelIsEast()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00843">getLockLocalBaseIndex()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00869">getMemLocalBaseAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00094">xilinx::AIE::AIE1TargetModel::isLegalMemAffinity()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00410">xilinx::AIE::AIE2TargetModel::isLegalMemAffinity()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00077">xilinx::AIE::AIE1TargetModel::isMemEast()</a>.</p>
 
 </div>
 </div>
@@ -1784,7 +1948,7 @@ Public Member Functions</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00161">161</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00064">aieTargetModelIsInternal()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00751">getLockLocalBaseIndex()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00777">getMemLocalBaseAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00094">xilinx::AIE::AIE1TargetModel::isLegalMemAffinity()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00367">xilinx::AIE::AIE2TargetModel::isLegalMemAffinity()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00077">xilinx::AIE::AIE1TargetModel::isMemEast()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00352">xilinx::AIE::AIE2TargetModel::isMemEast()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00070">xilinx::AIE::AIE1TargetModel::isMemWest()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00064">aieTargetModelIsInternal()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00843">getLockLocalBaseIndex()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00869">getMemLocalBaseAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00094">xilinx::AIE::AIE1TargetModel::isLegalMemAffinity()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00410">xilinx::AIE::AIE2TargetModel::isLegalMemAffinity()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00077">xilinx::AIE::AIE1TargetModel::isMemEast()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00395">xilinx::AIE::AIE2TargetModel::isMemEast()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00070">xilinx::AIE::AIE1TargetModel::isMemWest()</a>.</p>
 
 </div>
 </div>
@@ -1956,7 +2120,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#a8deb15407ac9e75ca018cadf2c3bb764">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#afaa7c6c7befde2762466dd56ea6fb6a8">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00094">aieTargetModelIsMemEast()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00751">getLockLocalBaseIndex()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00777">getMemLocalBaseAddress()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00094">aieTargetModelIsMemEast()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00843">getLockLocalBaseIndex()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00869">getMemLocalBaseAddress()</a>.</p>
 
 </div>
 </div>
@@ -2010,7 +2174,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#a0928b9aac2d4ff9d906aa53bac4e75de">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#a814d244263edd159642f1fdbf0a45754">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00099">aieTargetModelIsMemNorth()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00751">getLockLocalBaseIndex()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00777">getMemLocalBaseAddress()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00099">aieTargetModelIsMemNorth()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00843">getLockLocalBaseIndex()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00869">getMemLocalBaseAddress()</a>.</p>
 
 </div>
 </div>
@@ -2064,7 +2228,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#a496613610cac6925d7c4caf43531ebce">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#af47ee744ad5198989fc81f73058cc354">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00104">aieTargetModelIsMemSouth()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00751">getLockLocalBaseIndex()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00777">getMemLocalBaseAddress()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00104">aieTargetModelIsMemSouth()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00843">getLockLocalBaseIndex()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00869">getMemLocalBaseAddress()</a>.</p>
 
 </div>
 </div>
@@ -2107,7 +2271,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#ae47e58842e3046ac13b2b1c7af4c6585">xilinx::AIE::AIE1TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VE2302TargetModel.html#acd7b29f5759af9cc15c7ed9ab7d24317">xilinx::AIE::VE2302TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VE2802TargetModel.html#a24784df36167cea34fed2a72916d97c4">xilinx::AIE::VE2802TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1BaseNPU1TargetModel.html#a36505cfdbef39764aae3f18294511451">xilinx::AIE::BaseNPU1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1BaseNPU2TargetModel.html#a10be6444e3ad216d73400716a8a45599">xilinx::AIE::BaseNPU2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00047">aieTargetModelIsMemTile()</a>, <a class="el" href="AIERT_8cpp_source.html#l00176">xilinx::AIE::AIERTControl::configureBdInBlock()</a>, <a class="el" href="AIERT_8cpp_source.html#l00123">xilinx::AIE::AIERTControl::configureLocksInBdBlock()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00672">xilinx::AIE::AIE2TargetModel::getLocalLockAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00751">getLockLocalBaseIndex()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00777">getMemLocalBaseAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00338">xilinx::AIE::AIE2TargetModel::getMemSouth()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00447">xilinx::AIE::AIE2TargetModel::getNumBanks()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00428">xilinx::AIE::AIE2TargetModel::getNumBDs()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00384">xilinx::AIE::AIE2TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00419">xilinx::AIE::AIE2TargetModel::getNumLocks()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00455">xilinx::AIE::AIE2TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00432">xilinx::AIE::AIE2TargetModel::isBdChannelAccessible()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00367">xilinx::AIE::AIE2TargetModel::isLegalMemAffinity()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00573">xilinx::AIE::AIE2TargetModel::isLegalTileConnection()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00692">validate()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00047">aieTargetModelIsMemTile()</a>, <a class="el" href="AIERT_8cpp_source.html#l00176">xilinx::AIE::AIERTControl::configureBdInBlock()</a>, <a class="el" href="AIERT_8cpp_source.html#l00123">xilinx::AIE::AIERTControl::configureLocksInBdBlock()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00426">xilinx::AIE::AIE2TargetModel::getDmaBdAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00451">xilinx::AIE::AIE2TargetModel::getDmaControlAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00764">xilinx::AIE::AIE2TargetModel::getLocalLockAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00843">getLockLocalBaseIndex()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00869">getMemLocalBaseAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00381">xilinx::AIE::AIE2TargetModel::getMemSouth()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00481">xilinx::AIE::AIE2TargetModel::getNumBanks()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00454">xilinx::AIE::AIE2TargetModel::getNumBDs()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00476">xilinx::AIE::AIE2TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00445">xilinx::AIE::AIE2TargetModel::getNumLocks()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00547">xilinx::AIE::AIE2TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00458">xilinx::AIE::AIE2TargetModel::isBdChannelAccessible()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00410">xilinx::AIE::AIE2TargetModel::isLegalMemAffinity()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00665">xilinx::AIE::AIE2TargetModel::isLegalTileConnection()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00784">validate()</a>.</p>
 
 </div>
 </div>
@@ -2161,7 +2325,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#a9545dbbfe5fe9a413997c5abe0cc8c6e">xilinx::AIE::AIE1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIE2TargetModel.html#af18eec27ceaa1886e5a9e9570d1cab62">xilinx::AIE::AIE2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00089">aieTargetModelIsMemWest()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00751">getLockLocalBaseIndex()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00777">getMemLocalBaseAddress()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00089">aieTargetModelIsMemWest()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00843">getLockLocalBaseIndex()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00869">getMemLocalBaseAddress()</a>.</p>
 
 </div>
 </div>
@@ -2215,7 +2379,7 @@ Public Member Functions</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00176">176</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00079">aieTargetModelIsNorth()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00094">xilinx::AIE::AIE1TargetModel::isLegalMemAffinity()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00084">xilinx::AIE::AIE1TargetModel::isMemNorth()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00357">xilinx::AIE::AIE2TargetModel::isMemNorth()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00079">aieTargetModelIsNorth()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00094">xilinx::AIE::AIE1TargetModel::isLegalMemAffinity()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00084">xilinx::AIE::AIE1TargetModel::isMemNorth()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00400">xilinx::AIE::AIE2TargetModel::isMemNorth()</a>.</p>
 
 </div>
 </div>
@@ -2257,7 +2421,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1VC1902TargetModel.html#a1d585bcd5f0c2c0238fdb6830759314f">xilinx::AIE::VC1902TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VE2302TargetModel.html#ae5f406ff5c69af324afb915f6e1cac01">xilinx::AIE::VE2302TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VE2802TargetModel.html#af209d843e86119bd4fd30ddd53bc6a24">xilinx::AIE::VE2802TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1BaseNPU1TargetModel.html#aef41afec39eaba6152217c409cf80bad">xilinx::AIE::BaseNPU1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1BaseNPU2TargetModel.html#a6e698a01341eead05a5bfd640fb11ffb">xilinx::AIE::BaseNPU2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00059">aieTargetModelIsShimNOCorPLTile()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00672">xilinx::AIE::AIE2TargetModel::getLocalLockAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00226">xilinx::AIE::AIE1TargetModel::getNumDestShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00534">xilinx::AIE::AIE2TargetModel::getNumDestShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00244">xilinx::AIE::AIE1TargetModel::getNumSourceShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00554">xilinx::AIE::AIE2TargetModel::getNumSourceShimMuxConnections()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00189">xilinx::AIE::Pathfinder::initialize()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00262">xilinx::AIE::AIE1TargetModel::isLegalTileConnection()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00573">xilinx::AIE::AIE2TargetModel::isLegalTileConnection()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00059">aieTargetModelIsShimNOCorPLTile()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00764">xilinx::AIE::AIE2TargetModel::getLocalLockAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00269">xilinx::AIE::AIE1TargetModel::getNumDestShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00626">xilinx::AIE::AIE2TargetModel::getNumDestShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00287">xilinx::AIE::AIE1TargetModel::getNumSourceShimMuxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00646">xilinx::AIE::AIE2TargetModel::getNumSourceShimMuxConnections()</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00189">xilinx::AIE::Pathfinder::initialize()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00305">xilinx::AIE::AIE1TargetModel::isLegalTileConnection()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00665">xilinx::AIE::AIE2TargetModel::isLegalTileConnection()</a>.</p>
 
 </div>
 </div>
@@ -2300,7 +2464,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1VC1902TargetModel.html#a27f27f02367b34abb358465147e168d5">xilinx::AIE::VC1902TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VE2302TargetModel.html#a7f7a5fba9c38a020bce2358b4d9d8c95">xilinx::AIE::VE2302TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VE2802TargetModel.html#a9b6ff95408805645f394ffce856d57bb">xilinx::AIE::VE2802TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1NPU1TargetModel.html#afa9e81246dede4398282805286e41e5a">xilinx::AIE::NPU1TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VirtualizedNPU1TargetModel.html#a1dc388d2484a855b3620d72c00455469">xilinx::AIE::VirtualizedNPU1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1BaseNPU2TargetModel.html#abfaf3eec0722b7ec96dda0be1a29dfaa">xilinx::AIE::BaseNPU2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00051">aieTargetModelIsShimNOCTile()</a>, <a class="el" href="AIERT_8cpp_source.html#l00176">xilinx::AIE::AIERTControl::configureBdInBlock()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00111">xilinx::AIE::AIE1TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00384">xilinx::AIE::AIE2TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00167">xilinx::AIE::AIE1TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00455">xilinx::AIE::AIE2TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00097">getRowToShimChanMap()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00595">xilinx::AIE::BaseNPU1TargetModel::isShimNOCorPLTile()</a>, <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00179">AIEDMATasksToNPUPass::setAddressForSingleBD()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00692">validate()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00051">aieTargetModelIsShimNOCTile()</a>, <a class="el" href="AIERT_8cpp_source.html#l00176">xilinx::AIE::AIERTControl::configureBdInBlock()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00110">xilinx::AIE::AIE1TargetModel::getDmaBdAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00426">xilinx::AIE::AIE2TargetModel::getDmaBdAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00126">xilinx::AIE::AIE1TargetModel::getDmaBdAddressOffset()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00135">xilinx::AIE::AIE1TargetModel::getDmaControlAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00451">xilinx::AIE::AIE2TargetModel::getDmaControlAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00154">xilinx::AIE::AIE1TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00476">xilinx::AIE::AIE2TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00210">xilinx::AIE::AIE1TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00547">xilinx::AIE::AIE2TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00097">getRowToShimChanMap()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00629">xilinx::AIE::BaseNPU1TargetModel::isShimNOCorPLTile()</a>, <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00179">AIEDMATasksToNPUPass::setAddressForSingleBD()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00784">validate()</a>.</p>
 
 </div>
 </div>
@@ -2343,7 +2507,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1VC1902TargetModel.html#ad9ed86a3b6653f70b436900baeb2c95e">xilinx::AIE::VC1902TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VE2302TargetModel.html#a6058cbb7afba2c8de1f39caae9d47a5f">xilinx::AIE::VE2302TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VE2802TargetModel.html#a3ecc36de169ebe94ce95a2931eddafd0">xilinx::AIE::VE2802TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1BaseNPU1TargetModel.html#afb32cb9697ee342a3e22ce1547112b4b">xilinx::AIE::BaseNPU1TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1NPU1TargetModel.html#a5440984b4cfaa4b272f72cb22bf47375">xilinx::AIE::NPU1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1BaseNPU2TargetModel.html#a83206a08875e26c61ed8e76d783af16a">xilinx::AIE::BaseNPU2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00055">aieTargetModelIsShimPLTile()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00111">xilinx::AIE::AIE1TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00384">xilinx::AIE::AIE2TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00167">xilinx::AIE::AIE1TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00455">xilinx::AIE::AIE2TargetModel::getNumSourceSwitchboxConnections()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00692">validate()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00055">aieTargetModelIsShimPLTile()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00154">xilinx::AIE::AIE1TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00476">xilinx::AIE::AIE2TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00210">xilinx::AIE::AIE1TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00547">xilinx::AIE::AIE2TargetModel::getNumSourceSwitchboxConnections()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00784">validate()</a>.</p>
 
 </div>
 </div>
@@ -2397,7 +2561,7 @@ Public Member Functions</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00181">181</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00084">aieTargetModelIsSouth()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00094">xilinx::AIE::AIE1TargetModel::isLegalMemAffinity()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00089">xilinx::AIE::AIE1TargetModel::isMemSouth()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00362">xilinx::AIE::AIE2TargetModel::isMemSouth()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00084">aieTargetModelIsSouth()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00094">xilinx::AIE::AIE1TargetModel::isLegalMemAffinity()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00089">xilinx::AIE::AIE1TargetModel::isMemSouth()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00405">xilinx::AIE::AIE2TargetModel::isMemSouth()</a>.</p>
 
 </div>
 </div>
@@ -2431,7 +2595,7 @@ Public Member Functions</h2></td></tr>
 
 <p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ad211b18c915a01ab1c3a1b731cafabea">columns()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a8d6f3c31d960dbc32fcc569919b536aa">rows()</a>, and <a class="el" href="AIEPathFinder_8h_source.html#l00128">xilinx::AIE::src</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIETargetModel_8cpp_source.html#l00042">xilinx::AIE::AIE1TargetModel::getMemEast()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00322">xilinx::AIE::AIE2TargetModel::getMemEast()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00055">xilinx::AIE::AIE1TargetModel::getMemNorth()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00331">xilinx::AIE::AIE2TargetModel::getMemNorth()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00062">xilinx::AIE::AIE1TargetModel::getMemSouth()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00338">xilinx::AIE::AIE2TargetModel::getMemSouth()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00029">xilinx::AIE::AIE1TargetModel::getMemWest()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00313">xilinx::AIE::AIE2TargetModel::getMemWest()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIETargetModel_8cpp_source.html#l00042">xilinx::AIE::AIE1TargetModel::getMemEast()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00365">xilinx::AIE::AIE2TargetModel::getMemEast()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00055">xilinx::AIE::AIE1TargetModel::getMemNorth()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00374">xilinx::AIE::AIE2TargetModel::getMemNorth()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00062">xilinx::AIE::AIE1TargetModel::getMemSouth()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00381">xilinx::AIE::AIE2TargetModel::getMemSouth()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00029">xilinx::AIE::AIE1TargetModel::getMemWest()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00356">xilinx::AIE::AIE2TargetModel::getMemWest()</a>.</p>
 
 </div>
 </div>
@@ -2485,7 +2649,7 @@ Public Member Functions</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00166">166</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00069">aieTargetModelIsWest()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00751">getLockLocalBaseIndex()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00777">getMemLocalBaseAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00094">xilinx::AIE::AIE1TargetModel::isLegalMemAffinity()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00367">xilinx::AIE::AIE2TargetModel::isLegalMemAffinity()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00070">xilinx::AIE::AIE1TargetModel::isMemWest()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00347">xilinx::AIE::AIE2TargetModel::isMemWest()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="TargetModel_8cpp_source.html#l00069">aieTargetModelIsWest()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00843">getLockLocalBaseIndex()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00869">getMemLocalBaseAddress()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00094">xilinx::AIE::AIE1TargetModel::isLegalMemAffinity()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00410">xilinx::AIE::AIE2TargetModel::isLegalMemAffinity()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00070">xilinx::AIE::AIE1TargetModel::isMemWest()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00390">xilinx::AIE::AIE2TargetModel::isMemWest()</a>.</p>
 
 </div>
 </div>
@@ -2516,7 +2680,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implemented in <a class="el" href="classxilinx_1_1AIE_1_1VC1902TargetModel.html#ace66836e7bf6fb7e6f0c0b3177366d58">xilinx::AIE::VC1902TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VE2302TargetModel.html#a5c2aad91ea907425cdbf6f3e97b9c82a">xilinx::AIE::VE2302TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1VE2802TargetModel.html#af33f9a57d18e6da9665e658a829b4a83">xilinx::AIE::VE2802TargetModel</a>, <a class="el" href="classxilinx_1_1AIE_1_1BaseNPU1TargetModel.html#ab541acc66fca87736cccdde20573df75">xilinx::AIE::BaseNPU1TargetModel</a>, and <a class="el" href="classxilinx_1_1AIE_1_1BaseNPU2TargetModel.html#aa3b7930e5135b00f97a8562199e91c23">xilinx::AIE::BaseNPU2TargetModel</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00057">xilinx::AIE::AIERTControl::AIERTControl()</a>, <a class="el" href="TargetModel_8cpp_source.html#l00039">aieTargetModelRows()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00111">xilinx::AIE::AIE1TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00384">xilinx::AIE::AIE2TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00167">xilinx::AIE::AIE1TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00455">xilinx::AIE::AIE2TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00097">getRowToShimChanMap()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00070">getTileToControllerIdMap()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00045">getTileToControllerIdMap6RowsOrLess()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00142">isValidTile()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00692">validate()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00057">xilinx::AIE::AIERTControl::AIERTControl()</a>, <a class="el" href="TargetModel_8cpp_source.html#l00039">aieTargetModelRows()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00154">xilinx::AIE::AIE1TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00476">xilinx::AIE::AIE2TargetModel::getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00210">xilinx::AIE::AIE1TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00547">xilinx::AIE::AIE2TargetModel::getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00097">getRowToShimChanMap()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00070">getTileToControllerIdMap()</a>, <a class="el" href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00045">getTileToControllerIdMap6RowsOrLess()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00142">isValidTile()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00784">validate()</a>.</p>
 
 </div>
 </div>
@@ -2535,7 +2699,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00692">692</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00784">784</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ad211b18c915a01ab1c3a1b731cafabea">columns()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae9b5e251a1594ae9781bd10d6625b79a">getNumDestSwitchboxConnections()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae3dbb309666278a8166c8e9f29e5f0e1">getNumMemTileRows()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#affc6f2185d3b1f39ddaaf4149f2a7780">getNumSourceSwitchboxConnections()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a4a1bdcccc73af43c9ab5f4c306819fba">isCoreTile()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a78ddfb308023713b1b668cf3c7c6988d">isMemTile()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a90a0fc9b36e2b77e4be4f99987b3336e">isShimNOCTile()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#abc2fe0c2fbafa56e55019be10fd98d85">isShimPLTile()</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a8d6f3c31d960dbc32fcc569919b536aa">rows()</a>.</p>
 
@@ -2548,7 +2712,7 @@ Public Member Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed May 14 2025 22:06:40 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed May 14 2025 22:16:35 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

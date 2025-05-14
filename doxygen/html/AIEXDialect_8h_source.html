@@ -86,36 +86,33 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span><span class="keyword">namespace </span><a class="code hl_namespace" href="namespacexilinx.html">xilinx</a> {</div>
 <div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span><span class="keyword">namespace </span>AIEX {</div>
 <div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span> </div>
-<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span>uint64_t <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#ab2c0d80420d8dc981cc788d1591f0797">getBufferDescriptorAddressRegisterAddress</a>(</div>
-<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span>    <span class="keyword">const</span> AIE::AIETargetModel &amp;tm, <span class="keywordtype">unsigned</span> bd_id, <span class="keywordtype">unsigned</span> col, <span class="keywordtype">unsigned</span> row);</div>
-<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span><span class="keywordtype">void</span> <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a99951dfbaeeaf4e3ba0817a9c03c355c">getHardwareStridesWraps</a>(<span class="keyword">const</span> AIE::AIETargetModel &amp;targetModel,</div>
-<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span>                             mlir::BaseMemRefType referencedBufType,</div>
-<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>                             llvm::SmallVector&lt;int64_t, 4&gt; inputSizes,</div>
-<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>                             llvm::SmallVector&lt;int64_t, 4&gt; inputStrides,</div>
-<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>                             llvm::SmallVector&lt;int64_t, 4&gt; &amp;sizes,</div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>                             llvm::SmallVector&lt;int64_t, 4&gt; &amp;strides);</div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>mlir::LogicalResult</div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span><a class="code hl_function" href="namespacexilinx_1_1AIEX.html#acd8bb70bd4615d3c251a2ab8176e4973">verifyStridesWraps</a>(mlir::Operation *forOp,</div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>                   mlir::BaseMemRefType referencedBufType, <span class="keywordtype">int</span> tileCol,</div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>                   <span class="keywordtype">int</span> tileRow, llvm::SmallVector&lt;int64_t, 4&gt; inputSizes,</div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>                   llvm::SmallVector&lt;int64_t, 4&gt; inputStrides,</div>
-<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>                   llvm::SmallVector&lt;int64_t, 4&gt; hardwareSizes,</div>
-<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>                   llvm::SmallVector&lt;int64_t, 4&gt; hardwareStrides,</div>
-<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>                   <span class="keywordtype">bool</span> skipTransformationChecks = <span class="keyword">false</span>);</div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span> </div>
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>} <span class="comment">// namespace AIEX</span></div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>} <span class="comment">// namespace xilinx</span></div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span> </div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span><span class="preprocessor">#endif</span></div>
+<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span><span class="keywordtype">void</span> <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a99951dfbaeeaf4e3ba0817a9c03c355c">getHardwareStridesWraps</a>(<span class="keyword">const</span> AIE::AIETargetModel &amp;targetModel,</div>
+<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span>                             mlir::BaseMemRefType referencedBufType,</div>
+<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span>                             llvm::SmallVector&lt;int64_t, 4&gt; inputSizes,</div>
+<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span>                             llvm::SmallVector&lt;int64_t, 4&gt; inputStrides,</div>
+<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>                             llvm::SmallVector&lt;int64_t, 4&gt; &amp;sizes,</div>
+<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>                             llvm::SmallVector&lt;int64_t, 4&gt; &amp;strides);</div>
+<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>mlir::LogicalResult</div>
+<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span><a class="code hl_function" href="namespacexilinx_1_1AIEX.html#acd8bb70bd4615d3c251a2ab8176e4973">verifyStridesWraps</a>(mlir::Operation *forOp,</div>
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>                   mlir::BaseMemRefType referencedBufType, <span class="keywordtype">int</span> tileCol,</div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>                   <span class="keywordtype">int</span> tileRow, llvm::SmallVector&lt;int64_t, 4&gt; inputSizes,</div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>                   llvm::SmallVector&lt;int64_t, 4&gt; inputStrides,</div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>                   llvm::SmallVector&lt;int64_t, 4&gt; hardwareSizes,</div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>                   llvm::SmallVector&lt;int64_t, 4&gt; hardwareStrides,</div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>                   <span class="keywordtype">bool</span> skipTransformationChecks = <span class="keyword">false</span>);</div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span> </div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>} <span class="comment">// namespace AIEX</span></div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>} <span class="comment">// namespace xilinx</span></div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span> </div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span><span class="preprocessor">#endif</span></div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a99951dfbaeeaf4e3ba0817a9c03c355c"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a99951dfbaeeaf4e3ba0817a9c03c355c">xilinx::AIEX::getHardwareStridesWraps</a></div><div class="ttdeci">void getHardwareStridesWraps(const AIE::AIETargetModel &amp;targetModel, mlir::BaseMemRefType referencedBufType, llvm::SmallVector&lt; int64_t, 4 &gt; inputSizes, llvm::SmallVector&lt; int64_t, 4 &gt; inputStrides, llvm::SmallVector&lt; int64_t, 4 &gt; &amp;sizes, llvm::SmallVector&lt; int64_t, 4 &gt; &amp;strides)</div><div class="ttdef"><b>Definition</b> <a href="AIEXDialect_8cpp_source.html#l00089">AIEXDialect.cpp:89</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIEX_html_ab2c0d80420d8dc981cc788d1591f0797"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#ab2c0d80420d8dc981cc788d1591f0797">xilinx::AIEX::getBufferDescriptorAddressRegisterAddress</a></div><div class="ttdeci">uint64_t getBufferDescriptorAddressRegisterAddress(const AIE::AIETargetModel &amp;tm, unsigned bd_id, unsigned col, unsigned row)</div><div class="ttdef"><b>Definition</b> <a href="AIEXDialect_8cpp_source.html#l00049">AIEXDialect.cpp:49</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIEX_html_acd8bb70bd4615d3c251a2ab8176e4973"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#acd8bb70bd4615d3c251a2ab8176e4973">xilinx::AIEX::verifyStridesWraps</a></div><div class="ttdeci">mlir::LogicalResult verifyStridesWraps(mlir::Operation *forOp, mlir::BaseMemRefType referencedBufType, int tileCol, int tileRow, llvm::SmallVector&lt; int64_t, 4 &gt; inputSizes, llvm::SmallVector&lt; int64_t, 4 &gt; inputStrides, llvm::SmallVector&lt; int64_t, 4 &gt; hardwareSizes, llvm::SmallVector&lt; int64_t, 4 &gt; hardwareStrides, bool skipTransformationChecks=false)</div><div class="ttdef"><b>Definition</b> <a href="AIEXDialect_8cpp_source.html#l00158">AIEXDialect.cpp:158</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a99951dfbaeeaf4e3ba0817a9c03c355c"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a99951dfbaeeaf4e3ba0817a9c03c355c">xilinx::AIEX::getHardwareStridesWraps</a></div><div class="ttdeci">void getHardwareStridesWraps(const AIE::AIETargetModel &amp;targetModel, mlir::BaseMemRefType referencedBufType, llvm::SmallVector&lt; int64_t, 4 &gt; inputSizes, llvm::SmallVector&lt; int64_t, 4 &gt; inputStrides, llvm::SmallVector&lt; int64_t, 4 &gt; &amp;sizes, llvm::SmallVector&lt; int64_t, 4 &gt; &amp;strides)</div><div class="ttdef"><b>Definition</b> <a href="AIEXDialect_8cpp_source.html#l00082">AIEXDialect.cpp:82</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIEX_html_acd8bb70bd4615d3c251a2ab8176e4973"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#acd8bb70bd4615d3c251a2ab8176e4973">xilinx::AIEX::verifyStridesWraps</a></div><div class="ttdeci">mlir::LogicalResult verifyStridesWraps(mlir::Operation *forOp, mlir::BaseMemRefType referencedBufType, int tileCol, int tileRow, llvm::SmallVector&lt; int64_t, 4 &gt; inputSizes, llvm::SmallVector&lt; int64_t, 4 &gt; inputStrides, llvm::SmallVector&lt; int64_t, 4 &gt; hardwareSizes, llvm::SmallVector&lt; int64_t, 4 &gt; hardwareStrides, bool skipTransformationChecks=false)</div><div class="ttdef"><b>Definition</b> <a href="AIEXDialect_8cpp_source.html#l00151">AIEXDialect.cpp:151</a></div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed May 14 2025 22:06:39 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed May 14 2025 22:16:34 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
