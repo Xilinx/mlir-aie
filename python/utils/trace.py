@@ -276,7 +276,6 @@ def pack4bytes(b3, b2, b1, b0):
     return w
 
 
-
 # This function configures the a tile's memory trace unit given a set of configurations as described below:
 #
 # function arguments:
@@ -317,10 +316,10 @@ def configure_coremem_tracing_aie2(
             f"At most 8 events can be traced at once, have {len(events)}."
         )
     events = (events + [MemEvent.NONE] * 8)[:8]
-    
+
     # Reorder events so they match the event order for display
     ordered_events = [events[p] for p in [3, 2, 1, 0, 7, 6, 5, 4]]
-    
+
     # Assure all selected events are valid
     ordered_events = [
         e if isinstance(e, GenericEvent) else GenericEvent(e) for e in ordered_events
@@ -337,7 +336,7 @@ def configure_coremem_tracing_aie2(
                 "For example: "
                 f"configure_simple_tracing_aie2( ..., events=[PortEvent(CoreEvent.{event.code.name}, 1, master=True)])"
             )
-            
+
     # 140D0: Trace Control 0
     #          0xAABB---C
     #            AA        <- Event to stop trace capture
@@ -356,7 +355,7 @@ def configure_coremem_tracing_aie2(
         row=int(tile.row),
         address=0x140D4,
         value=((packet_type & 0x7) << 12) | (packet_id & 0x1F) if enable_packet else 0,
-    )    
+    )
     # 0x140E0: Trace Event Group 1  (Which events to trace)
     #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
     npu_write32(
@@ -373,7 +372,7 @@ def configure_coremem_tracing_aie2(
         address=0x140E4,
         value=pack4bytes(*(e.code.value for e in ordered_events[4:8])),
     )
-    
+
     # Event specific register writes
     all_reg_writes = {}
     for e in ordered_events:
@@ -387,8 +386,8 @@ def configure_coremem_tracing_aie2(
         npu_write32(
             column=int(tile.col), row=int(tile.row), address=addr, value=value
         )  # For backwards compatibility, allow integers for start/stop events
-        
-    
+
+
 # This function configures the a tile's trace unit given a set of configurations as described below:
 #
 # function arguments:
@@ -934,7 +933,6 @@ def configure_coremem_packet_tracing_aie2(
     )
 
 
-
 # Wrapper to configure the core tile and shim tile for packet tracing. This does
 # the following:
 # 1. Configure core tile based on start/ stop, events, and flow id. The flow id
@@ -1118,10 +1116,10 @@ def configure_shimtile_packet_tracing_aie2(
 # * `tiles to trace` - array of tiles to trace
 # * `shim tile` - Single shim tile to configure for writing trace packets to DDR
 def configure_packet_tracing_flow(tiles_to_trace, shim):
-    
+
     exist_traces = []
     for i in range(len(tiles_to_trace)):
-        
+
         if tiles_to_trace[i] not in exist_traces:
             packetflow(
                 i + 1,
@@ -1133,7 +1131,7 @@ def configure_packet_tracing_flow(tiles_to_trace, shim):
                 1,
                 keep_pkt_header=True,
             )
-            
+
             exist_traces.append(tiles_to_trace[i])
         else:
             # Ct's memory trace?
@@ -1165,7 +1163,9 @@ def configure_shim_trace_start_aie2(
     brdcst_num=15,
     user_event=ShimTileEvent.USER_EVENT_1,  # 0x7F, 127: user even t#1
 ):
-    configure_timer_ctrl_coretile_aie2(shim, user_event) #TODO: should have call configure_timer_ctrl_shimtile_aie2() instead?
+    configure_timer_ctrl_coretile_aie2(
+        shim, user_event
+    )  # TODO: should have call configure_timer_ctrl_shimtile_aie2() instead?
     configure_broadcast_core_aie2(shim, brdcst_num, user_event)
     configure_event_gen_core_aie2(shim, user_event)
 
@@ -1255,7 +1255,7 @@ def configure_packet_tracing_aie2(
 ):
 
     if coretile_events == None:
-        coretile_events=[
+        coretile_events = [
             CoreEvent.INSTR_EVENT_0,
             CoreEvent.INSTR_EVENT_1,
             CoreEvent.INSTR_VECTOR,
@@ -1266,9 +1266,11 @@ def configure_packet_tracing_aie2(
             CoreEvent.LOCK_STALL,
         ]
     if memtile_events == None:
-        memtile_events=[
+        memtile_events = [
             MemTilePortEvent(MemTileEvent.PORT_RUNNING_0, 0, True),  # master(0)
-            MemTilePortEvent(MemTileEvent.PORT_RUNNING_1, 14, False),  # slave(14/ north1)
+            MemTilePortEvent(
+                MemTileEvent.PORT_RUNNING_1, 14, False
+            ),  # slave(14/ north1)
             MemTilePortEvent(MemTileEvent.PORT_RUNNING_2, 0, False),  # slave(0)
             MemTilePortEvent(MemTileEvent.PORT_RUNNING_3, 1, False),  # slave(1)
             MemTilePortEvent(MemTileEvent.PORT_RUNNING_4, 2, False),  # slave(2)
@@ -1277,7 +1279,7 @@ def configure_packet_tracing_aie2(
             MemTilePortEvent(MemTileEvent.PORT_RUNNING_7, 5, False),  # slave(5)
         ]
     if shimtile_events == None:
-        shimtile_events=[
+        shimtile_events = [
             ShimTileEvent.DMA_S2MM_0_START_TASK,
             ShimTileEvent.DMA_S2MM_1_START_TASK,
             ShimTileEvent.DMA_MM2S_0_START_TASK,
@@ -1288,7 +1290,7 @@ def configure_packet_tracing_aie2(
             ShimTileEvent.DMA_S2MM_1_STREAM_STARVATION,
         ]
     if coremem_events == None:
-        coremem_events=[
+        coremem_events = [
             MemEvent.DMA_S2MM_0_START_TASK,
             MemEvent.DMA_MM2S_0_START_TASK,
             MemEvent.CONFLICT_DM_BANK_0,
@@ -1299,9 +1301,8 @@ def configure_packet_tracing_aie2(
             MemEvent.EDGE_DETECTION_EVENT_1,
         ]
 
-
-    start_core_mem_broadcast_event= MemEvent(107+start_broadcast_num)
-    stop_core_mem_broadcast_event = MemEvent(107+ stop_broadcast_num)
+    start_core_mem_broadcast_event = MemEvent(107 + start_broadcast_num)
+    stop_core_mem_broadcast_event = MemEvent(107 + stop_broadcast_num)
     start_core_broadcast_event = CoreEvent(107 + start_broadcast_num)
     stop_core_broadcast_event = CoreEvent(107 + stop_broadcast_num)
     start_memtile_broadcast_event = MemTileEvent(142 + start_broadcast_num)
@@ -1387,7 +1388,7 @@ def configure_packet_tracing_aie2(
                     start=start_core_mem_broadcast_event,
                     stop=stop_core_mem_broadcast_event,
                     events=coremem_events,
-                    shim_burst_length=shim_burst_length
+                    shim_burst_length=shim_burst_length,
                 )
         else:
             raise ValueError(

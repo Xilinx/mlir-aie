@@ -313,7 +313,7 @@ class Runtime(Resolvable):
                         self._trace_offset if self._trace_offset is not None else 0
                     ),
                     ddr_id=self._ddr_id if self._ddr_id is not None else 4,
-                    coretile_events=self._coretile_events ,
+                    coretile_events=self._coretile_events,
                     memtile_events=self._memtile_events,
                     shimtile_events=self._shimtile_events,
                     coremem_events=self._coremem_events,
