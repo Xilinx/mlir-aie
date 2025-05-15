@@ -56,7 +56,7 @@ template <>
 void scale_vectorized<int32_t>(int32_t *__restrict a, int32_t *__restrict c,
                                int32_t factor, const int32_t N) {
   event0();
-  constexpr int vec_factor = 32;
+  constexpr int vec_factor = 16;
   int32_t *__restrict pA1 = a;
   int32_t *__restrict pC1 = c;
   const int F = N / vec_factor;
@@ -75,26 +75,30 @@ void scale_vectorized<int32_t>(int32_t *__restrict a, int32_t *__restrict c,
 
 extern "C" {
 
-// 16-bit datatype
-void vector_scalar_mul_int32_scalar(int32_t *a_in, int32_t *c_out,
-                                    int32_t *factor, int32_t N) {
-  scale_scalar<int32_t>(a_in, c_out, *factor, N);
-}
+#if BIT_WIDTH == 16
 
-void vector_scalar_mul_int32_vector(int32_t *a_in, int32_t *c_out,
-                                    int32_t *factor, int32_t N) {
-  scale_vectorized<int32_t>(a_in, c_out, *factor, N);
-}
-
-// 32-bit datatype
-void vector_scalar_mul_int16_scalar(int16_t *a_in, int16_t *c_out,
+void vector_scalar_mul_scalar(int16_t *a_in, int16_t *c_out,
                                     int32_t *factor, int32_t N) {
   scale_scalar<int16_t>(a_in, c_out, *factor, N);
 }
 
-void vector_scalar_mul_int16_vector(int16_t *a_in, int16_t *c_out,
+void vector_scalar_mul_vector(int16_t *a_in, int16_t *c_out,
                                     int32_t *factor, int32_t N) {
   scale_vectorized<int16_t>(a_in, c_out, *factor, N);
 }
+
+#else // Defaults to 32-bit
+
+void vector_scalar_mul_scalar(int32_t *a_in, int32_t *c_out,
+                                    int32_t *factor, int32_t N) {
+  scale_scalar<int32_t>(a_in, c_out, *factor, N);
+}
+
+void vector_scalar_mul_vector(int32_t *a_in, int32_t *c_out,
+                                    int32_t *factor, int32_t N) {
+  scale_vectorized<int32_t>(a_in, c_out, *factor, N);
+}
+
+#endif
 
 } // extern "C"
