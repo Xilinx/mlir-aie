@@ -6,11 +6,16 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
+import os
 import aie.compiler.aiecc.main as aiecc
 
 
 def compile_mlir_module_to_pdi(
-    mlir_module: str, insts_path: str, pdi_path: str, options: list[str]
+    mlir_module: str,
+    insts_path: str,
+    pdi_path: str,
+    options: list[str],
+    cwd=None,
 ):
     """
     Compile an MLIR module to instruction and PDI files using the aiecc module.
@@ -20,8 +25,8 @@ def compile_mlir_module_to_pdi(
         insts_path (str): Path to the instruction binary file.
         pdi_path (str): Path to the PDI file.
         options (list[str]): List of additional options.
+        cwd: Overrides the current working directory.
     """
-
     args = [
         "--aie-generate-pdi",
         "--aie-generate-npu-insts",
@@ -29,6 +34,12 @@ def compile_mlir_module_to_pdi(
         f"--npu-insts-name={insts_path}",
     ] + options
     try:
+        if cwd is not None:
+            previous_cwd = os.getcwd()
+            os.chdir(cwd)
         aiecc.run(mlir_module, args)
     except Exception as e:
         raise RuntimeError("[aiecc] Compilation failed") from e
+    finally:
+        if cwd is not None:
+            os.chdir(previous_cwd)
