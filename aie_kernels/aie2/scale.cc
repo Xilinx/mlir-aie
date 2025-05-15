@@ -77,25 +77,25 @@ extern "C" {
 
 #if BIT_WIDTH == 16
 
-void vector_scalar_mul_scalar(int16_t *a_in, int16_t *c_out,
-                                    int32_t *factor, int32_t N) {
+void vector_scalar_mul_scalar(int16_t *a_in, int16_t *c_out, int32_t *factor,
+                              int32_t N) {
   scale_scalar<int16_t>(a_in, c_out, *factor, N);
 }
 
-void vector_scalar_mul_vector(int16_t *a_in, int16_t *c_out,
-                                    int32_t *factor, int32_t N) {
+void vector_scalar_mul_vector(int16_t *a_in, int16_t *c_out, int32_t *factor,
+                              int32_t N) {
   scale_vectorized<int16_t>(a_in, c_out, *factor, N);
 }
 
 #else // Defaults to 32-bit
 
-void vector_scalar_mul_scalar(int32_t *a_in, int32_t *c_out,
-                                    int32_t *factor, int32_t N) {
+void vector_scalar_mul_scalar(int32_t *a_in, int32_t *c_out, int32_t *factor,
+                              int32_t N) {
   scale_scalar<int32_t>(a_in, c_out, *factor, N);
 }
 
-void vector_scalar_mul_vector(int32_t *a_in, int32_t *c_out,
-                                    int32_t *factor, int32_t N) {
+void vector_scalar_mul_vector(int32_t *a_in, int32_t *c_out, int32_t *factor,
+                              int32_t N) {
   scale_vectorized<int32_t>(a_in, c_out, *factor, N);
 }
 
