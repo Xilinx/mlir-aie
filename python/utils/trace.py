@@ -1041,7 +1041,6 @@ def configure_packet_tracing_aie2(
     shim_burst_length=64,
 ):
 
-
     if coretile_events == None:
         coretile_events = [
             CoreEvent.INSTR_EVENT_0,
@@ -1088,7 +1087,7 @@ def configure_packet_tracing_aie2(
             MemEvent.EDGE_DETECTION_EVENT_0,
             MemEvent.EDGE_DETECTION_EVENT_1,
         ]
-            
+
     start_core_broadcast_event = CoreEvent(107 + start_broadcast_num)
     stop_core_broadcast_event = CoreEvent(107 + stop_broadcast_num)
     start_memtile_broadcast_event = MemTileEvent(142 + start_broadcast_num)
