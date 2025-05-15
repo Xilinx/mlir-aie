@@ -6,26 +6,10 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
-import os
 import subprocess
 import sys
 import aie.compiler.aiecc.main as aiecc
-
-# find Peano compiler
-peano_install_dir = os.getenv("PEANO_INSTALL_DIR")
-if not peano_install_dir or not os.path.isdir(peano_install_dir):
-    raise RuntimeError("PEANO_INSTALL_DIR is not defined or does not exist")
-peano_cxx = os.path.join(peano_install_dir, "bin/clang++")
-if not os.path.isfile(peano_cxx):
-    raise RuntimeError(f"Peano compiler not found in {peano_install_dir}")
-
-# find MLIR-AIE C++ headers
-mlir_aie_install_dir = os.getenv("MLIR_AIE_INSTALL_DIR")
-if not mlir_aie_install_dir or not os.path.isdir(mlir_aie_install_dir):
-    raise RuntimeError("MLIR_AIE_INSTALL_DIR is not defined or does not exist")
-mlir_aie_include_dir = os.path.join(mlir_aie_install_dir, "include")
-if not os.path.isdir(mlir_aie_include_dir):
-    raise RuntimeError(f"MLIR-AIE headers not found in {mlir_aie_include_dir}")
+import aie.utils.config as config
 
 
 def compile_cxx_core_function(
@@ -48,12 +32,12 @@ def compile_cxx_core_function(
         cwd (str): Overrides the current working directory.
     """
     cmd = [
-        peano_cxx,
+        config.peano_cxx_path(),
         source_path,
         "-c",
         "-o",
         f"{output_path}",
-        f"-I{mlir_aie_include_dir}",
+        f"-I{config.cxx_header_path()}",
         "-std=c++20",
         "-Wno-parentheses",
         "-Wno-attributes",
@@ -98,7 +82,7 @@ def compile_mlir_module_to_pdi(
         "--no-compile-host",
         "--no-xchesscc",
         "--no-xbridge",
-        f"--peano={peano_install_dir}",
+        f"--peano={config.peano_install_dir()}",
         f"--pdi-name={pdi_path}",
         f"--npu-insts-name={insts_path}",
     ]
