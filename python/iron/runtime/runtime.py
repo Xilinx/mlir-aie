@@ -237,7 +237,6 @@ class Runtime(Resolvable):
         coretile_events: [] = None,
         memtile_events: [] = None,
         shimtile_events: [] = None,
-        coremem_events: [] = None,
     ):
         """Enable trace."""
         self._trace_size = trace_size
@@ -247,7 +246,6 @@ class Runtime(Resolvable):
         self._coretile_events = coretile_events
         self._memtile_events = memtile_events
         self._shimtile_events = shimtile_events
-        self._coremem_events = coremem_events
 
     def set_barrier(self, barrier: WorkerRuntimeBarrier, value: int):
         """Set the value of a worker barrier.
@@ -316,7 +314,6 @@ class Runtime(Resolvable):
                     coretile_events=self._coretile_events,
                     memtile_events=self._memtile_events,
                     shimtile_events=self._shimtile_events,
-                    coremem_events=self._coremem_events,
                 )
 
             for rt_data, rt_data_val in zip(self._rt_data, args):

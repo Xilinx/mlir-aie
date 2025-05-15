@@ -1076,17 +1076,6 @@ def configure_packet_tracing_aie2(
             ShimTileEvent.DMA_S2MM_0_STREAM_STARVATION,
             ShimTileEvent.DMA_S2MM_1_STREAM_STARVATION,
         ]
-    if coremem_events == None:
-        coremem_events = [
-            MemEvent.DMA_S2MM_0_START_TASK,
-            MemEvent.DMA_MM2S_0_START_TASK,
-            MemEvent.CONFLICT_DM_BANK_0,
-            MemEvent.CONFLICT_DM_BANK_1,
-            MemEvent.CONFLICT_DM_BANK_2,
-            MemEvent.CONFLICT_DM_BANK_3,
-            MemEvent.EDGE_DETECTION_EVENT_0,
-            MemEvent.EDGE_DETECTION_EVENT_1,
-        ]
 
     start_core_broadcast_event = CoreEvent(107 + start_broadcast_num)
     stop_core_broadcast_event = CoreEvent(107 + stop_broadcast_num)
