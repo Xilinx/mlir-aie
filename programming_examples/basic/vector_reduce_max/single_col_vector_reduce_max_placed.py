@@ -14,13 +14,19 @@ from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.helpers.util import np_ndarray_type_get_shape
+from ml_dtypes import bfloat16
 
 import aie.utils.trace as trace_utils
 
+dtype_map = {
+    "bf16": bfloat16,
+    "i32": np.int32,
+}
 
-def my_reduce_max(dev, in1_size, out_size, trace_size, n_cores):
-    in_dtype = np.int32
-    out_dtype = np.int32
+
+def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size, n_cores):
+    in_dtype = dtype_map[dtype_str]
+    out_dtype = dtype_map[dtype_str]
 
     N = in1_size // in_dtype(0).nbytes
     M = N // n_cores
@@ -38,9 +44,11 @@ def my_reduce_max(dev, in1_size, out_size, trace_size, n_cores):
 
         # AIE Core Function declarations
         reduce_max_vector = external_func(
-            "reduce_max_vector", inputs=[inA_ty, out_ty, np.int32]
+            "reduce_max_vector_bfloat16", inputs=[inA_ty, out_ty, out_dtype]
         )
-        compute_max = external_func("compute_max", inputs=[out_ty, out_ty, out_ty])
+        compute_max = external_func(
+            "compute_max_bfloat16", inputs=[out_ty, out_ty, out_ty]
+        )
 
         # Tile declarations
         ShimTile = tile(0, 0)
@@ -101,7 +109,7 @@ def my_reduce_max(dev, in1_size, out_size, trace_size, n_cores):
             else:
                 nextC_buffer = buffer(
                     tile=cores[i],
-                    datatype=np.ndarray[(1,), np.dtype[out_dtype]],
+                    datatype=np.ndarray[(O,), np.dtype[out_dtype]],
                     name=f"elem_out_{i}",
                 )
 
@@ -149,6 +157,7 @@ p.add_argument(
     "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
 )
 p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
+p.add_argument("-dt", "--dtype", required=True, dest="dtype", help="Datatype")
 p.add_argument(
     "-t",
     "--trace_size",
@@ -174,10 +183,11 @@ if in1_size % 64 != 0 or in1_size < 512:
     )
     raise ValueError
 out_size = int(opts.out_size)
+dtype = str(opts.dtype)
 trace_size = int(opts.trace_size)
 
 with mlir_mod_ctx() as ctx:
-    my_reduce_max(dev, in1_size, out_size, trace_size, n_cores=4)
+    my_reduce_max(dev, in1_size, out_size, dtype, trace_size, n_cores=4)
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)

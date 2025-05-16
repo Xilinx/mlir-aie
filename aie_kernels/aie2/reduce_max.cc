@@ -16,57 +16,67 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-void _reduce_max_vector(int32_t *restrict in, int32_t *restrict out,
+template <typename T, typename V, int VECTOR_SIZE>
+void _reduce_max_vector(T *restrict in, T *restrict out,
                         const int32_t input_size) {
-
   event0();
-  v16int32 tiny = broadcast_to_v16int32((int32_t)INT32_MIN);
-  const int32_t vector_size = 16;
-  v16int32 after_vector;
-  v16int32 running_max = tiny;
+  V tiny;
+  int32_t vector_size = 16;
+  if constexpr (std::is_same<V, aie::vector<int32_t, 16>>::value) {
+    tiny = broadcast_to_v16int32((int32_t)INT32_MIN);
+    vector_size = 16;
+  } else if constexpr (std::is_same<V, aie::vector<bfloat16, 32>>::value) {
+    tiny = broadcast_to_v32bfloat16(
+        (bfloat16)std::numeric_limits<bfloat16>::lowest());
+    vector_size = 32;
+  } else if constexpr (std::is_same<V, aie::vector<int8_t, 64>>::value) {
+    tiny = broadcast_to_v64int8((int8_t)INT8_MIN);
+    vector_size = 64;
+  }
+  V after_vector;
+  V running_max = tiny;
+
   AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_MIN_ITERATION_COUNT(8)
-  for (int32_t i = 0; i < input_size; i += vector_size) {
-    v16int32 next = *(v16int32 *)(in + i);
-    v16int32 test = max(running_max, next);
+  for (int32_t i = 0; i < input_size; i += VECTOR_SIZE) {
+    V next = *(V *)(in + i);
+    V test = max(running_max, next);
     running_max = test;
   }
+
   after_vector = running_max;
-  v16int32 first = shift_bytes(after_vector, after_vector, 32U);
-  v16int32 second = max(after_vector, first);
-  v16int32 second_shift = shift_bytes(second, second, 16U);
-  v16int32 third = max(second, second_shift);
-  v16int32 third_shift = shift_bytes(third, third, 8U);
-  v16int32 fourth = max(third, third_shift);
-  v16int32 fourth_shift = shift_bytes(fourth, fourth, 4U);
-  v16int32 fifth = max(fourth, fourth_shift);
-  int32_t last = extract_elem(fifth, 0U);
-  *(int32_t *)out = last;
+  V first = shift_bytes(after_vector, after_vector, 32U);
+  V second = max(after_vector, first);
+  V second_shift = shift_bytes(second, second, 16U);
+  V third = max(second, second_shift);
+  V third_shift = shift_bytes(third, third, 8U);
+  V fourth = max(third, third_shift);
+  V fourth_shift = shift_bytes(fourth, fourth, 4U);
+  V fifth = max(fourth, fourth_shift);
+  auto last = extract_elem(fifth, 0U);
+  *(T *)out = last;
   event1();
   return;
 }
-
-void _reduce_max_scalar(int32_t *restrict in, int32_t *restrict out,
+template <typename T>
+void _reduce_max_scalar(T *restrict in, T *restrict out,
                         const int32_t input_size) {
   event0();
-  int32_t running_max = (int32_t)INT32_MIN;
+  T running_max = std::numeric_limits<T>::lowest();
   for (int32_t i = 0; i < input_size; i++) {
     if (in[i] > running_max)
       running_max = in[i];
   }
-  *(int32_t *)out = running_max;
+  *out = running_max;
   event1();
 
   return;
 }
 
-void _compute_max(int32_t *restrict in1, int32_t *restrict in2,
-                  int32_t *restrict out) {
+template <typename T>
+void _compute_max(T *restrict in1, T *restrict in2, T *restrict out) {
   event0();
-  if (*in1 > *in2)
-    *out = *in1;
-  else
-    *out = *in2;
+  *out = (*in1 > *in2) ? *in1 : *in2;
   event1();
 
   return;
@@ -74,16 +84,32 @@ void _compute_max(int32_t *restrict in1, int32_t *restrict in2,
 
 extern "C" {
 
+void reduce_max_vector_bfloat16(bfloat16 *a_in, bfloat16 *c_out,
+                                int32_t input_size) {
+  _reduce_max_vector<bfloat16, aie::vector<bfloat16, 32>, 32>(a_in, c_out,
+                                                              input_size);
+}
+
+void reduce_max_scalar_bfloat16(bfloat16 *a_in, bfloat16 *c_out,
+                                int32_t input_size) {
+  _reduce_max_scalar<bfloat16>(a_in, c_out, input_size);
+}
+
+void compute_max_bfloat16(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
+  _compute_max<bfloat16>(a_in, b_in, c_out);
+}
+
 void reduce_max_vector(int32_t *a_in, int32_t *c_out, int32_t input_size) {
-  _reduce_max_vector(a_in, c_out, input_size);
+  _reduce_max_vector<int32_t, aie::vector<int32_t, 16>, 16>(a_in, c_out,
+                                                            input_size);
 }
 
 void reduce_max_scalar(int32_t *a_in, int32_t *c_out, int32_t input_size) {
-  _reduce_max_scalar(a_in, c_out, input_size);
+  _reduce_max_scalar<int32_t>(a_in, c_out, input_size);
 }
 
 void compute_max(int32_t *a_in, int32_t *b_in, int32_t *c_out) {
-  _compute_max(a_in, b_in, c_out);
+  _compute_max<int32_t>(a_in, b_in, c_out);
 }
 
 } // extern "C"
