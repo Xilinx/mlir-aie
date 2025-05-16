@@ -182,9 +182,9 @@ public:
   matchAndRewrite(NpuPushQueueOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    auto column = rewriter.getI32IntegerAttr(op.getColumn());
-    auto row = rewriter.getI32IntegerAttr(0);
-    bool isMM2S = op.getDirection() == AIE::DMAChannelDir::MM2S;
+    const auto &tm = AIE::getTargetModel(op);
+    uint32_t ctrl_offset = tm.getDmaControlAddress(
+        op.getColumn(), op.getRow(), op.getChannel(), op.getDirection());
 
     // control packet for issuing token
     if (op.getIssueToken()) {
@@ -193,22 +193,17 @@ public:
       AIE::TileOp shimTile = AIE::TileOp::getOrCreate(
           rewriter, op->getParentOfType<AIE::DeviceOp>(), op.getColumn(), 0);
       if (shimTile->hasAttr("controller_id")) {
-        uint32_t ctrl_offset = isMM2S ? 0x1D210 : 0x1D200;
-        if (op.getChannel() == 1)
-          ctrl_offset += 0x8;
         AIE::PacketInfoAttr controller_id_attr =
             shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
         uint32_t data = controller_id_attr.getPktId() << 8;
         uint32_t mask = 0x00000F00;
         rewriter.create<NpuMaskWrite32Op>(op->getLoc(), ctrl_offset, data, mask,
-                                          nullptr, column, row);
+                                          nullptr, nullptr, nullptr);
       }
     }
 
     // the offset of the task queue register in the tile
-    uint32_t queue_offset = isMM2S ? 0x1D214 : 0x1D204;
-    if (op.getChannel() == 1)
-      queue_offset += 0x8;
+    uint32_t queue_offset = ctrl_offset + 0x4;
 
     // the value to write
     uint32_t bd_id = op.getBdId();
@@ -220,7 +215,7 @@ public:
       cmd |= 0x80000000;
 
     rewriter.create<NpuWrite32Op>(op->getLoc(), queue_offset, cmd, nullptr,
-                                  column, row);
+                                  nullptr, nullptr);
     rewriter.eraseOp(op);
     return success();
   }
@@ -452,6 +447,7 @@ public:
          op.getD2ZeroBefore() != 0 || op.getD2ZeroAfter() != 0))
       op->emitOpError("MemTile supports zero padding only on MM2S direction");
 
+    // write the buffer descriptor to the array
     rewriter.create<NpuWriteBdOp>(
         op->getLoc(), column, bd_id, buffer_length, buffer_offset,
         enable_packet, out_of_order_id, packet_id, packet_type, d0_size,
@@ -461,11 +457,13 @@ public:
         d0_zero_before, d1_zero_before, d2_zero_before, d0_zero_after,
         d1_zero_after, d2_zero_after, burst_length);
 
-    uint64_t addr = getBufferDescriptorAddressRegisterAddress(
-        targetModel, op.getId(), col, 0);
-
+    // compute the location of the address to patch in the bd and emit patch
+    // instruction to perform the patch.
+    uint64_t addr = targetModel.getDmaBdAddress(col, 0, op.getId()) +
+                    targetModel.getDmaBdAddressOffset(col, 0);
     rewriter.create<NpuAddressPatchOp>(op->getLoc(), addr, arg_idx, offset);
 
+    // push the patched bd onto the dma task queue
     rewriter.create<NpuPushQueueOp>(
         op->getLoc(), column, row, infoOp->getChannelDirAttr(),
         infoOp->getChannelIndexAttr(), issue_token, repeat_count, bd_id);
@@ -533,13 +531,20 @@ public:
     AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
     const AIE::AIETargetModel &tm = dev.getTargetModel();
 
-    std::vector<uint32_t> words(8, 0);
-    uint32_t bd_id = op.getBdId();
-    uint32_t bd_addr;
-    if (tm.isShimNOCTile(op.getColumn(), op.getRow())) {
-      bd_addr = (op.getColumn() << tm.getColumnShift()) |
-                (op.getRow() << tm.getRowShift()) | (0x1D000 + bd_id * 0x20);
+    int num_words = 0;
+    if (isa<AIE::AIE2TargetModel>(tm))
+      num_words = 8;
+    else
+      llvm_unreachable(
+          "Unsupported AIETargetModel in WriteBdToBlockWritePattern");
 
+    std::vector<uint32_t> words(num_words, 0);
+
+    uint32_t bd_id = op.getBdId();
+    int col = op.getColumn();
+    int row = op.getRow();
+    uint64_t bd_addr = tm.getDmaBdAddress(col, row, bd_id);
+    if (tm.isShimNOCTile(col, row)) {
       // DMA_BDX_0
       words[0] = op.getBufferLength();
 
@@ -578,20 +583,18 @@ public:
       words[7] |= (op.getNextBd() & 0xf) << 27;
       words[7] |= (op.getUseNextBd() & 0x1) << 26;
       words[7] |= (op.getValidBd() & 0x1) << 25;
-      words[7] |= (op.getLockRelVal() & 0xef) << 18;
+      words[7] |= (op.getLockRelVal() & 0x7f) << 18;
       words[7] |= (op.getLockRelId() & 0xf) << 13;
       words[7] |= (op.getLockAcqEnable() & 0x1) << 12;
-      words[7] |= (op.getLockAcqVal() & 0xef) << 5;
+      words[7] |= (op.getLockAcqVal() & 0x7f) << 5;
       words[7] |= op.getLockAcqId() & 0xf;
-
       if (op.getD0ZeroBefore() || op.getD1ZeroBefore() ||
           op.getD2ZeroBefore() || op.getD0ZeroAfter() || op.getD1ZeroAfter() ||
           op.getD2ZeroAfter()) {
         op->emitError("Zero padding is only available on MemTile");
       }
     } else if (tm.isMemTile(op.getColumn(), op.getRow())) {
-      bd_addr = (op.getColumn() << tm.getColumnShift()) |
-                (op.getRow() << tm.getRowShift()) | (0xA0000 + bd_id * 0x20);
+
       // DMA_BDX_0
       words[0] |= (op.getEnablePacket() & 0x1) << 31;
       words[0] |= (op.getPacketType() & 0x7) << 28;
@@ -645,8 +648,9 @@ public:
       return failure();
     }
 
-    MemRefType memrefType = MemRefType::get({8}, rewriter.getI32Type());
-    TensorType tensorType = RankedTensorType::get({8}, rewriter.getI32Type());
+    MemRefType memrefType = MemRefType::get({num_words}, rewriter.getI32Type());
+    TensorType tensorType =
+        RankedTensorType::get({num_words}, rewriter.getI32Type());
     memref::GlobalOp global = nullptr;
     auto initVal = DenseElementsAttr::get<uint32_t>(tensorType, words);
     auto otherGlobals = dev.getOps<memref::GlobalOp>();
