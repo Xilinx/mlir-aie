@@ -6,12 +6,13 @@ var searchData=
   ['cols_3',['cols',['../classiron_1_1device_1_1device_1_1NPUBase.html#a9715bd072b23ee616b1bc6846beed41c',1,'iron.device.device.NPUBase.cols'],['../classiron_1_1device_1_1device_1_1Device.html#a901d88d67355cd2e6dcf452da3a1e538',1,'iron.device.device.Device.cols()']]],
   ['compare_5faccess_5forders_4',['compare_access_orders',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#a451fffb21a434a3ce050ac8e47798f59',1,'taplib.tap.TensorAccessPattern.compare_access_orders()'],['../classtaplib_1_1tas_1_1TensorAccessSequence.html#a7d749f8e95c0a422298da4e5b2321095',1,'taplib.tas.TensorAccessSequence.compare_access_orders()']]],
   ['compile_2epy_5',['compile.py',['../compile_8py.html',1,'']]],
-  ['compile_5fmlir_5fmodule_5fto_5fpdi_6',['compile_mlir_module_to_pdi',['../namespaceiron_1_1compile_1_1compile.html#ab88191dab24960c133dc0782d90b422d',1,'iron::compile::compile']]],
-  ['config_7',['config',['../namespaceiron_1_1config.html#a36e5aadbd4b10849483dc5d7e0897ea0',1,'iron::config']]],
-  ['config_2epy_8',['config.py',['../config_8py.html',1,'']]],
-  ['cons_9',['cons',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a9074a9e04b32080262f3755b0f24b36a',1,'iron::dataflow::objectfifo::ObjectFifo']]],
-  ['controlflow_2epy_10',['controlflow.py',['../controlflow_8py.html',1,'']]],
-  ['core_5ffn_11',['core_fn',['../classiron_1_1worker_1_1Worker.html#a15ecd070e55b67be77d2bdce2cce9476',1,'iron::worker::Worker']]],
-  ['create_5fclass_12',['create_class',['../namespaceiron_1_1device_1_1device.html#a75a6d3df1229a191db361283e9b81b6d',1,'iron::device::device']]],
-  ['current_5fcore_5fplacement_13',['current_core_placement',['../classiron_1_1worker_1_1Worker.html#a24408a7c343cbbbd8d599f6a0ea94492',1,'iron::worker::Worker']]]
+  ['compile_5fcxx_5fcore_5ffunction_6',['compile_cxx_core_function',['../namespaceiron_1_1compile_1_1compile.html#aa606a78407cbf3e9cb856a5b27c8729d',1,'iron::compile::compile']]],
+  ['compile_5fmlir_5fmodule_5fto_5fpdi_7',['compile_mlir_module_to_pdi',['../namespaceiron_1_1compile_1_1compile.html#a1c56f91d9aa02226685c142fc9e4f70a',1,'iron::compile::compile']]],
+  ['config_8',['config',['../namespaceiron_1_1config.html#a36e5aadbd4b10849483dc5d7e0897ea0',1,'iron::config']]],
+  ['config_2epy_9',['config.py',['../config_8py.html',1,'']]],
+  ['cons_10',['cons',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a9074a9e04b32080262f3755b0f24b36a',1,'iron::dataflow::objectfifo::ObjectFifo']]],
+  ['controlflow_2epy_11',['controlflow.py',['../controlflow_8py.html',1,'']]],
+  ['core_5ffn_12',['core_fn',['../classiron_1_1worker_1_1Worker.html#a15ecd070e55b67be77d2bdce2cce9476',1,'iron::worker::Worker']]],
+  ['create_5fclass_13',['create_class',['../namespaceiron_1_1device_1_1device.html#a75a6d3df1229a191db361283e9b81b6d',1,'iron::device::device']]],
+  ['current_5fcore_5fplacement_14',['current_core_placement',['../classiron_1_1worker_1_1Worker.html#a24408a7c343cbbbd8d599f6a0ea94492',1,'iron::worker::Worker']]]
 ];
