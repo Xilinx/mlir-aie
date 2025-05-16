@@ -156,7 +156,7 @@ int_bit_width = int(opts.int_bit_width)
 trace_size = int(opts.trace_size)
 
 with mlir_mod_ctx() as ctx:
-    my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size)
+    my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace_size)
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)
