@@ -8,9 +8,9 @@
 
 // RUN: aie-opt --aie-dma-to-npu %s | FileCheck %s
 // CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 118816 : ui32} : memref<8xi32>
-// CHECK: aiex.npu.write32 {address = 119300 : ui32, column = 0 : i32, row = 0 : i32, value = 2147483649 : ui32}
+// CHECK: aiex.npu.write32 {address = 119300 : ui32, value = 2147483649 : ui32}
 // CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 118784 : ui32} : memref<8xi32>
-// CHECK: aiex.npu.write32 {address = 119316 : ui32, column = 0 : i32, row = 0 : i32, value = 0 : ui32}
+// CHECK: aiex.npu.write32 {address = 119316 : ui32, value = 0 : ui32}
 
 module {
   aie.device(npu1_4col) {
