@@ -40,7 +40,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
 
     # AIE Core Function declarations
     reduce_add_vector = Kernel(
-        "reduce_max_vector", "reduce_max.cc.o", [in_ty, out_ty, out_dtype]
+        "reduce_max_vector", "reduce_max.cc.o", [in_ty, out_ty, np.int32]
     )
 
     # Define a task to run
