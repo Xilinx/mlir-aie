@@ -20,6 +20,8 @@ in1_size = 4096 # in bytes
 out_size = 4 # in bytes, should always be equal to in1_size
 trace_size = 1024
 
+dtype?=i32
+
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src=${targetname}.py
 use_placed?=0
@@ -29,9 +31,20 @@ ifeq (${use_placed}${single_col}, 11)
 aie_py_src=single_col_${targetname}_placed.py
 else ifeq (${use_placed}${single_col}, 10)
 aie_py_src=${targetname}_placed.py
+else ifeq (${use_placed}${single_col}, 01)
+aie_py_src=single_col_${targetname}.py
 else
 aie_py_src=${targetname}.py
 endif
+
+ifeq ($(dtype),bf16)
+	dtype_cpp=std::bfloat16_t
+endif
+ifeq ($(dtype),i32)
+	dtype_cpp=std::int32_t
+endif
+
+aieargs+=--dtype ${dtype}
 
 .PHONY: all template clean
 
@@ -47,11 +60,11 @@ endif
 
 build/aie2.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} > $@
+	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} ${aieargs} > $@
 
 build/aie2_trace.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} -t ${trace_size} > $@
+	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} -t ${trace_size} ${aieargs} > $@
 
 build/final.xclbin: build/aie2.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
@@ -68,7 +81,7 @@ build/final_trace.xclbin: build/aie2_trace.mlir build/reduce_max.cc.o
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}  -DIN1_SIZE=${in1_size} -DOUT_SIZE=${out_size}
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}  -DIN1_SIZE=${in1_size} -DOUT_SIZE=${out_size} -DDTYPE=${dtype_cpp} 
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
