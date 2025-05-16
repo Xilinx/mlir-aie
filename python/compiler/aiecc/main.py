@@ -12,7 +12,6 @@ import asyncio
 import glob
 import json
 import os
-import random
 import re
 import shutil
 import stat
@@ -1271,7 +1270,8 @@ def run(mlir_module, args=None):
 
         version = ryzen_ai.__about__.__version__
         path = os.path.realpath(ryzen_ai.__path__[0])
-        print(f"Found Ryzen AI software version {version} at {path}")
+        if opts.verbose:
+            print(f"Found Ryzen AI software version {version} at {path}")
         # if ryzenai software is pip installed then the path is something like:
         # <workdir>/venv/lib/python3.10/site-packages/
         opts.aietools_path = os.path.realpath(os.path.join(path, ".."))
@@ -1283,15 +1283,18 @@ def run(mlir_module, args=None):
     if xchesscc_path:
         xchesscc_bin_path = os.path.dirname(os.path.realpath(xchesscc_path))
         xchesscc_path = os.path.dirname(xchesscc_bin_path)
-        print(f"Found xchesscc at {xchesscc_path}")
+        if opts.verbose:
+            print(f"Found xchesscc at {xchesscc_path}")
         os.environ["PATH"] = os.pathsep.join([os.environ["PATH"], xchesscc_bin_path])
         if opts.aietools_path is None:
             opts.aietools_path = xchesscc_path
     else:
-        print("xchesscc not found.")
+        if opts.verbose:
+            print("xchesscc not found.")
 
     if opts.aietools_path is None:
-        print("Could not find aietools from Vitis or Ryzen AI Software.")
+        if opts.verbose:
+            print("Could not find aietools from Vitis or Ryzen AI Software.")
         opts.aietools_path = "<aietools not found>"
 
     os.environ["AIETOOLS"] = opts.aietools_path

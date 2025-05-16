@@ -86,7 +86,7 @@ build/final_trace.xclbin: build/aie_trace.mlir build/kernels.a
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -102,8 +102,8 @@ profile: ${targetname}.exe build/final.xclbin
 
 trace: ${targetname}.exe build/final_trace.xclbin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift ${colshift} > trace_softmax.json
-	${srcdir}/../../utils/get_trace_summary.py --filename trace_softmax.json
+	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --colshift ${colshift} --output trace_softmax.json
+	${srcdir}/../../utils/get_trace_summary.py --input trace_softmax.json
 
 clean: 
 	rm -rf build _build ${targetname}.exe 

@@ -46,13 +46,6 @@ void AIEXDialect::initialize() {
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
 
-uint64_t AIEX::getBufferDescriptorAddressRegisterAddress(
-    const AIE::AIETargetModel &tm, unsigned bd_id, unsigned col, unsigned row) {
-  assert(bd_id < tm.getNumBDs(col, row));
-  return ((col & 0xff) << tm.getColumnShift()) |
-         ((row & 0xff) << tm.getRowShift()) | (0x1D004 + bd_id * 0x20);
-}
-
 /* Return the correct values to write to the hardware registers to configure
   strides and wraps given the input user-facing strides and wraps.
 

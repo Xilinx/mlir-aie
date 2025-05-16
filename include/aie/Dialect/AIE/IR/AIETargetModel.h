@@ -249,6 +249,23 @@ public:
   virtual bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
                                      int channel) const = 0;
 
+  /// Return the array address of the dma buffer descriptor for the given
+  /// col, row, buffer descriptor id, channel and direction. Not all
+  /// architecture variants will use channel and direction so these have default
+  /// values.
+  virtual uint64_t getDmaBdAddress(
+      int col, int row, uint32_t bd_id, int channel = -1,
+      AIE::DMAChannelDir direction = AIE::DMAChannelDir::MM2S) const = 0;
+
+  /// Return the offset of the base address field within the shim dma buffer
+  /// descriptor.
+  virtual uint32_t getDmaBdAddressOffset(int col, int row) const = 0;
+
+  /// Return the array address of the dma task queue register for the given
+  /// col, row, channel and direction
+  virtual uint32_t getDmaControlAddress(int col, int row, int channel,
+                                        AIE::DMAChannelDir direction) const = 0;
+
   virtual uint32_t getNumMemTileRows() const = 0;
   /// Return the size (in bytes) of a MemTile.
   virtual uint32_t getMemTileSize() const = 0;
@@ -353,6 +370,15 @@ public:
                              int channel) const override {
     return true;
   }
+
+  uint64_t getDmaBdAddress(int col, int row, uint32_t bd_id, int channel,
+                           AIE::DMAChannelDir direction) const override;
+
+  uint32_t getDmaBdAddressOffset(int col, int row) const override;
+
+  uint32_t getDmaControlAddress(int col, int row, int channel,
+                                AIE::DMAChannelDir direction) const override;
+
   uint32_t getNumMemTileRows() const override { return 0; }
   uint32_t getMemTileSize() const override { return 0; }
   uint32_t getNumBanks(int col, int row) const override { return 4; }
@@ -444,6 +470,14 @@ public:
       }
     }
   }
+
+  uint64_t getDmaBdAddress(int col, int row, uint32_t bd_id, int channel,
+                           AIE::DMAChannelDir direction) const override;
+
+  uint32_t getDmaBdAddressOffset(int col, int row) const override;
+
+  uint32_t getDmaControlAddress(int col, int row, int channel,
+                                AIE::DMAChannelDir direction) const override;
 
   uint32_t getMemTileSize() const override { return 0x00080000; }
 

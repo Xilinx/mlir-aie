@@ -109,6 +109,7 @@ def conv2dk1(dev):
             conv2dk1_i8_kernel,
             rtp_barrier,
         ],
+        stack_size=0xA00,
     )
 
     # Runtime operations to move data to/from the AIE-array

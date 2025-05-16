@@ -96,7 +96,7 @@ void translateSwitchboxes(DeviceOp targetOp, raw_ostream &output) {
                     std::to_string(destinationCounts[{col, row}]) + ",\n";
 
     // write routing demand info
-    uint32_t connectCounts[10];
+    std::vector<uint32_t> connectCounts(getMaxEnumValForWireBundle() + 1, 0);
     for (auto &connectCount : connectCounts)
       connectCount = 0;
 

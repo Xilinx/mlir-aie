@@ -128,7 +128,7 @@ ${targetname}.exe: ${srcdir}/test.cpp ${srcdir}/../test.cpp ${srcdir}/../common.
 	rm -rf _build
 	mkdir -p _build
 	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=${dtype_in_cpp} -DDTYPE_OUT=${dtype_out_cpp} -DDTYPE_ACC=${dtype_acc_cpp}" \
-		cmake ${srcdir}/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname} -Dsubdir=${subdir}
+		cmake `${getwslpath} ${srcdir}/..` -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname} -Dsubdir=${subdir}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -149,13 +149,13 @@ run: ${targetname}.exe ${xclbin_target}
 trace: ${targetname}.exe ${trace_xclbin_target} ${insts_target}
 	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
 	${powershell} ./$< -x ${trace_xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N ${runargs} -t ${trace_size}
-	${srcdir}/../../../utils/parse_trace.py --filename trace.txt --mlir ${trace_mlir_target} --colshift ${col_shift} > trace_mm.json
+	${srcdir}/../../../utils/parse_trace.py --input trace.txt --mlir ${trace_mlir_target} --colshift ${col_shift} --output trace_mm.json
 
 #	${powershell} ./$< -x ${trace_xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N -v 1 --warmup 0 --iters 1 -t ${trace_size}
 
 .PHONY: parse_trace
 parse_trace:
-	${srcdir}/../../../utils/parse_trace.py --filename trace.txt --mlir ${trace_mlir_target} --colshift 1 > trace_mm.json
+	${srcdir}/../../../utils/parse_trace.py --input trace.txt --mlir ${trace_mlir_target} --colshift 1 --output trace_mm.json
 
 .PHONY: clean
 clean: clean_trace

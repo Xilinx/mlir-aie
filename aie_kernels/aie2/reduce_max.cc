@@ -1,8 +1,19 @@
+//===- reduce_max.cc --------------------------------------------*- C++ -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2023, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <type_traits>
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 void _reduce_max_vector(int32_t *restrict in, int32_t *restrict out,
@@ -13,12 +24,13 @@ void _reduce_max_vector(int32_t *restrict in, int32_t *restrict out,
   const int32_t vector_size = 16;
   v16int32 after_vector;
   v16int32 running_max = tiny;
-  for (int32_t i = 0; i < input_size; i += vector_size)
-    chess_prepare_for_pipelining chess_loop_range(8, ) {
-      v16int32 next = *(v16int32 *)(in + i);
-      v16int32 test = max(running_max, next);
-      running_max = test;
-    }
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(8)
+  for (int32_t i = 0; i < input_size; i += vector_size) {
+    v16int32 next = *(v16int32 *)(in + i);
+    v16int32 test = max(running_max, next);
+    running_max = test;
+  }
   after_vector = running_max;
   v16int32 first = shift_bytes(after_vector, after_vector, 32U);
   v16int32 second = max(after_vector, first);

@@ -13,15 +13,17 @@
 // This is a workaround for a missing definition in peano.
 // Will have to be removed when the issue is fixed.
 #ifdef PEANO_UNDEF_WORKAROUND
-inline __attribute__((always_inline)) v64bfp16ebs8 undef_v64bfp16ebs8() { return v64bfp16ebs8(); };
+inline __attribute__((always_inline)) v64bfp16ebs8 undef_v64bfp16ebs8() {
+  return v64bfp16ebs8();
+};
 #endif
 
 extern "C" {
 
-// Note that bfp vector types are referenced differently in IRON and in the AIE API.
-// The v64bfp16ebs8 type is a vector of 8 bfp16ebs8 elements, which corresponds
-// to 64 floating points in total.
-// Meanwhile, IRON interprets 1 bfp16ebs8 as 8 floating points.
+// Note that bfp vector types are referenced differently in IRON and in the AIE
+// API. The v64bfp16ebs8 type is a vector of 8 bfp16ebs8 elements, which
+// corresponds to 64 floating points in total. Meanwhile, IRON interprets 1
+// bfp16ebs8 as 8 floating points.
 void bfp16_matrix_multiplication(bfp16ebs8 *__restrict inA,
                                  bfp16ebs8 *__restrict inB,
                                  bfp16ebs8 *__restrict out) {
@@ -50,6 +52,9 @@ void bf16_to_bfp_conversion(bfloat16 *__restrict inA, bfloat16 *__restrict inB,
   // Here there are two conversion paths for bf16 to bfp16ebs8. This split is
   // meant to optimize resource usage in the inner loop, since we would
   // otherwise be using the same slot in the core.
+  // Nevertheless, in this particular example, the full kernel is not taking
+  // advantage of this since the core only has one store unit, which acts as a
+  // bottleneck.
 
   // The conversion for inA to bfp16 is carried out from an accumulator
   aie::vector<bfloat16, 64> vecA = aie::load_v<64>(inA);

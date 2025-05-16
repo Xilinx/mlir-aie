@@ -617,7 +617,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   }];
 
   let arguments = (
-    ins AnyMemRef:$memref,
+    ins AnyRankedOrUnrankedMemRef:$memref,
         // NOTE: these are in reverse order: offset3, offset2, ...
         Variadic<I64>:$offsets,
         Variadic<I64>:$sizes,

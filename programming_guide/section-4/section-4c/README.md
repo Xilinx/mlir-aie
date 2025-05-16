@@ -98,8 +98,10 @@ void scale_vectorized(T *a, T *c, int32_t factor, const int32_t N) {
   T *__restrict pC1 = c;
   const int F = N / vec_factor;
   T fac = factor;
+
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(16)
   for (int i = 0; i < F; i++)
-    chess_prepare_for_pipelining chess_loop_range(16, )
   {
       aie::vector<T, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
       pA1 += vec_factor;
@@ -116,18 +118,19 @@ In this example, the vectorization strategy was relatively straight forward. Ins
 > **NOTE** - AIE API is a portable programming interface that is implemented as a C++ header-only library providing types and operations that get translated into generation specific efficient low-level intrinsics. AIE kernels can also be programmed directly in these low-level C++ intrinsics: [AIE1 Intrinsics User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_intrinsics/intrinsics/index.html) and [AIE2 Intrinsics User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_ml_intrinsics/intrinsics/index.html)
 
 ## <u>Vectorization Exercises</u>
-1. Let's take a look at the trace for our vector scalar design. First, let's edit our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/) so that the [vector_scalar_mul_placed.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul_placed.py) source file has `vectorized=False`. In the [vector_scalar_mul_placed.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul_placed.py) source code, we now have selected the scalar version of the kernel function. Then run `make use_placed=1 trace`. After the trace compilation is complete, open `trace_vs.json` in https://ui.perfetto.dev and measure the delta between `event 0` and `event 1`. Note that in the Perfetto waveform, 1 us is equal to 1 clock cycle. How many cycles did you measure? <img src="../../../mlir_tutorials/images/answer1.jpg" title="~10,250 cycles" height=25> 
+1. Let's take a look at the trace for our vector scalar design. First, let's edit our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/) so that the [vector_scalar_mul_placed.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul_placed.py) source file has `vectorized=False`. In the [vector_scalar_mul_placed.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul_placed.py) source code, we now have selected the scalar version of the kernel function. Then run `make use_placed=1 trace`. After the trace compilation is complete, open `trace_vector_scalar_mul.json` in https://ui.perfetto.dev and measure the delta between `event 0` and `event 1`. Note that in the Perfetto waveform, 1 us is equal to 1 clock cycle. How many cycles did you measure? <img src="../../../mlir_tutorials/images/answer1.jpg" title="~10,250 cycles" height=25> 
 
-1. Now let's turn vectorization back on by changing `vectorized=True`. But we're also going to disable any pragma guided optimization first to see its effect. In the [scale.cc](../../../aie_kernels/aie2/scale.cc), comment out the line after the `for loop` that says `chess_prepare_for_pipelining chess_loop_range(16, )`. **NOTE** Be sure you're editing the general template and not the `int32_t` template specialization. The general version should be the first one. Then rerun the compilation (`make clean; make use_placed=1 trace`). Measure the delta between `event 0` and `event 1` again. What value do you see now? <img src="../../../mlir_tutorials/images/answer1.jpg" title="~495 cycles" height=25>
+1. Now let's turn vectorization back on by changing `vectorized=True`. But we're also going to disable any pragma guided optimization first to see its effect. In the [scale.cc](../../../aie_kernels/aie2/scale.cc), comment out the lines before the `for loop` that says `AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)`. **NOTE** Be sure you're editing the general template and not the `int32_t` template specialization. The general version should be the first one. Then rerun the compilation (`make clean; make use_placed=1 trace`). Measure the delta between `event 0` and `event 1` again. What value do you see now? <img src="../../../mlir_tutorials/images/answer1.jpg" title="~495 cycles" height=25>
 
 
     That's quite an improvement, ~20X reduction in compute latency. However, there's more optimization that can be had with vector code and that involves compilation pragmas. 
 
-1. Go back to [scale.cc](../../../aie_kernels/aie2/scale.cc) and uncomment the line with `chess_prepare_for_pipelining chess_loop_range(16, )` to enable those pragmas. Then rerun the compilation (`make clean; make use_placed=1 trace`). Measure the delta between `event 0` and `event 1` again. What value do you see now? <img src="../../../mlir_tutorials/images/answer1.jpg" title="72 cycles" height=25>
+1. Go back to [scale.cc](../../../aie_kernels/aie2/scale.cc) and uncomment the lines with `AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)` to enable those pragmas. Then rerun the compilation (`make clean; make use_placed=1 trace`). Measure the delta between `event 0` and `event 1` again. What value do you see now? <img src="../../../mlir_tutorials/images/answer1.jpg" title="72 cycles" height=25>
 
-    Now, we're really seeing some savings (another factor ~6X savings or ~140X compared to the scalar version). The line we added helps guide the compiler to find optimal schedules. For kernel loops, `chess_prepare_for_pipelining` and `chess_loop_range(16, )` are particularly useful:
-    * `chess_prepare_for_pipelining` - Used in the innermost loop to tell the compiler to enable software pipelining. This is needed to enable subsequent loop optimization pragmas.
-    * `chess_loop_range(MIN, MAX)` - An extremely helpful pragma. This tells the compiler the minimum or maximum iterations we expect this loop to have. We often parameterize loop bounds based on size and even if the loop size is declared as a const, it's still a runtime computed value. Giving the MIN value in this pragma is particular helpful because it guides the scheduler to know how many iterations we have and can therefore properly schedule the loop instructions for that number rather than the worse case of 1.
+    Now, we're really seeing some savings (another factor ~6X savings or ~140X compared to the scalar version). The line we added helps guide the compiler to find optimal schedules. For kernel loops, `AIE_PREPARE_FOR_PIPELINING` and `AIE_LOOP_MIN_ITERATION_COUNT(16)` are particularly useful:
+    * `AIE_PREPARE_FOR_PIPELINING` - Used in the innermost loop to tell the compiler to enable software pipelining. This is needed to enable subsequent loop optimization pragmas.
+    * `AIE_LOOP_MIN_ITERATION_COUNT(MIN)` - An extremely helpful pragma. This tells the compiler the minimum iterations we expect this loop to have. If we want to specify both minimum and maximum iterations, we can used `, AIE_LOOP_RANGE(MIN,MAX)`. We often parameterize loop bounds based on size and even if the loop size is declared as a const, it's still a runtime computed value. Giving the MIN value in this pragma is particular helpful because it guides the scheduler to know how many iterations we have and can therefore properly schedule the loop instructions for that number rather than the worse case of 1.
+    
 
 ## Optimization - Coding for the Architecture
 
@@ -209,7 +212,7 @@ Looking at this table, we quickly see that the data movement is the bottleneck f
 1. So this example should be perfectly balanced between compute and data movement! Navigate to the [Matrix Multiply Example](../../../programming_examples/basic/matrix_multiplication/single_core) and run the trace build (`make clean; make -f Makefile.chess use_placed=1 trace`). Then open the generated waveform json (`trace_mm.json`) and measure the delta between `event 0` and `event 1` in the first run. What value did you get and how close is it to ideal? <img src="../../../mlir_tutorials/images/answer1.jpg" title="~2535 cycles which is 80% of 2048" height=25> You should now see that the compute cycles and the data movement cycles are much more closely matched!
 
 ## <u>Diving Deep - Examining the Microcode</u>
-Let's take another look at the results of our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/). Let's also go back one step and comment out `chess_prepare_for_pipelining chess_loop_range(16, )` and rerun the compilation (`make clean; make use_placed=1 trace`). 
+Let's take another look at the results of our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/). Let's also go back one step and comment out `AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)` and rerun the compilation (`make clean; make use_placed=1 trace`). 
 
 At this point, we can actually take a look at the `microcode`. The `microcode` is the precise schedule of instructions that our AIE executes in order to run the kernel program. This microcode can usually be found under `build/core_0_2.elf.lst` where the two numbers for the core indicates its column and row position respectively. So if your design has multiple cores, then each core will have its own `.lst` file. If you were to open the file, you will see a lot of information. Comment lines will have a . in front of them. The other lines are the instructions and are structured as follows:
 
@@ -244,7 +247,7 @@ Fully analyzing and understanding this microcode is beyond the scope of this pro
 Let's examine this more closely in our example.
 
 ## <u>Optimization Exercises - Part 2</u>
-1. Go back and comment out the pragma lines (`chess_prepare_for_pipelining chess_loop_range(16, )`) again and rerun the build (`make clean; make use_placed=1 trace`). Open `build/core_0_2.elf.lst` and take a look through the file. You'll see a lot of helpful comments but there may be a bit too muany comments to be able to see patterns in the microcode clearly. Run a simple cleanup script from within the vector_scalar_mul example directory:
+1. Go back and comment out the pragma lines (`AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)`) again and rerun the build (`make clean; make use_placed=1 trace`). Open `build/core_0_2.elf.lst` and take a look through the file. You'll see a lot of helpful comments but there may be a bit too muany comments to be able to see patterns in the microcode clearly. Run a simple cleanup script from within the vector_scalar_mul example directory:
 
     `../../utils/clean_microcode.sh build/core_0_2.elf.lst`
 
