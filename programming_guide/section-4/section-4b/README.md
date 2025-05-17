@@ -58,11 +58,38 @@ Here, we addd `trace=1` to indicate that worker should be traced. And we can omi
 
 >**NOTE**: The `workers` argument in the runtime sequence `enable_trace` always takes precendence over the `trace=1` argument of the woker. So if you define both, we will go with the definition of the `enable_trace` argument.
 
-Configuring the trace unit in each core tile and routing the trace packets to a valid shim tile is then done automatically. In addition to the trace size and workers, other arguments currently supported by the `enable_trace` function are:
-* *trace_offset* - byte offset for trace data in DDR memory
-* *ddr_id* - XRT buffer we want to write to. See [below](#2-configure-host-code-to-read-trace-data-and-write-it-to-a-text-file) for more details on XRT buffers.
+Configuring the trace unit in each core tile and routing the trace packets to a valid shim tile is then done automatically. 
 
-There are some assumptions and limitations to this automated process at the moment which will be elaborated more [README-placed](./README-placed.md). 
+### <u>Customizing Trace Behavior</u>
+
+The trace configuration chooses helpful default settings so you can trace your design with little additional customization. However, if you have more control over some of these configuration, additional arguments are available in the runtime `enable_trace` function, such as customizing the trace buffer offset, which XRT buffer you want to use and the events you wish to trace for all core tiles, mem tiles and shim tiles. These are passed in as additionl arguments as descrbied belows:
+* `trace_offset` - offest (in bytes) where trace buffer data should begin. This is 0 by default but if you wish to share XRT buffer with an output buffer, you can use offsets to control where the trace data is written to.
+* `ddr_id` - XRT buffer we want to write to. See [below](#2-configure-host-code-to-read-trace-data-and-write-it-to-a-text-file) for more details on XRT buffers. 
+* `coretile_events` - which 8 events do we use for all coretiles in array. Check [python/utils/trace_events_enum.py](../../../python/utils/trace_events_enum.py) for the full list.
+* `memtile_events` - which 8 events do we use for all memtiles in array. See [python/utils/trace_events_enum.py](../../../python/utils/trace_events_enum.py)
+* `shimtile_events` - which 8 events do we use for all shimtiles in array. See [python/utils/trace_events_enum.py](../../../python/utils/trace_events_enum.py)
+
+    ```python
+    ...
+    rt = Runtime()
+    with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
+        rt.enable_trace(
+            trace_size = trace_size,
+            trace_offset = trace_offset,
+            ddr_id = 5,
+            coretile_events = [ 
+                    trace_utils.CoreEvent.INSTR_EVENT_0,
+                    trace_utils.CoreEvent.INSTR_EVENT_1,
+                    trace_utils.CoreEvent.INSTR_VECTOR,
+                    trace_utils.CoreEvent.MEMORY_STALL,
+                    trace_utils.CoreEvent.STREAM_STALL,
+                    trace_utils.CoreEvent.LOCK_STALL,
+                    trace_utils.CoreEvent.ACTIVE,
+                    trace_utils.CoreEvent.DISABLED]
+        )
+    ```
+
+Additional customizations are available in the closer-to-metal IRON and is descrbied more in [README-placed](./README-placed.md). 
 
 ## <u>2. Configure host code to read trace data and write it to a text file</u>
 
