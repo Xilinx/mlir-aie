@@ -11,14 +11,13 @@
 #ifndef AIE_CONVERSION_AIETOCONFIGURATION_AIETOCONFIGURATION_H
 #define AIE_CONVERSION_AIETOCONFIGURATION_AIETOCONFIGURATION_H
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
-
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
-
 #include <memory>
 
 namespace xilinx::AIE {
+
+class DeviceOp;
 
 std::unique_ptr<mlir::OperationPass<xilinx::AIE::DeviceOp>>
 createConvertAIEToTransactionPass();

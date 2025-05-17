@@ -18,10 +18,16 @@ import aie.utils.trace as trace_utils
 from aie.utils.trace import PortEvent
 from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
 
-def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
-    in1_dtype = np.int16
+def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace_size):
+
+    if int_bit_width == 16:
+        in1_dtype = np.int16
+        out_dtype = np.int16
+    else:  # default is 32-bit
+        in1_dtype = np.int32
+        out_dtype = np.int32
+
     in2_dtype = np.int32
-    out_dtype = np.int16
 
     tensor_size = in1_size // in1_dtype(0).nbytes
     num_sub_vectors = 4
@@ -41,7 +47,7 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
         # AIE Core Function declarations
         func_type = "vector" if vectorized else "scalar"
         scale = external_func(
-            f"vector_scalar_mul_int16_{func_type}",
+            f"vector_scalar_mul_{func_type}",
             inputs=[tile_ty, tile_ty, scalar_ty, np.int32],
         )
 
@@ -139,6 +145,13 @@ p.add_argument(
 )
 p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
 p.add_argument(
+    "-bw",
+    "--int_bit_width",
+    required=True,
+    dest="int_bit_width",
+    help="Integer Bit Width",
+)
+p.add_argument(
     "-t",
     "--trace_size",
     required=False,
@@ -162,10 +175,11 @@ if in1_size % 128 != 0 or in1_size < 1024:
     raise ValueError
 in2_size = int(opts.in2_size)
 out_size = int(opts.out_size)
+int_bit_width = int(opts.int_bit_width)
 trace_size = int(opts.trace_size)
 
 with mlir_mod_ctx() as ctx:
-    my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size)
+    my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace_size)
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)

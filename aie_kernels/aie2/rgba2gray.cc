@@ -17,6 +17,7 @@
 #define REL_WRITE 0
 #define REL_READ 1
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 const int32_t SRS_SHIFT = 15;
@@ -59,18 +60,18 @@ __attribute__((noinline)) void rgba2gray_aie(uint8_t *rgba_in, uint8_t *y_out,
   ::aie::vector<uint8_t, 32> r, g, b;
   ::aie::vector<uint8_t, 32> y;
 
-  for (int j = 0; (j < (width * height) / 32); j += 1)
-    chess_prepare_for_pipelining {
-      xf_extract_rgb(rgba_in, r, g, b);
+  AIE_PREPARE_FOR_PIPELINING
+  for (int j = 0; (j < (width * height) / 32); j += 1) {
+    xf_extract_rgb(rgba_in, r, g, b);
 
-      ::aie::accum<acc32, 32> acc;
-      acc = ::aie::accumulate<32>(WT, 0, r, g, b, c1);
-      y = acc.template to_vector<uint8_t>(SRS_SHIFT);
+    ::aie::accum<acc32, 32> acc;
+    acc = ::aie::accumulate<32>(WT, 0, r, g, b, c1);
+    y = acc.template to_vector<uint8_t>(SRS_SHIFT);
 
-      ::aie::store_v(y_out, y);
-      rgba_in += 128;
-      y_out += 32;
-    }
+    ::aie::store_v(y_out, y);
+    rgba_in += 128;
+    y_out += 32;
+  }
 }
 
 void rgba2gray_aie_scalar(uint8_t *rgba_in, uint8_t *y_out,

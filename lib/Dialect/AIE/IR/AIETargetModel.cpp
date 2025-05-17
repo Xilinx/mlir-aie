@@ -107,6 +107,49 @@ bool AIE1TargetModel::isLegalMemAffinity(int coreCol, int coreRow, int memCol,
   return IsMemSouth || IsMemNorth || IsMemWest || IsMemEast;
 }
 
+uint64_t AIE1TargetModel::getDmaBdAddress(int col, int row, uint32_t bd_id,
+                                          int channel,
+                                          AIE::DMAChannelDir direction) const {
+  uint32_t offset = 0;
+  if (isShimNOCTile(col, row)) {
+    offset = 0x0001D000 + (bd_id * 0x14);
+  } else if (isCoreTile(col, row)) {
+    offset = 0x0001D000 + (bd_id * 0x20);
+  } else {
+    llvm_unreachable(
+        "AIE1TargetModel::getDmaBdAddress called for non-DMA tile");
+  }
+  return ((col & 0xff) << getColumnShift()) | ((row & 0xff) << getRowShift()) |
+         offset;
+}
+
+uint32_t AIE1TargetModel::getDmaBdAddressOffset(int col, int row) const {
+  if (isShimNOCTile(col, row) || isCoreTile(col, row)) {
+    return 0;
+  }
+  llvm_unreachable(
+      "AIE1TargetModel::getDmaBdAddressOffset called for non-DMA tile");
+}
+
+uint32_t
+AIE1TargetModel::getDmaControlAddress(int col, int row, int channel,
+                                      AIE::DMAChannelDir direction) const {
+  uint32_t offset = 0;
+  if (isShimNOCTile(col, row))
+    offset = 0x0001D140 + (channel * 0x8);
+  else if (isCoreTile(col, row))
+    offset = 0x0001DE00 + (channel * 0x8);
+  else
+    llvm_unreachable(
+        "AIE1TargetModel::getDmaControlAddress called for non-DMA tile");
+
+  if (direction == AIE::DMAChannelDir::MM2S)
+    offset += 010;
+
+  return ((col & 0xff) << getColumnShift()) | ((row & 0xff) << getRowShift()) |
+         offset;
+}
+
 uint32_t
 AIE1TargetModel::getNumDestSwitchboxConnections(int col, int row,
                                                 WireBundle bundle) const {
@@ -378,6 +421,55 @@ bool AIE2TargetModel::isLegalMemAffinity(int coreCol, int coreRow, int memCol,
            isWest(coreCol, coreRow, memCol, memRow);
   return (IsMemSouth && !isMemTile(memCol, memRow)) || IsMemNorth ||
          IsMemWest || IsMemEast;
+}
+
+uint64_t AIE2TargetModel::getDmaBdAddress(int col, int row, uint32_t bd_id,
+                                          int channel,
+                                          AIE::DMAChannelDir direction) const {
+  uint64_t offset = 0;
+  if (isShimNOCTile(col, row)) {
+    offset = 0x0001D000 + bd_id * 0x20;
+  } else if (isMemTile(col, row)) {
+    offset = 0x000A0000 + bd_id * 0x20;
+  } else if (isCoreTile(col, row)) {
+    offset = 0x0001D000 + bd_id * 0x20;
+  } else {
+    llvm_unreachable(
+        "AIE2TargetModel::getDmaBdAddress called for non-DMA tile");
+  }
+  return ((col & 0xff) << getColumnShift()) | ((row & 0xff) << getRowShift()) |
+         offset;
+}
+
+uint32_t AIE2TargetModel::getDmaBdAddressOffset(int col, int row) const {
+  if (isCoreTile(col, row))
+    return 0x0;
+  return 0x4;
+}
+
+uint32_t
+AIE2TargetModel::getDmaControlAddress(int col, int row, int channel,
+                                      AIE::DMAChannelDir direction) const {
+  uint32_t offset = 0;
+  if (isShimNOCTile(col, row)) {
+    offset = 0x0001D200 + (channel * 0x8);
+    if (direction == AIE::DMAChannelDir::MM2S)
+      offset += 0x10;
+  } else if (isMemTile(col, row)) {
+    offset = 0x000A0600 + (channel * 0x8);
+    if (direction == AIE::DMAChannelDir::MM2S)
+      offset += 0x30;
+  } else if (isCoreTile(col, row)) {
+    offset = 0x0001DE00 + (channel * 0x8);
+    if (direction == AIE::DMAChannelDir::MM2S)
+      offset += 0x10;
+  } else {
+    llvm_unreachable(
+        "AIE2TargetModel::getDmaControlAddress called for non-DMA tile");
+  }
+
+  return ((col & 0xff) << getColumnShift()) | ((row & 0xff) << getRowShift()) |
+         offset;
 }
 
 uint32_t
