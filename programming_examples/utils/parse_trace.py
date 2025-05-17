@@ -54,6 +54,13 @@ def check_for_valid_trace(filename, trace_pkts, of):
         return False
     return True
 
+def trim_trace_pkts(trace_pkts):
+    for i in range(len(trace_pkts)):
+        if trace_pkts[i] == "fefefefe" or trace_pkts[i] == "FEFEFEFE":
+            if i+2 < len(trace_pkts):
+                if trace_pkts[i+1] == "00000000" and trace_pkts[i+2] == "00000000":
+                    return trace_pkts[0:i+1]
+
 
 def check_odd_word_parity(word):
     val = 0
@@ -1027,7 +1034,12 @@ if DEBUG:
 if not check_for_valid_trace(opts.input, trace_pkts, of):
     sys.exit(1)
 
-trace_pkts_sorted = trace_pkts_de_interleave(trace_pkts)
+trimmed_trace_pkts = trim_trace_pkts(trace_pkts)
+if DEBUG:
+    lines_removed = len(trace_pkts) - len(trimmed_trace_pkts)
+    print("DEBUG: trimmed ",lines_removed," lines", file=of)
+
+trace_pkts_sorted = trace_pkts_de_interleave(trimmed_trace_pkts)
 
 if DEBUG:
     print("DEBUG: trace_pkts_sorted", file=of)

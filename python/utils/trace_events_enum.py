@@ -59,7 +59,7 @@ class CoreEvent(Enum):
     INT_FP_0 = 51
     FP_INVALID = 52
     FP_INF = 53
-    rsvd = 54
+    rsvd_54 = 54
     PM_REG_ACCESS_FAILURE = 55
     STREAM_PKT_PARITY_ERROR = 56
     CONTROL_PKT_ERROR = 57
@@ -149,6 +149,8 @@ class MemEvent(Enum):
     COMBO_EVENT_3 = 10
     EDGE_DETECTION_EVENT_0 = 11
     EDGE_DETECTION_EVENT_1 = 12
+    rsvd_13 = 13
+    rsvd_14 = 14
     GROUP_WATCHPOINT = 15
     WATCHPOINT_0 = 16
     WATCHPOINT_1 = 17
@@ -219,6 +221,7 @@ class MemEvent(Enum):
     CONFLICT_DM_BANK_5 = 82
     CONFLICT_DM_BANK_6 = 83
     CONFLICT_DM_BANK_7 = 84
+    rsvd_85 = 85
     GROUP_ERRORS = 86
     DM_ECC_ERROR_SCRUB_CORRECTED = 87
     DM_ECC_ERROR_SCRUB_2BIT = 88
@@ -236,6 +239,9 @@ class MemEvent(Enum):
     DMA_MM2S_1_ERROR = 100
     LOCK_ERROR = 101
     DMA_TASK_TOKEN_STALL = 102
+    rsvd_103 = 103
+    rsvd_104 = 104
+    rsvd_105 = 105
     GROUP_BROADCAST = 106
     BROADCAST_0 = 107
     BROADCAST_1 = 108
