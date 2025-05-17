@@ -125,8 +125,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a374badc82bbd7649468f72f637818399"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a77189d41cb28ba32bbf24cf23085c839" id="r_a77189d41cb28ba32bbf24cf23085c839"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a77189d41cb28ba32bbf24cf23085c839">inline_ops</a> (self, Callable inline_func, list inline_args)</td></tr>
 <tr class="separator:a77189d41cb28ba32bbf24cf23085c839"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a4c74ebf13ea02015614705e6d2b6ec2b" id="r_a4c74ebf13ea02015614705e6d2b6ec2b"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a4c74ebf13ea02015614705e6d2b6ec2b">enable_trace</a> (self, int trace_size=None, int trace_offset=None, [] <a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a3e917dfd0851b02e6b31d23451acb40b">workers</a>=None, int <a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a121e442943853d57be1d6d66f56c5279">ddr_id</a>=None)</td></tr>
-<tr class="separator:a4c74ebf13ea02015614705e6d2b6ec2b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a26e52c60bee9aa6ed864ffb60c02de5d" id="r_a26e52c60bee9aa6ed864ffb60c02de5d"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a26e52c60bee9aa6ed864ffb60c02de5d">enable_trace</a> (self, int trace_size=None, int trace_offset=None, [] <a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a3e917dfd0851b02e6b31d23451acb40b">workers</a>=None, int <a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a121e442943853d57be1d6d66f56c5279">ddr_id</a>=None, [] coretile_events=None, [] memtile_events=None, [] shimtile_events=None)</td></tr>
+<tr class="separator:a26e52c60bee9aa6ed864ffb60c02de5d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aeb89d96ce109977a224b651413444fc6" id="r_aeb89d96ce109977a224b651413444fc6"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#aeb89d96ce109977a224b651413444fc6">set_barrier</a> (self, <a class="el" href="classiron_1_1worker_1_1WorkerRuntimeBarrier.html">WorkerRuntimeBarrier</a> barrier, int value)</td></tr>
 <tr class="separator:aeb89d96ce109977a224b651413444fc6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3e917dfd0851b02e6b31d23451acb40b" id="r_a3e917dfd0851b02e6b31d23451acb40b"><td class="memItemLeft" align="right" valign="top">list[<a class="el" href="classiron_1_1worker_1_1Worker.html">Worker</a>]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a3e917dfd0851b02e6b31d23451acb40b">workers</a> (self)</td></tr>
@@ -161,6 +161,12 @@ Protected Attributes</h2></td></tr>
 <tr class="separator:a82d7df3e6c606fc3ed6ce41831e3111d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a61f9d2cac5d21a4e48431918ac54796a" id="r_a61f9d2cac5d21a4e48431918ac54796a"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a61f9d2cac5d21a4e48431918ac54796a">_ddr_id</a></td></tr>
 <tr class="separator:a61f9d2cac5d21a4e48431918ac54796a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a247187b6cdffa02f117cdbf2638fbf67" id="r_a247187b6cdffa02f117cdbf2638fbf67"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a247187b6cdffa02f117cdbf2638fbf67">_coretile_events</a></td></tr>
+<tr class="separator:a247187b6cdffa02f117cdbf2638fbf67"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad81eead716385e1b3e82cd9841e58b0c" id="r_ad81eead716385e1b3e82cd9841e58b0c"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#ad81eead716385e1b3e82cd9841e58b0c">_memtile_events</a></td></tr>
+<tr class="separator:ad81eead716385e1b3e82cd9841e58b0c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad7644c7dcf45974d396144cc3b1043d5" id="r_ad7644c7dcf45974d396144cc3b1043d5"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#ad7644c7dcf45974d396144cc3b1043d5">_shimtile_events</a></td></tr>
+<tr class="separator:ad7644c7dcf45974d396144cc3b1043d5"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pri-static-attribs" name="pri-static-attribs"></a>
 Static Private Attributes</h2></td></tr>
@@ -262,8 +268,8 @@ Raises:
 </pre> 
 </div>
 </div>
-<a id="a4c74ebf13ea02015614705e6d2b6ec2b" name="a4c74ebf13ea02015614705e6d2b6ec2b"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a4c74ebf13ea02015614705e6d2b6ec2b">&#9670;&#160;</a></span>enable_trace()</h2>
+<a id="a26e52c60bee9aa6ed864ffb60c02de5d" name="a26e52c60bee9aa6ed864ffb60c02de5d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a26e52c60bee9aa6ed864ffb60c02de5d">&#9670;&#160;</a></span>enable_trace()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -296,7 +302,25 @@ Raises:
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">int &#160;</td>
-          <td class="paramname"><em>ddr_id</em> = <code>None</code>&#160;</td>
+          <td class="paramname"><em>ddr_id</em> = <code>None</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">[] &#160;</td>
+          <td class="paramname"><em>coretile_events</em> = <code>None</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">[] &#160;</td>
+          <td class="paramname"><em>memtile_events</em> = <code>None</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">[] &#160;</td>
+          <td class="paramname"><em>shimtile_events</em> = <code>None</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -710,6 +734,28 @@ Returns:
 
 </div>
 </div>
+<a id="a247187b6cdffa02f117cdbf2638fbf67" name="a247187b6cdffa02f117cdbf2638fbf67"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a247187b6cdffa02f117cdbf2638fbf67">&#9670;&#160;</a></span>_coretile_events</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.runtime.runtime.Runtime._coretile_events</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
 <a id="a61f9d2cac5d21a4e48431918ac54796a" name="a61f9d2cac5d21a4e48431918ac54796a"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a61f9d2cac5d21a4e48431918ac54796a">&#9670;&#160;</a></span>_ddr_id</h2>
 
@@ -754,6 +800,28 @@ Returns:
 
 </div>
 </div>
+<a id="ad81eead716385e1b3e82cd9841e58b0c" name="ad81eead716385e1b3e82cd9841e58b0c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ad81eead716385e1b3e82cd9841e58b0c">&#9670;&#160;</a></span>_memtile_events</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.runtime.runtime.Runtime._memtile_events</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
 <a id="a5f67560cc342e90c7065c601a9c455ce" name="a5f67560cc342e90c7065c601a9c455ce"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a5f67560cc342e90c7065c601a9c455ce">&#9670;&#160;</a></span>_open_task_groups</h2>
 
@@ -787,6 +855,28 @@ Returns:
       <table class="memname">
         <tr>
           <td class="memname">iron.runtime.runtime.Runtime._rt_data</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="ad7644c7dcf45974d396144cc3b1043d5" name="ad7644c7dcf45974d396144cc3b1043d5"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ad7644c7dcf45974d396144cc3b1043d5">&#9670;&#160;</a></span>_shimtile_events</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.runtime.runtime.Runtime._shimtile_events</td>
         </tr>
       </table>
   </td>
