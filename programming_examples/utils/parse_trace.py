@@ -61,6 +61,7 @@ def trim_trace_pkts(trace_pkts):
             if i + 2 < len(trace_pkts):
                 if trace_pkts[i + 1] == "00000000" and trace_pkts[i + 2] == "00000000":
                     return trace_pkts[0 : i + 1]
+    return trace_pkts
 
 
 def check_odd_word_parity(word):
