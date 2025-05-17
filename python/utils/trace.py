@@ -1040,6 +1040,43 @@ def configure_packet_tracing_aie2(
     ],
     shim_burst_length=64,
 ):
+
+    if coretile_events == None:
+        coretile_events = [
+            CoreEvent.INSTR_EVENT_0,
+            CoreEvent.INSTR_EVENT_1,
+            CoreEvent.INSTR_VECTOR,
+            PortEvent(CoreEvent.PORT_RUNNING_0, 1, True),  # master(1)
+            PortEvent(CoreEvent.PORT_RUNNING_1, 1, False),  # slave(1)
+            CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
+            CoreEvent.INSTR_LOCK_RELEASE_REQ,
+            CoreEvent.LOCK_STALL,
+        ]
+    if memtile_events == None:
+        memtile_events = [
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_0, 0, True),  # master(0)
+            MemTilePortEvent(
+                MemTileEvent.PORT_RUNNING_1, 14, False
+            ),  # slave(14/ north1)
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_2, 0, False),  # slave(0)
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_3, 1, False),  # slave(1)
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_4, 2, False),  # slave(2)
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_5, 3, False),  # slave(3)
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_6, 4, False),  # slave(4)
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_7, 5, False),  # slave(5)
+        ]
+    if shimtile_events == None:
+        shimtile_events = [
+            ShimTileEvent.DMA_S2MM_0_START_TASK,
+            ShimTileEvent.DMA_S2MM_1_START_TASK,
+            ShimTileEvent.DMA_MM2S_0_START_TASK,
+            ShimTileEvent.DMA_S2MM_0_FINISHED_TASK,
+            ShimTileEvent.DMA_S2MM_1_FINISHED_TASK,
+            ShimTileEvent.DMA_MM2S_0_FINISHED_TASK,
+            ShimTileEvent.DMA_S2MM_0_STREAM_STARVATION,
+            ShimTileEvent.DMA_S2MM_1_STREAM_STARVATION,
+        ]
+
     start_core_broadcast_event = CoreEvent(107 + start_broadcast_num)
     stop_core_broadcast_event = CoreEvent(107 + stop_broadcast_num)
     start_memtile_broadcast_event = MemTileEvent(142 + start_broadcast_num)
