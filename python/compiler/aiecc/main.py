@@ -426,15 +426,12 @@ class FlowRunner:
             proc = await asyncio.create_subprocess_exec(
                 *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
+            stdout, stderr = await proc.communicate()
+            ret = proc.returncode
             if self.opts.verbose:
-                stdout, stderr = await proc.communicate()
-                ret = proc.returncode
                 print(f"{stdout.decode()}\n")
-                if ret != 0:
-                    print(f"{stderr.decode()}\n")
-            else:
-                await proc.wait()
-                ret = proc.returncode
+            if ret != 0:
+                print(f"{stderr.decode()}\n")
         else:
             ret = 0
         end = time.time()
