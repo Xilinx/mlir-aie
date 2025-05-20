@@ -84,9 +84,11 @@ def vector_softmax(dev, trace_size):
                     f"of_out{i}", MemTiles[i], ShimTiles[i], buffer_depth, C_memTile_ty
                 )
             )
-
+        # Create object FIFOs to split input A across cores of a column and
+        # join output C across cores of a column.
         for i in range(n_col):
             for j in range(n_cores_per_col):
+                # FIFO for input A from memory tile to core
                 inA_fifos.append(
                     object_fifo(
                         f"memA{(i*n_cores_per_col)+j}",
@@ -96,6 +98,7 @@ def vector_softmax(dev, trace_size):
                         A_ty,
                     )
                 )
+                # FIFO for output C from core to memory tile
                 outC_fifos.append(
                     object_fifo(
                         f"memC{(i*n_cores_per_col)+j}",
@@ -106,6 +109,7 @@ def vector_softmax(dev, trace_size):
                     )
                 )
 
+        # Offsets for splitting input A and joining output C across cores
         if n_cores > 1:
             of_a_offsets = [
                 (np.prod(np_ndarray_type_get_shape(A_memTile_ty)) // n_cores_per_col)
@@ -121,20 +125,27 @@ def vector_softmax(dev, trace_size):
             of_a_offsets = []
             of_c_offsets = []
 
+        # Split the input FIFOs for each column into groups corresponding to the cores
+        # in that column and link them to the memory tile FIFOs.
         inA_fifos_split = [[], [], [], []]
         for i in range(n_col):
             inA_fifos_split[i] = inA_fifos[
                 i * n_cores_per_col : (i + 1) * n_cores_per_col
             ]
 
+        # Link the input FIFOs from memory tiles to the cores in each column
         for i in range(n_col):
             object_fifo_link(of_in[i], inA_fifos_split[i], [], of_a_offsets)
 
+        # Split the output FIFOs for each column into groups corresponding to the cores
+        # in that column and link them to the memory tile FIFOs.
         outC_fifos_split = [[], [], [], []]
         for i in range(n_col):
             outC_fifos_split[i] = outC_fifos[
                 i * n_cores_per_col : (i + 1) * n_cores_per_col
             ]
+
+        # Link the output FIFOs from the cores to the memory tiles in each column
         for i in range(n_col):
             object_fifo_link(outC_fifos_split[i], of_out[i], of_c_offsets, [])
 
@@ -176,7 +187,9 @@ def vector_softmax(dev, trace_size):
             in_tasks = []
             out_tasks = []
 
+            # Loop through each column to set up DMA tasks for input and output
             for i in range(n_col):
+                # Distributing host buffer (A) to the shim tiles
                 in_tasks.append(
                     shim_dma_single_bd_task(
                         of_in[i],
@@ -186,6 +199,7 @@ def vector_softmax(dev, trace_size):
                         issue_token=True,
                     )
                 )
+                # Joining output from the shim tiles and writing to host buffer (C)
                 out_tasks.append(
                     shim_dma_single_bd_task(
                         of_out[i],
