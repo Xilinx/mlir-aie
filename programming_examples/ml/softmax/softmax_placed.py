@@ -27,7 +27,7 @@ def vector_softmax(dev, trace_size):
     n = 1024
     N_div_n = N // n
 
-    n_cores = 2
+    n_cores = 4
     tiles = N_div_n // n_cores
     buffer_depth = 2
 
