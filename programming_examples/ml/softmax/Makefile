@@ -33,6 +33,10 @@ ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
 endif
 
+ifeq (${use_whole_array}, 1)
+aie_py_src=${targetname}_whole_array_placed.py
+endif
+
 all: build/final.xclbin build/insts.bin
 
 ifeq ($(devicename),npu)
