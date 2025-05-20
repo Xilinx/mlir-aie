@@ -27,13 +27,26 @@ def vector_softmax(dev, trace_size):
     n = 1024
     N_div_n = N // n
 
-    n_cores_per_col = 4
-    n_col = 4
+    n_cores_per_col = 1
+    n_col = 1
     n_cores = n_col * n_cores_per_col
     N_per_shimtile = N // n_col
     N_per_memtile = n * n_cores_per_col
     tiles = N_div_n // n_cores
     buffer_depth = 2
+
+    if dev == AIEDevice.npu1_4col and n_col > 4:
+        raise ValueError(
+            "[ERROR] NPU1 device only supports 4 columns. Please set n_col <= 4"
+        )
+    if dev == AIEDevice.npu2_4col and n_col > 8:
+        raise ValueError(
+            "[ERROR] NPU2 device only supports 8 columns. Please set n_col <= 8"
+        )
+    if n_cores_per_col > 4:
+        raise ValueError(
+            "[ERROR] Only 4 cores per column are supported. Please set n_cores_per_col <= 4"
+        )
 
     @device(dev)
     def device_body():
