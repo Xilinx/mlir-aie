@@ -19,14 +19,14 @@ from aie.iron.placers import SequentialPlacer
 
 # CHECK: module {
 # CHECK:   aie.device(npu2_1col) {
-# CHECK:     %tile_0_2 = aie.tile(0, 2)
-# CHECK:     %lock_0_2 = aie.lock(%tile_0_2)
-# CHECK:     %core_0_2 = aie.core(%tile_0_2) {
-# CHECK:         aie.use_lock(%lock_0_2, Acquire, 1)
-# CHECK:         aie.use_lock(%lock_0_2, Release, 1)
+# CHECK:     %[[T0:.*]] = aie.tile(0, 2)
+# CHECK:     %[[L0:.*]] = aie.lock(%[[T0]])
+# CHECK:     %{{.*}} = aie.core(%[[T0]]) {
+# CHECK:         aie.use_lock(%[[L0]], Acquire, 1)
+# CHECK:         aie.use_lock(%[[L0]], Release, 1)
 # CHECK:     }
 # CHECK:     aiex.runtime_sequence @sequence(%arg0: memref<16xi32>) {
-# CHECK:       aiex.set_lock(%lock_0_2, 1)
+# CHECK:       aiex.set_lock(%[[L0]], 1)
 # CHECK:     }
 # CHECK:   }
 # CHECK: }
