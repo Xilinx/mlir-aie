@@ -30,7 +30,7 @@ def vector_softmax(dev, trace_size):
     n_cores_per_col = 4
     n_col = 4
     n_cores = n_col * n_cores_per_col
-    M = N // n_col
+    N_per_shimtile = N // n_col
     N_per_memtile = n * n_cores_per_col
     tiles = N_div_n // n_cores
     buffer_depth = 2
@@ -179,12 +179,20 @@ def vector_softmax(dev, trace_size):
             for i in range(n_col):
                 in_tasks.append(
                     shim_dma_single_bd_task(
-                        of_in[i], A, offset=M * i, sizes=[1, 1, 1, M], issue_token=True
+                        of_in[i],
+                        A,
+                        offset=N_per_shimtile * i,
+                        sizes=[1, 1, 1, N_per_shimtile],
+                        issue_token=True,
                     )
                 )
                 out_tasks.append(
                     shim_dma_single_bd_task(
-                        of_out[i], C, offset=M * i, sizes=[1, 1, 1, M], issue_token=True
+                        of_out[i],
+                        C,
+                        offset=N_per_shimtile * i,
+                        sizes=[1, 1, 1, N_per_shimtile],
+                        issue_token=True,
                     )
                 )
 
