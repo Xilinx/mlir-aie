@@ -31,7 +31,7 @@ fi
 
 echo "Cloning the XDNA driver repository..."
 # Clone the XDNA driver repository and initialize submodules
-XDNA_SHA=deceb066418f2d53fe172a595f59413a731ccee8
+XDNA_SHA=0e6d303b2cc2b3fe1cf10aba0acbf57a422588fb
 git clone https://github.com/amd/xdna-driver.git
 export XDNA_SRC_DIR=$(realpath xdna-driver)
 cd xdna-driver
