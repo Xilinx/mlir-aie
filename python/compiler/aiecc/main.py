@@ -423,9 +423,15 @@ class FlowRunner:
         if self.opts.verbose:
             print(commandstr)
         if self.opts.execute or force:
-            proc = await asyncio.create_subprocess_exec(*command)
-            await proc.wait()
+            proc = await asyncio.create_subprocess_exec(
+                *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
             ret = proc.returncode
+            if self.opts.verbose:
+                print(f"{stdout.decode()}\n")
+            if ret != 0:
+                print(f"{stderr.decode()}\n")
         else:
             ret = 0
         end = time.time()
@@ -581,9 +587,10 @@ class FlowRunner:
                 elif opts.link:
                     await self.do_call(task, [self.peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
 
-            self.progress_bar.update(self.progress_bar.task_completed, advance=1)
-            if task:
-                self.progress_bar.update(task, advance=0, visible=False)
+            if opts.progress:
+                self.progress_bar.update(self.progress_bar.task_completed, advance=1)
+                if task:
+                    self.progress_bar.update(task, advance=0, visible=False)
             # fmt: on
 
     async def process_cdo(self, module_str):
@@ -633,7 +640,7 @@ class FlowRunner:
                 "-image",
                 self.prepend_tmp("design.bif"),
                 "-o",
-                self.prepend_tmp('design.pdi'),
+                self.prepend_tmp("design.pdi"),
                 "-w",
             ],
         )
@@ -870,9 +877,10 @@ class FlowRunner:
             if len(opts.host_args) > 0:
                 await self.do_call(task, cmd + opts.host_args)
 
-            self.progress_bar.update(self.progress_bar.task_completed, advance=1)
-            if task:
-                self.progress_bar.update(task, advance=0, visible=False)
+            if opts.progress:
+                self.progress_bar.update(self.progress_bar.task_completed, advance=1)
+                if task:
+                    self.progress_bar.update(task, advance=0, visible=False)
 
     async def gen_sim(self, task, aie_target, file_physical):
         # For simulation, we need to additionally parse the 'remaining' options to avoid things
@@ -1081,9 +1089,12 @@ class FlowRunner:
             redirect_stderr=False,
         ) as progress_bar:
             self.progress_bar = progress_bar
-            progress_bar.task = progress_bar.add_task(
-                "[green] MLIR compilation:", total=1, command="1 Worker"
-            )
+            if opts.progress:
+                progress_bar.task = progress_bar.add_task(
+                    "[green] MLIR compilation:", total=1, command="1 Worker"
+                )
+            else:
+                progress_bar.task = None
 
             pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
                 opts.alloc_scheme, opts.dynamic_objFifos, opts.ctrl_pkt_overlay
@@ -1158,12 +1169,13 @@ class FlowRunner:
                     await self.do_call(progress_bar.task, [self.peano_llc_path, file_llvmir_opt, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", self.unified_file_core_obj])
             # fmt: on
 
-            progress_bar.update(progress_bar.task, advance=0, visible=False)
-            progress_bar.task_completed = progress_bar.add_task(
-                "[green] AIE Compilation:",
-                total=len(cores) + 1,
-                command="%d Workers" % nworkers,
-            )
+            if opts.progress:
+                progress_bar.update(progress_bar.task, advance=0, visible=False)
+                progress_bar.task_completed = progress_bar.add_task(
+                    "[green] AIE Compilation:",
+                    total=len(cores) + 1,
+                    command="%d Workers" % nworkers,
+                )
 
             input_physical = self.prepend_tmp("input_physical.mlir")
             processes = [
