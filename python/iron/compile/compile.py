@@ -7,7 +7,6 @@
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
 import subprocess
-import sys
 import aie.compiler.aiecc.main as aiecc
 import aie.utils.config as config
 
@@ -18,6 +17,7 @@ def compile_cxx_core_function(
     output_path: str,
     compile_args=None,
     cwd=None,
+    verbose=False,
 ):
     """
     Compile a C++ core function.
@@ -30,6 +30,7 @@ def compile_cxx_core_function(
         output_path (str): Output object file path.
         compile_args (list[str]): Compile arguments to peano.
         cwd (str): Overrides the current working directory.
+        verbose (bool): Enable verbose output.
     """
     cmd = [
         config.peano_cxx_path(),
@@ -49,16 +50,18 @@ def compile_cxx_core_function(
     ]
     if compile_args:
         cmd = cmd + compile_args
-    try:
-        subprocess.run(
-            cmd,
-            cwd=cwd,
-            check=True,
-            stdout=sys.stdout,
-            stderr=sys.stderr,
-        )
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError("[Peano] compilation failed") from e
+    if verbose:
+        print("Executing:", " ".join(cmd))
+    ret = subprocess.run(
+        cmd,
+        cwd=cwd,
+        check=False,
+        capture_output=True,
+    )
+    if verbose:
+        print(f"{ret.stdout.decode()}")
+    if ret.returncode != 0:
+        raise RuntimeError(f"[Peano] compilation failed:\n{ret.stderr.decode()}")
 
 
 def compile_mlir_module_to_pdi(
