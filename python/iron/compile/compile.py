@@ -65,7 +65,7 @@ def compile_cxx_core_function(
 
 
 def compile_mlir_module_to_pdi(
-    mlir_module: str, insts_path: str, pdi_path: str, options=None
+    mlir_module: str, insts_path: str, pdi_path: str, options=None, verbose=False
 ):
     """
     Compile an MLIR module to instruction and PDI files using the aiecc module.
@@ -77,6 +77,7 @@ def compile_mlir_module_to_pdi(
         insts_path (str): Path to the instruction binary file.
         pdi_path (str): Path to the PDI file.
         options (list[str]): List of additional options.
+        verbose (bool): Enable verbose output.
     """
 
     args = [
@@ -89,6 +90,8 @@ def compile_mlir_module_to_pdi(
         f"--pdi-name={pdi_path}",
         f"--npu-insts-name={insts_path}",
     ]
+    if verbose:
+        args = args + ["--verbose"]
     if options:
         args = args + options
     try:
