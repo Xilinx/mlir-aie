@@ -58,10 +58,13 @@ def compile_cxx_core_function(
         check=False,
         capture_output=True,
     )
-    if verbose:
+    if verbose and ret.stdout:
         print(f"{ret.stdout.decode()}")
     if ret.returncode != 0:
-        raise RuntimeError(f"[Peano] compilation failed:\n{ret.stderr.decode()}")
+        if ret.stderr:
+            raise RuntimeError(f"[Peano] compilation failed:\n{ret.stderr.decode()}")
+        else:
+            raise RuntimeError("[Peano] compilation failed")
 
 
 def compile_mlir_module_to_pdi(
