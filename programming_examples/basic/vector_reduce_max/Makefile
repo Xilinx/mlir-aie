@@ -30,13 +30,13 @@ use_shared?=0
 use_memtile?=0
 
 ifeq (${use_shared}, 1)
-aie_py_src=single_col_${targetname}_shared.py
+aie_py_src=${targetname}_shared.py
 dtype=bf16
 else ifeq (${use_memtile}, 1)
-aie_py_src=single_col_${targetname}_memtile.py
+aie_py_src=${targetname}_memtile.py
 dtype=i32
 else ifeq (${use_cascade}, 1)
-aie_py_src=single_col_${targetname}_cascade.py
+aie_py_src=${targetname}_cascade.py
 dtype=bf16
 else ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
