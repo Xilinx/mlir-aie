@@ -426,15 +426,12 @@ class FlowRunner:
             proc = await asyncio.create_subprocess_exec(
                 *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
-            if self.opts.verbose:
-                stdout, stderr = await proc.communicate()
-                ret = proc.returncode
-                print(f"{stdout.decode()}\n")
-                if ret != 0:
-                    print(f"{stderr.decode()}\n")
-            else:
-                await proc.wait()
-                ret = proc.returncode
+            stdout, stderr = await proc.communicate()
+            ret = proc.returncode
+            if self.opts.verbose and stdout:
+                print(f"{stdout.decode()}")
+            if ret != 0 and stderr:
+                print(f"{stderr.decode()}", file=sys.stderr)
         else:
             ret = 0
         end = time.time()
@@ -1322,7 +1319,7 @@ def run(mlir_module, args=None):
         sys.exit("AIE Simulation (--aiesim) currently requires --xbridge")
 
     if opts.verbose:
-        sys.stderr.write(f"\ncompiling {opts.filename}\n")
+        print(f"Compiling {opts.filename}")
 
     if opts.tmpdir:
         tmpdirname = opts.tmpdir
