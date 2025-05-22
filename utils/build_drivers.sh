@@ -70,12 +70,12 @@ echo "Installing new XRT packages..."
 cd "$XDNA_SRC_DIR/xrt/build/Release"
 case "$UBUNTU_VERSION" in
     "24.04")
-        sudo apt reinstall ./xrt_202510.2.19.0_24.04-amd64-base.deb
-        sudo apt reinstall ./xrt_202510.2.19.0_24.04-amd64-base-dev.deb
+        sudo apt reinstall ./xrt_202520.2.20.0_24.04-amd64-base.deb
+        sudo apt reinstall ./xrt_202520.2.20.0_24.04-amd64-base-dev.deb
         ;;
     "24.10")
-        sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-base.deb
-        sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-base-dev.deb
+        sudo apt reinstall ./xrt_202520.2.20.0_24.10-amd64-base.deb
+        sudo apt reinstall ./xrt_202520.2.20.0_24.10-amd64-base-dev.deb
         ;;
     *)
         echo "Error: Unsupported Ubuntu version ($UBUNTU_VERSION). Supported versions: 24.04, 24.10"
@@ -94,10 +94,10 @@ echo "Installing XDNA plugin..."
 cd "$XDNA_SRC_DIR/build/Release"
 case "$UBUNTU_VERSION" in
     "24.04")
-        sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu24.04-x86_64-amdxdna.deb
+        sudo apt reinstall ./xrt_plugin.2.20.0_ubuntu24.04-x86_64-amdxdna.deb
         ;;
     "24.10")
-        sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu24.10-x86_64-amdxdna.deb
+        sudo apt reinstall ./xrt_plugin.2.20.0_ubuntu24.10-x86_64-amdxdna.deb
         ;;
 esac
 
