@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 AMD Inc.
+# (c) Copyright 2025 AMD Inc.
 from ml_dtypes import bfloat16
 import numpy as np
 import sys
@@ -21,19 +21,32 @@ def vector_softmax(dev, trace_size):
 
     word_size_in = 2
     N = 262144  # *1024
-    M = N // 4
     N_in_bytes = N * word_size_in
 
     # Tile sizes
     n = 1024
     N_div_n = N // n
 
-    n_cores = 16
-    n_cores_per_col = 4
-    n_col = n_cores // n_cores_per_col
+    n_cores_per_col = 1
+    n_col = 1
+    n_cores = n_col * n_cores_per_col
+    N_per_shimtile = N // n_col
     N_per_memtile = n * n_cores_per_col
     tiles = N_div_n // n_cores
     buffer_depth = 2
+
+    if dev == AIEDevice.npu1_4col and n_col > 4:
+        raise ValueError(
+            "[ERROR] NPU1 device only supports 4 columns. Please set n_col <= 4"
+        )
+    if dev == AIEDevice.npu2_4col and n_col > 8:
+        raise ValueError(
+            "[ERROR] NPU2 device only supports 8 columns. Please set n_col <= 8"
+        )
+    if n_cores_per_col > 4:
+        raise ValueError(
+            "[ERROR] Only 4 cores per column are supported. Please set n_cores_per_col <= 4"
+        )
 
     @device(dev)
     def device_body():
@@ -68,53 +81,48 @@ def vector_softmax(dev, trace_size):
 
         # AIE-array data movement with object fifos
         # Input A and Output C
-        of_in0 = object_fifo(
-            "of_in0", ShimTiles[0], MemTiles[0], buffer_depth, A_memTile_ty
-        )
-        of_in1 = object_fifo(
-            "of_in1", ShimTiles[1], MemTiles[1], buffer_depth, A_memTile_ty
-        )
-        of_in2 = object_fifo(
-            "of_in2", ShimTiles[2], MemTiles[2], buffer_depth, A_memTile_ty
-        )
-        of_in3 = object_fifo(
-            "of_in3", ShimTiles[3], MemTiles[3], buffer_depth, A_memTile_ty
-        )
 
-        of_out0 = object_fifo(
-            "of_out0", MemTiles[0], ShimTiles[0], buffer_depth, C_memTile_ty
-        )
-        of_out1 = object_fifo(
-            "of_out1", MemTiles[1], ShimTiles[1], buffer_depth, C_memTile_ty
-        )
-        of_out2 = object_fifo(
-            "of_out2", MemTiles[2], ShimTiles[2], buffer_depth, C_memTile_ty
-        )
-        of_out3 = object_fifo(
-            "of_out3", MemTiles[3], ShimTiles[3], buffer_depth, C_memTile_ty
-        )
+        of_in = []
+        for i in range(n_col):
+            of_in.append(
+                object_fifo(
+                    f"of_in{i}", ShimTiles[i], MemTiles[i], buffer_depth, A_memTile_ty
+                )
+            )
 
+        of_out = []
+        for i in range(n_col):
+            of_out.append(
+                object_fifo(
+                    f"of_out{i}", MemTiles[i], ShimTiles[i], buffer_depth, C_memTile_ty
+                )
+            )
+        # Create object FIFOs to split input A across cores of a column and
+        # join output C across cores of a column.
         for i in range(n_col):
             for j in range(n_cores_per_col):
+                # FIFO for input A from memory tile to core
                 inA_fifos.append(
                     object_fifo(
-                        f"memA{(i*n_col)+j}",
+                        f"memA{(i*n_cores_per_col)+j}",
                         MemTiles[i],
-                        cores[(i * n_col) + j],
+                        cores[(i * n_cores_per_col) + j],
                         buffer_depth,
                         A_ty,
                     )
                 )
+                # FIFO for output C from core to memory tile
                 outC_fifos.append(
                     object_fifo(
-                        f"memC{(i*n_col)+j}",
-                        cores[(i * n_col) + j],
+                        f"memC{(i*n_cores_per_col)+j}",
+                        cores[(i * n_cores_per_col) + j],
                         MemTiles[i],
                         buffer_depth,
                         C_ty,
                     )
                 )
 
+        # Offsets for splitting input A and joining output C across cores
         if n_cores > 1:
             of_a_offsets = [
                 (np.prod(np_ndarray_type_get_shape(A_memTile_ty)) // n_cores_per_col)
@@ -130,27 +138,29 @@ def vector_softmax(dev, trace_size):
             of_a_offsets = []
             of_c_offsets = []
 
+        # Split the input FIFOs for each column into groups corresponding to the cores
+        # in that column and link them to the memory tile FIFOs.
         inA_fifos_split = [[], [], [], []]
         for i in range(n_col):
             inA_fifos_split[i] = inA_fifos[
                 i * n_cores_per_col : (i + 1) * n_cores_per_col
             ]
 
-        object_fifo_link(of_in0, inA_fifos_split[0], [], of_a_offsets)
-        object_fifo_link(of_in1, inA_fifos_split[1], [], of_a_offsets)
-        object_fifo_link(of_in2, inA_fifos_split[2], [], of_a_offsets)
-        object_fifo_link(of_in3, inA_fifos_split[3], [], of_a_offsets)
+        # Link the input FIFOs from memory tiles to the cores in each column
+        for i in range(n_col):
+            object_fifo_link(of_in[i], inA_fifos_split[i], [], of_a_offsets)
 
+        # Split the output FIFOs for each column into groups corresponding to the cores
+        # in that column and link them to the memory tile FIFOs.
         outC_fifos_split = [[], [], [], []]
         for i in range(n_col):
             outC_fifos_split[i] = outC_fifos[
                 i * n_cores_per_col : (i + 1) * n_cores_per_col
             ]
 
-        object_fifo_link(outC_fifos_split[0], of_out0, of_c_offsets, [])
-        object_fifo_link(outC_fifos_split[1], of_out1, of_c_offsets, [])
-        object_fifo_link(outC_fifos_split[2], of_out2, of_c_offsets, [])
-        object_fifo_link(outC_fifos_split[3], of_out3, of_c_offsets, [])
+        # Link the output FIFOs from the cores to the memory tiles in each column
+        for i in range(n_col):
+            object_fifo_link(outC_fifos_split[i], of_out[i], of_c_offsets, [])
 
         # Set up a packet-switched flow from core to shim for tracing information
         tiles_to_trace = [cores[0]]
@@ -187,50 +197,33 @@ def vector_softmax(dev, trace_size):
                     ddr_id=1,
                 )
 
-            in_task = shim_dma_single_bd_task(
-                of_in0, A, offset=0, sizes=[1, 1, 1, M], issue_token=True
-            )
-            in_task1 = shim_dma_single_bd_task(
-                of_in1, A, offset=M, sizes=[1, 1, 1, M], issue_token=True
-            )
-            in_task2 = shim_dma_single_bd_task(
-                of_in2, A, offset=M * 2, sizes=[1, 1, 1, M], issue_token=True
-            )
-            in_task3 = shim_dma_single_bd_task(
-                of_in3, A, offset=M * 3, sizes=[1, 1, 1, M], issue_token=True
-            )
-            out_task = shim_dma_single_bd_task(
-                of_out0, C, offset=0, sizes=[1, 1, 1, M], issue_token=True
-            )
-            out_task1 = shim_dma_single_bd_task(
-                of_out1, C, offset=M, sizes=[1, 1, 1, M], issue_token=True
-            )
-            out_task2 = shim_dma_single_bd_task(
-                of_out2, C, offset=M * 2, sizes=[1, 1, 1, M], issue_token=True
-            )
-            out_task3 = shim_dma_single_bd_task(
-                of_out3, C, offset=M * 3, sizes=[1, 1, 1, M], issue_token=True
-            )
-            dma_start_task(
-                in_task,
-                in_task1,
-                in_task2,
-                in_task3,
-                out_task,
-                out_task1,
-                out_task2,
-                out_task3,
-            )
-            dma_await_task(
-                in_task,
-                in_task1,
-                in_task2,
-                in_task3,
-                out_task,
-                out_task1,
-                out_task2,
-                out_task3,
-            )
+            in_tasks = []
+            out_tasks = []
+
+            # Loop through each column to set up DMA tasks for input and output
+            for i in range(n_col):
+                # Distributing host buffer (A) to the shim tiles
+                in_tasks.append(
+                    shim_dma_single_bd_task(
+                        of_in[i],
+                        A,
+                        offset=N_per_shimtile * i,
+                        sizes=[1, 1, 1, N_per_shimtile],
+                    )
+                )
+                # Joining output from the shim tiles and writing to host buffer (C)
+                out_tasks.append(
+                    shim_dma_single_bd_task(
+                        of_out[i],
+                        C,
+                        offset=N_per_shimtile * i,
+                        sizes=[1, 1, 1, N_per_shimtile],
+                        issue_token=True,
+                    )
+                )
+
+            dma_start_task(*in_tasks, *out_tasks)
+            dma_await_task(*out_tasks)
 
             trace_utils.gen_trace_done_aie2(ShimTiles[0])
 
