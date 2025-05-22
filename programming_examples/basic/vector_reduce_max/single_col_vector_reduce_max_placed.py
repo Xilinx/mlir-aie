@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 import argparse
 import sys
@@ -136,14 +136,12 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size, n_cores):
                     trace_size=trace_size,
                 )
 
-            in_task = shim_dma_single_bd_task(
-                of_in, A, sizes=[1, 1, 1, N], issue_token=True
-            )
+            in_task = shim_dma_single_bd_task(of_in, A, sizes=[1, 1, 1, N])
             out_task = shim_dma_single_bd_task(
                 outC_fifos[0], C, sizes=[1, 1, 1, O], issue_token=True
             )
             dma_start_task(in_task, out_task)
-            dma_await_task(in_task, out_task)
+            dma_await_task(out_task)
 
             trace_utils.gen_trace_done_aie2(ShimTile)
 
