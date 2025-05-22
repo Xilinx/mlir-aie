@@ -81,14 +81,14 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:aa606a78407cbf3e9cb856a5b27c8729d" id="r_aa606a78407cbf3e9cb856a5b27c8729d"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1compile_1_1compile.html#aa606a78407cbf3e9cb856a5b27c8729d">compile_cxx_core_function</a> (str source_path, str target_arch, str output_path, compile_args=None, cwd=None)</td></tr>
-<tr class="separator:aa606a78407cbf3e9cb856a5b27c8729d"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a1c56f91d9aa02226685c142fc9e4f70a" id="r_a1c56f91d9aa02226685c142fc9e4f70a"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1compile_1_1compile.html#a1c56f91d9aa02226685c142fc9e4f70a">compile_mlir_module_to_pdi</a> (str mlir_module, str insts_path, str pdi_path, options=None)</td></tr>
-<tr class="separator:a1c56f91d9aa02226685c142fc9e4f70a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6e88b49f5fadbeb8c0ae96dd262fd0e2" id="r_a6e88b49f5fadbeb8c0ae96dd262fd0e2"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1compile_1_1compile.html#a6e88b49f5fadbeb8c0ae96dd262fd0e2">compile_cxx_core_function</a> (str source_path, str target_arch, str output_path, compile_args=None, cwd=None, verbose=False)</td></tr>
+<tr class="separator:a6e88b49f5fadbeb8c0ae96dd262fd0e2"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a59abd3e5fd26520427a76666f8c679f1" id="r_a59abd3e5fd26520427a76666f8c679f1"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1compile_1_1compile.html#a59abd3e5fd26520427a76666f8c679f1">compile_mlir_module_to_pdi</a> (str mlir_module, str insts_path, str pdi_path, options=None, verbose=False)</td></tr>
+<tr class="separator:a59abd3e5fd26520427a76666f8c679f1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Function Documentation</h2>
-<a id="aa606a78407cbf3e9cb856a5b27c8729d" name="aa606a78407cbf3e9cb856a5b27c8729d"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aa606a78407cbf3e9cb856a5b27c8729d">&#9670;&#160;</a></span>compile_cxx_core_function()</h2>
+<a id="a6e88b49f5fadbeb8c0ae96dd262fd0e2" name="a6e88b49f5fadbeb8c0ae96dd262fd0e2"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a6e88b49f5fadbeb8c0ae96dd262fd0e2">&#9670;&#160;</a></span>compile_cxx_core_function()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -121,7 +121,13 @@ Functions</h2></td></tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>cwd</em> = <code>None</code>&#160;</td>
+          <td class="paramname"><em>cwd</em> = <code>None</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>verbose</em> = <code>False</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -140,11 +146,12 @@ Parameters:
     output_path (str): Output object file path.
     compile_args (list[str]): Compile arguments to peano.
     cwd (str): Overrides the current working directory.
+    verbose (bool): Enable verbose output.
 </pre> 
 </div>
 </div>
-<a id="a1c56f91d9aa02226685c142fc9e4f70a" name="a1c56f91d9aa02226685c142fc9e4f70a"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a1c56f91d9aa02226685c142fc9e4f70a">&#9670;&#160;</a></span>compile_mlir_module_to_pdi()</h2>
+<a id="a59abd3e5fd26520427a76666f8c679f1" name="a59abd3e5fd26520427a76666f8c679f1"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a59abd3e5fd26520427a76666f8c679f1">&#9670;&#160;</a></span>compile_mlir_module_to_pdi()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -171,7 +178,13 @@ Parameters:
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>options</em> = <code>None</code>&#160;</td>
+          <td class="paramname"><em>options</em> = <code>None</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>verbose</em> = <code>False</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -189,6 +202,7 @@ Parameters:
     insts_path (str): Path to the instruction binary file.
     pdi_path (str): Path to the PDI file.
     options (list[str]): List of additional options.
+    verbose (bool): Enable verbose output.
 </pre> 
 </div>
 </div>
