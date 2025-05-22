@@ -28,19 +28,29 @@ xclbin_target?=build/final.xclbin
 insts_target?=build/insts.bin
 host_target?=build/test
 
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
-M=16
-N=16
-m=16
-n=16
+devicename?=$(if $(filter 1,$(NPU2)),npu2,npu)
+M?=16
+N?=16
+m?=16
+ifeq (${use_handwritten}, 1)
+	n?=16
+else
+	n?=8
+endif
+use_handwritten?=0
+
+kernel=transpose_aie_api
+ifeq (${use_handwritten}, 1)
+	kernel=transpose_handwritten
+	pyflags+=--use-handwritten
+endif
 
 aie_py_src=shuffle_transpose.py
-
 
 .PHONY: all
 all: ${xclbin_target} ${host_target}
 
-build/kernel.o: ${srcdir}/aie_kernels/aie2/kernel.cc
+build/${kernel}.o: ${srcdir}/aie_kernels/aie2/${kernel}.cc
 	mkdir -p ${@D}
 ifeq (${devicename}, npu2)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DDIM_m=$m -DDIM_n=$n -c $< -o ${@F}
@@ -50,9 +60,9 @@ endif
 
 ${mlir_target}: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${devicename} $M $N $m $n > $@
+	python3 $< ${devicename} $M $N $m $n ${pyflags} > $@
 
-${xclbin_target}: ${mlir_target} build/kernel.o
+${xclbin_target}: ${mlir_target} build/${kernel}.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 				--no-xchesscc --no-xbridge \
