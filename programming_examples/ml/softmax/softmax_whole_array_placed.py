@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 AMD Inc.
+# (c) Copyright 2025 AMD Inc.
 from ml_dtypes import bfloat16
 import numpy as np
 import sys
@@ -209,7 +209,6 @@ def vector_softmax(dev, trace_size):
                         A,
                         offset=N_per_shimtile * i,
                         sizes=[1, 1, 1, N_per_shimtile],
-                        issue_token=True,
                     )
                 )
                 # Joining output from the shim tiles and writing to host buffer (C)
@@ -224,7 +223,7 @@ def vector_softmax(dev, trace_size):
                 )
 
             dma_start_task(*in_tasks, *out_tasks)
-            dma_await_task(*in_tasks, *out_tasks)
+            dma_await_task(*out_tasks)
 
             trace_utils.gen_trace_done_aie2(ShimTiles[0])
 
