@@ -25,7 +25,7 @@ dtype?=i32
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src=${targetname}.py
 use_placed?=0
-single_col?=0
+use_cascade?=0
 use_shared?=0
 use_memtile?=0
 
@@ -35,10 +35,10 @@ dtype=bf16
 else ifeq (${use_memtile}, 1)
 aie_py_src=single_col_${targetname}_memtile.py
 dtype=i32
-else ifeq (${use_placed}${single_col}, 11)
-aie_py_src=single_col_${targetname}_placed.py
+else ifeq (${use_cascade}, 1)
+aie_py_src=single_col_${targetname}_cascade.py
 dtype=bf16
-else ifeq (${use_placed}${single_col}, 10)
+else ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
 dtype=i32
 else

@@ -24,7 +24,8 @@ dtype_map = {
 }
 
 
-def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size, n_cores):
+def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
+    n_cores = 4
     in_dtype = dtype_map[dtype_str]
     out_dtype = dtype_map[dtype_str]
 
@@ -185,7 +186,7 @@ dtype = str(opts.dtype)
 trace_size = int(opts.trace_size)
 
 with mlir_mod_ctx() as ctx:
-    my_reduce_max(dev, in1_size, out_size, dtype, trace_size, n_cores=4)
+    my_reduce_max(dev, in1_size, out_size, dtype, trace_size)
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)

@@ -22,7 +22,8 @@ dtype_map = {
 }
 
 
-def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size, n_cores):
+def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
+    n_cores = 4
     in_dtype = dtype_map[dtype_str]
     out_dtype = dtype_map[dtype_str]
 
@@ -86,7 +87,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size, n_cores):
         object_fifo_link(outC_fifos, outC, of_c_offsets, [])
 
         # Set up a packet-switched flow from core to shim for tracing information
-        tiles_to_trace = [cores[1]]
+        tiles_to_trace = [cores[0]]
         if trace_size > 0:
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
@@ -184,7 +185,7 @@ dtype = str(opts.dtype)
 trace_size = int(opts.trace_size)
 
 with mlir_mod_ctx() as ctx:
-    my_reduce_max(dev, in1_size, out_size, dtype, trace_size, n_cores=4)
+    my_reduce_max(dev, in1_size, out_size, dtype, trace_size)
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)

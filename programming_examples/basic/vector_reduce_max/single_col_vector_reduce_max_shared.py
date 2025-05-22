@@ -24,7 +24,8 @@ dtype_map = {
 }
 
 
-def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size, n_cores):
+def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
+    n_cores = 4
     in_dtype = dtype_map[dtype_str]
     out_dtype = dtype_map[dtype_str]
 
@@ -68,17 +69,22 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size, n_cores):
                 object_fifo(f"memA{i}", MemTile, cores[i], buffer_depth, inA_ty)
             )
         outC_fifos.append(
-            object_fifo(f"memC{0}", cores[0], cores[1], buffer_depth, out_ty)
+            object_fifo(
+                f"memC{0}",
+                cores[0],
+                ShimTile if n_cores == 1 else cores[1],
+                buffer_depth,
+                out_ty,
+            )
         )
-        outC_fifos.append(
-            object_fifo(f"memC{1}", cores[1], ShimTile, buffer_depth, out_ty)
-        )
-        outC_fifos.append(
-            object_fifo(f"memC{2}", cores[2], cores[1], buffer_depth, out_ty)
-        )
-        outC_fifos.append(
-            object_fifo(f"memC{3}", cores[3], cores[1], buffer_depth, out_ty)
-        )
+        if n_cores > 1:
+            outC_fifos.append(
+                object_fifo(f"memC{1}", cores[1], ShimTile, buffer_depth, out_ty)
+            )
+        for i in range(2, n_cores):
+            outC_fifos.append(
+                object_fifo(f"memC{i}", cores[i], cores[1], buffer_depth, out_ty)
+            )
 
         if n_cores > 1:
             of_a_offsets = [
@@ -133,21 +139,26 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size, n_cores):
                         inA_fifos[i].release(ObjectFifoPort.Consume, 1)
 
                         elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)
-                        elem_in1 = outC_fifos[i - 1].acquire(
-                            ObjectFifoPort.Consume, 1
-                        )  # 0
-                        elem_in2 = outC_fifos[i + 1].acquire(
-                            ObjectFifoPort.Consume, 1
-                        )  # 2
-                        elem_in3 = outC_fifos[i + 2].acquire(
-                            ObjectFifoPort.Consume, 1
-                        )  # 3
-                        compute_max(elem_in1, nextC_buffer, elem_out1)
-                        compute_max(elem_in2, elem_out1, elem_out2)
-                        compute_max(elem_in3, elem_out2, elem_out)
-                        outC_fifos[i - 1].release(ObjectFifoPort.Consume, 1)
-                        outC_fifos[i + 1].release(ObjectFifoPort.Consume, 1)
-                        outC_fifos[i + 2].release(ObjectFifoPort.Consume, 1)
+                        inputs = []
+                        for j in range(n_cores):
+                            if j != i:
+                                inputs.append(
+                                    outC_fifos[j].acquire(ObjectFifoPort.Consume, 1)
+                                )
+
+                        temp_buffer = nextC_buffer
+                        for idx, input_elem in enumerate(inputs):
+                            if idx < n_cores - 1:
+                                compute_max(input_elem, temp_buffer, elem_out1)
+                                temp_buffer = elem_out1
+
+                        compute_max(temp_buffer, elem_out1, elem_out)
+
+                        for j, input_elem in enumerate(inputs):
+                            outC_fifos[j if j < i else j + 1].release(
+                                ObjectFifoPort.Consume, 1
+                            )
+
                         outC_fifos[i].release(ObjectFifoPort.Produce, 1)
 
         # To/from AIE-array data movement
@@ -162,7 +173,10 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size, n_cores):
 
             in_task = shim_dma_single_bd_task(of_in, A, sizes=[1, 1, 1, N])
             out_task = shim_dma_single_bd_task(
-                outC_fifos[1], C, sizes=[1, 1, 1, O], issue_token=True
+                outC_fifos[0 if n_cores == 1 else 1],
+                C,
+                sizes=[1, 1, 1, O],
+                issue_token=True,
             )
             dma_start_task(in_task, out_task)
             dma_await_task(out_task)
@@ -209,7 +223,7 @@ dtype = str(opts.dtype)
 trace_size = int(opts.trace_size)
 
 with mlir_mod_ctx() as ctx:
-    my_reduce_max(dev, in1_size, out_size, dtype, trace_size, n_cores=4)
+    my_reduce_max(dev, in1_size, out_size, dtype, trace_size)
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)
