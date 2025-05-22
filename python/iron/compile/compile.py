@@ -7,7 +7,6 @@
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
 import subprocess
-import sys
 import aie.compiler.aiecc.main as aiecc
 import aie.utils.config as config
 
@@ -18,6 +17,7 @@ def compile_cxx_core_function(
     output_path: str,
     compile_args=None,
     cwd=None,
+    verbose=False,
 ):
     """
     Compile a C++ core function.
@@ -30,6 +30,7 @@ def compile_cxx_core_function(
         output_path (str): Output object file path.
         compile_args (list[str]): Compile arguments to peano.
         cwd (str): Overrides the current working directory.
+        verbose (bool): Enable verbose output.
     """
     cmd = [
         config.peano_cxx_path(),
@@ -49,20 +50,25 @@ def compile_cxx_core_function(
     ]
     if compile_args:
         cmd = cmd + compile_args
-    try:
-        subprocess.run(
-            cmd,
-            cwd=cwd,
-            check=True,
-            stdout=sys.stdout,
-            stderr=sys.stderr,
-        )
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError("[Peano] compilation failed") from e
+    if verbose:
+        print("Executing:", " ".join(cmd))
+    ret = subprocess.run(
+        cmd,
+        cwd=cwd,
+        check=False,
+        capture_output=True,
+    )
+    if verbose and ret.stdout:
+        print(f"{ret.stdout.decode()}")
+    if ret.returncode != 0:
+        if ret.stderr:
+            raise RuntimeError(f"[Peano] compilation failed:\n{ret.stderr.decode()}")
+        else:
+            raise RuntimeError("[Peano] compilation failed")
 
 
 def compile_mlir_module_to_pdi(
-    mlir_module: str, insts_path: str, pdi_path: str, options=None
+    mlir_module: str, insts_path: str, pdi_path: str, options=None, verbose=False
 ):
     """
     Compile an MLIR module to instruction and PDI files using the aiecc module.
@@ -74,6 +80,7 @@ def compile_mlir_module_to_pdi(
         insts_path (str): Path to the instruction binary file.
         pdi_path (str): Path to the PDI file.
         options (list[str]): List of additional options.
+        verbose (bool): Enable verbose output.
     """
 
     args = [
@@ -86,6 +93,8 @@ def compile_mlir_module_to_pdi(
         f"--pdi-name={pdi_path}",
         f"--npu-insts-name={insts_path}",
     ]
+    if verbose:
+        args = args + ["--verbose"]
     if options:
         args = args + options
     try:
