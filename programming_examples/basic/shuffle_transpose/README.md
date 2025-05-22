@@ -11,10 +11,34 @@
 # Shuffle Transpose
 
 This design takes a single input, `in`,
-which is a linerized array corresponding to a `16`&times;`16` matrix.
-The design uses AIE core shuffle operations (VSHUFFLE) to transpose the 
-`16`&times;`16` matrix.
+which is a linerized array corresponding to a `M`&times;`N` matrix.
+The design uses AIE core shuffle operations (`VSHUFFLE`), either through a 
+hand-implemented `16`&times;`16` transpose kernel that uses the `VSHUFFLE`, or a
+higher-level transpose kernel that uses the AIE API's `aie::transpose`
+method, supporting other tile sizes `m`&times;`n`.
+Use the compile-time environment variable `use_handwritten` to switch
+between the handwritten lower-level `16`&times;`16` kernel (1) or the higher-level
+AIE API method (0, default).
 
+## Compile-time Environment Variables
+
+You can set numerous environment varialbes to configure this design to different
+matrix and tile sizes. There will be compilation errors if you use unsupported
+sizes or combinations of sizes. Here is an example compilation command:
+
+```
+make clean && M=64 N=32 m=16 n=8 use_handwritten=0 make run
+```
+
+ * `M, N`: Overall matrix size
+ * `m, n`: Size of the smaller matrix tiles that are transposed individually.
+   Must be a size supported by the kernel; see kernel comments
+   (power of two, limited sizes, ...).
+   If using the handwritten kernel, `m=16`and `n=16`.
+   `m` and `n` must evenly divide `M` and `N`, respectively, as we do not have
+   any provisions for padding or processing leftover elements.
+ * `use_handwritten=1` uses the kernel in 
+   `aie_kernels/aie2/transpose_handwritten.cc`
 
 ## Data Movement
 
@@ -25,16 +49,25 @@ into L1 as a `m`&times;`n` tile with
 N-major layout, i.e., the elements in a row are laid out contigously in memory.
 Since the data is laid out in DRAM as N-major, the DMAs merely do a linear copy.
 
-A single AIE core is configured to process chunks of `m`&times;`n` of `in`
-(`m` and `n` are configured to be 16).
+A single AIE core is configured to process chunks of `m`&times;`n` of `in`.
+`m` and `n` are configured to be 16 by default.
+For the AIE API design, other `m` and `n` can be chosen by setting those values
+as compile-time environment variables, but there are strong limitations on which
+dimensions the AIE API supports; see the comments in `transpose_aie_api.cc`.
 The input and output are tiled into `M/m`&times;`N/n` tiles,
 and the kernel function is called that number of times -
-the example is configured to process one tile, but can be configured to transpose multiple `16`&times;`16`, one after the other.
+the example is configured to process one tile, but can be configured to transpose multiple `m`&times;`n`, one after the other.
+
+Finally, the individually transposed tiles are written back to the output matrix
+in column-major order. Assembling the individually transposed tiles in colum-major
+order ensures that the overall matrix is completely transposed. This transformation
+occurs "in-flight" on the DMAs and is free from any overheads -- such transfers are
+as fast as linear transfers on the NPU.
 
 
-## Kernel
+## Handwritten Kernel
 
-The vectorized kernel is implemented in `kernel.cc`.
+The vectorized kernel is implemented in `aie_kernels/aie2/transpose_handwritten.cc`.
 
 ### Transpose Strategy
 
@@ -64,3 +97,12 @@ that transposes each tile to a `16x4` tile.
 - For instance, an INT8 32x32 transpose will need 16 single-register INT8 `2x32->32x2` shuffles, followed by interleaving shuffles.
 - Full list of shuffle modes supported for AIE2p can be found at: https://github.com/Xilinx/llvm-aie/blob/aie-public/clang/lib/Headers/aie2p_enums.h 
 
+## AIE API Kernel
+
+The AIE API is an abstraction level in C++ that sits above the AI Engine
+intrinsics. Any functions in the AIE API internally call the intrinsics,
+like the above-described handwritten kernel.
+
+The kernel that uses the AIE API is therefore simpler, since most of the
+transpose complexity is implemented in the AIE API instead. This kernel is
+located in `aie_kernels/aie2/transpose_aie_api.cc`.
