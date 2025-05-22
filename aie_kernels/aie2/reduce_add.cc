@@ -13,35 +13,32 @@
 #include <stdlib.h>
 #include <type_traits>
 
-#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-static void _reduce_add_scalar(int32_t *restrict in, int32_t *restrict out,
-                               const int32_t input_size) {
+template <typename T_in, typename T_out, const int N>
+void reduce_add_scalar_int32(T_in *a, T_out *c) {
   event0();
-  int32_t running_total = 0;
-  for (int32_t i = 0; i < input_size; i++) {
-    running_total = running_total + in[i];
+  int32_t sum=0;
+  for (int i = 0; i < N; i++) {
+    sum = sum + a[i];
   }
-  *out = running_total;
+  *(int32_t *)c = sum;
   event1();
-  return;
 }
 
-static void _reduce_add_vector(int32_t *restrict in, int32_t *restrict out,
-                               const int32_t input_size) {
+template <typename T_in, typename T_out, const int N>
+void reduce_add_vector_int32(T_in *in, T_out *out) {
   event0();
   v16int32 zero = broadcast_to_v16int32((int32_t)0);
   const int32_t vector_size = 16;
   v16int32 after_vector;
   v16int32 running_total = zero;
-  AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(8)
-  for (int32_t i = 0; i < input_size; i += vector_size) {
-    v16int32 next = *(v16int32 *)(in + i);
-    v16int32 test = add(running_total, next);
-    running_total = test;
-  }
+  for (int32_t i = 0; i < N; i += vector_size)
+    chess_prepare_for_pipelining chess_loop_range(16, ) {
+      v16int32 next = *(v16int32 *)(in + i);
+      v16int32 test = add(running_total, next);
+      running_total = test;
+    }
   after_vector = running_total;
   v16int32 first = shift_bytes(after_vector, after_vector, 32U);
   v16int32 second = add(after_vector, first);
@@ -54,14 +51,13 @@ static void _reduce_add_vector(int32_t *restrict in, int32_t *restrict out,
   int32_t last = extract_elem(fifth, 0U);
   *(int32_t *)out = last;
   event1();
-  return;
 }
 
 extern "C" {
-void reduce_add_vector(int32_t *a_in, int32_t *c_out, int32_t input_size) {
-  _reduce_add_vector(a_in, c_out, input_size);
+void reduce_add_vector(int32_t *a_in, int32_t *c_out) {
+  reduce_add_vector_int32<int32_t, int32_t, 256>(a_in, c_out);
 }
-void reduce_add_scalar(int32_t *a_in, int32_t *c_out, int32_t input_size) {
-  _reduce_add_scalar(a_in, c_out, input_size);
+void reduce_add_scalar(int32_t *a_in, int32_t *c_out) {
+  reduce_add_scalar_int32<int32_t, int32_t, 256>(a_in, c_out);
 }
 } // extern "C"
