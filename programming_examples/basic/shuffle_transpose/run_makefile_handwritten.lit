@@ -3,6 +3,8 @@
 //
 // REQUIRES: ryzen_ai, peano 
 //
+// RUN: mkdir -p test_handwritten
+// RUN: cd test_handwritten
 // RUN: make -f %S/Makefile clean
-// RUN: make -f %S/Makefile 
-// RUN: %run_on_npu make -f %S/Makefile run
+// RUN:  make -f %S/Makefile use_handwritten=1
+// RUN: %run_on_npu make -f %S/Makefile run use_handwritten=1

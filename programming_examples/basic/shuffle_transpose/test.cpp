@@ -141,9 +141,9 @@ int main(int argc, const char *argv[]) {
     std::cout << "Input:" << std::endl;
     print_matrix(buf_in, M, N);
     std::cout << "Expected:" << std::endl;
-    print_matrix(ref, M, N);
+    print_matrix(ref, N, M);
     std::cout << "Output:" << std::endl;
-    print_matrix(buf_out, M, N);
+    print_matrix(buf_out, N, M);
   }
 
   if (memcmp(ref, buf_out, sizeof(ref)) == 0) {
