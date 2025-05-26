@@ -124,3 +124,7 @@ if [[ -z "$plugin_pkg" ]]; then
     exit 1
 fi
 sudo apt reinstall "./$plugin_pkg"
+
+echo "xdna-driver and XRT built and installed successfully."
+echo "Please reboot to apply changes."
+
