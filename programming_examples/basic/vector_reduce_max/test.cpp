@@ -25,7 +25,7 @@ void initialize_bufIn1(DATATYPE *bufIn1, int SIZE) {
     if constexpr (std::is_same_v<DATATYPE, std::bfloat16_t> &&
                   std::is_same_v<DATATYPE, std::bfloat16_t>) {
       next = test_utils::random_bfloat16_t((std::bfloat16_t)8.0,
-                      (std::bfloat16_t)-4.0);
+                                           (std::bfloat16_t)-4.0);
     } else if constexpr (std::is_same_v<DATATYPE, int32_t> &&
                          std::is_same_v<DATATYPE, int32_t>) {
       next = test_utils::random_int32_t(100000);

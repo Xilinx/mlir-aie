@@ -26,6 +26,7 @@ dtype_map = {
 
 def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     n_cores = 4
+    elems_per_core = 512
     in_dtype = dtype_map[dtype_str]
     out_dtype = dtype_map[dtype_str]
 
@@ -40,12 +41,12 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     @device(dev)
     def device_body():
         in_ty = np.ndarray[(N,), np.dtype[in_dtype]]
-        inA_ty = np.ndarray[(M,), np.dtype[in_dtype]]
+        op_ty = np.ndarray[(elems_per_core,), np.dtype[in_dtype]]
         out_ty = np.ndarray[(O,), np.dtype[out_dtype]]
 
         # AIE Core Function declarations
         reduce_max_vector = external_func(
-            "reduce_max_vector_bfloat16", inputs=[inA_ty, out_ty, out_dtype]
+            "reduce_max_vector_bfloat16", inputs=[op_ty, out_ty, out_dtype]
         )
         compute_max = external_func(
             "compute_max_bfloat16", inputs=[out_ty, out_ty, out_ty]
@@ -66,7 +67,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
 
         for i in range(n_cores):
             inA_fifos.append(
-                object_fifo(f"memA{i}", MemTile, cores[i], buffer_depth, inA_ty)
+                object_fifo(f"memA{i}", MemTile, cores[i], buffer_depth, op_ty)
             )
         outC_fifos.append(
             object_fifo(
@@ -110,7 +111,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                     for _ in range_(0xFFFFFFFF):
                         elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)
                         elem_in = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
-                        reduce_max_vector(elem_in, elem_out, M)
+                        reduce_max_vector(elem_in, elem_out, elems_per_core)
                         inA_fifos[i].release(ObjectFifoPort.Consume, 1)
                         outC_fifos[i].release(ObjectFifoPort.Produce, 1)
 
@@ -135,7 +136,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                 def core_body():
                     for _ in range_(0xFFFFFFFF):
                         elem_in = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
-                        reduce_max_vector(elem_in, nextC_buffer, M)
+                        reduce_max_vector(elem_in, nextC_buffer, elems_per_core)
                         inA_fifos[i].release(ObjectFifoPort.Consume, 1)
 
                         elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)

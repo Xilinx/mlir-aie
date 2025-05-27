@@ -24,6 +24,8 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     in1_dtype = dtype_map[dtype_str]
     out_dtype = dtype_map[dtype_str]
 
+    elems_per_core = 512
+
     tensor_size = in1_size // in1_dtype(0).nbytes
 
     assert out_size == 4, "Output buffer must be size 4 (4 bytes = 1 integer)."
@@ -32,29 +34,30 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
 
     # Define tensor types
     in_ty = np.ndarray[(tensor_size,), np.dtype[in1_dtype]]
+    op_ty = np.ndarray[(elems_per_core,), np.dtype[in1_dtype]]
     out_ty = np.ndarray[(1,), np.dtype[out_dtype]]
 
     # AIE-array data movement with object fifos
-    of_in = ObjectFifo(in_ty, name="in")
+    of_in = ObjectFifo(op_ty, name="in")
     of_out = ObjectFifo(out_ty, name="out")
 
     # AIE Core Function declarations
-    reduce_add_vector = Kernel(
-        "reduce_max_vector", "reduce_max.cc.o", [in_ty, out_ty, np.int32]
+    reduce_max_vector = Kernel(
+        "reduce_max_vector", "reduce_max.cc.o", [op_ty, out_ty, np.int32]
     )
 
     # Define a task to run
-    def core_body(of_in, of_out, reduce_add_vector):
+    def core_body(of_in, of_out, reduce_max_vector):
         elem_out = of_out.acquire(1)
         elem_in = of_in.acquire(1)
-        reduce_add_vector(elem_in, elem_out, tensor_size)
+        reduce_max_vector(elem_in, elem_out, elems_per_core)
         of_in.release(1)
         of_out.release(1)
 
     # Define a worker to run the task on a core
     worker = Worker(
         core_body,
-        fn_args=[of_in.cons(), of_out.prod(), reduce_add_vector],
+        fn_args=[of_in.cons(), of_out.prod(), reduce_max_vector],
         trace=enable_trace,
     )
 
