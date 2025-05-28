@@ -49,7 +49,7 @@ Then, we declare a vector as follows:
 aie::vector<T, vec_factor> my_vector
 ```
 * T - data type, such as `int16_t`
-* vec_factor - vector size, such as 32
+* vec_factor - vectorization factor or vector size, such as 32
 
 The size of the vector depends on the type. For example, the standard vector register in AIE2 is **512 bits**. For `int16_t`, that means we can store 32 of them in 1x 512b vector register. Extending this to the other supported data types, we have the following abbreviated table:
 
@@ -80,7 +80,7 @@ Finally, we get to the `aie::mul` call which takes a vector and a scalar as argu
 ```C++
       aie::accum<acc32, vec_factor> cout
 ```
-The accumulator data type in this case is 32x 32-bit accumulator. We store the computed results back to local memory using the vector store function `aie::store_v`. Note that for `int32_t` datatypes, we require a larger accumulator (`acc64`).
+The accumulator data type in this case is 32x 32-bit accumulator. We store the computed results from the accumulator back to local memory using the vector store function `aie::store_v`. Note that multiplication or addition with input arguments of `int32_t` datatypes will require a larger 64-bit accumulator (`acc64`) which only has 16 output lanes instead of 32.
 ```C++
       T *__restrict pC1 = c;
 
@@ -113,23 +113,29 @@ void scale_vectorized(T *a, T *c, int32_t factor, const int32_t N) {
 }
 ```
 
-In this example, the vectorization strategy was relatively straight forward. Instead of iterating over a vector of values and doing a single scalar multiply, we load a vector of input values, iterate over a smaller loop to perform a vector*scalar operation using the AIE API functions, and then store the vector of results back to local memory.
+In this example, the vectorization strategy was relatively straight forward. Instead of iterating over a vector of values and doing a single scalar multiply, we load a vector of input values, iterate over a smaller loop (divided by the vectorization factor) to perform a vector*scalar operation using the AIE API functions, and then store the vector of results back to local memory.
 
 > **NOTE** - AIE API is a portable programming interface that is implemented as a C++ header-only library providing types and operations that get translated into generation specific efficient low-level intrinsics. AIE kernels can also be programmed directly in these low-level C++ intrinsics: [AIE1 Intrinsics User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_intrinsics/intrinsics/index.html) and [AIE2 Intrinsics User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_ml_intrinsics/intrinsics/index.html)
 
 ## <u>Vectorization Exercises</u>
-1. Let's take a look at the trace for our vector scalar design. First, let's edit our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/) so that the [vector_scalar_mul_placed.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul_placed.py) source file has `vectorized=False`. In the [vector_scalar_mul_placed.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul_placed.py) source code, we now have selected the scalar version of the kernel function. Then run `make use_placed=1 trace`. After the trace compilation is complete, open `trace_vector_scalar_mul.json` in https://ui.perfetto.dev and measure the delta between `event 0` and `event 1`. Note that in the Perfetto waveform, 1 us is equal to 1 clock cycle. How many cycles did you measure? <img src="../../../mlir_tutorials/images/answer1.jpg" title="~10,250 cycles" height=25> 
+1. Let's take a look at the trace for our vector scalar design. First, let's edit our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/) so that the [vector_scalar_mul.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py) source file has `vectorized=False`. In the [vector_scalar_mul.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py) source code, we now have selected the scalar version of the kernel function. We're also going to build the 32-bit integer version of the design by passing the environment variales `int_bit-width=32` to our `makefile` command, by running  `make CHESS=true int_bit_width=32 trace`. This makefile argument is defined in our makefile to customize datatypes and buffer sizes in our design code (`vector_scalar_mul.py`) and our host code (`test.cpp`). After the trace compilation is complete, open `trace_vector_scalar_mul.json` in https://ui.perfetto.dev and measure the delta between `event 0` and `event 1`. Note that in the Perfetto waveform, 1 us is equal to 1 clock cycle. How many cycles did you measure? <img src="../../../mlir_tutorials/images/answer1.jpg" title="~10,249 cycles" height=25> 
 
-1. Now let's turn vectorization back on by changing `vectorized=True`. But we're also going to disable any pragma guided optimization first to see its effect. In the [scale.cc](../../../aie_kernels/aie2/scale.cc), comment out the lines before the `for loop` that says `AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)`. **NOTE** Be sure you're editing the general template and not the `int32_t` template specialization. The general version should be the first one. Then rerun the compilation (`make clean; make use_placed=1 trace`). Measure the delta between `event 0` and `event 1` again. What value do you see now? <img src="../../../mlir_tutorials/images/answer1.jpg" title="~495 cycles" height=25>
+    You may notice that in our `vector_scalar_mul` example, we call `utils/get_trace_summary.py` to analyze the generated json file and measure the delta between `event 0` and `event 1` automatically, providing the number of kernel invocations, and the first/ min/ avg/ max number of cycles. This is a handy utility for summarizing kernel performance for single core designs.
+
+1. Now let's turn vectorization back on by changing `vectorized=True`. But we're also going to disable any pragma guided optimization first to see its effect. In the [scale.cc](../../../aie_kernels/aie2/scale.cc), comment out the lines before the `for loop` that says `AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)`. **NOTE** Be sure to edit both the general template and the `int32_t` template specialization as we will be testing that case next. Then rerun the compilation (`make clean; make CHESS=true int_bit_width=32 trace`). Measure the delta between `event 0` and `event 1` again. What value do you see now? <img src="../../../mlir_tutorials/images/answer1.jpg" title="~1665 cycles" height=25>
 
 
-    That's quite an improvement, ~20X reduction in compute latency. However, there's more optimization that can be had with vector code and that involves compilation pragmas. 
+    That's quite an improvement, ~6X reduction in compute latency. However, there's more optimization that can be had with vector code and that involves optimization pragmas. 
 
-1. Go back to [scale.cc](../../../aie_kernels/aie2/scale.cc) and uncomment the lines with `AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)` to enable those pragmas. Then rerun the compilation (`make clean; make use_placed=1 trace`). Measure the delta between `event 0` and `event 1` again. What value do you see now? <img src="../../../mlir_tutorials/images/answer1.jpg" title="72 cycles" height=25>
+1. Go back to [scale.cc](../../../aie_kernels/aie2/scale.cc) and uncomment the lines with `AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)` to enable those pragmas. Then rerun the compilation (`make clean; make CHESS=true int_bit_width=32 trace`). Measure the delta between `event 0` and `event 1` again. What value do you see now? <img src="../../../mlir_tutorials/images/answer1.jpg" title="335 cycles" height=25>
 
-    Now, we're really seeing some savings (another factor ~6X savings or ~140X compared to the scalar version). The line we added helps guide the compiler to find optimal schedules. For kernel loops, `AIE_PREPARE_FOR_PIPELINING` and `AIE_LOOP_MIN_ITERATION_COUNT(16)` are particularly useful:
+    Now, we're really seeing some savings (another factor ~3X savings or ~20X compared to the scalar version). The line we added helps guide the compiler to find optimal schedules. For kernel loops, `AIE_PREPARE_FOR_PIPELINING` and `AIE_LOOP_MIN_ITERATION_COUNT(16)` are particularly useful:
     * `AIE_PREPARE_FOR_PIPELINING` - Used in the innermost loop to tell the compiler to enable software pipelining. This is needed to enable subsequent loop optimization pragmas.
     * `AIE_LOOP_MIN_ITERATION_COUNT(MIN)` - An extremely helpful pragma. This tells the compiler the minimum iterations we expect this loop to have. If we want to specify both minimum and maximum iterations, we can used `, AIE_LOOP_RANGE(MIN,MAX)`. We often parameterize loop bounds based on size and even if the loop size is declared as a const, it's still a runtime computed value. Giving the MIN value in this pragma is particular helpful because it guides the scheduler to know how many iterations we have and can therefore properly schedule the loop instructions for that number rather than the worse case of 1.
+    
+1. Finally, we're going to rerun the compilation on a 16-bit integer version of our design with vectorization still turned on our optimization pragmas enabled for our kernel code. This is the default configuration of the `vector_scalar_mul` design (`make clean; make CHESS=true trace`). Measure the delta between `event 0` and `event 1` again. What value do you now see? <img src="../../../mlir_tutorials/images/answer1.jpg" title="72 cycles" height=25>
+
+    We see another 4X factor as we are able to process twice as much data per iteration as well as requiring less vector multiplies per iteration giving us a total improvement of ~140X from the scalar version.
     
 
 ## Optimization - Coding for the Architecture

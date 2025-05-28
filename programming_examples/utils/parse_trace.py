@@ -55,6 +55,15 @@ def check_for_valid_trace(filename, trace_pkts, of):
     return True
 
 
+def trim_trace_pkts(trace_pkts):
+    for i in range(len(trace_pkts)):
+        if trace_pkts[i] == "fefefefe" or trace_pkts[i] == "FEFEFEFE":
+            if i + 2 < len(trace_pkts):
+                if trace_pkts[i + 1] == "00000000" and trace_pkts[i + 2] == "00000000":
+                    return trace_pkts[0 : i + 1]
+    return trace_pkts
+
+
 def check_odd_word_parity(word):
     val = 0
     for i in range(32):
@@ -552,41 +561,43 @@ def convert_commands_to_json(trace_events, commands, pid_events, of):
                     ):  # last event has cycles == 0 so we just extend it by the repaet count
                         timer = timer + int(c["repeats"])
                     else:
-                        deactivate_events(
-                            multiple_list,
-                            active_events,
-                            timer,
-                            cycles,
-                            pid,
-                            tt,
-                            loc,
-                            pid_events,
-                        )
-                        timer = timer + cycles
-                        if len(multiple_list) > 1:
-                            for k in c.keys():
-                                if "event" in k:
-                                    activate_event(
-                                        c[k],
-                                        tt,
-                                        loc,
-                                        timer,
-                                        pid,
-                                        active_events,
-                                        pid_events,
-                                        trace_events,
-                                    )
-                        else:
-                            activate_event(
-                                event,
+                        for repeats_cnt in range(int(c["repeats"])):
+                            timer = timer + 1
+                            deactivate_events(
+                                multiple_list,
+                                active_events,
+                                timer,
+                                cycles,
+                                pid,
                                 tt,
                                 loc,
-                                timer,
-                                pid,
-                                active_events,
                                 pid_events,
-                                trace_events,
                             )
+                            timer = timer + cycles
+                            if len(multiple_list) > 1:
+                                for k in c.keys():
+                                    if "event" in k:
+                                        activate_event(
+                                            c[k],
+                                            tt,
+                                            loc,
+                                            timer,
+                                            pid,
+                                            active_events,
+                                            pid_events,
+                                            trace_events,
+                                        )
+                            else:
+                                activate_event(
+                                    event,
+                                    tt,
+                                    loc,
+                                    timer,
+                                    pid,
+                                    active_events,
+                                    pid_events,
+                                    trace_events,
+                                )
 
 
 def process_name_metadata(trace_events, pid, trace_type, loc):
@@ -1027,7 +1038,12 @@ if DEBUG:
 if not check_for_valid_trace(opts.input, trace_pkts, of):
     sys.exit(1)
 
-trace_pkts_sorted = trace_pkts_de_interleave(trace_pkts)
+trimmed_trace_pkts = trim_trace_pkts(trace_pkts)
+if DEBUG:
+    lines_removed = len(trace_pkts) - len(trimmed_trace_pkts)
+    print("DEBUG: trimmed ", lines_removed, " lines", file=of)
+
+trace_pkts_sorted = trace_pkts_de_interleave(trimmed_trace_pkts)
 
 if DEBUG:
     print("DEBUG: trace_pkts_sorted", file=of)
