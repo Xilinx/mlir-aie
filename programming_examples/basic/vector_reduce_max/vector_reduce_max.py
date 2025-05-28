@@ -25,6 +25,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     out_dtype = dtype_map[dtype_str]
 
     tensor_size = in1_size // in1_dtype(0).nbytes
+    out_tensor_size = out_size // out_dtype(0).nbytes
 
     assert out_size == 4, "Output buffer must be size 4 (4 bytes = 1 integer)."
 
@@ -32,16 +33,22 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
 
     # Define tensor types
     in_ty = np.ndarray[(tensor_size,), np.dtype[in1_dtype]]
-    out_ty = np.ndarray[(1,), np.dtype[out_dtype]]
+    out_ty = np.ndarray[(out_tensor_size,), np.dtype[out_dtype]]
 
     # AIE-array data movement with object fifos
     of_in = ObjectFifo(in_ty, name="in")
     of_out = ObjectFifo(out_ty, name="out")
 
     # AIE Core Function declarations
-    reduce_max_vector = Kernel(
-        "reduce_max_vector", "reduce_max.cc.o", [in_ty, out_ty, np.int32]
-    )
+
+    if dtype_str == "bf16":
+        reduce_max_vector = Kernel(
+            "reduce_max_vector_bfloat16", "reduce_max.cc.o", [in_ty, out_ty, np.int32]
+        )
+    else:
+        reduce_max_vector = Kernel(
+            "reduce_max_vector", "reduce_max.cc.o", [in_ty, out_ty, np.int32]
+        )
 
     # Define a task to run
     def core_body(of_in, of_out, reduce_max_vector):
