@@ -16,7 +16,7 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = vector_reduce_max
-in1_size =  4096# in bytes
+in1_size =  8192# in bytes
 out_size = 4 # in bytes, should always be equal to in1_size
 trace_size = 1024
 
