@@ -165,7 +165,7 @@ def vector_softmax(dev, trace_size):
         # Set up a packet-switched flow from core to shim for tracing information
         tiles_to_trace = [cores[0]]
         if trace_size > 0:
-            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTiles[i])
 
         # Set up compute tiles
         for i in range(n_cores):
@@ -191,7 +191,7 @@ def vector_softmax(dev, trace_size):
             if trace_size > 0:
                 trace_utils.configure_packet_tracing_aie2(
                     tiles_to_trace=tiles_to_trace,
-                    shim=ShimTile,
+                    shim=ShimTiles[0],
                     trace_size=trace_size,
                     trace_offset=N_in_bytes,
                     ddr_id=1,
@@ -225,7 +225,7 @@ def vector_softmax(dev, trace_size):
             dma_start_task(*in_tasks, *out_tasks)
             dma_await_task(*out_tasks)
 
-            trace_utils.gen_trace_done_aie2(ShimTiles[0])
+            trace_utils.gen_trace_done_aie2(cores[0])
 
 
 try:

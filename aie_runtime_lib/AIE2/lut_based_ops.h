@@ -22,7 +22,6 @@ alignas(aie::vector_decl_align) extern int16 exp_flut_ab[512];
 alignas(aie::vector_decl_align) extern int16 exp_flut_cd[512];
 alignas(aie::vector_decl_align) extern unsigned char m_inv_lut[128];
 
-extern "C" {
 __attribute__((always_inline)) v16accfloat getExpBf16(v16bfloat16 x) {
   bfloat16 __aie_dm_resource_a *ilut_ab =
       (bfloat16 __aie_dm_resource_a *)exp_ilut_ab;
@@ -80,5 +79,31 @@ __attribute__((always_inline)) bfloat16 getInvBf16(float x) {
   inv_x = (bfloat16 *)&inv_x_val;
   return *inv_x;
 }
+
+extern float tanh_lut_ab[];
+extern float tanh_lut_cd[];
+
+inline __attribute__((always_inline)) v16bfloat16
+getTanhBf16(v16bfloat16 vInput) {
+  aie::vector<bfloat16, 16> input = vInput;
+
+  int step_bits = -2;
+  int bias = 16;
+  int data_size = 16;
+  int LUT_elems = 32;
+  int shift_offset = 0; // unused
+
+  using lut_type = aie::lut<4, float, bfloat16>;
+
+  lut_type test_lut(LUT_elems, (bfloat16 *)tanh_lut_ab,
+                    (bfloat16 *)tanh_lut_cd);
+
+  aie::linear_approx<bfloat16, lut_type> lin_aprox(test_lut, step_bits, bias,
+                                                   shift_offset);
+
+  aie::vector<bfloat16, 16> output =
+      lin_aprox.compute(input).to_vector<bfloat16>();
+
+  return (v16bfloat16)output;
 }
 #endif //__LUT_BASED_OPS_H__
