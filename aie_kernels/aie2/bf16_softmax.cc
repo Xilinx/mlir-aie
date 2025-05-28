@@ -26,7 +26,7 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
 
     // Compute 2^ix using bit manipulation
     ix = (ix + 127) << 23;
-    float pow2_ix;
+    float pow2_ix = 0.0f; // Initialize to avoid undefined behavior
     union {
       int32_t i;
       float f;
