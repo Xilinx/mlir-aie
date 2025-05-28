@@ -35,17 +35,14 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
 
     buffer_depth = 2
 
-    elems_per_core = 512
-
     @device(dev)
     def device_body():
         in_ty = np.ndarray[(N,), np.dtype[in1_dtype]]
-        op_ty = np.ndarray[(elems_per_core,), np.dtype[in1_dtype]]
         out_ty = np.ndarray[(O,), np.dtype[out_dtype]]
 
         # AIE Core Function declarations
         reduce_max_vector = external_func(
-            "reduce_max_vector", inputs=[op_ty, out_ty, np.int32]
+            "reduce_max_vector", inputs=[in_ty, out_ty, np.int32]
         )
 
         # Tile declarations
@@ -58,7 +55,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
         # AIE-array data movement with object fifos
-        of_in = object_fifo("in", ShimTile, ComputeTile2, buffer_depth, op_ty)
+        of_in = object_fifo("in", ShimTile, ComputeTile2, buffer_depth, in_ty)
         of_out = object_fifo("out", ComputeTile2, ShimTile, buffer_depth, out_ty)
 
         # Set up compute tiles
@@ -69,7 +66,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
             for _ in range_(0xFFFFFFFF):
                 elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                 elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
-                reduce_max_vector(elem_in, elem_out, elems_per_core)
+                reduce_max_vector(elem_in, elem_out, N)
                 of_in.release(ObjectFifoPort.Consume, 1)
                 of_out.release(ObjectFifoPort.Produce, 1)
 
