@@ -116,27 +116,20 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                         outC_fifos[i].release(ObjectFifoPort.Produce, 1)
 
             else:
-                nextC_buffer = buffer(
-                    tile=cores[i],
-                    datatype=np.ndarray[(O,), np.dtype[out_dtype]],
-                    name=f"nextC_buffer_{i}",
-                )
-                elem_out1 = buffer(
-                    tile=cores[i],
-                    datatype=np.ndarray[(O,), np.dtype[out_dtype]],
-                    name=f"elem_out_1",
-                )
-                elem_out2 = buffer(
-                    tile=cores[i],
-                    datatype=np.ndarray[(O,), np.dtype[out_dtype]],
-                    name=f"elem_out_2",
-                )
+                elem_out_buffers = [
+                    buffer(
+                        tile=cores[i],
+                        datatype=np.ndarray[(O,), np.dtype[out_dtype]],
+                        name=f"nextC_buffer_{i}_out{j}",
+                    )
+                    for j in range(n_cores - 1)
+                ]
 
                 @core(cores[i], "reduce_max.cc.o")
                 def core_body():
                     for _ in range_(0xFFFFFFFF):
                         elem_in = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
-                        reduce_max_vector(elem_in, nextC_buffer, elems_per_core)
+                        reduce_max_vector(elem_in, elem_out_buffers[0], elems_per_core)
                         inA_fifos[i].release(ObjectFifoPort.Consume, 1)
 
                         elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)
@@ -147,13 +140,17 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                                     outC_fifos[j].acquire(ObjectFifoPort.Consume, 1)
                                 )
 
-                        temp_buffer = nextC_buffer
-                        for idx, input_elem in enumerate(inputs):
-                            if idx < n_cores - 1:
-                                compute_max(input_elem, temp_buffer, elem_out1)
-                                temp_buffer = elem_out1
-
-                        compute_max(temp_buffer, elem_out1, elem_out)
+                        for idx in range(n_cores - 1):
+                            if idx < n_cores - 2:
+                                compute_max(
+                                    inputs[idx],
+                                    elem_out_buffers[idx],
+                                    elem_out_buffers[idx + 1],
+                                )
+                            else:
+                                compute_max(
+                                    inputs[idx], elem_out_buffers[idx], elem_out
+                                )
 
                         for j, input_elem in enumerate(inputs):
                             outC_fifos[j if j < i else j + 1].release(
