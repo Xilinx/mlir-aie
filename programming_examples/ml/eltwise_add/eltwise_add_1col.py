@@ -31,7 +31,6 @@ def my_eltwise_add(dev, in1_size, in2_size, out_size):
     tiles = tensor_div_tile // n_cores
     tensor_per_shimtile = tensor_size // n_cores
     buffer_depth = 2
-    
     assert in2_size == in1_size, "input2 buffer size must match input1 buffer size."
     assert out_size == in1_size, "Output buffer size must match input1 buffer size."
 
