@@ -27,7 +27,12 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
     // Compute 2^ix using bit manipulation
     ix = (ix + 127) << 23;
     float pow2_ix;
-    memcpy(&pow2_ix, &ix, sizeof(float));
+    union {
+      int32_t i;
+      float f;
+    } u;
+    u.i = ix;
+    float pow2_ix = u.f;
 
     // Improved approximation for 2^fx with correction term
     // ln(2) = 0.6931471805599453
