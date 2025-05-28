@@ -108,7 +108,6 @@ def my_eltwise_mul(dev):
         @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
         def sequence(A, B, C):
             in_tasks = []
-            out_tasks = []
 
             # Distributing host buffers (A, B) to the shim tiles
             for i in range(n_cores):
