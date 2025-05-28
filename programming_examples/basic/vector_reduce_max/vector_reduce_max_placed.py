@@ -41,9 +41,14 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         out_ty = np.ndarray[(O,), np.dtype[out_dtype]]
 
         # AIE Core Function declarations
-        reduce_max_vector = external_func(
-            "reduce_max_vector", inputs=[in_ty, out_ty, np.int32]
-        )
+        if dtype_str == "bf16":
+            reduce_max_vector = external_func(
+                "reduce_max_vector_bfloat16", inputs=[in_ty, out_ty, np.int32]
+            )
+        else:
+            reduce_max_vector = external_func(
+                "reduce_max_vector", inputs=[in_ty, out_ty, np.int32]
+            )
 
         # Tile declarations
         ShimTile = tile(0, 0)

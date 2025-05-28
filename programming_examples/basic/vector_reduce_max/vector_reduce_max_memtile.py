@@ -24,7 +24,6 @@ dtype_map = {
 
 def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     n_cores = 4
-    elems_per_core = 512
     in_dtype = dtype_map[dtype_str]
     out_dtype = dtype_map[dtype_str]
 
@@ -39,17 +38,26 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     @device(dev)
     def device_body():
         in_ty = np.ndarray[(N,), np.dtype[in_dtype]]
-        op_ty = np.ndarray[(elems_per_core,), np.dtype[in_dtype]]
+        op_ty = np.ndarray[(M,), np.dtype[in_dtype]]
         out_ty = np.ndarray[(O,), np.dtype[out_dtype]]
         int_ty = np.ndarray[(O * n_cores,), np.dtype[out_dtype]]
 
         # AIE Core Function declarations
-        reduce_max_vector = external_func(
-            "reduce_max_vector", inputs=[op_ty, out_ty, np.int32]
-        )
-        reduce_max_scalar = external_func(
-            "reduce_max_scalar", inputs=[int_ty, out_ty, np.int32]
-        )
+
+        if dtype_str == "bf16":
+            reduce_max_vector = external_func(
+                "reduce_max_vector_bfloat16", inputs=[op_ty, out_ty, np.int32]
+            )
+            reduce_max_scalar = external_func(
+                "reduce_max_scalarr_bfloat16", inputs=[int_ty, out_ty, np.int32]
+            )
+        else:
+            reduce_max_vector = external_func(
+                "reduce_max_vector", inputs=[op_ty, out_ty, np.int32]
+            )
+            reduce_max_scalar = external_func(
+                "reduce_max_scalar", inputs=[int_ty, out_ty, np.int32]
+            )
 
         # Tile declarations
         ShimTile = tile(0, 0)
@@ -78,7 +86,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                 (np.prod(np_ndarray_type_get_shape(in_ty)) // n_cores) * i
                 for i in range(n_cores)
             ]
-            of_c_offsets = [(i) for i in range(n_cores)]
+            of_c_offsets = [(O * i) for i in range(n_cores)]
         else:
             of_a_offsets = []
             of_c_offsets = []
@@ -106,7 +114,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                     for _ in range_(0xFFFFFFFF):
                         elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)
                         elem_in = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
-                        reduce_max_vector(elem_in, elem_out, elems_per_core)
+                        reduce_max_vector(elem_in, elem_out, M)
                         inA_fifos[i].release(ObjectFifoPort.Consume, 1)
                         outC_fifos[i].release(ObjectFifoPort.Produce, 1)
 
@@ -117,7 +125,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                     for _ in range_(0xFFFFFFFF):
                         elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)
                         elem_in = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
-                        reduce_max_vector(elem_in, elem_out, elems_per_core)
+                        reduce_max_vector(elem_in, elem_out, M)
                         inA_fifos[i].release(ObjectFifoPort.Consume, 1)
                         outC_fifos[i].release(ObjectFifoPort.Produce, 1)
 
