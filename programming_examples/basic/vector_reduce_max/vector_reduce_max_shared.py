@@ -46,7 +46,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
 
         # AIE Core Function declarations
         reduce_max_vector = external_func(
-            "reduce_max_vector_bfloat16", inputs=[op_ty, out_ty, out_dtype]
+            "reduce_max_vector_bfloat16", inputs=[op_ty, out_ty, np.int32]
         )
         compute_max = external_func(
             "compute_max_bfloat16", inputs=[out_ty, out_ty, out_ty]
