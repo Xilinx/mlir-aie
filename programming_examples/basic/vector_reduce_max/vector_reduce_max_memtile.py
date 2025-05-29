@@ -25,6 +25,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     n_cores = 4
     in_dtype = dtype_map[dtype_str]
     out_dtype = dtype_map[dtype_str]
+    elems_per_core = 512
 
     N = in1_size // in_dtype(0).nbytes
     M = N // n_cores
@@ -37,7 +38,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     @device(dev)
     def device_body():
         in_ty = np.ndarray[(N,), np.dtype[in_dtype]]
-        op_ty = np.ndarray[(M,), np.dtype[in_dtype]]
+        op_ty = np.ndarray[(elems_per_core,), np.dtype[in_dtype]]
         out_ty = np.ndarray[(O,), np.dtype[out_dtype]]
         int_ty = np.ndarray[(O * n_cores,), np.dtype[out_dtype]]
 
@@ -121,7 +122,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                     for _ in range_(0xFFFFFFFF):
                         elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)
                         elem_in = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
-                        reduce_max_vector(elem_in, elem_out, M)
+                        reduce_max_vector(elem_in, elem_out, elems_per_core)
                         inA_fifos[i].release(ObjectFifoPort.Consume, 1)
                         outC_fifos[i].release(ObjectFifoPort.Produce, 1)
 
@@ -132,7 +133,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                     for _ in range_(0xFFFFFFFF):
                         elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)
                         elem_in = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
-                        reduce_max_vector(elem_in, elem_out, M)
+                        reduce_max_vector(elem_in, elem_out, elems_per_core)
                         inA_fifos[i].release(ObjectFifoPort.Consume, 1)
                         outC_fifos[i].release(ObjectFifoPort.Produce, 1)
 
