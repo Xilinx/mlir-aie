@@ -14,12 +14,11 @@ from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.helpers.util import np_ndarray_type_get_shape
+from ml_dtypes import bfloat16
 
 import aie.utils.trace as trace_utils
 
-dtype_map = {
-    "i32": np.int32,
-}
+dtype_map = {"i32": np.int32, "bf16": bfloat16}
 
 
 def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
@@ -49,7 +48,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                 "reduce_max_vector_bfloat16", inputs=[op_ty, out_ty, np.int32]
             )
             reduce_max_scalar = external_func(
-                "reduce_max_scalarr_bfloat16", inputs=[int_ty, out_ty, np.int32]
+                "reduce_max_scalar_bfloat16", inputs=[int_ty, out_ty, np.int32]
             )
         else:
             reduce_max_vector = external_func(
@@ -92,7 +91,14 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
             of_c_offsets = []
 
         object_fifo_link(inA, inA_fifos, [], of_a_offsets)
-        outC = object_fifo("outC", MemTile, cores[0], buffer_depth, int_ty)
+        outC = object_fifo(
+            "outC",
+            MemTile,
+            cores[0],
+            buffer_depth,
+            int_ty,
+            dimensionsToStream=[(1, O), (1, 1)],
+        )
         object_fifo_link(outC_fifos, outC, of_c_offsets, [])
 
         # Set up a packet-switched flow from core to shim for tracing information
