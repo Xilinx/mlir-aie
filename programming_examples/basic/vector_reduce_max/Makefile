@@ -34,7 +34,7 @@ aie_py_src=${targetname}_shared.py
 dtype=bf16
 else ifeq (${use_memtile}, 1)
 aie_py_src=${targetname}_memtile.py
-dtype=i32
+dtype=bf16
 else ifeq (${use_cascade}, 1)
 aie_py_src=${targetname}_cascade.py
 dtype=bf16
