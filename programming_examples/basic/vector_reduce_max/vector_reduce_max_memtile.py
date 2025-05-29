@@ -23,12 +23,12 @@ dtype_map = {"i32": np.int32, "bf16": bfloat16}
 
 def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     n_cores = 4
+    elems_per_core = 512
+    n_mem_elems = 2048 
     in_dtype = dtype_map[dtype_str]
     out_dtype = dtype_map[dtype_str]
-    elems_per_core = 512
 
     N = in1_size // in_dtype(0).nbytes
-    M = N // n_cores
     O = out_size // out_dtype(0).nbytes
 
     assert out_size == 4, "Output buffer must be size 4 (4 bytes = 1 integer)."
@@ -38,6 +38,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     @device(dev)
     def device_body():
         in_ty = np.ndarray[(N,), np.dtype[in_dtype]]
+        mem_ty = np.ndarray[(n_mem_elems,), np.dtype[in_dtype]]
         op_ty = np.ndarray[(elems_per_core,), np.dtype[in_dtype]]
         out_ty = np.ndarray[(O,), np.dtype[out_dtype]]
         int_ty = np.ndarray[(O * n_cores,), np.dtype[out_dtype]]
@@ -71,7 +72,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
 
         # AIE-array data movement with object fifos
         # Input A and Output C
-        inA = object_fifo("inA", ShimTile, MemTile, buffer_depth, in_ty)
+        inA = object_fifo("inA", ShimTile, MemTile, buffer_depth, mem_ty)
 
         for i in range(n_cores):
             inA_fifos.append(
@@ -83,7 +84,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
 
         if n_cores > 1:
             of_a_offsets = [
-                (np.prod(np_ndarray_type_get_shape(in_ty)) // n_cores) * i
+                (np.prod(np_ndarray_type_get_shape(mem_ty)) // n_cores) * i
                 for i in range(n_cores)
             ]
             of_c_offsets = [(O * i) for i in range(n_cores)]
