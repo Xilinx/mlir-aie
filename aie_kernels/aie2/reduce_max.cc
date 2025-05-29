@@ -53,6 +53,10 @@ void _reduce_max_vector(T *restrict in, T *restrict out,
   V fourth = max(third, third_shift);
   V fourth_shift = shift_bytes(fourth, fourth, 4U);
   V fifth = max(fourth, fourth_shift);
+  if constexpr (std::is_same<V, aie::vector<bfloat16, 32>>::value) {
+    V fifth_shift = shift_bytes(fifth, fifth, 2U);
+    fifth = max(fifth, fifth_shift);
+  }
   auto last = extract_elem(fifth, 0U);
   *(T *)out = last;
   event1();
