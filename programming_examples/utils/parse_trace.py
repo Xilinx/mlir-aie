@@ -561,41 +561,43 @@ def convert_commands_to_json(trace_events, commands, pid_events, of):
                     ):  # last event has cycles == 0 so we just extend it by the repaet count
                         timer = timer + int(c["repeats"])
                     else:
-                        deactivate_events(
-                            multiple_list,
-                            active_events,
-                            timer,
-                            cycles,
-                            pid,
-                            tt,
-                            loc,
-                            pid_events,
-                        )
-                        timer = timer + cycles
-                        if len(multiple_list) > 1:
-                            for k in c.keys():
-                                if "event" in k:
-                                    activate_event(
-                                        c[k],
-                                        tt,
-                                        loc,
-                                        timer,
-                                        pid,
-                                        active_events,
-                                        pid_events,
-                                        trace_events,
-                                    )
-                        else:
-                            activate_event(
-                                event,
+                        for repeats_cnt in range(int(c["repeats"])):
+                            timer = timer + 1
+                            deactivate_events(
+                                multiple_list,
+                                active_events,
+                                timer,
+                                cycles,
+                                pid,
                                 tt,
                                 loc,
-                                timer,
-                                pid,
-                                active_events,
                                 pid_events,
-                                trace_events,
                             )
+                            timer = timer + cycles
+                            if len(multiple_list) > 1:
+                                for k in c.keys():
+                                    if "event" in k:
+                                        activate_event(
+                                            c[k],
+                                            tt,
+                                            loc,
+                                            timer,
+                                            pid,
+                                            active_events,
+                                            pid_events,
+                                            trace_events,
+                                        )
+                            else:
+                                activate_event(
+                                    event,
+                                    tt,
+                                    loc,
+                                    timer,
+                                    pid,
+                                    active_events,
+                                    pid_events,
+                                    trace_events,
+                                )
 
 
 def process_name_metadata(trace_events, pid, trace_type, loc):
