@@ -96,9 +96,10 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         object_fifo_link(outC_fifos, outC, of_c_offsets, [])
 
         # Set up a packet-switched flow from core to shim for tracing information
-        tiles_to_trace = [cores[1]]
-        if trace_size > 0:
-            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+        if n_cores > 1:
+            tiles_to_trace = [cores[1]]
+            if trace_size > 0:
+                trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
         # AIE-array data movement with object fifos
         of_out = object_fifo("out", cores[0], ShimTile, buffer_depth, out_ty)
@@ -138,7 +139,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         # To/from AIE-array data movement
         @runtime_sequence(in_ty, out_ty)
         def sequence(A, C):
-            if trace_size > 0:
+            if n_cores > 1 and trace_size > 0:
                 trace_utils.configure_packet_tracing_aie2(
                     tiles_to_trace=tiles_to_trace,
                     shim=ShimTile,
