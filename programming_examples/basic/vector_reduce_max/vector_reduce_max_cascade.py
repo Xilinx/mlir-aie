@@ -130,7 +130,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
 
                         elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)
                         elem_in = outC_fifos[i + 1].acquire(ObjectFifoPort.Consume, 1)
-                        elem_out = compute_max(elem_in, nextC_buffer, elem_out)
+                        compute_max(elem_in, nextC_buffer, elem_out)
                         outC_fifos[i + 1].release(ObjectFifoPort.Consume, 1)
                         outC_fifos[i].release(ObjectFifoPort.Produce, 1)
 
