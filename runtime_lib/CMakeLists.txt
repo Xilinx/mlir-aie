@@ -155,3 +155,9 @@ add_aie_api_headers(${AIEAPI_SOURCE_DIR}
         ${CMAKE_INSTALL_PREFIX}/include
 )
 
+include("aiebu/aiebu.cmake")
+add_aiebu(
+  ${PROJECT_SOURCE_DIR}/../third_party/aiebu
+  ${AIE_BINARY_DIR}
+  ${CMAKE_INSTALL_PREFIX}
+)
