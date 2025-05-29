@@ -96,7 +96,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         object_fifo_link(outC_fifos, outC, of_c_offsets, [])
 
         # Set up a packet-switched flow from core to shim for tracing information
-        tiles_to_trace = [cores[0]]
+        tiles_to_trace = [cores[1]]
         if trace_size > 0:
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
