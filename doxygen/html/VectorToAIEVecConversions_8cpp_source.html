@@ -1197,11 +1197,11 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l01091" name="l01091"></a><span class="lineno"> 1091</span>      <span class="keywordflow">return</span> failure();</div>
 <div class="line"><a id="l01092" name="l01092"></a><span class="lineno"> 1092</span> </div>
 <div class="line"><a id="l01093" name="l01093"></a><span class="lineno"> 1093</span>    <span class="keyword">auto</span> updOp = rewriter.create&lt;xilinx::aievec::UPDOp&gt;(</div>
-<div class="line"><a id="l01094" name="l01094"></a><span class="lineno"> 1094</span>        readOp.getLoc(), vType, adaptor.getSource(), adaptor.getIndices(), 0, 0,</div>
+<div class="line"><a id="l01094" name="l01094"></a><span class="lineno"> 1094</span>        readOp.getLoc(), vType, adaptor.getBase(), adaptor.getIndices(), 0, 0,</div>
 <div class="line"><a id="l01095" name="l01095"></a><span class="lineno"> 1095</span>        TypedValue&lt;VectorType&gt;(<span class="keyword">nullptr</span>));</div>
 <div class="line"><a id="l01096" name="l01096"></a><span class="lineno"> 1096</span>    <span class="keywordflow">if</span> (vSize &gt; <a class="code hl_variable" href="structLowerVectorTransferReadToAIEUPD.html#a096d91d25a583f6db27bb12c0101b7da">maxLoadSize</a>) {</div>
 <div class="line"><a id="l01097" name="l01097"></a><span class="lineno"> 1097</span>      updOp = rewriter.create&lt;xilinx::aievec::UPDOp&gt;(</div>
-<div class="line"><a id="l01098" name="l01098"></a><span class="lineno"> 1098</span>          readOp.getLoc(), vType, adaptor.getSource(), adaptor.getIndices(),</div>
+<div class="line"><a id="l01098" name="l01098"></a><span class="lineno"> 1098</span>          readOp.getLoc(), vType, adaptor.getBase(), adaptor.getIndices(),</div>
 <div class="line"><a id="l01099" name="l01099"></a><span class="lineno"> 1099</span>          <a class="code hl_variable" href="structLowerVectorTransferReadToAIEUPD.html#a096d91d25a583f6db27bb12c0101b7da">maxLoadSize</a>, 1, updOp.getResult());</div>
 <div class="line"><a id="l01100" name="l01100"></a><span class="lineno"> 1100</span>    }</div>
 <div class="line"><a id="l01101" name="l01101"></a><span class="lineno"> 1101</span>    rewriter.replaceOp(readOp, updOp.getResult());</div>
@@ -4394,7 +4394,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri May 30 2025 17:57:47 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri May 30 2025 21:38:49 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

@@ -1270,8 +1270,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l01156" name="l01156"></a><span class="lineno"> 1156</span>        <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0c13850a29b0c31c74c42d32a3c50c4b">getVectorSizeInBits</a>(cast&lt;VectorType&gt;(op.getResult().getType()));</div>
 <div class="line"><a id="l01157" name="l01157"></a><span class="lineno"> 1157</span> </div>
 <div class="line"><a id="l01158" name="l01158"></a><span class="lineno"> 1158</span>    <span class="keyword">auto</span> ptr = this-&gt;getStridedElementPtr(</div>
-<div class="line"><a id="l01159" name="l01159"></a><span class="lineno"> 1159</span>        op-&gt;getLoc(), cast&lt;MemRefType&gt;(op.getSource().getType()),</div>
-<div class="line"><a id="l01160" name="l01160"></a><span class="lineno"> 1160</span>        adaptor.getSource(), adaptor.getIndices(), rewriter);</div>
+<div class="line"><a id="l01159" name="l01159"></a><span class="lineno"> 1159</span>        rewriter, op-&gt;getLoc(), cast&lt;MemRefType&gt;(op.getSource().getType()),</div>
+<div class="line"><a id="l01160" name="l01160"></a><span class="lineno"> 1160</span>        adaptor.getSource(), adaptor.getIndices());</div>
 <div class="line"><a id="l01161" name="l01161"></a><span class="lineno"> 1161</span> </div>
 <div class="line"><a id="l01162" name="l01162"></a><span class="lineno"> 1162</span>    <span class="comment">// TODO: handle the offset field</span></div>
 <div class="line"><a id="l01163" name="l01163"></a><span class="lineno"> 1163</span> </div>
@@ -2653,7 +2653,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri May 30 2025 17:57:46 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri May 30 2025 21:38:49 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

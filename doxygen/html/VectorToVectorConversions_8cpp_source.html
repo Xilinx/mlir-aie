@@ -234,7 +234,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00170" name="l00170"></a><span class="lineno">  170</span>    <span class="comment">// Create the aligned transfer read for a vector 2x as long that covers the</span></div>
 <div class="line"><a id="l00171" name="l00171"></a><span class="lineno">  171</span>    <span class="comment">// elements of the unaligned vector.</span></div>
 <div class="line"><a id="l00172" name="l00172"></a><span class="lineno">  172</span>    <span class="keyword">auto</span> newReadOp = rewriter.create&lt;vector::TransferReadOp&gt;(</div>
-<div class="line"><a id="l00173" name="l00173"></a><span class="lineno">  173</span>        loc, longVecTy, adaptor.getSource(), alignedIdx, adaptor.getPadding());</div>
+<div class="line"><a id="l00173" name="l00173"></a><span class="lineno">  173</span>        loc, longVecTy, adaptor.getBase(), alignedIdx, adaptor.getPadding());</div>
 <div class="line"><a id="l00174" name="l00174"></a><span class="lineno">  174</span> </div>
 <div class="line"><a id="l00175" name="l00175"></a><span class="lineno">  175</span>    <span class="comment">// Create a `vector.extract_strided_slice` to extract the unaligned vector.</span></div>
 <div class="line"><a id="l00176" name="l00176"></a><span class="lineno">  176</span>    rewriter.replaceOpWithNewOp&lt;vector::ExtractStridedSliceOp&gt;(</div>
@@ -271,7 +271,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00201" name="l00201"></a><span class="lineno">  201</span>    <span class="keywordflow">if</span> (!map.isConstant())</div>
 <div class="line"><a id="l00202" name="l00202"></a><span class="lineno">  202</span>      <span class="keywordflow">return</span> failure();</div>
 <div class="line"><a id="l00203" name="l00203"></a><span class="lineno">  203</span> </div>
-<div class="line"><a id="l00204" name="l00204"></a><span class="lineno">  204</span>    Value srcMemRef = adaptor.getSource();</div>
+<div class="line"><a id="l00204" name="l00204"></a><span class="lineno">  204</span>    Value srcMemRef = adaptor.getBase();</div>
 <div class="line"><a id="l00205" name="l00205"></a><span class="lineno">  205</span>    SmallVector&lt;Value, 8&gt; indices;</div>
 <div class="line"><a id="l00206" name="l00206"></a><span class="lineno">  206</span>    Value newIdx;</div>
 <div class="line"><a id="l00207" name="l00207"></a><span class="lineno">  207</span>    int64_t offset = 0;</div>
@@ -518,7 +518,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00432" name="l00432"></a><span class="lineno">  432</span>    <span class="keywordflow">if</span> (vectorTy.getRank() &lt; 2)</div>
 <div class="line"><a id="l00433" name="l00433"></a><span class="lineno">  433</span>      <span class="keywordflow">return</span> failure();</div>
 <div class="line"><a id="l00434" name="l00434"></a><span class="lineno">  434</span>    <span class="comment">// Work only on bufferized reads</span></div>
-<div class="line"><a id="l00435" name="l00435"></a><span class="lineno">  435</span>    MemRefType memRefTy = dyn_cast&lt;MemRefType&gt;(adaptor.getSource().getType());</div>
+<div class="line"><a id="l00435" name="l00435"></a><span class="lineno">  435</span>    MemRefType memRefTy = dyn_cast&lt;MemRefType&gt;(adaptor.getBase().getType());</div>
 <div class="line"><a id="l00436" name="l00436"></a><span class="lineno">  436</span>    <span class="keywordflow">if</span> (!memRefTy)</div>
 <div class="line"><a id="l00437" name="l00437"></a><span class="lineno">  437</span>      <span class="keywordflow">return</span> failure();</div>
 <div class="line"><a id="l00438" name="l00438"></a><span class="lineno">  438</span>    <span class="keyword">auto</span> memRefShape = memRefTy.getShape();</div>
@@ -533,7 +533,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00447" name="l00447"></a><span class="lineno">  447</span>        collapseInnerMostDimIndices(rewriter, readOp.getLoc(), vecShape.size(),</div>
 <div class="line"><a id="l00448" name="l00448"></a><span class="lineno">  448</span>                                    adaptor.getIndices(), memRefShape, layout);</div>
 <div class="line"><a id="l00449" name="l00449"></a><span class="lineno">  449</span>    <span class="keyword">auto</span> newSource = collapseInnerMostShapeDims(</div>
-<div class="line"><a id="l00450" name="l00450"></a><span class="lineno">  450</span>        rewriter, readOp.getLoc(), vecShape.size(), adaptor.getSource());</div>
+<div class="line"><a id="l00450" name="l00450"></a><span class="lineno">  450</span>        rewriter, readOp.getLoc(), vecShape.size(), adaptor.getBase());</div>
 <div class="line"><a id="l00451" name="l00451"></a><span class="lineno">  451</span>    <span class="keyword">auto</span> newVector = rewriter.create&lt;vector::TransferReadOp&gt;(</div>
 <div class="line"><a id="l00452" name="l00452"></a><span class="lineno">  452</span>        readOp.getLoc(), newVectorTy, newSource, newIndices);</div>
 <div class="line"><a id="l00453" name="l00453"></a><span class="lineno">  453</span> </div>
@@ -577,7 +577,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00487" name="l00487"></a><span class="lineno">  487</span>    <span class="keywordflow">if</span> (vectorTy.getRank() &lt; 2)</div>
 <div class="line"><a id="l00488" name="l00488"></a><span class="lineno">  488</span>      <span class="keywordflow">return</span> failure();</div>
 <div class="line"><a id="l00489" name="l00489"></a><span class="lineno">  489</span>    <span class="comment">// Work only on bufferized reads</span></div>
-<div class="line"><a id="l00490" name="l00490"></a><span class="lineno">  490</span>    MemRefType memRefTy = dyn_cast&lt;MemRefType&gt;(adaptor.getSource().getType());</div>
+<div class="line"><a id="l00490" name="l00490"></a><span class="lineno">  490</span>    MemRefType memRefTy = dyn_cast&lt;MemRefType&gt;(adaptor.getBase().getType());</div>
 <div class="line"><a id="l00491" name="l00491"></a><span class="lineno">  491</span>    <span class="keywordflow">if</span> (!memRefTy)</div>
 <div class="line"><a id="l00492" name="l00492"></a><span class="lineno">  492</span>      <span class="keywordflow">return</span> failure();</div>
 <div class="line"><a id="l00493" name="l00493"></a><span class="lineno">  493</span>    <span class="keyword">auto</span> memRefShape = memRefTy.getShape();</div>
@@ -588,474 +588,475 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00498" name="l00498"></a><span class="lineno">  498</span>                                         std::multiplies&lt;&gt;())},</div>
 <div class="line"><a id="l00499" name="l00499"></a><span class="lineno">  499</span>                        vectorTy.getElementType());</div>
 <div class="line"><a id="l00500" name="l00500"></a><span class="lineno">  500</span>    AffineMap layout = memRefTy.getLayout().getAffineMap();</div>
-<div class="line"><a id="l00501" name="l00501"></a><span class="lineno">  501</span>    <span class="keyword">auto</span> newVector = rewriter</div>
-<div class="line"><a id="l00502" name="l00502"></a><span class="lineno">  502</span>                         .create&lt;vector::ShapeCastOp&gt;(</div>
-<div class="line"><a id="l00503" name="l00503"></a><span class="lineno">  503</span>                             writeOp.getLoc(), newVectorTy, adaptor.getValueToStore())</div>
-<div class="line"><a id="l00504" name="l00504"></a><span class="lineno">  504</span>                         .getResult();</div>
-<div class="line"><a id="l00505" name="l00505"></a><span class="lineno">  505</span>    <span class="keyword">auto</span> newIndices =</div>
-<div class="line"><a id="l00506" name="l00506"></a><span class="lineno">  506</span>        collapseInnerMostDimIndices(rewriter, writeOp.getLoc(), vecShape.size(),</div>
-<div class="line"><a id="l00507" name="l00507"></a><span class="lineno">  507</span>                                    adaptor.getIndices(), memRefShape, layout);</div>
-<div class="line"><a id="l00508" name="l00508"></a><span class="lineno">  508</span>    <span class="keyword">auto</span> newSource = collapseInnerMostShapeDims(</div>
-<div class="line"><a id="l00509" name="l00509"></a><span class="lineno">  509</span>        rewriter, writeOp.getLoc(), vecShape.size(), adaptor.getSource());</div>
-<div class="line"><a id="l00510" name="l00510"></a><span class="lineno">  510</span> </div>
-<div class="line"><a id="l00511" name="l00511"></a><span class="lineno">  511</span>    <span class="keyword">auto</span> newOp = rewriter.replaceOpWithNewOp&lt;vector::TransferWriteOp&gt;(</div>
-<div class="line"><a id="l00512" name="l00512"></a><span class="lineno">  512</span>        writeOp, newVector, newSource, newIndices);</div>
-<div class="line"><a id="l00513" name="l00513"></a><span class="lineno">  513</span> </div>
-<div class="line"><a id="l00514" name="l00514"></a><span class="lineno">  514</span>    <span class="keyword">auto</span> inBoundsArrayAttrOpt = adaptor.getInBounds();</div>
-<div class="line"><a id="l00515" name="l00515"></a><span class="lineno">  515</span>    <span class="keywordflow">if</span> (inBoundsArrayAttrOpt) {</div>
-<div class="line"><a id="l00516" name="l00516"></a><span class="lineno">  516</span>      SmallVector&lt;bool&gt; inBounds =</div>
-<div class="line"><a id="l00517" name="l00517"></a><span class="lineno">  517</span>          llvm::to_vector(inBoundsArrayAttrOpt.getAsValueRange&lt;BoolAttr&gt;());</div>
-<div class="line"><a id="l00518" name="l00518"></a><span class="lineno">  518</span>      SmallVector&lt;bool&gt; newInBounds({<span class="keyword">false</span>});</div>
-<div class="line"><a id="l00519" name="l00519"></a><span class="lineno">  519</span>      newInBounds[0] = std::all_of(inBounds.begin(), inBounds.end(),</div>
-<div class="line"><a id="l00520" name="l00520"></a><span class="lineno">  520</span>                                   [](<span class="keywordtype">bool</span> v) { return v; });</div>
-<div class="line"><a id="l00521" name="l00521"></a><span class="lineno">  521</span>      newOp.getProperties().setInBounds(rewriter.getBoolArrayAttr(newInBounds));</div>
-<div class="line"><a id="l00522" name="l00522"></a><span class="lineno">  522</span>    }</div>
-<div class="line"><a id="l00523" name="l00523"></a><span class="lineno">  523</span> </div>
-<div class="line"><a id="l00524" name="l00524"></a><span class="lineno">  524</span>    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00525" name="l00525"></a><span class="lineno">  525</span>  }</div>
+<div class="line"><a id="l00501" name="l00501"></a><span class="lineno">  501</span>    <span class="keyword">auto</span> newVector =</div>
+<div class="line"><a id="l00502" name="l00502"></a><span class="lineno">  502</span>        rewriter</div>
+<div class="line"><a id="l00503" name="l00503"></a><span class="lineno">  503</span>            .create&lt;vector::ShapeCastOp&gt;(writeOp.getLoc(), newVectorTy,</div>
+<div class="line"><a id="l00504" name="l00504"></a><span class="lineno">  504</span>                                         adaptor.getValueToStore())</div>
+<div class="line"><a id="l00505" name="l00505"></a><span class="lineno">  505</span>            .getResult();</div>
+<div class="line"><a id="l00506" name="l00506"></a><span class="lineno">  506</span>    <span class="keyword">auto</span> newIndices =</div>
+<div class="line"><a id="l00507" name="l00507"></a><span class="lineno">  507</span>        collapseInnerMostDimIndices(rewriter, writeOp.getLoc(), vecShape.size(),</div>
+<div class="line"><a id="l00508" name="l00508"></a><span class="lineno">  508</span>                                    adaptor.getIndices(), memRefShape, layout);</div>
+<div class="line"><a id="l00509" name="l00509"></a><span class="lineno">  509</span>    <span class="keyword">auto</span> newSource = collapseInnerMostShapeDims(</div>
+<div class="line"><a id="l00510" name="l00510"></a><span class="lineno">  510</span>        rewriter, writeOp.getLoc(), vecShape.size(), adaptor.getBase());</div>
+<div class="line"><a id="l00511" name="l00511"></a><span class="lineno">  511</span> </div>
+<div class="line"><a id="l00512" name="l00512"></a><span class="lineno">  512</span>    <span class="keyword">auto</span> newOp = rewriter.replaceOpWithNewOp&lt;vector::TransferWriteOp&gt;(</div>
+<div class="line"><a id="l00513" name="l00513"></a><span class="lineno">  513</span>        writeOp, newVector, newSource, newIndices);</div>
+<div class="line"><a id="l00514" name="l00514"></a><span class="lineno">  514</span> </div>
+<div class="line"><a id="l00515" name="l00515"></a><span class="lineno">  515</span>    <span class="keyword">auto</span> inBoundsArrayAttrOpt = adaptor.getInBounds();</div>
+<div class="line"><a id="l00516" name="l00516"></a><span class="lineno">  516</span>    <span class="keywordflow">if</span> (inBoundsArrayAttrOpt) {</div>
+<div class="line"><a id="l00517" name="l00517"></a><span class="lineno">  517</span>      SmallVector&lt;bool&gt; inBounds =</div>
+<div class="line"><a id="l00518" name="l00518"></a><span class="lineno">  518</span>          llvm::to_vector(inBoundsArrayAttrOpt.getAsValueRange&lt;BoolAttr&gt;());</div>
+<div class="line"><a id="l00519" name="l00519"></a><span class="lineno">  519</span>      SmallVector&lt;bool&gt; newInBounds({<span class="keyword">false</span>});</div>
+<div class="line"><a id="l00520" name="l00520"></a><span class="lineno">  520</span>      newInBounds[0] = std::all_of(inBounds.begin(), inBounds.end(),</div>
+<div class="line"><a id="l00521" name="l00521"></a><span class="lineno">  521</span>                                   [](<span class="keywordtype">bool</span> v) { return v; });</div>
+<div class="line"><a id="l00522" name="l00522"></a><span class="lineno">  522</span>      newOp.getProperties().setInBounds(rewriter.getBoolArrayAttr(newInBounds));</div>
+<div class="line"><a id="l00523" name="l00523"></a><span class="lineno">  523</span>    }</div>
+<div class="line"><a id="l00524" name="l00524"></a><span class="lineno">  524</span> </div>
+<div class="line"><a id="l00525" name="l00525"></a><span class="lineno">  525</span>    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00526" name="l00526"></a><span class="lineno">  526</span>  }</div>
 </div>
-<div class="line"><a id="l00526" name="l00526"></a><span class="lineno">  526</span>};</div>
+<div class="line"><a id="l00527" name="l00527"></a><span class="lineno">  527</span>};</div>
 </div>
-<div class="line"><a id="l00527" name="l00527"></a><span class="lineno">  527</span> </div>
-<div class="line"><a id="l00528" name="l00528"></a><span class="lineno">  528</span><span class="comment">// This pattern extracts an implicit transposition of the 2 innermost</span></div>
-<div class="line"><a id="l00529" name="l00529"></a><span class="lineno">  529</span><span class="comment">// dimensions of `rhs` in a gemm-like contraction op, making it an explicit</span></div>
-<div class="line"><a id="l00530" name="l00530"></a><span class="lineno">  530</span><span class="comment">// `vector.transpose` op.</span></div>
-<div class="line"><a id="l00531" name="l00531"></a><span class="lineno">  531</span><span class="comment">// If `rhs` is coming from a widening op (`extf`/`extsi`/`extui`), the</span></div>
-<div class="line"><a id="l00532" name="l00532"></a><span class="lineno">  532</span><span class="comment">// transposition will be hoisted above the widening op.</span></div>
-<div class="foldopen" id="foldopen00533" data-start="{" data-end="};">
-<div class="line"><a id="l00533" name="l00533"></a><span class="lineno"><a class="line" href="structExtractTransposeFromContractionOp.html">  533</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structExtractTransposeFromContractionOp.html">ExtractTransposeFromContractionOp</a></div>
-<div class="line"><a id="l00534" name="l00534"></a><span class="lineno">  534</span>    : <span class="keyword">public</span> <a class="code hl_class" href="classOpConversionPattern.html">OpConversionPattern</a>&lt;vector::ContractionOp&gt; {</div>
-<div class="line"><a id="l00535" name="l00535"></a><span class="lineno">  535</span>  <span class="keyword">using </span><a class="code hl_class" href="classOpConversionPattern.html">OpConversionPattern</a>&lt;vector::ContractionOp&gt;<a class="code hl_class" href="classOpConversionPattern.html">::OpConversionPattern</a>;</div>
-<div class="line"><a id="l00536" name="l00536"></a><span class="lineno">  536</span> </div>
-<div class="foldopen" id="foldopen00537" data-start="{" data-end="}">
-<div class="line"><a id="l00537" name="l00537"></a><span class="lineno"><a class="line" href="structExtractTransposeFromContractionOp.html#a42282e6c842156d8bc2a1df06ad412a3">  537</a></span>  <span class="keyword">static</span> VectorType <a class="code hl_function" href="structExtractTransposeFromContractionOp.html#a42282e6c842156d8bc2a1df06ad412a3">getTransposedVectorType</a>(VectorType vecTy) {</div>
-<div class="line"><a id="l00538" name="l00538"></a><span class="lineno">  538</span>    SmallVector&lt;int64_t&gt; shape{vecTy.getShape()};</div>
-<div class="line"><a id="l00539" name="l00539"></a><span class="lineno">  539</span>    <span class="keyword">auto</span> nDim = shape.size();</div>
-<div class="line"><a id="l00540" name="l00540"></a><span class="lineno">  540</span>    int64_t dimNm1 = shape[nDim - 1];</div>
-<div class="line"><a id="l00541" name="l00541"></a><span class="lineno">  541</span>    shape[nDim - 1] = shape[nDim - 2];</div>
-<div class="line"><a id="l00542" name="l00542"></a><span class="lineno">  542</span>    shape[nDim - 2] = dimNm1;</div>
-<div class="line"><a id="l00543" name="l00543"></a><span class="lineno">  543</span>    <span class="keyword">auto</span> elemTy = vecTy.getElementType();</div>
-<div class="line"><a id="l00544" name="l00544"></a><span class="lineno">  544</span>    <span class="keywordflow">return</span> VectorType::get(shape, elemTy);</div>
-<div class="line"><a id="l00545" name="l00545"></a><span class="lineno">  545</span>  }</div>
+<div class="line"><a id="l00528" name="l00528"></a><span class="lineno">  528</span> </div>
+<div class="line"><a id="l00529" name="l00529"></a><span class="lineno">  529</span><span class="comment">// This pattern extracts an implicit transposition of the 2 innermost</span></div>
+<div class="line"><a id="l00530" name="l00530"></a><span class="lineno">  530</span><span class="comment">// dimensions of `rhs` in a gemm-like contraction op, making it an explicit</span></div>
+<div class="line"><a id="l00531" name="l00531"></a><span class="lineno">  531</span><span class="comment">// `vector.transpose` op.</span></div>
+<div class="line"><a id="l00532" name="l00532"></a><span class="lineno">  532</span><span class="comment">// If `rhs` is coming from a widening op (`extf`/`extsi`/`extui`), the</span></div>
+<div class="line"><a id="l00533" name="l00533"></a><span class="lineno">  533</span><span class="comment">// transposition will be hoisted above the widening op.</span></div>
+<div class="foldopen" id="foldopen00534" data-start="{" data-end="};">
+<div class="line"><a id="l00534" name="l00534"></a><span class="lineno"><a class="line" href="structExtractTransposeFromContractionOp.html">  534</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structExtractTransposeFromContractionOp.html">ExtractTransposeFromContractionOp</a></div>
+<div class="line"><a id="l00535" name="l00535"></a><span class="lineno">  535</span>    : <span class="keyword">public</span> <a class="code hl_class" href="classOpConversionPattern.html">OpConversionPattern</a>&lt;vector::ContractionOp&gt; {</div>
+<div class="line"><a id="l00536" name="l00536"></a><span class="lineno">  536</span>  <span class="keyword">using </span><a class="code hl_class" href="classOpConversionPattern.html">OpConversionPattern</a>&lt;vector::ContractionOp&gt;<a class="code hl_class" href="classOpConversionPattern.html">::OpConversionPattern</a>;</div>
+<div class="line"><a id="l00537" name="l00537"></a><span class="lineno">  537</span> </div>
+<div class="foldopen" id="foldopen00538" data-start="{" data-end="}">
+<div class="line"><a id="l00538" name="l00538"></a><span class="lineno"><a class="line" href="structExtractTransposeFromContractionOp.html#a42282e6c842156d8bc2a1df06ad412a3">  538</a></span>  <span class="keyword">static</span> VectorType <a class="code hl_function" href="structExtractTransposeFromContractionOp.html#a42282e6c842156d8bc2a1df06ad412a3">getTransposedVectorType</a>(VectorType vecTy) {</div>
+<div class="line"><a id="l00539" name="l00539"></a><span class="lineno">  539</span>    SmallVector&lt;int64_t&gt; shape{vecTy.getShape()};</div>
+<div class="line"><a id="l00540" name="l00540"></a><span class="lineno">  540</span>    <span class="keyword">auto</span> nDim = shape.size();</div>
+<div class="line"><a id="l00541" name="l00541"></a><span class="lineno">  541</span>    int64_t dimNm1 = shape[nDim - 1];</div>
+<div class="line"><a id="l00542" name="l00542"></a><span class="lineno">  542</span>    shape[nDim - 1] = shape[nDim - 2];</div>
+<div class="line"><a id="l00543" name="l00543"></a><span class="lineno">  543</span>    shape[nDim - 2] = dimNm1;</div>
+<div class="line"><a id="l00544" name="l00544"></a><span class="lineno">  544</span>    <span class="keyword">auto</span> elemTy = vecTy.getElementType();</div>
+<div class="line"><a id="l00545" name="l00545"></a><span class="lineno">  545</span>    <span class="keywordflow">return</span> VectorType::get(shape, elemTy);</div>
+<div class="line"><a id="l00546" name="l00546"></a><span class="lineno">  546</span>  }</div>
 </div>
-<div class="line"><a id="l00546" name="l00546"></a><span class="lineno">  546</span> </div>
-<div class="line"><a id="l00547" name="l00547"></a><span class="lineno">  547</span>  LogicalResult</div>
-<div class="foldopen" id="foldopen00548" data-start="{" data-end="}">
-<div class="line"><a id="l00548" name="l00548"></a><span class="lineno"><a class="line" href="structExtractTransposeFromContractionOp.html#a5427a57e92798b4b899a5982129f83cc">  548</a></span>  <a class="code hl_function" href="structExtractTransposeFromContractionOp.html#a5427a57e92798b4b899a5982129f83cc">matchAndRewrite</a>(vector::ContractionOp contractOp, OpAdaptor adaptor,</div>
-<div class="line"><a id="l00549" name="l00549"></a><span class="lineno">  549</span>                  ConversionPatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
-<div class="line"><a id="l00550" name="l00550"></a><span class="lineno">  550</span>    <span class="keywordflow">if</span> (!isGemmBTransposedContractionOp(contractOp))</div>
-<div class="line"><a id="l00551" name="l00551"></a><span class="lineno">  551</span>      <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l00552" name="l00552"></a><span class="lineno">  552</span> </div>
-<div class="line"><a id="l00553" name="l00553"></a><span class="lineno">  553</span>    Location loc = contractOp.getLoc();</div>
-<div class="line"><a id="l00554" name="l00554"></a><span class="lineno">  554</span>    <span class="keyword">auto</span> *ctx = rewriter.getContext();</div>
-<div class="line"><a id="l00555" name="l00555"></a><span class="lineno">  555</span> </div>
-<div class="line"><a id="l00556" name="l00556"></a><span class="lineno">  556</span>    Value rhsVal = adaptor.getRhs();</div>
-<div class="line"><a id="l00557" name="l00557"></a><span class="lineno">  557</span>    VectorType rhsVecTy = contractOp.getRhsType();</div>
-<div class="line"><a id="l00558" name="l00558"></a><span class="lineno">  558</span>    Type rhsElemTy = rhsVecTy.getElementType();</div>
-<div class="line"><a id="l00559" name="l00559"></a><span class="lineno">  559</span> </div>
-<div class="line"><a id="l00560" name="l00560"></a><span class="lineno">  560</span>    <span class="keywordtype">bool</span> doExtF = <span class="keyword">false</span>, doExtSI = <span class="keyword">false</span>, doExtUI = <span class="keyword">false</span>;</div>
-<div class="line"><a id="l00561" name="l00561"></a><span class="lineno">  561</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> extfRhsOp = rhsVal.getDefiningOp&lt;arith::ExtFOp&gt;()) {</div>
-<div class="line"><a id="l00562" name="l00562"></a><span class="lineno">  562</span>      rhsVal = extfRhsOp.getIn();</div>
-<div class="line"><a id="l00563" name="l00563"></a><span class="lineno">  563</span>      rhsVecTy = cast&lt;VectorType&gt;(rhsVal.getType());</div>
-<div class="line"><a id="l00564" name="l00564"></a><span class="lineno">  564</span>      doExtF = <span class="keyword">true</span>;</div>
-<div class="line"><a id="l00565" name="l00565"></a><span class="lineno">  565</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> extsiRhsOp = rhsVal.getDefiningOp&lt;arith::ExtSIOp&gt;()) {</div>
-<div class="line"><a id="l00566" name="l00566"></a><span class="lineno">  566</span>      rhsVal = extsiRhsOp.getIn();</div>
-<div class="line"><a id="l00567" name="l00567"></a><span class="lineno">  567</span>      rhsVecTy = cast&lt;VectorType&gt;(rhsVal.getType());</div>
-<div class="line"><a id="l00568" name="l00568"></a><span class="lineno">  568</span>      doExtSI = <span class="keyword">true</span>;</div>
-<div class="line"><a id="l00569" name="l00569"></a><span class="lineno">  569</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> extuiRhsOp = rhsVal.getDefiningOp&lt;arith::ExtUIOp&gt;()) {</div>
-<div class="line"><a id="l00570" name="l00570"></a><span class="lineno">  570</span>      rhsVal = extuiRhsOp.getIn();</div>
-<div class="line"><a id="l00571" name="l00571"></a><span class="lineno">  571</span>      rhsVecTy = cast&lt;VectorType&gt;(rhsVal.getType());</div>
-<div class="line"><a id="l00572" name="l00572"></a><span class="lineno">  572</span>      doExtUI = <span class="keyword">true</span>;</div>
-<div class="line"><a id="l00573" name="l00573"></a><span class="lineno">  573</span>    }</div>
-<div class="line"><a id="l00574" name="l00574"></a><span class="lineno">  574</span> </div>
-<div class="line"><a id="l00575" name="l00575"></a><span class="lineno">  575</span>    int64_t nDim = rhsVecTy.getShape().size();</div>
-<div class="line"><a id="l00576" name="l00576"></a><span class="lineno">  576</span>    SmallVector&lt;int64_t&gt; rhsPermutation;</div>
-<div class="line"><a id="l00577" name="l00577"></a><span class="lineno">  577</span>    <span class="keywordflow">for</span> (int64_t i = 0; i &lt; nDim - 2; i++)</div>
-<div class="line"><a id="l00578" name="l00578"></a><span class="lineno">  578</span>      rhsPermutation.push_back(i);</div>
-<div class="line"><a id="l00579" name="l00579"></a><span class="lineno">  579</span>    rhsPermutation.push_back(nDim - 1);</div>
-<div class="line"><a id="l00580" name="l00580"></a><span class="lineno">  580</span>    rhsPermutation.push_back(nDim - 2);</div>
-<div class="line"><a id="l00581" name="l00581"></a><span class="lineno">  581</span>    <span class="keyword">auto</span> transpRhsVecTy = <a class="code hl_function" href="structExtractTransposeFromContractionOp.html#a42282e6c842156d8bc2a1df06ad412a3">getTransposedVectorType</a>(rhsVecTy);</div>
-<div class="line"><a id="l00582" name="l00582"></a><span class="lineno">  582</span>    rhsVal = rewriter</div>
-<div class="line"><a id="l00583" name="l00583"></a><span class="lineno">  583</span>                 .create&lt;vector::TransposeOp&gt;(loc, transpRhsVecTy, rhsVal,</div>
-<div class="line"><a id="l00584" name="l00584"></a><span class="lineno">  584</span>                                              rhsPermutation)</div>
-<div class="line"><a id="l00585" name="l00585"></a><span class="lineno">  585</span>                 .getResult();</div>
-<div class="line"><a id="l00586" name="l00586"></a><span class="lineno">  586</span> </div>
-<div class="line"><a id="l00587" name="l00587"></a><span class="lineno">  587</span>    <span class="keywordflow">if</span> (doExtF)</div>
-<div class="line"><a id="l00588" name="l00588"></a><span class="lineno">  588</span>      rhsVal =</div>
-<div class="line"><a id="l00589" name="l00589"></a><span class="lineno">  589</span>          rewriter</div>
-<div class="line"><a id="l00590" name="l00590"></a><span class="lineno">  590</span>              .create&lt;arith::ExtFOp&gt;(</div>
-<div class="line"><a id="l00591" name="l00591"></a><span class="lineno">  591</span>                  loc, VectorType::get(transpRhsVecTy.getShape(), rhsElemTy),</div>
-<div class="line"><a id="l00592" name="l00592"></a><span class="lineno">  592</span>                  rhsVal)</div>
-<div class="line"><a id="l00593" name="l00593"></a><span class="lineno">  593</span>              .getOut();</div>
-<div class="line"><a id="l00594" name="l00594"></a><span class="lineno">  594</span>    <span class="keywordflow">if</span> (doExtSI)</div>
-<div class="line"><a id="l00595" name="l00595"></a><span class="lineno">  595</span>      rhsVal =</div>
-<div class="line"><a id="l00596" name="l00596"></a><span class="lineno">  596</span>          rewriter</div>
-<div class="line"><a id="l00597" name="l00597"></a><span class="lineno">  597</span>              .create&lt;arith::ExtSIOp&gt;(</div>
-<div class="line"><a id="l00598" name="l00598"></a><span class="lineno">  598</span>                  loc, VectorType::get(transpRhsVecTy.getShape(), rhsElemTy),</div>
-<div class="line"><a id="l00599" name="l00599"></a><span class="lineno">  599</span>                  rhsVal)</div>
-<div class="line"><a id="l00600" name="l00600"></a><span class="lineno">  600</span>              .getOut();</div>
-<div class="line"><a id="l00601" name="l00601"></a><span class="lineno">  601</span>    <span class="keywordflow">if</span> (doExtUI)</div>
-<div class="line"><a id="l00602" name="l00602"></a><span class="lineno">  602</span>      rhsVal =</div>
-<div class="line"><a id="l00603" name="l00603"></a><span class="lineno">  603</span>          rewriter</div>
-<div class="line"><a id="l00604" name="l00604"></a><span class="lineno">  604</span>              .create&lt;arith::ExtUIOp&gt;(</div>
-<div class="line"><a id="l00605" name="l00605"></a><span class="lineno">  605</span>                  loc, VectorType::get(transpRhsVecTy.getShape(), rhsElemTy),</div>
-<div class="line"><a id="l00606" name="l00606"></a><span class="lineno">  606</span>                  rhsVal)</div>
-<div class="line"><a id="l00607" name="l00607"></a><span class="lineno">  607</span>              .getOut();</div>
-<div class="line"><a id="l00608" name="l00608"></a><span class="lineno">  608</span> </div>
-<div class="line"><a id="l00609" name="l00609"></a><span class="lineno">  609</span>    SmallVector&lt;AffineMap, 4&gt; oldIdxMaps(contractOp.getIndexingMapsArray());</div>
-<div class="line"><a id="l00610" name="l00610"></a><span class="lineno">  610</span> </div>
-<div class="line"><a id="l00611" name="l00611"></a><span class="lineno">  611</span>    nDim = oldIdxMaps[1].getNumDims();</div>
-<div class="line"><a id="l00612" name="l00612"></a><span class="lineno">  612</span>    SmallVector&lt;int64_t&gt; innerDimPerm;</div>
-<div class="line"><a id="l00613" name="l00613"></a><span class="lineno">  613</span>    <span class="keywordflow">for</span> (int64_t i = 0; i &lt; nDim - 2; i++)</div>
-<div class="line"><a id="l00614" name="l00614"></a><span class="lineno">  614</span>      innerDimPerm.push_back(i);</div>
-<div class="line"><a id="l00615" name="l00615"></a><span class="lineno">  615</span>    innerDimPerm.push_back(nDim - 1);</div>
-<div class="line"><a id="l00616" name="l00616"></a><span class="lineno">  616</span>    innerDimPerm.push_back(nDim - 2);</div>
-<div class="line"><a id="l00617" name="l00617"></a><span class="lineno">  617</span>    <span class="keyword">auto</span> transpPermMap = AffineMap::getPermutationMap(innerDimPerm, ctx);</div>
-<div class="line"><a id="l00618" name="l00618"></a><span class="lineno">  618</span> </div>
-<div class="line"><a id="l00619" name="l00619"></a><span class="lineno">  619</span>    <span class="keyword">auto</span> newIdxMaps = rewriter.getAffineMapArrayAttr(</div>
-<div class="line"><a id="l00620" name="l00620"></a><span class="lineno">  620</span>        {oldIdxMaps[0], oldIdxMaps[1].compose(transpPermMap), oldIdxMaps[2]});</div>
-<div class="line"><a id="l00621" name="l00621"></a><span class="lineno">  621</span> </div>
-<div class="line"><a id="l00622" name="l00622"></a><span class="lineno">  622</span>    rewriter.replaceOpWithNewOp&lt;vector::ContractionOp&gt;(</div>
-<div class="line"><a id="l00623" name="l00623"></a><span class="lineno">  623</span>        contractOp, contractOp.getResult().getType(), adaptor.getLhs(), rhsVal,</div>
-<div class="line"><a id="l00624" name="l00624"></a><span class="lineno">  624</span>        adaptor.getAcc(), newIdxMaps, contractOp.getIteratorTypes());</div>
-<div class="line"><a id="l00625" name="l00625"></a><span class="lineno">  625</span> </div>
-<div class="line"><a id="l00626" name="l00626"></a><span class="lineno">  626</span>    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00627" name="l00627"></a><span class="lineno">  627</span>  }</div>
+<div class="line"><a id="l00547" name="l00547"></a><span class="lineno">  547</span> </div>
+<div class="line"><a id="l00548" name="l00548"></a><span class="lineno">  548</span>  LogicalResult</div>
+<div class="foldopen" id="foldopen00549" data-start="{" data-end="}">
+<div class="line"><a id="l00549" name="l00549"></a><span class="lineno"><a class="line" href="structExtractTransposeFromContractionOp.html#a5427a57e92798b4b899a5982129f83cc">  549</a></span>  <a class="code hl_function" href="structExtractTransposeFromContractionOp.html#a5427a57e92798b4b899a5982129f83cc">matchAndRewrite</a>(vector::ContractionOp contractOp, OpAdaptor adaptor,</div>
+<div class="line"><a id="l00550" name="l00550"></a><span class="lineno">  550</span>                  ConversionPatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
+<div class="line"><a id="l00551" name="l00551"></a><span class="lineno">  551</span>    <span class="keywordflow">if</span> (!isGemmBTransposedContractionOp(contractOp))</div>
+<div class="line"><a id="l00552" name="l00552"></a><span class="lineno">  552</span>      <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00553" name="l00553"></a><span class="lineno">  553</span> </div>
+<div class="line"><a id="l00554" name="l00554"></a><span class="lineno">  554</span>    Location loc = contractOp.getLoc();</div>
+<div class="line"><a id="l00555" name="l00555"></a><span class="lineno">  555</span>    <span class="keyword">auto</span> *ctx = rewriter.getContext();</div>
+<div class="line"><a id="l00556" name="l00556"></a><span class="lineno">  556</span> </div>
+<div class="line"><a id="l00557" name="l00557"></a><span class="lineno">  557</span>    Value rhsVal = adaptor.getRhs();</div>
+<div class="line"><a id="l00558" name="l00558"></a><span class="lineno">  558</span>    VectorType rhsVecTy = contractOp.getRhsType();</div>
+<div class="line"><a id="l00559" name="l00559"></a><span class="lineno">  559</span>    Type rhsElemTy = rhsVecTy.getElementType();</div>
+<div class="line"><a id="l00560" name="l00560"></a><span class="lineno">  560</span> </div>
+<div class="line"><a id="l00561" name="l00561"></a><span class="lineno">  561</span>    <span class="keywordtype">bool</span> doExtF = <span class="keyword">false</span>, doExtSI = <span class="keyword">false</span>, doExtUI = <span class="keyword">false</span>;</div>
+<div class="line"><a id="l00562" name="l00562"></a><span class="lineno">  562</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> extfRhsOp = rhsVal.getDefiningOp&lt;arith::ExtFOp&gt;()) {</div>
+<div class="line"><a id="l00563" name="l00563"></a><span class="lineno">  563</span>      rhsVal = extfRhsOp.getIn();</div>
+<div class="line"><a id="l00564" name="l00564"></a><span class="lineno">  564</span>      rhsVecTy = cast&lt;VectorType&gt;(rhsVal.getType());</div>
+<div class="line"><a id="l00565" name="l00565"></a><span class="lineno">  565</span>      doExtF = <span class="keyword">true</span>;</div>
+<div class="line"><a id="l00566" name="l00566"></a><span class="lineno">  566</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> extsiRhsOp = rhsVal.getDefiningOp&lt;arith::ExtSIOp&gt;()) {</div>
+<div class="line"><a id="l00567" name="l00567"></a><span class="lineno">  567</span>      rhsVal = extsiRhsOp.getIn();</div>
+<div class="line"><a id="l00568" name="l00568"></a><span class="lineno">  568</span>      rhsVecTy = cast&lt;VectorType&gt;(rhsVal.getType());</div>
+<div class="line"><a id="l00569" name="l00569"></a><span class="lineno">  569</span>      doExtSI = <span class="keyword">true</span>;</div>
+<div class="line"><a id="l00570" name="l00570"></a><span class="lineno">  570</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> extuiRhsOp = rhsVal.getDefiningOp&lt;arith::ExtUIOp&gt;()) {</div>
+<div class="line"><a id="l00571" name="l00571"></a><span class="lineno">  571</span>      rhsVal = extuiRhsOp.getIn();</div>
+<div class="line"><a id="l00572" name="l00572"></a><span class="lineno">  572</span>      rhsVecTy = cast&lt;VectorType&gt;(rhsVal.getType());</div>
+<div class="line"><a id="l00573" name="l00573"></a><span class="lineno">  573</span>      doExtUI = <span class="keyword">true</span>;</div>
+<div class="line"><a id="l00574" name="l00574"></a><span class="lineno">  574</span>    }</div>
+<div class="line"><a id="l00575" name="l00575"></a><span class="lineno">  575</span> </div>
+<div class="line"><a id="l00576" name="l00576"></a><span class="lineno">  576</span>    int64_t nDim = rhsVecTy.getShape().size();</div>
+<div class="line"><a id="l00577" name="l00577"></a><span class="lineno">  577</span>    SmallVector&lt;int64_t&gt; rhsPermutation;</div>
+<div class="line"><a id="l00578" name="l00578"></a><span class="lineno">  578</span>    <span class="keywordflow">for</span> (int64_t i = 0; i &lt; nDim - 2; i++)</div>
+<div class="line"><a id="l00579" name="l00579"></a><span class="lineno">  579</span>      rhsPermutation.push_back(i);</div>
+<div class="line"><a id="l00580" name="l00580"></a><span class="lineno">  580</span>    rhsPermutation.push_back(nDim - 1);</div>
+<div class="line"><a id="l00581" name="l00581"></a><span class="lineno">  581</span>    rhsPermutation.push_back(nDim - 2);</div>
+<div class="line"><a id="l00582" name="l00582"></a><span class="lineno">  582</span>    <span class="keyword">auto</span> transpRhsVecTy = <a class="code hl_function" href="structExtractTransposeFromContractionOp.html#a42282e6c842156d8bc2a1df06ad412a3">getTransposedVectorType</a>(rhsVecTy);</div>
+<div class="line"><a id="l00583" name="l00583"></a><span class="lineno">  583</span>    rhsVal = rewriter</div>
+<div class="line"><a id="l00584" name="l00584"></a><span class="lineno">  584</span>                 .create&lt;vector::TransposeOp&gt;(loc, transpRhsVecTy, rhsVal,</div>
+<div class="line"><a id="l00585" name="l00585"></a><span class="lineno">  585</span>                                              rhsPermutation)</div>
+<div class="line"><a id="l00586" name="l00586"></a><span class="lineno">  586</span>                 .getResult();</div>
+<div class="line"><a id="l00587" name="l00587"></a><span class="lineno">  587</span> </div>
+<div class="line"><a id="l00588" name="l00588"></a><span class="lineno">  588</span>    <span class="keywordflow">if</span> (doExtF)</div>
+<div class="line"><a id="l00589" name="l00589"></a><span class="lineno">  589</span>      rhsVal =</div>
+<div class="line"><a id="l00590" name="l00590"></a><span class="lineno">  590</span>          rewriter</div>
+<div class="line"><a id="l00591" name="l00591"></a><span class="lineno">  591</span>              .create&lt;arith::ExtFOp&gt;(</div>
+<div class="line"><a id="l00592" name="l00592"></a><span class="lineno">  592</span>                  loc, VectorType::get(transpRhsVecTy.getShape(), rhsElemTy),</div>
+<div class="line"><a id="l00593" name="l00593"></a><span class="lineno">  593</span>                  rhsVal)</div>
+<div class="line"><a id="l00594" name="l00594"></a><span class="lineno">  594</span>              .getOut();</div>
+<div class="line"><a id="l00595" name="l00595"></a><span class="lineno">  595</span>    <span class="keywordflow">if</span> (doExtSI)</div>
+<div class="line"><a id="l00596" name="l00596"></a><span class="lineno">  596</span>      rhsVal =</div>
+<div class="line"><a id="l00597" name="l00597"></a><span class="lineno">  597</span>          rewriter</div>
+<div class="line"><a id="l00598" name="l00598"></a><span class="lineno">  598</span>              .create&lt;arith::ExtSIOp&gt;(</div>
+<div class="line"><a id="l00599" name="l00599"></a><span class="lineno">  599</span>                  loc, VectorType::get(transpRhsVecTy.getShape(), rhsElemTy),</div>
+<div class="line"><a id="l00600" name="l00600"></a><span class="lineno">  600</span>                  rhsVal)</div>
+<div class="line"><a id="l00601" name="l00601"></a><span class="lineno">  601</span>              .getOut();</div>
+<div class="line"><a id="l00602" name="l00602"></a><span class="lineno">  602</span>    <span class="keywordflow">if</span> (doExtUI)</div>
+<div class="line"><a id="l00603" name="l00603"></a><span class="lineno">  603</span>      rhsVal =</div>
+<div class="line"><a id="l00604" name="l00604"></a><span class="lineno">  604</span>          rewriter</div>
+<div class="line"><a id="l00605" name="l00605"></a><span class="lineno">  605</span>              .create&lt;arith::ExtUIOp&gt;(</div>
+<div class="line"><a id="l00606" name="l00606"></a><span class="lineno">  606</span>                  loc, VectorType::get(transpRhsVecTy.getShape(), rhsElemTy),</div>
+<div class="line"><a id="l00607" name="l00607"></a><span class="lineno">  607</span>                  rhsVal)</div>
+<div class="line"><a id="l00608" name="l00608"></a><span class="lineno">  608</span>              .getOut();</div>
+<div class="line"><a id="l00609" name="l00609"></a><span class="lineno">  609</span> </div>
+<div class="line"><a id="l00610" name="l00610"></a><span class="lineno">  610</span>    SmallVector&lt;AffineMap, 4&gt; oldIdxMaps(contractOp.getIndexingMapsArray());</div>
+<div class="line"><a id="l00611" name="l00611"></a><span class="lineno">  611</span> </div>
+<div class="line"><a id="l00612" name="l00612"></a><span class="lineno">  612</span>    nDim = oldIdxMaps[1].getNumDims();</div>
+<div class="line"><a id="l00613" name="l00613"></a><span class="lineno">  613</span>    SmallVector&lt;int64_t&gt; innerDimPerm;</div>
+<div class="line"><a id="l00614" name="l00614"></a><span class="lineno">  614</span>    <span class="keywordflow">for</span> (int64_t i = 0; i &lt; nDim - 2; i++)</div>
+<div class="line"><a id="l00615" name="l00615"></a><span class="lineno">  615</span>      innerDimPerm.push_back(i);</div>
+<div class="line"><a id="l00616" name="l00616"></a><span class="lineno">  616</span>    innerDimPerm.push_back(nDim - 1);</div>
+<div class="line"><a id="l00617" name="l00617"></a><span class="lineno">  617</span>    innerDimPerm.push_back(nDim - 2);</div>
+<div class="line"><a id="l00618" name="l00618"></a><span class="lineno">  618</span>    <span class="keyword">auto</span> transpPermMap = AffineMap::getPermutationMap(innerDimPerm, ctx);</div>
+<div class="line"><a id="l00619" name="l00619"></a><span class="lineno">  619</span> </div>
+<div class="line"><a id="l00620" name="l00620"></a><span class="lineno">  620</span>    <span class="keyword">auto</span> newIdxMaps = rewriter.getAffineMapArrayAttr(</div>
+<div class="line"><a id="l00621" name="l00621"></a><span class="lineno">  621</span>        {oldIdxMaps[0], oldIdxMaps[1].compose(transpPermMap), oldIdxMaps[2]});</div>
+<div class="line"><a id="l00622" name="l00622"></a><span class="lineno">  622</span> </div>
+<div class="line"><a id="l00623" name="l00623"></a><span class="lineno">  623</span>    rewriter.replaceOpWithNewOp&lt;vector::ContractionOp&gt;(</div>
+<div class="line"><a id="l00624" name="l00624"></a><span class="lineno">  624</span>        contractOp, contractOp.getResult().getType(), adaptor.getLhs(), rhsVal,</div>
+<div class="line"><a id="l00625" name="l00625"></a><span class="lineno">  625</span>        adaptor.getAcc(), newIdxMaps, contractOp.getIteratorTypes());</div>
+<div class="line"><a id="l00626" name="l00626"></a><span class="lineno">  626</span> </div>
+<div class="line"><a id="l00627" name="l00627"></a><span class="lineno">  627</span>    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00628" name="l00628"></a><span class="lineno">  628</span>  }</div>
 </div>
-<div class="line"><a id="l00628" name="l00628"></a><span class="lineno">  628</span>};</div>
+<div class="line"><a id="l00629" name="l00629"></a><span class="lineno">  629</span>};</div>
 </div>
-<div class="line"><a id="l00629" name="l00629"></a><span class="lineno">  629</span> </div>
-<div class="line"><a id="l00630" name="l00630"></a><span class="lineno">  630</span><span class="comment">//============================================================================//</span></div>
-<div class="line"><a id="l00631" name="l00631"></a><span class="lineno">  631</span><span class="comment">//============ AIE2 canonicalization conversion patterns ===============//</span></div>
-<div class="line"><a id="l00632" name="l00632"></a><span class="lineno">  632</span><span class="comment">//============================================================================//</span></div>
-<div class="line"><a id="l00633" name="l00633"></a><span class="lineno">  633</span> </div>
-<div class="foldopen" id="foldopen00634" data-start="{" data-end="};">
-<div class="line"><a id="l00634" name="l00634"></a><span class="lineno"><a class="line" href="structConvertLeadingUnitDimInsertToReshapePattern.html">  634</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structConvertLeadingUnitDimInsertToReshapePattern.html">ConvertLeadingUnitDimInsertToReshapePattern</a></div>
-<div class="line"><a id="l00635" name="l00635"></a><span class="lineno">  635</span>    : <span class="keyword">public</span> <a class="code hl_class" href="classOpRewritePattern.html">OpRewritePattern</a>&lt;vector::InsertOp&gt; {</div>
-<div class="line"><a id="l00636" name="l00636"></a><span class="lineno">  636</span> </div>
-<div class="line"><a id="l00637" name="l00637"></a><span class="lineno">  637</span>  <span class="keyword">using </span><a class="code hl_class" href="classOpRewritePattern.html">OpRewritePattern</a>&lt;vector::InsertOp&gt;<a class="code hl_class" href="classOpRewritePattern.html">::OpRewritePattern</a>;</div>
-<div class="line"><a id="l00638" name="l00638"></a><span class="lineno">  638</span> </div>
-<div class="foldopen" id="foldopen00639" data-start="{" data-end="}">
-<div class="line"><a id="l00639" name="l00639"></a><span class="lineno"><a class="line" href="structConvertLeadingUnitDimInsertToReshapePattern.html#aec1aab1e1e629f85e8117330fb858a9d">  639</a></span>  LogicalResult <a class="code hl_function" href="structConvertLeadingUnitDimInsertToReshapePattern.html#aec1aab1e1e629f85e8117330fb858a9d">matchAndRewrite</a>(vector::InsertOp insOp,</div>
-<div class="line"><a id="l00640" name="l00640"></a><span class="lineno">  640</span>                                PatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
-<div class="line"><a id="l00641" name="l00641"></a><span class="lineno">  641</span>    <span class="keyword">auto</span> insSrcTy = dyn_cast&lt;VectorType&gt;(insOp.getValueToStoreType());</div>
-<div class="line"><a id="l00642" name="l00642"></a><span class="lineno">  642</span>    <span class="keywordflow">if</span> (!insSrcTy)</div>
-<div class="line"><a id="l00643" name="l00643"></a><span class="lineno">  643</span>      <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l00644" name="l00644"></a><span class="lineno">  644</span> </div>
-<div class="line"><a id="l00645" name="l00645"></a><span class="lineno">  645</span>    <span class="keyword">auto</span> srcShape = insSrcTy.getShape();</div>
-<div class="line"><a id="l00646" name="l00646"></a><span class="lineno">  646</span>    <span class="keyword">auto</span> dstShape = insOp.getDestVectorType().getShape();</div>
-<div class="line"><a id="l00647" name="l00647"></a><span class="lineno">  647</span> </div>
-<div class="line"><a id="l00648" name="l00648"></a><span class="lineno">  648</span>    <span class="keywordtype">unsigned</span> <span class="keywordtype">long</span> numLeadUnitDimDst = 0;</div>
-<div class="line"><a id="l00649" name="l00649"></a><span class="lineno">  649</span>    <span class="keywordflow">while</span> (numLeadUnitDimDst &lt; dstShape.size() &amp;&amp;</div>
-<div class="line"><a id="l00650" name="l00650"></a><span class="lineno">  650</span>           dstShape[numLeadUnitDimDst] == 1)</div>
-<div class="line"><a id="l00651" name="l00651"></a><span class="lineno">  651</span>      numLeadUnitDimDst++;</div>
-<div class="line"><a id="l00652" name="l00652"></a><span class="lineno">  652</span> </div>
-<div class="line"><a id="l00653" name="l00653"></a><span class="lineno">  653</span>    <span class="keywordflow">if</span> (!numLeadUnitDimDst)</div>
-<div class="line"><a id="l00654" name="l00654"></a><span class="lineno">  654</span>      <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l00655" name="l00655"></a><span class="lineno">  655</span> </div>
-<div class="line"><a id="l00656" name="l00656"></a><span class="lineno">  656</span>    <span class="keywordtype">unsigned</span> <span class="keywordtype">long</span> numLeadUnitDimSrc = 0;</div>
-<div class="line"><a id="l00657" name="l00657"></a><span class="lineno">  657</span>    <span class="keywordflow">while</span> (numLeadUnitDimSrc &lt; srcShape.size() &amp;&amp;</div>
-<div class="line"><a id="l00658" name="l00658"></a><span class="lineno">  658</span>           srcShape[numLeadUnitDimSrc] == 1)</div>
-<div class="line"><a id="l00659" name="l00659"></a><span class="lineno">  659</span>      numLeadUnitDimSrc++;</div>
-<div class="line"><a id="l00660" name="l00660"></a><span class="lineno">  660</span> </div>
-<div class="line"><a id="l00661" name="l00661"></a><span class="lineno">  661</span>    SmallVector&lt;int64_t&gt; nonLeadUnitDimDstShape(</div>
-<div class="line"><a id="l00662" name="l00662"></a><span class="lineno">  662</span>        dstShape.begin() + numLeadUnitDimDst, dstShape.end());</div>
-<div class="line"><a id="l00663" name="l00663"></a><span class="lineno">  663</span>    SmallVector&lt;int64_t&gt; nonLeadUnitDimSrcShape(</div>
-<div class="line"><a id="l00664" name="l00664"></a><span class="lineno">  664</span>        srcShape.begin() + numLeadUnitDimSrc, srcShape.end());</div>
-<div class="line"><a id="l00665" name="l00665"></a><span class="lineno">  665</span> </div>
-<div class="line"><a id="l00666" name="l00666"></a><span class="lineno">  666</span>    <span class="keywordflow">if</span> (nonLeadUnitDimSrcShape != nonLeadUnitDimDstShape)</div>
-<div class="line"><a id="l00667" name="l00667"></a><span class="lineno">  667</span>      <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l00668" name="l00668"></a><span class="lineno">  668</span> </div>
-<div class="line"><a id="l00669" name="l00669"></a><span class="lineno">  669</span>    rewriter.replaceOpWithNewOp&lt;vector::ShapeCastOp&gt;(</div>
-<div class="line"><a id="l00670" name="l00670"></a><span class="lineno">  670</span>        insOp, insOp.getDestVectorType(), insOp.getValueToStore());</div>
-<div class="line"><a id="l00671" name="l00671"></a><span class="lineno">  671</span>    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00672" name="l00672"></a><span class="lineno">  672</span>  }</div>
+<div class="line"><a id="l00630" name="l00630"></a><span class="lineno">  630</span> </div>
+<div class="line"><a id="l00631" name="l00631"></a><span class="lineno">  631</span><span class="comment">//============================================================================//</span></div>
+<div class="line"><a id="l00632" name="l00632"></a><span class="lineno">  632</span><span class="comment">//============ AIE2 canonicalization conversion patterns ===============//</span></div>
+<div class="line"><a id="l00633" name="l00633"></a><span class="lineno">  633</span><span class="comment">//============================================================================//</span></div>
+<div class="line"><a id="l00634" name="l00634"></a><span class="lineno">  634</span> </div>
+<div class="foldopen" id="foldopen00635" data-start="{" data-end="};">
+<div class="line"><a id="l00635" name="l00635"></a><span class="lineno"><a class="line" href="structConvertLeadingUnitDimInsertToReshapePattern.html">  635</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structConvertLeadingUnitDimInsertToReshapePattern.html">ConvertLeadingUnitDimInsertToReshapePattern</a></div>
+<div class="line"><a id="l00636" name="l00636"></a><span class="lineno">  636</span>    : <span class="keyword">public</span> <a class="code hl_class" href="classOpRewritePattern.html">OpRewritePattern</a>&lt;vector::InsertOp&gt; {</div>
+<div class="line"><a id="l00637" name="l00637"></a><span class="lineno">  637</span> </div>
+<div class="line"><a id="l00638" name="l00638"></a><span class="lineno">  638</span>  <span class="keyword">using </span><a class="code hl_class" href="classOpRewritePattern.html">OpRewritePattern</a>&lt;vector::InsertOp&gt;<a class="code hl_class" href="classOpRewritePattern.html">::OpRewritePattern</a>;</div>
+<div class="line"><a id="l00639" name="l00639"></a><span class="lineno">  639</span> </div>
+<div class="foldopen" id="foldopen00640" data-start="{" data-end="}">
+<div class="line"><a id="l00640" name="l00640"></a><span class="lineno"><a class="line" href="structConvertLeadingUnitDimInsertToReshapePattern.html#aec1aab1e1e629f85e8117330fb858a9d">  640</a></span>  LogicalResult <a class="code hl_function" href="structConvertLeadingUnitDimInsertToReshapePattern.html#aec1aab1e1e629f85e8117330fb858a9d">matchAndRewrite</a>(vector::InsertOp insOp,</div>
+<div class="line"><a id="l00641" name="l00641"></a><span class="lineno">  641</span>                                PatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
+<div class="line"><a id="l00642" name="l00642"></a><span class="lineno">  642</span>    <span class="keyword">auto</span> insSrcTy = dyn_cast&lt;VectorType&gt;(insOp.getValueToStoreType());</div>
+<div class="line"><a id="l00643" name="l00643"></a><span class="lineno">  643</span>    <span class="keywordflow">if</span> (!insSrcTy)</div>
+<div class="line"><a id="l00644" name="l00644"></a><span class="lineno">  644</span>      <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00645" name="l00645"></a><span class="lineno">  645</span> </div>
+<div class="line"><a id="l00646" name="l00646"></a><span class="lineno">  646</span>    <span class="keyword">auto</span> srcShape = insSrcTy.getShape();</div>
+<div class="line"><a id="l00647" name="l00647"></a><span class="lineno">  647</span>    <span class="keyword">auto</span> dstShape = insOp.getDestVectorType().getShape();</div>
+<div class="line"><a id="l00648" name="l00648"></a><span class="lineno">  648</span> </div>
+<div class="line"><a id="l00649" name="l00649"></a><span class="lineno">  649</span>    <span class="keywordtype">unsigned</span> <span class="keywordtype">long</span> numLeadUnitDimDst = 0;</div>
+<div class="line"><a id="l00650" name="l00650"></a><span class="lineno">  650</span>    <span class="keywordflow">while</span> (numLeadUnitDimDst &lt; dstShape.size() &amp;&amp;</div>
+<div class="line"><a id="l00651" name="l00651"></a><span class="lineno">  651</span>           dstShape[numLeadUnitDimDst] == 1)</div>
+<div class="line"><a id="l00652" name="l00652"></a><span class="lineno">  652</span>      numLeadUnitDimDst++;</div>
+<div class="line"><a id="l00653" name="l00653"></a><span class="lineno">  653</span> </div>
+<div class="line"><a id="l00654" name="l00654"></a><span class="lineno">  654</span>    <span class="keywordflow">if</span> (!numLeadUnitDimDst)</div>
+<div class="line"><a id="l00655" name="l00655"></a><span class="lineno">  655</span>      <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00656" name="l00656"></a><span class="lineno">  656</span> </div>
+<div class="line"><a id="l00657" name="l00657"></a><span class="lineno">  657</span>    <span class="keywordtype">unsigned</span> <span class="keywordtype">long</span> numLeadUnitDimSrc = 0;</div>
+<div class="line"><a id="l00658" name="l00658"></a><span class="lineno">  658</span>    <span class="keywordflow">while</span> (numLeadUnitDimSrc &lt; srcShape.size() &amp;&amp;</div>
+<div class="line"><a id="l00659" name="l00659"></a><span class="lineno">  659</span>           srcShape[numLeadUnitDimSrc] == 1)</div>
+<div class="line"><a id="l00660" name="l00660"></a><span class="lineno">  660</span>      numLeadUnitDimSrc++;</div>
+<div class="line"><a id="l00661" name="l00661"></a><span class="lineno">  661</span> </div>
+<div class="line"><a id="l00662" name="l00662"></a><span class="lineno">  662</span>    SmallVector&lt;int64_t&gt; nonLeadUnitDimDstShape(</div>
+<div class="line"><a id="l00663" name="l00663"></a><span class="lineno">  663</span>        dstShape.begin() + numLeadUnitDimDst, dstShape.end());</div>
+<div class="line"><a id="l00664" name="l00664"></a><span class="lineno">  664</span>    SmallVector&lt;int64_t&gt; nonLeadUnitDimSrcShape(</div>
+<div class="line"><a id="l00665" name="l00665"></a><span class="lineno">  665</span>        srcShape.begin() + numLeadUnitDimSrc, srcShape.end());</div>
+<div class="line"><a id="l00666" name="l00666"></a><span class="lineno">  666</span> </div>
+<div class="line"><a id="l00667" name="l00667"></a><span class="lineno">  667</span>    <span class="keywordflow">if</span> (nonLeadUnitDimSrcShape != nonLeadUnitDimDstShape)</div>
+<div class="line"><a id="l00668" name="l00668"></a><span class="lineno">  668</span>      <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00669" name="l00669"></a><span class="lineno">  669</span> </div>
+<div class="line"><a id="l00670" name="l00670"></a><span class="lineno">  670</span>    rewriter.replaceOpWithNewOp&lt;vector::ShapeCastOp&gt;(</div>
+<div class="line"><a id="l00671" name="l00671"></a><span class="lineno">  671</span>        insOp, insOp.getDestVectorType(), insOp.getValueToStore());</div>
+<div class="line"><a id="l00672" name="l00672"></a><span class="lineno">  672</span>    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00673" name="l00673"></a><span class="lineno">  673</span>  }</div>
 </div>
-<div class="line"><a id="l00673" name="l00673"></a><span class="lineno">  673</span>};</div>
+<div class="line"><a id="l00674" name="l00674"></a><span class="lineno">  674</span>};</div>
 </div>
-<div class="line"><a id="l00674" name="l00674"></a><span class="lineno">  674</span> </div>
-<div class="line"><a id="l00675" name="l00675"></a><span class="lineno">  675</span><span class="comment">//============================================================================//</span></div>
-<div class="line"><a id="l00676" name="l00676"></a><span class="lineno">  676</span><span class="comment">//================ Common AIE canonicalization configuration =================//</span></div>
-<div class="line"><a id="l00677" name="l00677"></a><span class="lineno">  677</span><span class="comment">//============================================================================//</span></div>
-<div class="line"><a id="l00678" name="l00678"></a><span class="lineno">  678</span><span class="keyword">static</span> <span class="keywordtype">void</span></div>
-<div class="line"><a id="l00679" name="l00679"></a><span class="lineno">  679</span>configureCommonAIECanonicalizeLegalizations(ConversionTarget &amp;target,</div>
-<div class="line"><a id="l00680" name="l00680"></a><span class="lineno">  680</span>                                            <a class="code hl_enumeration" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend) {</div>
-<div class="line"><a id="l00681" name="l00681"></a><span class="lineno">  681</span>  target.addLegalDialect&lt;arith::ArithDialect, affine::AffineDialect,</div>
-<div class="line"><a id="l00682" name="l00682"></a><span class="lineno">  682</span>                         memref::MemRefDialect, vector::VectorDialect&gt;();</div>
-<div class="line"><a id="l00683" name="l00683"></a><span class="lineno">  683</span>}</div>
-<div class="line"><a id="l00684" name="l00684"></a><span class="lineno">  684</span> </div>
-<div class="line"><a id="l00685" name="l00685"></a><span class="lineno">  685</span><span class="keyword">static</span> <span class="keywordtype">void</span></div>
-<div class="line"><a id="l00686" name="l00686"></a><span class="lineno">  686</span>populateCommonAIECanonicalizeConversionPatterns(RewritePatternSet &amp;patterns,</div>
-<div class="line"><a id="l00687" name="l00687"></a><span class="lineno">  687</span>                                                <a class="code hl_enumeration" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend) {</div>
-<div class="line"><a id="l00688" name="l00688"></a><span class="lineno">  688</span>  patterns.add&lt;<a class="code hl_struct" href="structConvertSplatTransferReadToBroadcastPattern.html">ConvertSplatTransferReadToBroadcastPattern</a>&gt;(</div>
-<div class="line"><a id="l00689" name="l00689"></a><span class="lineno">  689</span>      patterns.getContext());</div>
-<div class="line"><a id="l00690" name="l00690"></a><span class="lineno">  690</span>}</div>
-<div class="line"><a id="l00691" name="l00691"></a><span class="lineno">  691</span> </div>
-<div class="line"><a id="l00692" name="l00692"></a><span class="lineno">  692</span><span class="comment">//============================================================================//</span></div>
-<div class="line"><a id="l00693" name="l00693"></a><span class="lineno">  693</span><span class="comment">//============== AIEv1-specific canonicalization configuration ===============//</span></div>
-<div class="line"><a id="l00694" name="l00694"></a><span class="lineno">  694</span><span class="comment">//============================================================================//</span></div>
-<div class="line"><a id="l00695" name="l00695"></a><span class="lineno">  695</span> </div>
-<div class="line"><a id="l00696" name="l00696"></a><span class="lineno">  696</span><span class="keyword">static</span> <span class="keywordtype">void</span> configureAIEv1CanonicalizeLegalizations(ConversionTarget &amp;target,</div>
-<div class="line"><a id="l00697" name="l00697"></a><span class="lineno">  697</span>                                                    <a class="code hl_enumeration" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend) {</div>
-<div class="line"><a id="l00698" name="l00698"></a><span class="lineno">  698</span>  target.addDynamicallyLegalOp&lt;vector::TransferReadOp&gt;(</div>
-<div class="line"><a id="l00699" name="l00699"></a><span class="lineno">  699</span>      [](vector::TransferReadOp op) {</div>
-<div class="line"><a id="l00700" name="l00700"></a><span class="lineno">  700</span>        <span class="keywordflow">return</span> !op.getPermutationMap().isConstant() &amp;&amp;</div>
-<div class="line"><a id="l00701" name="l00701"></a><span class="lineno">  701</span>               <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0e692a149f961ca40847f466b29d249b">getTransferReadAlignmentOffset</a>(op, op.getVectorType(), 128)</div>
-<div class="line"><a id="l00702" name="l00702"></a><span class="lineno">  702</span>                       .value_or(0) == 0;</div>
-<div class="line"><a id="l00703" name="l00703"></a><span class="lineno">  703</span>      });</div>
-<div class="line"><a id="l00704" name="l00704"></a><span class="lineno">  704</span>}</div>
-<div class="line"><a id="l00705" name="l00705"></a><span class="lineno">  705</span> </div>
-<div class="line"><a id="l00706" name="l00706"></a><span class="lineno">  706</span><span class="keyword">static</span> <span class="keywordtype">void</span></div>
-<div class="line"><a id="l00707" name="l00707"></a><span class="lineno">  707</span>populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &amp;patterns,</div>
-<div class="line"><a id="l00708" name="l00708"></a><span class="lineno">  708</span>                                            <a class="code hl_enumeration" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend) {</div>
-<div class="line"><a id="l00709" name="l00709"></a><span class="lineno">  709</span>  patterns.add&lt;<a class="code hl_struct" href="structSplitUnalignedTransferReadPattern.html">SplitUnalignedTransferReadPattern</a>&gt;(patterns.getContext(), 512,</div>
-<div class="line"><a id="l00710" name="l00710"></a><span class="lineno">  710</span>                                                  128);</div>
-<div class="line"><a id="l00711" name="l00711"></a><span class="lineno">  711</span>}</div>
-<div class="line"><a id="l00712" name="l00712"></a><span class="lineno">  712</span> </div>
-<div class="line"><a id="l00713" name="l00713"></a><span class="lineno">  713</span><span class="comment">//============================================================================//</span></div>
-<div class="line"><a id="l00714" name="l00714"></a><span class="lineno">  714</span><span class="comment">//============== AIE2-specific canonicalization configuration ===============//</span></div>
-<div class="line"><a id="l00715" name="l00715"></a><span class="lineno">  715</span><span class="comment">//============================================================================//</span></div>
-<div class="line"><a id="l00716" name="l00716"></a><span class="lineno">  716</span> </div>
-<div class="line"><a id="l00717" name="l00717"></a><span class="lineno">  717</span><span class="keyword">static</span> <span class="keywordtype">void</span> configureAIE2CanonicalizeLegalizations(ConversionTarget &amp;target,</div>
-<div class="line"><a id="l00718" name="l00718"></a><span class="lineno">  718</span>                                                   <a class="code hl_enumeration" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend) {</div>
-<div class="line"><a id="l00719" name="l00719"></a><span class="lineno">  719</span>  target.addDynamicallyLegalOp&lt;vector::TransferReadOp&gt;(</div>
-<div class="line"><a id="l00720" name="l00720"></a><span class="lineno">  720</span>      [](vector::TransferReadOp op) {</div>
-<div class="line"><a id="l00721" name="l00721"></a><span class="lineno">  721</span>        <span class="keywordflow">return</span> !op.getPermutationMap().isConstant() &amp;&amp;</div>
-<div class="line"><a id="l00722" name="l00722"></a><span class="lineno">  722</span>               <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0e692a149f961ca40847f466b29d249b">getTransferReadAlignmentOffset</a>(op, op.getVectorType(), 256)</div>
-<div class="line"><a id="l00723" name="l00723"></a><span class="lineno">  723</span>                       .value_or(0) == 0 &amp;&amp;</div>
-<div class="line"><a id="l00724" name="l00724"></a><span class="lineno">  724</span>               op.getVector().getType().getRank() &lt; 2;</div>
-<div class="line"><a id="l00725" name="l00725"></a><span class="lineno">  725</span>      });</div>
-<div class="line"><a id="l00726" name="l00726"></a><span class="lineno">  726</span>  target.addDynamicallyLegalOp&lt;vector::TransferWriteOp&gt;(</div>
-<div class="line"><a id="l00727" name="l00727"></a><span class="lineno">  727</span>      [](vector::TransferWriteOp op) {</div>
-<div class="line"><a id="l00728" name="l00728"></a><span class="lineno">  728</span>        <span class="keywordflow">return</span> cast&lt;VectorType&gt;(op.getVector().getType()).getRank() &lt; 2;</div>
-<div class="line"><a id="l00729" name="l00729"></a><span class="lineno">  729</span>      });</div>
-<div class="line"><a id="l00730" name="l00730"></a><span class="lineno">  730</span>  target.addDynamicallyLegalOp&lt;vector::ContractionOp&gt;(</div>
-<div class="line"><a id="l00731" name="l00731"></a><span class="lineno">  731</span>      [](vector::ContractionOp op) {</div>
-<div class="line"><a id="l00732" name="l00732"></a><span class="lineno">  732</span>        <span class="keywordflow">return</span> !isGemmBTransposedContractionOp(op);</div>
-<div class="line"><a id="l00733" name="l00733"></a><span class="lineno">  733</span>      });</div>
-<div class="line"><a id="l00734" name="l00734"></a><span class="lineno">  734</span>}</div>
-<div class="line"><a id="l00735" name="l00735"></a><span class="lineno">  735</span> </div>
-<div class="line"><a id="l00736" name="l00736"></a><span class="lineno">  736</span><span class="keyword">static</span> <span class="keywordtype">void</span></div>
-<div class="line"><a id="l00737" name="l00737"></a><span class="lineno">  737</span>populateAIE2CanonicalizeConversionPatterns(RewritePatternSet &amp;patterns,</div>
-<div class="line"><a id="l00738" name="l00738"></a><span class="lineno">  738</span>                                           <a class="code hl_enumeration" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend) {</div>
-<div class="line"><a id="l00739" name="l00739"></a><span class="lineno">  739</span>  patterns.add&lt;<a class="code hl_struct" href="structSplitUnalignedTransferReadPattern.html">SplitUnalignedTransferReadPattern</a>&gt;(patterns.getContext(), 1024,</div>
-<div class="line"><a id="l00740" name="l00740"></a><span class="lineno">  740</span>                                                  256);</div>
-<div class="line"><a id="l00741" name="l00741"></a><span class="lineno">  741</span>  patterns</div>
-<div class="line"><a id="l00742" name="l00742"></a><span class="lineno">  742</span>      .add&lt;<a class="code hl_struct" href="structExtractTransposeFromContractionOp.html">ExtractTransposeFromContractionOp</a>, <a class="code hl_struct" href="structFlattenMultDimTransferReadPattern.html">FlattenMultDimTransferReadPattern</a>,</div>
-<div class="line"><a id="l00743" name="l00743"></a><span class="lineno">  743</span>           <a class="code hl_struct" href="structFlattenMultDimTransferWritePattern.html">FlattenMultDimTransferWritePattern</a>&gt;(patterns.getContext());</div>
-<div class="line"><a id="l00744" name="l00744"></a><span class="lineno">  744</span>}</div>
-<div class="line"><a id="l00745" name="l00745"></a><span class="lineno">  745</span> </div>
-<div class="line"><a id="l00746" name="l00746"></a><span class="lineno">  746</span><span class="comment">//============================================================================//</span></div>
-<div class="line"><a id="l00747" name="l00747"></a><span class="lineno">  747</span><span class="comment">//=================== Common AIE Canonicalization Passes =====================//</span></div>
-<div class="line"><a id="l00748" name="l00748"></a><span class="lineno">  748</span><span class="comment">//============================================================================//</span></div>
-<div class="line"><a id="l00749" name="l00749"></a><span class="lineno">  749</span> </div>
-<div class="foldopen" id="foldopen00750" data-start="{" data-end="};">
-<div class="line"><a id="l00750" name="l00750"></a><span class="lineno"><a class="line" href="structVectorBroadcastLoweringPass.html">  750</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structVectorBroadcastLoweringPass.html">VectorBroadcastLoweringPass</a></div>
-<div class="line"><a id="l00751" name="l00751"></a><span class="lineno">  751</span>    : <span class="keyword">public</span> <a class="code hl_class" href="classPassWrapper.html">PassWrapper</a>&lt;VectorBroadcastLoweringPass, OperationPass&lt;&gt;&gt; {</div>
-<div class="line"><a id="l00752" name="l00752"></a><span class="lineno">  752</span> </div>
-<div class="foldopen" id="foldopen00753" data-start="{" data-end="}">
-<div class="line"><a id="l00753" name="l00753"></a><span class="lineno"><a class="line" href="structVectorBroadcastLoweringPass.html#a36718581e6ad9b7a3e5c44deb14c57e7">  753</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structVectorBroadcastLoweringPass.html#a36718581e6ad9b7a3e5c44deb14c57e7">runOnOperation</a>()<span class="keyword"> override </span>{</div>
-<div class="line"><a id="l00754" name="l00754"></a><span class="lineno">  754</span>    <span class="keyword">auto</span> *op = getOperation();</div>
-<div class="line"><a id="l00755" name="l00755"></a><span class="lineno">  755</span>    MLIRContext *context = &amp;getContext();</div>
-<div class="line"><a id="l00756" name="l00756"></a><span class="lineno">  756</span>    RewritePatternSet patterns(context);</div>
-<div class="line"><a id="l00757" name="l00757"></a><span class="lineno">  757</span>    populateVectorBroadcastLoweringPatterns(patterns);</div>
-<div class="line"><a id="l00758" name="l00758"></a><span class="lineno">  758</span>    patterns.add&lt;<a class="code hl_struct" href="structConvertLeadingUnitDimInsertToReshapePattern.html">ConvertLeadingUnitDimInsertToReshapePattern</a>&gt;(</div>
-<div class="line"><a id="l00759" name="l00759"></a><span class="lineno">  759</span>        patterns.getContext());</div>
-<div class="line"><a id="l00760" name="l00760"></a><span class="lineno">  760</span> </div>
-<div class="line"><a id="l00761" name="l00761"></a><span class="lineno">  761</span>    (void)applyPatternsGreedily(op, std::move(patterns));</div>
-<div class="line"><a id="l00762" name="l00762"></a><span class="lineno">  762</span>  }</div>
+<div class="line"><a id="l00675" name="l00675"></a><span class="lineno">  675</span> </div>
+<div class="line"><a id="l00676" name="l00676"></a><span class="lineno">  676</span><span class="comment">//============================================================================//</span></div>
+<div class="line"><a id="l00677" name="l00677"></a><span class="lineno">  677</span><span class="comment">//================ Common AIE canonicalization configuration =================//</span></div>
+<div class="line"><a id="l00678" name="l00678"></a><span class="lineno">  678</span><span class="comment">//============================================================================//</span></div>
+<div class="line"><a id="l00679" name="l00679"></a><span class="lineno">  679</span><span class="keyword">static</span> <span class="keywordtype">void</span></div>
+<div class="line"><a id="l00680" name="l00680"></a><span class="lineno">  680</span>configureCommonAIECanonicalizeLegalizations(ConversionTarget &amp;target,</div>
+<div class="line"><a id="l00681" name="l00681"></a><span class="lineno">  681</span>                                            <a class="code hl_enumeration" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend) {</div>
+<div class="line"><a id="l00682" name="l00682"></a><span class="lineno">  682</span>  target.addLegalDialect&lt;arith::ArithDialect, affine::AffineDialect,</div>
+<div class="line"><a id="l00683" name="l00683"></a><span class="lineno">  683</span>                         memref::MemRefDialect, vector::VectorDialect&gt;();</div>
+<div class="line"><a id="l00684" name="l00684"></a><span class="lineno">  684</span>}</div>
+<div class="line"><a id="l00685" name="l00685"></a><span class="lineno">  685</span> </div>
+<div class="line"><a id="l00686" name="l00686"></a><span class="lineno">  686</span><span class="keyword">static</span> <span class="keywordtype">void</span></div>
+<div class="line"><a id="l00687" name="l00687"></a><span class="lineno">  687</span>populateCommonAIECanonicalizeConversionPatterns(RewritePatternSet &amp;patterns,</div>
+<div class="line"><a id="l00688" name="l00688"></a><span class="lineno">  688</span>                                                <a class="code hl_enumeration" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend) {</div>
+<div class="line"><a id="l00689" name="l00689"></a><span class="lineno">  689</span>  patterns.add&lt;<a class="code hl_struct" href="structConvertSplatTransferReadToBroadcastPattern.html">ConvertSplatTransferReadToBroadcastPattern</a>&gt;(</div>
+<div class="line"><a id="l00690" name="l00690"></a><span class="lineno">  690</span>      patterns.getContext());</div>
+<div class="line"><a id="l00691" name="l00691"></a><span class="lineno">  691</span>}</div>
+<div class="line"><a id="l00692" name="l00692"></a><span class="lineno">  692</span> </div>
+<div class="line"><a id="l00693" name="l00693"></a><span class="lineno">  693</span><span class="comment">//============================================================================//</span></div>
+<div class="line"><a id="l00694" name="l00694"></a><span class="lineno">  694</span><span class="comment">//============== AIEv1-specific canonicalization configuration ===============//</span></div>
+<div class="line"><a id="l00695" name="l00695"></a><span class="lineno">  695</span><span class="comment">//============================================================================//</span></div>
+<div class="line"><a id="l00696" name="l00696"></a><span class="lineno">  696</span> </div>
+<div class="line"><a id="l00697" name="l00697"></a><span class="lineno">  697</span><span class="keyword">static</span> <span class="keywordtype">void</span> configureAIEv1CanonicalizeLegalizations(ConversionTarget &amp;target,</div>
+<div class="line"><a id="l00698" name="l00698"></a><span class="lineno">  698</span>                                                    <a class="code hl_enumeration" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend) {</div>
+<div class="line"><a id="l00699" name="l00699"></a><span class="lineno">  699</span>  target.addDynamicallyLegalOp&lt;vector::TransferReadOp&gt;(</div>
+<div class="line"><a id="l00700" name="l00700"></a><span class="lineno">  700</span>      [](vector::TransferReadOp op) {</div>
+<div class="line"><a id="l00701" name="l00701"></a><span class="lineno">  701</span>        <span class="keywordflow">return</span> !op.getPermutationMap().isConstant() &amp;&amp;</div>
+<div class="line"><a id="l00702" name="l00702"></a><span class="lineno">  702</span>               <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0e692a149f961ca40847f466b29d249b">getTransferReadAlignmentOffset</a>(op, op.getVectorType(), 128)</div>
+<div class="line"><a id="l00703" name="l00703"></a><span class="lineno">  703</span>                       .value_or(0) == 0;</div>
+<div class="line"><a id="l00704" name="l00704"></a><span class="lineno">  704</span>      });</div>
+<div class="line"><a id="l00705" name="l00705"></a><span class="lineno">  705</span>}</div>
+<div class="line"><a id="l00706" name="l00706"></a><span class="lineno">  706</span> </div>
+<div class="line"><a id="l00707" name="l00707"></a><span class="lineno">  707</span><span class="keyword">static</span> <span class="keywordtype">void</span></div>
+<div class="line"><a id="l00708" name="l00708"></a><span class="lineno">  708</span>populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &amp;patterns,</div>
+<div class="line"><a id="l00709" name="l00709"></a><span class="lineno">  709</span>                                            <a class="code hl_enumeration" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend) {</div>
+<div class="line"><a id="l00710" name="l00710"></a><span class="lineno">  710</span>  patterns.add&lt;<a class="code hl_struct" href="structSplitUnalignedTransferReadPattern.html">SplitUnalignedTransferReadPattern</a>&gt;(patterns.getContext(), 512,</div>
+<div class="line"><a id="l00711" name="l00711"></a><span class="lineno">  711</span>                                                  128);</div>
+<div class="line"><a id="l00712" name="l00712"></a><span class="lineno">  712</span>}</div>
+<div class="line"><a id="l00713" name="l00713"></a><span class="lineno">  713</span> </div>
+<div class="line"><a id="l00714" name="l00714"></a><span class="lineno">  714</span><span class="comment">//============================================================================//</span></div>
+<div class="line"><a id="l00715" name="l00715"></a><span class="lineno">  715</span><span class="comment">//============== AIE2-specific canonicalization configuration ===============//</span></div>
+<div class="line"><a id="l00716" name="l00716"></a><span class="lineno">  716</span><span class="comment">//============================================================================//</span></div>
+<div class="line"><a id="l00717" name="l00717"></a><span class="lineno">  717</span> </div>
+<div class="line"><a id="l00718" name="l00718"></a><span class="lineno">  718</span><span class="keyword">static</span> <span class="keywordtype">void</span> configureAIE2CanonicalizeLegalizations(ConversionTarget &amp;target,</div>
+<div class="line"><a id="l00719" name="l00719"></a><span class="lineno">  719</span>                                                   <a class="code hl_enumeration" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend) {</div>
+<div class="line"><a id="l00720" name="l00720"></a><span class="lineno">  720</span>  target.addDynamicallyLegalOp&lt;vector::TransferReadOp&gt;(</div>
+<div class="line"><a id="l00721" name="l00721"></a><span class="lineno">  721</span>      [](vector::TransferReadOp op) {</div>
+<div class="line"><a id="l00722" name="l00722"></a><span class="lineno">  722</span>        <span class="keywordflow">return</span> !op.getPermutationMap().isConstant() &amp;&amp;</div>
+<div class="line"><a id="l00723" name="l00723"></a><span class="lineno">  723</span>               <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0e692a149f961ca40847f466b29d249b">getTransferReadAlignmentOffset</a>(op, op.getVectorType(), 256)</div>
+<div class="line"><a id="l00724" name="l00724"></a><span class="lineno">  724</span>                       .value_or(0) == 0 &amp;&amp;</div>
+<div class="line"><a id="l00725" name="l00725"></a><span class="lineno">  725</span>               op.getVector().getType().getRank() &lt; 2;</div>
+<div class="line"><a id="l00726" name="l00726"></a><span class="lineno">  726</span>      });</div>
+<div class="line"><a id="l00727" name="l00727"></a><span class="lineno">  727</span>  target.addDynamicallyLegalOp&lt;vector::TransferWriteOp&gt;(</div>
+<div class="line"><a id="l00728" name="l00728"></a><span class="lineno">  728</span>      [](vector::TransferWriteOp op) {</div>
+<div class="line"><a id="l00729" name="l00729"></a><span class="lineno">  729</span>        <span class="keywordflow">return</span> cast&lt;VectorType&gt;(op.getVector().getType()).getRank() &lt; 2;</div>
+<div class="line"><a id="l00730" name="l00730"></a><span class="lineno">  730</span>      });</div>
+<div class="line"><a id="l00731" name="l00731"></a><span class="lineno">  731</span>  target.addDynamicallyLegalOp&lt;vector::ContractionOp&gt;(</div>
+<div class="line"><a id="l00732" name="l00732"></a><span class="lineno">  732</span>      [](vector::ContractionOp op) {</div>
+<div class="line"><a id="l00733" name="l00733"></a><span class="lineno">  733</span>        <span class="keywordflow">return</span> !isGemmBTransposedContractionOp(op);</div>
+<div class="line"><a id="l00734" name="l00734"></a><span class="lineno">  734</span>      });</div>
+<div class="line"><a id="l00735" name="l00735"></a><span class="lineno">  735</span>}</div>
+<div class="line"><a id="l00736" name="l00736"></a><span class="lineno">  736</span> </div>
+<div class="line"><a id="l00737" name="l00737"></a><span class="lineno">  737</span><span class="keyword">static</span> <span class="keywordtype">void</span></div>
+<div class="line"><a id="l00738" name="l00738"></a><span class="lineno">  738</span>populateAIE2CanonicalizeConversionPatterns(RewritePatternSet &amp;patterns,</div>
+<div class="line"><a id="l00739" name="l00739"></a><span class="lineno">  739</span>                                           <a class="code hl_enumeration" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend) {</div>
+<div class="line"><a id="l00740" name="l00740"></a><span class="lineno">  740</span>  patterns.add&lt;<a class="code hl_struct" href="structSplitUnalignedTransferReadPattern.html">SplitUnalignedTransferReadPattern</a>&gt;(patterns.getContext(), 1024,</div>
+<div class="line"><a id="l00741" name="l00741"></a><span class="lineno">  741</span>                                                  256);</div>
+<div class="line"><a id="l00742" name="l00742"></a><span class="lineno">  742</span>  patterns</div>
+<div class="line"><a id="l00743" name="l00743"></a><span class="lineno">  743</span>      .add&lt;<a class="code hl_struct" href="structExtractTransposeFromContractionOp.html">ExtractTransposeFromContractionOp</a>, <a class="code hl_struct" href="structFlattenMultDimTransferReadPattern.html">FlattenMultDimTransferReadPattern</a>,</div>
+<div class="line"><a id="l00744" name="l00744"></a><span class="lineno">  744</span>           <a class="code hl_struct" href="structFlattenMultDimTransferWritePattern.html">FlattenMultDimTransferWritePattern</a>&gt;(patterns.getContext());</div>
+<div class="line"><a id="l00745" name="l00745"></a><span class="lineno">  745</span>}</div>
+<div class="line"><a id="l00746" name="l00746"></a><span class="lineno">  746</span> </div>
+<div class="line"><a id="l00747" name="l00747"></a><span class="lineno">  747</span><span class="comment">//============================================================================//</span></div>
+<div class="line"><a id="l00748" name="l00748"></a><span class="lineno">  748</span><span class="comment">//=================== Common AIE Canonicalization Passes =====================//</span></div>
+<div class="line"><a id="l00749" name="l00749"></a><span class="lineno">  749</span><span class="comment">//============================================================================//</span></div>
+<div class="line"><a id="l00750" name="l00750"></a><span class="lineno">  750</span> </div>
+<div class="foldopen" id="foldopen00751" data-start="{" data-end="};">
+<div class="line"><a id="l00751" name="l00751"></a><span class="lineno"><a class="line" href="structVectorBroadcastLoweringPass.html">  751</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structVectorBroadcastLoweringPass.html">VectorBroadcastLoweringPass</a></div>
+<div class="line"><a id="l00752" name="l00752"></a><span class="lineno">  752</span>    : <span class="keyword">public</span> <a class="code hl_class" href="classPassWrapper.html">PassWrapper</a>&lt;VectorBroadcastLoweringPass, OperationPass&lt;&gt;&gt; {</div>
+<div class="line"><a id="l00753" name="l00753"></a><span class="lineno">  753</span> </div>
+<div class="foldopen" id="foldopen00754" data-start="{" data-end="}">
+<div class="line"><a id="l00754" name="l00754"></a><span class="lineno"><a class="line" href="structVectorBroadcastLoweringPass.html#a36718581e6ad9b7a3e5c44deb14c57e7">  754</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structVectorBroadcastLoweringPass.html#a36718581e6ad9b7a3e5c44deb14c57e7">runOnOperation</a>()<span class="keyword"> override </span>{</div>
+<div class="line"><a id="l00755" name="l00755"></a><span class="lineno">  755</span>    <span class="keyword">auto</span> *op = getOperation();</div>
+<div class="line"><a id="l00756" name="l00756"></a><span class="lineno">  756</span>    MLIRContext *context = &amp;getContext();</div>
+<div class="line"><a id="l00757" name="l00757"></a><span class="lineno">  757</span>    RewritePatternSet patterns(context);</div>
+<div class="line"><a id="l00758" name="l00758"></a><span class="lineno">  758</span>    populateVectorBroadcastLoweringPatterns(patterns);</div>
+<div class="line"><a id="l00759" name="l00759"></a><span class="lineno">  759</span>    patterns.add&lt;<a class="code hl_struct" href="structConvertLeadingUnitDimInsertToReshapePattern.html">ConvertLeadingUnitDimInsertToReshapePattern</a>&gt;(</div>
+<div class="line"><a id="l00760" name="l00760"></a><span class="lineno">  760</span>        patterns.getContext());</div>
+<div class="line"><a id="l00761" name="l00761"></a><span class="lineno">  761</span> </div>
+<div class="line"><a id="l00762" name="l00762"></a><span class="lineno">  762</span>    (void)applyPatternsGreedily(op, std::move(patterns));</div>
+<div class="line"><a id="l00763" name="l00763"></a><span class="lineno">  763</span>  }</div>
 </div>
-<div class="line"><a id="l00763" name="l00763"></a><span class="lineno">  763</span>};</div>
+<div class="line"><a id="l00764" name="l00764"></a><span class="lineno">  764</span>};</div>
 </div>
-<div class="line"><a id="l00764" name="l00764"></a><span class="lineno">  764</span> </div>
-<div class="line"><a id="l00765" name="l00765"></a><span class="lineno">  765</span><span class="keyword">static</span> std::unique_ptr&lt;::mlir::Pass&gt; createVectorBroadcastLoweringPass() {</div>
-<div class="line"><a id="l00766" name="l00766"></a><span class="lineno">  766</span>  <span class="keywordflow">return</span> std::make_unique&lt;VectorBroadcastLoweringPass&gt;();</div>
-<div class="line"><a id="l00767" name="l00767"></a><span class="lineno">  767</span>}</div>
-<div class="line"><a id="l00768" name="l00768"></a><span class="lineno">  768</span> </div>
-<div class="line"><a id="l00769" name="l00769"></a><span class="lineno">  769</span><span class="comment">// This pass converts standard vector ops into a subset of `Vector` ops more</span></div>
-<div class="line"><a id="l00770" name="l00770"></a><span class="lineno">  770</span><span class="comment">// amenable to being converted to `AIEVec`. So far, this process consists of</span></div>
-<div class="line"><a id="l00771" name="l00771"></a><span class="lineno">  771</span><span class="comment">// two steps:</span></div>
-<div class="line"><a id="l00772" name="l00772"></a><span class="lineno">  772</span><span class="comment">//    1) Replace splat transfer reads with contiguous transfer reads followed</span></div>
-<div class="line"><a id="l00773" name="l00773"></a><span class="lineno">  773</span><span class="comment">//       by `extract` + `splat` operations.</span></div>
-<div class="line"><a id="l00774" name="l00774"></a><span class="lineno">  774</span><span class="comment">//    2) Split unaligned transfer reads into a wider aligned transfer read</span></div>
-<div class="line"><a id="l00775" name="l00775"></a><span class="lineno">  775</span><span class="comment">//       followed by a `vector.extract_strided_slice` operation.</span></div>
-<div class="foldopen" id="foldopen00776" data-start="{" data-end="};">
-<div class="line"><a id="l00776" name="l00776"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html">  776</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structCanonicalizeVectorForAIEVecPass.html">CanonicalizeVectorForAIEVecPass</a></div>
-<div class="line"><a id="l00777" name="l00777"></a><span class="lineno">  777</span>    : <span class="keyword">public</span> <a class="code hl_class" href="classPassWrapper.html">PassWrapper</a>&lt;CanonicalizeVectorForAIEVecPass, OperationPass&lt;&gt;&gt; {</div>
-<div class="line"><a id="l00778" name="l00778"></a><span class="lineno">  778</span>  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(<a class="code hl_struct" href="structCanonicalizeVectorForAIEVecPass.html">CanonicalizeVectorForAIEVecPass</a>)</div>
-<div class="line"><a id="l00779" name="l00779"></a><span class="lineno">  779</span> </div>
-<div class="line"><a id="l00780" name="l00780"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html#ad5396b94637d9716942cf564fa85bc38">  780</a></span>  <a class="code hl_struct" href="structCanonicalizeVectorForAIEVecPass.html">CanonicalizeVectorForAIEVecPass</a>() = default;</div>
-<div class="foldopen" id="foldopen00781" data-start="{" data-end="}">
-<div class="line"><a id="l00781" name="l00781"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html#a2e1fddb89e34a80c0d9498f5ce3546fd">  781</a></span>  <a class="code hl_struct" href="structCanonicalizeVectorForAIEVecPass.html">CanonicalizeVectorForAIEVecPass</a>(const <a class="code hl_struct" href="structCanonicalizeVectorForAIEVecPass.html">CanonicalizeVectorForAIEVecPass</a> &amp;pass)</div>
-<div class="line"><a id="l00782" name="l00782"></a><span class="lineno">  782</span>      : <a class="code hl_class" href="classPassWrapper.html">PassWrapper</a>(pass) {}</div>
+<div class="line"><a id="l00765" name="l00765"></a><span class="lineno">  765</span> </div>
+<div class="line"><a id="l00766" name="l00766"></a><span class="lineno">  766</span><span class="keyword">static</span> std::unique_ptr&lt;::mlir::Pass&gt; createVectorBroadcastLoweringPass() {</div>
+<div class="line"><a id="l00767" name="l00767"></a><span class="lineno">  767</span>  <span class="keywordflow">return</span> std::make_unique&lt;VectorBroadcastLoweringPass&gt;();</div>
+<div class="line"><a id="l00768" name="l00768"></a><span class="lineno">  768</span>}</div>
+<div class="line"><a id="l00769" name="l00769"></a><span class="lineno">  769</span> </div>
+<div class="line"><a id="l00770" name="l00770"></a><span class="lineno">  770</span><span class="comment">// This pass converts standard vector ops into a subset of `Vector` ops more</span></div>
+<div class="line"><a id="l00771" name="l00771"></a><span class="lineno">  771</span><span class="comment">// amenable to being converted to `AIEVec`. So far, this process consists of</span></div>
+<div class="line"><a id="l00772" name="l00772"></a><span class="lineno">  772</span><span class="comment">// two steps:</span></div>
+<div class="line"><a id="l00773" name="l00773"></a><span class="lineno">  773</span><span class="comment">//    1) Replace splat transfer reads with contiguous transfer reads followed</span></div>
+<div class="line"><a id="l00774" name="l00774"></a><span class="lineno">  774</span><span class="comment">//       by `extract` + `splat` operations.</span></div>
+<div class="line"><a id="l00775" name="l00775"></a><span class="lineno">  775</span><span class="comment">//    2) Split unaligned transfer reads into a wider aligned transfer read</span></div>
+<div class="line"><a id="l00776" name="l00776"></a><span class="lineno">  776</span><span class="comment">//       followed by a `vector.extract_strided_slice` operation.</span></div>
+<div class="foldopen" id="foldopen00777" data-start="{" data-end="};">
+<div class="line"><a id="l00777" name="l00777"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html">  777</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structCanonicalizeVectorForAIEVecPass.html">CanonicalizeVectorForAIEVecPass</a></div>
+<div class="line"><a id="l00778" name="l00778"></a><span class="lineno">  778</span>    : <span class="keyword">public</span> <a class="code hl_class" href="classPassWrapper.html">PassWrapper</a>&lt;CanonicalizeVectorForAIEVecPass, OperationPass&lt;&gt;&gt; {</div>
+<div class="line"><a id="l00779" name="l00779"></a><span class="lineno">  779</span>  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(<a class="code hl_struct" href="structCanonicalizeVectorForAIEVecPass.html">CanonicalizeVectorForAIEVecPass</a>)</div>
+<div class="line"><a id="l00780" name="l00780"></a><span class="lineno">  780</span> </div>
+<div class="line"><a id="l00781" name="l00781"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html#ad5396b94637d9716942cf564fa85bc38">  781</a></span>  <a class="code hl_struct" href="structCanonicalizeVectorForAIEVecPass.html">CanonicalizeVectorForAIEVecPass</a>() = default;</div>
+<div class="foldopen" id="foldopen00782" data-start="{" data-end="}">
+<div class="line"><a id="l00782" name="l00782"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html#a2e1fddb89e34a80c0d9498f5ce3546fd">  782</a></span>  <a class="code hl_struct" href="structCanonicalizeVectorForAIEVecPass.html">CanonicalizeVectorForAIEVecPass</a>(const <a class="code hl_struct" href="structCanonicalizeVectorForAIEVecPass.html">CanonicalizeVectorForAIEVecPass</a> &amp;pass)</div>
+<div class="line"><a id="l00783" name="l00783"></a><span class="lineno">  783</span>      : <a class="code hl_class" href="classPassWrapper.html">PassWrapper</a>(pass) {}</div>
 </div>
-<div class="line"><a id="l00783" name="l00783"></a><span class="lineno">  783</span> </div>
-<div class="foldopen" id="foldopen00784" data-start="{" data-end="}">
-<div class="line"><a id="l00784" name="l00784"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html#a781b40af99dcfeeb7adc1cfe0ce041b2">  784</a></span>  <a class="code hl_function" href="structCanonicalizeVectorForAIEVecPass.html#a781b40af99dcfeeb7adc1cfe0ce041b2">CanonicalizeVectorForAIEVecPass</a>(</div>
-<div class="line"><a id="l00785" name="l00785"></a><span class="lineno">  785</span>      <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html">CanonicalizeVectorForAIEVecOptions</a> &amp;options)</div>
-<div class="line"><a id="l00786" name="l00786"></a><span class="lineno">  786</span>      : <a class="code hl_struct" href="structCanonicalizeVectorForAIEVecPass.html">CanonicalizeVectorForAIEVecPass</a>() {</div>
-<div class="line"><a id="l00787" name="l00787"></a><span class="lineno">  787</span>    <a class="code hl_variable" href="structCanonicalizeVectorForAIEVecPass.html#a3f1499b1598237c65f11f79474253d51">aieTarget</a> = options.<a class="code hl_variable" href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html#ad9652e7a8b3a9fff05784b72d54f6908">aieTarget</a>;</div>
-<div class="line"><a id="l00788" name="l00788"></a><span class="lineno">  788</span>    <a class="code hl_variable" href="structCanonicalizeVectorForAIEVecPass.html#ac39417ab31113abbb6899dde140946a4">targetBackend</a> = options.<a class="code hl_variable" href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html#a7717d0b5d44d692c696d9f49d9118af6">targetBackend</a>;</div>
-<div class="line"><a id="l00789" name="l00789"></a><span class="lineno">  789</span>  }</div>
+<div class="line"><a id="l00784" name="l00784"></a><span class="lineno">  784</span> </div>
+<div class="foldopen" id="foldopen00785" data-start="{" data-end="}">
+<div class="line"><a id="l00785" name="l00785"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html#a781b40af99dcfeeb7adc1cfe0ce041b2">  785</a></span>  <a class="code hl_function" href="structCanonicalizeVectorForAIEVecPass.html#a781b40af99dcfeeb7adc1cfe0ce041b2">CanonicalizeVectorForAIEVecPass</a>(</div>
+<div class="line"><a id="l00786" name="l00786"></a><span class="lineno">  786</span>      <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html">CanonicalizeVectorForAIEVecOptions</a> &amp;options)</div>
+<div class="line"><a id="l00787" name="l00787"></a><span class="lineno">  787</span>      : <a class="code hl_struct" href="structCanonicalizeVectorForAIEVecPass.html">CanonicalizeVectorForAIEVecPass</a>() {</div>
+<div class="line"><a id="l00788" name="l00788"></a><span class="lineno">  788</span>    <a class="code hl_variable" href="structCanonicalizeVectorForAIEVecPass.html#a3f1499b1598237c65f11f79474253d51">aieTarget</a> = options.<a class="code hl_variable" href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html#ad9652e7a8b3a9fff05784b72d54f6908">aieTarget</a>;</div>
+<div class="line"><a id="l00789" name="l00789"></a><span class="lineno">  789</span>    <a class="code hl_variable" href="structCanonicalizeVectorForAIEVecPass.html#ac39417ab31113abbb6899dde140946a4">targetBackend</a> = options.<a class="code hl_variable" href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html#a7717d0b5d44d692c696d9f49d9118af6">targetBackend</a>;</div>
+<div class="line"><a id="l00790" name="l00790"></a><span class="lineno">  790</span>  }</div>
 </div>
-<div class="line"><a id="l00790" name="l00790"></a><span class="lineno">  790</span> </div>
-<div class="line"><a id="l00791" name="l00791"></a><span class="lineno">  791</span>  <span class="comment">// In case we want to register this pass as a standalone pass for test</span></div>
-<div class="line"><a id="l00792" name="l00792"></a><span class="lineno">  792</span>  <span class="comment">// purposes.</span></div>
-<div class="foldopen" id="foldopen00793" data-start="{" data-end="}">
-<div class="line"><a id="l00793" name="l00793"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html#a0af5b9c4425559b90c5e74703e91775d">  793</a></span>  StringRef <a class="code hl_function" href="structCanonicalizeVectorForAIEVecPass.html#a0af5b9c4425559b90c5e74703e91775d">getArgument</a>() const final {</div>
-<div class="line"><a id="l00794" name="l00794"></a><span class="lineno">  794</span>    <span class="keywordflow">return</span> <span class="stringliteral">&quot;test-canonicalize-vector-for-aievec&quot;</span>;</div>
-<div class="line"><a id="l00795" name="l00795"></a><span class="lineno">  795</span>  }</div>
+<div class="line"><a id="l00791" name="l00791"></a><span class="lineno">  791</span> </div>
+<div class="line"><a id="l00792" name="l00792"></a><span class="lineno">  792</span>  <span class="comment">// In case we want to register this pass as a standalone pass for test</span></div>
+<div class="line"><a id="l00793" name="l00793"></a><span class="lineno">  793</span>  <span class="comment">// purposes.</span></div>
+<div class="foldopen" id="foldopen00794" data-start="{" data-end="}">
+<div class="line"><a id="l00794" name="l00794"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html#a0af5b9c4425559b90c5e74703e91775d">  794</a></span>  StringRef <a class="code hl_function" href="structCanonicalizeVectorForAIEVecPass.html#a0af5b9c4425559b90c5e74703e91775d">getArgument</a>() const final {</div>
+<div class="line"><a id="l00795" name="l00795"></a><span class="lineno">  795</span>    <span class="keywordflow">return</span> <span class="stringliteral">&quot;test-canonicalize-vector-for-aievec&quot;</span>;</div>
+<div class="line"><a id="l00796" name="l00796"></a><span class="lineno">  796</span>  }</div>
 </div>
-<div class="line"><a id="l00796" name="l00796"></a><span class="lineno">  796</span> </div>
-<div class="foldopen" id="foldopen00797" data-start="{" data-end="}">
-<div class="line"><a id="l00797" name="l00797"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html#a310d1f191570b063ae12a09ccf6a00d5">  797</a></span>  StringRef <a class="code hl_function" href="structCanonicalizeVectorForAIEVecPass.html#a310d1f191570b063ae12a09ccf6a00d5">getDescription</a>() const final {</div>
-<div class="line"><a id="l00798" name="l00798"></a><span class="lineno">  798</span>    <span class="keywordflow">return</span> <span class="stringliteral">&quot;Canonicalize vector operations for AIEVec conversion&quot;</span>;</div>
-<div class="line"><a id="l00799" name="l00799"></a><span class="lineno">  799</span>  }</div>
+<div class="line"><a id="l00797" name="l00797"></a><span class="lineno">  797</span> </div>
+<div class="foldopen" id="foldopen00798" data-start="{" data-end="}">
+<div class="line"><a id="l00798" name="l00798"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html#a310d1f191570b063ae12a09ccf6a00d5">  798</a></span>  StringRef <a class="code hl_function" href="structCanonicalizeVectorForAIEVecPass.html#a310d1f191570b063ae12a09ccf6a00d5">getDescription</a>() const final {</div>
+<div class="line"><a id="l00799" name="l00799"></a><span class="lineno">  799</span>    <span class="keywordflow">return</span> <span class="stringliteral">&quot;Canonicalize vector operations for AIEVec conversion&quot;</span>;</div>
+<div class="line"><a id="l00800" name="l00800"></a><span class="lineno">  800</span>  }</div>
 </div>
-<div class="line"><a id="l00800" name="l00800"></a><span class="lineno">  800</span> </div>
-<div class="foldopen" id="foldopen00801" data-start="{" data-end="}">
-<div class="line"><a id="l00801" name="l00801"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html#a276f030850a00978f4ad7c7fe51eba8e">  801</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structCanonicalizeVectorForAIEVecPass.html#a276f030850a00978f4ad7c7fe51eba8e">getDependentDialects</a>(DialectRegistry &amp;registry)<span class="keyword"> const override </span>{</div>
-<div class="line"><a id="l00802" name="l00802"></a><span class="lineno">  802</span>    registry.insert&lt;arith::ArithDialect, memref::MemRefDialect,</div>
-<div class="line"><a id="l00803" name="l00803"></a><span class="lineno">  803</span>                    vector::VectorDialect, affine::AffineDialect&gt;();</div>
-<div class="line"><a id="l00804" name="l00804"></a><span class="lineno">  804</span>  }</div>
+<div class="line"><a id="l00801" name="l00801"></a><span class="lineno">  801</span> </div>
+<div class="foldopen" id="foldopen00802" data-start="{" data-end="}">
+<div class="line"><a id="l00802" name="l00802"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html#a276f030850a00978f4ad7c7fe51eba8e">  802</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structCanonicalizeVectorForAIEVecPass.html#a276f030850a00978f4ad7c7fe51eba8e">getDependentDialects</a>(DialectRegistry &amp;registry)<span class="keyword"> const override </span>{</div>
+<div class="line"><a id="l00803" name="l00803"></a><span class="lineno">  803</span>    registry.insert&lt;arith::ArithDialect, memref::MemRefDialect,</div>
+<div class="line"><a id="l00804" name="l00804"></a><span class="lineno">  804</span>                    vector::VectorDialect, affine::AffineDialect&gt;();</div>
+<div class="line"><a id="l00805" name="l00805"></a><span class="lineno">  805</span>  }</div>
 </div>
-<div class="line"><a id="l00805" name="l00805"></a><span class="lineno">  805</span> </div>
-<div class="foldopen" id="foldopen00806" data-start="{" data-end="};">
-<div class="line"><a id="l00806" name="l00806"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html#a3f1499b1598237c65f11f79474253d51">  806</a></span>  Option&lt;std::string&gt; <a class="code hl_variable" href="structCanonicalizeVectorForAIEVecPass.html#a3f1499b1598237c65f11f79474253d51">aieTarget</a>{</div>
-<div class="line"><a id="l00807" name="l00807"></a><span class="lineno">  807</span>      *<span class="keyword">this</span>, <span class="stringliteral">&quot;aie-target&quot;</span>,</div>
-<div class="line"><a id="l00808" name="l00808"></a><span class="lineno">  808</span>      llvm::cl::desc(<span class="stringliteral">&quot;Select AIE version: \&quot;aie\&quot; or \&quot;aie2\&quot;. This will &quot;</span></div>
-<div class="line"><a id="l00809" name="l00809"></a><span class="lineno">  809</span>                     <span class="stringliteral">&quot;determine the vector size and available operations.&quot;</span>),</div>
-<div class="line"><a id="l00810" name="l00810"></a><span class="lineno">  810</span>      llvm::cl::init(<span class="stringliteral">&quot;aie&quot;</span>)};</div>
+<div class="line"><a id="l00806" name="l00806"></a><span class="lineno">  806</span> </div>
+<div class="foldopen" id="foldopen00807" data-start="{" data-end="};">
+<div class="line"><a id="l00807" name="l00807"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html#a3f1499b1598237c65f11f79474253d51">  807</a></span>  Option&lt;std::string&gt; <a class="code hl_variable" href="structCanonicalizeVectorForAIEVecPass.html#a3f1499b1598237c65f11f79474253d51">aieTarget</a>{</div>
+<div class="line"><a id="l00808" name="l00808"></a><span class="lineno">  808</span>      *<span class="keyword">this</span>, <span class="stringliteral">&quot;aie-target&quot;</span>,</div>
+<div class="line"><a id="l00809" name="l00809"></a><span class="lineno">  809</span>      llvm::cl::desc(<span class="stringliteral">&quot;Select AIE version: \&quot;aie\&quot; or \&quot;aie2\&quot;. This will &quot;</span></div>
+<div class="line"><a id="l00810" name="l00810"></a><span class="lineno">  810</span>                     <span class="stringliteral">&quot;determine the vector size and available operations.&quot;</span>),</div>
+<div class="line"><a id="l00811" name="l00811"></a><span class="lineno">  811</span>      llvm::cl::init(<span class="stringliteral">&quot;aie&quot;</span>)};</div>
 </div>
-<div class="line"><a id="l00811" name="l00811"></a><span class="lineno">  811</span> </div>
-<div class="foldopen" id="foldopen00812" data-start="{" data-end="};">
-<div class="line"><a id="l00812" name="l00812"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html#ac39417ab31113abbb6899dde140946a4">  812</a></span>  Option&lt;std::string&gt; <a class="code hl_variable" href="structCanonicalizeVectorForAIEVecPass.html#ac39417ab31113abbb6899dde140946a4">targetBackend</a>{</div>
-<div class="line"><a id="l00813" name="l00813"></a><span class="lineno">  813</span>      *<span class="keyword">this</span>, <span class="stringliteral">&quot;target-backend&quot;</span>,</div>
-<div class="line"><a id="l00814" name="l00814"></a><span class="lineno">  814</span>      llvm::cl::desc(<span class="stringliteral">&quot;Select translation backend: \&quot;cpp\&quot; or \&quot;llvmir\&quot;. This &quot;</span></div>
-<div class="line"><a id="l00815" name="l00815"></a><span class="lineno">  815</span>                     <span class="stringliteral">&quot;will determine the aievec operations used to convert &quot;</span></div>
-<div class="line"><a id="l00816" name="l00816"></a><span class="lineno">  816</span>                     <span class="stringliteral">&quot;from vector dialect.&quot;</span>),</div>
-<div class="line"><a id="l00817" name="l00817"></a><span class="lineno">  817</span>      llvm::cl::init(<span class="stringliteral">&quot;cpp&quot;</span>)};</div>
+<div class="line"><a id="l00812" name="l00812"></a><span class="lineno">  812</span> </div>
+<div class="foldopen" id="foldopen00813" data-start="{" data-end="};">
+<div class="line"><a id="l00813" name="l00813"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html#ac39417ab31113abbb6899dde140946a4">  813</a></span>  Option&lt;std::string&gt; <a class="code hl_variable" href="structCanonicalizeVectorForAIEVecPass.html#ac39417ab31113abbb6899dde140946a4">targetBackend</a>{</div>
+<div class="line"><a id="l00814" name="l00814"></a><span class="lineno">  814</span>      *<span class="keyword">this</span>, <span class="stringliteral">&quot;target-backend&quot;</span>,</div>
+<div class="line"><a id="l00815" name="l00815"></a><span class="lineno">  815</span>      llvm::cl::desc(<span class="stringliteral">&quot;Select translation backend: \&quot;cpp\&quot; or \&quot;llvmir\&quot;. This &quot;</span></div>
+<div class="line"><a id="l00816" name="l00816"></a><span class="lineno">  816</span>                     <span class="stringliteral">&quot;will determine the aievec operations used to convert &quot;</span></div>
+<div class="line"><a id="l00817" name="l00817"></a><span class="lineno">  817</span>                     <span class="stringliteral">&quot;from vector dialect.&quot;</span>),</div>
+<div class="line"><a id="l00818" name="l00818"></a><span class="lineno">  818</span>      llvm::cl::init(<span class="stringliteral">&quot;cpp&quot;</span>)};</div>
 </div>
-<div class="line"><a id="l00818" name="l00818"></a><span class="lineno">  818</span> </div>
-<div class="foldopen" id="foldopen00819" data-start="{" data-end="}">
-<div class="line"><a id="l00819" name="l00819"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html#ac494fb3c59e040a9638a60e88629ea56">  819</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structCanonicalizeVectorForAIEVecPass.html#ac494fb3c59e040a9638a60e88629ea56">runOnOperation</a>()<span class="keyword"> override </span>{</div>
-<div class="line"><a id="l00820" name="l00820"></a><span class="lineno">  820</span>    <span class="keyword">auto</span> *op = getOperation();</div>
-<div class="line"><a id="l00821" name="l00821"></a><span class="lineno">  821</span>    MLIRContext *context = &amp;getContext();</div>
-<div class="line"><a id="l00822" name="l00822"></a><span class="lineno">  822</span>    RewritePatternSet patterns(context);</div>
-<div class="line"><a id="l00823" name="l00823"></a><span class="lineno">  823</span>    ConversionTarget target(*context);</div>
-<div class="line"><a id="l00824" name="l00824"></a><span class="lineno">  824</span> </div>
-<div class="line"><a id="l00825" name="l00825"></a><span class="lineno">  825</span>    <a class="code hl_enumeration" href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3">AIEArch</a> aieVersion = decodeAIETarget(<a class="code hl_variable" href="structCanonicalizeVectorForAIEVecPass.html#a3f1499b1598237c65f11f79474253d51">aieTarget</a>);</div>
-<div class="line"><a id="l00826" name="l00826"></a><span class="lineno">  826</span>    <span class="keywordflow">if</span> (aieVersion == AIEArch::UNKNOWN) {</div>
-<div class="line"><a id="l00827" name="l00827"></a><span class="lineno">  827</span>      op-&gt;emitError() &lt;&lt; <span class="stringliteral">&quot;unknown AIE target &#39;&quot;</span> &lt;&lt; <a class="code hl_variable" href="structCanonicalizeVectorForAIEVecPass.html#a3f1499b1598237c65f11f79474253d51">aieTarget</a> &lt;&lt; <span class="stringliteral">&quot;&#39;&quot;</span>;</div>
-<div class="line"><a id="l00828" name="l00828"></a><span class="lineno">  828</span>      signalPassFailure();</div>
-<div class="line"><a id="l00829" name="l00829"></a><span class="lineno">  829</span>      <span class="keywordflow">return</span>;</div>
-<div class="line"><a id="l00830" name="l00830"></a><span class="lineno">  830</span>    }</div>
-<div class="line"><a id="l00831" name="l00831"></a><span class="lineno">  831</span> </div>
-<div class="line"><a id="l00832" name="l00832"></a><span class="lineno">  832</span>    <a class="code hl_enumeration" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend = decodeTargetBackend(<a class="code hl_variable" href="structCanonicalizeVectorForAIEVecPass.html#ac39417ab31113abbb6899dde140946a4">targetBackend</a>);</div>
-<div class="line"><a id="l00833" name="l00833"></a><span class="lineno">  833</span>    <span class="keywordflow">if</span> (backend == TargetBackend::UNKNOWN) {</div>
-<div class="line"><a id="l00834" name="l00834"></a><span class="lineno">  834</span>      op-&gt;emitError() &lt;&lt; <span class="stringliteral">&quot;unknown target backend &#39;&quot;</span> &lt;&lt; <a class="code hl_variable" href="structCanonicalizeVectorForAIEVecPass.html#ac39417ab31113abbb6899dde140946a4">targetBackend</a> &lt;&lt; <span class="stringliteral">&quot;&#39;&quot;</span>;</div>
-<div class="line"><a id="l00835" name="l00835"></a><span class="lineno">  835</span>      signalPassFailure();</div>
-<div class="line"><a id="l00836" name="l00836"></a><span class="lineno">  836</span>      <span class="keywordflow">return</span>;</div>
-<div class="line"><a id="l00837" name="l00837"></a><span class="lineno">  837</span>    }</div>
-<div class="line"><a id="l00838" name="l00838"></a><span class="lineno">  838</span>    <span class="keywordflow">if</span> (backend == TargetBackend::LLVMIR &amp;&amp; aieVersion == AIEArch::AIE) {</div>
-<div class="line"><a id="l00839" name="l00839"></a><span class="lineno">  839</span>      op-&gt;emitError() &lt;&lt; <span class="stringliteral">&quot;targetting LLVM IR is not supported for AIEv1&quot;</span>;</div>
-<div class="line"><a id="l00840" name="l00840"></a><span class="lineno">  840</span>      signalPassFailure();</div>
-<div class="line"><a id="l00841" name="l00841"></a><span class="lineno">  841</span>      <span class="keywordflow">return</span>;</div>
-<div class="line"><a id="l00842" name="l00842"></a><span class="lineno">  842</span>    }</div>
-<div class="line"><a id="l00843" name="l00843"></a><span class="lineno">  843</span> </div>
-<div class="line"><a id="l00844" name="l00844"></a><span class="lineno">  844</span>    populateCommonAIECanonicalizeConversionPatterns(patterns, backend);</div>
-<div class="line"><a id="l00845" name="l00845"></a><span class="lineno">  845</span>    configureCommonAIECanonicalizeLegalizations(target, backend);</div>
-<div class="line"><a id="l00846" name="l00846"></a><span class="lineno">  846</span>    <span class="keywordflow">if</span> (aieVersion == AIEArch::AIE) {</div>
-<div class="line"><a id="l00847" name="l00847"></a><span class="lineno">  847</span>      populateAIEv1CanonicalizeConversionPatterns(patterns, backend);</div>
-<div class="line"><a id="l00848" name="l00848"></a><span class="lineno">  848</span>      configureAIEv1CanonicalizeLegalizations(target, backend);</div>
-<div class="line"><a id="l00849" name="l00849"></a><span class="lineno">  849</span>    } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00850" name="l00850"></a><span class="lineno">  850</span>      populateAIE2CanonicalizeConversionPatterns(patterns, backend);</div>
-<div class="line"><a id="l00851" name="l00851"></a><span class="lineno">  851</span>      configureAIE2CanonicalizeLegalizations(target, backend);</div>
-<div class="line"><a id="l00852" name="l00852"></a><span class="lineno">  852</span>    }</div>
-<div class="line"><a id="l00853" name="l00853"></a><span class="lineno">  853</span> </div>
-<div class="line"><a id="l00854" name="l00854"></a><span class="lineno">  854</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(op, target, std::move(patterns)))) {</div>
-<div class="line"><a id="l00855" name="l00855"></a><span class="lineno">  855</span>      signalPassFailure();</div>
-<div class="line"><a id="l00856" name="l00856"></a><span class="lineno">  856</span>    }</div>
-<div class="line"><a id="l00857" name="l00857"></a><span class="lineno">  857</span>  }</div>
+<div class="line"><a id="l00819" name="l00819"></a><span class="lineno">  819</span> </div>
+<div class="foldopen" id="foldopen00820" data-start="{" data-end="}">
+<div class="line"><a id="l00820" name="l00820"></a><span class="lineno"><a class="line" href="structCanonicalizeVectorForAIEVecPass.html#ac494fb3c59e040a9638a60e88629ea56">  820</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structCanonicalizeVectorForAIEVecPass.html#ac494fb3c59e040a9638a60e88629ea56">runOnOperation</a>()<span class="keyword"> override </span>{</div>
+<div class="line"><a id="l00821" name="l00821"></a><span class="lineno">  821</span>    <span class="keyword">auto</span> *op = getOperation();</div>
+<div class="line"><a id="l00822" name="l00822"></a><span class="lineno">  822</span>    MLIRContext *context = &amp;getContext();</div>
+<div class="line"><a id="l00823" name="l00823"></a><span class="lineno">  823</span>    RewritePatternSet patterns(context);</div>
+<div class="line"><a id="l00824" name="l00824"></a><span class="lineno">  824</span>    ConversionTarget target(*context);</div>
+<div class="line"><a id="l00825" name="l00825"></a><span class="lineno">  825</span> </div>
+<div class="line"><a id="l00826" name="l00826"></a><span class="lineno">  826</span>    <a class="code hl_enumeration" href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3">AIEArch</a> aieVersion = decodeAIETarget(<a class="code hl_variable" href="structCanonicalizeVectorForAIEVecPass.html#a3f1499b1598237c65f11f79474253d51">aieTarget</a>);</div>
+<div class="line"><a id="l00827" name="l00827"></a><span class="lineno">  827</span>    <span class="keywordflow">if</span> (aieVersion == AIEArch::UNKNOWN) {</div>
+<div class="line"><a id="l00828" name="l00828"></a><span class="lineno">  828</span>      op-&gt;emitError() &lt;&lt; <span class="stringliteral">&quot;unknown AIE target &#39;&quot;</span> &lt;&lt; <a class="code hl_variable" href="structCanonicalizeVectorForAIEVecPass.html#a3f1499b1598237c65f11f79474253d51">aieTarget</a> &lt;&lt; <span class="stringliteral">&quot;&#39;&quot;</span>;</div>
+<div class="line"><a id="l00829" name="l00829"></a><span class="lineno">  829</span>      signalPassFailure();</div>
+<div class="line"><a id="l00830" name="l00830"></a><span class="lineno">  830</span>      <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l00831" name="l00831"></a><span class="lineno">  831</span>    }</div>
+<div class="line"><a id="l00832" name="l00832"></a><span class="lineno">  832</span> </div>
+<div class="line"><a id="l00833" name="l00833"></a><span class="lineno">  833</span>    <a class="code hl_enumeration" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend = decodeTargetBackend(<a class="code hl_variable" href="structCanonicalizeVectorForAIEVecPass.html#ac39417ab31113abbb6899dde140946a4">targetBackend</a>);</div>
+<div class="line"><a id="l00834" name="l00834"></a><span class="lineno">  834</span>    <span class="keywordflow">if</span> (backend == TargetBackend::UNKNOWN) {</div>
+<div class="line"><a id="l00835" name="l00835"></a><span class="lineno">  835</span>      op-&gt;emitError() &lt;&lt; <span class="stringliteral">&quot;unknown target backend &#39;&quot;</span> &lt;&lt; <a class="code hl_variable" href="structCanonicalizeVectorForAIEVecPass.html#ac39417ab31113abbb6899dde140946a4">targetBackend</a> &lt;&lt; <span class="stringliteral">&quot;&#39;&quot;</span>;</div>
+<div class="line"><a id="l00836" name="l00836"></a><span class="lineno">  836</span>      signalPassFailure();</div>
+<div class="line"><a id="l00837" name="l00837"></a><span class="lineno">  837</span>      <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l00838" name="l00838"></a><span class="lineno">  838</span>    }</div>
+<div class="line"><a id="l00839" name="l00839"></a><span class="lineno">  839</span>    <span class="keywordflow">if</span> (backend == TargetBackend::LLVMIR &amp;&amp; aieVersion == AIEArch::AIE) {</div>
+<div class="line"><a id="l00840" name="l00840"></a><span class="lineno">  840</span>      op-&gt;emitError() &lt;&lt; <span class="stringliteral">&quot;targetting LLVM IR is not supported for AIEv1&quot;</span>;</div>
+<div class="line"><a id="l00841" name="l00841"></a><span class="lineno">  841</span>      signalPassFailure();</div>
+<div class="line"><a id="l00842" name="l00842"></a><span class="lineno">  842</span>      <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l00843" name="l00843"></a><span class="lineno">  843</span>    }</div>
+<div class="line"><a id="l00844" name="l00844"></a><span class="lineno">  844</span> </div>
+<div class="line"><a id="l00845" name="l00845"></a><span class="lineno">  845</span>    populateCommonAIECanonicalizeConversionPatterns(patterns, backend);</div>
+<div class="line"><a id="l00846" name="l00846"></a><span class="lineno">  846</span>    configureCommonAIECanonicalizeLegalizations(target, backend);</div>
+<div class="line"><a id="l00847" name="l00847"></a><span class="lineno">  847</span>    <span class="keywordflow">if</span> (aieVersion == AIEArch::AIE) {</div>
+<div class="line"><a id="l00848" name="l00848"></a><span class="lineno">  848</span>      populateAIEv1CanonicalizeConversionPatterns(patterns, backend);</div>
+<div class="line"><a id="l00849" name="l00849"></a><span class="lineno">  849</span>      configureAIEv1CanonicalizeLegalizations(target, backend);</div>
+<div class="line"><a id="l00850" name="l00850"></a><span class="lineno">  850</span>    } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00851" name="l00851"></a><span class="lineno">  851</span>      populateAIE2CanonicalizeConversionPatterns(patterns, backend);</div>
+<div class="line"><a id="l00852" name="l00852"></a><span class="lineno">  852</span>      configureAIE2CanonicalizeLegalizations(target, backend);</div>
+<div class="line"><a id="l00853" name="l00853"></a><span class="lineno">  853</span>    }</div>
+<div class="line"><a id="l00854" name="l00854"></a><span class="lineno">  854</span> </div>
+<div class="line"><a id="l00855" name="l00855"></a><span class="lineno">  855</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(op, target, std::move(patterns)))) {</div>
+<div class="line"><a id="l00856" name="l00856"></a><span class="lineno">  856</span>      signalPassFailure();</div>
+<div class="line"><a id="l00857" name="l00857"></a><span class="lineno">  857</span>    }</div>
+<div class="line"><a id="l00858" name="l00858"></a><span class="lineno">  858</span>  }</div>
 </div>
-<div class="line"><a id="l00858" name="l00858"></a><span class="lineno">  858</span>};</div>
+<div class="line"><a id="l00859" name="l00859"></a><span class="lineno">  859</span>};</div>
 </div>
-<div class="line"><a id="l00859" name="l00859"></a><span class="lineno">  859</span> </div>
-<div class="line"><a id="l00860" name="l00860"></a><span class="lineno">  860</span><span class="keyword">static</span> std::unique_ptr&lt;::mlir::Pass&gt; createCanonicalizeVectorForAIEVecPass(</div>
-<div class="line"><a id="l00861" name="l00861"></a><span class="lineno">  861</span>    <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html">CanonicalizeVectorForAIEVecOptions</a> &amp;options) {</div>
-<div class="line"><a id="l00862" name="l00862"></a><span class="lineno">  862</span>  <span class="keywordflow">return</span> std::make_unique&lt;CanonicalizeVectorForAIEVecPass&gt;(options);</div>
-<div class="line"><a id="l00863" name="l00863"></a><span class="lineno">  863</span>}</div>
-<div class="line"><a id="l00864" name="l00864"></a><span class="lineno">  864</span> </div>
-<div class="foldopen" id="foldopen00865" data-start="{" data-end="};">
-<div class="line"><a id="l00865" name="l00865"></a><span class="lineno"><a class="line" href="structHoistCastOpToDataSourcePass.html">  865</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structHoistCastOpToDataSourcePass.html">HoistCastOpToDataSourcePass</a></div>
-<div class="line"><a id="l00866" name="l00866"></a><span class="lineno">  866</span>    : <span class="keyword">public</span> <a class="code hl_class" href="classPassWrapper.html">PassWrapper</a>&lt;HoistCastOpToDataSourcePass, OperationPass&lt;&gt;&gt; {</div>
-<div class="line"><a id="l00867" name="l00867"></a><span class="lineno">  867</span> </div>
-<div class="foldopen" id="foldopen00868" data-start="{" data-end="}">
-<div class="line"><a id="l00868" name="l00868"></a><span class="lineno"><a class="line" href="structHoistCastOpToDataSourcePass.html#ae415c7646a71883fe6876b2070ee8cd7">  868</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structHoistCastOpToDataSourcePass.html#ae415c7646a71883fe6876b2070ee8cd7">runOnOperation</a>()<span class="keyword"> override </span>{</div>
-<div class="line"><a id="l00869" name="l00869"></a><span class="lineno">  869</span>    <span class="keyword">auto</span> *op = getOperation();</div>
-<div class="line"><a id="l00870" name="l00870"></a><span class="lineno">  870</span>    MLIRContext *context = &amp;getContext();</div>
-<div class="line"><a id="l00871" name="l00871"></a><span class="lineno">  871</span>    RewritePatternSet patterns(context);</div>
-<div class="line"><a id="l00872" name="l00872"></a><span class="lineno">  872</span> </div>
-<div class="line"><a id="l00873" name="l00873"></a><span class="lineno">  873</span>    patterns.add&lt;<a class="code hl_struct" href="structHoistCastOpToDataSourcePattern.html">HoistCastOpToDataSourcePattern</a>&gt;(patterns.getContext());</div>
-<div class="line"><a id="l00874" name="l00874"></a><span class="lineno">  874</span> </div>
-<div class="line"><a id="l00875" name="l00875"></a><span class="lineno">  875</span>    (void)applyPatternsGreedily(op, std::move(patterns));</div>
-<div class="line"><a id="l00876" name="l00876"></a><span class="lineno">  876</span>  }</div>
+<div class="line"><a id="l00860" name="l00860"></a><span class="lineno">  860</span> </div>
+<div class="line"><a id="l00861" name="l00861"></a><span class="lineno">  861</span><span class="keyword">static</span> std::unique_ptr&lt;::mlir::Pass&gt; createCanonicalizeVectorForAIEVecPass(</div>
+<div class="line"><a id="l00862" name="l00862"></a><span class="lineno">  862</span>    <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html">CanonicalizeVectorForAIEVecOptions</a> &amp;options) {</div>
+<div class="line"><a id="l00863" name="l00863"></a><span class="lineno">  863</span>  <span class="keywordflow">return</span> std::make_unique&lt;CanonicalizeVectorForAIEVecPass&gt;(options);</div>
+<div class="line"><a id="l00864" name="l00864"></a><span class="lineno">  864</span>}</div>
+<div class="line"><a id="l00865" name="l00865"></a><span class="lineno">  865</span> </div>
+<div class="foldopen" id="foldopen00866" data-start="{" data-end="};">
+<div class="line"><a id="l00866" name="l00866"></a><span class="lineno"><a class="line" href="structHoistCastOpToDataSourcePass.html">  866</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structHoistCastOpToDataSourcePass.html">HoistCastOpToDataSourcePass</a></div>
+<div class="line"><a id="l00867" name="l00867"></a><span class="lineno">  867</span>    : <span class="keyword">public</span> <a class="code hl_class" href="classPassWrapper.html">PassWrapper</a>&lt;HoistCastOpToDataSourcePass, OperationPass&lt;&gt;&gt; {</div>
+<div class="line"><a id="l00868" name="l00868"></a><span class="lineno">  868</span> </div>
+<div class="foldopen" id="foldopen00869" data-start="{" data-end="}">
+<div class="line"><a id="l00869" name="l00869"></a><span class="lineno"><a class="line" href="structHoistCastOpToDataSourcePass.html#ae415c7646a71883fe6876b2070ee8cd7">  869</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structHoistCastOpToDataSourcePass.html#ae415c7646a71883fe6876b2070ee8cd7">runOnOperation</a>()<span class="keyword"> override </span>{</div>
+<div class="line"><a id="l00870" name="l00870"></a><span class="lineno">  870</span>    <span class="keyword">auto</span> *op = getOperation();</div>
+<div class="line"><a id="l00871" name="l00871"></a><span class="lineno">  871</span>    MLIRContext *context = &amp;getContext();</div>
+<div class="line"><a id="l00872" name="l00872"></a><span class="lineno">  872</span>    RewritePatternSet patterns(context);</div>
+<div class="line"><a id="l00873" name="l00873"></a><span class="lineno">  873</span> </div>
+<div class="line"><a id="l00874" name="l00874"></a><span class="lineno">  874</span>    patterns.add&lt;<a class="code hl_struct" href="structHoistCastOpToDataSourcePattern.html">HoistCastOpToDataSourcePattern</a>&gt;(patterns.getContext());</div>
+<div class="line"><a id="l00875" name="l00875"></a><span class="lineno">  875</span> </div>
+<div class="line"><a id="l00876" name="l00876"></a><span class="lineno">  876</span>    (void)applyPatternsGreedily(op, std::move(patterns));</div>
+<div class="line"><a id="l00877" name="l00877"></a><span class="lineno">  877</span>  }</div>
 </div>
-<div class="line"><a id="l00877" name="l00877"></a><span class="lineno">  877</span>};</div>
+<div class="line"><a id="l00878" name="l00878"></a><span class="lineno">  878</span>};</div>
 </div>
-<div class="line"><a id="l00878" name="l00878"></a><span class="lineno">  878</span> </div>
-<div class="line"><a id="l00879" name="l00879"></a><span class="lineno">  879</span><span class="keyword">static</span> std::unique_ptr&lt;::mlir::Pass&gt; createHoistCastOpToDataSourcePass() {</div>
-<div class="line"><a id="l00880" name="l00880"></a><span class="lineno">  880</span>  <span class="keywordflow">return</span> std::make_unique&lt;HoistCastOpToDataSourcePass&gt;();</div>
-<div class="line"><a id="l00881" name="l00881"></a><span class="lineno">  881</span>}</div>
-<div class="line"><a id="l00882" name="l00882"></a><span class="lineno">  882</span> </div>
-<div class="foldopen" id="foldopen00883" data-start="{" data-end="};">
-<div class="line"><a id="l00883" name="l00883"></a><span class="lineno"><a class="line" href="structReorderOperationsPass.html">  883</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structReorderOperationsPass.html">ReorderOperationsPass</a></div>
-<div class="line"><a id="l00884" name="l00884"></a><span class="lineno">  884</span>    : <span class="keyword">public</span> <a class="code hl_class" href="classPassWrapper.html">PassWrapper</a>&lt;ReorderOperationsPass, OperationPass&lt;&gt;&gt; {</div>
-<div class="line"><a id="l00885" name="l00885"></a><span class="lineno">  885</span> </div>
-<div class="foldopen" id="foldopen00886" data-start="{" data-end="}">
-<div class="line"><a id="l00886" name="l00886"></a><span class="lineno"><a class="line" href="structReorderOperationsPass.html#ac64821dec3530aa9c1b7638e8a1a710d">  886</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structReorderOperationsPass.html#ac64821dec3530aa9c1b7638e8a1a710d">runOnOperation</a>()<span class="keyword"> override </span>{</div>
-<div class="line"><a id="l00887" name="l00887"></a><span class="lineno">  887</span>    <span class="keyword">auto</span> *op = getOperation();</div>
-<div class="line"><a id="l00888" name="l00888"></a><span class="lineno">  888</span>    MLIRContext *context = &amp;getContext();</div>
-<div class="line"><a id="l00889" name="l00889"></a><span class="lineno">  889</span>    RewritePatternSet patterns(context);</div>
-<div class="line"><a id="l00890" name="l00890"></a><span class="lineno">  890</span> </div>
-<div class="line"><a id="l00891" name="l00891"></a><span class="lineno">  891</span>    patterns.add&lt;<a class="code hl_struct" href="structSwapUnaryOpsPattern.html">SwapUnaryOpsPattern&lt;arith::ExtSIOp, vector::BroadcastOp&gt;</a>&gt;(</div>
-<div class="line"><a id="l00892" name="l00892"></a><span class="lineno">  892</span>        patterns.getContext(),</div>
-<div class="line"><a id="l00893" name="l00893"></a><span class="lineno">  893</span>        [](arith::ExtSIOp extOp, vector::BroadcastOp bcastOp) -&gt; Type {</div>
-<div class="line"><a id="l00894" name="l00894"></a><span class="lineno">  894</span>          Type extInElemTy = extOp.getIn().getType();</div>
-<div class="line"><a id="l00895" name="l00895"></a><span class="lineno">  895</span>          <span class="keyword">auto</span> extInVecTy = dyn_cast&lt;VectorType&gt;(extInElemTy);</div>
-<div class="line"><a id="l00896" name="l00896"></a><span class="lineno">  896</span>          <span class="keywordflow">if</span> (extInVecTy)</div>
-<div class="line"><a id="l00897" name="l00897"></a><span class="lineno">  897</span>            extInElemTy = extInVecTy.getElementType();</div>
-<div class="line"><a id="l00898" name="l00898"></a><span class="lineno">  898</span>          <span class="keywordflow">return</span> VectorType::get(bcastOp.getResultVectorType().getShape(),</div>
-<div class="line"><a id="l00899" name="l00899"></a><span class="lineno">  899</span>                                 extInElemTy);</div>
-<div class="line"><a id="l00900" name="l00900"></a><span class="lineno">  900</span>        });</div>
-<div class="line"><a id="l00901" name="l00901"></a><span class="lineno">  901</span> </div>
-<div class="line"><a id="l00902" name="l00902"></a><span class="lineno">  902</span>    (void)applyPatternsGreedily(op, std::move(patterns));</div>
-<div class="line"><a id="l00903" name="l00903"></a><span class="lineno">  903</span>  }</div>
+<div class="line"><a id="l00879" name="l00879"></a><span class="lineno">  879</span> </div>
+<div class="line"><a id="l00880" name="l00880"></a><span class="lineno">  880</span><span class="keyword">static</span> std::unique_ptr&lt;::mlir::Pass&gt; createHoistCastOpToDataSourcePass() {</div>
+<div class="line"><a id="l00881" name="l00881"></a><span class="lineno">  881</span>  <span class="keywordflow">return</span> std::make_unique&lt;HoistCastOpToDataSourcePass&gt;();</div>
+<div class="line"><a id="l00882" name="l00882"></a><span class="lineno">  882</span>}</div>
+<div class="line"><a id="l00883" name="l00883"></a><span class="lineno">  883</span> </div>
+<div class="foldopen" id="foldopen00884" data-start="{" data-end="};">
+<div class="line"><a id="l00884" name="l00884"></a><span class="lineno"><a class="line" href="structReorderOperationsPass.html">  884</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structReorderOperationsPass.html">ReorderOperationsPass</a></div>
+<div class="line"><a id="l00885" name="l00885"></a><span class="lineno">  885</span>    : <span class="keyword">public</span> <a class="code hl_class" href="classPassWrapper.html">PassWrapper</a>&lt;ReorderOperationsPass, OperationPass&lt;&gt;&gt; {</div>
+<div class="line"><a id="l00886" name="l00886"></a><span class="lineno">  886</span> </div>
+<div class="foldopen" id="foldopen00887" data-start="{" data-end="}">
+<div class="line"><a id="l00887" name="l00887"></a><span class="lineno"><a class="line" href="structReorderOperationsPass.html#ac64821dec3530aa9c1b7638e8a1a710d">  887</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structReorderOperationsPass.html#ac64821dec3530aa9c1b7638e8a1a710d">runOnOperation</a>()<span class="keyword"> override </span>{</div>
+<div class="line"><a id="l00888" name="l00888"></a><span class="lineno">  888</span>    <span class="keyword">auto</span> *op = getOperation();</div>
+<div class="line"><a id="l00889" name="l00889"></a><span class="lineno">  889</span>    MLIRContext *context = &amp;getContext();</div>
+<div class="line"><a id="l00890" name="l00890"></a><span class="lineno">  890</span>    RewritePatternSet patterns(context);</div>
+<div class="line"><a id="l00891" name="l00891"></a><span class="lineno">  891</span> </div>
+<div class="line"><a id="l00892" name="l00892"></a><span class="lineno">  892</span>    patterns.add&lt;<a class="code hl_struct" href="structSwapUnaryOpsPattern.html">SwapUnaryOpsPattern&lt;arith::ExtSIOp, vector::BroadcastOp&gt;</a>&gt;(</div>
+<div class="line"><a id="l00893" name="l00893"></a><span class="lineno">  893</span>        patterns.getContext(),</div>
+<div class="line"><a id="l00894" name="l00894"></a><span class="lineno">  894</span>        [](arith::ExtSIOp extOp, vector::BroadcastOp bcastOp) -&gt; Type {</div>
+<div class="line"><a id="l00895" name="l00895"></a><span class="lineno">  895</span>          Type extInElemTy = extOp.getIn().getType();</div>
+<div class="line"><a id="l00896" name="l00896"></a><span class="lineno">  896</span>          <span class="keyword">auto</span> extInVecTy = dyn_cast&lt;VectorType&gt;(extInElemTy);</div>
+<div class="line"><a id="l00897" name="l00897"></a><span class="lineno">  897</span>          <span class="keywordflow">if</span> (extInVecTy)</div>
+<div class="line"><a id="l00898" name="l00898"></a><span class="lineno">  898</span>            extInElemTy = extInVecTy.getElementType();</div>
+<div class="line"><a id="l00899" name="l00899"></a><span class="lineno">  899</span>          <span class="keywordflow">return</span> VectorType::get(bcastOp.getResultVectorType().getShape(),</div>
+<div class="line"><a id="l00900" name="l00900"></a><span class="lineno">  900</span>                                 extInElemTy);</div>
+<div class="line"><a id="l00901" name="l00901"></a><span class="lineno">  901</span>        });</div>
+<div class="line"><a id="l00902" name="l00902"></a><span class="lineno">  902</span> </div>
+<div class="line"><a id="l00903" name="l00903"></a><span class="lineno">  903</span>    (void)applyPatternsGreedily(op, std::move(patterns));</div>
+<div class="line"><a id="l00904" name="l00904"></a><span class="lineno">  904</span>  }</div>
 </div>
-<div class="line"><a id="l00904" name="l00904"></a><span class="lineno">  904</span>};</div>
+<div class="line"><a id="l00905" name="l00905"></a><span class="lineno">  905</span>};</div>
 </div>
-<div class="line"><a id="l00905" name="l00905"></a><span class="lineno">  905</span> </div>
-<div class="line"><a id="l00906" name="l00906"></a><span class="lineno">  906</span><span class="keyword">static</span> std::unique_ptr&lt;::mlir::Pass&gt; createReorderOperationsPass() {</div>
-<div class="line"><a id="l00907" name="l00907"></a><span class="lineno">  907</span>  <span class="keywordflow">return</span> std::make_unique&lt;ReorderOperationsPass&gt;();</div>
-<div class="line"><a id="l00908" name="l00908"></a><span class="lineno">  908</span>}</div>
-<div class="line"><a id="l00909" name="l00909"></a><span class="lineno">  909</span> </div>
-<div class="line"><a id="l00910" name="l00910"></a><span class="lineno">  910</span><span class="comment">//============================================================================//</span></div>
-<div class="line"><a id="l00911" name="l00911"></a><span class="lineno">  911</span><span class="comment">//=============== Main Vector2Vector Pipeline Configuration ==================//</span></div>
-<div class="line"><a id="l00912" name="l00912"></a><span class="lineno">  912</span><span class="comment">//============================================================================//</span></div>
-<div class="line"><a id="l00913" name="l00913"></a><span class="lineno">  913</span> </div>
-<div class="line"><a id="l00914" name="l00914"></a><span class="lineno">  914</span><span class="keywordtype">void</span> <a class="code hl_function" href="namespacexilinx_1_1aievec.html#ab1f8999b97003cad3c4ec8b406953395">xilinx::aievec::buildCanonicalizeVectorForAIEVec</a>(</div>
-<div class="line"><a id="l00915" name="l00915"></a><span class="lineno">  915</span>    OpPassManager &amp;pm, <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html">CanonicalizeVectorForAIEVecOptions</a> &amp;options) {</div>
-<div class="line"><a id="l00916" name="l00916"></a><span class="lineno">  916</span>  <span class="comment">// Add `Vector` code canonicalization passes</span></div>
-<div class="line"><a id="l00917" name="l00917"></a><span class="lineno">  917</span>  <span class="comment">// TODO: Add passes to unroll vector with unsupported types</span></div>
-<div class="line"><a id="l00918" name="l00918"></a><span class="lineno">  918</span>  <span class="comment">// TODO: Add passes to split vectors that won&#39;t fit in registers</span></div>
-<div class="line"><a id="l00919" name="l00919"></a><span class="lineno">  919</span>  <span class="keywordflow">if</span> (decodeTargetBackend(options.<a class="code hl_variable" href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html#a7717d0b5d44d692c696d9f49d9118af6">targetBackend</a>) == TargetBackend::LLVMIR)</div>
-<div class="line"><a id="l00920" name="l00920"></a><span class="lineno">  920</span>    pm.addPass(createReorderOperationsPass());</div>
-<div class="line"><a id="l00921" name="l00921"></a><span class="lineno">  921</span>  pm.addPass(<a class="code hl_function" href="namespacexilinx_1_1aievec.html#a08e10e9ce17701762137bac3e6c99b03">createCopyRemovalPass</a>());</div>
-<div class="line"><a id="l00922" name="l00922"></a><span class="lineno">  922</span>  pm.addPass(createVectorBroadcastLoweringPass());</div>
-<div class="line"><a id="l00923" name="l00923"></a><span class="lineno">  923</span>  pm.addPass(createCanonicalizeVectorForAIEVecPass(options));</div>
-<div class="line"><a id="l00924" name="l00924"></a><span class="lineno">  924</span>  <span class="keywordflow">if</span> (decodeTargetBackend(options.<a class="code hl_variable" href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html#a7717d0b5d44d692c696d9f49d9118af6">targetBackend</a>) == TargetBackend::CPP)</div>
-<div class="line"><a id="l00925" name="l00925"></a><span class="lineno">  925</span>    pm.addPass(createHoistCastOpToDataSourcePass());</div>
-<div class="line"><a id="l00926" name="l00926"></a><span class="lineno">  926</span>}</div>
+<div class="line"><a id="l00906" name="l00906"></a><span class="lineno">  906</span> </div>
+<div class="line"><a id="l00907" name="l00907"></a><span class="lineno">  907</span><span class="keyword">static</span> std::unique_ptr&lt;::mlir::Pass&gt; createReorderOperationsPass() {</div>
+<div class="line"><a id="l00908" name="l00908"></a><span class="lineno">  908</span>  <span class="keywordflow">return</span> std::make_unique&lt;ReorderOperationsPass&gt;();</div>
+<div class="line"><a id="l00909" name="l00909"></a><span class="lineno">  909</span>}</div>
+<div class="line"><a id="l00910" name="l00910"></a><span class="lineno">  910</span> </div>
+<div class="line"><a id="l00911" name="l00911"></a><span class="lineno">  911</span><span class="comment">//============================================================================//</span></div>
+<div class="line"><a id="l00912" name="l00912"></a><span class="lineno">  912</span><span class="comment">//=============== Main Vector2Vector Pipeline Configuration ==================//</span></div>
+<div class="line"><a id="l00913" name="l00913"></a><span class="lineno">  913</span><span class="comment">//============================================================================//</span></div>
+<div class="line"><a id="l00914" name="l00914"></a><span class="lineno">  914</span> </div>
+<div class="line"><a id="l00915" name="l00915"></a><span class="lineno">  915</span><span class="keywordtype">void</span> <a class="code hl_function" href="namespacexilinx_1_1aievec.html#ab1f8999b97003cad3c4ec8b406953395">xilinx::aievec::buildCanonicalizeVectorForAIEVec</a>(</div>
+<div class="line"><a id="l00916" name="l00916"></a><span class="lineno">  916</span>    OpPassManager &amp;pm, <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html">CanonicalizeVectorForAIEVecOptions</a> &amp;options) {</div>
+<div class="line"><a id="l00917" name="l00917"></a><span class="lineno">  917</span>  <span class="comment">// Add `Vector` code canonicalization passes</span></div>
+<div class="line"><a id="l00918" name="l00918"></a><span class="lineno">  918</span>  <span class="comment">// TODO: Add passes to unroll vector with unsupported types</span></div>
+<div class="line"><a id="l00919" name="l00919"></a><span class="lineno">  919</span>  <span class="comment">// TODO: Add passes to split vectors that won&#39;t fit in registers</span></div>
+<div class="line"><a id="l00920" name="l00920"></a><span class="lineno">  920</span>  <span class="keywordflow">if</span> (decodeTargetBackend(options.<a class="code hl_variable" href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html#a7717d0b5d44d692c696d9f49d9118af6">targetBackend</a>) == TargetBackend::LLVMIR)</div>
+<div class="line"><a id="l00921" name="l00921"></a><span class="lineno">  921</span>    pm.addPass(createReorderOperationsPass());</div>
+<div class="line"><a id="l00922" name="l00922"></a><span class="lineno">  922</span>  pm.addPass(<a class="code hl_function" href="namespacexilinx_1_1aievec.html#a08e10e9ce17701762137bac3e6c99b03">createCopyRemovalPass</a>());</div>
+<div class="line"><a id="l00923" name="l00923"></a><span class="lineno">  923</span>  pm.addPass(createVectorBroadcastLoweringPass());</div>
+<div class="line"><a id="l00924" name="l00924"></a><span class="lineno">  924</span>  pm.addPass(createCanonicalizeVectorForAIEVecPass(options));</div>
+<div class="line"><a id="l00925" name="l00925"></a><span class="lineno">  925</span>  <span class="keywordflow">if</span> (decodeTargetBackend(options.<a class="code hl_variable" href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html#a7717d0b5d44d692c696d9f49d9118af6">targetBackend</a>) == TargetBackend::CPP)</div>
+<div class="line"><a id="l00926" name="l00926"></a><span class="lineno">  926</span>    pm.addPass(createHoistCastOpToDataSourcePass());</div>
+<div class="line"><a id="l00927" name="l00927"></a><span class="lineno">  927</span>}</div>
 <div class="ttc" id="aAIEVecUtils_8h_html"><div class="ttname"><a href="AIEVecUtils_8h.html">AIEVecUtils.h</a></div></div>
 <div class="ttc" id="aDialect_2AIEVec_2Pipelines_2Passes_8h_html"><div class="ttname"><a href="Dialect_2AIEVec_2Pipelines_2Passes_8h.html">Passes.h</a></div></div>
 <div class="ttc" id="aUtils_8h_html"><div class="ttname"><a href="Utils_8h.html">Utils.h</a></div></div>
@@ -1072,33 +1073,33 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_html_a9a8ae05083c78f38dbbdcda3b7540275"><div class="ttname"><a href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">xilinx::TargetBackend</a></div><div class="ttdeci">TargetBackend</div><div class="ttdef"><b>Definition</b> <a href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00027">Passes.h:27</a></div></div>
 <div class="ttc" id="anamespacexilinx_html_aff3fe97ec80fed475662ca415d95f0a3"><div class="ttname"><a href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3">xilinx::AIEArch</a></div><div class="ttdeci">AIEArch</div><div class="ttdef"><b>Definition</b> <a href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00021">Passes.h:21</a></div></div>
-<div class="ttc" id="astructCanonicalizeVectorForAIEVecPass_html"><div class="ttname"><a href="structCanonicalizeVectorForAIEVecPass.html">CanonicalizeVectorForAIEVecPass</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00776">VectorToVectorConversions.cpp:777</a></div></div>
-<div class="ttc" id="astructCanonicalizeVectorForAIEVecPass_html_a0af5b9c4425559b90c5e74703e91775d"><div class="ttname"><a href="structCanonicalizeVectorForAIEVecPass.html#a0af5b9c4425559b90c5e74703e91775d">CanonicalizeVectorForAIEVecPass::getArgument</a></div><div class="ttdeci">StringRef getArgument() const final</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00793">VectorToVectorConversions.cpp:793</a></div></div>
-<div class="ttc" id="astructCanonicalizeVectorForAIEVecPass_html_a276f030850a00978f4ad7c7fe51eba8e"><div class="ttname"><a href="structCanonicalizeVectorForAIEVecPass.html#a276f030850a00978f4ad7c7fe51eba8e">CanonicalizeVectorForAIEVecPass::getDependentDialects</a></div><div class="ttdeci">void getDependentDialects(DialectRegistry &amp;registry) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00801">VectorToVectorConversions.cpp:801</a></div></div>
-<div class="ttc" id="astructCanonicalizeVectorForAIEVecPass_html_a310d1f191570b063ae12a09ccf6a00d5"><div class="ttname"><a href="structCanonicalizeVectorForAIEVecPass.html#a310d1f191570b063ae12a09ccf6a00d5">CanonicalizeVectorForAIEVecPass::getDescription</a></div><div class="ttdeci">StringRef getDescription() const final</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00797">VectorToVectorConversions.cpp:797</a></div></div>
-<div class="ttc" id="astructCanonicalizeVectorForAIEVecPass_html_a3f1499b1598237c65f11f79474253d51"><div class="ttname"><a href="structCanonicalizeVectorForAIEVecPass.html#a3f1499b1598237c65f11f79474253d51">CanonicalizeVectorForAIEVecPass::aieTarget</a></div><div class="ttdeci">Option&lt; std::string &gt; aieTarget</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00806">VectorToVectorConversions.cpp:806</a></div></div>
-<div class="ttc" id="astructCanonicalizeVectorForAIEVecPass_html_a781b40af99dcfeeb7adc1cfe0ce041b2"><div class="ttname"><a href="structCanonicalizeVectorForAIEVecPass.html#a781b40af99dcfeeb7adc1cfe0ce041b2">CanonicalizeVectorForAIEVecPass::CanonicalizeVectorForAIEVecPass</a></div><div class="ttdeci">CanonicalizeVectorForAIEVecPass(const CanonicalizeVectorForAIEVecOptions &amp;options)</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00784">VectorToVectorConversions.cpp:784</a></div></div>
-<div class="ttc" id="astructCanonicalizeVectorForAIEVecPass_html_ac39417ab31113abbb6899dde140946a4"><div class="ttname"><a href="structCanonicalizeVectorForAIEVecPass.html#ac39417ab31113abbb6899dde140946a4">CanonicalizeVectorForAIEVecPass::targetBackend</a></div><div class="ttdeci">Option&lt; std::string &gt; targetBackend</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00812">VectorToVectorConversions.cpp:812</a></div></div>
-<div class="ttc" id="astructCanonicalizeVectorForAIEVecPass_html_ac494fb3c59e040a9638a60e88629ea56"><div class="ttname"><a href="structCanonicalizeVectorForAIEVecPass.html#ac494fb3c59e040a9638a60e88629ea56">CanonicalizeVectorForAIEVecPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00819">VectorToVectorConversions.cpp:819</a></div></div>
-<div class="ttc" id="astructConvertLeadingUnitDimInsertToReshapePattern_html"><div class="ttname"><a href="structConvertLeadingUnitDimInsertToReshapePattern.html">ConvertLeadingUnitDimInsertToReshapePattern</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00634">VectorToVectorConversions.cpp:635</a></div></div>
-<div class="ttc" id="astructConvertLeadingUnitDimInsertToReshapePattern_html_aec1aab1e1e629f85e8117330fb858a9d"><div class="ttname"><a href="structConvertLeadingUnitDimInsertToReshapePattern.html#aec1aab1e1e629f85e8117330fb858a9d">ConvertLeadingUnitDimInsertToReshapePattern::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(vector::InsertOp insOp, PatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00639">VectorToVectorConversions.cpp:639</a></div></div>
+<div class="ttc" id="astructCanonicalizeVectorForAIEVecPass_html"><div class="ttname"><a href="structCanonicalizeVectorForAIEVecPass.html">CanonicalizeVectorForAIEVecPass</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00777">VectorToVectorConversions.cpp:778</a></div></div>
+<div class="ttc" id="astructCanonicalizeVectorForAIEVecPass_html_a0af5b9c4425559b90c5e74703e91775d"><div class="ttname"><a href="structCanonicalizeVectorForAIEVecPass.html#a0af5b9c4425559b90c5e74703e91775d">CanonicalizeVectorForAIEVecPass::getArgument</a></div><div class="ttdeci">StringRef getArgument() const final</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00794">VectorToVectorConversions.cpp:794</a></div></div>
+<div class="ttc" id="astructCanonicalizeVectorForAIEVecPass_html_a276f030850a00978f4ad7c7fe51eba8e"><div class="ttname"><a href="structCanonicalizeVectorForAIEVecPass.html#a276f030850a00978f4ad7c7fe51eba8e">CanonicalizeVectorForAIEVecPass::getDependentDialects</a></div><div class="ttdeci">void getDependentDialects(DialectRegistry &amp;registry) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00802">VectorToVectorConversions.cpp:802</a></div></div>
+<div class="ttc" id="astructCanonicalizeVectorForAIEVecPass_html_a310d1f191570b063ae12a09ccf6a00d5"><div class="ttname"><a href="structCanonicalizeVectorForAIEVecPass.html#a310d1f191570b063ae12a09ccf6a00d5">CanonicalizeVectorForAIEVecPass::getDescription</a></div><div class="ttdeci">StringRef getDescription() const final</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00798">VectorToVectorConversions.cpp:798</a></div></div>
+<div class="ttc" id="astructCanonicalizeVectorForAIEVecPass_html_a3f1499b1598237c65f11f79474253d51"><div class="ttname"><a href="structCanonicalizeVectorForAIEVecPass.html#a3f1499b1598237c65f11f79474253d51">CanonicalizeVectorForAIEVecPass::aieTarget</a></div><div class="ttdeci">Option&lt; std::string &gt; aieTarget</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00807">VectorToVectorConversions.cpp:807</a></div></div>
+<div class="ttc" id="astructCanonicalizeVectorForAIEVecPass_html_a781b40af99dcfeeb7adc1cfe0ce041b2"><div class="ttname"><a href="structCanonicalizeVectorForAIEVecPass.html#a781b40af99dcfeeb7adc1cfe0ce041b2">CanonicalizeVectorForAIEVecPass::CanonicalizeVectorForAIEVecPass</a></div><div class="ttdeci">CanonicalizeVectorForAIEVecPass(const CanonicalizeVectorForAIEVecOptions &amp;options)</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00785">VectorToVectorConversions.cpp:785</a></div></div>
+<div class="ttc" id="astructCanonicalizeVectorForAIEVecPass_html_ac39417ab31113abbb6899dde140946a4"><div class="ttname"><a href="structCanonicalizeVectorForAIEVecPass.html#ac39417ab31113abbb6899dde140946a4">CanonicalizeVectorForAIEVecPass::targetBackend</a></div><div class="ttdeci">Option&lt; std::string &gt; targetBackend</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00813">VectorToVectorConversions.cpp:813</a></div></div>
+<div class="ttc" id="astructCanonicalizeVectorForAIEVecPass_html_ac494fb3c59e040a9638a60e88629ea56"><div class="ttname"><a href="structCanonicalizeVectorForAIEVecPass.html#ac494fb3c59e040a9638a60e88629ea56">CanonicalizeVectorForAIEVecPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00820">VectorToVectorConversions.cpp:820</a></div></div>
+<div class="ttc" id="astructConvertLeadingUnitDimInsertToReshapePattern_html"><div class="ttname"><a href="structConvertLeadingUnitDimInsertToReshapePattern.html">ConvertLeadingUnitDimInsertToReshapePattern</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00635">VectorToVectorConversions.cpp:636</a></div></div>
+<div class="ttc" id="astructConvertLeadingUnitDimInsertToReshapePattern_html_aec1aab1e1e629f85e8117330fb858a9d"><div class="ttname"><a href="structConvertLeadingUnitDimInsertToReshapePattern.html#aec1aab1e1e629f85e8117330fb858a9d">ConvertLeadingUnitDimInsertToReshapePattern::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(vector::InsertOp insOp, PatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00640">VectorToVectorConversions.cpp:640</a></div></div>
 <div class="ttc" id="astructConvertSplatTransferReadToBroadcastPattern_html"><div class="ttname"><a href="structConvertSplatTransferReadToBroadcastPattern.html">ConvertSplatTransferReadToBroadcastPattern</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00190">VectorToVectorConversions.cpp:191</a></div></div>
 <div class="ttc" id="astructConvertSplatTransferReadToBroadcastPattern_html_ac99f9d0ca89f5f550b0eb38c4aee867e"><div class="ttname"><a href="structConvertSplatTransferReadToBroadcastPattern.html#ac99f9d0ca89f5f550b0eb38c4aee867e">ConvertSplatTransferReadToBroadcastPattern::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(vector::TransferReadOp readOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00198">VectorToVectorConversions.cpp:198</a></div></div>
 <div class="ttc" id="astructConvertSplatTransferReadToBroadcastPattern_html_ad5f28cefea2cfa412ceb8a5bf143bd48"><div class="ttname"><a href="structConvertSplatTransferReadToBroadcastPattern.html#ad5f28cefea2cfa412ceb8a5bf143bd48">ConvertSplatTransferReadToBroadcastPattern::ConvertSplatTransferReadToBroadcastPattern</a></div><div class="ttdeci">ConvertSplatTransferReadToBroadcastPattern(MLIRContext *context)</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00194">VectorToVectorConversions.cpp:194</a></div></div>
-<div class="ttc" id="astructExtractTransposeFromContractionOp_html"><div class="ttname"><a href="structExtractTransposeFromContractionOp.html">ExtractTransposeFromContractionOp</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00533">VectorToVectorConversions.cpp:534</a></div></div>
-<div class="ttc" id="astructExtractTransposeFromContractionOp_html_a42282e6c842156d8bc2a1df06ad412a3"><div class="ttname"><a href="structExtractTransposeFromContractionOp.html#a42282e6c842156d8bc2a1df06ad412a3">ExtractTransposeFromContractionOp::getTransposedVectorType</a></div><div class="ttdeci">static VectorType getTransposedVectorType(VectorType vecTy)</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00537">VectorToVectorConversions.cpp:537</a></div></div>
-<div class="ttc" id="astructExtractTransposeFromContractionOp_html_a5427a57e92798b4b899a5982129f83cc"><div class="ttname"><a href="structExtractTransposeFromContractionOp.html#a5427a57e92798b4b899a5982129f83cc">ExtractTransposeFromContractionOp::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(vector::ContractionOp contractOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00548">VectorToVectorConversions.cpp:548</a></div></div>
+<div class="ttc" id="astructExtractTransposeFromContractionOp_html"><div class="ttname"><a href="structExtractTransposeFromContractionOp.html">ExtractTransposeFromContractionOp</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00534">VectorToVectorConversions.cpp:535</a></div></div>
+<div class="ttc" id="astructExtractTransposeFromContractionOp_html_a42282e6c842156d8bc2a1df06ad412a3"><div class="ttname"><a href="structExtractTransposeFromContractionOp.html#a42282e6c842156d8bc2a1df06ad412a3">ExtractTransposeFromContractionOp::getTransposedVectorType</a></div><div class="ttdeci">static VectorType getTransposedVectorType(VectorType vecTy)</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00538">VectorToVectorConversions.cpp:538</a></div></div>
+<div class="ttc" id="astructExtractTransposeFromContractionOp_html_a5427a57e92798b4b899a5982129f83cc"><div class="ttname"><a href="structExtractTransposeFromContractionOp.html#a5427a57e92798b4b899a5982129f83cc">ExtractTransposeFromContractionOp::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(vector::ContractionOp contractOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00549">VectorToVectorConversions.cpp:549</a></div></div>
 <div class="ttc" id="astructFlattenMultDimTransferReadPattern_html"><div class="ttname"><a href="structFlattenMultDimTransferReadPattern.html">FlattenMultDimTransferReadPattern</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00420">VectorToVectorConversions.cpp:421</a></div></div>
 <div class="ttc" id="astructFlattenMultDimTransferReadPattern_html_a1d2374badcc9c55efaf9c33bac3fbd69"><div class="ttname"><a href="structFlattenMultDimTransferReadPattern.html#a1d2374badcc9c55efaf9c33bac3fbd69">FlattenMultDimTransferReadPattern::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(vector::TransferReadOp readOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00425">VectorToVectorConversions.cpp:425</a></div></div>
 <div class="ttc" id="astructFlattenMultDimTransferWritePattern_html"><div class="ttname"><a href="structFlattenMultDimTransferWritePattern.html">FlattenMultDimTransferWritePattern</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00475">VectorToVectorConversions.cpp:476</a></div></div>
 <div class="ttc" id="astructFlattenMultDimTransferWritePattern_html_a515bad883e6860fb2d4f48581732cdf7"><div class="ttname"><a href="structFlattenMultDimTransferWritePattern.html#a515bad883e6860fb2d4f48581732cdf7">FlattenMultDimTransferWritePattern::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(vector::TransferWriteOp writeOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00480">VectorToVectorConversions.cpp:480</a></div></div>
-<div class="ttc" id="astructHoistCastOpToDataSourcePass_html"><div class="ttname"><a href="structHoistCastOpToDataSourcePass.html">HoistCastOpToDataSourcePass</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00865">VectorToVectorConversions.cpp:866</a></div></div>
-<div class="ttc" id="astructHoistCastOpToDataSourcePass_html_ae415c7646a71883fe6876b2070ee8cd7"><div class="ttname"><a href="structHoistCastOpToDataSourcePass.html#ae415c7646a71883fe6876b2070ee8cd7">HoistCastOpToDataSourcePass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00868">VectorToVectorConversions.cpp:868</a></div></div>
+<div class="ttc" id="astructHoistCastOpToDataSourcePass_html"><div class="ttname"><a href="structHoistCastOpToDataSourcePass.html">HoistCastOpToDataSourcePass</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00866">VectorToVectorConversions.cpp:867</a></div></div>
+<div class="ttc" id="astructHoistCastOpToDataSourcePass_html_ae415c7646a71883fe6876b2070ee8cd7"><div class="ttname"><a href="structHoistCastOpToDataSourcePass.html#ae415c7646a71883fe6876b2070ee8cd7">HoistCastOpToDataSourcePass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00869">VectorToVectorConversions.cpp:869</a></div></div>
 <div class="ttc" id="astructHoistCastOpToDataSourcePattern_html"><div class="ttname"><a href="structHoistCastOpToDataSourcePattern.html">HoistCastOpToDataSourcePattern</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00262">VectorToVectorConversions.cpp:262</a></div></div>
 <div class="ttc" id="astructHoistCastOpToDataSourcePattern_html_a13bdaacbe2f2b6aee14ae60997085b1a"><div class="ttname"><a href="structHoistCastOpToDataSourcePattern.html#a13bdaacbe2f2b6aee14ae60997085b1a">HoistCastOpToDataSourcePattern::HoistCastOpToDataSourcePattern</a></div><div class="ttdeci">HoistCastOpToDataSourcePattern(MLIRContext *context)</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00263">VectorToVectorConversions.cpp:263</a></div></div>
 <div class="ttc" id="astructHoistCastOpToDataSourcePattern_html_aec72b03fdbc879328e81a5c9bb2575be"><div class="ttname"><a href="structHoistCastOpToDataSourcePattern.html#aec72b03fdbc879328e81a5c9bb2575be">HoistCastOpToDataSourcePattern::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(Operation *op, PatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00267">VectorToVectorConversions.cpp:267</a></div></div>
-<div class="ttc" id="astructReorderOperationsPass_html"><div class="ttname"><a href="structReorderOperationsPass.html">ReorderOperationsPass</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00883">VectorToVectorConversions.cpp:884</a></div></div>
-<div class="ttc" id="astructReorderOperationsPass_html_ac64821dec3530aa9c1b7638e8a1a710d"><div class="ttname"><a href="structReorderOperationsPass.html#ac64821dec3530aa9c1b7638e8a1a710d">ReorderOperationsPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00886">VectorToVectorConversions.cpp:886</a></div></div>
+<div class="ttc" id="astructReorderOperationsPass_html"><div class="ttname"><a href="structReorderOperationsPass.html">ReorderOperationsPass</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00884">VectorToVectorConversions.cpp:885</a></div></div>
+<div class="ttc" id="astructReorderOperationsPass_html_ac64821dec3530aa9c1b7638e8a1a710d"><div class="ttname"><a href="structReorderOperationsPass.html#ac64821dec3530aa9c1b7638e8a1a710d">ReorderOperationsPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00887">VectorToVectorConversions.cpp:887</a></div></div>
 <div class="ttc" id="astructSplitUnalignedTransferReadPattern_html"><div class="ttname"><a href="structSplitUnalignedTransferReadPattern.html">SplitUnalignedTransferReadPattern</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00123">VectorToVectorConversions.cpp:124</a></div></div>
 <div class="ttc" id="astructSplitUnalignedTransferReadPattern_html_a4ae84b89e3ed09ed9349ade22d0cb4ca"><div class="ttname"><a href="structSplitUnalignedTransferReadPattern.html#a4ae84b89e3ed09ed9349ade22d0cb4ca">SplitUnalignedTransferReadPattern::SplitUnalignedTransferReadPattern</a></div><div class="ttdeci">SplitUnalignedTransferReadPattern(MLIRContext *context, int64_t maxVectorSize, int64_t alignment)</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00127">VectorToVectorConversions.cpp:127</a></div></div>
 <div class="ttc" id="astructSplitUnalignedTransferReadPattern_html_a4c64532056fe211c802b8f9682e5b0d6"><div class="ttname"><a href="structSplitUnalignedTransferReadPattern.html#a4c64532056fe211c802b8f9682e5b0d6">SplitUnalignedTransferReadPattern::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(vector::TransferReadOp readOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00133">VectorToVectorConversions.cpp:133</a></div></div>
@@ -1109,15 +1110,15 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="astructSwapUnaryOpsPattern_html_a50d4a3c5758cccf912ad992c8017ed14"><div class="ttname"><a href="structSwapUnaryOpsPattern.html#a50d4a3c5758cccf912ad992c8017ed14">SwapUnaryOpsPattern::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(UnaryOpB bOp, PatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00343">VectorToVectorConversions.cpp:343</a></div></div>
 <div class="ttc" id="astructSwapUnaryOpsPattern_html_a9674f92d88ff9718c349b6be2f49c28c"><div class="ttname"><a href="structSwapUnaryOpsPattern.html#a9674f92d88ff9718c349b6be2f49c28c">SwapUnaryOpsPattern::InferTypeB2AFnTy</a></div><div class="ttdeci">std::function&lt; Type(UnaryOpA aOp, UnaryOpB bOp)&gt; InferTypeB2AFnTy</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00337">VectorToVectorConversions.cpp:337</a></div></div>
 <div class="ttc" id="astructSwapUnaryOpsPattern_html_abc63915a5af264c1d28c6d3614b875cf"><div class="ttname"><a href="structSwapUnaryOpsPattern.html#abc63915a5af264c1d28c6d3614b875cf">SwapUnaryOpsPattern::SwapUnaryOpsPattern</a></div><div class="ttdeci">SwapUnaryOpsPattern(MLIRContext *context, InferTypeB2AFnTy inferType)</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00340">VectorToVectorConversions.cpp:340</a></div></div>
-<div class="ttc" id="astructVectorBroadcastLoweringPass_html"><div class="ttname"><a href="structVectorBroadcastLoweringPass.html">VectorBroadcastLoweringPass</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00750">VectorToVectorConversions.cpp:751</a></div></div>
-<div class="ttc" id="astructVectorBroadcastLoweringPass_html_a36718581e6ad9b7a3e5c44deb14c57e7"><div class="ttname"><a href="structVectorBroadcastLoweringPass.html#a36718581e6ad9b7a3e5c44deb14c57e7">VectorBroadcastLoweringPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00753">VectorToVectorConversions.cpp:753</a></div></div>
+<div class="ttc" id="astructVectorBroadcastLoweringPass_html"><div class="ttname"><a href="structVectorBroadcastLoweringPass.html">VectorBroadcastLoweringPass</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00751">VectorToVectorConversions.cpp:752</a></div></div>
+<div class="ttc" id="astructVectorBroadcastLoweringPass_html_a36718581e6ad9b7a3e5c44deb14c57e7"><div class="ttname"><a href="structVectorBroadcastLoweringPass.html#a36718581e6ad9b7a3e5c44deb14c57e7">VectorBroadcastLoweringPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="VectorToVectorConversions_8cpp_source.html#l00754">VectorToVectorConversions.cpp:754</a></div></div>
 <div class="ttc" id="astructxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions_html"><div class="ttname"><a href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html">xilinx::aievec::CanonicalizeVectorForAIEVecOptions</a></div><div class="ttdoc">Options for the &quot;canonicalize-vector-for-aievec&quot; pipeline.</div><div class="ttdef"><b>Definition</b> <a href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00040">Passes.h:41</a></div></div>
 <div class="ttc" id="astructxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions_html_a7717d0b5d44d692c696d9f49d9118af6"><div class="ttname"><a href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html#a7717d0b5d44d692c696d9f49d9118af6">xilinx::aievec::CanonicalizeVectorForAIEVecOptions::targetBackend</a></div><div class="ttdeci">PassOptions::Option&lt; std::string &gt; targetBackend</div><div class="ttdef"><b>Definition</b> <a href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00047">Passes.h:47</a></div></div>
 <div class="ttc" id="astructxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions_html_ad9652e7a8b3a9fff05784b72d54f6908"><div class="ttname"><a href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html#ad9652e7a8b3a9fff05784b72d54f6908">xilinx::aievec::CanonicalizeVectorForAIEVecOptions::aieTarget</a></div><div class="ttdeci">PassOptions::Option&lt; std::string &gt; aieTarget</div><div class="ttdef"><b>Definition</b> <a href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00042">Passes.h:42</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri May 30 2025 17:57:47 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri May 30 2025 21:38:49 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
