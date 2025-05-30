@@ -21,7 +21,6 @@ void _reduce_max_vector(T *restrict in, T *restrict out,
                         const int32_t input_size) {
   event0();
   V tiny;
-  int32_t vector_size = 16;
   if constexpr (std::is_same<V, aie::vector<int32_t, 16>>::value) {
     tiny = broadcast_to_v16int32((int32_t)INT32_MIN);
   } else if constexpr (std::is_same<V, aie::vector<bfloat16, 32>>::value) {
