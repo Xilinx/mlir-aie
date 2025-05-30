@@ -10,7 +10,7 @@
 
 ## Column-Wide Reduction Designs
 
-This folder contains three designs for performing column-wide reductions across AIE cores. These designs support both BF16 and INT32 data types and utilize the `reduce_max.cc` vectorized kernel.
+This folder contains three designs for performing column-wide reductions across AIE cores. These designs support both BF16 and INT32 data types and utilize the kernels from `reduce_max.cc`.
 
 ## Source Files Overview
 
