@@ -48,7 +48,7 @@ The compilation process is different from the other design examples, and is show
 
 This is a slightly more complex process than the rest of the examples, which typically only use a single object file containing the wrapped C++ function call, but is provided to show how a library-based flow can also be used.
 
-1. `softmax.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using aiecc.py to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI).
+1. `softmax.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using aiecc.py to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI).
 
 2. `softmax_placed.py`: An alternative version of the design in softmax.py, that is expressed in a lower-level version of IRON.
 
