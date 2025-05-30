@@ -24,14 +24,11 @@ void _reduce_max_vector(T *restrict in, T *restrict out,
   int32_t vector_size = 16;
   if constexpr (std::is_same<V, aie::vector<int32_t, 16>>::value) {
     tiny = broadcast_to_v16int32((int32_t)INT32_MIN);
-    vector_size = 16;
   } else if constexpr (std::is_same<V, aie::vector<bfloat16, 32>>::value) {
     tiny = broadcast_to_v32bfloat16(
         (bfloat16)std::numeric_limits<bfloat16>::lowest());
-    vector_size = 32;
-  } else if constexpr (std::is_same<V, aie::vector<int8_t, 64>>::value) {
-    tiny = broadcast_to_v64int8((int8_t)INT8_MIN);
-    vector_size = 64;
+  } else {
+    static_assert("Unsupported vector type");
   }
   V after_vector;
   V running_max = tiny;

@@ -113,8 +113,6 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         of_out = object_fifo("out", cores[0], ShimTile, buffer_depth, out_ty)
 
         # Set up compute tiles
-
-        # Compute tile 2
         for i in range(n_cores):
             if i != 0:
 
