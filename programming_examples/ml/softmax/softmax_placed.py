@@ -131,7 +131,7 @@ def vector_softmax(dev, trace_size):
             dma_start_task(in_task, out_task)
             dma_await_task(out_task)
 
-            trace_utils.gen_trace_done_aie2(ShimTile)
+            trace_utils.gen_trace_done_aie2(cores[0])
 
 
 try:
