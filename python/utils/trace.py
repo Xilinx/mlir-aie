@@ -1184,6 +1184,11 @@ def gen_trace_done_aie2(
 # `configure_*tile_packet_tracing_aie2`. A key distinction is made to choose the right start and stop
 # event depending on the tile type. We pass in 3 sets of optional event arguments that allows them
 # to be customized depending on the tile type.
+# 
+# NOTE: We configure the shimdma to bd 15 and channel 1 be default which has the potential to
+# conflict if that channel or bd is used by the lowering steps to configure the shim data movers.
+# We also configure each tile in the array tiles_to_trace with a incrementing packet id which matches
+# the packet ids used by `configure_packet_tracing_flow`.
 #
 # * `tiles to trace` - array of tiles to trace
 # * `shim tile` - Single shim tile to configure for writing trace packets to DDR
@@ -1314,82 +1319,62 @@ def configure_packet_tracing_aie2(
     for i in range(len(tiles_to_trace)):
         if isShimTile(tiles_to_trace[i]):
             if tiles_to_trace[i] == shim:
-                configure_shimtile_packet_tracing_aie2(
+                configure_shimtile_tracing_aie2(
                     tile=tiles_to_trace[i],
-                    shim=shim,
-                    flow_id=i + 1,
-                    bd_id=15 - i,
-                    ddr_id=ddr_id,
-                    size=trace_size,
-                    offset=trace_offset,
-                    enable_token=enable_token,
                     start=start_user_event,
                     stop=stop_user_event,
                     events=shimtile_events,
-                    shim_burst_length=shim_burst_length,
+                    enable_packet=1,
+                    packet_id=i + 1,
+                    packet_type=PacketType.SHIMTILE,
                 )
+                configure_timer_ctrl_shimtile_aie2(tiles_to_trace[i], start_user_event)
             else:
-                configure_shimtile_packet_tracing_aie2(
+                configure_shimtile_tracing_aie2(
                     tile=tiles_to_trace[i],
-                    shim=shim,
-                    flow_id=i + 1,
-                    bd_id=15 - i,
-                    ddr_id=ddr_id,
-                    size=trace_size,
-                    offset=trace_offset,
-                    enable_token=enable_token,
                     start=start_shimtile_broadcast_event,
                     stop=stop_shimtile_broadcast_event,
                     events=shimtile_events,
-                    shim_burst_length=shim_burst_length,
+                    enable_packet=1,
+                    packet_id=i + 1,
+                    packet_type=PacketType.SHIMTILE,
                 )
+                configure_timer_ctrl_shimtile_aie2(tiles_to_trace[i], start_shimtile_broadcast_event)
         elif isMemTile(tiles_to_trace[i]):
-            configure_memtile_packet_tracing_aie2(
+            configure_memtile_tracing_aie2(
                 tile=tiles_to_trace[i],
-                shim=shim,
-                flow_id=i + 1,
-                bd_id=15 - i,
-                ddr_id=ddr_id,
-                size=trace_size,
-                offset=trace_offset,
-                enable_token=enable_token,
                 start=start_memtile_broadcast_event,
                 stop=stop_memtile_broadcast_event,
                 events=memtile_events,
-                shim_burst_length=shim_burst_length,
+                enable_packet=1,
+                packet_id=i + 1,
+                packet_type=PacketType.MEMTILE,
             )
+            configure_timer_ctrl_memtile_aie2(tiles_to_trace[i], start_memtile_broadcast_event)
         elif isCoreTile(tiles_to_trace[i]):
             if tiles_to_trace[i] not in exist_core_tile_traces:
-                configure_coretile_packet_tracing_aie2(
+                configure_coretile_tracing_aie2(
                     tile=tiles_to_trace[i],
-                    shim=shim,
-                    flow_id=i + 1,
-                    bd_id=15 - i,
-                    ddr_id=ddr_id,
-                    size=trace_size,
-                    offset=trace_offset,
-                    enable_token=enable_token,
                     start=start_core_broadcast_event,
                     stop=stop_core_broadcast_event,
                     events=coretile_events,
-                    shim_burst_length=shim_burst_length,
+                    enable_packet=1,
+                    packet_id=i + 1,
+                    packet_type=PacketType.CORE,
                 )
+                configure_timer_ctrl_coretile_aie2(tiles_to_trace[i], start_core_broadcast_event)
                 exist_core_tile_traces.append(tiles_to_trace[i])
             else:
-                configure_coremem_packet_tracing_aie2(
+                configure_coremem_tracing_aie2(
                     tile=tiles_to_trace[i],
-                    shim=shim,
-                    flow_id=i + 1,
-                    bd_id=15 - i,
-                    ddr_id=ddr_id,
-                    size=trace_size,
-                    offset=trace_offset,
-                    enable_token=enable_token,
                     start=start_core_mem_broadcast_event,
                     stop=stop_core_mem_broadcast_event,
                     events=coremem_events,
-                    shim_burst_length=shim_burst_length
+                    enable_packet=1,
+                    packet_id=i + 1,
+                    packet_type=PacketType.MEM,
                 )
+                configure_timer_ctrl_coremem_aie2(tiles_to_trace[i], start_core_mem_broadcast_event)
         else:
             raise ValueError(
                 "Invalid tile("
@@ -1398,6 +1383,17 @@ def configure_packet_tracing_aie2(
                 + str(tiles_to_trace[i].row)
                 + "). Check tile coordinates are within a valid range."
             )
+    configure_shimtile_dma_tracing_aie2(
+        shim=shim,
+        channel=1,
+        bd_id=15,
+        ddr_id=ddr_id,
+        size=trace_size,
+        offset=trace_offset,
+        enable_token=enable_token,
+        enable_packet=1,
+        shim_burst_length=shim_burst_length,
+    )
 
     configure_shim_trace_start_aie2(shim, start_broadcast_num, start_user_event)
 
