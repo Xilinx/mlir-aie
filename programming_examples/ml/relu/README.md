@@ -24,7 +24,7 @@ This design implements a `bfloat16` based ReLU on a vector, performed in paralle
 
 ## Source Files Overview
 
-1. `relu.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `relu.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
 
 1. `relu_placed.py`: An alternative version of the design in `relu.py`, that is expressed in a lower-level version of IRON.
 
