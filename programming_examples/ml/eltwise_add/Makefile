@@ -26,9 +26,14 @@ colshift ?= $(if $(filter npu,$(devicename)),1,0)
 data_size = in1_size
 aie_py_src=${targetname}.py
 use_placed?=0
+use_1col?=0
 
 ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
+endif
+
+ifeq (${use_1col}, 1)
+aie_py_src=${targetname}_1col.py
 endif
 
 all: build/final_${data_size}.xclbin build/insts_${data_size}.bin
