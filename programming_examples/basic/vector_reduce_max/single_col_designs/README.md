@@ -10,13 +10,15 @@
 
 ## Column-Wide Reduction Designs
 
-This folder contains three extended designs where reduction is performed across an entire column of AIE cores:
+This folder contains three designs for performing column-wide reductions across AIE cores. These designs support both BF16 and INT32 data types and utilize the `reduce_max.cc` vectorized kernel.
 
-1. **vector_reduce_max_cascade**: Implements a cascading reduction where intermediate results are passed between adjacent tiles in the column.
+## Source Files Overview
 
-2. **vector_reduce_max_shared**: Utilizes shared memory between neighboring tiles to perform the final reduction.
+1. `vector_reduce_max_cascade.py`: Implements a cascading reduction where intermediate results are passed between adjacent tiles in the column.
 
-3. **vector_reduce_max_memtile**: Leverages memory tiles to aggregate partial results from the column, which is then sent to one of the AIE cores for the final reduction step.
+2. `vector_reduce_max_shared.py`: Utilizes shared memory between neighboring tiles to perform the final reduction.
+
+3. `vector_reduce_max_memtile.py`: Leverages memory tiles to aggregate partial results from the column, which is then sent to one of the AIE cores for the final reduction step.
 
 ## Ryzen™ AI Usage
 
