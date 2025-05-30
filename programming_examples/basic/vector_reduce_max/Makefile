@@ -74,7 +74,7 @@ build/final_trace.xclbin: build/aie2_trace.mlir build/reduce_max.cc.o
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
 		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
-${targetname}.exe: $(srcdir)/../test.cpp
+${targetname}.exe: $(srcdir)/test.cpp
 	rm -rf _build
 	mkdir -p _build
 	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}  -DIN1_SIZE=${in1_size} -DOUT_SIZE=${out_size} -DDTYPE=${dtype_cpp} 
@@ -89,7 +89,7 @@ run: ${targetname}.exe build/final.xclbin build/insts.bin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE 
 
 run_py: build/final.xclbin build/insts.bin
-	${powershell} python3 ${srcdir}/../test.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -i1s ${in1_size} -os ${out_size}
+	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -i1s ${in1_size} -os ${out_size}
 
 trace: ${targetname}.exe build/final_trace.xclbin build/insts.bin 
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
