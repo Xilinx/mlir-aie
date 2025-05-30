@@ -218,9 +218,13 @@ Looking at this table, we quickly see that the data movement is the bottleneck f
 1. So this example should be perfectly balanced between compute and data movement! Navigate to the [Matrix Multiply Example](../../../programming_examples/basic/matrix_multiplication/single_core) and run the trace build (`make clean; make -f Makefile.chess use_placed=1 trace`). Then open the generated waveform json (`trace_mm.json`) and measure the delta between `event 0` and `event 1` in the first run. What value did you get and how close is it to ideal? <img src="../../../mlir_tutorials/images/answer1.jpg" title="~2535 cycles which is 80% of 2048" height=25> You should now see that the compute cycles and the data movement cycles are much more closely matched!
 
 ## <u>Diving Deep - Examining the Microcode</u>
-Let's take another look at the results of our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/). Let's also go back one step and comment out `AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)` and rerun the compilation (`make clean; make use_placed=1 trace`). 
+Let's take another look at the results of our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/). Let's also go back one step and comment out `AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)` and rerun the compilation (`make clean; make trace`). 
 
-At this point, we can actually take a look at the `microcode`. The `microcode` is the precise schedule of instructions that our AIE executes in order to run the kernel program. This microcode can usually be found under `build/core_0_2.elf.lst` where the two numbers for the core indicates its column and row position respectively. So if your design has multiple cores, then each core will have its own `.lst` file. If you were to open the file, you will see a lot of information. Comment lines will have a . in front of them. The other lines are the instructions and are structured as follows:
+At this point, we can actually take a look at the disassembly code. The disassembly is the precise schedule of instructions that our AIE executes in order to run the kernel program. To obtain, the disassembly, we can run the `llvm-objdump` on the generated object or elf file. 
+```bash
+<mlir-aie>/ironenv/lib/python<ver>/site-packages/llvm-aie/bin/llvm-objdump -dr build/core_0_2.elf > diassembly_0_2.txt
+```
+For the elf file, the naming includes the `core` name where the two numbers for the core indicates its column and row position respectively. So if your design has multiple cores, then each core will have its own `.elf` file that you can disassembl. Once you generate the disassembly file and open it, you will see a lot of information. Comment lines will have a . in front of them. The other lines are the instructions and are structured as follows:
 
 ```
 Instruction Line Number ---- Encoded Instruction ---- 1 or more slots of ISA commands
@@ -243,28 +247,25 @@ Instruction Line Number ---- Encoded Instruction ---- 1 or more slots of ISA com
 
 Fully analyzing and understanding this microcode is beyond the scope of this programming guide but we will focus on key parts of this microcode, labeled by 3 types of comments in particular: 
 
-`.label vector_scalar_mul_aie` followed by `.function_start` - The start of the function we're interested in. The name after the label is the function name but this might have additional characters if the function is generated from a template.
+`<8 digit number> <label>` where `<label>` can be `<main>` or function name like `<vector_scalar_mul_vector> - The start of the function we're interested in. 
 
-`.label ZLS_...` - The start of a zero-overhead loop.
+`<8 digit number> <.LBB?_?>:` - The start of a zero-overhead loop.
 
-`.label ZLE_...` - The end of a zero-overhead loop. 
-> **NOTE** The line after this label is the last line within the loop, not just the lines strictly between `ZLS` and `ZLE`. In general, labels are for the line after the label.
+`<8 digit number> <.L_LEnd?>` - The end of a zero-overhead loop. 
+> **NOTE** The line after this label is the last line within the loop, not just the lines strictly between `<.LBB?_?>` and `.L_LEnd?`. In general, labels are for the line after the label.
 
 Let's examine this more closely in our example.
 
 ## <u>Optimization Exercises - Part 2</u>
-1. Go back and comment out the pragma lines (`AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)`) again and rerun the build (`make clean; make use_placed=1 trace`). Open `build/core_0_2.elf.lst` and take a look through the file. You'll see a lot of helpful comments but there may be a bit too muany comments to be able to see patterns in the microcode clearly. Run a simple cleanup script from within the vector_scalar_mul example directory:
+1. Go back and comment out the pragma lines (`AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)`) again and rerun the build (`make clean; make trace`). Run the disassembler and open `disassembly_0_2.txt` and take a look through the file. 
 
-    `../../utils/clean_microcode.sh build/core_0_2.elf.lst`
+    Search for `vector_scalar_mul_vector`. Then scroll down until you see the first `LBB` line after that. Count the number of lines until you reach the next `LBB or L_LEnd` line. If the next line is L_LEnd, be sure to add 1 to your total count. How many lines are in this inner loop? <img src="../../../mlir_tutorials/images/answer1.jpg" title="9 cycles" height=25> 
 
-    This will remove some of the extra comments. Open up the `core_0_2.elf.lst` file again and search for `.label vector_scalar_mul_int16_vector`. Then scroll down until you see the first `.label ZLS ..` line after that. Count the number of lines until you reach the first `.label ZLE ..` line and add 1 to that total (since the line after ZLE is within the loop). How many lines are in this inner loop? <img src="../../../mlir_tutorials/images/answer1.jpg" title="15 cycles" height=25> 
+1. Now look at each line and count how many lines contain a `VMUL` or `VMAC` in them? What number do you get? <img src="../../../mlir_tutorials/images/answer1.jpg" title="Only 1 VMUL" height=25>
 
-1. Now look at each line (including the one after ZLE) and count how many lines contain a `VMUL` or `VMAC` in them? What number do you get? <img src="../../../mlir_tutorials/images/answer1.jpg" title="Only 1 VMUL" height=25>
+1. The number you got gives us a rough idea of how optimized the innermost loop of our algorithm is. In this case, we have 1 VMAC out of 9 cycles or ~11% MAC utilization. If the inner loop take 11 cycles and we iterate 32 times, how many cycles should this version take and how close are we to the measured cycle count? <img src="../../../mlir_tutorials/images/answer1.jpg" title="11*32=352 cycles out of ~309 cycles measured. Pretty close. Overhead is ~15 cycles" height=25> 
 
-1. The number you got gives us a rough idea of how optimized the innermost loop of our algorithm is. In this case, we have 1 VMAC out of 15 cycles or ~6% MAC utilization. If the inner loop take 15 cycles and we iterate 32 times, how many cycles should this version take and how close are we to the measured cycle count? <img src="../../../mlir_tutorials/images/answer1.jpg" title="15*32=480 cycles out of ~495 cycles measured. Pretty close. Overhead is ~15 cycles" height=25> 
-
-1. Now go back and uncomment the pragma lines again and rerun the build and cleanup script (`make clean; make use_placed=1 trace; ../../utils/clean_microcode.sh build/core_0_2.elf.lst`). Search for `vector_scalar_mul_int16_vector` again and count the number of inner loop lines, as well as `VMUL/VMAC` lines again. How many do you see? <img src="../../../mlir_tutorials/images/answer1.jpg" title="2 inner loop lines. 1 VMUL." height=25> This matches with our hand calculation that the inner loop is limited to 2 because of the vector stores. 
+1. Now go back and uncomment the pragma lines again and rerun the build and cleanup script (`make clean; make trace; <mlir-aie>/ironenv/lib/python<ver>/site-packages/llvm-aie/bin/llvm-objdump -dr build/core_0_2.elf > diassembly_0_2.txt`). Search for `vector_scalar_mul_vector` again and count the number of inner loop lines, as well as `VMUL/VMAC` lines again. How many do you see? <img src="../../../mlir_tutorials/images/answer1.jpg" title="2 inner loop lines. 1 VMUL." height=25> This matches with our hand calculation that the inner loop is limited to 2 because of the vector stores. 
 
 -----
 [[Prev]](../section-4b) [[Up]](../../section-4) [[Next - Section 5]](../../section-5)
-
