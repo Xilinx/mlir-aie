@@ -14,8 +14,6 @@ Single tile performs a very simple reduction operation where the kernel loads da
 
 Input data is brought to the local memory of the Compute tile from a Shim tile. The size of the input data `N` from the Shim tile is `1024xi32`. The data is copied to the AIE tile, where the reduction is performed. The single output data value is copied from the AIE tile to the Shim tile.
 
-This example does not contain a C++ kernel file. The kernel is expressed in Python bindings that is then compiled with the AIE compiler to generate the AIE core binary. This also enables design portability across AIE generations (NOTE: the kernel runs on the scalar processor not the vector processor, and therefore is not optimized).
-
 ## Source Files Overview
 
 1. `vector_reduce_max.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
@@ -23,6 +21,10 @@ This example does not contain a C++ kernel file. The kernel is expressed in Pyth
 1. `vector_reduce_max_placed.py`: An alternative version of the design in `vector_reduce_max.py`, that is expressed in a lower-level version of IRON.
 
 1. `test.cpp`: This C++ code is a testbench for the design example targetting Ryzen™ AI (AIE2). The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the program verifies the results.
+
+## Extended Designs
+
+The `single_col_designs` folder contains designs that build on the `vector_reduce_max_placed.py` version to demonstrate different ways to utilize multiple tiles efficiently for larger datasets.
 
 ## Ryzen™ AI Usage
 
