@@ -73,5 +73,7 @@ endif
 run: ${targetname}.exe build/final_${EDGEDETECT_WIDTH}.xclbin
 	${powershell} ./$< -x build/final_${EDGEDETECT_WIDTH}.xclbin -i build/insts.bin -k MLIR_AIE
 
+run_live: ${targetname}.exe build/final_${EDGEDETECT_WIDTH}.xclbin
+	${powershell} ./$< -l -x build/final_${EDGEDETECT_WIDTH}.xclbin -i build/insts.bin -k MLIR_AIE
 clean:
 	rm -rf build _build ${targetname}.exe ${targetname}Out_test.jpg
