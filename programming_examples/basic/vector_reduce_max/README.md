@@ -53,4 +53,10 @@ To run the design:
 make run
 ```
 
+### Trace
 
+To generate a [trace file](../../../programming_guide/section-4/section-4b/README.md):
+
+```shell
+env use_placed=1 make trace
+```

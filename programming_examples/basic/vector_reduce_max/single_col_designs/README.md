@@ -54,3 +54,23 @@ To run the design:
 ```shell
 make run
 ```
+
+### Trace
+
+To generate a [trace file](../../../programming_guide/section-4/section-4b/README.md) for the default cascade design:
+
+```shell
+make trace
+```
+
+To generate a trace file for the shared memory-based design:
+
+```shell
+env use_shared=1 make trace
+```
+
+To generate a trace file for the memory tile-based design:
+
+```shell
+env use_memtile=1 make trace
+```
