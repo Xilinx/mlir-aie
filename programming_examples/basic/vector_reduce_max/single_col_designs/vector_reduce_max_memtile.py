@@ -93,6 +93,11 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
             of_c_offsets = []
 
         object_fifo_link(inA, inA_fifos, [], of_a_offsets)
+
+        """
+        Note: Since DMA BD length needs to be 4 bytes, the stride is used to 
+        correctly access data when the datatype size is less than 4 bytes.
+        """
         outC = object_fifo(
             "outC",
             MemTile,
