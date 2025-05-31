@@ -7,4 +7,4 @@
 // RUN: cd test_stx
 // RUN: make -f %S/Makefile clean
 // RUN: env device=npu2 make -f %S/Makefile
-// %run_on_2npu make -f %S/Makefile run
+// RUN: %run_on_2npu make -f %S/Makefile run
