@@ -1156,8 +1156,8 @@ public:
         getVectorSizeInBits(cast<VectorType>(op.getResult().getType()));
 
     auto ptr = this->getStridedElementPtr(
-        op->getLoc(), cast<MemRefType>(op.getSource().getType()),
-        adaptor.getSource(), adaptor.getIndices(), rewriter);
+        rewriter, op->getLoc(), cast<MemRefType>(op.getSource().getType()),
+        adaptor.getSource(), adaptor.getIndices());
 
     // TODO: handle the offset field
 
