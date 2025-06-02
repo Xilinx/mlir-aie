@@ -52,7 +52,7 @@ This is a slightly more complex process than the rest of the examples, which typ
 
 2. `softmax_placed.py`: An alternative version of the design in softmax.py, that is expressed in a lower-level version of IRON.
 
-3. `softmax_whole_array_placed.py`: This Python script extends the design to utilize the entire AIE array, scaling up from the use of two cores in `softmax_placed.py`.  The number of cores of the AIE array (`n_cores`)is configurable via the `n_col` and `n_cores_per_col` variables.
+3. `softmax_whole_array_placed.py`: This Python script extends the design to utilize the entire AIE array, scaling up from the use of two cores in `softmax_placed.py`. The number of cores of the AIE array (`n_cores`) is configurable via the `n_col` and `n_cores_per_col` variables.
 
 ## Usage
 
