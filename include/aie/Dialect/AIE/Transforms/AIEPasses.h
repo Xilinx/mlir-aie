@@ -29,6 +29,7 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIECanonicalizeDevicePass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIECoreToStandardPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEExtractObjectFifoPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEFindFlowsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIELocalizeLocksPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
@@ -36,6 +37,7 @@ createAIENormalizeAddressSpacesPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIERouteFlowsPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createAIEVectorOptPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPlaceTilesPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPathfinderPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoStatefulTransformPass();

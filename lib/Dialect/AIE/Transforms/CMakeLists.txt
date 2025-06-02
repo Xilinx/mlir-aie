@@ -15,6 +15,8 @@ add_mlir_dialect_library(
   AIECreatePathFindFlows.cpp
   AIECoreToStandard.cpp
   AIECanonicalizeDevice.cpp
+  AIEExtractObjectFifo.cpp
+  AIEPlaceTiles.cpp
   AIELocalizeLocks.cpp
   AIENormalizeAddressSpaces.cpp
   AIEVectorOpt.cpp
@@ -41,3 +43,5 @@ add_mlir_dialect_library(
   MLIRSupport
   MLIRTransformUtils
   MLIRFuncDialect)
+
+target_include_directories(AIETransforms PRIVATE ${AIE_SOURCE_DIR}/third_party/json)

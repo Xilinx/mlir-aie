@@ -149,6 +149,22 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
   ];
 }
 
+def AIEExtractObjectFifo : Pass<"aie-extract-fifo", "DeviceOp"> {
+  let summary = "Extract connection information for placer";
+  let description = [{ 
+  }];
+
+  let constructor = "xilinx::AIE::createAIEExtractObjectFifoPass()";
+}
+
+def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
+  let summary = "Re-place tiles based on placer results";
+  let description = [{ 
+  }];
+
+  let constructor = "xilinx::AIE::createAIEPlaceTilesPass()";
+}
+
 def AIEFindFlows : Pass<"aie-find-flows", "DeviceOp"> {
   let summary = "Recover flows from switchbox configuration";
   let description = [{
