@@ -136,7 +136,7 @@ def get_cycles_summary(trace_path):
         in_kernel = []
         event0 = []
         for x in data:
-            if (x["name"] == "process_name"):
+            if x["name"] == "process_name":
                 deltas.append([x["args"]["name"]])
                 in_kernel.append(False)
                 event0.append(0)
@@ -157,7 +157,7 @@ def get_cycles_summary(trace_path):
 
         return deltas
     except Exception as e:
-        print("Exception found",e)
+        print("Exception found", e)
         return np.inf
 
 
