@@ -46,6 +46,7 @@ def detect_npu_device():
         elif any(
             keyword.lower() in output.lower()
             for keyword in [
+                "NPU",
                 "NPU Phoenix",
                 "RyzenAI-npu1",
             ]
