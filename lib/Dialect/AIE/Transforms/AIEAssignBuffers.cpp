@@ -461,8 +461,9 @@ static void checkBufferScope(BufferOp buffer, DeviceOp device) {
           << "' must be defined directly under the device scope. Currently it "
              "is nested inside a core operation.";
     } else {
-      buffer->emitOpError("Buffer '") << buffer.name() 
-           << "' must be defined directly under the device scope. ";
+      buffer->emitOpError("Buffer '")
+          << buffer.name()
+          << "' must be defined directly under the device scope. ";
     }
   }
 }
