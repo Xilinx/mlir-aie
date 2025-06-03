@@ -170,7 +170,7 @@ struct SplitUnalignedTransferReadPattern
     // Create the aligned transfer read for a vector 2x as long that covers the
     // elements of the unaligned vector.
     auto newReadOp = rewriter.create<vector::TransferReadOp>(
-        loc, longVecTy, adaptor.getSource(), alignedIdx, adaptor.getPadding());
+        loc, longVecTy, adaptor.getBase(), alignedIdx, adaptor.getPadding());
 
     // Create a `vector.extract_strided_slice` to extract the unaligned vector.
     rewriter.replaceOpWithNewOp<vector::ExtractStridedSliceOp>(
@@ -201,7 +201,7 @@ struct ConvertSplatTransferReadToBroadcastPattern
     if (!map.isConstant())
       return failure();
 
-    Value srcMemRef = adaptor.getSource();
+    Value srcMemRef = adaptor.getBase();
     SmallVector<Value, 8> indices;
     Value newIdx;
     int64_t offset = 0;
@@ -432,7 +432,7 @@ struct FlattenMultDimTransferReadPattern
     if (vectorTy.getRank() < 2)
       return failure();
     // Work only on bufferized reads
-    MemRefType memRefTy = dyn_cast<MemRefType>(adaptor.getSource().getType());
+    MemRefType memRefTy = dyn_cast<MemRefType>(adaptor.getBase().getType());
     if (!memRefTy)
       return failure();
     auto memRefShape = memRefTy.getShape();
@@ -447,7 +447,7 @@ struct FlattenMultDimTransferReadPattern
         collapseInnerMostDimIndices(rewriter, readOp.getLoc(), vecShape.size(),
                                     adaptor.getIndices(), memRefShape, layout);
     auto newSource = collapseInnerMostShapeDims(
-        rewriter, readOp.getLoc(), vecShape.size(), adaptor.getSource());
+        rewriter, readOp.getLoc(), vecShape.size(), adaptor.getBase());
     auto newVector = rewriter.create<vector::TransferReadOp>(
         readOp.getLoc(), newVectorTy, newSource, newIndices);
 
@@ -487,7 +487,7 @@ struct FlattenMultDimTransferWritePattern
     if (vectorTy.getRank() < 2)
       return failure();
     // Work only on bufferized reads
-    MemRefType memRefTy = dyn_cast<MemRefType>(adaptor.getSource().getType());
+    MemRefType memRefTy = dyn_cast<MemRefType>(adaptor.getBase().getType());
     if (!memRefTy)
       return failure();
     auto memRefShape = memRefTy.getShape();
@@ -498,15 +498,16 @@ struct FlattenMultDimTransferWritePattern
                                          std::multiplies<>())},
                         vectorTy.getElementType());
     AffineMap layout = memRefTy.getLayout().getAffineMap();
-    auto newVector = rewriter
-                         .create<vector::ShapeCastOp>(
-                             writeOp.getLoc(), newVectorTy, adaptor.getValueToStore())
-                         .getResult();
+    auto newVector =
+        rewriter
+            .create<vector::ShapeCastOp>(writeOp.getLoc(), newVectorTy,
+                                         adaptor.getValueToStore())
+            .getResult();
     auto newIndices =
         collapseInnerMostDimIndices(rewriter, writeOp.getLoc(), vecShape.size(),
                                     adaptor.getIndices(), memRefShape, layout);
     auto newSource = collapseInnerMostShapeDims(
-        rewriter, writeOp.getLoc(), vecShape.size(), adaptor.getSource());
+        rewriter, writeOp.getLoc(), vecShape.size(), adaptor.getBase());
 
     auto newOp = rewriter.replaceOpWithNewOp<vector::TransferWriteOp>(
         writeOp, newVector, newSource, newIndices);
