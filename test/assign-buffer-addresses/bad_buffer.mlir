@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
-// CHECK: error: 'aie.tile' op Buffer '"c"' must be defined directly under the device scope. Currently it is nested inside a core operation.
+// CHECK: error: 'aie.tile' op Buffer '"c"' must be defined directly under the device scope. Currently it is nested inside a core tile.
 
 module @test {
   aie.device(xcvc1902) {

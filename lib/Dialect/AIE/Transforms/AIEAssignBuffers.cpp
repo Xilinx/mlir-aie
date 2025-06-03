@@ -452,10 +452,15 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
 
 static void checkBufferScope(BufferOp buffer, DeviceOp device) {
   // Buffers are not allowed to be inside the core without being statically initialized.
-  if (buffer->getParentOp() != device && !buffer.getInitialValue().has_value()) {
+  Operation *parent = buffer->getParentOp();
+  // Allowed to be in MemTile
+  if (!isa<DeviceOp>(parent) && !isa<MemTileDMAOp>(parent) &&
+      !buffer.getInitialValue().has_value()) {
     if (auto tile = buffer.getTileOp()) {
-      tile.emitOpError("Buffer '") << buffer.name() 
-           << "' must be defined directly under the device scope. Currently it is nested inside a core operation.";
+      tile.emitOpError("Buffer '")
+          << buffer.name()
+          << "' must be defined directly under the device scope. Currently it "
+             "is nested inside a core tile.";
     } else {
       buffer->emitOpError("Buffer '") << buffer.name() 
            << "' must be defined directly under the device scope. ";
