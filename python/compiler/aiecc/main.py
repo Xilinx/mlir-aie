@@ -1150,6 +1150,47 @@ class FlowRunner:
                     with open(opts.insts_name, "wb") as f:
                         f.write(struct.pack("I" * len(npu_insts), *npu_insts))
 
+                    asm_bin = os.path.join(
+                        aie.compiler.aiecc.configure.install_path(),
+                        "aiebu",
+                        "aiebu",
+                        "bin",
+                        "aiebu-asm",
+                    )
+                    # exteral_buffers_json = {
+                    #     "external_buffers": {
+                    #         "buffer0" : {
+                    #             "kernel_id" : 0,
+                    #             "logical_id": 0,
+                    #             "name": "bo0",
+                    #         },
+                    #         "buffer1" : {
+                    #             "kernel_id" : 1,
+                    #             "logical_id": 1,
+                    #             "name": "bo1",
+                    #         },
+                    #         "buffer2" : {
+                    #             "kernel_id" : 2,
+                    #             "logical_id": 2,
+                    #             "name": "bo2",
+                    #         },
+                    #     }
+                    # }
+                    # with open(self.prepend_tmp("external_buffers.json"), "w") as f:
+                    #     json.dump(exteral_buffers_json, f, indent=2)
+                    await self.do_call(
+                        None,
+                        [
+                            asm_bin,
+                            "-t",
+                            "aie2txn",
+                            "-c",
+                            opts.insts_name,
+                            "-o",
+                            opts.insts_name + ".elf",
+                        ],
+                    )
+
             # fmt: off
             if opts.unified:
                 file_opt_with_addresses = self.prepend_tmp("input_opt_with_addresses.mlir")
