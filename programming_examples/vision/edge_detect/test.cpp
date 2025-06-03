@@ -63,14 +63,14 @@ int main(int argc, const char *argv[]) {
    */
   cxxopts::Options options("edge_detect");
   test_utils::add_default_options(options);
-  options.add_options()
-      ("image,p", "the input image",cxxopts::value<std::string>())
-      ("outfile,o", "the output image",
-      cxxopts::value<std::string>()->default_value("edgeDetectOut_test.jpg"))
-      ("live,l", "capture from webcam")
-      ("video,m", "optional video input file name", 
-      cxxopts::value<std::string>())
-      ("device,d", "webcam device number", 
+  options.add_options()("image,p", "the input image",
+                        cxxopts::value<std::string>())(
+      "outfile,o", "the output image",
+      cxxopts::value<std::string>()->default_value("edgeDetectOut_test.jpg"))(
+      "live,l", "capture from webcam")("video,m",
+                                       "optional video input file name",
+                                       cxxopts::value<std::string>())(
+      "device,d", "webcam device number",
       cxxopts::value<std::string>()->default_value("0"));
 
   cxxopts::ParseResult vm;
@@ -260,7 +260,7 @@ int main(int argc, const char *argv[]) {
       cv::VideoCapture cap;
       try {
         if (vm.count("live"))
-          initializeVideoCapture(cap,webcam_dev);
+          initializeVideoCapture(cap, webcam_dev);
         else
           initializeVideoFile(cap, vm["video"].as<std::string>());
       } catch (const std::exception &ex) {
