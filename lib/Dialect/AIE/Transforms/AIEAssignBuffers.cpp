@@ -450,6 +450,19 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
                                nextAddrInBanks, bankLimits);
 }
 
+static void checkBufferScope(BufferOp buffer, DeviceOp device) {
+  // Buffers are not allowed to be inside the core without being statically initialized.
+  if (buffer->getParentOp() != device && !buffer.getInitialValue().has_value()) {
+    if (auto tile = buffer.getTileOp()) {
+      tile.emitOpError("Buffer '") << buffer.name() 
+           << "' must be defined directly under the device scope. Currently it is nested inside a core operation.";
+    } else {
+      buffer->emitOpError("Buffer '") << buffer.name() 
+           << "' must be defined directly under the device scope. ";
+    }
+  }
+}
+
 struct AIEAssignBufferAddressesPass
     : AIEAssignBufferAddressesBase<AIEAssignBufferAddressesPass> {
 
@@ -461,6 +474,10 @@ struct AIEAssignBufferAddressesPass
   void runOnOperation() override {
     DeviceOp device = getOperation();
     OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
+    // Ensure all BufferOps are globally defined at the device level.
+    device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
+      checkBufferScope(buffer, device);
+    });
     // Make sure all the buffers have a name
     int counter = 0;
     device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
