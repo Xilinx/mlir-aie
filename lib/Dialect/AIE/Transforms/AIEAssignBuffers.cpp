@@ -456,8 +456,10 @@ static void checkBufferScope(BufferOp buffer, DeviceOp device) {
   if (buffer->getParentOp() != device &&
       !buffer.getInitialValue().has_value()) {
     if (auto tile = buffer.getTileOp()) {
-      tile.emitOpError("Buffer '") << buffer.name() 
-           << "' must be defined directly under the device scope. Currently it is nested inside a core operation.";
+      tile.emitOpError("Buffer '")
+          << buffer.name()
+          << "' must be defined directly under the device scope. Currently it "
+             "is nested inside a core operation.";
     } else {
       buffer->emitOpError("Buffer '") << buffer.name() 
            << "' must be defined directly under the device scope. ";
