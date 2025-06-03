@@ -63,25 +63,29 @@ int main(int argc, const char *argv[]) {
    */
   cxxopts::Options options("edge_detect");
   test_utils::add_default_options(options);
-  options.add_options()("image,p", "the input image",
-                        cxxopts::value<std::string>())(
-      "outfile,o", "the output image",
-      cxxopts::value<std::string>()->default_value("edgeDetectOut_test.jpg"))(
-      "live,l", "capture from webcam")("video,m",
-                                       "optional video input file name",
-                                       cxxopts::value<std::string>());
+  options.add_options()
+      ("image,p", "the input image",cxxopts::value<std::string>())
+      ("outfile,o", "the output image",
+      cxxopts::value<std::string>()->default_value("edgeDetectOut_test.jpg"))
+      ("live,l", "capture from webcam")
+      ("video,m", "optional video input file name", 
+      cxxopts::value<std::string>())
+      ("device,d", "webcam device number", 
+      cxxopts::value<std::string>()->default_value("0"));
+
   cxxopts::ParseResult vm;
   test_utils::parse_options(argc, argv, options, vm);
 
   std::cout << "Running edgeDetect for resolution: " << testImageWidth << "x"
             << testImageHeight << std::endl;
 
+  int webcam_dev = int(vm.count("device"));
   if (vm.count("live")) {
     std::cout << "Using live webcam input" << std::endl;
 
     cv::VideoCapture cap;
     try {
-      initializeVideoCapture(cap);
+      initializeVideoCapture(cap, webcam_dev);
     } catch (const std::exception &ex) {
       std::cerr << ex.what() << "\n\n";
       return 1;
@@ -256,7 +260,7 @@ int main(int argc, const char *argv[]) {
       cv::VideoCapture cap;
       try {
         if (vm.count("live"))
-          initializeVideoCapture(cap);
+          initializeVideoCapture(cap,webcam_dev);
         else
           initializeVideoFile(cap, vm["video"].as<std::string>());
       } catch (const std::exception &ex) {
