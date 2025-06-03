@@ -14,33 +14,35 @@ This tutorial will cover the following key topics:
 ## Agenda
 
 Tutorial repeated on two dates.  
-Dates: June 3rd and 4th, 2025 (exact times to follow)  
-Location: Milano, Italy  
+Dates: June 3rd and 4th, 2025  
+Location: Politecnico Di Milano, Edificio 3, Room 3.2.2, Milano, Italy  
 
 Prerequisites:
 - Please bring your laptop so that you can SSH into our Ryzen™ AI-enabled miniPCs for the hands-on exercises.
 - Knowledge in basic computer architecture, basic programming (Python), basic algorithms is required.
 - Knowledge of vision pipelines and ML is not necessary but a plus.
 
-### Contents and Timeline (tentative)
+### Contents and Timeline
+
+Location: Building 3, Room 3.2.2
 
 | Time June 3 | Time June 4 | Topic | Presenter | Slides or Code |
 |-------------|-------------|-------|-----------|----------------|
-| 13:30 | 08:30 | Intro to spatial compute and explicit data movement | Kristof | [Programming Guide](../../programming_guide/) |
-| 13:45 | 08:45 | "Hello World" from Ryzen™ AI | Andra | [AI Engine Basic Building Blocks](../../programming_guide/section-1/) |
-| 14:05 | 09:05 | Exercise 1: Build and run your first program | All | [Passthrough](../../programming_examples/basic/passthrough_kernel/) |
-| 14:20 | 09:20 | Data movement on Ryzen™ AI with objectFIFOs | Andra | [Data Movement](../../programming_guide/section-2/) |
-| 14:40 | 09:30 | Exercise 2: Explore AIE DMA capabilities | All | [DMA Transpose](../../programming_examples/basic/dma_transpose/) |
-| 14:50 | 09:50 | Your First Program | Kristof | [My First Program](../../programming_guide/section-3) |
-| 15:20 | 10:20 | Exercise 3: Vector-scalar mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
-| 15:30 | 10:30 | Coffee Break | | |
-| 16:00 | 11:00 | Tracing and performance analysis | Gagan | [Timers](../../programming_guide/section-4/section-4a/) and [Tracing](../../programming_guide/section-4/section-4b/) |
-| 16:20 | 11:20 | Exercise 4: Tracing vector-scalar mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
-| 16:30 | 11:30 | Vectorizing on AIE | Kristof | [Kernel Vectorization](../../programming_guide/section-4/section-4c/) |
-| 16:50 | 11:50 | Exercise 5: Tracing vectorized vector-scalar | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
-| 17:00 | 12:00 | Dataflow and larger designs | Gagan | [Example Vector Designs](../../programming_guide/section-5/) and [Large Example Designs](../../programming_guide/section-6/) |
-| 17:10 | 12:10 | Exercise 6: More examples | All | [Programming Examples](../../programming_examples/) |
-| 17:20 | 12:20 | Close Tutorial | All | |
+| 14:00 | 08:30 | Intro to spatial compute and explicit data movement | Kristof | [Programming Guide](../../programming_guide/) |
+| 14:15 | 08:45 | "Hello World" from Ryzen™ AI | Andra | [AI Engine Basic Building Blocks](../../programming_guide/section-1/) |
+| 14:35 | 09:05 | Exercise 1: Build and run your first program | All | [Passthrough](../../programming_examples/basic/passthrough_kernel/) |
+| 14:50 | 09:20 | Data movement on Ryzen™ AI with objectFIFOs | Andra | [Data Movement](../../programming_guide/section-2/) |
+| 15:00 | 09:30 | Exercise 2: Explore AIE DMA capabilities | All | [DMA Transpose](../../programming_examples/basic/dma_transpose/) |
+| 15:20 | 09:50 | Your First Program | Kristof | [My First Program](../../programming_guide/section-3) |
+| 15:50 | 10:20 | Exercise 3: Vector-scalar mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
+| 16:00 | 10:30 | Coffee Break | | |
+| 16:30 | 11:00 | Tracing and performance analysis | Gagan | [Timers](../../programming_guide/section-4/section-4a/) and [Tracing](../../programming_guide/section-4/section-4b/) |
+| 16:50 | 11:20 | Exercise 4: Tracing vector-scalar mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
+| 17:00 | 11:30 | Vectorizing on AIE | Kristof | [Kernel Vectorization](../../programming_guide/section-4/section-4c/) |
+| 17:20 | 11:50 | Exercise 5: Tracing vectorized vector-scalar | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
+| 17:30 | 12:00 | Dataflow and larger designs | Gagan | [Example Vector Designs](../../programming_guide/section-5/) and [Large Example Designs](../../programming_guide/section-6/) |
+| 17:40 | 12:10 | Exercise 6: More examples | All | [Programming Examples](../../programming_examples/) |
+| 17:50 | 12:20 | Close Tutorial | All | |
 
 ## Organizers
 
