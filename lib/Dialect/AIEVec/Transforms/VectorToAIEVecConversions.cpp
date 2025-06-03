@@ -1091,11 +1091,11 @@ struct LowerVectorTransferReadToAIEUPD
       return failure();
 
     auto updOp = rewriter.create<xilinx::aievec::UPDOp>(
-        readOp.getLoc(), vType, adaptor.getSource(), adaptor.getIndices(), 0, 0,
+        readOp.getLoc(), vType, adaptor.getBase(), adaptor.getIndices(), 0, 0,
         TypedValue<VectorType>(nullptr));
     if (vSize > maxLoadSize) {
       updOp = rewriter.create<xilinx::aievec::UPDOp>(
-          readOp.getLoc(), vType, adaptor.getSource(), adaptor.getIndices(),
+          readOp.getLoc(), vType, adaptor.getBase(), adaptor.getIndices(),
           maxLoadSize, 1, updOp.getResult());
     }
     rewriter.replaceOp(readOp, updOp.getResult());
