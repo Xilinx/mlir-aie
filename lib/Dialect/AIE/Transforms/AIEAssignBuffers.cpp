@@ -475,9 +475,8 @@ struct AIEAssignBufferAddressesPass
     DeviceOp device = getOperation();
     OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
     // Ensure all BufferOps are globally defined at the device level.
-    device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
-      checkBufferScope(buffer, device);
-    });
+    device.walk<WalkOrder::PreOrder>(
+        [&](BufferOp buffer) { checkBufferScope(buffer, device); });
     // Make sure all the buffers have a name
     int counter = 0;
     device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
