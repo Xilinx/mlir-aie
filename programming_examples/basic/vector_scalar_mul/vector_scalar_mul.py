@@ -80,19 +80,22 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (A, F, C):
-        rt.enable_trace(trace_size,
-           coretile_events = [
-            trace_utils.CoreEvent.INSTR_EVENT_0,
-            trace_utils.CoreEvent.INSTR_EVENT_1,
-            trace_utils.CoreEvent.INSTR_VECTOR,
-            trace_utils.PortEvent(trace_utils.CoreEvent.PORT_RUNNING_0, 1, True),
-            trace_utils.PortEvent(trace_utils.CoreEvent.PORT_RUNNING_1, 2, True),
-            trace_utils.PortEvent(trace_utils.CoreEvent.PORT_RUNNING_2, 1, False),
-            trace_utils.CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
-            trace_utils.CoreEvent.LOCK_STALL])
+        rt.enable_trace(
+            trace_size,
+            coretile_events=[
+                trace_utils.CoreEvent.INSTR_EVENT_0,
+                trace_utils.CoreEvent.INSTR_EVENT_1,
+                trace_utils.CoreEvent.INSTR_VECTOR,
+                trace_utils.PortEvent(trace_utils.CoreEvent.PORT_RUNNING_0, 1, True),
+                trace_utils.PortEvent(trace_utils.CoreEvent.PORT_RUNNING_1, 2, True),
+                trace_utils.PortEvent(trace_utils.CoreEvent.PORT_RUNNING_2, 1, False),
+                trace_utils.CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
+                trace_utils.CoreEvent.LOCK_STALL,
+            ],
+        )
         rt.start(worker)
-        rt.fill(of_in.prod(), A)
         rt.fill(of_factor.prod(), F)
+        rt.fill(of_in.prod(), A)
         rt.drain(of_out.cons(), C, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module

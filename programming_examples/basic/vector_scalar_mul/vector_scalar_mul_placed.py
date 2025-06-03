@@ -18,6 +18,7 @@ import aie.utils.trace as trace_utils
 from aie.utils.trace import PortEvent
 from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
 
+
 def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace_size):
 
     if int_bit_width == 16:
@@ -77,7 +78,7 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
                 of_factor.release(ObjectFifoPort.Consume, 1)
 
         # Set up a packet-switched flow from core to shim for tracing information
-        tiles_to_trace = [ComputeTile2,ComputeTile2]
+        tiles_to_trace = [ComputeTile2, ComputeTile2]
         if trace_size > 0:
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
@@ -89,7 +90,7 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
                     tiles_to_trace=tiles_to_trace,
                     shim=ShimTile,
                     trace_size=trace_size,
-                        coretile_events=[
+                    coretile_events=[
                         CoreEvent.LOCK_STALL,
                         CoreEvent.INSTR_EVENT_1,
                         CoreEvent.INSTR_VECTOR,
@@ -104,18 +105,18 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
                         MemEvent.DMA_MM2S_0_START_TASK,
                         MemEvent.DMA_S2MM_1_START_TASK,
                         MemEvent.DMA_MM2S_1_START_TASK,
-                        MemEvent.LOCK_3_REL, 
+                        MemEvent.LOCK_3_REL,
                         MemEvent.DMA_MM2S_0_MEMORY_STARVATION,
                         MemEvent.LOCK_SEL0_ACQ_GE,
                         MemEvent.LOCK_SEL1_ACQ_EQ,
                     ],
                 )
 
-            in_task = shim_dma_single_bd_task(
-                of_in, A, sizes=[1, 1, 1, tensor_size], issue_token=True
-            )
             in_factor_task = shim_dma_single_bd_task(
                 of_factor, F, sizes=[1, 1, 1, 1], issue_token=True
+            )
+            in_task = shim_dma_single_bd_task(
+                of_in, A, sizes=[1, 1, 1, tensor_size], issue_token=True
             )
             out_task = shim_dma_single_bd_task(
                 of_out, C, sizes=[1, 1, 1, tensor_size], issue_token=True
