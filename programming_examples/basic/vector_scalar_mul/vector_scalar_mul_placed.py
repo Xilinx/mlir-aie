@@ -94,9 +94,9 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
                         CoreEvent.INSTR_EVENT_1,
                         CoreEvent.INSTR_VECTOR,
                         PortEvent(CoreEvent.PORT_RUNNING_0, 1, True),  # master(1)
-                        PortEvent(CoreEvent.PORT_RUNNING_1, 1, False),  # slave(1)
+                        PortEvent(CoreEvent.PORT_RUNNING_1, 2, True),  # master(2)
+                        PortEvent(CoreEvent.PORT_RUNNING_2, 1, False),  # slave(1)
                         CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
-                        CoreEvent.INSTR_LOCK_RELEASE_REQ,
                         CoreEvent.INSTR_EVENT_0,
                     ],
                     coremem_events=[
@@ -110,8 +110,6 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
                         MemEvent.LOCK_SEL1_ACQ_EQ,
                     ],
                 )
-                # npu_maskwrite32( address=0x000001DE00,mask=0b1 ,value=0b1, row=2, column=0 )
-                
 
             in_task = shim_dma_single_bd_task(
                 of_in, A, sizes=[1, 1, 1, tensor_size], issue_token=True
