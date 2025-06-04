@@ -39,6 +39,7 @@ dtype_out?=i32
 trace_size?=65536
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+colshift ?= $(if $(filter npu,$(devicename)),1,0)
 
 ifeq ($(dtype_in),bf16)
 	dtype_in_cpp=std::bfloat16_t
@@ -155,7 +156,7 @@ trace: ${targetname}.exe ${trace_xclbin_target} ${insts_target}
 
 .PHONY: parse_trace
 parse_trace:
-	${srcdir}/../../../utils/parse_trace.py --input trace.txt --mlir ${trace_mlir_target} --colshift 1 --output trace_mm.json
+	${srcdir}/../../../utils/parse_trace.py --input trace.txt --mlir ${trace_mlir_target} --colshift ${col_shift} --output trace_mm.json
 
 .PHONY: clean
 clean: clean_trace
