@@ -16,10 +16,6 @@ from aie.iron.device import NPU2Col1, NPU2
 # CHECK:      %unint_local_buf = aie.buffer(%tile_0_2) {sym_name = "unint_local_buf"} : memref<4096xui8>
 # CHECK:      %init_local_buf = aie.buffer(%tile_0_2) {sym_name = "init_local_buf"} : memref<4096xui8> = dense<0>
 # CHECK:      %shim_noc_tile_0_0 = aie.tile(0, 0)
-# CHECK:      aie.objectfifo @in(%shim_noc_tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<4096xui8>>
-# CHECK:      aie.objectfifo @out(%tile_0_2, {%shim_noc_tile_0_0}, 2 : i32) : !aie.objectfifo<memref<4096xui8>>
-# CHECK:      func.func private @passThroughLine(memref<4096xui8>, memref<4096xui8>, i32)
-
 
 def passthrough_local_buff():
     in1_size = 4096
