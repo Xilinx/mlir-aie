@@ -451,7 +451,8 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
 }
 
 LogicalResult checkBufferScope(BufferOp buffer, DeviceOp device) {
-  // Buffers are not allowed to be inside the core without being statically initialized.
+  // Buffers are not allowed to be inside the core without being statically
+  // initialized.
   Operation *parent = buffer->getParentOp();
   // Allowed to be in MemTile
   if (!isa<DeviceOp>(parent) && !isa<MemTileDMAOp>(parent) &&
