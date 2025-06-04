@@ -32,8 +32,7 @@ ifeq ($(devicename),npu2)
 ifeq ($(use_chess),1)
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -c $< -o ${@F}
 else
-# The peano undef workaround should be removed when the issue is fixed
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ -DPEANO_UNDEF_WORKAROUND ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
 endif
 else
 	echo "Device type not supported in this example"

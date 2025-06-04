@@ -10,14 +10,6 @@
 
 #include <aie_api/aie.hpp>
 
-// This is a workaround for a missing definition in peano.
-// Will have to be removed when the issue is fixed.
-#ifdef PEANO_UNDEF_WORKAROUND
-inline __attribute__((always_inline)) v64bfp16ebs8 undef_v64bfp16ebs8() {
-  return v64bfp16ebs8();
-};
-#endif
-
 extern "C" {
 
 // Note that bfp vector types are referenced differently in IRON and in the AIE
