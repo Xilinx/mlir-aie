@@ -4,7 +4,7 @@ These instructions will guide you through everything required for building and e
 
 You will set up a Windows subsystem for Linux (WSL) Ubuntu install, which will be used for building NPU device code. For building the host (x86) code, you will use MS Visual Code Community but this can be invoked from within WSL so you should be able to compile and run code entirely within WSL. 
 
-- Rely on WSL Ubuntu 22.04 LTS for tool install and to build and run our mlir-aie tools
+- Rely on WSL Ubuntu 24.04 LTS for tool install and to build and run our mlir-aie tools
 - Rely on MS Visual Studio 17 2022 to natively build the host code (aka test.cpp) but this can be invoked from within WSL
 
 
@@ -18,17 +18,18 @@ You will set up a Windows subsystem for Linux (WSL) Ubuntu install, which will b
 
 
 ## Prerequisites
-### mlir-aie tools: WSL Ubuntu 22.04
+### mlir-aie tools: WSL Ubuntu 24.04
 All steps in WSL Ubuntu terminal.
 
-1. Prepare WSL2 with Ubuntu 22.04:
+1. Prepare WSL2 with Ubuntu 24.04:
     - Install packages (after apt-get update):
       ```
         sudo apt install \
         build-essential clang clang-14 lld lld-14 cmake \
         python3-venv python3-pip \
         libxrender1 libxtst6 libxi6 \
-        mingw-w64-tools
+        mingw-w64-tools \
+        gcc-13 g++-13
       ```
     - generate locales
       ```
