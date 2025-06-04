@@ -1,19 +1,31 @@
 # Copyright (C) 2025, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# RUN: %python %s | FileCheck %s
 import numpy as np
 import argparse
 import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, LocalBuffer
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, NPU2
+from aie.iron.device import NPU2Col1, NPU2
+
+# CHECK:  module {
+# CHECK:    aie.device(npu2_1col) {
+# CHECK:      %tile_0_2 = aie.tile(0, 2)
+# CHECK:      %unint_local_buf = aie.buffer(%tile_0_2) {sym_name = "unint_local_buf"} : memref<4096xui8>
+# CHECK:      %init_local_buf = aie.buffer(%tile_0_2) {sym_name = "init_local_buf"} : memref<4096xui8> = dense<0>
+# CHECK:      %shim_noc_tile_0_0 = aie.tile(0, 0)
+# CHECK:      aie.objectfifo @in(%shim_noc_tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<4096xui8>>
+# CHECK:      aie.objectfifo @out(%tile_0_2, {%shim_noc_tile_0_0}, 2 : i32) : !aie.objectfifo<memref<4096xui8>>
+# CHECK:      func.func private @passThroughLine(memref<4096xui8>, memref<4096xui8>, i32)
 
 
-def passthrough_local_buff(dev, in1_size, out_size, trace_size):
+def passthrough_local_buff():
+    in1_size = 4096
+    out_size = 4096
     in1_dtype = np.uint8
     out_dtype = np.uint8
-
-    enable_trace = 1 if trace_size > 0 else 0
 
     # Define tensor types
     line_size = in1_size // in1_dtype(0).nbytes
@@ -53,53 +65,17 @@ def passthrough_local_buff(dev, in1_size, out_size, trace_size):
     my_worker = Worker(
         core_fn,
         [of_in.cons(), of_out.prod(), passthrough_fn],
-        trace=enable_trace,
     )
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
-        rt.enable_trace(trace_size)
         rt.start(my_worker)
         rt.fill(of_in.prod(), a_in)
         rt.drain(of_out.cons(), b_out, wait=True)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(NPU2Col1(), rt).resolve_program(SequentialPlacer())
 
 
-p = argparse.ArgumentParser()
-p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
-p.add_argument(
-    "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
-)
-p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
-p.add_argument(
-    "-t",
-    "--trace_size",
-    required=False,
-    dest="trace_size",
-    default=0,
-    help="Trace buffer size",
-)
-opts = p.parse_args(sys.argv[1:])
-
-if opts.device == "npu":
-    dev = NPU1Col1()
-elif opts.device == "npu2":
-    dev = NPU2()
-else:
-    raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
-
-in1_size = int(opts.in1_size)
-if in1_size % 64 != 0 or in1_size < 512:
-    print(
-        "In1 buffer size ("
-        + str(in1_size)
-        + ") must be a multiple of 64 and greater than or equal to 512"
-    )
-    raise ValueError
-out_size = int(opts.out_size)
-trace_size = int(opts.trace_size)
-
-print(passthrough_local_buff(dev, in1_size, out_size, trace_size))
+print(passthrough_local_buff())
