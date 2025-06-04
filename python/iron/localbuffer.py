@@ -64,16 +64,15 @@ class LocalBuffer(buffer):
         device_op = get_device_op_from_module()
         block = device_op.regions[0].blocks[0]
 
+        # Count number of tile ops and track last one
+        tile_count = 0
         last_tile_op = None
         for op in block.operations:
             if op.name == "aie.tile":
+                tile_count += 1
                 last_tile_op = op
 
-        ip = (
-            InsertionPoint(last_tile_op)
-            if last_tile_op
-            else InsertionPoint.at_block_begin(block)
-        )
+        ip = None if tile_count == 1 else InsertionPoint(last_tile_op)
 
         super().__init__(
             tile=current_core_placement,
