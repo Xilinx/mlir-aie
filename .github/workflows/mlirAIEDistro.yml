@@ -14,7 +14,7 @@ on:
       DEBUG_OS:
         description: 'which runner os to run the tmate action in (if the tmate action is run)'
         type: string
-        default: 'windows-2019'
+        default: 'windows-2022'
         required: false
       DEBUG_ARCH:
         description: 'which runner arch to run the tmate action in (if the tmate action is run)'
@@ -80,7 +80,7 @@ jobs:
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: ON
 
@@ -103,7 +103,7 @@ jobs:
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
@@ -176,7 +176,7 @@ jobs:
         
         ls "${{ steps.setup_base.outputs.WORKSPACE_ROOT }}"
         
-        if [ x"${{ matrix.OS }}" == x"windows-2019" ]; then
+        if [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
           WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}\utils\mlir_aie_wheels"
         else
           WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/mlir_aie_wheels"
@@ -307,7 +307,7 @@ jobs:
         fi
 
     - name: rename windows
-      if: ${{ matrix.OS == 'windows-2019' }}
+      if: ${{ matrix.OS == 'windows-2022' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
         ls wheelhouse/mlir_aie*whl | Rename-Item -NewName {$_ -replace 'cp310-cp310', 'py3-none' }
@@ -333,7 +333,7 @@ jobs:
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: ON
 
@@ -346,7 +346,7 @@ jobs:
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
@@ -411,7 +411,7 @@ jobs:
 #            ARCH: aarch64
 #            ENABLE_RTTI: ON
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: ON
 
@@ -432,7 +432,7 @@ jobs:
 #            ARCH: aarch64
 #            ENABLE_RTTI: OFF
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
