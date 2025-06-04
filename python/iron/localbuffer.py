@@ -8,8 +8,11 @@
 from collections import defaultdict
 import numpy as np
 
+from .. import ir
+from ..ir import Module, Context, InsertionPoint, Location, Operation
 from ..dialects.aie import buffer
 from .worker import Worker
+from .program import CurrentDeviceOp, CurrentModule
 from .device import Tile
 
 
@@ -49,11 +52,27 @@ class LocalBuffer(buffer):
 
         if not name:
             name = f"buf_{current_core_placement.col}_{current_core_placement.row}_{self.__get_index(current_core_placement)}"
+
+        device_op = get_device_op_from_module()
+        block = device_op.regions[0].blocks[0]
+
+        last_tile_op = None
+        for op in block.operations:
+            if op.name == "aie.tile":
+                last_tile_op = op
+
+        ip = (
+            InsertionPoint(last_tile_op)
+            if last_tile_op
+            else InsertionPoint.at_block_begin(block)
+        )
+
         super().__init__(
             tile=current_core_placement,
             datatype=type,
             name=name,
             initial_value=initial_value,
+            ip=ip,
         )
 
     @classmethod
@@ -61,3 +80,14 @@ class LocalBuffer(buffer):
         idx = cls.__buf_tile_index[placement]
         cls.__buf_tile_index[placement] += 1
         return idx
+
+
+def get_device_op_from_module():
+    module = CurrentModule.get()
+    if module is None:
+        raise RuntimeError("No MLIR module context available")
+    # The device op should be the first (or only) op in the module's body
+    for op in module.body.operations:
+        if op.name == "aie.device":
+            return op
+    raise RuntimeError("No aie.device op found in module")
