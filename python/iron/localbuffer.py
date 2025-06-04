@@ -51,8 +51,16 @@ class LocalBuffer(buffer):
             raise ValueError("Can only instantiate Buffer() in a worker function.")
 
         if not name:
-            name = f"buf_{current_core_placement.col}_{current_core_placement.row}_{self.__get_index(current_core_placement)}"
+            col = getattr(current_core_placement, "col", None)
+            row = getattr(current_core_placement, "row", None)
+            if col is not None and hasattr(col, "value"):
+                col = col.value
+            if row is not None and hasattr(row, "value"):
+                row = row.value
+            idx = self.__get_index(current_core_placement)
+            name = f"buf_{col}_{row}_{idx}"
 
+        # if initial_value is None:
         device_op = get_device_op_from_module()
         block = device_op.regions[0].blocks[0]
 
