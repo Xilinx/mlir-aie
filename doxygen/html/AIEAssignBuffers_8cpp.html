@@ -174,6 +174,8 @@ Functions</h2></td></tr>
 <tr class="separator:a3085fa7fd9ea8990bb546474d4d101b2"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1a6e025bd152548a88e241fcc1866c15" id="r_a1a6e025bd152548a88e241fcc1866c15"><td class="memItemLeft" align="right" valign="top">LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="AIEAssignBuffers_8cpp.html#a1a6e025bd152548a88e241fcc1866c15">simpleBankAwareAllocation</a> (TileOp tile)</td></tr>
 <tr class="separator:a1a6e025bd152548a88e241fcc1866c15"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a28f31b961f5da483300bd7a4bc79726f" id="r_a28f31b961f5da483300bd7a4bc79726f"><td class="memItemLeft" align="right" valign="top">LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="AIEAssignBuffers_8cpp.html#a28f31b961f5da483300bd7a4bc79726f">checkBufferScope</a> (BufferOp buffer, DeviceOp device)</td></tr>
+<tr class="separator:a28f31b961f5da483300bd7a4bc79726f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Macro Definition Documentation</h2>
 <a id="ad78e062f62e0d6e453941fb4ca843e4d" name="ad78e062f62e0d6e453941fb4ca843e4d"></a>
@@ -228,7 +230,7 @@ Functions</h2></td></tr>
 
 <p class="reference">References <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00025">checkAndPrintOverflow()</a>, and <a class="el" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">xilinx::AIE::getTargetModel()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00461">AIEAssignBufferAddressesPass::runOnOperation()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00478">AIEAssignBufferAddressesPass::runOnOperation()</a>.</p>
 
 </div>
 </div>
@@ -423,6 +425,38 @@ Functions</h2></td></tr>
 </div><div class="memdoc">
 
 <p class="definition">Definition at line <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00294">294</a> of file <a class="el" href="AIEAssignBuffers_8cpp_source.html">AIEAssignBuffers.cpp</a>.</p>
+
+</div>
+</div>
+<a id="a28f31b961f5da483300bd7a4bc79726f" name="a28f31b961f5da483300bd7a4bc79726f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a28f31b961f5da483300bd7a4bc79726f">&#9670;&#160;</a></span>checkBufferScope()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">LogicalResult checkBufferScope </td>
+          <td>(</td>
+          <td class="paramtype">BufferOp&#160;</td>
+          <td class="paramname"><em>buffer</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">DeviceOp&#160;</td>
+          <td class="paramname"><em>device</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00453">453</a> of file <a class="el" href="AIEAssignBuffers_8cpp_source.html">AIEAssignBuffers.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00478">AIEAssignBufferAddressesPass::runOnOperation()</a>.</p>
 
 </div>
 </div>
@@ -658,14 +692,14 @@ Functions</h2></td></tr>
 
 <p class="reference">References <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00166">checkAndAddBufferWithAddress()</a>, <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00197">checkAndAddBufferWithMemBank()</a>, <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00025">checkAndPrintOverflow()</a>, <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00345">deAllocationBuffers()</a>, <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00139">fillBankLimits()</a>, <a class="el" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">xilinx::AIE::getTargetModel()</a>, <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00214">printMemMap()</a>, and <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00263">setBufferAddress()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00461">AIEAssignBufferAddressesPass::runOnOperation()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00478">AIEAssignBufferAddressesPass::runOnOperation()</a>.</p>
 
 </div>
 </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Jun 4 2025 17:12:12 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Jun 5 2025 15:16:37 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

@@ -14,5 +14,7 @@ var searchData=
   ['controlflow_2epy_11',['controlflow.py',['../controlflow_8py.html',1,'']]],
   ['core_5ffn_12',['core_fn',['../classiron_1_1worker_1_1Worker.html#a15ecd070e55b67be77d2bdce2cce9476',1,'iron::worker::Worker']]],
   ['create_5fclass_13',['create_class',['../namespaceiron_1_1device_1_1device.html#a75a6d3df1229a191db361283e9b81b6d',1,'iron::device::device']]],
-  ['current_5fcore_5fplacement_14',['current_core_placement',['../classiron_1_1worker_1_1Worker.html#a24408a7c343cbbbd8d599f6a0ea94492',1,'iron::worker::Worker']]]
+  ['current_5fcore_5fplacement_14',['current_core_placement',['../classiron_1_1worker_1_1Worker.html#a24408a7c343cbbbd8d599f6a0ea94492',1,'iron::worker::Worker']]],
+  ['currentdeviceop_15',['CurrentDeviceOp',['../namespaceiron_1_1program.html#ae7872e81e58e65d63ef3115cdf65bd33',1,'iron::program']]],
+  ['currentmodule_16',['CurrentModule',['../namespaceiron_1_1program.html#a74c11afbd168bb728406b196b97fe8e7',1,'iron::program']]]
 ];

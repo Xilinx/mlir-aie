@@ -5,5 +5,7 @@ var searchData=
   ['cols_2',['cols',['../classiron_1_1device_1_1device_1_1NPUBase.html#a9715bd072b23ee616b1bc6846beed41c',1,'iron::device::device::NPUBase']]],
   ['config_3',['config',['../namespaceiron_1_1config.html#a36e5aadbd4b10849483dc5d7e0897ea0',1,'iron::config']]],
   ['core_5ffn_4',['core_fn',['../classiron_1_1worker_1_1Worker.html#a15ecd070e55b67be77d2bdce2cce9476',1,'iron::worker::Worker']]],
-  ['current_5fcore_5fplacement_5',['current_core_placement',['../classiron_1_1worker_1_1Worker.html#a24408a7c343cbbbd8d599f6a0ea94492',1,'iron::worker::Worker']]]
+  ['current_5fcore_5fplacement_5',['current_core_placement',['../classiron_1_1worker_1_1Worker.html#a24408a7c343cbbbd8d599f6a0ea94492',1,'iron::worker::Worker']]],
+  ['currentdeviceop_6',['CurrentDeviceOp',['../namespaceiron_1_1program.html#ae7872e81e58e65d63ef3115cdf65bd33',1,'iron::program']]],
+  ['currentmodule_7',['CurrentModule',['../namespaceiron_1_1program.html#a74c11afbd168bb728406b196b97fe8e7',1,'iron::program']]]
 ];
