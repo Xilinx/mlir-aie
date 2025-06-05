@@ -3,5 +3,5 @@
 //
 // REQUIRES: ryzen_ai, peano 
 //
-// RUN: %run_on_npu python3 %S/aie2p.py
-// RUN: %run_on_2npu python3 %S/aie2p.py
+// RUN: %run_on_npu1% python3 %S/aie2p.py
+// RUN: %run_on_npu2% python3 %S/aie2p.py
