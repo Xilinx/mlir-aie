@@ -306,7 +306,8 @@ jobs:
       shell: bash
       id: build_native_tools_wheel
       run: |
-        
+        pip install setuptools
+
         for TOOL in "llvm-tblgen" "mlir-tblgen" "mlir-linalg-ods-yaml-gen" "mlir-pdll" "llvm-config" "FileCheck"; do
           if [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
             TOOL="$TOOL.exe"
