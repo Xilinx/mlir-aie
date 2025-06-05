@@ -26,14 +26,15 @@ def shuffle_transpose(dev, M, N, m, n, r, s):
     # Define kernel function
     kernel_func = Kernel(
         f"transpose", "transpose.o", [tensor_ty, tensor_ty]
+        #f"transpose_inner", "transpose.o", [tensor_ty, tensor_ty]
     )
 
     # Data flow with ObjectFifos
     tap_in_L2L1 = TensorAccessPattern(
         tensor_dims=(M, N),
         offset=0,
-        sizes=[1, m, n//s, s],
-        strides=[0, s, s*m, 1]
+        sizes=[m, n//s, s],
+        strides=[s, s*m, 1]
     )
     tap_in_L3L2 = TensorTiler2D.group_tiler(
         (M, N), (m, n), (M // m, N // n), 
@@ -57,7 +58,7 @@ def shuffle_transpose(dev, M, N, m, n, r, s):
     # A worker to perform the task
     my_worker = Worker(
         core_fn,
-        fn_args=[in_L2L1_fifo.cons(), out_fifo.prod(), kernel_func],
+        fn_args=[in_L2L1_fifo.cons(dims_from_stream=tap_in_L2L1.transformation_dims), out_fifo.prod(), kernel_func],
     )
 
     # The tensor access pattern of the input/output tensors (tiling)

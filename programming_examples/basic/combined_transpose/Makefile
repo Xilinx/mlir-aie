@@ -33,8 +33,9 @@ M?=16
 N?=16
 m?=16
 n?=16
-r?=8
-s?=16
+r?=4
+s?=4
+#s?=8
 
 kernel=transpose
 
