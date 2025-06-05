@@ -54,49 +54,85 @@ static_assert(IMPLIES(sizeof(DTYPE) == 64,
 
 extern "C" {
 
-void transpose(DTYPE *__restrict__ in_ptr, DTYPE *__restrict__ out_ptr) {
-  // in and out may not alias, i.e. you cannot transpose in-place with this kernel
+void copy(DTYPE *__restrict__ in_ptr, DTYPE *__restrict__ out_ptr) {
+  DTYPE * const in_end_ptr = in_ptr + OUTER_SIZE;
+  for(; in_ptr < in_end_ptr; in_ptr += INNER_SIZE, out_ptr += INNER_SIZE) {
+    aie::vector<DTYPE, INNER_SIZE> in = aie::load_v<INNER_SIZE>(in_ptr);
+    aie::store_v(out_ptr, in);
+  }
+}
 
-  // first, each r*s-sized subtile gets transposed within itself
+void transpose_inner(DTYPE *__restrict__ in_ptr, DTYPE *__restrict__ out_ptr) {
   for (unsigned row = 0; row < DIM_m; row += DIM_r) {
     for (unsigned col = 0; col < DIM_n; col += DIM_s) {
       aie::vector<DTYPE, INNER_SIZE> in = aie::load_v<INNER_SIZE>(in_ptr);
       aie::vector<DTYPE, INNER_SIZE> transposed = aie::transpose(in, DIM_r, DIM_s);
       aie::store_v(out_ptr, transposed);
+      in_ptr += INNER_SIZE;
+      out_ptr += INNER_SIZE;
     }
   }
+}
 
+void transpose_outer(DTYPE *__restrict__ in_ptr, DTYPE *__restrict__ out_ptr) {
+  DTYPE * const orig_in_ptr = in_ptr;
+  DTYPE * const in_ptr_end = in_ptr + OUTER_SIZE;
+  DTYPE * const orig_out_ptr = out_ptr;
   // with r*s-sized subtiles transposed, we must interleave adjacent tiles in the same column;
   // in the first step, this creates (2r)*s-sized tiles which are transposed, then we
   // interleave (2r)*s-sized tiles with each other to get (4r)*s-sized tiles that are transposed,
   // etc., until the whole m*n-sized tile is transposed completely.
   unsigned cur_r = DIM_r;
   unsigned cur_s = DIM_s;
-  for (unsigned tile_rows_remaining = DIM_m / DIM_r; tile_rows_remaining > 0; tile_rows_remaining /= 2) {
-    unsigned tile_cols_remaining = DIM_n / cur_s;
-    for (unsigned tile_row = 0; tile_row < tile_rows_remaining; tile_row++) {
-      for (unsigned tile_col = 0; tile_col < tile_cols_remaining; tile_col++) {
-        unsigned row = tile_row * cur_r;
-        unsigned col = tile_col * cur_s;
-        DTYPE *upper_ptr = in_ptr + row * DIM_n + col;
-        DTYPE *lower_ptr = in_ptr + (row + 1) * DIM_n + col;
 
-        aie::vector<DTYPE, INNER_SIZE> upper = aie::load_v<INNER_SIZE>(upper_ptr);
-        aie::vector<DTYPE, INNER_SIZE> lower = aie::load_v<INNER_SIZE>(lower_ptr);
+  // invariant: cur_r*cur_s-sized subtiles are always already transposed (column-major within themselves)
+  for (unsigned tile_rows_remaining = DIM_m / DIM_r; tile_rows_remaining > 1; tile_rows_remaining /= 2) {
+
+    in_ptr = orig_in_ptr;
+    out_ptr = orig_out_ptr;
+
+    DTYPE *upper_in_ptr = in_ptr;
+    DTYPE *lower_in_ptr = in_ptr + (cur_r * cur_s);
+
+    while (lower_in_ptr < in_ptr_end) {
+
+      const unsigned n_interleave_ops = (cur_r * cur_s) / INNER_SIZE;
+      for (unsigned tile_col = 0; tile_col < n_interleave_ops; tile_col++) {
+
+        aie::vector<DTYPE, INNER_SIZE> upper = aie::load_v<INNER_SIZE>(upper_in_ptr);
+        aie::vector<DTYPE, INNER_SIZE> lower = aie::load_v<INNER_SIZE>(lower_in_ptr);
         std::pair<aie::vector<DTYPE, INNER_SIZE>, aie::vector<DTYPE, INNER_SIZE>> transposed = aie::interleave_zip(upper, lower, cur_r);
         auto [left, right] = transposed;
-        aie::store_v(upper_ptr, left);
-        aie::store_v(lower_ptr, right);
+        aie::store_v(out_ptr, left);
+        out_ptr += INNER_SIZE;
+        aie::store_v(out_ptr, right);
+        out_ptr += INNER_SIZE;
+
+        upper_in_ptr += INNER_SIZE;
+        lower_in_ptr += INNER_SIZE;
+
       }
+
+      upper_in_ptr += (cur_r * cur_s);
+      lower_in_ptr += (cur_r * cur_s);
+
     }
 
+    in_ptr = orig_in_ptr;
+    out_ptr = orig_out_ptr;
+    copy(out_ptr, in_ptr);
     // We merged two tiles across rows, so the resulting tile is twice as tall.
     cur_r *= 2;
-    // Since we have limited vector size capacity, we divide the number of columns (s) in a tile
-    // by two to retain the overall vector size. Conceptually, you can also picture the tiles
-    // growing as we transpose more and more and ignore this reduction in s.
-    cur_s /= 2;
+    cur_s *= 2;
   }
 
 }
+
+void transpose(DTYPE *__restrict__ in_ptr, DTYPE *__restrict__ out_ptr) {
+  // in and out may not alias, i.e. you cannot transpose in-place with this kernel
+  transpose_inner(in_ptr, out_ptr);
+  copy(out_ptr, in_ptr);
+  transpose_outer(in_ptr, out_ptr);
+}
+
 }
