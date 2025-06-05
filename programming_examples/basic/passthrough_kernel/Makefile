@@ -14,7 +14,7 @@ include ${srcdir}/../../makefile-common
 VPATH := ${srcdir}/../../../aie_kernels/generic
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
-targetname = passthrough_kernel
+targetname = single_col
 in1_size = 4096 # in bytes
 out_size = 4096 # in bytes, should always be equal to in1_size
 trace_size = 8192
