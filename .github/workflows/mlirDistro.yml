@@ -158,6 +158,10 @@ jobs:
         MATRIX_ARCH: ${{ matrix.ARCH }}
         EXTRA_KEY: mlir-distro-enable-rtti-${{ matrix.ENABLE_RTTI }}
 
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
     # default workspace is repo root but we're not build mlir-aie here, we're building llvm+mlir
     # and thus llvm-project needs to be adjacent to utils/mlir_wheels/setup.py
     - name: Shift workspace root
