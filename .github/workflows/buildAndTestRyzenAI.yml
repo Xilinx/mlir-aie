@@ -63,7 +63,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: "true"
+          submodules: "recursive"
 
       # Launch an ssh session via a proxy server if there is a need
       # for debug. This seems to live for 35 min max
@@ -134,7 +134,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: "true"
+          submodules: "recursive"
 
       # Launch an ssh session via a proxy server if there is a need
       # for debug. This seems to live for 35 min max
