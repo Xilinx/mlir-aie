@@ -80,9 +80,7 @@ def trace_to_json(trace_file: str, mlir_file: str, output_name: str = "trace.jso
         "--input",
         trace_file,
         "--mlir",
-        mlir_file,
-        "--colshift",
-        "1",
+        mlir_file
     ]
 
     try:
