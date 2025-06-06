@@ -16,3 +16,4 @@ matplotlib
 notebook
 pre-commit
 nanobind>=2.5
+pylint
