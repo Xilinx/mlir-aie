@@ -1,3 +1,11 @@
+// (c) Copyright 2023 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// RUN: mkdir -p test
+// RUN: cd test
+// RUN: make -f %S/Makefile clean
+// RUN: make -f %S/Makefile 
+
 module {
   aie.device(npu1_1col) {
     %tile_0_2 = aie.tile(0, 2)
