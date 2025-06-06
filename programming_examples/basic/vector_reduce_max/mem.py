@@ -61,11 +61,12 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
             )
 
         # Tile declarations
-        ShimTile = tile(1, 0)
-        MemTile = tile(1, 1)
-        # CompTile = tile(1, 2)
+        col = 1
+        ShimTile = tile(col, 0)
+        MemTile = tile(col, 1)
+        # CompTile = tile(col+1, 2)
 
-        cores = [tile(1, 2 + i) for i in range(n_cores)]
+        cores = [tile(col, 2 + i) for i in range(n_cores)]
 
         inA_fifos = []
         outC_fifos = []
