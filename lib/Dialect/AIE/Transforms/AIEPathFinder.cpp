@@ -28,8 +28,8 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   maxCol = 0;
   maxRow = 0;
   for (TileOp tileOp : device.getOps<TileOp>()) {
-    maxCol = std::max(maxCol, tileOp.colIndex());
-    maxRow = std::max(maxRow, tileOp.rowIndex());
+    maxCol = device.getTargetModel().columns() - 1;
+    maxRow = device.getTargetModel().rows() - 1;
   }
 
   pathfinder->initialize(maxCol, maxRow, device.getTargetModel());
