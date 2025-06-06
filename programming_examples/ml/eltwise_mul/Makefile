@@ -21,9 +21,14 @@ trace_size = 8192
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src=${targetname}.py
 use_placed?=0
+use_1col?=0
 
 ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
+endif
+
+ifeq (${use_1col}, 1)
+aie_py_src=${targetname}_1col.py
 endif
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
