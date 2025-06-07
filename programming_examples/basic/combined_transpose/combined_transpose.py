@@ -15,7 +15,7 @@ from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 
 
-def shuffle_transpose(dev, M, N, m, n, r, s):
+def shuffle_transpose(dev, M, N, m, n, s):
 
     assert M % m == 0
     assert N % n == 0
@@ -26,15 +26,27 @@ def shuffle_transpose(dev, M, N, m, n, r, s):
     # Define kernel function
     kernel_func = Kernel(
         f"transpose", "transpose.o", [tensor_ty, tensor_ty]
-        #f"transpose_inner", "transpose.o", [tensor_ty, tensor_ty]
+        #f"copy", "transpose.o", [tensor_ty, tensor_ty]
     )
 
     # Data flow with ObjectFifos
+    # m [<size = 2, stride = 4>, <size = 16, stride = 16>, <size = 4, stride = 1>]}
+
+    # Dimension of the untransposed submatrices
+    s = 4
+
+    # Dim 0: linear transfer
+    # Dim 1: element #s will be in s-th row in transposed matrix, hence at offset s*n
+    # Dim 2: fills out the first column
+    # Dim 3: repeat for each column
+
     tap_in_L2L1 = TensorAccessPattern(
         tensor_dims=(M, N),
         offset=0,
-        sizes=[m, n//s, s],
-        strides=[s, s*m, 1]
+        #sizes  =[n//s, m, s],
+        #strides=[   s, n, 1]
+        sizes   = [m//s,  s, n//s, s],
+        strides = [s,     m,  s*m, 1]
     )
     tap_in_L3L2 = TensorTiler2D.group_tiler(
         (M, N), (m, n), (M // m, N // n), 
@@ -42,7 +54,7 @@ def shuffle_transpose(dev, M, N, m, n, r, s):
     )[0]
 
     in_L3L2_fifo = ObjectFifo(tensor_ty, name="in_L3L2_fifo")
-    in_L2L1_fifo = in_L3L2_fifo.cons().forward(obj_type=tensor_ty, name="in_L2L1_fifo")
+    in_L2L1_fifo = in_L3L2_fifo.cons(dims_from_stream=tap_in_L2L1.transformation_dims).forward(obj_type=tensor_ty, name="in_L2L1_fifo")
     out_fifo = ObjectFifo(tensor_ty, name="out_fifo")
 
     # The task for a core to perform
@@ -58,7 +70,7 @@ def shuffle_transpose(dev, M, N, m, n, r, s):
     # A worker to perform the task
     my_worker = Worker(
         core_fn,
-        fn_args=[in_L2L1_fifo.cons(dims_from_stream=tap_in_L2L1.transformation_dims), out_fifo.prod(), kernel_func],
+        fn_args=[in_L2L1_fifo.cons(), out_fifo.prod(), kernel_func],
     )
 
     # The tensor access pattern of the input/output tensors (tiling)
@@ -98,7 +110,6 @@ if __name__ == "__main__":
     parser.add_argument("N", type=int, help="Number of cols")
     parser.add_argument("m", type=int, help="Outer tile rows")
     parser.add_argument("n", type=int, help="Outer tile cols")
-    parser.add_argument("r", type=int, help="Inner tile rows")
     parser.add_argument("s", type=int, help="Inner tile cols")
 
     args = parser.parse_args()
@@ -114,6 +125,6 @@ except ValueError:
     print("Argument has inappropriate value")
 
 module = shuffle_transpose(
-    dev, args.M, args.N, args.m, args.n, args.r, args.s
+    dev, args.M, args.N, args.m, args.n, args.s
 )
 print(module)

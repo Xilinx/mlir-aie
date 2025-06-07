@@ -33,7 +33,6 @@ M?=16
 N?=16
 m?=16
 n?=16
-r?=4
 s?=4
 #s?=8
 
@@ -47,14 +46,14 @@ all: ${xclbin_target} ${host_target}
 build/${kernel}.o: ${srcdir}/aie_kernels/aie2/${kernel}.cc
 	mkdir -p ${@D}
 ifeq (${devicename}, npu2)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DDIM_m=$m -DDIM_n=$n -DDIM_r=$r -DDIM_s=$s -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DDIM_m=$m -DDIM_n=$n -DDIM_s=$s -c $< -o ${@F}
 else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DDIM_m=$m -DDIM_n=$n -DDIM_r=$r -DDIM_s=$s -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DDIM_m=$m -DDIM_n=$n -DDIM_s=$s -c $< -o ${@F}
 endif
 
 ${mlir_target}: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${devicename} $M $N $m $n $r $s ${pyflags} > $@
+	python3 $< ${devicename} $M $N $m $n $s ${pyflags} > $@
 
 ${xclbin_target}: ${mlir_target} build/${kernel}.o
 	mkdir -p ${@D}
