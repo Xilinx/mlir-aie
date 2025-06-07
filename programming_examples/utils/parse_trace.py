@@ -4,7 +4,12 @@ import argparse
 import sys
 import re
 
+from aie.extras.util import find_ops
+from aie.ir import Context, Module, Location
 from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+
+import aie.dialects.aie as aiedialect
+import aie.dialects.aiex as aiexdialect
 
 # Number of different trace types, currently 4
 # core:    pkt type 0
@@ -446,11 +451,8 @@ def activate_event(event, tt, loc, timer, pid, active_events, pid_events, trace_
 # commands:  list (idx = trace type, value = byte_stream_dict)
 # byte_stream_dict: dict (key = row,col, value = list of commands)
 def convert_commands_to_json(trace_events, commands, pid_events, of):
-    # for bsd in commands: # byte_stream_dict for each trace type. TODO how to get index of bsd?
-    for tt in range(
-        len(commands)
-    ):  # byte_stream_dict for each trace type. TODO how to get index of bsd?
-        byte_stream_dict = commands[tt]
+    # byte_stream_dict for each trace type.
+    for [tt, byte_stream_dict] in enumerate(commands):  # tt = trace type
 
         for loc, command in byte_stream_dict.items():  # row,col with list of commands
             timer = 0  # TODO Some way to set this or sync this between trace types and row,col
@@ -642,211 +644,124 @@ def thread_name_metadata(trace_events, trace_type, loc, pid, tid, pid_events):
 # It's probably not the best way to do it but it's the initial implementation.
 # memtile and core/shim tiles have different addresses. For now, we distinguish
 # between core and shim tile by row=0
-def parse_mlir_trace_events(lines):
-    # arg can be column, row, address or value
-    # 1: arg: 2: val
-    # 3: arg, 4: val
-    # 5: arg, 6: val
-    # 6: arg, 7: val
-
-    # 1: arg: 2: 0x, 3: val
-    # 4: arg, 5: 0x, 6: val
-    # 7: arg, 8: 0x, 9: val
-    # 10: arg, 11: 0x, 12: val
-
-    # TODO Need to check if this line is commented out, check for // ? (harder to check of /* */)
-    # TODO Need to support value in hex with 0x or decimal
-    # pattern = r"AIEX.npu.write32\s*\{\s*(\w+)\s*=\s*(\d+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(\d+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(\w+)\s*:\s*\w+\s*\}"
-    # pattern = r"AIEX.npu.write32\s*\{\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*\}"
-    pattern = r"aiex.npu.write32\s*\{\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*\}"
+def parse_mlir_trace_events(mlir_module_str, colshift=None):
 
     pid_events = list()
     for t in range(NumTraceTypes):
         pid_events.append(dict())
 
-    for i in range(len(lines)):
-        result = re.search(pattern, lines[i])
-        if result:  # match found
-            address = 0
-            row = 0
-            col = 0
-            value = 0
-            for i2 in range(4):
-                var = result.group(3 * i2 + 1)
-                if var == "address":
-                    if result.group(3 * i2 + 2) == "0x":
-                        address = int(result.group(3 * i2 + 3), 16)
-                    else:  # assume ''
-                        address = int(result.group(3 * i2 + 3))
-                elif var == "row":
-                    # TODO assume no 0x
-                    row = int(result.group(3 * i2 + 3))
-                elif var == "column":
-                    col = int(result.group(3 * i2 + 3)) + colshift
-                    # col = 1 if col == 0 else col
-                elif var == "value":
-                    if result.group(3 * i2 + 2) == "0x":
-                        value = int(result.group(3 * i2 + 3), 16)
-                    else:  # assume ''
-                        value = int(result.group(3 * i2 + 3))
+    with Context(), Location.unknown():
+        module = Module.parse(mlir_module_str)
 
-                # var = result.group(2*i2+1)
-                # if(var == "address"):
-                #     address = int(result.group(2*i2+2))
-                # elif(var == "row"):
-                #     row = int(result.group(2*i2+2))
-                # elif(var == "column"):
-                #     col = int(result.group(2*i2+2)) + colshift
-                #     col = 1 if col == 0 else col
-                # elif(var == "value"):
-                #     value = int(result.group(2*i2+2))
+        write32s = find_ops(
+            module.operation,
+            lambda o: isinstance(o.operation.opview, aiexdialect.NpuWrite32Op),
+        )
+        device = find_ops(
+            module.operation,
+            lambda o: isinstance(o.operation.opview, aiedialect.DeviceOp),
+        )
+        device = aiedialect.AIEDevice(int(device[0].device))
+        target_model = aiedialect.get_target_model(device)
 
-            # labels_dict = dict()
-            # labels_dict['row'] = row
-            # labels_dict['col'] = col
-            key = str(row) + "," + str(col)
+    for write32 in write32s:
+        address = None
+        row = None
+        col = None
+        value = None
+        if write32.address:
+            address = write32.address.value
+        if write32.row:
+            row = write32.row.value
+        if write32.column:
+            col = write32.column.value
+        if write32.value:
+            value = write32.value.value
 
-            # core event 0
-            if address == 0x340E0:  # 213216, match ignoring case
-                if row == 0:  # shim
-                    if pid_events[2].get(key) == None:
-                        pid_events[2][key] = [
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                        ]  # TODO no better way to init this?
-                    # print("Trace event 0 configured to be ",hex(value))
-                    pid_events[2][key][0] = value & 0xFF
-                    pid_events[2][key][1] = (value >> 8) & 0xFF
-                    pid_events[2][key][2] = (value >> 16) & 0xFF
-                    pid_events[2][key][3] = (value >> 24) & 0xFF
-                else:  # core
-                    if pid_events[0].get(key) == None:
-                        pid_events[0][key] = [
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                        ]  # TODO no better way to init this?
-                    # print("Trace event 0 configured to be ",hex(value))
-                    pid_events[0][key][0] = value & 0xFF
-                    pid_events[0][key][1] = (value >> 8) & 0xFF
-                    pid_events[0][key][2] = (value >> 16) & 0xFF
-                    pid_events[0][key][3] = (value >> 24) & 0xFF
-            # core event 1
-            elif address == 0x340E4:  # 213220, match ignoring case
-                if row == 0:  # shim
-                    if pid_events[2].get(key) == None:
-                        pid_events[2][key] = [
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                        ]  # TODO no better way to init this?
-                    pid_events[2][key][4] = value & 0xFF
-                    pid_events[2][key][5] = (value >> 8) & 0xFF
-                    pid_events[2][key][6] = (value >> 16) & 0xFF
-                    pid_events[2][key][7] = (value >> 24) & 0xFF
-                else:  # core
-                    if pid_events[0].get(key) == None:
-                        pid_events[0][key] = [
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                        ]  # TODO no better way to init this?
-                    pid_events[0][key][4] = value & 0xFF
-                    pid_events[0][key][5] = (value >> 8) & 0xFF
-                    pid_events[0][key][6] = (value >> 16) & 0xFF
-                    pid_events[0][key][7] = (value >> 24) & 0xFF
-            # mem event 0
-            elif address == 0x140E0:  # 82144
-                if pid_events[1].get(key) == None:
-                    pid_events[1][key] = [
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                    ]  # TODO no better way to init this?
+        if row is None and col is None:
+            row = (address >> target_model.get_row_shift()) & 0x1F
+            col = (address >> target_model.get_column_shift()) & 0x1F
+            address = address & 0xFFFFF  # 20 bits address
+
+        # print(f"write32: address={hex(address)}, row={row}, col={col}, value={hex(value)}")
+        if None in [row, col, address, value]:
+            print(f"[ERROR] Could not decode write32 op '{write32}'")
+            sys.exit(1)
+
+        # Adjust column based on colshift
+        if colshift is not None:
+            col = col + colshift
+        key = str(row) + "," + str(col)
+
+        # core event 0
+        if address == 0x340E0:  # 213216, match ignoring case
+            if row == 0:  # shim
+                if pid_events[2].get(key) == None:
+                    pid_events[2][key] = [0] * 8
                 # print("Trace event 0 configured to be ",hex(value))
-                pid_events[1][key][0] = value & 0xFF
-                pid_events[1][key][1] = (value >> 8) & 0xFF
-                pid_events[1][key][2] = (value >> 16) & 0xFF
-                pid_events[1][key][3] = (value >> 24) & 0xFF
-            # mem event 1
-            elif address == 0x140E4:  # 82148
-                if pid_events[1].get(key) == None:
-                    pid_events[1][key] = [
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                    ]  # TODO no better way to init this?
-                pid_events[1][key][4] = value & 0xFF
-                pid_events[1][key][5] = (value >> 8) & 0xFF
-                pid_events[1][key][6] = (value >> 16) & 0xFF
-                pid_events[1][key][7] = (value >> 24) & 0xFF
-            # memtile event 0
-            elif address == 0x940E0:  # 606432
-                if pid_events[3].get(key) == None:
-                    pid_events[3][key] = [
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                    ]  # TODO no better way to init this?
+                pid_events[2][key][0] = value & 0xFF
+                pid_events[2][key][1] = (value >> 8) & 0xFF
+                pid_events[2][key][2] = (value >> 16) & 0xFF
+                pid_events[2][key][3] = (value >> 24) & 0xFF
+            else:  # core
+                if pid_events[0].get(key) == None:
+                    pid_events[0][key] = [0] * 8
                 # print("Trace event 0 configured to be ",hex(value))
-                pid_events[3][key][0] = value & 0xFF
-                pid_events[3][key][1] = (value >> 8) & 0xFF
-                pid_events[3][key][2] = (value >> 16) & 0xFF
-                pid_events[3][key][3] = (value >> 24) & 0xFF
-            # memtile event 1
-            elif address == 0x940E4:  # 606436
-                if pid_events[3].get(key) == None:
-                    pid_events[3][key] = [
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                    ]  # TODO no better way to init this?
-                pid_events[3][key][4] = value & 0xFF
-                pid_events[3][key][5] = (value >> 8) & 0xFF
-                pid_events[3][key][6] = (value >> 16) & 0xFF
-                pid_events[3][key][7] = (value >> 24) & 0xFF
-            # TODO shim event 0, 1 needs to also be defined
+                pid_events[0][key][0] = value & 0xFF
+                pid_events[0][key][1] = (value >> 8) & 0xFF
+                pid_events[0][key][2] = (value >> 16) & 0xFF
+                pid_events[0][key][3] = (value >> 24) & 0xFF
+        # core event 1
+        elif address == 0x340E4:  # 213220, match ignoring case
+            if row == 0:  # shim
+                if pid_events[2].get(key) == None:
+                    pid_events[2][key] = [0] * 8
+                pid_events[2][key][4] = value & 0xFF
+                pid_events[2][key][5] = (value >> 8) & 0xFF
+                pid_events[2][key][6] = (value >> 16) & 0xFF
+                pid_events[2][key][7] = (value >> 24) & 0xFF
+            else:  # core
+                if pid_events[0].get(key) == None:
+                    pid_events[0][key] = [0] * 8
+                pid_events[0][key][4] = value & 0xFF
+                pid_events[0][key][5] = (value >> 8) & 0xFF
+                pid_events[0][key][6] = (value >> 16) & 0xFF
+                pid_events[0][key][7] = (value >> 24) & 0xFF
+        # mem event 0
+        elif address == 0x140E0:  # 82144
+            if pid_events[1].get(key) == None:
+                pid_events[1][key] = [0] * 8
+            # print("Trace event 0 configured to be ",hex(value))
+            pid_events[1][key][0] = value & 0xFF
+            pid_events[1][key][1] = (value >> 8) & 0xFF
+            pid_events[1][key][2] = (value >> 16) & 0xFF
+            pid_events[1][key][3] = (value >> 24) & 0xFF
+        # mem event 1
+        elif address == 0x140E4:  # 82148
+            if pid_events[1].get(key) == None:
+                pid_events[1][key] = [0] * 8
+            pid_events[1][key][4] = value & 0xFF
+            pid_events[1][key][5] = (value >> 8) & 0xFF
+            pid_events[1][key][6] = (value >> 16) & 0xFF
+            pid_events[1][key][7] = (value >> 24) & 0xFF
+        # memtile event 0
+        elif address == 0x940E0:  # 606432
+            if pid_events[3].get(key) == None:
+                pid_events[3][key] = [0] * 8
+            # print("Trace event 0 configured to be ",hex(value))
+            pid_events[3][key][0] = value & 0xFF
+            pid_events[3][key][1] = (value >> 8) & 0xFF
+            pid_events[3][key][2] = (value >> 16) & 0xFF
+            pid_events[3][key][3] = (value >> 24) & 0xFF
+        # memtile event 1
+        elif address == 0x940E4:  # 606436
+            if pid_events[3].get(key) == None:
+                pid_events[3][key] = [0] * 8
+            pid_events[3][key][4] = value & 0xFF
+            pid_events[3][key][5] = (value >> 8) & 0xFF
+            pid_events[3][key][6] = (value >> 16) & 0xFF
+            pid_events[3][key][7] = (value >> 24) & 0xFF
+        # TODO shim event 0, 1 needs to also be defined
 
     # print("Found labels:\n")
     # for j in pid_events:
@@ -977,6 +892,43 @@ def setup_trace_metadata(trace_events, pid_events):
             pid = pid + 1
 
 
+# Attempt to align the starting column of trace in the design (from 'events')
+# with the start first column observed in the trace ('commands'). This is needed
+# because the runtime/firmware can start the design on any valid column
+def align_column_start_index(events, commands):
+    # find min column of commands
+    min_commands_col = float("inf")
+    for t in range(NumTraceTypes):
+        for loc in commands[t]:
+            col = int(loc.split(",")[1])
+            if col < min_commands_col:
+                min_commands_col = col
+
+    # find min column of events
+    min_events_col = float("inf")
+    for t in range(NumTraceTypes):
+        for loc in events[t]:
+            col = int(loc.split(",")[1])
+            if col < min_events_col:
+                min_events_col = col
+
+    # The shift is the difference between the expected and observed leftmost
+    # column for which trace was enabled (in 'events')
+    colshift = min_events_col - min_commands_col
+
+    # Shift all event keys by colshift
+    new_events = []
+    for t in range(NumTraceTypes):
+        updated = {}
+        for loc, l in events[t].items():
+            row, col = map(int, loc.split(","))
+            new_col = col - colshift
+            new_key = f"{row},{new_col}"
+            updated[new_key] = l
+        new_events.append(updated)
+    return new_events
+
+
 # ------------------------------------------------------------------------------
 # Script execution start - Open trace file and convert to commands
 # ------------------------------------------------------------------------------
@@ -988,7 +940,7 @@ if DEBUG:
     print("Debug mode enable\n")
 
 # set colshift based on optional argument
-colshift = int(opts.colshift) if opts.colshift else 0
+colshift = int(opts.colshift) if opts.colshift else None
 
 try:
     with open(opts.input, "r") as f:
@@ -1000,14 +952,12 @@ except:
     )
     sys.exit(1)
 
-pid_events = list()
-
 try:
     with open(opts.mlir, "r") as mf:
-        lines = mf.read().split("\n")
-        pid_events = parse_mlir_trace_events(lines)
-except:
-    print("ERROR:", opts.mlir, "could not be opened. Check for valid MLIR file.")
+        mlir_module_str = mf.read()
+    pid_events = parse_mlir_trace_events(mlir_module_str, colshift)
+except Exception as e:
+    print("ERROR:", opts.mlir, "could not be opened. Check for valid MLIR file.", e)
     exit(1)
 
 try:
@@ -1074,6 +1024,9 @@ if DEBUG:
             for i in commands:
                 print("\t", i, file=of)
     print("", file=of)
+
+if colshift is None:
+    pid_events = align_column_start_index(pid_events, commands_0)
 
 trace_events = list()
 

@@ -29,7 +29,6 @@ in2_size = 4 # in bytes, should always be 4 (1x int32)
 trace_size = 8192
 CHESS ?= false
 
-colshift ?= $(if $(filter npu,$(devicename)),1,0)
 data_size = in1_size
 aie_py_src=${targetname}.py
 use_placed?=0
@@ -108,12 +107,12 @@ run_py: build/final_${data_size}.xclbin build/insts_${data_size}.bin
 
 trace: ${targetname}_${data_size}.exe build/final_trace_${data_size}.xclbin build/insts_${data_size}.bin 
 	${powershell} ./$< -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift ${colshift} --output trace_${targetname}.json
+	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie_trace_${data_size}.mlir --output trace_${targetname}.json
 	${srcdir}/../../utils/get_trace_summary.py --input trace_${targetname}.json
 
 trace_py: build/final_trace_${data_size}.xclbin build/insts_${data_size}.bin
 	${powershell} python3 ${srcdir}/test.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -i2s ${in2_size} -os ${out_size}
-	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie_trace_${data_size}.mlir --colshift ${colshift} --output trace_${targetname}.json
+	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie_trace_${data_size}.mlir --output trace_${targetname}.json
 	${srcdir}/../../utils/get_trace_summary.py --input trace_${targetname}.json
 
 
