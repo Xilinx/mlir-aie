@@ -15,7 +15,7 @@ all:
 	${srcdir}/../../../programming_examples/utils/get_trace_summary.py --input trace_test2.json
 
 diff:
-	diff trace_test2.json ${srcdir}/golden.json
+	diff trace_test2.json ${srcdir}/golden_json.txt
 
 clean: 
 	rm -rf trace_test2.json
