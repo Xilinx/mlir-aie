@@ -15,5 +15,5 @@ all:
 	${srcdir}/../../utils/get_trace_summary.py --input trace_test1.json
 
 
-clean: clean_trace
+clean: 
 	rm -rf *json
