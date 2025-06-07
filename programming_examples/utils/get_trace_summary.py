@@ -24,7 +24,7 @@ def parse_args():
 opts = parse_args()
 cycles = trace_utils.get_cycles_summary(opts.input)
 
-print(cycles)
+#print(cycles)
 for i in range(len(cycles)):
     print(cycles[i][0])
     runs = len(cycles[i]) - 1

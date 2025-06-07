@@ -11,11 +11,11 @@
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 all:
-	${srcdir}/../../../programming_examples/utils/parse_trace.py --input ${srcdir}/trace_test1.txt --mlir ${srcdir}/aie_test1.mlir --colshift 1 --output trace_test1.json
-	${srcdir}/../../../programming_examples/utils/get_trace_summary.py --input trace_test1.json
+	${srcdir}/../../../programming_examples/utils/parse_trace.py --input ${srcdir}/trace_test2.txt --mlir ${srcdir}/aie_test2.mlir --colshift 1 --output trace_test2.json
+	${srcdir}/../../../programming_examples/utils/get_trace_summary.py --input trace_test2.json
 
 diff:
-	diff trace_test1.json golden.json
+	diff trace_test2.json golden.json
 
 clean: 
-	rm -rf trace_test1.json
+	rm -rf trace_test2.json
