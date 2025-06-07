@@ -23,10 +23,14 @@
    M and N are passed in as 16 in Makefile run cmd.
    kernel.cc includes an AIE kernel that is specific to 16x16 */
 
-void print_matrix(uint8_t *buf, int n_rows, int n_cols) {
+void print_matrix(uint8_t *buf, int n_rows, int n_cols, int *mask = NULL) {
   for (int row = 0; row < n_rows; row++) {
     for (int col = 0; col < n_cols; col++) {
-      std::cout << std::setw(4) << int(buf[row * n_cols + col]) << " ";
+      if (!mask || mask[row * n_cols + col]) {
+        std::cout << std::setw(4) << int(buf[row * n_cols + col]) << " ";
+      } else {
+        std::cout << "     ";
+      }
     }
     std::cout << std::endl;
   }
@@ -134,11 +138,14 @@ int main(int argc, const char *argv[]) {
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   uint8_t ref[M * N] = {};
+  int mask[M*N] = {};
   for (int i = 0; i < M; i++) {
     for (int j = 0; j < N; j++) {
       ref[j * M + i] = buf_in[i * N + j];
+      mask[j * M + i] = ref[j * M + i] != buf_out[j * M + i];
     }
   }
+
 
   if (M <= 64 && N <= 64) {
     std::cout << "Input:" << std::endl;
@@ -146,7 +153,7 @@ int main(int argc, const char *argv[]) {
     std::cout << "Expected:" << std::endl;
     print_matrix(ref, N, M);
     std::cout << "Output:" << std::endl;
-    print_matrix(buf_out, N, M);
+    print_matrix(buf_out, N, M, mask);
   }
 
   if (memcmp(ref, buf_out, sizeof(ref)) == 0) {
