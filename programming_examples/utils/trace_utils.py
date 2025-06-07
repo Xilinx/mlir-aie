@@ -131,26 +131,33 @@ def get_cycles_summary(trace_path):
     with open(trace_path, "r") as f:
         data = json.load(f)
 
-    delta = []
-    in_kernel = False
-    event0 = 0
     try:
+        deltas = []
+        in_kernel = []
+        event0 = []
         for x in data:
+            if x["name"] == "process_name":
+                deltas.append([x["args"]["name"]])
+                in_kernel.append(False)
+                event0.append(0)
+
+        for x in data:
+            idx = int(x["pid"])
             if (x["name"] == "INSTR_EVENT_0") and (x["ph"] == "B"):
-                if in_kernel == False:
-                    event0 = x["ts"]
+                if in_kernel[idx] == False:
+                    event0[idx] = x["ts"]
                     # print("event0 found at "+str(event0))
-                    in_kernel = True
+                    in_kernel[idx] = True
 
             if x["name"] == "INSTR_EVENT_1" and x["ph"] == "B":
-                if in_kernel == True:
+                if in_kernel[idx] == True:
                     # print("event1 found at "+str(x['ts']))
-                    delta.append(x["ts"] - event0)
-                    in_kernel = False
+                    deltas[idx].append(x["ts"] - event0[idx])
+                    in_kernel[idx] = False
 
-        return delta
-    except:
-        print("Exceptin found?")
+        return deltas
+    except Exception as e:
+        print("Exception found", e)
         return np.inf
 
 
