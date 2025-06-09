@@ -33,7 +33,8 @@ constexpr size_t OUTER_SIZE = DIM_m * DIM_n;
 extern "C" {
 
 void copy(DTYPE *__restrict__ in_ptr, DTYPE *__restrict__ out_ptr) {
-  constexpr size_t INNER_SIZE = 256;
+  constexpr size_t INNER_SIZE = 64;
+  static_assert(DIM_m * DIM_n % INNER_SIZE == 0);
   DTYPE * const in_ptr_end = in_ptr + OUTER_SIZE;
   for(; in_ptr < in_ptr_end; in_ptr += INNER_SIZE, out_ptr += INNER_SIZE) {
     aie::vector<DTYPE, INNER_SIZE> data = aie::load_v<INNER_SIZE>(in_ptr);
@@ -43,6 +44,8 @@ void copy(DTYPE *__restrict__ in_ptr, DTYPE *__restrict__ out_ptr) {
 
 void transpose(DTYPE *__restrict__ in_ptr, DTYPE *__restrict__ out_ptr) {
   constexpr size_t VECTOR_SIZE = 16;
+  static_assert(DIM_m * DIM_n % VECTOR_SIZE == 0);
+  assert(s == 4);
   DTYPE * const in_ptr_end = in_ptr + OUTER_SIZE;
   while(in_ptr < in_ptr_end) {
     aie::vector<DTYPE, VECTOR_SIZE> row_0 = aie::load_v<VECTOR_SIZE>(in_ptr);
@@ -54,35 +57,48 @@ void transpose(DTYPE *__restrict__ in_ptr, DTYPE *__restrict__ out_ptr) {
     aie::vector<DTYPE, VECTOR_SIZE> row_3 = aie::load_v<VECTOR_SIZE>(in_ptr);
     in_ptr += VECTOR_SIZE;
 
-    std::pair<aie::vector<DTYPE, VECTOR_SIZE>, aie::vector<DTYPE, VECTOR_SIZE>> zip_2_0 =
-      aie::interleave_zip(row_0, row_2, 2);
-    std::pair<aie::vector<DTYPE, VECTOR_SIZE>, aie::vector<DTYPE, VECTOR_SIZE>> zip_2_1 =
-      aie::interleave_zip(row_1, row_3, 2);
-    auto [zip_2_00, zip_2_01] = zip_2_0;
-    auto [zip_2_10, zip_2_11] = zip_2_1;
+    // Interleave all rows one element at a time.
+    // Result: zipped_0, zipped_1, zipped_2, zipped_3
+    // row_0[0], row_1[0], row_2[0], row_3[0], row_0[1], row_1[1], ...
+    std::pair<aie::vector<DTYPE, VECTOR_SIZE>, aie::vector<DTYPE, VECTOR_SIZE>> zip_one_0 =
+      aie::interleave_zip(row_0, row_1, 1);
+    std::pair<aie::vector<DTYPE, VECTOR_SIZE>, aie::vector<DTYPE, VECTOR_SIZE>> zip_one_1 =
+      aie::interleave_zip(row_2, row_3, 1);
+    auto [zip_one_00, zip_one_01] = zip_one_0;
+    auto [zip_one_10, zip_one_11] = zip_one_1;
+    std::pair<aie::vector<DTYPE, VECTOR_SIZE>, aie::vector<DTYPE, VECTOR_SIZE>> zip_two_0 =
+      aie::interleave_zip(zip_one_00, zip_one_10, 2);
+    std::pair<aie::vector<DTYPE, VECTOR_SIZE>, aie::vector<DTYPE, VECTOR_SIZE>> zip_two_1 =
+      aie::interleave_zip(zip_one_01, zip_one_11, 2);
+    auto [zipped_0, zipped_1] = zip_two_0;
+    auto [zipped_2, zipped_3] = zip_two_1;
 
-    std::pair<aie::vector<DTYPE, VECTOR_SIZE>, aie::vector<DTYPE, VECTOR_SIZE>> zip_1_0 =
-      aie::interleave_zip(zip_2_00, zip_2_10, 1);
-    std::pair<aie::vector<DTYPE, VECTOR_SIZE>, aie::vector<DTYPE, VECTOR_SIZE>> zip_1_1 =
-      aie::interleave_zip(zip_2_01, zip_2_11, 1);
-    auto [zip_1_00, zip_1_01] = zip_1_0;
-    auto [zip_1_10, zip_1_11] = zip_1_1;
+    // Extract four elements at a time
+    // Result: unzipped_0, unzipped_1, unzipped_2, unzipped_3
+    // unzipped_0 = zipped_0[0..4], zipped_0[16..20],  ..., zipped_1[0..4]
+    // unzipped_1 = zipped_0[4..8],  zipped_0[20..24], ..., zipped_1[4..8]
+    // unzipped_2 = zipped_0[8..12], zipped_0[24..28], ..., zipped_1[8..12]
+    // unzipped_3 = zipped_0[12..16], zipped_0[28..32], ..., zipped_1[12..16]
+    std::pair<aie::vector<DTYPE, VECTOR_SIZE>, aie::vector<DTYPE, VECTOR_SIZE>> unzip_eight_0 =
+      aie::interleave_unzip(zipped_0, zipped_1, 8);
+    std::pair<aie::vector<DTYPE, VECTOR_SIZE>, aie::vector<DTYPE, VECTOR_SIZE>> unzip_eight_1 =
+      aie::interleave_unzip(zipped_2, zipped_3, 8);
+    auto [unzip_eight_00, unzip_eight_10] = unzip_eight_0;
+    auto [unzip_eight_01, unzip_eight_11] = unzip_eight_1;
+    std::pair<aie::vector<DTYPE, VECTOR_SIZE>, aie::vector<DTYPE, VECTOR_SIZE>> unzip_four_0 =
+      aie::interleave_unzip(unzip_eight_00, unzip_eight_01, 4);
+    std::pair<aie::vector<DTYPE, VECTOR_SIZE>, aie::vector<DTYPE, VECTOR_SIZE>> unzip_four_1 =
+      aie::interleave_unzip(unzip_eight_10, unzip_eight_11, 4);
+    auto [unzipped_0, unzipped_1] = unzip_four_0;
+    auto [unzipped_2, unzipped_3] = unzip_four_1;
 
-    std::pair<aie::vector<DTYPE, VECTOR_SIZE>, aie::vector<DTYPE, VECTOR_SIZE>> out_0 =
-      aie::interleave_unzip(zip_1_00, zip_1_01, 2);
-    std::pair<aie::vector<DTYPE, VECTOR_SIZE>, aie::vector<DTYPE, VECTOR_SIZE>> out_1 =
-      aie::interleave_unzip(zip_1_10, zip_1_11, 2);
-    
-    auto [out_0_0, out_0_1] = out_0;
-    auto [out_1_0, out_1_1] = out_1;
-
-    aie::store_v(out_ptr, out_0_0);
+    aie::store_v(out_ptr, unzipped_0);
     out_ptr += VECTOR_SIZE;
-    aie::store_v(out_ptr, out_0_1);
+    aie::store_v(out_ptr, unzipped_1);
     out_ptr += VECTOR_SIZE;
-    aie::store_v(out_ptr, out_1_0);
+    aie::store_v(out_ptr, unzipped_2);
     out_ptr += VECTOR_SIZE;
-    aie::store_v(out_ptr, out_1_1);
+    aie::store_v(out_ptr, unzipped_3);
     out_ptr += VECTOR_SIZE;
   }
 }
