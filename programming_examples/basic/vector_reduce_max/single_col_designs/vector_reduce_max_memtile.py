@@ -22,7 +22,7 @@ dtype_map = {"i32": np.int32, "bf16": bfloat16}
 
 
 def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
-    n_cores = 1
+    n_cores = 4
     in_dtype = dtype_map[dtype_str]
     out_dtype = dtype_map[dtype_str]
 
@@ -111,8 +111,11 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         # Set up a packet-switched flow from core to shim for tracing information
         if n_cores > 1:
             tiles_to_trace = [cores[1]]
-            if trace_size > 0:
-                trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+        else:
+            tiles_to_trace = [cores[0]]
+
+        if trace_size > 0:
+            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
         # AIE-array data movement with object fifos
         of_out = object_fifo("out", cores[0], ShimTile, buffer_depth, out_ty)
