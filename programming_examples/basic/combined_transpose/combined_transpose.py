@@ -21,30 +21,19 @@ def shuffle_transpose(dev, M, N, m, n, s):
     assert N % n == 0
 
     # Define tensor types
-    tensor_ty = np.ndarray[(m * n,), np.dtype[np.uint8]]
+    matrix_ty = np.ndarray[(M, N,), np.dtype[np.uint8]]
+    tile_ty = np.ndarray[(m, n,), np.dtype[np.uint8]]
 
     # Define kernel function
     kernel_func = Kernel(
-        f"transpose", "transpose.o", [tensor_ty, tensor_ty]
-        #f"copy", "transpose.o", [tensor_ty, tensor_ty]
+        f"transpose", "transpose.o", [tile_ty, tile_ty]
+        #f"copy", "transpose.o", [tile_ty, tile_ty]
     )
 
     # Data flow with ObjectFifos
-    # m [<size = 2, stride = 4>, <size = 16, stride = 16>, <size = 4, stride = 1>]}
-
-    # Dimension of the untransposed submatrices
-    s = 4
-
-    # Dim 0: linear transfer
-    # Dim 1: element #s will be in s-th row in transposed matrix, hence at offset s*n
-    # Dim 2: fills out the first column
-    # Dim 3: repeat for each column
-
     tap_in_L2L1 = TensorAccessPattern(
         tensor_dims=(M, N),
         offset=0,
-        #sizes  =[n//s, m, s],
-        #strides=[   s, n, 1]
         sizes   = [m//s,  s, n//s, s],
         strides = [s,     m,  s*m, 1]
     )
@@ -52,10 +41,18 @@ def shuffle_transpose(dev, M, N, m, n, s):
         (M, N), (m, n), (M // m, N // n), 
         iter_col_major=False
     )[0]
+    tap_out_L1L3 = TensorAccessPattern(
+        tensor_dims=(M, N),
+        offset=0,
+        sizes = [1, 1, M, N],
+        strides = [0, 0, N, 1]
+    )
 
-    in_L3L2_fifo = ObjectFifo(tensor_ty, name="in_L3L2_fifo")
-    in_L2L1_fifo = in_L3L2_fifo.cons(dims_from_stream=tap_in_L2L1.transformation_dims).forward(obj_type=tensor_ty, name="in_L2L1_fifo")
-    out_fifo = ObjectFifo(tensor_ty, name="out_fifo")
+    in_L3L2_fifo = ObjectFifo(tile_ty, name="in_L3L2_fifo")
+    in_L2L1_fifo = in_L3L2_fifo.cons(
+        dims_from_stream=tap_in_L2L1.transformation_dims
+        ).forward(obj_type=tile_ty, name="in_L2L1_fifo")
+    out_fifo = ObjectFifo(tile_ty, name="out_fifo")
 
     # The task for a core to perform
     def core_fn(in_fifo, out_fifo, kernel_func):
@@ -73,27 +70,12 @@ def shuffle_transpose(dev, M, N, m, n, s):
         fn_args=[in_L2L1_fifo.cons(), out_fifo.prod(), kernel_func],
     )
 
-    # The tensor access pattern of the input/output tensors (tiling)
-    # Our microkernel transposes smaller subtiles of size m*n;
-    # in order to transpose the entire matrix, we also must transpose
-    # these tiles amongst each other. We achieve this using the DMA
-    # data layout transformation features; the following tensor access
-    # pattern reads m*n tiles in row-major order, but writes them in
-    # column-major on the output side, achieving a transpose.
-
-    #tap_out = TensorAccessPattern(
-    #    tensor_dims=(M, N), 
-    #    offset=0, 
-    #    sizes=[1, M // m, N, m], 
-    #    strides=[0, m, M, 1]
-    #)
-
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (inp, out):
+    with rt.sequence(matrix_ty, matrix_ty) as (inp, out):
         rt.start(my_worker)
         rt.fill(in_L3L2_fifo.prod(), inp, tap_in_L3L2)
-        rt.drain(out_fifo.cons(), out, wait=True)
+        rt.drain(out_fifo.cons(), out, tap_out_L1L3, wait=True)
 
     # Place components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())
