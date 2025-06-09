@@ -16,7 +16,7 @@ VPATH := ${srcdir}/../../../../aie_kernels/aie2
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = vector_reduce_max
-in1_size =  524288# in bytes
+in1_size =  262144# in bytes
 out_size = 4 # in bytes, should always be equal to in1_size
 trace_size = 1024
 
@@ -29,13 +29,10 @@ use_memtile?=0
 
 ifeq (${use_shared}, 1)
 aie_py_src=${targetname}_shared.py
-dtype=bf16
 else ifeq (${use_memtile}, 1)
 aie_py_src=${targetname}_memtile.py
-dtype=bf16
 else 
 aie_py_src=${targetname}_cascade.py
-dtype=bf16
 endif
 
 

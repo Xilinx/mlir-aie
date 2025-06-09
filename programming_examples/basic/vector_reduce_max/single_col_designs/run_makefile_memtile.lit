@@ -6,7 +6,7 @@
 // RUN: mkdir -p test_single_col_memtile
 // RUN: cd test_single_col_memtile
 // RUN: make -f %S/Makefile clean
-// RUN: env use_memtile=1 dtype=bf16 make -f %S/Makefile 
-// RUN: env use_memtile=1 dtype=bf16 %run_on_npu make -f %S/Makefile run
+// RUN: env use_memtile=1 dtype=i32 make -f %S/Makefile 
+// RUN: env use_memtile=1 dtype=i32 %run_on_npu make -f %S/Makefile run
 // RUN: make -f %S/Makefile clean
-// RUN: env CHESS=false use_memtile=1 dtype=bf16 %run_on_npu make -f %S/Makefile trace 
+// RUN: env CHESS=false use_memtile=1 dtype=i32 %run_on_npu make -f %S/Makefile trace 
