@@ -22,7 +22,6 @@ trace_size = 1024
 
 dtype?=i32
 
-colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src=${targetname}.py
 use_shared?=0
 use_memtile?=0
@@ -98,7 +97,7 @@ run_py: build/final.xclbin build/insts.bin
 
 trace: ${targetname}.exe build/final_trace.xclbin build/insts.bin 
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../../utils/parse_trace.py --input trace.txt --mlir build/aie2_trace.mlir --colshift ${colshift} --output trace_vector_reduce_max.json
+	${srcdir}/../../../utils/parse_trace.py --input trace.txt --mlir build/aie2_trace.mlir --output trace_vector_reduce_max.json
 	${srcdir}/../../../utils/get_trace_summary.py --input trace_vector_reduce_max.json
 
 clean_trace:
