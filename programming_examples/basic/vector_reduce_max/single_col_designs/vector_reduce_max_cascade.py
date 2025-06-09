@@ -93,7 +93,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                 for i in range(n_cores)
             ]
         else:
-            of_a_offsets = []
+            of_a_offsets = [0]
 
         object_fifo_link(of_in, inA_fifos, [], of_a_offsets)
 
