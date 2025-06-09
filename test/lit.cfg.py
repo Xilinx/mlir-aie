@@ -23,7 +23,7 @@ from lit.llvm.subst import FindTool
 # Configuration file for the 'lit' test runner.
 
 # name: The name of this test suite.
-config.name = "AIE"
+config.name = "AIE_TEST"
 
 config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
 config.environment["PYTHONPATH"] = "{}".format(
@@ -165,17 +165,15 @@ if config.xrt_lib_dir:
                 model = str(m.group(4))
             print(f"\tmodel: '{model}'")
             config.available_features.add("ryzen_ai")
-            run_on_npu = (
-                f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
-            )
+            run_on_npu = f"{config.aie_src_root}/utils/run_on_npu.sh"
             if model in ["npu1", "Phoenix"]:
                 run_on_npu1 = run_on_npu
                 config.available_features.add("ryzen_ai_npu1")
-                print("Running tests on NPU with command line: ", run_on_npu1)
+                print("Running tests on NPU1 with command line: ", run_on_npu1)
             elif model in ["npu4", "Strix", "npu5", "Strix Halo", "npu6", "Krackan"]:
                 run_on_npu2 = run_on_npu
                 config.available_features.add("ryzen_ai_npu2")
-                print("Running tests on NPU with command line: ", run_on_npu2)
+                print("Running tests on NPU4 with command line: ", run_on_npu2)
             else:
                 print("WARNING: xrt-smi reported unknown NPU model '{model}'.")
             break
