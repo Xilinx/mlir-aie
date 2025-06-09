@@ -25,12 +25,8 @@ using namespace xilinx::AIE;
 LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin DynamicTileAnalysis Constructor---\n");
   // find the maxCol and maxRow
-  maxCol = 0;
-  maxRow = 0;
-  for (TileOp tileOp : device.getOps<TileOp>()) {
-    maxCol = device.getTargetModel().columns() - 1;
-    maxRow = device.getTargetModel().rows() - 1;
-  }
+  maxCol = device.getTargetModel().columns() - 1;
+  maxRow = device.getTargetModel().rows() - 1;
 
   pathfinder->initialize(maxCol, maxRow, device.getTargetModel());
 
