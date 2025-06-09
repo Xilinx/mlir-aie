@@ -22,14 +22,14 @@ dtype_map = {"i32": np.int32, "bf16": bfloat16}
 
 
 def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
-    n_cores = 4
-    elems_per_core = 512
-    n_mem_elems = 2048
+    n_cores = 1
     in_dtype = dtype_map[dtype_str]
     out_dtype = dtype_map[dtype_str]
 
     N = in1_size // in_dtype(0).nbytes
     O = out_size // out_dtype(0).nbytes
+
+    elems_per_core = N // n_cores
 
     assert out_size == 4, "Output buffer must be size 4 (4 bytes = 1 integer)."
 
@@ -38,7 +38,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     @device(dev)
     def device_body():
         in_ty = np.ndarray[(N,), np.dtype[in_dtype]]
-        mem_ty = np.ndarray[(n_mem_elems,), np.dtype[in_dtype]]
+        mem_ty = np.ndarray[(N,), np.dtype[in_dtype]]
         op_ty = np.ndarray[(elems_per_core,), np.dtype[in_dtype]]
         out_ty = np.ndarray[(O,), np.dtype[out_dtype]]
         int_ty = np.ndarray[(O * n_cores,), np.dtype[out_dtype]]
@@ -90,7 +90,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
             of_c_offsets = [(O * i) for i in range(n_cores)]
         else:
             of_a_offsets = [0]
-            of_c_offsets = []
+            of_c_offsets = [0]
 
         object_fifo_link(inA, inA_fifos, [], of_a_offsets)
 
