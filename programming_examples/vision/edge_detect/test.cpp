@@ -79,7 +79,8 @@ int main(int argc, const char *argv[]) {
   std::cout << "Running edgeDetect for resolution: " << testImageWidth << "x"
             << testImageHeight << std::endl;
 
-  int webcam_dev = int(vm.count("device"));
+  int webcam_dev = std::stoi(vm["device"].as<std::string>());
+  std::cout << "webcam device is " << webcam_dev << std::endl;
   if (vm.count("live")) {
     std::cout << "Using live webcam input" << std::endl;
 
