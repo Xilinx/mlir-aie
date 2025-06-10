@@ -5,6 +5,6 @@
 //
 // RUN: mkdir -p test_chess
 // RUN: cd test_chess
-// RUN: make -f %S/Makefile.chess clean
-// RUN: make -f %S/Makefile.chess
-// RUN: %run_on_npu1% make -f %S/Makefile.chess run
+// RUN: make -f %S/Makefile clean use_chess=1
+// RUN: make -f %S/Makefile use_chess=1
+// RUN: %run_on_npu1% make -f %S/Makefile.chess run use_chess=1
