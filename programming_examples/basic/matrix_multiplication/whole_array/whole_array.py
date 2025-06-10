@@ -39,6 +39,7 @@ def main():
     argparser.add_argument("-n", type=int, default=32)
     argparser.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4, 8], default=4)
     argparser.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
+    argparser.add_argument("--c-col-maj", type=int, choices=[0, 1], default=0)
     argparser.add_argument(
         "--dtype_in", type=str, choices=["bf16", "i8", "i16"], default="i16"
     )
@@ -69,6 +70,7 @@ def main():
             args.dtype_in,
             args.dtype_out,
             args.b_col_maj,
+            args.c_col_maj,
             args.trace_size,
             args.generate_taps,
         )
@@ -95,6 +97,7 @@ def my_matmul(
     dtype_in_str,
     dtype_out_str,
     b_col_maj,
+    c_col_maj,
     trace_size,
     generate_taps=False,
 ):
@@ -356,6 +359,12 @@ def my_matmul(
                     (r, t),
                     (n // t, r * t),
                     (t, 1),
+                ] if not c_col_maj else 
+                [
+                    (n // t, t * m),
+                    (t, r),
+                    (m // r, r * t), 
+                    (r, 1)
                 ],
             )
             if n_aie_rows > 1:
@@ -409,9 +418,8 @@ def my_matmul(
         def sequence(A, B, C):
             # We are limited in the number of BDs. After synchronizing, we can reuse BDs.
             # We only transfer 4 rows of tiles at once before starting a new transfer block.
-            tb_max_n_rows = (
-                4  # tb = transfer block; block of transfers before sync call
-            )
+            # tb = transfer block; block of transfers before sync call
+            tb_max_n_rows = 4 if not c_col_maj else 2
             for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
                 for pingpong in [0, 1]:
                     M // m // n_aie_rows // tb_max_n_rows
@@ -444,11 +452,18 @@ def my_matmul(
                         #     |                |
                         #     |                |
                         #      ----------------
-                        C_row_offset = row_base * m * n_aie_rows * N
-                        C_col_offset = col * n
-                        C_offset = C_col_offset + C_row_offset
-                        C_sizes = [tb_n_rows, N // n // n_aie_cols, m * n_aie_rows, n]
-                        C_strides = [m * n_aie_rows * N, n * n_aie_cols, N, 1]
+                        if not c_col_maj:
+                            C_row_offset = row_base * m * n_aie_rows * N
+                            C_col_offset = col * n
+                            C_offset = C_col_offset + C_row_offset
+                            C_sizes = [tb_n_rows, N // n // n_aie_cols, m * n_aie_rows, n]
+                            C_strides = [m * n_aie_rows * N, n * n_aie_cols, N, 1]
+                        else:
+                            C_row_offset = row_base * m * n_aie_rows
+                            C_col_offset = col * n * M 
+                            C_offset = C_col_offset + C_row_offset
+                            C_sizes = [N // n // n_aie_cols, n_aie_rows, n, m]
+                            C_strides = [M * n * n_aie_cols, m, M, 1]
                         npu_dma_memcpy_nd(
                             metadata=C_l2l3_fifos[col],
                             bd_id=bd_id_base,

@@ -65,7 +65,7 @@ static inline void matmul_scalar(T_in *a, T_in *b, T_out *c) {
  */
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t,
-          bool b_row_maj = true>
+          bool b_row_maj = true, bool c_row_maj = true>
 static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
                                               const T_in *__restrict pB,
                                               T_out *__restrict pC) {
@@ -118,12 +118,21 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
       // Load partial results from C buffer for accumulation in-place. The
       // zero.cc function handles the zeroing of data when a new
       // accumulation is needed (after the 'K' reduction dimension)
-      aie::vector<T_out, MMUL::size_C> acc_C00 = aie::load_v<MMUL::size_C>(pC1);
-      aie::vector<T_out, MMUL::size_C> acc_C01 =
-          aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C);
-      aie::vector<T_out, MMUL::size_C> acc_C10 = aie::load_v<MMUL::size_C>(pC2);
-      aie::vector<T_out, MMUL::size_C> acc_C11 =
-          aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C);
+      aie::vector<T_out, MMUL::size_C> acc_C00;
+      aie::vector<T_out, MMUL::size_C> acc_C01;
+      aie::vector<T_out, MMUL::size_C> acc_C10;
+      aie::vector<T_out, MMUL::size_C> acc_C11;
+      if constexpr (c_row_maj) {
+        acc_C00 = aie::load_v<MMUL::size_C>(pC1);
+        acc_C01 = aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C);
+        acc_C10 = aie::load_v<MMUL::size_C>(pC2);
+        acc_C11 = aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C);
+      } else {
+        acc_C00 = aie::transpose(aie::load_v<MMUL::size_C>(pC1), t, r);
+        acc_C01 = aie::transpose(aie::load_v<MMUL::size_C>(pC2), t, r);
+        acc_C10 = aie::transpose(aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C), t, r);
+        acc_C11 = aie::transpose(aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C), t, r);
+      }
 
       MMUL C00(acc_C00);
       MMUL C01(acc_C01);
@@ -167,14 +176,25 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
       // example below shows how to shift right 10 bits
       // #define SHIFT 10
       // aie::store_v(pC1, C00.template to_vector<T_out>(SHIFT));
-      aie::store_v(pC1, C00.template to_vector<T_out>());
-      pC1 += MMUL::size_C;
-      aie::store_v(pC1, C01.template to_vector<T_out>());
-      pC1 += MMUL::size_C;
-      aie::store_v(pC2, C10.template to_vector<T_out>());
-      pC2 += MMUL::size_C;
-      aie::store_v(pC2, C11.template to_vector<T_out>());
-      pC2 += MMUL::size_C;
+      if constexpr (c_row_maj) {
+        aie::store_v(pC1, C00.template to_vector<T_out>());
+        pC1 += MMUL::size_C;
+        aie::store_v(pC1, C01.template to_vector<T_out>());
+        pC1 += MMUL::size_C;
+        aie::store_v(pC2, C10.template to_vector<T_out>());
+        pC2 += MMUL::size_C;
+        aie::store_v(pC2, C11.template to_vector<T_out>());
+        pC2 += MMUL::size_C;
+      } else {
+        aie::store_v(pC1, aie::transpose(C00.template to_vector<T_out>(), t, r));
+        pC1 += MMUL::size_C;
+        aie::store_v(pC2, aie::transpose(C01.template to_vector<T_out>(), t, r));
+        pC2 += MMUL::size_C;
+        aie::store_v(pC1, aie::transpose(C10.template to_vector<T_out>(), t, r));
+        pC1 += MMUL::size_C;
+        aie::store_v(pC2, aie::transpose(C11.template to_vector<T_out>(), t, r));
+        pC2 += MMUL::size_C;
+      }
     }
   }
 
@@ -591,6 +611,12 @@ constexpr bool is_b_row_maj = false;
 constexpr bool is_b_row_maj = true;
 #endif
 
+#ifdef C_COL_MAJ
+constexpr bool is_c_row_maj = false;
+#else
+constexpr bool is_c_row_maj = true;
+#endif
+
 // int16 MatMul kernel definion with int16 outputs.
 template <unsigned m, unsigned k, unsigned n>
 static inline void matmul_vectorized_4x4x4_i16_i16(const int16 *__restrict pA,
@@ -612,7 +638,7 @@ static inline void matmul_vectorized_4x4x4_i16_i16(const int16 *__restrict pA,
   static_assert(n % (2 * t) == 0); // 'n' dimension
 
   return matmul_vectorized_2x2_mmul<int16, int16, (m / r), (k / s), (n / t), r,
-                                    s, t, is_b_row_maj>(pA, pB, pC);
+                                    s, t, is_b_row_maj, is_c_row_maj>(pA, pB, pC);
 }
 
 // int16 MatMul kernel definion with int32 outputs.
@@ -636,7 +662,7 @@ static inline void matmul_vectorized_4x4x4_i16_i32(const int16 *__restrict pA,
   static_assert(n % (2 * t) == 0); // 'n' dimension
 
   return matmul_vectorized_2x2_mmul<int16, int32, (m / r), (k / s), (n / t), r,
-                                    s, t, is_b_row_maj>(pA, pB, pC);
+                                    s, t, is_b_row_maj, is_c_row_maj>(pA, pB, pC);
 }
 
 // bf16 MatMul kernel definion with bf16 outputs.
