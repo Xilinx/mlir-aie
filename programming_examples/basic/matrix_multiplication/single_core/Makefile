@@ -53,32 +53,13 @@ ifeq (${use_iron}, 1)
 aie_py_src=${targetname}_iron.py
 endif
 
-include ${srcdir}/../makefile-common
-
-ifeq ($(devicename),npu2)
-kernels_dir=${srcdir}/../../../../aie_kernels/aie2p
-else 
-kernels_dir=${srcdir}/../../../../aie_kernels/aie2
-endif
-
-ifeq (${devicename}, npu)
-PEANO_FLAGS=${PEANOWRAP2_FLAGS}
-else ifeq (${devicename}, npu2)
-PEANO_FLAGS=${PEANOWRAP2P_FLAGS}
-endif
-
-# When this flag is set to 1, optimal performance is attained
-# via the usage of chess pragmas (see mm.cc).
-# Instruction memory and compilation time increases in this case.
-# Set to 0 otherwise.
-# Only affects kernel compilation using chess.
-opt_perf?=0
-
-KERNEL_FLAGS=-D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n}
+KERNEL_DEFINES=-D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n}
 ifeq (${b_col_maj}, 1)
-	KERNEL_FLAGS+=-DB_COL_MAJ
+	KERNEL_DEFINES+=-DB_COL_MAJ
 endif
+
+include ${srcdir}/../makefile-common
 
 build/mm_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANO_FLAGS} ${KERNEL_FLAGS} -c $< -o ${@F}
+	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}
