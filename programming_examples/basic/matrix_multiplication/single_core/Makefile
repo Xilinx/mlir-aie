@@ -61,28 +61,24 @@ else
 kernels_dir=${srcdir}/../../../../aie_kernels/aie2
 endif
 
-build/mm_b_row_maj_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
-	mkdir -p ${@D}
 ifeq (${devicename}, npu)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
+PEANO_FLAGS=${PEANOWRAP2_FLAGS}
 else ifeq (${devicename}, npu2)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DBIT_WIDTH=8 -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
+PEANO_FLAGS=${PEANOWRAP2P_FLAGS}
 endif
 
-build/mm_b_col_maj_${m}x${k}x${n}.o: ${kernels_dir}/mm_b_col_maj.cc
-	mkdir -p ${@D}
-ifeq (${devicename}, npu)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
-else ifeq (${devicename}, npu2)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DBIT_WIDTH=8 -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
+# When this flag is set to 1, optimal performance is attained
+# via the usage of chess pragmas (see mm.cc).
+# Instruction memory and compilation time increases in this case.
+# Set to 0 otherwise.
+# Only affects kernel compilation using chess.
+opt_perf?=0
+
+KERNEL_FLAGS=-D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n}
+ifeq (${b_col_maj}, 1)
+	KERNEL_FLAGS+=-DB_COL_MAJ
 endif
 
-ifneq (${b_col_maj}, 1)
-build/mm_${m}x${k}x${n}.o: build/mm_b_row_maj_${m}x${k}x${n}.o 
+build/mm_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
 	mkdir -p ${@D}
-	ar rvs $@ $^
-else
-build/mm_${m}x${k}x${n}.o: build/mm_b_col_maj_${m}x${k}x${n}.o
-	mkdir -p ${@D}
-	ar rvs $@ $^
-endif
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANO_FLAGS} ${KERNEL_FLAGS} -c $< -o ${@F}

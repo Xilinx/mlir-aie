@@ -167,11 +167,7 @@ def my_matmul(
     zero_kernel = Kernel(
         f"zero_{func_type}{dtype_out_str}", f"mm_{m}x{k}x{n}.o", [c_ty]
     )
-    matmul_vectorized_func_name = (
-        f"matmul_{dtype_in_str}_{dtype_out_str}"
-        if not b_col_maj
-        else f"matmul_{dtype_in_str}_{dtype_out_str}_b_col_maj"
-    )
+    matmul_vectorized_func_name = f"matmul_{dtype_in_str}_{dtype_out_str}"
     matmul_kernel = Kernel(
         matmul_vectorized_func_name,
         f"mm_{m}x{k}x{n}.o",
