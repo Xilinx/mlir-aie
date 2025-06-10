@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
+// Copyright (C) 2025, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -77,15 +77,16 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
   AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_MIN_ITERATION_COUNT(4)
   for (unsigned z = 0; z < rowA; z += 2) {
-    T_out *__restrict pC1 = pC + (z * colB + 0) * MMUL::size_C;
-    T_out *__restrict pC2 = pC + ((z + 1) * colB + 0) * MMUL::size_C;
+    T_out *__restrict pC1 = pC + (z * colB) * MMUL::size_C;
+    T_out *__restrict pC2 = pC + ((z + 1) * colB) * MMUL::size_C;
 
+    for (unsigned j = 0; j < colB; j += 2)
 #ifdef OPT_PERF_ENABLED
     AIE_LOOP_FLATTEN
 #endif
-    for (unsigned j = 0; j < colB; j += 2) {
-      const T_in *__restrict pA1 = pA + (z * colA + 0) * MMUL::size_A;
-      const T_in *__restrict pA2 = pA + ((z + 1) * colA + 0) * MMUL::size_A;
+    {
+      const T_in *__restrict pA1 = pA + (z * colA) * MMUL::size_A;
+      const T_in *__restrict pA2 = pA + ((z + 1) * colA) * MMUL::size_A;
       const T_in *__restrict pB1;
       const T_in *__restrict pB2;
       if constexpr (b_row_maj) {
@@ -134,10 +135,11 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
       C10.mac(A1, B0);
       C11.mac(A1, B1);
 
+      for (unsigned i = 1; i < colA; ++i)
 #ifdef OPT_PERF_ENABLED
       AIE_LOOP_FLATTEN
 #endif
-      for (unsigned i = 1; i < colA; ++i) {
+      {
         A0 = aie::load_v<MMUL::size_A>(pA1);
         pA1 += MMUL::size_A;
         A1 = aie::load_v<MMUL::size_A>(pA2);
@@ -203,10 +205,11 @@ static inline void matmul_vectorized_4x2_mmul(const T_in *__restrict pA,
     T_out *__restrict pC3 = pC + ((z + 2) * colB + 0) * MMUL::size_C;
     T_out *__restrict pC4 = pC + ((z + 3) * colB + 0) * MMUL::size_C;
 
+    for (unsigned j = 0; j < colB; j += 2)
 #ifdef OPT_PERF_ENABLED
     AIE_LOOP_FLATTEN
 #endif
-    for (unsigned j = 0; j < colB; j += 2) {
+    {
       const T_in *__restrict pA1 = pA + (z * colA + 0) * MMUL::size_A;
       const T_in *__restrict pA2 = pA + ((z + 1) * colA + 0) * MMUL::size_A;
       const T_in *__restrict pA3 = pA + ((z + 2) * colA + 0) * MMUL::size_A;
@@ -275,10 +278,11 @@ static inline void matmul_vectorized_4x2_mmul(const T_in *__restrict pA,
       C30.mac(A31, B0);
       C31.mac(A31, B1);
 
+      for (unsigned i = 1; i < colA; i += 1)
 #ifdef OPT_PERF_ENABLED
       AIE_LOOP_FLATTEN
 #endif
-      for (unsigned i = 1; i < colA; i += 1) {
+      {
         A01 = aie::load_v<MMUL::size_A>(pA1);
         pA1 += MMUL::size_A;
         A11 = aie::load_v<MMUL::size_A>(pA2);
@@ -355,10 +359,11 @@ static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
     T_out *__restrict pC3 = pC + ((z + 2) * colB + 0) * MMUL::size_C;
     T_out *__restrict pC4 = pC + ((z + 3) * colB + 0) * MMUL::size_C;
 
+    for (unsigned j = 0; j < colB; j += 4)
 #ifdef OPT_PERF_ENABLED
     AIE_LOOP_FLATTEN
 #endif
-    for (unsigned j = 0; j < colB; j += 4) {
+    {
       const T_in *__restrict pA1 = pA + (z * colA + 0) * MMUL::size_A;
       const T_in *__restrict pA2 = pA + ((z + 1) * colA + 0) * MMUL::size_A;
       const T_in *__restrict pA3 = pA + ((z + 2) * colA + 0) * MMUL::size_A;
@@ -484,10 +489,11 @@ static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
       C32.mac(A3, B2);
       C33.mac(A3, B3);
 
+      for (unsigned i = 1; i < colA; ++i)
 #ifdef OPT_PERF_ENABLED
       AIE_LOOP_FLATTEN
 #endif
-      for (unsigned i = 1; i < colA; ++i) {
+      {
         A0 = aie::load_v<MMUL::size_A>(pA1);
         pA1 += MMUL::size_A;
         A1 = aie::load_v<MMUL::size_A>(pA2);
