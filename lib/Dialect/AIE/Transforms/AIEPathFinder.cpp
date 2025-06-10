@@ -115,8 +115,6 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     int col, row;
     col = tileOp.colIndex();
     row = tileOp.rowIndex();
-    maxCol = std::max(maxCol, col);
-    maxRow = std::max(maxRow, row);
     assert(coordToTile.count({col, row}) == 0);
     coordToTile[{col, row}] = tileOp;
   }
@@ -143,8 +141,6 @@ TileOp DynamicTileAnalysis::getTile(OpBuilder &builder, int col, int row) {
   }
   auto tileOp = builder.create<TileOp>(builder.getUnknownLoc(), col, row);
   coordToTile[{col, row}] = tileOp;
-  maxCol = std::max(maxCol, col);
-  maxRow = std::max(maxRow, row);
   return tileOp;
 }
 
@@ -160,8 +156,6 @@ SwitchboxOp DynamicTileAnalysis::getSwitchbox(OpBuilder &builder, int col,
   SwitchboxOp::ensureTerminator(switchboxOp.getConnections(), builder,
                                 builder.getUnknownLoc());
   coordToSwitchbox[{col, row}] = switchboxOp;
-  maxCol = std::max(maxCol, col);
-  maxRow = std::max(maxRow, row);
   return switchboxOp;
 }
 
@@ -177,8 +171,6 @@ ShimMuxOp DynamicTileAnalysis::getShimMux(OpBuilder &builder, int col) {
   SwitchboxOp::ensureTerminator(switchboxOp.getConnections(), builder,
                                 builder.getUnknownLoc());
   coordToShimMux[{col, row}] = switchboxOp;
-  maxCol = std::max(maxCol, col);
-  maxRow = std::max(maxRow, row);
   return switchboxOp;
 }
 
