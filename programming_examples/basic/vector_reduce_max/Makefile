@@ -14,7 +14,7 @@ include ${srcdir}/../../makefile-common
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
-targetname = mem
+targetname = vector_reduce_max
 in1_size =  8192# in bytes
 out_size = 4 # in bytes, should always be equal to in1_size
 trace_size = 1024
@@ -24,13 +24,19 @@ dtype?=i32
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src=${targetname}.py
 use_placed?=0
+use_mem?=0
 
+ifeq ($(use_mem),1)
+aie_py_src=mem.py
+dtype=i32
+else
 ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
 dtype=i32
 else
 aie_py_src=${targetname}.py
 dtype=i32
+endif
 endif
 
 
