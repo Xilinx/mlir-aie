@@ -24,10 +24,11 @@ n?=32
 
 n_aie_cols?=4
 b_col_maj?=0
+c_col_maj?=0
 
 kernels=mm_${m}x${k}x${n}
-aieargs+=-m $m -k $k -n $n --n-aie-cols ${n_aie_cols} --b-col-maj ${b_col_maj}
-runargs+=--b_col_maj ${b_col_maj}
+aieargs+=-m $m -k $k -n $n --n-aie-cols ${n_aie_cols} --b-col-maj ${b_col_maj} --c-col-maj ${c_col_maj}
+runargs+=--b_col_maj ${b_col_maj} --c_col_maj ${c_col_maj}
 target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
 use_placed?=0
 use_iron?=0
@@ -56,6 +57,9 @@ endif
 KERNEL_DEFINES=-D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n}
 ifeq (${b_col_maj}, 1)
 	KERNEL_DEFINES+=-DB_COL_MAJ
+endif
+ifeq (${c_col_maj}, 1)
+	KERNEL_DEFINES+=-DC_COL_MAJ
 endif
 
 include ${srcdir}/../makefile-common
