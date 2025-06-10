@@ -25,10 +25,16 @@ using namespace xilinx::AIE;
 LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin DynamicTileAnalysis Constructor---\n");
   // find the maxCol and maxRow
-  maxCol = device.getTargetModel().columns() - 1;
-  maxRow = device.getTargetModel().rows() - 1;
+  maxCol = 0;
+  maxRow = 0;
+  targetCol = device.getTargetModel().columns();
+  targetRow = device.getTargetModel().rows();
+  for (TileOp tileOp : device.getOps<TileOp>()) {
+    maxCol = std::max(maxCol, tileOp.colIndex());
+    maxRow = std::max(maxRow, tileOp.rowIndex());
+  }
 
-  pathfinder->initialize(maxCol, maxRow, device.getTargetModel());
+  pathfinder->initialize(maxCol, maxRow, targetCol, targetRow, device.getTargetModel());
 
   // For each flow (circuit + packet) in the device, add it to pathfinder. Each
   // source can map to multiple different destinations (fanout). Control packet
@@ -174,7 +180,7 @@ ShimMuxOp DynamicTileAnalysis::getShimMux(OpBuilder &builder, int col) {
   return switchboxOp;
 }
 
-void Pathfinder::initialize(int maxCol, int maxRow,
+void Pathfinder::initialize(int maxCol, int maxRow, int targetCol, int targetRow,
                             const AIETargetModel &targetModel) {
 
   std::map<WireBundle, int> maxChannels;
@@ -249,8 +255,12 @@ void Pathfinder::initialize(int maxCol, int maxRow,
     graph[std::make_pair(TileID{col, row}, TileID{targetCol, targetRow})] = sb;
   };
 
-  for (int row = 0; row <= maxRow; row++) {
-    for (int col = 0; col <= maxCol; col++) {
+  // Determine loop boundaries. If maxCol/Row is limited to one column or row, 
+  // but targetCol/Row is greater, extend the loop to cover the target.
+  int loopMaxCol = (maxCol == 0 && targetCol > maxCol) ? maxCol + 1 : maxCol;
+  int loopMaxRow = (maxRow == 0 && targetRow > maxRow) ? maxRow + 1 : maxRow;
+  for (int row = 0; row <= loopMaxRow; row++) {
+    for (int col = 0; col <= loopMaxCol; col++) {
       maxChannels.clear();
       // connections within the same switchbox
       intraconnect(col, row);
@@ -258,23 +268,19 @@ void Pathfinder::initialize(int maxCol, int maxRow,
       // connections between switchboxes
       if (row > 0) {
         // from south to north
-        interconnect(col, row, col, row - 1, WireBundle::South,
-                     WireBundle::North);
+        interconnect(col, row, col, row - 1, WireBundle::South, WireBundle::North);
       }
-      if (row < maxRow) {
+      if (row < loopMaxRow) {
         // from north to south
-        interconnect(col, row, col, row + 1, WireBundle::North,
-                     WireBundle::South);
+        interconnect(col, row, col, row + 1, WireBundle::North, WireBundle::South);
       }
       if (col > 0) {
         // from east to west
-        interconnect(col, row, col - 1, row, WireBundle::West,
-                     WireBundle::East);
+        interconnect(col, row, col - 1, row, WireBundle::West, WireBundle::East);
       }
-      if (col < maxCol) {
+      if (col < loopMaxCol) {
         // from west to east
-        interconnect(col, row, col + 1, row, WireBundle::East,
-                     WireBundle::West);
+        interconnect(col, row, col + 1, row, WireBundle::East, WireBundle::West);
       }
     }
   }

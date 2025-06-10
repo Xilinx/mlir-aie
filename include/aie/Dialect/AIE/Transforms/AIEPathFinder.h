@@ -185,7 +185,7 @@ public:
   // This has to go first so it can serve as a key function.
   // https://lld.llvm.org/missingkeyfunction
   virtual ~Router() = default;
-  virtual void initialize(int maxCol, int maxRow,
+  virtual void initialize(int maxCol, int maxRow, int targetCol, int targetRow,
                           const AIETargetModel &targetModel) = 0;
   virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                        Port dstPort, bool isPacketFlow,
@@ -199,7 +199,7 @@ public:
 class Pathfinder : public Router {
 public:
   Pathfinder() = default;
-  void initialize(int maxCol, int maxRow,
+  void initialize(int maxCol, int maxRow, int targetCol, int targetRow,
                   const AIETargetModel &targetModel) override;
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort,
                bool isPacketFlow, bool isPriorityFlow) override;
@@ -232,6 +232,7 @@ private:
 class DynamicTileAnalysis {
 public:
   int maxCol, maxRow;
+  int targetCol, targetRow;
   std::shared_ptr<Router> pathfinder;
   std::map<PathEndPoint, SwitchSettings> flowSolutions;
   std::map<PathEndPoint, bool> processedFlows;
@@ -250,6 +251,9 @@ public:
 
   int getMaxCol() const { return maxCol; }
   int getMaxRow() const { return maxRow; }
+
+  int getTargetCol() const { return targetCol; }
+  int getTargetRow() const { return targetRow; }
 
   TileOp getTile(mlir::OpBuilder &builder, int col, int row);
 
