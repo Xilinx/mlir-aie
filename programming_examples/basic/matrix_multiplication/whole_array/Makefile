@@ -32,6 +32,7 @@ runargs+=--b_col_maj ${b_col_maj} --c_col_maj ${c_col_maj}
 target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
 use_placed?=0
 use_iron?=0
+use_scalar?=0
 
 # set this flag to 1 for linear buffer allocation
 # else, 0 for bank-aware
@@ -60,6 +61,12 @@ ifeq (${b_col_maj}, 1)
 endif
 ifeq (${c_col_maj}, 1)
 	KERNEL_DEFINES+=-DC_COL_MAJ
+endif
+ifeq (${use_scalar}, 1)
+	KERNEL_DEFINES+=-DSCALAR_ONLY
+	aieargs+= --scalar 1
+else
+	KERNEL_DEFINES+=-DVECTORIZED_ONLY
 endif
 
 include ${srcdir}/../makefile-common
