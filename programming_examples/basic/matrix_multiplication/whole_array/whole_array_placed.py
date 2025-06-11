@@ -125,9 +125,9 @@ def my_matmul(
             t = 4
     else:
         if dtype_in_str == "bf16":
-            r = 8
+            r = 4
             s = 8
-            t = 8
+            t = 4
         elif dtype_in_str == "i8":
             r = 8
             s = 8
