@@ -258,7 +258,8 @@ void Pathfinder::initialize(int maxCol, int maxRow,
       // connections between switchboxes
       if (row > 0) {
         // from south to north
-        interconnect(col, row, col, row - 1, WireBundle::South, WireBundle::North);
+        interconnect(col, row, col, row - 1, WireBundle::South,
+                     WireBundle::North);
       }
       if (row < maxRow) {
         // from north to south
