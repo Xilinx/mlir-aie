@@ -324,7 +324,9 @@ class AIE1TargetModel : public AIETargetModel {
 public:
   AIE1TargetModel(TargetModelKind k) : AIETargetModel(k) {}
 
-  bool isCoreTile(int col, int row) const override { return row > 0; }
+  bool isCoreTile(int col, int row) const override {
+    return row > 0 || row == -1;
+  }
   bool isMemTile(int col, int row) const override { return false; }
 
   AIEArch getTargetArch() const override;
@@ -548,7 +550,9 @@ public:
     return 4; /* One Shim row, 1 memtile rows, and 2 Core rows. */
   }
 
-  bool isCoreTile(int col, int row) const override { return row > 1; }
+  bool isCoreTile(int col, int row) const override {
+    return row > 1 || row == -1;
+  }
   bool isMemTile(int col, int row) const override { return row == 1; }
 
   bool isShimNOCTile(int col, int row) const override {
@@ -583,7 +587,9 @@ public:
     return 11; /* One Shim row, 2 memtile rows, and 8 Core rows. */
   }
 
-  bool isCoreTile(int col, int row) const override { return row > 2; }
+  bool isCoreTile(int col, int row) const override {
+    return row > 2 || row == -1;
+  }
 
   bool isMemTile(int col, int row) const override {
     return row == 1 || row == 2;
@@ -619,7 +625,9 @@ public:
     return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
   }
 
-  bool isCoreTile(int col, int row) const override { return row > 1; }
+  bool isCoreTile(int col, int row) const override {
+    return row > 1 || row == -1;
+  }
   bool isMemTile(int col, int row) const override { return row == 1; }
 
   bool isShimPLTile(int col, int row) const override {
@@ -696,7 +704,9 @@ public:
     return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
   }
 
-  bool isCoreTile(int col, int row) const override { return row > 1; }
+  bool isCoreTile(int col, int row) const override {
+    return row > 1 || row == -1;
+  }
   bool isMemTile(int col, int row) const override { return row == 1; }
 
   bool isShimPLTile(int col, int row) const override {
