@@ -27,12 +27,17 @@ b_col_maj?=0
 c_col_maj?=0
 
 kernels=mm_${m}x${k}x${n}
-aieargs+=-m $m -k $k -n $n --n-aie-cols ${n_aie_cols} --b-col-maj ${b_col_maj} --c-col-maj ${c_col_maj}
-runargs+=--b_col_maj ${b_col_maj} --c_col_maj ${c_col_maj}
+aieargs+=-m $m -k $k -n $n --n-aie-cols ${n_aie_cols} --b-col-maj ${b_col_maj} 
+runargs+=--b_col_maj ${b_col_maj} 
 target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
 use_placed?=0
 use_iron?=0
 use_scalar?=0
+
+ifeq (${c_col_maj}, 1)
+aieargs+=--c-col-maj ${c_col_maj} 
+runargs+=--c_col_maj ${c_col_maj}
+endif
 
 # set this flag to 1 for linear buffer allocation
 # else, 0 for bank-aware
