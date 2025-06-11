@@ -1,7 +1,5 @@
 # <ins>IRON Mini Tutorial</ins>
 
-**These exercises are set to run on NPU2 (Strix, Strix Halo, Krackan) devices. If you wish to run them on a different architecture, you can change the device at the top of the python source files.**
-
 ## <ins>Key Components: Workers, ObjectFifos, Runtime</ins>
 
 IRON provides an unplaced (deferred placement) [API](../../python/iron/) for NPU programming. Below are examples describing AIE compute code and the Object FIFO data movement primitive:
