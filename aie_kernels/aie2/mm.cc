@@ -23,7 +23,7 @@
 
 #include "zero.cc"
 
-template <typename T_in, typename T_out, int rowA, int colA, int colB, bool b_is_row_major = true, bool c_is_row_major = true>
+template <typename T_in, typename T_out, int rowA, int colA, int colB, bool b_row_maj = true, bool c_row_maj = true>
 static inline void matmul_scalar(T_in *a, T_in *b, T_out *c) {
   event0();
   for (int row = 0; row < rowA; row++) {
@@ -32,7 +32,7 @@ static inline void matmul_scalar(T_in *a, T_in *b, T_out *c) {
       for (int i = 0; i < colA; i++) {
         T_in a_val = a[row * colA + i];
         T_in b_val;
-        if constexpr (b_is_row_major) {
+        if constexpr (b_row_maj) {
           b_val = b[i * colB + col];
         } else {
           b_val = b[i + col * colA];
@@ -40,7 +40,7 @@ static inline void matmul_scalar(T_in *a, T_in *b, T_out *c) {
         running_sum += a_val * b_val;
       }
       T_out *c_ptr;
-      if constexpr (c_is_row_major) {
+      if constexpr (c_row_maj) {
         c_ptr = &c[row * colB + col];
       } else {
         c_ptr = &c[row + col * rowA];
@@ -90,14 +90,22 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
   AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_MIN_ITERATION_COUNT(4)
   for (unsigned z = 0; z < rowA; z += 2) {
-    T_out *__restrict pC1 = pC + (z * colB) * MMUL::size_C;
-    T_out *__restrict pC2 = pC + ((z + 1) * colB) * MMUL::size_C;
+    T_out *__restrict pC1;
+    T_out *__restrict pC2; 
+    if constexpr (c_row_maj) {
+      pC1 = pC + (z * colB) * MMUL::size_C;
+      pC2 = pC + ((z + 1) * colB) * MMUL::size_C;
+    }
 
     for (unsigned j = 0; j < colB; j += 2)
 #ifdef OPT_PERF_ENABLED
     AIE_LOOP_FLATTEN
 #endif
     {
+      if constexpr (!c_row_maj) {
+        pC1 = pC + j * rowA * MMUL::size_C + z * MMUL::size_C;
+        pC2 = pC + (j + 1) * rowA * MMUL::size_C + z * MMUL::size_C;
+      }
       const T_in *__restrict pA1 = pA + (z * colA) * MMUL::size_A;
       const T_in *__restrict pA2 = pA + ((z + 1) * colA) * MMUL::size_A;
       const T_in *__restrict pB1;
