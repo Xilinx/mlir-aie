@@ -232,7 +232,6 @@ private:
 class DynamicTileAnalysis {
 public:
   int maxCol, maxRow;
-  int targetCol, targetRow;
   std::shared_ptr<Router> pathfinder;
   std::map<PathEndPoint, SwitchSettings> flowSolutions;
   std::map<PathEndPoint, bool> processedFlows;
@@ -251,9 +250,6 @@ public:
 
   int getMaxCol() const { return maxCol; }
   int getMaxRow() const { return maxRow; }
-
-  int getTargetCol() const { return targetCol; }
-  int getTargetRow() const { return targetRow; }
 
   TileOp getTile(mlir::OpBuilder &builder, int col, int row);
 
