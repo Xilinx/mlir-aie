@@ -199,7 +199,7 @@ public:
 class Pathfinder : public Router {
 public:
   Pathfinder() = default;
-  void initialize(int maxCol, int maxRow, 
+  void initialize(int maxCol, int maxRow,
                   const AIETargetModel &targetModel) override;
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort,
                bool isPacketFlow, bool isPriorityFlow) override;
