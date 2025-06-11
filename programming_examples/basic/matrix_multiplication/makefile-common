@@ -94,8 +94,6 @@ else
 col_shift?=1
 endif
 
-$(info ${use_chess})
-
 ifneq (${use_chess}, 1)
 aiecc_peano_flags=--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR}
 endif
