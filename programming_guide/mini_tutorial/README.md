@@ -12,14 +12,18 @@ Compute code using workers:
 data_size = 256
 data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 
-buff = GlobalBuffer(data_ty, name="buff")
+def core_fn():
+    buff = LocalBuffer(
+        data_ty,
+        name="buff",
+        initial_value=np.array(range(data_size), dtype=np.int32),
+    )
 
-def core_fn(buff_in):
     for i in range_(data_size):
-        buff_in[i] = buff_in[i] + 1
+        buff[i] = buff[i] + 1
 
 # Create a worker to perform the task
-my_worker = Worker(core_fn, [buff]) # placement can be enforced: placement=Tile(1, 3)
+my_worker = Worker(core_fn, []) # placement can be enforced: placement=Tile(1, 3)
 ```
 More on the Worker in [Section 1](../section-1/README.md) of the programming guide and in the [worker.py](../../python/iron/worker.py).
 
