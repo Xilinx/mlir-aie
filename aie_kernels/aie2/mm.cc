@@ -23,16 +23,29 @@
 
 #include "zero.cc"
 
-template <typename T_in, typename T_out, int rowA, int colA, int colB>
+template <typename T_in, typename T_out, int rowA, int colA, int colB, bool b_is_row_major = true, bool c_is_row_major = true>
 static inline void matmul_scalar(T_in *a, T_in *b, T_out *c) {
   event0();
   for (int row = 0; row < rowA; row++) {
     for (int col = 0; col < colB; col++) {
       T_out running_sum = 0;
       for (int i = 0; i < colA; i++) {
-        running_sum += a[row * colA + i] * b[i * colB + col];
+        T_in a_val = a[row * colA + i];
+        T_in b_val;
+        if constexpr (b_is_row_major) {
+          b_val = b[i * colB + col];
+        } else {
+          b_val = b[i + col * colA];
+        }
+        running_sum += a_val * b_val;
       }
-      c[row * colB + col] += running_sum;
+      T_out *c_ptr;
+      if constexpr (c_is_row_major) {
+        c_ptr = &c[row * colB + col];
+      } else {
+        c_ptr = &c[row + col * rowA];
+      }
+      *c_ptr += running_sum;
     }
   }
   event1();
@@ -856,8 +869,8 @@ extern "C" {
                              r, s, t)                                          \
   void matmul_scalar_##mlir_type_in##_##mlir_type_out(                         \
       ctype_in *a_in, ctype_in *b_in, ctype_out *c_out) {                      \
-    matmul_scalar<ctype_in, ctype_out, DIM_M, DIM_K, DIM_N>(a_in, b_in,        \
-                                                            c_out);            \
+    matmul_scalar<ctype_in, ctype_out, DIM_M, DIM_K, DIM_N,                    \
+                  is_b_row_maj, is_c_row_maj>(a_in, b_in, c_out);              \
   }
 
 #define zero_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,              \
@@ -872,7 +885,11 @@ extern "C" {
     zero_scalar<ctype_out, DIM_M, DIM_N>(c_out);                               \
   }
 
-combos(matmul_vectorized_c_func) combos(matmul_scalar_c_func)
-    combos(zero_vectorized_c_func) combos(zero_scalar_c_func)
+#ifndef SCALAR_ONLY
+combos(matmul_vectorized_c_func) combos(zero_vectorized_c_func) 
+#endif
+#ifndef VECTORIZED_ONLY
+combos(matmul_scalar_c_func) combos(zero_scalar_c_func)
+#endif
 
 } // extern "C"
