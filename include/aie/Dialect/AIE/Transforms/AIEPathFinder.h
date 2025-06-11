@@ -185,7 +185,7 @@ public:
   // This has to go first so it can serve as a key function.
   // https://lld.llvm.org/missingkeyfunction
   virtual ~Router() = default;
-  virtual void initialize(int maxCol, int maxRow, 
+  virtual void initialize(int maxCol, int maxRow,
                           const AIETargetModel &targetModel) = 0;
   virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                        Port dstPort, bool isPacketFlow,
