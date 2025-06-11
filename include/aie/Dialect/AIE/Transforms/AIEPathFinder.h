@@ -185,7 +185,7 @@ public:
   // This has to go first so it can serve as a key function.
   // https://lld.llvm.org/missingkeyfunction
   virtual ~Router() = default;
-  virtual void initialize(int maxCol, int maxRow, int targetCol, int targetRow,
+  virtual void initialize(int maxCol, int maxRow, 
                           const AIETargetModel &targetModel) = 0;
   virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                        Port dstPort, bool isPacketFlow,
@@ -199,7 +199,7 @@ public:
 class Pathfinder : public Router {
 public:
   Pathfinder() = default;
-  void initialize(int maxCol, int maxRow, int targetCol, int targetRow,
+  void initialize(int maxCol, int maxRow, 
                   const AIETargetModel &targetModel) override;
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort,
                bool isPacketFlow, bool isPriorityFlow) override;
