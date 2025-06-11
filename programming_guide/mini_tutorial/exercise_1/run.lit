@@ -5,3 +5,5 @@
 //
 // RUN: %run_on_npu1% python3 %S/exercise_1.py
 // RUN: %run_on_npu2% python3 %S/exercise_1.py
+// RUN: %run_on_npu1% python3 %S/answer.py
+// RUN: %run_on_npu2% python3 %S/answer.py

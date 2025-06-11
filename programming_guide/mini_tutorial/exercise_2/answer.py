@@ -1,4 +1,4 @@
-# exercise_2.py -*- Python -*-
+# answer.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -22,26 +22,58 @@ def exercise_2(input0, output):
     data_type = output.dtype
     data_ty = np.ndarray[(data_size,), np.dtype[data_type]]
 
+    n_workers = 3
+    tile_sizes = [8, 24, 16]
+    tile_types = []
+    for i in range(n_workers):
+        tile_types.append(
+            np.ndarray[(tile_sizes[i],), np.dtype[data_type]]
+        )
+
     # Dataflow with ObjectFifos
+    of_offsets = [0, 8, 32]
+
     of_in = ObjectFifo(data_ty, name="in")
+    of_ins = of_in.cons().split(
+        of_offsets,
+        obj_types=tile_types,
+        names=[f"in{worker}" for worker in range(n_workers)],
+    )
+
     of_out = ObjectFifo(data_ty, name="out")
+    of_outs = of_out.prod().join(
+        of_offsets,
+        obj_types=tile_types,
+        names=[f"out{worker}" for worker in range(n_workers)],
+    )
 
     # Task for the core to perform
-    def core_fn(of_in, of_out):
+    def core_fn(of_in, of_out, num_elem):
         elem_in = of_in.acquire(1)
         elem_out = of_out.acquire(1)
-        for i in range_(data_size):
+        for i in range_(num_elem):
             elem_out[i] = elem_in[i]
         of_in.release(1)
         of_out.release(1)
 
-    # Create a worker to perform the task
-    my_worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
+    # Create workers to perform the task
+    workers = []
+    for i in range(n_workers):
+        workers.append(
+            Worker(
+                core_fn,
+                [
+                    of_ins[i].cons(),
+                    of_outs[i].prod(),
+                    tile_sizes[i],
+                ]
+            )
+        )
 
     # To/from AIE-array runtime data movement
     rt = Runtime()
     with rt.sequence(data_ty, data_ty) as (a_in, c_out):
-        rt.start(my_worker)
+        rt.start(*workers)
         rt.fill(of_in.prod(), a_in)
         rt.drain(of_out.cons(), c_out, wait=True)
 
@@ -54,12 +86,12 @@ def exercise_2(input0, output):
 
 def main():
     # Define tensor shapes and data types
-    data_size = 48
+    num_elements = 48
     data_type = np.int32
 
     # Construct an input tensor and an output zeroed tensor
     # The two tensors are in memory accessible to the NPU
-    input0 = iron.arange(data_size, dtype=data_type, device="npu")
+    input0 = iron.arange(num_elements, dtype=data_type, device="npu")
     output = iron.zeros_like(input0)
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls

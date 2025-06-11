@@ -1,4 +1,4 @@
-# exercise_2.py -*- Python -*-
+# answer.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -9,7 +9,7 @@
 import sys
 import numpy as np
 
-from aie.iron import Program, Runtime, Worker, ObjectFifo
+from aie.iron import Program, Runtime, Worker, ObjectFifo, LocalBuffer
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
@@ -17,14 +17,16 @@ import aie.iron as iron
 
 
 @iron.jit(is_placed=False)
-def exercise_2(input0, output):
+def exercise_1(input0, output):
     data_size = output.numel()
     data_type = output.dtype
     data_ty = np.ndarray[(data_size,), np.dtype[data_type]]
 
     # Dataflow with ObjectFifos
     of_in = ObjectFifo(data_ty, name="in")
-    of_out = ObjectFifo(data_ty, name="out")
+    of_in_mem = of_in.cons().forward(name="in_mem")
+    of_out_mem = ObjectFifo(data_ty, name="out_mem")
+    of_out = of_out_mem.cons().forward(name="out")
 
     # Task for the core to perform
     def core_fn(of_in, of_out):
@@ -32,11 +34,11 @@ def exercise_2(input0, output):
         elem_out = of_out.acquire(1)
         for i in range_(data_size):
             elem_out[i] = elem_in[i]
-        of_in.release(1)
         of_out.release(1)
+        of_in.release(1)
 
     # Create a worker to perform the task
-    my_worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
+    my_worker = Worker(core_fn, [of_in_mem.cons(), of_out_mem.prod()])
 
     # To/from AIE-array runtime data movement
     rt = Runtime()
@@ -64,7 +66,7 @@ def main():
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    exercise_2(input0, output)
+    exercise_1(input0, output)
 
     # Check the correctness of the result
     e = np.equal(input0.numpy(), output.numpy())
