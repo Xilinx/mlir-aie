@@ -69,7 +69,6 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         # Tile declarations
         ShimTile = tile(0, 0)
         MemTile = tile(0, 1)
-        CompTile = tile(1, 2)
 
         cores = [tile(0, 2 + i) for i in range(n_cores)]
 
