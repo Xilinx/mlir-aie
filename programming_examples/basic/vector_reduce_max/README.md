@@ -20,6 +20,8 @@ Input data is brought to the local memory of the Compute tile from a Shim tile. 
 
 1. `vector_reduce_max_placed.py`: An alternative version of the design in `vector_reduce_max.py`, that is expressed in a lower-level version of IRON.
 
+1. `reduce_max.cc`: A C++ implementation of a vectorized `max` reduction operation for AIE cores. The code uses the AIE API, which is a C++ header-only library providing types and operations that get translated into efficient low-level intrinsics, and whose documentation can be found [here](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html).  The source can be found [here](../../../aie_kernels/aie2/reduce_max.cc).
+
 1. `test.cpp`: This C++ code is a testbench for the design example targetting Ryzen™ AI (AIE2). The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the program verifies the results.
 
 ## Extended Designs
