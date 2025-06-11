@@ -268,7 +268,8 @@ void Pathfinder::initialize(int maxCol, int maxRow,
       }
       if (col > 0) {
         // from east to west
-        interconnect(col, row, col - 1, row, WireBundle::West, WireBundle::East);
+        interconnect(col, row, col - 1, row, WireBundle::West,
+                     WireBundle::East);
       }
       if (col < maxCol) {
         // from west to east
