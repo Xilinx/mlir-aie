@@ -42,6 +42,11 @@ endif
 SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 include ${SELF_DIR}../makefile-common
 
+# Overwrite the kernels_dir defined in makefile-common for this example; on 
+# AIE2p, we will also use the AIE2 kernel -- there is no specialized Strix 
+# variant.
+kernels_dir=${srcdir}/../../../../aie_kernels/aie2
+
 build/mv_${m}x${k}.o: ${kernels_dir}/mv.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}
