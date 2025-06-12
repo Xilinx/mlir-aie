@@ -96,8 +96,8 @@ def my_matmul(
     dtype_in_str,
     dtype_out_str,
     b_col_maj,
-    trace_size,
     emulate_bf16_mmul_with_bfp16,
+    trace_size,
     generate_taps=False,
 ):
 
