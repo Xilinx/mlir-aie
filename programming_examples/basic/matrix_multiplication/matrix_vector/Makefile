@@ -34,16 +34,19 @@ ifeq (${use_iron}, 1)
 aie_py_src=${targetname}_iron.py
 endif
 
+KERNEL_DEFINES=-DDIM_M=${m} -DDIM_K=${k}
+ifeq (${b_col_maj}, 1)
+	KERNEL_DEFINES+=-DB_COL_MAJ
+endif
 
 SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 include ${SELF_DIR}../makefile-common
 
+# Overwrite the kernels_dir defined in makefile-common for this example; on 
+# AIE2p, we will also use the AIE2 kernel -- there is no specialized Strix 
+# variant.
 kernels_dir=${srcdir}/../../../../aie_kernels/aie2
 
 build/mv_${m}x${k}.o: ${kernels_dir}/mv.cc
 	mkdir -p ${@D}
-ifeq (${devicename}, npu)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -DDIM_M=${m} -DDIM_K=${k} -c $< -o ${@F}
-else ifeq (${devicename}, npu2)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DBIT_WIDTH=8 -DDIM_M=${m} -DDIM_K=${k} -c $< -o ${@F}
-endif
+	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}
