@@ -50,6 +50,7 @@ def main():
         default="i32",
     )
     argparser.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
+    argparser.add_argument("--emulate-bf16-mmul-with-bfp16", type=bool, default=False)
     argparser.add_argument("--trace_size", type=int, default=0)
     argparser.add_argument(
         "--generate-taps",
@@ -70,6 +71,7 @@ def main():
             args.dtype_in,
             args.dtype_out,
             args.b_col_maj,
+            args.emulate_bf16_mmul_with_bfp16,
             args.trace_size,
             args.generate_taps,
         )
@@ -95,6 +97,7 @@ def my_matmul(
     dtype_out_str,
     b_col_maj,
     trace_size,
+    emulate_bf16_mmul_with_bfp16,
     generate_taps=False,
 ):
 
@@ -117,9 +120,14 @@ def my_matmul(
             t = 4
     else:
         if dtype_in_str == "bf16":
-            r = 8
-            s = 8
-            t = 8
+            if emulate_bf16_mmul_with_bfp16:
+                r = 8
+                s = 8
+                t = 8
+            else:
+                r = 4
+                s = 8
+                t = 4
         elif dtype_in_str == "i8":
             r = 8
             s = 8
