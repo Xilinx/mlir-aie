@@ -246,7 +246,7 @@ matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
   static_assert(n % (2 * t) == 0);
 
   return matmul_vectorized_2x2_mmul<bfloat16, bfloat16, (m / r), (k / s),
-                                    (n / t), r, s, t>(pA, pB, pC);
+                                    (n / t), r, s, t, is_b_row_maj>(pA, pB, pC);
 }
 
 // Note that this shape is only possible for bf16 when using bfp16 emulation
@@ -282,7 +282,7 @@ matmul_vectorized_4x8x4_bf16_f32(const bfloat16 *__restrict pA,
   static_assert(n % (2 * t) == 0);
 
   return matmul_vectorized_2x2_mmul<bfloat16, float, (m / r), (k / s), (n / t),
-                                    r, s, t>(pA, pB, pC);
+                                    r, s, t, is_b_row_maj>(pA, pB, pC);
 }
 
 template <unsigned m, unsigned k, unsigned n>
