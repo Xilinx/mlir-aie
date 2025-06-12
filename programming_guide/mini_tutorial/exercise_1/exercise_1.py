@@ -19,8 +19,8 @@ import aie.iron as iron
 @iron.jit(is_placed=False)
 def exercise_1(output):
     data_size = output.numel()
-    data_type = output.dtype
-    data_ty = np.ndarray[(data_size,), np.dtype[data_type]]
+    element_type = output.dtype
+    data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
 
     # Dataflow with ObjectFifos
     of_out = ObjectFifo(data_ty, name="out")
@@ -30,7 +30,7 @@ def exercise_1(output):
         buff = LocalBuffer(
             data_ty,
             name="buff",
-            initial_value=np.array(range(data_size), dtype=data_type),
+            initial_value=np.array(range(data_size), dtype=element_type),
         )
         elem_out = of_out.acquire(1)
         for i in range_(data_size):
@@ -56,11 +56,11 @@ def exercise_1(output):
 def main():
     # Define tensor shapes and data types
     data_size = 48
-    data_type = np.int32
+    element_type = np.int32
 
     # Construct an input tensor and an output zeroed tensor
     # The two tensors are in memory accessible to the NPU
-    input0 = iron.arange(data_size, dtype=data_type, device="npu")
+    input0 = iron.arange(data_size, dtype=element_type, device="npu")
     output = iron.zeros_like(input0)
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
