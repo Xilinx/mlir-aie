@@ -258,9 +258,9 @@ This C++ code demonstrates how to implement matrix multiplication for different 
 
 1. `matmul_scalar`: A scalar function that performs matrix multiplication for input matrices `a` and `b` and adds the result to matrix `c`. This function iterates through each row in matrix `a` and each column in matrix `b`, performing the multiplication of the corresponding elements and accumulating their sum to populate matrix `c`.
 
-1. `matmul_vectorized` and `matmul_vectorized_2x2`: Vectorized matrix multiplication functions for different block sizes and input/output types for the AI Engine. These functions use the AIE API for efficient vectorized matrix multiplication, with support for various input and output tensor data types (e.g., int16, bfloat16).
+1. `matmul_vectorized` and `matmul_vectorized_XxX`: Vectorized matrix multiplication functions for different block sizes and input/output types for the AI Engine. These functions use the AIE API for efficient vectorized matrix multiplication, with support for various input and output tensor data types (e.g., int16, bfloat16). These functions expand the vectorized matrix multiplications to different shapes (4x4, 2x2, 4x4) to achieve higher kernel efficiency through higher accumulator register usage.
 
-1. `matmul_vectorized_4x4x4_i16_i16`, `matmul_vectorized_4x8x4_bf16_bf16`, and `matmul_vectorized_4x8x4_bf16_f32`: Helper functions for calling the corresponding `matmul_vectorized` functions with specific input and output types and block sizes.
+1. `matmul_vectorized_4x4x4_i16_i16`, `matmul_vectorized_4x8x4_bf16_bf16`, `matmul_vectorized_4x8x4_bf16_f32`, ... : Helper functions for calling the corresponding `matmul_vectorized` functions with specific input and output types and block sizes. The shapes of the intrinsic calls (ex: `4x8x4`) have been selected among the available ones for their higher performance. The full list of available matrix multiplication modes can be found [here](https://xilinx.github.io/aie_api/group__group__mmul.html).
 
 1. Extern "C" interface functions: These functions provide a C-compatible interface to the main matrix multiplication functions, making it easier to call these functions from other languages or environments.
 

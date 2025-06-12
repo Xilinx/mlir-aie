@@ -602,172 +602,128 @@ constexpr bool is_b_row_maj = false;
 constexpr bool is_b_row_maj = true;
 #endif
 
-// int16 MatMul kernel definion with int16 outputs.
+// The following kernel definitions use mmul shapes and kernel expansions that
+// have been found to be optimal for AIE2.
+//
+// All available matrix multiplication shapes in the AIE-API can be found here:
+// https://xilinx.github.io/aie_api/group__group__mmul.html
+//
+// They are all defined based on the shape of the mmul, the input data format
+// and the output data format.
+//
+// Additionally, they check for the correct
+// divisibility of the tile dimensions. Note that while both the 'm' and 'n'
+// dimensions of the mmul are expanded, the 'k' dimension is not.
+
 template <unsigned m, unsigned k, unsigned n>
 static inline void matmul_vectorized_4x4x4_i16_i16(const int16 *__restrict pA,
                                                    const int16 *__restrict pB,
                                                    int16 *__restrict pC) {
-
-  // After extensive experimentation, the 4x4x4 aie::mmul size was found to be
-  // optimal for AIE2, in combination with the 2x2 mmul expanded kernel
   constexpr int r = 4;
   constexpr int s = 4;
   constexpr int t = 4;
 
-  // Since the kernel has been expanded twice for both A ('m' dimension) and B
-  // ('n' dimension), the following assertions veirify this even division for
-  // the single AIE MatMul dimensionality. Notice that 'k' dimension is not
-  // spatially expanded.
-  static_assert(m % (2 * r) == 0); // 'm' dimension
-  static_assert(k % s == 0);       // 'k' dimension
-  static_assert(n % (2 * t) == 0); // 'n' dimension
+  static_assert(m % (2 * r) == 0);
+  static_assert(k % s == 0);
+  static_assert(n % (2 * t) == 0);
 
   return matmul_vectorized_2x2_mmul<int16, int16, (m / r), (k / s), (n / t), r,
                                     s, t, is_b_row_maj>(pA, pB, pC);
 }
 
-// int16 MatMul kernel definion with int32 outputs.
 template <unsigned m, unsigned k, unsigned n>
 static inline void matmul_vectorized_4x4x4_i16_i32(const int16 *__restrict pA,
                                                    const int16 *__restrict pB,
                                                    int32 *__restrict pC) {
-
-  // After extensive experimentation, the 4x4x4 aie::mmul size was found to be
-  // optimal for AIE2, in combination with the 2x2 mmul expanded kernel
   constexpr int r = 4;
   constexpr int s = 4;
   constexpr int t = 4;
 
-  // Since the kernel has been expanded twice for both A ('m' dimension) and B
-  // ('n' dimension), the following assertions veirify this even division for
-  // the single AIE MatMul dimensionality Notice that 'k' dimension is not
-  // spatially expanded.
-  static_assert(m % (2 * r) == 0); // 'm' dimension
-  static_assert(k % s == 0);       // 'k' dimension
-  static_assert(n % (2 * t) == 0); // 'n' dimension
+  static_assert(m % (2 * r) == 0);
+  static_assert(k % s == 0);
+  static_assert(n % (2 * t) == 0);
 
   return matmul_vectorized_2x2_mmul<int16, int32, (m / r), (k / s), (n / t), r,
                                     s, t, is_b_row_maj>(pA, pB, pC);
 }
 
-// bf16 MatMul kernel definion with bf16 outputs.
 template <unsigned m, unsigned k, unsigned n>
 static inline void
 matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
                                   const bfloat16 *__restrict pB,
                                   bfloat16 *__restrict pC) {
-
-  // After extensive experimentation, the 4x8x4 aie::mmul size was found to be
-  // optimal for AIE2, in combination with the 4x4 mmul expanded kernel
   constexpr int r = 4;
   constexpr int s = 8;
   constexpr int t = 4;
 
-  // Since the kernel has been expanded 4 times for both A ('m' dimension) and B
-  // ('n' dimension), the following assertions veirify this even division for
-  // the single AIE MatMul dimensionality Notice that 'k' dimension is not
-  // spatially expanded.
-  static_assert(m % (4 * r) == 0); // 'm' dimension
-  static_assert(k % s == 0);       // 'k' dimension
-  static_assert(n % (4 * t) == 0); // 'n' dimension
+  static_assert(m % (4 * r) == 0);
+  static_assert(k % s == 0);
+  static_assert(n % (4 * t) == 0);
 
   return matmul_vectorized_4x4<bfloat16, bfloat16, (m / r), (k / s), (n / t), r,
                                s, t, is_b_row_maj>(pA, pB, pC);
 }
 
-// bf16 MatMul kernel definion with fp32 outputs.
 template <unsigned m, unsigned k, unsigned n>
 static inline void
 matmul_vectorized_4x8x4_bf16_f32(const bfloat16 *__restrict pA,
                                  const bfloat16 *__restrict pB,
                                  float *__restrict pC) {
-
-  // After extensive experimentation, the 4x8x4 aie::mmul size was found to be
-  // optimal for AIE2, in combination with the 4x4 mmul expanded kernel
   constexpr int r = 4;
   constexpr int s = 8;
   constexpr int t = 4;
 
-  // Since the kernel has been expanded 4 times for both A ('m' dimension) and B
-  // ('n' dimension), the following assertions veirify this even division for
-  // the single AIE MatMul dimensionality Notice that 'k' dimension is not
-  // spatially expanded.
-  static_assert(m % (4 * r) == 0); // 'm' dimension
-  static_assert(k % s == 0);       // 'k' dimension
-  static_assert(n % (4 * t) == 0); // 'n' dimension
+  static_assert(m % (4 * r) == 0);
+  static_assert(k % s == 0);
+  static_assert(n % (4 * t) == 0);
 
   return matmul_vectorized_4x4<bfloat16, float, (m / r), (k / s), (n / t), r, s,
                                t, is_b_row_maj>(pA, pB, pC);
 }
 
-// int8 MatMul kernel definion with int8 outputs.
 template <unsigned m, unsigned k, unsigned n>
 static inline void matmul_vectorized_4x8x8_i8_i8(const int8 *__restrict pA,
                                                  const int8 *__restrict pB,
                                                  int8 *__restrict pC) {
-
-  // After extensive experimentation, the 4x8x8 aie::mmul size was found to be
-  // optimal for AIE2, in combination with the 4x2 mmul expanded kernel
   constexpr int r = 4;
   constexpr int s = 8;
   constexpr int t = 8;
 
-  // Since the kernel has been expanded 4 times for A ('m' dimension) and 2
-  // times for B ('n' dimension), the following assertions veirify this even
-  // division for the single AIE MatMul dimensionality Notice that 'k' dimension
-  // is not spatially expanded.
-  static_assert(m % (4 * r) == 0); // 'm' dimension
-  static_assert(k % s == 0);       // 'k' dimension
-  static_assert(n % (2 * t) == 0); // 'n' dimension
+  static_assert(m % (4 * r) == 0);
+  static_assert(k % s == 0);
+  static_assert(n % (2 * t) == 0);
 
   return matmul_vectorized_4x2_mmul<int8, int8, (m / r), (k / s), (n / t), r, s,
                                     t, is_b_row_maj>(pA, pB, pC);
 }
 
-// int8 MatMul kernel definion with int16 outputs.
 template <unsigned m, unsigned k, unsigned n>
 static inline void matmul_vectorized_4x8x8_i8_i16(const int8 *__restrict pA,
                                                   const int8 *__restrict pB,
                                                   int16 *__restrict pC) {
-
-  // After extensive experimentation, the 4x8x8 aie::mmul size was found to be
-  // optimal for AIE2, in combination with the 4x2 mmul expanded kernel
   constexpr int r = 4;
   constexpr int s = 8;
   constexpr int t = 8;
 
-  // Since the kernel has been expanded 4 times for A ('m' dimension) and 2
-  // times for B ('n' dimension), the following assertions veirify this even
-  // division for the single AIE MatMul dimensionality Notice that 'k' dimension
-  // is not spatially expanded.
-  static_assert(m % (4 * r) == 0); // 'm' dimension
-  static_assert(k % s == 0);       // 'k' dimension
-  static_assert(n % (2 * t) == 0); // 'n' dimension
+  static_assert(m % (4 * r) == 0);
+  static_assert(k % s == 0);
+  static_assert(n % (2 * t) == 0);
 
   return matmul_vectorized_4x2_mmul<int8, int16, (m / r), (k / s), (n / t), r,
                                     s, t, is_b_row_maj>(pA, pB, pC);
 }
 
-// int8 MatMul kernel definion with int32 outputs.
 template <unsigned m, unsigned k, unsigned n>
 static inline void matmul_vectorized_4x8x8_i8_i32(const int8 *__restrict pA,
                                                   const int8 *__restrict pB,
                                                   int32 *__restrict pC) {
-
-  // Since the kernel has been expanded 4 times for A ('m' dimension) and 2
-  // times for B ('n' dimension), in combination with the 4x2 mmul expanded
-  // kernel
   constexpr int r = 4;
   constexpr int s = 8;
   constexpr int t = 8;
 
-  // Since the kernel has been expanded twice for both A ('m' dimension) and B
-  // ('n' dimension), the following assertions veirify this even division for
-  // the single AIE MatMul dimensionality Notice that 'k' dimension is not
-  // spatially expanded.
-  static_assert(m % (4 * r) == 0); // 'm' dimension
-  static_assert(k % s == 0);       // 'k' dimension
-  static_assert(n % (2 * t) == 0); // 'n' dimension
+  static_assert(m % (4 * r) == 0);
+  static_assert(k % s == 0);
+  static_assert(n % (2 * t) == 0);
 
   return matmul_vectorized_4x2_mmul<int8, int32, (m / r), (k / s), (n / t), r,
                                     s, t, is_b_row_maj>(pA, pB, pC);

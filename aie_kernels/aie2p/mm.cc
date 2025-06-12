@@ -232,6 +232,7 @@ static inline void matmul_vectorized_4x4x8_i16_i32(const int16 *__restrict pA,
                                     s, t, is_b_row_maj>(pA, pB, pC);
 }
 
+//TODO: Unlike the others, this shape has not yet been tested for optimality
 template <unsigned m, unsigned k, unsigned n>
 static inline void
 matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
