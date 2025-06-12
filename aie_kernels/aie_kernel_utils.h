@@ -27,6 +27,7 @@
 #define AIE_NO_HW_LOOP [[chess::no_hw_loop]]
 #define AIE_TRY_INITIATION_INTERVAL(x)
 #define AIE_PREPARE_FOR_POSTPIPELINING
+#define AIE_LOOP_FLATTEN chess_flatten_loop
 
 #elif defined(__AIECC__)
 #ifndef __STRINGIFY
@@ -53,6 +54,7 @@
 #define AIE_TRY_INITIATION_INTERVAL(x)                                         \
   _Pragma(__STRINGIFY(clang loop pipeline_initiation_interval(x)))
 #define AIE_PREPARE_FOR_POSTPIPELINING _Pragma("clang loop pipeline(disable)")
+#define AIE_LOOP_FLATTEN 
 
 #else
 #define AIE_LOOP_UNROLL(x)
@@ -71,6 +73,7 @@
 #define AIE_NO_HW_LOOP
 #define AIE_TRY_INITIATION_INTERVAL(x)
 #define AIE_PREPARE_FOR_POSTPIPELINING
+#define AIE_LOOP_FLATTEN 
 #endif
 
 #endif

@@ -53,36 +53,13 @@ ifeq (${use_iron}, 1)
 aie_py_src=${targetname}_iron.py
 endif
 
+KERNEL_DEFINES=-D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n}
+ifeq (${b_col_maj}, 1)
+	KERNEL_DEFINES+=-DB_COL_MAJ
+endif
+
 include ${srcdir}/../makefile-common
 
-ifeq ($(devicename),npu2)
-kernels_dir=${srcdir}/../../../../aie_kernels/aie2p
-else 
-kernels_dir=${srcdir}/../../../../aie_kernels/aie2
-endif
-
-build/mm_b_row_maj_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
+build/mm_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
 	mkdir -p ${@D}
-ifeq (${devicename}, npu)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
-else ifeq (${devicename}, npu2)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DBIT_WIDTH=8 -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
-endif
-
-build/mm_b_col_maj_${m}x${k}x${n}.o: ${kernels_dir}/mm_b_col_maj.cc
-	mkdir -p ${@D}
-ifeq (${devicename}, npu)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
-else ifeq (${devicename}, npu2)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DBIT_WIDTH=8 -D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n} -c $< -o ${@F}
-endif
-
-ifneq (${b_col_maj}, 1)
-build/mm_${m}x${k}x${n}.o: build/mm_b_row_maj_${m}x${k}x${n}.o 
-	mkdir -p ${@D}
-	ar rvs $@ $^
-else
-build/mm_${m}x${k}x${n}.o: build/mm_b_col_maj_${m}x${k}x${n}.o
-	mkdir -p ${@D}
-	ar rvs $@ $^
-endif
+	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}
