@@ -73,7 +73,7 @@ def route_using_cp(
     min_edges=False,
     seed=42,
     num_workers=multiprocessing.cpu_count() // 2,
-    timeout=800,
+    timeout=1350,
 ):
     from ortools.sat.python import cp_model
 
@@ -182,7 +182,7 @@ def route_using_cp(
 def route_using_ilp(
     DG,
     flows,
-    timeout=800,
+    timeout=1350,
 ):
     import gurobipy as gp
     from gurobipy import GRB
@@ -389,7 +389,7 @@ class Router:
     used_channels: Dict[Tuple["Switchbox", "Switchbox"], Set[int]]
     routing_solution: Dict["PathEndPoint", "SwitchSettings"]
 
-    def __init__(self, use_gurobi=False, timeout=800):
+    def __init__(self, use_gurobi=False, timeout=1350):
         self.flows = []
         self.routing_solution = None
         self.use_gurobi = use_gurobi or pythonize_bool(
