@@ -61,16 +61,17 @@ This device is present on the V70 board
 
 ```aie.device(npu1) {}```
 This device is present in Ryzen Phoenix (e.g. 7940HS) and HawkPoint (e.g., 8040HS) SOCs.
-5 Columns and 6 Rows
+4 Columns<sup>1</sup> and 6 Rows
 ```
-5 CCCCC
-4 CCCCC
-3 CCCCC
-2 CCCCC
-1 MMMMM
-0 PDDDD
-  01234
+5 CCCC
+4 CCCC
+3 CCCC
+2 CCCC
+1 MMMM
+0 DDDD
+  1234
 ```
+> <sup>1</sup> The hidden zeroth-column of Phoenix NPUs is irregular and no longer exposed through MLIR-AIE.
 
 ```aie.device(npu1_1col) {}```
 ```aie.device(npu1_2col) {}```
@@ -84,7 +85,7 @@ N Columns and 6 Rows
 3 CCCC
 2 CCCC
 1 MMMM
-0 PDDD
+0 DDDD
   0..N
 ```
 
