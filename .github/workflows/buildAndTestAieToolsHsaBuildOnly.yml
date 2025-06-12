@@ -129,6 +129,7 @@ jobs:
             mkdir build && cd build
             export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:`pwd`/../install/bin/:$PATH
             cmake .. -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
               -DLibXAIE_x86_64-hsa_DIR=/install/aie-rt \
               -Dhsakmt_DIR=`pwd`/../rocm/lib/cmake/hsakmt/ \
               -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
@@ -157,8 +158,7 @@ jobs:
             fi
 
             # filter out CODirect until I put bootgen into the image
-            # filter out routing stress test create-flows/vecmul_4x4.mlir due to timeout.
-            export LIT_OPTS="-sv --timeout 600 -j1 --filter-out Targets/AIEGenerateCDODirect --filter-out vecmul_4x4"
+            export LIT_OPTS="-sv --timeout 600 -j1 --filter-out Targets/AIEGenerateCDODirect"
             ninja check-aie
             ninja check-reference-designs
 

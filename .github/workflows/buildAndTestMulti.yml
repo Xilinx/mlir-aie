@@ -147,8 +147,6 @@ jobs:
           ninja
           # tests hang/fail on windows
           if [ x"${{ contains(matrix.OS, 'windows') }}" == x"false" ]; then
-            # filter out routing stress test create-flows/vecmul_4x4.mlir due to timeout.
-            export LIT_OPTS="-sv --timeout 600 -j1 --filter-out vecmul_4x4"
             ninja check-aie
             ninja check-tutorials
             ninja check-reference-designs
