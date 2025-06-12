@@ -6,5 +6,5 @@
 // RUN: mkdir -p test_bf16_stx_emulated_chess
 // RUN: cd test_bf16_stx_emulated_chess
 // RUN: make -f %S/../Makefile clean
-// RUN: env dtype_in=bf16 dtype_out=bf16 m=32 k=32 n=32 M=512 K=512 N=512 emulate_bfloat16_mmul_with_bfp16=1 use_chess=1 make -f %S/../Makefile devicename=npu2
+// RUN: env dtype_in=bf16 dtype_out=f32 m=32 k=32 n=32 M=512 K=512 N=512 emulate_bfloat16_mmul_with_bfp16=1 use_chess=1 make -f %S/../Makefile devicename=npu2
 // RUN: %run_on_npu2% env dtype_in=bf16 dtype_out=f32 m=32 k=32 n=32 M=512 K=512 N=512 emulate_bfloat16_mmul_with_bfp16=1 use_chess=1 make -f %S/../Makefile run devicename=npu2
