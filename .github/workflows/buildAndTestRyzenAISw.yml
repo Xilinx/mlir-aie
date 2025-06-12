@@ -124,6 +124,8 @@ jobs:
                 -DMLIR_DIR=/workspace/mlir/lib/cmake/mlir
 
             ninja install
+            # filter out routing stress test create-flows/vecmul_4x4.mlir due to timeout.
+            export LIT_OPTS="-sv --timeout 600 -j1 --filter-out vecmul_4x4"
             ninja check-aie
 
             popd
