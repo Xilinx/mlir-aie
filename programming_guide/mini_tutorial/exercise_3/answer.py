@@ -65,9 +65,7 @@ def exercise_3(output):
         # Set runtime parameters
         def set_rtps(*args):
             for rtp in args:
-                for i in range(
-                    data_size
-                ):  # note difference with range_ in the Worker
+                for i in range(data_size):  # note difference with range_ in the Worker
                     rtp[i] = i
 
         rt.inline_ops(set_rtps, rtps)
