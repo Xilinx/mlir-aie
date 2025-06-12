@@ -26,9 +26,7 @@ def exercise_2(input0, output):
     tile_sizes = [8, 24, 16]
     tile_types = []
     for i in range(n_workers):
-        tile_types.append(
-            np.ndarray[(tile_sizes[i],), np.dtype[element_type]]
-        )
+        tile_types.append(np.ndarray[(tile_sizes[i],), np.dtype[element_type]])
 
     # Dataflow with ObjectFifos
     of_offsets = [0, 8, 32]
