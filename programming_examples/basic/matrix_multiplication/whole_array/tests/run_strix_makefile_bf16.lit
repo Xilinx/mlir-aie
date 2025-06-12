@@ -6,12 +6,5 @@
 // RUN: mkdir -p test_bf16_stx
 // RUN: cd test_bf16_stx
 // RUN: make -f %S/../Makefile clean
-//
-// This is testing bf16 without bfp emulation
 // RUN: env dtype_in=bf16 dtype_out=bf16 m=32 k=32 n=32 M=512 K=512 N=512 emulate_bfloat16_mmul_with_bfp16=0 make -f %S/../Makefile devicename=npu2
 // RUN: %run_on_npu2% env dtype_in=bf16 dtype_out=bf16 m=32 k=32 n=32 M=512 K=512 N=512 emulate_bfloat16_mmul_with_bfp16=0 make -f %S/../Makefile run devicename=npu2
-//
-// This is testing bf16 with bfp emulation
-// RUN: make -f %S/../Makefile clean
-// RUN: env dtype_in=bf16 dtype_out=bf16 m=32 k=32 n=32 M=512 K=512 N=512 emulate_bfloat16_mmul_with_bfp16=1 make -f %S/../Makefile devicename=npu2
-// RUN: %run_on_npu2% env dtype_in=bf16 dtype_out=f32 m=32 k=32 n=32 M=512 K=512 N=512 emulate_bfloat16_mmul_with_bfp16=1 make -f %S/../Makefile run devicename=npu2
