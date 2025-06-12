@@ -69,6 +69,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         # Tile declarations
         ShimTile = tile(0, 0)
         MemTile = tile(0, 1)
+        CompTile = tile(1, 2)
 
         cores = [tile(0, 2 + i) for i in range(n_cores)]
 
@@ -154,7 +155,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                         reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
                         compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
                         inA_fifos[i].release(ObjectFifoPort.Consume, 1)
-                    compute_max(nextC_buffer, tmp_buffer, elem_out)
+                    elem_out[0] = nextC_buffer[0]
                     outC_fifos[i].release(ObjectFifoPort.Produce, 1)
 
             else:
@@ -167,7 +168,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                         reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
                         compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
                         inA_fifos[i].release(ObjectFifoPort.Consume, 1)
-                    compute_max(nextC_buffer, tmp_buffer, elem_out)
+                    elem_out[0] = nextC_buffer[0]
                     outC_fifos[i].release(ObjectFifoPort.Produce, 1)
 
                     elem_out1 = of_out.acquire(ObjectFifoPort.Produce, 1)
