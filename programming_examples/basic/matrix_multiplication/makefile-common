@@ -34,8 +34,8 @@ current_dir := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 include ${current_dir}../../makefile-common
 
 
-dtype_in?=bf16
-dtype_out?=f32
+dtype_in?=i16
+dtype_out?=i32
 trace_size?=65536
 emulate_bfloat16_mmul_with_bfp16?=0
 
