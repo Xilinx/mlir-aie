@@ -66,7 +66,7 @@ def exercise_2(input0, output):
                     of_ins[i].cons(),
                     of_outs[i].prod(),
                     tile_sizes[i],
-                ]
+                ],
             )
         )
 
