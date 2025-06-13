@@ -7,7 +7,6 @@
 import argparse
 from ml_dtypes import bfloat16
 import numpy as np
-import sys
 
 from aie.extras.context import mlir_mod_ctx
 
@@ -229,7 +228,7 @@ def my_matmul(
 
         # AIE Core Function declarations
         zero = external_func(f"zero_{dtype_out_str}", inputs=[C_l1_ty])
-        matmul_vectorized_func_name =  f"matmul_{dtype_in_str}_{dtype_out_str}"
+        matmul_vectorized_func_name = f"matmul_{dtype_in_str}_{dtype_out_str}"
         matmul = external_func(
             matmul_vectorized_func_name,
             inputs=[A_l1_ty, B_l1_ty, C_l1_ty],
@@ -381,7 +380,14 @@ def my_matmul(
         for row in range(n_aie_rows):
             for col in range(n_aie_cols):
 
-                @core(core_tiles[row][col], f"mm_{m}x{k}x{n}.o")
+                # The stack size choice is a workaround explained here:
+                # https://github.com/Xilinx/mlir-aie/pull/2391#issuecomment-2967432485
+                # In summary, the Peano compiler uses a stack size greater than the default one used by this kernel 
+                # (default is 0x400, chess' stack size is smaller). 
+                # Exceding the stack size leads to wrong results from the kernel, but no error is triggered.
+                # Stack usage can be checked as explained here: 
+                # https://github.com/Xilinx/llvm-aie/issues/487#issuecomment-2969438585
+                @core(core_tiles[row][col], f"mm_{m}x{k}x{n}.o", stack_size=0xD00)
                 def core_body():
                     for _ in range_(0xFFFFFFFF):
                         loop = (

@@ -71,7 +71,18 @@ def ceildiv(a, b):
 
 
 def my_matmul(
-    dev, M, K, N, m, k, n, dtype_in_str, dtype_out_str, b_col_maj, emulate_bf16_mmul_with_bfp16, trace_size
+    dev,
+    M,
+    K,
+    N,
+    m,
+    k,
+    n,
+    dtype_in_str,
+    dtype_out_str,
+    b_col_maj,
+    emulate_bf16_mmul_with_bfp16,
+    trace_size,
 ):
 
     assert M % m == 0
@@ -137,8 +148,6 @@ def my_matmul(
     tiles = M_div_m * N_div_n
 
     with mlir_mod_ctx() as ctx:
-
-        C_sz_in_bytes = C_sz * np.dtype(dtype_out).itemsize
 
         if dev == "npu":
             dev_ty = AIEDevice.npu1_1col
@@ -245,10 +254,13 @@ def my_matmul(
             if trace_size > 0:
                 trace_utils.configure_packet_tracing_flow(tiles_to_trace, shim_tile)
 
-            # Set up compute tiles
-
-            # Compute tile 2
-            @core(compute_tile2, f"mm_{m}x{k}x{n}.o")
+            # The stack size choice is an important choice!
+            # The Peano compiler uses a stack size in this kernel greater than the default one
+            # (default is 0x400, chess' stack size is smaller).
+            # Exceding the stack size leads to wrong results from the kernel, but no error is triggered.
+            # Stack usage can be checked as explained here:
+            # https://github.com/Xilinx/llvm-aie/issues/487#issuecomment-2969438585
+            @core(compute_tile2, f"mm_{m}x{k}x{n}.o", stack_size=0xD00)
             def core_body():
                 for _ in range_(0xFFFFFFFF):
                     for _ in range_(tiles) if tiles > 1 else range(1):  # issue #1547
