@@ -1,0 +1,10 @@
+// (c) Copyright 2025 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu1, chess
+//
+// RUN: mkdir -p test_bf16_chess
+// RUN: cd test_bf16_chess
+// RUN: make -f %S/../Makefile clean
+// RUN: env dtype_in=bf16 dtype_out=bf16 m=32 k=32 n=32 M=512 K=512 N=512 emulate_bfloat16_mmul_with_bfp16=0 use_chess=1 make -f %S/../Makefile
+// RUN: %run_on_npu1% env dtype_in=bf16 dtype_out=bf16 m=32 k=32 n=32 M=512 K=512 N=512 emulate_bfloat16_mmul_with_bfp16=0 use_chess=1 make -f %S/../Makefile run

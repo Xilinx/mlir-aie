@@ -37,6 +37,7 @@ include ${current_dir}../../makefile-common
 dtype_in?=i16
 dtype_out?=i32
 trace_size?=65536
+emulate_bfloat16_mmul_with_bfp16?=0
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
@@ -71,6 +72,7 @@ ifeq ($(dtype_out),i8)
 	dtype_acc_cpp=int8_t
 endif
 
+
 target_suffix?=${M}x${K}x${N}
 mlir_target?=build/aie_${target_suffix}.mlir
 trace_mlir_target?=build/aie_trace_${target_suffix}.mlir
@@ -82,6 +84,7 @@ aie_py_src?=${targetname}.py
 runargs?=-v 2 --warmup 1 --iters 1
 aieargs+=--dev ${devicename} -M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
 
+use_chess?=0
 use_chess?=0
 
 # default sequential buffer allocation, if not already defined
@@ -126,8 +129,13 @@ KERNEL_CC=xchesscc_wrapper
 ifeq (${devicename}, npu)
 KERNEL_CFLAGS=${CHESSCCWRAP2_FLAGS}
 else ifeq (${devicename}, npu2)
-KERNEL_CFLAGS=${CHESSCCWRAP2P_FLAGS} -DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16
+KERNEL_CFLAGS=${CHESSCCWRAP2P_FLAGS}
 endif
+endif
+
+ifeq ($(emulate_bfloat16_mmul_with_bfp16), 1)
+KERNEL_CFLAGS += -DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16
+aieargs += --emulate-bf16-mmul-with-bfp16 true
 endif
 
 ifeq (${opt_perf}, 1)
@@ -145,6 +153,7 @@ all: ${xclbin_target} ${targetname}.exe
 build/%.o: ${kernels_dir}/%.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}
+	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}
 
 ${mlir_target}: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
@@ -158,11 +167,13 @@ ${xclbin_target}: ${mlir_target} ${kernels:%=build/%.o}
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --alloc-scheme=${buffer_aloc_flag} --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 				${aiecc_peano_flags} \
+				${aiecc_peano_flags} \
 				--aie-generate-npu-insts --npu-insts-name=${insts_target:build/%=%} $(<:%=../%)
 
 ${trace_xclbin_target}: ${trace_mlir_target} ${kernels:%=build/%.o}
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --alloc-scheme=${buffer_aloc_flag} --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+				${aiecc_peano_flags} \
 				${aiecc_peano_flags} \
 				--aie-generate-npu-insts --npu-insts-name=${insts_target:build/%=%} $(<:%=../%)
 
