@@ -19,9 +19,9 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-#include "experimental/xrt_elf.h"
-#include "experimental/xrt_module.h"
-#include "experimental/xrt_ext.h"
+#include "xrt/experimental/xrt_elf.h"
+#include "xrt/experimental/xrt_module.h"
+#include "xrt/experimental/xrt_ext.h"
 
 #include "cxxopts.hpp"
 #include "test_utils.h"
@@ -82,13 +82,9 @@ int main(int argc, const char *argv[]) {
     std::cout << "Getting handle to kernel:" << kernelName << "\n";
   auto kernel = xrt::ext::kernel(context, mod, kernelName);
 
-  // TODO: what are the requirements to use xrt::ext::bo here?
-  auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_inB = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
-  auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
+  xrt::bo bo_inA = xrt::ext::bo{device, IN_SIZE * sizeof(int32_t)};
+  xrt::bo bo_inB = xrt::ext::bo{device, IN_SIZE * sizeof(int32_t)};
+  xrt::bo bo_out = xrt::ext::bo{device, OUT_SIZE * sizeof(int32_t)};
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
