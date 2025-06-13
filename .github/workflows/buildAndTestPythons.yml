@@ -57,7 +57,7 @@ jobs:
 
       - name: Install packages
         run: |
-          sudo apt-get install -y ninja-build clang lld
+          sudo apt-get install -y ninja-build clang lld libelf-dev elfutils
 
       - name: Get MLIR
         id: mlir-wheels
