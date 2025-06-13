@@ -390,6 +390,7 @@ extern "C" {
 #define combos(X) X(int16, i16, int32, i32, 4, 4, 8)
 #endif
 
+// The emulation of bf16 changes the available shapes for matrix multiplication
 #ifdef bf16_bf16_ONLY
 #ifdef AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16
 #define combos(X) X(bfloat16, bf16, bfloat16, bf16, 8, 8, 8)
@@ -407,7 +408,6 @@ extern "C" {
 #endif
 
 #ifndef combos
-// The emulation of bf16 changes the available shapes for matrix multiplication
 #ifdef AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16
 #define combos(X)                                                              \
   X(int8, i8, int8, i8, 8, 8, 8)                                               \

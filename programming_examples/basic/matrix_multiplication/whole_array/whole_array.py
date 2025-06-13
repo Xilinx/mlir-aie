@@ -382,10 +382,10 @@ def my_matmul(
 
                 # The stack size choice is a workaround explained here:
                 # https://github.com/Xilinx/mlir-aie/pull/2391#issuecomment-2967432485
-                # In summary, the Peano compiler uses a stack size greater than the default one used by this kernel 
-                # (default is 0x400, chess' stack size is smaller). 
+                # In summary, the Peano compiler uses a stack size greater than the default one used by this kernel
+                # (default is 0x400, chess' stack size is smaller).
                 # Exceding the stack size leads to wrong results from the kernel, but no error is triggered.
-                # Stack usage can be checked as explained here: 
+                # Stack usage can be checked as explained here:
                 # https://github.com/Xilinx/llvm-aie/issues/487#issuecomment-2969438585
                 @core(core_tiles[row][col], f"mm_{m}x{k}x{n}.o", stack_size=0xD00)
                 def core_body():

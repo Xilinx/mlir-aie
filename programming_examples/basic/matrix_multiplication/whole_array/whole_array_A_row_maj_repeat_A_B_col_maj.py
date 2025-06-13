@@ -7,7 +7,6 @@
 import argparse
 from ml_dtypes import bfloat16
 import numpy as np
-import sys
 
 from aie.extras.context import mlir_mod_ctx
 
@@ -107,7 +106,7 @@ def my_matmul(
     trace_size,
     generate_taps=False,
 ):
-    
+
     n_aie_cores = n_aie_rows * n_aie_cols
 
     dtype_in = dtype_map[dtype_in_str]
@@ -176,9 +175,6 @@ def my_matmul(
     assert k % s == 0
     assert n % t == 0
 
-
-
-
     # if b_col_maj:
     #     # These assertions are probably too broad.
     #     assert m % 32 == 0
@@ -194,7 +190,7 @@ def my_matmul(
     n_tiles_per_core = (M // m) * (N // n) // n_aie_cores
 
     # n_A_tiles_per_shim = n_aie_rows // n_aie_cols
-    
+
     dev = None
     if n_aie_cols == 1:
         dev = AIEDevice.npu1_1col
@@ -211,7 +207,9 @@ def my_matmul(
 
     @device(dev)
     def device_body():
-        A_l2_ty = np.ndarray[(m * mtk,), np.dtype[dtype_in]] # it will read a bigger m * mtk block in MemTile
+        A_l2_ty = np.ndarray[
+            (m * mtk,), np.dtype[dtype_in]
+        ]  # it will read a bigger m * mtk block in MemTile
         B_l2_ty = np.ndarray[(k * n,), np.dtype[dtype_in]]
         C_l2_ty = np.ndarray[(m * n * n_aie_rows,), np.dtype[dtype_out]]
         A_l1_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
@@ -263,9 +261,8 @@ def my_matmul(
                     (m, k),
                     (s, 1),
                 ],
-
-                # S2MM in compute tiles, so eack (m * k) tile 
-                # have the correct data layout. 
+                # S2MM in compute tiles, so eack (m * k) tile
+                # have the correct data layout.
                 # We have broadcast into n_aie_cols compute tiles, so each needs it's own
                 # S2MM transformation.
                 [
@@ -273,13 +270,13 @@ def my_matmul(
                         (k // s, r * s),
                         (m // r, r * k),
                         (r * s, 1),
-                    ] for _ in range(n_aie_cols)
+                    ]
+                    for _ in range(n_aie_cols)
                 ],
             )
 
             # set OF repeat count here
-            A_l2l1_fifos[row].set_repeat_count(N//n//n_aie_cols)
-
+            A_l2l1_fifos[row].set_repeat_count(N // n // n_aie_cols)
 
         for col in range(n_aie_cols):
             A_l3l2_fifos[col] = object_fifo(
@@ -292,14 +289,13 @@ def my_matmul(
                 # S2MM in MemTile to convert m * mtk block from row-maj
                 # to tiled m*k blocks
                 [
-                   [
-                       (m, k),
-                       (mtk // k, m * k),
-                       (k, 1),
-                   ]
+                    [
+                        (m, k),
+                        (mtk // k, m * k),
+                        (k, 1),
+                    ]
                 ],
             )
-            
 
             # here just do a link between the A OFs
             of_offsets = []
@@ -332,10 +328,9 @@ def my_matmul(
                     (n // t, t),
                     (s, n),
                     (t, 1),
-                ]
+                ],
             )
             object_fifo_link(B_l3l2_fifos[col], B_l2l1_fifos[col])
-
 
         # Output C
         for col in range(n_aie_cols):
@@ -499,9 +494,13 @@ def my_matmul(
                             )  # base address for the shim in this column
                             A_offset = A_block_offset + A_row_offset
 
-
                             # don't repeat here, because already done at OF
-                            A_sizes = [1, K // k, m, k,]
+                            A_sizes = [
+                                1,
+                                K // k,
+                                m,
+                                k,
+                            ]
                             A_strides = [0, k, K, 1]
 
                             npu_dma_memcpy_nd(
@@ -543,14 +542,11 @@ def my_matmul(
                             #     |0011    0011    |
                             #      ----------------
 
-
                             # keep only col maj
-                            B_col_offset = col * n * K 
-                            
+                            B_col_offset = col * n * K
+
                             B_sizes = [N // n // n_aie_cols, K // k, n, k]
                             B_strides = [n * n_aie_cols * K, k, K, 1]
-                            
-                            
 
                             npu_dma_memcpy_nd(
                                 metadata=B_l3l2_fifos[col],
