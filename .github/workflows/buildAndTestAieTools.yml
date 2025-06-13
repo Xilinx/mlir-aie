@@ -100,6 +100,7 @@ jobs:
             mkdir build && cd build
             export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
             cmake .. -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
               -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
               -DVITIS_ROOT=/opt/Xilinx/Vitis/2023.2 \
               -DVitis_VERSION_MAJOR=2023 \
