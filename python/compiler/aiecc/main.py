@@ -1150,13 +1150,6 @@ class FlowRunner:
                     with open(opts.insts_name, "wb") as f:
                         f.write(struct.pack("I" * len(npu_insts), *npu_insts))
 
-                    asm_bin = os.path.join(
-                        aie.compiler.aiecc.configure.install_path(),
-                        "aiebu",
-                        "aiebu",
-                        "bin",
-                        "aiebu-asm",
-                    )
                     # exteral_buffers_json = {
                     #     "external_buffers": {
                     #         "buffer0" : {
@@ -1178,6 +1171,23 @@ class FlowRunner:
                     # }
                     # with open(self.prepend_tmp("external_buffers.json"), "w") as f:
                     #     json.dump(exteral_buffers_json, f, indent=2)
+
+                    # find aiebu-asm binary
+                    asm_bin = "aiebu-asm"
+                    if shutil.which(asm_bin) is None:
+                        asm_bin = os.path.join(
+                            "/", "opt", "xilinx", "aiebu", "bin", "aiebu-asm"
+                        )
+                        if shutil.which(asm_bin) is None:
+                            asm_bin = None
+
+                    if asm_bin is None:
+                        print(
+                            "Warning: aiebu-asm not found. Skipping NPU elf binary generation.",
+                            file=sys.stderr,
+                        )
+                        return
+
                     await self.do_call(
                         None,
                         [
