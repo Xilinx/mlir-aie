@@ -1150,6 +1150,35 @@ class FlowRunner:
                     with open(opts.insts_name, "wb") as f:
                         f.write(struct.pack("I" * len(npu_insts), *npu_insts))
 
+                    # find aiebu-asm binary
+                    asm_bin = "aiebu-asm"
+                    if shutil.which(asm_bin) is None:
+                        asm_bin = os.path.join(
+                            "/", "opt", "xilinx", "aiebu", "bin", "aiebu-asm"
+                        )
+                        if shutil.which(asm_bin) is None:
+                            asm_bin = None
+
+                    if asm_bin is None:
+                        print(
+                            "Warning: aiebu-asm not found. Skipping NPU elf binary generation.",
+                            file=sys.stderr,
+                        )
+                        return
+
+                    await self.do_call(
+                        None,
+                        [
+                            asm_bin,
+                            "-t",
+                            "aie2txn",
+                            "-c",
+                            opts.insts_name,
+                            "-o",
+                            opts.insts_name + ".elf",
+                        ],
+                    )
+
             # fmt: off
             if opts.unified:
                 file_opt_with_addresses = self.prepend_tmp("input_opt_with_addresses.mlir")
