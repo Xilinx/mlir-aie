@@ -8,7 +8,7 @@ inputs:
   DEBUG_OS:
     description: 'which runner os to run the tmate action in (if the tmate action is run)'
     required: false
-    default: 'windows-2019'
+    default: 'windows-2022'
   DEBUG_ARCH:
     description: 'which runner arch to run the tmate action in (if the tmate action is run)'
     required: false
@@ -42,16 +42,16 @@ runs:
         detached: ${{ inputs.DEBUG_DETACHED }}
 
     - uses: ilammy/msvc-dev-cmd@v1.4.1
-      if: ${{ inputs.MATRIX_OS == 'windows-2019' }}
+      if: ${{ inputs.MATRIX_OS == 'windows-2022' }}
 
     - name: Set up Visual Studio shell
-      if: ${{ inputs.MATRIX_OS == 'windows-2019' }}
+      if: ${{ inputs.MATRIX_OS == 'windows-2022' }}
       uses: egor-tensin/vs-shell@v2
       with:
         arch: x64
 
     - name: MS Build
-      if: ${{ inputs.MATRIX_OS == 'windows-2019' }}
+      if: ${{ inputs.MATRIX_OS == 'windows-2022' }}
       uses: microsoft/setup-msbuild@v1.1
 
     - name: Free disk space
@@ -67,7 +67,7 @@ runs:
 
     - uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
+        python-version: '3.12'
 
     - name: Install Ninja
       uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c # Jan 17
@@ -103,7 +103,7 @@ runs:
     # do we hit that during anything we're doing here? during the linking phase of MLIR-C.dll, which links together
     # absolutely all the libs in MLIR using their full/abs paths.
     - run: echo "TEMP=$env:USERPROFILE\AppData\Local\Temp" >> $env:GITHUB_ENV
-      if: ${{ inputs.MATRIX_OS == 'windows-2019' }}
+      if: ${{ inputs.MATRIX_OS == 'windows-2022' }}
       shell: pwsh
 
     - run: echo "TEMP=/tmp" >> $GITHUB_ENV
@@ -116,7 +116,7 @@ runs:
       working-directory: ${{ env.TEMP }}
       run: |
         
-        if [ x"${{ inputs.MATRIX_OS }}" == x"windows-2019" ]; then
+        if [ x"${{ inputs.MATRIX_OS }}" == x"windows-2022" ]; then
           WORKSPACE_ROOT="/C/a"
         else
           WORKSPACE_ROOT=$GITHUB_WORKSPACE
@@ -130,7 +130,7 @@ runs:
         git clone --recursive -b ${{ github.head_ref || github.ref_name }} https://github.com/${{ github.repository }}.git "$WORKSPACE_ROOT"
         ls "$WORKSPACE_ROOT"
         
-        if [ x"${{ inputs.MATRIX_OS }}" == x"windows-2019" ]; then
+        if [ x"${{ inputs.MATRIX_OS }}" == x"windows-2022" ]; then
           WORKSPACE_ROOT="C:\a"
         fi
         
