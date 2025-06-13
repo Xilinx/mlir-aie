@@ -40,7 +40,7 @@
 // CHECK1: aie.flow(%[[T60]], DMA : 0, %[[T22]], DMA : 1)
 // CHECK1: aie.flow(%[[T60]], DMA : 0, %[[T02]], DMA : 1)
 
-// CHECK2: "total_path_length": 29
+// CHECK2: "total_path_length": 27
 
 module {
     aie.device(xcvc1902) {
