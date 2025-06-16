@@ -60,7 +60,7 @@ static inline void matmul_scalar(T_in *a, T_in *b, T_out *c) {
  * 	    |.
  * 	    |.
  *
- * An example of this kernel with less clutter can be found in the AIE-API
+ * A simplified example of this kernel can be found in the AIE-API
  * documentation: https://xilinx.github.io/aie_api/group__group__mmul.html
  */
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
