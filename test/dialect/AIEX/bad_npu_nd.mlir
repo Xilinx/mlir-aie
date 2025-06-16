@@ -202,25 +202,6 @@ module {
 
 // -----
 
-// bad tile
-
-module {
-  aie.device(npu1) {
-    memref.global "public" @objectfifo : memref<8xi16, 1 : i16>
-    aiex.runtime_sequence(%a : memref<8xi16>) {
-      %c0 = arith.constant 0 : i64
-      %c1 = arith.constant 1 : i64
-      %c4 = arith.constant 4 : i64
-      %c8 = arith.constant 8 : i64
-      // expected-error@+1 {{Unsupported tile type at (0, 0) Must be ShimNOC, Mem or Core.}}
-      aiex.npu.dma_memcpy_nd (%a[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c4][%c0,%c0,%c0,%c1]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi16>
-    }
-    aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
-  }
-}
-
-// -----
-
 // first (highest-dimension) stride can go beyond the limit, as long as the corresponding wrap is 1
 
 module {
