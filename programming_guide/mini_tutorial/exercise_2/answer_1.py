@@ -1,4 +1,4 @@
-# exercise_3.py -*- Python -*-
+# answer_1.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -9,59 +9,68 @@
 import sys
 import numpy as np
 
-from aie.iron import Program, Runtime, Worker, ObjectFifo, GlobalBuffer
+from aie.iron import Program, Runtime, Worker, ObjectFifo
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
-
-from aie.extras.dialects.ext import arith
-from aie.helpers.util import np_ndarray_type_get_shape
-from aie.dialects.aie import T
 
 import aie.iron as iron
 
 
 @iron.jit(is_placed=False)
-def exercise_3(output):
+def exercise_2(input0, output):
     data_size = output.numel()
     element_type = output.dtype
     data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
 
-    # Dataflow with ObjectFifos
-    of_out = ObjectFifo(data_ty, name="out")
+    n_workers = 3
+    tile_size = data_size // n_workers
+    tile_ty = np.ndarray[(tile_size,), np.dtype[element_type]]
 
-    # Runtime parameters
-    rtps = []
-    rtps.append(
-        GlobalBuffer(
-            data_ty,
-            name=f"rtp",
-            use_write_rtp=True,
-        )
+    # Dataflow with ObjectFifos
+    of_offsets = [tile_size * worker for worker in range(n_workers)]
+
+    of_in = ObjectFifo(data_ty, name="in")
+    of_ins = of_in.cons().split(
+        of_offsets,
+        obj_types=[tile_ty] * n_workers,
+        names=[f"in{worker}" for worker in range(n_workers)],
+    )
+
+    of_out = ObjectFifo(data_ty, name="out")
+    of_outs = of_out.prod().join(
+        of_offsets,
+        obj_types=[tile_ty] * n_workers,
+        names=[f"out{worker}" for worker in range(n_workers)],
     )
 
     # Task for the core to perform
-    def core_fn(rtp, of_out):
+    def core_fn(of_in, of_out, num_elem):
+        elem_in = of_in.acquire(1)
         elem_out = of_out.acquire(1)
-        for i in range_(data_size):
-            elem_out[i] = rtp[i]
+        for i in range_(num_elem):
+            elem_out[i] = elem_in[i]
+        of_in.release(1)
         of_out.release(1)
 
-    # Create a worker to perform the task
-    my_worker = Worker(core_fn, [rtps[0], of_out.prod()])
+    # Create workers to perform the task
+    workers = []
+    for i in range(n_workers):
+        workers.append(
+            Worker(
+                core_fn,
+                [
+                    of_ins[i].cons(),
+                    of_outs[i].prod(),
+                    tile_size,
+                ],
+            )
+        )
 
     # To/from AIE-array runtime data movement
     rt = Runtime()
-    with rt.sequence(data_ty) as (c_out):
-        # Set runtime parameters
-        def set_rtps(*args):
-            for rtp in args:
-                for i in range(
-                    data_size
-                ):  # note difference with range_ in the Worker
-                    rtp[i] = i
-
-        rt.inline_ops(set_rtps, rtps)
-        rt.start(my_worker)
+    with rt.sequence(data_ty, data_ty) as (a_in, c_out):
+        rt.start(*workers)
+        rt.fill(of_in.prod(), a_in)
         rt.drain(of_out.cons(), c_out, wait=True)
 
     # Create the program from the device type and runtime
@@ -73,29 +82,27 @@ def exercise_3(output):
 
 def main():
     # Define tensor shapes and data types
-    data_size = 48
+    num_elements = 48
     element_type = np.int32
 
     # Construct an input tensor and an output zeroed tensor
     # The two tensors are in memory accessible to the NPU
-    input0 = iron.arange(data_size, dtype=element_type, device="npu")
+    input0 = iron.arange(num_elements, dtype=element_type, device="npu")
     output = iron.zeros_like(input0)
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    exercise_3(output)
+    exercise_2(input0, output)
 
     # Check the correctness of the result
-    USE_INPUT_VEC = True  # Set to False to switch to output for user testing
-    test_source = input0 if USE_INPUT_VEC else output
-    e = np.equal(input0.numpy(), test_source.numpy())
+    e = np.equal(input0.numpy(), output.numpy())
     errors = np.size(e) - np.count_nonzero(e)
 
     # Print the results
     print(f"{'input0':>4} = {'output':>4}")
     print("-" * 34)
     count = input0.numel()
-    for idx, (a, c) in enumerate(zip(input0[:count], test_source[:count])):
+    for idx, (a, c) in enumerate(zip(input0[:count], output[:count])):
         print(f"{idx:2}: {a:4} = {c:4}")
 
     # If the result is correct, exit with a success code.
