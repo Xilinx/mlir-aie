@@ -323,6 +323,20 @@ def parse_args(args=None):
         default="0x901",
         help="Kernel id in xclbin file",
     )
+    parser.add_argument(
+        "--aie-generate-elf",
+        dest="elf",
+        default=False,
+        action="store_const",
+        const=True,
+        help="Generate elf for AIE control and/or configuration",
+    )
+    parser.add_argument(
+        "--elf-name",
+        dest="elf_name",
+        default="design.elf",
+        help="Output elf filename for ELF target",
+    )
 
     opts = parser.parse_args(args)
     return opts
