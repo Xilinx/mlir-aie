@@ -134,7 +134,7 @@ void test() {
   npu1_devs[AIE::AIEDevice::npu1_1col] = 1;
   npu1_devs[AIE::AIEDevice::npu1_2col] = 2;
   npu1_devs[AIE::AIEDevice::npu1_3col] = 3;
-  npu1_devs[AIE::AIEDevice::npu1_4col] = 4;
+  npu1_devs[AIE::AIEDevice::npu1] = 4;
   for (auto &[dev, cols] : npu1_devs) {
     if (!AIE::getTargetModel(dev).hasProperty(
             AIE::AIETargetModel::UsesSemaphoreLocks)) {

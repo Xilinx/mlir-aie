@@ -102,11 +102,11 @@ def AIEDevice: I32EnumAttr<"AIEDevice", "AIE Device",
     I32EnumAttrCase<"xcvc1902", 1>,
     I32EnumAttrCase<"xcve2302", 2>,
     I32EnumAttrCase<"xcve2802", 3>,
-    I32EnumAttrCase<"npu1", 8>,  // Alias for npu1_4col
+    I32EnumAttrCase<"npu1", 4>,
     I32EnumAttrCase<"npu1_1col", 5>,
     I32EnumAttrCase<"npu1_2col", 6>,
     I32EnumAttrCase<"npu1_3col", 7>,
-    I32EnumAttrCase<"npu1_4col", 8>,
+    // enum value 8 used to be npu1_4col, which is now npu1, see issue #2371
     I32EnumAttrCase<"npu2", 9>,
     I32EnumAttrCase<"npu2_1col", 10>,
     I32EnumAttrCase<"npu2_2col", 11>,

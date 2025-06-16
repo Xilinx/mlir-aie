@@ -73,11 +73,11 @@ This device is present in Ryzen Phoenix (e.g. 7940HS) and HawkPoint (e.g., 8040H
 ```
 > <sup>1</sup> The hidden zeroth-column of Phoenix NPUs is irregular and no longer exposed through MLIR-AIE.
 
+```aie.device(npu1) {}```
 ```aie.device(npu1_1col) {}```
 ```aie.device(npu1_2col) {}```
 ```aie.device(npu1_3col) {}```
-```aie.device(npu1_4col) {}```
-These devices represent a physical partition of an npu1 device, including a number of columns with a DMA shim tile.
+These devices represent a npu1 device, or a physical partition thereof, including a number of columns with a DMA shim tile.
 N Columns and 6 Rows
 ```
 5 CCCC

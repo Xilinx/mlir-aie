@@ -242,8 +242,6 @@ const AIETargetModel &xilinx::AIE::getTargetModel(AIEDevice device) {
     return NPUmodel2col;
   case AIEDevice::npu1_3col:
     return NPUmodel3col;
-  case AIEDevice::npu1_4col:
-    return NPUmodel4col;
   case AIEDevice::npu2:
     return NPU2model;
   case AIEDevice::npu2_1col:

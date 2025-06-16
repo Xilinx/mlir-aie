@@ -187,7 +187,7 @@ def my_matmul(
     elif n_aie_cols == 2:
         dev = AIEDevice.npu1_2col
     elif n_aie_cols == 4:
-        dev = AIEDevice.npu1_4col
+        dev = AIEDevice.npu1
 
     # These will hold TensorAccessPattern objects that represent the runtime
     # npu_dma_memcpy_nd operations of this design. They are only used if generate_taps is true

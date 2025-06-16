@@ -60,11 +60,10 @@ public:
     TK_AIE1_Last,
     TK_AIE2_VE2302,
     TK_AIE2_VE2802,
-    TK_AIE2_NPU1_First,
-    TK_AIE2_NPU1_1Col = TK_AIE2_NPU_First,
+    TK_AIE2_NPU1,
+    TK_AIE2_NPU1_1Col,
     TK_AIE2_NPU1_2Col,
     TK_AIE2_NPU1_3Col,
-    TK_AIE2_NPU1_4Col = TK_AIE2_NPU1,
     TK_AIE2_NPU1_Last,
     TK_AIE2_NPU2 = TK_AIE2_NPU1_Last,
     TK_AIE2_NPU2_1Col,
@@ -633,7 +632,7 @@ public:
   uint32_t getNumMemTileRows() const override { return 1; }
 
   static bool classof(const AIETargetModel *model) {
-    return model->getKind() >= TK_AIE2_NPU1_First &&
+    return model->getKind() >= TK_AIE2_NPU1 &&
            model->getKind() < TK_AIE2_NPU1_Last;
   }
 };
@@ -657,7 +656,7 @@ public:
   bool isShimNOCTile(int col, int row) const override { return row == 0; }
 
   static bool classof(const AIETargetModel *model) {
-    return model->getKind() >= TK_AIE2_NPU1_First &&
+    return model->getKind() >= TK_AIE2_NPU1 &&
            model->getKind() < TK_AIE2_NPU1_Last;
   }
 };

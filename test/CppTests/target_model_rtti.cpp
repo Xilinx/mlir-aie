@@ -88,7 +88,7 @@ void test() {
   // AIEDevice::npu_1col, npu_2col, npu_3col, npu_4col
   llvm::SmallVector<AIE::AIEDevice> npu1_devs = {
       AIE::AIEDevice::npu1_1col, AIE::AIEDevice::npu1_2col,
-      AIE::AIEDevice::npu1_3col, AIE::AIEDevice::npu1_4col};
+      AIE::AIEDevice::npu1_3col, AIE::AIEDevice::npu1};
   for (auto dev : npu1_devs) {
     if (!llvm::isa<AIE::AIE2TargetModel>(AIE::getTargetModel(dev))) {
       throw std::runtime_error("Failed npu1_col isa<AIE2TargetModel>");

@@ -12,7 +12,7 @@
 // RUN: aie-opt --split-input-file --verify-diagnostics %s
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     memref.global "public" @of_fromMem : memref<32xi32, 1 : i32>
     aiex.runtime_sequence(%in : memref<1920x1080xi32>, %buf : memref<32xi32>, %out : memref<1920x1080xi32>) {
       %c0 = arith.constant 0 : i64
@@ -29,7 +29,7 @@ module {
 // -----
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     memref.global "public" @of_fromMem : memref<32xi32, 1 : i32>
     aiex.runtime_sequence(%in : memref<128x4x2x8xi32>, %buf : memref<32xi32>, %out : memref<8192xi32>) {
       %c0 = arith.constant 0 : i64
@@ -50,7 +50,7 @@ module {
 // -----
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     memref.global "public" @of_fromMem : memref<32xi32, 1 : i32>
     aiex.runtime_sequence(%in : memref<8388608xi32>, %buf : memref<32xi32>, %out : memref<8388608xi32>) {
       %c0 = arith.constant 0 : i64
@@ -69,7 +69,7 @@ module {
 // Offsets need to be 4-byte aligned.
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     aiex.runtime_sequence(%a : memref<8xi8>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
@@ -87,7 +87,7 @@ module {
 // The following tests check this.
   
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     memref.global "public" @objectfifo : memref<8xi8, 1 : i8>
     aiex.runtime_sequence(%a : memref<8xi8>) {
       %c0 = arith.constant 0 : i64
@@ -107,7 +107,7 @@ module {
 // -----
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     memref.global "public" @objectfifo : memref<8xi16, 1 : i16>
     aiex.runtime_sequence(%a : memref<8xi16>) {
       %c0 = arith.constant 0 : i64
@@ -129,7 +129,7 @@ module {
 // The following tests make sure the proper errors are generated when this is not possible.
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     memref.global "public" @objectfifo : memref<8xi8, 1 : i8>
     aiex.runtime_sequence(%a : memref<8xi8>) {
       %c0 = arith.constant 0 : i64
@@ -146,7 +146,7 @@ module {
 // -----
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     memref.global "public" @objectfifo : memref<8xi8, 1 : i8>
     aiex.runtime_sequence(%a : memref<8xi8>) {
       %c0 = arith.constant 0 : i64
@@ -166,7 +166,7 @@ module {
 // stride of 2 i8 is not ok
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     memref.global "public" @objectfifo : memref<8xi8, 1 : i8>
     aiex.runtime_sequence(%a : memref<8xi8>) {
       %c0 = arith.constant 0 : i64
@@ -186,7 +186,7 @@ module {
 // stride of 1 i16 is ok, but not with size of 3xi16
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     memref.global "public" @objectfifo : memref<8xi16, 1 : i16>
     aiex.runtime_sequence(%a : memref<8xi16>) {
       %c0 = arith.constant 0 : i64
@@ -224,7 +224,7 @@ module {
 // first (highest-dimension) stride can go beyond the limit, as long as the corresponding wrap is 1
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     memref.global "public" @objectfifo : memref<8xi32, 1 : i32>
     aiex.runtime_sequence(%a : memref<8xi32>) {
       %c0 = arith.constant 0 : i64
@@ -246,7 +246,7 @@ module {
 // packet header id limit
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     memref.global "public" @objectfifo : memref<8xi32, 1 : i32>
     aiex.runtime_sequence(%a : memref<8xi32>) {
       %c0 = arith.constant 0 : i64
@@ -267,7 +267,7 @@ module {
 // packet header type limit
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     memref.global "public" @objectfifo : memref<8xi32, 1 : i32>
     aiex.runtime_sequence(%a : memref<8xi32>) {
       %c0 = arith.constant 0 : i64
