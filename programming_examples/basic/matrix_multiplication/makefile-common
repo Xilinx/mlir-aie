@@ -72,7 +72,6 @@ ifeq ($(dtype_out),i8)
 	dtype_acc_cpp=int8_t
 endif
 
-
 target_suffix?=${M}x${K}x${N}
 mlir_target?=build/aie_${target_suffix}.mlir
 trace_mlir_target?=build/aie_trace_${target_suffix}.mlir
