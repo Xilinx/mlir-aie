@@ -1,4 +1,4 @@
-# exercise_3.py -*- Python -*-
+# answer_2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -9,7 +9,14 @@
 import sys
 import numpy as np
 
-from aie.iron import Program, Runtime, Worker, ObjectFifo, GlobalBuffer
+from aie.iron import (
+    Program,
+    Runtime,
+    Worker,
+    ObjectFifo,
+    GlobalBuffer,
+    WorkerRuntimeBarrier,
+)
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
@@ -38,16 +45,19 @@ def exercise_3(output):
             use_write_rtp=True,
         )
     )
+    # Worker runtime barriers
+    workerBarrier = WorkerRuntimeBarrier()
 
     # Task for the core to perform
-    def core_fn(rtp, of_out):
+    def core_fn(rtp, of_out, barrier):
+        barrier.wait_for_value(1)
         elem_out = of_out.acquire(1)
         for i in range_(data_size):
             elem_out[i] = rtp[i]
         of_out.release(1)
 
     # Create a worker to perform the task
-    my_worker = Worker(core_fn, [rtps[0], of_out.prod()])
+    my_worker = Worker(core_fn, [rtps[0], of_out.prod(), workerBarrier])
 
     # To/from AIE-array runtime data movement
     rt = Runtime()
@@ -55,12 +65,11 @@ def exercise_3(output):
         # Set runtime parameters
         def set_rtps(*args):
             for rtp in args:
-                for i in range(
-                    data_size
-                ):  # note difference with range_ in the Worker
+                for i in range(data_size):  # note difference with range_ in the Worker
                     rtp[i] = i
 
         rt.inline_ops(set_rtps, rtps)
+        rt.set_barrier(workerBarrier, 1)
         rt.start(my_worker)
         rt.drain(of_out.cons(), c_out, wait=True)
 
@@ -86,7 +95,7 @@ def main():
     exercise_3(output)
 
     # Check the correctness of the result
-    USE_INPUT_VEC = True  # Set to False to switch to output for user testing
+    USE_INPUT_VEC = False  # Set to False to switch to output for user testing
     test_source = input0 if USE_INPUT_VEC else output
     e = np.equal(input0.numpy(), test_source.numpy())
     errors = np.size(e) - np.count_nonzero(e)
