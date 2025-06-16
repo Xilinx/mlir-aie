@@ -82,7 +82,7 @@ aie_py_src?=${targetname}.py
 runargs?=-v 2 --warmup 1 --iters 1
 aieargs+=--dev ${devicename} -M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
 
-CHESS?=false
+use_chess?=0
 
 # default sequential buffer allocation, if not already defined
 buffer_aloc_flag?=basic-sequential
@@ -94,12 +94,57 @@ else
 col_shift?=1
 endif
 
+ifneq (${use_chess}, 1)
+aiecc_peano_flags=--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR}
+endif
+
+ifeq ($(devicename),npu2)
+kernels_dir=${srcdir}/../../../../aie_kernels/aie2p
+else 
+kernels_dir=${srcdir}/../../../../aie_kernels/aie2
+endif
+
+# When this flag is set to 1, optimal performance is attained
+# via the usage of chess pragmas (see mm.cc).
+# Instruction memory and compilation time increases in this case.
+# Set to 0 otherwise.
+# Only affects kernel compilation using chess.
+opt_perf?=0
+
+# KERNEL_CC defines the C compiler used to compile the kernel.
+# KERNEL_CFLAGS holds the flags passed to that compiler.
+# By default, we use Peano, a.k.a. llvm-aie.
+KERNEL_CC=${PEANO_INSTALL_DIR}/bin/clang++
+ifeq (${devicename}, npu)
+KERNEL_CFLAGS=${PEANOWRAP2_FLAGS}
+else ifeq (${devicename}, npu2)
+KERNEL_CFLAGS=${PEANOWRAP2P_FLAGS}
+endif
+
+ifeq (${use_chess}, 1)
+KERNEL_CC=xchesscc_wrapper
+ifeq (${devicename}, npu)
+KERNEL_CFLAGS=${CHESSCCWRAP2_FLAGS}
+else ifeq (${devicename}, npu2)
+KERNEL_CFLAGS=${CHESSCCWRAP2P_FLAGS} -DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16
+endif
+endif
+
+ifeq (${opt_perf}, 1)
+	KERNEL_DEFINES+=-DOPT_PERF_ENABLED
+endif
+
+
+# ##########################################################################
+# Targets
+# ##########################################################################
+
 .PHONY: all
 all: ${xclbin_target} ${targetname}.exe
 
 build/%.o: ${kernels_dir}/%.cc
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}
 
 ${mlir_target}: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
@@ -112,17 +157,13 @@ ${trace_mlir_target}: ${srcdir}/${aie_py_src}
 ${xclbin_target}: ${mlir_target} ${kernels:%=build/%.o}
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --alloc-scheme=${buffer_aloc_flag} --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-				$(if $(shell [ $(CHESS) != true ] && echo true), \
-					--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR}, \
-				) \
+				${aiecc_peano_flags} \
 				--aie-generate-npu-insts --npu-insts-name=${insts_target:build/%=%} $(<:%=../%)
 
 ${trace_xclbin_target}: ${trace_mlir_target} ${kernels:%=build/%.o}
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --alloc-scheme=${buffer_aloc_flag} --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-				$(if $(shell [ $(CHESS) != true ] && echo true), \
-					--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR}, \
-				) \
+				${aiecc_peano_flags} \
 				--aie-generate-npu-insts --npu-insts-name=${insts_target:build/%=%} $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp ${srcdir}/../test.cpp ${srcdir}/../common.h
