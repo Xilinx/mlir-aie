@@ -23,6 +23,22 @@ dtype_map = {
     "i32": np.int32,
 }
 
+microkernel_mac_dim_map = {
+    "npu": {
+        "bf16": (4, 8, 4),
+        "i8": (4, 8, 8),
+        "i16": (4, 4, 4),
+    },
+    "npu2": {
+        "bf16": {
+            # emulate_bf16_mmul_with_bfp16
+            True: (8, 8, 8),
+            False: (4, 8, 4),
+        },
+        "i8": (8, 8, 8),
+        "i16": (4, 4, 8),
+    },
+}
 
 def main():
     argparser = argparse.ArgumentParser(
@@ -119,37 +135,12 @@ def my_matmul(
         np.dtype(dtype_out).itemsize >= np.dtype(dtype_in).itemsize
     ), f"Output dtype ({dtype_out}) must be equal or larger to input dtype ({dtype_in})"
 
-    if dev == "npu":
-        if dtype_in_str == "bf16":
-            r = 4
-            s = 8
-            t = 4
-        elif dtype_in_str == "i8":
-            r = 4
-            s = 8
-            t = 8
-        elif dtype_in_str == "i16":
-            r = 4
-            s = 4
-            t = 4
+    # r, s, t are the dimensions required by the microkernel MAC instructions.
+    mac_dims = microkernel_mac_dim_map[dev][dtype_in_str]
+    if dev == "npu2" and dtype_in_str == "bf16":
+        r, s, t = mac_dims[emulate_bf16_mmul_with_bfp16]
     else:
-        if dtype_in_str == "bf16":
-            if emulate_bf16_mmul_with_bfp16:
-                r = 8
-                s = 8
-                t = 8
-            else:
-                r = 4
-                s = 8
-                t = 4
-        elif dtype_in_str == "i8":
-            r = 8
-            s = 8
-            t = 8
-        elif dtype_in_str == "i16":
-            r = 4
-            s = 4
-            t = 8
+        r, s, t = mac_dims
 
     # Input matrix A:
     # Conceptually, we divide input A into (m * n_rows, k)-sized blocks. These
@@ -170,7 +161,6 @@ def my_matmul(
         N % (n * n_aie_cols) == 0
     ), """B must be tileable into (k, n * n_aie_cols)-sized blocks"""
 
-    # r, s, t are the dimensions required by the microkernel MAC instructions.
     assert m % r == 0
     assert k % s == 0
     assert n % t == 0
@@ -370,7 +360,7 @@ def my_matmul(
         for row in range(n_aie_rows):
             for col in range(n_aie_cols):
 
-                @core(core_tiles[row][col], f"mm_{m}x{k}x{n}.o")
+                @core(core_tiles[row][col], f"mm_{m}x{k}x{n}.o", stack_size=0xD00)
                 def core_body():
                     for _ in range_(0xFFFFFFFF):
                         loop = (

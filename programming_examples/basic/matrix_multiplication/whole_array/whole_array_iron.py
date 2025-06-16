@@ -353,6 +353,7 @@ def my_matmul(
                         matmul_kernel,
                     ],
                     placement=Tile(tile_col, tile_row),
+                    stack_size=0xD00
                 )
             )
 

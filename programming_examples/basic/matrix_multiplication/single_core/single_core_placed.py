@@ -275,7 +275,7 @@ def my_matmul(
         # Set up compute tiles
 
         # Compute tile 2
-        @core(compute_tile2, f"mm_{m}x{k}x{n}.o")
+        @core(compute_tile2, f"mm_{m}x{k}x{n}.o", stack_size=0xD00)
         def core_body():
             for _ in range_(0xFFFFFFFF):
                 for _ in range_(tiles) if tiles > 1 else range(1):  # issue #1547
