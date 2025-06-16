@@ -629,7 +629,7 @@ class FlowRunner:
             module = Module.parse(module_str)
             pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
             npu_insts_mlir = (
-                self.prepend_tmp("npu_insts.mlir") if self.opts.verbose else None
+                self.prepend_tmp("elf_insts.mlir") if self.opts.verbose else None
             )
             npu_insts_module = run_passes_module(
                 pass_pipeline,
@@ -640,7 +640,7 @@ class FlowRunner:
             # translate npu instructions to binary and write to file
             npu_insts = aiedialect.translate_npu_to_binary(npu_insts_module.operation)
 
-        npu_insts_bin = self.prepend_tmp("npu_insts.bin")
+        npu_insts_bin = self.prepend_tmp("elf_insts.bin")
         with open(npu_insts_bin, "wb") as f:
             f.write(struct.pack("I" * len(npu_insts), *npu_insts))
 
