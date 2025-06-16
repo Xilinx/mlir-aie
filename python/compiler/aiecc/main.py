@@ -1160,10 +1160,10 @@ class FlowRunner:
                             asm_bin = None
 
                     if asm_bin is None:
-                        print(
-                            "Warning: aiebu-asm not found. Skipping NPU elf binary generation.",
-                            file=sys.stderr,
-                        )
+                        if opts.verbose:
+                            print(
+                                "Warning: aiebu-asm not found. Skipping NPU elf binary generation."
+                            )
                         return
 
                     await self.do_call(
