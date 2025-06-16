@@ -1,4 +1,4 @@
-# answer.py -*- Python -*-
+# answer_3.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -9,71 +9,25 @@
 import sys
 import numpy as np
 
-from aie.iron import Program, Runtime, Worker, ObjectFifo
+from aie.iron import Program, Runtime, ObjectFifo
 from aie.iron.placers import SequentialPlacer
-from aie.iron.controlflow import range_
 
 import aie.iron as iron
 
 
 @iron.jit(is_placed=False)
-def exercise_2(input0, output):
+def exercise_1(input0, output):
     data_size = output.numel()
     element_type = output.dtype
     data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
 
-    n_workers = 3
-    tile_sizes = [8, 24, 16]
-    tile_types = []
-    for i in range(n_workers):
-        tile_types.append(
-            np.ndarray[(tile_sizes[i],), np.dtype[element_type]]
-        )
-
     # Dataflow with ObjectFifos
-    of_offsets = [0, 8, 32]
-
     of_in = ObjectFifo(data_ty, name="in")
-    of_ins = of_in.cons().split(
-        of_offsets,
-        obj_types=tile_types,
-        names=[f"in{worker}" for worker in range(n_workers)],
-    )
-
-    of_out = ObjectFifo(data_ty, name="out")
-    of_outs = of_out.prod().join(
-        of_offsets,
-        obj_types=tile_types,
-        names=[f"out{worker}" for worker in range(n_workers)],
-    )
-
-    # Task for the core to perform
-    def core_fn(of_in, of_out, num_elem):
-        elem_in = of_in.acquire(1)
-        elem_out = of_out.acquire(1)
-        for i in range_(num_elem):
-            elem_out[i] = elem_in[i]
-        of_in.release(1)
-        of_out.release(1)
-
-    # Create workers to perform the task
-    workers = []
-    for i in range(n_workers):
-        workers.append(
-            Worker(
-                core_fn,
-                [
-                    of_ins[i].cons(),
-                    of_outs[i].prod(),
-                    tile_sizes[i],
-                ],
-            )
-        )
+    of_out = of_in.cons().forward(name="out")
 
     # To/from AIE-array runtime data movement
     rt = Runtime()
     with rt.sequence(data_ty, data_ty) as (a_in, c_out):
-        rt.start(*workers)
         rt.fill(of_in.prod(), a_in)
         rt.drain(of_out.cons(), c_out, wait=True)
 
@@ -86,17 +40,17 @@ def exercise_2(input0, output):
 
 def main():
     # Define tensor shapes and data types
-    num_elements = 48
+    data_size = 48
     element_type = np.int32
 
     # Construct an input tensor and an output zeroed tensor
     # The two tensors are in memory accessible to the NPU
-    input0 = iron.arange(num_elements, dtype=element_type, device="npu")
+    input0 = iron.arange(data_size, dtype=element_type, device="npu")
     output = iron.zeros_like(input0)
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    exercise_2(input0, output)
+    exercise_1(input0, output)
 
     # Check the correctness of the result
     e = np.equal(input0.numpy(), output.numpy())

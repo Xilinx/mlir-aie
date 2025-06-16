@@ -1,4 +1,4 @@
-# answer.py -*- Python -*-
+# answer_2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -9,7 +9,7 @@
 import sys
 import numpy as np
 
-from aie.iron import Program, Runtime, Worker, ObjectFifo, LocalBuffer
+from aie.iron import Program, Runtime, Worker, ObjectFifo
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
@@ -24,9 +24,7 @@ def exercise_1(input0, output):
 
     # Dataflow with ObjectFifos
     of_in = ObjectFifo(data_ty, name="in")
-    of_in_mem = of_in.cons().forward(name="in_mem")
-    of_out_mem = ObjectFifo(data_ty, name="out_mem")
-    of_out = of_out_mem.cons().forward(name="out")
+    of_out = ObjectFifo(data_ty, name="out")
 
     # Task for the core to perform
     def core_fn(of_in, of_out):
@@ -38,7 +36,7 @@ def exercise_1(input0, output):
         of_in.release(1)
 
     # Create a worker to perform the task
-    my_worker = Worker(core_fn, [of_in_mem.cons(), of_out_mem.prod()])
+    my_worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
 
     # To/from AIE-array runtime data movement
     rt = Runtime()
