@@ -183,11 +183,7 @@ def my_matmul(
         # AIE Core Function declarations
         func_type = "" if vectorized else "scalar_"
         zero = external_func(f"zero_{func_type}{dtype_out_str}", inputs=[c_ty])
-        matmul_func_name = (
-            f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}"
-            if not b_col_maj
-            else f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}_b_col_maj"
-        )
+        matmul_func_name = f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}"
         matmul = external_func(
             matmul_func_name,
             inputs=[a_ty, b_ty, c_ty],
