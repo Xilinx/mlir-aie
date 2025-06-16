@@ -71,7 +71,7 @@ int main(int argc, const char *argv[]) {
   auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(IN_DATATYPE),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(OUT_DATATYPE),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   IN_DATATYPE *bufInA = bo_inA.map<IN_DATATYPE *>();
   std::vector<IN_DATATYPE> srcVecA;
@@ -105,20 +105,13 @@ int main(int argc, const char *argv[]) {
   run0.set_arg(1, bo_ctrlpkt_instr);
   run0.set_arg(2, ctrlpkt_instr_v.size());
   run0.set_arg(3, bo_ctrlpkt);
-  run0.set_arg(4, 0);
-  run0.set_arg(5, 0);
-  run0.set_arg(6, 0);
-  run0.set_arg(7, 0);
   // Run 1: the design
   auto run1 = xrt::run(kernel);
   run1.set_arg(0, opcode);
   run1.set_arg(1, bo_instr);
   run1.set_arg(2, instr_v.size());
   run1.set_arg(3, bo_inA);
-  run1.set_arg(4, 0);
-  run1.set_arg(5, bo_out);
-  run1.set_arg(6, 0);
-  run1.set_arg(7, 0);
+  run1.set_arg(4, bo_out);
 
   // Executing and waiting on the runlist
   runlist.add(run0);

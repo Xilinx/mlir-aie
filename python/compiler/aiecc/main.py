@@ -613,37 +613,7 @@ class FlowRunner:
                 print(f"copy {tmp} to {opts.txn_name}")
             shutil.copy(tmp, opts.txn_name)
 
-    async def process_ctrlpkt(self, module_str):
-        with Context(), Location.unknown():
-            run_passes(
-                "builtin.module(aie.device(convert-aie-to-control-packets{elf-dir="
-                + self.tmpdirname
-                + "}))",
-                module_str,
-                self.prepend_tmp("ctrlpkt.mlir"),
-                self.opts.verbose,
-            )
-
-    async def process_elf(self, module_str):
-        with Context(), Location.unknown():
-            module = Module.parse(module_str)
-            pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
-            npu_insts_mlir = (
-                self.prepend_tmp("elf_insts.mlir") if self.opts.verbose else None
-            )
-            npu_insts_module = run_passes_module(
-                pass_pipeline,
-                module,
-                npu_insts_mlir,
-                self.opts.verbose,
-            )
-            # translate npu instructions to binary and write to file
-            npu_insts = aiedialect.translate_npu_to_binary(npu_insts_module.operation)
-
-        npu_insts_bin = self.prepend_tmp("elf_insts.bin")
-        with open(npu_insts_bin, "wb") as f:
-            f.write(struct.pack("I" * len(npu_insts), *npu_insts))
-
+    async def aiebu_asm(self, input_file, output_file):
         # find aiebu-asm binary
         asm_bin = "aiebu-asm"
         if shutil.which(asm_bin) is None:
@@ -665,11 +635,76 @@ class FlowRunner:
                 "-t",
                 "aie2txn",
                 "-c",
-                npu_insts_bin,
+                input_file,
                 "-o",
-                opts.elf_name,
+                output_file,
             ],
         )
+
+    async def process_ctrlpkt(self, module_str):
+        with Context(), Location.unknown():
+            run_passes(
+                "builtin.module(aie.device(convert-aie-to-control-packets{elf-dir="
+                + self.tmpdirname
+                + "}))",
+                module_str,
+                self.prepend_tmp("ctrlpkt.mlir"),
+                self.opts.verbose,
+            )
+            await self.do_call(
+                None,
+                [
+                    "aie-translate",
+                    "-aie-ctrlpkt-to-bin",
+                    "-aie-sequence-name",
+                    "configure",
+                    self.prepend_tmp("ctrlpkt.mlir"),
+                    "-o",
+                    "ctrlpkt.bin",
+                ],
+            )
+            ctrlpkt_mlir_str = await read_file_async(self.prepend_tmp("ctrlpkt.mlir"))
+            run_passes(
+                "builtin.module(aie.device(aie-ctrl-packet-to-dma,aie-dma-to-npu))",
+                ctrlpkt_mlir_str,
+                self.prepend_tmp("ctrlpkt_dma_seq.mlir"),
+                self.opts.verbose,
+            )
+            await self.do_call(
+                None,
+                [
+                    "aie-translate",
+                    "-aie-npu-to-binary",
+                    "-aie-sequence-name",
+                    "configure",
+                    self.prepend_tmp("ctrlpkt_dma_seq.mlir"),
+                    "-o",
+                    "ctrlpkt_dma_seq.bin",
+                ],
+            )
+            await self.aiebu_asm("ctrlpkt_dma_seq.bin", "ctrlpkt_dma_seq.elf")
+
+    async def process_elf(self, module_str):
+        with Context(), Location.unknown():
+            module = Module.parse(module_str)
+            pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
+            npu_insts_mlir = (
+                self.prepend_tmp("elf_insts.mlir") if self.opts.verbose else None
+            )
+            npu_insts_module = run_passes_module(
+                pass_pipeline,
+                module,
+                npu_insts_mlir,
+                self.opts.verbose,
+            )
+            # translate npu instructions to binary and write to file
+            npu_insts = aiedialect.translate_npu_to_binary(npu_insts_module.operation)
+
+        npu_insts_bin = self.prepend_tmp("elf_insts.bin")
+        with open(npu_insts_bin, "wb") as f:
+            f.write(struct.pack("I" * len(npu_insts), *npu_insts))
+
+        await self.aiebu_asm(npu_insts_bin, opts.elf_name)
 
     async def process_pdi_gen(self):
 
