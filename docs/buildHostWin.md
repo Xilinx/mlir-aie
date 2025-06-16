@@ -57,10 +57,10 @@ All steps in WSL Ubuntu terminal.
 
    * [Optional] Build from source following regular get started instructions [https://xilinx.github.io/mlir-aie/Building.html](https://xilinx.github.io/mlir-aie/Building.html)
 
-1. After installing the updated Ryzen™ AI driver (see next subsection), use the gendef tool (from the mingw-w64-tools package) to create a .def file with the symbols. This step is needed to create an XRT .dll file that we can link against when we compile. 
+1. Build XRT dll definition file to be used to create .lib needed for host code compilation with Visual Studio C/C++ compiler. After installing the updated Ryzen™ AI driver (see next subsection), use the gendef tool (from the mingw-w64-tools package) to create a .def file with the required link symbols. This step is needed to create an XRT .dll file that we can link against when we compile. 
     ```
     mkdir /mnt/c/Technical/xrtNPUfromDLL; cd /mnt/c/Technical/xrtNPUfromDLL
-    cp /mnt/c/Windows/System32/AMD/xrt_coreutil.dll .
+    cp /mnt/c/Windows/System32/xrt_coreutil.dll .
     gendef xrt_coreutil.dll
     ```
 
@@ -131,24 +131,27 @@ All steps in WSL Ubuntu terminal.
    ./build.sh -noert
    ```
 
-### Prepare Host Side: Natively on Win11
+## Prepare Host Side: Natively on Win11
 
 All steps in Win11 (powershell where needed).
 
-1. Upgrade the NPU driver to version 10.106.8.62 [download here](https://account.amd.com/en/forms/downloads/ryzen-ai-software-platform-xef.html?filename=ipu_stack_rel_silicon_2308.zip), following the [instructions](href="https://ryzenai.docs.amd.com/en/latest/inst.html) on setting up the driver. Note that we currently have two steps for driver update. This version provides the `xrt_coreutil.dll` under `C:\Windows\System32\AMD` which is needed to generate the `xrt_coreutil.lib`. However, we also want to install the most up-to-date NPU driver package linked from [here](https://ryzenai.docs.amd.com/en/latest/inst.html#install-npu-drivers) under `NPU Driver`. Use version 10.106.8.62 to generate the `xrt_coreutil.lib`, then come back and upgrade the driver to the most up-to-date one.
+1. Upgrade the NPU driver to the latest version. Navigate to [here](https://ryzenai.docs.amd.com/en/latest/inst.html#install-npu-drivers) under `NPU Driver` to download and install the driver. Optionally, you can find the latest driver version under the Ryzen AI SW site [here](https://account.amd.com/en/member/ryzenai-sw-ea.html) under "Downloads" tab. Here, the latest NPU Driver can be found at the top of the page (for example, for verions 1.4.1, that would be NPU_RAI1.4.1_259_WHQL.zip). Follow the same [instructions](https://ryzenai.docs.amd.com/en/latest/inst.html) to set up the driver. 
 
+   Note that we currently have two steps for setting up the driver for host compilation and linking. The driver installation provides the `xrt_coreutil.dll` under `C:\Windows\System32\` or `C:\Windows\System32\AMD` which is needed to generate the `xrt_coreutil.lib` that Visual Studio uses to compile against. 
+
+1. Create visual studio lib file for host code linking. This is done by creating a .lib file from the .dll shipped with the driver.
+    - In wsl, generate a .def file (see above)
+    - Start a x86 Native Tools Command Prompt (installed as part of VS17), go to the folder `C:\Technical\xrtNPUfromDLL` and run command:
+      ```
+      lib /def:xrt_coreutil.def /machine:x64 /out:xrt_coreutil.lib
+      ```
 1. Install [Microsoft Visual Studio 17 2022 Community Edition](https://visualstudio.microsoft.com/vs/community/) with package for C++ development.
 
 1. Install CMake on windows ([https://cmake.org/download/](https://cmake.org/download/))
 1. Optional (only needed for vision examples): install [opencv](https://docs.opencv.org/4.x/d3/d52/tutorial_windows_install.html) so the `opencv` folder is under `C:\Technical\thirdParty\opencv`. Then add the following path to your PATH environmental variable - `C:\Technical\thirdParty\opencv\build\x64\vc16\bin`. Be sure this is added under "System Variables" and not just user variables.
 
 1. Clone [https://github.com/Xilinx/XRT](https://github.com/Xilinx/XRT) for instance under `C:\Technical`.
-1. Create a .lib file from the .dll shipping with the driver
-    - In wsl, generate a .def file (see above)
-    - Start a x86 Native Tools Command Prompt (installed as part of VS17), go to the folder `C:\Technical\xrtNPUfromDLL` and run command:
-      ```
-      lib /def:xrt_coreutil.def /machine:x64 /out:xrt_coreutil.lib
-      ```
+
 1. Clone [https://github.com/Xilinx/mlir-aie.git](https://github.com/Xilinx/mlir-aie.git) for instance under `C:\Technical` to be used to build your designs (yourPathToDesignsWithMLIR-AIE). This is needed because Visual Studio Compiler needs standard Windows directory paths rather than WSL mounted paths to work properly.
 
 ## Set up your environment
