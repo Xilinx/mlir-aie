@@ -23,10 +23,6 @@ CXX=g++-13 -ggdb
 UTILS_INCLUDE := -I$(srcdir)/../../../runtime_lib/test_lib/
 UTILS_LIB=$(srcdir)/../../../runtime_lib/test_lib/test_utils.cpp
 
-mlir_target?=build/aie.mlir
-xclbin_target?=build/final.xclbin
-insts_target?=build/insts.bin
-host_target?=build/test
 
 devicename?=$(if $(filter 1,$(NPU2)),npu2,npu)
 M?=16
@@ -34,39 +30,43 @@ N?=16
 m?=16
 n?=16
 s?=4
+dtype?=i8
 
-kernel=transpose
+KERNEL_CC=${PEANO_INSTALL_DIR}/bin/clang++
+KERNEL_CFLAGS= 
+ifeq (${devicename}, npu2)
+	KERNEL_CFLAGS+=${PEANOWRAP2P_FLAGS}
+else
+	KERNEL_CFLAGS+=${PEANOWRAP2_FLAGS}
+endif
+KERNEL_DEFINES=-DDIM_m=$m -DDIM_n=$n -DDIM_s=$s -DDTYPE_${dtype}
 
-aie_py_src=combined_transpose.py
+HOST_DEFINES=-DDTYPE_${dtype}
 
 .PHONY: all
-all: ${xclbin_target} ${host_target}
+all: build/final.xclbin build/test
 
-build/${kernel}.o: ${srcdir}/aie_kernels/aie2/${kernel}.cc
+build/transpose.o: ${srcdir}/aie_kernels/aie2/transpose.cc
 	mkdir -p ${@D}
-ifeq (${devicename}, npu2)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DDIM_m=$m -DDIM_n=$n -DDIM_s=$s -c $< -o ${@F}
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DDIM_m=$m -DDIM_n=$n -DDIM_s=$s -c $< -o ${@F}
-endif
+	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}
 
-${mlir_target}: ${srcdir}/${aie_py_src}
+build/aie.mlir: ${srcdir}/combined_transpose.py
 	mkdir -p ${@D}
-	python3 $< ${devicename} $M $N $m $n $s ${pyflags} > $@
+	python3 $< ${devicename} $M $N $m $n $s --dtype ${dtype} > $@
 
-${xclbin_target}: ${mlir_target} build/${kernel}.o
+build/final.xclbin: build/aie.mlir build/transpose.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 				--no-xchesscc --no-xbridge \
-				--aie-generate-npu-insts --npu-insts-name=${insts_target:build/%=%} ${<:%=../%}
+				--aie-generate-npu-insts --npu-insts-name=insts.bin ${<:%=../%}
 
-${host_target}: ${srcdir}/test.cpp ${xclbin_target}
+build/test: ${srcdir}/test.cpp build/final.xclbin
 	mkdir -p ${@D}
-	${CXX} ${XRT_FLAGS} ${UTILS_INCLUDE} ${UTILS_LIB} -o $@ $< ${XRT_LIBS}
+	${CXX} ${XRT_FLAGS} ${UTILS_INCLUDE} ${UTILS_LIB} ${HOST_DEFINES} -o $@ $< ${XRT_LIBS}
 
 .PHONY: run
-run: ${host_target}
-	./${host_target} -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -M ${M} -N ${N}
+run: build/test
+	./build/test -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -M ${M} -N ${N}
 
 
 .PHONY: clean

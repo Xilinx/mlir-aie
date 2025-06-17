@@ -17,14 +17,27 @@
 #error Please specify matrix sizes m, n at kernel compile time using e.g., -DDIM_m=32 -DDIM_n=32.
 #endif
 
+#if !defined(DTYPE_i8) && !defined(DTYPE_i16) && !defined(DTYPE_i32) && !defined(DTYPE_bf16)
+#error Please specify data type at kernel compile time using e.g., -DDTYPE_i8 or -DDTYPE_i16 or -DDTYPE_i32 or -DDTYPE_bf16.
+#endif
+
+#if defined(DTYPE_i8)
 #define DTYPE uint8_t
+#endif
+#if defined(DTYPE_i16)
+#define DTYPE uint16_t
+#endif
+#if defined(DTYPE_i32)
+#define DTYPE uint32_t
+#endif
+#if defined(DTYPE_bf16)
+#define DTYPE std::bfloat16_t
+#endif
 
-//constexpr size_t VECTOR_SIZE = (DIM_m * sizeof(DTYPE) < 512 ? DIM_m * sizeof(DTYPE) : 512);
-constexpr size_t VECTOR_SIZE = 16;
 constexpr size_t OUTER_SIZE = DIM_m * DIM_n;
+constexpr size_t VECTOR_SIZE = (DIM_m * sizeof(DTYPE) < 512 ? DIM_m * sizeof(DTYPE) : 512) / sizeof(DTYPE);
 
-static_assert(DIM_m * sizeof(DTYPE) <= 512);
-static_assert(DIM_m * DIM_n % VECTOR_SIZE == 0);
+static_assert(OUTER_SIZE % VECTOR_SIZE == 0);
 
 extern "C" {
 
@@ -37,7 +50,6 @@ void copy(DTYPE *__restrict__ in_ptr, DTYPE *__restrict__ out_ptr) {
 }
 
 void transpose_4(DTYPE *__restrict__ in_ptr, DTYPE *__restrict__ out_ptr) {
-  DTYPE * const in_ptr_end = in_ptr + OUTER_SIZE;
   for(unsigned col = 0; col < DIM_m; col += VECTOR_SIZE) {
     for(unsigned row = 0; row < DIM_n; row += 4) {
       aie::vector<DTYPE, VECTOR_SIZE> row_0 = aie::load_v<VECTOR_SIZE>(in_ptr + col + row * DIM_m);
@@ -47,7 +59,7 @@ void transpose_4(DTYPE *__restrict__ in_ptr, DTYPE *__restrict__ out_ptr) {
 
       // Interleave all rows one element at a time.
       // Result: zipped_0, zipped_1, zipped_2, zipped_3
-      // row_0[0], row_1[0], row_2[0], row_3[0], row_0[1], row_1[1], ...
+      // zipped_0 = row_0[0], row_1[0], row_2[0], row_3[0], row_0[1], row_1[1], ...
       std::pair<aie::vector<DTYPE, VECTOR_SIZE>, aie::vector<DTYPE, VECTOR_SIZE>> zip_one_0 =
         aie::interleave_zip(row_0, row_1, 1);
       std::pair<aie::vector<DTYPE, VECTOR_SIZE>, aie::vector<DTYPE, VECTOR_SIZE>> zip_one_1 =

@@ -15,43 +15,49 @@ from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 
 
-def shuffle_transpose(dev, M, N, m, n, s):
+def shuffle_transpose(dev, M, N, m, n, s, dtype):
 
     assert M % m == 0
     assert N % n == 0
+    assert m % s == 0
+    assert n % s == 0
 
     # Define tensor types
-    matrix_ty = np.ndarray[(M, N,), np.dtype[np.uint8]]
-    tile_ty = np.ndarray[(m, n,), np.dtype[np.uint8]]
+    matrix_ty = np.ndarray[(M, N), dtype]
+    tile_ty = np.ndarray[(m, n,), dtype]
 
     # Define kernel function
-    kernel_func = Kernel(
-        f"transpose_{s}", "transpose.o", [tile_ty, tile_ty]
-        #f"copy", "transpose.o", [tile_ty, tile_ty]
-    )
+    kernel_func = Kernel(f"transpose_{s}", "transpose.o", [tile_ty, tile_ty])
+    # Uncomment the below line to instead use a copy kernel; this will copy the
+    # input buffer to the output buffer without transposing, allowing you to
+    # test the data flow transformations further below.
+    #kernel_func = Kernel("copy", "transpose.o", [tile_ty, tile_ty])
 
-    # Data flow with ObjectFifos
+    # Data flow with ObjectFIFOs; partially transposes the input data so that 
+    # the kernel only needs to transpose s*s-sized sub-tiles.
+    tap_in_L3L2 = TensorAccessPattern(
+        tensor_dims=(M, N),
+        offset=0,
+        sizes=[1, N // n, M, n],
+        strides=[0, n, N, 1]
+    )
     tap_in_L2L1 = TensorAccessPattern(
         tensor_dims=(M, N),
         offset=0,
-        sizes   = [m//s,  s, n//s, s],
-        strides = [s,     m,  s*m, 1]
+        sizes=[m // s, s, n // s, s],
+        strides=[s, m, s * m, 1],
     )
-    tap_in_L3L2 = TensorTiler2D.group_tiler(
-        (M, N), (m, n), (M // m, N // n), 
-        iter_col_major=False
-    )[0]
     tap_out_L1L3 = TensorAccessPattern(
-        tensor_dims=(M, N),
+        tensor_dims=(N, M),
         offset=0,
-        sizes = [1, 1, M, N],
-        strides = [0, 0, N, 1]
+        sizes=[1, M // m, N, m],
+        strides=[0, m, M, 1]
     )
 
     in_L3L2_fifo = ObjectFifo(tile_ty, name="in_L3L2_fifo")
     in_L2L1_fifo = in_L3L2_fifo.cons(
         dims_from_stream=tap_in_L2L1.transformation_dims
-        ).forward(obj_type=tile_ty, name="in_L2L1_fifo")
+    ).forward(obj_type=tile_ty, name="in_L2L1_fifo")
     out_fifo = ObjectFifo(tile_ty, name="out_fifo")
 
     # The task for a core to perform
@@ -83,8 +89,10 @@ def shuffle_transpose(dev, M, N, m, n, s):
 
 if __name__ == "__main__":
 
+    # This design is compile-time parametrized; you can create specialized
+    # versions of the design by passing the parameters on the command line.
+    # See the Makefile on how this script is invoked.
     parser = argparse.ArgumentParser()
-
     parser.add_argument(
         "device", type=str, help="Device name, npu | npu2", choices=["npu", "npu2"]
     )
@@ -93,20 +101,27 @@ if __name__ == "__main__":
     parser.add_argument("m", type=int, help="Outer tile rows")
     parser.add_argument("n", type=int, help="Outer tile cols")
     parser.add_argument("s", type=int, help="Inner tile cols")
-
+    parser.add_argument(
+        "--dtype",
+        type=str,
+        choices=["i8", "i16", "i32", "bf16"],
+        help="Inner tile cols",
+    )
     args = parser.parse_args()
 
-try:
-    device_name = str(args.device)
-    if device_name == "npu":
-        dev = NPU1Col1()
-    elif device_name == "npu2":
-        dev = NPU2Col1()
-    # arg parser ensures that device is either npu or npu2
-except ValueError:
-    print("Argument has inappropriate value")
+    dtype_map = {
+        "i8": np.dtype[np.int8],
+        "i16": np.dtype[np.int16],
+        "i32": np.dtype[np.int32],
+        "bf16": np.dtype[np.int32],
+    }
+    dtype = dtype_map[args.dtype]
 
-module = shuffle_transpose(
-    dev, args.M, args.N, args.m, args.n, args.s
-)
-print(module)
+    dev_map = {
+        "npu": NPU1Col1(),
+        "npu2": NPU2Col1(),
+    }
+    dev = dev_map[args.device]
+
+    module = shuffle_transpose(dev, args.M, args.N, args.m, args.n, args.s, dtype)
+    print(module)

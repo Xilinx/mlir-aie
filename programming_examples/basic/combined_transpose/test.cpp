@@ -11,6 +11,7 @@
 #include <cstring>
 #include <fstream>
 #include <iomanip>
+#include <stdfloat>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -19,14 +20,35 @@
 #include "cxxopts.hpp"
 #include "test_utils.h"
 
+#if !defined(DTYPE_i8) && !defined(DTYPE_i16) && !defined(DTYPE_i32) && !defined(DTYPE_bf16)
+#error Please specify data type at kernel compile time using e.g., -DDTYPE_i8 or -DDTYPE_i16 or -DDTYPE_i32 or -DDTYPE_bf16.
+#endif
+
+#if defined(DTYPE_i8)
+#define DTYPE uint8_t
+#endif
+#if defined(DTYPE_i16)
+#define DTYPE uint16_t
+#endif
+#if defined(DTYPE_i32)
+#define DTYPE uint32_t
+#endif
+#if defined(DTYPE_bf16)
+#define DTYPE std::bfloat16_t
+#endif
+
 /* This example performs a 16x16 INT8 transpose.
    M and N are passed in as 16 in Makefile run cmd.
    kernel.cc includes an AIE kernel that is specific to 16x16 */
-
-void print_matrix(uint8_t *buf, int n_rows, int n_cols) {
+template<typename T>
+void print_matrix(T *buf, int n_rows, int n_cols) {
   for (int row = 0; row < n_rows; row++) {
     for (int col = 0; col < n_cols; col++) {
-      std::cout << std::setw(4) << int(buf[row * n_cols + col]) << " ";
+      if constexpr (std::is_integral<T>::value) {
+        std::cout << std::setw(4) << (int)buf[row * n_cols + col] << " ";
+      } else {
+        std::cout << std::setw(6) << std::setprecision(1) << std::fixed << static_cast<float>(buf[row * n_cols + col]) << " ";
+      }
     }
     std::cout << std::endl;
   }
@@ -38,19 +60,14 @@ int main(int argc, const char *argv[]) {
   cxxopts::Options options("Shuffle Transpose Test",
                            "Test the Shuffle transpose kernel");
 
-  options.add_options()("help,h", "produce help message")(
-      "xclbin,x", "the input xclbin path", cxxopts::value<std::string>())(
-      "kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)",
-      cxxopts::value<std::string>())("verbosity,v",
-                                     "the verbosity of the output",
-                                     cxxopts::value<int>()->default_value("0"))(
-      "instr,i",
-      "path of file containing userspace instructions to be sent to the LX6",
-      cxxopts::value<std::string>())(
-      "rows,M", "M, number of rows in the input matrix",
-      cxxopts::value<int>()->default_value("64"))(
-      "cols,N", "N, number of columns in the input matrix",
-      cxxopts::value<int>()->default_value("64"));
+  options.add_options()
+    ("help,h", "produce help message")
+    ("xclbin,x", "the input xclbin path", cxxopts::value<std::string>())
+    ("kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)", cxxopts::value<std::string>())
+    ("verbosity,v", "the verbosity of the output", cxxopts::value<int>()->default_value("0"))
+    ("instr,i", "path of file containing userspace instructions to be sent to the LX6", cxxopts::value<std::string>())
+    ("rows,M", "M, number of rows in the input matrix", cxxopts::value<int>()->default_value("64"))
+    ("cols,N", "N, number of columns in the input matrix", cxxopts::value<int>()->default_value("64"));
 
   auto vm = options.parse(argc, argv);
 
@@ -99,20 +116,18 @@ int main(int argc, const char *argv[]) {
   uint32_t M = vm["M"].as<int>();
   uint32_t N = vm["N"].as<int>();
 
-  unsigned int in_size = M * N * sizeof(uint8_t);  // in bytes
-  unsigned int out_size = M * N * sizeof(uint8_t); // in bytes
+  unsigned int in_size = M * N * sizeof(DTYPE);  // in bytes
+  unsigned int out_size = M * N * sizeof(DTYPE); // in bytes
 
-  auto bo_in =
-      xrt::bo(device, in_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out =
-      xrt::bo(device, out_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  auto bo_in = xrt::bo(device, in_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto bo_out = xrt::bo(device, out_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
-  uint8_t *buf_in = bo_in.map<uint8_t *>();
-  for (int i = 0; i < in_size / sizeof(buf_in[0]); i++) {
-    buf_in[i] = (uint8_t)i;
+  DTYPE *buf_in = bo_in.map<DTYPE *>();
+  for (uint32_t i = 0; i < in_size / sizeof(buf_in[0]); i++) {
+    buf_in[i] = (DTYPE)i;
   }
 
-  uint8_t *buf_out = bo_out.map<uint8_t *>();
+  DTYPE *buf_out = bo_out.map<DTYPE *>();
   memset(buf_out, 0, out_size);
 
   // Instruction buffer for DMA configuration
@@ -133,7 +148,7 @@ int main(int argc, const char *argv[]) {
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-  uint8_t ref[M * N] = {};
+  DTYPE ref[M * N] = {};
   for (int i = 0; i < M; i++) {
     for (int j = 0; j < N; j++) {
       ref[j * M + i] = buf_in[i * N + j];
