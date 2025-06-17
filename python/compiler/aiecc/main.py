@@ -680,7 +680,7 @@ class FlowRunner:
                     "aie-translate",
                     "-aie-ctrlpkt-to-bin",
                     "-aie-sequence-name",
-                    "configure",
+                    "run",
                     self.prepend_tmp("ctrlpkt.mlir"),
                     "-o",
                     "ctrlpkt.bin",
@@ -699,14 +699,14 @@ class FlowRunner:
                     "aie-translate",
                     "-aie-npu-to-binary",
                     "-aie-sequence-name",
-                    "configure",
+                    "run",
                     self.prepend_tmp("ctrlpkt_dma_seq.mlir"),
                     "-o",
                     "ctrlpkt_dma_seq.bin",
                 ],
             )
             await self.aiebu_asm(
-                "ctrlpkt_dma_seq.bin", "ctrlpkt_dma_seq.elf", "ctrlpkt.bin"
+                "ctrlpkt_dma_seq.bin", opts.elf_name, "ctrlpkt.bin"
             )
 
     async def process_elf(self, module_str):
@@ -1363,7 +1363,7 @@ class FlowRunner:
             if opts.ctrlpkt and opts.execute:
                 processes.append(self.process_ctrlpkt(input_physical_str))
 
-            if opts.elf and opts.execute:
+            if opts.elf and not opts.ctrlpkt and opts.execute:
                 processes.append(self.process_elf(input_physical_str))
 
             await asyncio.gather(*processes)
