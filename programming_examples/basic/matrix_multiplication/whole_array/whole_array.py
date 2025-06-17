@@ -39,6 +39,9 @@ def main():
     argparser.add_argument("-n", type=int, default=32)
     argparser.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4, 8], default=4)
     argparser.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
+    argparser.add_argument("--c-col-maj", type=int, choices=[0, 1], default=0)
+    # Whether to use the scalar kernel; this is low, but can be useful for debugging smaller sizes
+    argparser.add_argument("--scalar", type=bool, choices=[0, 1], default=0)
     argparser.add_argument(
         "--dtype_in", type=str, choices=["bf16", "i8", "i16"], default="i16"
     )
@@ -69,6 +72,8 @@ def main():
             args.dtype_in,
             args.dtype_out,
             args.b_col_maj,
+            args.c_col_maj,
+            args.scalar,
             args.trace_size,
             args.generate_taps,
         )
@@ -95,6 +100,8 @@ def my_matmul(
     dtype_in_str,
     dtype_out_str,
     b_col_maj,
+    c_col_maj,
+    use_scalar,
     trace_size,
     generate_taps=False,
 ):
@@ -167,9 +174,10 @@ def my_matmul(
     ), """B must be tileable into (k, n * n_aie_cols)-sized blocks"""
 
     # r, s, t are the dimensions required by the microkernel MAC instructions.
-    assert m % r == 0
-    assert k % s == 0
-    assert n % t == 0
+    if not use_scalar:
+        assert m % r == 0
+        assert k % s == 0
+        assert n % t == 0
 
     # If you get errors during CDO generation due to running out of program
     # memory, it may be because too much code is generated due to ObjectFIFO
@@ -220,10 +228,10 @@ def my_matmul(
         C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
         # AIE Core Function declarations
-        zero = external_func(f"zero_{dtype_out_str}", inputs=[C_l1_ty])
-        matmul_vectorized_func_name =  f"matmul_{dtype_in_str}_{dtype_out_str}"
+        scalar_suffix = "_scalar" if use_scalar else ""
+        zero = external_func(f"zero{scalar_suffix}_{dtype_out_str}", inputs=[C_l1_ty])
         matmul = external_func(
-            matmul_vectorized_func_name,
+            f"matmul{scalar_suffix}_{dtype_in_str}_{dtype_out_str}",
             inputs=[A_l1_ty, B_l1_ty, C_l1_ty],
         )
 
@@ -275,7 +283,7 @@ def my_matmul(
                     (k // s, s),
                     (r, k),
                     (s, 1),
-                ],
+                ] if not use_scalar else [],
             )
 
         # A_l3_l2 and A_l2_l1 object FIFO linking
@@ -317,7 +325,7 @@ def my_matmul(
                 fifo_depth,
                 B_l1_ty,
                 (
-                    [
+                    ([
                         (k // s, s * n),
                         (n // t, t),
                         (s, n),
@@ -329,7 +337,7 @@ def my_matmul(
                         (k // s, s),
                         (t, k),
                         (s, 1),
-                    ]
+                    ]) if not use_scalar else []
                 ),
             )
             # B_l3_l2 and B_l2_l1 object FIFO linking
@@ -351,12 +359,18 @@ def my_matmul(
                 shim_tiles[col],
                 fifo_depth,
                 C_l2_ty,
-                [
+                ([
                     (m // r, r * n),
                     (r, t),
                     (n // t, r * t),
                     (t, 1),
-                ],
+                ] if not c_col_maj else 
+                [
+                    (n // t, t * m),
+                    (t, r),
+                    (m // r, r * t), 
+                    (r, 1)
+                ]) if not use_scalar else [],
             )
             if n_aie_rows > 1:
                 of_offsets = [m * n * i for i in range(n_aie_rows)]
@@ -409,9 +423,8 @@ def my_matmul(
         def sequence(A, B, C):
             # We are limited in the number of BDs. After synchronizing, we can reuse BDs.
             # We only transfer 4 rows of tiles at once before starting a new transfer block.
-            tb_max_n_rows = (
-                4  # tb = transfer block; block of transfers before sync call
-            )
+            # tb = transfer block; block of transfers before sync call
+            tb_max_n_rows = 4 if not c_col_maj else 2
             for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
                 for pingpong in [0, 1]:
                     M // m // n_aie_rows // tb_max_n_rows
@@ -444,11 +457,18 @@ def my_matmul(
                         #     |                |
                         #     |                |
                         #      ----------------
-                        C_row_offset = row_base * m * n_aie_rows * N
-                        C_col_offset = col * n
-                        C_offset = C_col_offset + C_row_offset
-                        C_sizes = [tb_n_rows, N // n // n_aie_cols, m * n_aie_rows, n]
-                        C_strides = [m * n_aie_rows * N, n * n_aie_cols, N, 1]
+                        if not c_col_maj:
+                            C_row_offset = row_base * m * n_aie_rows * N
+                            C_col_offset = col * n
+                            C_offset = C_col_offset + C_row_offset
+                            C_sizes = [tb_n_rows, N // n // n_aie_cols, m * n_aie_rows, n]
+                            C_strides = [m * n_aie_rows * N, n * n_aie_cols, N, 1]
+                        else:
+                            C_row_offset = row_base * m * n_aie_rows
+                            C_col_offset = col * n * M 
+                            C_offset = C_col_offset + C_row_offset
+                            C_sizes = [N // n // n_aie_cols, n_aie_rows, n, m]
+                            C_strides = [M * n * n_aie_cols, m, M, 1]
                         npu_dma_memcpy_nd(
                             metadata=C_l2l3_fifos[col],
                             bd_id=bd_id_base,
