@@ -624,6 +624,53 @@ class FlowRunner:
                 self.opts.verbose,
             )
 
+    async def process_elf(self, module_str):
+        with Context(), Location.unknown():
+            module = Module.parse(module_str)
+            pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
+            npu_insts_mlir = (
+                self.prepend_tmp("elf_insts.mlir") if self.opts.verbose else None
+            )
+            npu_insts_module = run_passes_module(
+                pass_pipeline,
+                module,
+                npu_insts_mlir,
+                self.opts.verbose,
+            )
+            # translate npu instructions to binary and write to file
+            npu_insts = aiedialect.translate_npu_to_binary(npu_insts_module.operation)
+
+        npu_insts_bin = self.prepend_tmp("elf_insts.bin")
+        with open(npu_insts_bin, "wb") as f:
+            f.write(struct.pack("I" * len(npu_insts), *npu_insts))
+
+        # find aiebu-asm binary
+        asm_bin = "aiebu-asm"
+        if shutil.which(asm_bin) is None:
+            asm_bin = os.path.join("/", "opt", "xilinx", "aiebu", "bin", "aiebu-asm")
+            if shutil.which(asm_bin) is None:
+                asm_bin = None
+
+        if asm_bin is None:
+            print(
+                "Error: aiebu-asm not found, generation of ELF file failed.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        await self.do_call(
+            None,
+            [
+                asm_bin,
+                "-t",
+                "aie2txn",
+                "-c",
+                npu_insts_bin,
+                "-o",
+                opts.elf_name,
+            ],
+        )
+
     async def process_pdi_gen(self):
 
         await write_file_async(
@@ -1255,6 +1302,9 @@ class FlowRunner:
 
             if opts.ctrlpkt and opts.execute:
                 processes.append(self.process_ctrlpkt(input_physical_str))
+
+            if opts.elf and opts.execute:
+                processes.append(self.process_elf(input_physical_str))
 
             await asyncio.gather(*processes)
 

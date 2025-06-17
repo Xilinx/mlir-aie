@@ -18,7 +18,6 @@ devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = eltwise_mul
 trace_size = 8192
 
-colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src=${targetname}.py
 use_placed?=0
 
@@ -75,7 +74,7 @@ run: ${targetname}.exe build/final.xclbin
 
 trace: ${targetname}.exe build/final_trace.xclbin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --colshift ${colshift} --output trace_eltwise_mul.json
+	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_eltwise_mul.json
 	${srcdir}/../../utils/get_trace_summary.py --input trace_eltwise_mul.json
 
 clean:

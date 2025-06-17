@@ -18,19 +18,19 @@ import aie.iron as iron
 
 @iron.jit(is_placed=False)
 def exercise_2(input0, output):
-    num_elements = output.numel()
-    data_type = output.dtype
-    tile_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
+    data_size = output.numel()
+    element_type = output.dtype
+    data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
 
     # Dataflow with ObjectFifos
-    of_in = ObjectFifo(tile_ty, name="in")
-    of_out = ObjectFifo(tile_ty, name="out")
+    of_in = ObjectFifo(data_ty, name="in")
+    of_out = ObjectFifo(data_ty, name="out")
 
     # Task for the core to perform
     def core_fn(of_in, of_out):
         elem_in = of_in.acquire(1)
         elem_out = of_out.acquire(1)
-        for i in range_(num_elements):
+        for i in range_(data_size):
             elem_out[i] = elem_in[i]
         of_in.release(1)
         of_out.release(1)
@@ -40,7 +40,7 @@ def exercise_2(input0, output):
 
     # To/from AIE-array runtime data movement
     rt = Runtime()
-    with rt.sequence(tile_ty, tile_ty) as (a_in, c_out):
+    with rt.sequence(data_ty, data_ty) as (a_in, c_out):
         rt.start(my_worker)
         rt.fill(of_in.prod(), a_in)
         rt.drain(of_out.cons(), c_out, wait=True)
@@ -54,12 +54,12 @@ def exercise_2(input0, output):
 
 def main():
     # Define tensor shapes and data types
-    num_elements = 48
-    data_type = np.int32
+    data_size = 48
+    element_type = np.int32
 
     # Construct an input tensor and an output zeroed tensor
     # The two tensors are in memory accessible to the NPU
-    input0 = iron.arange(num_elements, dtype=data_type, device="npu")
+    input0 = iron.arange(data_size, dtype=element_type, device="npu")
     output = iron.zeros_like(input0)
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
