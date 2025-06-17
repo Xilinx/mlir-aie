@@ -46,7 +46,7 @@ HOST_DEFINES=-DDTYPE_${dtype}
 .PHONY: all
 all: build/final.xclbin build/test
 
-build/transpose.o: ${srcdir}/aie_kernels/aie2/transpose.cc
+build/transpose.o: ${srcdir}/transpose.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}
 
