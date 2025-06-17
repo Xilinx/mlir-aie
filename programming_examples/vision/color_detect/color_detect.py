@@ -61,12 +61,12 @@ def color_detect(dev, width, height):
 
     # Intermediate
     OF_2to34 = ObjectFifo(line_ty, name="OF_2to34")
-    OF_3to3 = ObjectFifo(line_ty, name="OF_3to3", default_depth=1)
+    OF_3to3 = ObjectFifo(line_ty, name="OF_3to3", depth=1)
     OF_3to5 = ObjectFifo(line_ty, name="OF_3to5")
-    OF_4to4 = ObjectFifo(line_ty, name="OF_4to4", default_depth=1)
+    OF_4to4 = ObjectFifo(line_ty, name="OF_4to4", depth=1)
     OF_4to5 = ObjectFifo(line_ty, name="OF_4to5")
-    OF_5to5a = ObjectFifo(line_ty, name="OF_5to5a", default_depth=1)
-    OF_5to5b = ObjectFifo(line_bytes_ty, name="OF_5to5b", default_depth=1)
+    OF_5to5a = ObjectFifo(line_ty, name="OF_5to5a", depth=1)
+    OF_5to5b = ObjectFifo(line_bytes_ty, name="OF_5to5b", depth=1)
 
     # Compute task for cores to perform
     def rgba2hue_fn(of_in, of_out, rgba2hueLine_kernel):
