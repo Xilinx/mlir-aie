@@ -90,22 +90,22 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
                     shim=ShimTile,
                     trace_size=trace_size,
                         coretile_events=[
-                        CoreEvent.LOCK_STALL,
+                        CoreEvent.INSTR_EVENT_0,
                         CoreEvent.INSTR_EVENT_1,
                         CoreEvent.INSTR_VECTOR,
                         PortEvent(CoreEvent.PORT_RUNNING_0, 1, True),  # master(1)
-                        PortEvent(CoreEvent.PORT_RUNNING_1, 1, False),  # slave(1)
+                        PortEvent(CoreEvent.PORT_RUNNING_1, 2, True),  # master(2)
+                        PortEvent(CoreEvent.PORT_RUNNING_2, 1, False),  # slave(1)
                         CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
-                        CoreEvent.INSTR_LOCK_RELEASE_REQ,
-                        CoreEvent.INSTR_EVENT_0,
+                        CoreEvent.LOCK_STALL,
                     ],
                     coremem_events=[
-                        MemEvent.DM_PARITY_ERROR_BANK_4,
-                        MemEvent.DMA_MM2S_0_START_TASK,
-                        MemEvent.DMA_S2MM_1_START_TASK,
-                        MemEvent.DMA_MM2S_1_START_TASK,
+                        MemEvent.GROUP_MEMORY_CONFLICT,
+                        MemEvent.DMA_MM2S_0_FINISHED_BD,
+                        MemEvent.DMA_S2MM_0_FINISHED_BD,
+                        MemEvent.DMA_S2MM_1_FINISHED_BD,
                         MemEvent.LOCK_3_REL, 
-                        MemEvent.DMA_MM2S_0_MEMORY_STARVATION,
+                        MemEvent.DMA_MM2S_0_STREAM_BACKPRESSURE,
                         MemEvent.LOCK_SEL0_ACQ_GE,
                         MemEvent.LOCK_SEL1_ACQ_EQ,
                     ],
