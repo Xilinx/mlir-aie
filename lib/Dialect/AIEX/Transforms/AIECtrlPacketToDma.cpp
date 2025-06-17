@@ -14,6 +14,7 @@
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/ADT/TypeSwitch.h"
@@ -72,21 +73,34 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
 
       OpBuilder builder(f);
 
+      IRMapping mapping;
+
       auto newSeq =
           builder.create<AIEX::RuntimeSequenceOp>(loc, f.getSymNameAttr());
       newSeq.getBody().push_back(new Block);
+
+      // Copy the arguments from the old sequence to the new one.
+      for (auto arg : f.getBody().getArguments()) {
+        // Add the argument to the new sequence.
+        auto newArg = newSeq.getBody().addArgument(arg.getType(), arg.getLoc());
+        // Replace all uses of the old argument with the new one.
+        arg.replaceAllUsesWith(newArg);
+        // Add the mapping for the argument.
+        mapping.map(arg, newArg);
+      }
 
       // Using dynamic shape for ctrl pkt stream.
       auto ctrlPktMemrefType = MemRefType::get(
           ShapedType::kDynamic, IntegerType::get(ctx, 32), nullptr, 0);
       auto newBlockArg = newSeq.getBody().addArgument(ctrlPktMemrefType, loc);
+
       builder.setInsertionPointToStart(&newSeq.getBody().front());
 
       int64_t ddrOffset = 0;
       Block &entry = f.getBody().front();
       for (auto &o : entry) {
-        llvm::TypeSwitch<Operation *>(&o).Case<NpuControlPacketOp>(
-            [&](auto op) {
+        llvm::TypeSwitch<Operation *>(&o)
+            .Case<NpuControlPacketOp>([&](auto op) {
               // Destination tile info
               int col = op.getColumnFromAddr();
               int row = op.getRowFromAddr();
@@ -131,6 +145,10 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
               auto row_num = builder.getI32IntegerAttr(1);
               builder.create<AIEX::NpuSyncOp>(loc, shimCol, shimRow, dir, chan,
                                               col_num, row_num);
+            })
+            .Default([&](Operation *op) {
+              // For all other operations, just clone them to the new sequence.
+              builder.clone(*op, mapping);
             });
       }
 
