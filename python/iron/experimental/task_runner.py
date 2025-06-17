@@ -102,7 +102,7 @@ def task_runner(
         rt_types.append(np.ndarray[arr._shape, np.dtype[arr._dtype]])
         for w in range(num_workers):
             of_ins[w].append(
-                ObjectFifo(tile_type, default_depth=arr._num_buffs, name=f"in{i}_{w}")
+                ObjectFifo(tile_type, depth=arr._num_buffs, name=f"in{i}_{w}")
             )
 
     tas_outs = []
@@ -116,7 +116,7 @@ def task_runner(
         rt_types.append(np.ndarray[arr._shape, np.dtype[arr._dtype]])
         for w in range(num_workers):
             of_outs[w].append(
-                ObjectFifo(tile_type, default_depth=arr._num_buffs, name=f"out{i}_{w}")
+                ObjectFifo(tile_type, depth=arr._num_buffs, name=f"out{i}_{w}")
             )
 
     def worker_wrapper(*args):
