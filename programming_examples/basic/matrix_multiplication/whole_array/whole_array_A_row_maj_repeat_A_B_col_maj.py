@@ -7,7 +7,6 @@
 import argparse
 from ml_dtypes import bfloat16
 import numpy as np
-import sys
 
 from aie.extras.context import mlir_mod_ctx
 
@@ -24,6 +23,22 @@ dtype_map = {
     "i32": np.int32,
 }
 
+microkernel_mac_dim_map = {
+    "npu": {
+        "bf16": (4, 8, 4),
+        "i8": (4, 8, 8),
+        "i16": (4, 4, 4),
+    },
+    "npu2": {
+        "bf16": {
+            # emulate_bf16_mmul_with_bfp16
+            True: (8, 8, 8),
+            False: (4, 8, 4),
+        },
+        "i8": (8, 8, 8),
+        "i16": (4, 4, 8),
+    },
+}
 
 def main():
     argparser = argparse.ArgumentParser(
@@ -41,6 +56,7 @@ def main():
     argparser.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4], default=4)
     argparser.add_argument("--n-aie-rows", type=int, choices=[1, 2, 4], default=4)
     argparser.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
+    argparser.add_argument("--emulate-bf16-mmul-with-bfp16", type=bool, default=False)
     argparser.add_argument(
         "--dtype_in", type=str, choices=["bf16", "i8", "i16"], default="i16"
     )
@@ -73,6 +89,7 @@ def main():
             args.dtype_in,
             args.dtype_out,
             args.b_col_maj,
+            args.emulate_bf16_mmul_with_bfp16,
             args.trace_size,
             args.generate_taps,
         )
@@ -101,10 +118,11 @@ def my_matmul(
     dtype_in_str,
     dtype_out_str,
     b_col_maj,
+    emulate_bf16_mmul_with_bfp16,
     trace_size,
     generate_taps=False,
 ):
-    
+
     n_aie_cores = n_aie_rows * n_aie_cols
 
     dtype_in = dtype_map[dtype_in_str]
@@ -117,18 +135,12 @@ def my_matmul(
         np.dtype(dtype_out).itemsize >= np.dtype(dtype_in).itemsize
     ), f"Output dtype ({dtype_out}) must be equal or larger to input dtype ({dtype_in})"
 
-    if dtype_in_str == "bf16":
-        r = 4
-        s = 8
-        t = 4
-    elif dtype_in_str == "i8":
-        r = 4
-        s = 8
-        t = 8
-    elif dtype_in_str == "i16":
-        r = 4
-        s = 4
-        t = 4
+    # r, s, t are the dimensions required by the microkernel MAC instructions.
+    mac_dims = microkernel_mac_dim_map[dev][dtype_in_str]
+    if dev == "npu2" and dtype_in_str == "bf16":
+        r, s, t = mac_dims[emulate_bf16_mmul_with_bfp16]
+    else:
+        r, s, t = mac_dims
 
     # Input matrix A:
     # Conceptually, we divide input A into (m * n_rows, k)-sized blocks. These
@@ -149,13 +161,9 @@ def my_matmul(
         N % (n * n_aie_cols) == 0
     ), """B must be tileable into (k, n * n_aie_cols)-sized blocks"""
 
-    # r, s, t are the dimensions required by the microkernel MAC instructions.
     assert m % r == 0
     assert k % s == 0
     assert n % t == 0
-
-
-
 
     # if b_col_maj:
     #     # These assertions are probably too broad.
@@ -172,7 +180,7 @@ def my_matmul(
     n_tiles_per_core = (M // m) * (N // n) // n_aie_cores
 
     # n_A_tiles_per_shim = n_aie_rows // n_aie_cols
-    
+
     dev = None
     if n_aie_cols == 1:
         dev = AIEDevice.npu1_1col
@@ -189,7 +197,9 @@ def my_matmul(
 
     @device(dev)
     def device_body():
-        A_l2_ty = np.ndarray[(m * mtk,), np.dtype[dtype_in]] # it will read a bigger m * mtk block in MemTile
+        A_l2_ty = np.ndarray[
+            (m * mtk,), np.dtype[dtype_in]
+        ]  # it will read a bigger m * mtk block in MemTile
         B_l2_ty = np.ndarray[(k * n,), np.dtype[dtype_in]]
         C_l2_ty = np.ndarray[(m * n * n_aie_rows,), np.dtype[dtype_out]]
         A_l1_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
@@ -241,9 +251,8 @@ def my_matmul(
                     (m, k),
                     (s, 1),
                 ],
-
-                # S2MM in compute tiles, so eack (m * k) tile 
-                # have the correct data layout. 
+                # S2MM in compute tiles, so eack (m * k) tile
+                # have the correct data layout.
                 # We have broadcast into n_aie_cols compute tiles, so each needs it's own
                 # S2MM transformation.
                 [
@@ -251,13 +260,13 @@ def my_matmul(
                         (k // s, r * s),
                         (m // r, r * k),
                         (r * s, 1),
-                    ] for _ in range(n_aie_cols)
+                    ]
+                    for _ in range(n_aie_cols)
                 ],
             )
 
             # set OF repeat count here
-            A_l2l1_fifos[row].set_repeat_count(N//n//n_aie_cols)
-
+            A_l2l1_fifos[row].set_repeat_count(N // n // n_aie_cols)
 
         for col in range(n_aie_cols):
             A_l3l2_fifos[col] = object_fifo(
@@ -270,14 +279,13 @@ def my_matmul(
                 # S2MM in MemTile to convert m * mtk block from row-maj
                 # to tiled m*k blocks
                 [
-                   [
-                       (m, k),
-                       (mtk // k, m * k),
-                       (k, 1),
-                   ]
+                    [
+                        (m, k),
+                        (mtk // k, m * k),
+                        (k, 1),
+                    ]
                 ],
             )
-            
 
             # here just do a link between the A OFs
             of_offsets = []
@@ -310,10 +318,9 @@ def my_matmul(
                     (n // t, t),
                     (s, n),
                     (t, 1),
-                ]
+                ],
             )
             object_fifo_link(B_l3l2_fifos[col], B_l2l1_fifos[col])
-
 
         # Output C
         for col in range(n_aie_cols):
@@ -353,7 +360,7 @@ def my_matmul(
         for row in range(n_aie_rows):
             for col in range(n_aie_cols):
 
-                @core(core_tiles[row][col], f"mm_{m}x{k}x{n}.o")
+                @core(core_tiles[row][col], f"mm_{m}x{k}x{n}.o", stack_size=0xD00)
                 def core_body():
                     for _ in range_(0xFFFFFFFF):
                         loop = (
@@ -477,9 +484,13 @@ def my_matmul(
                             )  # base address for the shim in this column
                             A_offset = A_block_offset + A_row_offset
 
-
                             # don't repeat here, because already done at OF
-                            A_sizes = [1, K // k, m, k,]
+                            A_sizes = [
+                                1,
+                                K // k,
+                                m,
+                                k,
+                            ]
                             A_strides = [0, k, K, 1]
 
                             npu_dma_memcpy_nd(
@@ -521,14 +532,11 @@ def my_matmul(
                             #     |0011    0011    |
                             #      ----------------
 
-
                             # keep only col maj
-                            B_col_offset = col * n * K 
-                            
+                            B_col_offset = col * n * K
+
                             B_sizes = [N // n // n_aie_cols, K // k, n, k]
                             B_strides = [n * n_aie_cols * K, k, K, 1]
-                            
-                            
 
                             npu_dma_memcpy_nd(
                                 metadata=B_l3l2_fifos[col],
