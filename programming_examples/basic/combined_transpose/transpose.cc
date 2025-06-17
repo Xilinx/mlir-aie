@@ -46,6 +46,9 @@ void copy(DTYPE *__restrict__ in_ptr, DTYPE *__restrict__ out_ptr) {
   }
 }
 
+/* Individually transposes 4x4-sized subtiles in in_ptr (a matrix of size 
+   DIM_n*DIM_m). Note that in principle, this would also work in-place
+   (i.e. in_ptr == out_ptr). */
 void transpose_4(DTYPE *__restrict__ in_ptr, DTYPE *__restrict__ out_ptr) {
   for(unsigned col = 0; col < DIM_m; col += VECTOR_SIZE) {
     for(unsigned row = 0; row < DIM_n; row += 4) {

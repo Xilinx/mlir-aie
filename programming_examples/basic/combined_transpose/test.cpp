@@ -10,8 +10,8 @@
 #include <cassert>
 #include <cstring>
 #include <fstream>
-#include <iomanip>
 #include <stdfloat>
+#include <chrono>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -109,19 +109,18 @@ int main(int argc, const char *argv[]) {
   uint32_t M = vm["M"].as<int>();
   uint32_t N = vm["N"].as<int>();
 
-  unsigned int in_size = M * N * sizeof(DTYPE);  // in bytes
-  unsigned int out_size = M * N * sizeof(DTYPE); // in bytes
+  size_t total_size = M * N * sizeof(DTYPE);
 
-  auto bo_in = xrt::bo(device, in_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out = xrt::bo(device, out_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  auto bo_in = xrt::bo(device, total_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto bo_out = xrt::bo(device, total_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   DTYPE *buf_in = bo_in.map<DTYPE *>();
-  for (uint32_t i = 0; i < in_size / sizeof(buf_in[0]); i++) {
+  for (uint32_t i = 0; i < total_size / sizeof(buf_in[0]); i++) {
     buf_in[i] = (DTYPE)i;
   }
 
   DTYPE *buf_out = bo_out.map<DTYPE *>();
-  memset(buf_out, 0, out_size);
+  memset(buf_out, 0, total_size);
 
   // Instruction buffer for DMA configuration
   void *buf_instr = bo_instr.map<void *>();
@@ -132,22 +131,24 @@ int main(int argc, const char *argv[]) {
   bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   unsigned int opcode = 3;
+  auto t_start = std::chrono::system_clock::now();
   auto run = kernel(opcode, bo_instr, instr_v.size(), bo_in, bo_out);
   ert_cmd_state r = run.wait();
   if (r != ERT_CMD_STATE_COMPLETED) {
     std::cout << "Kernel did not complete. Returned status: " << r << "\n";
     return 1;
   }
+  auto t_stop = std::chrono::system_clock::now();
+  float t_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(t_stop - t_start).count();
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-  DTYPE ref[M * N] = {};
+  DTYPE *ref = (DTYPE *)calloc(M*N, sizeof(DTYPE));
   for (int i = 0; i < M; i++) {
     for (int j = 0; j < N; j++) {
       ref[j * M + i] = buf_in[i * N + j];
     }
   }
-
 
   if (M <= 64 && N <= 64) {
     std::cout << "Input:" << std::endl;
@@ -158,7 +159,11 @@ int main(int argc, const char *argv[]) {
     print_matrix(buf_out, N, M);
   }
 
-  if (memcmp(ref, buf_out, sizeof(ref)) == 0) {
+  float throughput = (total_size / t_elapsed / 1e3); // GB/s
+  std::cout << "Elapsed: " << t_elapsed << " us ";
+  std::cout << "(" << throughput << " GB/s)" << std::endl;
+
+  if (memcmp(ref, buf_out, total_size) == 0) {
     std::cout << "PASS!" << std::endl;
   } else {
     std::cout << "FAIL." << std::endl;
