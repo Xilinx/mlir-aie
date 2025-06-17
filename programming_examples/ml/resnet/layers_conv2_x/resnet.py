@@ -257,7 +257,7 @@ act3_fifos_2 = []
 for i in range(n_cols):
     # 1x1 -> 3x3
     act2_fifos.append(
-        ObjectFifo(tensorLayer1Out_ty, default_depth=4, name=act2_fifo_names[i])
+        ObjectFifo(tensorLayer1Out_ty, depth=4, name=act2_fifo_names[i])
     )
     # 3x3 -> 1x1
     act3_fifos_1.append(ObjectFifo(tensorLayer2Out_ty, name=act3_fifo_names_1[i]))
@@ -267,7 +267,7 @@ wts_fifos = []
 wts_sub_fifos = [[], [], []]
 
 for i in range(n_cols):
-    wts_fifos.append(ObjectFifo(wts_sizes[i], name=f"wts_{i}_L3L2", default_depth=1))
+    wts_fifos.append(ObjectFifo(wts_sizes[i], name=f"wts_{i}_L3L2", depth=1))
     wts_offsets = [
         0,
         np.prod(np_ndarray_type_get_shape(layer1_wts_sizes[i])),

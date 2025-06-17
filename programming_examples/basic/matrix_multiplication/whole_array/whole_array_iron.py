@@ -242,7 +242,7 @@ def my_matmul(
     # Input A
     for i in range(n_shim_mem_A):
         A_l3l2_fifos[i] = ObjectFifo(
-            A_l2_ty, name=f"A_L3L2_{i}", default_depth=fifo_depth
+            A_l2_ty, name=f"A_L3L2_{i}", depth=fifo_depth
         )
         # If n_shim_mem_A == n_rows, n_A_tiles_per_shim is 1 and
         # this simply links a_l3l2_fifos[i] to a_l2l1_fifos[i] directly,
@@ -279,7 +279,7 @@ def my_matmul(
     # Input B
     for col in range(n_aie_cols):
         B_l3l2_fifos[col] = ObjectFifo(
-            B_l2_ty, name=f"B_L3L2_{col}", default_depth=fifo_depth
+            B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth
         )
         if b_col_maj:
             dims_to_stream = [(n // t, t * k), (k // s, s), (t, k), (s, 1)]
@@ -300,7 +300,7 @@ def my_matmul(
         C_l2l3_fifos[col] = ObjectFifo(
             C_l2_ty,
             name=f"C_L2L3_{col}",
-            default_depth=fifo_depth,
+            depth=fifo_depth,
             dims_to_stream=[(m // r, r * n), (r, t), (n // t, r * t), (t, 1)],
         )
         of_offsets = [m * n * i for i in range(n_aie_rows)]

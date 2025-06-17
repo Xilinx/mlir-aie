@@ -32,7 +32,7 @@ data_size = 256
 data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 
 # Dataflow with ObjectFifos
-of_in = ObjectFifo(data_ty, name="in") # default_depth is 2
+of_in = ObjectFifo(data_ty, name="in") # default depth is 2
 ```
 More on the Object FIFO in [Section 2a](../section-2/section-2a/README.md) of the programming guide and in the [objectfifo.py](../../python/iron/dataflow/objectfifo.py).
 
