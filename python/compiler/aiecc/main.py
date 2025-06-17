@@ -799,7 +799,9 @@ class FlowRunner:
             shutil.copy(file_txn, txn_dest)
         return file_txn
 
-    async def aiebu_asm(self, input_file, output_file, ctrl_packet_file=None):
+    async def aiebu_asm(
+        self, input_file, output_file, ctrl_packet_file=None, ctrl_packet_idx=0
+    ):
 
         # find aiebu-asm binary
         asm_bin = "aiebu-asm"
@@ -830,7 +832,7 @@ class FlowRunner:
             exteral_buffers_json = {
                 "external_buffers": {
                     "buffer_ctrl": {
-                        "xrt_id": 0,
+                        "xrt_id": ctrl_packet_idx,
                         "logical_id": -1,
                         "size_in_bytes": ctrl_packet_size,
                         "ctrl_pkt_buffer": 1,
@@ -850,58 +852,62 @@ class FlowRunner:
         await self.do_call(None, args)
 
     async def process_ctrlpkt(self, module_str, device_name):
-        with Context(), Location.unknown():
-            file_ctrlpkt_mlir = self.prepend_tmp(f"{device_name}_ctrlpkt.mlir")
+        file_ctrlpkt_mlir = self.prepend_tmp(f"{device_name}_ctrlpkt.mlir")
             file_ctrlpkt_bin = opts.ctrlpkt_name.format(device_name)
             file_ctrlpkt_dma_seq_mlir = self.prepend_tmp(
                 f"{device_name}_ctrlpkt_dma_seq.mlir"
             )
             file_ctrlpkt_dma_seq_bin = opts.ctrlpkt_dma_seq_name.format(device_name)
             file_ctrlpkt_elf = opts.ctrlpkt_elf_name.format(device_name)
-            run_passes(
-                f"builtin.module(aie.device(convert-aie-to-control-packets{{device-name={device_name} elf-dir={self.tmpdirname}}}))",
-                module_str,
+        run_passes(
+            f"builtin.module(aie.device(convert-aie-to-control-packets{{device-name={device_name} elf-dir={self.tmpdirname}}}))",
+            module_str,
+            file_ctrlpkt_mlir,
+            self.opts.verbose,
+        )
+        await self.do_call(
+            None,
+            [
+                "aie-translate",
+                "--aie-ctrlpkt-to-bin",
+                "--aie-device-name",
+                device_name,
                 file_ctrlpkt_mlir,
-                self.opts.verbose,
-            )
-            await self.do_call(
-                None,
-                [
-                    "aie-translate",
-                    "--aie-ctrlpkt-to-bin",
-                    "--aie-device-name",
-                    device_name,
-                    "--aie-sequence-name",
-                    "configure",
-                    file_ctrlpkt_mlir,
-                    "-o",
-                    file_ctrlpkt_bin,
-                ],
-            )
-            ctrlpkt_mlir_str = await read_file_async(file_ctrlpkt_mlir)
-            run_passes(
-                "builtin.module(aie.device(aie-ctrl-packet-to-dma,aie-dma-to-npu))",
-                ctrlpkt_mlir_str,
+                "-o",
+                file_ctrlpkt_bin,
+            ],
+        )
+        ctrlpkt_mlir_str = await read_file_async(file_ctrlpkt_mlir)
+        run_passes(
+            "builtin.module(aie.device(aie-ctrl-packet-to-dma,aie-dma-to-npu))",
+            ctrlpkt_mlir_str,
+            file_ctrlpkt_dma_seq_mlir
+            self.opts.verbose,
+        )
+        await self.do_call(
+            None,
+            [
+                "aie-translate",
+                "--aie-npu-to-binary",
+                "--aie-device-name",
+                device_name,
                 file_ctrlpkt_dma_seq_mlir,
-                self.opts.verbose,
+                "-o",
+                file_ctrlpkt_dma_seq_bin,
+            ],
+        )
+        ctrl_idx = 0
+        ctrl_seq_str = await read_file_async(file_ctrlpkt_dma_seq_mlir)
+        with Context(), Location.unknown():
+            dma_seq_module = Module.parse(ctrl_seq_str)
+            # walk through the dma sequence module to find runtime sequence
+            seqs = find_ops(
+                dma_seq_module.operation,
+                lambda o: isinstance(o.operation.opview, aiexdialect.RuntimeSequenceOp),
             )
-            await self.do_call(
-                None,
-                [
-                    "aie-translate",
-                    "--aie-npu-to-binary",
-                    "--aie-device-name",
-                    device_name,
-                    "--aie-sequence-name",
-                    "configure",
-                    file_ctrlpkt_dma_seq_mlir,
-                    "-o",
-                    file_ctrlpkt_dma_seq_bin,
-                ],
-            )
-            await self.aiebu_asm(
-                file_ctrlpkt_dma_seq_bin, file_ctrlpkt_elf, file_ctrlpkt_bin
-            )
+            if seqs:
+                ctrl_idx = len(seqs[0].regions[0].blocks[0].arguments.types) - 1
+        await self.aiebu_asm(opts.insts_name, opts.elf_name.format(device_name), file_ctrlpkt_bin, ctrl_idx)
 
     async def process_elf(self, npu_insts_module, device_name):
         # translate npu instructions to binary and write to file
@@ -1503,7 +1509,7 @@ class FlowRunner:
             # 3.) Targets that require the cores to be lowered but apply across all devices
 
             npu_insts_module = None
-            if opts.npu or opts.elf:
+            if opts.npu or opts.elf and not opts.ctrlpkt:
                 task3 = progress_bar.add_task(
                     "[green] Lowering NPU instructions", total=2, command=""
                 )
@@ -1560,7 +1566,7 @@ class FlowRunner:
         nworkers = int(opts.nthreads)
 
         # Optionally generate insts.bin for NPU instruction stream
-        if opts.npu:
+        if opts.npu and not opts.ctrlpkt:
             # write each runtime sequence binary into its own file
             runtime_sequences = generate_runtime_sequences_list(device_op)
             for seq_op, seq_name in runtime_sequences:
@@ -1628,7 +1634,7 @@ class FlowRunner:
                 self.process_ctrlpkt(input_physical_with_elfs_str, device_name)
             )
 
-        if opts.elf and opts.execute:
+        if opts.elf and not opts.ctrlpkt and opts.execute:
             processes.append(self.process_elf(npu_insts_module, device_name))
 
         await asyncio.gather(*processes)
