@@ -613,7 +613,8 @@ class FlowRunner:
                 print(f"copy {tmp} to {opts.txn_name}")
             shutil.copy(tmp, opts.txn_name)
 
-    async def aiebu_asm(self, input_file, output_file):
+    async def aiebu_asm(self, input_file, output_file, ctrl_packet_file=None):
+
         # find aiebu-asm binary
         asm_bin = "aiebu-asm"
         if shutil.which(asm_bin) is None:
@@ -628,18 +629,39 @@ class FlowRunner:
             )
             sys.exit(1)
 
-        await self.do_call(
-            None,
-            [
-                asm_bin,
-                "-t",
-                "aie2txn",
-                "-c",
-                input_file,
-                "-o",
-                output_file,
-            ],
-        )
+        args = [
+            asm_bin,
+            "-t",
+            "aie2txn",
+            "-c",
+            input_file,
+            "-o",
+            output_file,
+        ]
+
+        if ctrl_packet_file:
+            ctrl_packet_size = os.path.getsize(ctrl_packet_file)
+            exteral_buffers_json = {
+                "external_buffers": {
+                    "buffer_ctrl": {
+                        "xrt_id": 0,
+                        "logical_id": -1,
+                        "size_in_bytes": ctrl_packet_size,
+                        "ctrl_pkt_buffer": 1,
+                        "name": "runtime_control_packet",
+                    },
+                }
+            }
+            with open(self.prepend_tmp("external_buffers.json"), "w") as f:
+                json.dump(exteral_buffers_json, f, indent=2)
+            args = args + [
+                "-j",
+                self.prepend_tmp("external_buffers.json"),
+                "-p",
+                ctrl_packet_file,
+            ]
+
+        await self.do_call(None, args)
 
     async def process_ctrlpkt(self, module_str):
         with Context(), Location.unknown():
@@ -682,7 +704,9 @@ class FlowRunner:
                     "ctrlpkt_dma_seq.bin",
                 ],
             )
-            await self.aiebu_asm("ctrlpkt_dma_seq.bin", "ctrlpkt_dma_seq.elf")
+            await self.aiebu_asm(
+                "ctrlpkt_dma_seq.bin", "ctrlpkt_dma_seq.elf", "ctrlpkt.bin"
+            )
 
     async def process_elf(self, module_str):
         with Context(), Location.unknown():
