@@ -14,6 +14,7 @@
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/ADT/TypeSwitch.h"
@@ -72,14 +73,27 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
 
       OpBuilder builder(f);
 
+      IRMapping mapping;
+
       auto newSeq =
           builder.create<AIEX::RuntimeSequenceOp>(loc, f.getSymNameAttr());
       newSeq.getBody().push_back(new Block);
+
+      // Copy the arguments from the old sequence to the new one.
+      for (auto arg : f.getBody().getArguments()) {
+        // Add the argument to the new sequence.
+        auto newArg = newSeq.getBody().addArgument(arg.getType(), arg.getLoc());
+        // Replace all uses of the old argument with the new one.
+        arg.replaceAllUsesWith(newArg);
+        // Add the mapping for the argument.
+        mapping.map(arg, newArg);
+      }
 
       // Using dynamic shape for ctrl pkt stream.
       auto ctrlPktMemrefType = MemRefType::get(
           ShapedType::kDynamic, IntegerType::get(ctx, 32), nullptr, 0);
       auto newBlockArg = newSeq.getBody().addArgument(ctrlPktMemrefType, loc);
+
       builder.setInsertionPointToStart(&newSeq.getBody().front());
 
       // Collect all npu.control_packet ops, grouped by location in 'batches'
@@ -96,10 +110,13 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
       Block &entry = f.getBody().front();
 
       // First pass: collect and batch control packet operations
+      bool new_batch = true;
       for (auto &o : entry) {
         auto ctrlPktOp = dyn_cast<NpuControlPacketOp>(&o);
-        if (!ctrlPktOp)
+        if (!ctrlPktOp) {
+          new_batch = true;
           continue;
+        }
         int col = ctrlPktOp.getColumnFromAddr();
         int row = ctrlPktOp.getRowFromAddr();
 
@@ -114,7 +131,7 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
         ctrlPktSize++; // Packet header
 
         // Check if we can batch with the previous packet
-        if (targetModel.getTargetArch() == AIEArch::AIE2p && !batches.empty() &&
+        if (targetModel.getTargetArch() == AIEArch::AIE2p && !new_batch &&
             batches.back().tileId == TileID{col, row}) {
           // Add to existing batch
           batches.back().totalSize += ctrlPktSize;
@@ -131,6 +148,7 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
 
           batches.push_back({TileID{col, row}, ddrOffset, ctrlPktSize,
                              shimDmaAllocName, shimChan});
+          new_batch = false;
         }
         ddrOffset += ctrlPktSize;
       }
@@ -140,8 +158,10 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
 
       for (auto &o : entry) {
         auto ctrlPktOp = dyn_cast<NpuControlPacketOp>(&o);
-        if (!ctrlPktOp)
+        if (!ctrlPktOp) {
+          builder.clone(o, mapping);
           continue;
+        }
 
         assert(batchIt != batches.end() &&
                "Expected control packet to be in a batch");
