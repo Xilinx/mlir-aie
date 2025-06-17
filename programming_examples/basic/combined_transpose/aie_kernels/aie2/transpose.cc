@@ -17,8 +17,8 @@
 #error Please specify matrix sizes m, n at kernel compile time using e.g., -DDIM_m=32 -DDIM_n=32.
 #endif
 
-#if !defined(DTYPE_i8) && !defined(DTYPE_i16) && !defined(DTYPE_i32) && !defined(DTYPE_bf16)
-#error Please specify data type at kernel compile time using e.g., -DDTYPE_i8 or -DDTYPE_i16 or -DDTYPE_i32 or -DDTYPE_bf16.
+#if !defined(DTYPE_i8) && !defined(DTYPE_i16) && !defined(DTYPE_i32) 
+#error Please specify data type at kernel compile time using e.g., -DDTYPE_i8 or -DDTYPE_i16 or -DDTYPE_i32.
 #endif
 
 #if defined(DTYPE_i8)
@@ -29,9 +29,6 @@
 #endif
 #if defined(DTYPE_i32)
 #define DTYPE uint32_t
-#endif
-#if defined(DTYPE_bf16)
-#define DTYPE std::bfloat16_t
 #endif
 
 constexpr size_t OUTER_SIZE = DIM_m * DIM_n;

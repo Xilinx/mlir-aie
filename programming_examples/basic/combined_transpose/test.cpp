@@ -20,8 +20,8 @@
 #include "cxxopts.hpp"
 #include "test_utils.h"
 
-#if !defined(DTYPE_i8) && !defined(DTYPE_i16) && !defined(DTYPE_i32) && !defined(DTYPE_bf16)
-#error Please specify data type at kernel compile time using e.g., -DDTYPE_i8 or -DDTYPE_i16 or -DDTYPE_i32 or -DDTYPE_bf16.
+#if !defined(DTYPE_i8) && !defined(DTYPE_i16) && !defined(DTYPE_i32)
+#error Please specify data type at kernel compile time using e.g., -DDTYPE_i8 or -DDTYPE_i16 or -DDTYPE_i32.
 #endif
 
 #if defined(DTYPE_i8)
@@ -33,9 +33,6 @@
 #if defined(DTYPE_i32)
 #define DTYPE uint32_t
 #endif
-#if defined(DTYPE_bf16)
-#define DTYPE std::bfloat16_t
-#endif
 
 /* This example performs a 16x16 INT8 transpose.
    M and N are passed in as 16 in Makefile run cmd.
@@ -44,11 +41,7 @@ template<typename T>
 void print_matrix(T *buf, int n_rows, int n_cols) {
   for (int row = 0; row < n_rows; row++) {
     for (int col = 0; col < n_cols; col++) {
-      if constexpr (std::is_integral<T>::value) {
-        std::cout << std::setw(4) << (int)buf[row * n_cols + col] << " ";
-      } else {
-        std::cout << std::setw(6) << std::setprecision(1) << std::fixed << static_cast<float>(buf[row * n_cols + col]) << " ";
-      }
+      std::cout << std::setw(4) << (int)buf[row * n_cols + col] << " ";
     }
     std::cout << std::endl;
   }

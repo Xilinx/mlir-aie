@@ -25,8 +25,8 @@ UTILS_LIB=$(srcdir)/../../../runtime_lib/test_lib/test_utils.cpp
 
 
 devicename?=$(if $(filter 1,$(NPU2)),npu2,npu)
-M?=16
-N?=16
+M?=32
+N?=32
 m?=16
 n?=16
 s?=4

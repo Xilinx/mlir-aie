@@ -104,7 +104,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dtype",
         type=str,
-        choices=["i8", "i16", "i32", "bf16"],
+        choices=["i8", "i16", "i32"],
         help="Inner tile cols",
     )
     args = parser.parse_args()
@@ -113,7 +113,6 @@ if __name__ == "__main__":
         "i8": np.dtype[np.int8],
         "i16": np.dtype[np.int16],
         "i32": np.dtype[np.int32],
-        "bf16": np.dtype[np.int32],
     }
     dtype = dtype_map[args.dtype]
 
