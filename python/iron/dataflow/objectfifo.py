@@ -146,9 +146,7 @@ class ObjectFifo(Resolvable):
         if self._prod:
             if depth is None:
                 if self._depth is None:
-                    raise ValueError(
-                        f"If depth is None, then depth must be specified."
-                    )
+                    raise ValueError(f"If depth is None, then depth must be specified.")
                 else:
                     depth = self._depth
             elif depth < 1:
@@ -177,9 +175,7 @@ class ObjectFifo(Resolvable):
         """
         if depth is None:
             if self._depth is None:
-                raise ValueError(
-                    f"If depth is None, then depth must be specified."
-                )
+                raise ValueError(f"If depth is None, then depth must be specified.")
             else:
                 depth = self._depth
 

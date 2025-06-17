@@ -256,9 +256,7 @@ act3_fifos_2 = []
 
 for i in range(n_cols):
     # 1x1 -> 3x3
-    act2_fifos.append(
-        ObjectFifo(tensorLayer1Out_ty, depth=4, name=act2_fifo_names[i])
-    )
+    act2_fifos.append(ObjectFifo(tensorLayer1Out_ty, depth=4, name=act2_fifo_names[i]))
     # 3x3 -> 1x1
     act3_fifos_1.append(ObjectFifo(tensorLayer2Out_ty, name=act3_fifo_names_1[i]))
     act3_fifos_2.append(ObjectFifo(tensorLayer2Out_ty, name=act3_fifo_names_2[i]))

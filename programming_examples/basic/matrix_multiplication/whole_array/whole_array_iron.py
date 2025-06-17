@@ -241,9 +241,7 @@ def my_matmul(
 
     # Input A
     for i in range(n_shim_mem_A):
-        A_l3l2_fifos[i] = ObjectFifo(
-            A_l2_ty, name=f"A_L3L2_{i}", depth=fifo_depth
-        )
+        A_l3l2_fifos[i] = ObjectFifo(A_l2_ty, name=f"A_L3L2_{i}", depth=fifo_depth)
         # If n_shim_mem_A == n_rows, n_A_tiles_per_shim is 1 and
         # this simply links a_l3l2_fifos[i] to a_l2l1_fifos[i] directly,
         # If n_shim_mem_A < n_rows, each column receives multiple rows of
@@ -278,9 +276,7 @@ def my_matmul(
 
     # Input B
     for col in range(n_aie_cols):
-        B_l3l2_fifos[col] = ObjectFifo(
-            B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth
-        )
+        B_l3l2_fifos[col] = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth)
         if b_col_maj:
             dims_to_stream = [(n // t, t * k), (k // s, s), (t, k), (s, 1)]
         else:
@@ -353,7 +349,7 @@ def my_matmul(
                         matmul_kernel,
                     ],
                     placement=Tile(tile_col, tile_row),
-                    stack_size=0xD00
+                    stack_size=0xD00,
                 )
             )
 
