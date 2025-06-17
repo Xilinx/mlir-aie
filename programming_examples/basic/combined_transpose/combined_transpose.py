@@ -26,7 +26,7 @@ def shuffle_transpose(dev, M, N, m, n, s):
 
     # Define kernel function
     kernel_func = Kernel(
-        f"transpose", "transpose.o", [tile_ty, tile_ty]
+        f"transpose_{s}", "transpose.o", [tile_ty, tile_ty]
         #f"copy", "transpose.o", [tile_ty, tile_ty]
     )
 
