@@ -31,15 +31,15 @@ def shuffle_transpose(dev, M, N, m, n, s, dtype):
     # Uncomment the below line to instead use a copy kernel; this will copy the
     # input buffer to the output buffer without transposing, allowing you to
     # test the data flow transformations further below.
-    #kernel_func = Kernel("copy", "transpose.o", [tile_ty, tile_ty])
+    # kernel_func = Kernel("copy", "transpose.o", [tile_ty, tile_ty])
 
     # Data flow with ObjectFIFOs; partially transposes the input data so that 
     # the kernel only needs to transpose s*s-sized sub-tiles.
     tap_in_L3L2 = TensorAccessPattern(
         tensor_dims=(M, N),
         offset=0,
-        sizes=[1, N // n, M, n],
-        strides=[0, n, N, 1]
+        sizes=[M // m, N // n, m, n],
+        strides=[m * N, n, N, 1]
     )
     tap_in_L2L1 = TensorAccessPattern(
         tensor_dims=(M, N),
@@ -50,8 +50,8 @@ def shuffle_transpose(dev, M, N, m, n, s, dtype):
     tap_out_L1L3 = TensorAccessPattern(
         tensor_dims=(N, M),
         offset=0,
-        sizes=[1, M // m, N, m],
-        strides=[0, m, M, 1]
+        sizes=[M // m, N // n, n, m],
+        strides=[m, n * M, M, 1]
     )
 
     in_L3L2_fifo = ObjectFifo(tile_ty, name="in_L3L2_fifo")
