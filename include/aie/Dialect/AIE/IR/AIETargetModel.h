@@ -60,11 +60,10 @@ public:
     TK_AIE1_Last,
     TK_AIE2_VE2302,
     TK_AIE2_VE2802,
-    TK_AIE2_NPU1_First,
-    TK_AIE2_NPU1_1Col = TK_AIE2_NPU1_First,
+    TK_AIE2_NPU1_1Col,
     TK_AIE2_NPU1_2Col,
     TK_AIE2_NPU1_3Col,
-    TK_AIE2_NPU1, // whole array must be last because of how we cast/initialize the VirtualizedNPU1TargetModel class
+    TK_AIE2_NPU1_4Col, // whole array must be last because of how we cast/initialize the VirtualizedNPU1TargetModel class
     TK_AIE2_NPU1_Last,
     TK_AIE2_NPU2 = TK_AIE2_NPU1_Last,
     TK_AIE2_NPU2_1Col,
@@ -633,7 +632,7 @@ public:
   uint32_t getNumMemTileRows() const override { return 1; }
 
   static bool classof(const AIETargetModel *model) {
-    return model->getKind() >= TK_AIE2_NPU1_First &&
+    return model->getKind() >= TK_AIE2_NPU1_1Col &&
            model->getKind() < TK_AIE2_NPU1_Last;
   }
 };
@@ -645,7 +644,7 @@ class VirtualizedNPU1TargetModel : public BaseNPU1TargetModel {
 public:
   VirtualizedNPU1TargetModel(int _cols)
       : BaseNPU1TargetModel(static_cast<TargetModelKind>(
-            static_cast<std::underlying_type_t<TargetModelKind>>(TK_AIE2_NPU1_First) +
+            static_cast<std::underlying_type_t<TargetModelKind>>(TK_AIE2_NPU1_1Col) +
             _cols - 1)),
         cols(_cols) {
     // Device properties initialization
@@ -657,7 +656,7 @@ public:
   bool isShimNOCTile(int col, int row) const override { return row == 0; }
 
   static bool classof(const AIETargetModel *model) {
-    return model->getKind() >= TK_AIE2_NPU1_First &&
+    return model->getKind() >= TK_AIE2_NPU1_1Col &&
            model->getKind() < TK_AIE2_NPU1_Last;
   }
 };
