@@ -27,7 +27,7 @@ def my_vector_add():
     n = 16
     N_div_n = N // n
 
-    @device(AIEDevice.npu1_4col)
+    @device(AIEDevice.npu1)
     def device_body():
         # AIE Core Function declarations
         tensor_ty_c = np.ndarray[(N,), np.dtype[np.int32]]

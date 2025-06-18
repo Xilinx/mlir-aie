@@ -35,7 +35,7 @@ def vector_softmax(dev, trace_size):
     tiles = N_div_n // n_cores
     buffer_depth = 2
 
-    if dev == AIEDevice.npu1_4col and n_col > 4:
+    if dev == AIEDevice.npu1 and n_col > 4:
         raise ValueError(
             "[ERROR] NPU1 device only supports 4 columns. Please set n_col <= 4"
         )
@@ -231,7 +231,7 @@ def vector_softmax(dev, trace_size):
 try:
     device_name = str(sys.argv[1])
     if device_name == "npu":
-        dev = AIEDevice.npu1_4col
+        dev = AIEDevice.npu1
     elif device_name == "npu2":
         dev = AIEDevice.npu2_4col
     else:

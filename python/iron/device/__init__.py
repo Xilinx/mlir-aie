@@ -1,9 +1,9 @@
 from .device import (
     Device,
+    NPU1,
     NPU1Col1,
     NPU1Col2,
     NPU1Col3,
-    NPU1Col4,
     NPU2,
     NPU2Col1,
     NPU2Col2,

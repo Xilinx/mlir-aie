@@ -4,7 +4,7 @@
 // REQUIRES: ryzen_ai
 //
 // RUN: cp %S/aie.mlir aie_arch.mlir
-// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_4col/g' -i aie_arch.mlir
+// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1/g' -i aie_arch.mlir
 // RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_4col/g' -i aie_arch.mlir
 // RUN: %python aiecc.py --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential --xclbin-name=aie.xclbin --npu-insts-name=insts.bin aie_arch.mlir
 // RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall -lrt -lstdc++ %xrt_flags %test_utils_flags

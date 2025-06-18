@@ -13,7 +13,7 @@ from ...compiler.aiecc.main import run as aiecc_run
 from ...utils.xrt import setup_aie, execute as execute_on_aie
 from ...helpers.taplib import TensorTiler2D
 from ..dataflow import ObjectFifo
-from ..device import NPU1Col4
+from ..device import NPU1
 from ..placers import SequentialPlacer
 from ..program import Program
 from ..runtime import Runtime
@@ -155,6 +155,6 @@ def task_runner(
             taps_idx += 1
             worker_idx = (worker_idx + 1) % num_workers
 
-    my_program = Program(NPU1Col4(), rt)
+    my_program = Program(NPU1(), rt)
     module = my_program.resolve_program(SequentialPlacer())
     return TaskRunner(module, input_arrs, output_arrs)

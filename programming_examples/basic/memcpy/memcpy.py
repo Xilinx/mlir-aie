@@ -12,7 +12,7 @@ import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import Tile, NPU1Col4, NPU2
+from aie.iron.device import Tile, NPU1, NPU2
 from aie.helpers.taplib.tap import TensorAccessPattern
 
 #
@@ -155,7 +155,7 @@ p.add_argument(
 opts = p.parse_args(sys.argv[1:])
 
 if opts.device == "npu":
-    dev = NPU1Col4()  # Four columns of NPU1, the maximum available
+    dev = NPU1()  # Four columns of NPU1, the maximum available
 elif opts.device == "npu2":
     dev = NPU2()  # Eight columns of NPU2, the maximum available
 else:

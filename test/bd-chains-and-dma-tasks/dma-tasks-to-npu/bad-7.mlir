@@ -11,7 +11,7 @@
 // `--aie-dma-tasks-to-npu` pass without first lowering BD IDs for all `aie.dma_bd` ops.
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 

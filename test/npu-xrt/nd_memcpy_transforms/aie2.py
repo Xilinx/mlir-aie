@@ -30,7 +30,7 @@ def design():
 
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu1_4col)
+        @device(AIEDevice.npu1)
         def device_body():
             a_ty = np.ndarray[(a_len,), np.dtype[dtype]]
             b_ty = np.ndarray[(b_len,), np.dtype[dtype]]

@@ -197,7 +197,7 @@ def my_matmul(
         elif n_aie_cols == 2:
             dev_ty = AIEDevice.npu1_2col
         elif n_aie_cols == 4:
-            dev_ty = AIEDevice.npu1_4col
+            dev_ty = AIEDevice.npu1
     else:
         dev_ty = AIEDevice.npu2
 

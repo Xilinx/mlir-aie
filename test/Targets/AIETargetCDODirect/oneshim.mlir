@@ -25,7 +25,7 @@
 // CHECK: (MaskWrite64): Address: 0x000000000001D200  Mask: 0x00000000  Data: 0x00000001 
 
 module {
- aie.device(npu1_4col) {
+ aie.device(npu1) {
   %buffer = aie.external_buffer { sym_name = "buf" } : memref<16 x f32>
   %t00 = aie.tile(0, 0)
   aie.shim_dma(%t00)  {

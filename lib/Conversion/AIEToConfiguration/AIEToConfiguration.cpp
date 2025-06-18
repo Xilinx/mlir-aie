@@ -430,8 +430,7 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
 
   // create aie.device
   std::vector<AIEDevice> devices{AIEDevice::npu1_1col, AIEDevice::npu1_2col,
-                                 AIEDevice::npu1_3col, AIEDevice::npu1_4col,
-                                 AIEDevice::npu1};
+                                 AIEDevice::npu1_3col, AIEDevice::npu1};
   auto device = builder.create<DeviceOp>(loc, devices[columns - 1]);
   device.getRegion().emplaceBlock();
   DeviceOp::ensureTerminator(device.getBodyRegion(), builder, loc);

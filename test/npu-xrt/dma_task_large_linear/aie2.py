@@ -27,7 +27,7 @@ def design():
 
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu1_4col)
+        @device(AIEDevice.npu1)
         def device_body():
             buff_ty = np.ndarray[(BUFFER_LEN,), np.dtype[dtype]]
             buff_tile_ty = np.ndarray[(BUFFER_TILE_LEN,), np.dtype[dtype]]
