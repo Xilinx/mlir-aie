@@ -284,14 +284,14 @@ module {
     aie.shim_dma_allocation @objFifo_in0(MM2S, 0, 0)
     aie.shim_dma_allocation @objFifo_out0(S2MM, 0, 0)
 
-    aiex.runtime_sequence @run(%arg0: memref<4x64x64xi8>, %arg1: memref<32xi8>, %arg2: memref<4x64x64xi8>) {
+    aiex.runtime_sequence @run(%arg0: memref<4x64x64xi8>, %arg1: memref<4x64x64xi8>) {
       %c0_i64 = arith.constant 0 : i64
       %c1_i64 = arith.constant 1 : i64
       %c4_i64 = arith.constant 4 : i64
       %c4096_i64 = arith.constant 4096 : i64
       %c64_i64 = arith.constant 64 : i64
       aiex.npu.dma_memcpy_nd (%arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c4_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64], packet = <pkt_id = 0, pkt_type = 0>) {id = 0 : i64, metadata = @objFifo_in0} : memref<4x64x64xi8>
-      aiex.npu.dma_memcpy_nd (%arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c4_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64]) {id = 1 : i64, metadata = @objFifo_out0, issue_token = true} : memref<4x64x64xi8>
+      aiex.npu.dma_memcpy_nd (%arg1[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c4_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64]) {id = 1 : i64, metadata = @objFifo_out0, issue_token = true} : memref<4x64x64xi8>
       aiex.npu.dma_wait { symbol = @objFifo_out0 }
     }
   }
