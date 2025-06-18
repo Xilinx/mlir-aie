@@ -46,3 +46,6 @@ before-build = [
     "pip install -r requirements.txt",
     "bash {project}\\scripts\\download_mlir.sh",
 ]
+
+[build-system]
+requires = ["nanobind"]
