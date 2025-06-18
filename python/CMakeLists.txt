@@ -315,22 +315,6 @@ else ()
     target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})
   endif()
 
-  declare_mlir_python_extension(AIEPythonExtensions.AIERT
-    MODULE_NAME _aiert
-    ADD_TO_PARENT AIEPythonExtensions
-    ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
-
-    PARTIAL_SOURCES_INTENDED
-    SOURCES
-      AIERTModule.cpp
-
-    PRIVATE_LINK_LIBS
-      LLVMSupport
-
-    PYTHON_BINDINGS_LIBRARY
-      nanobind
-  )
-
   add_mlir_python_common_capi_library(AIEAggregateCAPI
     INSTALL_COMPONENT AIEPythonModules
     INSTALL_DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs
