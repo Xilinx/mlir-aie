@@ -1,21 +1,19 @@
 <map id="xilinx::AIE::AIE2TargetModel" name="xilinx::AIE::AIE2TargetModel">
-<area shape="rect" id="Node000001" title=" " alt="" coords="249,156,453,181"/>
-<area shape="rect" id="Node000003" href="$classxilinx_1_1AIE_1_1BaseNPU1TargetModel.html" title=" " alt="" coords="501,53,704,93"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="392,148,500,102,535,90,536,95,502,107,394,153"/>
-<area shape="rect" id="Node000006" href="$classxilinx_1_1AIE_1_1BaseNPU2TargetModel.html" title=" " alt="" coords="501,117,704,157"/>
-<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="465,152,501,147,502,152,465,157"/>
-<area shape="rect" id="Node000009" href="$classxilinx_1_1AIE_1_1VE2302TargetModel.html" title=" " alt="" coords="511,181,695,221"/>
-<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="465,180,511,186,510,192,464,186"/>
-<area shape="rect" id="Node000010" href="$classxilinx_1_1AIE_1_1VE2802TargetModel.html" title=" " alt="" coords="511,245,695,285"/>
-<area shape="poly" id="edge9_Node000001_Node000010" title=" " alt="" coords="394,185,502,230,536,242,535,247,500,235,392,190"/>
-<area shape="rect" id="Node000002" href="$classxilinx_1_1AIE_1_1AIETargetModel.html" title=" " alt="" coords="5,156,201,181"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="215,166,249,166,249,171,215,171"/>
-<area shape="rect" id="Node000004" href="$classxilinx_1_1AIE_1_1NPU1TargetModel.html" title=" " alt="" coords="752,5,963,31"/>
-<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="709,47,797,28,798,33,710,52"/>
-<area shape="rect" id="Node000005" href="$classxilinx_1_1AIE_1_1VirtualizedNPU1TargetModel.html" title=" " alt="" coords="775,55,940,95"/>
-<area shape="poly" id="edge4_Node000003_Node000005" title=" " alt="" coords="718,71,775,72,775,77,718,77"/>
-<area shape="rect" id="Node000007" href="$classxilinx_1_1AIE_1_1NPU2TargetModel.html" title=" " alt="" coords="752,123,963,148"/>
-<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="718,133,752,133,752,139,718,139"/>
-<area shape="rect" id="Node000008" href="$classxilinx_1_1AIE_1_1VirtualizedNPU2TargetModel.html" title=" " alt="" coords="775,173,940,213"/>
-<area shape="poly" id="edge7_Node000006_Node000008" title=" " alt="" coords="708,157,775,172,774,177,707,162"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="249,109,453,134"/>
+<area shape="rect" id="Node000003" href="$classxilinx_1_1AIE_1_1BaseNPU1TargetModel.html" title=" " alt="" coords="501,5,704,45"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="392,100,500,55,535,43,536,48,502,60,394,105"/>
+<area shape="rect" id="Node000005" href="$classxilinx_1_1AIE_1_1BaseNPU2TargetModel.html" title=" " alt="" coords="501,69,704,109"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="465,104,501,100,502,105,465,110"/>
+<area shape="rect" id="Node000008" href="$classxilinx_1_1AIE_1_1VE2302TargetModel.html" title=" " alt="" coords="511,133,695,173"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="465,133,511,139,510,144,464,138"/>
+<area shape="rect" id="Node000009" href="$classxilinx_1_1AIE_1_1VE2802TargetModel.html" title=" " alt="" coords="511,197,695,237"/>
+<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="394,137,502,183,536,195,535,200,500,188,392,142"/>
+<area shape="rect" id="Node000002" href="$classxilinx_1_1AIE_1_1AIETargetModel.html" title=" " alt="" coords="5,109,201,134"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="215,119,249,119,249,124,215,124"/>
+<area shape="rect" id="Node000004" href="$classxilinx_1_1AIE_1_1VirtualizedNPU1TargetModel.html" title=" " alt="" coords="775,5,940,45"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="718,23,775,23,775,28,718,28"/>
+<area shape="rect" id="Node000006" href="$classxilinx_1_1AIE_1_1NPU2TargetModel.html" title=" " alt="" coords="752,74,963,99"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="718,85,752,85,752,90,718,91"/>
+<area shape="rect" id="Node000007" href="$classxilinx_1_1AIE_1_1VirtualizedNPU2TargetModel.html" title=" " alt="" coords="775,124,940,164"/>
+<area shape="poly" id="edge6_Node000005_Node000007" title=" " alt="" coords="710,110,775,124,774,129,709,115"/>
 </map>
