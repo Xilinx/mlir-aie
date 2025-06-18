@@ -8,7 +8,7 @@
 // RUN: aie-opt --verify-diagnostics --aie-dma-tasks-to-npu %s 
        
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_1 = aie.tile(0, 1)
     %buf = aie.buffer(%tile_0_1) { address = 0xBEEF : i32 } : memref<32xi8> 
 

@@ -22,7 +22,7 @@
 // CHECK: aiex.npu.write32
 // CHECK-SAME: value = 0
 module  {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     memref.global "public" @toMem : memref<16xi32>
     memref.global "public" @fromMem : memref<16xi32>
     aiex.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {

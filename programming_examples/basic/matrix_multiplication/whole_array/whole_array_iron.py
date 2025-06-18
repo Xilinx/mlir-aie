@@ -10,7 +10,7 @@ import numpy as np
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, NPU1Col2, NPU1Col4, NPU2, Tile
+from aie.iron.device import NPU1Col1, NPU1Col2, NPU1, NPU2, Tile
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 
@@ -195,7 +195,7 @@ def my_matmul(
         elif n_aie_cols == 2:
             dev_ty = NPU1Col2()
         elif n_aie_cols == 4:
-            dev_ty = NPU1Col4()
+            dev_ty = NPU1()
     else:
         dev_ty = NPU2()
 
