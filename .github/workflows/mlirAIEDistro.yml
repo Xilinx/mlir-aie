@@ -14,7 +14,7 @@ on:
       DEBUG_OS:
         description: 'which runner os to run the tmate action in (if the tmate action is run)'
         type: string
-        default: 'windows-2019'
+        default: 'windows-2022'
         required: false
       DEBUG_ARCH:
         description: 'which runner arch to run the tmate action in (if the tmate action is run)'
@@ -80,7 +80,7 @@ jobs:
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: ON
 
@@ -103,7 +103,7 @@ jobs:
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
@@ -176,7 +176,7 @@ jobs:
         
         ls "${{ steps.setup_base.outputs.WORKSPACE_ROOT }}"
         
-        if [ x"${{ matrix.OS }}" == x"windows-2019" ]; then
+        if [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
           WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}\utils\mlir_aie_wheels"
         else
           WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/mlir_aie_wheels"
@@ -293,24 +293,24 @@ jobs:
 
     # The important parts of the wheels (all the LLVM/MLIR archives) have nothing to do with the
     # python version. With py3-none you can pip install them in any python venv. Unfortunately though this does
-    # mean that the python bindings themselves will confusingly not work in other envs (!=3.10)
+    # mean that the python bindings themselves will confusingly not work in other envs (!=3.12)
     - name: rename non-windows
       if: ${{ matrix.OS == 'ubuntu-22.04' || matrix.OS == 'macos-12' || matrix.OS == 'macos-14' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
         
-        rename 's/cp310-cp310/py3-none/' wheelhouse/mlir_aie*whl
+        rename 's/cp312-cp312/py3-none/' wheelhouse/mlir_aie*whl
         
         if [ x"${{ matrix.OS }}" == x"ubuntu-22.04" ] && [ x"${{ matrix.ARCH }}" == x"aarch64" ]; then
           rename 's/x86_64/aarch64/' wheelhouse/mlir_aie*whl
         fi
 
     - name: rename windows
-      if: ${{ matrix.OS == 'windows-2019' }}
+      if: ${{ matrix.OS == 'windows-2022' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
-        ls wheelhouse/mlir_aie*whl | Rename-Item -NewName {$_ -replace 'cp310-cp310', 'py3-none' }
+        ls wheelhouse/mlir_aie*whl | Rename-Item -NewName {$_ -replace 'cp312-cp312', 'py3-none' }
 
     - name: Upload distro wheels
       uses: actions/upload-artifact@v4
@@ -333,27 +333,17 @@ jobs:
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: ON
-
-# Disabled because macos mlir wheels are out of date, and we don't currently build for them
-#          - OS: macos-12
-#            ARCH: x86_64
-#            ENABLE_RTTI: ON
 
           - OS: ubuntu-22.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: OFF
-
-# Disabled because macos mlir wheels are out of date, and we don't currently build for them
-#          - OS: macos-12
-#            ARCH: x86_64
-#            ENABLE_RTTI: OFF
 
     steps:
       - name: Checkout reqs
@@ -370,7 +360,7 @@ jobs:
 
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       - name: test
         shell: bash
@@ -411,18 +401,9 @@ jobs:
 #            ARCH: aarch64
 #            ENABLE_RTTI: ON
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: ON
-
-# Disabled because macos mlir wheels are out of date, and we don't currently build for them
-#          - OS: macos-12
-#            ARCH: x86_64
-#            ENABLE_RTTI: ON
-
-#          - OS: macos-14
-#            ARCH: arm64
-#            ENABLE_RTTI: ON
 
           - OS: ubuntu-22.04
             ARCH: x86_64
@@ -432,18 +413,9 @@ jobs:
 #            ARCH: aarch64
 #            ENABLE_RTTI: OFF
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: OFF
-
-# Disabled because macos mlir wheels are out of date, and we don't currently build for them
-#          - OS: macos-12
-#            ARCH: x86_64
-#            ENABLE_RTTI: OFF
-
-#          - OS: macos-14
-#            ARCH: arm64
-#            ENABLE_RTTI: OFF
 
     steps:
       - uses: actions/download-artifact@v4
