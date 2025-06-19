@@ -63,11 +63,7 @@ public:
         return nullptr;
       }
 
-      auto blockBitwidth =
-          blockType.getBlockSize() * blockType.getMantissaBits() +
-          blockType.getExponentBits() + blockType.getSubtileShiftBits();
-
-      return mlir::IntegerType::get(blockType.getContext(), blockBitwidth);
+      return mlir::IntegerType::get(blockType.getContext(), blockType.getTypeSizeInBits());
     });
 
     // Add a conversion for MemRefType

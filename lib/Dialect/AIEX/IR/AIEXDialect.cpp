@@ -16,6 +16,7 @@
 #include "mlir/Transforms/InliningUtils.h"
 
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/TypeSize.h"
 
 #include <numeric>
 
@@ -771,6 +772,25 @@ LogicalResult AIEX::SetLockOp::verify() {
 //===----------------------------------------------------------------------===//
 // BlockFloatingPointType
 //===----------------------------------------------------------------------===//
+uint AIEX::BlockFloatType::getTypeSizeInBits() const {
+  return getBlockSize() * getMantissaBits() + getExponentBits() +
+         getSubtileShiftBits();
+}
+
+llvm::TypeSize AIEX::BlockFloatType::getTypeSizeInBits(
+    const mlir::DataLayout &dataLayout,
+    mlir::DataLayoutEntryListRef params) const {
+  return llvm::TypeSize::getFixed(getTypeSizeInBits());
+}
+
+uint64_t AIEX::BlockFloatType::getABIAlignment(
+    const mlir::DataLayout &dataLayout,
+    mlir::DataLayoutEntryListRef params) const {
+  // For the purposes of the data movement operations, we want all types to be
+  // packed <=> ABI alignemnt is 1.
+  return 1;
+}
+
 std::optional<AIEX::BlockFloatType::BlockFormat>
 AIEX::BlockFloatType::getBlockFormat(StringRef blockType) {
   static const llvm::StringMap<AIEX::BlockFloatType::BlockFormat>

@@ -43,7 +43,8 @@ def AIEX_Dialect : Dialect {
 // AIEX Types
 //===----------------------------------------------------------------------===//
 def AIEX_BlockFloatingPointType : TypeDef<AIEX_Dialect, "BlockFloat", [
-    MemRefElementTypeInterface
+    MemRefElementTypeInterface,
+    DeclareTypeInterfaceMethods<DataLayoutTypeInterface>
   ]> {
   let summary = "AIEX type representing a block floating point type.";
   let mnemonic = "bfp";
@@ -75,6 +76,8 @@ def AIEX_BlockFloatingPointType : TypeDef<AIEX_Dialect, "BlockFloat", [
 
     std::optional<BlockFormat> getBlockFormat() const;
     static std::optional<BlockFormat> getBlockFormat(llvm::StringRef blockType);
+
+    uint getTypeSizeInBits() const;
   }];
 
   let extraClassDefinition = [{

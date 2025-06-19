@@ -49,3 +49,27 @@ module {
     }
   }
 }
+
+// -----
+
+// CHECK: : memref<8xi72>
+// CHECK: : memref<8xi72>
+
+// This test is making sure that other lowerings not coming from IRON are also properly converted.
+
+module {
+  aie.device(npu2) {
+    %tile_0_1 = aie.tile(0, 1)
+    %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
+      %lock_0_1 = aie.lock(%tile_0_1) {init = 1 : i32}
+      %lock_0_1_0 = aie.lock(%tile_0_1) {init = 0 : i32}
+      %buffer_0_1 = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<8x!aiex.bfp<"v8bfp16ebs8">>
+      %0 = aie.dma(S2MM, 0) [{
+        aie.use_lock(%lock_0_1, AcquireGreaterEqual)
+        aie.dma_bd(%buffer_0_1 : memref<8x!aiex.bfp<"v8bfp16ebs8">>, 0)
+        aie.use_lock(%lock_0_1_0, Release)
+      }]
+      aie.end
+    }
+  }
+}
