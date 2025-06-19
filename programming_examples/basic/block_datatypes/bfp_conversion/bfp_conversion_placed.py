@@ -31,8 +31,8 @@ def bfp_conversion():
         tensor_bf16_ty = np.ndarray[(N_in,), np.dtype[bfloat16]]
         tile_bf16_ty = np.ndarray[(n_in,), np.dtype[bfloat16]]
         
-        tensor_bfp16_ty = np.ndarray[(N_out,), np.dtype[bfp16ebs8]]
-        tile_bfp16_ty = np.ndarray[(n_out,), np.dtype[bfp16ebs8]]
+        tensor_bfp16_ty = np.ndarray[(N_out,), np.dtype[v8bfp16ebs8]]
+        tile_bfp16_ty = np.ndarray[(n_out,), np.dtype[v8bfp16ebs8]]
 
         # AIE Core Function declarations
         conversion_func = external_func(

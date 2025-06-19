@@ -20,20 +20,28 @@ from ml_dtypes import bfloat16
 
 
 # Custom types
-class bfp16ebs8(np.generic):
-    """Custom type to be used in IRON that is translated to a generic blockFloatType"""
+class v8bfp16ebs8(np.generic):
+    """
+    Custom type to be used in IRON that is translated to a generic blockFloatType.
+    Represents a vector of 8 scalar elements that share exponent with a total
+    bitwidth of 16 bits for each element (8 bits for the exponent and 8 bits for the mantissa).
+    """
 
     @staticmethod
     def get():
-        return CustomTypes.blockFloatType.get("bfp16ebs8")
+        return CustomTypes.blockFloatType.get("v8bfp16ebs8")
 
 
-class bfp16ebs16(np.generic):
-    """Custom type to be used in IRON that is translated to a generic blockFloatType"""
+class v16bfp16ebs16(np.generic):
+    """
+    Custom type to be used in IRON that is translated to a generic blockFloatType
+    Represents a vector of 16 scalar elements that share exponent with a total
+    bitwidth of 16 bits for each element (8 bits for the exponent and 8 bits for the mantissa).
+    """
 
     @staticmethod
     def get():
-        return CustomTypes.blockFloatType.get("bfp16ebs16")
+        return CustomTypes.blockFloatType.get("v16bfp16ebs16")
 
 
 _np_dtype_to_mlir_type_ctor = defaultdict(
@@ -56,8 +64,8 @@ _np_dtype_to_mlir_type_ctor = defaultdict(
         np.float64: T.f64,
         bfloat16: T.bf16,
         # Block floating point types
-        bfp16ebs8: bfp16ebs8.get,
-        bfp16ebs16: bfp16ebs16.get,
+        v8bfp16ebs8: v8bfp16ebs8.get,
+        v16bfp16ebs16: v16bfp16ebs16.get,
         # Index Types
         # this is technically wrong i guess but numpy by default casts python scalars to this
         # so to support passing lists of ints we map to index type
@@ -82,8 +90,8 @@ NpuDType = (
     | np.longlong
     | np.uintp
     | bfloat16
-    | bfp16ebs8
-    | bfp16ebs16
+    | v8bfp16ebs8
+    | v16bfp16ebs16
 )
 
 _mlir_type_ctor_to_np_dtype = lambda: {

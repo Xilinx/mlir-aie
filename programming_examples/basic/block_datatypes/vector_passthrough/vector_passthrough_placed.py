@@ -24,8 +24,8 @@ def vector_passthrough():
 
     @device(AIEDevice.npu2)
     def device_body():
-        tensor_ty = np.ndarray[(N,), np.dtype[bfp16ebs8]]
-        tile_ty = np.ndarray[(n,), np.dtype[bfp16ebs8]]
+        tensor_ty = np.ndarray[(N,), np.dtype[v8bfp16ebs8]]
+        tile_ty = np.ndarray[(n,), np.dtype[v8bfp16ebs8]]
 
         kernel_func = external_func(
             "bfp16_passthrough_vectorized", [tile_ty, tile_ty]

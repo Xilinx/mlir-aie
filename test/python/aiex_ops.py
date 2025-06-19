@@ -56,25 +56,25 @@ def NpuDmaMemcpyNdOp():
             )
 
 
-# CHECK-LABEL: bfp16ebs8Binding
-# CHECK: !aie.objectfifo<memref<256x!aiex.bfp<"bfp16ebs8">>>
+# CHECK-LABEL: v8bfp16ebs8Binding
+# CHECK: !aie.objectfifo<memref<256x!aiex.bfp<"v8bfp16ebs8">>>
 @construct_and_print_module
-def bfp16ebs8Binding():
-    @device(AIEDevice.npu1_4col)
+def v8bfp16ebs8Binding():
+    @device(AIEDevice.npu2)
     def device_body():
         P = tile(0, 0)
         C = tile(1, 2)
 
-        object_fifo("dummy", P, C, 1, datatype=np.ndarray[(256,), np.dtype[bfp16ebs8]])
+        object_fifo("dummy", P, C, 1, datatype=np.ndarray[(256,), np.dtype[v8bfp16ebs8]])
 
 
-# CHECK-LABEL: bfp16ebs16Binding
-# CHECK: !aie.objectfifo<memref<256x!aiex.bfp<"bfp16ebs16">>>
+# CHECK-LABEL: v16bfp16ebs16Binding
+# CHECK: !aie.objectfifo<memref<256x!aiex.bfp<"v16bfp16ebs16">>>
 @construct_and_print_module
-def bfp16ebs16Binding():
-    @device(AIEDevice.npu1_4col)
+def v16bfp16ebs16Binding():
+    @device(AIEDevice.npu2)
     def device_body():
         P = tile(0, 0)
         C = tile(1, 2)
 
-        object_fifo("dummy", P, C, 1, datatype=np.ndarray[(256,), np.dtype[bfp16ebs16]])
+        object_fifo("dummy", P, C, 1, datatype=np.ndarray[(256,), np.dtype[v16bfp16ebs16]])

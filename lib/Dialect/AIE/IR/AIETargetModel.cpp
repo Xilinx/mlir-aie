@@ -905,7 +905,7 @@ BaseNPU2TargetModel::getShimBurstEncodingsAndLengths() const {
 
 bool BaseNPU2TargetModel::isSupportedBlockFormat(
     std::string const &format) const {
-  std::set<std::string> supportedTypes = {"bfp16ebs8", "bfp16ebs16"};
+  std::set<std::string> supportedTypes = {"v8bfp16ebs8", "v16bfp16ebs16"};
   return static_cast<bool>(supportedTypes.find(format) != supportedTypes.end());
 }
 

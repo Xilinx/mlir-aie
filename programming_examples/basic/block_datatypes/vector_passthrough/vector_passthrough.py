@@ -8,7 +8,7 @@
 import numpy as np
 import sys
 
-from aie.dialects.aiex import bfp16ebs8
+from aie.dialects.aiex import v8bfp16ebs8
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.kernel import Kernel
@@ -25,8 +25,8 @@ def bfp_passthrough():
         raise ValueError("[ERROR] Need 1 command line arguments (Col)")
 
     # Define tensor types
-    tensor_ty = np.ndarray[(N,), np.dtype[bfp16ebs8]]
-    tile_ty = np.ndarray[(n,), np.dtype[bfp16ebs8]]
+    tensor_ty = np.ndarray[(N,), np.dtype[v8bfp16ebs8]]
+    tile_ty = np.ndarray[(n,), np.dtype[v8bfp16ebs8]]
 
     passthrough_func = Kernel(
         "bfp16_passthrough_vectorized", "kernel.o", [tile_ty, tile_ty]

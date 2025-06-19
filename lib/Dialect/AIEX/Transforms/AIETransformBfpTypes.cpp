@@ -52,7 +52,8 @@ public:
 
     // Add a conversion for bfpTypes to an integer type
     addConversion([&](BlockFloatType blockType) -> std::optional<IntegerType> {
-      bool isSupported = targetModel.isSupportedBlockFormat(blockType.getBlockType().str());
+      bool isSupported =
+          targetModel.isSupportedBlockFormat(blockType.getBlockType().str());
       if (!isSupported) {
         llvm::errs() << "Block type " << blockType.getBlockType()
                      << " is not supported in the specified model\n";
@@ -62,10 +63,11 @@ public:
         return nullptr;
       }
 
-      return mlir::IntegerType::get(
-          blockType.getContext(),
+      auto blockBitwidth =
           blockType.getBlockSize() * blockType.getMantissaBits() +
-              blockType.getExponentBits() + blockType.getSubtileShiftBits());
+          blockType.getExponentBits() + blockType.getSubtileShiftBits();
+
+      return mlir::IntegerType::get(blockType.getContext(), blockBitwidth);
     });
 
     // Add a conversion for MemRefType

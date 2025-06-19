@@ -9,7 +9,7 @@ import numpy as np
 import sys
 
 from ml_dtypes import bfloat16
-from aie.dialects.aiex import bfp16ebs8
+from aie.dialects.aiex import v8bfp16ebs8
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.kernel import Kernel
@@ -32,8 +32,8 @@ def bfp_conversion():
     tensor_bf16_ty = np.ndarray[(N_in,), np.dtype[bfloat16]]
     tile_bf16_ty = np.ndarray[(n_in,), np.dtype[bfloat16]]
 
-    tensor_bfp16_ty = np.ndarray[(N_out,), np.dtype[bfp16ebs8]]
-    tile_bfp16_ty = np.ndarray[(n_out,), np.dtype[bfp16ebs8]]
+    tensor_bfp16_ty = np.ndarray[(N_out,), np.dtype[v8bfp16ebs8]]
+    tile_bfp16_ty = np.ndarray[(n_out,), np.dtype[v8bfp16ebs8]]
 
     # AIE-array data movement with object fifos
     of_in1 = ObjectFifo(tile_bf16_ty, name="in1")

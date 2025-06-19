@@ -12,10 +12,8 @@
 
 extern "C" {
 
-// Note that bfp vector types are referenced differently in IRON and in the AIE
-// API. The v64bfp16ebs8 type is a vector of 8 bfp16ebs8 elements, which
-// corresponds to 64 floating points in total. Meanwhile, IRON interprets 1
-// bfp16ebs8 as 8 floating points.
+// Note that IRON has a data movement granularity of v8bfp16ebs8 or
+// v16bfp16ebs16, which are different from the vectors available in the AIE-API.
 void bfp16_matrix_multiplication(bfp16ebs8 *__restrict inA,
                                  bfp16ebs8 *__restrict inB,
                                  bfp16ebs8 *__restrict out) {

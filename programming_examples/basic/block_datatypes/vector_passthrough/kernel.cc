@@ -20,12 +20,9 @@ void bfp16_passthrough_scalar(int8_t *in, int8_t *out) {
   }
 }
 
-void bfp16_passthrough_vectorized(int8_t *in, int8_t *out) {
+void bfp16_passthrough_vectorized(v128bfp16ebs8 *in, v128bfp16ebs8 *out) {
   // --- Passthrough ---
-  v128bfp16ebs8 *restrict inPtr = (v128bfp16ebs8*)in;
-  v128bfp16ebs8 *restrict outPtr = (v128bfp16ebs8*)out;
-
-  *outPtr = *inPtr;
+  *out = *in;
 }
 
 } // extern "C"

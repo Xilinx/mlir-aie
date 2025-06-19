@@ -51,7 +51,7 @@ def AIEX_BlockFloatingPointType : TypeDef<AIEX_Dialect, "BlockFloat", [
     This is a type representing a block floating point.
     It is meant to eventually be lowered into a standard type further down the pipeline.
     It the meantime, it can be used for blocked fp related dataflow adaptations.
-    Available types are bfp16ebs8 and bfp16ebs16.
+    Available types are v8bfp16ebs8 and v16bfp16ebs16.
   }];
 
   let parameters = (

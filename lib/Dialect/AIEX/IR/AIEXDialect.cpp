@@ -775,8 +775,8 @@ std::optional<AIEX::BlockFloatType::BlockFormat>
 AIEX::BlockFloatType::getBlockFormat(StringRef blockType) {
   static const llvm::StringMap<AIEX::BlockFloatType::BlockFormat>
       blockFormatsMap = {
-          {"bfp16ebs8", {8, 8, 8, 0}},
-          {"bfp16ebs16", {16, 8, 8, 0}},
+          {"v8bfp16ebs8", {8, 8, 8, 0}},
+          {"v16bfp16ebs16", {16, 8, 8, 0}},
       };
 
   auto it = blockFormatsMap.find(blockType);
@@ -792,7 +792,7 @@ AIEX::BlockFloatType::verify(function_ref<InFlightDiagnostic()> emitError,
                              StringRef block_type) {
   if (!getBlockFormat(block_type))
     return emitError() << "Invalid block type: " << block_type
-                       << ". Known types are: bfp16ebs8, bfp16ebs16.";
+                       << ". Known types are: v8bfp16ebs8, v16bfp16ebs16.";
 
   return success();
 }
