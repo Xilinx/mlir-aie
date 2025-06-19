@@ -28,11 +28,6 @@ def check_file_exists(filepath):
         raise FileNotFoundError(f"File not found: {filepath}")
 
 
-def load_instr_binary(filepath):
-    with open(filepath, "rb") as f:
-        return list(struct.unpack(f"{os.path.getsize(filepath)//4}I", f.read()))
-
-
 def main():
     # Argument parsing
     parser = argparse.ArgumentParser(description="PyXRT Test Script")
