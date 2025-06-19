@@ -10,7 +10,7 @@
 // CHECK{LITERAL}: "route1": [ [[0, 2], ["South"]], [[0, 1], ["South"]], [[0, 0], ["South"]], [] ],
 
 module @aie_module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)

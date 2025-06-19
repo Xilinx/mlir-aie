@@ -608,7 +608,7 @@ def _broadcast_args_to(args, dest_shape=None):
 
 
 class TileArray:
-    def __init__(self, cols=5, rows=6, df=None):
+    def __init__(self, cols=4, rows=6, df=None):
         if df is None:
             if isinstance(cols, int):
                 cols = list(range(cols))

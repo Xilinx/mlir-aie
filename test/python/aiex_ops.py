@@ -24,7 +24,7 @@ def getTileOp():
 # CHECK: aiex.runtime_sequence @seq1()
 @construct_and_print_module
 def runtimeSeq():
-    @device(AIEDevice.npu1_4col)
+    @device(AIEDevice.npu1)
     def device_body():
         @runtime_sequence()
         def sequence0():
@@ -39,7 +39,7 @@ def runtimeSeq():
 # CHECK: aiex.runtime_sequence @sequence(%arg0: memref<100xi8>)
 @construct_and_print_module
 def NpuDmaMemcpyNdOp():
-    @device(AIEDevice.npu1_4col)
+    @device(AIEDevice.npu1)
     def device_body():
         @runtime_sequence(np.ndarray[(100,), np.dtype[np.int8]])
         def sequence(B):

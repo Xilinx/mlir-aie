@@ -241,7 +241,7 @@ struct LongestConvMACChainAnalysis {
       BackwardSliceOptions backwardSliceOptions;
       backwardSliceOptions.filter = opFilter;
 
-      getBackwardSlice(mulOpOperand, &opBwdSlices, backwardSliceOptions);
+      (void)getBackwardSlice(mulOpOperand, &opBwdSlices, backwardSliceOptions);
       opBwdSlices.insert(mulOpOperand);
 
       LLVM_DEBUG(llvm::dbgs() << "opBwdSlices = [\n");

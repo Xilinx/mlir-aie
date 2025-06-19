@@ -15,7 +15,7 @@ from aie.dialects.aie import AIEDevice, get_target_model
 # CHECK-LABEL: simple
 @construct_and_print_module
 def simple(module):
-    tm = get_target_model(AIEDevice.npu1_4col)
+    tm = get_target_model(AIEDevice.npu1)
     ctl = AIERTControl(tm)
     ctl.start_transaction()
     ctl.dma_update_bd_addr(0, 0, DDR_AIE_ADDR_OFFSET, 0)

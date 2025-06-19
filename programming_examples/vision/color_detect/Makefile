@@ -79,5 +79,8 @@ endif
 run: ${targetname}.exe build/final_${COLORDETECT_WIDTH}.xclbin
 	${powershell} ./$< -x build/final_${COLORDETECT_WIDTH}.xclbin -i build/insts.bin -k MLIR_AIE
 
+run_live: ${targetname}.exe build/final_${COLORDETECT_WIDTH}.xclbin
+	${powershell} ./$< -l -x build/final_${COLORDETECT_WIDTH}.xclbin -i build/insts.bin -k MLIR_AIE
+
 clean:
 	rm -rf build _build ${targetname}.exe colorDetectOut_test.jpg

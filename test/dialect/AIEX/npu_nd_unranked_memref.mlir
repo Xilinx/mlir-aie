@@ -13,7 +13,7 @@
 // RUN: aie-opt %s
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     aie.shim_dma_allocation @airMemcpyId9(MM2S, 0, 0)
     memref.global "public" @airMemcpyId9 : memref<32x64xf32, 2>
     aiex.runtime_sequence @bare_matmul(%arg0: memref<*xf32>) {

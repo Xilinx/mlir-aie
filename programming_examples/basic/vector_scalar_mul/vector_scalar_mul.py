@@ -14,11 +14,19 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
 
+import aie.utils.trace as trace_utils
 
-def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
-    in1_dtype = np.int16
+
+def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace_size):
+
+    if int_bit_width == 16:
+        in1_dtype = np.int16
+        out_dtype = np.int16
+    else:  # default is 32-bit
+        in1_dtype = np.int32
+        out_dtype = np.int32
+
     in2_dtype = np.int32
-    out_dtype = np.int16
 
     tensor_size = in1_size // in1_dtype(0).nbytes
     num_sub_vectors = 4
@@ -39,7 +47,7 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
     # Create a handle to an externally-defined kernel
     func_type = "vector" if vectorized else "scalar"
     scale = Kernel(
-        f"vector_scalar_mul_int16_{func_type}",
+        f"vector_scalar_mul_{func_type}",
         "scale.o",
         [tile_ty, tile_ty, scalar_ty, np.int32],
     )
@@ -72,7 +80,7 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (A, F, C):
-        rt.enable_trace(trace_size)
+        rt.enable_trace(trace_size),
         rt.start(worker)
         rt.fill(of_in.prod(), A)
         rt.fill(of_factor.prod(), F)
@@ -91,6 +99,13 @@ p.add_argument(
     "-i2s", "--in2_size", required=True, dest="in2_size", help="Input 2 size"
 )
 p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
+p.add_argument(
+    "-bw",
+    "--int_bit_width",
+    required=True,
+    dest="int_bit_width",
+    help="Integer Bit Width",
+)
 p.add_argument(
     "-t",
     "--trace_size",
@@ -116,7 +131,10 @@ if in1_size % 128 != 0 or in1_size < 1024:
     raise ValueError
 in2_size = int(opts.in2_size)
 out_size = int(opts.out_size)
+int_bit_width = int(opts.int_bit_width)
 trace_size = int(opts.trace_size)
 
-module = my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size)
+module = my_vector_scalar_mul(
+    dev, in1_size, in2_size, out_size, int_bit_width, trace_size
+)
 print(module)

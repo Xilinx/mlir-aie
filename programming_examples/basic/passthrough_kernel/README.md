@@ -14,9 +14,9 @@ This IRON design flow example, called "Passthrough Kernel", demonstrates a simpl
 
 ## Source Files Overview
 
-1. `passthrough_kernel.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. The file generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `passthrough_kernel.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. The file generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
 
-1. `passthrough_kernel_placed.py`: A Python script that defines the AIE array structural design using an alternatives IRON syntax that yields MLIR-AIE operations. The file generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `passthrough_kernel_placed.py`: A Python script that defines the AIE array structural design using an alternatives IRON syntax that yields MLIR-AIE operations. The file generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
 
 1. `passThrough.cc`: A C++ implementation of vectorized memcpy operations for AIE cores. Found [here](../../../aie_kernels/generic/passThrough.cc).
 

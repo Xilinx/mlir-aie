@@ -8,7 +8,7 @@
 
 // RUN: aie-opt --aie-dma-to-npu -verify-diagnostics %s
 
-aie.device(npu1_4col) {
+aie.device(npu1) {
   aiex.runtime_sequence() {
     // expected-error@+2 {{buffer 'RTP' not found in device}}
     // expected-error@+1 {{failed to legalize operation 'aiex.npu.rtp_write' that was explicitly marked illegal}}
