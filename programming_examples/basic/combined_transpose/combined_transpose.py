@@ -22,6 +22,12 @@ def shuffle_transpose(dev, M, N, m, n, s, dtype):
     assert m % s == 0
     assert n % s == 0
 
+    # Minimum tile sizes required by the two kernels
+    if s == 8:
+        assert m > 8 and n > 8
+    elif s == 16:
+        assert m > 32 and n > 32
+
     # Define tensor types
     matrix_ty = np.ndarray[(M, N), dtype]
     tile_ty = np.ndarray[(m, n,), dtype]
@@ -41,6 +47,12 @@ def shuffle_transpose(dev, M, N, m, n, s, dtype):
         sizes=[M // m, N // n, m, n],
         strides=[m * N, n, N, 1]
     )
+    tap_in_L3L2_straight = TensorAccessPattern(
+        tensor_dims=(M, N),
+        offset=0,
+        sizes=[M // m, N // n, m, n],
+        strides=[m * N, n, N, 1]
+    )
     tap_in_L2L1 = TensorAccessPattern(
         tensor_dims=(M, N),
         offset=0,
@@ -52,6 +64,12 @@ def shuffle_transpose(dev, M, N, m, n, s, dtype):
         offset=0,
         sizes=[M // m, N // n, n, m],
         strides=[m, n * M, M, 1]
+    )
+    tap_out_L1L3_straight = TensorAccessPattern(
+        tensor_dims=(N, M),
+        offset=0,
+        sizes=[1, 1, 1, M*N],
+        strides=[0, 0, 0, 1]
     )
 
     in_L3L2_fifo = ObjectFifo(tile_ty, name="in_L3L2_fifo")

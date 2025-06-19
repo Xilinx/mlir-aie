@@ -6,6 +6,6 @@
 // RUN: mkdir -p test_1_run_makefile_i8
 // RUN: cd test_1_run_makefile_i8
 // RUN: make -f %S/../Makefile clean
-// RUN: make -f %S/../Makefile M=320 N=288 m=64 n=32 dtype_in=i8
-// RUN: %run_on_npu1% make -f %S/../Makefile run M=320 N=288 m=64 n=32 dtype_in=i8
+// RUN: make -f %S/../Makefile M=320 N=288 m=64 n=32 dtype=i8
+// RUN: %run_on_npu1% make -f %S/../Makefile run M=320 N=288 m=64 n=32 dtype=i8
 // CHECK: PASS!
