@@ -48,4 +48,4 @@ before-build = [
 ]
 
 [build-system]
-requires = ["nanobind"]
+requires = ["setuptools", "nanobind"]
