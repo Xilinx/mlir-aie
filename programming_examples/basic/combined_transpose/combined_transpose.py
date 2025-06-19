@@ -27,7 +27,7 @@ def shuffle_transpose(dev, M, N, m, n, s, dtype):
     tile_ty = np.ndarray[(m, n,), dtype]
 
     # Define kernel function
-    kernel_func = Kernel(f"transpose_{s}", "transpose.o", [tile_ty, tile_ty])
+    kernel_func = Kernel(f"transpose_{s}x{s}", "transpose.o", [tile_ty, tile_ty])
     # Uncomment the below line to instead use a copy kernel; this will copy the
     # input buffer to the output buffer without transposing, allowing you to
     # test the data flow transformations further below.

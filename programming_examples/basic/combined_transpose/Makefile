@@ -27,10 +27,10 @@ UTILS_LIB=$(srcdir)/../../../runtime_lib/test_lib/test_utils.cpp
 devicename?=$(if $(filter 1,$(NPU2)),npu2,npu)
 M?=4096
 N?=4096
-m?=256
+m?=64
 n?=32
-s?=4
-dtype?=i8
+s?=8
+dtype?=i32
 
 KERNEL_CC=${PEANO_INSTALL_DIR}/bin/clang++
 KERNEL_CFLAGS= 

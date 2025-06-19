@@ -150,7 +150,7 @@ int main(int argc, const char *argv[]) {
     }
   }
 
-  if (M <= 64 && N <= 64) {
+  if (M*N <= 4096) {
     std::cout << "Input:" << std::endl;
     print_matrix(buf_in, M, N);
     std::cout << "Expected:" << std::endl;
