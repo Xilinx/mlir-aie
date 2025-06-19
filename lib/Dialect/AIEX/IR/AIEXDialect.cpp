@@ -772,7 +772,7 @@ LogicalResult AIEX::SetLockOp::verify() {
 //===----------------------------------------------------------------------===//
 // BlockFloatingPointType
 //===----------------------------------------------------------------------===//
-uint AIEX::BlockFloatType::getTypeSizeInBits() const {
+uint AIEX::BlockFloatType::getTotalSizeInBits() const {
   return getBlockSize() * getMantissaBits() + getExponentBits() +
          getSubtileShiftBits();
 }
@@ -780,7 +780,7 @@ uint AIEX::BlockFloatType::getTypeSizeInBits() const {
 llvm::TypeSize AIEX::BlockFloatType::getTypeSizeInBits(
     const mlir::DataLayout &dataLayout,
     mlir::DataLayoutEntryListRef params) const {
-  return llvm::TypeSize::getFixed(getTypeSizeInBits());
+  return llvm::TypeSize::getFixed(getTotalSizeInBits());
 }
 
 uint64_t AIEX::BlockFloatType::getABIAlignment(

@@ -63,7 +63,7 @@ public:
         return nullptr;
       }
 
-      return mlir::IntegerType::get(blockType.getContext(), blockType.getTypeSizeInBits());
+      return mlir::IntegerType::get(blockType.getContext(), blockType.getTotalSizeInBits());
     });
 
     // Add a conversion for MemRefType
