@@ -18,6 +18,7 @@
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/TypeSize.h"
 
+#include <cstdint>
 #include <numeric>
 
 using namespace mlir;
@@ -772,7 +773,7 @@ LogicalResult AIEX::SetLockOp::verify() {
 //===----------------------------------------------------------------------===//
 // BlockFloatingPointType
 //===----------------------------------------------------------------------===//
-uint AIEX::BlockFloatType::getTotalSizeInBits() const {
+uint64_t AIEX::BlockFloatType::getTotalSizeInBits() const {
   return getBlockSize() * getMantissaBits() + getExponentBits() +
          getSubtileShiftBits();
 }

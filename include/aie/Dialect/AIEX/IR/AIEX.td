@@ -77,7 +77,7 @@ def AIEX_BlockFloatingPointType : TypeDef<AIEX_Dialect, "BlockFloat", [
     std::optional<BlockFormat> getBlockFormat() const;
     static std::optional<BlockFormat> getBlockFormat(llvm::StringRef blockType);
 
-    uint getTotalSizeInBits() const;
+    uint64_t getTotalSizeInBits() const;
   }];
 
   let extraClassDefinition = [{
