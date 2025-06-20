@@ -1326,7 +1326,7 @@ TileOp CoreOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 int64_t BufferOp::getAllocationSize() {
   auto type = llvm::cast<MemRefType>(getType());
   DataLayout dataLayout = DataLayout::closest(getOperation());
-  return type.getNumElements() * dataLayout.getTypeSizeInBits(type.getElementType());
+  return type.getNumElements() * dataLayout.getTypeSize(type.getElementType());
 }
 
 TileOp BufferOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
