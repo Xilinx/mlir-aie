@@ -7,7 +7,7 @@
 // RUN: %python aiecc.py --aie-generate-xclbin --xclbin-name=aie1.xclbin aie1_overlay.mlir
 //
 // RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %S/aie2.mlir -o aie2_overlay.mlir
-// RUN: %python aiecc.py --aie-generate-ctrlpkt --aie-generate-elf --elf-name=aie2_run_seq.elf aie2_overlay.mlir
+// RUN: %python aiecc.py --aie-generate-ctrlpkt --aie-generate-elf --elf-name=aie2.elf aie2_overlay.mlir
 //
 // RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
 // RUN: %run_on_npu1% ./test.exe
