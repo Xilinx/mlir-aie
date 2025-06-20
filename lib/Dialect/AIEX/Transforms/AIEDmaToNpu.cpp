@@ -300,8 +300,8 @@ public:
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
     llvm::SmallVector<int64_t, 4> sizes(4);
     llvm::SmallVector<int64_t, 4> strides(4);
-    getHardwareStridesWraps(targetModel, bufferType, inputSizes, inputStrides,
-                            sizes, strides);
+    getHardwareStridesWraps(targetModel, op, bufferType, inputSizes,
+                            inputStrides, sizes, strides);
     int64_t offset = op.getOffsetInBytes();
 
     // column
@@ -340,8 +340,7 @@ public:
     bd_id = IntegerAttr::get(i32ty, op.getId());
 
     // buffer_length
-    uint64_t buffer_length_val = inputSizes[0] *
-                                 bufferType.getElementTypeBitWidth() /
+    uint64_t buffer_length_val = inputSizes[0] * op.getElementTypeBitwidth() /
                                  targetModel.getAddressGenGranularity();
     if (inputSizes.size() > 1) {
       for (size_t i = 1; i < std::min(inputSizes.size(), (size_t)3); i++) {

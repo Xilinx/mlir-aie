@@ -14,6 +14,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -138,7 +139,8 @@ void appendAddressPatch(std::vector<uint32_t> &instructions,
 void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
 
   Value memref = op.getData();
-  int64_t width = cast<MemRefType>(memref.getType()).getElementTypeBitWidth();
+  DataLayout dataLayout = DataLayout::closest(op);
+  int64_t width = dataLayout.getTypeSizeInBits(cast<MemRefType>(memref.getType()).getElementType());
   if (width != 32) {
     op.emitWarning("Only 32-bit data type is supported for now");
     return;

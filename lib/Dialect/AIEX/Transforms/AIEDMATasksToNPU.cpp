@@ -315,7 +315,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
           return bd_op->emitOpError()
                  << "supports padding only for MM2S direction on MemTiles.";
       }
-      getHardwareStridesWraps(target_model, buffer_type, input_sizes,
+      getHardwareStridesWraps(target_model, bd_op, buffer_type, input_sizes,
                               input_strides, sizes, strides);
 
       if (failed(verifyStridesWraps(bd_op, buffer_type, tile.getCol(),

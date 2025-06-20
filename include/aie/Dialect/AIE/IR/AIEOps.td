@@ -914,7 +914,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
   let extraClassDeclaration = [{
     BufferOp getBufferOp();
     int32_t getBufferElementTypeWidthInBytes() {
-      return getBuffer().getType().getElementTypeBitWidth() / 8;
+      mlir::DataLayout dataLayout = mlir::DataLayout::closest(*this);
+      return dataLayout.getTypeSize(getBuffer().getType().getElementType());
     }
     uint32_t getLenInBytes() {
       if (std::optional<uint32_t> len = getLen(); len.has_value())

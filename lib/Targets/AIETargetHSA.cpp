@@ -145,7 +145,7 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
     BaseMemRefType my_memref = op.getMemref().getType();
     auto shape = my_memref.getShape();
     size_t R = shape.size();
-    size_t el_bit_width = my_memref.getElementTypeBitWidth();
+    size_t el_bit_width = op.getElementTypeBitwidth();
     assert(el_bit_width % 8 == 0 &&
            "Expected Memref element bitwidth to be multiple of 8.");
     size_t S = el_bit_width / 8;

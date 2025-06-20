@@ -15,6 +15,7 @@
 
 // Include dialect declarations such as parseAttributes, parseType
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h.inc"
+#include "mlir/IR/Operation.h"
 
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
@@ -27,6 +28,7 @@ namespace xilinx {
 namespace AIEX {
 
 void getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
+                             mlir::Operation *op,
                              mlir::BaseMemRefType referencedBufType,
                              llvm::SmallVector<int64_t, 4> inputSizes,
                              llvm::SmallVector<int64_t, 4> inputStrides,
