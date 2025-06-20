@@ -276,7 +276,7 @@ jobs:
             -DINSTRUMENTED_COVERAGE_FILES="${{ steps.changed-files.outputs.changed-files }}"
           
           # filter out slow tests (e.g. create-flows/vecmul_4x4_slow_test.mlir) due to timeout.
-          export LIT_OPTS="-sv --timeout 600 -j1 --filter-out slow_test"
+          export LIT_OPTS="-sv --timeout 600 --filter-out slow_test"
           ninja && ninja generate-aie-coverage-report
           
           cat /home/runner/work/mlir-aie/mlir-aie/build_release/report/summary.txt

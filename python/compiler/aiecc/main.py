@@ -613,6 +613,56 @@ class FlowRunner:
                 print(f"copy {tmp} to {opts.txn_name}")
             shutil.copy(tmp, opts.txn_name)
 
+    async def aiebu_asm(self, input_file, output_file, ctrl_packet_file=None):
+
+        # find aiebu-asm binary
+        asm_bin = "aiebu-asm"
+        if shutil.which(asm_bin) is None:
+            asm_bin = os.path.join("/", "opt", "xilinx", "aiebu", "bin", "aiebu-asm")
+            if shutil.which(asm_bin) is None:
+                asm_bin = None
+
+        if asm_bin is None:
+            print(
+                "Error: aiebu-asm not found, generation of ELF file failed.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        args = [
+            asm_bin,
+            "-t",
+            "aie2txn",
+            "-c",
+            input_file,
+            "-o",
+            output_file,
+        ]
+
+        if ctrl_packet_file:
+            ctrl_packet_size = os.path.getsize(ctrl_packet_file)
+            exteral_buffers_json = {
+                "external_buffers": {
+                    "buffer_ctrl": {
+                        "xrt_id": 0,
+                        "logical_id": -1,
+                        "size_in_bytes": ctrl_packet_size,
+                        "ctrl_pkt_buffer": 1,
+                        "name": "runtime_control_packet",
+                    },
+                }
+            }
+            with open(self.prepend_tmp("external_buffers.json"), "w") as f:
+                json.dump(exteral_buffers_json, f, indent=2)
+            args = args + [
+                "-j",
+                self.prepend_tmp("external_buffers.json"),
+                "-p",
+                ctrl_packet_file,
+            ]
+
+        await self.do_call(None, args)
+
     async def process_ctrlpkt(self, module_str):
         with Context(), Location.unknown():
             run_passes(
@@ -623,6 +673,62 @@ class FlowRunner:
                 self.prepend_tmp("ctrlpkt.mlir"),
                 self.opts.verbose,
             )
+            await self.do_call(
+                None,
+                [
+                    "aie-translate",
+                    "-aie-ctrlpkt-to-bin",
+                    "-aie-sequence-name",
+                    "configure",
+                    self.prepend_tmp("ctrlpkt.mlir"),
+                    "-o",
+                    "ctrlpkt.bin",
+                ],
+            )
+            ctrlpkt_mlir_str = await read_file_async(self.prepend_tmp("ctrlpkt.mlir"))
+            run_passes(
+                "builtin.module(aie.device(aie-ctrl-packet-to-dma,aie-dma-to-npu))",
+                ctrlpkt_mlir_str,
+                self.prepend_tmp("ctrlpkt_dma_seq.mlir"),
+                self.opts.verbose,
+            )
+            await self.do_call(
+                None,
+                [
+                    "aie-translate",
+                    "-aie-npu-to-binary",
+                    "-aie-sequence-name",
+                    "configure",
+                    self.prepend_tmp("ctrlpkt_dma_seq.mlir"),
+                    "-o",
+                    "ctrlpkt_dma_seq.bin",
+                ],
+            )
+            await self.aiebu_asm(
+                "ctrlpkt_dma_seq.bin", "ctrlpkt_dma_seq.elf", "ctrlpkt.bin"
+            )
+
+    async def process_elf(self, module_str):
+        with Context(), Location.unknown():
+            module = Module.parse(module_str)
+            pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
+            npu_insts_mlir = (
+                self.prepend_tmp("elf_insts.mlir") if self.opts.verbose else None
+            )
+            npu_insts_module = run_passes_module(
+                pass_pipeline,
+                module,
+                npu_insts_mlir,
+                self.opts.verbose,
+            )
+            # translate npu instructions to binary and write to file
+            npu_insts = aiedialect.translate_npu_to_binary(npu_insts_module.operation)
+
+        npu_insts_bin = self.prepend_tmp("elf_insts.bin")
+        with open(npu_insts_bin, "wb") as f:
+            f.write(struct.pack("I" * len(npu_insts), *npu_insts))
+
+        await self.aiebu_asm(npu_insts_bin, opts.elf_name)
 
     async def process_pdi_gen(self):
 
@@ -1255,6 +1361,9 @@ class FlowRunner:
 
             if opts.ctrlpkt and opts.execute:
                 processes.append(self.process_ctrlpkt(input_physical_str))
+
+            if opts.elf and opts.execute:
+                processes.append(self.process_elf(input_physical_str))
 
             await asyncio.gather(*processes)
 
