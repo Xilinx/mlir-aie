@@ -679,8 +679,6 @@ class FlowRunner:
                 [
                     "aie-translate",
                     "-aie-ctrlpkt-to-bin",
-                    "-aie-sequence-name",
-                    "run",
                     self.prepend_tmp("ctrlpkt.mlir"),
                     "-o",
                     "ctrlpkt.bin",
@@ -698,16 +696,12 @@ class FlowRunner:
                 [
                     "aie-translate",
                     "-aie-npu-to-binary",
-                    "-aie-sequence-name",
-                    "run",
                     self.prepend_tmp("ctrlpkt_dma_seq.mlir"),
                     "-o",
-                    "ctrlpkt_dma_seq.bin",
+                    opts.insts_name,
                 ],
             )
-            await self.aiebu_asm(
-                "ctrlpkt_dma_seq.bin", opts.elf_name, "ctrlpkt.bin"
-            )
+            await self.aiebu_asm(opts.insts_name, opts.elf_name, "ctrlpkt.bin")
 
     async def process_elf(self, module_str):
         with Context(), Location.unknown():
@@ -1233,30 +1227,6 @@ class FlowRunner:
                 exit(-3)
             aie_peano_target = aie_target.lower() + "-none-unknown-elf"
 
-            # Optionally generate insts.txt for NPU instruction stream
-            if opts.npu:
-                with Context(), Location.unknown():
-                    file_with_addresses_module = Module.parse(
-                        await read_file_async(file_with_addresses)
-                    )
-                    pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
-                    npu_insts_file = (
-                        self.prepend_tmp("npu_insts.mlir")
-                        if self.opts.verbose
-                        else None
-                    )
-                    npu_insts_module = run_passes_module(
-                        pass_pipeline,
-                        file_with_addresses_module,
-                        npu_insts_file,
-                        self.opts.verbose,
-                    )
-                    npu_insts = aiedialect.translate_npu_to_binary(
-                        npu_insts_module.operation
-                    )
-                    with open(opts.insts_name, "wb") as f:
-                        f.write(struct.pack("I" * len(npu_insts), *npu_insts))
-
             # fmt: off
             if opts.unified:
                 file_opt_with_addresses = self.prepend_tmp("input_opt_with_addresses.mlir")
@@ -1348,6 +1318,30 @@ class FlowRunner:
 
             if (opts.cdo or opts.xcl or opts.pdi) and opts.execute:
                 await self.process_cdo(input_physical_str)
+
+            # Optionally generate insts.txt for NPU instruction stream
+            if opts.npu and not opts.ctrlpkt:
+                with Context(), Location.unknown():
+                    file_with_addresses_module = Module.parse(
+                        await read_file_async(file_with_addresses)
+                    )
+                    pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
+                    npu_insts_file = (
+                        self.prepend_tmp("npu_insts.mlir")
+                        if self.opts.verbose
+                        else None
+                    )
+                    npu_insts_module = run_passes_module(
+                        pass_pipeline,
+                        file_with_addresses_module,
+                        npu_insts_file,
+                        self.opts.verbose,
+                    )
+                    npu_insts = aiedialect.translate_npu_to_binary(
+                        npu_insts_module.operation
+                    )
+                    with open(opts.insts_name, "wb") as f:
+                        f.write(struct.pack("I" * len(npu_insts), *npu_insts))
 
             processes = []
             if opts.xcl:
