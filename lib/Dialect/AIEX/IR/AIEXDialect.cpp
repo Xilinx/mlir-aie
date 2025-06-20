@@ -12,6 +12,9 @@
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/TypeUtilities.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
 
@@ -82,6 +85,7 @@ void AIEXDialect::initialize() {
   hardware does not support a 0 stride (repeat).
   */
 void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
+                                   mlir::Operation *op,
                                    mlir::BaseMemRefType referencedBufType,
                                    llvm::SmallVector<int64_t, 4> inputSizes,
                                    llvm::SmallVector<int64_t, 4> inputStrides,
@@ -91,7 +95,9 @@ void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
   assert(sizes.size() == 4);
   assert(strides.size() == 4);
 
-  auto elemWidth = referencedBufType.getElementTypeBitWidth();
+  DataLayout dataLayout = DataLayout::closest(op);
+  auto elemWidth =
+      dataLayout.getTypeSizeInBits(referencedBufType.getElementType());
   auto addressGranularity = targetModel.getAddressGenGranularity();
 
   // Output strides and sizes are default-initialized to 0
@@ -159,7 +165,9 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
                          bool skipTransformationChecks) {
   const auto &targetModel = AIE::getTargetModel(forOp);
   auto addressGranularity = targetModel.getAddressGenGranularity();
-  auto elemWidth = referencedBufType.getElementTypeBitWidth();
+  DataLayout dataLayout = DataLayout::closest(forOp);
+  auto elemWidth =
+      dataLayout.getTypeSizeInBits(referencedBufType.getElementType());
 
   uint32_t wrap_bits = 0;
   uint32_t step_bits = 0;
@@ -312,9 +320,8 @@ int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
         return getConstantIntValue(s).value();
       });
   size_t offset = 0;
-  BaseMemRefType my_memref = getMemref().getType();
   size_t R = offsets.size();
-  size_t el_bit_width = my_memref.getElementTypeBitWidth();
+  size_t el_bit_width = getElementTypeBitwidth();
   assert(el_bit_width % 8 == 0 &&
          "Expected Memref element bitwidth to be multiple of 8.");
   size_t S = el_bit_width / 8;
@@ -376,12 +383,13 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto addressGranularity = targetModel.getAddressGenGranularity();
 
-  if (buffer.getElementTypeBitWidth() > addressGranularity) {
+  if (getElementTypeBitwidth() > addressGranularity) {
     return emitOpError("Maximum element bit width allowed is ")
            << addressGranularity << "bits. ";
-  } else if (buffer.hasStaticShape() &&
-             (buffer.getNumElements() * buffer.getElementTypeBitWidth()) <
-                 addressGranularity) {
+  }
+  if (buffer.hasStaticShape() &&
+      (buffer.getNumElements() * getElementTypeBitwidth()) <
+          addressGranularity) {
     return emitOpError("Minimum data transfer size required is ")
            << addressGranularity << "bits. ";
   }
@@ -408,8 +416,8 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
       });
   llvm::SmallVector<int64_t, 4> hardwareSizes(4);
   llvm::SmallVector<int64_t, 4> hardwareStrides(4);
-  getHardwareStridesWraps(targetModel, buffer, inputSizes, inputStrides,
-                          hardwareSizes, hardwareStrides);
+  getHardwareStridesWraps(targetModel, getOperation(), buffer, inputSizes,
+                          inputStrides, hardwareSizes, hardwareStrides);
   int64_t offset = getOffsetInBytes();
 
   auto errorMessage = checkBurstLength(targetModel, getBurstLength());

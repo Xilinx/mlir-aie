@@ -81,12 +81,12 @@ def AIEX_BlockFloatingPointType : TypeDef<AIEX_Dialect, "BlockFloat", [
   }];
 
   let extraClassDefinition = [{
-    int BlockFloatType::getBlockSize() const { return getBlockFormat().value().blockSize; }
-    int BlockFloatType::getMantissaBits() const { return getBlockFormat().value().mantissaBits; }
-    int BlockFloatType::getExponentBits() const { return getBlockFormat().value().exponentBits; }
-    int BlockFloatType::getSubtileShiftBits() const { return getBlockFormat().value().subtileShiftBits; }
+    int $cppClass::getBlockSize() const { return getBlockFormat().value().blockSize; }
+    int $cppClass::getMantissaBits() const { return getBlockFormat().value().mantissaBits; }
+    int $cppClass::getExponentBits() const { return getBlockFormat().value().exponentBits; }
+    int $cppClass::getSubtileShiftBits() const { return getBlockFormat().value().subtileShiftBits; }
 
-    std::optional<BlockFloatType::BlockFormat> BlockFloatType::getBlockFormat() const {
+    std::optional<$cppClass::BlockFormat> $cppClass::getBlockFormat() const {
       return getBlockFormat(getBlockType());
     }
   }];
@@ -660,11 +660,19 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     int64_t getOffsetInBytes();
 
     bool isLinearTransferWithoutTransformation();
+
+    /* Returns the bitwidth of the type inside the memref through a 
+    call to DataLayout */
+    uint64_t getElementTypeBitwidth();
   }];
 
   let extraClassDefinition = [{
     unsigned $cppClass::getOffsetSizeAndStrideStartOperandIndex() { return 1; }
     std::array<unsigned, 3> $cppClass::getArrayAttrMaxRanks() { return {4, 4, 4}; }
+    uint64_t $cppClass::getElementTypeBitwidth() {
+      DataLayout dataLayout = DataLayout::closest(*this);
+      return dataLayout.getTypeSizeInBits(getMemref().getType().getElementType());
+    }
   }];
 
   let hasVerifier = 1;

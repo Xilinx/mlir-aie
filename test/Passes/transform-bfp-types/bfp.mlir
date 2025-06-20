@@ -55,8 +55,6 @@ module {
 // CHECK: : memref<8xi72>
 // CHECK: : memref<8xi72>
 
-// This test is making sure that other lowerings not coming from IRON are also properly converted.
-
 module {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)

@@ -43,7 +43,6 @@ INPUT_WITH_ADDRESSES_PIPELINE = lambda scheme, dynamic_objFifos, ctrl_pkt_overla
         Pipeline()
         .add_pass("aie-assign-lock-ids")
         .add_pass("aie-register-objectFifos")
-        .add_pass("aie-transform-bfp-types")
         .add_pass(
             "aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos
         )
@@ -86,7 +85,8 @@ AIE_LOWER_TO_LLVM = (
             "aie.device",
             Pipeline()
             .add_pass("aie-localize-locks")
-            .add_pass("aie-normalize-address-spaces"),
+            .add_pass("aie-normalize-address-spaces")
+            .add_pass("aie-transform-bfp-types"),
         )
         .add_pass("aie-standard-lowering", tilecol=col, tilerow=row)
         .add_pass("aiex-standard-lowering")
