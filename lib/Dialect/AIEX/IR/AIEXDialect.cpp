@@ -796,7 +796,7 @@ uint64_t AIEX::BlockFloatType::getABIAlignment(
     const mlir::DataLayout &dataLayout,
     mlir::DataLayoutEntryListRef params) const {
   // For the purposes of the data movement operations, we want all types to be
-  // packed <=> ABI alignemnt is 1.
+  // packed <=> ABI alignment is 1.
   return 1;
 }
 

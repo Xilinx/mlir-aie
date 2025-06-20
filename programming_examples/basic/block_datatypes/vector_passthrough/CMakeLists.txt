@@ -2,10 +2,9 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 Advanced Micro Devices, Inc.
+# (c) Copyright 2025 Advanced Micro Devices, Inc.
 
 # parameters
-# -DBOOST_ROOT: Path to Boost install
 # -DXRT_INC_DIR: Full path to src/runtime_src/core/include in XRT cloned repo
 # -DXRT_LIB_DIR: Path to xrt_coreutil.lib
 # -DTARGET_NAME: Target name to be built
