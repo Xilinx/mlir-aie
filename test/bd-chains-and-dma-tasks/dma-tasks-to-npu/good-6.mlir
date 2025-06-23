@@ -8,7 +8,7 @@
 // RUN: aie-opt --aie-substitute-shim-dma-allocations --aie-dma-tasks-to-npu %s | FileCheck %s
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     //%tile_2_0 = aie.tile(2, 0)
 

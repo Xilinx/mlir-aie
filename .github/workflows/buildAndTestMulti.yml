@@ -45,19 +45,19 @@ jobs:
         ENABLE_RTTI: [ ON, OFF ]
 
         include:
-          - OS: windows-2019
+          - OS: windows-2022
             COMPILER: msvc
             ENABLE_ASSERTIONS: ON
             ENABLE_RTTI: ON
-          - OS: windows-2019
+          - OS: windows-2022
             COMPILER: msvc
             ENABLE_ASSERTIONS: ON
             ENABLE_RTTI: OFF
-          - OS: windows-2019
+          - OS: windows-2022
             COMPILER: msvc
             ENABLE_ASSERTIONS: OFF
             ENABLE_RTTI: ON
-          - OS: windows-2019
+          - OS: windows-2022
             COMPILER: msvc
             ENABLE_ASSERTIONS: OFF
             ENABLE_RTTI: OFF

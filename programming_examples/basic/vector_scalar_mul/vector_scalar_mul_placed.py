@@ -18,6 +18,7 @@ import aie.utils.trace as trace_utils
 from aie.utils.trace import PortEvent
 from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
 
+
 def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace_size):
 
     if int_bit_width == 16:
@@ -77,7 +78,7 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
                 of_factor.release(ObjectFifoPort.Consume, 1)
 
         # Set up a packet-switched flow from core to shim for tracing information
-        tiles_to_trace = [ComputeTile2,ComputeTile2]
+        tiles_to_trace = [ComputeTile2, ComputeTile2]
         if trace_size > 0:
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
@@ -89,29 +90,28 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
                     tiles_to_trace=tiles_to_trace,
                     shim=ShimTile,
                     trace_size=trace_size,
-                        coretile_events=[
-                        CoreEvent.LOCK_STALL,
+                    coretile_events=[
+                        CoreEvent.INSTR_EVENT_0,
                         CoreEvent.INSTR_EVENT_1,
                         CoreEvent.INSTR_VECTOR,
                         PortEvent(CoreEvent.PORT_RUNNING_0, 1, True),  # master(1)
-                        PortEvent(CoreEvent.PORT_RUNNING_1, 1, False),  # slave(1)
+                        PortEvent(CoreEvent.PORT_RUNNING_1, 2, True),  # master(2)
+                        PortEvent(CoreEvent.PORT_RUNNING_2, 1, False),  # slave(1)
                         CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
-                        CoreEvent.INSTR_LOCK_RELEASE_REQ,
-                        CoreEvent.INSTR_EVENT_0,
+                        CoreEvent.LOCK_STALL,
                     ],
                     coremem_events=[
-                        MemEvent.DM_PARITY_ERROR_BANK_4,
-                        MemEvent.DMA_MM2S_0_START_TASK,
-                        MemEvent.DMA_S2MM_1_START_TASK,
-                        MemEvent.DMA_MM2S_1_START_TASK,
-                        MemEvent.LOCK_3_REL, 
-                        MemEvent.DMA_MM2S_0_MEMORY_STARVATION,
+                        MemEvent.GROUP_MEMORY_CONFLICT,
+                        MemEvent.DMA_MM2S_0_FINISHED_BD,
+                        MemEvent.DMA_S2MM_0_FINISHED_BD,
+                        MemEvent.DMA_S2MM_1_FINISHED_BD,
+                        MemEvent.LOCK_3_REL,
+                        MemEvent.DMA_MM2S_0_STREAM_BACKPRESSURE,
                         MemEvent.LOCK_SEL0_ACQ_GE,
                         MemEvent.LOCK_SEL1_ACQ_EQ,
                     ],
                 )
                 # npu_maskwrite32( address=0x000001DE00,mask=0b1 ,value=0b1, row=2, column=0 )
-                
 
             in_task = shim_dma_single_bd_task(
                 of_in, A, sizes=[1, 1, 1, tensor_size], issue_token=True
