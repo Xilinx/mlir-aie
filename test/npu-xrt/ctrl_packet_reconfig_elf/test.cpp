@@ -75,7 +75,7 @@ int main(int argc, const char *argv[]) {
 
   unsigned int opcode = 3;
 
-  kernel0(opcode, 0, 0, 0, bo_in, bo_out).wait2();
+  kernel0(opcode, 0, 0, bo_in, bo_out).wait2();
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 

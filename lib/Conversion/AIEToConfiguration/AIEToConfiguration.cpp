@@ -414,6 +414,9 @@ static LogicalResult convertTransactionOpsToMLIR(
     llvm_unreachable("bad output type");
   }
 
+  if (!configureOps.empty())
+    configureOps.front().erase();
+
   return success();
 }
 

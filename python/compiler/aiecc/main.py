@@ -31,6 +31,7 @@ import rich.progress as progress
 import aie.compiler.aiecc.cl_arguments
 import aie.compiler.aiecc.configure
 from aie.dialects import aie as aiedialect
+from aie.dialects import aiex as aiexdialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
@@ -614,7 +615,9 @@ class FlowRunner:
                 print(f"copy {tmp} to {opts.txn_name}")
             shutil.copy(tmp, opts.txn_name)
 
-    async def aiebu_asm(self, input_file, output_file, ctrl_packet_file=None):
+    async def aiebu_asm(
+        self, input_file, output_file, ctrl_packet_file=None, ctrl_packet_idx=0
+    ):
 
         # find aiebu-asm binary
         asm_bin = "aiebu-asm"
@@ -645,7 +648,7 @@ class FlowRunner:
             exteral_buffers_json = {
                 "external_buffers": {
                     "buffer_ctrl": {
-                        "xrt_id": 0,
+                        "xrt_id": ctrl_packet_idx,
                         "logical_id": -1,
                         "size_in_bytes": ctrl_packet_size,
                         "ctrl_pkt_buffer": 1,
@@ -665,43 +668,53 @@ class FlowRunner:
         await self.do_call(None, args)
 
     async def process_ctrlpkt(self, module_str):
-        with Context(), Location.unknown():
-            run_passes(
-                "builtin.module(aie.device(convert-aie-to-control-packets{elf-dir="
-                + self.tmpdirname
-                + "}))",
-                module_str,
+        run_passes(
+            "builtin.module(aie.device(convert-aie-to-control-packets{elf-dir="
+            + self.tmpdirname
+            + "}))",
+            module_str,
+            self.prepend_tmp("ctrlpkt.mlir"),
+            self.opts.verbose,
+        )
+        await self.do_call(
+            None,
+            [
+                "aie-translate",
+                "-aie-ctrlpkt-to-bin",
                 self.prepend_tmp("ctrlpkt.mlir"),
-                self.opts.verbose,
-            )
-            await self.do_call(
-                None,
-                [
-                    "aie-translate",
-                    "-aie-ctrlpkt-to-bin",
-                    self.prepend_tmp("ctrlpkt.mlir"),
-                    "-o",
-                    "ctrlpkt.bin",
-                ],
-            )
-            ctrlpkt_mlir_str = await read_file_async(self.prepend_tmp("ctrlpkt.mlir"))
-            run_passes(
-                "builtin.module(aie.device(aie-ctrl-packet-to-dma,aie-dma-to-npu))",
-                ctrlpkt_mlir_str,
+                "-o",
+                "ctrlpkt.bin",
+            ],
+        )
+        ctrlpkt_mlir_str = await read_file_async(self.prepend_tmp("ctrlpkt.mlir"))
+        run_passes(
+            "builtin.module(aie.device(aie-ctrl-packet-to-dma,aie-dma-to-npu))",
+            ctrlpkt_mlir_str,
+            self.prepend_tmp("ctrlpkt_dma_seq.mlir"),
+            self.opts.verbose,
+        )
+        await self.do_call(
+            None,
+            [
+                "aie-translate",
+                "-aie-npu-to-binary",
                 self.prepend_tmp("ctrlpkt_dma_seq.mlir"),
-                self.opts.verbose,
+                "-o",
+                opts.insts_name,
+            ],
+        )
+        ctrl_idx = 0
+        ctrl_seq_str = await read_file_async(self.prepend_tmp("ctrlpkt_dma_seq.mlir"))
+        with Context(), Location.unknown():
+            dma_seq_module = Module.parse(ctrl_seq_str)
+            # walk through the dma sequence module to find runtime sequence
+            seqs = find_ops(
+                dma_seq_module.operation,
+                lambda o: isinstance(o.operation.opview, aiexdialect.RuntimeSequenceOp),
             )
-            await self.do_call(
-                None,
-                [
-                    "aie-translate",
-                    "-aie-npu-to-binary",
-                    self.prepend_tmp("ctrlpkt_dma_seq.mlir"),
-                    "-o",
-                    opts.insts_name,
-                ],
-            )
-            await self.aiebu_asm(opts.insts_name, opts.elf_name, "ctrlpkt.bin")
+            if seqs:
+                ctrl_idx = len(seqs[0].regions[0].blocks[0].arguments.types) - 1
+        await self.aiebu_asm(opts.insts_name, opts.elf_name, "ctrlpkt.bin", ctrl_idx)
 
     async def process_elf(self, module_str):
         with Context(), Location.unknown():

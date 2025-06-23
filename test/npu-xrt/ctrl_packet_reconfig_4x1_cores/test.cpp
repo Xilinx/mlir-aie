@@ -61,13 +61,13 @@ int main(int argc, const char *argv[]) {
   auto kernel = xrt::kernel(context, kernelName);
 
   auto bo_ctrlpkt = xrt::bo(device, ctrlPackets.size() * sizeof(int32_t),
-                            XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+                            XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(IN_DATATYPE),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(OUT_DATATYPE),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   IN_DATATYPE *bufInA = bo_inA.map<IN_DATATYPE *>();
   std::vector<IN_DATATYPE> srcVecA;
@@ -96,9 +96,9 @@ int main(int argc, const char *argv[]) {
   run1.set_arg(0, opcode);
   run1.set_arg(1, bo_instr);
   run1.set_arg(2, instr_v.size());
-  run1.set_arg(3, bo_ctrlpkt);
-  run1.set_arg(4, bo_inA);
-  run1.set_arg(5, bo_out);
+  run1.set_arg(3, bo_inA);
+  run1.set_arg(4, bo_out);
+  run1.set_arg(5, bo_ctrlpkt);
 
   // Executing and waiting on the runlist
   runlist.add(run1);
