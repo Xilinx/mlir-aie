@@ -89,16 +89,12 @@ int main(int argc, const char *argv[]) {
   int errors = 0;
 
   for (uint32_t i = 0; i < DATA_SIZE; i++) {
-    uint32_t ref = srcVecA[i] + 12;
+    DATATYPE ref = srcVecA[i] + 3;
     if (bufOut[i] != ref) {
       std::cout << "Error in output " << std::to_string(bufOut[i])
-                << " != " << ref << std::endl;
+                << " != " << (int)ref << std::endl;
       errors++;
     }
-    // else
-    //   std::cout << "Correct output " << std::to_string(bufOut[i])
-    //             << " == " << ref << std::endl;
-    // }
   }
 
   if (!errors) {
