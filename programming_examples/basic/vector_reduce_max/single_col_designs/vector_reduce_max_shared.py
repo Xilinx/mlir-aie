@@ -26,11 +26,10 @@ dtype_map = {
 
 def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     n_cores = 4
-    in_dtype = dtype_map[dtype_str]
-    out_dtype = dtype_map[dtype_str]
+    dtype = dtype_map[dtype_str]
 
-    N = in1_size // in_dtype(0).nbytes
-    O = out_size // out_dtype(0).nbytes
+    N = in1_size // dtype(0).nbytes
+    O = out_size // dtype(0).nbytes
 
     n_mem_elems = 2048
     elems_per_core = n_mem_elems // n_cores
@@ -42,24 +41,19 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
 
     @device(dev)
     def device_body():
-        in_ty = np.ndarray[(N,), np.dtype[in_dtype]]
-        mem_ty = np.ndarray[(n_mem_elems,), np.dtype[in_dtype]]
-        op_ty = np.ndarray[(elems_per_core,), np.dtype[in_dtype]]
-        out_ty = np.ndarray[(O,), np.dtype[out_dtype]]
+        in_ty = np.ndarray[(N,), np.dtype[dtype]]
+        mem_ty = np.ndarray[(n_mem_elems,), np.dtype[dtype]]
+        op_ty = np.ndarray[(elems_per_core,), np.dtype[dtype]]
+        out_ty = np.ndarray[(O,), np.dtype[dtype]]
 
         # AIE Core Function declarations
-        if dtype_str == "bf16":
-            reduce_max_vector = external_func(
-                "reduce_max_vector_bfloat16", inputs=[op_ty, out_ty, np.int32]
-            )
-            compute_max = external_func(
-                "compute_max_bfloat16", inputs=[out_ty, out_ty, out_ty]
-            )
-        else:
-            reduce_max_vector = external_func(
-                "reduce_max_vector", inputs=[op_ty, out_ty, np.int32]
-            )
-            compute_max = external_func("compute_max", inputs=[out_ty, out_ty, out_ty])
+        suffix = "_bfloat16" if dtype_str == "bf16" else ""
+        reduce_max_vector = external_func(
+            f"reduce_max_vector{suffix}", inputs=[op_ty, out_ty, np.int32]
+        )
+        compute_max = external_func(
+            f"compute_max{suffix}", inputs=[out_ty, out_ty, out_ty]
+        )
 
         # Tile declarations
         ShimTile = tile(0, 0)
@@ -120,13 +114,13 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         for i in range(n_cores):
             nextC_buffer = buffer(
                 tile=cores[i],
-                datatype=np.ndarray[(O,), np.dtype[out_dtype]],
+                datatype=np.ndarray[(O,), np.dtype[dtype]],
                 name=f"elem_out_{i}",
                 initial_value=min_val,
             )
             tmp_buffer = buffer(
                 tile=cores[i],
-                datatype=np.ndarray[(O,), np.dtype[out_dtype]],
+                datatype=np.ndarray[(O,), np.dtype[dtype]],
                 name=f"tmp_buffer_{i}",
                 initial_value=min_val,
             )
