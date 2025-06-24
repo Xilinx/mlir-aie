@@ -16,21 +16,25 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-template <typename T, typename V, int VECTOR_SIZE>
+template <typename T, typename V>
 void _reduce_max_vector(T *restrict in, T *restrict out,
                         const int32_t input_size) {
   event0();
+  int32_t VECTOR_SIZE;
   V tiny;
-  if constexpr (std::is_same<V, aie::vector<int32_t, 16>>::value) {
-    tiny = broadcast_to_v16int32((int32_t)INT32_MIN);
-  } else if constexpr (std::is_same<V, aie::vector<bfloat16, 32>>::value) {
-    tiny = broadcast_to_v32bfloat16(
-        (bfloat16)std::numeric_limits<bfloat16>::lowest());
+  if constexpr (std::is_same<V, aie::vector<int32_t>>::value) {
+    tiny = broadcast_to_v16int32(INT32_MIN);
+    VECTOR_SIZE = 16;
+  } else if constexpr (std::is_same<V, aie::vector<bfloat16>>::value) {
+    tiny = broadcast_to_v32bfloat16(std::numeric_limits<bfloat16>::lowest());
+    VECTOR_SIZE = 32;
   } else {
-    static_assert("Unsupported vector type");
+    static_assert(!sizeof(V), "Unsupported vector type");
   }
   V after_vector;
   V running_max = tiny;
+
+  assert(input_size / VECTOR_SIZE >= 8);
 
   AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_MIN_ITERATION_COUNT(8)
@@ -86,8 +90,7 @@ extern "C" {
 
 void reduce_max_vector_bfloat16(bfloat16 *a_in, bfloat16 *c_out,
                                 int32_t input_size) {
-  _reduce_max_vector<bfloat16, aie::vector<bfloat16, 32>, 32>(a_in, c_out,
-                                                              input_size);
+  _reduce_max_vector<bfloat16, aie::vector<bfloat16>>(a_in, c_out, input_size);
 }
 
 void reduce_max_scalar_bfloat16(bfloat16 *a_in, bfloat16 *c_out,
@@ -100,8 +103,7 @@ void compute_max_bfloat16(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
 }
 
 void reduce_max_vector(int32_t *a_in, int32_t *c_out, int32_t input_size) {
-  _reduce_max_vector<int32_t, aie::vector<int32_t, 16>, 16>(a_in, c_out,
-                                                            input_size);
+  _reduce_max_vector<int32_t, aie::vector<int32_t>>(a_in, c_out, input_size);
 }
 
 void reduce_max_scalar(int32_t *a_in, int32_t *c_out, int32_t input_size) {
