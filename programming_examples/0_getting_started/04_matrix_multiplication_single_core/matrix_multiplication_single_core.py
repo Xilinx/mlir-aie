@@ -11,7 +11,7 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1, NPU2
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 
 # --------------------------------------------------------------------------
 # Configuration
@@ -27,7 +27,7 @@ if len(sys.argv) != 2 or sys.argv[1] not in devices:
 device = devices[sys.argv[1]]
 
 M, K, N = 32, 32, 32  # Problem size
-m, k, n = 32, 32, 32  # Tile size
+m, k, n = 16, 16, 16  # Tile size
 r, s, t = 8, 2, 8  # Intrinsic size
 
 
@@ -48,15 +48,29 @@ c_ty = np.ndarray[(m, n), np.dtype[np.int16]]
 
 fifo_A_L3L2 = ObjectFifo(a_ty, name="A_L3L2")
 tap_A_L2L1 = TensorTiler2D.group_tiler((m, k), (r, s), (m // r, k // s))[0]
-fifo_A_L2L1 = fifo_A_L3L2.cons().forward(dims_to_stream=tap_A_L2L1.transformation_dims, name="A_L2L1")
+fifo_A_L2L1 = fifo_A_L3L2.cons().forward(
+    dims_to_stream=tap_A_L2L1.transformation_dims, 
+    name="A_L2L1"
+)
 
 fifo_B_L3L2 = ObjectFifo(b_ty, name="B_L3L2")
 tap_B_L2L1 = TensorTiler2D.group_tiler((k, n), (s, t), (k // s, n // t))[0]
-fifo_B_L2L1 = fifo_B_L3L2.cons().forward(dims_to_stream=tap_B_L2L1.transformation_dims, name="B_L2L1")
+fifo_B_L2L1 = fifo_B_L3L2.cons().forward(
+    dims_to_stream=tap_B_L2L1.transformation_dims, 
+    name="B_L2L1"
+)
 
 fifo_C_L1L2 = ObjectFifo(c_ty, name="C_L1L2")
-tap_C_L1L2 = TensorTiler2D.group_tiler((m, n), (r, t), (m // r, n // t))[0]
-fifo_C_L2L3 = fifo_C_L1L2.cons().forward(dims_to_stream=tap_C_L1L2.transformation_dims, name="C_L2L3")
+tap_C_L1L2 = TensorAccessPattern(
+    tensor_dims=(m, n),
+    offset=0,
+    sizes=[m // r, r, n // t, t],
+    strides=[r * n, t, r * t, 1]
+)
+fifo_C_L2L3 = fifo_C_L1L2.cons().forward(
+    dims_to_stream=tap_C_L1L2.transformation_dims, 
+    name="C_L2L3"
+)
 
 
 # --------------------------------------------------------------------------
