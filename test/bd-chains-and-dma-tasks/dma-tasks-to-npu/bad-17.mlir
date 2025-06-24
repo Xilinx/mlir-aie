@@ -11,7 +11,7 @@
 // all DMABDOp checks are skipped when inside a dma_configure_task.
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(2, 2)
 
     aiex.runtime_sequence(%arg0: memref<8xi16>, %arg1: memref<10xi32>) {

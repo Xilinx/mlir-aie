@@ -9,7 +9,7 @@ import argparse
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col4, NPU2
+from aie.iron.device import NPU1, NPU2
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorTiler2D
 
@@ -99,7 +99,7 @@ def my_matmul(dev):
 
     # Create the program from the device type and runtime
     if dev == "npu":
-        dev_ty = NPU1Col4()
+        dev_ty = NPU1()
     else:
         dev_ty = NPU2()
     my_program = Program(dev_ty, rt)

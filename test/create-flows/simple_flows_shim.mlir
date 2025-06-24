@@ -54,13 +54,13 @@ module {
 // CHECK: %[[T20:.*]] = aie.tile(2, 0)
 // CHECK: %[[T30:.*]] = aie.tile(3, 0)
 // CHECK:  %{{.*}} = aie.switchbox(%[[T20]])  {
-// CHECK:    aie.connect<South : 3, East : 0>
+// CHECK:    aie.connect<South : 3, East : 2>
 // CHECK:  }
 // CHECK:  %{{.*}} = aie.shim_mux(%[[T20]])  {
 // CHECK:    aie.connect<DMA : 0, North : 3>
 // CHECK:  }
 // CHECK:  %{{.*}} = aie.switchbox(%[[T30]])  {
-// CHECK:    aie.connect<West : 0, South : 3>
+// CHECK:    aie.connect<West : 2, South : 3>
 // CHECK:  }
 // CHECK:  %{{.*}} = aie.shim_mux(%[[T30]])  {
 // CHECK:    aie.connect<North : 3, DMA : 1>

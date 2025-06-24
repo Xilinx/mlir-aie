@@ -27,6 +27,22 @@ dtype_map = {
     "i32": np.int32,
 }
 
+microkernel_mac_dim_map = {
+    "npu": {
+        "bf16": (4, 8, 4),
+        "i8": (4, 8, 8),
+        "i16": (4, 4, 4),
+    },
+    "npu2": {
+        "bf16": {
+            # emulate_bf16_mmul_with_bfp16
+            True: (8, 8, 8),
+            False: (4, 8, 4),
+        },
+        "i8": (8, 8, 8),
+        "i16": (4, 4, 8),
+    },
+}
 
 def main():
     argparser = argparse.ArgumentParser(
@@ -50,6 +66,7 @@ def main():
         default="i32",
     )
     argparser.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
+    argparser.add_argument("--emulate-bf16-mmul-with-bfp16", type=bool, default=False)
     argparser.add_argument("--trace_size", type=int, default=0)
     argparser.add_argument(
         "--generate-taps",
@@ -70,6 +87,7 @@ def main():
             args.dtype_in,
             args.dtype_out,
             args.b_col_maj,
+            args.emulate_bf16_mmul_with_bfp16,
             args.trace_size,
             args.generate_taps,
         )
@@ -94,6 +112,7 @@ def my_matmul(
     dtype_in_str,
     dtype_out_str,
     b_col_maj,
+    emulate_bf16_mmul_with_bfp16,
     trace_size,
     generate_taps=False,
 ):
@@ -102,32 +121,12 @@ def my_matmul(
     assert K % k == 0
     assert N % n == 0
 
-    if dev == "npu":
-        if dtype_in_str == "bf16":
-            r = 4
-            s = 8
-            t = 4
-        elif dtype_in_str == "i8":
-            r = 4
-            s = 8
-            t = 8
-        elif dtype_in_str == "i16":
-            r = 4
-            s = 4
-            t = 4
+    # r, s, t are the dimensions required by the microkernel MAC instructions.
+    mac_dims = microkernel_mac_dim_map[dev][dtype_in_str]
+    if dev == "npu2" and dtype_in_str == "bf16":
+        r, s, t = mac_dims[emulate_bf16_mmul_with_bfp16]
     else:
-        if dtype_in_str == "bf16":
-            r = 8
-            s = 8
-            t = 8
-        elif dtype_in_str == "i8":
-            r = 8
-            s = 8
-            t = 8
-        elif dtype_in_str == "i16":
-            r = 4
-            s = 4
-            t = 8
+        r, s, t = mac_dims
 
     assert m % r == 0
     assert k % s == 0
@@ -183,11 +182,7 @@ def my_matmul(
         # AIE Core Function declarations
         func_type = "" if vectorized else "scalar_"
         zero = external_func(f"zero_{func_type}{dtype_out_str}", inputs=[c_ty])
-        matmul_func_name = (
-            f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}"
-            if not b_col_maj
-            else f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}_b_col_maj"
-        )
+        matmul_func_name = f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}"
         matmul = external_func(
             matmul_func_name,
             inputs=[a_ty, b_ty, c_ty],
@@ -280,7 +275,7 @@ def my_matmul(
         # Set up compute tiles
 
         # Compute tile 2
-        @core(compute_tile2, f"mm_{m}x{k}x{n}.o")
+        @core(compute_tile2, f"mm_{m}x{k}x{n}.o", stack_size=0xD00)
         def core_body():
             for _ in range_(0xFFFFFFFF):
                 for _ in range_(tiles) if tiles > 1 else range(1):  # issue #1547

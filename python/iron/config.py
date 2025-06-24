@@ -8,7 +8,7 @@
 
 import subprocess
 
-from .device import NPU1Col4, NPU2
+from .device import NPU1, NPU2
 
 
 def detect_npu_device():
@@ -46,11 +46,12 @@ def detect_npu_device():
         elif any(
             keyword.lower() in output.lower()
             for keyword in [
+                "NPU",
                 "NPU Phoenix",
                 "RyzenAI-npu1",
             ]
         ):
-            return NPU1Col4()
+            return NPU1()
         else:
             raise RuntimeError("No supported NPU device found.")
 

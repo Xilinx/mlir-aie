@@ -149,12 +149,6 @@ def broadcast(module):
         # CHECK:     %{{.*}}tile_3_3 = aie.tile(3, 3)
         # CHECK:     %{{.*}}tile_3_4 = aie.tile(3, 4)
         # CHECK:     %{{.*}}tile_3_5 = aie.tile(3, 5)
-        # CHECK:     %{{.*}}tile_4_0 = aie.tile(4, 0)
-        # CHECK:     %{{.*}}tile_4_1 = aie.tile(4, 1)
-        # CHECK:     %{{.*}}tile_4_2 = aie.tile(4, 2)
-        # CHECK:     %{{.*}}tile_4_3 = aie.tile(4, 3)
-        # CHECK:     %{{.*}}tile_4_4 = aie.tile(4, 4)
-        # CHECK:     %{{.*}}tile_4_5 = aie.tile(4, 5)
         # CHECK:     aie.flow(%{{.*}}tile_0_0, DMA : 0, %{{.*}}tile_0_1, DMA : 0)
         # CHECK:     aie.flow(%{{.*}}tile_0_0, DMA : 1, %{{.*}}tile_0_3, DMA : 0)
         # CHECK:     aie.flow(%{{.*}}tile_0_0, DMA : 1, %{{.*}}tile_0_4, DMA : 0)
@@ -253,20 +247,20 @@ def neighbors(module):
     def npu():
         tiles = TileArray()
 
-        # CHECK: Neighbors(north=%15 = "aie.tile"() <{col = 2 : i32, row = 3 : i32}> : () -> index, west=%8 = "aie.tile"() <{col = 1 : i32, row = 2 : i32}> : () -> index, south=None)
+        # CHECK: Neighbors(north=%[[SSA_15:[0-9]+]] = "aie.tile"() <{col = 2 : i32, row = 3 : i32}> : () -> index, west=%[[SSA_8:[0-9]+]] = "aie.tile"() <{col = 1 : i32, row = 2 : i32}> : () -> index, south=None)
         print(find_neighbors(tiles[2, 2].tile))
 
         assert tiles[1:3, 1:3].neighbors().shape == (2, 2)
         # CHECK: tile(col=1, row=1) : Neighbors(north=None, west=None, south=None)
-        # CHECK: tile(col=1, row=2) : Neighbors(north=<TileArray: [%9 = "aie.tile"() <{col = 1 : i32, row = 3 : i32}> : () -> index]>, west=<TileArray: [%2 = "aie.tile"() <{col = 0 : i32, row = 2 : i32}> : () -> index]>, south=None)
-        # CHECK: tile(col=2, row=1) : Neighbors(north=None, west=<TileArray: [%7 = "aie.tile"() <{col = 1 : i32, row = 1 : i32}> : () -> index]>, south=None)
+        # CHECK: tile(col=1, row=2) : Neighbors(north=<TileArray: [%[[SSA_9:[0-9]+]] = "aie.tile"() <{col = 1 : i32, row = 3 : i32}> : () -> index]>, west=<TileArray: [%[[SSA_2:[0-9]+]] = "aie.tile"() <{col = 0 : i32, row = 2 : i32}> : () -> index]>, south=None)
+        # CHECK: tile(col=2, row=1) : Neighbors(north=None, west=<TileArray: [%[[SSA_7:[0-9]+]] = "aie.tile"() <{col = 1 : i32, row = 1 : i32}> : () -> index]>, south=None)
         for idx, n in np.ndenumerate(tiles[1:3, 1:3].neighbors()):
             print(tiles[1:3, 1:3][idx].tile, ":", n)
 
-        # CHECK: tile(col=1, row=1) : Neighbors(north=<TileArray: [%8 = "aie.tile"() <{col = 1 : i32, row = 2 : i32}> : () -> index]>, west=None, south=<TileArray: [%6 = "aie.tile"() <{col = 1 : i32, row = 0 : i32}> : () -> index]>)
-        # CHECK: tile(col=1, row=2) : Neighbors(north=<TileArray: [%9 = "aie.tile"() <{col = 1 : i32, row = 3 : i32}> : () -> index]>, west=<TileArray: [%2 = "aie.tile"() <{col = 0 : i32, row = 2 : i32}> : () -> index]>, south=<TileArray: [%7 = "aie.tile"() <{col = 1 : i32, row = 1 : i32}> : () -> index]>)
-        # CHECK: tile(col=2, row=1) : Neighbors(north=<TileArray: [%14 = "aie.tile"() <{col = 2 : i32, row = 2 : i32}> : () -> index]>, west=<TileArray: [%7 = "aie.tile"() <{col = 1 : i32, row = 1 : i32}> : () -> index]>, south=<TileArray: [%12 = "aie.tile"() <{col = 2 : i32, row = 0 : i32}> : () -> index]>)
-        # CHECK: tile(col=2, row=2) : Neighbors(north=<TileArray: [%15 = "aie.tile"() <{col = 2 : i32, row = 3 : i32}> : () -> index]>, west=<TileArray: [%8 = "aie.tile"() <{col = 1 : i32, row = 2 : i32}> : () -> index]>, south=<TileArray: [%13 = "aie.tile"() <{col = 2 : i32, row = 1 : i32}> : () -> index]>)
+        # CHECK: tile(col=1, row=1) : Neighbors(north=<TileArray: [%[[SSA_8:[0-9]+]] = "aie.tile"() <{col = 1 : i32, row = 2 : i32}> : () -> index]>, west=None, south=<TileArray: [%[[SSA_6:[0-9]+]] = "aie.tile"() <{col = 1 : i32, row = 0 : i32}> : () -> index]>)
+        # CHECK: tile(col=1, row=2) : Neighbors(north=<TileArray: [%[[SSA_9:[0-9]+]] = "aie.tile"() <{col = 1 : i32, row = 3 : i32}> : () -> index]>, west=<TileArray: [%[[SSA_2:[0-9]+]] = "aie.tile"() <{col = 0 : i32, row = 2 : i32}> : () -> index]>, south=<TileArray: [%[[SSA_7:[0-9]+]] = "aie.tile"() <{col = 1 : i32, row = 1 : i32}> : () -> index]>)
+        # CHECK: tile(col=2, row=1) : Neighbors(north=<TileArray: [%[[SSA_14:[0-9]+]] = "aie.tile"() <{col = 2 : i32, row = 2 : i32}> : () -> index]>, west=<TileArray: [%[[SSA_7:[0-9]+]] = "aie.tile"() <{col = 1 : i32, row = 1 : i32}> : () -> index]>, south=<TileArray: [%[[SSA_12:[0-9]+]] = "aie.tile"() <{col = 2 : i32, row = 0 : i32}> : () -> index]>)
+        # CHECK: tile(col=2, row=2) : Neighbors(north=<TileArray: [%[[SSA_15:[0-9]+]] = "aie.tile"() <{col = 2 : i32, row = 3 : i32}> : () -> index]>, west=<TileArray: [%[[SSA_8:[0-9]+]] = "aie.tile"() <{col = 1 : i32, row = 2 : i32}> : () -> index]>, south=<TileArray: [%[[SSA_13:[0-9]+]] = "aie.tile"() <{col = 2 : i32, row = 1 : i32}> : () -> index]>)
         for idx, n in np.ndenumerate(tiles[1:3, 1:3].neighbors(logical=False)):
             print(tiles[1:3, 1:3][idx].tile, ":", n)
 
@@ -312,14 +306,14 @@ def channels_basic(module):
         @aie.mem(tiles[2, 2].tile)
         def mem():
             with c.put() as buffer:
-                # CHECK: %30 = "aie.buffer"(%14) <{sym_name = "alice"}> : (index) -> memref<10x10xi32>
+                # CHECK: %[[SSA_30:[0-9]+]] = "aie.buffer"(%[[SSA_14]]) <{sym_name = "alice"}> : (index) -> memref<10x10xi32>
                 print(buffer.owner)
             aie.end()
 
         @aie.core(tiles[2, 2].tile)
         def core():
             with c.get() as buffer:
-                # CHECK: %30 = "aie.buffer"(%14) <{sym_name = "alice"}> : (index) -> memref<10x10xi32>
+                # CHECK: %[[SSA_30:[0-9]+]] = "aie.buffer"(%[[SSA_14]]) <{sym_name = "alice"}> : (index) -> memref<10x10xi32>
                 print(buffer.owner)
 
     # CHECK: %alice = aie.buffer(%{{.*}}tile_2_2) {sym_name = "alice"} : memref<10x10xi32>
@@ -347,15 +341,15 @@ def nd_channels(module):
 
         shapes = np.array([(10, 10)], dtype="i,i").astype(object)
         c = tiles[2, 2].channel(shape=shapes, dtype=[np.int32])
-        # CHECK: <Channel: buffer=MemRef(%30, memref<10x10xi32>) producer_lock=Scalar(%31 = "aie.lock"(%14) <{sym_name = "30_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%32 = "aie.lock"(%14) <{sym_name = "30_consumer_lock"}> : (index) -> index)>
+        # CHECK: <Channel: buffer=MemRef(%[[SSA_30:[0-9]+]], memref<10x10xi32>) producer_lock=Scalar(%[[SSA_31:[0-9]+]] = "aie.lock"(%[[SSA_14]]) <{sym_name = "[[SSA_30]]_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%[[SSA_32:[0-9]+]] = "aie.lock"(%[[SSA_14]]) <{sym_name = "[[SSA_30]]_consumer_lock"}> : (index) -> index)>
         print(c)
         cs = tiles[2:4, 2:4].channel(shape=shapes, dtype=[np.int32])
         assert cs.shape == (2, 2)
 
-        # CHECK: (0, 0) <Channel: buffer=MemRef(%33, memref<10x10xi32>) producer_lock=Scalar(%34 = "aie.lock"(%14) <{sym_name = "33_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%35 = "aie.lock"(%14) <{sym_name = "33_consumer_lock"}> : (index) -> index)>
-        # CHECK: (0, 1) <Channel: buffer=MemRef(%36, memref<10x10xi32>) producer_lock=Scalar(%37 = "aie.lock"(%15) <{sym_name = "36_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%38 = "aie.lock"(%15) <{sym_name = "36_consumer_lock"}> : (index) -> index)>
-        # CHECK: (1, 0) <Channel: buffer=MemRef(%39, memref<10x10xi32>) producer_lock=Scalar(%40 = "aie.lock"(%20) <{sym_name = "39_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%41 = "aie.lock"(%20) <{sym_name = "39_consumer_lock"}> : (index) -> index)>
-        # CHECK: (1, 1) <Channel: buffer=MemRef(%42, memref<10x10xi32>) producer_lock=Scalar(%43 = "aie.lock"(%21) <{sym_name = "42_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%44 = "aie.lock"(%21) <{sym_name = "42_consumer_lock"}> : (index) -> index)>
+        # CHECK: (0, 0) <Channel: buffer=MemRef(%[[SSA_33:[0-9]+]], memref<10x10xi32>) producer_lock=Scalar(%[[SSA_34:[0-9]+]] = "aie.lock"(%[[SSA_14:[0-9]+]]) <{sym_name = "[[SSA_33]]_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%[[SSA_35:[0-9]+]] = "aie.lock"(%[[SSA_14]]) <{sym_name = "[[SSA_33]]_consumer_lock"}> : (index) -> index)>
+        # CHECK: (0, 1) <Channel: buffer=MemRef(%[[SSA_36:[0-9]+]], memref<10x10xi32>) producer_lock=Scalar(%[[SSA_37:[0-9]+]] = "aie.lock"(%[[SSA_15:[0-9]+]]) <{sym_name = "[[SSA_36]]_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%[[SSA_38:[0-9]+]] = "aie.lock"(%[[SSA_15]]) <{sym_name = "[[SSA_36]]_consumer_lock"}> : (index) -> index)>
+        # CHECK: (1, 0) <Channel: buffer=MemRef(%[[SSA_39:[0-9]+]], memref<10x10xi32>) producer_lock=Scalar(%[[SSA_40:[0-9]+]] = "aie.lock"(%[[SSA_20:[0-9]+]]) <{sym_name = "[[SSA_39]]_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%[[SSA_41:[0-9]+]] = "aie.lock"(%[[SSA_20]]) <{sym_name = "[[SSA_39]]_consumer_lock"}> : (index) -> index)>
+        # CHECK: (1, 1) <Channel: buffer=MemRef(%[[SSA_42:[0-9]+]], memref<10x10xi32>) producer_lock=Scalar(%[[SSA_43:[0-9]+]] = "aie.lock"(%[[SSA_21:[0-9]+]]) <{sym_name = "[[SSA_42]]_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%[[SSA_44:[0-9]+]] = "aie.lock"(%[[SSA_21]]) <{sym_name = "[[SSA_42]]_consumer_lock"}> : (index) -> index)>
         for idx, c in np.ndenumerate(cs):
             print(idx, c)
 
@@ -365,10 +359,10 @@ def nd_channels(module):
         cs = tiles[2:4, 2:4].channel(shape=shapes, dtype=[np.int32])
         assert cs.shape == (2, 2)
 
-        # CHECK: (0, 0) <Channel: buffer=MemRef(%45, memref<1x2xi32>) producer_lock=Scalar(%46 = "aie.lock"(%14) <{sym_name = "45_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%47 = "aie.lock"(%14) <{sym_name = "45_consumer_lock"}> : (index) -> index)>
-        # CHECK: (0, 1) <Channel: buffer=MemRef(%48, memref<3x4xi32>) producer_lock=Scalar(%49 = "aie.lock"(%15) <{sym_name = "48_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%50 = "aie.lock"(%15) <{sym_name = "48_consumer_lock"}> : (index) -> index)>
-        # CHECK: (1, 0) <Channel: buffer=MemRef(%51, memref<5x6xi32>) producer_lock=Scalar(%52 = "aie.lock"(%20) <{sym_name = "51_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%53 = "aie.lock"(%20) <{sym_name = "51_consumer_lock"}> : (index) -> index)>
-        # CHECK: (1, 1) <Channel: buffer=MemRef(%54, memref<7x8xi32>) producer_lock=Scalar(%55 = "aie.lock"(%21) <{sym_name = "54_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%56 = "aie.lock"(%21) <{sym_name = "54_consumer_lock"}> : (index) -> index)>
+        # CHECK: (0, 0) <Channel: buffer=MemRef(%[[SSA_45:[0-9]+]], memref<1x2xi32>) producer_lock=Scalar(%[[SSA_46:[0-9]+]] = "aie.lock"(%[[SSA_14:[0-9]+]]) <{sym_name = "[[SSA_45]]_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%[[SSA_47:[0-9]+]] = "aie.lock"(%[[SSA_14]]) <{sym_name = "[[SSA_45]]_consumer_lock"}> : (index) -> index)>
+        # CHECK: (0, 1) <Channel: buffer=MemRef(%[[SSA_48:[0-9]+]], memref<3x4xi32>) producer_lock=Scalar(%[[SSA_49:[0-9]+]] = "aie.lock"(%[[SSA_15:[0-9]+]]) <{sym_name = "[[SSA_48]]_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%[[SSA_50:[0-9]+]] = "aie.lock"(%[[SSA_15]]) <{sym_name = "[[SSA_48]]_consumer_lock"}> : (index) -> index)>
+        # CHECK: (1, 0) <Channel: buffer=MemRef(%[[SSA_51:[0-9]+]], memref<5x6xi32>) producer_lock=Scalar(%[[SSA_52:[0-9]+]] = "aie.lock"(%[[SSA_20:[0-9]+]]) <{sym_name = "[[SSA_51]]_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%[[SSA_53:[0-9]+]] = "aie.lock"(%[[SSA_20]]) <{sym_name = "[[SSA_51]]_consumer_lock"}> : (index) -> index)>
+        # CHECK: (1, 1) <Channel: buffer=MemRef(%[[SSA_54:[0-9]+]], memref<7x8xi32>) producer_lock=Scalar(%[[SSA_55:[0-9]+]] = "aie.lock"(%[[SSA_21:[0-9]+]]) <{sym_name = "[[SSA_54]]_producer_lock"}> : (index) -> index) consumer_lock=Scalar(%[[SSA_56:[0-9]+]] = "aie.lock"(%[[SSA_21]]) <{sym_name = "[[SSA_54]]_consumer_lock"}> : (index) -> index)>
         for idx, c in np.ndenumerate(cs):
             print(idx, c)
 
@@ -384,15 +378,15 @@ def buffer_test_this_needs_to_distinct_from_all_other_mentions_of_buffer_in_this
 
         shapes = [(10, 10)]
         c = tiles[2, 2].buffer(shape=shapes, dtype=[np.int32])
-        # CHECK: MemRef(%30, memref<10x10xi32>)
+        # CHECK: MemRef(%[[SSA_30]], memref<10x10xi32>)
         print(c)
         cs = tiles[2:4, 2:4].buffer(shape=shapes, dtype=[np.int32])
         assert cs.shape == (2, 2)
 
-        # CHECK: (0, 0) MemRef(%31, memref<10x10xi32>)
-        # CHECK: (0, 1) MemRef(%32, memref<10x10xi32>)
-        # CHECK: (1, 0) MemRef(%33, memref<10x10xi32>)
-        # CHECK: (1, 1) MemRef(%34, memref<10x10xi32>)
+        # CHECK: (0, 0) MemRef(%[[SSA_31]], memref<10x10xi32>)
+        # CHECK: (0, 1) MemRef(%[[SSA_32]], memref<10x10xi32>)
+        # CHECK: (1, 0) MemRef(%[[SSA_33]], memref<10x10xi32>)
+        # CHECK: (1, 1) MemRef(%[[SSA_34]], memref<10x10xi32>)
         for idx, c in np.ndenumerate(cs):
             print(idx, c)
 
@@ -400,9 +394,9 @@ def buffer_test_this_needs_to_distinct_from_all_other_mentions_of_buffer_in_this
         cs = tiles[2:4, 2:4].buffer(shape=shapes, dtype=[np.int32])
         assert cs.shape == (2, 2)
 
-        # CHECK: (0, 0) MemRef(%35, memref<1x2xi32>)
-        # CHECK: (0, 1) MemRef(%36, memref<3x4xi32>)
-        # CHECK: (1, 0) MemRef(%37, memref<5x6xi32>)
-        # CHECK: (1, 1) MemRef(%38, memref<7x8xi32>)
+        # CHECK: (0, 0) MemRef(%[[SSA_35]], memref<1x2xi32>)
+        # CHECK: (0, 1) MemRef(%[[SSA_36]], memref<3x4xi32>)
+        # CHECK: (1, 0) MemRef(%[[SSA_37]], memref<5x6xi32>)
+        # CHECK: (1, 1) MemRef(%[[SSA_38]], memref<7x8xi32>)
         for idx, c in np.ndenumerate(cs):
             print(idx, c)

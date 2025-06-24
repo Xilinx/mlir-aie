@@ -11,7 +11,7 @@
 // RUN: not aie-opt --aie-dma-to-npu --split-input-file %s 2>&1 | FileCheck %s
 // CHECK: Only ShimTiles support burst length.
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     aiex.runtime_sequence(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
       aiex.npu.writebd { bd_id = 6 : i32,
                          buffer_length = 1 : i32,
@@ -73,7 +73,7 @@ module {
 // CHECK: burst_length = 512
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     memref.global "public" @of_toMem : memref<32xi32>
     memref.global "public" @of_fromMem : memref<32xi32>
     aiex.runtime_sequence(%in : memref<4x2x8xi32>, %buf : memref<32xi32>, %out : memref<64xi32>) {

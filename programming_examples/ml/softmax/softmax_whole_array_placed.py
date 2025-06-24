@@ -35,7 +35,7 @@ def vector_softmax(dev, trace_size):
     tiles = N_div_n // n_cores
     buffer_depth = 2
 
-    if dev == AIEDevice.npu1_4col and n_col > 4:
+    if dev == AIEDevice.npu1 and n_col > 4:
         raise ValueError(
             "[ERROR] NPU1 device only supports 4 columns. Please set n_col <= 4"
         )
@@ -165,7 +165,7 @@ def vector_softmax(dev, trace_size):
         # Set up a packet-switched flow from core to shim for tracing information
         tiles_to_trace = [cores[0]]
         if trace_size > 0:
-            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTiles[i])
 
         # Set up compute tiles
         for i in range(n_cores):
@@ -191,7 +191,7 @@ def vector_softmax(dev, trace_size):
             if trace_size > 0:
                 trace_utils.configure_packet_tracing_aie2(
                     tiles_to_trace=tiles_to_trace,
-                    shim=ShimTile,
+                    shim=ShimTiles[0],
                     trace_size=trace_size,
                     trace_offset=N_in_bytes,
                     ddr_id=1,
@@ -225,13 +225,13 @@ def vector_softmax(dev, trace_size):
             dma_start_task(*in_tasks, *out_tasks)
             dma_await_task(*out_tasks)
 
-            trace_utils.gen_trace_done_aie2(ShimTiles[0])
+            trace_utils.gen_trace_done_aie2(cores[0])
 
 
 try:
     device_name = str(sys.argv[1])
     if device_name == "npu":
-        dev = AIEDevice.npu1_4col
+        dev = AIEDevice.npu1
     elif device_name == "npu2":
         dev = AIEDevice.npu2_4col
     else:

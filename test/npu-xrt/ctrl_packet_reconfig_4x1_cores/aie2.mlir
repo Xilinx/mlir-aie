@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     memref.global "public" @shim_in_0 : memref<64x64xi8>
     memref.global "public" @shim_in_1 : memref<64x64xi8>
     memref.global "public" @shim_in_2 : memref<64x64xi8>
@@ -247,7 +247,7 @@ module {
     aie.shim_dma_allocation @shim_out_2(S2MM, 0, 2)
     aie.shim_dma_allocation @shim_out_3(S2MM, 0, 3)
 
-    aiex.runtime_sequence @run(%arg0: memref<4x64x64xi8>, %arg1: memref<32xi8>, %arg2: memref<4x64x64xi8>) {
+    aiex.runtime_sequence @run(%arg0: memref<4x64x64xi8>, %arg1: memref<4x64x64xi8>) {
       %c0_i64 = arith.constant 0 : i64
       %c1_i64 = arith.constant 1 : i64
       %c2_i64 = arith.constant 2 : i64
@@ -260,10 +260,10 @@ module {
       aiex.npu.dma_memcpy_nd (%arg0[%c0_i64, %c2_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64], packet = <pkt_id = 1, pkt_type = 0>) {id = 2 : i64, metadata = @shim_in_2} : memref<4x64x64xi8>
       aiex.npu.dma_memcpy_nd (%arg0[%c0_i64, %c3_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64], packet = <pkt_id = 1, pkt_type = 0>) {id = 3 : i64, metadata = @shim_in_3} : memref<4x64x64xi8>
 
-      aiex.npu.dma_memcpy_nd (%arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64]) {id = 4 : i64, metadata = @shim_out_0, issue_token = true} : memref<4x64x64xi8>
-      aiex.npu.dma_memcpy_nd (%arg2[%c0_i64, %c1_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64]) {id = 5 : i64, metadata = @shim_out_1, issue_token = true} : memref<4x64x64xi8>
-      aiex.npu.dma_memcpy_nd (%arg2[%c0_i64, %c2_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64]) {id = 6 : i64, metadata = @shim_out_2, issue_token = true} : memref<4x64x64xi8>
-      aiex.npu.dma_memcpy_nd (%arg2[%c0_i64, %c3_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64]) {id = 7 : i64, metadata = @shim_out_3, issue_token = true} : memref<4x64x64xi8>
+      aiex.npu.dma_memcpy_nd (%arg1[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64]) {id = 4 : i64, metadata = @shim_out_0, issue_token = true} : memref<4x64x64xi8>
+      aiex.npu.dma_memcpy_nd (%arg1[%c0_i64, %c1_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64]) {id = 5 : i64, metadata = @shim_out_1, issue_token = true} : memref<4x64x64xi8>
+      aiex.npu.dma_memcpy_nd (%arg1[%c0_i64, %c2_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64]) {id = 6 : i64, metadata = @shim_out_2, issue_token = true} : memref<4x64x64xi8>
+      aiex.npu.dma_memcpy_nd (%arg1[%c0_i64, %c3_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64]) {id = 7 : i64, metadata = @shim_out_3, issue_token = true} : memref<4x64x64xi8>
       aiex.npu.dma_wait { symbol = @shim_out_0 }
       aiex.npu.dma_wait { symbol = @shim_out_1 }
       aiex.npu.dma_wait { symbol = @shim_out_2 }

@@ -16,7 +16,7 @@ module {
 
       // TXN header 0.1
       // CHECK: 06030100
-      // CHECK: 00000105
+      // CHECK: 00000104
       // CHECK: 00000006
       // CHECK: 000000CC
 

@@ -8,7 +8,7 @@
 // RUN: aie-opt --verify-diagnostics --aie-materialize-bd-chains %s
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
     // expected-error@+1 {{unreachable}}

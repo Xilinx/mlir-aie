@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# Copyright (C) 2024-2025, Advanced Micro Devices, Inc.
 import numpy as np
 import sys
 
@@ -435,7 +435,7 @@ def bottleneck4AIEs():
                     wts_buf_01.release(ObjectFifoPort.Consume, 1)
 
             # # 1x1 conv2d and add skip
-            @core(ComputeTile4, "conv2dk1_skip.o")
+            @core(ComputeTile4, "conv2dk1_skip.o", stack_size=0xA00)
             def core_body():
                 for _ in range_(sys.maxsize):
 

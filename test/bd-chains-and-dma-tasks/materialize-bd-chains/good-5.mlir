@@ -8,7 +8,7 @@
 // RUN: aie-opt --aie-materialize-bd-chains %s | FileCheck %s
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
 
     aie.shim_dma_allocation @alloc0 (MM2S, 0, 0)

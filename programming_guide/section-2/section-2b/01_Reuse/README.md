@@ -16,7 +16,7 @@ It is important to note that each new acquire function will return a new object 
 
 In the example below `of0` is created with a depth of 3 objects: object0, object1, and object2. The process running on the consumer Worker is showcased in the next figure and explained in-depth below.
 ```python
-of0 = ObjectFifo(line_type, name="objfifo0", default_depth=3) # 3 objects: object0, object1, object2
+of0 = ObjectFifo(line_type, name="objfifo0", depth=3) # 3 objects: object0, object1, object2
 
 # External, binary kernel definition
 test_fn2 = Kernel(
@@ -60,7 +60,7 @@ The figure below represents the status of the system in each of the marked situa
 The situations above can be fused into a `for`-loop with 4 iterations. By continuously releasing one less element than it acquired every iteration, the consumer process is implementing the behaviour of a sliding window with 2 objects that slides down by 1 in each iteration:
 ```python
 # Dataflow with ObjectFifos
-of0 = ObjectFifo(line_type, name="objfifo0", default_depth=3) # 3 objects: object0, object1, object2
+of0 = ObjectFifo(line_type, name="objfifo0", depth=3) # 3 objects: object0, object1, object2
 
 # External, binary kernel definition
 test_fn2 = Kernel(
