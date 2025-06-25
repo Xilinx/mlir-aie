@@ -1280,6 +1280,31 @@ Similar to UseLockOp, this operation can be understood as "blocking" op.
 
 
 
+## Types
+
+### BlockFloatType
+
+_AIEX type representing a block floating point type._
+
+Syntax:
+
+```
+!aiex.bfp<
+  ::llvm::StringRef   # block_type
+>
+```
+
+This is a type representing a block floating point.
+It is meant to eventually be lowered into a standard type further down the pipeline.
+It the meantime, it can be used for blocked fp related dataflow adaptations.
+Available types are v8bfp16ebs8 and v16bfp16ebs16.
+
+#### Parameters:
+
+| Parameter | C++ type | Description |
+| :-------: | :-------: | ----------- |
+| block_type | `::llvm::StringRef` |  |
+
 ## Enums
 
 ### AIEArch

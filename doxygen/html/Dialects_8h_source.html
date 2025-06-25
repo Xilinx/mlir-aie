@@ -69,43 +69,53 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00009" name="l00009"></a><span class="lineno">    9</span><span class="preprocessor">#define AIE_C_DIALECTS_H</span></div>
 <div class="line"><a id="l00010" name="l00010"></a><span class="lineno">   10</span> </div>
 <div class="line"><a id="l00011" name="l00011"></a><span class="lineno">   11</span><span class="preprocessor">#include &quot;mlir-c/IR.h&quot;</span></div>
-<div class="line"><a id="l00012" name="l00012"></a><span class="lineno">   12</span> </div>
-<div class="line"><a id="l00013" name="l00013"></a><span class="lineno">   13</span><span class="preprocessor">#ifdef __cplusplus</span></div>
-<div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span><span class="keyword">extern</span> <span class="stringliteral">&quot;C&quot;</span> {</div>
-<div class="line"><a id="l00015" name="l00015"></a><span class="lineno">   15</span><span class="preprocessor">#endif</span></div>
-<div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span> </div>
-<div class="line"><a id="l00017" name="l00017"></a><span class="lineno"><a class="line" href="Dialects_8h.html#ae3b23c279fbb6681c0011f178d07ce53">   17</a></span><a class="code hl_function" href="Dialects_8h.html#ae3b23c279fbb6681c0011f178d07ce53">MLIR_DECLARE_CAPI_DIALECT_REGISTRATION</a>(AIE, aie);</div>
-<div class="line"><a id="l00018" name="l00018"></a><span class="lineno"><a class="line" href="Dialects_8h.html#a07a31e0e6acae334b599847a9b97f5d5">   18</a></span><a class="code hl_function" href="Dialects_8h.html#ae3b23c279fbb6681c0011f178d07ce53">MLIR_DECLARE_CAPI_DIALECT_REGISTRATION</a>(AIEVec, aievec);</div>
-<div class="line"><a id="l00019" name="l00019"></a><span class="lineno"><a class="line" href="Dialects_8h.html#a024ec313b93f58fb08a89c9703d39427">   19</a></span><a class="code hl_function" href="Dialects_8h.html#ae3b23c279fbb6681c0011f178d07ce53">MLIR_DECLARE_CAPI_DIALECT_REGISTRATION</a>(AIEX, aiex);</div>
-<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span> </div>
-<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span><span class="comment">//===---------------------------------------------------------------------===//</span></div>
-<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span><span class="comment">// ObjectFifoType</span></div>
-<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span><span class="comment">//===---------------------------------------------------------------------===//</span></div>
-<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span> </div>
-<div class="line"><a id="l00025" name="l00025"></a><span class="lineno"><a class="line" href="Dialects_8h.html#aed48f15f30936447c784dc368fa6bc90">   25</a></span>MLIR_CAPI_EXPORTED <span class="keywordtype">bool</span> <a class="code hl_function" href="Dialects_8h.html#aed48f15f30936447c784dc368fa6bc90">aieTypeIsObjectFifoType</a>(MlirType type);</div>
-<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span>MLIR_CAPI_EXPORTED MlirType <a class="code hl_function" href="Dialects_8h.html#ac1e455d357ee3bf40c8a80b35f61068f">aieObjectFifoTypeGet</a>(MlirType type);</div>
-<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span> </div>
-<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span><span class="comment">//===---------------------------------------------------------------------===//</span></div>
-<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span><span class="comment">// ObjectFifoSubviewType</span></div>
-<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span><span class="comment">//===---------------------------------------------------------------------===//</span></div>
-<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span> </div>
-<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span>MLIR_CAPI_EXPORTED <span class="keywordtype">bool</span> <a class="code hl_function" href="Dialects_8h.html#a5229105b1c80aa09409c770ee4b00cfe">aieTypeIsObjectFifoSubviewType</a>(MlirType type);</div>
-<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>MLIR_CAPI_EXPORTED MlirType <a class="code hl_function" href="Dialects_8h.html#aabd8d1465395e0cca2463a92d5a2c038">aieObjectFifoSubviewTypeGet</a>(MlirType type);</div>
-<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span> </div>
-<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span><span class="preprocessor">#ifdef __cplusplus</span></div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>}</div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span><span class="preprocessor">#endif</span></div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span> </div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span><span class="preprocessor">#endif </span><span class="comment">// AIE_C_DIALECTS_H</span></div>
-<div class="ttc" id="aDialects_8h_html_a5229105b1c80aa09409c770ee4b00cfe"><div class="ttname"><a href="Dialects_8h.html#a5229105b1c80aa09409c770ee4b00cfe">aieTypeIsObjectFifoSubviewType</a></div><div class="ttdeci">MLIR_CAPI_EXPORTED bool aieTypeIsObjectFifoSubviewType(MlirType type)</div><div class="ttdef"><b>Definition</b> <a href="Dialects_8cpp_source.html#l00043">Dialects.cpp:43</a></div></div>
-<div class="ttc" id="aDialects_8h_html_aabd8d1465395e0cca2463a92d5a2c038"><div class="ttname"><a href="Dialects_8h.html#aabd8d1465395e0cca2463a92d5a2c038">aieObjectFifoSubviewTypeGet</a></div><div class="ttdeci">MLIR_CAPI_EXPORTED MlirType aieObjectFifoSubviewTypeGet(MlirType type)</div><div class="ttdef"><b>Definition</b> <a href="Dialects_8cpp_source.html#l00047">Dialects.cpp:47</a></div></div>
-<div class="ttc" id="aDialects_8h_html_ac1e455d357ee3bf40c8a80b35f61068f"><div class="ttname"><a href="Dialects_8h.html#ac1e455d357ee3bf40c8a80b35f61068f">aieObjectFifoTypeGet</a></div><div class="ttdeci">MLIR_CAPI_EXPORTED MlirType aieObjectFifoTypeGet(MlirType type)</div><div class="ttdef"><b>Definition</b> <a href="Dialects_8cpp_source.html#l00034">Dialects.cpp:34</a></div></div>
+<div class="line"><a id="l00012" name="l00012"></a><span class="lineno">   12</span><span class="preprocessor">#include &lt;string&gt;</span></div>
+<div class="line"><a id="l00013" name="l00013"></a><span class="lineno">   13</span> </div>
+<div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span><span class="preprocessor">#ifdef __cplusplus</span></div>
+<div class="line"><a id="l00015" name="l00015"></a><span class="lineno">   15</span><span class="keyword">extern</span> <span class="stringliteral">&quot;C&quot;</span> {</div>
+<div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span><span class="preprocessor">#endif</span></div>
+<div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span> </div>
+<div class="line"><a id="l00018" name="l00018"></a><span class="lineno"><a class="line" href="Dialects_8h.html#ae3b23c279fbb6681c0011f178d07ce53">   18</a></span><a class="code hl_function" href="Dialects_8h.html#ae3b23c279fbb6681c0011f178d07ce53">MLIR_DECLARE_CAPI_DIALECT_REGISTRATION</a>(AIE, aie);</div>
+<div class="line"><a id="l00019" name="l00019"></a><span class="lineno"><a class="line" href="Dialects_8h.html#a07a31e0e6acae334b599847a9b97f5d5">   19</a></span><a class="code hl_function" href="Dialects_8h.html#ae3b23c279fbb6681c0011f178d07ce53">MLIR_DECLARE_CAPI_DIALECT_REGISTRATION</a>(AIEVec, aievec);</div>
+<div class="line"><a id="l00020" name="l00020"></a><span class="lineno"><a class="line" href="Dialects_8h.html#a024ec313b93f58fb08a89c9703d39427">   20</a></span><a class="code hl_function" href="Dialects_8h.html#ae3b23c279fbb6681c0011f178d07ce53">MLIR_DECLARE_CAPI_DIALECT_REGISTRATION</a>(AIEX, aiex);</div>
+<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span> </div>
+<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span><span class="comment">//===---------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span><span class="comment">// ObjectFifoType</span></div>
+<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span><span class="comment">//===---------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span> </div>
+<div class="line"><a id="l00026" name="l00026"></a><span class="lineno"><a class="line" href="Dialects_8h.html#aed48f15f30936447c784dc368fa6bc90">   26</a></span>MLIR_CAPI_EXPORTED <span class="keywordtype">bool</span> <a class="code hl_function" href="Dialects_8h.html#aed48f15f30936447c784dc368fa6bc90">aieTypeIsObjectFifoType</a>(MlirType type);</div>
+<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span>MLIR_CAPI_EXPORTED MlirType <a class="code hl_function" href="Dialects_8h.html#ac1e455d357ee3bf40c8a80b35f61068f">aieObjectFifoTypeGet</a>(MlirType type);</div>
+<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span> </div>
+<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span><span class="comment">//===---------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span><span class="comment">// ObjectFifoSubviewType</span></div>
+<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span><span class="comment">//===---------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span> </div>
+<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>MLIR_CAPI_EXPORTED <span class="keywordtype">bool</span> <a class="code hl_function" href="Dialects_8h.html#a5229105b1c80aa09409c770ee4b00cfe">aieTypeIsObjectFifoSubviewType</a>(MlirType type);</div>
+<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>MLIR_CAPI_EXPORTED MlirType <a class="code hl_function" href="Dialects_8h.html#aabd8d1465395e0cca2463a92d5a2c038">aieObjectFifoSubviewTypeGet</a>(MlirType type);</div>
+<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span> </div>
+<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span><span class="comment">//===---------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span><span class="comment">// BlockFloatType</span></div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span><span class="comment">//===---------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span> </div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>MLIR_CAPI_EXPORTED <span class="keywordtype">bool</span> <a class="code hl_function" href="Dialects_8h.html#a9b14f076239c37299573b2f2a23d05ef">aieTypeIsBlockFloatType</a>(MlirType type);</div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>MLIR_CAPI_EXPORTED MlirType <a class="code hl_function" href="Dialects_8h.html#a628ca2e7807a1752340cb1b424ebda53">aieBlockFloatTypeGet</a>(MlirContext ctx, <span class="keyword">const</span> std::string&amp; blockType);</div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span> </div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span><span class="preprocessor">#ifdef __cplusplus</span></div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>}</div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span><span class="preprocessor">#endif</span></div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span> </div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span><span class="preprocessor">#endif </span><span class="comment">// AIE_C_DIALECTS_H</span></div>
+<div class="ttc" id="aDialects_8h_html_a5229105b1c80aa09409c770ee4b00cfe"><div class="ttname"><a href="Dialects_8h.html#a5229105b1c80aa09409c770ee4b00cfe">aieTypeIsObjectFifoSubviewType</a></div><div class="ttdeci">MLIR_CAPI_EXPORTED bool aieTypeIsObjectFifoSubviewType(MlirType type)</div><div class="ttdef"><b>Definition</b> <a href="Dialects_8cpp_source.html#l00045">Dialects.cpp:45</a></div></div>
+<div class="ttc" id="aDialects_8h_html_a628ca2e7807a1752340cb1b424ebda53"><div class="ttname"><a href="Dialects_8h.html#a628ca2e7807a1752340cb1b424ebda53">aieBlockFloatTypeGet</a></div><div class="ttdeci">MLIR_CAPI_EXPORTED MlirType aieBlockFloatTypeGet(MlirContext ctx, const std::string &amp;blockType)</div><div class="ttdef"><b>Definition</b> <a href="Dialects_8cpp_source.html#l00062">Dialects.cpp:62</a></div></div>
+<div class="ttc" id="aDialects_8h_html_a9b14f076239c37299573b2f2a23d05ef"><div class="ttname"><a href="Dialects_8h.html#a9b14f076239c37299573b2f2a23d05ef">aieTypeIsBlockFloatType</a></div><div class="ttdeci">MLIR_CAPI_EXPORTED bool aieTypeIsBlockFloatType(MlirType type)</div><div class="ttdef"><b>Definition</b> <a href="Dialects_8cpp_source.html#l00058">Dialects.cpp:58</a></div></div>
+<div class="ttc" id="aDialects_8h_html_aabd8d1465395e0cca2463a92d5a2c038"><div class="ttname"><a href="Dialects_8h.html#aabd8d1465395e0cca2463a92d5a2c038">aieObjectFifoSubviewTypeGet</a></div><div class="ttdeci">MLIR_CAPI_EXPORTED MlirType aieObjectFifoSubviewTypeGet(MlirType type)</div><div class="ttdef"><b>Definition</b> <a href="Dialects_8cpp_source.html#l00049">Dialects.cpp:49</a></div></div>
+<div class="ttc" id="aDialects_8h_html_ac1e455d357ee3bf40c8a80b35f61068f"><div class="ttname"><a href="Dialects_8h.html#ac1e455d357ee3bf40c8a80b35f61068f">aieObjectFifoTypeGet</a></div><div class="ttdeci">MLIR_CAPI_EXPORTED MlirType aieObjectFifoTypeGet(MlirType type)</div><div class="ttdef"><b>Definition</b> <a href="Dialects_8cpp_source.html#l00036">Dialects.cpp:36</a></div></div>
 <div class="ttc" id="aDialects_8h_html_ae3b23c279fbb6681c0011f178d07ce53"><div class="ttname"><a href="Dialects_8h.html#ae3b23c279fbb6681c0011f178d07ce53">MLIR_DECLARE_CAPI_DIALECT_REGISTRATION</a></div><div class="ttdeci">MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(AIE, aie)</div></div>
 <div class="ttc" id="aDialects_8h_html_aed48f15f30936447c784dc368fa6bc90"><div class="ttname"><a href="Dialects_8h.html#aed48f15f30936447c784dc368fa6bc90">aieTypeIsObjectFifoType</a></div><div class="ttdeci">MLIR_CAPI_EXPORTED bool aieTypeIsObjectFifoType(MlirType type)</div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Jun 25 2025 14:24:35 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Jun 25 2025 14:56:29 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

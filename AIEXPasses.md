@@ -100,6 +100,13 @@ Inlines pre-defined `aie.bd_chains` at `aiex.start_task` use sites to become `ai
 
 _Replace symbolic references to `aie.shim_dma_allocation` ops with their `(tile, direction, channel)` triple_
 
+### `-aie-transform-bfp-types`
+
+_Transform bfp types to standard builtin types_
+
+Lowers bfp types to standard builtin types.
+Adapts operations as necessary to accomodate for bfp data movement.
+
 ### `-aiex-standard-lowering`
 
 _Lower AIEX operations_
