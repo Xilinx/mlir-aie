@@ -468,7 +468,7 @@ def my_matmul(
                         #     |                |
                         #     |                |
                         #      ----------------
-                        tile_offset = ((row_base + tile_row) * n_aie_cols + col) % len(
+                        tile_offset = ((row_base + tile_row) * n_shim_mem_A + col) % len(
                             A_tiles
                         )
 

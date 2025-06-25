@@ -317,6 +317,9 @@ public:
   // their corresponding lengths in bytes (second).
   virtual std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const = 0;
+
+  // Returns true if the target model supports the given block format.
+  virtual bool isSupportedBlockFormat(std::string const &format) const;
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -691,6 +694,8 @@ public:
 
   std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const override;
+
+  bool isSupportedBlockFormat(std::string const &format) const override;
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU2 &&
