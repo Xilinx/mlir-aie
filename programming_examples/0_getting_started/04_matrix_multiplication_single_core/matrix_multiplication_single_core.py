@@ -26,8 +26,8 @@ if len(sys.argv) != 2 or sys.argv[1] not in devices:
     sys.exit(1)
 device = devices[sys.argv[1]]
 
-M, K, N = 32, 32, 32  # Problem size
-m, k, n = 16, 16, 16  # Tile size
+M, K, N = 512, 512, 512  # Problem size
+m, k, n = 64, 64, 64  # Tile size
 r, s, t = 8, 2, 8  # Intrinsic size
 
 

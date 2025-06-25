@@ -1,8 +1,11 @@
 #include <aie_api/aie.hpp>
 
-constexpr unsigned m = 16;
-constexpr unsigned k = 16;
-constexpr unsigned n = 16;
+// Make sure the following tile and intrinsic sizes match the sizes in the
+// data layout transformations described in 
+// matrix_multiplication_single_core.py.
+constexpr unsigned m = 64;
+constexpr unsigned k = 64;
+constexpr unsigned n = 64;
 constexpr unsigned r = 8;
 constexpr unsigned s = 2;
 constexpr unsigned t = 8;
@@ -12,10 +15,8 @@ using MMUL = aie::mmul<r, s, t, int16, int16>;
 extern "C" {
 
 void zero(int16 *__restrict C) {
-    for(unsigned row = 0; row < m; row += r) {
-        for(unsigned col = 0; col < n; col += t) {
-            aie::store_v(C + (row * n + col) * MMUL::size_C, aie::zeros<int16, MMUL::size_C>());
-        }
+    for(unsigned i = 0; i < m * n; i += MMUL::size_C) {
+        aie::store_v(C + i, aie::zeros<int16, MMUL::size_C>());
     }
 }
 
@@ -51,6 +52,28 @@ void matrix_multiplication(const int16 *__restrict A, const int16 *__restrict B,
             aie::store_v(C + ((row + 0) * (n / t) + (col + 1)) * MMUL::size_C, C01.template to_vector<int16>());
             aie::store_v(C + ((row + 1) * (n / t) + (col + 0)) * MMUL::size_C, C10.template to_vector<int16>());
             aie::store_v(C + ((row + 1) * (n / t) + (col + 1)) * MMUL::size_C, C11.template to_vector<int16>());
+        }
+    }
+}
+
+void matrix_multiplication_scalar(const int16 *__restrict A, const int16 *__restrict B, int16 *__restrict C) {
+    for(unsigned tile_row = 0; tile_row < m / r; tile_row += 1) {
+        for(unsigned tile_col = 0; tile_col < n / t; tile_col += 1) {
+            for(unsigned tile_i = 0; tile_i < k / s; tile_i += 1) {
+
+                const int16 *A_base = A + (tile_row * (k / s) + tile_i)   * r * s;
+                const int16 *B_base = B + (tile_i   * (n / t) + tile_col) * s * t;
+                int16 *C_base       = C + (tile_row * (n / t) + tile_col) * r * t;
+
+                for(unsigned row = 0; row < r; row += 1) {
+                    for(unsigned col = 0; col < t; col += 1) {
+                        for(unsigned i = 0; i < s; i += 1) {
+                            C_base[row * t + col] += A_base[row * s + i] * B_base[i * t + col];
+                        } 
+                    }
+                }
+
+            }
         }
     }
 }

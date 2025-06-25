@@ -18,9 +18,9 @@
 #include <xrt/xrt_device.h>
 #include <xrt/xrt_kernel.h>
 
-constexpr unsigned M = 32;
-constexpr unsigned K = 32;
-constexpr unsigned N = 32;
+constexpr unsigned M = 512;
+constexpr unsigned K = 512;
+constexpr unsigned N = 512;
 
 void reference(int16_t *A, int16_t *B, int16_t *C) {
     for(int row = 0; row < M; row++) {
@@ -92,14 +92,17 @@ int main(int argc, const char *argv[]) {
     int16_t *buf_c = bo_c.map<int16_t *>();
 
 	// Prepare input data (initialize random matrices) and sync to NPU
-	std::generate(buf_a, buf_a + size_a, []() { return rand() % 256; });
-    //for(unsigned i = 0; i < size_a; i++) {
-    //    buf_a[i] = i;
-    //}
-	std::generate(buf_b, buf_b + size_b, []() { return rand() % 256; });
-    //for(unsigned i = 0; i < size_b; i++) {
-    //    buf_b[i] = (i / K == i % K ? 1 : 0);
-    //}
+    // Initialize A matrix to monotonically increasing values.
+    for(unsigned i = 0; i < size_a; i++) {
+        buf_a[i] = i;
+    }
+    // Initialize B matrix as the identity matrix.
+    for(unsigned i = 0; i < size_b; i++) {
+        buf_b[i] = (i / K == i % K ? 1 : 0);
+    }
+    // Alternatively, we could also initialize the matrices to random values:
+	// std::generate(buf_a, buf_a + size_a, []() { return rand() % 256; });
+	// std::generate(buf_b, buf_b + size_b, []() { return rand() % 256; });
 	std::fill(buf_c, buf_c + size_c, 0);
     bo_insts.sync(XCL_BO_SYNC_BO_TO_DEVICE);
     bo_a.sync(XCL_BO_SYNC_BO_TO_DEVICE);
