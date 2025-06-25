@@ -85,7 +85,8 @@ AIE_LOWER_TO_LLVM = (
             "aie.device",
             Pipeline()
             .add_pass("aie-localize-locks")
-            .add_pass("aie-normalize-address-spaces"),
+            .add_pass("aie-normalize-address-spaces")
+            .add_pass("aie-transform-bfp-types"),
         )
         .add_pass("aie-standard-lowering", tilecol=col, tilerow=row)
         .add_pass("aiex-standard-lowering")
