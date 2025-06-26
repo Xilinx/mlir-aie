@@ -245,4 +245,13 @@ def AIETxnToControlPacket : Pass<"aie-txn-to-ctrl-packet", "AIE::DeviceOp"> {
   ];
 }
 
+def AIELegalizeControlPacket : Pass<"aie-legalize-ctrl-packet", "AIE::DeviceOp"> {
+  let summary = "Legalize control packet operations for target";
+
+  let constructor = "xilinx::AIEX::createAIELegalizeControlPacketPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
 #endif
