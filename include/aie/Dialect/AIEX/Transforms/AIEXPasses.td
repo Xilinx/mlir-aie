@@ -235,4 +235,14 @@ def AIETransformBfpTypes : Pass<"aie-transform-bfp-types", "AIE::DeviceOp"> {
   ];
 }
 
+def AIETxnToControlPacket : Pass<"aie-txn-to-ctrl-packet", "AIE::DeviceOp"> {
+  let summary = "Convert transaction operations to control packet operations";
+
+  let constructor = "xilinx::AIEX::createAIETxnToControlPacketPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 #endif
