@@ -282,7 +282,7 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
 More on the runtime parameters and barriers in [Section 2d](../section-2/section-2d/RuntimeTasks.md) of the programming guide and in the [worker.py](../../python/iron/worker.py).
 
 ## <u>Exercises</u>
-1. Familiarize yourself with [exercise_4](./exercise_4/exercise_4.py). Modify line 89 by setting: `USE_INPUT_VEC = False`. Run `python3 exercise_4.py`.
+1. Familiarize yourself with [exercise_4](./exercise_4/exercise_4.py). Modify line 85 by setting: `USE_INPUT_VEC = False`. Run `python3 exercise_4.py`.
 
 2. The design fails because the Worker reads the RTP before the runtime sets it. Modify the code in [exercise_4](./exercise_4/exercise_4.py) such that the Worker uses a `WorkerRuntimeBarrier` to wait for the RTP to be set.
 

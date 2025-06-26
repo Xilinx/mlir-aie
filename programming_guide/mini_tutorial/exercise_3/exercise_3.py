@@ -17,48 +17,22 @@ import aie.iron as iron
 
 
 @iron.jit(is_placed=False)
-<<<<<<< HEAD
 def exercise_3(input0, output):
-    num_elements = output.numel()
-    data_type = output.dtype
-    tile_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
-
-    # Dataflow with ObjectFifos
-    of_in = ObjectFifo(tile_ty, name="in")
-    of_out = ObjectFifo(tile_ty, name="out")
-
-=======
-def exercise_3(output):
     data_size = output.numel()
     element_type = output.dtype
     data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
 
     # Dataflow with ObjectFifos
+    of_in = ObjectFifo(data_ty, name="in")
     of_out = ObjectFifo(data_ty, name="out")
 
-    # Runtime parameters
-    rtps = []
-    rtps.append(
-        GlobalBuffer(
-            data_ty,
-            name=f"rtp",
-            use_write_rtp=True,
-        )
-    )
-
->>>>>>> 2cf6582df15d38ac491407ff2826bda153656e43
     # Task for the core to perform
     def core_fn(of_in, of_out):
         elem_in = of_in.acquire(1)
         elem_out = of_out.acquire(1)
-<<<<<<< HEAD
-        for i in range_(num_elements):
+        for i in range_(data_size):
             elem_out[i] = elem_in[i]
         of_in.release(1)
-=======
-        for i in range_(data_size):
-            elem_out[i] = rtp[i]
->>>>>>> 2cf6582df15d38ac491407ff2826bda153656e43
         of_out.release(1)
 
     # Create a worker to perform the task
@@ -66,20 +40,7 @@ def exercise_3(output):
 
     # To/from AIE-array runtime data movement
     rt = Runtime()
-<<<<<<< HEAD
-    with rt.sequence(tile_ty, tile_ty) as (a_in, c_out):
-=======
-    with rt.sequence(data_ty) as (c_out):
-        # Set runtime parameters
-        def set_rtps(*args):
-            for rtp in args:
-                for i in range(
-                    data_size
-                ):  # note difference with range_ in the Worker
-                    rtp[i] = i
-
-        rt.inline_ops(set_rtps, rtps)
->>>>>>> 2cf6582df15d38ac491407ff2826bda153656e43
+    with rt.sequence(data_ty, data_ty) as (a_in, c_out):
         rt.start(my_worker)
         rt.fill(of_in.prod(), a_in)
         rt.drain(of_out.cons(), c_out, wait=True)

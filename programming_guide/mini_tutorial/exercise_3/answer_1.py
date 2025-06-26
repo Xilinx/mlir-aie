@@ -1,4 +1,4 @@
-# answer_2.py -*- Python -*-
+# answer_1.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -17,37 +17,33 @@ import aie.iron as iron
 
 
 @iron.jit(is_placed=False)
-def exercise_3(input0, input1, output):
+def exercise_3(input0, output):
     data_size = output.numel()
     element_type = output.dtype
     data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
 
     # Dataflow with ObjectFifos
-    of_in_A = ObjectFifo(data_ty, name="inA")
-    of_in_B = ObjectFifo(data_ty, name="inB")
+    of_in = ObjectFifo(data_ty, name="in")
     of_out = ObjectFifo(data_ty, name="out")
 
     # Task for the core to perform
-    def core_fn(of_in_A, of_in_B, of_out):
-        elem_in_A = of_in_A.acquire(1)
-        elem_in_B = of_in_B.acquire(1)
+    def core_fn(of_in, of_out):
+        elem_in = of_in.acquire(1)
         elem_out = of_out.acquire(1)
         for i in range_(data_size):
-            elem_out[i] = elem_in_A[i] + elem_in_B[i]
-        of_in_A.release(1)
-        of_in_B.release(1)
+            elem_out[i] = elem_in[i]
+        of_in.release(1)
         of_out.release(1)
 
     # Create a worker to perform the task
-    my_worker = Worker(core_fn, [of_in_A.cons(), of_in_B.cons(), of_out.prod()])
+    my_worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
 
     # To/from AIE-array runtime data movement
     rt = Runtime()
-    with rt.sequence(data_ty, data_ty, data_ty) as (a_in, b_in, c_out):
+    with rt.sequence(data_ty, data_ty) as (a_in, c_out):
         rt.start(my_worker)
-        rt.fill(of_in_A.prod(), a_in)
-        rt.fill(of_in_B.prod(), b_in)
         rt.drain(of_out.cons(), c_out, wait=True)
+        rt.fill(of_in.prod(), a_in)
 
     # Create the program from the device type and runtime
     my_program = Program(iron.get_current_device(), rt)
@@ -64,23 +60,22 @@ def main():
     # Construct an input tensor and an output zeroed tensor
     # The two tensors are in memory accessible to the NPU
     input0 = iron.arange(data_size, dtype=element_type, device="npu")
-    input1 = iron.arange(data_size, dtype=element_type, device="npu")
     output = iron.zeros_like(input0)
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    exercise_3(input0, input1, output)
+    exercise_3(input0, output)
 
     # Check the correctness of the result
-    e = np.equal(input0.numpy() + input1.numpy(), output.numpy())
+    e = np.equal(input0.numpy(), output.numpy())
     errors = np.size(e) - np.count_nonzero(e)
 
     # Print the results
-    print(f"{'input0 + input1':>4} = {'output':>4}")
+    print(f"{'input0':>4} = {'output':>4}")
     print("-" * 34)
     count = input0.numel()
-    for idx, (a, b, c) in enumerate(zip(input0[:count], input1[:count], output[:count])):
-        print(f"{idx:2}: {a:4} + {b:4} = {c:4}")
+    for idx, (a, c) in enumerate(zip(input0[:count], output[:count])):
+        print(f"{idx:2}: {a:4} = {c:4}")
 
     # If the result is correct, exit with a success code.
     # Otherwise, exit with a failure code
