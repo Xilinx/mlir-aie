@@ -155,7 +155,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     # Define a worker to run the task on a core
     workers = []
     for i in range(n_cores):
-        if (i != 0 and n_cores > 1):
+        if i != 0 and n_cores > 1:
             workers.append(
                 Worker(
                     start_core_body,

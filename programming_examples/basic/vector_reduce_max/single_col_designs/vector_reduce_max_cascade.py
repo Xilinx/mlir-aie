@@ -100,8 +100,9 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
             reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
             compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
             of_in.release(1)
-        elem_out=nextC_buffer
+        elem_out = nextC_buffer
         of_out.release(1)
+
     def core_body(of_in, of_out, in0, reduce_max_vector, compute_max):
         nextC_buffer = LocalBuffer(
             type=np.ndarray[(out_tensor_size,), np.dtype[out_dtype]],
@@ -127,7 +128,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     # Define a worker to run the task on a core
     workers = []
     for i in range(n_cores):
-        if i != n_cores-1:
+        if i != n_cores - 1:
             workers.append(
                 Worker(
                     core_body,

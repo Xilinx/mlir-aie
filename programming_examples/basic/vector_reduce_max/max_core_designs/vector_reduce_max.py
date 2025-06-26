@@ -142,47 +142,33 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     # Define a worker to run the task on a core
     workers = []
     for i in range(n_cores):
-        if n_cores < 4:
-            if i == 1:
-                # Build list of input fifos based on n_cores
-                fifo_args = [inA_fifos[i].cons(), outC_fifos[i].prod()]
-                for j in range(n_cores - 1):
-                    if j < i:
-                        fifo_args.append(outC_fifos[j].cons())
-                    else:
-                        fifo_args.append(outC_fifos[j + 1].cons())
-                fifo_args.extend([reduce_max_vector, compute_max])
+        if i == 1:
+            # Build list of input fifos based on n_cores
+            fifo_args = [inA_fifos[i].cons(), outC_fifos[i].prod()]
+            for j in range(n_cores - 1):
+                if j < i:
+                    fifo_args.append(outC_fifos[j].cons())
+                else:
+                    fifo_args.append(outC_fifos[j + 1].cons())
+            fifo_args.extend([reduce_max_vector, compute_max])
 
-                workers.append(
-                    Worker(
-                        core_body,
-                        fn_args=fifo_args,
-                        trace=enable_trace,
-                    )
-                )
-            else:
-                workers.append(
-                    Worker(
-                        start_core_body,
-                        fn_args=[
-                            inA_fifos[i].cons(),
-                            outC_fifos[i].prod(),
-                            reduce_max_vector,
-                            compute_max,
-                        ],
-                        trace=enable_trace,
-                    )
-                )
-        else:
             workers.append(
                 Worker(
                     core_body,
+                    fn_args=fifo_args,
+                    trace=enable_trace,
+                )
+            )
+        else:
+            workers.append(
+                Worker(
+                    start_core_body,
                     fn_args=[
                         inA_fifos[i].cons(),
                         outC_fifos[i].prod(),
-                    ]
-                    + [outC_fifos[j].cons() for j in range(n_cores) if j != i]
-                    + [reduce_max_vector, compute_max],
+                        reduce_max_vector,
+                        compute_max,
+                    ],
                     trace=enable_trace,
                 )
             )
