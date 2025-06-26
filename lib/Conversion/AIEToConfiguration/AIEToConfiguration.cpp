@@ -18,8 +18,9 @@
 #include "llvm/Support/Debug.h"
 
 extern "C" {
-#include "xaiengine/xaie_txn.h"
 #include "xaiengine/xaiegbl_defs.h"
+// above needs to go first for u32, u64 typedefs
+#include "xaiengine/xaie_txn.h"
 }
 
 #include <vector>
