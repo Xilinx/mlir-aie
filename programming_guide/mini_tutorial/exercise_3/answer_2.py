@@ -79,7 +79,9 @@ def main():
     print(f"{'input0 + input1':>4} = {'output':>4}")
     print("-" * 34)
     count = input0.numel()
-    for idx, (a, b, c) in enumerate(zip(input0[:count], input1[:count], output[:count])):
+    for idx, (a, b, c) in enumerate(
+        zip(input0[:count], input1[:count], output[:count])
+    ):
         print(f"{idx:2}: {a:4} + {b:4} = {c:4}")
 
     # If the result is correct, exit with a success code.
