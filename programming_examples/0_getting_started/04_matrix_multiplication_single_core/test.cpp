@@ -34,15 +34,6 @@ void reference(int16_t *A, int16_t *B, int16_t *C) {
     }   
 }
 
-void print_matrix(unsigned n_rows, unsigned n_cols, int16_t *matrix) {
-    for (unsigned row = 0; row < n_rows; row++) {
-        for (unsigned col = 0; col < n_cols; col++) {
-            std::cout << std::setw(6) << matrix[row * n_cols + col] << " ";
-        }
-        std::cout << std::endl;
-    }
-}
-
 int read_insts(std::string insts_path, std::vector<char>& into) {
 	std::ifstream insts_file(insts_path, std::ios::binary);
 	if (!insts_file) {
@@ -92,17 +83,8 @@ int main(int argc, const char *argv[]) {
     int16_t *buf_c = bo_c.map<int16_t *>();
 
 	// Prepare input data (initialize random matrices) and sync to NPU
-    // Initialize A matrix to monotonically increasing values.
-    for(unsigned i = 0; i < size_a; i++) {
-        buf_a[i] = i;
-    }
-    // Initialize B matrix as the identity matrix.
-    for(unsigned i = 0; i < size_b; i++) {
-        buf_b[i] = (i / K == i % K ? 1 : 0);
-    }
-    // Alternatively, we could also initialize the matrices to random values:
-	// std::generate(buf_a, buf_a + size_a, []() { return rand() % 256; });
-	// std::generate(buf_b, buf_b + size_b, []() { return rand() % 256; });
+	std::generate(buf_a, buf_a + size_a, []() { return rand() % 256; });
+	std::generate(buf_b, buf_b + size_b, []() { return rand() % 256; });
 	std::fill(buf_c, buf_c + size_c, 0);
     bo_insts.sync(XCL_BO_SYNC_BO_TO_DEVICE);
     bo_a.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -131,13 +113,6 @@ int main(int argc, const char *argv[]) {
 	// Validate correctness of output
 	int16_t *ref_c = static_cast<int16_t *>(std::malloc(M * N * sizeof(int16_t))); // reference output calculated on the CPU
 	reference(buf_a, buf_b, ref_c);
-
-    std::cout << std::endl;
-    std::cout << "Reference:" << std::endl;
-    print_matrix(M, N, ref_c);
-    std::cout << std::endl;
-    std::cout << "Output:" << std::endl;
-    print_matrix(M, N, buf_c);
 
 	if (std::equal(ref_c, ref_c + size_c, buf_c)) {
         std::cout << "PASS!" << std::endl;
