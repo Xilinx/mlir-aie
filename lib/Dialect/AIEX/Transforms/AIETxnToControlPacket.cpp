@@ -16,6 +16,8 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+#include <algorithm>
+
 #define DEBUG_TYPE "aie-txn-to-control"
 
 using namespace mlir;
@@ -70,9 +72,55 @@ struct BlockWriteToControlPacketPattern
   }
 };
 
-} // namespace
+/// Pattern to split control packets into smaller control packets
+struct ControlPacketSplitPattern
+    : public OpRewritePattern<AIEX::NpuControlPacketOp> {
+  using OpRewritePattern<AIEX::NpuControlPacketOp>::OpRewritePattern;
 
-namespace {
+  ControlPacketSplitPattern(MLIRContext *ctx, uint32_t max_payload_size)
+      : OpRewritePattern(ctx), max_payload_size(max_payload_size) {}
+
+  LogicalResult matchAndRewrite(AIEX::NpuControlPacketOp op,
+                                PatternRewriter &rewriter) const override {
+    auto data = op.getData();
+    if (!data)
+      return failure();
+
+    uint32_t numElements = op.getDataAttr().size();
+
+    if (numElements <= max_payload_size) {
+      return failure(); // No splitting needed
+    }
+
+    auto chunks = llvm::divideCeil(numElements, max_payload_size);
+    auto context = op.getContext();
+    auto loc = op.getLoc();
+    for (unsigned i = 0; i < chunks; ++i) {
+      uint32_t startIdx = i * max_payload_size;
+      uint32_t endIdx = std::min(startIdx + max_payload_size, numElements);
+
+      SmallVector<int32_t, 4> chunkData;
+      for (auto it = data->begin() + startIdx; it != data->begin() + endIdx;
+           ++it) {
+        chunkData.push_back(*it);
+      }
+
+      // Increment the address for each chunk
+      auto incrementedAddress = rewriter.getUI32IntegerAttr(
+          op.getAddress() + (i * 4 * sizeof(uint32_t)));
+
+      rewriter.create<AIEX::NpuControlPacketOp>(
+          loc, incrementedAddress, nullptr, op.getOpcodeAttr(),
+          op.getStreamIdAttr(), DenseI32ArrayAttr::get(context, chunkData));
+    }
+
+    rewriter.eraseOp(op);
+    return success();
+  }
+
+private:
+  uint32_t max_payload_size;
+};
 
 struct AIETxnToControlPacketPass
     : public AIEX::AIETxnToControlPacketBase<AIETxnToControlPacketPass> {
@@ -92,9 +140,35 @@ struct AIETxnToControlPacketPass
   }
 };
 
+struct AIELegalizeControlPacketPass
+    : public AIEX::AIELegalizeControlPacketBase<AIELegalizeControlPacketPass> {
+  void runOnOperation() override {
+    AIE::DeviceOp device = getOperation();
+
+    ConversionTarget target(getContext());
+    target.addDynamicallyLegalOp<AIEX::NpuControlPacketOp>([](Operation *op) {
+      auto packetOp = cast<AIEX::NpuControlPacketOp>(op);
+      // Check the data size
+      return packetOp.getDataAttr().size() <= 4;
+    });
+
+    RewritePatternSet patterns(&getContext());
+    patterns.add<ControlPacketSplitPattern>(&getContext(), 4);
+
+    if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
+      signalPassFailure();
+    }
+  }
+};
+
 } // namespace
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
 xilinx::AIEX::createAIETxnToControlPacketPass() {
   return std::make_unique<AIETxnToControlPacketPass>();
+}
+
+std::unique_ptr<OperationPass<AIE::DeviceOp>>
+xilinx::AIEX::createAIELegalizeControlPacketPass() {
+  return std::make_unique<AIELegalizeControlPacketPass>();
 }
