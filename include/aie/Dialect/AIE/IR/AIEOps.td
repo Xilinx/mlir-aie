@@ -1694,6 +1694,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         Variadic<Index>:$consumerTiles,
         AIE_ObjectFifo_Depth:$elemNumber,
         TypeAttrOf<AIE_ObjectFifoType>:$elemType,
+        OptionalAttr<I64ArrayAttr>:$offsets,
+        OptionalAttr<ArrayAttr>:$sliceTypes,
         BDDimLayoutArrayAttr:$dimensionsToStream,
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
         DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
@@ -1706,6 +1708,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         OptionalAttr<AIEI32Attr>:$via_shared_mem,
         // repeat_count==1 means "do it once"
         OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
+        OptionalAttr<I32ArrayAttr>:$stage_through_tile,
         InitValuesArrayAttr:$initValues,
         OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions
   );
@@ -1811,6 +1814,14 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     std::vector<int> getJoinTransferLengths();
     std::vector<int> getDistributeTransferLengths();
   }];
+  let builders = [
+    OpBuilder<(ins "mlir::ArrayAttr":$fifoIns, "mlir::ArrayAttr":$fifoOuts, "mlir::ArrayAttr":$src_offsets, "mlir::ArrayAttr":$dst_offsets, "bool":$isJoin, "bool":$isDistribute, "int":$repeatCount), [{
+      build($_builder, $_state, fifoIns, fifoOuts, src_offsets, dst_offsets);
+      $_state.addAttribute("isJoin", $_builder.getBoolAttr(isJoin));
+      $_state.addAttribute("isDistribute", $_builder.getBoolAttr(isDistribute));
+      $_state.addAttribute("repeatCount", $_builder.getI32IntegerAttr(repeatCount));
+    }]>
+  ];
 }
 
 def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectfifo.register_external_buffers", [

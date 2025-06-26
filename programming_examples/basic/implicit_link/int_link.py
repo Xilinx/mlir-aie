@@ -1,0 +1,138 @@
+# int_link.py -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+import numpy as np
+import sys
+
+from aie.dialects.aie import *
+from aie.dialects.aiex import *
+from aie.extras.context import mlir_mod_ctx
+from aie.helpers.dialects.ext.scf import _for as range_
+
+N = 4096
+dev = AIEDevice.npu1_1col
+col = 0
+line_size = 1024
+op_size = 512
+
+if len(sys.argv) > 1:
+    N = int(sys.argv[1])
+    assert N % line_size == 0
+
+if len(sys.argv) > 2:
+
+    if sys.argv[2] == "npu":
+        dev = AIEDevice.npu1_1col
+    elif sys.argv[2] == "xcvc1902":
+        dev = AIEDevice.xcvc1902
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
+
+if len(sys.argv) > 3:
+    col = int(sys.argv[3])
+
+
+def implicit_link():
+    with mlir_mod_ctx() as ctx:
+
+        @device(dev)
+        def device_body():
+            vector_ty = np.ndarray[(N,), np.dtype[np.int32]]
+            line_ty = np.ndarray[(line_size,), np.dtype[np.int32]]
+            op_ty = np.ndarray[(op_size,), np.dtype[np.int32]]
+
+            # Tile declarations
+            ShimTile = tile(col, 0)
+            MemTile = tile(col, 1)
+            ComputeTile2 = tile(col, 2)
+            ComputeTile3 = tile(col, 3)
+            tile_config = [
+                {
+                    "tile": ComputeTile2,
+                    "num_objects": 2,
+                    "offset": 0,
+                    "datatype": op_ty,
+                },
+                {
+                    "tile": ComputeTile3,
+                    "num_objects": 2,
+                    "offset": op_size,
+                    "datatype": op_ty,
+                },
+            ]
+            # AIE-array data movement with object fifos
+            of_in = object_fifo(
+                "in",
+                ShimTile,
+                tile_config,
+                2,
+                line_ty,
+            )
+            of_in.set_stage_through_tile(MemTile)
+
+            of_out1 = object_fifo("out1", ComputeTile2, MemTile, 2, op_ty)
+            of_out2 = object_fifo("out2", ComputeTile3, MemTile, 2, op_ty)
+            of_out = object_fifo("out", MemTile, ShimTile, 2, line_ty)
+            object_fifo_link([of_out1, of_out2], of_out, [0, op_size], [])
+
+            # Set up compute tiles
+
+            # Compute tile 2
+            @core(ComputeTile2)
+            def core_body():
+                for _ in range_(sys.maxsize):
+                    # Add 1 to the input data
+                    elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
+                    elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
+                    for i in range_(op_size):
+                        elem_out[i] = elem_in[i] + 1
+                    of_in.release(ObjectFifoPort.Consume, 1)
+                    of_out1.release(ObjectFifoPort.Produce, 1)
+
+            # Compute tile 3
+            @core(ComputeTile3)
+            def core_body():
+                for _ in range_(sys.maxsize):
+                    # Add 1 to the input data
+                    elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
+                    elem_out = of_out2.acquire(ObjectFifoPort.Produce, 1)
+                    for i in range_(op_size):
+                        elem_out[i] = elem_in[i] + 1
+                    of_in.release(ObjectFifoPort.Consume, 1)
+                    of_out2.release(ObjectFifoPort.Produce, 1)
+
+            # To/from AIE-array data movement
+            @runtime_sequence(vector_ty, vector_ty, vector_ty)
+            def sequence(A, B, C):
+                in_task = shim_dma_single_bd_task(
+                    of_in, A, sizes=[1, 1, 1, N], issue_token=True
+                )
+                out_task = shim_dma_single_bd_task(
+                    of_out, C, sizes=[1, 1, 1, N], issue_token=True
+                )
+                dma_start_task(in_task, out_task)
+                dma_await_task(in_task, out_task)
+
+    print(ctx.module)
+
+
+implicit_link()
+
+
+# Hierarchial data distribution using explicit link adn implicit link
+# mem_in1 -> Shimtile  to Mem_01
+# mem_in2 -> Mem_01  to compute_02
+# mem_in3 -> Mem_01  to compute_03
+# mem_in1 -> mem_in2 , mem_in3 // implicit_link
+
+# mem_out -> compute_03 to compute_04
+# mem_out -> mem_in3 // explicit_link
+
+# mem_out2 -> compute_02 to compute_05
+# mem_out2 -> mem_in2 // explicit_link
+
+# Neighboring MemTiles data movement
