@@ -9,68 +9,44 @@
 import sys
 import numpy as np
 
-from aie.iron import (
-    Program,
-    Runtime,
-    Worker,
-    ObjectFifo,
-    GlobalBuffer,
-    WorkerRuntimeBarrier,
-)
+from aie.iron import Program, Runtime, Worker, ObjectFifo
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
-
-from aie.extras.dialects.ext import arith
-from aie.helpers.util import np_ndarray_type_get_shape
-from aie.dialects.aie import T
 
 import aie.iron as iron
 
 
 @iron.jit(is_placed=False)
-def exercise_3(output):
+def exercise_3(input0, input1, output):
     data_size = output.numel()
     element_type = output.dtype
     data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
 
     # Dataflow with ObjectFifos
+    of_in_A = ObjectFifo(data_ty, name="inA")
+    of_in_B = ObjectFifo(data_ty, name="inB")
     of_out = ObjectFifo(data_ty, name="out")
 
-    # Runtime parameters
-    rtps = []
-    rtps.append(
-        GlobalBuffer(
-            data_ty,
-            name=f"rtp",
-            use_write_rtp=True,
-        )
-    )
-    # Worker runtime barriers
-    workerBarrier = WorkerRuntimeBarrier()
-
     # Task for the core to perform
-    def core_fn(rtp, of_out, barrier):
-        barrier.wait_for_value(1)
+    def core_fn(of_in_A, of_in_B, of_out):
+        elem_in_A = of_in_A.acquire(1)
+        elem_in_B = of_in_B.acquire(1)
         elem_out = of_out.acquire(1)
         for i in range_(data_size):
-            elem_out[i] = rtp[i]
+            elem_out[i] = elem_in_A[i] + elem_in_B[i]
+        of_in_A.release(1)
+        of_in_B.release(1)
         of_out.release(1)
 
     # Create a worker to perform the task
-    my_worker = Worker(core_fn, [rtps[0], of_out.prod(), workerBarrier])
+    my_worker = Worker(core_fn, [of_in_A.cons(), of_in_B.cons(), of_out.prod()])
 
     # To/from AIE-array runtime data movement
     rt = Runtime()
-    with rt.sequence(data_ty) as (c_out):
-        # Set runtime parameters
-        def set_rtps(*args):
-            for rtp in args:
-                for i in range(data_size):  # note difference with range_ in the Worker
-                    rtp[i] = i
-
-        rt.inline_ops(set_rtps, rtps)
-        rt.set_barrier(workerBarrier, 1)
+    with rt.sequence(data_ty, data_ty, data_ty) as (a_in, b_in, c_out):
         rt.start(my_worker)
+        rt.fill(of_in_A.prod(), a_in)
+        rt.fill(of_in_B.prod(), b_in)
         rt.drain(of_out.cons(), c_out, wait=True)
 
     # Create the program from the device type and runtime
@@ -88,24 +64,25 @@ def main():
     # Construct an input tensor and an output zeroed tensor
     # The two tensors are in memory accessible to the NPU
     input0 = iron.arange(data_size, dtype=element_type, device="npu")
+    input1 = iron.arange(data_size, dtype=element_type, device="npu")
     output = iron.zeros_like(input0)
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    exercise_3(output)
+    exercise_3(input0, input1, output)
 
     # Check the correctness of the result
-    USE_INPUT_VEC = False  # Set to False to switch to output for user testing
-    test_source = input0 if USE_INPUT_VEC else output
-    e = np.equal(input0.numpy(), test_source.numpy())
+    e = np.equal(input0.numpy() + input1.numpy(), output.numpy())
     errors = np.size(e) - np.count_nonzero(e)
 
     # Print the results
-    print(f"{'input0':>4} = {'output':>4}")
+    print(f"{'input0 + input1':>4} = {'output':>4}")
     print("-" * 34)
     count = input0.numel()
-    for idx, (a, c) in enumerate(zip(input0[:count], test_source[:count])):
-        print(f"{idx:2}: {a:4} = {c:4}")
+    for idx, (a, b, c) in enumerate(
+        zip(input0[:count], input1[:count], output[:count])
+    ):
+        print(f"{idx:2}: {a:4} + {b:4} = {c:4}")
 
     # If the result is correct, exit with a success code.
     # Otherwise, exit with a failure code
