@@ -16,7 +16,7 @@ import aie.iron as iron
 
 
 @iron.jit(is_placed=False)
-def exercise_1(input0, output):
+def answer_3(input0, output):
     data_size = output.numel()
     element_type = output.dtype
     data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
@@ -50,7 +50,7 @@ def main():
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    exercise_1(input0, output)
+    answer_3(input0, output)
 
     # Check the correctness of the result
     e = np.equal(input0.numpy(), output.numpy())
