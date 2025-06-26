@@ -15,24 +15,14 @@ include ${srcdir}/../../../makefile-common
 VPATH := ${srcdir}/../../../../aie_kernels/aie2
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
-orig_targetname = vector_reduce_max
-in1_size =  524288# in bytes
+targetname = vector_reduce_max
+in1_size =  8192# in bytes
 out_size = 4 # in bytes
 trace_size = 1024
 
-dtype?=bf16
+dtype?=i32
 
-use_shared?=0
-use_memtile?=0
 use_placed?=0
-
-ifeq (${use_shared}, 1)
-targetname=${orig_targetname}_shared
-else ifeq (${use_memtile}, 1)
-targetname=${orig_targetname}_memtile
-else 
-targetname=${orig_targetname}_cascade
-endif
 
 ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py

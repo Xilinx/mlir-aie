@@ -4,41 +4,32 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2025, Advanced Micro Devices, Inc.
+# Copyright (C) 2024, Advanced Micro Devices, Inc.
 # 
 ##===----------------------------------------------------------------------===##
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+include ${srcdir}/../../makefile-common
 
-include ${srcdir}/../../../makefile-common
-
-VPATH := ${srcdir}/../../../../aie_kernels/aie2
+VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
-orig_targetname = vector_reduce_max
-in1_size =  524288# in bytes
+targetname = vector_reduce_max
+in1_size =  2097152# in bytes
 out_size = 4 # in bytes
-trace_size = 1024
+trace_size = 524288
 
-dtype?=bf16
+dtype?=i32
 
-use_shared?=0
-use_memtile?=0
+aie_py_src=${targetname}.py
 use_placed?=0
-
-ifeq (${use_shared}, 1)
-targetname=${orig_targetname}_shared
-else ifeq (${use_memtile}, 1)
-targetname=${orig_targetname}_memtile
-else 
-targetname=${orig_targetname}_cascade
-endif
 
 ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
 else
 aie_py_src=${targetname}.py
 endif
+
 
 ifeq ($(dtype),bf16)
 	dtype_cpp=std::bfloat16_t
@@ -80,10 +71,10 @@ build/final_trace.xclbin: build/aie2_trace.mlir build/reduce_max.cc.o
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
 		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
-${targetname}.exe: ${srcdir}/../test.cpp
+${targetname}.exe: $(srcdir)/../test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}/..` -DTARGET_NAME=${targetname}  -DIN1_SIZE=${in1_size} -DOUT_SIZE=${out_size} -DDTYPE=${dtype_cpp} 
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}  -DIN1_SIZE=${in1_size} -DOUT_SIZE=${out_size} -DDTYPE=${dtype_cpp} 
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -99,8 +90,8 @@ run_py: build/final.xclbin build/insts.bin
 
 trace: ${targetname}.exe build/final_trace.xclbin build/insts.bin 
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../../utils/parse_trace.py --input trace.txt --mlir build/aie2_trace.mlir --output trace_vector_reduce_max.json
-	${srcdir}/../../../utils/get_trace_summary.py --input trace_vector_reduce_max.json
+	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie2_trace.mlir --output trace_vector_reduce_max.json
+	${srcdir}/../../utils/get_trace_summary.py --input trace_vector_reduce_max.json
 
 clean_trace:
 	rm -rf tmpTrace trace.txt parse*json trace*json
