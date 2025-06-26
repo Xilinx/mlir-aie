@@ -77,29 +77,21 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     )
 
     # AIE Core Function declarations
-    if dtype_str == "bf16":
-        reduce_max_vector = Kernel(
-            "reduce_max_vector_bfloat16", "reduce_max.cc.o", [op_ty, out_ty, np.int32]
-        )
-        reduce_max_scalar = Kernel(
-            "reduce_max_scalar_bfloat16", "reduce_max.cc.o", [int_ty, out_ty, np.int32]
-        )
-        compute_max = Kernel(
-            "compute_max_bfloat16", "reduce_max.cc.o", [out_ty, out_ty, out_ty]
-        )
-    else:
-        reduce_max_vector = Kernel(
-            "reduce_max_vector", "reduce_max.cc.o", [op_ty, out_ty, np.int32]
-        )
-        reduce_max_scalar = Kernel(
-            "reduce_max_scalar", "reduce_max.cc.o", [int_ty, out_ty, np.int32]
-        )
-        compute_max = Kernel("compute_max", "reduce_max.cc.o", [out_ty, out_ty, out_ty])
-
-    if dtype_str == "bf16":
-        min_val = np.array([bfloat16(float(-4.0))], dtype=bfloat16)
-    else:
-        min_val = np.array([np.iinfo(np.int32).min], dtype=np.int32)
+    suffix = "_bfloat16" if dtype_str == "bf16" else ""
+    reduce_max_vector = Kernel(
+        f"reduce_max_vector{suffix}", "reduce_max.cc.o", [op_ty, out_ty, np.int32]
+    )
+    reduce_max_scalar = Kernel(
+        f"reduce_max_scalar{suffix}", "reduce_max.cc.o", [int_ty, out_ty, np.int32]
+    )
+    compute_max = Kernel(
+        f"compute_max{suffix}", "reduce_max.cc.o", [out_ty, out_ty, out_ty]
+    )
+    min_val = (
+        np.array([bfloat16(-4.0)], dtype=bfloat16)
+        if dtype_str == "bf16"
+        else np.array([np.iinfo(np.int32).min], dtype=np.int32)
+    )
 
     # Define a task to run
     def start_core_body(of_in, of_out, reduce_max_vector, compute_max):
@@ -117,7 +109,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
             reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
             compute_max(tmp_buffer, nextC_buffer, nextC_buffer)
             of_in.release(1)
-        nextC_buffer = elem_out
+        compute_max(nextC_buffer, tmp_buffer, elem_out)
         of_out.release(1)
 
     def core_body(
@@ -143,12 +135,12 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
             reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
             compute_max(tmp_buffer, nextC_buffer, nextC_buffer)
             of_in.release(1)
-        nextC_buffer = elem_out
+        compute_max(nextC_buffer, tmp_buffer, elem_out)
         elemC_out.release(1)
 
         elem_out1 = of_out.acquire(1)
         elem_in1 = elemA_in.acquire(1)
-        reduce_max_scalar(elem_in1, elem_out, n_cores)
+        reduce_max_scalar(elem_in1, elem_out1, n_cores)
         elemA_in.release(1)
         of_out.release(1)
 

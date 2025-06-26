@@ -20,7 +20,7 @@ in1_size =  524288# in bytes
 out_size = 4 # in bytes
 trace_size = 1024
 
-dtype?=bf16
+dtype?=i32
 
 use_shared?=0
 use_memtile?=0
