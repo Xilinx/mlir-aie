@@ -41,7 +41,7 @@ make clean && M=64 N=32 m=16 n=16 s=4 make run
  * `m, n`: Size of the smaller matrix tiles that are processed individually
    on the compute cores.
  * `s`: Size of the smallest individual matrix tiles that the compute core
-   transposes at a time. Currently, only `s==4` is supported.
+   transposes at a time. Currently, `s==4` and `s==8` are supported.
 
 All dimensions must evenly divide each other.
 
@@ -52,40 +52,66 @@ transformations on the DMAs and `VSHUFFLE` operations on the compute cores.
 Note that we rely on this combination, because transposing using only the DMAs
 is impossible for small data types and potentially inefficient for larger
 data types. The minimum access granularity of DMAs is four bytes, so any matrix
-using a  data type smaller than four bytes cannot be fully transposed in the
-DMA. Furthermore, accessing more contiguous data from the host at once results 
+using a  data type smaller than four bytes cannot be fully transposed using only 
+the DMA. Furthermore, accessing more contiguous data from the host at once results 
 in better performance.
 
-The transformation occurs as follows:
+The design refers to the memories as L3 (DRAM, farthest from AIE core), L2
+(memory core) and L1 (on the AIE core). We start out with a to-be-transposed
+matrix in L3 memory in regular row-major layout, as shown in the following
+example for a `16`x`16` matrix:
 
-First, the DMA moving data from L3 (host) to L2 (mem tile) tiles the 
+![](./diagrams/transpose_L3.svg)
+
+In this diagram and the following ones, the arrow line represents the order in
+in which the matrix elements are stored in memory. That is, reading memory from
+the starting address of the matrix onwards, you would encounter the same matrix
+elements as the ones you encounter when following the arrow line.
+
+The first two transformations occur in the DMAs and are defined in 
+`combined_transpose.py` as follows:
+
+First, the ObjectFIFO from L3 (host) to L2 (mem tile) tiles the 
 `M`x`N`-sized input matrix into tiles of size `m`x`n`. The DMA iterates over
-these tiles in regular row-major order.
+these tiles in regular row-major order:
 
-Then, the DMA moving data from L2 (mem tile) to L1 (core tile) performs a 
+![](./diagrams/transpose_L2.svg)
+
+Then, the ObjectFIFO from L2 (mem tile) to L1 (core tile) performs a 
 special data layout transformation. The following diagram shows how the
-traversal order with which the DMA stores the incoming data. In the diagram, 
-the colored line shows the order in which data arrive from the stream; the gray
-grid represents where in memory those data are stored:
+traversal order with which the DMA stores the incoming data. 
 
-![L2L1 Data Layout Transformation](./l2l1_transform.png)
+![](./diagrams/transpose_L1.svg)
 
-Although it may look complicated, this transform has a simple end goal: Each
-`s`x`s`-sized sub-tile of the input should already be placed in its correct 
-position in the transposed matrix. In other words, after transposing each of 
-those `s`x`s`-sized sub-tiles individually in-place, the entire input will be
-transposed.
+Although it may look complicated, this transformation has a simple effect:
+The resulting matrix is transposed at a `s`x`s`-tile granularity. That is,
+each `s`x`s` tile is still stored as row-major, but the order of tiles is
+column-major, i.e. transposed. To stop here and look at this tile-level
+transposed matrix (e.g., for debugging), you can swap out the `copy()` kernel
+in place of the transpose kernel in `combined_transpose.py`.
 
-The `transpose` kernel does exactly this, using `VSHUFFLE` (via the higher-level
-`aie::interleave_zip` and `aie::interleave_unzip` methods). There is a 
-specialized kernel for each supported size `s` which transposes every
-`s`x`s`-sized block in the input individually. It achieves this by reading
-`s` rows of the input and `VECTOR_SIZE` columns; then, it interleaves
-the elements of each row with each other. Interleaving means concatenating one 
-element from row 0, then row 1, then row 2, and so on, which is equivalent to 
-forming a column, i.e. transposing the input.
+After this L2 transformation, all that is left to do is to transpose each of the
+`s`x`s`-sized sub-tiles individually in-place.
 
-Finally, we arrive at `n`x`m`-sized transposed subtiles on the compute core.
-To return a completely transposed `N`x`M` sized matrix to the host, the DMA
-stores each of those subtiles in their appropriate location in the host buffer
-using one last L1 (core) to L3 (host) transformation.
+The `transpose` kernel defined in `transpose.cc` does exactly this, using 
+`VSHUFFLE` (via the higher-level `aie::interleave_zip` and `aie::interleave_unzip` 
+methods). There is a specialized kernel for each supported size `s` which 
+transposes every `s`x`s`-sized block in the input individually. It achieves this
+ by reading `s` rows of the input and `VECTOR_SIZE` columns; then, it 
+interleaves every fourth elements of each row with every fourth element of each 
+other row. Interleaving means concatenating the first element from row 0, then the
+first element from row 1, then the first element from row 2, then the first element
+from row 3, then the fourht element from row 0, the fourth element from row 1, 
+and so on, which is equivalent to forming a column, i.e. transposing the input:
+
+![](./diagrams/transpose_L1_kernel.svg)
+
+The AIE API and underlying intrinsics don't directly support interleaving four
+(or eight) different vectors, one element at a time. Instead, we achieve
+the same effect using two levels of interleave operations: First, we interleave
+two elements at a time of rows 0 and 1, as well as 2 and 3, individually. Then,
+we interleave the result two elements at a time.
+
+After this kernel, the `m`x`n` tile is completely transposed. The output
+transfer then makes sure the tiles are written back into their correct position
+in the transposed output `M`x`N` matrix.
