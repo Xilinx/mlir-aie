@@ -1,13 +1,22 @@
 // (c) Copyright 2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: ryzen_ai_npu1
+// REQUIRES: ryzen_ai
 //
-// RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %S/aie1.mlir -o aie1_overlay.mlir
+// RUN: cp %S/aie1.mlir aie1_arch.mlir
+// RUN: cp %S/aie2.mlir aie2_arch.mlir
+//
+// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie1_arch.mlir
+// RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie1_arch.mlir
+// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie2_arch.mlir
+// RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie2_arch.mlir
+//
+// RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" aie1_arch.mlir -o aie1_overlay.mlir
 // RUN: %python aiecc.py --aie-generate-xclbin --xclbin-name=aie1.xclbin aie1_overlay.mlir
 //
-// RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %S/aie2.mlir -o aie2_overlay.mlir
+// RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" aie2_arch.mlir -o aie2_overlay.mlir
 // RUN: %python aiecc.py --aie-generate-ctrlpkt --aie-generate-npu-insts --npu-insts-name=aie2_run_seq.bin aie2_overlay.mlir
 //
 // RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
 // RUN: %run_on_npu1% ./test.exe
+// RUN: %run_on_npu2% ./test.exe
