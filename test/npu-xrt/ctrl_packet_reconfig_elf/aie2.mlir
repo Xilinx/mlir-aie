@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(npu1_1col) {
+  aie.device(NPUDEVICE) {
     memref.global "public" @objFifo_in0 : memref<56x56xi8>
     memref.global "public" @objFifo_out0 : memref<64x64xi8>
 
@@ -48,7 +48,7 @@ module {
       %c8 = arith.constant 8 : index
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %c12_i8 = arith.constant 12 : i8
+      %c3_i8 = arith.constant 3 : i8
       %c2 = arith.constant 2 : index
       %c64 = arith.constant 64 : index
       aie.use_lock(%objFifo_in1_cons_cons_lock, AcquireGreaterEqual, 1)
@@ -56,7 +56,7 @@ module {
       scf.for %arg1 = %c0 to %c64 step %c1 {
         scf.for %arg2 = %c0 to %c64 step %c1 {
           %0 = memref.load %objFifo_in1_cons_buff_0[%arg1, %arg2] : memref<64x64xi8>
-          %1 = arith.addi %0, %c12_i8 : i8
+          %1 = arith.addi %0, %c3_i8 : i8
           memref.store %1, %objFifo_out1_buff_0[%arg1, %arg2] : memref<64x64xi8>
         }
       }

@@ -55,7 +55,7 @@ int main(int argc, const char *argv[]) {
   xrt::elf elf0("ctrlpkt_dma_seq.elf");
   xrt::module mod0{elf0};
 
-  xrt::elf elf1("aie2_run_seq.elf");
+  xrt::elf elf1("aie2.elf");
   xrt::module mod1{elf1};
 
   // get a hardware context
@@ -89,16 +89,12 @@ int main(int argc, const char *argv[]) {
   int errors = 0;
 
   for (uint32_t i = 0; i < DATA_SIZE; i++) {
-    uint32_t ref = srcVecA[i] + 12;
+    DATATYPE ref = srcVecA[i] + 3;
     if (bufOut[i] != ref) {
       std::cout << "Error in output " << std::to_string(bufOut[i])
-                << " != " << ref << std::endl;
+                << " != " << (int)ref << std::endl;
       errors++;
     }
-    // else
-    //   std::cout << "Correct output " << std::to_string(bufOut[i])
-    //             << " == " << ref << std::endl;
-    // }
   }
 
   if (!errors) {
