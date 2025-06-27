@@ -55,7 +55,7 @@ int main(int argc, const char *argv[]) {
   xrt::elf elf0("ctrlpkt_dma_seq.elf");
   xrt::module mod0{elf0};
 
-  xrt::elf elf1("aie2_run_seq.elf");
+  xrt::elf elf1("aie2.elf");
   xrt::module mod1{elf1};
 
   // get a hardware context
