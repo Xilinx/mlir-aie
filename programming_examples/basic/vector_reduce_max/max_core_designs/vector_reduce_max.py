@@ -40,6 +40,9 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
 
     assert out_size == 4, "Output buffer must be size 4 (4 bytes = 1 integer)."
 
+    if n_cores > 8:
+        raise ValueError("This design does not support more than 8 cores.")
+
     enable_trace = 1 if trace_size > 0 else 0
 
     # Define tensor types
@@ -95,8 +98,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
             reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
             compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
             of_in.release(1)
-        compute_max(nextC_buffer, tmp_buffer, elem_out)
-        # elem_out = nextC_buffer
+        elem_out[0] = nextC_buffer[0]
         of_out.release(1)
 
     def core_body(*args):
