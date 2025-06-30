@@ -190,7 +190,7 @@ with rt.sequence(tile_ty, tile_ty) as (a_in, c_out):
 
 Up to five buffers are supported in the runtime sequence, where the fifth is typically used for trace support. This is further described in [Section 4b](../section-4/section-4b/README.md) of the programming guide.
 
-Runtime sequence commands are submitted to and executed by a dedicated command processor in order. Commands that are set to `wait` will block the dedicated command processor until a token associated with their completion is generated. The command processor waits for the runtime sequence to complete before returning by interrupting the host processor.
+Runtime sequence commands are submitted to and executed by a dedicated command processor in order. The command processor will wait on commands that are set to `wait` until a token associated with their completion is generated. When all the commands in the runtime sequence have been executed the command processor sends an interrupt to the host processor.
 
 More on the runtime sequence in [Section 2d](../section-2/section-2d/RuntimeTasks.md) of the programming guide.
 
