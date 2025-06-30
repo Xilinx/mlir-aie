@@ -97,7 +97,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
             reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
             compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
             of_in.release(1)
-        compute_max(nextC_buffer, tmp_buffer, elem_out)
+        elem_out[0] = nextC_buffer[0]
         of_out.release(1)
 
     def core_body(*args):
