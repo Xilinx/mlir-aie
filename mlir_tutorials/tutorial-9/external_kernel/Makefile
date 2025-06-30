@@ -1,10 +1,11 @@
-include ../../makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+include ${srcdir}/../../makefile-common
 
 .PHONY: build gui sim
 
 mlir: kernel.o
 
-%.o: %.cc
+%.o: ${srcdir}/%.cc
 	xchesscc ${CHESSCC_FLAGS} -c $<
 
 build:

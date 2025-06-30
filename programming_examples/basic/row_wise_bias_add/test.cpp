@@ -73,7 +73,7 @@ int main(int argc, const char *argv[]) {
   xrt::device device = xrt::device(device_index);
 
   // Load the xclbin
-  xrt::xclbin xclbin = xrt::xclbin(XCLBIN);
+  xrt::xclbin xclbin = xrt::xclbin(std::string(XCLBIN));
 
   // Get the kernel from the xclbin
   std::vector<xrt::xclbin::kernel> xkernels = xclbin.get_kernels();

@@ -12,7 +12,7 @@
 // CHECK-LABEL: module @trace_packet_routing {
   
 module @trace_packet_routing {
- aie.device(npu1_4col) {
+ aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)
   %tile_1_0 = aie.tile(1, 0)
   %tile_0_2 = aie.tile(0, 2)

@@ -44,7 +44,7 @@ def my_matmul(dev):
     with mlir_mod_ctx() as ctx:
 
         if dev == "npu":
-            dev_ty = AIEDevice.npu1_4col
+            dev_ty = AIEDevice.npu1
         else:
             dev_ty = AIEDevice.npu2
 

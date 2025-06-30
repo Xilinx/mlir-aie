@@ -131,6 +131,9 @@ SECTIONS
   .strtab : {
      *(.strtab)
   }
+  .stack_sizes : {
+     *(.stack_sizes)
+  }
 
 )THESCRIPT";
       auto doBuffer = [&](std::optional<TileID> tile, int offset,

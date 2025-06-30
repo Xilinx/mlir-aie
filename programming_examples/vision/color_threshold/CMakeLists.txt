@@ -13,6 +13,9 @@
 # cmake needs this line
 cmake_minimum_required(VERSION 3.1)
 
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED YES)
+
 find_program(WSL NAMES powershell.exe)
 
 if (NOT WSL)
@@ -23,6 +26,7 @@ else()
     set(OpenCV_DIR C:/Technical/thirdParty/opencv/build CACHE STRING "Path to OpenCV install")
     set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT cloned repo")
     set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
+    add_compile_options("/std:c++17")
 endif ()
 
 set(COLORTHRESHOLD_WIDTH 128 CACHE STRING "image width")

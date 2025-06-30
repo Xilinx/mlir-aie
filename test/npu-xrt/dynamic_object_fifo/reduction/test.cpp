@@ -14,7 +14,7 @@
 #include "xrt/xrt_kernel.h"
 
 #ifndef XCLBIN
-#define XCLBIN "final.xclbin"
+#define XCLBIN std::string("final.xclbin")
 #endif
 
 #ifndef INSTS_TXT
