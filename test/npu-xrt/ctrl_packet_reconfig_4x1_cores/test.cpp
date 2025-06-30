@@ -76,7 +76,7 @@ int main(int argc, const char *argv[]) {
   IN_DATATYPE *bufInA = bo_inA.map<IN_DATATYPE *>();
   std::vector<IN_DATATYPE> srcVecA;
   for (int i = 0; i < IN_SIZE; i++)
-    srcVecA.push_back(1);
+    srcVecA.push_back((i % 128) + 1);
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(IN_DATATYPE)));
 
   void *bufInstr = bo_instr.map<void *>();
@@ -126,16 +126,13 @@ int main(int argc, const char *argv[]) {
   int errors = 0;
 
   for (uint32_t core = 0; core < 4; core++) {
-    for (uint32_t i = 0; i < 64; i++) {
-      for (uint32_t j = 0; j < 64; j++) {
-        uint32_t ref = 1 + 12;
-        if (*(bufOut + core * 4096 + i * 64 + j) != ref) {
-          std::cout << "Error at i=" << i << " j=" << j << " core=" << core
-                    << " output: "
-                    << std::to_string(bufOut[core * 4096 + i * 64 + j])
-                    << " != " << ref << std::endl;
-          errors++;
-        }
+    for (uint32_t i = 0; i < 4096; i++) {
+      OUT_DATATYPE ref = srcVecA[core * 4096 + i] + 12 + core;
+      if (*(bufOut + core * 4096 + i) != ref) {
+        std::cout << "Error at i=" << i << " core=" << core
+                  << " output: " << std::to_string(bufOut[core * 4096 + i])
+                  << " != " << (int)ref << std::endl;
+        errors++;
       }
     }
   }
