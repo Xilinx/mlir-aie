@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(npu1_1col) {
+  aie.device(NPUDEVICE) {
     memref.global "public" @objFifo_in0 : memref<56x56xi8>
     memref.global "public" @objFifo_out0 : memref<64x64xi8>
 
