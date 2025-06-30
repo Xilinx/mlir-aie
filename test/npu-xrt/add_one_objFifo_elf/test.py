@@ -83,12 +83,12 @@ def main():
     # Get a kernel handle
     if args.verbosity >= 1:
         print(f"Getting handle to kernel: {kernel_name}")
-    kernel = xrt.kernel(context, mod, kernel_name)
+    kernel = xrt.ext.kernel(context, mod, kernel_name)
 
     # Create buffer objects
-    bo_inA = xrt.bo(device, IN_SIZE * 4)
-    bo_inB = xrt.bo(device, IN_SIZE * 4)
-    bo_out = xrt.bo(device, OUT_SIZE * 4)
+    bo_inA = xrt.ext.bo(device, IN_SIZE * 4)
+    bo_inB = xrt.ext.bo(device, IN_SIZE * 4)
+    bo_out = xrt.ext.bo(device, OUT_SIZE * 4)
 
     if args.verbosity >= 1:
         print("Writing data into buffer objects.")
