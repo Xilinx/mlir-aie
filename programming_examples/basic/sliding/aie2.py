@@ -56,15 +56,15 @@ def sliding_window():
                         elemInPre = of_in.acquire(ObjectFifoPort.Consume, 1)
                         add_10_i32(elemInPre, elemInPre, elemOut)
                         of_in.release(ObjectFifoPort.Consume, 1)
-                    # with else_(if_op):
-                    #     with if_(i == 9) as if_op1:
-                    #         elemsInPost = of_in.acquire(ObjectFifoPort.Consume, 2)
-                    #         add_10_i32(elemsInPost[0], elemsInPost[1], elemOut)
-                    #         of_in.release(ObjectFifoPort.Consume, 2)
-                    #     with else_(if_op1):
-                    #         elemsIn = of_in.acquire(ObjectFifoPort.Consume, 2)
-                    #         add_10_i32(elemsIn[0], elemsIn[1], elemOut)
-                    #         of_in.release(ObjectFifoPort.Consume, 2)
+                    with else_(if_op):
+                        with if_(i == 9) as if_op1:
+                            elemsInPost = of_in.acquire(ObjectFifoPort.Consume, 2)
+                            add_10_i32(elemsInPost[0], elemsInPost[1], elemOut)
+                            of_in.release(ObjectFifoPort.Consume, 2)
+                        with else_(if_op1):
+                            elemsIn = of_in.acquire(ObjectFifoPort.Consume, 2)
+                            add_10_i32(elemsIn[0], elemsIn[1], elemOut)
+                            of_in.release(ObjectFifoPort.Consume, 2)
                 of_out.release(ObjectFifoPort.Produce, 1)
 
             # To/from AIE-array data movement

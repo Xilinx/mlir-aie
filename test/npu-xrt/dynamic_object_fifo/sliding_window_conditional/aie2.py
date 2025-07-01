@@ -19,7 +19,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.extras.context import mlir_mod_ctx
-from aie.helpers.dialects.ext.scf import _if, yield_
+from aie.helpers.dialects.ext.scf import *
 
 N = 100
 n_rows = 10
@@ -52,25 +52,19 @@ def sliding_window():
             def core_body():
                 for i in range_(10):
                     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
-                    def then_branch_pre():
+                    with if_(i == 0) as if_op:
                         elemInPre = of_in.acquire(ObjectFifoPort.Consume, 1)
                         add_10_i32(elemInPre, elemInPre, elemOut)
-
-                    def else_branch_pre():
-                        def then_branch_post():
+                        of_in.release(ObjectFifoPort.Consume, 1)
+                    with else_(if_op):
+                        with if_(i == 9) as if_op1:
                             elemsInPost = of_in.acquire(ObjectFifoPort.Consume, 2)
                             add_10_i32(elemsInPost[0], elemsInPost[1], elemOut)
                             of_in.release(ObjectFifoPort.Consume, 2)
-
-                        def else_branch_post():
+                        with else_(if_op1):
                             elemsIn = of_in.acquire(ObjectFifoPort.Consume, 2)
                             add_10_i32(elemsIn[0], elemsIn[1], elemOut)
-                            of_in.release(ObjectFifoPort.Consume, 1)
-
-                        _if(i == 9, then_branch_post, else_branch_post)
-
-                    _if(i == 0, then_branch_pre, else_branch_pre)
-
+                            of_in.release(ObjectFifoPort.Consume, 2)
                 of_out.release(ObjectFifoPort.Produce, 1)
 
             # To/from AIE-array data movement
