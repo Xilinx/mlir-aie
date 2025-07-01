@@ -109,7 +109,7 @@ class Program:
                         tiles_to_trace.append(w.tile.op)
                 else:
                     for w in self._rt._workers:
-                        if w.trace is None or w.trace == 1:
+                        if w.trace is not None:
                             tiles_to_trace.append(w.tile.op)
                 if self._rt._trace_size is not None:
                     trace_shim_tile = self._rt.get_first_cons_shimtile()
