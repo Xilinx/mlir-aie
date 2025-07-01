@@ -5,6 +5,7 @@ from ....dialects.linalg.opdsl.lang.emitter import _is_index_type
 from ....dialects.scf import IfOp, ForOp, yield_
 from ....extras.dialects.ext.arith import constant, index_cast
 from ....extras.util import get_user_code_loc
+from contextlib import contextmanager
 
 
 def _for(
@@ -52,19 +53,23 @@ def _for(
             yield_([])
 
 
-def _if(cond, then_fn, else_fn=None, insert_yield: bool = True, *, loc=None, ip=None):
-    """
-    This is nearly identical to the convenience wrapper in scf, but with the added insert_yield parameter.
-    """
+@contextmanager
+def if_(cond, *, insert_yield=True, loc=None, ip=None):
     if loc is None:
         loc = get_user_code_loc()
-    if_op = IfOp(cond, hasElse=(else_fn is not None), loc=loc, ip=ip)
-
+    if_op = IfOp(cond, hasElse=True, loc=loc, ip=ip)
     with InsertionPoint(if_op.thenRegion.blocks[0]):
-        then_fn()
-        yield_([])
-
-    if else_fn is not None:
-        with InsertionPoint(if_op.elseRegion.blocks[0]):
-            else_fn()
+        yield if_op
+        if insert_yield:
             yield_([])
+    # Default, empty else region. TODO: Find a way to not insert this.
+    with InsertionPoint(if_op.elseRegion.blocks[0]):
+        if insert_yield:
+            yield_([])
+
+
+# This assumes that the parent if_ context manager passes down the else region.
+@contextmanager
+def else_(if_op, insert_yield=True):
+    with InsertionPoint.at_block_terminator(if_op.elseRegion.blocks[0]):
+        yield
