@@ -157,7 +157,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                         reduce_max_vector,
                         compute_max,
                     ],
-                    trace=0,
+                    trace=True if i == 1 else None,
                 )
             )
         else:
@@ -170,13 +170,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                 reduce_max_scalar,
                 compute_max,
             ]
-            workers.append(
-                Worker(
-                    core_body,
-                    fn_args=fifo_args,
-                    trace=enable_trace,
-                )
-            )
+            workers.append(Worker(core_body, fn_args=fifo_args, trace=None))
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
