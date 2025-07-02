@@ -1,4 +1,4 @@
-# vector_reduce_max/vector_reduce_max_placed.py -*- Python -*-
+# multi_column_designs/vector_reduce_max_placed.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -26,13 +26,14 @@ dtype_map = {
 
 
 def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
-    n_cores = 8
+    n_cores = 7
     dtype = dtype_map[dtype_str]
 
     N = in1_size // dtype(0).nbytes
     O = out_size // dtype(0).nbytes
 
     elems_per_core = 256
+    max_cores_per_col = 4
 
     n_channels = n_cores
     N_per_channel = N // n_channels
@@ -80,7 +81,8 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                 )
             )
 
-        # Output FIFO for core 0: connect to core 1 if n_cores > 1, else to shimtile 0, others to core 1 or core 6 as needed
+        # Output FIFO for core 0: connect to core 1 if n_cores > 1,
+        # else to shimtile 0, others to core 1 or core 6 as needed
         out_fifos.append(
             object_fifo(
                 f"memC0",
@@ -132,14 +134,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                 )
 
         # Set up a packet-switched flow from core to shim for tracing information
-        if n_cores == 1:
-            tiles_to_trace = [cores[0]]
-        elif n_cores <= 4:
-            tiles_to_trace = [cores[1]]
-        elif n_cores == 5:
-            tiles_to_trace = [cores[4]]
-        else:
-            tiles_to_trace = [cores[5]]
+        tiles_to_trace = [core for core in cores]
         if trace_size > 0:
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, shimtiles[0])
 
@@ -171,65 +166,53 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                     reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
                     compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
                     in_fifos[i].release(ObjectFifoPort.Consume, 1)
+                # Simplify handling special cases
                 if i == 4 and n_cores == 5:
-                    # Final reduction here
-                    partial_result = out_fifos[1].acquire(ObjectFifoPort.Consume, 1)
-                    compute_max(partial_result, nextC_buffer, elem_out)
-                    out_fifos[1].release(ObjectFifoPort.Consume, 1)
-                elif i != 1 and i != 5:
-                    elem_out[0] = nextC_buffer[0]
-
-                if i == 5:
-                    # Final in core6
-                    cores_per_col = n_cores - 4
-                    elem_out = out_fifos[i].acquire(ObjectFifoPort.Produce, 1)
-                    inputs = []
-                    start_j = 4 if i == 5 else 0
+                    outputs_to_reduce = n_cores - max_cores_per_col
+                    inputs = [out_fifos[1].acquire(ObjectFifoPort.Consume, 1)]
+                elif i == 5:
+                    outputs_to_reduce = n_cores - max_cores_per_col
                     inputs = [
                         out_fifos[j].acquire(ObjectFifoPort.Consume, 1)
-                        for j in range(start_j, 4 + cores_per_col)
+                        for j in range(
+                            max_cores_per_col, max_cores_per_col + outputs_to_reduce
+                        )
+                        if j != i
+                    ] + [out_fifos[1].acquire(ObjectFifoPort.Consume, 1)]
+                elif i == 1:
+                    outputs_to_reduce = min(max_cores_per_col - 1, n_cores - 1)
+                    inputs = [
+                        out_fifos[j].acquire(ObjectFifoPort.Consume, 1)
+                        for j in range(0, min(max_cores_per_col, n_cores))
                         if j != i
                     ]
-                    inputs.append(out_fifos[1].acquire(ObjectFifoPort.Consume, 1))
+                else:
+                    outputs_to_reduce = 0
 
-                    for idx in range(cores_per_col):
-                        if idx < cores_per_col - 1:
-                            compute_max(
-                                inputs[idx],
-                                nextC_buffer,
-                                nextC_buffer,
-                            )
-                        else:
-                            compute_max(inputs[idx], nextC_buffer, elem_out)
-
-                    for j, input_elem in enumerate(inputs):
+                elem_out = out_fifos[i].acquire(ObjectFifoPort.Produce, 1)
+                for idx in range(outputs_to_reduce):
+                    if idx < outputs_to_reduce - 1:
+                        compute_max(
+                            inputs[idx],
+                            nextC_buffer,
+                            nextC_buffer,
+                        )
+                    else:
+                        compute_max(inputs[idx], nextC_buffer, elem_out)
+                if i == 5:
+                    for j in range(len(inputs)):
                         out_fifos[4 + j if j != 1 else j].release(
                             ObjectFifoPort.Consume, 1
                         )
-                if i == 1:
-                    cores_per_col = min(4, n_cores)
-                    inputs = []
-                    start_j = 5 if i == 6 else 0
-                    inputs = [
-                        out_fifos[j].acquire(ObjectFifoPort.Consume, 1)
-                        for j in range(start_j, cores_per_col)
-                        if j != i
-                    ]
-
-                    for idx in range(cores_per_col - 1):
-                        if idx < cores_per_col - 2:
-                            compute_max(
-                                inputs[idx],
-                                nextC_buffer,
-                                nextC_buffer,
-                            )
-                        else:
-                            compute_max(inputs[idx], nextC_buffer, elem_out)
-
-                    for j, input_elem in enumerate(inputs):
-                        out_fifos[j if j < i else j + 1].release(
+                elif i == 1:
+                    for j in range(len(inputs)):
+                        out_fifos[j if j != 1 else j + 1].release(
                             ObjectFifoPort.Consume, 1
                         )
+                elif i == 4 and n_cores == 5:
+                    out_fifos[1].release(ObjectFifoPort.Consume, 1)
+                else:
+                    elem_out[0] = nextC_buffer[0]
                 out_fifos[i].release(ObjectFifoPort.Produce, 1)
 
         # To/from AIE-array data movement
