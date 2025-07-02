@@ -18,7 +18,7 @@ The data movement in this design is decribed at BD-level in the DMA code regions
 
 ## Source Files Overview
 
-1. `vector_vector_add.py`: defines the AIE array structural design using IRON AIE language bindings. This generates mlir-aie that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `vector_vector_add.py`: defines the AIE array structural design using IRON AIE language bindings. This generates mlir-aie that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
 
 1. `test.cpp`: This C++ code is a testbench for the design example targeting Ryzen™ AI (AIE-ML). The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the program verifies the results.
 

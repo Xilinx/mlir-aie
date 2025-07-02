@@ -1,6 +1,6 @@
 [tool.cibuildwheel]
 build-verbosity = 3
-build = "cp310-*"
+build = "cp312-*"
 skip = ["*-manylinux_i686", "*-musllinux*"]
 manylinux-aarch64-image = "manylinux_2_28"
 manylinux-x86_64-image = "manylinux_2_28"
@@ -46,3 +46,6 @@ before-build = [
     "pip install -r requirements.txt",
     "bash {project}\\scripts\\download_mlir.sh",
 ]
+
+[build-system]
+requires = ["setuptools", "nanobind"]
