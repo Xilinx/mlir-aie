@@ -18,9 +18,9 @@ devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = vector_reduce_max
 in1_size =  524288# in bytes
 out_size = 4 # in bytes
-trace_size = 1024
+trace_size = 524288
 
-dtype?=bf16
+dtype?=i32
 
 use_placed?=0
 

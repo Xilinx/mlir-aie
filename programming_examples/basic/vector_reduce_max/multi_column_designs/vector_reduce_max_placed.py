@@ -26,7 +26,7 @@ dtype_map = {
 
 
 def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
-    n_cores = 7
+    n_cores = 8
     dtype = dtype_map[dtype_str]
 
     N = in1_size // dtype(0).nbytes
