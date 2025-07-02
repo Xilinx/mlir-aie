@@ -76,9 +76,9 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         f"compute_max{suffix}", "reduce_max.cc.o", [out_ty, out_ty, out_ty]
     )
     min_val = (
-        np.array([bfloat16(-4.0)], dtype=bfloat16)
+        np.array([bfloat16(float("-inf"))], dtype=dtype)
         if dtype_str == "bf16"
-        else np.array([np.iinfo(np.int32).min], dtype=np.int32)
+        else np.array([np.iinfo(dtype).min], dtype=dtype)
     )
 
     # Define a task to run

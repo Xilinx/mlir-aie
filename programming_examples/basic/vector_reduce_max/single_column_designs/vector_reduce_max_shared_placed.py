@@ -54,6 +54,11 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         compute_max = external_func(
             f"compute_max{suffix}", inputs=[out_ty, out_ty, out_ty]
         )
+        min_val = (
+            np.array([bfloat16(float("-inf"))], dtype=dtype)
+            if dtype_str == "bf16"
+            else np.array([np.iinfo(dtype).min], dtype=dtype)
+        )
 
         # Tile declarations
         ShimTile = tile(0, 0)
@@ -104,11 +109,6 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         tiles_to_trace = [cores[0]]
         if trace_size > 0:
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
-
-        if dtype_str == "bf16":
-            min_val = np.array([bfloat16(float(-4.0))], dtype=bfloat16)
-        else:
-            min_val = np.array([np.iinfo(np.int32).min], dtype=np.int32)
 
         # Set up compute tiles
         for i in range(n_cores):
