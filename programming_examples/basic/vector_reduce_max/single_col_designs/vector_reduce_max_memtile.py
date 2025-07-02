@@ -56,6 +56,11 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         compute_max = external_func(
             f"compute_max{suffix}", inputs=[out_ty, out_ty, out_ty]
         )
+        min_type = np.finfo if dtype_str == "bf16" else np.iinfo
+        min_val = np.array(
+            [min_type(dtype).min],
+            dtype=dtype,
+        )
 
         # Tile declarations
         ShimTile = tile(0, 0)
@@ -115,11 +120,6 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
 
         # AIE-array data movement with object fifos
         of_out = object_fifo("out", cores[0], ShimTile, buffer_depth, out_ty)
-
-        if dtype_str == "bf16":
-            min_val = np.array([bfloat16(float(-4.0))], dtype=bfloat16)
-        else:
-            min_val = np.array([np.iinfo(np.int32).min], dtype=np.int32)
 
         # Set up compute tiles
         for i in range(n_cores):

@@ -20,17 +20,8 @@ template <typename T, typename V>
 void _reduce_max_vector(T *restrict in, T *restrict out,
                         const int32_t input_size) {
   event0();
-  int32_t VECTOR_SIZE;
-  V tiny;
-  if constexpr (std::is_same<V, aie::vector<int32_t>>::value) {
-    tiny = broadcast_to_v16int32(INT32_MIN);
-    VECTOR_SIZE = 16;
-  } else if constexpr (std::is_same<V, aie::vector<bfloat16>>::value) {
-    tiny = broadcast_to_v32bfloat16(std::numeric_limits<bfloat16>::lowest());
-    VECTOR_SIZE = 32;
-  } else {
-    static_assert(!sizeof(V), "Unsupported vector type");
-  }
+  int32_t VECTOR_SIZE = V::size();
+  V tiny = aie::broadcast<T>(std::numeric_limits<T>::lowest());
   V after_vector;
   V running_max = tiny;
 
@@ -39,7 +30,7 @@ void _reduce_max_vector(T *restrict in, T *restrict out,
   AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_MIN_ITERATION_COUNT(8)
   for (int32_t i = 0; i < input_size; i += VECTOR_SIZE) {
-    V next = *(V *)(in + i);
+    V next = aie::load_v(in + i);
     V test = max(running_max, next);
     running_max = test;
   }
@@ -57,7 +48,7 @@ void _reduce_max_vector(T *restrict in, T *restrict out,
     V fifth_shift = shift_bytes(fifth, fifth, 2U);
     fifth = max(fifth, fifth_shift);
   }
-  auto last = extract_elem(fifth, 0U);
+  auto last = aie::reduce_max(fifth);
   *(T *)out = last;
   event1();
   return;
