@@ -66,18 +66,18 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
 
         cores = [tile(0, 2 + i) for i in range(n_cores)]
 
-        inA_fifos = []
-        outC_fifos = []
+        in_fifos = []
+        out_fifos = []
 
         # AIE-array data movement with object fifos
         # Input A and Output C
         of_in = object_fifo("of_in", ShimTile, MemTile, buffer_depth, mem_ty)
 
         for i in range(n_cores):
-            inA_fifos.append(
+            in_fifos.append(
                 object_fifo(f"memA{i}", MemTile, cores[i], buffer_depth, op_ty)
             )
-        outC_fifos.append(
+        out_fifos.append(
             object_fifo(
                 f"memC{0}",
                 cores[0],
@@ -87,11 +87,11 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
             )
         )
         if n_cores > 1:
-            outC_fifos.append(
+            out_fifos.append(
                 object_fifo(f"memC{1}", cores[1], ShimTile, buffer_depth, out_ty)
             )
         for i in range(2, n_cores):
-            outC_fifos.append(
+            out_fifos.append(
                 object_fifo(f"memC{i}", cores[i], cores[1], buffer_depth, out_ty)
             )
 
@@ -103,7 +103,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         else:
             of_a_offsets = [0]
 
-        object_fifo_link(of_in, inA_fifos, [], of_a_offsets)
+        object_fifo_link(of_in, in_fifos, [], of_a_offsets)
 
         # Set up a packet-switched flow from core to shim for tracing information
         tiles_to_trace = [cores[0]]
@@ -128,31 +128,31 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
 
                 @core(cores[i], "reduce_max.cc.o")
                 def core_body():
-                    elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)
+                    elem_out = out_fifos[i].acquire(ObjectFifoPort.Produce, 1)
                     for _ in range_(num_iter):
-                        elem_in = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
+                        elem_in = in_fifos[i].acquire(ObjectFifoPort.Consume, 1)
                         reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
                         compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
-                        inA_fifos[i].release(ObjectFifoPort.Consume, 1)
+                        in_fifos[i].release(ObjectFifoPort.Consume, 1)
                     elem_out[0] = nextC_buffer[0]
-                    outC_fifos[i].release(ObjectFifoPort.Produce, 1)
+                    out_fifos[i].release(ObjectFifoPort.Produce, 1)
 
             else:
 
                 @core(cores[i], "reduce_max.cc.o")
                 def core_body():
                     for _ in range_(num_iter):
-                        elem_in = inA_fifos[i].acquire(ObjectFifoPort.Consume, 1)
+                        elem_in = in_fifos[i].acquire(ObjectFifoPort.Consume, 1)
                         reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
                         compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
-                        inA_fifos[i].release(ObjectFifoPort.Consume, 1)
+                        in_fifos[i].release(ObjectFifoPort.Consume, 1)
 
-                    elem_out = outC_fifos[i].acquire(ObjectFifoPort.Produce, 1)
+                    elem_out = out_fifos[i].acquire(ObjectFifoPort.Produce, 1)
                     inputs = []
                     for j in range(n_cores):
                         if j != i:
                             inputs.append(
-                                outC_fifos[j].acquire(ObjectFifoPort.Consume, 1)
+                                out_fifos[j].acquire(ObjectFifoPort.Consume, 1)
                             )
 
                     for idx in range(n_cores - 1):
@@ -166,11 +166,11 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                             compute_max(inputs[idx], nextC_buffer, elem_out)
 
                     for j, input_elem in enumerate(inputs):
-                        outC_fifos[j if j < i else j + 1].release(
+                        out_fifos[j if j < i else j + 1].release(
                             ObjectFifoPort.Consume, 1
                         )
 
-                    outC_fifos[i].release(ObjectFifoPort.Produce, 1)
+                    out_fifos[i].release(ObjectFifoPort.Produce, 1)
 
         # To/from AIE-array data movement
         @runtime_sequence(in_ty, out_ty)
@@ -184,7 +184,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
 
             in_task = shim_dma_single_bd_task(of_in, A, sizes=[1, 1, 1, N])
             out_task = shim_dma_single_bd_task(
-                outC_fifos[0 if n_cores == 1 else 1],
+                out_fifos[0 if n_cores == 1 else 1],
                 C,
                 sizes=[1, 1, 1, O],
                 issue_token=True,

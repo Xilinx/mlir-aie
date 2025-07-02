@@ -46,8 +46,8 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     out_ty = np.ndarray[(out_tensor_size,), np.dtype[out_dtype]]
 
     # AIE-array data movement with object fifos
-    inA_fifos = []
-    outC_fifos = []
+    in_fifos = []
+    out_fifos = []
 
     of_in = ObjectFifo(mem_ty, name="of_in")
 
@@ -59,13 +59,13 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     else:
         of_a_offsets = [0]
 
-    inA_fifos = of_in.cons().split(
+    in_fifos = of_in.cons().split(
         of_a_offsets,
         obj_types=[op_ty] * n_cores,
         names=[f"memA{i}" for i in range(n_cores)],
     )
     for i in range(n_cores):
-        outC_fifos.append(ObjectFifo(out_ty, name=f"memC{i}"))
+        out_fifos.append(ObjectFifo(out_ty, name=f"memC{i}"))
 
     # AIE Core Function declarations
     suffix = "_bfloat16" if dtype_str == "bf16" else ""
@@ -145,12 +145,12 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     for i in range(n_cores):
         if i == 1:
             # Build list of input fifos based on n_cores
-            fifo_args = [inA_fifos[i].cons(), outC_fifos[i].prod()]
+            fifo_args = [in_fifos[i].cons(), out_fifos[i].prod()]
             for j in range(n_cores - 1):
                 if j < i:
-                    fifo_args.append(outC_fifos[j].cons())
+                    fifo_args.append(out_fifos[j].cons())
                 else:
-                    fifo_args.append(outC_fifos[j + 1].cons())
+                    fifo_args.append(out_fifos[j + 1].cons())
             fifo_args.extend([reduce_max_vector, compute_max])
 
             workers.append(
@@ -165,8 +165,8 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                 Worker(
                     start_core_body,
                     fn_args=[
-                        inA_fifos[i].cons(),
-                        outC_fifos[i].prod(),
+                        in_fifos[i].cons(),
+                        out_fifos[i].prod(),
                         reduce_max_vector,
                         compute_max,
                     ],
@@ -180,7 +180,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         rt.enable_trace(trace_size)
         rt.start(*workers)
         rt.fill(of_in.prod(), a_in)
-        rt.drain(outC_fifos[0 if n_cores == 1 else 1].cons(), c_out, wait=True)
+        rt.drain(out_fifos[0 if n_cores == 1 else 1].cons(), c_out, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())
