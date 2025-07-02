@@ -56,10 +56,10 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         compute_max = external_func(
             f"compute_max{suffix}", inputs=[out_ty, out_ty, out_ty]
         )
-        min_type = np.finfo if dtype_str == "bf16" else np.iinfo
-        min_val = np.array(
-            [min_type(dtype).min],
-            dtype=dtype,
+        min_val = (
+            np.array([bfloat16(float("-inf"))], dtype=dtype)
+            if dtype_str == "bf16"
+            else np.array([np.iinfo(dtype).min], dtype=dtype)
         )
 
         # Tile declarations
