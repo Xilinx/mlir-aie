@@ -1,4 +1,4 @@
-# single_col_designs/vector_reduce_max_shared.py -*- Python -*-
+# multi_column_designs/vector_reduce_max_shared.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -24,15 +24,14 @@ dtype_map = {
 
 
 def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
-    n_cores = 4
+    n_cores = 8
     elems_per_core = 256
     n_channels = n_cores
 
-    in_dtype = dtype_map[dtype_str]
-    out_dtype = dtype_map[dtype_str]
+    dtype = dtype_map[dtype_str]
 
-    in_tensor_size = in1_size // in_dtype(0).nbytes
-    out_tensor_size = out_size // out_dtype(0).nbytes
+    in_tensor_size = in1_size // dtype(0).nbytes
+    out_tensor_size = out_size // dtype(0).nbytes
 
     N_per_channel = in_tensor_size // n_channels
 
@@ -46,17 +45,17 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     enable_trace = 1 if trace_size > 0 else 0
 
     # Define tensor types
-    in_ty = np.ndarray[(in_tensor_size,), np.dtype[in_dtype]]
-    op_ty = np.ndarray[(elems_per_core,), np.dtype[in_dtype]]
-    out_ty = np.ndarray[(out_tensor_size,), np.dtype[out_dtype]]
+    in_ty = np.ndarray[(in_tensor_size,), np.dtype[dtype]]
+    op_ty = np.ndarray[(elems_per_core,), np.dtype[dtype]]
+    out_ty = np.ndarray[(out_tensor_size,), np.dtype[dtype]]
 
     # AIE-array data movement with object fifos
-    inA_fifos = []
-    outC_fifos = []
+    in_fifos = []
+    out_fifos = []
 
     for i in range(n_cores):
-        inA_fifos.append(ObjectFifo(op_ty, name=f"memA{i}"))
-        outC_fifos.append(ObjectFifo(out_ty, name=f"memC{i}"))
+        in_fifos.append(ObjectFifo(op_ty, name=f"memA{i}"))
+        out_fifos.append(ObjectFifo(out_ty, name=f"memC{i}"))
 
     # AIE Core Function declarations
     suffix = "_bfloat16" if dtype_str == "bf16" else ""
@@ -82,32 +81,13 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         for i in range(n_channels)
     ]
 
-    # Define a task to run
-    def start_core_body(of_in, of_out, reduce_max_vector, compute_max):
-        nextC_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[out_dtype]],
-            initial_value=min_val,
-        )
-        tmp_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[out_dtype]],
-            initial_value=min_val,
-        )
-        elem_out = of_out.acquire(1)
-        for _ in range_(num_iter):
-            elem_in = of_in.acquire(1)
-            reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
-            compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
-            of_in.release(1)
-        elem_out[0] = nextC_buffer[0]
-        of_out.release(1)
-
     def core_body(*args):
         nextC_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[out_dtype]],
+            type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
             initial_value=min_val,
         )
         tmp_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[out_dtype]],
+            type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
             initial_value=min_val,
         )
         # Extract fixed arguments from end of args list
@@ -127,53 +107,54 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         elem_out = of_out.acquire(1)
 
         # Acquire inputs from other cores
-        inputs = []
-        for fifo in in_fifos:
-            inputs.append(fifo.acquire(1))
+        if in_fifos:
+            inputs = []
+            for fifo in in_fifos:
+                inputs.append(fifo.acquire(1))
 
-        # Compute max across all inputs
-        for elem in inputs[:-1]:
-            compute_max(elem, nextC_buffer, nextC_buffer)
-        compute_max(inputs[-1], nextC_buffer, elem_out)
+            # Compute max across all inputs
+            for elem in inputs[:-1]:
+                compute_max(elem, nextC_buffer, nextC_buffer)
+            compute_max(inputs[-1], nextC_buffer, elem_out)
 
-        # Release all inputs
-        for fifo in in_fifos:
-            fifo.release(1)
+            # Release all inputs
+            for fifo in in_fifos:
+                fifo.release(1)
+        else:
+            elem_out[0] = nextC_buffer[0]
+
         of_out.release(1)
 
     # Define a worker to run the task on a core
     workers = []
     for i in range(n_cores):
-        if i == 1:
-            # Build list of input fifos based on n_cores
-            fifo_args = [inA_fifos[i].cons(), outC_fifos[i].prod()]
-            for j in range(n_cores - 1):
-                if j < i:
-                    fifo_args.append(outC_fifos[j].cons())
-                else:
-                    fifo_args.append(outC_fifos[j + 1].cons())
-            fifo_args.extend([reduce_max_vector, compute_max])
+        fifo_args = [in_fifos[i].cons(), out_fifos[i].prod()]
+        # Handle special reduction cases for certain cores
+        if (
+            (i == 1 and n_cores >= 2)
+            or (i == 4 and n_cores == 5)
+            or (i == 5 and n_cores > 5)
+        ):
+            # TODO: can be further simplified
+            if i == 1:
+                cores_per_col = min(4, n_cores)
+                fifo_args.append(out_fifos[0].cons())
+                for j in range(2, cores_per_col):
+                    fifo_args.append(out_fifos[j].cons())
+            else:
+                fifo_args.append(out_fifos[1].cons())
+                if i == 5:
+                    fifo_args.append(out_fifos[4].cons())
+                    fifo_args.extend(out_fifos[j].cons() for j in range(6, n_cores))
 
-            workers.append(
-                Worker(
-                    core_body,
-                    fn_args=fifo_args,
-                    trace=enable_trace,
-                )
+        fifo_args.extend([reduce_max_vector, compute_max])
+        workers.append(
+            Worker(
+                core_body,
+                fn_args=fifo_args,
+                trace=enable_trace,
             )
-        else:
-            workers.append(
-                Worker(
-                    start_core_body,
-                    fn_args=[
-                        inA_fifos[i].cons(),
-                        outC_fifos[i].prod(),
-                        reduce_max_vector,
-                        compute_max,
-                    ],
-                    trace=enable_trace,
-                )
-            )
+        )
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
@@ -182,11 +163,17 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         rt.start(*workers)
         for i in range(n_channels):
             rt.fill(
-                inA_fifos[i].prod(),
+                in_fifos[i].prod(),
                 a_in,
                 taps[i],
             )
-        rt.drain(outC_fifos[0 if n_cores == 1 else 1].cons(), c_out, wait=True)
+        rt.drain(
+            out_fifos[
+                0 if n_cores == 1 else 1 if n_cores < 5 else 4 if n_cores == 5 else 5
+            ].cons(),
+            c_out,
+            wait=True,
+        )
 
     # Place program components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())
