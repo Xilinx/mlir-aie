@@ -891,12 +891,22 @@ AIETargetModel::getMemLocalBaseAddress(int localCol, int localRow, int memCol,
   return std::nullopt;
 }
 
+bool AIETargetModel::isSupportedBlockFormat(std::string const &format) const {
+  return false;
+}
+
 AIEArch BaseNPU2TargetModel::getTargetArch() const { return AIEArch::AIE2p; }
 
 std::vector<std::pair<uint32_t, uint32_t>>
 BaseNPU2TargetModel::getShimBurstEncodingsAndLengths() const {
   return {std::pair(0, 64), std::pair(1, 128), std::pair(2, 256),
           std::pair(3, 512)};
+}
+
+bool BaseNPU2TargetModel::isSupportedBlockFormat(
+    std::string const &format) const {
+  std::set<std::string> supportedTypes = {"v8bfp16ebs8", "v16bfp16ebs16"};
+  return static_cast<bool>(supportedTypes.find(format) != supportedTypes.end());
 }
 
 } // namespace AIE

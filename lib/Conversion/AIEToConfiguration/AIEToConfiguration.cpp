@@ -17,6 +17,12 @@
 
 #include "llvm/Support/Debug.h"
 
+extern "C" {
+#include "xaiengine/xaiegbl_defs.h"
+// above needs to go first for u32, u64 typedefs
+#include "xaiengine/xaie_txn.h"
+}
+
 #include <vector>
 
 #define DEBUG_TYPE "aie-convert-to-config"
@@ -430,8 +436,7 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
 
   // create aie.device
   std::vector<AIEDevice> devices{AIEDevice::npu1_1col, AIEDevice::npu1_2col,
-                                 AIEDevice::npu1_3col, AIEDevice::npu1_4col,
-                                 AIEDevice::npu1};
+                                 AIEDevice::npu1_3col, AIEDevice::npu1};
   auto device = builder.create<DeviceOp>(loc, devices[columns - 1]);
   device.getRegion().emplaceBlock();
   DeviceOp::ensureTerminator(device.getBodyRegion(), builder, loc);
@@ -463,7 +468,7 @@ static LogicalResult convertAIEToConfiguration(AIE::DeviceOp device,
     return failure();
 
   // start collecting transations
-  XAie_StartTransaction(&ctl.devInst, XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
+  ctl.startTransaction();
 
   bool generateElfs = clElfDir.size() > 0;
   if (failed(generateTransactions(ctl, clElfDir, device, aieSim, generateElfs,
@@ -471,9 +476,7 @@ static LogicalResult convertAIEToConfiguration(AIE::DeviceOp device,
     return failure();
 
   // Export the transactions to a binary buffer
-  uint8_t *txn_ptr = XAie_ExportSerializedTransaction(&ctl.devInst, 0, 0);
-  XAie_TxnHeader *hdr = (XAie_TxnHeader *)txn_ptr;
-  std::vector<uint8_t> txn_data(txn_ptr, txn_ptr + hdr->TxnSize);
+  std::vector<uint8_t> txn_data = ctl.exportSerializedTransaction();
 
   // parse the binary data
   std::vector<TransactionBinaryOperation> operations;

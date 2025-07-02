@@ -60,11 +60,10 @@ public:
     TK_AIE1_Last,
     TK_AIE2_VE2302,
     TK_AIE2_VE2802,
-    TK_AIE2_NPU1,
     TK_AIE2_NPU1_1Col,
     TK_AIE2_NPU1_2Col,
     TK_AIE2_NPU1_3Col,
-    TK_AIE2_NPU1_4Col,
+    TK_AIE2_NPU1_4Col, // whole array must be last because of how we cast/initialize the VirtualizedNPU1TargetModel class
     TK_AIE2_NPU1_Last,
     TK_AIE2_NPU2 = TK_AIE2_NPU1_Last,
     TK_AIE2_NPU2_1Col,
@@ -318,6 +317,9 @@ public:
   // their corresponding lengths in bytes (second).
   virtual std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const = 0;
+
+  // Returns true if the target model supports the given block format.
+  virtual bool isSupportedBlockFormat(std::string const &format) const;
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -633,29 +635,8 @@ public:
   uint32_t getNumMemTileRows() const override { return 1; }
 
   static bool classof(const AIETargetModel *model) {
-    return model->getKind() >= TK_AIE2_NPU1 &&
+    return model->getKind() >= TK_AIE2_NPU1_1Col &&
            model->getKind() < TK_AIE2_NPU1_Last;
-  }
-};
-
-// The full Phoenix NPU
-class NPU1TargetModel : public BaseNPU1TargetModel {
-public:
-  NPU1TargetModel() : BaseNPU1TargetModel(TK_AIE2_NPU1) {}
-
-  int columns() const override { return 5; }
-
-  bool isShimNOCTile(int col, int row) const override {
-    return row == 0 && col > 0;
-  }
-
-  bool isShimPLTile(int col, int row) const override {
-    // This isn't useful because it's not connected to anything.
-    return row == 0 && col == 0;
-  }
-
-  static bool classof(const AIETargetModel *model) {
-    return model->getKind() == TK_AIE2_NPU1;
   }
 };
 
@@ -666,8 +647,8 @@ class VirtualizedNPU1TargetModel : public BaseNPU1TargetModel {
 public:
   VirtualizedNPU1TargetModel(int _cols)
       : BaseNPU1TargetModel(static_cast<TargetModelKind>(
-            static_cast<std::underlying_type_t<TargetModelKind>>(TK_AIE2_NPU1) +
-            _cols)),
+            static_cast<std::underlying_type_t<TargetModelKind>>(TK_AIE2_NPU1_1Col) +
+            _cols - 1)),
         cols(_cols) {
     // Device properties initialization
     addModelProperty(AIETargetModel::IsVirtualized);
@@ -713,6 +694,8 @@ public:
 
   std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const override;
+
+  bool isSupportedBlockFormat(std::string const &format) const override;
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU2 &&

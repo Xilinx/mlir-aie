@@ -22,7 +22,7 @@ The host code can be written in either C++ (as shown in the figure) or in Python
 
 <img align="right" width="410" height="84" src="../assets/vectorScalarMul.svg">
 
-Throughout this section, a [vector scalar multiplication](../../programming_examples/basic/vector_scalar_mul/) (`c = a * factor`) will be used as an example. Vector scalar multiplication takes an input vector `a` and computes the output vector `c` by multiplying each element of `a` with a `factor`. In this example, the total vector size is set to 4096 (16b) that will processed in chunks of 1024.
+Throughout this section, a [vector scalar multiplication](../../programming_examples/basic/vector_scalar_mul/) (`c = a * factor`) will be used as an example. Vector scalar multiplication takes an input vector `a` and computes the output vector `c` by multiplying each element of `a` with a `factor`. In this example, the total vector size is set to 4096 (32b) that will processed in chunks of 1024.
 
 This design is also available in the [programming_examples](../../programming_examples) of this repository. We will first introduce the AIE-array structural description, review the kernel code and then introduce the host code. Finally we will show how to run the design on Ryzen™ AI enabled hardware.
 

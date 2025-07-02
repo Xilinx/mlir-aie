@@ -80,7 +80,7 @@
 // CHECK: (MaskWrite64): Address: 0x000000000601F004  Mask: 0x00000030  Data: 0x00000010 
 
 module {
- aie.device(npu1_4col) {
+ aie.device(npu1) {
   %buffer = aie.external_buffer { sym_name = "buf" } : memref<16 x f32>
   %t00 = aie.tile(0, 0)
   %t10 = aie.tile(1, 0)
