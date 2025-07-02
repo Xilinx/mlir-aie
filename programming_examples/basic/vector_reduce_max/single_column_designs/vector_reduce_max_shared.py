@@ -27,11 +27,10 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     n_mem_elems = 2048
     elems_per_core = n_mem_elems // n_cores
 
-    in_dtype = dtype_map[dtype_str]
-    out_dtype = dtype_map[dtype_str]
+    dtype = dtype_map[dtype_str]
 
-    in_tensor_size = in1_size // in_dtype(0).nbytes
-    out_tensor_size = out_size // out_dtype(0).nbytes
+    in_tensor_size = in1_size // dtype(0).nbytes
+    out_tensor_size = out_size // dtype(0).nbytes
 
     num_iter = in_tensor_size // n_mem_elems
 
@@ -40,10 +39,10 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     enable_trace = 1 if trace_size > 0 else 0
 
     # Define tensor types
-    in_ty = np.ndarray[(in_tensor_size,), np.dtype[in_dtype]]
-    mem_ty = np.ndarray[(n_mem_elems,), np.dtype[in_dtype]]
-    op_ty = np.ndarray[(elems_per_core,), np.dtype[in_dtype]]
-    out_ty = np.ndarray[(out_tensor_size,), np.dtype[out_dtype]]
+    in_ty = np.ndarray[(in_tensor_size,), np.dtype[dtype]]
+    mem_ty = np.ndarray[(n_mem_elems,), np.dtype[dtype]]
+    op_ty = np.ndarray[(elems_per_core,), np.dtype[dtype]]
+    out_ty = np.ndarray[(out_tensor_size,), np.dtype[dtype]]
 
     # AIE-array data movement with object fifos
     in_fifos = []
@@ -84,11 +83,11 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     # Define a task to run
     def start_core_body(of_in, of_out, reduce_max_vector, compute_max):
         nextC_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[out_dtype]],
+            type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
             initial_value=min_val,
         )
         tmp_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[out_dtype]],
+            type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
             initial_value=min_val,
         )
         elem_out = of_out.acquire(1)
@@ -102,11 +101,11 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
 
     def core_body(*args):
         nextC_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[out_dtype]],
+            type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
             initial_value=min_val,
         )
         tmp_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[out_dtype]],
+            type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
             initial_value=min_val,
         )
         # Extract fixed arguments from end of args list
