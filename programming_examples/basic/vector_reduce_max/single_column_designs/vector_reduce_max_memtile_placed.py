@@ -1,4 +1,4 @@
-# single_col_designs/vector_reduce_max_memtile_placed.py -*- Python -*-
+# single_column_designs/vector_reduce_max_memtile_placed.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
