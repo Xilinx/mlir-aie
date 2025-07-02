@@ -81,6 +81,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         if dtype_str == "bf16"
         else np.array([np.iinfo(dtype).min], dtype=dtype)
     )
+
     # Define a task to run
     def start_core_body(of_in, of_out, reduce_max_vector, compute_max):
         nextC_buffer = LocalBuffer(
