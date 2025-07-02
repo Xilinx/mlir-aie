@@ -11,6 +11,8 @@
 
 The designs in this folder are optimized to avoid the use of memory tiles and minimize data movement. Partial reductions are performed within each column using shared memory between neighboring tiles, followed by a final reduction step across the two columns. The number of cores (`n_cores`) can be configured from 1 to 8, and all shim tiles and shim DMAs are utilized. 
 
+![](assets/Multi-Col.png)
+
 Both BF16 and INT32 data types are supported, leveraging kernels from `reduce_max.cc`.
 
 ## Source Files Overview

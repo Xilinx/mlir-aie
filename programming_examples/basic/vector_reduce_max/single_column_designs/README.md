@@ -12,9 +12,9 @@
 
 This folder presents three distinct styles of column-wide reduction designs for AIE cores:
 
-- **Cascade Design:** Each tile computes a partial maximum and passes the result to the next tile in the column, forming a reduction cascade.
-- **Shared Memory Design:** Neighboring tiles use shared memory to exchange intermediate results, enabling a collaborative reduction.
-- **Memory Tile Design:** Partial results from all tiles are aggregated in a dedicated memory tile, which then forwards the combined result to an AIE core for the final reduction.
+- **Cascade Design:** Each tile computes a partial maximum and passes the result to the next tile in the column, forming a reduction cascade.![](assets/Cascade.png)
+- **Shared Memory Design:** Neighboring tiles use shared memory to exchange intermediate results, enabling a collaborative reduction.![](assets/Shared.png)
+- **Memory Tile Design:** Partial results from all tiles are aggregated in a dedicated memory tile, which then forwards the combined result to an AIE core for the final reduction.![](assets/Memtile.png)
 
 All designs support both BF16 and INT32 data types and utilize kernels from `reduce_max.cc`.
 
