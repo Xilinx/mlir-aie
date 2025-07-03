@@ -24,6 +24,10 @@ Input data is brought to the local memory of the Compute tile from a Shim tile. 
 
 1. `test.cpp`: This C++ code is a testbench for the design example targetting Ryzen™ AI (AIE2). The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the program verifies the results.
 
+## Extended Designs
+
+The `single_col_designs` folder contains designs that build on the `vector_reduce_max_placed.py` version to demonstrate different ways to utilize multiple tiles efficiently for larger datasets.
+
 ## Ryzen™ AI Usage
 
 ### Compilation
@@ -51,4 +55,10 @@ To run the design:
 make run
 ```
 
+### Trace
 
+To generate a [trace file](../../../programming_guide/section-4/section-4b/README.md):
+
+```shell
+env use_placed=1 make trace
+```
