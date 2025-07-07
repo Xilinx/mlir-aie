@@ -27,6 +27,8 @@ targetname = edge_detect
 aie_py_src=${targetname}.py
 use_placed?=0
 
+webcam ?= 0
+
 ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
 endif
@@ -62,7 +64,7 @@ build/final_${EDGEDETECT_WIDTH}.xclbin: build/aie2_lineBased_8b_${EDGEDETECT_WID
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname} -DEDGEDETECT_WIDTH=${EDGEDETECT_WIDTH} -DEDGEDETECT_HEIGHT=${EDGEDETECT_HEIGHT} -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname} -DEDGEDETECT_WIDTH=${EDGEDETECT_WIDTH} -DEDGEDETECT_HEIGHT=${EDGEDETECT_HEIGHT} -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -73,5 +75,7 @@ endif
 run: ${targetname}.exe build/final_${EDGEDETECT_WIDTH}.xclbin
 	${powershell} ./$< -x build/final_${EDGEDETECT_WIDTH}.xclbin -i build/insts.bin -k MLIR_AIE
 
+run_live: ${targetname}.exe build/final_${EDGEDETECT_WIDTH}.xclbin
+	${powershell} ./$< -l -x build/final_${EDGEDETECT_WIDTH}.xclbin -i build/insts.bin -k MLIR_AIE -d ${webcam}
 clean:
 	rm -rf build _build ${targetname}.exe ${targetname}Out_test.jpg

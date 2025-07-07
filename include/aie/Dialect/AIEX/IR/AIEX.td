@@ -19,6 +19,8 @@ include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/DataLayoutInterfaces.td"
+include "mlir/IR/BuiltinTypeInterfaces.td"
 include "mlir/IR/CommonAttrConstraints.td"
 
 def AIEX_Dialect : Dialect {
@@ -34,8 +36,67 @@ def AIEX_Dialect : Dialect {
   let extraClassDeclaration = [{
   }];
 
+  let useDefaultTypePrinterParser = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// AIEX Types
+//===----------------------------------------------------------------------===//
+def AIEX_BlockFloatingPointType : TypeDef<AIEX_Dialect, "BlockFloat", [
+    MemRefElementTypeInterface,
+    DeclareTypeInterfaceMethods<DataLayoutTypeInterface>
+  ]> {
+  let summary = "AIEX type representing a block floating point type.";
+  let mnemonic = "bfp";
+  let description = [{
+    This is a type representing a block floating point.
+    It is meant to eventually be lowered into a standard type further down the pipeline.
+    It the meantime, it can be used for blocked fp related dataflow adaptations.
+    Available types are v8bfp16ebs8 and v16bfp16ebs16.
+  }];
+
+  let parameters = (
+    ins StringRefParameter<"">:$block_type
+  );
+
+  let assemblyFormat = "`<` $block_type `>`";
+
+  let extraClassDeclaration = [{
+    int getBlockSize() const;
+    int getMantissaBits() const;
+    int getExponentBits() const;
+    int getSubtileShiftBits() const;
+
+    using BlockFormat = struct BlockFormat {
+      int blockSize;
+      int mantissaBits;
+      int exponentBits;
+      int subtileShiftBits;
+    };
+
+    std::optional<BlockFormat> getBlockFormat() const;
+    static std::optional<BlockFormat> getBlockFormat(llvm::StringRef blockType);
+
+    uint64_t getTotalSizeInBits() const;
+  }];
+
+  let extraClassDefinition = [{
+    int $cppClass::getBlockSize() const { return getBlockFormat().value().blockSize; }
+    int $cppClass::getMantissaBits() const { return getBlockFormat().value().mantissaBits; }
+    int $cppClass::getExponentBits() const { return getBlockFormat().value().exponentBits; }
+    int $cppClass::getSubtileShiftBits() const { return getBlockFormat().value().subtileShiftBits; }
+
+    std::optional<$cppClass::BlockFormat> $cppClass::getBlockFormat() const {
+      return getBlockFormat(getBlockType());
+    }
+  }];
+
+  let genVerifyDecl = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// AIEX Operations
+//===----------------------------------------------------------------------===//
 
 class AIEX_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIEX_Dialect, mnemonic, traits>;
@@ -599,11 +660,19 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     int64_t getOffsetInBytes();
 
     bool isLinearTransferWithoutTransformation();
+
+    /* Returns the bitwidth of the type inside the memref through a 
+    call to DataLayout */
+    uint64_t getElementTypeBitwidth();
   }];
 
   let extraClassDefinition = [{
     unsigned $cppClass::getOffsetSizeAndStrideStartOperandIndex() { return 1; }
     std::array<unsigned, 3> $cppClass::getArrayAttrMaxRanks() { return {4, 4, 4}; }
+    uint64_t $cppClass::getElementTypeBitwidth() {
+      DataLayout dataLayout = DataLayout::closest(*this);
+      return dataLayout.getTypeSizeInBits(getMemref().getType().getElementType());
+    }
   }];
 
   let hasVerifier = 1;

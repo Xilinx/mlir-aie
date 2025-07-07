@@ -36,7 +36,8 @@ int main(int argc, const char *argv[]) {
   auto device = xrt::device(device_index);
 
   // Load the xclbin
-  auto xclbin = xrt::xclbin("aie.xclbin");
+  std::string xclbin_name = "aie.xclbin";
+  xrt::xclbin xclbin(xclbin_name);
 
   std::string Node = "MLIR_AIE";
 

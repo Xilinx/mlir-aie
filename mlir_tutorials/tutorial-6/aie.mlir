@@ -11,9 +11,9 @@
 // aiecc.py -j4 -%VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o tutorial-6.exe
 
 // REQUIRES: valid_xchess_license
-// RUN: make -C %S
+// RUN: make -f %S/Makefile
 // RUN: %run_on_board ./tutorial-6.exe
-// RUN: make -C %S clean
+// RUN: make -f %S/Makefile clean
 
 // Declare this MLIR module. A wrapper that can contain all
 // AIE tiles, buffers, and data movement
@@ -67,7 +67,7 @@ module @tutorial_6 {
                 // 0x4 - packet type, arbitary value
                 // 0xD - packet ID, arbitary value but used for routing
                 aie.dma_bd_packet(0x4, 0xD)
-                aie.dma_bd(<%buf14 : memref<256xi32>, 0, 256>, A)
+                aie.dma_bd(%buf14 : memref<256xi32>, 0, 256)
                 aie.use_lock(%lock14_6, Release, 0)
                 aie.next_bd ^end
             ^end:
@@ -100,7 +100,7 @@ module @tutorial_6 {
             ^bd0:
                 aie.use_lock(%lock34_7, Acquire, 0)
                 // Packets headers are dropped so no need to define packet behavior here
-                aie.dma_bd(<%buf34 : memref<256xi32>, 0, 256>, A)
+                aie.dma_bd(%buf34 : memref<256xi32>, 0, 256)
                 aie.use_lock(%lock34_7, Release, 1)
                 aie.next_bd ^end
             ^end:

@@ -1,10 +1,10 @@
 // (c) Copyright 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: ryzen_ai, peano
+// REQUIRES: ryzen_ai_npu2, peano, torch
 //
 // RUN: mkdir -p test_stx
 // RUN: cd test_stx
 // RUN: make -f %S/Makefile clean
 // RUN: env devicename=npu2 make -f %S/Makefile
-// %run_on_2npu make -f %S/Makefile run
+// RUN: %run_on_npu2% make -f %S/Makefile run_py

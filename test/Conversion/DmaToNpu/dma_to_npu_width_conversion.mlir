@@ -10,7 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-dma-to-npu %s 2>&1 | FileCheck %s
+// RUN: aie-opt --aie-dma-to-npu %s | FileCheck %s
 
 // CHECK-LABEL:  aie.device(xcve2302) {
 // CHECK:     memref.global "public" @toMem : memref<65536xbf16>
@@ -19,7 +19,7 @@
 // CHECK:       %0 = memref.get_global @blockwrite_data_0 : memref<8xi32>
 // CHECK:       aiex.npu.blockwrite(%0) {address = 67227648 : ui32} : memref<8xi32>
 // CHECK:       aiex.npu.address_patch {addr = 67227652 : ui32, arg_idx = 0 : i32, arg_plus = 0 : i32}
-// CHECK:       aiex.npu.write32 {address = 119300 : ui32, column = 2 : i32, row = 0 : i32, value = 2147680256 : ui32}
+// CHECK:       aiex.npu.write32 {address = 67228164 : ui32, value = 2147680256 : ui32}
 // CHECK:       aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
 // CHECK:     }
 // CHECK:     aie.shim_dma_allocation @toMem(S2MM, 0, 2)

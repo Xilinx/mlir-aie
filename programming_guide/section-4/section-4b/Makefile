@@ -20,7 +20,6 @@ in2_size = 4 # in bytes, should always be 4 (1x int32)
 out_size = 16384 # in bytes, should always be equal to in1_size
 trace_size = 8192
 
-colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src=${targetname}.py
 
 use_placed?=0
@@ -64,7 +63,7 @@ build/final_trace.xclbin: build/aie_trace.mlir build/scale.o
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname} -DIN1_SIZE=${in1_size} -DIN2_SIZE=${in2_size} -DOUT_SIZE=${out_size}
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname} -DIN1_SIZE=${in1_size} -DIN2_SIZE=${in2_size} -DOUT_SIZE=${out_size}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -80,12 +79,12 @@ run_py: build/final.xclbin build/insts.bin
 
 trace: ${targetname}.exe build/final_trace.xclbin build/insts.bin 
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../../programming_examples/utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --colshift ${colshift} --output trace_4b.json
+	${srcdir}/../../../programming_examples/utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_4b.json
 	${srcdir}/../../../programming_examples/utils/get_trace_summary.py --input trace_4b.json
 
 trace_py: build/final_trace.xclbin build/insts.bin
 	${powershell} python3 ${srcdir}/test.py -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -i2s ${in2_size} -os ${out_size}
-	${srcdir}/../../../programming_examples/utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --colshift ${colshift} --output trace_4b.json
+	${srcdir}/../../../programming_examples/utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_4b.json
 	${srcdir}/../../../programming_examples/utils/get_trace_summary.py --input trace_4b.json
 
 

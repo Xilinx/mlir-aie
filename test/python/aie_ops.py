@@ -22,11 +22,11 @@ from aie.dialects.aie import (
     WireBundle,
     packetflow,
     get_target_model,
+    dma_bd
 )
 from aie.ir import InsertionPoint, Block
 from aie.extras.context import mlir_mod_ctx
 from aie.extras import types as T
-
 from util import construct_and_print_module
 
 
@@ -267,6 +267,17 @@ def packetFlowOp():
     )
 
 
+# CHECK-LABEL: dmaBDOp
+# CHECK: %[[VAL_0:.*]] = aie.tile(1, 3)
+# CHECK: %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<12xi32>
+# CHECK: aie.dma_bd(%[[VAL_1]] : memref<12xi32>) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
+@construct_and_print_module
+def dmaBDOp():
+    t0 = tile(col=1, row=3)
+    b = buffer(t0, np.ndarray[(12,), np.dtype[np.int32]])
+    dma_bd(b,packet=(0,4))
+
+
 # CHECK-LABEL: test_module_context
 # CHECK: module {
 # CHECK:   %tile_1_1 = aie.tile(1, 1)
@@ -295,7 +306,7 @@ test_module_context()
 # CHECK: xcvc1902 cols 50
 # CHECK: xcvc1902 npu False
 # CHECK: npu1 rows 6
-# CHECK: npu1 cols 5
+# CHECK: npu1 cols 4
 # CHECK: npu1 npu True
 # CHECK: npu1_1col rows 6
 # CHECK: npu1_1col cols 1

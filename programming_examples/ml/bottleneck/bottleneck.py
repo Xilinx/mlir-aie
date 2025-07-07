@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# Copyright (C) 2024-2025, Advanced Micro Devices, Inc.
 import numpy as np
 import sys
 
@@ -142,7 +142,7 @@ def bottleneck4AIEs():
     )
 
     # weights
-    inOF_wts_0_L3L2 = ObjectFifo(weightsAll_ty, default_depth=1, name="inOF_wts_0_L3L2")
+    inOF_wts_0_L3L2 = ObjectFifo(weightsAll_ty, depth=1, name="inOF_wts_0_L3L2")
     of_offsets = [0, weightsL1_sz, weightsL1_sz + weightsL2_sz]
     of_wts_buf_00, wts_buf_01, wts_buf_02 = inOF_wts_0_L3L2.cons().split(
         of_offsets,
@@ -347,6 +347,7 @@ def bottleneck4AIEs():
             rtp_barrier,
         ],
         placement=Tile(0, 4),
+        stack_size=0xA00,
     )
     workers.append(worker)
 

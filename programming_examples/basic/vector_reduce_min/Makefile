@@ -16,7 +16,6 @@ targetname = vector_reduce_min
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 col = 0
 
-colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src=${targetname}.py
 use_placed?=0
 
@@ -49,7 +48,7 @@ build/final.xclbin: build/aie.mlir build/reduce_min.cc.o
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -61,7 +60,7 @@ run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
 
 trace:
-	../../utils/parse_trace.py --input trace.txt --mlir build/aie.mlir --colshift ${colshift} --output parse_eventIR_vs.json
+	../../utils/parse_trace.py --input trace.txt --mlir build/aie.mlir --output parse_eventIR_vs.json
 
 clean_trace:
 	rm -rf tmpTrace trace.txt

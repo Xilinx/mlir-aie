@@ -13,6 +13,9 @@
 # cmake needs this line
 cmake_minimum_required(VERSION 3.1)
 
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED YES)
+
 find_program(WSL NAMES powershell.exe)
 
 if (NOT WSL)
@@ -23,7 +26,9 @@ else()
     set(OpenCV_DIR C:/Technical/thirdParty/opencv/build CACHE STRING "Path to OpenCV install")
     set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT cloned repo")
     set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
+    add_compile_options("/std:c++17")
 endif ()
+
 
 set(EDGEDETECT_WIDTH 1920 CACHE STRING "image width")
 set(EDGEDETECT_HEIGHT 1080 CACHE STRING "image height")
@@ -35,6 +40,7 @@ SET (currentTarget ${TARGET_NAME})
 
 if ( WSL )
 	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR})
+    add_compile_options(/Zc:__cplusplus)
 endif ()
 
 project(${ProjectName})
@@ -60,6 +66,7 @@ target_compile_definitions(${currentTarget} PUBLIC
 target_include_directories (${currentTarget} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib
     ${XRT_INC_DIR}
     ${OpenCV_INCLUDE_DIRS}
 )

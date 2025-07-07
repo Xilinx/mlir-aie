@@ -181,8 +181,9 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     uint32_t bd_id = bd_op.getBdId().value();
     const AIE::AIETargetModel &target_model = AIE::getTargetModel(bd_op);
     auto buf = bd_op.getBuffer();
-    uint64_t register_addr = getBufferDescriptorAddressRegisterAddress(
-        target_model, bd_id, tile.getCol(), tile.getRow());
+    uint64_t register_addr =
+        target_model.getDmaBdAddress(tile.getCol(), tile.getRow(), bd_id) +
+        target_model.getDmaBdAddressOffset(tile.getCol(), tile.getRow());
     if (mlir::BlockArgument buf_arg =
             llvm::dyn_cast<mlir::BlockArgument>(buf)) {
       if (!target_model.isShimNOCTile(tile.getCol(), tile.getRow())) {
@@ -191,7 +192,8 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       }
       unsigned arg_idx = buf_arg.getArgNumber();
       int64_t offset = bd_op.getOffsetInBytes();
-      builder.create<NpuAddressPatchOp>(bd_op.getLoc(), /*addr*/ register_addr,
+      builder.create<NpuAddressPatchOp>(bd_op.getLoc(),
+                                        /*addr*/ register_addr,
                                         /*arg_idx*/ arg_idx,
                                         /*arg_plus*/ offset);
     } else if (AIE::BufferOp buffer =
@@ -207,9 +209,9 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       builder.create<NpuWrite32Op>(bd_op.getLoc(), register_addr, buf_addr,
                                    nullptr, nullptr, nullptr);
     } else {
-      return bd_op->emitOpError(
-          "Buffer argument must be either a constant aie.buffer or a runtime "
-          "sequence input argument.");
+      return bd_op->emitOpError("Buffer argument must be either a constant "
+                                "aie.buffer or a runtime "
+                                "sequence input argument.");
     }
     return success();
   }
@@ -313,7 +315,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
           return bd_op->emitOpError()
                  << "supports padding only for MM2S direction on MemTiles.";
       }
-      getHardwareStridesWraps(target_model, buffer_type, input_sizes,
+      getHardwareStridesWraps(target_model, bd_op, buffer_type, input_sizes,
                               input_strides, sizes, strides);
 
       if (failed(verifyStridesWraps(bd_op, buffer_type, tile.getCol(),

@@ -12,6 +12,9 @@
 # cmake needs this line
 cmake_minimum_required(VERSION 3.1)
 
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED YES)
+
 find_program(WSL NAMES powershell.exe)
 
 if (NOT WSL)
@@ -30,6 +33,7 @@ SET (currentTarget ${TARGET_NAME})
 
 if ( WSL )
 	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR})
+    add_compile_options(/Zc:__cplusplus)
 endif ()
 
 project(${ProjectName})
@@ -48,6 +52,7 @@ target_compile_definitions(${currentTarget} PUBLIC
 target_include_directories (${currentTarget} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib
     ${XRT_INC_DIR}
 )
 

@@ -20,8 +20,8 @@ Both the producer and the consumer processes in this design have trivial tasks. 
 
 To have this design use a double, or ping-pong, buffer for the data transfer instead, the user need only set the depth of the Object FIFOs to `2`. No other change is required as the Object FIFO lowering will take care of properly cycling between the ping and pong buffers. To change the depth the user should write:
 ```python
-of_in = ObjectFifo(data_ty, name="in", default_depth=2) # double buffer
-of_out = ObjectFifo(data_ty, name="out", default_depth=2) # double buffer
+of_in = ObjectFifo(data_ty, name="in", depth=2) # double buffer
+of_out = ObjectFifo(data_ty, name="out", depth=2) # double buffer
 ```
 This change effectively increases the number of available resources of the Object FIFOs as is shown in the figure below:
 

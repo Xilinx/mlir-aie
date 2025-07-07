@@ -25,12 +25,16 @@ endif
 targetname = softmax
 trace_size = 8192
 
-colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src=${targetname}.py
 use_placed?=0
+use_whole_array?=0
 
 ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
+endif
+
+ifeq (${use_whole_array}, 1)
+aie_py_src=${targetname}_whole_array_placed.py
 endif
 
 all: build/final.xclbin build/insts.bin
@@ -86,7 +90,7 @@ build/final_trace.xclbin: build/aie_trace.mlir build/kernels.a
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -102,7 +106,7 @@ profile: ${targetname}.exe build/final.xclbin
 
 trace: ${targetname}.exe build/final_trace.xclbin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --colshift ${colshift} --output trace_softmax.json
+	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_softmax.json
 	${srcdir}/../../utils/get_trace_summary.py --input trace_softmax.json
 
 clean: 
