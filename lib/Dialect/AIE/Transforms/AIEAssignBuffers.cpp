@@ -509,6 +509,8 @@ struct AIEAssignBufferAddressesPass
           return signalPassFailure();
       } else {
         if (auto res = simpleBankAwareAllocation(tile); res.failed()) {
+          tile.emitWarning(
+              "Bank-aware allocation failed; attempting basic allocation.");
           if (auto res2 = basicAllocation(tile); res2.failed())
             return signalPassFailure();
         }
