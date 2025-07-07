@@ -255,7 +255,6 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     std::fill(padBefore.begin(), padBefore.end(), 0);
     std::fill(padAfter.begin(), padAfter.end(), 0);
 
-
     auto enable_packet = 0;
     auto out_of_order_id = 0;
     auto packet_id = 0;
