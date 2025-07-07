@@ -25,7 +25,7 @@ else()
     set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
 endif ()
 
-set(TARGET_NAME test CACHE STRING "Target to be built")
+set(TARGET_NAME aie2 CACHE STRING "Target to be built")
 
 SET (ProjectName ${TARGET_NAME})
 SET (currentTarget ${TARGET_NAME})
@@ -44,8 +44,6 @@ add_executable(${currentTarget}
 )
 
 target_compile_definitions(${currentTarget} PUBLIC
-    IN1_SIZE=${IN1_SIZE}
-    OUT_SIZE=${OUT_SIZE}
     DISABLE_ABI_CHECK=1
         )
 
