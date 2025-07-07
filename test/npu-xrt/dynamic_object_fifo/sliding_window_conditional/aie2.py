@@ -5,13 +5,13 @@
 #
 # (c) Copyright 2024 AMD Inc.
 
-# REQUIRES: ryzen_ai, valid_xchess_license
+# REQUIRES: ryzen_ai, peano
 #
 # RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cc -o ./kernel.o
 # RUN: %python %S/aie2.py > ./aie2.mlir
 # RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --dynamic-objFifos --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-# RUN: %run_on_npu1% ./test.exe
+# RUN: %run_on_npu1% ./test.exe -x final.xclbin -k MLIR_AIE -i insts.bin
 
 import numpy as np
 
@@ -55,7 +55,6 @@ def sliding_window():
                     with if_(i == 0) as if_op:
                         elemInPre = of_in.acquire(ObjectFifoPort.Consume, 1)
                         add_10_i32(elemInPre, elemInPre, elemOut)
-                        of_in.release(ObjectFifoPort.Consume, 1)
                     with else_(if_op):
                         with if_(i == 9) as if_op1:
                             elemsInPost = of_in.acquire(ObjectFifoPort.Consume, 2)
@@ -64,16 +63,16 @@ def sliding_window():
                         with else_(if_op1):
                             elemsIn = of_in.acquire(ObjectFifoPort.Consume, 2)
                             add_10_i32(elemsIn[0], elemsIn[1], elemOut)
-                            of_in.release(ObjectFifoPort.Consume, 2)
-                of_out.release(ObjectFifoPort.Produce, 1)
+                            of_in.release(ObjectFifoPort.Consume, 1)
+                    of_out.release(ObjectFifoPort.Produce, 1)
 
             # To/from AIE-array data movement
             tensor_ty = np.ndarray[(N,), np.dtype[np.int32]]
 
             @runtime_sequence(tensor_ty, tensor_ty)
             def sequence(A, C):
-                npu_dma_memcpy_nd(metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N])
-                npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
+                npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
+                npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
                 dma_wait(of_out)
 
     print(ctx.module)

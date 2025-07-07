@@ -4,26 +4,20 @@
 //
 // (c) Copyright 2024 AMD Inc.
 
-#include <cassert>
-#include <cstring>
+#include "cxxopts.hpp"
+#include <cstdint>
+#include <cstdlib>
 #include <fstream>
-#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-#ifndef XCLBIN
-#define XCLBIN std::string("final.xclbin")
-#endif
-
-#ifndef INSTS_TXT
-#define INSTS_TXT "insts.bin"
-#endif
-
-#ifndef KERNEL_NAME
-#define KERNEL_NAME "MLIR_AIE"
-#endif
+#include "test_utils.h"
 
 #define INPUT_SIZE (100 * sizeof(int))  // in bytes
 #define OUTPUT_SIZE (100 * sizeof(int)) // in bytes
@@ -35,34 +29,92 @@
 #include "test_utils.h"
 
 int main(int argc, const char *argv[]) {
+  cxxopts::Options options("Sliding Window Conditional Test");
+  cxxopts::ParseResult vm;
 
-  std::vector<uint32_t> instr_v = test_utils::load_instr_binary(INSTS_TXT);
-  assert(instr_v.size() > 0);
+  options.add_options()("help,h", "produce help message")(
+      "xclbin,x", "the input xclbin path", cxxopts::value<std::string>())(
+      "kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)",
+      cxxopts::value<std::string>())("verbosity,v",
+                                     "the verbosity of the output",
+                                     cxxopts::value<int>()->default_value("0"))(
+      "instr,i",
+      "path of file containing userspace instructions to be sent to the LX6",
+      cxxopts::value<std::string>())(
+      "length,l", "the length of the transfer in int32_t",
+      cxxopts::value<int>()->default_value("4096"));
+
+  try {
+    vm = options.parse(argc, argv);
+
+    if (vm.count("help")) {
+      std::cout << options.help() << std::endl;
+      return 1;
+    }
+
+    // Check required options
+    if (!vm.count("xclbin") || !vm.count("kernel") || !vm.count("instr")) {
+      std::cerr << "Error: Required options missing\n\n";
+      std::cerr << "Usage:\n" << options.help() << std::endl;
+      return 1;
+    }
+  } catch (const cxxopts::exceptions::parsing &e) {
+    std::cerr << e.what() << "\n\n";
+    std::cerr << "Usage:\n" << options.help() << std::endl;
+    return 1;
+  }
+
+  std::vector<uint32_t> instr_v =
+      test_utils::load_instr_binary(vm["instr"].as<std::string>());
+
+  int verbosity = vm["verbosity"].as<int>();
+  if (verbosity >= 1)
+    std::cout << "Sequence instr count: " << instr_v.size() << std::endl;
+
+  int N = vm["length"].as<int>();
+  if ((N % 1024)) {
+    std::cerr << "Length must be a multiple of 1024." << std::endl;
+    return 1;
+  }
 
   // Get a device handle
   unsigned int device_index = 0;
   xrt::device device = xrt::device(device_index);
 
   // Load the xclbin
-  xrt::xclbin xclbin = xrt::xclbin(XCLBIN);
+  if (verbosity >= 1)
+    std::cout << "Loading xclbin: " << vm["xclbin"].as<std::string>()
+              << std::endl;
+  auto xclbin = xrt::xclbin(vm["xclbin"].as<std::string>());
+
+  if (verbosity >= 1)
+    std::cout << "Kernel opcode: " << vm["kernel"].as<std::string>()
+              << std::endl;
+  std::string Node = vm["kernel"].as<std::string>();
 
   // Get the kernel from the xclbin
-  std::vector<xrt::xclbin::kernel> xkernels = xclbin.get_kernels();
-  xrt::xclbin::kernel xkernel = *std::find_if(
-      xkernels.begin(), xkernels.end(), [](xrt::xclbin::kernel &k) {
-        return k.get_name().rfind(KERNEL_NAME, 0) == 0;
-      });
-  std::string kernel_name = xkernel.get_name();
-  assert(strcmp(kernel_name.c_str(), KERNEL_NAME) == 0);
+  auto xkernels = xclbin.get_kernels();
+  auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
+                               [Node](xrt::xclbin::kernel &k) {
+                                 auto name = k.get_name();
+                                 std::cout << "Name: " << name << std::endl;
+                                 return name.rfind(Node, 0) == 0;
+                               });
+  auto kernelName = xkernel.get_name();
 
+  if (verbosity >= 1)
+      std::cout << "Registering xclbin: " << vm["xclbin"].as<std::string>()
+                << "\n";
   device.register_xclbin(xclbin);
 
   // get a hardware context
   xrt::hw_context context(device, xclbin.get_uuid());
 
   // get a kernel handle
-  auto kernel = xrt::kernel(context, kernel_name);
-
+  if (verbosity >= 1)
+    std::cout << "Getting handle to kernel:" << kernelName << std::endl;
+  auto kernel = xrt::kernel(context, kernelName);
+  
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_input =
