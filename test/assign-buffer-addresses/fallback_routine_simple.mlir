@@ -11,11 +11,8 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
 // CHECK:   warning: Failed to allocate buffer: "a" with size: 16384 bytes.
 // CHECK:   %1 = aie.buffer(%tile12) { sym_name = "a" } : memref<4096xi32>  //16384 bytes
-// CHECK:          ^
 // CHECK:   warning: Not all requested buffers fit in the available memory.
-
 // CHECK:   %tile12 = aie.tile(1, 2)
-// CHECK:             ^
 // CHECK: note: Current configuration of buffers in bank(s) : MemoryMap:
 // CHECK: (no stack allocated)
 // CHECK:         bank : 0        0x0-0x1FFF
