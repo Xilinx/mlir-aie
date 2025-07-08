@@ -19,6 +19,7 @@
 // CHECK:         bank : 1        0x2000-0x3FFF
 // CHECK:         bank : 2        0x4000-0x5FFF
 // CHECK:         bank : 3        0x6000-0x7FFF
+// CHECK:   warning: Bank-aware allocation failed, trying basic sequential allocation.
 
 // CHECK:   module @test {
 // CHECK:     aie.device(xcvc1902) {

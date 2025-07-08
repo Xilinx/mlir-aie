@@ -24,6 +24,7 @@
 // CHECK:         bank : 5        0x50000-0x5FFFF
 // CHECK:         bank : 6        0x60000-0x6FFFF
 // CHECK:         bank : 7        0x70000-0x7FFFF
+// CHECK: error: 'aie.tile' op Bank-aware allocation failed.
 
 module @test {
   aie.device(xcve2302) {

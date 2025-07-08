@@ -502,15 +502,23 @@ struct AIEAssignBufferAddressesPass
         tileAllocationScheme = clAllocScheme;
 
       if (tileAllocationScheme == "basic-sequential") {
-        if (!basicAllocation(tile))
+        if (!basicAllocation(tile)) {
+          tile.emitOpError("Basic sequential allocation failed.");
           return signalPassFailure();
+        }
       } else if (tileAllocationScheme == "bank-aware") {
-        if (!simpleBankAwareAllocation(tile))
+        if (!simpleBankAwareAllocation(tile)) {
+          tile.emitOpError("Bank-aware allocation failed.");
           return signalPassFailure();
+        }
       } else {
         if (!simpleBankAwareAllocation(tile)) {
-          if (!basicAllocation(tile))
+          tile.emitWarning("Bank-aware allocation failed, trying basic "
+                           "sequential allocation.");
+          if (!basicAllocation(tile)) {
+            tile.emitOpError("Basic sequential allocation also failed.");
             return signalPassFailure();
+          }
         }
       }
     }

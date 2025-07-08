@@ -12,6 +12,7 @@
 // CHECK: note: see current operation: %act_3_4_buff_2 = aie.buffer(%tile_1_2) {sym_name = "act_3_4_buff_2"} : memref<512xi32>
 // CHECK: warning:  Not all requested buffers fit in the available memory.
 // CHECK:   %tile12 = aie.tile(1, 2)
+// CHECK: warning: Bank-aware allocation failed, trying basic sequential allocation.
 // CHECK: error: 'aie.tile' op allocated buffers exceeded available memory
 // CHECK: (no stack allocated)
 // CHECK:   %tile12 = aie.tile(1, 2)
@@ -21,6 +22,7 @@
 // CHECK:   c : 0x2000-0x3FFF (8192 bytes) 
 // CHECK:   a : 0x4000-0x4FFF (4096 bytes) 
 // CHECK:   d : 0x5000-0x5FFF (4096 bytes) 
+// CHECK: error: 'aie.tile' op Basic sequential allocation also failed.
 
 module @test {
  aie.device(xcvc1902) {
