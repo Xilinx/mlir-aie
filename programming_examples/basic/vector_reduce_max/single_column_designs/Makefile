@@ -22,16 +22,16 @@ trace_size = 1024
 
 dtype?=i32
 
-use_shared?=0
+use_chained?=0
 use_memtile?=0
 use_placed?=0
 
-ifeq (${use_shared}, 1)
-targetname=${orig_targetname}_shared
+ifeq (${use_chained}, 1)
+targetname=${orig_targetname}_chained
 else ifeq (${use_memtile}, 1)
 targetname=${orig_targetname}_memtile
 else 
-targetname=${orig_targetname}_cascade
+targetname=${orig_targetname}_shared
 endif
 
 ifeq (${use_placed}, 1)
