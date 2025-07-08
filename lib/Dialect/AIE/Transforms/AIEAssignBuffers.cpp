@@ -205,7 +205,7 @@ checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,
   int64_t startAddr = nextAddrInBanks[mem_bank];
   int64_t endAddr = startAddr + buffer.getAllocationSize();
   if (endAddr > bankLimits[mem_bank].endAddr)
-    return buffer->emitWarning("would override existing mem_bank");
+    return buffer->emitOpError("would override existing mem_bank");
   setAndUpdateAddressInBank(buffer, startAddr, endAddr, nextAddrInBanks);
   return true;
 }

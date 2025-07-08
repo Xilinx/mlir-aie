@@ -9,11 +9,11 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s 2>&1 | FileCheck %s
-// CHECK:   error: Failed to allocate buffer: "b" with size: 32768 bytes.
+// CHECK:   warning: Failed to allocate buffer: "b" with size: 32768 bytes.
 // CHECK:   %1 = aie.buffer(%0) { sym_name = "b" } : memref<8192xi32>
 // CHECK:        ^
 // CHECK: note: see current operation: %2 = "aie.buffer"(%0) <{sym_name = "b"}> : (index) -> memref<8192xi32>
-// CHECK: error: 'aie.tile' op Not all requested buffers fit in the available memory.
+// CHECK: warning: 'aie.tile' op Not all requested buffers fit in the available memory.
 
 // CHECK:   %0 = aie.tile(3, 3)
 // CHECK:        ^
