@@ -12,9 +12,9 @@
 
 This folder presents three distinct styles of column-wide reduction designs for AIE cores. 
 
-- **Shared Memory Design:** Neighboring tiles use shared memory to exchange intermediate results, enabling a collaborative reduction.![](assets/Shared.png)
-- **Chained Design:** Each tile computes a partial maximum and passes the result to the next tile in the column, forming a reduction cascade.![](assets/Chained.png)
-- **Memory Tile Based Design:** Partial results from all tiles are aggregated in a dedicated memory tile, which then forwards the combined result to an AIE core for the final reduction.![](assets/Memtile.png)
+- **Shared Memory Design:** Neighboring tiles use shared memory to exchange intermediate results, enabling a collaborative reduction.<br><img src="assets/Shared.png" alt="Shared Memory Design" width="300"/>
+- **Chained Design:** Each tile computes a partial maximum and passes the result to the next tile in the column, forming a reduction cascade.<br><img src="assets/Chained.png" alt="Chained Design" width="300"/>
+- **Memory Tile Based Design:** Partial results from all tiles are aggregated in a dedicated memory tile, which then forwards the combined result to an AIE core for the final reduction.<br><img src="assets/Memtile.png" alt="Memory Tile Based Design" width="300"/>
 
 Among these, the **Shared Memory Design** is the preferred approach, as it eliminates the need for DMAs to transfer data between neighboring tiles—a key feature enabled by the NPU architecture. The other two designs, **Chained Design** and **Memory Tile Based Design**, are provided as alternatives to demonstrate different data movement strategies for the reduce-max operation. 
 
