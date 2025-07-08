@@ -12,7 +12,7 @@
 // CHECK:   warning: Failed to allocate buffer: "a" with size: 16384 bytes.
 // CHECK:   %1 = aie.buffer(%tile12) { sym_name = "a" } : memref<4096xi32>  //16384 bytes
 // CHECK:          ^
-// CHECK:   warning: 'aie.tile' op Not all requested buffers fit in the available memory.
+// CHECK:   warning: Not all requested buffers fit in the available memory.
 
 // CHECK:   %tile12 = aie.tile(1, 2)
 // CHECK:             ^
