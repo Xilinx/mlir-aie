@@ -207,9 +207,9 @@ xilinx::AIE::AIETranslateNpuToBinary(ModuleOp module,
   // setup txn header
   uint8_t major = 0;
   uint8_t minor = 1;
-  uint8_t devGen = 3;                      // NPU (PHX HWK)
+  uint8_t devGen = 3; // NPU (PHX HWK)
   if (llvm::isa<AIE::NPU2TargetModel>(AIE::getTargetModel(deviceOp)))
-    devGen = 4;                            // NPU2 (STX KRK)
+    devGen = 4; // NPU2 (STX KRK)
   uint8_t numRows = tm.rows();
   uint8_t numCols = tm.columns();
   uint8_t numMemTileRows = tm.getNumMemTileRows();
@@ -257,39 +257,61 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     ModuleOp module, std::vector<uint32_t> &instructions,
     StringRef sequenceName) {
   DeviceOp deviceOp = *module.getOps<DeviceOp>().begin();
+  OpBuilder builder = OpBuilder::atBlockBegin(deviceOp.getBody());
+
   auto sequenceOps = deviceOp.getOps<AIEX::RuntimeSequenceOp>();
   for (auto seq : sequenceOps) {
     if (sequenceName.size() && sequenceName != seq.getSymName())
       continue;
     Block &entry = seq.getBody().front();
     for (auto &o : entry) {
-      llvm::TypeSwitch<Operation *>(&o).Case<NpuControlPacketOp>([&](auto op) {
-        uint32_t size = 0;
-        auto data = op.getData();
-        auto length = op.getLength();
-        if (data)
-          size = data->size();
-        auto words = reserveAndGetTail(instructions, 1 + size);
-        if (!data && length)
-          size = *length;
-        auto parity = [](uint32_t n) {
-          uint32_t p = 0;
-          while (n) {
-            p += n & 1;
-            n >>= 1;
-          }
-          return (p % 2) == 0;
-        };
-        uint32_t addr = op.getAddress() & 0xFFFFF;
-        uint32_t beats = size - 1;
-        uint32_t opc = op.getOpcode();
-        uint32_t id = op.getStreamId();
-        uint32_t hdr = id << 24 | opc << 22 | beats << 20 | addr;
-        words[0] = hdr | (0x1 & parity(hdr)) << 31;
-        if (opc == 0x0 || opc == 0x2)
-          for (unsigned i = 0; i < size; i++)
-            words[i + 1] = data.value()[i];
-      });
+      auto packetOp = dyn_cast<AIEX::NpuControlPacketOp>(o);
+      if (!packetOp)
+        continue;
+
+      uint32_t size = 0;
+      auto data = packetOp.getData();
+      if (data)
+        size = data->size();
+
+      auto words = reserveAndGetTail(instructions, 2 + size);
+
+      if (!data && packetOp.getLength())
+        size = *packetOp.getLength();
+
+      auto parity = [](uint32_t n) {
+        uint32_t p = 0;
+        while (n) {
+          p += n & 1;
+          n >>= 1;
+        }
+        return (p % 2) == 0;
+      };
+
+      // stream header is attached here instead of by shim dma
+      int col = packetOp.getColumnFromAddr();
+      int row = packetOp.getRowFromAddr();
+      auto destTile = TileOp::getOrCreate(builder, deviceOp, col, row);
+      auto info = destTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
+      uint32_t hdr = 0;
+      if (info)
+        hdr = (info.getPktType() & 0x7) << 12 | (info.getPktId() & 0xff);
+      else
+        destTile->emitWarning("Expected controller_id attribute");
+      words[0] = hdr | (0x1 & parity(hdr)) << 31;
+
+      // control packet header
+      uint32_t addr = packetOp.getAddress() & 0xFFFFF;
+      uint32_t beats = size - 1;
+      uint32_t opc = packetOp.getOpcode();
+      uint32_t id = packetOp.getStreamId();
+      hdr = id << 24 | opc << 22 | beats << 20 | addr;
+      words[1] = hdr | (0x1 & parity(hdr)) << 31;
+
+      // configuration data
+      if (opc == 0x0 || opc == 0x2)
+        for (unsigned i = 0; i < size; i++)
+          words[i + 2] = data.value()[i];
     }
   }
   return success();
