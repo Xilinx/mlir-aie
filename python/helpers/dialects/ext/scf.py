@@ -62,7 +62,7 @@ def if_(cond, *, insert_yield=True, loc=None, ip=None):
         yield if_op
         if insert_yield:
             yield_([])
-    # Default, empty else region. TODO: Find a way to not insert this.
+    # TODO: Default, empty else region.
     with InsertionPoint(if_op.elseRegion.blocks[0]):
         if insert_yield:
             yield_([])
