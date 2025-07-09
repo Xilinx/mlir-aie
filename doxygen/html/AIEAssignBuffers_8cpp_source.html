@@ -83,7 +83,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span><span class="comment">// BasicAllocation : sequential alloc from largest to smallest</span></div>
 <div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
 <div class="foldopen" id="foldopen00025" data-start="{" data-end="}">
-<div class="line"><a id="l00025" name="l00025"></a><span class="lineno"><a class="line" href="AIEAssignBuffers_8cpp.html#a3cc51d3425f8828024984b47589bd05a">   25</a></span>LogicalResult <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#a3cc51d3425f8828024984b47589bd05a">checkAndPrintOverflow</a>(TileOp tile, <span class="keywordtype">int</span> address,</div>
+<div class="line"><a id="l00025" name="l00025"></a><span class="lineno"><a class="line" href="AIEAssignBuffers_8cpp.html#abdc966f4aff776f530a067b8006662ed">   25</a></span><span class="keywordtype">bool</span> <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#abdc966f4aff776f530a067b8006662ed">checkAndPrintOverflow</a>(TileOp tile, <span class="keywordtype">int</span> address,</div>
 <div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span>                                    <span class="keywordtype">int</span> maxDataMemorySize, <span class="keywordtype">int</span> stacksize,</div>
 <div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span>                                    SmallVector&lt;BufferOp&gt; &amp;buffers) {</div>
 <div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span>  <span class="keywordflow">if</span> (address &gt; maxDataMemorySize) {</div>
@@ -107,17 +107,17 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>      printbuffer(buffer.name(), buffer.getAddress().value(),</div>
 <div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>                  buffer.getAllocationSize());</div>
 <div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>    }</div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>    <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>    <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
 <div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>  }</div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>  <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
 <div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>}</div>
 </div>
 <div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span> </div>
 <div class="foldopen" id="foldopen00054" data-start="{" data-end="}">
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno"><a class="line" href="AIEAssignBuffers_8cpp.html#a9dc98a2d1877f36362a8b78b530dfe3e">   54</a></span>LogicalResult <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#a9dc98a2d1877f36362a8b78b530dfe3e">basicAllocation</a>(TileOp tile) {</div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno"><a class="line" href="AIEAssignBuffers_8cpp.html#a4c0db1acfa324f514ab6229f0759ae29">   54</a></span><span class="keywordtype">bool</span> <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#a4c0db1acfa324f514ab6229f0759ae29">basicAllocation</a>(TileOp tile) {</div>
 <div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>  <span class="keyword">auto</span> device = tile-&gt;getParentOfType&lt;AIE::DeviceOp&gt;();</div>
 <div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>  <span class="keywordflow">if</span> (!device)</div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>    <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>    <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
 <div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span> </div>
 <div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>  <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">getTargetModel</a>(tile);</div>
 <div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>  <span class="keywordtype">int</span> maxDataMemorySize = 0;</div>
@@ -184,7 +184,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span>    return a.getAddress().value() &lt; b.getAddress().value();</div>
 <div class="line"><a id="l00122" name="l00122"></a><span class="lineno">  122</span>  });</div>
 <div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span>  <span class="comment">// Check if memory was exceeded on any bank and print debug info.</span></div>
-<div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span>  <span class="keywordflow">return</span> <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#a3cc51d3425f8828024984b47589bd05a">checkAndPrintOverflow</a>(tile, address, maxDataMemorySize, stacksize,</div>
+<div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span>  <span class="keywordflow">return</span> <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#abdc966f4aff776f530a067b8006662ed">checkAndPrintOverflow</a>(tile, address, maxDataMemorySize, stacksize,</div>
 <div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span>                               buffers);</div>
 <div class="line"><a id="l00126" name="l00126"></a><span class="lineno">  126</span>}</div>
 </div>
@@ -289,7 +289,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00214" name="l00214"></a><span class="lineno"><a class="line" href="AIEAssignBuffers_8cpp.html#ab8a34474f01245beaad4c3eb8b3234b8">  214</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#ab8a34474f01245beaad4c3eb8b3234b8">printMemMap</a>(TileOp tile, SmallVector&lt;BufferOp&gt; &amp;allocatedBuffers,</div>
 <div class="line"><a id="l00215" name="l00215"></a><span class="lineno">  215</span>                 SmallVector&lt;BufferOp&gt; &amp;preAllocatedBuffers, <span class="keywordtype">int</span> numBanks,</div>
 <div class="line"><a id="l00216" name="l00216"></a><span class="lineno">  216</span>                 std::vector&lt;BankLimits&gt; &amp;bankLimits, <span class="keywordtype">int</span> stacksize) {</div>
-<div class="line"><a id="l00217" name="l00217"></a><span class="lineno">  217</span>  InFlightDiagnostic error = tile.emitOpError(</div>
+<div class="line"><a id="l00217" name="l00217"></a><span class="lineno">  217</span>  InFlightDiagnostic error = tile.emitWarning(</div>
 <div class="line"><a id="l00218" name="l00218"></a><span class="lineno">  218</span>      <span class="stringliteral">&quot;Not all requested buffers fit in the available memory.\n&quot;</span>);</div>
 <div class="line"><a id="l00219" name="l00219"></a><span class="lineno">  219</span>  <span class="keyword">auto</span> &amp;note = error.attachNote()</div>
 <div class="line"><a id="l00220" name="l00220"></a><span class="lineno">  220</span>               &lt;&lt; <span class="stringliteral">&quot;Current configuration of buffers in bank(s) : &quot;</span>;</div>
@@ -360,7 +360,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00283" name="l00283"></a><span class="lineno">  283</span>  }</div>
 <div class="line"><a id="l00284" name="l00284"></a><span class="lineno">  284</span>  <span class="comment">// If no bank has enough space, throws error</span></div>
 <div class="line"><a id="l00285" name="l00285"></a><span class="lineno">  285</span>  <span class="keywordflow">if</span> (!allocated) {</div>
-<div class="line"><a id="l00286" name="l00286"></a><span class="lineno">  286</span>    buffer.emitError(<span class="stringliteral">&quot;Failed to allocate buffer: &quot;</span>)</div>
+<div class="line"><a id="l00286" name="l00286"></a><span class="lineno">  286</span>    buffer.emitWarning(<span class="stringliteral">&quot;Failed to allocate buffer: &quot;</span>)</div>
 <div class="line"><a id="l00287" name="l00287"></a><span class="lineno">  287</span>        &lt;&lt; buffer.name() &lt;&lt; <span class="stringliteral">&quot; with size: &quot;</span> &lt;&lt; buffer.getAllocationSize()</div>
 <div class="line"><a id="l00288" name="l00288"></a><span class="lineno">  288</span>        &lt;&lt; <span class="stringliteral">&quot; bytes.&quot;</span>;</div>
 <div class="line"><a id="l00289" name="l00289"></a><span class="lineno">  289</span>    <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
@@ -370,7 +370,7 @@ $(document).ready(function() { init_codefold(0); });
 </div>
 <div class="line"><a id="l00293" name="l00293"></a><span class="lineno">  293</span> </div>
 <div class="foldopen" id="foldopen00294" data-start="{" data-end="}">
-<div class="line"><a id="l00294" name="l00294"></a><span class="lineno"><a class="line" href="AIEAssignBuffers_8cpp.html#a863c4e19756b20e58344c39fe36e5702">  294</a></span>LogicalResult <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#a3cc51d3425f8828024984b47589bd05a">checkAndPrintOverflow</a>(TileOp tile, <span class="keywordtype">int</span> numBanks, <span class="keywordtype">int</span> stacksize,</div>
+<div class="line"><a id="l00294" name="l00294"></a><span class="lineno"><a class="line" href="AIEAssignBuffers_8cpp.html#a1667efbafe0e2e208450bcd59e192e1a">  294</a></span><span class="keywordtype">bool</span> <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#abdc966f4aff776f530a067b8006662ed">checkAndPrintOverflow</a>(TileOp tile, <span class="keywordtype">int</span> numBanks, <span class="keywordtype">int</span> stacksize,</div>
 <div class="line"><a id="l00295" name="l00295"></a><span class="lineno">  295</span>                                    SmallVector&lt;BufferOp&gt; &amp;allBuffers,</div>
 <div class="line"><a id="l00296" name="l00296"></a><span class="lineno">  296</span>                                    std::vector&lt;int64_t&gt; &amp;nextAddrInBanks,</div>
 <div class="line"><a id="l00297" name="l00297"></a><span class="lineno">  297</span>                                    std::vector&lt;BankLimits&gt; &amp;bankLimits) {</div>
@@ -384,7 +384,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00305" name="l00305"></a><span class="lineno">  305</span>  }</div>
 <div class="line"><a id="l00306" name="l00306"></a><span class="lineno">  306</span>  <span class="keywordflow">if</span> (foundOverflow) {</div>
 <div class="line"><a id="l00307" name="l00307"></a><span class="lineno">  307</span>    InFlightDiagnostic error =</div>
-<div class="line"><a id="l00308" name="l00308"></a><span class="lineno">  308</span>        tile.emitOpError(<span class="stringliteral">&quot;allocated buffers exceeded available memory\n&quot;</span>);</div>
+<div class="line"><a id="l00308" name="l00308"></a><span class="lineno">  308</span>        tile.emitWarning(<span class="stringliteral">&quot;allocated buffers exceeded available memory\n&quot;</span>);</div>
 <div class="line"><a id="l00309" name="l00309"></a><span class="lineno">  309</span>    <span class="keyword">auto</span> &amp;note = error.attachNote() &lt;&lt; <span class="stringliteral">&quot;Error in bank(s) : &quot;</span>;</div>
 <div class="line"><a id="l00310" name="l00310"></a><span class="lineno">  310</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> bank : overflow_banks)</div>
 <div class="line"><a id="l00311" name="l00311"></a><span class="lineno">  311</span>      note &lt;&lt; bank &lt;&lt; <span class="stringliteral">&quot; &quot;</span>;</div>
@@ -415,9 +415,9 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00336" name="l00336"></a><span class="lineno">  336</span>          printbuffer(buffer.name(), addr, buffer.getAllocationSize());</div>
 <div class="line"><a id="l00337" name="l00337"></a><span class="lineno">  337</span>      }</div>
 <div class="line"><a id="l00338" name="l00338"></a><span class="lineno">  338</span>    }</div>
-<div class="line"><a id="l00339" name="l00339"></a><span class="lineno">  339</span>    <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00339" name="l00339"></a><span class="lineno">  339</span>    <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
 <div class="line"><a id="l00340" name="l00340"></a><span class="lineno">  340</span>  }</div>
-<div class="line"><a id="l00341" name="l00341"></a><span class="lineno">  341</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00341" name="l00341"></a><span class="lineno">  341</span>  <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
 <div class="line"><a id="l00342" name="l00342"></a><span class="lineno">  342</span>}</div>
 </div>
 <div class="line"><a id="l00343" name="l00343"></a><span class="lineno">  343</span> </div>
@@ -432,10 +432,10 @@ $(document).ready(function() { init_codefold(0); });
 </div>
 <div class="line"><a id="l00351" name="l00351"></a><span class="lineno">  351</span> </div>
 <div class="foldopen" id="foldopen00352" data-start="{" data-end="}">
-<div class="line"><a id="l00352" name="l00352"></a><span class="lineno"><a class="line" href="AIEAssignBuffers_8cpp.html#a1a6e025bd152548a88e241fcc1866c15">  352</a></span>LogicalResult <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#a1a6e025bd152548a88e241fcc1866c15">simpleBankAwareAllocation</a>(TileOp tile) {</div>
+<div class="line"><a id="l00352" name="l00352"></a><span class="lineno"><a class="line" href="AIEAssignBuffers_8cpp.html#aa91ee84bebc6f1715c8e4e54cb012d36">  352</a></span><span class="keywordtype">bool</span> <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#aa91ee84bebc6f1715c8e4e54cb012d36">simpleBankAwareAllocation</a>(TileOp tile) {</div>
 <div class="line"><a id="l00353" name="l00353"></a><span class="lineno">  353</span>  <span class="keyword">auto</span> device = tile-&gt;getParentOfType&lt;AIE::DeviceOp&gt;();</div>
 <div class="line"><a id="l00354" name="l00354"></a><span class="lineno">  354</span>  <span class="keywordflow">if</span> (!device)</div>
-<div class="line"><a id="l00355" name="l00355"></a><span class="lineno">  355</span>    <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00355" name="l00355"></a><span class="lineno">  355</span>    <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
 <div class="line"><a id="l00356" name="l00356"></a><span class="lineno">  356</span> </div>
 <div class="line"><a id="l00357" name="l00357"></a><span class="lineno">  357</span>  std::vector&lt;int64_t&gt;</div>
 <div class="line"><a id="l00358" name="l00358"></a><span class="lineno">  358</span>      nextAddrInBanks; <span class="comment">// each entry is the next address available for use</span></div>
@@ -488,7 +488,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00405" name="l00405"></a><span class="lineno">  405</span>      <span class="keyword">auto</span> has_bank = <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#a6b6c17186fc69b5bf2350de4fb30e028">checkAndAddBufferWithMemBank</a>(buffer, numBanks,</div>
 <div class="line"><a id="l00406" name="l00406"></a><span class="lineno">  406</span>                                                   nextAddrInBanks, bankLimits);</div>
 <div class="line"><a id="l00407" name="l00407"></a><span class="lineno">  407</span>      <span class="keywordflow">if</span> (failed(has_addr) || failed(has_bank))</div>
-<div class="line"><a id="l00408" name="l00408"></a><span class="lineno">  408</span>        <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00408" name="l00408"></a><span class="lineno">  408</span>        <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
 <div class="line"><a id="l00409" name="l00409"></a><span class="lineno">  409</span>      <span class="keywordflow">if</span> (!has_addr.value() &amp;&amp; !has_bank.value())</div>
 <div class="line"><a id="l00410" name="l00410"></a><span class="lineno">  410</span>        buffersToAlloc.push_back(buffer);</div>
 <div class="line"><a id="l00411" name="l00411"></a><span class="lineno">  411</span>      <span class="keywordflow">else</span></div>
@@ -516,7 +516,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00433" name="l00433"></a><span class="lineno">  433</span>      <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#ab8a34474f01245beaad4c3eb8b3234b8">printMemMap</a>(tile, allocatedBuffers, preAllocatedBuffers, numBanks,</div>
 <div class="line"><a id="l00434" name="l00434"></a><span class="lineno">  434</span>                  bankLimits, stacksize);</div>
 <div class="line"><a id="l00435" name="l00435"></a><span class="lineno">  435</span>      <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#a3085fa7fd9ea8990bb546474d4d101b2">deAllocationBuffers</a>(allocatedBuffers);</div>
-<div class="line"><a id="l00436" name="l00436"></a><span class="lineno">  436</span>      <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00436" name="l00436"></a><span class="lineno">  436</span>      <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
 <div class="line"><a id="l00437" name="l00437"></a><span class="lineno">  437</span>    } <span class="keywordflow">else</span> {</div>
 <div class="line"><a id="l00438" name="l00438"></a><span class="lineno">  438</span>      allocatedBuffers.push_back(buffer);</div>
 <div class="line"><a id="l00439" name="l00439"></a><span class="lineno">  439</span>    }</div>
@@ -529,7 +529,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00446" name="l00446"></a><span class="lineno">  446</span>    return a.getAddress().value() &lt; b.getAddress().value();</div>
 <div class="line"><a id="l00447" name="l00447"></a><span class="lineno">  447</span>  });</div>
 <div class="line"><a id="l00448" name="l00448"></a><span class="lineno">  448</span>  <span class="comment">// Check if memory was exceeded on any bank and print debug info.</span></div>
-<div class="line"><a id="l00449" name="l00449"></a><span class="lineno">  449</span>  <span class="keywordflow">return</span> <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#a3cc51d3425f8828024984b47589bd05a">checkAndPrintOverflow</a>(tile, numBanks, stacksize, allBuffers,</div>
+<div class="line"><a id="l00449" name="l00449"></a><span class="lineno">  449</span>  <span class="keywordflow">return</span> <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#abdc966f4aff776f530a067b8006662ed">checkAndPrintOverflow</a>(tile, numBanks, stacksize, allBuffers,</div>
 <div class="line"><a id="l00450" name="l00450"></a><span class="lineno">  450</span>                               nextAddrInBanks, bankLimits);</div>
 <div class="line"><a id="l00451" name="l00451"></a><span class="lineno">  451</span>}</div>
 </div>
@@ -592,39 +592,47 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00502" name="l00502"></a><span class="lineno">  502</span>        tileAllocationScheme = clAllocScheme;</div>
 <div class="line"><a id="l00503" name="l00503"></a><span class="lineno">  503</span> </div>
 <div class="line"><a id="l00504" name="l00504"></a><span class="lineno">  504</span>      <span class="keywordflow">if</span> (tileAllocationScheme == <span class="stringliteral">&quot;basic-sequential&quot;</span>) {</div>
-<div class="line"><a id="l00505" name="l00505"></a><span class="lineno">  505</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> res = <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#a9dc98a2d1877f36362a8b78b530dfe3e">basicAllocation</a>(tile); res.failed())</div>
-<div class="line"><a id="l00506" name="l00506"></a><span class="lineno">  506</span>          <span class="keywordflow">return</span> signalPassFailure();</div>
-<div class="line"><a id="l00507" name="l00507"></a><span class="lineno">  507</span>      } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (tileAllocationScheme == <span class="stringliteral">&quot;bank-aware&quot;</span>) {</div>
-<div class="line"><a id="l00508" name="l00508"></a><span class="lineno">  508</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> res = <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#a1a6e025bd152548a88e241fcc1866c15">simpleBankAwareAllocation</a>(tile); res.failed())</div>
-<div class="line"><a id="l00509" name="l00509"></a><span class="lineno">  509</span>          <span class="keywordflow">return</span> signalPassFailure();</div>
-<div class="line"><a id="l00510" name="l00510"></a><span class="lineno">  510</span>      } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00511" name="l00511"></a><span class="lineno">  511</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> res = <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#a1a6e025bd152548a88e241fcc1866c15">simpleBankAwareAllocation</a>(tile); res.failed()) {</div>
-<div class="line"><a id="l00512" name="l00512"></a><span class="lineno">  512</span>          <span class="keywordflow">if</span> (<span class="keyword">auto</span> res2 = <a class="code hl_function" href="AIEAssignBuffers_8cpp.html#a9dc98a2d1877f36362a8b78b530dfe3e">basicAllocation</a>(tile); res2.failed())</div>
-<div class="line"><a id="l00513" name="l00513"></a><span class="lineno">  513</span>            <span class="keywordflow">return</span> signalPassFailure();</div>
-<div class="line"><a id="l00514" name="l00514"></a><span class="lineno">  514</span>        }</div>
-<div class="line"><a id="l00515" name="l00515"></a><span class="lineno">  515</span>      }</div>
-<div class="line"><a id="l00516" name="l00516"></a><span class="lineno">  516</span>    }</div>
-<div class="line"><a id="l00517" name="l00517"></a><span class="lineno">  517</span>  }</div>
+<div class="line"><a id="l00505" name="l00505"></a><span class="lineno">  505</span>        <span class="keywordflow">if</span> (!<a class="code hl_function" href="AIEAssignBuffers_8cpp.html#a4c0db1acfa324f514ab6229f0759ae29">basicAllocation</a>(tile)) {</div>
+<div class="line"><a id="l00506" name="l00506"></a><span class="lineno">  506</span>          tile.emitOpError(<span class="stringliteral">&quot;Basic sequential allocation failed.&quot;</span>);</div>
+<div class="line"><a id="l00507" name="l00507"></a><span class="lineno">  507</span>          <span class="keywordflow">return</span> signalPassFailure();</div>
+<div class="line"><a id="l00508" name="l00508"></a><span class="lineno">  508</span>        }</div>
+<div class="line"><a id="l00509" name="l00509"></a><span class="lineno">  509</span>      } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (tileAllocationScheme == <span class="stringliteral">&quot;bank-aware&quot;</span>) {</div>
+<div class="line"><a id="l00510" name="l00510"></a><span class="lineno">  510</span>        <span class="keywordflow">if</span> (!<a class="code hl_function" href="AIEAssignBuffers_8cpp.html#aa91ee84bebc6f1715c8e4e54cb012d36">simpleBankAwareAllocation</a>(tile)) {</div>
+<div class="line"><a id="l00511" name="l00511"></a><span class="lineno">  511</span>          tile.emitOpError(<span class="stringliteral">&quot;Bank-aware allocation failed.&quot;</span>);</div>
+<div class="line"><a id="l00512" name="l00512"></a><span class="lineno">  512</span>          <span class="keywordflow">return</span> signalPassFailure();</div>
+<div class="line"><a id="l00513" name="l00513"></a><span class="lineno">  513</span>        }</div>
+<div class="line"><a id="l00514" name="l00514"></a><span class="lineno">  514</span>      } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00515" name="l00515"></a><span class="lineno">  515</span>        <span class="keywordflow">if</span> (!<a class="code hl_function" href="AIEAssignBuffers_8cpp.html#aa91ee84bebc6f1715c8e4e54cb012d36">simpleBankAwareAllocation</a>(tile)) {</div>
+<div class="line"><a id="l00516" name="l00516"></a><span class="lineno">  516</span>          tile.emitWarning(<span class="stringliteral">&quot;Bank-aware allocation failed, trying basic &quot;</span></div>
+<div class="line"><a id="l00517" name="l00517"></a><span class="lineno">  517</span>                           <span class="stringliteral">&quot;sequential allocation.&quot;</span>);</div>
+<div class="line"><a id="l00518" name="l00518"></a><span class="lineno">  518</span>          <span class="keywordflow">if</span> (!<a class="code hl_function" href="AIEAssignBuffers_8cpp.html#a4c0db1acfa324f514ab6229f0759ae29">basicAllocation</a>(tile)) {</div>
+<div class="line"><a id="l00519" name="l00519"></a><span class="lineno">  519</span>            tile.emitOpError(<span class="stringliteral">&quot;Basic sequential allocation also failed.&quot;</span>);</div>
+<div class="line"><a id="l00520" name="l00520"></a><span class="lineno">  520</span>            <span class="keywordflow">return</span> signalPassFailure();</div>
+<div class="line"><a id="l00521" name="l00521"></a><span class="lineno">  521</span>          }</div>
+<div class="line"><a id="l00522" name="l00522"></a><span class="lineno">  522</span>        }</div>
+<div class="line"><a id="l00523" name="l00523"></a><span class="lineno">  523</span>      }</div>
+<div class="line"><a id="l00524" name="l00524"></a><span class="lineno">  524</span>    }</div>
+<div class="line"><a id="l00525" name="l00525"></a><span class="lineno">  525</span>  }</div>
 </div>
-<div class="line"><a id="l00518" name="l00518"></a><span class="lineno">  518</span>};</div>
+<div class="line"><a id="l00526" name="l00526"></a><span class="lineno">  526</span>};</div>
 </div>
-<div class="line"><a id="l00519" name="l00519"></a><span class="lineno">  519</span> </div>
-<div class="line"><a id="l00520" name="l00520"></a><span class="lineno">  520</span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt;</div>
-<div class="foldopen" id="foldopen00521" data-start="{" data-end="}">
-<div class="line"><a id="l00521" name="l00521"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#ab739be0589e309d7da3122b4143f3ede">  521</a></span><a class="code hl_function" href="namespacexilinx_1_1AIE.html#ab739be0589e309d7da3122b4143f3ede">AIE::createAIEAssignBufferAddressesPass</a>() {</div>
-<div class="line"><a id="l00522" name="l00522"></a><span class="lineno">  522</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEAssignBufferAddressesPass&gt;();</div>
-<div class="line"><a id="l00523" name="l00523"></a><span class="lineno">  523</span>}</div>
+<div class="line"><a id="l00527" name="l00527"></a><span class="lineno">  527</span> </div>
+<div class="line"><a id="l00528" name="l00528"></a><span class="lineno">  528</span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt;</div>
+<div class="foldopen" id="foldopen00529" data-start="{" data-end="}">
+<div class="line"><a id="l00529" name="l00529"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#ab739be0589e309d7da3122b4143f3ede">  529</a></span><a class="code hl_function" href="namespacexilinx_1_1AIE.html#ab739be0589e309d7da3122b4143f3ede">AIE::createAIEAssignBufferAddressesPass</a>() {</div>
+<div class="line"><a id="l00530" name="l00530"></a><span class="lineno">  530</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEAssignBufferAddressesPass&gt;();</div>
+<div class="line"><a id="l00531" name="l00531"></a><span class="lineno">  531</span>}</div>
 </div>
-<div class="ttc" id="aAIEAssignBuffers_8cpp_html_a1a6e025bd152548a88e241fcc1866c15"><div class="ttname"><a href="AIEAssignBuffers_8cpp.html#a1a6e025bd152548a88e241fcc1866c15">simpleBankAwareAllocation</a></div><div class="ttdeci">LogicalResult simpleBankAwareAllocation(TileOp tile)</div><div class="ttdef"><b>Definition</b> <a href="AIEAssignBuffers_8cpp_source.html#l00352">AIEAssignBuffers.cpp:352</a></div></div>
 <div class="ttc" id="aAIEAssignBuffers_8cpp_html_a28f31b961f5da483300bd7a4bc79726f"><div class="ttname"><a href="AIEAssignBuffers_8cpp.html#a28f31b961f5da483300bd7a4bc79726f">checkBufferScope</a></div><div class="ttdeci">LogicalResult checkBufferScope(BufferOp buffer, DeviceOp device)</div><div class="ttdef"><b>Definition</b> <a href="AIEAssignBuffers_8cpp_source.html#l00453">AIEAssignBuffers.cpp:453</a></div></div>
 <div class="ttc" id="aAIEAssignBuffers_8cpp_html_a3085fa7fd9ea8990bb546474d4d101b2"><div class="ttname"><a href="AIEAssignBuffers_8cpp.html#a3085fa7fd9ea8990bb546474d4d101b2">deAllocationBuffers</a></div><div class="ttdeci">void deAllocationBuffers(SmallVector&lt; BufferOp &gt; &amp;buffers)</div><div class="ttdef"><b>Definition</b> <a href="AIEAssignBuffers_8cpp_source.html#l00345">AIEAssignBuffers.cpp:345</a></div></div>
-<div class="ttc" id="aAIEAssignBuffers_8cpp_html_a3cc51d3425f8828024984b47589bd05a"><div class="ttname"><a href="AIEAssignBuffers_8cpp.html#a3cc51d3425f8828024984b47589bd05a">checkAndPrintOverflow</a></div><div class="ttdeci">LogicalResult checkAndPrintOverflow(TileOp tile, int address, int maxDataMemorySize, int stacksize, SmallVector&lt; BufferOp &gt; &amp;buffers)</div><div class="ttdef"><b>Definition</b> <a href="AIEAssignBuffers_8cpp_source.html#l00025">AIEAssignBuffers.cpp:25</a></div></div>
 <div class="ttc" id="aAIEAssignBuffers_8cpp_html_a437deede0420d9e07092c48a345888e7"><div class="ttname"><a href="AIEAssignBuffers_8cpp.html#a437deede0420d9e07092c48a345888e7">setAndUpdateAddressInBank</a></div><div class="ttdeci">void setAndUpdateAddressInBank(BufferOp buffer, int64_t start_addr, int64_t end_addr, std::vector&lt; int64_t &gt; &amp;nextAddrInBanks)</div><div class="ttdef"><b>Definition</b> <a href="AIEAssignBuffers_8cpp_source.html#l00151">AIEAssignBuffers.cpp:151</a></div></div>
+<div class="ttc" id="aAIEAssignBuffers_8cpp_html_a4c0db1acfa324f514ab6229f0759ae29"><div class="ttname"><a href="AIEAssignBuffers_8cpp.html#a4c0db1acfa324f514ab6229f0759ae29">basicAllocation</a></div><div class="ttdeci">bool basicAllocation(TileOp tile)</div><div class="ttdef"><b>Definition</b> <a href="AIEAssignBuffers_8cpp_source.html#l00054">AIEAssignBuffers.cpp:54</a></div></div>
 <div class="ttc" id="aAIEAssignBuffers_8cpp_html_a5905b94c21261a596622de11ca40c09b"><div class="ttname"><a href="AIEAssignBuffers_8cpp.html#a5905b94c21261a596622de11ca40c09b">setBufferAddress</a></div><div class="ttdeci">int setBufferAddress(BufferOp buffer, int numBanks, int &amp;startBankIndex, std::vector&lt; int64_t &gt; &amp;nextAddrInBanks, std::vector&lt; BankLimits &gt; &amp;bankLimits)</div><div class="ttdef"><b>Definition</b> <a href="AIEAssignBuffers_8cpp_source.html#l00263">AIEAssignBuffers.cpp:263</a></div></div>
 <div class="ttc" id="aAIEAssignBuffers_8cpp_html_a6b6c17186fc69b5bf2350de4fb30e028"><div class="ttname"><a href="AIEAssignBuffers_8cpp.html#a6b6c17186fc69b5bf2350de4fb30e028">checkAndAddBufferWithMemBank</a></div><div class="ttdeci">FailureOr&lt; bool &gt; checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks, std::vector&lt; int64_t &gt; &amp;nextAddrInBanks, std::vector&lt; BankLimits &gt; &amp;bankLimits)</div><div class="ttdef"><b>Definition</b> <a href="AIEAssignBuffers_8cpp_source.html#l00197">AIEAssignBuffers.cpp:197</a></div></div>
 <div class="ttc" id="aAIEAssignBuffers_8cpp_html_a811a13249619888264661a55b6403db7"><div class="ttname"><a href="AIEAssignBuffers_8cpp.html#a811a13249619888264661a55b6403db7">fillBankLimits</a></div><div class="ttdeci">void fillBankLimits(int numBanks, int bankSize, std::vector&lt; BankLimits &gt; &amp;bankLimits)</div><div class="ttdef"><b>Definition</b> <a href="AIEAssignBuffers_8cpp_source.html#l00139">AIEAssignBuffers.cpp:139</a></div></div>
-<div class="ttc" id="aAIEAssignBuffers_8cpp_html_a9dc98a2d1877f36362a8b78b530dfe3e"><div class="ttname"><a href="AIEAssignBuffers_8cpp.html#a9dc98a2d1877f36362a8b78b530dfe3e">basicAllocation</a></div><div class="ttdeci">LogicalResult basicAllocation(TileOp tile)</div><div class="ttdef"><b>Definition</b> <a href="AIEAssignBuffers_8cpp_source.html#l00054">AIEAssignBuffers.cpp:54</a></div></div>
+<div class="ttc" id="aAIEAssignBuffers_8cpp_html_aa91ee84bebc6f1715c8e4e54cb012d36"><div class="ttname"><a href="AIEAssignBuffers_8cpp.html#aa91ee84bebc6f1715c8e4e54cb012d36">simpleBankAwareAllocation</a></div><div class="ttdeci">bool simpleBankAwareAllocation(TileOp tile)</div><div class="ttdef"><b>Definition</b> <a href="AIEAssignBuffers_8cpp_source.html#l00352">AIEAssignBuffers.cpp:352</a></div></div>
 <div class="ttc" id="aAIEAssignBuffers_8cpp_html_ab8a34474f01245beaad4c3eb8b3234b8"><div class="ttname"><a href="AIEAssignBuffers_8cpp.html#ab8a34474f01245beaad4c3eb8b3234b8">printMemMap</a></div><div class="ttdeci">void printMemMap(TileOp tile, SmallVector&lt; BufferOp &gt; &amp;allocatedBuffers, SmallVector&lt; BufferOp &gt; &amp;preAllocatedBuffers, int numBanks, std::vector&lt; BankLimits &gt; &amp;bankLimits, int stacksize)</div><div class="ttdef"><b>Definition</b> <a href="AIEAssignBuffers_8cpp_source.html#l00214">AIEAssignBuffers.cpp:214</a></div></div>
+<div class="ttc" id="aAIEAssignBuffers_8cpp_html_abdc966f4aff776f530a067b8006662ed"><div class="ttname"><a href="AIEAssignBuffers_8cpp.html#abdc966f4aff776f530a067b8006662ed">checkAndPrintOverflow</a></div><div class="ttdeci">bool checkAndPrintOverflow(TileOp tile, int address, int maxDataMemorySize, int stacksize, SmallVector&lt; BufferOp &gt; &amp;buffers)</div><div class="ttdef"><b>Definition</b> <a href="AIEAssignBuffers_8cpp_source.html#l00025">AIEAssignBuffers.cpp:25</a></div></div>
 <div class="ttc" id="aAIEAssignBuffers_8cpp_html_adf29b927cb7e62148256c52ac2658f45"><div class="ttname"><a href="AIEAssignBuffers_8cpp.html#adf29b927cb7e62148256c52ac2658f45">checkAndAddBufferWithAddress</a></div><div class="ttdeci">FailureOr&lt; bool &gt; checkAndAddBufferWithAddress(BufferOp buffer, int numBanks, std::vector&lt; int64_t &gt; &amp;nextAddrInBanks, std::vector&lt; BankLimits &gt; &amp;bankLimits)</div><div class="ttdef"><b>Definition</b> <a href="AIEAssignBuffers_8cpp_source.html#l00166">AIEAssignBuffers.cpp:166</a></div></div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEPasses_8h_html"><div class="ttname"><a href="AIEPasses_8h.html">AIEPasses.h</a></div></div>
@@ -632,7 +640,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a98d14c817daebc58ad822d608bc73313"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">xilinx::AIE::getTargetModel</a></div><div class="ttdeci">const AIETargetModel &amp; getTargetModel(mlir::Operation *op)</div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_ab739be0589e309d7da3122b4143f3ede"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#ab739be0589e309d7da3122b4143f3ede">xilinx::AIE::createAIEAssignBufferAddressesPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIEAssignBufferAddressesPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEAssignBuffers_8cpp_source.html#l00521">AIEAssignBuffers.cpp:521</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_ab739be0589e309d7da3122b4143f3ede"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#ab739be0589e309d7da3122b4143f3ede">xilinx::AIE::createAIEAssignBufferAddressesPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIEAssignBufferAddressesPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEAssignBuffers_8cpp_source.html#l00529">AIEAssignBuffers.cpp:529</a></div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="astructAIEAssignBufferAddressesPass_html"><div class="ttname"><a href="structAIEAssignBufferAddressesPass.html">AIEAssignBufferAddressesPass</a></div><div class="ttdef"><b>Definition</b> <a href="AIEAssignBuffers_8cpp_source.html#l00470">AIEAssignBuffers.cpp:471</a></div></div>
 <div class="ttc" id="astructAIEAssignBufferAddressesPass_html_a117a40ed1bca3cfbc24be83e2ed448d6"><div class="ttname"><a href="structAIEAssignBufferAddressesPass.html#a117a40ed1bca3cfbc24be83e2ed448d6">AIEAssignBufferAddressesPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="AIEAssignBuffers_8cpp_source.html#l00478">AIEAssignBuffers.cpp:478</a></div></div>
@@ -643,7 +651,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Jul 8 2025 21:34:48 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Jul 9 2025 16:23:44 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
