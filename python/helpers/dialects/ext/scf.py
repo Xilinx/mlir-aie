@@ -5,6 +5,7 @@ from ....dialects.linalg.opdsl.lang.emitter import _is_index_type
 from ....dialects.scf import ForOp, yield_
 from ....extras.dialects.ext.arith import constant, index_cast
 
+
 def _for(
     start,
     stop=None,
