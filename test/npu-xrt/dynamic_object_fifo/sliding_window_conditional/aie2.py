@@ -19,7 +19,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.extras.context import mlir_mod_ctx
-from aie.helpers.dialects.ext.scf import if_, else_
+from aie.extras.dialects.ext.scf import if_, else_
 
 N = 100
 n_rows = 10
