@@ -1551,69 +1551,132 @@ struct AIEObjectFifoStatefulTransformPass
 
     // Step 2: Split objectFifos
     // Create objectFifo from producerTile to memTile
+    // Step 2: Split objectFifos
+    // Check if more than 1 fifo on producer or consumer side
     std::vector<ObjectFifoCreateOp> producerFifos;
-    auto producerTile = createOp.getProducerTileOp();
+    std::vector<ObjectFifoCreateOp> consumerFifos;
+    bool multipleProducerFifos = false;
+    bool multipleConsumerFifos = false;
+    TileOp combined_tile;
+
     auto datatype = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
-    auto producerObjFifoSize =
+    auto dataTypesList = createOp.getSliceTypes();
+    int numberOfTilesInList;
+
+    auto commonObjFifoSize =
         builder.getIntegerAttr(builder.getI32Type(), createOp.size());
-    std::string producerFifoName = createOp.name().str() + "_to_memTile";
     BDDimLayoutArrayAttr emptyDims =
         BDDimLayoutArrayAttr::get(builder.getContext(), {});
     BDDimLayoutArrayArrayAttr fromStreamDims =
         BDDimLayoutArrayArrayAttr::get(builder.getContext(), emptyDims);
-    ObjectFifoCreateOp producerFifo = {createObjectFifo(
-        builder, datatype, producerFifoName, producerTile, memTile,
-        producerObjFifoSize, emptyDims, fromStreamDims)};
-    if (createOp.getDisableSynchronization())
-      producerFifo.setDisableSynchronization(true);
 
-    producerFifos.push_back(producerFifo);
-    createdFifoOps.push_back(producerFifo);
+    
+    // if (createOp.getProducerTiles().has_value() && createOp.getProducerTiles()->size() > 1){
+    //   multipleProducerFifos = true;
+    //   combinedTile = createOp.getConsumerTileOp();
+    //   std::string consumerFifoName = createOp.name().str() + "_from_memTile";
+    //   ObjectFifoCreateOp consumerFifo = {createObjectFifo(
+    //     builder, datatype, consumerFifoName, memTile, combinedTile,
+    //     commonObjFifoSize, emptyDims, fromStreamDims)};
+    //   numberOfTilesInList = createOp.getProducerTiles().size();
+      // if (createOp.getDisableSynchronization())
+      //   consumerFifo.setDisableSynchronization(true);
+
+      // consumerFifos.push_back(consumerFifo);
+      // createdFifoOps.push_back(consumerFifo);
+    // }
+      
+    if (createOp.getConsumerTiles().size() > 1){
+      multipleConsumerFifos = true;
+      combinedTile = createOp.getProducerTileOp();
+      std::string producerFifoName = createOp.name().str() + "_to_memTile";
+      ObjectFifoCreateOp producerFifo = {createObjectFifo(
+        builder, datatype, producerFifoName, combinedTile, memTile, 
+        commonObjFifoSize, emptyDims, fromStreamDims)};
+      numberOfTilesInList = createOp.getConsumerTiles().size();
+      if (createOp.getDisableSynchronization())
+        producerFifo.setDisableSynchronization(true);
+
+      producerFifos.push_back(producerFifo);
+      createdFifoOps.push_back(producerFifo);
+    }
 
     // Create objectFifos from memTile to each consumerTile
-    auto dataTypesList = createOp.getSliceTypes();
-    auto numberOfConsumerTiles = createOp.getConsumerTiles().size();
-    std::vector<ObjectFifoCreateOp> consumerFifos;
-    int consumerIndex = 0;
+    int tileIndex = 0;
     auto consumerDatatype = datatype;
     if (dataTypesList.has_value()) {
       if (!dataTypesList->empty() &&
-          dataTypesList->size() != numberOfConsumerTiles) {
+          dataTypesList->size() != numberOfTilesInList) {
         createOp.emitOpError("Mismatch between the number of data types (")
-            << dataTypesList->size() << ") and the number of consumer tiles ("
-            << numberOfConsumerTiles << ").";
+            << dataTypesList->size() << ") and the number of tiles in the list("
+            << numberOfTilesInList << ").";
         return;
       }
     }
-    for (auto consumerTile : createOp.getConsumerTiles()) {
-      auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
-      if (dataTypesList.has_value()) {
-        auto consArrayAttr = dataTypesList.value();
-        auto dataTypeValue =
-            dyn_cast<mlir::TypeAttr>(consArrayAttr[consumerIndex]);
-        auto type = dataTypeValue.getValue();
-        consumerDatatype = llvm::cast<AIEObjectFifoType>(type);
+
+    if (multipleConsumerFifos){
+      for (auto consumerTile : createOp.getConsumerTiles()) {
+        auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
+        if (dataTypesList.has_value()) {
+          auto consArrayAttr = dataTypesList.value();
+          auto dataTypeValue =
+              dyn_cast<mlir::TypeAttr>(consArrayAttr[tileIndex]);
+          auto type = dataTypeValue.getValue();
+          consumerDatatype = llvm::cast<AIEObjectFifoType>(type);
+        }
+        // Still accepts lists
+        auto consumerObjFifoSize = builder.getIntegerAttr(
+            builder.getI32Type(), createOp.size(tileIndex + 1));
+        std::string consumerFifoName = createOp.name().str() + "_from_memTile_" +
+                                      std::to_string(tileIndex);
+        BDDimLayoutArrayAttr singletonFromStreamDims = BDDimLayoutArrayAttr::get(
+            builder.getContext(),
+            ArrayRef<BDDimLayoutAttr>{
+                createOp.getDimensionsFromStreamPerConsumer()[tileIndex]});
+        BDDimLayoutArrayArrayAttr fromStreamDims = BDDimLayoutArrayArrayAttr::get(
+            builder.getContext(), singletonFromStreamDims);
+        ObjectFifoCreateOp consumerFifo = createObjectFifo(
+            builder, consumerDatatype, consumerFifoName, consumerTileOp, memTile,
+            consumerObjFifoSize, emptyDims, fromStreamDims);
+        if (createOp.getDisableSynchronization())
+          consumerFifo.setDisableSynchronization(true);
+        consumerFifos.push_back(consumerFifo);
+        createdFifoOps.push_back(consumerFifo);
+        tileIndex++;
       }
-      // Still accepts lists
-      auto consumerObjFifoSize = builder.getIntegerAttr(
-          builder.getI32Type(), createOp.size(consumerIndex + 1));
-      std::string consumerFifoName = createOp.name().str() + "_from_memTile_" +
-                                     std::to_string(consumerIndex);
-      BDDimLayoutArrayAttr singletonFromStreamDims = BDDimLayoutArrayAttr::get(
-          builder.getContext(),
-          ArrayRef<BDDimLayoutAttr>{
-              createOp.getDimensionsFromStreamPerConsumer()[consumerIndex]});
-      BDDimLayoutArrayArrayAttr fromStreamDims = BDDimLayoutArrayArrayAttr::get(
-          builder.getContext(), singletonFromStreamDims);
-      ObjectFifoCreateOp consumerFifo = createObjectFifo(
-          builder, consumerDatatype, consumerFifoName, memTile, consumerTileOp,
-          consumerObjFifoSize, emptyDims, fromStreamDims);
-      if (createOp.getDisableSynchronization())
-        consumerFifo.setDisableSynchronization(true);
-      consumerFifos.push_back(consumerFifo);
-      createdFifoOps.push_back(consumerFifo);
-      consumerIndex++;
     }
+    // else{
+    //   for (auto producerTile : createOp.getProducerTiles()) {
+    //     auto producerTileOp = dyn_cast<TileOp>(producerTile.getDefiningOp());
+    //     if (dataTypesList.has_value()) {
+    //       auto prodArrayAttr = dataTypesList.value();
+    //       auto dataTypeValue =
+    //           dyn_cast<mlir::TypeAttr>(consArrayAttr[tileIndex]);
+    //       auto type = dataTypeValue.getValue();
+    //       producerDatatype = llvm::cast<AIEObjectFifoType>(type);
+    //     }
+    //     // Still accepts lists
+    //     auto producerObjFifoSize = builder.getIntegerAttr(
+    //         builder.getI32Type(), createOp.size(tileIndex + 1));
+    //     std::string producerFifoName = createOp.name().str() + "_to_memTile_" +
+    //                                   std::to_string(tileIndex);
+    //     BDDimLayoutArrayAttr singletonFromStreamDims = BDDimLayoutArrayAttr::get(
+    //         builder.getContext(),
+    //         ArrayRef<BDDimLayoutAttr>{
+    //             createOp.getDimensionsFromStreamPerConsumer()[tileIndex]});
+    //     BDDimLayoutArrayArrayAttr fromStreamDims = BDDimLayoutArrayArrayAttr::get(
+    //         builder.getContext(), singletonFromStreamDims);
+    //     ObjectFifoCreateOp producerFifo = createObjectFifo(
+    //         builder, producerDatatype, producerFifoName, memTile, producerTileOp, 
+    //         producerObjFifoSize, emptyDims, fromStreamDims);
+    //     if (createOp.getDisableSynchronization())
+    //       producerFifo.setDisableSynchronization(true);
+    //     producerFifos.push_back(producerFifo);
+    //     createdFifoOps.push_back(producerFifo);
+    //     tileIndex++;
+    //   }
+    // }
+
     // Step 3: Create the link
     // Convert producerFifo and consumerFifos to SymbolRefAttr
     SmallVector<Attribute, 4> producerFifoAttrs;
@@ -1625,8 +1688,10 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto fifo : consumerFifos) {
       consumerFifoAttrs.push_back(SymbolRefAttr::get(fifo));
     }
+
     bool isDistribute = false;
     bool isJoin = false;
+
     if (producerFifos.size() > 1 && consumerFifos.size() == 1 &&
         createOp.getOffsets().has_value())
       isJoin = true;
@@ -1652,14 +1717,27 @@ struct AIEObjectFifoStatefulTransformPass
                ? createOp.getRepeatCount().value()
                : 0));
     // Step 4: Replacements of objectFifos with new split ones
-    for (auto consumer : consumerFifos) {
-      replaceSplitFifo(createOp, consumer,
-                       consumer.getConsumerTiles()[0].getDefiningOp<TileOp>());
-    }
+    if (isJoin) {
+      for (auto consumer : consumerFifos) {
+        replaceSplitFifo(createOp, consumer,
+                        consumer.getConsumerTiles()[0].getDefiningOp<TileOp>());
+      }
 
-    for (auto producer : producerFifos) {
-      replaceSplitFifo(createOp, producer, producer.getProducerTileOp());
+      for (auto producer : producerFifos) {
+        replaceSplitFifo(createOp, producer, producer.getProducerTiles()[0].getDefiningOp<TileOp>());
+      }
     }
+    if (isDistribute) {
+      for (auto consumer : consumerFifos) {
+        replaceSplitFifo(createOp, consumer,
+                        consumer.getConsumerTiles()[0].getDefiningOp<TileOp>());
+      }
+
+      for (auto producer : producerFifos) {
+        replaceSplitFifo(createOp, producer, producer.getProducerTileOp());
+      }
+    }
+    
 
     // replaceSplitFifos doesn't replace the symbols in runtime sequence
     // Replace symbols in runtime sequence
@@ -1760,7 +1838,7 @@ struct AIEObjectFifoStatefulTransformPass
 
     for (auto createOp : createFifoOps) {
       std::vector<ObjectFifoCreateOp> splitConsumerFifos;
-      int consumerIndex = 0;
+      int tileIndex = 0;
       int consumerDepth = createOp.size();
       ArrayRef<BDDimLayoutArrayAttr> consumerDims =
           createOp.getDimensionsFromStreamPerConsumer();
@@ -1778,7 +1856,7 @@ struct AIEObjectFifoStatefulTransformPass
           consumerDepth = createOp.size();
         } else if (isa<ArrayAttr>(createOp.getElemNumber())) {
           // +1 to account for 1st depth (producer)
-          consumerDepth = createOp.size(consumerIndex + 1);
+          consumerDepth = createOp.size(tileIndex + 1);
         } else {
           consumerDepth = findObjectFifoSize(device, consumerTileOp, createOp);
         }
@@ -1790,7 +1868,7 @@ struct AIEObjectFifoStatefulTransformPass
         std::string consumerFifoName;
         if (createOp.getConsumerTiles().size() > 1) {
           consumerFifoName = createOp.name().str() + "_" +
-                             std::to_string(consumerIndex) + "_cons";
+                             std::to_string(tileIndex) + "_cons";
         } else {
           consumerFifoName = createOp.name().str() + "_cons";
         }
@@ -1799,7 +1877,7 @@ struct AIEObjectFifoStatefulTransformPass
         BDDimLayoutArrayAttr singletonFromStreamDims =
             BDDimLayoutArrayAttr::get(
                 builder.getContext(),
-                ArrayRef<BDDimLayoutAttr>{consumerDims[consumerIndex]});
+                ArrayRef<BDDimLayoutAttr>{consumerDims[tileIndex]});
         BDDimLayoutArrayArrayAttr fromStreamDims =
             BDDimLayoutArrayArrayAttr::get(builder.getContext(),
                                            singletonFromStreamDims);
@@ -1827,7 +1905,7 @@ struct AIEObjectFifoStatefulTransformPass
                       createOp, consumerFifo.name(), linkOp->getOperation())))
                 llvm::report_fatal_error("unable to update all symbol uses");
 
-        consumerIndex++;
+        tileIndex++;
       }
 
       if (!splitConsumerFifos.empty()) {

@@ -406,8 +406,8 @@ class object_fifo(ObjectFifoCreateOp):
     def __init__(
         self,
         name,
-        producerTile,
-        consumerTileConfigs,  # should be a list (or a single dict) of consumer configs
+        producerTileConfigs,  # should be a single dict or a list of producer configs
+        consumerTileConfigs,  # should be a list or a single dict of consumer configs
         depth,  # FIFO depth for the producer side
         datatype: MemRefType | type[np.ndarray],  # FIFO datatype for the producer side
         dimensionsToStream=None,
@@ -418,48 +418,76 @@ class object_fifo(ObjectFifoCreateOp):
         padDimensions=None,
         disable_synchronization=None,
     ):
-        if not isinstance(consumerTileConfigs, list):
-            consumerTileConfigs = [consumerTileConfigs]
-        # Ensure each entry is a dict; if not, create one with default values.
-        processed_configs = []
-        for cfg in consumerTileConfigs:
+        # Only one of producerTileConfigs or consumerTileConfigs can be a list, not both.
+        if isinstance(producerTileConfigs, list) and isinstance(consumerTileConfigs, list):
+            raise ValueError("Only distribute or join is supported, but not both.")
+
+        # Normalize producerTileConfigs to a list of dicts
+        if not isinstance(producerTileConfigs, list):
+            producerTileConfigs = [producerTileConfigs]
+        processed_producer_configs = []
+        for cfg in producerTileConfigs:
             if isinstance(cfg, dict):
-                processed_configs.append(cfg)
+                processed_producer_configs.append(cfg)
             else:
-                processed_configs.append(
+                processed_producer_configs.append(
                     {
-                        "tile": cfg,
-                        "offset": 0,
-                        "num_objects": depth,
-                        "datatype": datatype,
+                    "tile": cfg,
+                    "offset": 0,
+                    "num_objects": depth,
+                    "datatype": datatype,
                     }
                 )
-        consumerTileConfigs = processed_configs
-        # Extract depths (num_objects), datatypes, and tile identifiers from each config
-        self.consumerConfigs = consumerTileConfigs
-        # Separate consumer parameters from the given dictionaries.
-        consumer_offsets = [cfg.get("offset", 0) for cfg in consumerTileConfigs]
-        consumer_depths = [cfg.get("num_objects", depth) for cfg in consumerTileConfigs]
-        # This default setup helps with distribute and join but it is kind of repetitive in a normal case.
-        consumer_datatypes = [
-            try_convert_np_type_to_mlir_type(cfg.get("datatype", datatype))
-            for cfg in consumerTileConfigs
-        ]
-        consumerTilesList = [cfg.get("tile") for cfg in consumerTileConfigs]
 
-        # Producer's datatype.
-        producer_datatype = try_convert_np_type_to_mlir_type(datatype)
-        # For the producer, no need for offset
+        # Normalize consumerTileConfigs to a list of dicts
+        if not isinstance(consumerTileConfigs, list):
+            consumerTileConfigs = [consumerTileConfigs]
+        processed_consumer_configs = []
+        for cfg in consumerTileConfigs:
+            if isinstance(cfg, dict):
+                processed_consumer_configs.append(cfg)
+            else:
+                processed_consumer_configs.append(
+                    {
+                    "tile": cfg,
+                    "offset": 0,
+                    "num_objects": depth,
+                    "datatype": datatype,
+                    }
+                )
+
+        # Determine which list to use for tileListConfigs based on the number of producers/consumers
+        producerTileConfigs = processed_producer_configs
+        if len(processed_producer_configs) > 1:
+            tileListConfigs = processed_producer_configs
+            producerTileList = [cfg.get("tile") for cfg in processed_producer_configs]
+            consumerTilesList = processed_consumer_configs[0].get("tile")
+        else:
+            tileListConfigs = processed_consumer_configs
+            producerTileList = processed_producer_configs[0].get("tile")
+            consumerTilesList = [cfg.get("tile") for cfg in processed_consumer_configs]
+        
+        default_datatype = try_convert_np_type_to_mlir_type(datatype)
+
+        # Separate consumer parameters from the given dictionaries.
+        offsetsConfig = [cfg.get("offset", 0) for cfg in tileListConfigs]
+        depthsConfig = [cfg.get("num_objects", depth) for cfg in tileListConfigs]
+
+        # This default setup helps with distribute and join but it is kind of repetitive in a normal case.
+        datatypesConfig = [
+            try_convert_np_type_to_mlir_type(cfg.get("datatype", datatype))
+            for cfg in tileListConfigs
+        ]
 
         # Combine producer's and consumers' parameters into separate lists.
         # Not sure, if I would like to combine datatypes or not. For now, they are separate.
-        all_offsets = consumer_offsets
-        all_depths = [depth] + consumer_depths
-        sliceTypes = [TypeAttr.get(ObjectFifoType.get(dt)) for dt in consumer_datatypes]
+        all_offsets = offsetsConfig
+        all_depths = [depth] + depthsConfig
+        sliceTypes = [TypeAttr.get(ObjectFifoType.get(dt)) for dt in datatypesConfig]
 
         # Create the overall FIFO type from the combined datatypes.
-        of_Ty = TypeAttr.get(ObjectFifoType.get(producer_datatype))
-        self.datatype = producer_datatype  # For the acquire and release functions
+        of_Ty = TypeAttr.get(ObjectFifoType.get(default_datatype))
+        self.datatype = default_datatype  # For the acquire and release functions
         sliceTypesArray = _arrayAttr(sliceTypes, None)
         if dimensionsFromStreamPerConsumer is None:
             dimensionsFromStreamPerConsumer = []
@@ -475,7 +503,7 @@ class object_fifo(ObjectFifoCreateOp):
             initValues = _arrayAttr(values, None)
         super().__init__(
             sym_name=name,
-            producerTile=producerTile,
+            producerTile=producerTileList,
             consumerTiles=consumerTilesList,
             elemNumber=all_depths,
             elemType=of_Ty,
