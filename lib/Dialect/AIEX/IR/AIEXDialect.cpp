@@ -501,6 +501,10 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
       (getD0Size() >= 1) && (getD1Size() == 1) && (getIterationSize() == 0);
   if (getBdId() > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
+  if (getPacketId() > 31)
+    return emitOpError("Packet ID exceeds the maximum supported by 5 bits.");
+  if (getPacketType() > 7)
+    return emitOpError("Packet Type exceeds the maximum supported by 3 bits.");
   if (!isLinearTransfer && getD0Size() > 0x3FF)
     return emitOpError("D0 Size exceeds the [0:1023] range.");
   if (getD0Stride() > 0xFFFFF)

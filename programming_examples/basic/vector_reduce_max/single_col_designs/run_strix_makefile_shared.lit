@@ -1,0 +1,12 @@
+// (c) Copyright 2025 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, peano
+//
+// RUN: mkdir -p test_stx_shared
+// RUN: cd test_stx_shared
+// RUN: make -f %S/Makefile clean
+// RUN: env use_shared=1 dtype=bf16 make -f %S/Makefile devicename=npu2
+// RUN:  env use_shared=1 dtype=bf16 %run_on_npu2% make -f %S/Makefile run devicename=npu2
+// RUN: make -f %S/Makefile clean
+// RUN: env use_shared=1 dtype=bf16 %run_on_npu2% make -f %S/Makefile trace devicename=npu2

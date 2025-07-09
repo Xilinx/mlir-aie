@@ -255,6 +255,10 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     std::fill(padBefore.begin(), padBefore.end(), 0);
     std::fill(padAfter.begin(), padAfter.end(), 0);
 
+    auto enable_packet = 0;
+    auto out_of_order_id = 0;
+    auto packet_id = 0;
+    auto packet_type = 0;
     auto d0size = 0;
     auto d0stride = 0;
     auto d1size = 0;
@@ -390,9 +394,19 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       use_next_bd = 1;
     }
 
+    // enable_packet
+    if (auto packetInfo = bd_op.getPacket()) {
+      enable_packet = 1;
+      packet_type = packetInfo->getPktType();
+      packet_id = packetInfo->getPktId();
+    }
+
     builder.create<NpuWriteBdOp>(
-        bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity, offset, 0,
-        0, 0, 0,
+        bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity, offset,
+        /*enable_packet=*/enable_packet,
+        /*out_of_order_id=*/out_of_order_id,
+        /*packet_id=*/packet_id,
+        /*packet_type=*/packet_type,
         /* TODO: Strides/Wraps */
         /*d0_size=*/d0size, /*d0_stride=*/d0stride,
         /*d1_size=*/d1size, /*d1_stride=*/d1stride,
