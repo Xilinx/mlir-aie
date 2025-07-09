@@ -526,13 +526,13 @@ struct AIEObjectFifoStatefulTransformPass
                 LockAction acqLockAction, LockOp relLock, int relMode,
                 MyOp buff, int offset, int len, Block *succ,
                 BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDimensions,
-                std::optional<DMABDPacket> bdPacket) {
+                std::optional<PacketInfoAttr> bdPacket) {
     if (acqLock)
       builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqLockAction,
                                 acqMode);
     if (bdPacket) {
-      builder.create<DMABDPACKETOp>(builder.getUnknownLoc(), bdPacket.value().packet_type,
-                                    bdPacket.value().packet_id);
+      builder.create<DMABDPACKETOp>(builder.getUnknownLoc(), bdPacket->getPktType(),
+                                    bdPacket->getPktId());
     }
     if (!dims.getValue().empty() && padDimensions) {
       builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims,
@@ -557,7 +557,7 @@ struct AIEObjectFifoStatefulTransformPass
                      DMAChannelDir channelDir, size_t lockIndex, Block *succ,
                      BDDimLayoutArrayAttr dims,
                      BDPadLayoutArrayAttr padDimensions,
-                     std::optional<DMABDPacket> bdPacket,
+                     std::optional<PacketInfoAttr> bdPacket,
                      bool distribOrJoin = false) {
     LockOp acqLock;
     LockOp relLock;
@@ -599,7 +599,7 @@ struct AIEObjectFifoStatefulTransformPass
   void createDMA(DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
                  DMAChannelDir channelDir, int channelIndex, int lockMode,
                  BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr pad_dims,
-                 std::optional<DMABDPacket> bdPacket) {
+                 std::optional<PacketInfoAttr> bdPacket) {
     if (op.getProducerTileOp().isShimTile()) {
       createShimDMA(device, builder, op, channelDir, channelIndex, lockMode,
                     dims, bdPacket);
@@ -620,7 +620,8 @@ struct AIEObjectFifoStatefulTransformPass
   void createAIETileDMA(DeviceOp &device, OpBuilder &builder,
                         ObjectFifoCreateOp op, DMAChannelDir channelDir,
                         int channelIndex, int lockMode,
-                        BDDimLayoutArrayAttr dims, std::optional<DMABDPacket> bdPacket) {
+                        BDDimLayoutArrayAttr dims,
+                        std::optional<PacketInfoAttr> bdPacket) {
     size_t numBlocks = op.size();
     if (numBlocks == 0)
       return;
@@ -720,7 +721,7 @@ struct AIEObjectFifoStatefulTransformPass
                      ObjectFifoCreateOp op, DMAChannelDir channelDir,
                      int channelIndex, int lockMode,
                      BDDimLayoutArrayAttr dims,
-                     std::optional<DMABDPacket> bdPacket) {
+                     std::optional<PacketInfoAttr> bdPacket) {
     size_t numBlocks = externalBuffersPerFifo[op].size();
     if (numBlocks == 0)
       return;
@@ -796,7 +797,7 @@ struct AIEObjectFifoStatefulTransformPass
                         int channelIndex, int lockMode,
                         BDDimLayoutArrayAttr dims,
                         BDPadLayoutArrayAttr padDimensions,
-                        std::optional<DMABDPacket> bdPacket) {
+                        std::optional<PacketInfoAttr> bdPacket) {
     size_t numBlocks = op.size();
     if (numBlocks == 0)
       return;
@@ -1414,7 +1415,8 @@ struct AIEObjectFifoStatefulTransformPass
   void createObjectFifoAllocationInfo(OpBuilder &builder, MLIRContext *ctx,
                                       FlatSymbolRefAttr obj_fifo, int colIndex,
                                       DMAChannelDir channelDir,
-                                      int channelIndex, bool plio) {
+                                      int channelIndex,
+                                      bool plio) {
     builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(), obj_fifo,
                                         DMAChannelDirAttr::get(ctx, channelDir),
                                         builder.getI64IntegerAttr(channelIndex),
@@ -1606,7 +1608,9 @@ struct AIEObjectFifoStatefulTransformPass
         producer.getProducerTileOp().emitOpError(
             "number of output DMA channel exceeded!");
       DMAChannel producerChan = {DMAChannelDir::MM2S, producerChanIndex};
-      DMABDPacket bdPacket = {0, packetID};
+      
+      auto bdPacket = AIE::PacketInfoAttr::get(
+          ctx, /*pkt_type*/ 0, /*pkt_id*/ packetID);
       packetID++;
       createDMA(device, builder, producer, producerChan.direction,
                 producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
@@ -1625,7 +1629,7 @@ struct AIEObjectFifoStatefulTransformPass
       auto packetflow = builder.create<PacketFlowOp>(
           builder.getUnknownLoc(),
           builder.getIntegerAttr(builder.getI8Type(),
-          bdPacket.packet_id), nullptr, nullptr);
+          bdPacket.getPktId()), nullptr, nullptr);
       {
         OpBuilder::InsertionGuard g(builder);
         builder.setInsertionPointToStart(&packetflow.getRegion().emplaceBlock());
