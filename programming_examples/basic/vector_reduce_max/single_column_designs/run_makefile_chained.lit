@@ -7,7 +7,7 @@
 // RUN: cd test_single_col_cascade
 // RUN: make -f %S/Makefile clean
 // RUN: env dtype=bf16 make -f %S/Makefile 
-// RUN: env dtype=bf16 %run_on_npu1% make -f %S/Makefile run
+// RUN: env dtype=bf16 use_chained=1 %run_on_npu1% make -f %S/Makefile run
 // RUN: make -f %S/Makefile clean
-// RUN: env CHESS=false dtype=bf16 %run_on_npu1% make -f %S/Makefile trace 
+// RUN: env CHESS=false dtype=bf16 use_chained=1 %run_on_npu1% make -f %S/Makefile trace 
   
