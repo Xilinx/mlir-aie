@@ -14,6 +14,7 @@
 // CHECK:   b       : 0x400-0x83FF         (32768 bytes)
 // CHECK:   c       : 0x8400-0x841F         (32 bytes)
 // CHECK:   a       : 0x8420-0x842F         (16 bytes)
+// CHECK: error: 'aie.tile' op Basic sequential allocation failed.
 
 module @test {
   aie.device(xcvc1902) {
