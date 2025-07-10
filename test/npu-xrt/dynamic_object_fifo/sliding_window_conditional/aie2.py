@@ -5,7 +5,7 @@
 #
 # (c) Copyright 2025 AMD Inc.
 
-# REQUIRES: ryzen_ai, valid_xchess_license
+# REQUIRES: ryzen_ai_npu1, valid_xchess_license
 #
 # RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cc -o ./kernel.o
 # RUN: %python %S/aie2.py > ./aie2.mlir
@@ -19,7 +19,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.extras.context import mlir_mod_ctx
-from aie.extras.dialects.ext.scf import if_, else_
+from aie.helpers.dialects.ext.scf import if_, else_
 
 N = 100
 n_rows = 10
@@ -52,15 +52,15 @@ def sliding_window():
             def core_body():
                 for i in range_(10):
                     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
-                    if if_(i == 0):
+                    with if_(i == 0) as if_op:
                         elemInPre = of_in.acquire(ObjectFifoPort.Consume, 1)
                         add_10_i32(elemInPre, elemInPre, elemOut)
-                    else:
+                    with else_(if_op):
                         elemsIn = of_in.acquire(ObjectFifoPort.Consume, 2)
                         add_10_i32(elemsIn[0], elemsIn[1], elemOut)
-                        if if_(i == 9):
+                        with if_(i == 9) as if_op1:
                             of_in.release(ObjectFifoPort.Consume, 2)
-                        else:
+                        with else_(if_op1):
                             of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
 
