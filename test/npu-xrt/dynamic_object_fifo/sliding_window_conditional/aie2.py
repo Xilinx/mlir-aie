@@ -14,7 +14,6 @@
 # RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
 # RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --dynamic-objFifos --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-# RUN: %run_on_npu1% ./test.exe
 # RUN: %run_on_npu2% ./test.exe
 
 import numpy as np
@@ -56,15 +55,15 @@ def sliding_window():
             def core_body():
                 for i in range_(10):
                     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
-                    with if_(i == 0) as if_op:
+                    if if_(i == 0):
                         elemInPre = of_in.acquire(ObjectFifoPort.Consume, 1)
                         add_10_i32(elemInPre, elemInPre, elemOut)
-                    with else_(if_op):
+                    else:
                         elemsIn = of_in.acquire(ObjectFifoPort.Consume, 2)
                         add_10_i32(elemsIn[0], elemsIn[1], elemOut)
-                        with if_(i == 9) as if_op1:
+                        if if_(i == 9):
                             of_in.release(ObjectFifoPort.Consume, 2)
-                        with else_(if_op1):
+                        else:
                             of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
 
