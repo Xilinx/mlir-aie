@@ -20,7 +20,7 @@ Both BF16 and INT32 data types are supported, leveraging kernels from `reduce_ma
 
 2. `vector_reduce_max_placed.py`: An alternative version of the design in `vector_reduce_max.py`, that is expressed in a lower-level version of IRON.
 
-<br><img src="assets/Multi-col.png" alt="Multi-column Design" width="300"/>
+<br><img src="assets/Multi-col.png" alt="Multi-column Design" width="500"/>
 
 ## Ryzen™ AI Usage
 
