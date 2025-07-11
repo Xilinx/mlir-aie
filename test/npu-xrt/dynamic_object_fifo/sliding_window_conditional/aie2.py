@@ -5,7 +5,6 @@
 #
 # (c) Copyright 2025 AMD Inc.
 
-# REQUIRES: ryzen_ai_npu1,ryzen_ai_npu2,chess
 #
 # RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cc -o ./kernel.o
 # RUN: %run_on_npu1% sed 's/AIEDevice.npu1_1col/AIEDevice.npu1_1col/g' -i %S/aie2.py
