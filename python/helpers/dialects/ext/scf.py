@@ -2,7 +2,7 @@ from typing import Sequence
 
 from ....ir import InsertionPoint, Value
 from ....dialects.linalg.opdsl.lang.emitter import _is_index_type
-from ....dialects.scf import IfOp, ForOp, yield_
+from ....dialects.scf import ForOp, yield_
 from ....extras.dialects.ext.arith import constant, index_cast
 from ....extras.util import get_user_code_loc
 from contextlib import contextmanager
