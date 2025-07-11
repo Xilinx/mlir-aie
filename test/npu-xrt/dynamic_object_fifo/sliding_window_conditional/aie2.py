@@ -22,9 +22,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.extras.context import mlir_mod_ctx
-from aie.extras.dialects.ext.scf import if_ctx_manager as if_
-from aie.extras.dialects.ext.scf import else_ctx_manager as else_
-from aie.extras.dialects.ext.scf import yield_
+from aie.helpers.dialects.ext.scf import if_, else_
 
 N = 100
 n_rows = 10
@@ -60,18 +58,14 @@ def sliding_window():
                     with if_(i == 0) as if_op:
                         elemInPre = of_in.acquire(ObjectFifoPort.Consume, 1)
                         add_10_i32(elemInPre, elemInPre, elemOut)
-                        yield_()
                     with else_(if_op):
                         elemIn = of_in.acquire(ObjectFifoPort.Consume, 2)
                         with if_(i == 9) as if_op1:
                             add_10_i32(elemIn[0], elemIn[1], elemOut)
                             of_in.release(ObjectFifoPort.Consume, 2)
-                            yield_()
                         with else_(if_op1):
                             add_10_i32(elemIn[0], elemIn[1], elemOut)
                             of_in.release(ObjectFifoPort.Consume, 1)
-                            yield_()
-                        yield_()
                     of_out.release(ObjectFifoPort.Produce, 1)
 
             # To/from AIE-array data movement
