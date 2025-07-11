@@ -8,9 +8,9 @@
 # REQUIRES: ryzen_ai_npu1, valid_xchess_license
 #
 # RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cc -o ./kernel.o
+# RUN: %run_on_npu1% sed 's/AIEDevice.npu1_1col/AIEDevice.npu1_1col/g' -i %S/aie2.py
+# RUN: %run_on_npu2% sed 's/AIEDevice.npu1_1col/AIEDevice.npu1_1col/g' -i %S/aie2.py
 # RUN: %python %S/aie2.py > ./aie2.mlir
-# RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie2.mlir
-# RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie2.mlir
 # RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --dynamic-objFifos --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
 # RUN: %run_on_npu1% ./test.exe
@@ -22,7 +22,9 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.extras.context import mlir_mod_ctx
-from aie.helpers.dialects.ext.scf import if_, else_
+from aie.extras.dialects.ext.scf import if_ctx_manager as if_
+from aie.extras.dialects.ext.scf import else_ctx_manager as else_
+from aie.extras.dialects.ext.scf import yield_
 
 N = 100
 n_rows = 10
@@ -42,7 +44,7 @@ def sliding_window():
             ComputeTile = tile(col, 2)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, ComputeTile, 3, subtensor_ty)
+            of_in = object_fifo("in", ShimTile, ComputeTile, 2, subtensor_ty)
             of_out = object_fifo("out", ComputeTile, ShimTile, 2, subtensor_ty)
 
             # AIE Core Function declarations
@@ -58,13 +60,18 @@ def sliding_window():
                     with if_(i == 0) as if_op:
                         elemInPre = of_in.acquire(ObjectFifoPort.Consume, 1)
                         add_10_i32(elemInPre, elemInPre, elemOut)
+                        yield_()
                     with else_(if_op):
-                        elemsIn = of_in.acquire(ObjectFifoPort.Consume, 2)
-                        add_10_i32(elemsIn[0], elemsIn[1], elemOut)
+                        elemIn = of_in.acquire(ObjectFifoPort.Consume, 2)
                         with if_(i == 9) as if_op1:
+                            add_10_i32(elemIn[0], elemIn[1], elemOut)
                             of_in.release(ObjectFifoPort.Consume, 2)
+                            yield_()
                         with else_(if_op1):
+                            add_10_i32(elemIn[0], elemIn[1], elemOut)
                             of_in.release(ObjectFifoPort.Consume, 1)
+                            yield_()
+                        yield_()
                     of_out.release(ObjectFifoPort.Produce, 1)
 
             # To/from AIE-array data movement
