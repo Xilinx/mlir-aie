@@ -95,23 +95,10 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
             pB1 = pB + (j * colA) * MMUL::size_B;
             pB2 = pB + ((j + 1) * colA) * MMUL::size_B;
           }
-          aie::vector<T_in, MMUL::size_A> A0 = aie::load_v<MMUL::size_A>(pA1);
-          pA1 += MMUL::size_A;
-          aie::vector<T_in, MMUL::size_A> A1 = aie::load_v<MMUL::size_A>(pA2);
-          pA2 += MMUL::size_A;
+          aie::vector<T_in, MMUL::size_A> A0;
+          aie::vector<T_in, MMUL::size_A> A1;
           aie::vector<T_in, MMUL::size_B> B0;
           aie::vector<T_in, MMUL::size_B> B1;
-          if constexpr (b_row_maj) {
-            B0 = aie::load_v<MMUL::size_B>(pB1);
-            pB1 += MMUL::size_B * colB;
-            B1 = aie::load_v<MMUL::size_B>(pB2);
-            pB2 += MMUL::size_B * colB;
-          } else {
-            B0 = aie::transpose(aie::load_v<MMUL::size_B>(pB1), t, s);
-            pB1 += MMUL::size_B;
-            B1 = aie::transpose(aie::load_v<MMUL::size_B>(pB2), t, s);
-            pB2 += MMUL::size_B;
-          }
 
           // Load partial results from C buffer for accumulation in-place. The
           // zero.cc function handles the zeroing of data when a new
@@ -130,12 +117,7 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
           MMUL C10(acc_C10);
           MMUL C11(acc_C11);
 
-          C00.mac(A0, B0);
-          C01.mac(A0, B1);
-          C10.mac(A1, B0);
-          C11.mac(A1, B1);
-
-          for (unsigned i = 1; i < colA; ++i)
+          for (unsigned i = 0; i < colA; ++i)
 #ifdef OPT_PERF_ENABLED
             chess_flatten_loop
 #endif
