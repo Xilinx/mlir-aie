@@ -115,15 +115,16 @@ def bd_pad_layout(const_pad_before, const_pad_after):
     return Attribute.parse(
         f"#aie.bd_pad_layout<{const_pad_before=}, {const_pad_after=}>"
     )
-    
-    
+
+
 @register_attribute_builder("PacketInfoAttr")
 def bd_dim_layout_array_attr_builder(tups: Tuple[int] | List[int], context=None):
     assert (isinstance(tups, list) or isinstance(tups, Tuple)) and len(tups) == 2
     return Attribute.parse(
-        f'#aie.packet_info<pkt_type = {tups[0]}, pkt_id = {tups[1]}>', context=context
+        f"#aie.packet_info<pkt_type = {tups[0]}, pkt_id = {tups[1]}>", context=context
     )
-          
+
+
 @register_attribute_builder("BDDimLayoutArrayAttr")
 def bd_dim_layout_array_attr_builder(tups: List[Attribute | Tuple[int]], context=None):
     if isinstance(tups, list) and all(isinstance(t, tuple) for t in tups):
@@ -406,10 +407,10 @@ class object_fifo(ObjectFifoCreateOp):
     def __init__(
         self,
         name,
-        producerTile,
-        consumerTiles,
-        depth,
-        datatype: MemRefType | type[np.ndarray],
+        producerTileConfigs,  # should be a single dict or a list of producer configs
+        consumerTileConfigs,  # should be a list or a single dict of consumer configs
+        depth,  # FIFO depth for the producer side
+        datatype: MemRefType | type[np.ndarray],  # FIFO datatype for the producer side
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
         initValues=None,
@@ -418,14 +419,87 @@ class object_fifo(ObjectFifoCreateOp):
         padDimensions=None,
         disable_synchronization=None,
     ):
-        self.datatype = try_convert_np_type_to_mlir_type(datatype)
-        if not isinstance(consumerTiles, List):
-            consumerTiles = [consumerTiles]
+        # Only one of producerTileConfigs or consumerTileConfigs can be a list, not both.
+        if isinstance(producerTileConfigs, list) and isinstance(
+            consumerTileConfigs, list
+        ):
+            raise ValueError("Only distribute or join is supported, but not both.")
+
+        # Normalize producerTileConfigs to a list of dicts
+        if not isinstance(producerTileConfigs, list):
+            producerTileConfigs = [producerTileConfigs]
+        processed_producer_configs = []
+        for cfg in producerTileConfigs:
+            if isinstance(cfg, dict):
+                processed_producer_configs.append(cfg)
+            else:
+                processed_producer_configs.append(
+                    {
+                        "tile": cfg,
+                        "offset": 0,
+                        "num_objects": depth,
+                        "datatype": datatype,
+                    }
+                )
+
+        # Normalize consumerTileConfigs to a list of dicts
+        if not isinstance(consumerTileConfigs, list):
+            consumerTileConfigs = [consumerTileConfigs]
+        processed_consumer_configs = []
+        for cfg in consumerTileConfigs:
+            if isinstance(cfg, dict):
+                processed_consumer_configs.append(cfg)
+            else:
+                processed_consumer_configs.append(
+                    {
+                        "tile": cfg,
+                        "offset": 0,
+                        "num_objects": depth,
+                        "datatype": datatype,
+                    }
+                )
+
+        # Determine which list to use for tileListConfigs based on the number of producers/consumers
+        producerTileConfigs = processed_producer_configs
+        if len(processed_producer_configs) > 1:
+            tileListConfigs = processed_producer_configs
+            producerTileList = [cfg.get("tile") for cfg in processed_producer_configs]
+            consumerTilesList = processed_consumer_configs[0].get("tile")
+        else:
+            tileListConfigs = processed_consumer_configs
+            producerTileList = processed_producer_configs[0].get("tile")
+            consumerTilesList = [cfg.get("tile") for cfg in processed_consumer_configs]
+
+        default_datatype = try_convert_np_type_to_mlir_type(datatype)
+
+        # Separate consumer parameters from the given dictionaries.
+        offsetsConfig = [cfg.get("offset", 0) for cfg in tileListConfigs]
+        depthsConfig = [cfg.get("num_objects", depth) for cfg in tileListConfigs]
+
+        # This default setup helps with distribute and join but it is kind of repetitive in a normal case.
+        datatypesConfig = [
+            try_convert_np_type_to_mlir_type(cfg.get("datatype", datatype))
+            for cfg in tileListConfigs
+        ]
+
+        # Combine producer's and consumers' parameters into separate lists.
+        # Not sure, if I would like to combine datatypes or not. For now, they are separate.
+        all_offsets = offsetsConfig
+        # Determine all_depths depending on whether depth is scalar or a list.
+        if isinstance(depth, list):
+            all_depths = depth
+        else:
+            all_depths = [depth] + depthsConfig
+        sliceTypes = [TypeAttr.get(ObjectFifoType.get(dt)) for dt in datatypesConfig]
+
+        # Create the overall FIFO type from the combined datatypes.
+        of_Ty = TypeAttr.get(ObjectFifoType.get(default_datatype))
+        self.datatype = default_datatype  # For the acquire and release functions
+        sliceTypesArray = _arrayAttr(sliceTypes, None)
         if dimensionsFromStreamPerConsumer is None:
             dimensionsFromStreamPerConsumer = []
         if dimensionsToStream is None:
             dimensionsToStream = []
-        of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
         if initValues is not None:
             values = []
             for e in initValues:
@@ -436,10 +510,12 @@ class object_fifo(ObjectFifoCreateOp):
             initValues = _arrayAttr(values, None)
         super().__init__(
             sym_name=name,
-            producerTile=producerTile,
-            consumerTiles=consumerTiles,
-            elemNumber=depth,
+            producerTile=producerTileList,
+            consumerTiles=consumerTilesList,
+            elemNumber=all_depths,
             elemType=of_Ty,
+            offsets=all_offsets,
+            sliceTypes=sliceTypesArray,
             dimensionsToStream=dimensionsToStream,
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
             via_DMA=via_DMA,
@@ -479,6 +555,13 @@ class object_fifo(ObjectFifoCreateOp):
     def set_repeat_count(self, num):
         int_num = IntegerAttr.get(T.i32(), num)
         self.attributes["repeat_count"] = int_num
+
+    def set_stage_through_tile(self, tile_op):
+        col = IntegerAttr.get(T.i32(), tile_op.col)
+        row = IntegerAttr.get(T.i32(), tile_op.row)
+        # No TileOpAttr to simplify this further
+        tile_op_array = _i32ArrayAttr([col, row], None)
+        self.attributes["stage_through_tile"] = tile_op_array
 
 
 # Create an aie objectFifo_link between input and output objectFifos.
