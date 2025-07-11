@@ -115,15 +115,16 @@ def bd_pad_layout(const_pad_before, const_pad_after):
     return Attribute.parse(
         f"#aie.bd_pad_layout<{const_pad_before=}, {const_pad_after=}>"
     )
-    
-    
+
+
 @register_attribute_builder("PacketInfoAttr")
 def bd_dim_layout_array_attr_builder(tups: Tuple[int] | List[int], context=None):
     assert (isinstance(tups, list) or isinstance(tups, Tuple)) and len(tups) == 2
     return Attribute.parse(
-        f'#aie.packet_info<pkt_type = {tups[0]}, pkt_id = {tups[1]}>', context=context
+        f"#aie.packet_info<pkt_type = {tups[0]}, pkt_id = {tups[1]}>", context=context
     )
-          
+
+
 @register_attribute_builder("BDDimLayoutArrayAttr")
 def bd_dim_layout_array_attr_builder(tups: List[Attribute | Tuple[int]], context=None):
     if isinstance(tups, list) and all(isinstance(t, tuple) for t in tups):
@@ -419,7 +420,9 @@ class object_fifo(ObjectFifoCreateOp):
         disable_synchronization=None,
     ):
         # Only one of producerTileConfigs or consumerTileConfigs can be a list, not both.
-        if isinstance(producerTileConfigs, list) and isinstance(consumerTileConfigs, list):
+        if isinstance(producerTileConfigs, list) and isinstance(
+            consumerTileConfigs, list
+        ):
             raise ValueError("Only distribute or join is supported, but not both.")
 
         # Normalize producerTileConfigs to a list of dicts
@@ -432,10 +435,10 @@ class object_fifo(ObjectFifoCreateOp):
             else:
                 processed_producer_configs.append(
                     {
-                    "tile": cfg,
-                    "offset": 0,
-                    "num_objects": depth,
-                    "datatype": datatype,
+                        "tile": cfg,
+                        "offset": 0,
+                        "num_objects": depth,
+                        "datatype": datatype,
                     }
                 )
 
@@ -449,10 +452,10 @@ class object_fifo(ObjectFifoCreateOp):
             else:
                 processed_consumer_configs.append(
                     {
-                    "tile": cfg,
-                    "offset": 0,
-                    "num_objects": depth,
-                    "datatype": datatype,
+                        "tile": cfg,
+                        "offset": 0,
+                        "num_objects": depth,
+                        "datatype": datatype,
                     }
                 )
 
@@ -466,7 +469,7 @@ class object_fifo(ObjectFifoCreateOp):
             tileListConfigs = processed_consumer_configs
             producerTileList = processed_producer_configs[0].get("tile")
             consumerTilesList = [cfg.get("tile") for cfg in processed_consumer_configs]
-        
+
         default_datatype = try_convert_np_type_to_mlir_type(datatype)
 
         # Separate consumer parameters from the given dictionaries.
@@ -482,7 +485,11 @@ class object_fifo(ObjectFifoCreateOp):
         # Combine producer's and consumers' parameters into separate lists.
         # Not sure, if I would like to combine datatypes or not. For now, they are separate.
         all_offsets = offsetsConfig
-        all_depths = [depth] + depthsConfig
+        # Determine all_depths depending on whether depth is scalar or a list.
+        if isinstance(depth, list):
+            all_depths = depth
+        else:
+            all_depths = [depth] + depthsConfig
         sliceTypes = [TypeAttr.get(ObjectFifoType.get(dt)) for dt in datatypesConfig]
 
         # Create the overall FIFO type from the combined datatypes.
