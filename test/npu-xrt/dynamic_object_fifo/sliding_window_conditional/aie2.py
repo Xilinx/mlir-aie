@@ -5,6 +5,7 @@
 #
 # (c) Copyright 2025 AMD Inc.
 
+# REQUIRES: ryzen_ai_npu1, valid_xchess_license
 #
 # RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cc -o ./kernel.o
 # RUN: %python %S/aie2.py > ./aie2.mlir
