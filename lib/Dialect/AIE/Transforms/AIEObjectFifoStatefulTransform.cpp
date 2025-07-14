@@ -1415,13 +1415,16 @@ struct AIEObjectFifoStatefulTransformPass
   void createObjectFifoAllocationInfo(OpBuilder &builder, MLIRContext *ctx,
                                       FlatSymbolRefAttr obj_fifo, int colIndex,
                                       DMAChannelDir channelDir,
-                                      int channelIndex,
-                                      bool plio, PacketInfoAttr packet) {
+                                      int channelIndex, bool plio,
+                                      std::optional<PacketInfoAttr> packet) {
+    PacketInfoAttr packetInfo = nullptr;
+    if (packet)
+      packetInfo = *packet;
     builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(), obj_fifo,
                                         DMAChannelDirAttr::get(ctx, channelDir),
                                         builder.getI64IntegerAttr(channelIndex),
                                         builder.getI64IntegerAttr(colIndex),
-                                        builder.getBoolAttr(plio), packet);
+                                        builder.getBoolAttr(plio), packetInfo);
   }
 
   /// Function used to verify that an objectfifo is present in at most one
@@ -1450,8 +1453,8 @@ struct AIEObjectFifoStatefulTransformPass
     DMAChannelAnalysis dmaAnalysis(device);
     OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
     auto ctx = device->getContext();
-    // auto producerWireType = WireBundle::DMA;
-    // auto consumerWireType = WireBundle::DMA;
+    auto producerWireType = WireBundle::DMA;
+    auto consumerWireType = WireBundle::DMA;
     std::set<TileOp>
         objectFifoTiles; // track cores to check for loops during unrolling
 
@@ -1609,12 +1612,15 @@ struct AIEObjectFifoStatefulTransformPass
             "number of output DMA channel exceeded!");
       DMAChannel producerChan = {DMAChannelDir::MM2S, producerChanIndex};
       
-      auto bdPacket = AIE::PacketInfoAttr::get(
-          ctx, /*pkt_type*/ 0, /*pkt_id*/ packetID);
-      packetID++;
+      std::optional<PacketInfoAttr> bdPacket = {};
+      if (clPacketSwObjectFifos) {
+        bdPacket = {AIE::PacketInfoAttr::get(
+            ctx, /*pkt_type*/ 0, /*pkt_id*/ packetID)};
+        packetID++;
+      }
       createDMA(device, builder, producer, producerChan.direction,
                 producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
-                producer.getPadDimensionsAttr(), {bdPacket});
+                producer.getPadDimensionsAttr(), bdPacket);
       // generate objectFifo allocation info
       builder.setInsertionPoint(device.getBody()->getTerminator());
 
@@ -1624,16 +1630,19 @@ struct AIEObjectFifoStatefulTransformPass
             producer.getProducerTileOp().colIndex(), producerChan.direction,
             producerChan.channel, producer.getPlio(), bdPacket);
 
-      // create packet flow
-      builder.setInsertionPointAfter(producer);
-      auto packetflow = builder.create<PacketFlowOp>(
-          builder.getUnknownLoc(),
-          builder.getIntegerAttr(builder.getI8Type(),
-          bdPacket.getPktId()), nullptr, nullptr);
-      {
-        OpBuilder::InsertionGuard g(builder);
-        builder.setInsertionPointToStart(&packetflow.getRegion().emplaceBlock());
-        builder.create<EndOp>(builder.getUnknownLoc());
+      PacketFlowOp packetflow;
+      if (clPacketSwObjectFifos) {
+        // create packet flow
+        builder.setInsertionPointAfter(producer);
+        packetflow = builder.create<PacketFlowOp>(
+            builder.getUnknownLoc(),
+            builder.getIntegerAttr(builder.getI8Type(),
+            bdPacket->getPktId()), nullptr, nullptr);
+        {
+          OpBuilder::InsertionGuard g(builder);
+          builder.setInsertionPointToStart(&packetflow.getRegion().emplaceBlock());
+          builder.create<EndOp>(builder.getUnknownLoc());
+        }
       }
 
       for (auto consumer : consumers) {
@@ -1647,22 +1656,24 @@ struct AIEObjectFifoStatefulTransformPass
         DMAChannel consumerChan = {DMAChannelDir::S2MM, consumerChanIndex};
 
         // If we have PLIO then figure out the direction and make that a PLIO
-        // if (producer.getPlio()) {
-        //   producerWireType = producer.getProducerTileOp().isShimTile()
-        //                          ? WireBundle::PLIO
-        //                          : WireBundle::DMA;
-        //   consumerWireType = consumer.getProducerTileOp().isShimTile()
-        //                          ? WireBundle::PLIO
-        //                          : WireBundle::DMA;
-        // } else {
-        //   producerWireType = WireBundle::DMA;
-        //   consumerWireType = WireBundle::DMA;
-        // }
+        if (producer.getPlio()) {
+          producerWireType = producer.getProducerTileOp().isShimTile()
+                                 ? WireBundle::PLIO
+                                 : WireBundle::DMA;
+          consumerWireType = consumer.getProducerTileOp().isShimTile()
+                                 ? WireBundle::PLIO
+                                 : WireBundle::DMA;
+        } else {
+          producerWireType = WireBundle::DMA;
+          consumerWireType = WireBundle::DMA;
+        }
         
-        builder.setInsertionPointToStart(&packetflow.getPorts().front());
-        builder.create<PacketDestOp>(builder.getUnknownLoc(),
-                                    consumer.getProducerTile(),
-                                    WireBundle::DMA, consumerChan.channel);
+        if (clPacketSwObjectFifos) {
+          builder.setInsertionPointToStart(&packetflow.getPorts().front());
+          builder.create<PacketDestOp>(builder.getUnknownLoc(),
+                                      consumer.getProducerTile(),
+                                      WireBundle::DMA, consumerChan.channel);
+        }
 
         BDDimLayoutArrayAttr consumerDims =
             consumer.getDimensionsFromStreamPerConsumer()[0];
@@ -1675,13 +1686,24 @@ struct AIEObjectFifoStatefulTransformPass
           createObjectFifoAllocationInfo(
               builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
               consumer.getProducerTileOp().colIndex(), consumerChan.direction,
-              consumerChan.channel, producer.getPlio(), nullptr);
+              consumerChan.channel, producer.getPlio(), {});
+
+        if (!clPacketSwObjectFifos) {
+          // create flow
+          builder.setInsertionPointAfter(producer);
+          builder.create<FlowOp>(builder.getUnknownLoc(),
+                                producer.getProducerTile(), producerWireType,
+                                producerChan.channel, consumer.getProducerTile(),
+                                consumerWireType, consumerChan.channel);
+        }
       }
 
-      builder.setInsertionPointToStart(&packetflow.getPorts().front());
-      builder.create<PacketSourceOp>(builder.getUnknownLoc(),
-                                     producer.getProducerTile(),
-                                     WireBundle::DMA, producerChan.channel);
+      if (clPacketSwObjectFifos) {
+        builder.setInsertionPointToStart(&packetflow.getPorts().front());
+        builder.create<PacketSourceOp>(builder.getUnknownLoc(),
+                                      producer.getProducerTile(),
+                                      WireBundle::DMA, producerChan.channel);
+      }
     }
 
     //===------------------------------------------------------------------===//
