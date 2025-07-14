@@ -33,7 +33,7 @@ microkernel_mac_dim_map = {
         "bf16": {
             # emulate_bf16_mmul_with_bfp16
             True: (8, 8, 8),
-            False: (4, 8, 4),
+            False: (4, 8, 8),
         },
         "i8": (8, 8, 8),
         "i16": (4, 4, 8),
@@ -527,7 +527,7 @@ def my_matmul(
                             #     |                |
                             #      ----------------
                             tile_offset = (
-                                (row_base + tile_row) * n_aie_cols + col
+                                (row_base + tile_row) * n_shim_mem_A + col
                             ) % len(A_tiles)
 
                             # always equal to n_aie_rows since we have n_aie_rows row tiles for matrix A

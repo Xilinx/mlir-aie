@@ -232,15 +232,14 @@ static inline void matmul_vectorized_4x4x8_i16_i32(const int16 *__restrict pA,
                                     s, t, is_b_row_maj>(pA, pB, pC);
 }
 
-//TODO: Unlike the others, this shape has not yet been tested for optimality
 template <unsigned m, unsigned k, unsigned n>
 static inline void
-matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
+matmul_vectorized_4x8x8_bf16_bf16(const bfloat16 *__restrict pA,
                                   const bfloat16 *__restrict pB,
                                   bfloat16 *__restrict pC) {
   constexpr int r = 4;
   constexpr int s = 8;
-  constexpr int t = 4;
+  constexpr int t = 8;
 
   static_assert(m % (2 * r) == 0);
   static_assert(k % s == 0);
@@ -271,12 +270,12 @@ matmul_vectorized_8x8x8_bf16_bf16(const bfloat16 *__restrict pA,
 
 template <unsigned m, unsigned k, unsigned n>
 static inline void
-matmul_vectorized_4x8x4_bf16_f32(const bfloat16 *__restrict pA,
+matmul_vectorized_4x8x8_bf16_f32(const bfloat16 *__restrict pA,
                                  const bfloat16 *__restrict pB,
                                  float *__restrict pC) {
   constexpr int r = 4;
   constexpr int s = 8;
-  constexpr int t = 4;
+  constexpr int t = 8;
 
   static_assert(m % (2 * r) == 0);
   static_assert(k % s == 0);
@@ -395,7 +394,7 @@ extern "C" {
 #ifdef AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16
 #define combos(X) X(bfloat16, bf16, bfloat16, bf16, 8, 8, 8)
 #else
-#define combos(X) X(bfloat16, bf16, bfloat16, bf16, 4, 8, 4)
+#define combos(X) X(bfloat16, bf16, bfloat16, bf16, 4, 8, 8)
 #endif
 #endif
 
@@ -403,7 +402,7 @@ extern "C" {
 #ifdef AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16
 #define combos(X) X(bfloat16, bf16, float, f32, 8, 8, 8)
 #else
-#define combos(X) X(bfloat16, bf16, float, f32, 4, 8, 4)
+#define combos(X) X(bfloat16, bf16, float, f32, 4, 8, 8)
 #endif
 #endif
 
@@ -420,8 +419,8 @@ extern "C" {
   X(int8, i8, int8, i8, 8, 8, 8)                                               \
   X(int16, i16, int16, i16, 4, 4, 8)                                           \
   X(int16, i16, int32, i32, 4, 4, 8)                                           \
-  X(bfloat16, bf16, bfloat16, bf16, 4, 8, 4)                                   \
-  X(bfloat16, bf16, float, f32, 4, 8, 4)
+  X(bfloat16, bf16, bfloat16, bf16, 4, 8, 8)                                   \
+  X(bfloat16, bf16, float, f32, 4, 8, 8)
 #endif
 #endif
 

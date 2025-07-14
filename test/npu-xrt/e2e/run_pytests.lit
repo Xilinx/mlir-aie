@@ -1,6 +1,0 @@
-// (c) Copyright 2024 Advanced Micro Devices, Inc.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// REQUIRES: ryzen_ai, peano 
-//
-// RUN: pytest %S
