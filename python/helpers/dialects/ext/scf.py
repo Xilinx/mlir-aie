@@ -2,7 +2,7 @@ from typing import Sequence
 
 from ....ir import InsertionPoint, Value
 from ....dialects.linalg.opdsl.lang.emitter import _is_index_type
-from ....dialects.scf import ForOp, yield_
+from ....dialects.scf import IfOp, ForOp, yield_
 from ....extras.dialects.ext.arith import constant, index_cast
 from ....extras.util import get_user_code_loc
 from contextlib import contextmanager
@@ -54,7 +54,7 @@ def _for(
 
 
 @contextmanager
-def if_(cond, *, hasElse=True, insert_yield=True, loc=None, ip=None):
+def if_(cond, hasElse=True, insert_yield=True, loc=None, ip=None):
     if loc is None:
         loc = get_user_code_loc()
     if_op = IfOp(cond, hasElse=hasElse, loc=loc, ip=ip)
@@ -62,9 +62,9 @@ def if_(cond, *, hasElse=True, insert_yield=True, loc=None, ip=None):
         yield if_op
         if insert_yield:
             yield_([])
+    # TODO: Default, empty else region.
     if hasElse:
         with InsertionPoint(if_op.elseRegion.blocks[0]):
-            yield if_op
             if insert_yield:
                 yield_([])
 

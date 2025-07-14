@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025 AMD Inc.
+# (c) Copyright 2024 AMD Inc.
 
 # REQUIRES: ryzen_ai, valid_xchess_license
 #
@@ -11,7 +11,7 @@
 # RUN: %python %S/aie2.py > ./aie2.mlir
 # RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --dynamic-objFifos --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-# RUN: %run_on_npu2% ./test.exe
+# RUN: %run_on_npu1% ./test.exe
 
 import numpy as np
 
@@ -23,7 +23,7 @@ from aie.helpers.dialects.ext.scf import if_, else_
 
 N = 100
 n_rows = 10
-dev = AIEDevice.npu2_1col
+dev = AIEDevice.npu1_1col
 col = 0
 
 
