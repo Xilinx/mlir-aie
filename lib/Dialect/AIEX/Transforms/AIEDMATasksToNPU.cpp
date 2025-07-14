@@ -218,7 +218,8 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
 
   LogicalResult rewriteSingleBD(OpBuilder &builder, Block &block,
                                 AIE::TileOp &tile,
-                                AIE::DMAChannelDir channelDir) {
+                                AIE::DMAChannelDir channelDir,
+                                std::optional<xilinx::AIE::PacketInfoAttr> packet) {
     AIE::DMABDOp bd_op = getBdForBlock(block);
     const auto &target_model = AIE::getTargetModel(bd_op);
     MemRefType buffer_type = bd_op.getBuffer().getType();
@@ -395,6 +396,11 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     }
 
     // enable_packet
+    if (packet) {
+      enable_packet = 1;
+      packet_type = packet->getPktType();
+      packet_id = packet->getPktId();
+    }
     if (auto packetInfo = bd_op.getPacket()) {
       enable_packet = 1;
       packet_type = packetInfo->getPktType();
@@ -500,6 +506,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     }
 
     auto channelDir = op.getDirection();
+    auto packet = op.getPacket();
 
     // Lower all BDs
     for (auto it = body.begin(); it != body.end(); ++it) {
@@ -507,7 +514,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       if (shouldSkipBlock(block)) {
         continue;
       }
-      if (failed(rewriteSingleBD(builder, block, tile, channelDir))) {
+      if (failed(rewriteSingleBD(builder, block, tile, channelDir, packet))) {
         return failure();
       }
     }
