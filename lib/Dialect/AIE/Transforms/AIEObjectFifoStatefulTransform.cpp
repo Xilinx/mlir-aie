@@ -1416,12 +1416,12 @@ struct AIEObjectFifoStatefulTransformPass
                                       FlatSymbolRefAttr obj_fifo, int colIndex,
                                       DMAChannelDir channelDir,
                                       int channelIndex,
-                                      bool plio) {
+                                      bool plio, PacketInfoAttr packet) {
     builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(), obj_fifo,
                                         DMAChannelDirAttr::get(ctx, channelDir),
                                         builder.getI64IntegerAttr(channelIndex),
                                         builder.getI64IntegerAttr(colIndex),
-                                        builder.getBoolAttr(plio));
+                                        builder.getBoolAttr(plio), packet);
   }
 
   /// Function used to verify that an objectfifo is present in at most one
@@ -1622,7 +1622,7 @@ struct AIEObjectFifoStatefulTransformPass
         createObjectFifoAllocationInfo(
             builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
             producer.getProducerTileOp().colIndex(), producerChan.direction,
-            producerChan.channel, producer.getPlio());
+            producerChan.channel, producer.getPlio(), bdPacket);
 
       // create packet flow
       builder.setInsertionPointAfter(producer);
@@ -1675,7 +1675,7 @@ struct AIEObjectFifoStatefulTransformPass
           createObjectFifoAllocationInfo(
               builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
               consumer.getProducerTileOp().colIndex(), consumerChan.direction,
-              consumerChan.channel, producer.getPlio());
+              consumerChan.channel, producer.getPlio(), nullptr);
       }
 
       builder.setInsertionPointToStart(&packetflow.getPorts().front());
