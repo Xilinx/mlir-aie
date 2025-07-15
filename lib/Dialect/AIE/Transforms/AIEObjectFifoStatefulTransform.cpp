@@ -531,7 +531,8 @@ struct AIEObjectFifoStatefulTransformPass
       builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqLockAction,
                                 acqMode);
     if (bdPacket) {
-      builder.create<DMABDPACKETOp>(builder.getUnknownLoc(), bdPacket->getPktType(),
+      builder.create<DMABDPACKETOp>(builder.getUnknownLoc(),
+                                    bdPacket->getPktType(),
                                     bdPacket->getPktId());
     }
     if (!dims.getValue().empty() && padDimensions) {
@@ -706,8 +707,8 @@ struct AIEObjectFifoStatefulTransformPass
         builder.setInsertionPointToStart(curr);
         createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
                                 buffersPerFifo[target][elemIndex], /*offset*/ 0,
-                                len, channelDir, elemIndex, succ, dims,
-                                nullptr, bdPacket);
+                                len, channelDir, elemIndex, succ, dims, nullptr,
+                                bdPacket);
         curr = succ;
         totalBlocks++;
       }
@@ -719,8 +720,7 @@ struct AIEObjectFifoStatefulTransformPass
   /// It uses creatBdBlock(), see there for lockMode input.
   void createShimDMA(DeviceOp &device, OpBuilder &builder,
                      ObjectFifoCreateOp op, DMAChannelDir channelDir,
-                     int channelIndex, int lockMode,
-                     BDDimLayoutArrayAttr dims,
+                     int channelIndex, int lockMode, BDDimLayoutArrayAttr dims,
                      std::optional<PacketInfoAttr> bdPacket) {
     size_t numBlocks = externalBuffersPerFifo[op].size();
     if (numBlocks == 0)
@@ -1614,8 +1614,8 @@ struct AIEObjectFifoStatefulTransformPass
       
       std::optional<PacketInfoAttr> bdPacket = {};
       if (clPacketSwObjectFifos) {
-        bdPacket = {AIE::PacketInfoAttr::get(
-            ctx, /*pkt_type*/ 0, /*pkt_id*/ packetID)};
+        bdPacket = {
+          AIE::PacketInfoAttr::get(ctx, /*pkt_type*/ 0, /*pkt_id*/ packetID)};
         packetID++;
       }
       createDMA(device, builder, producer, producerChan.direction,
@@ -1636,11 +1636,12 @@ struct AIEObjectFifoStatefulTransformPass
         builder.setInsertionPointAfter(producer);
         packetflow = builder.create<PacketFlowOp>(
             builder.getUnknownLoc(),
-            builder.getIntegerAttr(builder.getI8Type(),
-            bdPacket->getPktId()), nullptr, nullptr);
+            builder.getIntegerAttr(builder.getI8Type(), bdPacket->getPktId()),
+            nullptr, nullptr);
         {
           OpBuilder::InsertionGuard g(builder);
-          builder.setInsertionPointToStart(&packetflow.getRegion().emplaceBlock());
+          builder.setInsertionPointToStart(
+              &packetflow.getRegion().emplaceBlock());
           builder.create<EndOp>(builder.getUnknownLoc());
         }
       }
@@ -1671,8 +1672,8 @@ struct AIEObjectFifoStatefulTransformPass
         if (clPacketSwObjectFifos) {
           builder.setInsertionPointToStart(&packetflow.getPorts().front());
           builder.create<PacketDestOp>(builder.getUnknownLoc(),
-                                      consumer.getProducerTile(),
-                                      WireBundle::DMA, consumerChan.channel);
+                                       consumer.getProducerTile(),
+                                       WireBundle::DMA, consumerChan.channel);
         }
 
         BDDimLayoutArrayAttr consumerDims =
@@ -1692,17 +1693,18 @@ struct AIEObjectFifoStatefulTransformPass
           // create flow
           builder.setInsertionPointAfter(producer);
           builder.create<FlowOp>(builder.getUnknownLoc(),
-                                producer.getProducerTile(), producerWireType,
-                                producerChan.channel, consumer.getProducerTile(),
-                                consumerWireType, consumerChan.channel);
+                                 producer.getProducerTile(), producerWireType,
+                                 producerChan.channel,
+                                 consumer.getProducerTile(), consumerWireType,
+                                 consumerChan.channel);
         }
       }
 
       if (clPacketSwObjectFifos) {
         builder.setInsertionPointToStart(&packetflow.getPorts().front());
         builder.create<PacketSourceOp>(builder.getUnknownLoc(),
-                                      producer.getProducerTile(),
-                                      WireBundle::DMA, producerChan.channel);
+                                       producer.getProducerTile(),
+                                       WireBundle::DMA, producerChan.channel);
       }
     }
 

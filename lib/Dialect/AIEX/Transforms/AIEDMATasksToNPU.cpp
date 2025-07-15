@@ -216,10 +216,10 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     return success();
   }
 
-  LogicalResult rewriteSingleBD(OpBuilder &builder, Block &block,
-                                AIE::TileOp &tile,
-                                AIE::DMAChannelDir channelDir,
-                                std::optional<xilinx::AIE::PacketInfoAttr> packet) {
+  LogicalResult
+  rewriteSingleBD(OpBuilder &builder, Block &block, AIE::TileOp &tile,
+                  AIE::DMAChannelDir channelDir,
+                  std::optional<xilinx::AIE::PacketInfoAttr> packet) {
     AIE::DMABDOp bd_op = getBdForBlock(block);
     const auto &target_model = AIE::getTargetModel(bd_op);
     MemRefType buffer_type = bd_op.getBuffer().getType();
