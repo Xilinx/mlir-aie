@@ -1614,7 +1614,7 @@ struct AIEObjectFifoStatefulTransformPass
       std::optional<PacketInfoAttr> bdPacket = {};
       if (clPacketSwObjectFifos) {
         bdPacket = {
-          AIE::PacketInfoAttr::get(ctx, /*pkt_type*/ 0, /*pkt_id*/ packetID)};
+            AIE::PacketInfoAttr::get(ctx, /*pkt_type*/ 0, /*pkt_id*/ packetID)};
         packetID++;
       }
       createDMA(device, builder, producer, producerChan.direction,
