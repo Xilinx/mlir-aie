@@ -1668,7 +1668,6 @@ struct AIEObjectFifoStatefulTransformPass
           producerWireType = WireBundle::DMA;
           consumerWireType = WireBundle::DMA;
         }
-        
         if (clPacketSwObjectFifos) {
           builder.setInsertionPointToStart(&packetflow.getPorts().front());
           builder.create<PacketDestOp>(builder.getUnknownLoc(),
