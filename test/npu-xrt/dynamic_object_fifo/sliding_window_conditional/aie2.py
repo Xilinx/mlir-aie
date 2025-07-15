@@ -57,11 +57,10 @@ def sliding_window():
                         add_10_i32(elemInPre, elemInPre, elemOut)
                     with else_(if_op):
                         elemIn = of_in.acquire(ObjectFifoPort.Consume, 2)
+                        add_10_i32(elemIn[0], elemIn[1], elemOut)
                         with if_(i == 9) as if_op1:
-                            add_10_i32(elemIn[0], elemIn[1], elemOut)
                             of_in.release(ObjectFifoPort.Consume, 2)
                         with else_(if_op1):
-                            add_10_i32(elemIn[0], elemIn[1], elemOut)
                             of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
 
