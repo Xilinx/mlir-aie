@@ -1611,7 +1611,6 @@ struct AIEObjectFifoStatefulTransformPass
         producer.getProducerTileOp().emitOpError(
             "number of output DMA channel exceeded!");
       DMAChannel producerChan = {DMAChannelDir::MM2S, producerChanIndex};
-      
       std::optional<PacketInfoAttr> bdPacket = {};
       if (clPacketSwObjectFifos) {
         bdPacket = {
