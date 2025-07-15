@@ -1646,7 +1646,6 @@ struct AIEObjectFifoStatefulTransformPass
       }
 
       for (auto consumer : consumers) {
-        
         // create consumer tile DMA
         int consumerChanIndex = dmaAnalysis.getDMAChannelIndex(
             consumer.getProducerTileOp(), DMAChannelDir::S2MM);
