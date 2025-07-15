@@ -1204,7 +1204,10 @@ class FlowRunner:
                 progress_bar.task = None
 
             pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
-                opts.alloc_scheme, opts.dynamic_objFifos, opts.packet_sw_objFifos, opts.ctrl_pkt_overlay
+                opts.alloc_scheme,
+                opts.dynamic_objFifos,
+                opts.packet_sw_objFifos,
+                opts.ctrl_pkt_overlay,
             ).materialize(module=True)
 
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
