@@ -1771,6 +1771,10 @@ LogicalResult DMABDOp::verify() {
     if (getBufferElementTypeWidthInBytes() < 4 && dims->back().getStride() != 1)
       return emitOpError(
           "For <32b width datatypes, inner-most dim stride must be 1");
+
+    if (getBufferElementTypeWidthInBytes() > 4 && dims->back().getStride() != 1)
+      return emitOpError(
+          "For >32b width datatypes, inner-most dim stride must be 1");
   }
   if (auto paddims = getPadDimensions(); paddims.has_value()) {
     auto dims = getDimensions();
