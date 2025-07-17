@@ -57,9 +57,9 @@ perform_sweep() {
 }
 
 run_selected_hyperparameters() {
-    EXPECTED_ARGS=10
+    EXPECTED_ARGS=11
     if [[ "$#" -ne "$EXPECTED_ARGS" ]]; then
-        echo "Usage: $0 <m> <k> <n> <r> <s> <t> <dtype_in> <dtype_out> <n_aie_cols> <use_chess>"
+        echo "Usage: $0 <m> <k> <n> <r> <s> <t> <dtype_in> <dtype_out> <n_aie_cols> <use_chess> <unroll_loops>"
         echo "Error: Incorrect number of arguments. Expected $EXPECTED_ARGS, got $#."
         exit 1
     fi
@@ -70,8 +70,8 @@ run_selected_hyperparameters() {
         compiler="peano"
     fi
 
-    csv_out="results/${1}x${2}x${3}_${4}x${5}x${6}_${8}_out_${9}_col_${compiler}.csv"
-    log_out="logs/${1}x${2}x${3}_${4}x${5}x${6}_${8}_out_${9}_col_${compiler}.log"
+    csv_out="results/${1}x${2}x${3}_${4}x${5}x${6}_${8}_out_${9}_col_${compiler}_${11}.csv"
+    log_out="logs/${1}x${2}x${3}_${4}x${5}x${6}_${8}_out_${9}_col_${compiler}_${11}.log"
 
     export m=$1
     export k=$2
@@ -80,6 +80,7 @@ run_selected_hyperparameters() {
     export dtype_out=$8
     export n_aie_cols=$9
     export use_chess=${10}
+    export opt_perf=${11}
 
     perform_sweep
 }
@@ -89,28 +90,23 @@ export runargs="${runargs}"
 
 # run_selected_hyperparameters: m k n r s t dtype_in dtype_out n_aie_cols emulate_bfloat16_mmul_with_bfp16 use_chess
 
+# cd ./whole_array
+# mkdir results
+# mkdir logs
+# run_selected_hyperparameters 64 64 64 8 8 8 bfp16 bfp16 4 1 0
+
 # cd ./whole_array_mixed
 # mkdir results
 # mkdir logs
-# run_selected_hyperparameters 64 64 64 8 8 8 bfp16-bf16 bfp16-bf16 4 1
+# run_selected_hyperparameters 64 64 64 8 8 8 bfp16-bf16 bfp16-bf16 8 1 0
 
-# cd ../whole_array
+# cd ./whole_array_shuffle
 # mkdir results
 # mkdir logs
-# run_selected_hyperparameters 64 64 64 8 8 8 bfp16 bfp16 4 1
+# run_selected_hyperparameters 64 64 64 8 8 8 bfp16 bfp16-shuffle 8 1 0
 
-cd ./whole_array_mixed
+cd ./whole_array
 mkdir results
 mkdir logs
-run_selected_hyperparameters 64 64 64 8 8 8 bfp16-bf16 bfp16-bf16 8 1
-
-cd ../whole_array_shuffle
-mkdir results
-mkdir logs
-run_selected_hyperparameters 64 64 64 8 8 8 bfp16 bfp16-shuffle 8 1
-
-# I want to run this again to see if the transposition and pipelining pragmas change anything
-cd ../whole_array
-mkdir results
-mkdir logs
-run_selected_hyperparameters 64 64 64 8 8 8 bfp16 bfp16 8 1
+run_selected_hyperparameters 64 128 64 8 8 8 bfp16 bfp16 8 1 0
+run_selected_hyperparameters 64 64 64 8 8 8 bfp16 bfp16 8 1 1

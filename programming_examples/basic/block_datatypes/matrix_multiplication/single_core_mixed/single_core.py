@@ -63,9 +63,7 @@ def my_matmul(M, K, N, m, k, n):
     memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
 
     inB = ObjectFifo(b_ty, name="inB")
-    b_dims = None
-    # b_dims = [(8, 8), (8, 64), (8, 1)]
-    memB = inB.cons().forward(name="memB", dims_to_stream=b_dims)
+    memB = inB.cons().forward(name="memB")
 
     memC = ObjectFifo(c_ty, name="memC")
     c_dims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
@@ -108,8 +106,6 @@ def my_matmul(M, K, N, m, k, n):
         rt.start(worker)
         tgs = []
         for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
-            # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
-            # that's what this loop is for. We can track of this in the task groups for syncing.
             for pingpong in [0, 1]:
 
                 row_base = (
@@ -117,18 +113,14 @@ def my_matmul(M, K, N, m, k, n):
                 )
                 num_tile_rows = min([rows_per_block // 2, M_div_m - row_base])
                 if num_tile_rows <= 0:
-                    # At the very last iteration, we may not need a 'pong' iteration
                     break
                 tgs.append(rt.task_group())
                 for tile_row in range(num_tile_rows):
-                    # -- A --
                     tile_offset = (row_base + tile_row) % len(A_tiles)
                     rt.fill(inA.prod(), A, tap=A_tiles[tile_offset], task_group=tgs[-1])
 
-                    # -- B --
                     rt.fill(inB.prod(), B, tap=b_tap, task_group=tgs[-1])
 
-                # -- C --
                 rt.drain(
                     outC.cons(), C, tap=C_tiles[c_index], task_group=tgs[-1], wait=True
                 )

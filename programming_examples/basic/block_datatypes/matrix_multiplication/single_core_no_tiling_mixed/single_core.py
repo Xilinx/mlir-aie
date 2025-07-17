@@ -49,8 +49,7 @@ def my_matmul():
     memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
 
     inB = ObjectFifo(b_ty, name="inB")
-    b_dims = None
-    memB = inB.cons().forward(name="memB", dims_to_stream=b_dims)
+    memB = inB.cons().forward(name="memB")
 
     memC = ObjectFifo(c_ty, name="memC")
     c_dims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]

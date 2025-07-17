@@ -26,6 +26,8 @@ aieargs+=-M $M -K $K -N $N
 
 use_chess?=0
 
+opt_perf?=0
+
 ifneq (${use_chess}, 1)
 aiecc_peano_flags=--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR}
 endif
@@ -39,6 +41,12 @@ KERNEL_CFLAGS=${PEANOWRAP2P_FLAGS}
 ifeq (${use_chess}, 1)
 KERNEL_CC=xchesscc_wrapper
 KERNEL_CFLAGS=${CHESSCCWRAP2P_FLAGS}
+endif
+
+KERNEL_DEFINES=-DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n}
+
+ifeq (${opt_perf}, 1)
+	KERNEL_DEFINES+=-DOPT_PERF_ENABLED
 endif
 
 ifeq (${use_placed}, 1)
@@ -63,7 +71,7 @@ ${mlir_target}: ${srcdir}/${aie_py_src}
 ${xclbin_target}: ${mlir_target} ${kernels:%=build/%.o}
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --alloc-scheme=${buffer_aloc_flag} --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-				${aiecc_peano_flags} \
+				${aiecc_peano_flags} --dynamic-objFifos \
 				--aie-generate-npu-insts --npu-insts-name=${insts_target:build/%=%} $(<:%=../%)
 
 ${targetname}.exe: ${hostsrc} ${matrix_multiplication_dir}/common.h ${srcdir}/../../helper.h

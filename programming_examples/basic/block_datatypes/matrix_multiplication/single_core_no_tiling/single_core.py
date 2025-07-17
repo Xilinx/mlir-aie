@@ -36,17 +36,14 @@ def my_matmul():
     matmul_kernel = Kernel(
         "matmul_vectorized_bfp16",
         f"mm_{m}x{k}x{n}.o",
-        [a_ty, b_ty, c_ty, np.int32, np.int32, np.int32],
+        [a_ty, b_ty, c_ty],
     )
 
     inA = ObjectFifo(a_ty, name="inA")
     memA = inA.cons().forward(name="memA")
 
     inB = ObjectFifo(b_ty, name="inB")
-    b_dims = None
-    # b_dims = [(8, k // 8), (8, k), (k // 8, 1)]
-    # b_dims = [(), (8, ), (N // 8, 8 * k // 8), (8, 1)]
-    memB = inB.cons().forward(name="memB", dims_to_stream=b_dims)
+    memB = inB.cons().forward(name="memB")
 
     memC = ObjectFifo(c_ty, name="memC")
     outC = memC.cons().forward(name="outC")
@@ -57,7 +54,7 @@ def my_matmul():
 
         elem_in_a = of_a.acquire(1)
         elem_in_b = of_b.acquire(1)
-        matmul(elem_in_a, elem_in_b, elem_out, m, k, n)
+        matmul(elem_in_a, elem_in_b, elem_out)
         of_a.release(1)
         of_b.release(1)
 

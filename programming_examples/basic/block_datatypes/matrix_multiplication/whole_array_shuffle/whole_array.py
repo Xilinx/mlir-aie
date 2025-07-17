@@ -88,7 +88,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
     matmul_kernel = Kernel(
         "matmul_vectorized_bfp16",
         f"mm_{m}x{k}x{n}.o",
-        [A_l1_ty, B_l1_ty, C_l1_ty, np.int32, np.int32, np.int32],
+        [A_l1_ty, B_l1_ty, C_l1_ty],
     )
     shuffle_kernel = Kernel(
         "scalar_shuffle",
@@ -174,7 +174,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
                 elem_in_a = in_a.acquire(1)
                 elem_in_b = in_b.acquire(1)
                 shuffle(elem_in_a, bufferA, k, m, False)
-                matmul(bufferA, elem_in_b, elem_out, m, k, n)
+                matmul(bufferA, elem_in_b, elem_out)
                 in_a.release(1)
                 in_b.release(1)
             out_c.release(1)

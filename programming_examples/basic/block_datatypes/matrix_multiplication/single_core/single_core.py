@@ -52,7 +52,7 @@ def my_matmul(M, K, N, m, k, n):
     matmul_kernel = Kernel(
         "matmul_vectorized_bfp16",
         f"mm_{m}x{k}x{n}.o",
-        [a_ty, b_ty, c_ty, np.int32, np.int32, np.int32],
+        [a_ty, b_ty, c_ty],
     )
 
     inA = ObjectFifo(a_ty, name="inA")
@@ -75,7 +75,7 @@ def my_matmul(M, K, N, m, k, n):
             for _ in range_(K_div_k) if K_div_k > 1 else range(1):
                 elem_in_a = of_a.acquire(1)
                 elem_in_b = of_b.acquire(1)
-                matmul(elem_in_a, elem_in_b, elem_out, m, k, n)
+                matmul(elem_in_a, elem_in_b, elem_out)
                 of_a.release(1)
                 of_b.release(1)
 
