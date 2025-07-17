@@ -124,20 +124,14 @@ int main(int argc, const char *argv[]) {
     return generateRandomFloatingPoint(rng, -5, 5);
   });
 
-  // Create a temporal copy of the array to be used in quantization
-  float floatAScratch[numberFloats];
-  std::ranges::copy(floatA, floatAScratch);
-
   // Quantize the floating point values into block floating point
-  uint8_t bfp16A[bfpBytesSize];
-
-  bfp16QuantFloat(8, numberFloats, floatAScratch, bfp16A, 0, 0);
+  auto bfp16A = floatToBfp16(8, numberFloats, floatA, 0);
 
   // ------------------------------------------------------
   // Write data into buffers
   // ------------------------------------------------------
   uint8_t *bufInA = boInA.map<uint8_t *>();
-  memcpy(bufInA, bfp16A, (bfpBytesSize * sizeof(uint8_t)));
+  memcpy(bufInA, bfp16A.data(), (bfpBytesSize * sizeof(uint8_t)));
 
   void *bufInstr = boInstr.map<void *>();
   memcpy(bufInstr, instr.data(), instr.size() * sizeof(int));

@@ -8,23 +8,35 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <bitset>
 #include <cassert>
 #include <cfloat>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <iomanip>
+#include <iostream>
+#include <ostream>
 #include <random>
+#include <vector>
+
+inline std::string toBinaryString(int8_t n) {
+  std::bitset<8> bits(static_cast<uint8_t>(n));
+  std::string binary_str = bits.to_string();
+  binary_str.insert(4, " ");
+
+  return binary_str;
+}
 
 // Helper function to generate random floating point numbers with high exponent
 // variance (useful for blocked datatypes). Exponents are interpreted as base 2
-inline float generateRandomFloatingPoint(std::mt19937 &eng, double minExp,
-                                         double maxExp) {
+inline float generateRandomFloatingPoint(std::mt19937 &eng, double minExp, double maxExp) {
   std::uniform_real_distribution<float> distrExp(minExp, maxExp);
   float exponent = distrExp(eng);
 
   std::uniform_real_distribution<float> distrMantissa(0.0, 1.0);
   float mantissa = distrMantissa(eng);
-  
+
   return mantissa * std::pow(2.0, exponent);
 }
 
@@ -35,24 +47,22 @@ inline float generateRandomFloatingPoint(std::mt19937 &eng, double minExp,
 // rounding - 0 for zero, 1 for nearest (tie to even)
 // verbose - make some noise
 // Quantization of an array of floats to bfp16.
-// The input array will be used as a scratchpad!
-// The return array must be at least size * 1.125 and is structured as follows:
+// The return array is structured as follows:
 // 1. The first byte is the shared exponent (max exponent of the block).
 // 2. The next *block* bytes are the quantized values.
-inline void bfp16QuantFloat(int block, int size, float *array,
-                            uint8_t *returnArray, int rounding, int verbose) {
+inline std::vector<uint8_t> floatToBfp16(int block, int size, float *array, int rounding = 0) {
+  std::vector<uint8_t> res(size * 1.125);
+
   int mbits = 7;
-  int start = 0, end, i, j, int8 = 1;
+  int start = 0, end, i, currentIndex = 1;
   unsigned int sign, exp, maxExp;
-  unsigned int *p, mantissa, mask, value;
-  int shift, maxShift;
-  int8_t valueInt8;
+  unsigned int *p, mantissa;
+  uint8_t valueInt8;
 
   while (true) {
     // decide on the block (starting and ending point)
     end = start + block;
-    if (end > size)
-      end = size;
+    end = end > size ? size : end;
 
     // Find max exp
     maxExp = 0;
@@ -61,19 +71,13 @@ inline void bfp16QuantFloat(int block, int size, float *array,
       exp = *p >> 23;    // Get rid of mantissa
       exp &= 0x000000FF; // Keep the last 8 bit exponent (remove sign)
 
-      if (maxExp < exp)
-        maxExp = exp;
+      maxExp = maxExp < exp ? exp : maxExp;
     }
 
     // Round each number
-    maxShift = 0;
     for (i = start; i < end; i++) {
       p = (unsigned int *)(array + i);
-      if (verbose) {
-        printf("%d: value in float = %f\n", i, array[i]);
-      }
 
-      // sign, exp, and mantissa
       sign = *p & 0x80000000;     // Sign
       exp = *p >> 23;             // Get rid of mantissa
       exp &= 0x000000FF;          // Keep the last 8 bit exponent (remove sign)
@@ -84,109 +88,40 @@ inline void bfp16QuantFloat(int block, int size, float *array,
       if (exp >= 255)
         continue; // Infinity or NaN remains
 
-      // Calculate shift (bits needs to be zeroed out)
+      // The rouding mode for the mantissa in AIE2p is always truncation
+      // Each scalar value is stored in two's complement representation
+      mantissa = sign ? ~mantissa + 1 : mantissa;
       // At least erase 23 - mbits + 1 (+1 is for making the implicit bit
-      // explicit) or more if smaller
-      shift = 23 - mbits + 1 + maxExp - exp;
-      if (verbose) {
-        printf("%d: shift=%d rounding=%d\n", i, shift, rounding);
-        printf("%d: AS READ         sign=%d exp=%d mantissa=0x%08x\n", i, sign,
-               exp, mantissa);
-      }
+      // explicit)
+      valueInt8 = mantissa >> (23 - mbits + 1);
 
-      // Calculate rounding
-      switch (rounding) {
-      case 0:
-        break; // do nothing, just truncate
-      case 1:
-        mantissa += 1 << (shift - 1); // add rounding for nearest
-        mask = 1;
-        for (j = 0; j <= shift; j++) {
-          if (mantissa & mask) {
-            if (j < shift)
-              break; // some bit is set, not a tie case
-            if (j == shift)
-              mantissa &=
-                  ~mask; // tie case, rounded to odd bits, adjust to even
-          }
-          mask <<= 1;
-        }
-        break;
-      default:
-        break;
-      }
-      if (verbose) {
-        printf("%d: ADDED ROUNDING  sign=%d exp=%d mantissa=0x%08x\n", i, sign,
-               exp, mantissa);
-      }
-      if (mantissa &
-          0x01000000) { // rounding carried forward and need to adjust exponent
-        if (exp < maxExp) { // This will not result in shifting of max_exp
-          mantissa >>= 1;
-          exp += 1;
-          shift -= 1;
-          if (exp >= 255)
-            mantissa = 0; // overflow, signals infinity, should not happen
-        } else {          // Keep the current scale and round down
-          mantissa -= 1 << shift; // Round down instead
-        }
-      }
-      if (verbose) {
-        printf("%d: ADJUST CARRY    sign=%d exp=%d mantissa=0x%08x\n", i, sign,
-               exp, mantissa);
-      }
-
-      // Perform shift
-      if (shift < 32) {
-        mantissa >>= shift; // setting bits to zero
-        mantissa <<= shift;
+      // Note that shifting by more than 32 bits is undefined behavior in C++
+      if (maxExp - exp >= 32) {
+        valueInt8 = sign ? 0xff : 0x00;
       } else {
-        mantissa = 0;
+        // Perform an arithmetic right shift
+        // Again, the rounding mode is truncation for AIE2p
+        valueInt8 = static_cast<int8_t>(valueInt8) >> (maxExp - exp);
       }
 
-      if (verbose) {
-        printf("%d: SHIFTED         sign=%d exp=%d mantissa=0x%08x\n", i, sign,
-               exp, mantissa);
-      }
-      if (mantissa) {
-        if (shift < 32)
-          valueInt8 = (sign >> 24) | (mantissa >> (17 + maxExp - exp));
-        else
-          valueInt8 = (sign >> 24);
-        if (exp)
-          mantissa &= ~0x00800000; // remove implicit bit for normal number
-        value = sign | (exp << 23) | mantissa;
-      } else {
-        valueInt8 = 0;
-        value = sign; // Mantissa is rounded to zero, signal zero
-      }
-      *p = value;
-      if (verbose) {
-        printf("%d: TO BE WRITTEN   sign=%d exp=%d mantissa=0x%08x\n", i, sign,
-               exp, mantissa);
-        printf("%d: value = %f\n", i, *(array + i));
-        printf("%d: value_int8 = 0x%08x\n", int8, valueInt8);
-        printf("max_exp = %d\n", maxExp);
-      }
-      returnArray[int8] = valueInt8;
-      int8++;
-
-      if (maxShift < shift)
-        maxShift = shift;
+      res[currentIndex] = valueInt8;
+      currentIndex++;
     }
-    returnArray[int8 - 9] = (uint8_t)maxExp;
-    int8++;
+    res[currentIndex - 9] = (uint8_t)maxExp;
+    currentIndex++;
     start = end;
     if (start >= size)
       break;
   }
+
+  return res;
 }
 
 // Convert a bfp16 array to a float.
-// Assumes the return array is large enough to hold the result.
-// Size should be the number of bytes in the input bfp16 array and returnArray should be at least size/1.125 in size.
-inline void bfp16ebs8ToFloat(int size, uint8_t *array, float *returnArray,
-                             int verbose) {
+// Size should be the number of bytes in the input bfp16 array
+inline std::vector<float> bfp16ebs8ToFloat(int size, uint8_t *array, int verbose = 0) {
+  std::vector<float> res(size / 1.125);
+
   int block = 8;
   int tempIndx = 0;
   for (int i = 0; i < size; i += block + 1) {
@@ -203,28 +138,109 @@ inline void bfp16ebs8ToFloat(int size, uint8_t *array, float *returnArray,
       printf("multiplier = %f\n", multiplier);
     }
     for (int j = 1; j < block + 1; j++) {
-      returnArray[tempIndx] = float(array[i + j] * multiplier);
+      bool negative = array[i + j] & 0x80;
+      if (negative) {
+        // Two's complement for negative numbers
+        uint8_t decoded = ~(array[i + j] - 1);
+        res[tempIndx] = float(decoded) * multiplier;
+      } else {
+        res[tempIndx] = float(array[i + j] * multiplier);
+      }
+      res[tempIndx] = negative ? -res[tempIndx] : res[tempIndx];
       if (verbose) {
-        printf("return_array[%d] = %f\n", tempIndx, returnArray[tempIndx]);
+        printf("return_array[%d] = %f\n", tempIndx, res[tempIndx]);
       }
       tempIndx++;
     }
   }
+
+  return res;
 }
 
-// Helper function to perform a matrix multiplication of two square matrices.
-// All three matrices should be of size size x size.
-template <typename T>
-inline void matrixMultiply(T *aIn, T *bIn, T *cOut, int size) {
-  for (int i = 0; i < size * size; ++i) {
-    cOut[i] = 0;
-  }
+// Shuffle tiles of 64x64 elements for the matrix
+// Width and height are expected to be the number of scalar elements in the matrix
+// This function rearranges the 8x8 subtiles into rows so that a single subtile is contiguous in
+// memory within each tile.
+inline std::vector<uint8_t> shuffleMatrixForBfp16ebs8(size_t matrixWidth, size_t matrixHeight,
+                                                      size_t tileWidth, size_t tileHeight,
+                                                      std::vector<uint8_t> bfpMatrix,
+                                                      bool unshuffle = false) {
+  assert(matrixWidth % tileWidth == 0 && "Matrix width must be divisible by tile width");
+  assert(matrixHeight % tileHeight == 0 && "Matrix height must be divisible by tile height");
+  assert(tileWidth % 64 == 0 && "Tile width must be a multiple of 64");
+  assert(tileHeight % 8 == 0 && "Tile height must be a multiple of 8");
+  assert(bfpMatrix.size() == (size_t)matrixWidth * matrixHeight * 1.125 &&
+         "Matrix size must be width*height*1.125");
 
-  for (int i = 0; i < size; ++i) {
-    for (int j = 0; j < size; ++j) {
-      for (int k = 0; k < size; ++k) {
-        cOut[i * size + j] += aIn[i * size + k] * bIn[k * size + j];
+  matrixWidth = matrixWidth * 1.125;
+  std::vector<uint8_t> res(matrixWidth * matrixHeight);
+
+  tileWidth = tileWidth * 1.125;
+
+  size_t subtileWidth = 8 * 1.125;
+  size_t subtileHeight = 8;
+
+  // The main idea is that inputGlobal X and Y are traversing the input matrix in the order we want
+  // the elements to be accessed by the core, while outputGlobal X and Y are traversing the tiles in
+  // the way they are going to be sent to the accelerator. Essentially, outputGlobal X and Y are
+  // just traversing the tiles themselves as if they were contiguous and then going to the next
+  // tile.
+
+  // Iterate over the tiles in the matrix
+  for (size_t tileStartY = 0; tileStartY < matrixHeight; tileStartY += tileHeight) {
+    for (size_t tileStartX = 0; tileStartX < matrixWidth; tileStartX += tileWidth) {
+
+      size_t tileCountingIndex = 0;
+      // Iterate over the subtiles in each tile
+      for (size_t subtileStartY = 0; subtileStartY < tileHeight; subtileStartY += subtileHeight) {
+        for (size_t subtileStartX = 0; subtileStartX < tileWidth; subtileStartX += subtileWidth) {
+
+          // Iterate over the elements in each subtile
+          for (size_t i = 0; i < subtileHeight; ++i) {
+            for (size_t j = 0; j < subtileWidth; ++j) {
+              size_t inputGlobalX = tileStartX + subtileStartX + j;
+              size_t inputGlobalY = tileStartY + subtileStartY + i;
+              size_t inputIndex = inputGlobalY * matrixWidth + inputGlobalX;
+
+              size_t outputGlobalX = tileStartX + tileCountingIndex % tileWidth;
+              size_t outputGlobalY = tileStartY + tileCountingIndex / tileWidth;
+              size_t outputIndex = outputGlobalY * matrixWidth + outputGlobalX;
+
+              if (!unshuffle) {
+                res[outputIndex] = bfpMatrix[inputIndex];
+              } else {
+                res[inputIndex] = bfpMatrix[outputIndex];
+              }
+              tileCountingIndex++;
+            }
+          }
+        }
       }
     }
   }
+
+  return res;
+}
+
+// Pretty print to ostream a bfp16ebs8 array
+inline void printBfp16ebs8Array(int arraySize, std::vector<uint8_t> array, int blocksPerLine = 4,
+                                int blocksBeforeEmptyLine = 8, std::ostream &ostream = std::cout,
+                                int width = 3, const std::string &blockSeparatorStart = " | B",
+                                const std::string &blockSeparatorEnd = " - ") {
+  for (int i = 0; i < arraySize; i++) {
+    if (i % (blocksPerLine * 9) == 0) {
+      ostream << "\n";
+      if (i % (blocksBeforeEmptyLine * 9) == 0) {
+        ostream << "\n";
+      }
+    }
+
+    if (i % 9 == 0) {
+      ostream << blockSeparatorStart << std::setw(width) << i / 9 << " - ";
+    }
+
+    ostream << std::setw(4) << int(array[i]);
+  }
+
+  ostream << std::endl;
 }
