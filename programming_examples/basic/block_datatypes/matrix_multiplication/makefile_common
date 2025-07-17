@@ -52,7 +52,7 @@ endif
 .PHONY: all
 all: ${xclbin_target} ${targetname}.exe
 
-build/mm_${m}x${k}x${n}.o: ${srcdir}/${kernelsrc}
+build/mm_${m}x${k}x${n}.o: ${kernelsrc}
 	mkdir -p ${@D}
 	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}
 
@@ -66,11 +66,11 @@ ${xclbin_target}: ${mlir_target} ${kernels:%=build/%.o}
 				${aiecc_peano_flags} \
 				--aie-generate-npu-insts --npu-insts-name=${insts_target:build/%=%} $(<:%=../%)
 
-${targetname}.exe: ${srcdir}/${hostsrc} ${matrix_multiplication_dir}/common.h ${srcdir}/../../helper.h
+${targetname}.exe: ${hostsrc} ${matrix_multiplication_dir}/common.h ${srcdir}/../../helper.h
 	rm -rf _build
 	mkdir -p _build
 	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=${dtype_in_cpp} -DDTYPE_OUT=${dtype_out_cpp} -DDTYPE_ACC=${dtype_acc_cpp}" \
-		cmake `${getwslpath} ${srcdir}/..` -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname} -Dsubdir=${subdir} -Dhostsrc=${hostsrc}
+		cmake `${getwslpath} ${srcdir}/..` -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname} -Dhostsrc=${hostsrc}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
