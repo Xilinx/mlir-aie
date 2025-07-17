@@ -215,9 +215,9 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
         pattern_repeat=N // n // n_aie_cols,
     )
     B_tiles = TensorTiler2D.step_tiler(
-        (K, N // 8),
-        (k, n // 8),
-        tile_group_repeats=(K // k // n_aie_cols, N // n),
+        (N, K // 8),
+        (n, k // 8),
+        tile_group_repeats=(N // n // n_aie_cols, K // k),
         tile_group_steps=(n_aie_cols, 1),
     )
     C_tiles = TensorTiler2D.step_tiler(

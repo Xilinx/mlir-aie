@@ -96,7 +96,7 @@ def my_matmul(M, K, N, m, k, n):
     A_tiles = TensorTiler2D.group_tiler(
         (M, K), (m, k), (1, K_div_k), pattern_repeat=N_div_n
     )
-    b_tap = TensorTiler2D.group_tiler((K, N // 8), (k, n // 8), (K_div_k, N_div_n))[0]
+    b_tap = TensorTiler2D.group_tiler((N, K // 8), (n, k // 8), (N_div_n, K_div_k))[0]
 
     C_tiles = TensorTiler2D.group_tiler(
         (M, N), (m, n), (rows_per_block // 2, N_div_n)
