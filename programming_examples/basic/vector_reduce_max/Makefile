@@ -9,24 +9,36 @@
 ##===----------------------------------------------------------------------===##
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-
 include ${srcdir}/../../makefile-common
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = vector_reduce_max
-in1_size = 4096 # in bytes
-out_size = 4 # in bytes, should always be equal to in1_size
+in1_size =  8192# in bytes
+out_size = 4 # in bytes
 trace_size = 1024
 
-colshift ?= $(if $(filter npu,$(devicename)),1,0)
+dtype?=i32
+
 aie_py_src=${targetname}.py
 use_placed?=0
 
 ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
+else
+aie_py_src=${targetname}.py
 endif
+
+
+ifeq ($(dtype),bf16)
+	dtype_cpp=std::bfloat16_t
+endif
+ifeq ($(dtype),i32)
+	dtype_cpp=std::int32_t
+endif
+
+aieargs+=--dtype ${dtype}
 
 .PHONY: all template clean
 
@@ -42,11 +54,11 @@ endif
 
 build/aie2.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} > $@
+	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} ${aieargs} > $@
 
 build/aie2_trace.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} -t ${trace_size} > $@
+	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} -t ${trace_size} ${aieargs} > $@
 
 build/final.xclbin: build/aie2.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
@@ -59,11 +71,10 @@ build/final_trace.xclbin: build/aie2_trace.mlir build/reduce_max.cc.o
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
 		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
-
-${targetname}.exe: ${srcdir}/test.cpp
+${targetname}.exe: $(srcdir)/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}  -DIN1_SIZE=${in1_size} -DOUT_SIZE=${out_size}
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}  -DIN1_SIZE=${in1_size} -DOUT_SIZE=${out_size} -DDTYPE=${dtype_cpp} 
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -79,8 +90,8 @@ run_py: build/final.xclbin build/insts.bin
 
 trace: ${targetname}.exe build/final_trace.xclbin build/insts.bin 
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie2_trace.mlir --colshift ${colshift} > trace_vector_reduce_max.json
-	${srcdir}/../../utils/get_trace_summary.py --filename trace_vector_reduce_max.json
+	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie2_trace.mlir --output trace_vector_reduce_max.json
+	${srcdir}/../../utils/get_trace_summary.py --input trace_vector_reduce_max.json
 
 clean_trace:
 	rm -rf tmpTrace trace.txt parse*json trace*json

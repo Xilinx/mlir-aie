@@ -10,17 +10,23 @@ import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1
+from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
 
-dev = NPU1Col1()
+if len(sys.argv) > 1:
+    if sys.argv[1] == "npu":
+        dev = NPU1Col1()
+    elif sys.argv[1] == "npu2":
+        dev = NPU2Col1()
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
 # Define tensor types
 data_ty = np.ndarray[(16,), np.dtype[np.int32]]
 
 # Dataflow with ObjectFifos
-of_in = ObjectFifo(data_ty, name="in", default_depth=1)  # single buffer
-of_out = ObjectFifo(data_ty, name="out", default_depth=1)  # single buffer
+of_in = ObjectFifo(data_ty, name="in", depth=1)  # single buffer
+of_out = ObjectFifo(data_ty, name="out", depth=1)  # single buffer
 
 
 # Task for the core to perform

@@ -44,7 +44,7 @@ if [[ $FORCE_INSTALL -eq 1 || -z "$(pip show mlir_aie | grep ^Location:)" ]]; th
 fi
 
 # If force install or an install dir isn't passed
-if [[ $FORCE_INSTALL -eq 1 || -z "$(pip show llvm-aie | grep ^Location:)" ]]; then
+if [[ $FORCE_INSTALL -eq 1 || ( "$#" -lt 2 && -z "$(pip show llvm-aie | grep ^Location:)" ) ]]; then
   python3 -m pip install -I llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
   export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
 fi
@@ -53,10 +53,10 @@ XRTSMI=`which xrt-smi`
 if ! test -f "$XRTSMI"; then 
   source /opt/xilinx/xrt/setup.sh
 fi
-NPU=`/opt/xilinx/xrt/bin/xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Kracken|RyzenAI-npu[146]"`
+NPU=`/opt/xilinx/xrt/bin/xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]"`
 # Check if the current environment is NPU2
-# npu4 => Strix, npu6 => Kracken
-if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Kracken|RyzenAI-npu[46]"; then
+# npu4 => Strix, npu5 => Strix Halo, npu6 => Krackan
+if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[456]"; then
     export NPU2=1
 else
     export NPU2=0
@@ -66,6 +66,10 @@ export PATH=${MLIR_AIE_INSTALL_DIR}/bin:${PATH}
 export PYTHONPATH=${MLIR_AIE_INSTALL_DIR}/python:${PYTHONPATH}
 export LD_LIBRARY_PATH=${MLIR_AIE_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}
 
+echo ""
+echo "Note: Peano has not been added to PATH so that it does not conflict with"
+echo "      system clang/clang++. It can be found in: \$PEANO_INSTALL_DIR/bin"
+echo ""
 echo "PATH              : $PATH"
 echo "LD_LIBRARY_PATH   : $LD_LIBRARY_PATH"
 echo "PYTHONPATH        : $PYTHONPATH"

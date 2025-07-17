@@ -14,9 +14,9 @@ This IRON design flow example, called "Passthrough Kernel", demonstrates a simpl
 
 ## Source Files Overview
 
-1. `passthrough_pykernel.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. The file generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `passthrough_pykernel.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. The file generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
 
-1. `passthrough_pykernel_placed.py`: A Python script that defines an alternative AIE array structural design using MLIR-AIE operations defined with a lower-level version of IRON than that used in `passthrough_pykernel.py`. The file generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `passthrough_pykernel_placed.py`: A Python script that defines an alternative AIE array structural design using MLIR-AIE operations defined with a lower-level version of IRON than that used in `passthrough_pykernel.py`. The file generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
 
 1. `test.cpp`: This C++ code is a testbench for the Passthrough Kernel design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data.
 
@@ -34,7 +34,7 @@ This simple example effectively passes data through a single compute tile in the
 1. The compute tile acquires this input data in "object" sized (`1024`) blocks from "of_in" and copies them to another output "object" it has acquired from "of_out". A scalar kernel defined via a Python fucntion is invoked on the Compute Tile's AIE core to copy the data from the input "object" to the output "object".
 1. After the copy is performed, the Compute Tile releases the "objects", allowing the DMAs (abstracted by the object FIFO) to transfer the data back to host memory and copy additional blocks into the Compute Tile,  "of_out" and "of_in" respectively.
 
-It is important to note that the Shim Tile and Compute Tile DMAs move data concurrently, and the Compute Tile's AIE Core also processes data concurrently with the data movement. This is made possible by expressing `default_depth` is `2` when constructing the `ObjectFifo`, for example, `ObjectFifo(line_ty, default_depth=2)` to denote ping-pong buffers. By default, the depth is `2` in recognition of this common pattern.
+It is important to note that the Shim Tile and Compute Tile DMAs move data concurrently, and the Compute Tile's AIE Core also processes data concurrently with the data movement. This is made possible by expressing `depth` is `2` when constructing the `ObjectFifo`, for example, `ObjectFifo(line_ty, depth=2)` to denote ping-pong buffers. By default, the depth is `2` in recognition of this common pattern.
 
 ## Design Component Details
 

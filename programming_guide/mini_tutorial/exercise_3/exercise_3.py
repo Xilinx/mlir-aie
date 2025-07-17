@@ -6,12 +6,11 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 
-import numpy as np
 import sys
+import numpy as np
 
 from aie.iron import Program, Runtime, Worker, ObjectFifo, GlobalBuffer
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
 
 from aie.extras.dialects.ext import arith
@@ -20,24 +19,21 @@ from aie.dialects.aie import T
 
 import aie.iron as iron
 
-dev = NPU2()
-
-# Define tensor types
-num_elements = 48
-data_type = np.int32
-tile_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
-
 
 @iron.jit(is_placed=False)
-def exercise_3():
+def exercise_3(output):
+    data_size = output.numel()
+    element_type = output.dtype
+    data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
+
     # Dataflow with ObjectFifos
-    of_out = ObjectFifo(tile_ty, name="out")
+    of_out = ObjectFifo(data_ty, name="out")
 
     # Runtime parameters
     rtps = []
     rtps.append(
         GlobalBuffer(
-            tile_ty,
+            data_ty,
             name=f"rtp",
             use_write_rtp=True,
         )
@@ -46,7 +42,7 @@ def exercise_3():
     # Task for the core to perform
     def core_fn(rtp, of_out):
         elem_out = of_out.acquire(1)
-        for i in range_(num_elements):
+        for i in range_(data_size):
             elem_out[i] = rtp[i]
         of_out.release(1)
 
@@ -55,12 +51,12 @@ def exercise_3():
 
     # To/from AIE-array runtime data movement
     rt = Runtime()
-    with rt.sequence(tile_ty) as (c_out):
+    with rt.sequence(data_ty) as (c_out):
         # Set runtime parameters
         def set_rtps(*args):
             for rtp in args:
                 for i in range(
-                    num_elements
+                    data_size
                 ):  # note difference with range_ in the Worker
                     rtp[i] = i
 
@@ -69,17 +65,20 @@ def exercise_3():
         rt.drain(of_out.cons(), c_out, wait=True)
 
     # Create the program from the device type and runtime
-    my_program = Program(dev, rt)
+    my_program = Program(iron.get_current_device(), rt)
 
     # Place components (assign them resources on the device) and generate an MLIR module
     return my_program.resolve_program(SequentialPlacer())
 
 
 def main():
+    # Define tensor shapes and data types
+    data_size = 48
+    element_type = np.int32
 
     # Construct an input tensor and an output zeroed tensor
     # The two tensors are in memory accessible to the NPU
-    input0 = iron.arange(num_elements, dtype=data_type, device="npu")
+    input0 = iron.arange(data_size, dtype=element_type, device="npu")
     output = iron.zeros_like(input0)
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
@@ -103,11 +102,11 @@ def main():
     # Otherwise, exit with a failure code
     if not errors:
         print("\nPASS!\n")
-        exit(0)
+        sys.exit(0)
     else:
         print("\nError count: ", errors)
         print("\nfailed.\n")
-        exit(1)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

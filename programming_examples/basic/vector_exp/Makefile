@@ -12,6 +12,8 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
+aie2_runtime_dir = ${AIEOPT_DIR}/aie_runtime_lib/AIE2
+
 targetname = vector_exp
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 col = 0
@@ -25,22 +27,33 @@ endif
 
 all: build/final.xclbin build/insts.bin
 
-VPATH := ${srcdir}/../../../aie_kernels/aie2
-
-build/exp.o: bf16_exp.cc
-	mkdir -p ${@D}
-ifeq ($(devicename),npu2)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -I${srcdir}/../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
+ifeq ($(devicename),npu)
+VPATH :=${srcdir}/../../../aie_kernels/aie2
 else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I${srcdir}/../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
+VPATH :=${srcdir}/../../../aie_kernels/aie2p
 endif
 
-build/lut_based_ops.o: ${srcdir}/../../../aie_runtime_lib/AIE2/lut_based_ops.cpp
+ifeq ($(devicename),npu)
+build/lut_based_ops.o: ${aie2_runtime_dir}/lut_based_ops.cpp
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -c $< -o ${@F}
+endif
 
+build/exp.o: ${VPATH}/bf16_exp.cc
+	mkdir -p ${@D}
+ifeq ($(devicename),npu)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I${aie2_runtime_dir} -c $< -o ${@F}
+else
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
+endif
+
+ifeq ($(devicename),npu)
 build/kernels.a: build/exp.o build/lut_based_ops.o
 	ar rvs $@ $+
+else
+build/kernels.a: build/exp.o
+	ar rvs $@ $+
+endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
@@ -55,7 +68,7 @@ build/final.xclbin: build/aie.mlir build/kernels.a
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@

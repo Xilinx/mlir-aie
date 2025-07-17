@@ -85,7 +85,7 @@ jobs:
           pip install -r python/requirements.txt
           HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_ml.txt
-          pip install jupyter
+          pip install jupyter pytest
           sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
             $(python -c 'import site; print(site.getsitepackages()[0])')/jupyter_client/runapp.py
 
@@ -111,6 +111,7 @@ jobs:
 
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
           cmake .. -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
             -DPython3_EXECUTABLE=$(which python) \
             -DLLVM_EXTERNAL_LIT=$(which lit) \
             -DCMAKE_INSTALL_PREFIX=$PWD/../mlir_aie \

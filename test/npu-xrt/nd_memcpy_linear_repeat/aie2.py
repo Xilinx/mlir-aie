@@ -10,7 +10,7 @@
 # RUN: %python %S/aie2.py > ./aie2.mlir
 # RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-# RUN: %run_on_npu ./test.exe
+# RUN: %run_on_npu1% ./test.exe
 
 import numpy as np
 from aie.extras.context import mlir_mod_ctx
@@ -29,7 +29,7 @@ def design():
 
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu1_4col)
+        @device(AIEDevice.npu1)
         def device_body():
             a_ty = np.ndarray[(a_len,), np.dtype[dtype]]
             c_ty = np.ndarray[(c_len,), np.dtype[dtype]]

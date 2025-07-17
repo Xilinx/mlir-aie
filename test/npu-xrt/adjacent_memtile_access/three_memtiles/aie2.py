@@ -10,8 +10,8 @@
 #
 # RUN: %python %S/aie2.py > ./aie2.mlir
 # RUN: %python aiecc.py --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential --xclbin-name=aie.xclbin --npu-insts-name=insts.bin ./aie2.mlir
-# RUN: clang %S/test.cpp -o test.exe -std=c++11 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-# RUN: %run_on_npu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
+# RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
+# RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
 import numpy as np
 import sys
 
@@ -27,7 +27,7 @@ def my_vector_add():
     n = 16
     N_div_n = N // n
 
-    @device(AIEDevice.npu1_4col)
+    @device(AIEDevice.npu1)
     def device_body():
         # AIE Core Function declarations
         tensor_ty_c = np.ndarray[(N,), np.dtype[np.int32]]

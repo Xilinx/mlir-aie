@@ -11,9 +11,9 @@
 // aiecc.py -j4 -%VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o tutorial-4.exe
 
 // REQUIRES: valid_xchess_license
-// RUN: make -C %S
+// RUN: make -f %S/Makefile
 // RUN: %run_on_board ./tutorial-4.exe
-// RUN: make -C %S clean
+// RUN: make -f %S/Makefile clean
 
 // Declare this MLIR module. A wrapper that can contain all
 // AIE tiles, buffers, and data movement

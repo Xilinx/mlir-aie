@@ -21,7 +21,6 @@ in1_size = 131072 # in bytes
 out_size = 131072 # in bytes, should always be equal to in1_size
 trace_size = 8192
 
-colshift ?= $(if $(filter npu,$(devicename)),1,0)
 aie_py_src=${targetname}.py
 use_placed?=0
 
@@ -63,7 +62,7 @@ build/final_trace.xclbin: build/aie_trace.mlir build/relu.o
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname} -DIN1_SIZE=${in1_size} -DOUT_SIZE=${out_size}
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname} -DIN1_SIZE=${in1_size} -DOUT_SIZE=${out_size}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -76,8 +75,8 @@ run: ${targetname}.exe build/final.xclbin
 
 trace: ${targetname}.exe build/final_trace.xclbin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift ${colshift} > trace_${targetname}.json
-	${srcdir}/../../utils/get_trace_summary.py --filename trace_${targetname}.json
+	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_${targetname}.json
+	${srcdir}/../../utils/get_trace_summary.py --input trace_${targetname}.json
 
 clean:
 	rm -rf build _build ${targetname}.exe

@@ -1,6 +1,6 @@
 # Linux Setup and Build Instructions
 
-These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 22.04 LTS** install. Ubuntu 22.04 LTS, Ubuntu 24.04 LTS and Ubuntu 24.10 are supported by this toolchain. 
+These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 22.04 LTS** install. Ubuntu 22.04 LTS, Ubuntu 24.04 LTS and Ubuntu 24.10 are supported by this toolchain.
 
 ## Initial Setup
 
@@ -8,9 +8,9 @@ These instructions will guide you through everything required for building and e
 
 Be sure you have the latest BIOS for your laptop or mini PC, this will ensure the NPU (sometimes referred to as IPU) is enabled in the system. You may need to manually enable the NPU:
 :
-   ```Advanced → CPU Configuration → IPU``` 
+   ```Advanced → CPU Configuration → IPU```
 
-> **NOTE:** Some manufacturers only provide Windows executables to update the BIOS, please do this before installing Ubuntu. 
+> **NOTE:** Some manufacturers only provide Windows executables to update the BIOS, please do this before installing Ubuntu.
 
 #### BIOS Settings:
 1. Turn off SecureBoot (Allows for unsigned drivers to be installed)
@@ -27,9 +27,9 @@ You will...
 1. Install the compiler toolchain, allowing you to compile your own NPU designs from source. As part of this, you will need to...
 
    1. [...install prerequisites.](#prerequisites)
-   
+
    1. ...install MLIR-AIE [from precompiled binaries (fast)](#option-a---quick-setup-for-ryzen-ai-application-development) or [from source (slow)](#option-b---build-mlir-aie-tools-from-source-for-development).
-  
+
 1. Install a driver for the Ryzen™ AI. As part of this, you will need to...
 
    1. [...install AIE Tools and obtain a license.](#install-aietools)
@@ -41,10 +41,10 @@ You will...
 1. Build and execute one of the example designs. This consists of...
 
    1. [...setting up your environment.](#setting-up-your-environment)
-   
+
    2. [...building device (NPU) code.](#build-device-aie-part)
-   
-   3. [...building and executing host (x86) code and device (NPU) code.](#build-and-run-host-part) 
+
+   3. [...building and executing host (x86) code and device (NPU) code.](#build-and-run-host-part)
 
 > Be advised that some of the potential steps (Linux kernel compilation and installing AIE Tools from Vitis™) may take hours. If you decide to build mlir-aie and/or LLVM from source, this will also take time, especially the LLVM build. Allocate enough time and patience. Once done, you will have an amazing toolchain allowing you to harness this great hardware at your hands.
 
@@ -52,14 +52,14 @@ You will...
 
 ### Install AIETools
 
-#### Option A - Supporting AMD Ryzen™ AI with AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P): Install AMD Vitis™ AIE Essentials 
+#### Option A - Supporting AMD Ryzen™ AI with AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P): Install AMD Vitis™ AIE Essentials
 
-1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3 Early Accesss](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab). We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
+1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3 Early Access](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab). We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
 
    > This is an early access lounge, you must register and be granted access at this time.
 
     1. Download VAIML Installer for Linux based compilation: `ryzen_ai-1.3.0ea1.tgz`
- 
+
     1. Extract the required tools:
 
        ``` bash
@@ -76,7 +76,7 @@ You will...
     1. Get a local license for AI Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense).
 
     1. Copy your license file (Xilinx.lic) to your preferred location, e.g. `/opt/Xilinx.lic`:
-       
+
     1. Setup your environment using the following script for Vitis for aietools:
 
        ```bash
@@ -88,8 +88,8 @@ You will...
         export PATH=$PATH:${AIETOOLS_ROOT}/bin
         export LM_LICENSE_FILE=/opt/Xilinx.lic
        ```
-      
-#### Option B - Supporting AMD Ryzen™ AI and AMD Versal™ with AIE and AIE-ML/XDNA™ (AIE2): Install AMD Vitis™ 2024.2 
+
+#### Option B - Supporting AMD Ryzen™ AI and AMD Versal™ with AIE and AIE-ML/XDNA™ (AIE2): Install AMD Vitis™ 2024.2
 
 1. Install Vitis™ under from [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html). You will need to run the installer as root. We will assume you use the default installation directory, `/tools/Xilinx`.
 
@@ -100,7 +100,7 @@ You will...
     1. Get a local license for AI Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense).
 
     1. Copy your license file (Xilinx.lic) to your preferred location, e.g. `/opt/Xilinx.lic`:
-       
+
     1. Setup your environment using the following script for Vitis™ for aietools:
 
        ```bash
@@ -116,7 +116,7 @@ You will...
         export LM_LICENSE_FILE=/opt/Xilinx.lic
        ```
    1. Vitis™ requires some python3.8 libraries:
-  
+
       ```bash
       sudo add-apt-repository ppa:deadsnakes/ppa
       sudo apt-get update
@@ -125,8 +125,8 @@ You will...
 
 ### Update Linux for Ubuntu 22.04 and 24.04
 
-> The reason we need to update the kernel is that the XDNA driver requires IOMMU SVA support. This step is required for Ubuntu 22.04 LTS. 
-> If you are using Ubuntu 24.04 you can install a prebuilt kernel from the [Ubuntu Mainline Kernel PPA](https://kernel.ubuntu.com/mainline/v6.11/). 
+> The reason we need to update the kernel is that the XDNA driver requires IOMMU SVA support. This step is required for Ubuntu 22.04 LTS.
+> If you are using Ubuntu 24.04 you can install a prebuilt kernel from the [Ubuntu Mainline Kernel PPA](https://kernel.ubuntu.com/mainline/v6.11/).
 >  ```bash
 >     wget https://kernel.ubuntu.com/mainline/v6.11/amd64/linux-headers-6.11.0-061100-generic_6.11.0-061100.202409151536_amd64.deb
 >     wget https://kernel.ubuntu.com/mainline/v6.11/amd64/linux-headers-6.11.0-061100_6.11.0-061100.202409151536_all.deb
@@ -146,7 +146,7 @@ You will...
 1. Install the following prerequisite packages for compiling Linux:
     ```bash
     sudo apt install \
-    build-essential debhelper flex bison libssl-dev libelf-dev libboost-all-dev libpython3.10-dev libsystemd-dev libtiff-dev libudev-dev
+    build-essential debhelper flex bison libssl-dev libelf-dev libpython3.10-dev libsystemd-dev libtiff-dev libudev-dev
     ```
 
 1. Pull the source for kernel version 6.10.
@@ -157,7 +157,7 @@ You will...
     ```
 
 1. Create a build directory and a configuration within it.
-    
+
     ```bash
     mkdir linux-build
     export LINUX_BUILD_DIR=$(realpath linux-build)
@@ -182,7 +182,7 @@ You will...
     ```
 
     > Compiling the linux kernel may take hours.
-    
+
     > Note that the final kernel `.deb` packages will be in the *parent* directory of `LINUX_BUILD_DIR`.
 
 1. Install the new Linux kernel and reboot.
@@ -196,7 +196,7 @@ You will...
 ### Install the XDNA™ Driver
 
 1. Install a more recent CMake, which is needed for building XRT.
-   
+
    1. Download CMake 3.28 binaries into `NEW_CMAKE_DIR`.
       ```bash
       mkdir cmake
@@ -214,7 +214,7 @@ You will...
       ```bash
       export PATH="${NEW_CMAKE_DIR}/bin":"${PATH}"
       ```
-   
+
    1. Verify the install of CMake was successful.
 
       ```bash
@@ -225,7 +225,7 @@ You will...
       > ```cmake version 3.28.3```
 
 1. Install the following prerequisite packages.
- 
+
    ```bash
    sudo apt install \
    libidn11-dev
@@ -245,7 +245,7 @@ You will...
 1. Install XRT. (Below steps are adapted from [here](https://xilinx.github.io/XRT/master/html/build.html).)
 
     1. Install XRT prerequisites.
-    
+
        ```bash
        cd $XDNA_SRC_DIR
        sudo ./tools/amdxdna_deps.sh
@@ -283,9 +283,9 @@ You will...
     cd $XDNA_SRC_DIR/build/Release
     sudo apt reinstall ./xrt_plugin.2.18.0_ubuntu22.04-x86_64-amdxdna.deb
     ```
-    
+
 1. Check that the NPU is working if the device appears with xrt-smi:
-   
+
    ```bash
    source /opt/xilinx/xrt/setup.sh
    xrt-smi examine
@@ -294,7 +294,7 @@ You will...
    > At the bottom of the output you should see:
    >  ```
    >  Devices present
-   >  BDF             :  Name             
+   >  BDF             :  Name
    > ------------------------------------
    >  [0000:66:00.1]  :  RyzenAI-npu1
    >  ```
@@ -323,9 +323,9 @@ You will...
 
 ### Option A - Quick Setup for Ryzen™ AI Application Development
 
-   > NOTE: Installing the mlir-aie tools from wheels via the quick setup path supports AIE-ML (AIE2) and AIE2P, it does NOT support Versal™ devices with AIE. 
+   > NOTE: Installing the mlir-aie tools from wheels via the quick setup path supports AIE-ML (AIE2) and AIE2P, it does NOT support Versal™ devices with AIE.
 
-1. Clone [the mlir-aie repository](https://github.com/Xilinx/mlir-aie.git), best under /home/username for speed (yourPathToBuildMLIR-AIE): 
+1. Clone [the mlir-aie repository](https://github.com/Xilinx/mlir-aie.git), best under /home/username for speed (yourPathToBuildMLIR-AIE):
    ```bash
    git clone https://github.com/Xilinx/mlir-aie.git
    cd mlir-aie
@@ -338,7 +338,7 @@ You will...
 
 ### Option B - Build mlir-aie Tools from Source for Development
 
-1. Clone [https://github.com/Xilinx/mlir-aie.git](https://github.com/Xilinx/mlir-aie.git) best under /home/username for speed (yourPathToBuildMLIR-AIE), with submodules: 
+1. Clone [https://github.com/Xilinx/mlir-aie.git](https://github.com/Xilinx/mlir-aie.git) best under /home/username for speed (yourPathToBuildMLIR-AIE), with submodules:
    ```bash
    git clone --recurse-submodules https://github.com/Xilinx/mlir-aie.git
    ````
@@ -391,7 +391,7 @@ For your design of interest, for instance from [programming_examples](../program
 
 ### Build and Run Host Part
 
-> Note that your design of interest might need an adapted `CMakeLists.txt` file. Also pay attention to accurately set the paths CMake parameters `BOOST_ROOT`, `XRT_INC_DIR` and `XRT_LIB_DIR` used in the `CMakeLists.txt`, either in the file or as CMake command line parameters.
+> Note that your design of interest might need an adapted `CMakeLists.txt` file. Also pay attention to accurately set the paths CMake parameters `XRT_INC_DIR` and `XRT_LIB_DIR` used in the `CMakeLists.txt`, either in the file or as CMake command line parameters.
 
 1. Build: Goto the same design of interest folder where the AIE design just got built (see above)
     ```bash
@@ -428,7 +428,7 @@ sudo modprobe -v amdxdna
 
 The `v++` compiler for the NPU device code requires a valid Vitis license. If you are getting errors related to this:
 
-1. You have obtained a valid license, as described [above](#prerequisites). 
+1. You have obtained a valid license, as described [above](#prerequisites).
 1. Make sure you have set the environment variable `LM_LICENSE_FILE` to point to your license file, see [above](#setting-up-your-environment).
 1. Make sure the ethernet interface whose MAC address you used to generate the license is still available on your machine. For example, if you used the MAC address of a removable USB Ethernet adapter, and then removed that adapter, the license check will fail. You can list MAC addresses of interfaces on your machine using `ip link`.
 

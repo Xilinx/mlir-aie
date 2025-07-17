@@ -31,7 +31,7 @@ fi
 
 echo "Cloning the XDNA driver repository..."
 # Clone the XDNA driver repository and initialize submodules
-XDNA_SHA=deceb066418f2d53fe172a595f59413a731ccee8
+XDNA_SHA=0e6d303b2cc2b3fe1cf10aba0acbf57a422588fb
 git clone https://github.com/amd/xdna-driver.git
 export XDNA_SRC_DIR=$(realpath xdna-driver)
 cd xdna-driver
@@ -67,21 +67,38 @@ fi
 
 echo "Installing new XRT packages..."
 # Install XRT packages based on Ubuntu version
-cd "$XDNA_SRC_DIR/xrt/build/Release"
+cd "$XDNA_SRC_DIR/xrt/build/Release" 
 case "$UBUNTU_VERSION" in
     "24.04")
-        sudo apt reinstall ./xrt_202510.2.19.0_24.04-amd64-base.deb
-        sudo apt reinstall ./xrt_202510.2.19.0_24.04-amd64-base-dev.deb
+        base_suffix="24.04-amd64-base.deb"
+        dev_suffix="24.04-amd64-base-dev.deb"
+        runtime_suffix="24.04-amd64-Runtime.deb"
         ;;
     "24.10")
-        sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-base.deb
-        sudo apt reinstall ./xrt_202510.2.19.0_24.10-amd64-base-dev.deb
+        base_suffix="24.10-amd64-base.deb"
+        dev_suffix="24.10-amd64-base-dev.deb"
+        runtime_suffix="24.10-amd64-Runtime.deb"
         ;;
     *)
         echo "Error: Unsupported Ubuntu version ($UBUNTU_VERSION). Supported versions: 24.04, 24.10"
         exit 1
         ;;
 esac
+
+# Find matching .deb files
+base_pkg=$(ls *"$base_suffix" 2>/dev/null | head -n 1)
+dev_pkg=$(ls *"$dev_suffix" 2>/dev/null | head -n 1)
+runtime_pkg=$(ls *"$runtime_suffix" 2>/dev/null | head -n 1)
+if [[ -z "$base_pkg" || -z "$dev_pkg" || -z "$runtime_pkg" ]]; then
+    echo "Error: Could not find .deb packages matching one or more suffixes:"
+    echo " - $base_suffix"
+    echo " - $dev_suffix"
+    echo " - $runtime_suffix"
+    exit 1
+fi
+sudo apt reinstall "./$base_pkg"
+sudo apt reinstall "./$dev_pkg"
+sudo apt reinstall "./$runtime_pkg"
 
 echo "Building XDNA Driver..."
 # Build XDNA Driver
@@ -94,12 +111,24 @@ echo "Installing XDNA plugin..."
 cd "$XDNA_SRC_DIR/build/Release"
 case "$UBUNTU_VERSION" in
     "24.04")
-        sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu24.04-x86_64-amdxdna.deb
+        plugin_suffix="ubuntu24.04-x86_64-amdxdna.deb"
         ;;
     "24.10")
-        sudo apt reinstall ./xrt_plugin.2.19.0_ubuntu24.10-x86_64-amdxdna.deb
+        plugin_suffix="ubuntu24.10-x86_64-amdxdna.deb"
+        ;;
+    *)
+        echo "Error: Unsupported Ubuntu version ($UBUNTU_VERSION). Supported versions: 24.04, 24.10"
+        exit 1
         ;;
 esac
+
+# Find the plugin package file
+plugin_pkg=$(ls *"$plugin_suffix" 2>/dev/null | head -n 1)
+if [[ -z "$plugin_pkg" ]]; then
+    echo "Error: Could not find plugin package matching suffix: $plugin_suffix"
+    exit 1
+fi
+sudo apt reinstall "./$plugin_pkg"
 
 echo "xdna-driver and XRT built and installed successfully."
 echo "Please reboot to apply changes."

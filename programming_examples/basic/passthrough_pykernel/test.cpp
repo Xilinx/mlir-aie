@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "cxxopts.hpp"
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -24,16 +25,14 @@
 using DATATYPE = std::uint8_t;
 #endif
 
-namespace po = boost::program_options;
-
 int main(int argc, const char *argv[]) {
-
   // Program arguments parsing
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  test_utils::add_default_options(desc);
+  cxxopts::Options options("Passthrough PyKernel Test",
+                           "Test the Passthrough PyKernel");
+  cxxopts::ParseResult vm;
+  test_utils::add_default_options(options);
 
-  test_utils::parse_options(argc, argv, desc, vm);
+  test_utils::parse_options(argc, argv, options, vm);
   int verbosity = vm["verbosity"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
 

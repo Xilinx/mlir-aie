@@ -50,7 +50,7 @@ build/final.xclbin: build/aie.mlir
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -59,7 +59,7 @@ else
 endif
 
 run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE --M ${M} --K ${K}
+	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -M ${M} -K ${K}
 
 generate_access_map: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}

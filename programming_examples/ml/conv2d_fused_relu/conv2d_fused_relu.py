@@ -9,18 +9,13 @@ import sys
 
 from aie.iron import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker, WorkerRuntimeBarrier
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1
+from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
 
 width = 32
 height = 32
 in_channels = 64
 out_channels = 64
-
-if len(sys.argv) == 3:
-    width = int(sys.argv[1])
-    height = int(sys.argv[2])
-
 
 actIn = width * in_channels  # 32*64 = 2048
 bufIn = actIn * 2  # double buffer
@@ -37,7 +32,7 @@ trace_size = 16384
 traceSizeInInt32s = trace_size // 4
 
 
-def conv2dk1():
+def conv2dk1(dev):
     # Define types
     actIn_ty = np.ndarray[(actIn,), np.dtype[np.int8]]
     bufIn_ty = np.ndarray[(bufIn,), np.dtype[np.int8]]
@@ -70,7 +65,7 @@ def conv2dk1():
     of_act_L2_02 = of_inOF_act_L3L2.cons().forward(name="act_L2_02", obj_type=actIn_ty)
 
     # wts
-    of_inOF_wts_0_L3L2 = ObjectFifo(weights_ty, default_depth=1, name="inOF_wts_0_L3L2")
+    of_inOF_wts_0_L3L2 = ObjectFifo(weights_ty, depth=1, name="inOF_wts_0_L3L2")
 
     # Output
     of_out_02_L2 = ObjectFifo(out_ty, name="out_02_L2")
@@ -114,6 +109,7 @@ def conv2dk1():
             conv2dk1_i8_kernel,
             rtp_barrier,
         ],
+        stack_size=0xA00,
     )
 
     # Runtime operations to move data to/from the AIE-array
@@ -137,7 +133,19 @@ def conv2dk1():
         rt.drain(of_outOFL2L3.cons(), O, wait=True)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
-print(conv2dk1())
+try:
+    device_name = str(sys.argv[1])
+    if device_name == "npu":
+        dev = NPU1Col1()
+    elif device_name == "npu2":
+        dev = NPU2Col1()
+    else:
+        raise ValueError(f"[ERROR] Device name {sys.argv[1]} is unknown")
+except ValueError:
+    print("Argument has inappropriate value")
+
+module = conv2dk1(dev)
+print(module)

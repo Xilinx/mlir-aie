@@ -6,6 +6,7 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
+import sys
 from aie.dialects.aie import *  # primary mlir-aie dialect definitions
 from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 
@@ -19,6 +20,14 @@ buffer_depth = 2
 data_size = 48
 tile_size = data_size // 3
 
+if len(sys.argv) > 1:
+    if sys.argv[1] == "npu":
+        dev = AIEDevice.npu1_1col
+    elif sys.argv[1] == "npu2":
+        dev = AIEDevice.npu2_1col
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+
 
 # AI Engine structural design function
 def mlir_aie_design():
@@ -26,7 +35,7 @@ def mlir_aie_design():
     with mlir_mod_ctx() as ctx:
 
         # Device declaration - aie2 device xcvc1902
-        @device(AIEDevice.npu1_1col)
+        @device(dev)
         def device_body():
             tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
             data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]

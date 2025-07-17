@@ -23,6 +23,22 @@ dtype_map = {
     "i32": np.int32,
 }
 
+microkernel_mac_dim_map = {
+    "npu": {
+        "bf16": (4, 8, 4),
+        "i8": (4, 8, 8),
+        "i16": (4, 4, 4),
+    },
+    "npu2": {
+        "bf16": {
+            # emulate_bf16_mmul_with_bfp16
+            True: (8, 8, 8),
+            False: (4, 8, 8),
+        },
+        "i8": (8, 8, 8),
+        "i16": (4, 4, 8),
+    },
+}
 
 def main():
     argparser = argparse.ArgumentParser(
@@ -38,6 +54,7 @@ def main():
     argparser.add_argument("-n", type=int, default=32)
     argparser.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4, 8], default=4)
     argparser.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
+    argparser.add_argument("--emulate-bf16-mmul-with-bfp16", type=bool, default=False)
     argparser.add_argument(
         "--dtype_in", type=str, choices=["bf16", "i8", "i16"], default="i16"
     )
@@ -68,6 +85,7 @@ def main():
             args.dtype_in,
             args.dtype_out,
             args.b_col_maj,
+            args.emulate_bf16_mmul_with_bfp16,
             args.trace_size,
             args.generate_taps,
         )
@@ -94,6 +112,7 @@ def my_matmul(
     dtype_in_str,
     dtype_out_str,
     b_col_maj,
+    emulate_bf16_mmul_with_bfp16,
     trace_size,
     generate_taps=False,
 ):
@@ -110,32 +129,12 @@ def my_matmul(
         np.dtype(dtype_out).itemsize >= np.dtype(dtype_in).itemsize
     ), f"Output dtype ({dtype_out}) must be equal or larger to input dtype ({dtype_in})"
 
-    if dev == "npu":
-        if dtype_in_str == "bf16":
-            r = 4
-            s = 8
-            t = 4
-        elif dtype_in_str == "i8":
-            r = 4
-            s = 8
-            t = 8
-        elif dtype_in_str == "i16":
-            r = 4
-            s = 4
-            t = 4
+    # r, s, t are the dimensions required by the microkernel MAC instructions.
+    mac_dims = microkernel_mac_dim_map[dev][dtype_in_str]
+    if dev == "npu2" and dtype_in_str == "bf16":
+        r, s, t = mac_dims[emulate_bf16_mmul_with_bfp16]
     else:
-        if dtype_in_str == "bf16":
-            r = 8
-            s = 8
-            t = 8
-        elif dtype_in_str == "i8":
-            r = 8
-            s = 8
-            t = 8
-        elif dtype_in_str == "i16":
-            r = 4
-            s = 4
-            t = 8
+        r, s, t = mac_dims
 
     # npu is a 4 row x 4 col array
     if dev == "npu" and n_aie_cols > 4:
@@ -143,7 +142,7 @@ def my_matmul(
     # npu2 is a 4 row x 8 col array
     if dev == "npu2" and n_aie_cols > 8:
         raise AssertionError(
-            "Invalid configuration: NPU2 (Strix/Kracken) has 8 columns"
+            "Invalid configuration: NPU2 (Strix/Strix Halo/Krackan) has 8 columns"
         )
 
     # Input matrix A:
@@ -165,7 +164,6 @@ def my_matmul(
         N % (n * n_aie_cols) == 0
     ), """B must be tileable into (k, n * n_aie_cols)-sized blocks"""
 
-    # r, s, t are the dimensions required by the microkernel MAC instructions.
     assert m % r == 0
     assert k % s == 0
     assert n % t == 0
@@ -199,7 +197,7 @@ def my_matmul(
         elif n_aie_cols == 2:
             dev_ty = AIEDevice.npu1_2col
         elif n_aie_cols == 4:
-            dev_ty = AIEDevice.npu1_4col
+            dev_ty = AIEDevice.npu1
     else:
         dev_ty = AIEDevice.npu2
 
@@ -220,11 +218,7 @@ def my_matmul(
 
         # AIE Core Function declarations
         zero = external_func(f"zero_{dtype_out_str}", inputs=[C_l1_ty])
-        matmul_vectorized_func_name = (
-            f"matmul_{dtype_in_str}_{dtype_out_str}"
-            if not b_col_maj
-            else f"matmul_{dtype_in_str}_{dtype_out_str}_b_col_maj"
-        )
+        matmul_vectorized_func_name = f"matmul_{dtype_in_str}_{dtype_out_str}"
         matmul = external_func(
             matmul_vectorized_func_name,
             inputs=[A_l1_ty, B_l1_ty, C_l1_ty],
@@ -376,7 +370,7 @@ def my_matmul(
         for row in range(n_aie_rows):
             for col in range(n_aie_cols):
 
-                @core(core_tiles[row][col], f"mm_{m}x{k}x{n}.o")
+                @core(core_tiles[row][col], f"mm_{m}x{k}x{n}.o", stack_size=0xD00)
                 def core_body():
                     for _ in range_(0xFFFFFFFF):
                         loop = (
@@ -533,7 +527,7 @@ def my_matmul(
                             #     |                |
                             #      ----------------
                             tile_offset = (
-                                (row_base + tile_row) * n_aie_cols + col
+                                (row_base + tile_row) * n_shim_mem_A + col
                             ) % len(A_tiles)
 
                             # always equal to n_aie_rows since we have n_aie_rows row tiles for matrix A

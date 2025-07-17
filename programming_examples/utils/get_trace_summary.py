@@ -8,7 +8,7 @@ import trace_utils
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--filename", help="Trace file", required=True)
+    parser.add_argument("--input", help="Trace file", required=True)
     # parser.add_argument("--mlir", help="mlir source file", required=True)
     # parser.add_argument(
     #    "--colshift", help="column shift adjustment to source mlir", required=False
@@ -22,16 +22,21 @@ def parse_args():
 
 
 opts = parse_args()
-cycles = trace_utils.get_cycles_summary(opts.filename)
+cycles = trace_utils.get_cycles_summary(opts.input)
 
-print("Total number of full kernel invocations is " + str(len(cycles)))
-print(
-    "First/Min/Avg/Max cycles is "
-    + str(cycles[0])
-    + "/ "
-    + str(min(cycles))
-    + "/ "
-    + str(sum(cycles) / len(cycles))
-    + "/ "
-    + str(max(cycles))
-)
+# print(cycles)
+for i in range(len(cycles)):
+    print(cycles[i][0])
+    runs = len(cycles[i]) - 1
+    print("Total number of full kernel invocations is " + str(runs))
+    if runs > 0:
+        print(
+            "First/Min/Avg/Max cycles is "
+            + str(cycles[i][1])
+            + "/ "
+            + str(min(cycles[i][1:]))
+            + "/ "
+            + str(sum(cycles[i][1:]) / (len(cycles[i]) - 1))
+            + "/ "
+            + str(max(cycles[i][1:]))
+        )

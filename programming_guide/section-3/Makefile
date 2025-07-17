@@ -13,14 +13,21 @@ include ${srcdir}/../../programming_examples/makefile-common
 all: build/final.xclbin build/insts.bin
 
 targetname = vectorScalar
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
 build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
-	python3 $< > $@
+	python3 $< ${devicename} > $@
 	
 build/scale.o: ${srcdir}/vector_scalar_mul.cc
 	mkdir -p ${@D}
+ifeq ($(devicename),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
+else ifeq ($(devicename),npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
+else
+	echo "Device type not supported"
+endif
 
 build/final.xclbin: build/aie.mlir build/scale.o
 	mkdir -p ${@D}
@@ -31,7 +38,7 @@ build/final.xclbin: build/aie.mlir build/scale.o
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@

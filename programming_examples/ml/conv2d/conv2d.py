@@ -70,7 +70,7 @@ def conv2dk1(
     of_act_L2_02 = of_inOF_act_L3L2.cons().forward(obj_type=actIn_ty, name="act_L2_02")
 
     # wts
-    of_inOF_wts_0_L3L2 = ObjectFifo(weights_ty, default_depth=1, name="inOF_wts_0_L3L2")
+    of_inOF_wts_0_L3L2 = ObjectFifo(weights_ty, depth=1, name="inOF_wts_0_L3L2")
 
     # Output
     of_out_02_L2 = ObjectFifo(out_ty, name="out_02_L2")
@@ -117,6 +117,7 @@ def conv2dk1(
             conv2dk1_i8_kernel,
             rtp_barrier,
         ],
+        stack_size=0x600,
     )
 
     # Runtime operations to move data to/from the AIE-array
