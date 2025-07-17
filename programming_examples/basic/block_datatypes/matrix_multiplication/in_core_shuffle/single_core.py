@@ -51,7 +51,7 @@ def my_matmul(M, K, N, m, k, n):
     memC = ObjectFifo(c_ty, name="memC")
     outC = memC.cons().forward(name="outC")
 
-    def core_fn(of_a, of_c, vectorized_shuffle_kernel, scalar_shuffle_kernel):
+    def core_fn(of_a, of_c, scalar_shuffle_kernel):
         elem_out = of_c.acquire(1)
         elem_in_a = of_a.acquire(1)
         # Note that it is possible to use a buffer here to
@@ -63,7 +63,7 @@ def my_matmul(M, K, N, m, k, n):
 
     worker = Worker(
         core_fn,
-        [memA.cons(), memC.prod(), vectorized_shuffle_kernel, scalar_shuffle_kernel],
+        [memA.cons(), memC.prod(), scalar_shuffle_kernel],
         stack_size=0xF00,
     )
 
