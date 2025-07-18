@@ -557,8 +557,6 @@ struct AIEObjectFifoStatefulTransformPass
     int numElem = op.size();
     int of_elem_index = 0; // used to give objectFifo elements a symbolic name
 
-    int test_count = 0;
-
     // if this objectFifo is linked to another, check if the other's elements
     // have already been created: if none of the output objectfifos of the link
     // have initValues, then the elements that are created are those of the
@@ -624,8 +622,6 @@ struct AIEObjectFifoStatefulTransformPass
 
     builder.setInsertionPointAfter(t);
     for (int i = 0; i < numElem; i++) {
-
-      test_count++;
 
       mlir::ElementsAttr initValues = nullptr;
       if (!creation_tile.isShimTile()) {
@@ -1766,12 +1762,7 @@ struct AIEObjectFifoStatefulTransformPass
     //   the acquires/releases (uses of the FIFO).
     // - Global release counter tracker to keep track of the objectFifo state
     //===------------------------------------------------------------------===//
-
-    int test_count = 0;
-
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
-
-      test_count += 1;
 
       int share_direction = 0;
       bool shared = !requiresDMAs(createOp, share_direction);
