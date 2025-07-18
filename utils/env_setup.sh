@@ -39,7 +39,7 @@ fi
 
 # If force install or an install dir isn't passed
 if [[ $FORCE_INSTALL -eq 1 || ( "$#" -lt 1 && -z "$(pip show mlir_aie | grep ^Location:)" ) ]]; then
-  python3 -m pip install -I mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels
+  python3 -m pip install -I mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-2
   export MLIR_AIE_INSTALL_DIR="$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie"
 fi
 
