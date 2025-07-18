@@ -1231,7 +1231,7 @@ class FlowRunner:
                     file=sys.stderr,
                 )
                 exit(-3)
-            aie_peano_target = aie_target.lower() + "-none-elf"
+            aie_peano_target = aie_target.lower() + "-none-unknown-elf"
 
             # Optionally generate insts.txt for NPU instruction stream
             if opts.npu:

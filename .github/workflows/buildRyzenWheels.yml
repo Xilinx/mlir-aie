@@ -162,8 +162,9 @@ jobs:
         with:
           artifacts: wheelhouse/repaired_wheel/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: 'latest-wheels'
-          name: 'latest-wheels'
+          tag: 'latest-wheels-2'
+          name: 'latest-wheels-2'
           removeArtifacts: false
           allowUpdates: true
           replacesArtifacts: true
+          makeLatest: false
