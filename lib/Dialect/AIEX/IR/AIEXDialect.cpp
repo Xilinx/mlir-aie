@@ -112,7 +112,9 @@ void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
 
   // d0_size, d0_stride
   sizes[0] = inputSizes[0] * elemWidth / addressGranularity;
-  if (inputStrides[0] * elemWidth < addressGranularity) {
+  if (inputStrides[0] * elemWidth < addressGranularity ||
+      (elemWidth > addressGranularity)) {
+    // First check:
     // While the hardware cannot transfer less than addressGranularity bits at
     // a time, the user may expresses a contiguous transfer of multiple
     // elements with a stride smaller than addressGranularity. We can thus set
@@ -120,6 +122,16 @@ void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
     // The verification function should ensure that
     //    inputStrides[0] * elemWidth < addressGranularity
     //    iff. inputSize[0] * elemWidth > addressGranularity.
+    // Second check:
+    // If the element width is larger than addressGranularity, we need to make
+    // sure that all bytes are properly copied and therefore the stride must be
+    // set to 1 (encoded in hardware as 0).
+    // The verification function should ensure that
+    //     inputStrides[0] * elemWidth % addressGranularity == 0
+    //     && inputStrides[0] == 1 if elemWidth > addressGranularity
+    // This makes it impossible to have a stride greater than 1 for
+    // elemWidths bigger than addressGranularity, even if they are a multiple of
+    // it. Such operations should make use of an additional dimension instead.
     strides[0] = 0;
   } else {
     strides[0] = inputStrides[0] * elemWidth / addressGranularity - 1;
