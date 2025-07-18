@@ -22,8 +22,15 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+#include "mlir/IR/Operation.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
+
 #include <numeric>
 #include <set>
+
+
+#include <iostream>
+
 
 using namespace mlir;
 using namespace xilinx;
@@ -420,17 +427,13 @@ struct AIEObjectFifoStatefulTransformPass
                                 std::vector<BufferOp>& buffers
                               ) {
     int totalUsedMemory = 0;
-    
+
     // Iterate through all ObjectFifos and their buffers
     for (auto& [fifoOp, bufferList] : buffersPerFifo) {
       for (auto& buffer : bufferList) {
         // Check if this buffer is allocated on the target tile
         if (buffer.getTile() == targetTile.getResult()) {
-          auto bufferType = buffer.getType();
-          auto numElements = bufferType.getNumElements();
-          auto elementType = bufferType.getElementType();
-          auto elementSizeBytes = elementType.getIntOrFloatBitWidth() / 8;
-          auto bufferSizeBytes = numElements * elementSizeBytes;
+          auto bufferSizeBytes = buffer.getAllocationSize();
           totalUsedMemory += bufferSizeBytes;
         }
       }
@@ -439,12 +442,8 @@ struct AIEObjectFifoStatefulTransformPass
     // Also count buffers that are not in buffersPerFifo
     for (auto& buffer : buffers) {
       // Check if this buffer is allocated on the target tile
-      if (buffer.getTile() == targetTile.getResult()) {
-        auto bufferType = buffer.getType();
-        auto numElements = bufferType.getNumElements();
-        auto elementType = bufferType.getElementType();
-        auto elementSizeBytes = elementType.getIntOrFloatBitWidth() / 8;
-        auto bufferSizeBytes = numElements * elementSizeBytes;
+      if (buffer.getTile() == targetTile.getResult()) {       
+        auto bufferSizeBytes = buffer.getAllocationSize();
         totalUsedMemory += bufferSizeBytes;
       }
     }
@@ -558,6 +557,8 @@ struct AIEObjectFifoStatefulTransformPass
     int numElem = op.size();
     int of_elem_index = 0; // used to give objectFifo elements a symbolic name
 
+    int test_count = 0;
+
     // if this objectFifo is linked to another, check if the other's elements
     // have already been created: if none of the output objectfifos of the link
     // have initValues, then the elements that are created are those of the
@@ -620,8 +621,12 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto tile_op : dev.getBody()->getOps<TileOp>()) {
       t = tile_op.getOperation();
     }
+
     builder.setInsertionPointAfter(t);
     for (int i = 0; i < numElem; i++) {
+
+      test_count++;
+
       mlir::ElementsAttr initValues = nullptr;
       if (!creation_tile.isShimTile()) {
         if (op.getInitValues().has_value()) {
@@ -629,11 +634,14 @@ struct AIEObjectFifoStatefulTransformPass
               llvm::cast<mlir::ElementsAttr>(op.getInitValues().value()[i]);
         }
 
-        // check if current tile can hold the new buffer or not
-        int numElements = elemType.getNumElements();
         auto elementType = elemType.getElementType();
-        auto elementSizeBits = elementType.getIntOrFloatBitWidth();
-        auto totalSizeBytes = numElements * elementSizeBits / 8;
+
+        DataLayout dataLayout = DataLayout::closest(op.getOperation());
+        int64_t elementBitWidth = dataLayout.getTypeSizeInBits(elementType);
+
+        auto totalSizeBytes = elemType.getNumElements() * elementBitWidth / 8; 
+
+        // auto totalSizeBytes = numElements * elementSizeBits / 8;
 
         auto &targetModel = dev.getTargetModel();
 
@@ -642,6 +650,7 @@ struct AIEObjectFifoStatefulTransformPass
           maxDataMemorySize = targetModel.getMemTileSize(); // getMemTileSize returns in Bytes
         else
           maxDataMemorySize = targetModel.getLocalMemorySize(); // getLocalMemorySize returns in Bytes
+
         // also need to count the buffers that are not in buffersPerFifo 
         int currentUsedMemory = calculateCurrentUsedMemory(creation_tile, buffersPerFifo, buffers);
 
@@ -653,9 +662,11 @@ struct AIEObjectFifoStatefulTransformPass
           std::vector<TileOp> neighborTiles;
           int currentCol = creation_tile.getCol();
           int currentRow = creation_tile.getRow();
+
           // Check tile to the left
           if (currentCol > 0) {
             TileOp leftTile = findOrCreateTile(builder, dev, creation_tile, currentCol - 1, currentRow);
+
             int share_direction = 0;
             if (isSharedMemory(creation_tile, leftTile, &share_direction)) {
               neighborTiles.push_back(leftTile);
@@ -683,6 +694,7 @@ struct AIEObjectFifoStatefulTransformPass
               }
             }
           }
+
         }
         auto buff = builder.create<BufferOp>(
             builder.getUnknownLoc(), elemType, current_buf_allocation_tile,
@@ -1748,7 +1760,6 @@ struct AIEObjectFifoStatefulTransformPass
       }
     }
 
-
     //===------------------------------------------------------------------===//
     // - Create objectFifo buffers and locks.
     // - Populate a list of tiles containing objectFifos for later processing of
@@ -1756,7 +1767,12 @@ struct AIEObjectFifoStatefulTransformPass
     // - Global release counter tracker to keep track of the objectFifo state
     //===------------------------------------------------------------------===//
 
+    int test_count = 0;
+
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
+
+      test_count += 1;
+
       int share_direction = 0;
       bool shared = !requiresDMAs(createOp, share_direction);
 
@@ -1776,10 +1792,12 @@ struct AIEObjectFifoStatefulTransformPass
 
       // if split, the necessary size for producer fifo might change
       if (shared) {
+
         checkAndApplyViaSharedMemAttribute(createOp, share_direction);
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
       } else {
+
         if (createOp.getViaSharedMem().has_value())
           createOp->emitOpError(
               "no access to shared memory module specified by "
@@ -1789,7 +1807,9 @@ struct AIEObjectFifoStatefulTransformPass
           createOp.setElemNumberAttr(
               builder.getI32IntegerAttr(createOp.size()));
         else {
+
           if (!createOp.getInitValues().has_value()) {
+
             int prodMaxAcquire = findObjectFifoSize(
                 device, createOp.getProducerTileOp(), createOp);
             createOp.setElemNumberAttr(
@@ -1798,8 +1818,10 @@ struct AIEObjectFifoStatefulTransformPass
         }
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
+
       }
     }
+
 
     // Analyze cross-tile buffer allocations and print results
     auto crossTileInfos = analyzeCrossTileFIFOBuffers();
@@ -1848,7 +1870,6 @@ struct AIEObjectFifoStatefulTransformPass
         }
       }
     }
-
 
     //===------------------------------------------------------------------===//
     // Create flows and tile DMAs
@@ -2171,8 +2192,11 @@ struct AIEObjectFifoStatefulTransformPass
     SmallVector<Operation *> sorted{opsToErase.begin(), opsToErase.end()};
     computeTopologicalSorting(sorted);
     for (auto *op : llvm::reverse(sorted))
-      op->erase();
-  }
+      op->erase();  
+  
+    }
+
+  
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
