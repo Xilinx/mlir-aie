@@ -25,12 +25,15 @@ def layernorm(dev, in_size, trace_size):
     of_in = ObjectFifo(dtype, name="in")
     of_out = ObjectFifo(dtype, name="out")
 
-    layer_norm_kernel = Kernel("layer_norm", "layer_norm.o", [dtype, dtype])
+    layer_norm_kernel = Kernel("layer_norm", "layer_norm.o", [dtype, dtype, np.int32, np.int32])
+
+    rows = 16
+    cols = 64
 
     def core_body(of_in, of_out, layer_norm_kernel):
         elem_in = of_in.acquire(1)
         elem_out = of_out.acquire(1)
-        layer_norm_kernel(elem_in, elem_out)
+        layer_norm_kernel(elem_in, elem_out, rows, cols)
         of_in.release(1)
         of_out.release(1)
 
@@ -42,7 +45,7 @@ def layernorm(dev, in_size, trace_size):
 
     rt = Runtime()
     with rt.sequence(dtype, dtype) as (a_in, c_out):
-        rt.enable_trace(False)
+        rt.enable_trace(enable_trace)
         rt.start(worker)
         rt.fill(of_in.prod(), a_in)
         rt.drain(of_out.cons(), c_out, wait=True)

@@ -22,69 +22,60 @@ inline float custom_sqrtf(float x) {
 }
 
 template <typename T, int N>
-void layer_norm(const T *restrict input, T *restrict output) {
+void layer_norm(const T *restrict input, T *restrict output, int32_t rows,
+                int32_t cols) {
   event0();
-  constexpr int rows = 16;
-  constexpr int cols = 64;
   constexpr float epsilon = 1e-5f;
   const float gamma = 1.0f; // built-in constant
   const float beta = 0.0f;  // built-in constant
   for (int c = 0; c < cols; c++) {
-    ::aie::accum<accfloat, N> sum_acc = ::aie::zeros<accfloat, N>();
-    ::aie::accum<accfloat, N> sum_sq_acc = ::aie::zeros<accfloat, N>();
-#pragma clang loop min_iteration_count(4)
-    for (int r = 0; r < rows; r += N) {
-      const T *input_ptr = input + r * cols + c;
-      ::aie::vector<T, N> input_v;
-      for (int i = 0; i < N; i++) {
-        input_v[i] = input_ptr[i * cols];
-      }
-      ::aie::accum<accfloat, N> input_acc =
-          ::aie::mul(input_v, ::aie::broadcast<T, N>(1.0f));
-      sum_acc = ::aie::add(sum_acc, input_acc);
-      ::aie::accum<accfloat, N> sq_acc = ::aie::mul(input_v, input_v);
-      sum_sq_acc = ::aie::add(sum_sq_acc, sq_acc);
+    float mean = 0.0f;
+    float m2 = 0.0f;
+    int n = 0;
+    // Welford's algorithm for mean and variance
+    for (int r = 0; r < rows; r++) {
+      float x = float(input[r * cols + c]);
+      n++;
+      float delta = x - mean;
+      mean += delta / n;
+      float delta2 = x - mean;
+      m2 += delta * delta2;
     }
-    // Convert accumulators to float arrays
-    float sum_array[N];
-    float sum_sq_array[N];
-    for (int i = 0; i < N; i++) {
-      sum_array[i] = float(sum_acc.template to_vector<float>()[i]);
-      sum_sq_array[i] = float(sum_sq_acc.template to_vector<float>()[i]);
-    }
-    float sum_scalar = 0.0f;
-    float sum_sq_scalar = 0.0f;
-    for (int i = 0; i < N; i++) {
-      sum_scalar += sum_array[i];
-      sum_sq_scalar += sum_sq_array[i];
-    }
-    float mean = sum_scalar / float(rows);
-    float variance = sum_sq_scalar / float(rows) - mean * mean;
-    float inv_std = 1.0f / custom_sqrtf(variance + epsilon);
-    for (int r = 0; r < rows; r += N) {
-      T *output_ptr = output + r * cols + c;
-      const T *input_ptr = input + r * cols + c;
-      ::aie::vector<T, N> input_v;
+    float variance = (n > 1) ? (m2 / n) : 0.0f;
+    float inv_std = aie::invsqrt(variance + epsilon);
+    // Vectorized normalization using AIE intrinsics
+    using vec_t = aie::vector<float, N>;
+    int r = 0;
+    // Broadcast mean, inv_std, gamma, beta to vectors
+    vec_t vmean = aie::broadcast<float, N>(mean);
+    vec_t vinv_std = aie::broadcast<float, N>(inv_std);
+    vec_t vgamma = aie::broadcast<float, N>(gamma);
+    vec_t vbeta = aie::broadcast<float, N>(beta);
+
+    for (; r + N <= rows; r += N) {
+      // Load N elements from input
+      vec_t vin;
       for (int i = 0; i < N; i++) {
-        input_v[i] = input_ptr[i * cols];
+      vin[i] = float(input[(r + i) * cols + c]);
       }
-      ::aie::vector<T, N> mean_v = ::aie::broadcast<T, N>(mean);
-      ::aie::vector<T, N> inv_std_v = ::aie::broadcast<T, N>(inv_std);
-      ::aie::vector<T, N> gamma_v = ::aie::broadcast<T, N>(gamma);
-      ::aie::vector<T, N> beta_v = ::aie::broadcast<T, N>(beta);
-      ::aie::vector<T, N> diff_v = ::aie::sub(input_v, mean_v);
-      ::aie::vector<T, N> norm_v = ::aie::mul(diff_v, inv_std_v);
-      ::aie::vector<T, N> scaled_v = ::aie::mul(norm_v, gamma_v);
-      ::aie::vector<T, N> out_v = ::aie::add(scaled_v, beta_v);
+      vec_t vnorm = aie::mul(aie::sub(vin, vmean), vinv_std);
+      vec_t vout = aie::add(aie::mul(vnorm, vgamma), vbeta);
       for (int i = 0; i < N; i++) {
-        output_ptr[i * cols] = out_v[i];
+      output[(r + i) * cols + c] = T(vout[i]);
       }
+    }
+    // Handle remaining rows (if any)
+    for (; r < rows; r++) {
+      float x = float(input[r * cols + c]);
+      float norm = (x - mean) * inv_std;
+      float out = norm * gamma + beta;
+      output[r * cols + c] = T(out);
     }
   }
   event1();
 }
 extern "C" {
-void layer_norm(bfloat16 *input, bfloat16 *output) {
-  layer_norm<bfloat16, 16>(input, output);
+void layer_norm(bfloat16 *input, bfloat16 *output, int32_t rows, int32_t cols) {
+  layer_norm<bfloat16, 16>(input, output, rows, cols);
 }
 }
