@@ -57,10 +57,6 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
     assert k % s == 0
     assert n % t == 0
 
-    assert (
-        m == 64 and k == 64 and n == 64
-    ), """Only 64x64x64 tiles are supported in this example"""
-
     fifo_depth = 2
 
     n_tiles_per_core = (M // m) * (N // n) // n_aie_cores
