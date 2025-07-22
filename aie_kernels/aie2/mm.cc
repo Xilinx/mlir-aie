@@ -98,23 +98,10 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
           pB2 = pB + ((j + 1) * colA) * MMUL::size_B;
         }
 
-        aie::vector<T_in, MMUL::size_A> A0 = aie::load_v<MMUL::size_A>(pA1);
-        pA1 += MMUL::size_A;
-        aie::vector<T_in, MMUL::size_A> A1 = aie::load_v<MMUL::size_A>(pA2);
-        pA2 += MMUL::size_A;
+        aie::vector<T_in, MMUL::size_A> A0;
+        aie::vector<T_in, MMUL::size_A> A1;
         aie::vector<T_in, MMUL::size_B> B0;
         aie::vector<T_in, MMUL::size_B> B1;
-        if constexpr (b_row_maj) {
-          B0 = aie::load_v<MMUL::size_B>(pB1);
-          pB1 += MMUL::size_B * colB;
-          B1 = aie::load_v<MMUL::size_B>(pB2);
-          pB2 += MMUL::size_B * colB;
-        } else {
-          B0 = aie::transpose(aie::load_v<MMUL::size_B>(pB1), t, s);
-          pB1 += MMUL::size_B;
-          B1 = aie::transpose(aie::load_v<MMUL::size_B>(pB2), t, s);
-          pB2 += MMUL::size_B;
-        }
 
         // Load partial results from C buffer for accumulation in-place. The
         // zero.cc function handles the zeroing of data when a new
@@ -133,12 +120,7 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
         MMUL C10(acc_C10);
         MMUL C11(acc_C11);
 
-        C00.mac(A0, B0);
-        C01.mac(A0, B1);
-        C10.mac(A1, B0);
-        C11.mac(A1, B1);
-
-        for (unsigned i = 1; i < colA; ++i)
+        for (unsigned i = 0; i < colA; ++i)
 #ifdef OPT_PERF_ENABLED
           AIE_LOOP_FLATTEN
 #endif
@@ -228,27 +210,12 @@ static inline void matmul_vectorized_4x2_mmul(const T_in *__restrict pA,
           pB2 = pB + ((j + 1) * colA) * MMUL::size_B;
         }
 
-        aie::vector<T_in, MMUL::size_A> A01 = aie::load_v<MMUL::size_A>(pA1);
-        pA1 += MMUL::size_A;
-        aie::vector<T_in, MMUL::size_A> A11 = aie::load_v<MMUL::size_A>(pA2);
-        pA2 += MMUL::size_A;
-        aie::vector<T_in, MMUL::size_A> A21 = aie::load_v<MMUL::size_A>(pA3);
-        pA3 += MMUL::size_A;
-        aie::vector<T_in, MMUL::size_A> A31 = aie::load_v<MMUL::size_A>(pA4);
-        pA4 += MMUL::size_A;
+        aie::vector<T_in, MMUL::size_A> A01;
+        aie::vector<T_in, MMUL::size_A> A11;
+        aie::vector<T_in, MMUL::size_A> A21;
+        aie::vector<T_in, MMUL::size_A> A31;
         aie::vector<T_in, MMUL::size_B> B0;
         aie::vector<T_in, MMUL::size_B> B1;
-        if constexpr (b_row_maj) {
-          B0 = aie::load_v<MMUL::size_B>(pB1);
-          pB1 += (MMUL::size_B * colB);
-          B1 = aie::load_v<MMUL::size_B>(pB2);
-          pB2 += (MMUL::size_B * colB);
-        } else {
-          B0 = aie::transpose(aie::load_v<MMUL::size_B>(pB1), t, s);
-          pB1 += MMUL::size_B;
-          B1 = aie::transpose(aie::load_v<MMUL::size_B>(pB2), t, s);
-          pB2 += MMUL::size_B;
-        }
 
         aie::vector<T_out, MMUL::size_C> acc_C00 =
             aie::load_v<MMUL::size_C>(pC1);
@@ -276,16 +243,7 @@ static inline void matmul_vectorized_4x2_mmul(const T_in *__restrict pA,
         MMUL C30(acc_C30);
         MMUL C31(acc_C31);
 
-        C00.mac(A01, B0);
-        C01.mac(A01, B1);
-        C10.mac(A11, B0);
-        C11.mac(A11, B1);
-        C20.mac(A21, B0);
-        C21.mac(A21, B1);
-        C30.mac(A31, B0);
-        C31.mac(A31, B1);
-
-        for (unsigned i = 1; i < colA; i += 1)
+        for (unsigned i = 0; i < colA; i += 1)
 #ifdef OPT_PERF_ENABLED
           AIE_LOOP_FLATTEN
 #endif
@@ -392,37 +350,14 @@ static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
           pB4 = pB + ((j + 3) * colA) * MMUL::size_B;
         }
 
-        aie::vector<T_in, MMUL::size_A> A0 = aie::load_v<MMUL::size_A>(pA1);
-        pA1 += MMUL::size_A;
-        aie::vector<T_in, MMUL::size_A> A1 = aie::load_v<MMUL::size_A>(pA2);
-        pA2 += MMUL::size_A;
-        aie::vector<T_in, MMUL::size_A> A2 = aie::load_v<MMUL::size_A>(pA3);
-        pA3 += MMUL::size_A;
-        aie::vector<T_in, MMUL::size_A> A3 = aie::load_v<MMUL::size_A>(pA4);
-        pA4 += MMUL::size_A;
+        aie::vector<T_in, MMUL::size_A> A0;
+        aie::vector<T_in, MMUL::size_A> A1;
+        aie::vector<T_in, MMUL::size_A> A2;
+        aie::vector<T_in, MMUL::size_A> A3;
         aie::vector<T_in, MMUL::size_B> B0;
         aie::vector<T_in, MMUL::size_B> B1;
         aie::vector<T_in, MMUL::size_B> B2;
         aie::vector<T_in, MMUL::size_B> B3;
-        if constexpr (b_row_maj) {
-          B0 = aie::load_v<MMUL::size_B>(pB1);
-          pB1 += MMUL::size_B * colB;
-          B1 = aie::load_v<MMUL::size_B>(pB2);
-          pB2 += MMUL::size_B * colB;
-          B2 = aie::load_v<MMUL::size_B>(pB3);
-          pB3 += MMUL::size_B * colB;
-          B3 = aie::load_v<MMUL::size_B>(pB4);
-          pB4 += MMUL::size_B * colB;
-        } else {
-          B0 = aie::transpose(aie::load_v<MMUL::size_B>(pB1), t, s);
-          pB1 += MMUL::size_B;
-          B1 = aie::transpose(aie::load_v<MMUL::size_B>(pB2), t, s);
-          pB2 += MMUL::size_B;
-          B2 = aie::transpose(aie::load_v<MMUL::size_B>(pB3), t, s);
-          pB3 += MMUL::size_B;
-          B3 = aie::transpose(aie::load_v<MMUL::size_B>(pB4), t, s);
-          pB4 += MMUL::size_B;
-        }
 
         aie::vector<T_out, MMUL::size_C> acc_C00 =
             aie::load_v<MMUL::size_C>(pC1);
@@ -480,27 +415,7 @@ static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
         MMUL C32(acc_C32);
         MMUL C33(acc_C33);
 
-        C00.mac(A0, B0);
-        C01.mac(A0, B1);
-        C10.mac(A1, B0);
-        C11.mac(A1, B1);
-
-        C02.mac(A0, B2);
-        C03.mac(A0, B3);
-        C12.mac(A1, B2);
-        C13.mac(A1, B3);
-
-        C20.mac(A2, B0);
-        C21.mac(A2, B1);
-        C30.mac(A3, B0);
-        C31.mac(A3, B1);
-
-        C22.mac(A2, B2);
-        C23.mac(A2, B3);
-        C32.mac(A3, B2);
-        C33.mac(A3, B3);
-
-        for (unsigned i = 1; i < colA; ++i)
+        for (unsigned i = 0; i < colA; ++i)
 #ifdef OPT_PERF_ENABLED
           AIE_LOOP_FLATTEN
 #endif
