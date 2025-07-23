@@ -16,11 +16,12 @@ import tempfile
 import os
 
 
-from aie.iron.algorithms import for_each, transform
+from aie.iron.algorithms import for_each, transform_binary
 from aie.iron import CoreFunction as cpp_function
 
 
 def main():
+    np.random.seed(0)
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -61,14 +62,22 @@ def main():
 
     # Create external function
     for_each(tensor, add_one)
-    transform(tensor, output, lambda a: a + 2)
+    print(f"tensor: {tensor}")
+    transform_binary(tensor, tensor, output, lambda a, b: a + b)
+    print(f"tensor: {tensor}")
+    print(f"output: {output}")
 
     print(f"initial_tensor: {initial_tensor}")
     print(f"output tensor: {tensor}")
 
     # Check the correctness of the result
-    e = np.equal(initial_tensor + 3, tensor.numpy())
+    intermidate_tensor = initial_tensor + 1
+    e = np.equal(intermidate_tensor + intermidate_tensor, output.numpy())
     errors = np.size(e) - np.count_nonzero(e)
+    # Print the first mismatching index and element
+    if errors > 0:
+        print(f"First mismatching index: {np.where(e)[0][0]}")
+        print(f"First mismatching element: {output.numpy()[np.where(e)[0][0]]}")
 
     # Optionally, print the results
     if args.verbose:
