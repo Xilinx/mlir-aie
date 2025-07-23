@@ -29,8 +29,8 @@ void silu_tanh_approx_bf16(bfloat16 *restrict input_vector,
   aie::vector<bfloat16, 16> output;
   aie::vector<bfloat16, 16> register_0_5 = aie::broadcast<bfloat16, 16>(0.5f);
   aie::vector<bfloat16, 16> register_1 = aie::broadcast<bfloat16, 16>(1.0f);
-  // AIE_PREPARE_FOR_PIPELINING
-  // AIE_LOOP_MIN_ITERATION_COUNT(64)
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(64)
   for (int i = 0; i < num_elems; i += 16) {
     // Load input vector
     input = *it_in++;
