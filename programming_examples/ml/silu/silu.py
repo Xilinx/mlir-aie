@@ -1,4 +1,4 @@
-# memcpy/memcpy.py -*- Python -*-
+# silu/silu.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -17,15 +17,8 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.device import Tile, NPU1, NPU2
 from aie.helpers.taplib.tap import TensorAccessPattern
 
-#
-# Memcpy is designed to use every column's shimDMA in-out pairs
-# to fully saturate DDR bandwidth. It is a superset of passthrough_kernel
-# and passthrough_dmas. As such, it can be used as a microbenchmark or as
-# a template for multi-core unary operations.
-#
 
-
-def my_memcpy(dev, size, num_columns, num_channels):
+def my_silu(dev, size, num_columns, num_channels):
     # Use int32 dtype as it is the addr generation granularity
     xfr_dtype = bfloat16
 
@@ -50,17 +43,17 @@ def my_memcpy(dev, size, num_columns, num_channels):
     ]
 
     # External, binary kernel definition
-    passthrough_fn = Kernel(
+    silu_fcn = Kernel(
         "silu_bf16",
         "silu.cc.o",
         [line_type, line_type],
     )
 
     # Task for the core to perform
-    def core_fn(of_in, of_out, passThroughLine):
+    def core_fn(of_in, of_out, siluLine):
         elemOut = of_out.acquire(1)
         elemIn = of_in.acquire(1)
-        passThroughLine(elemIn, elemOut)
+        siluLine(elemIn, elemOut)
         of_in.release(1)
         of_out.release(1)
 
@@ -71,7 +64,7 @@ def my_memcpy(dev, size, num_columns, num_channels):
             [
                 of_ins[i * num_channels + j].cons(),
                 of_outs[i * num_channels + j].prod(),
-                passthrough_fn,
+                silu_fcn,
             ],
         )
         for i in range(num_columns)
@@ -171,6 +164,6 @@ if ((length % 1024) % columns % channels) != 0:
     )
     raise ValueError
 
-## Call the my_memcpy function with the parsed arguments
+## Call the my_silu function with the parsed arguments
 ## and print the MLIR as a result
-print(my_memcpy(dev, length, columns, channels))
+print(my_silu(dev, length, columns, channels))
