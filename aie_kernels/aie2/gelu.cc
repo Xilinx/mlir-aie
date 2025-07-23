@@ -50,10 +50,10 @@ void gelu_tanh_approx_bf16(bfloat16 *restrict input_vector,
     // inner = sqrt(2/pi) * (x + 0.044715 * x^3)
     aie::vector<bfloat16, 16> x3_beta = aie::mul(x3, vBeta);
     aie::vector<bfloat16, 16> inner = aie::add(x, x3_beta);
-    auto inner1 = aie::mul(inner, vs2opi);
+    aie::vector<bfloat16, 16> inner1 = aie::mul(inner, vs2opi);
 
     // tanh_out = tanh(inner)
-    auto tanh_out = to_v16bfloat16(getExpBf16(inner1));
+    aie::vector<bfloat16, 16> tanh_out = getTanhBf16(inner1);
 
     // result = 0.5 * x * (1 + tanh_out)
     aie::vector<bfloat16, 16> one_plus_tanh = aie::add(tanh_out, v1);
