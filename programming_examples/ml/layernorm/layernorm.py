@@ -14,21 +14,21 @@ from aie.iron.device import NPU1Col1, NPU2Col1
 from ml_dtypes import bfloat16
 
 
-def layernorm(dev, in_size, trace_size):
+def layernorm(dev, rows, cols, trace_size):
     enable_trace = 1 if trace_size > 0 else None
 
     # Define tensor types
-    line_size = in_size // bfloat16(0).nbytes
 
-    dtype = np.ndarray[(line_size,), np.dtype[bfloat16]]
+    in_volume = rows * cols
+
+    dtype = np.ndarray[(in_volume,), np.dtype[bfloat16]]
 
     of_in = ObjectFifo(dtype, name="in")
     of_out = ObjectFifo(dtype, name="out")
 
-    layer_norm_kernel = Kernel("layer_norm", "layer_norm.o", [dtype, dtype, np.int32, np.int32])
-
-    rows = 16
-    cols = 64
+    layer_norm_kernel = Kernel(
+        "layer_norm", "layer_norm.o", [dtype, dtype, np.int32, np.int32]
+    )
 
     def core_body(of_in, of_out, layer_norm_kernel):
         elem_in = of_in.acquire(1)
@@ -54,7 +54,8 @@ def layernorm(dev, in_size, trace_size):
 
 p = argparse.ArgumentParser()
 p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
-p.add_argument("-i1s", "--in_size", required=True, dest="in_size", help="Input size")
+p.add_argument("-r", "--rows", required=True, dest="rows", help="Row size")
+p.add_argument("-c", "--cols", required=True, dest="cols", help="Col size")
 p.add_argument(
     "-t",
     "--trace_size",
@@ -72,14 +73,8 @@ elif opts.device == "npu2":
 else:
     raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
 
-in_size = int(opts.in_size)
-if in_size % 64 != 0 or in_size < 512:
-    print(
-        "In1 buffer size ("
-        + str(in_size)
-        + ") must be a multiple of 64 and greater than or equal to 512"
-    )
-    raise ValueError
+rows = int(opts.rows)
+cols = int(opts.cols)
 trace_size = int(opts.trace_size)
 
-print(layernorm(dev, in_size, trace_size))
+print(layernorm(dev, rows, cols, trace_size))

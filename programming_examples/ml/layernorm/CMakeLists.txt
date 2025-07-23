@@ -27,7 +27,8 @@ else()
     set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
 endif ()
 
-set(IN_SIZE 4096 CACHE STRING "buffer size")
+set(ROWS 16 CACHE STRING "row size of tensor")
+set(COLS 64 CACHE STRING "col size of tensor")
 set(TARGET_NAME test CACHE STRING "Target to be built")
 
 SET (ProjectName ${TARGET_NAME})
@@ -47,7 +48,8 @@ add_executable(${currentTarget}
 )
 
 target_compile_definitions(${currentTarget} PUBLIC
-    IN_SIZE=${IN_SIZE}
+    ROWS=${ROWS}
+    COLS=${COLS}
     DISABLE_ABI_CHECK=1
         )
 
