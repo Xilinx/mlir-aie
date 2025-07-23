@@ -28,7 +28,7 @@ void gelu_tanh_approx_bf16(bfloat16 *restrict input_vector,
   // Constants
   const bfloat16 k0_5 = 0.5f;
   const bfloat16 k1 = 1.0f;
-  const bfloat16 sqrt_2_over_pi = 0.79788456f;   // ≈ sqrt(2/π)
+  const bfloat16 sqrt_2_over_pi = 0.79788456f; // ≈ sqrt(2/π)
   const bfloat16 kBeta = 0.044715f;
 
   auto v05 = aie::broadcast<bfloat16, 16>(k0_5);
@@ -43,7 +43,7 @@ void gelu_tanh_approx_bf16(bfloat16 *restrict input_vector,
     auto x = input;
 
     // Compute x^3
-    aie::vector<bfloat16, 16> x2 = aie::mul(x, x); // x^2
+    aie::vector<bfloat16, 16> x2 = aie::mul(x, x);  // x^2
     aie::vector<bfloat16, 16> x3 = aie::mul(x, x2); // x^3
 
     // inner = sqrt(2/pi) * (x + 0.044715 * x^3)
