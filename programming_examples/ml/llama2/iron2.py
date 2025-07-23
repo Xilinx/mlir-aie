@@ -112,10 +112,9 @@ def binary_transform(a, b, operation, device="npu"):
         # Return symbolic tensor reference
         return tensor_id
 
-    # Convert to numpy and compute
-    a_np = a.numpy()
-    b_np = b.numpy()
-    result = operation(a_np, b_np)
+    # Run on NPU using AIE Iron operations
+    result = iron.zeros_like(a)
+    transform_binary(a, b, result, operation)
     return result
 
 
@@ -165,7 +164,11 @@ def capture_graph():
                     print(format_tensor_values(a_tensor, "Input A"))
                     print(format_tensor_values(b_tensor, "Input B"))
 
-                    result = np.matmul(a_tensor, b_tensor)
+                    # Convert to numpy for computation
+                    a_np = a_tensor.numpy()
+                    b_np = b_tensor.numpy()
+                    result_np = np.matmul(a_np, b_np)
+                    result = iron.tensor(result_np, device=device)
                     tensor_refs[tensor_id] = result
                     print(format_tensor_values(result, f"Output {tensor_id}"))
 
@@ -178,9 +181,12 @@ def capture_graph():
 
                     print(format_tensor_values(x_tensor, "Input X"))
 
+                    # Convert to numpy for computation
+                    x_np = x_tensor.numpy()
                     # SiLU(x) = x * sigmoid(x)
-                    sigmoid_x = 1 / (1 + np.exp(-x_tensor))
-                    result = x_tensor * sigmoid_x
+                    sigmoid_x = 1 / (1 + np.exp(-x_np))
+                    result_np = x_np * sigmoid_x
+                    result = iron.tensor(result_np, device=device)
                     tensor_refs[tensor_id] = result
                     print(format_tensor_values(result, f"Output {tensor_id}"))
 
@@ -198,7 +204,11 @@ def capture_graph():
                     print(format_tensor_values(a_tensor, "Input A"))
                     print(format_tensor_values(b_tensor, "Input B"))
                     print(f"     Operation: {operation.__name__}")
-                    result = operation(a_tensor, b_tensor)
+
+                    # Run on NPU - all tensors are now AIE Iron tensors
+                    result = iron.zeros_like(a_tensor)
+                    transform_binary(a_tensor, b_tensor, result, operation)
+
                     tensor_refs[tensor_id] = result
                     print(format_tensor_values(result, f"Output {tensor_id}"))
 
