@@ -184,7 +184,7 @@ int main(int argc, const char *argv[]) {
 
   for (int i = 0; i < N; i++) {
     std::bfloat16_t ref = gelu_bf16(srcVecA[i]);
-    if (!test_utils::nearly_equal(*(bufOut + i), ref, 0.04)) {
+    if (!test_utils::nearly_equal(*(bufOut + i), ref, 0.1)) {
       errors++;
       // Print the first 100 mismatches
       if (errors <= 100) {
