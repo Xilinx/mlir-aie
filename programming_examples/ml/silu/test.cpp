@@ -28,8 +28,9 @@ std::bfloat16_t silu_bf16(std::bfloat16_t &input) {
   // Compute tanh approximation
   std::bfloat16_t half_x = input * std::bfloat16_t(0.5f);
   std::bfloat16_t tanh_half_x = std::tanh(half_x);
-  std::bfloat16_t sigmoid_approx = std::bfloat16_t(0.5f) * (tanh_half_x + std::bfloat16_t(1.0f));
-  
+  std::bfloat16_t sigmoid_approx =
+      std::bfloat16_t(0.5f) * (tanh_half_x + std::bfloat16_t(1.0f));
+
   // Compute output: x * tanh_approx
   return input * sigmoid_approx;
 }
@@ -128,10 +129,10 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_inA = xrt::bo(device, N * sizeof(std::bfloat16_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(3));
-  auto bo_out = xrt::bo(device, N * sizeof(std::bfloat16_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(4));
+  auto bo_inA = xrt::bo(device, N * sizeof(std::bfloat16_t),
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto bo_out = xrt::bo(device, N * sizeof(std::bfloat16_t),
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
@@ -170,7 +171,8 @@ int main(int argc, const char *argv[]) {
 
   double total_bytes = 2.0 * N * sizeof(std::bfloat16_t); // input and output
   double bandwidth_GBps = total_bytes / (npu_time * 1e-6) / 1e9;
-  std::cout << "Effective Bandwidth: " << bandwidth_GBps << " GB/s" << std::endl;
+  std::cout << "Effective Bandwidth: " << bandwidth_GBps << " GB/s"
+            << std::endl;
 
   std::bfloat16_t *bufOut = bo_out.map<std::bfloat16_t *>();
 
