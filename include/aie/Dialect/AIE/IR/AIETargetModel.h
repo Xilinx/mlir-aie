@@ -270,6 +270,9 @@ public:
   virtual uint32_t getMemTileSize() const = 0;
   /// Return the number of memory banks of a given tile.
   virtual uint32_t getNumBanks(int col, int row) const = 0;
+
+  virtual uint32_t getMaxChannelNumForAdjacentTile(int col, int row) const = 0;
+
   /// Return the number of destinations of connections inside a switchbox. These
   /// are the targets of connect operations in the switchbox.
   virtual uint32_t getNumDestSwitchboxConnections(int col, int row,
@@ -382,6 +385,10 @@ public:
   uint32_t getMemTileSize() const override { return 0; }
   uint32_t getNumBanks(int col, int row) const override { return 4; }
 
+  uint32_t getMaxChannelNumForAdjacentTile(int col, int row) const override {
+    return 4;
+  }
+
   uint32_t getNumDestSwitchboxConnections(int col, int row,
                                           WireBundle bundle) const override;
   uint32_t getNumSourceSwitchboxConnections(int col, int row,
@@ -482,6 +489,10 @@ public:
 
   uint32_t getNumBanks(int col, int row) const override {
     return isMemTile(col, row) ? 8 : 4;
+  }
+
+  uint32_t getMaxChannelNumForAdjacentTile(int col, int row) const override {
+    return 4;
   }
 
   uint32_t getNumDestSwitchboxConnections(int col, int row,
