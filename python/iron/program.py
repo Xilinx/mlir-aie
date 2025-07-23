@@ -37,6 +37,36 @@ class Program:
         self._device = device
         self._rt = rt
 
+    def _create_fresh_components(self):
+        """Create fresh instances of device and runtime to avoid state sharing.
+
+        Returns:
+            tuple: (fresh_device, fresh_runtime) with copied state but fresh MLIR contexts
+        """
+        # Create a fresh device instance of the same type
+        device_class = type(self._device)
+        fresh_device = device_class()
+
+        # Create a fresh runtime instance
+        fresh_rt = Runtime()
+
+        # Copy the runtime state that doesn't involve MLIR operations
+        fresh_rt._trace_size = self._rt._trace_size
+        fresh_rt._trace_offset = self._rt._trace_offset
+        fresh_rt._trace_workers = self._rt._trace_workers
+        fresh_rt.ddr_id = self._rt.ddr_id
+
+        # Copy workers (they will be re-resolved with fresh MLIR context)
+        fresh_rt._workers = self._rt._workers.copy()
+        fresh_rt._fifos = self._rt._fifos.copy()
+        fresh_rt._tasks = self._rt._tasks.copy()
+        fresh_rt._open_task_groups = self._rt._open_task_groups.copy()
+
+        # Copy the runtime data list
+        fresh_rt._rt_data = self._rt._rt_data.copy()
+
+        return fresh_device, fresh_rt
+
     def resolve_program(self, placer: Placer | None = None):
         """This method resolves the program components in order to generate MLIR.
 
@@ -47,39 +77,42 @@ class Program:
         Returns:
             module (Module): The module containing the MLIR context information.
         """
+        # Create fresh components to avoid state sharing issues
+        fresh_device, fresh_rt = self._create_fresh_components()
+
         with mlir_mod_ctx() as ctx:
 
-            @device(self._device.resolve())
+            @device(fresh_device.resolve())
             def device_body():
                 # Collect all fifos
                 all_fifos = set()
-                all_fifos.update(self._rt.fifos)
-                for w in self._rt.workers:
+                all_fifos.update(fresh_rt.fifos)
+                for w in fresh_rt.workers:
                     all_fifos.update(w.fifos)
 
                 if placer:
                     # TODO: should maybe just take runtime?
                     placer.make_placement(
-                        self._device, self._rt, self._rt.workers, all_fifos
+                        fresh_device, fresh_rt, fresh_rt.workers, all_fifos
                     )
 
                 # Collect all tiles
                 all_tiles = []
-                for w in self._rt.workers:
+                for w in fresh_rt.workers:
                     all_tiles.append(w.tile)
                 for f in all_fifos:
                     all_tiles.extend([e.tile for e in f.all_of_endpoints()])
 
                 # Resolve tiles
                 for t in all_tiles:
-                    self._device.resolve_tile(t)
+                    fresh_device.resolve_tile(t)
 
                 # Generate fifos
                 for f in all_fifos:
                     f.resolve()
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
-                for w in self._rt.workers:
+                for w in fresh_rt.workers:
                     for arg in w.fn_args:
                         if isinstance(arg, FuncBase):
                             arg.emit()
@@ -87,7 +120,7 @@ class Program:
                             arg.resolve()
 
                 # Generate core programs
-                for w in self._rt.workers:
+                for w in fresh_rt.workers:
                     w.resolve()
 
                 # Generate trace routes
@@ -97,21 +130,21 @@ class Program:
 
                 # Scan workers and build list of tiles to trace
                 tiles_to_trace = []
-                if self._rt._trace_workers is not None:
-                    for w in self._rt._trace_workers:
+                if fresh_rt._trace_workers is not None:
+                    for w in fresh_rt._trace_workers:
                         tiles_to_trace.append(w.tile.op)
                 else:
-                    for w in self._rt._workers:
+                    for w in fresh_rt._workers:
                         if w.trace is not None:
                             tiles_to_trace.append(w.tile.op)
-                if self._rt._trace_size is not None:
-                    trace_shim_tile = self._rt.get_first_cons_shimtile()
+                if fresh_rt._trace_size is not None:
+                    trace_shim_tile = fresh_rt.get_first_cons_shimtile()
                     trace_utils.configure_packet_tracing_flow(
                         tiles_to_trace, trace_shim_tile
                     )
 
                 # In/Out Sequence
-                self._rt.resolve()
+                fresh_rt.resolve()
 
             self._print_verify(ctx)
             return ctx.module
