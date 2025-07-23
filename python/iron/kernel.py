@@ -11,6 +11,7 @@ import os
 import subprocess
 import hashlib
 import shutil
+import tempfile
 
 from .. import ir  # type: ignore
 from ..extras.dialects.ext.func import FuncOp  # type: ignore
@@ -57,14 +58,14 @@ class Kernel(Resolvable):
         call(self._op, args, **kwargs)
 
 
-
 class CoreFunction(Resolvable):
     _object_files = set()
 
     def __init__(
         self,
         name: str,
-        source_file: str,
+        source_file: str | None = None,
+        source_string: str | None = None,
         arg_types: list[type[np.ndarray] | np.dtype] = [],
         include_dirs: list[str] = [],
         compile_flags: list[str] = [],
@@ -82,7 +83,17 @@ class CoreFunction(Resolvable):
             debug (bool, optional): Enable debug logging. Defaults to True.
         """
         self._name = name
-        self._source_file = source_file
+        if source_file is not None:
+            self._source_file = source_file
+        else:
+            if source_string is None:
+                raise ValueError("source_file or source_string must be provided")
+            with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+                tmp_file_name = tmp_file.name + ".cc"
+                print(f"tmp_file_name: {tmp_file_name}")
+                with open(tmp_file_name, "w") as f:
+                    f.write(source_string)
+                self._source_file = tmp_file_name
         self._arg_types = arg_types
         self._include_dirs = include_dirs
         self._compile_flags = compile_flags
@@ -91,12 +102,12 @@ class CoreFunction(Resolvable):
 
         if self._debug:
             print(f"Initializing CoreFunction: {name}")
-            print(f"Source file: {source_file}")
+            print(f"Source file: {self._source_file}")
             print(f"Include dirs: {include_dirs}")
             print(f"Compile flags: {compile_flags}")
 
         # Calculate hash of source file and compile flags
-        with open(source_file, 'rb') as f:
+        with open(self._source_file, "rb") as f:
             source_hash = hashlib.sha256(f.read()).hexdigest()
         flags_hash = hashlib.sha256(str(compile_flags).encode()).hexdigest()
         self._hash = hashlib.sha256((source_hash + flags_hash).encode()).hexdigest()
@@ -160,7 +171,9 @@ class CoreFunction(Resolvable):
 
         # Add AIEOPT include directory
         try:
-            aieopt_path = subprocess.check_output(['which', 'aie-opt'], text=True).strip()
+            aieopt_path = subprocess.check_output(
+                ["which", "aie-opt"], text=True
+            ).strip()
             aieopt_dir = os.path.dirname(os.path.dirname(os.path.realpath(aieopt_path)))
             cmd.extend(["-I", f"{aieopt_dir}/include"])
         except subprocess.CalledProcessError:
@@ -168,12 +181,12 @@ class CoreFunction(Resolvable):
                 print("Warning: Could not find aie-opt executable")
 
         # Add device-specific flags
-        if os.environ.get('NPU2') == '1':
-            cmd.extend(os.environ.get('PEANOWRAP2P_FLAGS', '').split())
+        if os.environ.get("NPU2") == "1":
+            cmd.extend(os.environ.get("PEANOWRAP2P_FLAGS", "").split())
             if self._debug:
                 print("Using NPU2 flags")
         else:
-            cmd.extend(os.environ.get('PEANOWRAP2_FLAGS', '').split())
+            cmd.extend(os.environ.get("PEANOWRAP2_FLAGS", "").split())
             if self._debug:
                 print("Using NPU1 flags")
 

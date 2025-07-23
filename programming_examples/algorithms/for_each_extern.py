@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 # transform_binary.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -39,30 +41,22 @@ def main():
     tensor = iron.randint(0, 100, (args.num_elements,), dtype=dtype, device="npu")
     initial_tensor = tensor.numpy().copy()
 
-    # Create external function at tmp file
-
-    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-        tmp_file_name = tmp_file.name + ".cc"
-        print(f"tmp_file_name: {tmp_file_name}")
-        with open(tmp_file_name, "w") as f:
-            f.write(
-                """extern "C" {
+    # Create external function
+    add_one = CoreFunction(
+        f"add_one",
+        source_string="""extern "C" {
                     void add_one(int* input, int* output, int tile_size) {
                         for (int i = 0; i < tile_size; i++) {
                             output[i] = input[i] + 1;
                         }
                     }
-                }"""
-            )
-        add_one = CoreFunction(
-            f"add_one",
-            source_file=tmp_file_name,
-            arg_types=[
-                np.ndarray[(16,), np.dtype[np.int32]],
-                np.ndarray[(16,), np.dtype[np.int32]],
-                np.int32,
-            ],
-        )
+                }""",
+        arg_types=[
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.int32,
+        ],
+    )
 
     # Create external function
     for_each(tensor, add_one)

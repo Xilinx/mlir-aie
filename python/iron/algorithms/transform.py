@@ -10,7 +10,7 @@
 import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, NPU2Col1, NPU1, NPU2
+from aie.iron.device import NPU1Col1, NPU2Col1, NPU2
 from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.iron.controlflow import range_
 import aie.iron as iron
@@ -139,9 +139,10 @@ def transform_binary(first, second, output, binary_op):
     # Place program components (assign them resources on the device) and generate an MLIR module
     return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
 
+
 @iron.jit(is_placed=False)
 def transform_parallel(input, output, func):
-    """     
+    """
     AIE-array parallel transform function.
     This function applies a given function to each element of the input array in parallel.
     """
@@ -257,9 +258,10 @@ def transform_parallel(input, output, func):
     # Place program components (assign them resources on the device) and generate an MLIR module
     return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
 
+
 @iron.jit(is_placed=False)
 def transform_parallel_binary(first, second, output, binary_op):
-    """     
+    """
     AIE-array parallel binary transform function.
     This function applies a given binary operation to each element of the input arrays in parallel.
     """
@@ -327,7 +329,7 @@ def transform_parallel_binary(first, second, output, binary_op):
             of_in1.release(1)
             of_in2.release(1)
             of_out.release(1)
-    
+
     # Create a worker to run the task on a compute tile
     my_workers = [
         Worker(
@@ -340,7 +342,7 @@ def transform_parallel_binary(first, second, output, binary_op):
         )
         for i in range(num_columns)
         for j in range(num_channels)
-    ]   
+    ]
 
     # Create a TensorAccessPattern for each channel
     # to describe the data movement
@@ -356,7 +358,7 @@ def transform_parallel_binary(first, second, output, binary_op):
         )
         for i in range(num_columns)
         for j in range(num_channels)
-    ]   
+    ]
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
@@ -386,7 +388,7 @@ def transform_parallel_binary(first, second, output, binary_op):
                     wait=True,  # wait for the transfer to complete and data to be available
                     task_group=tg_out,
                 )
-        rt.finish_task_group(tg_out)    
+        rt.finish_task_group(tg_out)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
     return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
