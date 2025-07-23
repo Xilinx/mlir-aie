@@ -67,7 +67,7 @@ int verify_rmsnorm_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
   for (int i = 0; i < (ROWS * COLS); i++) {
     float expected_val = expected[i];
     float hw_val = static_cast<float>(bufOut[i]);
-    if (std::abs(expected_val - hw_val) > 0.1) {
+    if (std::abs(expected_val - hw_val) > 0.04) {
       std::cout << "Mismatch at index " << i << ": expected " << expected_val
                 << ", got " << hw_val << std::endl;
       errors++;
