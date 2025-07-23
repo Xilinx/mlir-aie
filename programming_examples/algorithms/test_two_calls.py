@@ -16,8 +16,8 @@ import tempfile
 import os
 
 
-from aie.iron.algorithms import for_each
-from aie.iron import CoreFunction
+from aie.iron.algorithms import for_each, transform
+from aie.iron import CoreFunction as cpp_function
 
 
 def main():
@@ -39,10 +39,11 @@ def main():
     # Construct two input random tensors and an output zeroed tensor
     # The three tensor are in memory accessible to the NPU
     tensor = iron.randint(0, 100, (args.num_elements,), dtype=dtype, device="npu")
+    output = iron.zeros_like(tensor)
     initial_tensor = tensor.numpy().copy()
 
     # Create external function
-    add_one = CoreFunction(
+    add_one = cpp_function(
         f"add_one",
         source_string="""extern "C" {
                     void add_one(int* input, int* output, int tile_size) {
@@ -60,12 +61,13 @@ def main():
 
     # Create external function
     for_each(tensor, add_one)
+    transform(tensor, output, lambda a: a + 2)
 
     print(f"initial_tensor: {initial_tensor}")
     print(f"output tensor: {tensor}")
 
     # Check the correctness of the result
-    e = np.equal(initial_tensor + 1, tensor.numpy())
+    e = np.equal(initial_tensor + 3, tensor.numpy())
     errors = np.size(e) - np.count_nonzero(e)
 
     # Optionally, print the results
