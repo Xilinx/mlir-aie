@@ -19,7 +19,6 @@ from aie.helpers.taplib.tap import TensorAccessPattern
 
 
 def my_silu(dev, size, num_columns, num_channels):
-    # Use int32 dtype as it is the addr generation granularity
     xfr_dtype = bfloat16
 
     # Define tensor types
