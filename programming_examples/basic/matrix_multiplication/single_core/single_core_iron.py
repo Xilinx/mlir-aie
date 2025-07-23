@@ -238,6 +238,12 @@ def my_matmul(
             (K, N), (k, n), (K_div_k, N_div_n), tile_group_col_major=True
         )[0]
 
+    print(f"M = {M}, K = {K}, N = {N}")
+    print(f"m = {m}, k = {k}, n = {n}")
+    print(f"rows_per_block = {rows_per_block}")
+    print(f"N_div_n = {N_div_n}")
+    print(f"r = {r}, s = {s}, t = {t}")
+
     C_tiles = TensorTiler2D.group_tiler((M, N), (m, n), (rows_per_block // 2, N_div_n))
     c_index = 0
 

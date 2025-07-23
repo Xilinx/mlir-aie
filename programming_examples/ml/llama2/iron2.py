@@ -7,6 +7,8 @@ import numpy as np
 
 from aie.iron.algorithms import transform_binary
 import aie.iron as iron
+from npu_silu import npu_silu
+from gemm_placed import do_matmul
 
 # Global state
 graph_operations = []
@@ -167,7 +169,7 @@ def capture_graph():
 
                 if func == matmul:
                     a, b, device, tensor_id = op[1], op[2], op[3], op[4]
-                    device = "cpu"  # Always use CPU for now
+                    # device = "cpu"  # Always use CPU for now
 
                     # Resolve tensor references
                     a_tensor = tensor_refs.get(a, a) if isinstance(a, str) else a
@@ -185,26 +187,36 @@ def capture_graph():
                         b_np = b_tensor.numpy()
                     else:
                         b_np = b_tensor
-                    result_np = np.matmul(a_np, b_np)
-                    result = iron.tensor(result_np, device=device)
+
+                    if device == "npu":
+                        result = do_matmul(a_tensor, b_tensor)
+                    else:
+                        result_np = np.matmul(a_np, b_np)
+                        result = iron.tensor(result_np, device=device)
+
                     tensor_refs[tensor_id] = result
                     print(format_tensor_values(result, f"Output {tensor_id}"))
 
                 elif func == silu:
                     x, device, tensor_id = op[1], op[2], op[3]
-                    device = "cpu"  # Always use CPU for now
-
                     # Resolve tensor references
                     x_tensor = tensor_refs.get(x, x) if isinstance(x, str) else x
 
                     print(format_tensor_values(x_tensor, "Input X"))
 
-                    # Convert to numpy for computation
-                    x_np = x_tensor.numpy()
-                    # SiLU(x) = x * sigmoid(x)
-                    sigmoid_x = 1 / (1 + np.exp(-x_np))
-                    result_np = x_np * sigmoid_x
-                    result = iron.tensor(result_np, device=device)
+                    if device == "npu":
+                        print("Running on NPU")
+                        result = iron.zeros_like(x_tensor)
+                        npu_silu(x_tensor)
+                        result = x_tensor
+                    else:
+                        print("Running on CPU")
+                        # Convert to numpy for computation
+                        x_np = x_tensor.numpy()
+                        # SiLU(x) = x * sigmoid(x)
+                        sigmoid_x = 1 / (1 + np.exp(-x_np))
+                        result_np = x_np * sigmoid_x
+                        result = iron.tensor(result_np, device=device)
                     tensor_refs[tensor_id] = result
                     print(format_tensor_values(result, f"Output {tensor_id}"))
 

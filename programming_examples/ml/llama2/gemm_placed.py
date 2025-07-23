@@ -48,7 +48,7 @@ def ceildiv(a, b):
 
 
 @iron.jit(is_placed=False)
-def my_matmul(a, b, c, matmul_kernel):
+def gemm(a, b, c, matmul_kernel):
     M = a.shape[0]
     K = a.shape[1]
     N = b.shape[1]
@@ -178,13 +178,38 @@ def my_matmul(a, b, c, matmul_kernel):
     return program.resolve_program(SequentialPlacer())
 
 
+def do_matmul(a, b):
+    # m = a.shape[0]
+    # n = b.shape[1]
+    M = a.shape[0]
+    N = b.shape[1]
+    result = iron.zeros((M, N), device="npu")
+
+    a_ty = np.ndarray[(m, k), np.dtype[bfloat16]]
+    b_ty = np.ndarray[(k, n), np.dtype[bfloat16]]
+    c_ty = np.ndarray[(m, n), np.dtype[bfloat16]]
+
+    current_file_path = os.path.dirname(os.path.abspath(__file__))
+    matmul_func_name = os.path.join(current_file_path, "mm.cc")
+
+    matmul = CoreFunction(
+        f"matrix_multiplication",
+        source_file=matmul_func_name,
+        arg_types=[np.int32, a_ty, b_ty, c_ty],
+    )
+
+    gemm(a, b, result, matmul)
+
+    return result
+
+
 def main():
     # Initialize some example tensors
     # batch_size, seq_len, hidden_size = 2, 10, 512
 
     # Alternative size configurations (uncomment to use):
     # batch_size, seq_len, hidden_size = 4, 20, 768  # Moderately larger
-    # batch_size, seq_len, hidden_size = 8, 512, 512 // 4  # Significantly larger
+    batch_size, seq_len, hidden_size = 512, 512, 512 // 4  # Significantly larger
     # batch_size, seq_len, hidden_size = 16, 128, 2048   # Much larger
     # batch_size, seq_len, hidden_size = 32, 256, 4096   # Large (smaller Llama2)
     # batch_size, seq_len, hidden_size = 64, 512, 8192  # Very large (full Llama2)
@@ -195,10 +220,9 @@ def main():
     # up_weight = iron.randint(0, 10, (512, 512), device="npu", dtype=dtype)
     # output_tensor = iron.zeros(512, 512, device="npu", dtype=dtype)
 
-    batch_size, seq_len, hidden_size = 1, 512, 512
-    input_tensor = iron.rand((seq_len, hidden_size), device="npu", dtype=dtype)
-    up_weight = iron.rand((hidden_size, hidden_size), device="npu", dtype=dtype)
-    output_tensor = iron.zeros((seq_len, hidden_size), device="npu", dtype=dtype)
+    input_tensor = iron.rand((512, 512), device="npu", dtype=dtype)
+    up_weight = iron.rand((512, 512), device="npu", dtype=dtype)
+    output_tensor = iron.zeros((512, 512), device="npu", dtype=dtype)
 
     current_file_path = os.path.dirname(os.path.abspath(__file__))
     matmul_func_name = os.path.join(current_file_path, "mm.cc")
