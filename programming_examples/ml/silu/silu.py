@@ -44,7 +44,7 @@ def my_silu(dev, size, num_columns, num_channels):
     # External, binary kernel definition
     silu_fcn = Kernel(
         "silu_bf16",
-        "silu.cc.o",
+        "kernels.a",
         [line_type, line_type],
     )
 
