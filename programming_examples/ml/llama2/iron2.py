@@ -5,7 +5,7 @@ import logging
 import numpy as np
 
 
-from aie.iron import transform
+# from aie.iron.algorithms import transform_parallel_binary
 
 # Global state
 graph_operations = []
@@ -60,8 +60,16 @@ def to_torch_tensor(tensor):
 
 def format_tensor_values(tensor, name, max_values=10):
     """Helper function to format tensor values for logging"""
-    values = [round(x, 3) for x in tensor.flatten()[:max_values].tolist()]
-    return f"     {name}: {tensor.shape}, first {max_values} values: {values}"
+    # Convert to numpy array first
+    if hasattr(tensor, "numpy"):
+        numpy_tensor = tensor.numpy()
+    elif isinstance(tensor, torch.Tensor):
+        numpy_tensor = tensor.numpy()
+    else:
+        numpy_tensor = np.array(tensor)
+
+    values = [round(x, 3) for x in numpy_tensor.flatten()[:max_values].tolist()]
+    return f"     {name}: {numpy_tensor.shape}, first {max_values} values: {values}"
 
 
 def matmul(a, b, device="cpu"):
@@ -120,15 +128,12 @@ def silu(x, device="cpu"):
     return result
 
 
-def transform(a, b, operation, device="cpu"):
+def binary_transform(a, b, operation, device="npu"):
     """
     Apply element-wise operation between tensors a and b
     """
 
     # Convert inputs to PyTorch tensors
-    a = to_torch_tensor(a)
-    b = to_torch_tensor(b)
-
     if is_capturing:
         global next_tensor_id
         # Create symbolic tensor reference
@@ -137,8 +142,8 @@ def transform(a, b, operation, device="cpu"):
         tensor_refs[tensor_id] = None  # Will be computed during execution
 
         # Record the operation with tensor references
-        graph_operations.append((transform, a, b, operation, device, tensor_id))
-        logger.debug(f"captured transform -> {tensor_id}")
+        graph_operations.append((binary_transform, a, b, operation, device, tensor_id))
+        logger.debug(f"captured binary_transform -> {tensor_id}")
 
         # Return symbolic tensor reference
         return tensor_id
@@ -210,7 +215,7 @@ def capture_graph():
                     tensor_refs[tensor_id] = result
                     print(format_tensor_values(result, f"Output {tensor_id}"))
 
-                elif func == transform:
+                elif func == binary_transform:
                     a, b, operation, device, tensor_id = (
                         op[1],
                         op[2],
@@ -271,7 +276,7 @@ def capture_graph():
                     if not isinstance(x, str) and id(x) not in input_map:
                         input_map[id(x)] = f"input_{input_count}"
                         input_count += 1
-                elif func == transform:
+                elif func == binary_transform:
                     a, b, operation, device, tensor_id = (
                         op[1],
                         op[2],
@@ -328,7 +333,7 @@ def capture_graph():
                     # Store this operation as the producer of tensor_id
                     tensor_nodes[tensor_id] = op_id
 
-                elif func == transform:
+                elif func == binary_transform:
                     a, b, operation, device, tensor_id = (
                         op[1],
                         op[2],
@@ -383,7 +388,7 @@ def capture_graph():
                     if isinstance(x, str) and x in tensor_nodes:
                         dot_lines.append(f'  "{x}" -> "{op_id}";')
 
-                elif func == transform:
+                elif func == binary_transform:
                     a, b, operation, device, tensor_id = (
                         op[1],
                         op[2],

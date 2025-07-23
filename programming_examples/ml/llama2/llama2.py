@@ -32,7 +32,7 @@ def main():
         gate_projection = iron2.matmul(gate_input, gate_weight, device="npu")
 
         gate_activated = iron2.silu(gate_projection, device="npu")
-        gated_output = iron2.transform(
+        gated_output = iron2.binary_transform(
             up_projection, gate_activated, lambda a, b: a * b, device="npu"
         )
 
