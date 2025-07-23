@@ -1,3 +1,4 @@
+#! /usr/bin/env python3
 # transform_binary.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
