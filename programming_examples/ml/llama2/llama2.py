@@ -13,6 +13,13 @@ def main():
     # Initialize some example tensors
     batch_size, seq_len, hidden_size = 2, 10, 512
 
+    # Alternative size configurations (uncomment to use):
+    # batch_size, seq_len, hidden_size = 4, 20, 768  # Moderately larger
+    batch_size, seq_len, hidden_size = 8, 50, 1024  # Significantly larger
+    # batch_size, seq_len, hidden_size = 16, 128, 2048   # Much larger
+    # batch_size, seq_len, hidden_size = 32, 256, 4096   # Large (smaller Llama2)
+    # batch_size, seq_len, hidden_size = 64, 512, 8192  # Very large (full Llama2)
+
     input_tensor = iron.rand(batch_size, seq_len, hidden_size, device="npu")
 
     # Up projection weight
@@ -28,15 +35,15 @@ def main():
 
     # Graph capture context
     with iron2.capture_graph() as graph:
-        up_projection = iron2.matmul(input_tensor, up_weight, device="npu")
-        gate_projection = iron2.matmul(gate_input, gate_weight, device="npu")
+        up_projection = iron2.matmul(input_tensor, up_weight, device="cpu")
+        gate_projection = iron2.matmul(gate_input, gate_weight, device="cpu")
 
-        gate_activated = iron2.silu(gate_projection, device="npu")
+        gate_activated = iron2.silu(gate_projection, device="cpu")
         gated_output = iron2.binary_transform(
             up_projection, gate_activated, lambda a, b: a * b, device="npu"
         )
 
-        _ = iron2.matmul(gated_output, down_weight, device="npu")
+        _ = iron2.matmul(gated_output, down_weight, device="cpu")
 
     # Execute the captured graph
     logging.info("Executing graph")

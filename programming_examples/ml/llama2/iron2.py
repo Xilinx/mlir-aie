@@ -113,8 +113,11 @@ def binary_transform(a, b, operation, device="npu"):
         return tensor_id
 
     # Run on NPU using AIE Iron operations
-    result = iron.zeros_like(a)
-    transform_binary(a, b, result, operation)
+    if device == "npu":
+        result = iron.zeros_like(a)
+        transform_binary(a, b, result, operation)
+    else:
+        result = operation(a, b)
     return result
 
 
@@ -151,7 +154,16 @@ def capture_graph():
 
             for i, op in enumerate(graph_operations):
                 func = op[0]
-                print(f"  {i+1}. {func.__name__}:")
+                # Extract device from operation tuple
+                if func == matmul:
+                    device = op[3]
+                elif func == silu:
+                    device = op[2]
+                elif func == binary_transform:
+                    device = op[4]
+                else:
+                    device = "unknown"
+                print(f"  {i+1}. {func.__name__} (device={device}):")
 
                 if func == matmul:
                     a, b, device, tensor_id = op[1], op[2], op[3], op[4]
@@ -165,8 +177,14 @@ def capture_graph():
                     print(format_tensor_values(b_tensor, "Input B"))
 
                     # Convert to numpy for computation
-                    a_np = a_tensor.numpy()
-                    b_np = b_tensor.numpy()
+                    if hasattr(a_tensor, "numpy"):
+                        a_np = a_tensor.numpy()
+                    else:
+                        a_np = a_tensor
+                    if hasattr(b_tensor, "numpy"):
+                        b_np = b_tensor.numpy()
+                    else:
+                        b_np = b_tensor
                     result_np = np.matmul(a_np, b_np)
                     result = iron.tensor(result_np, device=device)
                     tensor_refs[tensor_id] = result
@@ -203,11 +221,14 @@ def capture_graph():
                     b_tensor = tensor_refs.get(b, b) if isinstance(b, str) else b
                     print(format_tensor_values(a_tensor, "Input A"))
                     print(format_tensor_values(b_tensor, "Input B"))
-                    print(f"     Operation: {operation.__name__}")
+                    print(f"     Operation: {operation.__name__} on {device}")
 
-                    # Run on NPU - all tensors are now AIE Iron tensors
-                    result = iron.zeros_like(a_tensor)
-                    transform_binary(a_tensor, b_tensor, result, operation)
+                    if device == "npu":
+                        # Run on NPU - all tensors are now AIE Iron tensors
+                        result = iron.zeros_like(a_tensor)
+                        transform_binary(a_tensor, b_tensor, result, operation)
+                    else:
+                        result = operation(a_tensor.numpy(), b_tensor.numpy())
 
                     tensor_refs[tensor_id] = result
                     print(format_tensor_values(result, f"Output {tensor_id}"))
