@@ -12,7 +12,6 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 #include <stdint.h>
-#include "../aie_kernel_utils.h"
 
 using namespace aie;
 
