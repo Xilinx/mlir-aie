@@ -5,7 +5,8 @@ import logging
 import numpy as np
 
 
-# from aie.iron.algorithms import transform_parallel_binary
+from aie.iron.algorithms import transform_binary
+import aie.iron as iron
 
 # Global state
 graph_operations = []
@@ -21,41 +22,6 @@ if not logger.handlers:
     formatter = logging.Formatter("%(levelname)s: %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
-
-
-def to_torch_tensor(tensor):
-    """
-    Helper function to convert AIE Iron tensors to PyTorch tensors.
-
-    Args:
-        tensor: AIE Iron tensor or any tensor-like object with .numpy() method
-
-    Returns:
-        torch.Tensor: PyTorch tensor
-    """
-    if isinstance(tensor, str):
-        # During graph capturing, tensor references are strings
-        # We should return them as-is for capturing, but this shouldn't be called during execution
-        if is_capturing:
-            return tensor
-        else:
-            # During execution, try to get the actual tensor from tensor_refs
-            if tensor in tensor_refs and tensor_refs[tensor] is not None:
-                return tensor_refs[tensor]
-            else:
-                raise ValueError(f"Tensor reference {tensor} not found in tensor_refs")
-    elif hasattr(tensor, "numpy"):
-        # Convert AIE Iron tensor to numpy first, then to torch
-        numpy_array = tensor.numpy()
-        return torch.from_numpy(numpy_array)
-    elif isinstance(tensor, torch.Tensor):
-        # Already a torch tensor, return as is
-        return tensor
-    elif isinstance(tensor, np.ndarray):
-        # Already a numpy array, convert to torch
-        return torch.from_numpy(tensor)
-    else:
-        raise ValueError(f"Unsupported tensor type: {type(tensor)}")
 
 
 def format_tensor_values(tensor, name, max_values=10):
@@ -77,10 +43,6 @@ def matmul(a, b, device="cpu"):
     Matrix multiplication between tensors a and b
     """
 
-    # Convert inputs to PyTorch tensors
-    a = to_torch_tensor(a)
-    b = to_torch_tensor(b)
-
     if is_capturing:
         global next_tensor_id
         # Create symbolic tensor reference
@@ -95,7 +57,10 @@ def matmul(a, b, device="cpu"):
         # Return symbolic tensor reference
         return tensor_id
 
-    result = torch.matmul(a, b)
+    # Convert to numpy and compute
+    a_np = a.numpy()
+    b_np = b.numpy()
+    result = np.matmul(a_np, b_np)
 
     return result
 
@@ -105,9 +70,6 @@ def silu(x, device="cpu"):
     SiLU (Sigmoid Linear Unit) activation function
     This is the key activation used in Llama2
     """
-
-    # Convert input to PyTorch tensor
-    x = to_torch_tensor(x)
 
     if is_capturing:
         global next_tensor_id
@@ -123,7 +85,10 @@ def silu(x, device="cpu"):
         # Return symbolic tensor reference
         return tensor_id
 
-    result = F.silu(x)
+    # Convert to numpy and compute SiLU
+    x_np = x.numpy()
+    sigmoid_x = 1 / (1 + np.exp(-x_np))
+    result = x_np * sigmoid_x
 
     return result
 
@@ -133,7 +98,6 @@ def binary_transform(a, b, operation, device="npu"):
     Apply element-wise operation between tensors a and b
     """
 
-    # Convert inputs to PyTorch tensors
     if is_capturing:
         global next_tensor_id
         # Create symbolic tensor reference
@@ -148,7 +112,10 @@ def binary_transform(a, b, operation, device="npu"):
         # Return symbolic tensor reference
         return tensor_id
 
-    result = operation(a, b)
+    # Convert to numpy and compute
+    a_np = a.numpy()
+    b_np = b.numpy()
+    result = operation(a_np, b_np)
     return result
 
 
@@ -198,7 +165,7 @@ def capture_graph():
                     print(format_tensor_values(a_tensor, "Input A"))
                     print(format_tensor_values(b_tensor, "Input B"))
 
-                    result = torch.matmul(a_tensor, b_tensor)
+                    result = np.matmul(a_tensor, b_tensor)
                     tensor_refs[tensor_id] = result
                     print(format_tensor_values(result, f"Output {tensor_id}"))
 
@@ -211,7 +178,9 @@ def capture_graph():
 
                     print(format_tensor_values(x_tensor, "Input X"))
 
-                    result = F.silu(x_tensor)
+                    # SiLU(x) = x * sigmoid(x)
+                    sigmoid_x = 1 / (1 + np.exp(-x_tensor))
+                    result = x_tensor * sigmoid_x
                     tensor_refs[tensor_id] = result
                     print(format_tensor_values(result, f"Output {tensor_id}"))
 
@@ -223,16 +192,12 @@ def capture_graph():
                         op[4],
                         op[5],
                     )
-                    device = "cpu"  # Always use CPU for now
-
                     # Resolve tensor references
                     a_tensor = tensor_refs.get(a, a) if isinstance(a, str) else a
                     b_tensor = tensor_refs.get(b, b) if isinstance(b, str) else b
-
                     print(format_tensor_values(a_tensor, "Input A"))
                     print(format_tensor_values(b_tensor, "Input B"))
                     print(f"     Operation: {operation.__name__}")
-
                     result = operation(a_tensor, b_tensor)
                     tensor_refs[tensor_id] = result
                     print(format_tensor_values(result, f"Output {tensor_id}"))
