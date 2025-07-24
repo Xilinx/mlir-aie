@@ -17,8 +17,8 @@ all: build/final.xclbin
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = rmsnorm
-rows = 64
-cols = 64
+rows = 128
+cols = 128
 trace_size = 8192
 
 aie_py_src=${targetname}.py

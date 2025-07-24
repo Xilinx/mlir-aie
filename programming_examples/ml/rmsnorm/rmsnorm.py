@@ -18,7 +18,7 @@ from ml_dtypes import bfloat16
 def rmsnorm(dev, rows, cols, trace_size):
     enable_trace = None if trace_size > 0 else None
 
-    n_cores = 2
+    n_cores = 8
 
     # Define tensor types
 
@@ -39,19 +39,19 @@ def rmsnorm(dev, rows, cols, trace_size):
 
     taps = [
         TensorAccessPattern(
-            (1, in_volume),
-            chunk_volume * i,
-            [1, 1, 1, chunk_volume],
-            [0, 0, 0, cols_per_core*i],
+            (rows, cols),
+            offset=cols_per_core * i,              # start at this core's first column
+            sizes=[1, 1, rows, cols_per_core],     # all rows, this core's columns
+            strides=[0, 0, cols, 1],               # next row: +cols, next col: +1
         )
         for i in range(n_cores)
     ]
     taps_out = [
         TensorAccessPattern(
-            (1, in_volume),
-            chunk_volume * i,
-            [1, 1, 1, chunk_volume],
-            [0, 0, 0, cols_per_core*i],
+            (rows, cols),
+            offset=cols_per_core * i,
+            sizes=[1, 1, rows, cols_per_core],
+            strides=[0, 0, cols, 1],
         )
         for i in range(n_cores)
     ]
@@ -109,3 +109,28 @@ cols = int(opts.cols)
 trace_size = int(opts.trace_size)
 
 print(rmsnorm(dev, rows, cols, trace_size))
+
+if __name__ == "__main__":
+    # ... your argument parsing ...
+    rows = int(opts.rows)
+    cols = int(opts.cols)
+    n_cores = 2
+    cols_per_core = cols // n_cores
+
+    for i in range(n_cores):
+        tap = TensorAccessPattern(
+            (rows, cols),
+            offset=cols_per_core * i,
+            sizes=[1, 1, cols_per_core, rows],
+            strides=[0, 0, 1, cols],
+        )
+        tap.visualize(title=f"Core {i} input tap", show_arrows=True, plot_access_count=True, file_path=f"core_{i}_input_tap.png")
+
+    for i in range(n_cores):
+        tap_out = TensorAccessPattern(
+            (rows, cols),
+            offset=cols_per_core * i,
+            sizes=[1, 1, cols_per_core, rows],
+            strides=[0, 0, 1, cols],
+        )
+        tap_out.visualize(title=f"Core {i} output tap", show_arrows=True, plot_access_count=True, file_path=f"core_{i}_output_tap.png")
