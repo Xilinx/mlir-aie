@@ -14,7 +14,7 @@ This design implements a `bfloat16` based Root Mean Square Normalization (RMSNor
 
 ## Source Files Overview
 
-1. `rmsnorm.py`: Python script to set up and run the RMSNorm kernel on the AIE device using IRON operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (e.g., XCLBIN and inst.bin for the NPU).
+1. `rmsnorm.py`: Python script to set up and run the RMSNorm kernel on the AIE device using IRON operations. This script also includes a `TensorAccessPattern` visualizer to display the column distribution across AIE cores, illustrating how the workload is partitioned. It generates MLIR, which is then compiled using `aiecc.py` to produce design binaries (e.g., XCLBIN and inst.bin for the NPU).
 
 2. `rms_norm.cc`: A C++ implementation of a RMSNormfor AIE cores. The code uses the AIE API, which is a C++ header-only library providing types and operations that get translated into efficient low-level intrinsics.  The source can be found [here](../../../aie_kernels/aie2p/rms_norm.cc).
 
