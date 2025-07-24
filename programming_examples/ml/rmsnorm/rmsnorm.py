@@ -10,45 +10,74 @@ import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.iron.device import NPU1, NPU2
+from aie.helpers.taplib.tap import TensorAccessPattern
 from ml_dtypes import bfloat16
 
 
 def rmsnorm(dev, rows, cols, trace_size):
-    enable_trace = 1 if trace_size > 0 else None
+    enable_trace = None if trace_size > 0 else None
 
-    # Define tensor types
+    n_cores = 8
 
-    in_volume = rows * cols
+    total_volume = rows * cols
 
-    dtype = np.ndarray[(in_volume,), np.dtype[bfloat16]]
+    dtype = np.ndarray[(total_volume,), np.dtype[bfloat16]]
 
-    of_in = ObjectFifo(dtype, name="in")
-    of_out = ObjectFifo(dtype, name="out")
+    cols_per_core = cols // n_cores
+    chunk_volume = rows * cols_per_core
+    chunk_type = np.ndarray[(chunk_volume,), np.dtype[bfloat16]]
+
+    of_in = [ObjectFifo(chunk_type, name=f"in_{i}") for i in range(n_cores)]
+    of_out = [ObjectFifo(chunk_type, name=f"out_{i}") for i in range(n_cores)]
 
     rms_norm_kernel = Kernel(
-        "rms_norm", "rms_norm.o", [dtype, dtype, np.int32, np.int32]
+        "rms_norm", "rms_norm.o", [chunk_type, chunk_type, np.int32, np.int32]
     )
+
+    taps = [
+        TensorAccessPattern(
+            (rows, cols),
+            offset=cols_per_core * i,
+            sizes=[1, 1, rows, cols_per_core],
+            strides=[0, 0, cols, 1],
+        )
+        for i in range(n_cores)
+    ]
+
+    # Visualize
+    for i, tap in enumerate(taps):
+        tap.visualize(
+            title=f"Core {i} tap",
+            show_arrows=True,
+            plot_access_count=True,
+            file_path=f"core_{i}_tap.png",
+        )
 
     def core_body(of_in, of_out, rms_norm_kernel):
         elem_in = of_in.acquire(1)
         elem_out = of_out.acquire(1)
-        rms_norm_kernel(elem_in, elem_out, rows, cols)
+        rms_norm_kernel(elem_in, elem_out, rows, cols_per_core)
         of_in.release(1)
         of_out.release(1)
 
-    worker = Worker(
-        core_body,
-        fn_args=[of_in.cons(), of_out.prod(), rms_norm_kernel],
-        trace=enable_trace,
-    )
+    workers = [
+        Worker(
+            core_body,
+            fn_args=[of_in[i].cons(), of_out[i].prod(), rms_norm_kernel],
+            trace=enable_trace,
+        )
+        for i in range(n_cores)
+    ]
 
     rt = Runtime()
     with rt.sequence(dtype, dtype) as (a_in, c_out):
         rt.enable_trace(enable_trace)
-        rt.start(worker)
-        rt.fill(of_in.prod(), a_in)
-        rt.drain(of_out.cons(), c_out, wait=True)
+        rt.start(*workers)
+        for i in range(n_cores):
+            rt.fill(of_in[i].prod(), a_in, taps[i])
+        for i in range(n_cores):
+            rt.drain(of_out[i].cons(), c_out, taps[i], wait=True)
     return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
@@ -67,9 +96,9 @@ p.add_argument(
 opts = p.parse_args(sys.argv[1:])
 
 if opts.device == "npu":
-    dev = NPU1Col1()
+    dev = NPU1()
 elif opts.device == "npu2":
-    dev = NPU2Col1()
+    dev = NPU2()
 else:
     raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
 
