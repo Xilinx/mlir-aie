@@ -55,4 +55,4 @@ make run
 - The input and output matrices are stored in row-major order.
 - The number of columns must be divisible by the number of cores used.
 - The computation is parallelized across multiple AIE cores, with each core processing a block of columns.
-- On AIE2 architecture, the `rms_norm.cc` kernel requires a custom square root (sqrt) function, as native hardware support for sqrt may not be available.
+- On AIE2 architecture, the `rms_norm.cc` kernel requires a custom inverse square root (invsqrt) function, as native hardware support for sqrt may not be available.
