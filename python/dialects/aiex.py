@@ -369,7 +369,8 @@ def reconfigure_dma(obj: ObjectFifoCreateOp, tile: TileOp, dir: DMAChannelDir, l
             bd_queue_addr = 656948
     else:
         bd_queue_addr = None  # Non-memtile, handle as needed
-        
+    if not isinstance(length, IntegerAttr):
+        length = IntegerAttr.get(T.i32(), int(length))
     results = []
     for i in range(num_bds):
         bd_id = start_bd_id + i
@@ -384,14 +385,14 @@ def reconfigure_dma(obj: ObjectFifoCreateOp, tile: TileOp, dir: DMAChannelDir, l
                 row = row,
                 bd_id = bd_id,
                 buffer_length = length,
-                d0_size = sizes[3],
-                d1_size = sizes[2],
-                d2_size = sizes[1],
-                iteration_size = sizes[0],
-                d0_stride = strides[3],
-                d1_stride = strides[2],
-                d2_stride = strides[1],
-                iteration_stride = strides[0],
+                d0_size = sizes[2],
+                d1_size = sizes[1],
+                d2_size = sizes[0],
+                iteration_size = 0,
+                d0_stride = strides[2],
+                d1_stride = strides[1],
+                d2_stride = strides[0],
+                iteration_stride = 0,
                 buffer_offset = offset,
                 enable_packet = 0,
                 out_of_order_id = 0,
@@ -401,11 +402,11 @@ def reconfigure_dma(obj: ObjectFifoCreateOp, tile: TileOp, dir: DMAChannelDir, l
                 next_bd = next_bd,
                 use_next_bd = 1,
                 valid_bd = 1,
-                lock_rel_val = 0,
-                lock_rel_id = 0,
-                lock_acq_enable = 0,
-                lock_acq_val = 0,
-                lock_acq_id = 0,
+                lock_rel_val = 1,
+                lock_rel_id = 64,
+                lock_acq_enable = 1,
+                lock_acq_val = 127,
+                lock_acq_id = 65,
                 d0_zero_before = pad_before[2],
                 d1_zero_before = pad_before[1],
                 d2_zero_before = pad_before[0],

@@ -41,7 +41,7 @@ of_out = of_in.cons().forward()
 rt = Runtime()
 with rt.sequence(vector_ty, vector_ty, vector_ty) as (a_in, _, c_out):
     rt.fill(of_in.prod(), a_in)
-    rt.reconfigure_dma(of_out.prod(), length=line_size)#, offset = 0, sizes=[0, 0, 0, 0], strides=[0, 0, 0, 1], pad_before = [0, 0, 0, 0], pad_after = [0, 0, 0, 0])
+    rt.reconfigure_dma(of_out.prod())#, length=line_size)#, offset = 0, sizes=[0, 0, 0, 0], strides=[0, 0, 0, 1], pad_before = [0, 0, 0, 0], pad_after = [0, 0, 0, 0])
     rt.drain(of_out.cons(), c_out, wait = True)
 
 # Create the program from the device type and runtime

@@ -254,7 +254,7 @@ class ReconfigureDMATask(Resolvable):
     def __init__(
         self,
         obj: ObjectFifoHandle,
-        length: int,
+        length: int = None,
         offset: int = 0,
         sizes: list[int] = None,
         strides: list[int] = None,
@@ -290,11 +290,46 @@ class ReconfigureDMATask(Resolvable):
             direction = DMAChannelDir.S2MM
 
         # If any of the optional attributes are not given, pull from the obj handle
-        length = self.length if self.length is not None else getattr(self.obj, "length", None)
+        if self.length is not None:
+            length = self.length
+        else:
+            # Try to get length from obj, else from obj_type shape
+            length = getattr(self.obj, "length", None)
+            if length is None:
+                # Try to get from obj_type shape (assume last dimension is length)
+                obj_type = getattr(self.obj, "obj_type", None)
+                # In IRON, obj_type is typically a typing-annotated np.ndarray, e.g. np.ndarray[(line_size,), np.dtype[np.int32]]
+                # The shape is in obj_type.__args__[0] if using typing-extensions or similar
+                shape = None
+                if obj_type is not None:
+                    args = getattr(obj_type, "__args__", None)
+                    if args and len(args) > 0:
+                        shape = args[0]
+                if shape is not None and hasattr(shape, "__len__") and len(shape) > 0:
+                    length = shape[-1]
+                else:
+                    raise RuntimeError("Failed to get length from objectFifo: obj_type.shape is empty or not a sequence.")
         offset = self.offset if self.offset is not None else getattr(self.obj, "offset", 0)
-        sizes = self.sizes if self.sizes is not None else getattr(self.obj, "sizes", None)
-        strides = self.strides if self.strides is not None else getattr(self.obj, "strides", None)
-        pad_before = self.pad_before if self.pad_before is not None else getattr(self.obj, "pad_before", None)
-        pad_after = self.pad_after if self.pad_after is not None else getattr(self.obj, "pad_after", None)
+        if self.sizes is not None and self.strides is not None:
+            sizes = self.sizes
+            strides = self.strides
+        else:
+            # Determine which dims to use based on producer/consumer (channel direction)
+            if self.obj._is_prod:
+                dims = getattr(self.obj._object_fifo, "dims_to_stream", None)
+            else:
+                dims = getattr(self.obj._object_fifo, "default_dims_from_stream_per_cons", None)
+            # If dims is a list of tuples like [(size0, stride0), (size1, stride1), ...]
+            if dims is not None and len(dims) > 0:
+                # Unzip the list of tuples into sizes and strides
+                sizes, strides = zip(*dims)
+                sizes = list(sizes)
+                strides = list(strides)
+            else:
+                # If dims is None or empty, set sizes and strides to zeros
+                sizes = [0, 0, 0]
+                strides = [0, 0, 0]
+        pad_before = self.pad_before if self.pad_before is not None else [0, 0, 0]
+        pad_after = self.pad_after if self.pad_after is not None else [0, 0, 0]
 
         reconfigure_dma(self.obj, tile, direction, length, offset, sizes, strides, pad_before, pad_after)

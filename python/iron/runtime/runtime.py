@@ -356,7 +356,7 @@ class Runtime(Resolvable):
     def reconfigure_dma(
         self,
         obj: ObjectFifoHandle,
-        length: int,
+        length: int = None,
         offset: int = 0,
         sizes: list[int] = None,
         strides: list[int] = None,
