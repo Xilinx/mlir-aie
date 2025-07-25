@@ -342,3 +342,92 @@ def dma_start_task(*args: DMAConfigureTaskForOp):
 
 def set_lock_value(lock: aie.LockOp, value: int):
     return set_lock(lock, value)
+
+def reconfigure_dma(obj: ObjectFifoCreateOp, tile: TileOp, dir: DMAChannelDir, length: int, offset: int, sizes: list[int], strides: list[int], pad_before: list[int], pad_after: list[int]):
+    # Extract column and row from the tile
+    column = tile.col
+    row = tile.row
+    # Can have too many objectFifos from/to same tile. This BD Id calculation
+    # is not accurate in those scenarios.
+    # Determine the starting bd_id and number of bds based on direction
+    # For S2MM, start from bd_id 0, for MM2S, start from calculated
+    # The number of bds is the objectfifo depth (from obj.depth)
+    if dir == DMAChannelDir.S2MM:
+        start_bd_id = 0
+    else:
+        # For MM2S, start_bd_id is typically the depth (number of bds)
+        start_bd_id = getattr(obj, "depth", 2)  # default to 2 if not present
+
+    num_bds = getattr(obj, "depth", 2)  # default to 2 if not present
+
+    # Check if the tile is a Memtile (row == 1)
+    is_memtile = (row == 1)
+    if is_memtile:
+        if dir == DMAChannelDir.S2MM:
+            bd_queue_addr = 656900
+        else:
+            bd_queue_addr = 656948
+    else:
+        bd_queue_addr = None  # Non-memtile, handle as needed
+        
+    results = []
+    for i in range(num_bds):
+        bd_id = start_bd_id + i
+        # next_bd wraps around to start_bd at the end
+        if i == num_bds - 1:
+            next_bd = start_bd_id
+        else:
+            next_bd = bd_id + 1
+        results.append(
+            npu_writebd(
+                column = column,
+                row = row,
+                bd_id = bd_id,
+                buffer_length = length,
+                d0_size = sizes[3],
+                d1_size = sizes[2],
+                d2_size = sizes[1],
+                iteration_size = sizes[0],
+                d0_stride = strides[3],
+                d1_stride = strides[2],
+                d2_stride = strides[1],
+                iteration_stride = strides[0],
+                buffer_offset = offset,
+                enable_packet = 0,
+                out_of_order_id = 0,
+                packet_id = 0,
+                packet_type = 0,
+                iteration_current = 0,
+                next_bd = next_bd,
+                use_next_bd = 1,
+                valid_bd = 1,
+                lock_rel_val = 0,
+                lock_rel_id = 0,
+                lock_acq_enable = 0,
+                lock_acq_val = 0,
+                lock_acq_id = 0,
+                d0_zero_before = pad_before[2],
+                d1_zero_before = pad_before[1],
+                d2_zero_before = pad_before[0],
+                d0_zero_after = pad_after[2],
+                d1_zero_after = pad_after[1],
+                d2_zero_after = pad_after[0],
+            )
+        )
+        results.append(
+            npu_write32(
+                address = bd_queue_addr,
+                column = column,
+                row = row,
+                value = bd_id
+            )
+        )
+        results.append(
+            npu_sync(
+                channel = 0,
+                column = column,
+                row = row,
+                direction = 1,
+            )
+        )
+    return results

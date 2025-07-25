@@ -13,7 +13,7 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1, XCVC1902
 
 N = 4096
-line_size = 1024
+line_size = 4096
 
 if len(sys.argv) > 1:
     N = int(sys.argv[1])
@@ -34,14 +34,15 @@ vector_ty = np.ndarray[(N,), np.dtype[np.int32]]
 line_ty = np.ndarray[(line_size,), np.dtype[np.int32]]
 
 # Data movement with ObjectFifos
-of_in = ObjectFifo(line_ty, name="in")
+of_in = ObjectFifo(line_ty, name="in", depth =1)
 of_out = of_in.cons().forward()
 
 # Runtime operations to move data to/from the AIE-array
 rt = Runtime()
 with rt.sequence(vector_ty, vector_ty, vector_ty) as (a_in, _, c_out):
     rt.fill(of_in.prod(), a_in)
-    rt.drain(of_out.cons(), c_out, wait=True)
+    rt.reconfigure_dma(of_out.prod(), length=line_size)#, offset = 0, sizes=[0, 0, 0, 0], strides=[0, 0, 0, 1], pad_before = [0, 0, 0, 0], pad_after = [0, 0, 0, 0])
+    rt.drain(of_out.cons(), c_out, wait = True)
 
 # Create the program from the device type and runtime
 my_program = Program(dev, rt)

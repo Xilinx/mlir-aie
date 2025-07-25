@@ -24,7 +24,7 @@ from ...helpers.taplib import TensorAccessPattern
 from ..dataflow import ObjectFifoHandle
 from ..device import PlacementTile, AnyShimTile
 from ..resolvable import Resolvable
-from ..worker import Worker, WorkerRuntimeBarrier, _BarrierSetOp
+from ..worker import Worker, WorkerRuntimeBarrier, _BarrierSetOp, ReconfigureDMATask
 from .dmatask import DMATask
 from .data import RuntimeData
 from .endpoint import RuntimeEndpoint
@@ -352,3 +352,18 @@ class Runtime(Resolvable):
 
             if self._trace_size is not None:
                 trace_utils.gen_trace_done_aie2(trace_shim_tile)
+
+    def reconfigure_dma(
+        self,
+        obj: ObjectFifoHandle,
+        length: int,
+        offset: int = 0,
+        sizes: list[int] = None,
+        strides: list[int] = None,
+        pad_before: list[int] = None,
+        pad_after: list[int] = None,
+    ):
+        """Reconfigure the DMA length, transfer sizes and strides for an ObjectFifoHandle.
+        This should be called within a Runtime.sequence() context.
+        """
+        self._tasks.append(ReconfigureDMATask(obj, length, offset, sizes, strides, pad_before, pad_after))

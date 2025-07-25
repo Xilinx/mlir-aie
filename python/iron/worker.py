@@ -11,7 +11,7 @@ from typing import Callable
 
 from .. import ir  # type: ignore
 from ..dialects.aie import core, lock, use_lock
-from ..dialects.aiex import set_lock_value, LockAction
+from ..dialects.aiex import set_lock_value, LockAction, DMAChannelDir, reconfigure_dma
 from ..helpers.dialects.ext.scf import _for as range_
 from .device import PlacementTile, AnyComputeTile, Tile
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
@@ -216,7 +216,23 @@ class WorkerRuntimeBarrier:
                 "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
             )
         use_lock(self.worker_locks[-1], LockAction.Release, value=value)
+    def __init__(self, obj: ObjectFifoHandle, address: int, value: int):
+        self.obj: ObjectFifoHandle = obj
+        self.address: int = address
+        self.value: int = value
 
+    def resolve(
+        self,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
+    ) -> None:
+        # Determine the tile from the ObjectFifoHandle
+        # If it's a producer, use the producer tile; if consumer, use the consumer tile
+        if self.obj._is_prod:
+            tile = self.obj._object_fifo._prod._endpoint._tile
+        else:
+            tile = self.obj._object_fifo._cons[0]._endpoint._tile
+        set_write32(self.obj, tile, self.address, self.value)
 
 class _BarrierSetOp(Resolvable):
     """A resolvable instance of a WorkerRuntimeBarrier. This should not be used directly."""
@@ -231,3 +247,54 @@ class _BarrierSetOp(Resolvable):
         ip: ir.InsertionPoint | None = None,
     ) -> None:
         self.barrier._set_barrier_value(self.value)
+
+class ReconfigureDMATask(Resolvable):
+    """A resolvable instance of a ReconfigureDMATask. This should not be used directly."""
+
+    def __init__(
+        self,
+        obj: ObjectFifoHandle,
+        length: int,
+        offset: int = 0,
+        sizes: list[int] = None,
+        strides: list[int] = None,
+        pad_before: list[int] = None,
+        pad_after: list[int] = None,
+    ):
+        self.obj: ObjectFifoHandle = obj
+        self.length = length
+        self.offset = offset
+        self.sizes = sizes
+        self.strides = strides
+        self.pad_before = pad_before
+        self.pad_after = pad_after
+
+    def resolve(
+        self,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
+    ) -> None:
+        # Determine the tile from the ObjectFifoHandle
+        # If it's a producer, use the producer tile; if consumer, use the consumer tile
+        if self.obj._is_prod:
+            tile = self.obj._object_fifo._prod._endpoint._tile
+        else:
+            try:
+                tile = self.obj._object_fifo._cons[0]._endpoint._tile
+            except Exception as e:
+                raise RuntimeError("Consumer tile is not available; placer may not have run yet.") from e
+        # Set the direction based on producer or consumer side
+        if self.obj._is_prod:
+            direction = DMAChannelDir.MM2S
+        else:
+            direction = DMAChannelDir.S2MM
+
+        # If any of the optional attributes are not given, pull from the obj handle
+        length = self.length if self.length is not None else getattr(self.obj, "length", None)
+        offset = self.offset if self.offset is not None else getattr(self.obj, "offset", 0)
+        sizes = self.sizes if self.sizes is not None else getattr(self.obj, "sizes", None)
+        strides = self.strides if self.strides is not None else getattr(self.obj, "strides", None)
+        pad_before = self.pad_before if self.pad_before is not None else getattr(self.obj, "pad_before", None)
+        pad_after = self.pad_after if self.pad_after is not None else getattr(self.obj, "pad_after", None)
+
+        reconfigure_dma(self.obj, tile, direction, length, offset, sizes, strides, pad_before, pad_after)

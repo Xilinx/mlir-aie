@@ -154,8 +154,11 @@ int main(int argc, const char *argv[]) {
   for (uint32_t i = 0; i < N; i++) {
     uint32_t ref = (i + 1);
     if (*(bufOut + i) != ref) {
+      std::cout << "Mismatch at index: " << i << " , expectd: " << ref <<" , got: " << *(bufOut + i) <<std::endl;
       errors++;
     }
+    else
+      std::cout << "Matched at index: "  << i << " , expectd: " << ref <<" , got: " << *(bufOut + i) <<std::endl;
   }
 
   if (!errors) {

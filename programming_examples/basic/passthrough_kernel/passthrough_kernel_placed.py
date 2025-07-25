@@ -79,7 +79,8 @@ def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
             out_task = shim_dma_single_bd_task(
                 of_out, outTensor, sizes=[1, 1, 1, N], issue_token=True
             )
-
+            # set_write32(of_in, 0x00FF, 0)
+            # set_write32(ComputeTile2, 0x213000, [4096, 0, 0, 0, -2147483648, 0, 0, 33554432])
             dma_start_task(in_task, out_task)
             dma_await_task(in_task, out_task)
 
