@@ -157,8 +157,8 @@ int main(int argc, const char *argv[]) {
       std::cout << "Mismatch at index: " << i << " , expectd: " << ref <<" , got: " << *(bufOut + i) <<std::endl;
       errors++;
     }
-    else
-      std::cout << "Matched at index: "  << i << " , expectd: " << ref <<" , got: " << *(bufOut + i) <<std::endl;
+    // else
+    //   std::cout << "Matched at index: "  << i << " , expectd: " << ref <<" , got: " << *(bufOut + i) <<std::endl;
   }
 
   if (!errors) {

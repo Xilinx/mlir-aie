@@ -68,6 +68,7 @@ class ObjectFifo(Resolvable):
         self._dims_to_stream = dims_to_stream
         self._default_dims_from_stream_per_cons = default_dims_from_stream_per_cons
         self._plio = plio
+        self._runtime_dmas = None
         if name is None:
             self.name = f"of{ObjectFifo.__get_index()}"
         else:
@@ -76,6 +77,10 @@ class ObjectFifo(Resolvable):
         self._prod: ObjectFifoHandle | None = None
         self._cons: list[ObjectFifoHandle] = []
         self._resolving = False
+
+    def use_runtime_dmas(self, num: int = 0):
+        """Set the number of runtime DMAs to use for this ObjectFifo."""
+        self._runtime_dmas = num
 
     @classmethod
     def __get_index(cls) -> int:
@@ -263,6 +268,7 @@ class ObjectFifo(Resolvable):
                 dimensionsToStream=self._dims_to_stream,
                 dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
                 plio=self._plio,
+                runtimeDMAs=self._runtime_dmas,
             )
 
             if isinstance(self._prod.endpoint, ObjectFifoLink):
@@ -333,6 +339,10 @@ class ObjectFifoHandle(Resolvable):
         self._depth = depth
         self._endpoint = None
         self._dims_from_stream = dims_from_stream
+
+    def use_runtime_dmas(self, num: int = 0):
+        """Set the number of runtime DMAs to use for this ObjectFifo via its parent ObjectFifo."""
+        self._object_fifo.use_runtime_dmas(num)
 
     def acquire(
         self,

@@ -67,6 +67,7 @@ from ..ir import (
     Value,
     _i32ArrayAttr,
     _arrayAttr,
+    BoolAttr,
 )
 
 # Comes from _aie
@@ -415,6 +416,7 @@ class object_fifo(ObjectFifoCreateOp):
         initValues=None,
         via_DMA=None,
         plio=None,
+        runtimeDMAs=None,
         padDimensions=None,
         disable_synchronization=None,
     ):
@@ -434,6 +436,8 @@ class object_fifo(ObjectFifoCreateOp):
                     init_val = array("i", e)
                 values.append(DenseElementsAttr.get(init_val, type=self.datatype))
             initValues = _arrayAttr(values, None)
+        if runtimeDMAs is not None and not isinstance(runtimeDMAs, BoolAttr):
+            runtimeDMAs = BoolAttr.get(bool(runtimeDMAs))
         super().__init__(
             sym_name=name,
             producerTile=producerTile,
@@ -447,6 +451,7 @@ class object_fifo(ObjectFifoCreateOp):
             padDimensions=padDimensions,
             disable_synchronization=disable_synchronization,
             initValues=initValues,
+            runtimeDmas=runtimeDMAs,
         )
 
     def acquire(self, port, num_elem):
@@ -479,7 +484,6 @@ class object_fifo(ObjectFifoCreateOp):
     def set_repeat_count(self, num):
         int_num = IntegerAttr.get(T.i32(), num)
         self.attributes["repeat_count"] = int_num
-
 
 # Create an aie objectFifo_link between input and output objectFifos.
 class object_fifo_link(ObjectFifoLinkOp):
