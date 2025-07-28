@@ -17,8 +17,8 @@
 
 using namespace aie;
 
-void softmax_simple_bf16(bfloat16* input_vector,
-                         bfloat16* output_vector,
+void softmax_simple_bf16(bfloat16 *restrict input_vector,
+                         bfloat16 *restrict output_vector,
                          const int32_t vector_size) {
   event0();
 
@@ -28,12 +28,12 @@ void softmax_simple_bf16(bfloat16* input_vector,
   // 3. Calculate the softmax by dividing each exponential by the sum of all exponentials
   // Note: The multiplication by log2e is very sensitive, casting it to bf16 before exponentiation leads to wrong output.
   
-  auto it_log_in = aie::cbegin_vector<SM_VEC_LEN>((bfloat16 *)input_vector);
-  auto it_log_out = aie::begin_vector<SM_VEC_LEN>((bfloat16 *)input_vector);
-  auto it_exp_in = aie::cbegin_vector<SM_VEC_LEN>((bfloat16 *)input_vector);
-  auto it_exp_out = aie::begin_vector<SM_VEC_LEN>((bfloat16 *)output_vector);
-  auto it_scale = aie::cbegin_vector<SM_VEC_LEN>((bfloat16 *)output_vector);
-  auto it_soft_out = aie::begin_vector<SM_VEC_LEN>((bfloat16 *)output_vector);
+  auto it_log_in = aie::cbegin_restrict_vector<SM_VEC_LEN>((bfloat16 *)input_vector);
+  auto it_log_out = aie::begin_restrict_vector<SM_VEC_LEN>((bfloat16 *)input_vector);
+  auto it_exp_in = aie::cbegin_restrict_vector<SM_VEC_LEN>((bfloat16 *)input_vector);
+  auto it_exp_out = aie::begin_restrict_vector<SM_VEC_LEN>((bfloat16 *)output_vector);
+  auto it_scale = aie::cbegin_restrict_vector<SM_VEC_LEN>((bfloat16 *)output_vector);
+  auto it_soft_out = aie::begin_restrict_vector<SM_VEC_LEN>((bfloat16 *)output_vector);
   
   aie::vector<bfloat16, SM_VEC_LEN> in_elems, exp_val, input_bf16, log2e_vec, max_val_vec;
   aie::accum<accfloat, SM_VEC_LEN> out_vals, exp_val_accum, scaled_accum, exp_in_accum;
