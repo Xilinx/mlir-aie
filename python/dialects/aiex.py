@@ -249,7 +249,10 @@ def shim_dma_single_bd_task(
     transfer_len: int | None = None,
     issue_token: bool = False,
     burst_length: int = 0,
-    packet: tuple[int]|None = None
+    dma_channel_dir: DMAChannelDir | None = None,
+    dma_channel_index: int | None = None,
+    col: int | None = None,
+    packet: tuple[int] | None = None
 ):
     """_summary_
     Enables data transfers between the AIE Engine array and external memory.
@@ -263,6 +266,8 @@ def shim_dma_single_bd_task(
         sizes: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
         strides (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
         issue_token (optional): If a token is issued, one may call dma_await_task on the returned task. Default is False.
+        dma_channel (optional): 
+        col (optional): 
         burst_length (optional): The configuration of the burst length for the DMA task. If 0, defaults to the highest available value.
 
     Example:
@@ -287,9 +292,23 @@ def shim_dma_single_bd_task(
     repeat_count = 0
     if sizes and sizes[0] > 1:
         repeat_count = sizes[0] - 1
-    task = dma_configure_task_for(
-        alloc, repeat_count=repeat_count, issue_token=issue_token
-    )
+    if (alloc is None):
+        if (dma_channel_dir is None or dma_channel_index is None or col is not None):
+            raise ValueError(
+                "shim_dma_single_bd_task can have alloc OR (dma_channel_dir and dma_channel_index and col) equal to None, but not both."
+            )
+    if (alloc is None):
+        task = dma_configure_task_for(
+            alloc, repeat_count=repeat_count, issue_token=issue_token
+        )
+    else:
+        task = dma_configure_task(
+            tile=TileOp(col, 0),
+            direction=dma_channel_dir,
+            channel=dma_channel_index,
+            repeat_count=repeat_count,
+            issue_token=issue_token,
+        )
     with bds(task) as bd:
         with bd[0]:
             shim_dma_bd(
