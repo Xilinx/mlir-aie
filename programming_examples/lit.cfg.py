@@ -131,7 +131,9 @@ if config.xrt_lib_dir:
         result = result.stdout.decode("utf-8").split("\n")
         # Older format is "|[0000:41:00.1]  ||RyzenAI-npu1  |"
         # Newer format is "|[0000:41:00.1]  |NPU Phoenix  |"
+        # p = re.compile(r"[\|]?(\[.+:.+:.+\]).+\|(RyzenAI-(npu\d)|NPU ([^\|]+))\W*\|")
         p = re.compile(r"[\|]?(\[.+:.+:.+\]).+\|(RyzenAI-(npu\d)|NPU (\w+))\W*\|")
+
         for l in result:
             m = p.match(l)
             if not m:
@@ -141,7 +143,7 @@ if config.xrt_lib_dir:
             if m.group(3):
                 model = str(m.group(3))
             if m.group(4):
-                model = str(m.group(4))
+                model = str(m.group(4))#.strip()
             print(f"\tmodel: '{model}'")
             config.available_features.add("ryzen_ai")
             run_on_npu = f"{config.aie_src_root}/utils/run_on_npu.sh"
