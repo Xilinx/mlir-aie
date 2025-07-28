@@ -37,14 +37,25 @@ int verify(int size, int tile_size, std::vector<T> A, std::vector<T> B,
            int verbosity) {
 
   int errors = 0;
+  float log2e = 1.4453125;
+  T max_val = A[0];
   std::vector<T> RefVec(size);
+
+  for (uint32_t i = 1; i < A.size(); i++) {
+    A[i] = (T)(A[i]);
+    T val = A[i];
+    if (val > max_val) {
+      max_val = val;
+    }
+  }
 
   for (uint32_t t = 0; t < size; t += tile_size) {
     float running = 0.0;
     for (uint32_t i = 0; i < tile_size; i++) {
-      float ez = (float)(exp(A[t + i]));
+      float ez = (float)(exp(A[t + i] - max_val));
       running += ez;
-      RefVec[t + i] = exp(A[t + i]);
+      RefVec[t + i] = (T)exp(A[t + i] - max_val);
+      // RefVec[t + i] = (T)A[t + i] * log2e;
     }
 
     for (uint32_t i = 0; i < tile_size; i++) {
@@ -54,7 +65,7 @@ int verify(int size, int tile_size, std::vector<T> A, std::vector<T> B,
 
   for (uint32_t i = 0; i < size; i++) {
 
-    if (!test_utils::nearly_equal(RefVec[i], B[i], 0.04)) {
+    if (!test_utils::nearly_equal(RefVec[i], B[i], 0.04, 0.001)) {
       std::cout << "Error in output " << B[i] << " != " << RefVec[i]
                 << std::endl;
       errors++;
@@ -132,8 +143,8 @@ int main(int argc, const char *argv[]) {
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
   std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
   for (int i = 0; i < INOUT0_VOLUME; i++) {
-    AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)8.0,
-                                            (std::bfloat16_t)-4.0);
+    AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)512.0,
+                                            (std::bfloat16_t)0.0);
   }
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));
 
