@@ -5,7 +5,7 @@ AIE2_INCLUDE_DIR ?= ${AIETOOLS_DIR}/data/aie_ml/lib
 
 AIEOPT_DIR ?= $(shell realpath $(dir $(shell which aie-opt))/..)
 
-WARNING_FLAGS = -Wno-parentheses -Wno-attributes -Wno-macro-redefined -Wno-empty-body
+WARNING_FLAGS = -Wno-parentheses -Wno-attributes -Wno-macro-redefined -Wno-empty-body -Wno-missing-template-arg-list-after-template-kw
 
 CHESSCC1_FLAGS = -f -p me -P ${AIE_INCLUDE_DIR} -I ${AIETOOLS_DIR}/include
 CHESSCC2_FLAGS = -f -p me -P ${AIE2_INCLUDE_DIR} -I ${AIETOOLS_DIR}/include
