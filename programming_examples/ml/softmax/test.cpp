@@ -37,7 +37,6 @@ int verify(int size, int tile_size, std::vector<T> A, std::vector<T> B,
            int verbosity) {
 
   int errors = 0;
-  float log2e = 1.4453125;
   T max_val = A[0];
   std::vector<T> RefVec(size);
 
@@ -55,11 +54,10 @@ int verify(int size, int tile_size, std::vector<T> A, std::vector<T> B,
       float ez = (float)(exp(A[t + i] - max_val));
       running += ez;
       RefVec[t + i] = (T)exp(A[t + i] - max_val);
-      // RefVec[t + i] = (T)A[t + i] * log2e;
     }
 
     for (uint32_t i = 0; i < tile_size; i++) {
-      RefVec[t + i] /= running;
+      RefVec[t + i] /= (T)running;
     }
   }
 
@@ -143,8 +141,8 @@ int main(int argc, const char *argv[]) {
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
   std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
   for (int i = 0; i < INOUT0_VOLUME; i++) {
-    AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)512.0,
-                                            (std::bfloat16_t)0.0);
+    AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)1024.0,
+                                            (std::bfloat16_t)-512.0);
   }
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));
 
