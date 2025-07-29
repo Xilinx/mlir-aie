@@ -9,7 +9,7 @@ ninja 1.8.2
 Xilinx Vitis 2023.2
 python 3.8.x and pip
 virtualenv
-pip3 install psutil rich pybind11 numpy
+pip3 install rich pybind11 numpy
 clang/llvm 14+ from source https://github.com/llvm/llvm-project
 ```
 
@@ -18,17 +18,17 @@ Xilinx Vitis can be downloaded and installed from the [Xilinx Downloads](https:/
 In order to successfully install Vitis on a fresh bare-bones Ubuntu install, some additional prerequisites are required, [documented here](https://support.xilinx.com/s/article/63794?language=en_US). For Ubuntu 20.04, the installation should succeed if you additionally install the following packages: `libncurses5 libtinfo5 libncurses5-dev libncursesw5-dev ncurses-compat-libs libstdc++6:i386 libgtk2.0-0:i386 dpkg-dev:i386 python3-pip` Further note that the above mentioned cmake prerequisite is _not_ satisfied by the package provided by Ubuntu; you will need to obtain a more current version.
 
 NOTE: Using the Vitis recommended `settings64.sh` script to set up your environement can cause tool conflicts. Setup your environment in the following order for aietools and Vitis:
- 
+
 ```
 export PATH=$PATH:<Vitis_install_path>/Vitis/2023.2/aietools/bin:<Vitis_install_path>/Vitis/2023.2/bin
 ```
 
-The cmake and python packages prerequisites can be satisfied by sourcing the `utils/setup_python_packages.sh` script. See step 2 of the build instructions. 
+The cmake and python packages prerequisites can be satisfied by sourcing the `utils/setup_python_packages.sh` script. See step 2 of the build instructions.
 This script requires `virtualenv`.
 
-clang/llvm 14+ are recommended to be built with the provided scripts. See step 3. of the build instructions. 
+clang/llvm 14+ are recommended to be built with the provided scripts. See step 3. of the build instructions.
 
-When targetting the VCK5000 Versal device, you must build and install our experimental ROCm runtime which allows us to communicate with the AIEs. The [ROCm-air-platforms](https://github.com/Xilinx/ROCm-air-platforms) repository contains documentation on how to install our experimental ROCm runtime. When targetting the VCK5000, it will be necessary to [install a global version of ROCM 5.6](https://rocm.docs.amd.com/en/docs-5.6.0/deploy/linux/os-native/install.html). Details of all these steps can be found in the [ROCm-air-platforms](https://github.com/Xilinx/ROCm-air-platforms#getting-started) repo. 
+When targetting the VCK5000 Versal device, you must build and install our experimental ROCm runtime which allows us to communicate with the AIEs. The [ROCm-air-platforms](https://github.com/Xilinx/ROCm-air-platforms) repository contains documentation on how to install our experimental ROCm runtime. When targetting the VCK5000, it will be necessary to [install a global version of ROCM 5.6](https://rocm.docs.amd.com/en/docs-5.6.0/deploy/linux/os-native/install.html). Details of all these steps can be found in the [ROCm-air-platforms](https://github.com/Xilinx/ROCm-air-platforms#getting-started) repo.
 
 ## Building on X86 for mlir-aie development
 
@@ -86,9 +86,9 @@ When targetting the VCK5000 Versal device, you must build and install our experi
     ```
     This will build LLVM in `llvm/build` and install the LLVM binaries under `llvm/install`.
 
-4. Build the MLIR-AIE tools by calling `utils/build-mlir-aie.sh` or `utils/build-mlir-aie-pcie.sh` 
-    for Ryzen AI or Versal respectively  with the path to the `llvm/build` directory. 
-    The Vitis environment will have to be set up for this to succeed.  
+4. Build the MLIR-AIE tools by calling `utils/build-mlir-aie.sh` or `utils/build-mlir-aie-pcie.sh`
+    for Ryzen AI or Versal respectively  with the path to the `llvm/build` directory.
+    The Vitis environment will have to be set up for this to succeed.
 
     Building mlir-aie for a Ryzen AI system:
 
@@ -104,9 +104,9 @@ When targetting the VCK5000 Versal device, you must build and install our experi
     ./utils/build-mlir-aie-pcie.sh <llvm dir>/<build dir>
     ```
 
-    This will create a `build` and `install` folder in the directory that you cloned MLIR AIE into. 
+    This will create a `build` and `install` folder in the directory that you cloned MLIR AIE into.
 
-    The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM/x86 processors. 
+    The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM/x86 processors.
 
 5. In order to run all the tools, it is necessary to add some paths into your environment. This can be
 done by sourcing the `utils/env_setup.sh` script with the paths to the install folders for mlir-aie
