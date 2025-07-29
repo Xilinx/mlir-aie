@@ -11,7 +11,7 @@
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
-VPATH := ${srcdir}/../../../aie_kernels/aie2
+VPATH := ${srcdir}/../../../aie_kernels/aie2p
 
 all: build/final.xclbin
 
