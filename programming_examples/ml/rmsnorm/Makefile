@@ -19,7 +19,7 @@ devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = rmsnorm
 rows = 128
 cols = 128
-trace_size = 8192
+trace_size = 65536
 
 aie_py_src=${targetname}.py
 

@@ -20,11 +20,13 @@ def rmsnorm(dev, rows, cols, trace_size):
 
     n_cores = 8
 
-    # Define tensor types
+    total_volume = rows * cols
 
-    in_volume = rows * cols
+    dtype = np.ndarray[(total_volume,), np.dtype[bfloat16]]
 
-    dtype = np.ndarray[(in_volume,), np.dtype[bfloat16]]
+    rows_per_core = rows // n_cores
+    chunk_volume = cols * rows_per_core
+    chunk_type = np.ndarray[(chunk_volume,), np.dtype[bfloat16]]
 
     rows_per_core = rows // n_cores
     chunk_volume = rows * rows_per_core
