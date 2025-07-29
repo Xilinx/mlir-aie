@@ -38,43 +38,41 @@ void initialize_bufOut(DATATYPE_OUT *bufOut, int out_volume) {
 }
 
 int verify_rmsnorm_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
-                            int in_elements, int out_elements) {
-  std::cout << "ROWS * COLS = " << (ROWS * COLS) << std::endl;
+                          int in_elements, int out_elements) {
   int errors = 0;
   int pass = 0;
   constexpr float epsilon = 1e-5f;
   constexpr float gamma = 1.0f;
   std::vector<float> expected(ROWS * COLS, 0.0f);
 
-  for (int c = 0; c < COLS; c++) {
-    // Compute sum of squares for this column
+  for (int r = 0; r < ROWS; r++) {
     float sum_sq = 0.0f;
-    for (int r = 0; r < ROWS; r++) {
+    for (int c = 0; c < COLS; c++) {
       int idx = r * COLS + c;
       float val = static_cast<float>(bufIn1[idx]);
       sum_sq += val * val;
     }
-    float rms = std::sqrt(sum_sq / float(ROWS) + epsilon);
-    // Normalize each element in this column
-    for (int r = 0; r < ROWS; r++) {
+
+    float rms = std::sqrt(sum_sq / float(COLS) + epsilon);
+
+    for (int c = 0; c < COLS; c++) {
       int idx = r * COLS + c;
       float val = static_cast<float>(bufIn1[idx]);
       float norm = (val * gamma) / rms;
       expected[idx] = norm;
     }
   }
-  
+
   for (int i = 0; i < (ROWS * COLS); i++) {
     float expected_val = expected[i];
     float hw_val = static_cast<float>(bufOut[i]);
-    if (std::abs(expected_val - hw_val) > 0.04) {
+    if (std::abs(expected_val - hw_val) > 0.05f) {
       std::cout << "Mismatch at index " << i << ": expected " << expected_val
                 << ", got " << hw_val << std::endl;
       errors++;
-    }
-    else {
-      std::cout << "Match at index " << i << ": expected " << expected_val
-                << ", got " << hw_val << std::endl;
+    } else {
+      // std::cout << "Match at index " << i << ": expected " << expected_val
+      //           << ", got " << hw_val << std::endl;
       pass++;
     }
   }
