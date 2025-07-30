@@ -115,7 +115,7 @@ public:
 
   /// Given a tile and DMAChannelDir, returns next usable channel index for
   /// that tile.
-  int getDMAChannelIndex(TileOp tileOp, DMAChannelDir dir, bool hasCrossTileIssue) {
+  int getDMAChannelIndex(TileOp tileOp, DMAChannelDir dir, bool requiresAdjacentTileAccessChannels) {
     int maxChannelNum = 0;
     if (dir == DMAChannelDir::MM2S)
       maxChannelNum = tileOp.getNumSourceConnections(WireBundle::DMA);
