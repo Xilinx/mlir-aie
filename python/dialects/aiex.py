@@ -344,6 +344,8 @@ def set_lock_value(lock: aie.LockOp, value: int):
     return set_lock(lock, value)
 
 def reconfigure_dma(obj: ObjectFifoCreateOp, tile: TileOp, dir: DMAChannelDir, length: int, offset: int, sizes: list[int], strides: list[int], pad_before: list[int], pad_after: list[int]):
+    column = tile.col
+    row = tile.row
     # obj_depth = getattr(obj, "depth", 2)
     # if obj_depth == 1:
     #     # For depth 1, configure a single DMA task
