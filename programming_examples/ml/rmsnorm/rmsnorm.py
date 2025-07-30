@@ -14,11 +14,13 @@ from aie.iron.device import NPU1, NPU2
 from aie.helpers.taplib.tap import TensorAccessPattern
 from ml_dtypes import bfloat16
 
+import aie.utils.trace as trace_utils
+
 
 def rmsnorm(dev, rows, cols, trace_size):
-    enable_trace = None if trace_size > 0 else None
+    enable_trace = 1 if trace_size > 0 else None
 
-    n_cores = 8
+    n_cores = 1
 
     total_volume = rows * cols
 
@@ -47,12 +49,12 @@ def rmsnorm(dev, rows, cols, trace_size):
             sizes=[1, 1, rows_per_core, cols],
             strides=[0, 0, cols, 1],
         )
-        taps.visualize(
-            title=f"Core {i} input tap",
-            show_arrows=True,
-            plot_access_count=True,
-            file_path=f"core_{i}_input_tap.png",
-        )
+        # taps.visualize(
+        #     title=f"Core {i} input tap",
+        #     show_arrows=True,
+        #     plot_access_count=True,
+        #     file_path=f"core_{i}_input_tap.png",
+        # )
         taps_in.append(taps)
 
     for i in range(n_cores):
@@ -62,12 +64,12 @@ def rmsnorm(dev, rows, cols, trace_size):
             sizes=[1, 1, rows_per_core, cols],
             strides=[0, 0, cols, 1],
         )
-        taps.visualize(
-            title=f"Core {i} output tap",
-            show_arrows=True,
-            plot_access_count=True,
-            file_path=f"core_{i}_output_tap.png",
-        )
+        # taps.visualize(
+        #     title=f"Core {i} output tap",
+        #     show_arrows=True,
+        #     plot_access_count=True,
+        #     file_path=f"core_{i}_output_tap.png",
+        # )
         taps_out.append(taps)
 
     def core_body(of_in, of_out, rms_norm_kernel):
@@ -88,7 +90,16 @@ def rmsnorm(dev, rows, cols, trace_size):
 
     rt = Runtime()
     with rt.sequence(dtype, dtype) as (a_in, c_out):
-        rt.enable_trace(enable_trace)
+        rt.enable_trace(trace_size=trace_size,
+        coretile_events = [ 
+                trace_utils.CoreEvent.INSTR_EVENT_0,
+                trace_utils.CoreEvent.INSTR_EVENT_1,
+                trace_utils.CoreEvent.INSTR_VECTOR,
+                trace_utils.CoreEvent.MEMORY_STALL,
+                trace_utils.CoreEvent.INSTR_LOAD,
+                trace_utils.CoreEvent.LOCK_STALL,
+                trace_utils.CoreEvent.INSTR_STORE,
+                trace_utils.CoreEvent.DISABLED])
         rt.start(*workers)
         for i in range(n_cores):
             rt.fill(of_in[i].prod(), a_in, taps_in[i])
