@@ -121,7 +121,7 @@ public:
       maxChannelNum = tileOp.getNumDestConnections(WireBundle::DMA);
 
     const auto &targetModel = getTargetModel(tileOp);
-    int maxChannelNumForAdjacentTile = targetModel.getMaxChannelNumForAdjacentTile(tileOp.getCol(), tileOp.getRow());
+    int maxChannelNumForAdjacentTile = targetModel.getMaxChannelNumForAdjacentMemTile(tileOp.getCol(), tileOp.getRow());
 
     // if requires adjacent tile access channels, only allocate on channel 0-3, and if cannot, return 0
     if (requiresAdjacentTileAccessChannels) {

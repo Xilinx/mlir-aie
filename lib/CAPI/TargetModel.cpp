@@ -154,9 +154,9 @@ uint32_t aieTargetModelGetNumBanks(AieTargetModel targetModel, int col,
   return unwrap(targetModel).getNumBanks(col, row);
 }
 
-uint32_t aieTargetModelGetMaxChannelNumForAdjacentTile(AieTargetModel targetModel, int col,
+uint32_t aieTargetModelGetMaxChannelNumForAdjacentMemTile(AieTargetModel targetModel, int col,
                                                        int row) {
-  return unwrap(targetModel).getMaxChannelNumForAdjacentTile(col, row);
+  return unwrap(targetModel).getMaxChannelNumForAdjacentMemTile(col, row);
 }
 
 
