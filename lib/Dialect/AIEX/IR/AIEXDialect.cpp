@@ -795,6 +795,22 @@ LogicalResult AIEX::SetLockOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// ReconfigureDMABDOp
+//===----------------------------------------------------------------------===//
+// LogicalResult AIEX::ReconfigureDMABDOp::verify() {
+//   const auto &targetModel = AIE::getTargetModel(*this);
+//   // Ensure that the operation is only supported on MemTile.
+//   if (!targetModel.isMemTile(getColumn(), getRow())) {
+//     return emitOpError("ReconfigureDMABDOp currently only supported on MemTile.");
+//   }
+
+//   if (getLength() == 0)
+//     return emitOpError("Length cannot be zero.");
+
+//   return success();
+// }
+
+//===----------------------------------------------------------------------===//
 // BlockFloatingPointType
 //===----------------------------------------------------------------------===//
 uint64_t AIEX::BlockFloatType::getTotalSizeInBits() const {

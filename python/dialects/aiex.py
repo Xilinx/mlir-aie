@@ -344,19 +344,45 @@ def set_lock_value(lock: aie.LockOp, value: int):
     return set_lock(lock, value)
 
 def reconfigure_dma(obj: ObjectFifoCreateOp, tile: TileOp, dir: DMAChannelDir, length: int, offset: int, sizes: list[int], strides: list[int], pad_before: list[int], pad_after: list[int]):
-    # Extract column and row from the tile
-    column = tile.col
-    row = tile.row
-    # Can have too many objectFifos from/to same tile. This BD Id calculation
-    # is not accurate in those scenarios.
-    # Determine the starting bd_id and number of bds based on direction
-    # For S2MM, start from bd_id 0, for MM2S, start from calculated
-    # The number of bds is the objectfifo depth (from obj.depth)
+    # obj_depth = getattr(obj, "depth", 2)
+    # if obj_depth == 1:
+    #     # For depth 1, configure a single DMA task
+    #     return dma_configure_task_for(obj, repeat_count=0)
+    # else:
+    #     # For depth >1, start a BD chain for the allocation on the given tile, direction, and channel, passing offsets, sizes, strides, etc. as args
+    #     return dma_start_bd_chain(
+    #         symbol=obj,
+    #         args=[offset, sizes, strides, pad_before, pad_after, length],  # Pass parameters as needed
+    #         tile=tile,
+    #         direction=dir,
+    #         channel=0,  # Set the channel as needed
+    #         repeat_count=getattr(obj, "repeat_count", 1)  # Use repeat_count set on obj
+        # )
+    # return ReconfigureDMABDOp(
+    #     obj,
+    #     tile,
+    #     dir=dir,
+    #     length=length,
+    #     offset=offset,
+    #     sizes=sizes,
+    #     strides=strides,
+    #     pad_before=pad_before,
+    #     pad_after=pad_after
+    # )
+
+    lock_acq_id = 64
+    lock_acq_val = 127
+    lock_rel_id = lock_acq_id + 1
+    lock_rel_val = 1
     if dir == DMAChannelDir.S2MM:
         start_bd_id = 0
     else:
         # For MM2S, start_bd_id is typically the depth (number of bds)
         start_bd_id = getattr(obj, "depth", 2)  # default to 2 if not present
+        lock_acq_id = lock_rel_id
+        lock_acq_val = 127
+        lock_rel_id = lock_rel_id - 1
+        lock_rel_val = 1
 
     num_bds = getattr(obj, "depth", 2)  # default to 2 if not present
 
@@ -402,11 +428,11 @@ def reconfigure_dma(obj: ObjectFifoCreateOp, tile: TileOp, dir: DMAChannelDir, l
                 next_bd = next_bd,
                 use_next_bd = 1,
                 valid_bd = 1,
-                lock_rel_val = 1,
-                lock_rel_id = 64,
+                lock_rel_val = lock_rel_val,
+                lock_rel_id = lock_rel_id,
                 lock_acq_enable = 1,
-                lock_acq_val = 127,
-                lock_acq_id = 65,
+                lock_acq_val = lock_acq_val,
+                lock_acq_id = lock_acq_id,
                 d0_zero_before = pad_before[2],
                 d1_zero_before = pad_before[1],
                 d2_zero_before = pad_before[0],
@@ -423,12 +449,13 @@ def reconfigure_dma(obj: ObjectFifoCreateOp, tile: TileOp, dir: DMAChannelDir, l
                 value = bd_id
             )
         )
-        results.append(
-            npu_sync(
-                channel = 0,
-                column = column,
-                row = row,
-                direction = 1,
-            )
-        )
+        # if dir == DMAChannelDir.MM2S:
+        #     results.append(
+        #         npu_sync(
+        #             channel = 0,
+        #             column = column,
+        #             row = row,
+        #             direction = 1,
+        #         )
+        #     )
     return results

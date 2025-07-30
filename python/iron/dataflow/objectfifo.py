@@ -221,7 +221,7 @@ class ObjectFifo(Resolvable):
             raise ValueError(
                 f"Cannot return cons.tile.op for ObjectFifo {self.name} because no consumers were not created."
             )
-        return [cons.endpoint.tile.op for cons in self._cons]
+        return [cons.endpoint.tile.op for cons in self._cons if cons.endpoint and cons.endpoint.tile and cons.endpoint.tile.op is not None]
 
     def _get_depths(self) -> int | list[int]:
         if not self._prod:

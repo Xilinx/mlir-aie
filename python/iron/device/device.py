@@ -152,16 +152,14 @@ class Device(Resolvable):
             int: Number of DMA dest ports.
         """
         ...
-
     def resolve_tile(
         self,
         tile: Tile,
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
-    ) -> None:
+    ) -> None: 
         self._tiles[tile.col][tile.row].resolve(loc, ip, tile.allocation_scheme)
         tile.op = self._tiles[tile.col][tile.row].op
-
 
 class NPUBase(Device):
     """A base class which can be used to create other device specific classes.

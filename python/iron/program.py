@@ -75,12 +75,12 @@ class Program:
                 for w in self._rt.workers:
                     all_tiles.append(w.tile)
                 for f in all_fifos:
-                    all_tiles.extend([e.tile for e in f.all_of_endpoints()])
+                    all_tiles.extend([e.tile for e in f.all_of_endpoints() if e is not None and e.tile is not None])
 
                 # Resolve tiles
                 for t in all_tiles:
                     self._device.resolve_tile(t)
-
+                    
                 # Generate fifos
                 for f in all_fifos:
                     f.resolve()

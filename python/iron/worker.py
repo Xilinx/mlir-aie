@@ -248,8 +248,8 @@ class _BarrierSetOp(Resolvable):
     ) -> None:
         self.barrier._set_barrier_value(self.value)
 
-class ReconfigureDMATask(Resolvable):
-    """A resolvable instance of a ReconfigureDMATask. This should not be used directly."""
+class ConfigureDMATask(Resolvable):
+    """A resolvable instance of a ConfigureDMATask. This should not be used directly."""
 
     def __init__(
         self,

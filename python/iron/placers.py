@@ -130,9 +130,22 @@ class SequentialPlacer(Placer):
         for ofh in object_fifos:
             of_endpoints = ofh.all_of_endpoints()
             of_handle_endpoints = ofh._object_fifo._get_endpoint(is_prod=ofh._is_prod)
-            of_compute_endpoints_tiles = [
-                ofe.tile for ofe in of_endpoints if ofe.tile in computes
-            ]
+            of_compute_endpoints_tiles = []
+            for ofe in of_endpoints:
+                if ofe is None:
+                    continue
+                if not isinstance(ofe, ObjectFifoEndpoint):
+                    raise ValueError(
+                        f"ObjectFifoHandle {ofh} has an endpoint that is not an ObjectFifoEndpoint: {ofe}"
+                    )
+                if ofe.tile is None:
+                    raise ValueError(f"Endpoint {ofe} has tile set to None.")
+                if ofe.tile in computes:
+                    of_compute_endpoints_tiles.append(ofe.tile)
+                if ofe.tile is None:
+                    raise ValueError(f"Endpoint {ofe} has tile set to None.")
+                if ofe.tile in computes:
+                    of_compute_endpoints_tiles.append(ofe.tile)
             common_col = self._get_common_col(of_compute_endpoints_tiles)
             of_link_endpoints = [
                 ofe for ofe in of_endpoints if isinstance(ofe, ObjectFifoLink)

@@ -601,10 +601,10 @@ struct AIEObjectFifoStatefulTransformPass
       BDPadLayoutArrayAttr padDims = nullptr;
       if (channelDir == DMAChannelDir::MM2S && pad_dims)
         padDims = pad_dims;
-        auto runtimeDMAs = op.getRuntimeDmas();
-        if (runtimeDMAs.has_value() && runtimeDMAs == false) 
-          createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
-                          dims, padDims);
+      auto runtimeDMAs = op.getRuntimeDmas();
+      if (runtimeDMAs.has_value() && runtimeDMAs == false)
+        createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
+                        dims, padDims);
     } else {
       createAIETileDMA(device, builder, op, channelDir, channelIndex, lockMode,
                        dims);
@@ -1503,9 +1503,13 @@ struct AIEObjectFifoStatefulTransformPass
             BDDimLayoutArrayArrayAttr::get(builder.getContext(),
                                            singletonFromStreamDims);
 
+        // Propagate runtimeDMAs attribute from the original createOp to the new consumerFifo
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
             builder, datatype, consumerFifoName, consumerTile, consumerTile,
             consumerObjFifoSize, emptyDims, fromStreamDims);
+        if (auto runtimeDMAs = createOp.getRuntimeDmas()) {
+          consumerFifo.setRuntimeDmasAttr(builder.getBoolAttr(*runtimeDMAs));
+        }
         if (createOp.getDisableSynchronization())
           consumerFifo.setDisableSynchronization(true);
         replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
