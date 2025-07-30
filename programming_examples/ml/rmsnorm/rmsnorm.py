@@ -20,7 +20,7 @@ import aie.utils.trace as trace_utils
 def rmsnorm(dev, rows, cols, trace_size):
     enable_trace = 1 if trace_size > 0 else None
 
-    n_cores = 1
+    n_cores = 8
 
     total_volume = rows * cols
 
@@ -49,6 +49,7 @@ def rmsnorm(dev, rows, cols, trace_size):
             sizes=[1, 1, rows_per_core, cols],
             strides=[0, 0, cols, 1],
         )
+        # Uncomment the following lines to visualize the access pattern on input data for each core
         # taps.visualize(
         #     title=f"Core {i} input tap",
         #     show_arrows=True,
@@ -64,6 +65,7 @@ def rmsnorm(dev, rows, cols, trace_size):
             sizes=[1, 1, rows_per_core, cols],
             strides=[0, 0, cols, 1],
         )
+        # Uncomment the following lines to visualize the access pattern on output data from each core
         # taps.visualize(
         #     title=f"Core {i} output tap",
         #     show_arrows=True,
@@ -90,8 +92,9 @@ def rmsnorm(dev, rows, cols, trace_size):
 
     rt = Runtime()
     with rt.sequence(dtype, dtype) as (a_in, c_out):
-        rt.enable_trace(trace_size=trace_size,
-        coretile_events = [ 
+        rt.enable_trace(
+            trace_size=trace_size,
+            coretile_events=[
                 trace_utils.CoreEvent.INSTR_EVENT_0,
                 trace_utils.CoreEvent.INSTR_EVENT_1,
                 trace_utils.CoreEvent.INSTR_VECTOR,
@@ -99,7 +102,11 @@ def rmsnorm(dev, rows, cols, trace_size):
                 trace_utils.CoreEvent.INSTR_LOAD,
                 trace_utils.CoreEvent.LOCK_STALL,
                 trace_utils.CoreEvent.INSTR_STORE,
-                trace_utils.CoreEvent.DISABLED])
+                trace_utils.PortEvent(
+                    trace_utils.CoreEvent.PORT_RUNNING_0, 1, master=True
+                ),
+            ],
+        )
         rt.start(*workers)
         for i in range(n_cores):
             rt.fill(of_in[i].prod(), a_in, taps_in[i])
